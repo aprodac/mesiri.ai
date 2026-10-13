@@ -13,7 +13,7 @@ import uuid
 
 import jwt
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -73,6 +73,7 @@ projects_table = sa.Table(
     sa.Column("status", sa.String),
     sa.Column("progress", sa.Integer),
     sa.Column("open_issues", sa.Integer),
+    sa.Column("client_logo_object_key", sa.String),
 )
 
 sites_table = sa.Table(
@@ -149,6 +150,9 @@ class ProjectResponse(BaseModel):
     progress: int
     openIssues: int
     reportingRatio: str | None = None
+    # The client's logo for this project's DPRs (BE-33); fetch the image
+    # through GET /projects/{id}/client-logo.
+    hasClientLogo: bool = False
 
 
 class ProjectCreate(BaseModel):
@@ -249,6 +253,7 @@ def _to_response(row) -> ProjectResponse:
         progress=row.progress or 0,
         openIssues=row.open_issues or 0,
         reportingRatio=None,  # no sites/reporting subsystem yet
+        hasClientLogo=bool(getattr(row, "client_logo_object_key", None)),
     )
 
 
@@ -945,3 +950,135 @@ async def remove_project_member(
         )
 
     await project_entity("membership", user_id)
+
+
+# ---------------------------------------------------------------------------
+# Client logo (BE-33) -- shown on this project's DPRs
+# ---------------------------------------------------------------------------
+_LOGO_LINK_SECONDS = 900
+
+
+class ClientLogoUpload(BaseModel):
+    content_type: str
+    # The image file, base64-encoded (PNG, JPEG or WebP, up to 700 KB).
+    data_base64: str
+
+
+class ClientLogoResponse(BaseModel):
+    hasClientLogo: bool
+    # Short-lived link to the image; None when there is no logo or storage
+    # cannot hand out links.
+    url: str | None = None
+
+
+def _storage(request: Request):
+    from mesiri.infrastructure.objectstorage.dependency import get_object_storage
+
+    return get_object_storage(request)
+
+
+async def _client_logo_response(storage, key: str | None) -> ClientLogoResponse:
+    if not key:
+        return ClientLogoResponse(hasClientLogo=False)
+    url = await storage.generate_presigned_url(key, expires_in_seconds=_LOGO_LINK_SECONDS)
+    return ClientLogoResponse(
+        hasClientLogo=True, url=url if url.startswith(("http://", "https://")) else None
+    )
+
+
+async def _require_admin_project(conn, payload: dict, project_id: uuid.UUID) -> tuple:
+    """(org_id, current logo key) for a project an admin of its company may edit."""
+    org_id = payload.get("org")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="User has no organization")
+    if (payload.get("role") or "").upper() != "ADMIN":
+        raise HTTPException(status_code=403, detail="Admin access required to edit project")
+    row = (
+        await conn.execute(
+            sa.select(projects_table.c.client_logo_object_key).where(
+                projects_table.c.id == project_id,
+                projects_table.c.organization_id == org_id,
+            )
+        )
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return uuid.UUID(str(org_id)), row.client_logo_object_key
+
+
+@router.get("/{project_id}/client-logo", response_model=ClientLogoResponse)
+async def get_client_logo(
+    project_id: uuid.UUID, request: Request, payload: dict = Depends(get_current_user)
+):
+    org_id = payload.get("org")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="User has no organization")
+    async with get_engine().connect() as conn:
+        query = sa.select(projects_table.c.client_logo_object_key).where(
+            projects_table.c.id == project_id,
+            projects_table.c.organization_id == org_id,
+        )
+        if not await _is_org_wide(conn, payload):
+            query = query.where(_member_project_ids_clause(payload.get("sub")))
+        row = (await conn.execute(query)).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return await _client_logo_response(_storage(request), row.client_logo_object_key)
+
+
+@router.put("/{project_id}/client-logo", response_model=ClientLogoResponse)
+async def upload_client_logo(
+    project_id: uuid.UUID,
+    body: ClientLogoUpload,
+    request: Request,
+    payload: dict = Depends(get_current_user),
+):
+    """Upload or replace the client logo shown on this project's DPRs."""
+    from mesiri.domains.organizations import branding
+
+    try:
+        data, extension, content_type = branding.decode_upload(body.data_base64, body.content_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    storage = _storage(request)
+    async with get_engine().begin() as conn:
+        org_id, old = await _require_admin_project(conn, payload, project_id)
+        key = branding.client_logo_key(org_id, project_id, extension)
+        await storage.put_object(key, data, content_type=content_type)
+        await conn.execute(
+            projects_table.update()
+            .where(projects_table.c.id == project_id)
+            .values(client_logo_object_key=key)
+        )
+    # Committed: the old file is no longer referenced.
+    await _remove_old_logo(storage, org_id, old)
+    return await _client_logo_response(storage, key)
+
+
+@router.delete("/{project_id}/client-logo", response_model=ClientLogoResponse)
+async def remove_client_logo(
+    project_id: uuid.UUID, request: Request, payload: dict = Depends(get_current_user)
+):
+    storage = _storage(request)
+    async with get_engine().begin() as conn:
+        org_id, old = await _require_admin_project(conn, payload, project_id)
+        await conn.execute(
+            projects_table.update()
+            .where(projects_table.c.id == project_id)
+            .values(client_logo_object_key=None)
+        )
+    await _remove_old_logo(storage, org_id, old)
+    return ClientLogoResponse(hasClientLogo=False)
+
+
+async def _remove_old_logo(storage, org_id: uuid.UUID, key: str | None) -> None:
+    from mesiri.domains.organizations import branding
+
+    if not branding.owns_key(org_id, key):
+        return
+    try:
+        await storage.delete_object(key)
+    except Exception:  # noqa: BLE001 -- an unused file left behind, nothing more
+        import logging
+
+        logging.getLogger(__name__).warning("client_logo.delete_failed key=%s", key, exc_info=True)

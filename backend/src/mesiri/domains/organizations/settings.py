@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from mesiri.domains.organizations.branding import DEFAULT_BRANDING
+
 # Every role the system recognises (users/router.py's _VALID_ROLES). Kept as
 # a frozenset here so a settings payload naming a role that doesn't exist is
 # rejected at the boundary instead of silently never matching anyone.
@@ -33,6 +35,8 @@ WHATSAPP_MATERIAL_CREATE_ROLES = "whatsapp_material_create_roles"
 FINANCE_SETTINGS = "finance_settings"
 LABOUR_SETTINGS = "labour_settings"
 ENABLED_MODULES = "enabled_modules"
+# Letterhead details and logo (BE-20); rules in domains/organizations/branding.py.
+BRANDING = "branding"
 
 # Product modules a company can have switched on (V1 tracker BE-06). Each key
 # gates one or more API routers (domains/shared/modules.py's require_module)
@@ -140,7 +144,20 @@ _SPECS: dict[str, SettingSpec] = {
             "flows are unavailable."
         ),
     ),
+    BRANDING: SettingSpec(
+        key=BRANDING,
+        default=DEFAULT_BRANDING,
+        description=(
+            "How the company appears on its DPRs: printed name, brand colour, GSTIN, "
+            "signatory and logo. Edited through the branding page, not here."
+        ),
+    ),
 }
+
+# Settings with their own endpoint (GET/PUT /company/branding and the logo
+# upload). The generic settings API refuses them: a hand-written logo key could
+# point at another company's file.
+DEDICATED_ENDPOINT_KEYS: frozenset[str] = frozenset({BRANDING})
 
 
 def is_known_key(key: str) -> bool:
@@ -240,6 +257,8 @@ def validate(key: str, value: object) -> object:
     """Validate `value` for `key`, returning the canonical form to persist."""
     if not is_known_key(key):
         raise ValueError(f"unknown organization setting: {key}")
+    if key in DEDICATED_ENDPOINT_KEYS:
+        raise ValueError(f"'{key}' is set through its own page, not the settings API")
     if key == WHATSAPP_MATERIAL_CREATE_ROLES:
         return validate_role_list(value)
     if key == ENABLED_MODULES:

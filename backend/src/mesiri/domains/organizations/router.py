@@ -1,13 +1,16 @@
+import logging
 import uuid
 from datetime import datetime
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from mesiri.domains.organizations import branding
 from mesiri.domains.organizations import settings as org_settings
 from mesiri.domains.shared.auth import require_admin
+from mesiri.infrastructure.objectstorage.dependency import get_object_storage
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.models.organization import (
     DeploymentType,
@@ -16,8 +19,10 @@ from mesiri.infrastructure.postgres.models.organization import (
 from mesiri.infrastructure.postgres.repositories.organization_settings import (
     PostgresOrganizationSettingsRepository,
 )
+from mesiri_contracts.common.storage import ObjectStoragePort
 
 router = APIRouter(prefix="/company", tags=["company"])
+_log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -305,6 +310,183 @@ async def update_company_setting(
         updated_by=uuid.UUID(user_id) if user_id else None,
     )
     return {"key": body.key, "value": canonical}
+
+
+# ---------------------------------------------------------------------------
+# Branding -- what the company's DPR letterhead is made of (BE-20)
+# ---------------------------------------------------------------------------
+_LOGO_LINK_SECONDS = 900
+
+
+class BrandingResponse(BaseModel):
+    # From the company record (edited through PATCH /company, not copied here).
+    company_name: str
+    address: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    # From the branding setting.
+    letterhead_name: str | None = None
+    brand_color: str | None = None
+    gstin: str | None = None
+    signatory_name: str | None = None
+    signatory_designation: str | None = None
+    has_logo: bool = False
+    # Short-lived link to the logo, or None when there is none.
+    logo_url: str | None = None
+
+
+class LogoUpload(BaseModel):
+    content_type: str
+    # The image file, base64-encoded.
+    data_base64: str
+
+
+def _org_id(admin: dict) -> uuid.UUID:
+    org_id = admin.get("org")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="Token missing org claim")
+    return uuid.UUID(org_id)
+
+
+def decode_logo(body: LogoUpload) -> tuple[bytes, str, str]:
+    """Bytes, extension and content type of an upload; 422 when it isn't a usable logo."""
+    try:
+        return branding.decode_upload(body.data_base64, body.content_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+async def _branding_response(
+    conn: AsyncConnection, storage: ObjectStoragePort, org_id: uuid.UUID
+) -> BrandingResponse:
+    org = (
+        (
+            await conn.execute(
+                sa.text("SELECT name, address, phone, email FROM organizations WHERE id = :id"),
+                {"id": org_id},
+            )
+        )
+        .mappings()
+        .first()
+    )
+    if org is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    stored = await PostgresOrganizationSettingsRepository(conn).get(org_id, org_settings.BRANDING)
+    values = branding.branding_values(stored)
+    logo_key = values.pop("logo_object_key")
+    has_logo = branding.owns_key(org_id, logo_key)
+    logo_url = None
+    if has_logo:
+        url = await storage.generate_presigned_url(logo_key, expires_in_seconds=_LOGO_LINK_SECONDS)
+        # With storage not configured (the fake adapter) there is no
+        # downloadable link; the page still loads, just without the image.
+        logo_url = url if url.startswith(("http://", "https://")) else None
+    return BrandingResponse(
+        company_name=org["name"],
+        address=org["address"],
+        phone=org["phone"],
+        email=org["email"],
+        has_logo=has_logo,
+        logo_url=logo_url,
+        **values,
+    )
+
+
+async def _remove_file(storage: ObjectStoragePort, key: str) -> None:
+    # Runs after the response, once the new key is committed. A failure only
+    # leaves an unused file behind.
+    try:
+        await storage.delete_object(key)
+    except Exception:  # noqa: BLE001
+        _log.warning("branding.old_logo_delete_failed key=%s", key, exc_info=True)
+
+
+@router.get("/branding", response_model=BrandingResponse)
+async def get_branding(
+    admin: dict = Depends(require_admin),
+    conn: AsyncConnection = Depends(get_db_conn),
+    storage: ObjectStoragePort = Depends(get_object_storage),
+):
+    """The company's letterhead: account details, branding fields and logo link."""
+    return await _branding_response(conn, storage, _org_id(admin))
+
+
+@router.put("/branding", response_model=BrandingResponse)
+async def update_branding(
+    body: dict,
+    admin: dict = Depends(require_admin),
+    conn: AsyncConnection = Depends(get_db_conn),
+    storage: ObjectStoragePort = Depends(get_object_storage),
+):
+    """Change any of the branding text fields; fields left out stay as they are.
+
+    The logo is changed only through PUT/DELETE /company/branding/logo.
+    """
+    org_id = _org_id(admin)
+    try:
+        changes = branding.validate_text_fields(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    repo = PostgresOrganizationSettingsRepository(conn)
+    current = branding.branding_values(await repo.get(org_id, org_settings.BRANDING))
+    user_id = admin.get("sub")
+    await repo.set(
+        org_id,
+        org_settings.BRANDING,
+        {**current, **changes},
+        updated_by=uuid.UUID(user_id) if user_id else None,
+    )
+    return await _branding_response(conn, storage, org_id)
+
+
+async def _set_logo_key(
+    conn: AsyncConnection, admin: dict, org_id: uuid.UUID, key: str | None
+) -> str | None:
+    """Store ``key`` as the company logo; returns the key it replaced."""
+    repo = PostgresOrganizationSettingsRepository(conn)
+    current = branding.branding_values(await repo.get(org_id, org_settings.BRANDING))
+    old = current.get("logo_object_key")
+    user_id = admin.get("sub")
+    await repo.set(
+        org_id,
+        org_settings.BRANDING,
+        {**current, "logo_object_key": key},
+        updated_by=uuid.UUID(user_id) if user_id else None,
+    )
+    return old if branding.owns_key(org_id, old) and old != key else None
+
+
+@router.put("/branding/logo", response_model=BrandingResponse)
+async def upload_company_logo(
+    body: LogoUpload,
+    background: BackgroundTasks,
+    admin: dict = Depends(require_admin),
+    conn: AsyncConnection = Depends(get_db_conn),
+    storage: ObjectStoragePort = Depends(get_object_storage),
+):
+    """Upload or replace the company logo (PNG, JPEG or WebP, up to 700 KB)."""
+    org_id = _org_id(admin)
+    data, extension, content_type = decode_logo(body)
+    key = branding.company_logo_key(org_id, extension)
+    await storage.put_object(key, data, content_type=content_type)
+    old = await _set_logo_key(conn, admin, org_id, key)
+    if old:
+        background.add_task(_remove_file, storage, old)
+    return await _branding_response(conn, storage, org_id)
+
+
+@router.delete("/branding/logo", response_model=BrandingResponse)
+async def remove_company_logo(
+    background: BackgroundTasks,
+    admin: dict = Depends(require_admin),
+    conn: AsyncConnection = Depends(get_db_conn),
+    storage: ObjectStoragePort = Depends(get_object_storage),
+):
+    org_id = _org_id(admin)
+    old = await _set_logo_key(conn, admin, org_id, None)
+    if old:
+        background.add_task(_remove_file, storage, old)
+    return await _branding_response(conn, storage, org_id)
 
 
 @router.get("/summary", response_model=CompanySummaryResponse)
