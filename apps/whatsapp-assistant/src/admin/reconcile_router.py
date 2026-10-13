@@ -132,3 +132,54 @@ async def trigger_reconcile(_admin: dict = Depends(require_platform_admin)):
     """
     result = await run_reconcile_once(trigger=TRIGGER_MANUAL, require_lock=False)
     return result or {"status": "skipped"}
+
+
+class ShadowMismatch(BaseModel):
+    port: str
+    method: str
+    args: Any
+    context_result: Any
+    main_result: Any
+    hits: int
+    first_seen_at: datetime
+    last_seen_at: datetime
+
+
+class ShadowStatusResponse(BaseModel):
+    # BE-01 step 0: where the WhatsApp assistant reads identity from, and
+    # every question on which the main tables and the context copy disagreed.
+    identity_source: str
+    mismatches: list[ShadowMismatch]
+
+
+@router.get("/shadow", response_model=ShadowStatusResponse)
+async def get_identity_shadow(
+    limit: int = Query(default=50, ge=1, le=500),
+    _admin: dict = Depends(require_platform_admin),
+):
+    """Main tables vs context copy differences, most recent first (BE-01)."""
+    from context.shadow import identity_source
+
+    service = get_service()
+    try:
+        with service._engine.begin() as conn:  # noqa: SLF001 — read-only, same package
+            rows = (
+                conn.execute(
+                    text(
+                        "SELECT port, method, args, context_result, main_result, hits, "
+                        "first_seen_at, last_seen_at FROM identity_shadow_mismatches "
+                        "ORDER BY last_seen_at DESC LIMIT :limit"
+                    ),
+                    {"limit": limit},
+                )
+                .mappings()
+                .all()
+            )
+    except Exception:
+        # Migration 0465 not applied yet: show nothing rather than 500.
+        _log.exception("reconcile.shadow_read_failed")
+        rows = []
+    return ShadowStatusResponse(
+        identity_source=identity_source(),
+        mismatches=[ShadowMismatch(**dict(row)) for row in rows],
+    )

@@ -15,6 +15,17 @@ import os
 
 from context.active_context import RedisActiveContextStore
 from context.identity_bridge import PostgresIdentityBridgeRepository
+from context.main_table_repositories import (
+    MainContextPreferenceRepository,
+    MainExternalIdentityRepository,
+    MainIdentityBridgeRepository,
+    MainMembershipRepository,
+    MainProjectRepository,
+    MainReplyContextProvider,
+    MainRolePermissionRepository,
+    MainSiteRepository,
+    MainWorkflowContextProvider,
+)
 from context.postgres_repositories import (
     PostgresContextPreferenceRepository,
     PostgresExternalIdentityRepository,
@@ -26,6 +37,7 @@ from context.postgres_repositories import (
     PostgresWorkflowContextProvider,
 )
 from context.resolver import ContextDependencies, ContextResolver
+from context.shadow import MismatchRecorder, ShadowPort, identity_source
 from mesiri_contracts.assistant.v2.resolved_context import ResolvedContextV2
 
 logger = logging.getLogger(__name__)
@@ -60,6 +72,46 @@ class _LazyAsyncEngine:
         return self._engine
 
 
+def _identity_ports(engine) -> dict:
+    """The identity/scope ports, from the copy, the main tables, or both (BE-01).
+
+    See context/shadow.py for what each MESIRI_IDENTITY_SOURCE value does.
+    """
+    context_ports = {
+        "identities": PostgresExternalIdentityRepository(engine),
+        "memberships": PostgresMembershipRepository(engine),
+        "roles": PostgresRolePermissionRepository(engine),
+        "projects": PostgresProjectRepository(engine),
+        "sites": PostgresSiteRepository(engine),
+        "preferences": PostgresContextPreferenceRepository(engine),
+        "reply_context": PostgresReplyContextProvider(engine),
+        "workflow_context": PostgresWorkflowContextProvider(engine),
+        "bridge": PostgresIdentityBridgeRepository(engine),
+    }
+    source = identity_source()
+    logger.info("identity source: %s", source)
+    if source == "context":
+        return context_ports
+    main_ports = {
+        "identities": MainExternalIdentityRepository(engine),
+        "memberships": MainMembershipRepository(engine),
+        "roles": MainRolePermissionRepository(),
+        "projects": MainProjectRepository(engine),
+        "sites": MainSiteRepository(engine),
+        "preferences": MainContextPreferenceRepository(),
+        "reply_context": MainReplyContextProvider(engine),
+        "workflow_context": MainWorkflowContextProvider(engine),
+        "bridge": MainIdentityBridgeRepository(engine),
+    }
+    if source == "main":
+        return main_ports
+    recorder = MismatchRecorder(engine)
+    return {
+        name: ShadowPort(name, context_ports[name], main_ports[name], recorder)
+        for name in context_ports
+    }
+
+
 def build_context_resolver(redis=None) -> ContextResolver:
     """Construct the production M4 ContextResolver.
 
@@ -81,23 +133,24 @@ def build_context_resolver(redis=None) -> ContextResolver:
         redis = FakeRedis()
 
     engine = _LazyAsyncEngine()
+    ports = _identity_ports(engine)
 
     deps = ContextDependencies(
-        identities=PostgresExternalIdentityRepository(engine),
-        memberships=PostgresMembershipRepository(engine),
-        roles=PostgresRolePermissionRepository(engine),
-        projects=PostgresProjectRepository(engine),
-        sites=PostgresSiteRepository(engine),
-        preferences=PostgresContextPreferenceRepository(engine),
+        identities=ports["identities"],
+        memberships=ports["memberships"],
+        roles=ports["roles"],
+        projects=ports["projects"],
+        sites=ports["sites"],
+        preferences=ports["preferences"],
         active_context=RedisActiveContextStore(redis),
         # Real adapters as of the reply/workflow-context wiring: these were
         # Null providers, which silently disabled two of the five precedence
         # levels in context_policy. Both fail soft (None = "no opinion"), so
         # the chain simply falls through to ACTIVE_CONTEXT / USER_DEFAULT as
         # before if either lookup finds nothing.
-        reply_context=PostgresReplyContextProvider(engine),
-        workflow_context=PostgresWorkflowContextProvider(engine),
-        bridge=PostgresIdentityBridgeRepository(engine),
+        reply_context=ports["reply_context"],
+        workflow_context=ports["workflow_context"],
+        bridge=ports["bridge"],
         redis=redis,  # identity cache TTL=60s
     )
     return ContextResolver(deps)
