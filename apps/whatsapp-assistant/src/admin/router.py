@@ -129,7 +129,7 @@ class OrgUserResponse(BaseModel):
     full_name: str | None = None
     email: str | None = None
     role: str | None = None
-    status: str = "Active"
+    status: str = "active"
     whatsapp_number: str | None = None
     access_mode: str = "custom_projects"
     project_access: list[ProjectAccessGrant] = []
@@ -512,7 +512,7 @@ async def _fetch_org_users(
                 full_name=row.full_name,
                 email=row.email,
                 role=row.role,
-                status=row.status or "Active",
+                status=row.status or "active",
                 whatsapp_number=row.whatsapp_number,
                 access_mode=mode,
                 project_access=grants,
@@ -548,8 +548,8 @@ async def update_organization_user_status(
             detail=f"Invalid status '{body.status}'. Must be one of {sorted(valid_statuses)}",
         )
 
-    # Lowercase, not .capitalize(). Users are stored lowercase ("active");
-    # only organizations use "Active". Writing the capitalized form here
+    # Lowercase, not .capitalize(). Every status is stored lowercase
+    # (migration 0463 also lowercased organizations). Writing the capitalized form here
     # meant the assistant's own lookup (WHERE lower(u.status) = 'active',
     # previously case-sensitive) missed the row entirely -- so reactivating
     # someone locked them out of WhatsApp and they were told their number
@@ -1086,7 +1086,7 @@ async def provision_tenant(
                 name=prov_in.name,
                 deployment_type=prov_in.deployment_type,
                 db_route=prov_in.db_route,
-                status="Active",
+                status="active",
                 created_at=now,
                 updated_at=now,
             )
@@ -1121,7 +1121,7 @@ async def provision_tenant(
         name=prov_in.name,
         deployment_type=prov_in.deployment_type,
         db_route=prov_in.db_route,
-        status="Active",
+        status="active",
         created_at=now,
         updated_at=now,
     )

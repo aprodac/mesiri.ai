@@ -13,8 +13,21 @@ class DeploymentType(str, enum.Enum):
 
 
 class OrganizationStatus(str, enum.Enum):
-    ACTIVE = "Active"
-    SUSPENDED = "Suspended"
+    # Lowercase, like every other status in the database (migration 0463).
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
+
+    @classmethod
+    def _missing_(cls, value: object) -> "OrganizationStatus | None":
+        # Accept "Active", " ACTIVE " etc.: rows written before 0463, or by
+        # an older build after a rollback, must still read (and validate in
+        # API responses) rather than raise.
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            for member in cls:
+                if member.value == normalized:
+                    return member
+        return None
 
 
 class OrganizationModel(Base):
@@ -24,7 +37,11 @@ class OrganizationModel(Base):
     name = Column(String, index=True, nullable=False)
     deployment_type: Column = Column(Enum(DeploymentType), nullable=False)
     db_route = Column(String, nullable=False)
-    status: Column = Column(Enum(OrganizationStatus), nullable=False)
+    # A plain string, not Enum(OrganizationStatus): the column is VARCHAR in
+    # the database, older rows (or an older build after a rollback) may hold
+    # "Active", and an Enum column raises on any value it doesn't know.
+    # Writers pass OrganizationStatus.<X>.value.
+    status = Column(String, nullable=False)
 
     code = Column(String, unique=True, index=True, nullable=True)
     email = Column(String, nullable=True)

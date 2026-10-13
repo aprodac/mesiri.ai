@@ -84,3 +84,17 @@ async def test_multiple_projects_are_filtered_independently():
     due = await due_projects_for_auto_dpr(conn, now_utc=NOW_UTC)
 
     assert [row["id"] for row in due] == [due_row["id"]]
+
+
+def test_company_status_is_compared_case_insensitively():
+    """BE-07: companies were stored "Active" and this query compared
+    `o.status = 'active'`, which Postgres matches case-sensitively, so the
+    automatic DPR found no company at all. Rows from before migration 0463
+    (or an older build after a rollback) may still say "Active"."""
+    import inspect
+
+    from mesiri.application.projects import auto_dpr
+
+    sql = inspect.getsource(auto_dpr.due_projects_for_auto_dpr)
+    assert "lower(o.status) = 'active'" in sql
+    assert "AND o.status = 'active'" not in sql

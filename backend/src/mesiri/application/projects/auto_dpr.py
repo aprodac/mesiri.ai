@@ -54,7 +54,7 @@ async def due_projects_for_auto_dpr(
                 JOIN organizations o ON o.id = p.organization_id
                 WHERE p.auto_generate_dpr = true
                   AND p.status != 'archived'
-                  AND o.status = 'active'
+                  AND lower(o.status) = 'active'
                 """
             )
         )

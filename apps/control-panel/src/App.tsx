@@ -253,7 +253,10 @@ const Organizations = () => {
                 </td>
                 <td style={{ fontFamily: 'monospace', fontSize: '13px', color: 'var(--neutral-500)' }}>{org.db_route}</td>
                 <td>
-                  <span className={`badge ${org.status === 'Active' ? 'badge-success' : 'badge-warning'}`}>
+                  <span
+                    className={`badge ${(org.status || '').toLowerCase() === 'active' ? 'badge-success' : 'badge-warning'}`}
+                    style={{ textTransform: 'capitalize' }}
+                  >
                     {org.status}
                   </span>
                 </td>

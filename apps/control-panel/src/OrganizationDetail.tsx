@@ -80,7 +80,7 @@ const ROLE_LABELS: Record<string, string> = {
 type Tab = 'users' | 'activity' | 'settings';
 
 const statusBadgeClass = (status: string) =>
-  status === 'active' || status === 'Active' ? 'badge-success' : 'badge-warning';
+  (status || '').toLowerCase() === 'active' ? 'badge-success' : 'badge-warning';
 
 export default function OrganizationDetail() {
   const { id } = useParams<{ id: string }>();
@@ -350,7 +350,9 @@ export default function OrganizationDetail() {
               {org.deployment_type === 'SaaS' ? <Cloud size={12} style={{ marginRight: 4 }} /> : <Server size={12} style={{ marginRight: 4 }} />}
               {org.deployment_type}
             </span>
-            <span className={`badge ${statusBadgeClass(org.status)}`}>{org.status}</span>
+            <span className={`badge ${statusBadgeClass(org.status)}`} style={{ textTransform: 'capitalize' }}>
+              {org.status}
+            </span>
           </p>
         </div>
         <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
@@ -445,15 +447,18 @@ export default function OrganizationDetail() {
                 <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>No users in this organization.</td></tr>
               ) : (
                 users.map((u) => {
-                  const isInactive = (u.status || 'Active').toLowerCase() === 'inactive';
+                  const isInactive = (u.status || 'active').toLowerCase() === 'inactive';
                   return (
                     <tr key={u.id}>
                       <td style={{ fontWeight: 500, color: 'var(--neutral-900)' }}>{u.full_name || '—'}</td>
                       <td>{u.email || '—'}</td>
                       <td style={{ textTransform: 'capitalize' }}>{(u.role || '').toLowerCase()}</td>
                       <td>
-                        <span className={`badge ${statusBadgeClass(u.status || 'Active')}`}>
-                          {u.status || 'Active'}
+                        <span
+                          className={`badge ${statusBadgeClass(u.status || 'active')}`}
+                          style={{ textTransform: 'capitalize' }}
+                        >
+                          {u.status || 'active'}
                         </span>
                       </td>
                       <td style={{ fontSize: '13px', color: 'var(--neutral-500)' }}>{u.whatsapp_number || 'Not mapped'}</td>
@@ -498,7 +503,7 @@ export default function OrganizationDetail() {
                             fontSize: '13px',
                             marginRight: '12px',
                           }}
-                          onClick={() => handleUpdateUserStatus(u, isInactive ? 'Active' : 'Inactive')}
+                          onClick={() => handleUpdateUserStatus(u, isInactive ? 'active' : 'inactive')}
                           disabled={updatingUserId === u.id}
                         >
                           {updatingUserId === u.id ? 'Updating…' : isInactive ? 'Reactivate' : 'Deactivate'}

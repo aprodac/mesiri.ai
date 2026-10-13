@@ -68,7 +68,7 @@ async def create_organization(
             name=org_in.name,
             deployment_type=org_in.deployment_type,
             db_route=org_in.db_route,
-            status=org_in.status,
+            status=org_in.status.value,
         )
         .returning(OrganizationModel)
     )
@@ -214,7 +214,7 @@ async def provision_tenant(
             name=prov_in.name,
             deployment_type=prov_in.deployment_type,
             db_route=prov_in.db_route,
-            status=OrganizationStatus.ACTIVE,
+            status=OrganizationStatus.ACTIVE.value,
         )
         .returning(OrganizationModel)
     )

@@ -73,8 +73,8 @@ def test_actor_lookup_is_case_insensitive():
 
 
 def test_no_writer_capitalizes_user_status():
-    """`.capitalize()` on a user status is the original bug. Users are
-    lowercase; only organizations are capitalized."""
+    """`.capitalize()` on a user status is the original bug. Every status
+    is stored lowercase (migration 0463)."""
     offenders = []
     for path in _APP_SRC.rglob("*.py"):
         if "__pycache__" in path.as_posix():
@@ -109,3 +109,17 @@ def test_migration_0368_lowercases_only_users():
     ).read_text(encoding="utf-8")
     assert "UPDATE users SET status = lower(status)" in migration
     assert "UPDATE organizations" not in migration
+
+
+def test_no_writer_stores_capitalized_org_status():
+    """BE-07: organizations were written "Active" while every reader of the
+    automatic DPR compared against 'active', so it matched no company.
+    Statuses are lowercase everywhere now; nothing may write "Active" again."""
+    offenders = []
+    for path in _APP_SRC.rglob("*.py"):
+        if "__pycache__" in path.as_posix():
+            continue
+        text = path.read_text(encoding="utf-8")
+        for match in re.finditer(r'status\s*=\s*"(Active|Suspended)"', text):
+            offenders.append(f"{path.name}: {match.group(0)}")
+    assert not offenders, f"statuses must be written lowercase, found: {offenders}"

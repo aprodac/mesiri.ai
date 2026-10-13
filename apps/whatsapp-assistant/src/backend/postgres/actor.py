@@ -18,7 +18,7 @@ import re
 from backend.ports import ActorIdentity, ProjectSummary, SiteSummary
 from mesiri.authorization.roles import is_org_wide
 
-_ORG_ACTIVE_STATUS = "Active"
+_ORG_ACTIVE_STATUS = "active"
 
 # Who reaches every project in their org (an org-wide role, or an
 # all_projects access policy) is defined once in
@@ -152,9 +152,8 @@ class PostgresActorReader:
                             "WHERE u.whatsapp_number IS NOT NULL "
                             "  AND regexp_replace(u.whatsapp_number, '\\D', '', 'g') = :d "
                             # lower(): the control panel's reactivate wrote
-                            # "Active" (capitalized, the convention
-                            # organizations use) while users are stored
-                            # lowercase, so a case-sensitive match silently
+                            # "Active" (capitalized) while users are
+                            # stored lowercase, so a case-sensitive match silently
                             # failed and the sender was told their number
                             # wasn't recognized. Reactivating someone locked
                             # them out of WhatsApp entirely.
@@ -232,9 +231,9 @@ class PostgresActorReader:
             organization_id=str(org_id) if org_id is not None else None,
             org_name=row["org_name"],
             # Case-insensitive for the same reason the user status check
-            # above is: organizations are conventionally "Active" and users
-            # "active", and a writer that picks the wrong convention should
-            # not silently suspend a whole tenant.
+            # above is: statuses are stored lowercase (migration 0463), but
+            # rows written before it, or by an older build after a rollback,
+            # may say "Active", and that must not silently suspend a tenant.
             org_active=(str(row["org_status"]).strip().lower() == _ORG_ACTIVE_STATUS.lower())
             if row["org_status"] is not None
             else False,
