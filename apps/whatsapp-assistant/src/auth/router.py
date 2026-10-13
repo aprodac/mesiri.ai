@@ -1,4 +1,4 @@
-"""Auth router — login/register for the Mesiri mobile app."""
+"""Auth router — login and account endpoints for the Mesiri apps."""
 
 from __future__ import annotations
 
@@ -12,8 +12,6 @@ import sqlalchemy as sa
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import create_async_engine
-
-from context.projection_hooks import project_entity
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -79,15 +77,6 @@ class UserLogin(BaseModel):
     # in with what they were told to type.
     email: str
     password: str
-
-
-class UserRegister(BaseModel):
-    organization_id: str | None = None
-    email: str
-    password: str
-    full_name: str
-    role: str = "USER"
-    whatsapp_number: str | None = None
 
 
 class Token(BaseModel):
@@ -264,37 +253,7 @@ async def change_password(body: ChangePassword, authorization: str = Header(None
         )
 
 
-@router.post("/register", response_model=Token)
-async def register(user_in: UserRegister):
-    engine = get_engine()
-    user_id = uuid.uuid4()
-
-    async with engine.begin() as conn:
-        # Check existing
-        result = await conn.execute(
-            sa.select(users_table).where(users_table.c.email == user_in.email)
-        )
-        if result.first():
-            raise HTTPException(status_code=400, detail="Email already registered")
-
-        hashed_pwd = _hash_pw(user_in.password)
-        await conn.execute(
-            users_table.insert().values(
-                id=user_id,
-                organization_id=user_in.organization_id,
-                email=user_in.email,
-                hashed_password=hashed_pwd,
-                full_name=user_in.full_name,
-                role=user_in.role,
-                whatsapp_number=user_in.whatsapp_number,
-            )
-        )
-
-    await project_entity("user", user_id)
-
-    token = _create_token(
-        user_id=str(user_id),
-        org_id=str(user_in.organization_id) if user_in.organization_id else "",
-        role=user_in.role,
-    )
-    return Token(access_token=token)
+# There is deliberately no public /auth/register. It accepted any `role` and
+# `organization_id` without authentication, so anyone could mint a platform-
+# admin token (role ADMIN, no org). Users are created only by an authenticated
+# admin (admin/router.py, admin/platform_users_router.py) or by provisioning.
