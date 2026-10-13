@@ -165,6 +165,64 @@ def test_request_confirmation_activity_phrasing():
     assert "YES" in prompt
 
 
+ATTENDANCE_REPORT_ID = "99999999-9999-4999-8999-999999999999"
+
+
+def _attendance_state(**overrides):
+    return _base_state(
+        {
+            "target_kind": "attendance",
+            "attendance_report_id": ATTENDANCE_REPORT_ID,
+            "created_by_role": "SITE_ENGINEER",
+            "reversal_occurred_date": "2026-07-30",
+            "reversal_attendance_headcount": 18,
+            "reversal_amount": "12600.00",
+            "reversal_attendance_site": "Block A",
+            **overrides,
+        }
+    )
+
+
+def test_attendance_target_builds_a_draft():
+    state = _attendance_state()
+    draft = build_draft(state)["draft_action"]
+    assert draft.action_type is DraftActionType.REVERSE_TRANSACTION
+    assert draft.fields["attendance_report_id"] == ATTENDANCE_REPORT_ID
+    assert draft.fields["target_kind"] == "attendance"
+
+
+def test_no_attendance_found_points_at_replace_instead():
+    """The reply has to distinguish the two repairs: replace fixes a
+    headcount on the right site, withdraw is for the wrong site entirely."""
+    state = _base_state({"target_kind": "attendance", "created_by_role": "SITE_ENGINEER"})
+    update = build_draft(state)
+    assert "draft_action" not in update
+    assert "don't see an attendance report you filed" in update["pending_prompt"]
+    assert "Replace it" in update["pending_prompt"]
+
+
+def test_request_confirmation_attendance_names_the_site_and_day():
+    """The mistake this exists to fix is a report on the wrong site, so the
+    site and date are what the user must be able to check before saying
+    YES."""
+    state = _attendance_state()
+    state.update(build_draft(state))
+    prompt = request_confirmation(state)["pending_prompt"]
+    assert "Withdraw attendance report" in prompt
+    assert "Block A" in prompt
+    assert "2026-07-30" in prompt
+    assert "18 workers" in prompt
+    assert "12600.00" in prompt
+    assert "stays on record" in prompt
+    assert "YES" in prompt
+
+
+def test_request_confirmation_attendance_singular_worker():
+    state = _attendance_state(reversal_attendance_headcount=1)
+    state.update(build_draft(state))
+    assert "1 worker," in request_confirmation(state)["pending_prompt"]
+
+
 def _petty_cash_state(**overrides):
     return _base_state(
         {

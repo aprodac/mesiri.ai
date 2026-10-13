@@ -25,7 +25,12 @@ from .reverse_commands import ReverseTransactionCommand
 # docs/execution/FINANCE_MODULE_PLAN.md's permission table.
 _REVERSAL_ROLES = frozenset({"ADMIN", "FINANCE"})
 _FINANCIAL_TARGET_KINDS = frozenset({"expense", "transfer"})
-_VALID_TARGET_KINDS = frozenset({"expense", "transfer", "activity"})
+# `activity` and `attendance` are operational, not financial: both are
+# scoped to the person who filed the record (checked in reverse_resolution
+# .py), which is the gate that matters for them -- a site engineer must be
+# able to withdraw their own mis-filed report without an admin, and must
+# never be able to touch anyone else's.
+_VALID_TARGET_KINDS = frozenset({"expense", "transfer", "activity", "attendance"})
 
 
 def validate(cmd: ReverseTransactionCommand) -> list[str]:
@@ -39,6 +44,8 @@ def validate(cmd: ReverseTransactionCommand) -> list[str]:
         reasons.append("no transfer to reverse")
     if cmd.target_kind == "activity" and not cmd.activity_id:
         reasons.append("no activity to undo")
+    if cmd.target_kind == "attendance" and not cmd.attendance_report_id:
+        reasons.append("no attendance report to withdraw")
     if (
         cmd.target_kind in _FINANCIAL_TARGET_KINDS
         and str(cmd.created_by_role or "").strip().upper() not in _REVERSAL_ROLES

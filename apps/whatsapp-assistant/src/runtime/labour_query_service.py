@@ -95,6 +95,8 @@ class LabourQueryService:
             sa.column("project_id"),
             sa.column("site_id"),
             sa.column("occurred_date"),
+            sa.column("corrects_report_id"),
+            sa.column("voided_at"),
         )
         lines = sa.table(
             "labour_attendance_lines",
@@ -105,10 +107,26 @@ class LabourQueryService:
             sa.column("daily_wage"),
         )
 
+        # A superseded or voided report is still readable but must never feed
+        # a total -- the same rule backend's repositories/workforce.py applies
+        # to the dashboard aggregate. Neither half was applied here before, so
+        # "how many workers came this week?" counted a re-sent day twice (the
+        # 16 + 18 = 34 man-day error) and would have kept counting a report
+        # withdrawn as wrong-site. Expressed in Core rather than reusing that
+        # module's LIVE_REPORT_SQL because this is a Core select and importing
+        # backend SQL text into a Core `where` would not compose -- the rule is
+        # two conditions, so it is restated exactly rather than approximated.
+        superseded = (
+            sa.select(reports.c.corrects_report_id)
+            .where(reports.c.corrects_report_id.isnot(None))
+            .scalar_subquery()
+        )
         conditions = [
             reports.c.organization_id == org_id,
             reports.c.occurred_date >= start_date,
             reports.c.occurred_date <= end_date,
+            reports.c.voided_at.is_(None),
+            reports.c.id.notin_(superseded),
         ]
         # Scoping mirrors expense_query: a null project/site on the caller's
         # context means "don't narrow", not "match rows with a null column".

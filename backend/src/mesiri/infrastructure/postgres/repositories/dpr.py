@@ -384,8 +384,18 @@ class PostgresDprRepository:
             )
         ).mappings().all()
 
+        # Superseded and voided reports are excluded here, which they were
+        # not before: this query counted every row for the day, so a
+        # supervisor who re-sent the list and chose "Replace it" put both
+        # reports into the DPR -- the same 16 + 18 = 34 man-day double count
+        # the dashboard aggregate had already been fixed to avoid. The rule
+        # is shared with that aggregate rather than restated (see
+        # repositories/workforce.py's LIVE_REPORT_SQL) so the DPR and the
+        # dashboard cannot disagree about what a day cost again.
+        from mesiri.infrastructure.postgres.repositories.workforce import live_report_sql
+
         labour_query = text(
-            """
+            f"""
             SELECT lal.worker_name, lal.trade, lal.headcount, lal.daily_wage, lal.contractor
             FROM labour_attendance_lines lal
             JOIN labour_attendance_reports lar ON lar.id = lal.report_id
@@ -393,6 +403,7 @@ class PostgresDprRepository:
               AND lar.project_id = :project_id
               AND lar.site_id = :site_id
               AND lar.occurred_date = :report_date
+              AND {live_report_sql("lar")}
             """
         )
         labour_rows = (

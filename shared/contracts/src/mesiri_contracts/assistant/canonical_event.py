@@ -91,6 +91,13 @@ class CanonicalEventType(str, Enum):
     # TRANSFER_REVERSAL that turns out to have landed on an advance into
     # this kind -- the record decides what it is, not the user's wording.
     PETTY_CASH_REVERSAL_REQUESTED = "PettyCashReversalRequested"
+    # Withdrawing a labour attendance report filed against the wrong site.
+    # Distinct from re-sending the day and choosing "Replace it": that
+    # supersedes within one project/site/day and is the right repair for a
+    # miscount, but it cannot reach a report on a site nobody worked on --
+    # the duplicate-day gate never offers it. Scoped to the reporter's own
+    # reports (runtime/reversal_query.py's find_latest_attendance).
+    ATTENDANCE_REVERSAL_REQUESTED = "AttendanceReversalRequested"
     # ADR-D15 (docs/execution/DAILY_REPORTING_PLAN.md): undoing an Activity
     # the reporter just created, same-session only -- see
     # runtime/reversal_query.py's find_latest_activity and

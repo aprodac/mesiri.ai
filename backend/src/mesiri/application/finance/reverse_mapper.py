@@ -24,5 +24,6 @@ def build_command(confirmed: ConfirmedActionV2) -> ReverseTransactionCommand:
         expense_id=fields.get("expense_id"),
         money_transaction_id=fields.get("money_transaction_id"),
         activity_id=fields.get("activity_id"),
+        attendance_report_id=fields.get("attendance_report_id"),
         correlation_id=confirmed.correlation_id,
     )

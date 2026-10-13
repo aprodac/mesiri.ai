@@ -147,6 +147,32 @@ class PostgresReverseExecutionRepository(ReverseExecutionRepository):
             # retracts a fact, it doesn't create a new one to project into
             # the timeline the way progress_execution.py's create/append
             # paths do).
+        elif cmd.target_kind == "attendance":
+            assert cmd.attendance_report_id is not None
+            from mesiri.infrastructure.postgres.repositories.workforce import (
+                PostgresWorkforceReadRepository,
+            )
+
+            report_id = uuid.UUID(cmd.attendance_report_id)
+            workforce = PostgresWorkforceReadRepository(conn)
+            rejection = await workforce.void_attendance_report(
+                organization_id=organization_id,
+                report_id=report_id,
+                reason="Withdrawn via WhatsApp",
+                voided_by_user_id=created_by,
+            )
+            if rejection is not None:
+                # Same reasoning as the activity branch: resolution already
+                # re-checked existence, ownership and frozen status inside
+                # this transaction, so a rejection here means a race that
+                # should not be possible. Never report success for a write
+                # that did not land.
+                raise RuntimeError(f"attendance withdrawal unexpectedly rejected: {rejection}")
+            row_id = report_id
+            # No outbox event, matching the activity branch: a withdrawal
+            # retracts a fact rather than asserting a new one, and the
+            # voided_at/voided_by/void_reason stamp is itself the audit
+            # record.
         else:  # transfer
             assert cmd.money_transaction_id is not None
             transactions = PostgresMoneyTransactionRepository(conn)

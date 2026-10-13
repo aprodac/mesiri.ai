@@ -40,6 +40,14 @@ _NOTHING_TO_REVERSE = {
     "expense": "You have no confirmed expenses to reverse.",
     "transfer": "You have no transfers to reverse.",
     "petty_cash": "You have no petty cash issues or returns to reverse.",
+    # Reporter-scoped, so "you" is literal here -- another supervisor's
+    # report is not a candidate and saying "there are none" would be wrong
+    # if it said "no reports exist".
+    "attendance": (
+        "I don't see an attendance report you filed that I can withdraw. "
+        "If you need to fix a headcount, send the day again and choose "
+        "\"Replace it\"."
+    ),
     # ADR-D15: same-session only -- this is the honest reply both when
     # nothing was ever logged this conversation AND when it was logged too
     # long ago to still be "the thing I just sent" (see runtime/
@@ -54,7 +62,10 @@ def build_draft(state: WorkflowGraphState) -> dict:
     fields = dict(state.get("collected_fields") or {})
     target_kind = str(fields.get("target_kind", "")).strip().lower()
     has_target = bool(
-        fields.get("expense_id") or fields.get("money_transaction_id") or fields.get("activity_id")
+        fields.get("expense_id")
+        or fields.get("money_transaction_id")
+        or fields.get("activity_id")
+        or fields.get("attendance_report_id")
     )
 
     if not has_target:
@@ -93,6 +104,26 @@ def request_confirmation(state: WorkflowGraphState) -> dict:
             "",
             "↩️ Remove activity",
             f"   • {summary} ({occurred_date})",
+            "",
+            "Reply YES to confirm or NO to cancel.",
+        ]
+    elif target_kind == "attendance":
+        # Site and date lead, because the mistake this exists to fix is a
+        # report filed against the wrong site -- those two lines are what
+        # the user checks. Headcount and cost follow so the scale of what
+        # is being withdrawn is visible before it happens (P2).
+        site = all_fields.get("reversal_attendance_site") or "your site"
+        occurred_date = all_fields.get("reversal_occurred_date")
+        headcount = all_fields.get("reversal_attendance_headcount")
+        workers = f"{headcount} worker{'' if headcount == 1 else 's'}"
+        lines = [
+            "*Confirm this withdrawal?*",
+            "",
+            "↩️ Withdraw attendance report",
+            f"   • {site} ({occurred_date})",
+            f"   • {workers}, ₹{amount}",
+            "",
+            "It stops counting everywhere, but stays on record.",
             "",
             "Reply YES to confirm or NO to cancel.",
         ]

@@ -73,6 +73,18 @@ class ReversalActivityTarget(TypedDict):
     activity_date: str
 
 
+class ReversalAttendanceTarget(TypedDict):
+    attendance_report_id: str
+    occurred_date: str
+    total_headcount: int
+    total_cost: str
+    # Shown in the confirmation because the whole point of this undo is a
+    # report on the WRONG site -- naming the site is what lets the user see
+    # they are withdrawing the one they meant.
+    site_name: str | None
+    project_name: str | None
+
+
 class ReversalTargetQueryService:
     def __init__(self, db: PostgresDatabase) -> None:
         self._db = db
@@ -199,6 +211,43 @@ class ReversalTargetQueryService:
             work_type=activity.get("work_type"),
             narrative=activity.get("narrative"),
             activity_date=activity["activity_date"].isoformat(),
+        )
+
+    async def find_latest_attendance(
+        self, *, organization_id: str, reported_by_user_id: str
+    ) -> ReversalAttendanceTarget | None:
+        """The most recent live attendance report THIS person filed.
+
+        Reporter-scoped, like find_latest_activity above and for the same
+        reason: "cancel that attendance" must mean the report the speaker
+        just sent, never whichever site filed one most recently. The
+        organization-wide "most recent record" shape that expense and
+        transfer use would let one supervisor withdraw another's day.
+        """
+        from mesiri.infrastructure.postgres.repositories.workforce import (
+            PostgresWorkforceReadRepository,
+        )
+
+        try:
+            reporter_id = uuid.UUID(reported_by_user_id)
+        except (TypeError, ValueError):
+            return None
+
+        async with self._db.transaction() as conn:
+            repo = PostgresWorkforceReadRepository(conn)
+            report = await repo.find_latest_voidable_report(
+                uuid.UUID(organization_id), reported_by_user_id=reporter_id
+            )
+        if report is None:
+            return None
+
+        return ReversalAttendanceTarget(
+            attendance_report_id=str(report["id"]),
+            occurred_date=report["occurred_date"].isoformat(),
+            total_headcount=int(report.get("total_headcount") or 0),
+            total_cost=str(report.get("total_cost") or "0"),
+            site_name=report.get("site_name"),
+            project_name=report.get("project_name"),
         )
 
     async def find_latest_of_either_kind(

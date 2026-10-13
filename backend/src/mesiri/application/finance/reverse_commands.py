@@ -26,7 +26,7 @@ class ReverseTransactionCommand(BaseModel):
     created_by: str
     created_by_role: str | None = None
 
-    target_kind: str  # "expense" | "transfer" | "activity"
+    target_kind: str  # "expense" | "transfer" | "activity" | "attendance"
     expense_id: str | None = None
     money_transaction_id: str | None = None
     # ADR-D15 (docs/execution/DAILY_REPORTING_PLAN.md): undo of an Activity
@@ -34,5 +34,14 @@ class ReverseTransactionCommand(BaseModel):
     # PostgresProgressReadRepository.void_activity, same "each module owns
     # its own reversal" reasoning expense/transfer already follow.
     activity_id: str | None = None
+    # Withdraw a labour attendance report filed against the wrong site
+    # (migration 0462). Composes through Workforce's own
+    # void_attendance_report, same reasoning again -- this module routes,
+    # it never learns another module's storage.
+    #
+    # Distinct from the "Replace it" path: re-sending a day supersedes a
+    # report within one project/site/day, which is the right repair for a
+    # miscount and cannot reach a report on the wrong site at all.
+    attendance_report_id: str | None = None
 
     correlation_id: str | None = None

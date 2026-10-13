@@ -53,6 +53,11 @@ _labour_attendance_reports = sa.Table(
     sa.Column("correlation_id", sa.String),
     sa.Column("created_at", sa.DateTime(timezone=True)),
     sa.Column("created_by", sa.UUID(as_uuid=True)),
+    # Migration 0462 -- a withdrawn report. Stays fully readable; simply
+    # stops counting. See _live_report_condition.
+    sa.Column("voided_at", sa.DateTime(timezone=True)),
+    sa.Column("voided_by", sa.UUID(as_uuid=True)),
+    sa.Column("void_reason", sa.Text),
 )
 
 _labour_attendance_lines = sa.Table(
@@ -154,6 +159,31 @@ def _superseded_report_ids():
         .where(_labour_attendance_reports.c.corrects_report_id.isnot(None))
         .scalar_subquery()
     )
+
+
+#: The two ways a report stops counting, in the one place that decides it.
+#:
+#: SQL text rather than a SQLAlchemy expression because the readers are split
+#: across packages and query styles: this repository builds Core selects,
+#: while the DPR repository and the assistant's labour query write raw
+#: `text()`. Both must apply the identical rule, and the previous attempt at
+#: sharing it -- a Core-only helper (_superseded_report_ids above) -- is
+#: exactly why they drifted: neither could use it, so neither did, and
+#: superseded reports kept counting in the DPR and in "how many workers came
+#: this week?" long after the dashboard stopped counting them.
+#:
+#: `{alias}` is the reports table's alias in the caller's query.
+LIVE_REPORT_SQL = (
+    "{alias}.voided_at IS NULL "
+    "AND {alias}.id NOT IN ("
+    "    SELECT corrects_report_id FROM labour_attendance_reports "
+    "    WHERE corrects_report_id IS NOT NULL)"
+)
+
+
+def live_report_sql(alias: str) -> str:
+    """`LIVE_REPORT_SQL` bound to one query's table alias."""
+    return LIVE_REPORT_SQL.format(alias=alias)
 
 
 #: Grouping key -> the SQL expression attendance is bucketed by, and the
@@ -314,10 +344,15 @@ class PostgresWorkforceReadRepository:
         report points at the one it corrects via `corrects_report_id`, so the
         superseded row stays fully readable for audit but no longer feeds any
         total. Pass include_superseded=True to see the complete history.
+
+        Voided reports (migration 0462 -- withdrawn as filed against the
+        wrong site) are excluded on the same terms and by the same flag:
+        both are "still readable, no longer counts."
         """
         conditions = [_labour_attendance_reports.c.organization_id == organization_id]
         if not include_superseded:
             conditions.append(_labour_attendance_reports.c.id.notin_(_superseded_report_ids()))
+            conditions.append(_labour_attendance_reports.c.voided_at.is_(None))
         if project_ids is not None:
             conditions.append(_labour_attendance_reports.c.project_id.in_(project_ids))
         if site_id is not None:
@@ -405,6 +440,7 @@ class PostgresWorkforceReadRepository:
         conditions = [_labour_attendance_reports.c.organization_id == organization_id]
         if not include_superseded:
             conditions.append(_labour_attendance_reports.c.id.notin_(_superseded_report_ids()))
+            conditions.append(_labour_attendance_reports.c.voided_at.is_(None))
         if project_ids is not None:
             conditions.append(_labour_attendance_reports.c.project_id.in_(project_ids))
         if site_id is not None:
@@ -618,6 +654,9 @@ class PostgresWorkforceReadRepository:
             _labour_attendance_reports.c.project_id == project_id,
             _labour_attendance_reports.c.occurred_date == occurred_date,
             _labour_attendance_reports.c.id.notin_(_superseded_report_ids()),
+            # A withdrawn report must not be offered as something to replace:
+            # the day is clear again once it is voided.
+            _labour_attendance_reports.c.voided_at.is_(None),
         ]
         # A NULL site_id means "the project's only/unspecified site"; match it
         # as its own bucket rather than colliding with every named site.
@@ -646,6 +685,89 @@ class PostgresWorkforceReadRepository:
         ).mappings().all()
         headcount, cost = _line_totals([dict(line) for line in line_rows])
         return {**dict(report), "total_headcount": headcount, "total_cost": cost}
+
+    async def find_latest_voidable_report(
+        self, organization_id: uuid.UUID, *, reported_by_user_id: uuid.UUID
+    ) -> dict[str, Any] | None:
+        """The most recent live report this person filed -- the target of
+        "cancel that attendance, wrong site".
+
+        Scoped to the reporter, not the organization, for the same reason
+        find_latest_activity is (ADR-D15): "my last report" must mean the
+        one *this* supervisor sent, never whatever another site happened to
+        file thirty seconds later. Superseded and voided rows are skipped so
+        a repeated undo walks backwards through real reports instead of
+        re-offering one already withdrawn.
+
+        Ordered by created_at (when it was sent), not occurred_date (the day
+        it describes) -- backfilling last Tuesday and immediately undoing it
+        must target that report, not whichever has the latest date.
+        """
+        report = (
+            await self._conn.execute(
+                sa.text(
+                    "SELECT r.*, p.name AS project_name, s.name AS site_name "
+                    "FROM labour_attendance_reports r "
+                    "LEFT JOIN projects p ON p.id = r.project_id "
+                    "LEFT JOIN sites s ON s.id = r.site_id "
+                    "WHERE r.organization_id = :org_id "
+                    "  AND r.created_by = :user_id "
+                    f"  AND {live_report_sql('r')} "
+                    "ORDER BY r.created_at DESC LIMIT 1"
+                ),
+                {"org_id": organization_id, "user_id": reported_by_user_id},
+            )
+        ).mappings().first()
+        if report is None:
+            return None
+
+        line_rows = (
+            await self._conn.execute(
+                sa.select(_labour_attendance_lines).where(
+                    _labour_attendance_lines.c.report_id == report["id"]
+                )
+            )
+        ).mappings().all()
+        headcount, cost = _line_totals([dict(line) for line in line_rows])
+        return {**dict(report), "total_headcount": headcount, "total_cost": cost}
+
+    async def void_attendance_report(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        report_id: uuid.UUID,
+        reason: str,
+        voided_by_user_id: uuid.UUID | None,
+    ) -> str | None:
+        """Withdraw a report from every total without deleting it (migration
+        0462). Returns None on success, or a short rejection reason.
+
+        Mirrors PostgresProgressReadRepository.void_activity: a stamp on the
+        parent row is enough, because every total joins through it -- the
+        lines and attachments underneath stop counting without a second
+        write, and stay readable for audit. A reason is required for the
+        same reason it is there: a withdrawal with no stated cause is
+        indistinguishable from data loss to whoever reads the row later.
+
+        The `voided_at IS NULL` guard makes a double-void a no-op rather
+        than re-stamping a new timestamp over the original withdrawal.
+        """
+        if not reason or not reason.strip():
+            return "reason is required to withdraw an attendance report"
+
+        now = datetime.datetime.now(datetime.UTC)
+        res = await self._conn.execute(
+            sa.update(_labour_attendance_reports)
+            .where(
+                _labour_attendance_reports.c.organization_id == organization_id,
+                _labour_attendance_reports.c.id == report_id,
+                _labour_attendance_reports.c.voided_at.is_(None),
+            )
+            .values(voided_at=now, voided_by=voided_by_user_id, void_reason=reason.strip())
+        )
+        if res.rowcount == 0:
+            return "that attendance report no longer exists or was already withdrawn"
+        return None
 
     async def get_report(
         self, organization_id: uuid.UUID, report_id: uuid.UUID

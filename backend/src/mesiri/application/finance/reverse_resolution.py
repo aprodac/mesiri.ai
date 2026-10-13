@@ -98,6 +98,49 @@ class PostgresReverseTargetResolver(ReverseTargetResolver):
                 )
             return ResolutionResult(reasons=[])
 
+        if cmd.target_kind == "attendance":
+            assert cmd.attendance_report_id is not None
+            from mesiri.infrastructure.postgres.repositories.dpr import PostgresDprRepository
+            from mesiri.infrastructure.postgres.repositories.workforce import (
+                PostgresWorkforceReadRepository,
+            )
+
+            workforce = PostgresWorkforceReadRepository(conn)
+            report = await workforce.get_report(
+                organization_id, uuid.UUID(cmd.attendance_report_id)
+            )
+            if report is None:
+                return ResolutionResult(reasons=["that attendance report no longer exists"])
+            if report.get("voided_at") is not None:
+                return ResolutionResult(reasons=["that attendance report was already withdrawn"])
+            # Same ownership rule as the activity branch above: attendance is
+            # operational data with no admin gate, so the person who filed it
+            # is the person who may withdraw it. Without this, "cancel that
+            # attendance" from any site engineer would reach the newest report
+            # in the whole organization.
+            if str(report.get("created_by") or "") != str(cmd.created_by):
+                return ResolutionResult(
+                    reasons=["you can only withdraw an attendance report you filed yourself"]
+                )
+            # P7, identical to the activity branch: once the day is signed off
+            # into an approved or published DPR, the numbers in that document
+            # are a statement of record and the day stops being editable.
+            dpr = PostgresDprRepository(conn)
+            site_report = await dpr.find_site_report(
+                organization_id=organization_id,
+                project_id=report["project_id"],
+                site_id=report["site_id"],
+                report_date=report["occurred_date"],
+            )
+            if site_report is not None and site_report["status"] in ("APPROVED", "PUBLISHED"):
+                return ResolutionResult(
+                    reasons=[
+                        "that day is already part of an approved daily report "
+                        "and cannot be withdrawn"
+                    ]
+                )
+            return ResolutionResult(reasons=[])
+
         assert cmd.money_transaction_id is not None
         transactions = PostgresMoneyTransactionRepository(conn)
         transaction_id = uuid.UUID(cmd.money_transaction_id)

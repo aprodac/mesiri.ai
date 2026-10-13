@@ -10,6 +10,7 @@ USR = "22222222-2222-4222-8222-222222222222"
 EXPENSE_ID = "55555555-5555-4555-8555-555555555555"
 TRANSACTION_ID = "66666666-6666-4666-8666-666666666666"
 ACTIVITY_ID = "77777777-7777-4777-8777-777777777777"
+ATTENDANCE_REPORT_ID = "88888888-8888-4888-8888-888888888888"
 
 
 def _command(**overrides) -> ReverseTransactionCommand:
@@ -113,5 +114,39 @@ def test_activity_undo_is_not_gated_by_finance_role():
 def test_activity_undo_with_no_role_at_all_still_has_no_reasons():
     reasons = validate(
         _command(target_kind="activity", expense_id=None, activity_id=ACTIVITY_ID, created_by_role=None)
+    )
+    assert reasons == []
+
+
+def test_valid_attendance_withdrawal_has_no_reasons():
+    assert (
+        validate(
+            _command(
+                target_kind="attendance",
+                expense_id=None,
+                attendance_report_id=ATTENDANCE_REPORT_ID,
+            )
+        )
+        == []
+    )
+
+
+def test_attendance_target_without_report_id_is_rejected():
+    reasons = validate(_command(target_kind="attendance", expense_id=None))
+    assert "no attendance report to withdraw" in reasons
+
+
+def test_attendance_withdrawal_is_not_gated_by_finance_role():
+    """Attendance is operational, like an activity: the gate is ownership
+    (reverse_resolution.py refuses a report you did not file), not role. A
+    site engineer must be able to withdraw their own mis-filed day without
+    finding an admin -- otherwise the wrong-site report just stays."""
+    reasons = validate(
+        _command(
+            target_kind="attendance",
+            expense_id=None,
+            attendance_report_id=ATTENDANCE_REPORT_ID,
+            created_by_role="SITE_ENGINEER",
+        )
     )
     assert reasons == []

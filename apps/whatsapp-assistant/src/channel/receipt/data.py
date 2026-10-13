@@ -281,6 +281,24 @@ def build_receipt_data(
                 ]
             ]
             template_variant = "activity"
+        elif target_kind == "attendance":
+            # Headlined as a withdrawal, not an amount: the cost is context
+            # for what stopped counting, not a transaction that happened.
+            category = "Undo"
+            value = "Withdrawn"
+            site = str(fields.get("reversal_attendance_site") or "—")
+            subtitle = "Attendance report withdrawn"
+            sections = [
+                [
+                    ReceiptField("building", "Site", site),
+                    ReceiptField("calendar", "Day", str(fields.get("reversal_occurred_date") or "—")),
+                ],
+                [
+                    ReceiptField("user", "Workers", str(fields.get("reversal_attendance_headcount") or "—")),
+                    ReceiptField("store", "Cost removed", f"₹{fields.get('reversal_amount') or '0'}"),
+                ],
+            ]
+            template_variant = "activity"
         elif target_kind == "petty_cash":
             # Named for the person, not the account pair -- same reasoning
             # as reverse/nodes.py's petty cash confirmation branch.

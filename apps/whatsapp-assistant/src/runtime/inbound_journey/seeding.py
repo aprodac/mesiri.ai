@@ -858,6 +858,23 @@ async def _seed_reversal_target(
             event.fields["reversal_occurred_date"] = activity["activity_date"]
         return
 
+    if target_kind == "attendance":
+        attendance = await reversal_query.find_latest_attendance(
+            organization_id=actor.organization_id,
+            reported_by_user_id=actor.user_id,
+        )
+        if attendance is not None:
+            event.fields["attendance_report_id"] = attendance["attendance_report_id"]
+            event.fields["reversal_occurred_date"] = attendance["occurred_date"]
+            event.fields["reversal_attendance_headcount"] = attendance["total_headcount"]
+            event.fields["reversal_amount"] = attendance["total_cost"]
+            # The site is the point: this undo exists for a report filed
+            # against the wrong one, so the confirmation has to name it.
+            event.fields["reversal_attendance_site"] = (
+                attendance.get("site_name") or attendance.get("project_name") or "your site"
+            )
+        return
+
     if not target_kind:
         found = await reversal_query.find_latest_of_either_kind(
             organization_id=actor.organization_id,

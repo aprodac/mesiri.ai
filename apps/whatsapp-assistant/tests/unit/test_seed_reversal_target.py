@@ -34,14 +34,22 @@ class _Actor:
 
 class _FakeReversalQuery:
     def __init__(
-        self, *, either_kind_result=None, transfer=None, expense=None, petty_cash=None
+        self,
+        *,
+        either_kind_result=None,
+        transfer=None,
+        expense=None,
+        petty_cash=None,
+        attendance=None,
     ):
         self._either_kind_result = either_kind_result
         self._transfer = transfer
         self._expense = expense
         self._petty_cash = petty_cash
+        self._attendance = attendance
         self.either_kind_calls = 0
         self.petty_cash_calls = 0
+        self.attendance_calls: list[str] = []
 
     async def find_latest_of_either_kind(self, *, organization_id, project_id, site_id):
         self.either_kind_calls += 1
@@ -56,6 +64,10 @@ class _FakeReversalQuery:
 
     async def find_latest_expense(self, *, organization_id, project_id, site_id):
         return self._expense
+
+    async def find_latest_attendance(self, *, organization_id, reported_by_user_id):
+        self.attendance_calls.append(reported_by_user_id)
+        return self._attendance
 
 
 def _decision() -> PlannerDecisionV2:
@@ -255,3 +267,69 @@ async def test_bare_undo_resolving_to_an_advance_transfer_is_also_relabelled():
 
     assert event.fields["target_kind"] == "petty_cash"
     assert event.fields["reversal_petty_cash_holder"] == "Alan Usman"
+
+
+# --- Attendance ------------------------------------------------------------
+
+
+def _attendance_target(**overrides):
+    return {
+        "attendance_report_id": "rep-1",
+        "occurred_date": "2026-07-30",
+        "total_headcount": 18,
+        "total_cost": "12600.00",
+        "site_name": "Block A",
+        "project_name": "Skyline Towers",
+        **overrides,
+    }
+
+
+async def test_attendance_kind_seeds_the_report_and_its_site():
+    query = _FakeReversalQuery(attendance=_attendance_target())
+    event = _event({"target_kind": "attendance"})
+    await _seed_reversal_target(event, _decision(), query, _Actor())
+
+    assert event.fields["attendance_report_id"] == "rep-1"
+    assert event.fields["reversal_occurred_date"] == "2026-07-30"
+    assert event.fields["reversal_attendance_headcount"] == 18
+    assert event.fields["reversal_amount"] == "12600.00"
+    assert event.fields["reversal_attendance_site"] == "Block A"
+
+
+async def test_attendance_lookup_is_scoped_to_the_reporter():
+    """Reporter-scoped, not org-wide: an org-wide "most recent report" would
+    let one supervisor withdraw another site's day."""
+    query = _FakeReversalQuery(attendance=_attendance_target())
+    await _seed_reversal_target(_event({"target_kind": "attendance"}), _decision(), query, _Actor())
+
+    assert query.attendance_calls == [USR]
+
+
+async def test_attendance_falls_back_to_the_project_when_there_is_no_site():
+    query = _FakeReversalQuery(attendance=_attendance_target(site_name=None))
+    event = _event({"target_kind": "attendance"})
+    await _seed_reversal_target(event, _decision(), query, _Actor())
+
+    assert event.fields["reversal_attendance_site"] == "Skyline Towers"
+
+
+async def test_nothing_to_withdraw_leaves_the_report_id_unset():
+    query = _FakeReversalQuery(attendance=None)
+    event = _event({"target_kind": "attendance"})
+    await _seed_reversal_target(event, _decision(), query, _Actor())
+
+    assert "attendance_report_id" not in event.fields
+
+
+async def test_bare_undo_never_arbitrates_into_attendance():
+    """A bare "undo" compares expense against transfer only. Attendance is
+    reporter-scoped and would need a different signal than org-wide recency,
+    so it is reachable only by naming it -- same reasoning that keeps
+    activity out of the either-kind comparison."""
+    query = _FakeReversalQuery(
+        either_kind_result=("expense", {"expense_id": "exp-1", "amount": "5", "description": "d", "occurred_date": "2026-07-30"}),
+        attendance=_attendance_target(),
+    )
+    await _seed_reversal_target(_event({}), _decision(), query, _Actor())
+
+    assert query.attendance_calls == []

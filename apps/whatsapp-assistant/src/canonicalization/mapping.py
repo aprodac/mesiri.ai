@@ -89,6 +89,7 @@ _REVERSAL_TARGET_EVENT_TYPE: dict[str, CanonicalEventType] = {
     "transfer": CanonicalEventType.TRANSFER_REVERSAL_REQUESTED,
     "activity": CanonicalEventType.ACTIVITY_REVERSAL_REQUESTED,
     "petty_cash": CanonicalEventType.PETTY_CASH_REVERSAL_REQUESTED,
+    "attendance": CanonicalEventType.ATTENDANCE_REVERSAL_REQUESTED,
 }
 
 # SITE_ISSUE_UPDATE splits by the candidate's `action` field -- same pattern
@@ -166,6 +167,7 @@ REQUIRED_FIELDS: dict[CanonicalEventType, tuple[str, ...]] = {
     CanonicalEventType.TRANSFER_REVERSAL_REQUESTED: (),
     CanonicalEventType.ACTIVITY_REVERSAL_REQUESTED: (),
     CanonicalEventType.PETTY_CASH_REVERSAL_REQUESTED: (),
+    CanonicalEventType.ATTENDANCE_REVERSAL_REQUESTED: (),
     # Only `action` -- the action-specific fields (name / target_name+
     # new_name / target_name) can't be expressed here since one
     # CanonicalEventType covers all three actions (see resolve_event_type's
