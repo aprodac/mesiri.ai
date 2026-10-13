@@ -143,7 +143,7 @@
 | WEB-07 | Issues page | S | Must | — | done | Claude (session 13 Oct, foundations) | `0a43723`. "What's stuck" view; grid removed; no Assigned column (API has ids only) |
 | WEB-08 | Projects & sites settings, incl. DPR settings, recipients, site label (Tower/Block/Phase) | M | Must | BE-15 | todo | | Also client logo upload per project (BE-33) |
 | WEB-09 | Team page (roles, sites) | S | Must | BE-01 | todo | | |
-| WEB-10 | Company page incl. branding | S | Must | BE-20 | todo | | |
+| WEB-10 | Company page incl. branding | S | Must | BE-20 | claimed | Claude (session 13 Oct, blockers) | |
 | WEB-11 | Opening stock and stock adjustment screens | S | Must | BE-12 | todo | | Transfers between sites too (BE-32) |
 | WEB-12 | Owner login by WhatsApp/SMS code instead of password | M | Later | BE-01 | todo | | |
 
