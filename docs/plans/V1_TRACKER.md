@@ -166,8 +166,8 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | SS-01 | Investigation + plan for self-serve signup and trials | S | Must | — | in-progress | Claude (session 13 Oct, strategy) | Plan presented 13 Oct, waiting on Ilan's approval before any SS code |
-| SS-02 | Company lifecycle model: status (trial / active / expired / suspended), trial start and end, plan, usage limits; defaults set in superadmin | M | Must | BE-07 | claimed | Claude (session 13 Oct, strategy) | Stage A (approved 13 Oct). Trial days configurable, never hardcoded |
-| SS-03 | One "create company" service used by the superadmin wizard, the API and self-serve | M | Must | BE-02 | todo | | Core of BE-23; coordinate so there is one path, not three. Queued for Claude (session 13 Oct, strategy) after BE-07 (Stage A, approved 13 Oct). Ask before picking up |
+| SS-02 | Company lifecycle model: status (trial / active / expired / suspended), trial start and end, plan, usage limits; defaults set in superadmin | M | Must | BE-07 | done | Claude (session 13 Oct, strategy) | `1c1d116`, deployed (migration 0464). One rule `lifecycle.is_operational` / `operational_sql` now used by every "is this company active?" check. Platform settings store with defaults trial 7 days, retention 30, self-serve off. API/UI for the settings is SS-10 |
+| SS-03 | One "create company" service used by the superadmin wizard, the API and self-serve | M | Must | BE-02 | claimed | Claude (session 13 Oct, strategy) | Stage A (approved 13 Oct). Includes BE-02 (remove the duplicate provisioning path) |
 | SS-04 | WhatsApp signup for unknown numbers: replaces the "not registered" dead end with "start a free trial / I'm part of a company" | M | Must | SS-02, SS-03, BE-24 | todo | | Phone already verified by WhatsApp |
 | SS-05 | Team joins by link or code (`JOIN ACME-4821`), owner approves or rejects | M | Must | SS-03, BE-04 | todo | | A leaked code can't add strangers |
 | SS-06 | Web signup: phone → code on WhatsApp → same questions → same creation step; login link | M | Must | SS-03 | todo | | Needs a Meta authentication template |
@@ -195,5 +195,6 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | 2026-10-13 | WEB-01 new look and V1 shell | `c0e1fce` |
 | 2026-10-13 | WEB-02 + WA-07: switched-off modules hidden on dashboard and WhatsApp; default modules = V1 | `1129cfc` |
 | 2026-10-13 | WEB-07 Issues page reworked as "What's stuck" | `0a43723` |
+| 2026-10-13 | SS-02 company lifecycle (trials) + platform settings (migration 0464) | `1c1d116` |
 | 2026-10-13 | BE-07 statuses lowercase (migration 0463); automatic DPR now finds companies | `3b5c8e1` |
 | 2026-10-13 | Security: removed unauthenticated `/auth/register` (anyone could mint a platform-admin token) | `c669783` |
