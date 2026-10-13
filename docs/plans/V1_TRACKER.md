@@ -79,7 +79,7 @@
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| BE-08 | `site_days`: one working-day record per site per date, with statuses (collecting → needs confirmation → ready → approved → sent) | M | Must | — | todo | | Engineer confirms, then it goes out (decided 13 Oct): collecting → needs details → ready → with engineer → confirmed → sent |
+| BE-08 | `site_days`: one working-day record per site per date, with statuses (collecting → needs confirmation → ready → approved → sent) | M | Must | — | claimed | Claude (session 13 Oct, BE-08) | Engineer confirms, then it goes out (decided 13 Oct): collecting → needs details → ready → with engineer → confirmed → sent |
 | BE-09 | Draft/confirmed status on every fact, plus `extractions` (what the AI read, model, confidence) | M | Must | BE-08 | todo | | Save first, confirm later (decided 13 Oct) |
 | BE-10 | Labour counted as a snapshot per contractor+trade+day (latest replaces earlier) | S | Must | BE-09 | todo | | Prevents double counting |
 | BE-11 | Duplicate detection: repeated work items (Must), re-used photos across days (Later) | M | Must | BE-09 | todo | | |
