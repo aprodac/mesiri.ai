@@ -147,7 +147,7 @@
 | SA-04 | Messages viewer per company, linked to what each message created | M | Must | BE-26 | todo | | Extend the existing Logs screen |
 | SA-05 | Costs view per message, company and day | M | Must | BE-25 | todo | | |
 | SA-06 | Health view (DPR delivery, gap-check replies, WhatsApp number quality) | M | Later | BE-27 | todo | | |
-| SA-07 | Module toggles per company | S | Must | BE-06 | todo | | Backend ready: `PUT /admin/organizations/{id}/settings` with key `enabled_modules` |
+| SA-07 | Module toggles per company | S | Must | BE-06 | claimed | Claude (session 13 Oct, foundations) | Backend ready: `PUT /admin/organizations/{id}/settings` with key `enabled_modules` |
 | SA-08 | Audit log viewer | S | Later | BE-05 | todo | | |
 
 ---
