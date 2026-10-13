@@ -1,0 +1,4 @@
+# Shell scripts and systemd units run on the Linux VPS: always LF.
+*.sh text eol=lf
+*.service text eol=lf
+*.timer text eol=lf

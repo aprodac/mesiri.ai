@@ -217,6 +217,37 @@ cd /opt/mesiri/backend
 PYTHONPATH=... /opt/mesiri/.venv/bin/alembic downgrade -1
 ```
 
+### Safe migrations: expand, then contract
+
+A failed deploy rolls the **code** back to the previous commit, but `alembic
+upgrade head` has already changed the **schema**. So the previous code must
+keep working against the new schema. Every migration follows one rule:
+
+- **Expand only.** A migration may add tables, add nullable columns (or
+  columns with a default), add indexes, and backfill data.
+- **Never in the same release as the code that stops using it:** dropping or
+  renaming a table or column, making a column `NOT NULL` without a default,
+  or changing a column's type. Ship the code that no longer needs the old
+  shape first; remove the old shape in a later release (**contract**).
+
+If a change can't follow this, take a backup first (below) and say so in the
+commit message, so a rollback plan exists before the deploy starts.
+
+### Backups before migrations
+
+`infra/deploy/backup_db.sh [label]` writes a compressed `pg_dump` of the
+production database to `/var/backups/mesiri/` and keeps the newest 14. The
+restore steps are in the script's header. Run it by hand before any risky
+migration until the deploy pipeline runs it automatically.
+
+### Post-deploy smoke test
+
+`infra/deploy/smoke_test.sh <expected-short-sha>` checks, on the VPS, that
+the deployed app actually works, not just that it started: the API answers,
+the running build is the commit just deployed, photos go to real storage, the
+WhatsApp webhook verification handshake succeeds, and the queue worker is
+alive. It reads only, and sends no WhatsApp message.
+
 ---
 
 ## Manual emergency deploy
