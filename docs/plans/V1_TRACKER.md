@@ -91,7 +91,7 @@
 | BE-17 | Fix labour events being dropped from `timeline_entries` | S | Must | — | todo | | DAILY_REPORTING_PLAN Phase 6.0 |
 | BE-18 | AI summary generated only from confirmed facts | S | Must | BE-09 | todo | | |
 | BE-19 | DPR PDF with the customer's letterhead (logo, colour, address, GSTIN, signatory) + "Generated with Mesiri" footer | M | Must | BE-20 | todo | | Client logo on project DPRs: yes (BE-33). Signature/stamp image: not in V1 (decided 13 Oct) |
-| BE-20 | Branding storage (`organization_settings` "branding") + logo upload to object storage | S | Must | — | todo | | |
+| BE-20 | Branding storage (`organization_settings` "branding") + logo upload to object storage | S | Must | — | claimed | Claude (session 13 Oct, blockers) | |
 | BE-21 | Anomaly flags (manpower jump vs average, material used with no work logged) | M | Later | BE-09 | todo | | |
 | BE-22 | Update `docs/execution/DAILY_REPORTING_PLAN.md` rule P2 to save-first | S | Must | — | todo | | |
 
@@ -109,7 +109,7 @@
 | BE-31 | **Security:** JWT signing falls back to a hardcoded default (`MESIRI_JWT_SECRET` default in `apps/whatsapp-assistant/src/auth/router.py`). Confirm the secret is set in production; refuse to start in production without it | S | Must | — | in-progress | Claude (session 13 Oct, blockers) | If unset in prod, anyone can forge tokens. Check `/opt/mesiri/.env` first (with INF-01) **Step 1 pushed: one shared secret definition (the two copies are gone) and a startup error in the log when the default is in use. Step 2 (refuse to start) after `vps_check.sh` confirms prod sets it** |
 | BE-29 | Check the DeepSeek model name: `deepseek-chat` is no longer on DeepSeek's price page (legacy names are served by V4.1 Flash); pin the current name. Also confirm whether production runs Gemini 2.5 Flash or 2.0 Flash (2.0 is gone from Google's price page) | S | Must | — | todo | | Found 13 Oct while pricing BE-25; BE-25's tracking will record the real model per call |
 | BE-32 | Material transfers between sites (out of one site's stock, into another's) | M | Must | BE-12 | todo | | Added 13 Oct: transfers decided in for V1 |
-| BE-33 | Client logo per project (stored with BE-20's upload) shown on project DPRs | S | Must | BE-20 | todo | | Added 13 Oct: client logo decided in for V1 |
+| BE-33 | Client logo per project (stored with BE-20's upload) shown on project DPRs | S | Must | BE-20 | claimed | Claude (session 13 Oct, blockers) | Added 13 Oct: client logo decided in for V1 |
 | BE-34 | WhatsApp ignores "explicit sites only" access: anyone on a project can report on all its sites (a site is authorized whenever its project is). Decide whether V1 enforces it | S | Must | BE-01 | todo | | Found 13 Oct in BE-01; kept as-is so the switch changes nothing |
 
 ## WA — WhatsApp assistant
