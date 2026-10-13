@@ -111,7 +111,7 @@
 | BE-32 | Material transfers between sites (out of one site's stock, into another's) | M | Must | BE-12 | todo | | Added 13 Oct: transfers decided in for V1 |
 | BE-33 | Client logo per project (stored with BE-20's upload) shown on project DPRs | S | Must | BE-20 | done | Claude (session 13 Oct, blockers) | `669c5f8`. `projects.client_logo_object_key` (migration 0467); GET/PUT/DELETE `/projects/{id}/client-logo`; `hasClientLogo` on project responses. Showing it on the PDF is BE-19 |
 | BE-34 | WhatsApp ignores "explicit sites only" access: anyone on a project can report on all its sites (a site is authorized whenever its project is). Decide whether V1 enforces it | S | Must | BE-01 | todo | | Found 13 Oct in BE-01; kept as-is so the switch changes nothing |
-| BE-35 | The live `/projects` API (`apps/whatsapp-assistant/src/projects/router.py`) ignores reporting settings: timezone, cutoff, auto-generate DPR, send deadline, required report types. The dashboard's Reporting tab looks like it saves but nothing is stored, so auto DPR can't be switched on from the dashboard. Add them to the live router (the backend copy in `domains/projects/router.py` already has them but isn't mounted) | S | Must | — | claimed | Claude (session 13 Oct, BE-08) | Found 13 Oct in BE-16. Approved by Ilan 13 Oct. Overlaps BE-02's "two copies" problem |
+| BE-35 | The live `/projects` API (`apps/whatsapp-assistant/src/projects/router.py`) ignores reporting settings: timezone, cutoff, auto-generate DPR, send deadline, required report types. The dashboard's Reporting tab looks like it saves but nothing is stored, so auto DPR can't be switched on from the dashboard. Add them to the live router (the backend copy in `domains/projects/router.py` already has them but isn't mounted) | S | Must | — | done | Claude (session 13 Oct, BE-08) | Done: the live router now reads, validates (timezone, HH:MM) and saves the reporting settings on create and update; the Reporting tab gained "Send DPR by". Found 13 Oct in BE-16. Approved by Ilan 13 Oct. Overlaps BE-02's "two copies" problem |
 
 ## WA — WhatsApp assistant
 
@@ -207,6 +207,7 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | 2026-10-13 | INF-09 local-disk media storage (off until .env switched); BE-31 shared JWT secret + startup warning | `ada65a3` |
 
 | 2026-10-13 | BE-01 step 0: identity from main tables in shadow (migration 0465), Sync Health comparison panel | `abaa073`, `b3d30f5` |
+| 2026-10-13 | BE-35 live /projects API saves reporting settings (timezone, cutoff, auto DPR, send deadline, report types) | see BE-35 |
 | 2026-10-13 | BE-16 project DPR sent when confirmed or at the deadline (migration 0469) | `2bfd869` |
 | 2026-10-13 | WEB-03 Today page | `d36416c` |
 | 2026-10-13 | BE-14 site conditions: weather, hours lost, site working, tomorrow's plan (migration 0468) | `73c4905` |
