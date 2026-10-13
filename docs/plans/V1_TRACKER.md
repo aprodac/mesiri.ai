@@ -126,7 +126,7 @@
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| WEB-01 | New look and shell (IBM Plex Sans, colour tokens, 6-item sidebar) per the UI design | M | Must | — | claimed | Claude (session 13 Oct, foundations) | |
+| WEB-01 | New look and shell (IBM Plex Sans, colour tokens, 6-item sidebar) per the UI design | M | Must | — | done | Claude (session 13 Oct, foundations) | `c0e1fce`. IBM Plex Sans; tokens + dark mode; sidebar V1 order with More; fixed the never-rendering active highlight. Existing pages keep hardcoded status colours |
 | WEB-02 | Hide non-V1 modules using the module switch | S | Must | BE-06 | todo | | Hide, don't delete. `/auth/me` now returns `enabled_modules`; disabled APIs return 403 `MODULE_DISABLED` |
 | WEB-03 | Today page, grouped by project | M | Must | BE-08 | todo | | |
 | WEB-04 | Site DPR page: sections, confirm/edit/remove drafts, sources panel, approve & send, versions | L | Must | BE-09 | todo | | |
@@ -166,3 +166,4 @@
 | 2026-10-13 | SA-07 module switches in the control panel | `d338389` |
 | 2026-10-13 | Labour: withdraw an attendance report filed on the wrong site (migration 0462, applied in prod); fixes superseded reports double-counting in the DPR and WhatsApp labour query | `6a4b20d` |
 | 2026-10-13 | Dashboard: trips / logistics page removed | `15b85fc` |
+| 2026-10-13 | WEB-01 new look and V1 shell | `c0e1fce` |
