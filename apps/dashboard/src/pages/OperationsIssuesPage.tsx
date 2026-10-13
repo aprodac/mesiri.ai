@@ -1,17 +1,6 @@
 import * as React from 'react'
-import {
-  ShieldAlert,
-  Search,
-  Filter,
-  Plus,
-  RefreshCw,
-  Clock,
-  CheckCircle2,
-  AlertTriangle,
-  Check,
-  List,
-  LayoutGrid,
-} from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { ShieldAlert, Search, Plus, RefreshCw, CheckCircle2, Check } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
 import {
   fetchSiteIssuesApi,
@@ -21,30 +10,31 @@ import {
   wontFixSiteIssueApi,
   type SiteIssueItem,
 } from '@/lib/api'
-import { KpiCard } from '@/components/ui/kpi-card'
 import { useToast } from '@/components/ui/toast-notification'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
-import { Card } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { cn, toLocalISODate } from '@/lib/utils'
+import { cn } from '@/lib/utils'
+import { fetchSites } from '@/lib/projects'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+const CHIP = 'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap'
+
+// Severity, using the V1 status tokens (WEB-07). Critical is the only red.
 function getSeverityBadge(severity: string) {
   switch (severity.toUpperCase()) {
     case 'CRITICAL':
-      return <Badge variant="destructive" className="font-bold text-[10px] uppercase">CRITICAL</Badge>
+      return <span className={cn(CHIP, 'bg-destructive/10 text-destructive')}>Critical</span>
     case 'HIGH':
-      return <Badge variant="outline" className="border-rose-500/40 text-rose-600 dark:text-rose-400 font-bold text-[10px] uppercase">HIGH</Badge>
+      return <span className={cn(CHIP, 'bg-draft-soft text-draft')}>High</span>
     case 'MEDIUM':
-      return <Badge variant="outline" className="border-amber-500/40 text-amber-600 dark:text-amber-400 font-bold text-[10px] uppercase">MEDIUM</Badge>
+      return <span className={cn(CHIP, 'bg-info-soft text-info')}>Medium</span>
     default:
-      return <Badge variant="secondary" className="font-bold text-[10px] uppercase">LOW</Badge>
+      return <span className={cn(CHIP, 'bg-muted text-muted-foreground')}>Low</span>
   }
 }
 
@@ -60,18 +50,47 @@ function isClosed(status: string) {
 function getStatusBadge(status: string) {
   switch (status.toUpperCase()) {
     case 'RESOLVED':
-      return <Badge variant="outline" className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400 font-bold text-[10px] uppercase gap-1"><Check className="size-3" /> RESOLVED</Badge>
+      return <span className={cn(CHIP, 'bg-success-soft text-success')}><Check className="size-3" />Resolved</span>
     case 'ACKNOWLEDGED':
-      return <Badge variant="outline" className="border-sky-500/40 text-sky-600 dark:text-sky-400 font-bold text-[10px] uppercase">ACKNOWLEDGED</Badge>
+      return <span className={cn(CHIP, 'bg-info-soft text-info')}>Acknowledged</span>
     case 'WONT_FIX':
-      return <Badge variant="secondary" className="font-bold text-[10px] uppercase">WON'T FIX</Badge>
+      return <span className={cn(CHIP, 'bg-muted text-muted-foreground')}>Won't fix</span>
     // Muted rather than coloured: a withdrawn report is not an outcome, and
-    // giving it the emerald "done" treatment would read as work completed.
+    // giving it the "done" treatment would read as work completed.
     case 'CANCELLED':
-      return <Badge variant="secondary" className="font-bold text-[10px] uppercase opacity-60">WITHDRAWN</Badge>
+      return <span className={cn(CHIP, 'bg-muted text-muted-foreground opacity-70')}>Withdrawn</span>
     default:
-      return <Badge variant="outline" className="border-amber-500/40 text-amber-600 dark:text-amber-400 font-bold text-[10px] uppercase">OPEN</Badge>
+      return <span className={cn(CHIP, 'bg-draft-soft text-draft')}>Open</span>
   }
+}
+
+// The default view: everything not closed (OPEN + ACKNOWLEDGED). Fetched
+// unfiltered and narrowed here, since the API takes a single status.
+const ACTIVE_FILTER = 'ACTIVE'
+
+const SEVERITY_RANK: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 }
+
+function humanizeIssueType(issueType: string): string {
+  const words = issueType.toLowerCase().replace(/_/g, ' ').trim()
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : 'Issue'
+}
+
+function formatDuration(minutes: number): string {
+  if (minutes <= 0) return '0 min'
+  if (minutes < 60) return `${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return rest ? `${hours} h ${rest} min` : `${hours} h`
+}
+
+/** How long an issue has been open, from when it happened. */
+function openFor(occurredAt: string): string {
+  const ms = Date.now() - new Date(occurredAt).getTime()
+  const hours = Math.floor(ms / 3_600_000)
+  if (hours < 1) return 'Under an hour'
+  if (hours < 24) return `${hours} h`
+  const days = Math.floor(hours / 24)
+  return days === 1 ? '1 day' : `${days} days`
 }
 
 // ─── Main Operations Issues Page ───────────────────────────────────────────────
@@ -89,9 +108,8 @@ export default function OperationsIssuesPage() {
 
   // Filters
   const [searchQuery, setSearchQuery] = React.useState<string>('')
-  const [statusFilter, setStatusFilter] = React.useState<string>('ALL')
+  const [statusFilter, setStatusFilter] = React.useState<string>(ACTIVE_FILTER)
   const [severityFilter, setSeverityFilter] = React.useState<string>('ALL')
-  const [viewMode, setViewMode] = React.useState<'table' | 'grid'>('table')
 
   // Modals
   const [createDialogOpen, setCreateDialogOpen] = React.useState<boolean>(false)
@@ -127,7 +145,7 @@ export default function OperationsIssuesPage() {
       const res = await fetchSiteIssuesApi({
         projectId: scopeFilter.projectId,
         siteId: scopeFilter.siteId,
-        status: statusFilter !== 'ALL' ? statusFilter : undefined,
+        status: statusFilter !== 'ALL' && statusFilter !== ACTIVE_FILTER ? statusFilter : undefined,
         severity: severityFilter !== 'ALL' ? severityFilter : undefined,
         limit: 100,
       })
@@ -145,86 +163,59 @@ export default function OperationsIssuesPage() {
     loadIssues()
   }, [loadIssues])
 
-  // Filtered client side search
+  // Status "Open (not closed)", search, then the owner's order: most severe
+  // first, and within a severity the longest-open first (WEB-07).
   const filteredIssues = React.useMemo(() => {
-    return issues.filter((item) => {
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase()
-        const match =
+    const q = searchQuery.trim().toLowerCase()
+    return issues
+      .filter((item) => statusFilter !== ACTIVE_FILTER || !isClosed(item.status))
+      .filter(
+        (item) =>
+          !q ||
           item.issue_type.toLowerCase().includes(q) ||
           (item.narrative || '').toLowerCase().includes(q) ||
           (item.resolution_notes || '').toLowerCase().includes(q)
-        if (!match) return false
-      }
-      return true
-    })
-  }, [issues, searchQuery])
+      )
+      .sort((a, b) => {
+        const bySeverity =
+          (SEVERITY_RANK[a.severity.toUpperCase()] ?? 9) - (SEVERITY_RANK[b.severity.toUpperCase()] ?? 9)
+        if (bySeverity !== 0) return bySeverity
+        return new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime()
+      })
+  }, [issues, searchQuery, statusFilter])
 
-  // KPI Metrics.
-  //
-  // The sparklines are computed from occurred_at rather than supplied as
-  // constants. A hardcoded series with the live figure appended reads as a
-  // real trend and is not one -- it shows the same shape on a site with one
-  // blocker and a site with fifty, which is worse than showing nothing.
   const stats = React.useMemo(() => {
-    // Every non-closed status, not just "not RESOLVED": WONT_FIX and
-    // CANCELLED are settled too, and counting them as open overstates how
-    // many blockers the site actually has.
-    const openCount = issues.filter((i) => !isClosed(i.status)).length
-    const criticalCount = issues.filter((i) => i.severity.toUpperCase() === 'CRITICAL' || i.severity.toUpperCase() === 'HIGH').length
-    const totalMinsLost = issues.reduce((acc, i) => acc + (i.delay_duration_minutes || 0), 0)
-
-    // Last 7 local calendar days, oldest first. Local, not UTC: an issue
-    // logged at 09:00 IST belongs to that day, not the previous one.
-    const days: string[] = []
-    for (let i = 6; i >= 0; i--) {
-      days.push(toLocalISODate(new Date(Date.now() - i * 86_400_000)))
-    }
-    const dayOf = (iso: string) => toLocalISODate(new Date(iso))
-
-    const openedPerDay = days.map(
-      (d) => issues.filter((i) => i.occurred_at && dayOf(i.occurred_at) === d).length,
-    )
-    const criticalPerDay = days.map(
-      (d) =>
-        issues.filter(
-          (i) =>
-            i.occurred_at &&
-            dayOf(i.occurred_at) === d &&
-            (i.severity.toUpperCase() === 'CRITICAL' || i.severity.toUpperCase() === 'HIGH'),
-        ).length,
-    )
-    const minsPerDay = days.map((d) =>
-      issues
-        .filter((i) => i.occurred_at && dayOf(i.occurred_at) === d)
-        .reduce((acc, i) => acc + (i.delay_duration_minutes || 0), 0),
-    )
-    // Cumulative, so this line reads as "issues logged to date" rather than
-    // repeating the daily count above it.
-    let running = 0
-    const cumulativePerDay = openedPerDay.map((n) => (running += n))
-
+    // Every non-closed status counts as open: WONT_FIX and CANCELLED are
+    // settled too, and counting them would overstate what is blocking work.
+    const open = issues.filter((i) => !isClosed(i.status))
     return {
-      openCount,
-      criticalCount,
-      totalMinsLost,
-      openedPerDay,
-      criticalPerDay,
-      minsPerDay,
-      cumulativePerDay,
+      openCount: open.length,
+      urgentOpenCount: open.filter((i) => ['CRITICAL', 'HIGH'].includes(i.severity.toUpperCase())).length,
+      openMinutesLost: open.reduce((acc, i) => acc + (i.delay_duration_minutes || 0), 0),
     }
   }, [issues])
 
-  /** Direction of the last day against the one before it. More issues is bad,
-   *  so a rise maps to 'down' on the card's good/bad scale. */
-  const directionOf = React.useCallback((series: number[]): 'up' | 'down' | 'neutral' => {
-    if (series.length < 2) return 'neutral'
-    const last = series[series.length - 1]
-    const prev = series[series.length - 2]
-    if (last > prev) return 'down'
-    if (last < prev) return 'up'
-    return 'neutral'
-  }, [])
+  // Site names: the issues API returns ids only. One sites call per project
+  // that appears in the list, cached by react-query.
+  const projectIdsInList = React.useMemo(
+    () => Array.from(new Set(issues.map((i) => i.project_id))).sort(),
+    [issues]
+  )
+  const { data: siteNames = {} } = useQuery<Record<string, string>>({
+    queryKey: ['issue-site-names', projectIdsInList],
+    enabled: projectIdsInList.length > 0,
+    queryFn: async () => {
+      const perProject = await Promise.all(
+        projectIdsInList.map((projectId) => fetchSites(projectId).catch(() => []))
+      )
+      const names: Record<string, string> = {}
+      for (const sites of perProject) {
+        for (const site of sites) names[site.id] = site.name
+      }
+      return names
+    },
+  })
+  const siteLabel = (item: SiteIssueItem) => siteNames[item.site_id] || '—'
 
   const scopeLabel = React.useMemo(() => {
     if (scope.mode === 'portfolio') return 'Portfolio Scope (All Projects)'
@@ -305,303 +296,191 @@ export default function OperationsIssuesPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4 w-full max-w-full relative pb-12">
+    <div className="flex flex-col gap-5 w-full max-w-full relative pb-12">
 
       {/* ── Page Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3.5">
-        <div className="flex items-center gap-3">
-          <div className="size-10 rounded-lg border border-rose-500/30 bg-rose-500/10 flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0 shadow-2xs">
-            <ShieldAlert className="size-5" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              Site Issues & Blockers
-              <Badge variant="outline" className="text-[10px] font-mono border-rose-500/30 text-rose-600 dark:text-rose-400">
-                Live Backend Ledger
-              </Badge>
-            </h1>
-            <p className="text-xs text-muted-foreground font-medium">{scopeLabel}</p>
-          </div>
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <p className="text-sm text-muted-foreground">{scopeLabel}</p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">What's stuck</h1>
         </div>
-
         <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            className="h-8 gap-1.5 text-xs font-bold bg-rose-600 text-white hover:bg-rose-700 shadow-2xs"
-            onClick={() => setCreateDialogOpen(true)}
-          >
-            <Plus className="size-3.5" />
-            Report New Blocker
-          </Button>
-
           <Button
             variant="outline"
             size="sm"
             onClick={loadIssues}
             disabled={loading}
-            className="h-8 gap-1.5 text-xs"
+            className="h-9 gap-1.5"
+            aria-label="Refresh issues"
           >
-            <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} />
+            <RefreshCw className={cn('size-4', loading && 'animate-spin')} />
             Refresh
           </Button>
-        </div>
-      </div>
-
-      {/* ── Executive KPI Cards ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard
-          title="Active Site Blockers"
-          value={<span className="text-rose-600 dark:text-rose-400">{stats.openCount}</span>}
-          trend={directionOf(stats.openedPerDay)}
-          trendValue={`${stats.openCount} Open`}
-          description="Unresolved site interruptions"
-          icon={<ShieldAlert className="text-rose-500" />}
-          chartData={stats.openedPerDay}
-        />
-        <KpiCard
-          title="High & Critical Incidents"
-          value={<span className="text-amber-600 dark:text-amber-400">{stats.criticalCount}</span>}
-          trend={directionOf(stats.criticalPerDay)}
-          trendValue="Requires Priority"
-          description="High severity bottlenecks"
-          icon={<AlertTriangle className="text-amber-500" />}
-          chartData={stats.criticalPerDay}
-        />
-        <KpiCard
-          title="Total Delay Duration"
-          value={<span className="text-sky-600 dark:text-sky-400">{stats.totalMinsLost}m</span>}
-          trend={directionOf(stats.minsPerDay)}
-          trendValue="Minutes Lost"
-          description="Work hours lost to blockers"
-          icon={<Clock className="text-sky-500" />}
-          chartData={stats.minsPerDay}
-        />
-        <KpiCard
-          title="Total Recorded Issues"
-          value={<span className="text-indigo-600 dark:text-indigo-400">{totalCount}</span>}
-          trend="neutral"
-          trendValue="Historical Total"
-          description="Tracked site issue entries"
-          icon={<CheckCircle2 className="text-indigo-500" />}
-          chartData={stats.cumulativePerDay}
-        />
-      </div>
-
-      {/* ── Toolbar: Search & Filters ── */}
-      <div className="flex flex-col sm:flex-row gap-2.5 items-center justify-between border border-border/80 p-2.5 rounded-lg bg-card/40">
-        <div className="flex flex-wrap gap-2 w-full sm:w-auto flex-1 items-center">
-          <div className="relative w-full sm:w-64">
-            <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-            <Input
-              placeholder="Search narrative, issue type..."
-              value={searchQuery}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
-              className="pl-8 h-9 text-xs"
-            />
-          </div>
-
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-9 text-xs w-full sm:w-36">
-              <Filter className="size-3.5 mr-1.5 text-muted-foreground shrink-0" />
-              <SelectValue placeholder="All Statuses" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All Statuses</SelectItem>
-              <SelectItem value="OPEN">OPEN</SelectItem>
-              <SelectItem value="ACKNOWLEDGED">ACKNOWLEDGED</SelectItem>
-              <SelectItem value="RESOLVED">RESOLVED</SelectItem>
-              <SelectItem value="WONT_FIX">WON'T FIX</SelectItem>
-              <SelectItem value="CANCELLED">WITHDRAWN</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={severityFilter} onValueChange={setSeverityFilter}>
-            <SelectTrigger className="h-9 text-xs w-full sm:w-36">
-              <SelectValue placeholder="All Severities" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All Severities</SelectItem>
-              <SelectItem value="CRITICAL">CRITICAL</SelectItem>
-              <SelectItem value="HIGH">HIGH</SelectItem>
-              <SelectItem value="MEDIUM">MEDIUM</SelectItem>
-              <SelectItem value="LOW">LOW</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex items-center gap-1 border border-border/80 rounded-md p-0.5 bg-background shrink-0">
-          <Button
-            variant={viewMode === 'table' ? 'secondary' : 'ghost'}
-            size="sm"
-            className="h-7 px-2.5 text-xs font-semibold gap-1"
-            onClick={() => setViewMode('table')}
-          >
-            <List className="size-3.5" />
-            Table
-          </Button>
-          <Button
-            variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
-            size="sm"
-            className="h-7 px-2.5 text-xs font-semibold gap-1"
-            onClick={() => setViewMode('grid')}
-          >
-            <LayoutGrid className="size-3.5" />
-            Grid
+          <Button size="sm" className="h-9 gap-1.5 font-semibold" onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="size-4" />
+            Report issue
           </Button>
         </div>
       </div>
 
-      {/* ── Table or Grid View ── */}
+      {/* ── Summary ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="rounded-xl border bg-card px-5 py-4 flex flex-col gap-1">
+          <span className="text-sm text-muted-foreground">Open issues</span>
+          <span className="text-3xl font-bold">{stats.openCount}</span>
+        </div>
+        <div className="rounded-xl border bg-card px-5 py-4 flex flex-col gap-1">
+          <span className="text-sm text-muted-foreground">High or critical, still open</span>
+          <span className={cn('text-3xl font-bold', stats.urgentOpenCount > 0 && 'text-draft')}>
+            {stats.urgentOpenCount}
+          </span>
+        </div>
+        <div className="rounded-xl border bg-card px-5 py-4 flex flex-col gap-1">
+          <span className="text-sm text-muted-foreground">Time lost to open issues</span>
+          <span className="text-3xl font-bold">{formatDuration(stats.openMinutesLost)}</span>
+        </div>
+      </div>
+
+      {/* ── Filters ── */}
+      <div className="flex flex-col sm:flex-row flex-wrap gap-2.5 items-stretch sm:items-center">
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            placeholder="Search issues"
+            aria-label="Search issues"
+            value={searchQuery}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+            className="pl-9 h-10"
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="h-10 w-full sm:w-44" aria-label="Status">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ACTIVE_FILTER}>Open (not closed)</SelectItem>
+            <SelectItem value="ALL">All statuses</SelectItem>
+            <SelectItem value="OPEN">Open, not acknowledged</SelectItem>
+            <SelectItem value="ACKNOWLEDGED">Acknowledged</SelectItem>
+            <SelectItem value="RESOLVED">Resolved</SelectItem>
+            <SelectItem value="WONT_FIX">Won't fix</SelectItem>
+            <SelectItem value="CANCELLED">Withdrawn</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={severityFilter} onValueChange={setSeverityFilter}>
+          <SelectTrigger className="h-10 w-full sm:w-40" aria-label="Severity">
+            <SelectValue placeholder="Severity" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">All severities</SelectItem>
+            <SelectItem value="CRITICAL">Critical</SelectItem>
+            <SelectItem value="HIGH">High</SelectItem>
+            <SelectItem value="MEDIUM">Medium</SelectItem>
+            <SelectItem value="LOW">Low</SelectItem>
+          </SelectContent>
+        </Select>
+        <span className="text-sm text-muted-foreground sm:ml-auto">
+          {filteredIssues.length} shown · {totalCount} recorded
+        </span>
+      </div>
+
+      {/* ── Issues ── */}
       {filteredIssues.length === 0 ? (
-        <Card className="p-12 text-center flex flex-col items-center justify-center gap-3">
-          <div className="size-12 rounded-full bg-muted border flex items-center justify-center">
-            <ShieldAlert className="size-5 text-muted-foreground/50" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-foreground">No site issues recorded in database</p>
-            <p className="text-xs text-muted-foreground mt-1">Issues will appear live when reported via WhatsApp or web dashboard.</p>
-          </div>
-          <Button
-            size="sm"
-            className="h-8 gap-1.5 text-xs font-bold bg-rose-600 text-white hover:bg-rose-700 mt-1"
-            onClick={() => setCreateDialogOpen(true)}
-          >
-            <Plus className="size-3.5" />
-            Report First Issue
-          </Button>
-        </Card>
-      ) : viewMode === 'table' ? (
-        <Card className="rounded-lg border-border/80 overflow-hidden shadow-2xs">
-          <Table>
-            <TableHeader className="bg-muted/30">
+        <div className="rounded-xl border bg-card p-12 text-center flex flex-col items-center gap-2">
+          <CheckCircle2 className="size-8 text-success" aria-hidden="true" />
+          <p className="text-base font-semibold">
+            {statusFilter === ACTIVE_FILTER ? 'Nothing is stuck right now' : 'No issues match these filters'}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Issues reported on WhatsApp or here appear in this list.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-xl border bg-card overflow-x-auto">
+          <Table className="min-w-[760px]">
+            <TableHeader>
               <TableRow>
-                <TableHead className="w-24 text-xs font-bold">Issue Type</TableHead>
-                <TableHead className="text-xs font-bold">Severity</TableHead>
-                <TableHead className="text-xs font-bold">Narrative Description</TableHead>
-                <TableHead className="text-xs font-bold">Delay Duration</TableHead>
-                <TableHead className="text-xs font-bold">Occurred At</TableHead>
-                <TableHead className="text-xs font-bold">Status</TableHead>
-                <TableHead className="text-right text-xs font-bold">Action</TableHead>
+                <TableHead className="text-xs font-semibold text-muted-foreground">Issue</TableHead>
+                <TableHead className="text-xs font-semibold text-muted-foreground">Site</TableHead>
+                <TableHead className="text-xs font-semibold text-muted-foreground">Severity</TableHead>
+                <TableHead className="text-xs font-semibold text-muted-foreground">Open for</TableHead>
+                <TableHead className="text-xs font-semibold text-muted-foreground">Time lost</TableHead>
+                <TableHead className="text-xs font-semibold text-muted-foreground">Status</TableHead>
+                <TableHead className="text-right text-xs font-semibold text-muted-foreground">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody className="text-xs">
+            <TableBody className="text-sm">
               {filteredIssues.map((item) => (
-                <TableRow key={item.id} className="hover:bg-muted/20">
-                  <TableCell className="font-mono font-bold">{item.issue_type}</TableCell>
+                <TableRow key={item.id}>
+                  <TableCell className="max-w-[320px]">
+                    <button
+                      type="button"
+                      className="flex flex-col items-start gap-0.5 text-left hover:underline"
+                      onClick={() => {
+                        setSelectedIssue(item)
+                        setInspectSheetOpen(true)
+                      }}
+                    >
+                      <span className="font-semibold">{humanizeIssueType(item.issue_type)}</span>
+                      {item.narrative && (
+                        <span className="text-xs text-muted-foreground line-clamp-1">{item.narrative}</span>
+                      )}
+                    </button>
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">{siteLabel(item)}</TableCell>
                   <TableCell>{getSeverityBadge(item.severity)}</TableCell>
-                  <TableCell className="max-w-md truncate font-medium text-foreground">
-                    {item.narrative || 'No description provided'}
+                  <TableCell className="whitespace-nowrap text-muted-foreground">
+                    {isClosed(item.status) ? 'Closed' : openFor(item.occurred_at)}
                   </TableCell>
-                  <TableCell className="font-mono font-semibold text-sky-600">
-                    {item.delay_duration_minutes ? `${item.delay_duration_minutes} mins` : '—'}
-                  </TableCell>
-                  <TableCell className="font-mono text-muted-foreground">
-                    {new Date(item.occurred_at).toLocaleDateString()}
+                  <TableCell className="whitespace-nowrap">
+                    {item.delay_duration_minutes ? formatDuration(item.delay_duration_minutes) : '—'}
                   </TableCell>
                   <TableCell>{getStatusBadge(item.status)}</TableCell>
                   <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs px-2 gap-1 text-indigo-600 hover:text-indigo-700"
-                        onClick={() => {
-                          setSelectedIssue(item)
-                          setInspectSheetOpen(true)
-                        }}
-                      >
-                        Inspect
-                      </Button>
-                      {item.status.toUpperCase() === 'OPEN' && (
+                    {!isClosed(item.status) && (
+                      <div className="flex items-center justify-end gap-1.5">
+                        {item.status.toUpperCase() === 'OPEN' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8"
+                            onClick={() => handleAcknowledgeIssue(item)}
+                          >
+                            Acknowledge
+                          </Button>
+                        )}
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 text-xs px-2 gap-1 border-sky-500/40 text-sky-600 hover:bg-sky-500/10"
-                          onClick={() => handleAcknowledgeIssue(item)}
-                        >
-                          Acknowledge
-                        </Button>
-                      )}
-                      {!isClosed(item.status) && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-xs px-2 gap-1 border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10"
+                          className="h-8 gap-1"
                           onClick={() => {
                             setSelectedIssue(item)
                             setResolveDialogOpen(true)
                           }}
                         >
-                          <Check className="size-3" />
+                          <Check className="size-3.5" />
                           Resolve
                         </Button>
-                      )}
-                      {!isClosed(item.status) && (
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-7 text-xs px-2 gap-1 text-muted-foreground hover:text-foreground"
+                          className="h-8 text-muted-foreground"
                           onClick={() => {
                             setSelectedIssue(item)
                             setWontFixDialogOpen(true)
                           }}
                         >
-                          Won't Fix
+                          Won't fix
                         </Button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filteredIssues.map((item) => (
-            <Card key={item.id} className="rounded-lg border-border/80 p-4 space-y-3 shadow-2xs hover:border-rose-500/40 transition-all">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <span className="font-mono font-bold text-xs text-foreground block">{item.issue_type}</span>
-                  <span className="text-[11px] text-muted-foreground font-mono">ID: {item.id.slice(0, 8)}</span>
-                </div>
-                {getSeverityBadge(item.severity)}
-              </div>
-
-              <p className="text-xs text-foreground font-medium leading-relaxed">
-                {item.narrative || 'No narrative recorded'}
-              </p>
-
-              <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-2 border-t font-mono">
-                <span>{getStatusBadge(item.status)}</span>
-                <div className="flex items-center gap-1">
-                  {item.status.toUpperCase() === 'OPEN' && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-6 text-[10px] px-2 border-sky-500/40 text-sky-600 hover:bg-sky-500/10"
-                      onClick={() => handleAcknowledgeIssue(item)}
-                    >
-                      Acknowledge
-                    </Button>
-                  )}
-                  {!isClosed(item.status) && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-6 text-[10px] px-2 border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10"
-                      onClick={() => {
-                        setSelectedIssue(item)
-                        setResolveDialogOpen(true)
-                      }}
-                    >
-                      Resolve
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </Card>
-          ))}
         </div>
       )}
 
@@ -611,7 +490,7 @@ export default function OperationsIssuesPage() {
           <form onSubmit={handleCreateIssue}>
             <DialogHeader>
               <DialogTitle className="text-base font-bold flex items-center gap-2">
-                <ShieldAlert className="size-5 text-rose-600" />
+                <ShieldAlert className="size-5 text-draft" />
                 Report Site Blocker / Issue
               </DialogTitle>
               <DialogDescription className="text-xs">
@@ -682,7 +561,7 @@ export default function OperationsIssuesPage() {
               <Button type="button" variant="outline" onClick={() => setCreateDialogOpen(false)} className="h-8 text-xs">
                 Cancel
               </Button>
-              <Button type="submit" disabled={submitting} className="h-8 text-xs font-bold bg-rose-600 text-white hover:bg-rose-700">
+              <Button type="submit" disabled={submitting} className="h-9 font-semibold">
                 {submitting ? 'Reporting...' : 'Submit Blocker Report'}
               </Button>
             </DialogFooter>
@@ -695,7 +574,7 @@ export default function OperationsIssuesPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
-              <CheckCircle2 className="size-5 text-emerald-600" />
+              <CheckCircle2 className="size-5 text-success" />
               Resolve Site Blocker
             </DialogTitle>
             <DialogDescription className="text-xs">
@@ -723,7 +602,7 @@ export default function OperationsIssuesPage() {
             <Button variant="outline" onClick={() => setResolveDialogOpen(false)} className="h-8 text-xs">
               Cancel
             </Button>
-            <Button disabled={submitting} onClick={handleResolveIssue} className="h-8 text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700">
+            <Button disabled={submitting} onClick={handleResolveIssue} className="h-9 font-semibold">
               {submitting ? 'Resolving...' : 'Confirm Resolution'}
             </Button>
           </DialogFooter>
@@ -775,8 +654,8 @@ export default function OperationsIssuesPage() {
         <SheetContent className="sm:max-w-md overflow-y-auto">
           <SheetHeader>
             <SheetTitle className="text-sm font-bold flex items-center gap-2">
-              <ShieldAlert className="size-4 text-rose-600" />
-              {selectedIssue?.issue_type}
+              <ShieldAlert className="size-4 text-draft" />
+              {selectedIssue ? humanizeIssueType(selectedIssue.issue_type) : null}
             </SheetTitle>
             <SheetDescription className="text-[11px]">
               ID: {selectedIssue?.id}
@@ -790,9 +669,9 @@ export default function OperationsIssuesPage() {
             </div>
 
             {selectedIssue?.resolution_notes && (
-              <div className="p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 space-y-1">
-                <span className="font-bold text-emerald-700 dark:text-emerald-300 block">Resolution Notes</span>
-                <p className="text-emerald-900 dark:text-emerald-200">{selectedIssue.resolution_notes}</p>
+              <div className="p-3 rounded-lg bg-success-soft space-y-1">
+                <span className="font-semibold text-success block">Resolution Notes</span>
+                <p className="text-foreground">{selectedIssue.resolution_notes}</p>
               </div>
             )}
           </div>
