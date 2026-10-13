@@ -100,7 +100,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | BE-23 | Onboarding APIs for the wizard steps (company, owner, projects & sites, team, DPR settings, go-live) | M | Must | BE-02 | todo | | Bulk CSV import is Later |
 | BE-24 | Construction defaults seeded per new company (materials, units, trades, issue types) | S | Must | — | todo | | Follow the finance seeder pattern |
-| BE-25 | Cost tracking: every AI call (model, tokens, cost) and WhatsApp message (category, cost), per company | M | Must | — | claimed | Claude (session 13 Oct, foundations) | Extend `provider_executions` |
+| BE-25 | Cost tracking: every AI call (model, tokens, cost) and WhatsApp message (category, cost), per company | M | Must | — | todo | | Extend `provider_executions`. Plan, INR prices and official sources are in the 13 Oct session; released unstarted |
 | BE-26 | Messages API for superadmin (per company, user, site; linked to what each message created) | S | Must | BE-09 | todo | | |
 | BE-27 | Health numbers API (DPRs sent vs expected, gap-check reply rate) | S | Later | BE-08 | todo | | |
 | BE-28 | `PostgresDatabase.transaction()` maps every exception raised while open (incl. a route's own `HTTPException` 401/403/404/422) to 500 "postgres unavailable"; routes using `get_db_conn` likely return 500 for ordinary client errors | S | Must | — | todo | | Found 13 Oct while fixing BE-06 (`595a162`); let `HTTPException` pass through unmapped, with a test |
@@ -126,7 +126,7 @@
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| WEB-01 | New look and shell (IBM Plex Sans, colour tokens, 6-item sidebar) per the UI design | M | Must | — | todo | | |
+| WEB-01 | New look and shell (IBM Plex Sans, colour tokens, 6-item sidebar) per the UI design | M | Must | — | claimed | Claude (session 13 Oct, foundations) | |
 | WEB-02 | Hide non-V1 modules using the module switch | S | Must | BE-06 | todo | | Hide, don't delete. `/auth/me` now returns `enabled_modules`; disabled APIs return 403 `MODULE_DISABLED` |
 | WEB-03 | Today page, grouped by project | M | Must | BE-08 | todo | | |
 | WEB-04 | Site DPR page: sections, confirm/edit/remove drafts, sources panel, approve & send, versions | L | Must | BE-09 | todo | | |
