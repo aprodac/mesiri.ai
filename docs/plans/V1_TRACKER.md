@@ -104,6 +104,8 @@
 | BE-26 | Messages API for superadmin (per company, user, site; linked to what each message created) | S | Must | BE-09 | todo | | |
 | BE-27 | Health numbers API (DPRs sent vs expected, gap-check reply rate) | S | Later | BE-08 | todo | | |
 | BE-28 | `PostgresDatabase.transaction()` maps every exception raised while open (incl. a route's own `HTTPException` 401/403/404/422) to 500 "postgres unavailable"; routes using `get_db_conn` likely return 500 for ordinary client errors | S | Must | — | todo | | Found 13 Oct while fixing BE-06 (`595a162`); let `HTTPException` pass through unmapped, with a test |
+| BE-30 | **Security follow-up:** check production `users` for platform-admin accounts (role `ADMIN`, no `organization_id`) not created by the team, since `/auth/register` let anyone create one until `c669783` | S | Must | — | todo | | Needs DB access. Remove or deactivate any unknown ones |
+| BE-31 | **Security:** JWT signing falls back to a hardcoded default (`MESIRI_JWT_SECRET` default in `apps/whatsapp-assistant/src/auth/router.py`). Confirm the secret is set in production; refuse to start in production without it | S | Must | — | todo | | If unset in prod, anyone can forge tokens. Check `/opt/mesiri/.env` first (with INF-01) |
 | BE-29 | Check the DeepSeek model name: `deepseek-chat` is no longer on DeepSeek's price page (legacy names are served by V4.1 Flash); pin the current name. Also confirm whether production runs Gemini 2.5 Flash or 2.0 Flash (2.0 is gone from Google's price page) | S | Must | — | todo | | Found 13 Oct while pricing BE-25; BE-25's tracking will record the real model per call |
 
 ## WA — WhatsApp assistant
@@ -152,6 +154,29 @@
 | SA-07 | Module toggles per company | S | Must | BE-06 | done | Claude (session 13 Oct, foundations) | `d338389`. Modules card on the company Settings tab; not yet clicked through in a browser (needs a platform-admin login on the live control panel) |
 | SA-08 | Audit log viewer | S | Later | BE-05 | todo | | |
 
+## SS — Self-serve signup & trials
+
+Anyone can message the Mesiri WhatsApp number (or sign up on the web) and get their own
+company on a free trial; their team joins by link with the owner's approval. Decided
+13 Oct 2026: **anyone can sign up**; **trial length and limits are superadmin settings, not
+fixed** (default and per company); **conversion to paid is manual for now**, online payment
+later. Every path must use the same company-creation step as the superadmin wizard.
+
+| ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| SS-01 | Investigation + plan for self-serve signup and trials | S | Must | — | in-progress | Claude (session 13 Oct, strategy) | Plan comes back to Ilan for approval before any SS code |
+| SS-02 | Company lifecycle model: status (trial / active / expired / suspended), trial start and end, plan, usage limits; defaults set in superadmin | M | Must | BE-07 | todo | | Trial days configurable, never hardcoded |
+| SS-03 | One "create company" service used by the superadmin wizard, the API and self-serve | M | Must | BE-02 | todo | | Core of BE-23; coordinate so there is one path, not three |
+| SS-04 | WhatsApp signup for unknown numbers: replaces the "not registered" dead end with "start a free trial / I'm part of a company" | M | Must | SS-02, SS-03, BE-24 | todo | | Phone already verified by WhatsApp |
+| SS-05 | Team joins by link or code (`JOIN ACME-4821`), owner approves or rejects | M | Must | SS-03, BE-04 | todo | | A leaked code can't add strangers |
+| SS-06 | Web signup: phone → code on WhatsApp → same questions → same creation step; login link | M | Must | SS-03 | todo | | Needs a Meta authentication template |
+| SS-07 | Getting-started checklist in the dashboard (team, DPR time, logo, first update) | S | Must | SS-06 | todo | | |
+| SS-08 | Trial lifecycle: reminder messages, expiry behaviour (read-only dashboard, WhatsApp reply), data kept N days (setting) | M | Must | SS-02 | todo | | |
+| SS-09 | Guardrails: one active trial per phone, signup rate limits, per-trial AI and WhatsApp caps, flag suspicious signups | M | Must | SS-02, BE-25 | todo | | Protects cost and the shared number's quality rating |
+| SS-10 | Superadmin: trial defaults, per-company extend / convert / suspend, days used and activity | M | Must | SS-02 | todo | | |
+| SS-11 | Superadmin: trials funnel (started → first update → first DPR → converted) and cost per trial | M | Must | SS-10, BE-25 | todo | | |
+| SS-12 | Message templates for self-serve: login code (authentication), join request, trial reminders | S | Must | SS-04, SS-05, SS-08 | todo | | Meta approval needed |
+
 ---
 
 ## Done log
@@ -167,3 +192,4 @@
 | 2026-10-13 | Labour: withdraw an attendance report filed on the wrong site (migration 0462, applied in prod); fixes superseded reports double-counting in the DPR and WhatsApp labour query | `6a4b20d` |
 | 2026-10-13 | Dashboard: trips / logistics page removed | `15b85fc` |
 | 2026-10-13 | WEB-01 new look and V1 shell | `c0e1fce` |
+| 2026-10-13 | Security: removed unauthenticated `/auth/register` (anyone could mint a platform-admin token) | `c669783` |
