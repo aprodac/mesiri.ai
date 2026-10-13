@@ -2,6 +2,7 @@
 
 Mounted at /dpr so:
   GET   /dpr/site-days?date=YYYY-MM-DD     every active site's working day (BE-08)
+  PATCH /dpr/site-days/{site_id}/conditions?date=  weather, hours lost, site working, plan (BE-14)
   GET   /dpr/daily-reports                 list daily reports
   GET   /dpr/daily-reports/{report_id}     get daily report details
   POST  /dpr/daily-reports                 create daily report draft
@@ -21,6 +22,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from mesiri.application.dpr.site_day import InvalidSiteDayTransition
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.domains.dpr.pdf import render_dpr_pdf_bytes
 from mesiri.domains.projects.router import get_auth_context
@@ -129,6 +131,52 @@ async def list_site_days(
         report_date=report_date,
     )
     return {"items": items}
+
+
+class SiteDayConditionsRequest(BaseModel):
+    """Only the fields sent are changed; null clears one (BE-14)."""
+
+    weather: str | None = None
+    hours_lost: float | None = None
+    site_working: str | None = None
+    tomorrow_plan: str | None = None
+
+
+@router.patch("/site-days/{site_id}/conditions")
+async def set_site_day_conditions(
+    site_id: uuid.UUID,
+    req: SiteDayConditionsRequest,
+    report_date: datetime.date = Query(alias="date"),
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Weather, hours lost, site working (full/half/none) and tomorrow's
+    plan for one site's day. `site_working: "none"` is the "no work today"
+    button: the day becomes ready with nothing required."""
+    repo = PostgresDprRepository(conn)
+    site = await repo.find_site(organization_id=auth_context.organization_id, site_id=site_id)
+    if site is None or site["project_id"] is None:
+        raise HTTPException(status_code=404, detail="Site not found")
+    _, denied = _resolve_project_ids(auth_context, site["project_id"])
+    if denied:
+        raise HTTPException(status_code=404, detail="Site not found")
+
+    changes = req.model_dump(exclude_unset=True)
+    if isinstance(changes.get("tomorrow_plan"), str):
+        changes["tomorrow_plan"] = changes["tomorrow_plan"].strip() or None
+    try:
+        result = await repo.set_site_day_conditions(
+            organization_id=auth_context.organization_id,
+            project_id=site["project_id"],
+            site_id=site_id,
+            report_date=report_date,
+            changes=changes,
+        )
+    except InvalidSiteDayTransition as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {**result, "daily_report_id": str(result["daily_report_id"])}
 
 
 @router.get("/daily-reports/{report_id}")

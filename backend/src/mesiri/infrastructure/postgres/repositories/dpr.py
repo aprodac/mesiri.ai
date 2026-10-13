@@ -97,8 +97,8 @@ class PostgresDprRepository:
                 COALESCE(u.name, 'Site Lead') AS prepared_by_name,
                 'Site Engineer' AS prepared_by_role,
                 LOWER(dr.status::text) AS workflow_status,
-                'sunny' AS weather,
-                32 AS temperature_celsius,
+                COALESCE(dr.weather, 'not_set') AS weather,
+                NULL::int AS temperature_celsius,
                 'day' AS shift,
                 0 AS activities_count,
                 0 AS labour_count,
@@ -130,8 +130,8 @@ class PostgresDprRepository:
                 'Site Engineer' AS prepared_by_name,
                 'Site Lead' AS prepared_by_role,
                 LOWER(dr.status::text) AS workflow_status,
-                'sunny' AS weather,
-                32 AS temperature_celsius,
+                COALESCE(dr.weather, 'not_set') AS weather,
+                NULL::int AS temperature_celsius,
                 'day' AS shift,
                 0 AS activities_count,
                 0 AS labour_count,
@@ -474,9 +474,29 @@ class PostgresDprRepository:
             )
         ).mappings().all()
 
+        conditions_row = (
+            await self._conn.execute(
+                text(
+                    """
+                    SELECT weather, hours_lost, site_working, tomorrow_plan
+                    FROM daily_reports
+                    WHERE organization_id = :org_id AND project_id = :project_id
+                      AND site_id = :site_id AND report_date = :report_date AND level = 'SITE'
+                    """
+                ),
+                {
+                    "org_id": organization_id,
+                    "project_id": project_id,
+                    "site_id": site_id,
+                    "report_date": report_date,
+                },
+            )
+        ).mappings().first()
+
         from mesiri.application.dpr.assembly import build_site_report_payload
 
         return build_site_report_payload(
+            conditions=dict(conditions_row) if conditions_row else None,
             project_name=header["project_name"] if header else None,
             site_name=header["site_name"] if header else None,
             report_date=report_date,
@@ -913,6 +933,100 @@ class PostgresDprRepository:
             )
             labelled += 1
         return labelled
+
+    async def set_site_day_conditions(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        project_id: uuid.UUID,
+        site_id: uuid.UUID,
+        report_date: datetime.date,
+        changes: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Set some of the site day's conditions (BE-14); fields not in
+        `changes` are left as they are, a None value clears one. Creates the
+        day if nothing was logged yet -- "no work today" is usually said
+        about exactly such a day.
+
+        Refuses a confirmed day (ValueError): its conditions are part of the
+        frozen version; a correction goes through a revision. After the
+        change the day's readiness is re-checked, so marking "no work"
+        makes it ready straight away, even before the cutoff."""
+        site_day.validate_conditions(changes)
+        allowed = {"weather", "hours_lost", "site_working", "tomorrow_plan"}
+        changes = {k: v for k, v in changes.items() if k in allowed}
+
+        daily_report_id = await self.get_or_create_daily_report(
+            organization_id=organization_id,
+            project_id=project_id,
+            site_id=site_id,
+            report_date=report_date,
+        )
+        row = (
+            await self._conn.execute(
+                text("SELECT status::text AS status FROM daily_reports WHERE id = :id"),
+                {"id": daily_report_id},
+            )
+        ).mappings().first()
+        status = row["status"] if row else site_day.DRAFT
+        if status in site_day.FROZEN:
+            raise site_day.InvalidSiteDayTransition(
+                f"this day is already {status}; revise it to change its conditions"
+            )
+
+        if changes:
+            assignments = ", ".join(f"{key} = :{key}" for key in changes)
+            await self._conn.execute(
+                text(f"UPDATE daily_reports SET {assignments}, updated_at = now() WHERE id = :id"),
+                {**changes, "id": daily_report_id},
+            )
+
+        payload = await self.assemble_site_report_payload(
+            organization_id=organization_id,
+            project_id=project_id,
+            site_id=site_id,
+            report_date=report_date,
+        )
+        new_status = site_day.status_after_refresh(
+            status,
+            payload,
+            evaluate_readiness=(payload.get("conditions") or {}).get("site_working")
+            == site_day.SITE_WORKING_NONE,
+        )
+        missing = (
+            site_day.missing_sections(payload)
+            if new_status in (site_day.NEEDS_DETAILS, site_day.READY)
+            else None
+        )
+        if new_status != status or missing is not None:
+            await self._conn.execute(
+                text(
+                    "UPDATE daily_reports SET status = CAST(:status AS daily_report_status), "
+                    "missing_sections = CAST(:missing AS JSONB), updated_at = now() WHERE id = :id"
+                ),
+                {
+                    "id": daily_report_id,
+                    "status": new_status,
+                    "missing": json.dumps(missing) if missing is not None else None,
+                },
+            )
+        return {
+            "daily_report_id": daily_report_id,
+            "status": new_status.lower(),
+            "conditions": payload.get("conditions") or {},
+            "missing_sections": missing,
+        }
+
+    async def find_site(
+        self, *, organization_id: uuid.UUID, site_id: uuid.UUID
+    ) -> dict[str, Any] | None:
+        row = (
+            await self._conn.execute(
+                text("SELECT id, project_id FROM sites WHERE organization_id = :org_id AND id = :id"),
+                {"org_id": organization_id, "id": site_id},
+            )
+        ).mappings().first()
+        return dict(row) if row else None
 
     async def list_site_days(
         self,

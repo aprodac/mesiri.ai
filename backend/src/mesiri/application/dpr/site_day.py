@@ -63,12 +63,38 @@ def check_transition(current: str, target: str) -> None:
         raise InvalidSiteDayTransition(f"a site day cannot move from {current} to {target}")
 
 
+# Site conditions (BE-14). Weather words match the dashboard's existing set.
+WEATHER_VALUES = frozenset({"sunny", "cloudy", "rainy", "windy", "extreme_heat"})
+SITE_WORKING_FULL = "full"
+SITE_WORKING_HALF = "half"
+SITE_WORKING_NONE = "none"
+SITE_WORKING_VALUES = frozenset({SITE_WORKING_FULL, SITE_WORKING_HALF, SITE_WORKING_NONE})
+MAX_HOURS_LOST = 24
+
+
+def validate_conditions(changes: dict[str, Any]) -> None:
+    """Raises ValueError naming the first bad field. `None` clears a field."""
+    weather = changes.get("weather")
+    if weather is not None and weather not in WEATHER_VALUES:
+        raise ValueError(f"weather must be one of {sorted(WEATHER_VALUES)}")
+    working = changes.get("site_working")
+    if working is not None and working not in SITE_WORKING_VALUES:
+        raise ValueError(f"site_working must be one of {sorted(SITE_WORKING_VALUES)}")
+    hours = changes.get("hours_lost")
+    if hours is not None and not 0 <= float(hours) <= MAX_HOURS_LOST:
+        raise ValueError(f"hours_lost must be between 0 and {MAX_HOURS_LOST}")
+
+
 # Readiness rule (approved 13 Oct 2026): a day is ready to send to the
 # engineer when it has at least one work item AND a labour count. Photos,
-# materials and issues are listed when absent but never block -- a day with
-# no deliveries or no problems is a normal day.
+# materials, weather and tomorrow's plan are listed when absent but never
+# block -- a day with no deliveries is a normal day. A day marked "no work"
+# (BE-14) is ready with nothing required: there is nothing to report.
 def missing_sections(payload: dict[str, Any] | None) -> dict[str, list[str]]:
     payload = payload or {}
+    conditions = payload.get("conditions") or {}
+    if conditions.get("site_working") == SITE_WORKING_NONE:
+        return {"blocking": [], "optional": []}
     blocking: list[str] = []
     optional: list[str] = []
     if not payload.get("activity_count"):
@@ -79,6 +105,10 @@ def missing_sections(payload: dict[str, Any] | None) -> dict[str, list[str]]:
         optional.append("photos")
     if not payload.get("materials"):
         optional.append("materials")
+    if not conditions.get("weather"):
+        optional.append("weather")
+    if not conditions.get("tomorrow_plan"):
+        optional.append("tomorrow_plan")
     return {"blocking": blocking, "optional": optional}
 
 

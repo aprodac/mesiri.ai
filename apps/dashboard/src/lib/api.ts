@@ -1565,8 +1565,8 @@ export interface DailyReportSummary {
   site_name: string
   prepared_by_name: string
   prepared_by_role?: string
-  weather: 'sunny' | 'rainy' | 'cloudy' | 'extreme_heat' | 'windy'
-  temperature_celsius?: number
+  weather: 'sunny' | 'rainy' | 'cloudy' | 'extreme_heat' | 'windy' | 'not_set'
+  temperature_celsius?: number | null
   shift: 'day' | 'night' | 'full_day'
   workflow_status: 'draft' | 'needs_details' | 'ready' | 'in_review' | 'approved' | 'published' | 'not_reported'
   activities_count: number

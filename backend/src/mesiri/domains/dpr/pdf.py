@@ -30,6 +30,24 @@ def _truncate(text: str | None, max_len: int) -> str:
     return text if len(text) <= max_len else text[: max_len - 1] + '...'
 
 
+_WEATHER_LABELS = {
+    "sunny": "Sunny",
+    "cloudy": "Cloudy",
+    "rainy": "Rain",
+    "windy": "Windy",
+    "extreme_heat": "Extreme heat",
+}
+_SITE_WORKING_LABELS = {"full": "Full day", "half": "Half day", "none": "No work"}
+
+
+def _conditions_line(conditions: dict) -> str:
+    weather = _WEATHER_LABELS.get(conditions.get("weather") or "", "Not set")
+    working = _SITE_WORKING_LABELS.get(conditions.get("site_working") or "", "Not set")
+    hours = conditions.get("hours_lost")
+    lost = f"{hours} h" if hours is not None else "-"
+    return f"Weather: {weather}  |  Site working: {working}  |  Hours lost: {lost}"
+
+
 def render_dpr_pdf_bytes(
     *,
     code: str | None,
@@ -63,10 +81,14 @@ def render_dpr_pdf_bytes(
     location = " / ".join(part for part in [project_name, site_name] if part)
     if location:
         pdf.cell(0, 6, location, new_x="LMARGIN", new_y="NEXT")
+    is_project = payload.get("level") == "PROJECT"
+
+    # Site conditions (BE-14) -- one line under the header, site level only.
+    conditions = payload.get("conditions") or {}
+    if not is_project and conditions:
+        pdf.cell(0, 6, _conditions_line(conditions), new_x="LMARGIN", new_y="NEXT")
     pdf.set_text_color(0, 0, 0)
     pdf.ln(4)
-
-    is_project = payload.get("level") == "PROJECT"
 
     # Meta tiles
     activities = payload.get("activities") or []
@@ -253,6 +275,13 @@ def render_dpr_pdf_bytes(
         for value, width in zip(row, material_col_widths, strict=False):
             pdf.cell(width, 7, value, border=1)
         pdf.ln()
+
+    if not is_project and conditions.get("tomorrow_plan"):
+        pdf.ln(4)
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 8, "Tomorrow's Plan", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 9)
+        pdf.multi_cell(0, 5, _truncate(conditions["tomorrow_plan"], 600), new_x="LMARGIN", new_y="NEXT")
 
     # Footer -- auto_page_break must be off here: moving to within 20mm of
     # the bottom margin with it still on triggers fpdf2 to start a fresh

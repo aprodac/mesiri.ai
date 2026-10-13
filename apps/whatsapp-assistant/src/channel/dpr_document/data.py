@@ -73,6 +73,21 @@ class DprDocumentData:
     sites: list[DprSiteRow] = field(default_factory=list)
     reported_site_count: int = 0
     total_site_count: int = 0
+    # Site conditions (BE-14); "Not set" when the engineer gave none.
+    weather: str = "Not set"
+    site_working: str = "Not set"
+    hours_lost: str = "—"
+    tomorrow_plan: str = ""
+
+
+_WEATHER_LABELS = {
+    "sunny": "Sunny",
+    "cloudy": "Cloudy",
+    "rainy": "Rain",
+    "windy": "Windy",
+    "extreme_heat": "Extreme heat",
+}
+_SITE_WORKING_LABELS = {"full": "Full day", "half": "Half day", "none": "No work"}
 
 
 def _pretty(label: object) -> str:
@@ -141,7 +156,13 @@ def build_document_data(*, code: str, payload: dict[str, Any]) -> DprDocumentDat
         )
         for s in payload.get("sites", [])
     ]
+    conditions = payload.get("conditions") or {}
+    hours_lost = conditions.get("hours_lost")
     return DprDocumentData(
+        weather=_WEATHER_LABELS.get(conditions.get("weather") or "", "Not set"),
+        site_working=_SITE_WORKING_LABELS.get(conditions.get("site_working") or "", "Not set"),
+        hours_lost=f"{hours_lost} h" if hours_lost is not None else "—",
+        tomorrow_plan=conditions.get("tomorrow_plan") or "",
         code=code,
         project_name=payload.get("project_name") or "—",
         site_name=payload.get("site_name") or "—",

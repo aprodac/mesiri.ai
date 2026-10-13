@@ -99,10 +99,14 @@ def build_site_report_payload(
     issue_rows: list[dict[str, Any]],
     labour_lines: list[dict[str, Any]] | None = None,
     material_movement_rows: list[dict[str, Any]] | None = None,
+    conditions: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compose the payload dict. `activity_rows`/`issue_rows`/`labour_lines`/
     `material_movement_rows` are already scoped to the one site+date by the
-    caller's query -- this function does no filtering, only shaping."""
+    caller's query -- this function does no filtering, only shaping.
+
+    `conditions` is the site day's own weather / hours lost / site working /
+    tomorrow's plan (BE-14), copied in so a confirmed version keeps them."""
     activities = [
         {
             "work_type": row.get("work_type"),
@@ -136,6 +140,26 @@ def build_site_report_payload(
         "evidence_count": sum(a["evidence_count"] for a in activities),
         "labour": _labour_summary(labour_lines or []),
         "materials": _material_summary(material_movement_rows or []),
+        "conditions": _conditions(conditions or {}, issues),
+    }
+
+
+def _conditions(conditions: dict[str, Any], issues: list[dict[str, Any]]) -> dict[str, Any]:
+    """The site day's conditions. Hours lost the engineer entered win; when
+    nobody entered a figure it is the day's issue delays added up, marked
+    `hours_lost_source: "issues"` so the report can say where it came from."""
+    hours_lost = conditions.get("hours_lost")
+    source = "entered"
+    if hours_lost is None:
+        minutes = sum(int(i.get("delay_duration_minutes") or 0) for i in issues)
+        hours_lost = round(minutes / 60, 1) if minutes else None
+        source = "issues" if minutes else None
+    return {
+        "weather": conditions.get("weather"),
+        "site_working": conditions.get("site_working"),
+        "tomorrow_plan": conditions.get("tomorrow_plan"),
+        "hours_lost": str(hours_lost) if hours_lost is not None else None,
+        "hours_lost_source": source,
     }
 
 

@@ -242,3 +242,35 @@ def test_render_html_lists_each_activity_and_issue():
     assert "XYZ Co" in html
     assert "heavy rain" in html
     assert "severity-high" in html
+
+
+def test_site_conditions_are_shown_and_tomorrows_plan_is_escaped():
+    """BE-14: weather / site working / hours lost / tomorrow's plan. The plan
+    is free text typed by a person, so it must not reach the renderer as HTML."""
+    data = build_document_data(
+        code="DPR-1",
+        payload={
+            "level": "SITE",
+            "conditions": {
+                "weather": "rainy",
+                "site_working": "half",
+                "hours_lost": "2.0",
+                "tomorrow_plan": "<b>Rebar</b>",
+            },
+        },
+    )
+    assert (data.weather, data.site_working, data.hours_lost) == ("Rain", "Half day", "2.0 h")
+
+    html = render_html(data)
+    assert "Tomorrow&#39;s Plan" in html or "Tomorrow's Plan" in html
+    assert "&lt;b&gt;Rebar&lt;/b&gt;" in html
+
+
+def test_conditions_default_to_not_set():
+    data = build_document_data(code="DPR-1", payload={"level": "SITE"})
+    assert (data.weather, data.site_working, data.hours_lost, data.tomorrow_plan) == (
+        "Not set",
+        "Not set",
+        "—",
+        "",
+    )

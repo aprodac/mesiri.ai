@@ -28,6 +28,7 @@ COMPLETE = {
     "labour": {"headcount": 14},
     "evidence_count": 3,
     "materials": [{"material_name": "Cement"}],
+    "conditions": {"weather": "sunny", "tomorrow_plan": "Floor 4 shuttering"},
 }
 
 
@@ -55,14 +56,51 @@ def test_a_day_without_work_items_needs_details():
 def test_an_empty_day_is_missing_everything():
     assert site_day.missing_sections(None) == {
         "blocking": ["work_done", "labour"],
-        "optional": ["photos", "materials"],
+        "optional": ["photos", "materials", "weather", "tomorrow_plan"],
     }
 
 
-def test_missing_photos_and_materials_never_block():
+def test_missing_photos_materials_weather_and_plan_never_block():
     payload = {"activity_count": 1, "labour": {"headcount": 5}}
     assert site_day.readiness_status(payload) == READY
-    assert site_day.missing_sections(payload)["optional"] == ["photos", "materials"]
+    assert site_day.missing_sections(payload)["optional"] == [
+        "photos",
+        "materials",
+        "weather",
+        "tomorrow_plan",
+    ]
+
+
+def test_a_no_work_day_is_ready_with_nothing_required():
+    payload = {"conditions": {"site_working": "none"}}
+    assert site_day.readiness_status(payload) == READY
+    assert site_day.missing_sections(payload) == {"blocking": [], "optional": []}
+
+
+def test_a_half_day_still_needs_work_and_labour():
+    payload = {"conditions": {"site_working": "half"}}
+    assert site_day.missing_sections(payload)["blocking"] == ["work_done", "labour"]
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"weather": "foggy"},
+        {"site_working": "maybe"},
+        {"hours_lost": -1},
+        {"hours_lost": 25},
+    ],
+)
+def test_bad_conditions_are_refused(changes):
+    with pytest.raises(ValueError):
+        site_day.validate_conditions(changes)
+
+
+def test_good_conditions_and_clearing_are_accepted():
+    site_day.validate_conditions(
+        {"weather": "rainy", "site_working": "half", "hours_lost": 2.5, "tomorrow_plan": "x"}
+    )
+    site_day.validate_conditions({"weather": None, "hours_lost": None})
 
 
 # ---------------------------------------------------------------------------
@@ -322,3 +360,152 @@ async def test_open_site_days_leaves_drafted_and_reviewed_days_alone(monkeypatch
 
     assert labelled == 0
     assert conn.updates_to_daily_reports() == []
+
+
+# ---------------------------------------------------------------------------
+# BE-14: site conditions
+# ---------------------------------------------------------------------------
+
+
+def test_payload_carries_the_days_conditions():
+    from mesiri.application.dpr.assembly import build_site_report_payload
+
+    payload = build_site_report_payload(
+        project_name="P",
+        site_name="S",
+        report_date=datetime.date(2026, 10, 13),
+        activity_rows=[],
+        quantities_by_activity={},
+        evidence_count_by_activity={},
+        issue_rows=[],
+        conditions={"weather": "rainy", "hours_lost": 3, "site_working": "half", "tomorrow_plan": "Rebar"},
+    )
+
+    assert payload["conditions"] == {
+        "weather": "rainy",
+        "site_working": "half",
+        "tomorrow_plan": "Rebar",
+        "hours_lost": "3",
+        "hours_lost_source": "entered",
+    }
+
+
+def test_hours_lost_defaults_to_the_days_issue_delays():
+    from mesiri.application.dpr.assembly import build_site_report_payload
+
+    payload = build_site_report_payload(
+        project_name="P",
+        site_name="S",
+        report_date=datetime.date(2026, 10, 13),
+        activity_rows=[],
+        quantities_by_activity={},
+        evidence_count_by_activity={},
+        issue_rows=[
+            {"issue_type": "WEATHER", "status": "OPEN", "delay_duration_minutes": 90},
+            {"issue_type": "ACCESS", "status": "RESOLVED", "delay_duration_minutes": 30},
+        ],
+    )
+
+    assert payload["conditions"]["hours_lost"] == "2.0"
+    assert payload["conditions"]["hours_lost_source"] == "issues"
+
+
+def test_no_conditions_and_no_delays_leave_everything_unset():
+    from mesiri.application.dpr.assembly import build_site_report_payload
+
+    payload = build_site_report_payload(
+        project_name="P",
+        site_name="S",
+        report_date=datetime.date(2026, 10, 13),
+        activity_rows=[],
+        quantities_by_activity={},
+        evidence_count_by_activity={},
+        issue_rows=[],
+    )
+
+    assert payload["conditions"]["hours_lost"] is None
+    assert payload["conditions"]["weather"] is None
+
+
+def _conditions_repo(monkeypatch, *, status: str, payload: dict):
+    conn = _Conn({"SELECT status::text AS status FROM daily_reports": _Result([{"status": status}])})
+    repo = PostgresDprRepository(conn)
+
+    async def _day(**_):
+        return uuid.uuid4()
+
+    async def _payload(**_):
+        return payload
+
+    monkeypatch.setattr(repo, "get_or_create_daily_report", _day)
+    monkeypatch.setattr(repo, "assemble_site_report_payload", _payload)
+    return conn, repo
+
+
+async def _set(repo, changes):
+    return await repo.set_site_day_conditions(
+        organization_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        site_id=uuid.uuid4(),
+        report_date=datetime.date(2026, 10, 13),
+        changes=changes,
+    )
+
+
+async def test_marking_no_work_makes_a_collecting_day_ready_straight_away(monkeypatch):
+    conn, repo = _conditions_repo(
+        monkeypatch, status=DRAFT, payload={"conditions": {"site_working": "none"}}
+    )
+
+    result = await _set(repo, {"site_working": "none"})
+
+    assert result["status"] == "ready"
+    updates = conn.updates_to_daily_reports()
+    assert updates[0] == {"site_working": "none", "id": updates[0]["id"]}
+    assert updates[-1]["status"] == READY
+
+
+async def test_setting_weather_before_cutoff_keeps_the_day_collecting(monkeypatch):
+    conn, repo = _conditions_repo(
+        monkeypatch, status=DRAFT, payload={"conditions": {"weather": "sunny"}}
+    )
+
+    result = await _set(repo, {"weather": "sunny"})
+
+    assert result["status"] == "draft"
+    assert len(conn.updates_to_daily_reports()) == 1  # the weather, no status change
+
+
+async def test_conditions_of_a_confirmed_day_cannot_change(monkeypatch):
+    conn, repo = _conditions_repo(monkeypatch, status=APPROVED, payload={})
+
+    with pytest.raises(InvalidSiteDayTransition):
+        await _set(repo, {"weather": "sunny"})
+    assert conn.updates_to_daily_reports() == []
+
+
+async def test_only_known_condition_fields_are_written(monkeypatch):
+    conn, repo = _conditions_repo(monkeypatch, status=DRAFT, payload={"conditions": {}})
+
+    await _set(repo, {"weather": "cloudy", "status": "APPROVED"})
+
+    [update] = conn.updates_to_daily_reports()
+    assert set(update) == {"weather", "id"}
+
+
+def test_plain_pdf_shows_conditions_and_tomorrows_plan():
+    from mesiri.domains.dpr.pdf import _conditions_line, render_dpr_pdf_bytes
+
+    assert _conditions_line({"weather": "rainy", "site_working": "half", "hours_lost": "2.0"}) == (
+        "Weather: Rain  |  Site working: Half day  |  Hours lost: 2.0 h"
+    )
+    assert _conditions_line({}) == "Weather: Not set  |  Site working: Not set  |  Hours lost: -"
+    pdf = render_dpr_pdf_bytes(
+        code="DPR-1",
+        report_date="2026-10-13",
+        project_name="P",
+        site_name="S",
+        workflow_status="draft",
+        payload={"level": "SITE", "conditions": {"weather": "sunny", "tomorrow_plan": "Rebar"}},
+    )
+    assert pdf.startswith(b"%PDF")

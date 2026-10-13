@@ -71,7 +71,7 @@ import { exportCsv, downloadBlob } from '@/lib/export'
 
 // ─── Weather Badge ────────────────────────────────────────────────────────────
 
-function WeatherBadge({ weather, temp }: { weather: string; temp?: number }) {
+function WeatherBadge({ weather, temp }: { weather: string; temp?: number | null }) {
   switch (weather) {
     case 'sunny':
       return (
@@ -99,6 +99,12 @@ function WeatherBadge({ weather, temp }: { weather: string; temp?: number }) {
         <Badge variant="outline" className="bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30 gap-1 font-medium text-[11px]">
           <Flame className="size-3 text-rose-500" />
           Heatwave {temp ? `${temp}°C` : ''}
+        </Badge>
+      )
+    case 'not_set':
+      return (
+        <Badge variant="outline" className="bg-muted text-muted-foreground gap-1 font-medium text-[11px]">
+          Weather not set
         </Badge>
       )
     default:

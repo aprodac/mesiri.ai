@@ -1040,6 +1040,7 @@ daily_reports
   status           DRAFT | NEEDS_DETAILS | READY | IN_REVIEW | APPROVED | PUBLISHED | NOT_REPORTED
                    (NEEDS_DETAILS, READY added in 0466 -- BE-08)
   missing_sections JSONB, nullable   -- {"blocking": [...], "optional": [...]} (0466)
+  weather, hours_lost, site_working (full|half|none), tomorrow_plan   -- nullable (0468, BE-14)
   current_version_id → daily_report_versions.id, nullable
   UNIQUE (project_id, site_id, report_date, level)
 
@@ -1074,6 +1075,14 @@ At cutoff, `open_site_days` gives every active site its day, including sites
 that logged nothing (labelled, no version). Photos and materials are listed
 in `missing_sections.optional` but never block. `GET /dpr/site-days?date=`
 lists every active site's day.
+
+**Site conditions (BE-14).** `PATCH /dpr/site-days/{site_id}/conditions?date=`
+sets weather, hours lost, site working and tomorrow's plan on the day row
+(refused once confirmed). They are copied into each version's
+`payload.conditions`. Hours lost not entered = the day's issue delays added up
+(`hours_lost_source: "issues"`). `site_working = none` ("no work today") makes
+the day ready with nothing required; weather and tomorrow's plan are optional
+missing items.
 
 ---
 
