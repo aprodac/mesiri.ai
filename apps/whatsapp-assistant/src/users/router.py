@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from context.projection_hooks import project_entity
+from mesiri.domains.identity.auth_service import ALGORITHM, SECRET_KEY
 from users.access_service import AccessPolicy, apply_access_policy
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -21,8 +22,9 @@ router = APIRouter(prefix="/users", tags=["users"])
 # ---------------------------------------------------------------------------
 # Shared crypto config
 # ---------------------------------------------------------------------------
-SECRET_KEY = "mesiri-temp-secret-key-change-in-production"
-ALGORITHM = "HS256"
+# SECRET_KEY / ALGORITHM: the one shared definition (identity/auth_service).
+# A hardcoded copy here ignored MESIRI_JWT_SECRET, so setting the secret in
+# production would have locked these routes out while leaving them forgeable.
 
 
 def _hash_pw(plain: str) -> str:

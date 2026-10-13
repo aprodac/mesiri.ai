@@ -19,11 +19,13 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from context.projection_hooks import project_entity
 from mesiri.authorization.roles import is_org_wide, policy_is_org_wide, role_is_org_wide
+from mesiri.domains.identity.auth_service import ALGORITHM, SECRET_KEY
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
-SECRET_KEY = "mesiri-temp-secret-key-change-in-production"
-ALGORITHM = "HS256"
+# SECRET_KEY / ALGORITHM: the one shared definition (identity/auth_service).
+# A hardcoded copy here ignored MESIRI_JWT_SECRET, so setting the secret in
+# production would have locked these routes out while leaving them forgeable.
 
 # Roles allowed to create projects.
 _CREATE_ROLES = {"ADMIN", "PROJECT_MANAGER"}
