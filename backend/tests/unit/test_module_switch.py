@@ -179,3 +179,17 @@ async def test_company_admin_cannot_change_modules():
             body, admin={"org": str(ORG), "sub": str(uuid.uuid4())}, conn=None
         )
     assert exc.value.status_code == 403
+
+
+# --- the control panel catalogue (SA-07) ---------------------------------------
+
+
+def test_module_catalogue_matches_modules_and_flags():
+    catalogue = settings.module_catalogue()
+    assert [m["key"] for m in catalogue] == list(settings.MODULES)
+    by_key = {m["key"]: m for m in catalogue}
+    assert by_key["dpr"]["always_on"] is True
+    assert by_key["finance"]["always_on"] is False
+    assert by_key["labour"]["in_v1"] is True
+    assert by_key["finance"]["in_v1"] is False
+    assert all(m["label"] and m["description"] for m in catalogue)

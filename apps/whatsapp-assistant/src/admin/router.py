@@ -623,6 +623,8 @@ async def get_organization_settings(
             for spec in org_settings.all_specs()
         ],
         "valid_roles": sorted(VALID_ROLES),
+        # The module switches (SA-07) render from this, not a frontend copy.
+        "modules": org_settings.module_catalogue(),
     }
 
 

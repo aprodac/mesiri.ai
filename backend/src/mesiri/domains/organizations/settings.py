@@ -46,6 +46,15 @@ MODULES: dict[str, str] = {
     "automations": "User-defined scheduled messages",
 }
 
+# Short names for the control panel's module switches (SA-07).
+MODULE_LABELS: dict[str, str] = {
+    "dpr": "Daily progress (DPR)",
+    "labour": "Labour",
+    "materials": "Materials",
+    "finance": "Finance",
+    "automations": "Automations",
+}
+
 # DPR is the product: a company without it has nothing to use.
 ALWAYS_ON_MODULES: frozenset[str] = frozenset({"dpr"})
 
@@ -169,6 +178,21 @@ def validate_role_list(value: object) -> list[str]:
         if role not in roles:
             roles.append(role)
     return roles
+
+
+def module_catalogue() -> list[dict[str, object]]:
+    """Every module with what the control panel needs to render its switch,
+    in catalogue order -- so the UI never keeps its own copy of the list."""
+    return [
+        {
+            "key": key,
+            "label": MODULE_LABELS.get(key, key),
+            "description": description,
+            "always_on": key in ALWAYS_ON_MODULES,
+            "in_v1": key in V1_MODULES,
+        }
+        for key, description in MODULES.items()
+    ]
 
 
 def validate_module_list(value: object) -> list[str]:

@@ -47,11 +47,23 @@ interface SettingSpec {
   default: unknown;
 }
 
+interface ModuleSpec {
+  key: string;
+  label: string;
+  description: string;
+  always_on: boolean;
+  in_v1: boolean;
+}
+
 interface OrgSettingsPayload {
   settings: Record<string, unknown>;
   specs: SettingSpec[];
   valid_roles: string[];
+  // Absent from a backend older than SA-07; the Modules card is then hidden.
+  modules?: ModuleSpec[];
 }
+
+const ENABLED_MODULES_KEY = 'enabled_modules';
 
 // Keys the settings tab renders as a role checkbox group. Anything else the
 // backend reports in `specs` is shown read-only rather than guessed at, so a
@@ -201,6 +213,46 @@ export default function OrganizationDetail() {
         setSettingsError(err.response?.data?.detail || 'Failed to save setting');
         setOrgSettings((prev) =>
           prev ? { ...prev, settings: { ...prev.settings, [key]: current } } : prev
+        );
+      })
+      .finally(() => setSavingSetting(null));
+  };
+
+  const handleToggleModule = (moduleKey: string, enabled: boolean) => {
+    if (!id || !orgSettings) return;
+    const stored = orgSettings.settings[ENABLED_MODULES_KEY];
+    const current = Array.isArray(stored) ? (stored as string[]) : [];
+    const next = enabled
+      ? [...current, moduleKey]
+      : current.filter((m) => m !== moduleKey);
+
+    // Same optimistic save-and-revert as the role checkboxes above. The
+    // backend returns the canonical list (catalogue order, always-on modules
+    // included), so the switch state is replaced with what was actually saved.
+    setOrgSettings({
+      ...orgSettings,
+      settings: { ...orgSettings.settings, [ENABLED_MODULES_KEY]: next },
+    });
+    setSavingSetting(ENABLED_MODULES_KEY);
+    setSettingsError(null);
+    api
+      .put<{ key: string; value: string[] }>(`/admin/organizations/${id}/settings`, {
+        key: ENABLED_MODULES_KEY,
+        value: next,
+      })
+      .then((res) =>
+        setOrgSettings((prev) =>
+          prev
+            ? { ...prev, settings: { ...prev.settings, [ENABLED_MODULES_KEY]: res.data.value } }
+            : prev
+        )
+      )
+      .catch((err) => {
+        setSettingsError(err.response?.data?.detail || 'Failed to save modules');
+        setOrgSettings((prev) =>
+          prev
+            ? { ...prev, settings: { ...prev.settings, [ENABLED_MODULES_KEY]: current } }
+            : prev
         );
       })
       .finally(() => setSavingSetting(null));
@@ -505,12 +557,114 @@ export default function OrganizationDetail() {
               {settingsError}
             </div>
           )}
+          {orgSettings?.modules && orgSettings.modules.length > 0 && (
+            <section
+              aria-labelledby="modules-heading"
+              style={{
+                border: '1px solid var(--border-strong)',
+                borderRadius: 'var(--radius)',
+                padding: 'var(--space-4)',
+                marginBottom: 'var(--space-4)',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'baseline',
+                  gap: 'var(--space-3)',
+                  flexWrap: 'wrap',
+                  marginBottom: '4px',
+                }}
+              >
+                <h3 id="modules-heading" style={{ margin: 0, fontSize: '15px', fontWeight: 600 }}>
+                  Modules
+                </h3>
+                <span style={{ fontSize: '12px', color: 'var(--neutral-500)' }}>
+                  Changes apply immediately
+                </span>
+              </div>
+              <p
+                style={{
+                  margin: '0 0 var(--space-3)',
+                  fontSize: '13px',
+                  color: 'var(--neutral-500)',
+                }}
+              >
+                What this company can use. A switched-off module's dashboard pages and WhatsApp
+                flows stop working for this company.
+              </p>
+              {orgSettings.modules.map((mod) => {
+                const stored = orgSettings.settings[ENABLED_MODULES_KEY];
+                const enabledList = Array.isArray(stored) ? (stored as string[]) : [];
+                const isOn = mod.always_on || enabledList.includes(mod.key);
+                const busy = savingSetting === ENABLED_MODULES_KEY;
+                const inputId = `module-${mod.key}`;
+                return (
+                  <div
+                    key={mod.key}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-3)',
+                      padding: '10px 0',
+                      borderTop: '1px solid var(--neutral-200)',
+                    }}
+                  >
+                    <input
+                      id={inputId}
+                      type="checkbox"
+                      role="switch"
+                      aria-checked={isOn}
+                      checked={isOn}
+                      disabled={mod.always_on || busy}
+                      onChange={(e) => handleToggleModule(mod.key, e.target.checked)}
+                      style={{
+                        width: '18px',
+                        height: '18px',
+                        cursor: mod.always_on ? 'not-allowed' : busy ? 'wait' : 'pointer',
+                        accentColor: 'var(--primary)',
+                      }}
+                    />
+                    <label htmlFor={inputId} style={{ flex: 1, minWidth: 0, cursor: 'inherit' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '14px', fontWeight: 500 }}>{mod.label}</span>
+                        {mod.always_on && <span className="badge badge-info">Always on</span>}
+                        {mod.in_v1 && !mod.always_on && (
+                          <span className="badge badge-success">V1</span>
+                        )}
+                      </span>
+                      <span
+                        style={{ display: 'block', fontSize: '13px', color: 'var(--neutral-500)' }}
+                      >
+                        {mod.description}
+                      </span>
+                    </label>
+                    <span
+                      style={{
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: isOn ? 'var(--success)' : 'var(--neutral-500)',
+                        minWidth: '28px',
+                        textAlign: 'right',
+                      }}
+                    >
+                      {isOn ? 'On' : 'Off'}
+                    </span>
+                  </div>
+                );
+              })}
+            </section>
+          )}
+
           {!orgSettings || orgSettings.specs.length === 0 ? (
             <p style={{ color: 'var(--neutral-500)', fontSize: '14px' }}>
               No configurable settings for this organization.
             </p>
           ) : (
-            orgSettings.specs.map((spec) => {
+            orgSettings.specs
+              .filter((spec) => !(orgSettings.modules && spec.key === ENABLED_MODULES_KEY))
+              .map((spec) => {
               const value = orgSettings.settings[spec.key];
               const selected = Array.isArray(value) ? (value as string[]) : [];
               return (
