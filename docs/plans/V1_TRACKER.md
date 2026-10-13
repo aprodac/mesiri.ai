@@ -85,9 +85,9 @@
 | BE-11 | Duplicate detection: repeated work items (Must), re-used photos across days (Later) | M | Must | BE-09 | todo | | |
 | BE-12 | Materials: one-time opening stock, approved stock adjustments, flag (not block) usage beyond known stock | M | Must | BE-09 | todo | | Transfers are BE-32 |
 | BE-13 | Late entry for an approved day creates a flagged revision; next day's opening shows the adjustment | M | Must | BE-08 | todo | | Keeps frozen DPRs frozen. "Approved" = confirmed by the engineer |
-| BE-14 | Tomorrow's plan, weather (manual), hours lost, site working yes/half/no | S | Must | BE-08 | todo | | |
+| BE-14 | Tomorrow's plan, weather (manual), hours lost, site working yes/half/no | S | Must | BE-08 | claimed | Claude (session 13 Oct, BE-08) | |
 | BE-15 | Report recipients (users and outside contacts) with opt-in records | S | Must | — | todo | | Meta requires opt-in |
-| BE-16 | Project DPR roll-up from approved site DPRs, send deadline, "Not reported" sites | M | Must | BE-08 | todo | | Single-site projects: site DPR is the project DPR. Rolls up engineer-confirmed site DPRs |
+| BE-16 | Project DPR roll-up from approved site DPRs, send deadline, "Not reported" sites | M | Must | BE-08 | claimed | Claude (session 13 Oct, BE-08) | Single-site projects: site DPR is the project DPR. Rolls up engineer-confirmed site DPRs |
 | BE-17 | Fix labour events being dropped from `timeline_entries` | S | Must | — | todo | | DAILY_REPORTING_PLAN Phase 6.0 |
 | BE-18 | AI summary generated only from confirmed facts | S | Must | BE-09 | todo | | |
 | BE-19 | DPR PDF with the customer's letterhead (logo, colour, address, GSTIN, signatory) + "Generated with Mesiri" footer | M | Must | BE-20 | todo | | Client logo on project DPRs: yes (BE-33). Signature/stamp image: not in V1 (decided 13 Oct) |
@@ -136,7 +136,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | WEB-01 | New look and shell (IBM Plex Sans, colour tokens, 6-item sidebar) per the UI design | M | Must | — | done | Claude (session 13 Oct, foundations) | `c0e1fce`. IBM Plex Sans; tokens + dark mode; sidebar V1 order with More; fixed the never-rendering active highlight. Existing pages keep hardcoded status colours |
 | WEB-02 | Hide non-V1 modules using the module switch | S | Must | BE-06 | done | Claude (session 13 Oct, foundations) | `1129cfc` (with WA-07 + default flip). Sidebar filtered, 32 module routes guarded, project page finance button hidden |
-| WEB-03 | Today page, grouped by project | M | Must | BE-08 | todo | | |
+| WEB-03 | Today page, grouped by project | M | Must | BE-08 | claimed | Claude (session 13 Oct, BE-08) | |
 | WEB-04 | Site DPR page: sections, confirm/edit/remove drafts, sources panel, approve & send, versions | L | Must | BE-09 | todo | | "Approve & send" = the engineer's confirm (decided 13 Oct) |
 | WEB-05 | Project DPR page | M | Must | BE-16 | todo | | |
 | WEB-06 | Daily Reports history (rework existing page) | M | Must | BE-08 | todo | | |
