@@ -57,6 +57,7 @@
 | INF-06 | Nightly database backup copied off the VPS (object storage) | S | Must | INF-04 | todo | | |
 | INF-07 | Error alerting (Sentry or similar) for API, worker, dashboard | S | Later | — | todo | | Ilan: do this last |
 | INF-08 | Uptime monitor | S | Later | — | todo | | |
+| INF-09 | **Production photo storage is the FAKE adapter**: `/health` reports `media_storage: fake`, so every WhatsApp photo is kept in memory and lost on restart. Set `MESIRI_OBJECT_STORAGE__PROVIDER=r2` + endpoint/credentials in `/opt/mesiri/.env` | S | Must | — | todo | | Found 13 Oct via `/health`; startup log says the same. Needs VPS access + R2 credentials (Ilan). DPR photos depend on it |
 
 ## BE — Backend
 
@@ -69,7 +70,7 @@
 | BE-03 | Database-level tenant isolation (Postgres row-level security on `organization_id`) | L | Must | BE-01 | todo | | |
 | BE-04 | Phone rules: one person in several companies; never file across companies by guess | M | Must | BE-01 | todo | | Loophole #1 |
 | BE-05 | Audit log of superadmin actions (who created/changed/suspended what) | S | Must | — | todo | | |
-| BE-06 | Module on/off switch per company (`enabled_modules`), enforced by the API | S | Must | — | done | Claude (session 13 Oct, foundations) | `faffdef`. Default is still every module on; flip `DEFAULT_ENABLED_MODULES` to `V1_MODULES` in the same release as WEB-02 + WA-07 |
+| BE-06 | Module on/off switch per company (`enabled_modules`), enforced by the API | S | Must | — | done | Claude (session 13 Oct, foundations) | `faffdef`, fix `595a162` (gate turned route 401s into 500s, ~15 min in prod), deploy health-check fix `7fa35c9`. Default is still every module on; flip `DEFAULT_ENABLED_MODULES` to `V1_MODULES` in the same release as WEB-02 + WA-07 |
 | BE-07 | Normalise status values (`Active` vs `active`) | S | Must | — | todo | | Has locked a user out of WhatsApp before |
 
 ### DPR data
@@ -101,6 +102,7 @@
 | BE-25 | Cost tracking: every AI call (model, tokens, cost) and WhatsApp message (category, cost), per company | M | Must | — | todo | | Extend `provider_executions` |
 | BE-26 | Messages API for superadmin (per company, user, site; linked to what each message created) | S | Must | BE-09 | todo | | |
 | BE-27 | Health numbers API (DPRs sent vs expected, gap-check reply rate) | S | Later | BE-08 | todo | | |
+| BE-28 | `PostgresDatabase.transaction()` maps every exception raised while open (incl. a route's own `HTTPException` 401/403/404/422) to 500 "postgres unavailable"; routes using `get_db_conn` likely return 500 for ordinary client errors | S | Must | — | todo | | Found 13 Oct while fixing BE-06 (`595a162`); let `HTTPException` pass through unmapped, with a test |
 
 ## WA — WhatsApp assistant
 
@@ -157,3 +159,5 @@
 | 2026-10-13 | Removed empty stub apps and modules (pre-V1 cleanup) | `9cbf157` |
 | 2026-10-13 | INF-04 scripts (backup, smoke test), migration rule in DEPLOYMENT.md | `94f88fd` |
 | 2026-10-13 | BE-06 module switch, enforced by the API | `faffdef` |
+| 2026-10-13 | Deploy health check waits up to 60 s (healthy deploy had been rolled back) | `7fa35c9` |
+| 2026-10-13 | BE-06 fix: gate no longer turns route 401s into 500s | `595a162` |
