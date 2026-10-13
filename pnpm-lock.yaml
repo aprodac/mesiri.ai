@@ -167,10 +167,6 @@ importers:
         specifier: ^8.1.1
         version: 8.1.4(@types/node@24.13.3)
 
-  apps/desktop: {}
-
-  apps/marketing-site: {}
-
   apps/mobile:
     dependencies:
       '@babel/runtime':
