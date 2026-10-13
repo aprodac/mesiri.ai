@@ -202,3 +202,4 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | 2026-10-13 | SS-02 company lifecycle (trials) + platform settings (migration 0464) | `1c1d116` |
 | 2026-10-13 | BE-07 statuses lowercase (migration 0463); automatic DPR now finds companies | `3b5c8e1` |
 | 2026-10-13 | Security: removed unauthenticated `/auth/register` (anyone could mint a platform-admin token) | `c669783` |
+| 2026-10-13 | INF-09 local-disk media storage (off until .env switched); BE-31 shared JWT secret + startup warning | `ada65a3` |
