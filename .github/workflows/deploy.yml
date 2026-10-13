@@ -184,15 +184,18 @@ jobs:
           systemctl restart mesiri
 
           echo "→ Health check..."
+          # Up to 60 s: a cold start (bytecode cache cleared above, two uvicorn
+          # workers importing the whole app) has been measured at ~14 s, so the
+          # old 10 s window rolled back a healthy deploy on 2026-10-13.
           HEALTHY=false
-          for i in 1 2 3 4 5; do
+          for i in $(seq 1 30); do
             sleep 2
             if curl -sf http://127.0.0.1:8000/health/live > /dev/null; then
-              echo "✓ Service is healthy"
+              echo "✓ Service is healthy (after ~$((i * 2)) s)"
               HEALTHY=true
               break
             fi
-            echo "  waiting... (attempt ${i}/5)"
+            echo "  waiting... (attempt ${i}/30)"
           done
 
           echo "── Startup logs (last 60 lines) ─────────"
@@ -225,9 +228,17 @@ jobs:
             git reset --hard "${PREV_SHA}"
             ~/.local/bin/uv pip install --python ${VENV}/bin/python -e ".[infra,providers,workflow,receipt,reports]" --quiet
             systemctl restart mesiri
-            # Give the old code a moment to come back up so the VPS stays live
-            sleep 3
-            if curl -sf http://127.0.0.1:8000/health/live > /dev/null; then
+            # Same cold-start allowance as the health check above: a fixed
+            # 3 s sleep reported "rollback failed" for a rollback that worked.
+            ROLLED_BACK=false
+            for i in $(seq 1 30); do
+              sleep 2
+              if curl -sf http://127.0.0.1:8000/health/live > /dev/null; then
+                ROLLED_BACK=true
+                break
+              fi
+            done
+            if [ "${ROLLED_BACK}" = "true" ]; then
               echo "✓ Rollback succeeded — old version is live"
             else
               echo "✗ Rollback also failed — service may be down"
