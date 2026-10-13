@@ -160,18 +160,11 @@ the remote SHA, not just local tracking).
 
 ---
 
-## Linear Workflow
+## Tracking
 
-Mesiri uses Linear for project management. Whenever a task or phase completes:
-
-1. Identify the corresponding Linear issue.
-2. Update its status.
-3. Add a completion comment summarising the work.
-4. Mark it **Done by Alan**, or whatever workflow state matches the project.
-
-**Do not leave completed work untracked.** If no Linear issue exists, say so immediately and
-recommend creating one before continuing. Project tracking must stay synchronised with
-development.
+Work is tracked in [docs/plans/V1_TRACKER.md](docs/plans/V1_TRACKER.md), not Linear
+(Linear updates dropped 13 Oct 2026). Claim an item before starting and mark it done with
+the commit hash when pushed. If no item exists for the work, add one.
 
 ---
 
@@ -233,10 +226,9 @@ At the end of every phase:
 2. Commit.
 3. Push.
 4. Update documentation.
-5. Update the corresponding Linear issue.
-6. Mark it **Done by Alan** when complete.
-7. Present a summary.
-8. **Wait for Alan's approval before starting the next phase.**
+5. Update the tracker item.
+6. Present a summary.
+7. **Wait for Alan's approval before starting the next phase.**
 
 ---
 

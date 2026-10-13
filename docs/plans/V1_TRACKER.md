@@ -37,12 +37,12 @@
 
 | Decision | Blocks | Status |
 | --- | --- | --- |
-| Approve single identity model (retire the assistant's `context_*` copy) | BE-01, and everything that depends on it | **waiting on Ilan**: asked 13 Oct whether the copy is useful; explained it is in use but only as a duplicate kept in sync. Needs a final yes |
-| Who approves a site DPR: engineer only, or engineer then PM/owner | WA-06, WEB-04 | **Decided 13 Oct: no approval step in V1.** Facts are still confirmed (save first, confirm later); a DPR is final once sent. Approval can come later |
+| Approve single identity model (retire the assistant's `context_*` copy) | BE-01, and everything that depends on it | **Approved 13 Oct.** The copy is not a digital twin (M6.5 doc: twin state must use control-plane IDs); its useful fields move onto the main tables |
+| Who approves a site DPR: engineer only, or engineer then PM/owner | WA-06, WEB-04 | **Decided 13 Oct: the site engineer only.** Evening: if the site DPR is ready it is sent to the site engineer; if not, the engineer is asked for the missing details. Once the engineer confirms, it goes to the owner/PM and the other recipients. No separate owner approval |
 | Client logo on project DPRs in V1? | BE-19 | **Decided 13 Oct: yes.** Uploadable from the web dashboard and by sending it on WhatsApp (BE-33, WA-13) |
 | Signature/stamp image on approved DPRs in V1? | BE-19 | **Decided 13 Oct: no**, not in V1 |
 | Material transfers between sites in V1? | BE-12 | **Decided 13 Oct: yes** (BE-32) |
-| Photo storage: VPS disk or Cloudflare R2? | INF-09 | Asked 13 Oct whether photos can be kept on the VPS instead of R2; recommendation given, waiting on a yes |
+| Photo storage: VPS disk or Cloudflare R2? | INF-09 | **Decided 13 Oct: VPS disk.** R2 stays available as a setting for later |
 
 ---
 
@@ -58,7 +58,7 @@
 | INF-06 | Nightly database backup copied off the VPS (object storage) | S | Must | INF-04 | todo | | |
 | INF-07 | Error alerting (Sentry or similar) for API, worker, dashboard | S | Later | — | todo | | Ilan: do this last |
 | INF-08 | Uptime monitor | S | Later | — | todo | | |
-| INF-09 | **Production photo storage is the FAKE adapter**: `/health` reports `media_storage: fake`, so every WhatsApp photo is kept in memory and lost on restart. Set `MESIRI_OBJECT_STORAGE__PROVIDER=r2` + endpoint/credentials in `/opt/mesiri/.env` | S | Must | — | todo | | Found 13 Oct via `/health`; startup log says the same. Needs VPS access + R2 credentials (Ilan). DPR photos depend on it. 13 Oct: production can only run the fake adapter if `MESIRI_ENVIRONMENT` is not `production` (the settings check refuses it otherwise), so prod is probably running as a dev environment; the check script confirms. Option raised: a local-disk adapter instead of R2 |
+| INF-09 | **Production photo storage is the FAKE adapter**: `/health` reports `media_storage: fake`, so every WhatsApp photo is kept in memory and lost on restart. Set `MESIRI_OBJECT_STORAGE__PROVIDER=r2` + endpoint/credentials in `/opt/mesiri/.env` | S | Must | — | claimed | Claude (session 13 Oct, blockers) | Found 13 Oct via `/health`; startup log says the same. Needs VPS access + R2 credentials (Ilan). DPR photos depend on it. 13 Oct: production can only run the fake adapter if `MESIRI_ENVIRONMENT` is not `production` (the settings check refuses it otherwise), so prod is probably running as a dev environment; the check script confirms. Decided 13 Oct: local-disk adapter instead of R2 |
 | INF-10 | Migrate Mesiri's WhatsApp Business Account billing to INR (Meta: required by 31 Dec 2026, non-INR accounts stop delivering from 1 Jan 2027) | S | Must | — | todo | | Ops task in Meta Business Manager, not code. Found 13 Oct via Meta's pricing docs |
 
 ## BE — Backend
@@ -67,7 +67,7 @@
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| BE-01 | Single identity model: control-plane tables are the only source; move phone identities, default project/site, roles onto them; retire `context_*` copies and the reconcile watchdog | L | Must | decision | blocked | | Waiting on approval (see Decisions) |
+| BE-01 | Single identity model: control-plane tables are the only source; move phone identities, default project/site, roles onto them; retire `context_*` copies and the reconcile watchdog | L | Must | — | todo | | Approved 13 Oct. Plan needed before code |
 | BE-02 | One tenant provisioning path (remove the duplicate in `apps/whatsapp-assistant/src/admin/router.py` vs `backend/.../admin/router.py`) | S | Must | — | todo | | Will be done inside SS-03 (one create-company step) |
 | BE-03 | Database-level tenant isolation (Postgres row-level security on `organization_id`) | L | Must | BE-01 | todo | | |
 | BE-04 | Phone rules: one person in several companies; never file across companies by guess | M | Must | BE-01 | todo | | Loophole #1 |
@@ -79,15 +79,15 @@
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| BE-08 | `site_days`: one working-day record per site per date, with statuses (collecting → needs confirmation → ready → approved → sent) | M | Must | — | todo | | No approval step in V1 (decided 13 Oct): ready → sent |
+| BE-08 | `site_days`: one working-day record per site per date, with statuses (collecting → needs confirmation → ready → approved → sent) | M | Must | — | todo | | Engineer confirms, then it goes out (decided 13 Oct): collecting → needs details → ready → with engineer → confirmed → sent |
 | BE-09 | Draft/confirmed status on every fact, plus `extractions` (what the AI read, model, confidence) | M | Must | BE-08 | todo | | Save first, confirm later (decided 13 Oct) |
 | BE-10 | Labour counted as a snapshot per contractor+trade+day (latest replaces earlier) | S | Must | BE-09 | todo | | Prevents double counting |
 | BE-11 | Duplicate detection: repeated work items (Must), re-used photos across days (Later) | M | Must | BE-09 | todo | | |
 | BE-12 | Materials: one-time opening stock, approved stock adjustments, flag (not block) usage beyond known stock | M | Must | BE-09 | todo | | Transfers are BE-32 |
-| BE-13 | Late entry for an approved day creates a flagged revision; next day's opening shows the adjustment | M | Must | BE-08 | todo | | Keeps frozen DPRs frozen. No approval in V1: "approved" means sent |
+| BE-13 | Late entry for an approved day creates a flagged revision; next day's opening shows the adjustment | M | Must | BE-08 | todo | | Keeps frozen DPRs frozen. "Approved" = confirmed by the engineer |
 | BE-14 | Tomorrow's plan, weather (manual), hours lost, site working yes/half/no | S | Must | BE-08 | todo | | |
 | BE-15 | Report recipients (users and outside contacts) with opt-in records | S | Must | — | todo | | Meta requires opt-in |
-| BE-16 | Project DPR roll-up from approved site DPRs, send deadline, "Not reported" sites | M | Must | BE-08 | todo | | Single-site projects: site DPR is the project DPR. No approval in V1: roll up ready site DPRs |
+| BE-16 | Project DPR roll-up from approved site DPRs, send deadline, "Not reported" sites | M | Must | BE-08 | todo | | Single-site projects: site DPR is the project DPR. Rolls up engineer-confirmed site DPRs |
 | BE-17 | Fix labour events being dropped from `timeline_entries` | S | Must | — | todo | | DAILY_REPORTING_PLAN Phase 6.0 |
 | BE-18 | AI summary generated only from confirmed facts | S | Must | BE-09 | todo | | |
 | BE-19 | DPR PDF with the customer's letterhead (logo, colour, address, GSTIN, signatory) + "Generated with Mesiri" footer | M | Must | BE-20 | todo | | Client logo on project DPRs: yes (BE-33). Signature/stamp image: not in V1 (decided 13 Oct) |
@@ -106,7 +106,7 @@
 | BE-27 | Health numbers API (DPRs sent vs expected, gap-check reply rate) | S | Later | BE-08 | todo | | |
 | BE-28 | `PostgresDatabase.transaction()` maps every exception raised while open (incl. a route's own `HTTPException` 401/403/404/422) to 500 "postgres unavailable"; routes using `get_db_conn` likely return 500 for ordinary client errors | S | Must | — | todo | | Found 13 Oct while fixing BE-06 (`595a162`); let `HTTPException` pass through unmapped, with a test |
 | BE-30 | **Security follow-up:** check production `users` for platform-admin accounts (role `ADMIN`, no `organization_id`) not created by the team, since `/auth/register` let anyone create one until `c669783` | S | Must | — | todo | | Needs DB access. Remove or deactivate any unknown ones. Query is in `infra/deploy/vps_check.sh`. A token minted that way stays valid for 7 days without any DB row, so also change the JWT secret once (logs everyone out once) |
-| BE-31 | **Security:** JWT signing falls back to a hardcoded default (`MESIRI_JWT_SECRET` default in `apps/whatsapp-assistant/src/auth/router.py`). Confirm the secret is set in production; refuse to start in production without it | S | Must | — | todo | | If unset in prod, anyone can forge tokens. Check `/opt/mesiri/.env` first (with INF-01) |
+| BE-31 | **Security:** JWT signing falls back to a hardcoded default (`MESIRI_JWT_SECRET` default in `apps/whatsapp-assistant/src/auth/router.py`). Confirm the secret is set in production; refuse to start in production without it | S | Must | — | claimed | Claude (session 13 Oct, blockers) | If unset in prod, anyone can forge tokens. Check `/opt/mesiri/.env` first (with INF-01) |
 | BE-29 | Check the DeepSeek model name: `deepseek-chat` is no longer on DeepSeek's price page (legacy names are served by V4.1 Flash); pin the current name. Also confirm whether production runs Gemini 2.5 Flash or 2.0 Flash (2.0 is gone from Google's price page) | S | Must | — | todo | | Found 13 Oct while pricing BE-25; BE-25's tracking will record the real model per call |
 | BE-32 | Material transfers between sites (out of one site's stock, into another's) | M | Must | BE-12 | todo | | Added 13 Oct: transfers decided in for V1 |
 | BE-33 | Client logo per project (stored with BE-20's upload) shown on project DPRs | S | Must | BE-20 | todo | | Added 13 Oct: client logo decided in for V1 |
@@ -118,9 +118,9 @@
 | WA-01 | Capture flows save drafts first (work done, labour, materials, issues, photos) | L | Must | BE-09 | todo | | |
 | WA-02 | Forwarded batches: one summary reply; assumed to be today unless stated | M | Must | WA-01 | todo | | |
 | WA-03 | Quiet daytime: ask only when it can't wait; defer to the evening | S | Must | WA-01 | todo | | |
-| WA-04 | Evening gap-check per site, built from missing sections (template) | M | Must | BE-08 | todo | | |
-| WA-05 | Confirmation message; "Confirm all" only for high-confidence items; "Fix something" flow | M | Must | WA-04 | todo | | |
-| WA-06 | No-update reminder, owner approval message, DPR delivery message (templates) | M | Must | BE-16 | todo | | No owner approval message in V1 (decided 13 Oct) |
+| WA-04 | Evening gap-check per site, built from missing sections (template) | M | Must | BE-08 | todo | | Asks the engineer why details are missing and to send them (decided 13 Oct) |
+| WA-05 | Confirmation message; "Confirm all" only for high-confidence items; "Fix something" flow | M | Must | WA-04 | todo | | Evening DPR to the engineer to confirm; on confirm it goes to owner/PM/recipients (decided 13 Oct) |
+| WA-06 | No-update reminder, owner approval message, DPR delivery message (templates) | M | Must | BE-16 | todo | | No owner approval message: owner/PM receive the engineer-confirmed DPR (decided 13 Oct) |
 | WA-07 | Polite reply for switched-off features | S | Must | BE-06 | done | Claude (session 13 Oct, foundations) | `1129cfc` (with WEB-02). Gate in process.py + fast path + multi-request plans; menus list only switched-on modules; REVERSE judged by target |
 | WA-08 | Ask "which company?" for people in several companies | S | Must | BE-04 | todo | | |
 | WA-09 | Welcome and opt-in messages; handle "YES" | S | Must | BE-15 | todo | | |
@@ -136,7 +136,7 @@
 | WEB-01 | New look and shell (IBM Plex Sans, colour tokens, 6-item sidebar) per the UI design | M | Must | — | done | Claude (session 13 Oct, foundations) | `c0e1fce`. IBM Plex Sans; tokens + dark mode; sidebar V1 order with More; fixed the never-rendering active highlight. Existing pages keep hardcoded status colours |
 | WEB-02 | Hide non-V1 modules using the module switch | S | Must | BE-06 | done | Claude (session 13 Oct, foundations) | `1129cfc` (with WA-07 + default flip). Sidebar filtered, 32 module routes guarded, project page finance button hidden |
 | WEB-03 | Today page, grouped by project | M | Must | BE-08 | todo | | |
-| WEB-04 | Site DPR page: sections, confirm/edit/remove drafts, sources panel, approve & send, versions | L | Must | BE-09 | todo | | No approve step in V1: "Send" only (decided 13 Oct) |
+| WEB-04 | Site DPR page: sections, confirm/edit/remove drafts, sources panel, approve & send, versions | L | Must | BE-09 | todo | | "Approve & send" = the engineer's confirm (decided 13 Oct) |
 | WEB-05 | Project DPR page | M | Must | BE-16 | todo | | |
 | WEB-06 | Daily Reports history (rework existing page) | M | Must | BE-08 | todo | | |
 | WEB-07 | Issues page | S | Must | — | done | Claude (session 13 Oct, foundations) | `0a43723`. "What's stuck" view; grid removed; no Assigned column (API has ids only) |
