@@ -4,6 +4,8 @@ Mounted at /dpr so:
   GET   /dpr/site-days?date=YYYY-MM-DD     every active site's working day (BE-08)
   PATCH /dpr/site-days/{site_id}/conditions?date=  weather, hours lost, site working, plan (BE-14)
   POST  /dpr/projects/{project_id}/send    "Send now": project DPR out on the next tick (BE-16)
+  POST  /dpr/facts/{fact_type}/{fact_id}/confirm   confirm one draft (BE-09)
+  POST  /dpr/facts/{fact_type}/{fact_id}/reject    reject one draft, with a reason (BE-09)
   GET   /dpr/daily-reports                 list daily reports
   GET   /dpr/daily-reports/{report_id}     get daily report details
   POST  /dpr/daily-reports                 create daily report draft
@@ -23,6 +25,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from mesiri.application.dpr.fact_review import FactReviewError
 from mesiri.application.dpr.site_day import InvalidSiteDayTransition
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.domains.dpr.pdf import render_dpr_pdf_bytes
@@ -31,6 +34,7 @@ from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.objectstorage.dependency import get_object_storage
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.repositories.dpr import PostgresDprRepository
+from mesiri.infrastructure.postgres.repositories.fact_reviews import PostgresFactReviewRepository
 from mesiri_contracts.common.storage import ObjectStoragePort
 
 logger = logging.getLogger(__name__)
@@ -139,6 +143,12 @@ async def list_site_days(
         project_ids=project_ids,
         report_date=report_date,
     )
+    # Drafts still to confirm on each site's day (BE-09).
+    drafts = await PostgresFactReviewRepository(conn).draft_counts_by_site(
+        organization_id=auth_context.organization_id, report_date=report_date
+    )
+    for item in items:
+        item["drafts"] = drafts.get(item["site_id"], 0)
     return {"date": report_date.isoformat(), "items": items, "projects": projects}
 
 
@@ -214,6 +224,74 @@ async def send_project_dpr_now(
     if report_date is None:
         raise HTTPException(status_code=404, detail="Project not found")
     return {"status": "queued", "report_date": report_date.isoformat()}
+
+
+class RejectFactRequest(BaseModel):
+    reason: str
+
+
+async def _fact_in_scope(
+    repo: PostgresFactReviewRepository,
+    auth_context: AuthorizationContext,
+    fact_type: str,
+    fact_id: uuid.UUID,
+) -> None:
+    try:
+        located = await repo.locate(auth_context.organization_id, fact_type, fact_id)
+    except FactReviewError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _, denied = _resolve_project_ids(auth_context, located["project_id"])
+    if denied:
+        raise HTTPException(status_code=404, detail="that item was not found")
+
+
+@router.post("/facts/{fact_type}/{fact_id}/confirm")
+async def confirm_fact(
+    fact_type: str,
+    fact_id: uuid.UUID,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Confirm one draft (BE-09). fact_type: activity, site_issue,
+    labour_report, material_receipt, material_usage."""
+    repo = PostgresFactReviewRepository(conn)
+    await _fact_in_scope(repo, auth_context, fact_type, fact_id)
+    try:
+        changed = await repo.confirm(
+            organization_id=auth_context.organization_id,
+            fact_type=fact_type,
+            fact_id=fact_id,
+            actor_user_id=auth_context.user_id,
+        )
+    except FactReviewError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"status": "confirmed", "changed": changed}
+
+
+@router.post("/facts/{fact_type}/{fact_id}/reject")
+async def reject_fact(
+    fact_type: str,
+    fact_id: uuid.UUID,
+    req: RejectFactRequest,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Reject one draft (BE-09): it is withdrawn through its own module's
+    undo (activity voided, issue cancelled, attendance withdrawn, material
+    reversed) and the reason recorded. Refused for a confirmed day."""
+    repo = PostgresFactReviewRepository(conn)
+    await _fact_in_scope(repo, auth_context, fact_type, fact_id)
+    try:
+        await repo.reject(
+            organization_id=auth_context.organization_id,
+            fact_type=fact_type,
+            fact_id=fact_id,
+            actor_user_id=auth_context.user_id,
+            reason=req.reason,
+        )
+    except FactReviewError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"status": "rejected"}
 
 
 @router.get("/daily-reports/{report_id}")

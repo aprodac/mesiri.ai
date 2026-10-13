@@ -276,7 +276,9 @@ async def test_confirming_records_who_confirmed():
     )
 
     assert ok
-    [status_update, version_update] = conn.calls
+    # First call: the day lookup for confirming its drafts (BE-09); unknown
+    # here, so nothing else is read.
+    [_scope, status_update, version_update] = conn.calls
     assert status_update[1]["from_statuses"] == site_day.sources_for(APPROVED)
     assert "approved_by_user_id" in version_update[0]
     assert version_update[1]["user_id"] == user_id
@@ -290,7 +292,8 @@ async def test_a_refused_confirmation_stamps_nothing():
     )
 
     assert not ok
-    assert len(conn.calls) == 1
+    assert len(conn.calls) == 2  # the day lookup and the refused status update
+    assert not any("approved_by_user_id" in sql for sql, _ in conn.calls)
 
 
 async def test_open_site_days_labels_a_site_that_logged_nothing_without_a_version(monkeypatch):

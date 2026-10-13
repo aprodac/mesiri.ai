@@ -1691,6 +1691,8 @@ export interface SiteDayItem {
   last_update_at: string | null
   last_update_by: string | null
   latest_update: string | null
+  /** Items saved from WhatsApp still waiting to be confirmed (BE-09). */
+  drafts?: number
 }
 
 export interface ProjectDayItem {

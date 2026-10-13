@@ -100,13 +100,26 @@ def build_site_report_payload(
     labour_lines: list[dict[str, Any]] | None = None,
     material_movement_rows: list[dict[str, Any]] | None = None,
     conditions: dict[str, Any] | None = None,
+    review_states: dict[str, dict[Any, str]] | None = None,
 ) -> dict[str, Any]:
     """Compose the payload dict. `activity_rows`/`issue_rows`/`labour_lines`/
     `material_movement_rows` are already scoped to the one site+date by the
     caller's query -- this function does no filtering, only shaping.
 
     `conditions` is the site day's own weather / hours lost / site working /
-    tomorrow's plan (BE-14), copied in so a confirmed version keeps them."""
+    tomorrow's plan (BE-14), copied in so a confirmed version keeps them.
+
+    `review_states` (BE-09) is fact type -> {fact id -> draft/confirmed};
+    each activity and issue carries its `review`, and `drafts` counts what
+    the engineer still has to confirm, per section. A fact not listed is
+    confirmed."""
+    from mesiri.application.dpr import fact_review
+
+    review_states = review_states or {}
+
+    def review_of(fact_type: str, fact_id: Any) -> str:
+        return (review_states.get(fact_type) or {}).get(fact_id, fact_review.CONFIRMED)
+
     activities = [
         {
             "work_type": row.get("work_type"),
@@ -115,6 +128,7 @@ def build_site_report_payload(
             "contractor": row.get("contractor"),
             "quantities": quantities_by_activity.get(row["id"], []),
             "evidence_count": evidence_count_by_activity.get(row["id"], 0),
+            "review": review_of(fact_review.ACTIVITY, row["id"]),
         }
         for row in activity_rows
     ]
@@ -125,6 +139,7 @@ def build_site_report_payload(
             "narrative": row.get("narrative"),
             "status": row.get("status"),
             "delay_duration_minutes": row.get("delay_duration_minutes"),
+            "review": review_of(fact_review.SITE_ISSUE, row.get("id")),
         }
         for row in issue_rows
     ]
@@ -141,6 +156,7 @@ def build_site_report_payload(
         "labour": _labour_summary(labour_lines or []),
         "materials": _material_summary(material_movement_rows or []),
         "conditions": _conditions(conditions or {}, issues),
+        "drafts": fact_review.review_counts(review_states),
     }
 
 

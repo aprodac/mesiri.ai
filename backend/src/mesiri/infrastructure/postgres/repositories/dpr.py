@@ -239,7 +239,15 @@ class PostgresDprRepository:
         Also records who confirmed and when on the current version, which
         the version table always had columns for but nothing ever set. The
         user is looked up rather than trusted, so an id with no users row
-        leaves the field empty instead of failing the confirmation."""
+        leaves the field empty instead of failing the confirmation.
+
+        A site day's drafts are confirmed with it (BE-09, approved 13 Oct:
+        the engineer has just looked at them; anything wrong is rejected
+        first), and the version is rebuilt so the frozen DPR shows them as
+        confirmed."""
+        await self._confirm_drafts_before_approval(
+            organization_id=organization_id, user_id=user_id, report_id=report_id
+        )
         query = """
             UPDATE daily_reports
             SET status = 'APPROVED', updated_at = now()
@@ -264,6 +272,45 @@ class PostgresDprRepository:
             {"id": report_id, "user_id": user_id},
         )
         return True
+
+    async def _confirm_drafts_before_approval(
+        self, *, organization_id: uuid.UUID, user_id: uuid.UUID, report_id: uuid.UUID
+    ) -> None:
+        scope = (
+            await self._conn.execute(
+                text(
+                    "SELECT project_id, site_id, report_date, level::text AS level, "
+                    "status::text AS status FROM daily_reports "
+                    "WHERE organization_id = :org_id AND id = :id"
+                ),
+                {"org_id": organization_id, "id": report_id},
+            )
+        ).mappings().first()
+        if (
+            scope is None
+            or scope["level"] != "SITE"
+            or scope["status"] not in site_day.sources_for(site_day.APPROVED)
+        ):
+            return
+
+        from mesiri.infrastructure.postgres.repositories.fact_reviews import (
+            PostgresFactReviewRepository,
+        )
+
+        confirmed = await PostgresFactReviewRepository(self._conn).confirm_drafts_for_day(
+            organization_id=organization_id,
+            site_id=scope["site_id"],
+            report_date=scope["report_date"],
+            actor_user_id=user_id,
+        )
+        if confirmed:
+            payload = await self.assemble_site_report_payload(
+                organization_id=organization_id,
+                project_id=scope["project_id"],
+                site_id=scope["site_id"],
+                report_date=scope["report_date"],
+            )
+            await self.create_version(daily_report_id=report_id, payload=payload)
 
     async def publish_report(
         self, organization_id: uuid.UUID, report_id: uuid.UUID
@@ -391,12 +438,15 @@ class PostgresDprRepository:
 
         issues_query = text(
             """
-            SELECT issue_type, severity, narrative, status, delay_duration_minutes
+            SELECT id, issue_type, severity, narrative, status, delay_duration_minutes
             FROM site_issues
             WHERE organization_id = :org_id
               AND project_id = :project_id
               AND site_id = :site_id
               AND occurred_at::date = :report_date
+              -- Withdrawn as reported in error (0460) -- including a
+              -- rejected draft (BE-09) -- is not part of the day.
+              AND status != 'CANCELLED'
             ORDER BY
                 CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1
                               WHEN 'MEDIUM' THEN 2 ELSE 3 END,
@@ -427,7 +477,8 @@ class PostgresDprRepository:
 
         labour_query = text(
             f"""
-            SELECT lal.worker_name, lal.trade, lal.headcount, lal.daily_wage, lal.contractor
+            SELECT lar.id AS report_id, lal.worker_name, lal.trade, lal.headcount,
+                   lal.daily_wage, lal.contractor
             FROM labour_attendance_lines lal
             JOIN labour_attendance_reports lar ON lar.id = lal.report_id
             WHERE lar.organization_id = :org_id
@@ -452,7 +503,7 @@ class PostgresDprRepository:
         material_query = text(
             """
             SELECT mm.material_id, mc.name AS material_name, u.code AS unit,
-                   mm.movement_type, mm.quantity
+                   mm.movement_type, mm.quantity, mm.source_type, mm.source_id
             FROM material_movements mm
             JOIN materials_catalog mc ON mc.id = mm.material_id
             JOIN units_of_measure u ON u.id = mm.unit_id
@@ -460,6 +511,13 @@ class PostgresDprRepository:
               AND mm.project_id = :project_id
               AND mm.site_id = :site_id
               AND mm.occurred_at::date = :report_date
+              -- A corrected movement and its correction cancel out; showing
+              -- both would read as 50 received AND 50 used. This also keeps a
+              -- rejected draft (BE-09, reversed by Materials) off the DPR.
+              AND mm.reversal_of_movement_id IS NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM material_movements r WHERE r.reversal_of_movement_id = mm.id
+              )
             """
         )
         material_rows = (
@@ -493,9 +551,37 @@ class PostgresDprRepository:
             )
         ).mappings().first()
 
+        # Draft or confirmed, per fact (BE-09). Labour and materials are
+        # reviewed per report / per receipt-or-usage record, the unit people
+        # actually send.
+        from mesiri.application.dpr import fact_review
+        from mesiri.infrastructure.postgres.repositories.fact_reviews import (
+            PostgresFactReviewRepository,
+        )
+
+        reviews = PostgresFactReviewRepository(self._conn)
+        review_states = {
+            fact_review.ACTIVITY: await reviews.states_for(fact_review.ACTIVITY, activity_ids),
+            fact_review.SITE_ISSUE: await reviews.states_for(
+                fact_review.SITE_ISSUE, [row["id"] for row in issue_rows]
+            ),
+            fact_review.LABOUR_REPORT: await reviews.states_for(
+                fact_review.LABOUR_REPORT, list({row["report_id"] for row in labour_rows})
+            ),
+            fact_review.MATERIAL_RECEIPT: await reviews.states_for(
+                fact_review.MATERIAL_RECEIPT,
+                [r["source_id"] for r in material_rows if r["source_type"] == "material_receipt"],
+            ),
+            fact_review.MATERIAL_USAGE: await reviews.states_for(
+                fact_review.MATERIAL_USAGE,
+                [r["source_id"] for r in material_rows if r["source_type"] == "material_usage"],
+            ),
+        }
+
         from mesiri.application.dpr.assembly import build_site_report_payload
 
         return build_site_report_payload(
+            review_states=review_states,
             conditions=dict(conditions_row) if conditions_row else None,
             project_name=header["project_name"] if header else None,
             site_name=header["site_name"] if header else None,

@@ -1096,6 +1096,20 @@ is approved by composition. The WhatsApp tick (`runtime/project_auto_dpr.py`
 recipient (subject = recipient), and marks the report and its confirmed sites
 PUBLISHED. Backend half: `application/projects/auto_dpr.py`.
 
+**Save first, confirm later (BE-09, migration 0470).** `extractions` records
+what the AI read from a message (model, structured output, ContextConfidence).
+`fact_reviews` is an append-only review log for activities, site issues, labour
+reports and material receipts/usage: a fact's state is its latest row, and no
+row means confirmed (everything saved confirm-first). Facts' own tables are not
+changed. Confirm: `POST /dpr/facts/{type}/{id}/confirm`. Reject (drafts only,
+not on a confirmed day): `POST /dpr/facts/{type}/{id}/reject` with a reason;
+it calls the owning module's undo (`void_activity`, `cancel_issue`,
+`void_attendance_report`, `reverse_material_record`) and records why.
+Confirming a site day confirms its remaining drafts and rebuilds the version
+first. The payload marks each activity/issue `review` and counts `drafts` per
+section. The site DPR now leaves out cancelled issues and reversed material
+movements (with their reversals). WA-01 is what starts saving drafts.
+
 ---
 
 ## 7. WhatsApp side — responsibilities

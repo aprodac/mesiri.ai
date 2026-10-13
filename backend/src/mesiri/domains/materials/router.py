@@ -4,6 +4,7 @@ import contextlib
 import datetime
 import json
 import uuid
+from collections.abc import Callable
 from decimal import Decimal
 from typing import Any
 
@@ -1380,65 +1381,17 @@ async def reverse_inflow(
     if not role_can_adjust(auth_context.role):
         raise HTTPException(status_code=403, detail="Not authorized to correct movements")
 
-    repo = PostgresMaterialReadRepository(conn)
-    original = await repo.get_receipt(auth_context.organization_id, receipt_id)
-    if original is None:
-        raise HTTPException(status_code=404, detail="Inflow not found")
-    _authorize_write(auth_context, original["project_id"], original["site_id"])
-    await _assert_not_already_reversed(repo, auth_context.organization_id, receipt_id)
-
-    row_id = uuid.uuid4()
-    occurred_date = body.occurred_date or datetime.date.today()
-    with _reversal_race_as_conflict():
-        await conn.execute(
-            text(
-                "INSERT INTO material_usage "
-                "(id, organization_id, project_id, site_id, material_name, quantity, unit, "
-                "unit_id, work_item, occurred_date, occurred_date_source, source, "
-                "movement_reason, notes, material_id, reverses_movement_id, created_by) "
-                "VALUES (:id, :organization_id, :project_id, :site_id, :material_name, "
-                ":quantity, :unit, :unit_id, NULL, :occurred_date, 'reported', 'web', "
-                "'ADJUSTMENT_OUT', :notes, :material_id, :reverses_movement_id, :created_by)"
-            ),
-            {
-                "id": row_id,
-                "organization_id": auth_context.organization_id,
-                "project_id": original["project_id"],
-                "site_id": original["site_id"],
-                "material_name": original["material_name"],
-                "quantity": original["quantity"],
-                "unit": original["unit"],
-                "unit_id": original["unit_id"],
-                "occurred_date": occurred_date,
-                "notes": body.reason_note,
-                "material_id": original["material_id"],
-                "reverses_movement_id": receipt_id,
-                "created_by": auth_context.user_id,
-            },
-        )
-    movements_repo = MaterialMovementsRepository(conn)
-    original_movement = await movements_repo.get_by_source("material_receipt", receipt_id)
-    await post_material_movement(
+    row_id = await reverse_material_record(
         conn,
-        movement_type="ISSUE",
-        material_id=original["material_id"],
-        unit_id=original["unit_id"],
-        quantity=original["quantity"],
+        kind="receipt",
+        record_id=receipt_id,
         organization_id=auth_context.organization_id,
-        project_id=original["project_id"],
-        site_id=original["site_id"],
-        occurred_at=datetime.datetime.combine(occurred_date, datetime.time.min),
-        source_type="material_usage",
-        source_id=row_id,
-        recorded_by_user_id=auth_context.user_id,
-        reversal_of_movement_id=original_movement["id"] if original_movement else None,
-    )
-    await _publish_outbox_event(
-        conn,
-        aggregate_type="material_usage",
-        aggregate_id=row_id,
-        event_type="MaterialMovementCorrected",
-        payload={"reverses_movement_id": str(receipt_id), "movement_reason": "ADJUSTMENT_OUT"},
+        user_id=auth_context.user_id,
+        reason_note=body.reason_note,
+        occurred_date=body.occurred_date,
+        authorize=lambda original: _authorize_write(
+            auth_context, original["project_id"], original["site_id"]
+        ),
     )
     return {"id": row_id, "status": "success"}
 
@@ -1454,15 +1407,135 @@ async def reverse_outflow(
     if not role_can_adjust(auth_context.role):
         raise HTTPException(status_code=403, detail="Not authorized to correct movements")
 
+    row_id = await reverse_material_record(
+        conn,
+        kind="usage",
+        record_id=usage_id,
+        organization_id=auth_context.organization_id,
+        user_id=auth_context.user_id,
+        reason_note=body.reason_note,
+        occurred_date=body.occurred_date,
+        authorize=lambda original: _authorize_write(
+            auth_context, original["project_id"], original["site_id"]
+        ),
+    )
+    return {"id": row_id, "status": "success"}
+
+
+async def reverse_material_record(
+    conn: AsyncConnection,
+    *,
+    kind: str,
+    record_id: uuid.UUID,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID | None,
+    reason_note: str | None,
+    occurred_date: datetime.date | None = None,
+    authorize: Callable[[dict], None] | None = None,
+) -> uuid.UUID:
+    """Reverse one inflow (`kind="receipt"`) or outflow (`kind="usage"`):
+    an offsetting ADJUSTMENT_OUT/IN record plus its movement, never an edit
+    of the original. Returns the new record's id. 404 when the record is
+    unknown, 409 when it was already reversed.
+
+    The one implementation of a material correction -- used by the two
+    reverse routes above and by rejecting a draft (BE-09, fact reviews),
+    so a rejected draft goes through exactly the same ledger rules."""
     repo = PostgresMaterialReadRepository(conn)
-    original = await repo.get_usage(auth_context.organization_id, usage_id)
-    if original is None:
-        raise HTTPException(status_code=404, detail="Outflow not found")
-    _authorize_write(auth_context, original["project_id"], original["site_id"])
-    await _assert_not_already_reversed(repo, auth_context.organization_id, usage_id)
+    if kind == "receipt":
+        original = await repo.get_receipt(organization_id, record_id)
+        if original is None:
+            raise HTTPException(status_code=404, detail="Inflow not found")
+    elif kind == "usage":
+        original = await repo.get_usage(organization_id, record_id)
+        if original is None:
+            raise HTTPException(status_code=404, detail="Outflow not found")
+    else:
+        raise ValueError(f"unknown material record kind: {kind}")
+    if authorize is not None:
+        authorize(original)
+    await _assert_not_already_reversed(repo, organization_id, record_id)
 
     row_id = uuid.uuid4()
-    occurred_date = body.occurred_date or datetime.date.today()
+    occurred_date = occurred_date or datetime.date.today()
+    if kind == "usage":
+        return await _reverse_outflow_record(
+            conn,
+            original=original,
+            usage_id=record_id,
+            row_id=row_id,
+            organization_id=organization_id,
+            user_id=user_id,
+            reason_note=reason_note,
+            occurred_date=occurred_date,
+        )
+    receipt_id = record_id
+    with _reversal_race_as_conflict():
+        await conn.execute(
+            text(
+                "INSERT INTO material_usage "
+                "(id, organization_id, project_id, site_id, material_name, quantity, unit, "
+                "unit_id, work_item, occurred_date, occurred_date_source, source, "
+                "movement_reason, notes, material_id, reverses_movement_id, created_by) "
+                "VALUES (:id, :organization_id, :project_id, :site_id, :material_name, "
+                ":quantity, :unit, :unit_id, NULL, :occurred_date, 'reported', 'web', "
+                "'ADJUSTMENT_OUT', :notes, :material_id, :reverses_movement_id, :created_by)"
+            ),
+            {
+                "id": row_id,
+                "organization_id": organization_id,
+                "project_id": original["project_id"],
+                "site_id": original["site_id"],
+                "material_name": original["material_name"],
+                "quantity": original["quantity"],
+                "unit": original["unit"],
+                "unit_id": original["unit_id"],
+                "occurred_date": occurred_date,
+                "notes": reason_note,
+                "material_id": original["material_id"],
+                "reverses_movement_id": receipt_id,
+                "created_by": user_id,
+            },
+        )
+    movements_repo = MaterialMovementsRepository(conn)
+    original_movement = await movements_repo.get_by_source("material_receipt", receipt_id)
+    await post_material_movement(
+        conn,
+        movement_type="ISSUE",
+        material_id=original["material_id"],
+        unit_id=original["unit_id"],
+        quantity=original["quantity"],
+        organization_id=organization_id,
+        project_id=original["project_id"],
+        site_id=original["site_id"],
+        occurred_at=datetime.datetime.combine(occurred_date, datetime.time.min),
+        source_type="material_usage",
+        source_id=row_id,
+        recorded_by_user_id=user_id,
+        reversal_of_movement_id=original_movement["id"] if original_movement else None,
+    )
+    await _publish_outbox_event(
+        conn,
+        aggregate_type="material_usage",
+        aggregate_id=row_id,
+        event_type="MaterialMovementCorrected",
+        payload={"reverses_movement_id": str(receipt_id), "movement_reason": "ADJUSTMENT_OUT"},
+    )
+    return row_id
+
+
+async def _reverse_outflow_record(
+    conn: AsyncConnection,
+    *,
+    original: dict,
+    usage_id: uuid.UUID,
+    row_id: uuid.UUID,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID | None,
+    reason_note: str | None,
+    occurred_date: datetime.date,
+) -> uuid.UUID:
+    """The outflow half of `reverse_material_record`: an ADJUSTMENT_IN inflow."""
     with _reversal_race_as_conflict():
         await conn.execute(
             text(
@@ -1476,7 +1549,7 @@ async def reverse_outflow(
             ),
             {
                 "id": row_id,
-                "organization_id": auth_context.organization_id,
+                "organization_id": organization_id,
                 "project_id": original["project_id"],
                 "site_id": original["site_id"],
                 "material_name": original["material_name"],
@@ -1484,10 +1557,10 @@ async def reverse_outflow(
                 "unit": original["unit"],
                 "unit_id": original["unit_id"],
                 "occurred_date": occurred_date,
-                "notes": body.reason_note,
+                "notes": reason_note,
                 "material_id": original["material_id"],
                 "reverses_movement_id": usage_id,
-                "created_by": auth_context.user_id,
+                "created_by": user_id,
             },
         )
     movements_repo = MaterialMovementsRepository(conn)
@@ -1498,13 +1571,13 @@ async def reverse_outflow(
         material_id=original["material_id"],
         unit_id=original["unit_id"],
         quantity=original["quantity"],
-        organization_id=auth_context.organization_id,
+        organization_id=organization_id,
         project_id=original["project_id"],
         site_id=original["site_id"],
         occurred_at=datetime.datetime.combine(occurred_date, datetime.time.min),
         source_type="material_receipt",
         source_id=row_id,
-        recorded_by_user_id=auth_context.user_id,
+        recorded_by_user_id=user_id,
         reversal_of_movement_id=original_movement["id"] if original_movement else None,
     )
     await _publish_outbox_event(
@@ -1514,4 +1587,4 @@ async def reverse_outflow(
         event_type="MaterialMovementCorrected",
         payload={"reverses_movement_id": str(usage_id), "movement_reason": "ADJUSTMENT_IN"},
     )
-    return {"id": row_id, "status": "success"}
+    return row_id

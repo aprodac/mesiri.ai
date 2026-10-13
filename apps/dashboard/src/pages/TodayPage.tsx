@@ -177,6 +177,12 @@ function SiteCard({
         {site.open_issues > 0 && ` · ${site.open_issues} open issue${site.open_issues === 1 ? '' : 's'}`}
       </p>
 
+      {(site.drafts ?? 0) > 0 && (
+        <p className="text-xs font-semibold text-draft">
+          {site.drafts} item{site.drafts === 1 ? '' : 's'} still to confirm
+        </p>
+      )}
+
       <div className="mt-auto flex flex-col gap-2">
         {canMarkNoWork && (
           <Button variant="outline" className="h-11 font-semibold" disabled={busy} onClick={() => onNoWork(site)}>

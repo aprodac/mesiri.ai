@@ -456,6 +456,29 @@ class PostgresProgressReadRepository:
             )
         return res.rowcount > 0
 
+    async def cancel_issue(
+        self, organization_id: uuid.UUID, issue_id: uuid.UUID, notes: str | None
+    ) -> bool:
+        """OPEN/ACKNOWLEDGED -> CANCELLED: the issue was never real (reported
+        in error), which migration 0460 keeps distinct from WONT_FIX. The
+        REST counterpart of the WhatsApp `cancel` close-out action (same
+        allowed statuses, same columns, same event), added for rejecting a
+        draft issue (BE-09)."""
+        now = datetime.datetime.now(datetime.UTC)
+        query = """
+            UPDATE site_issues
+            SET status = 'CANCELLED', resolved_at = :now, resolution_notes = :notes, updated_at = :now
+            WHERE organization_id = :org_id AND id = :id AND status IN ('OPEN', 'ACKNOWLEDGED')
+        """
+        res = await self._conn.execute(
+            text(query), {"org_id": organization_id, "id": issue_id, "notes": notes, "now": now}
+        )
+        if res.rowcount > 0:
+            await self._emit_issue_event(
+                issue_id=issue_id, event_type="SiteIssueCancelled", payload={"resolution_notes": notes}
+            )
+        return res.rowcount > 0
+
     async def resolve_issue(
         self, organization_id: uuid.UUID, issue_id: uuid.UUID, notes: str | None
     ) -> bool:

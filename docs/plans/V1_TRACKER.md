@@ -80,7 +80,7 @@
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | BE-08 | `site_days`: one working-day record per site per date, with statuses (collecting → needs confirmation → ready → approved → sent) | M | Must | — | done | Claude (session 13 Oct, BE-08) | `30fa1b7`, migration 0466. **No new table:** the SITE `daily_reports` row is the site day. Added `NEEDS_DETAILS`/`READY` + `missing_sections`; ready = a work item AND a labour count (photos/materials listed, never block). Every active site gets its day at cutoff; refresh keeps "with engineer"; confirm stamps who/when; `GET /dpr/site-days?date=`. Rules in `application/dpr/site_day.py` |
-| BE-09 | Draft/confirmed status on every fact, plus `extractions` (what the AI read, model, confidence) | M | Must | BE-08 | claimed | Claude (session 13 Oct, BE-08) | Save first, confirm later (decided 13 Oct) |
+| BE-09 | Draft/confirmed status on every fact, plus `extractions` (what the AI read, model, confidence) | M | Must | BE-08 | done | Claude (session 13 Oct, BE-08) | Save first, confirm later (decided 13 Oct). Migration 0470: `extractions` + append-only `fact_reviews` (no row = confirmed; Labour/Materials tables untouched). Confirm/reject routes; reject uses each module's own undo; confirming the day confirms its drafts. Writing drafts from WhatsApp is WA-01 |
 | BE-10 | Labour counted as a snapshot per contractor+trade+day (latest replaces earlier) | S | Must | BE-09 | todo | | Prevents double counting |
 | BE-11 | Duplicate detection: repeated work items (Must), re-used photos across days (Later) | M | Must | BE-09 | todo | | |
 | BE-12 | Materials: one-time opening stock, approved stock adjustments, flag (not block) usage beyond known stock | M | Must | BE-09 | todo | | Transfers are BE-32 |
@@ -208,6 +208,7 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | 2026-10-13 | INF-09 local-disk media storage (off until .env switched); BE-31 shared JWT secret + startup warning | `ada65a3` |
 
 | 2026-10-13 | BE-01 step 0: identity from main tables in shadow (migration 0465), Sync Health comparison panel | `abaa073`, `b3d30f5` |
+| 2026-10-13 | BE-09 save first, confirm later: fact reviews + extractions (migration 0470) | see BE-09 |
 | 2026-10-13 | BE-28 route 401/403/404/409/422 no longer turned into 500 | see BE-28 |
 | 2026-10-13 | BE-35 live /projects API saves reporting settings (timezone, cutoff, auto DPR, send deadline, report types) | see BE-35 |
 | 2026-10-13 | BE-16 project DPR sent when confirmed or at the deadline (migration 0469) | `2bfd869` |
