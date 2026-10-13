@@ -28,12 +28,38 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from typing import Any
+
+
+async def render_and_store_version(
+    *,
+    renderer: Any,
+    object_storage: Any,
+    daily_report_id: Any,
+    version_id: Any,
+    code: str | None,
+    payload: dict[str, Any] | str,
+) -> str:
+    """Render one DPR version to PDF and store it; returns the object key.
+    The caller records the key on the version (`set_rendered_object_key`).
+    Shared with runtime/project_auto_dpr.py, which renders right before
+    sending so the owner gets the PDF itself (BE-16)."""
+    import json
+
+    from channel.dpr_document.data import build_document_data
+    from channel.dpr_document.template import render_html
+
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    html = render_html(build_document_data(code=code or "DPR", payload=payload))
+    pdf_bytes = await renderer.render_pdf(html)
+    object_key = f"dpr/{daily_report_id}/{version_id}.pdf"
+    await object_storage.put_object(object_key, pdf_bytes, content_type="application/pdf")
+    return object_key
 
 
 async def run() -> dict[str, int]:
-    from channel.dpr_document.data import build_document_data
     from channel.dpr_document.render import DprPdfRenderer
-    from channel.dpr_document.template import render_html
     from mesiri.bootstrap.settings import Settings as BackendSettings
     from mesiri.infrastructure.objectstorage import build_object_storage
     from mesiri.infrastructure.postgres.database import PostgresDatabase
@@ -53,18 +79,13 @@ async def run() -> dict[str, int]:
 
         for row in pending:
             try:
-                import json
-
-                payload = row["payload"]
-                if isinstance(payload, str):
-                    payload = json.loads(payload)
-                data = build_document_data(code=row["code"], payload=payload)
-                html = render_html(data)
-                pdf_bytes = await renderer.render_pdf(html)
-
-                object_key = f"dpr/{row['daily_report_id']}/{row['version_id']}.pdf"
-                await object_storage.put_object(
-                    object_key, pdf_bytes, content_type="application/pdf"
+                object_key = await render_and_store_version(
+                    renderer=renderer,
+                    object_storage=object_storage,
+                    daily_report_id=row["daily_report_id"],
+                    version_id=row["version_id"],
+                    code=row["code"],
+                    payload=row["payload"],
                 )
 
                 async with db.transaction() as conn:

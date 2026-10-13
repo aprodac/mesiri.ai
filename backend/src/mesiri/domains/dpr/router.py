@@ -3,6 +3,7 @@
 Mounted at /dpr so:
   GET   /dpr/site-days?date=YYYY-MM-DD     every active site's working day (BE-08)
   PATCH /dpr/site-days/{site_id}/conditions?date=  weather, hours lost, site working, plan (BE-14)
+  POST  /dpr/projects/{project_id}/send    "Send now": project DPR out on the next tick (BE-16)
   GET   /dpr/daily-reports                 list daily reports
   GET   /dpr/daily-reports/{report_id}     get daily report details
   POST  /dpr/daily-reports                 create daily report draft
@@ -177,6 +178,34 @@ async def set_site_day_conditions(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {**result, "daily_report_id": str(result["daily_report_id"])}
+
+
+@router.post("/projects/{project_id}/send")
+async def send_project_dpr_now(
+    project_id: uuid.UUID,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """"Send now" (BE-16): today's project DPR goes out within about a
+    minute, built from the sites confirmed so far; the rest show as "Not
+    reported". The WhatsApp side does the sending."""
+    from mesiri.application.projects.auto_dpr import request_project_dpr_send
+
+    _, denied = _resolve_project_ids(auth_context, project_id)
+    if denied:
+        raise HTTPException(status_code=404, detail="Project not found")
+    try:
+        report_date = await request_project_dpr_send(
+            conn,
+            organization_id=auth_context.organization_id,
+            project_id=project_id,
+            now_utc=datetime.datetime.now(datetime.UTC),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if report_date is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"status": "queued", "report_date": report_date.isoformat()}
 
 
 @router.get("/daily-reports/{report_id}")

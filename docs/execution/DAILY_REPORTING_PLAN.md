@@ -1084,6 +1084,18 @@ sets weather, hours lost, site working and tomorrow's plan on the day row
 the day ready with nothing required; weather and tomorrow's plan are optional
 missing items.
 
+**Sending the project DPR (BE-16).** The cutoff only builds drafts; nothing is
+sent then. The DPR goes to the project's ADMIN/PROJECT_MANAGER users when every
+active site is confirmed, at `projects.dpr_send_deadline` (default 21:00, local
+time), or on "Send now" (`POST /dpr/projects/{id}/send`), whichever is first,
+once per local day (`projects.dpr_last_sent_on`). A single-site project whose
+site is confirmed sends that site DPR; otherwise the PROJECT roll-up is built
+from confirmed site versions only, unconfirmed sites recorded not reported, and
+is approved by composition. The WhatsApp tick (`runtime/project_auto_dpr.py`
+`send_due_project_dprs`) renders the PDF if needed, claims one notification per
+recipient (subject = recipient), and marks the report and its confirmed sites
+PUBLISHED. Backend half: `application/projects/auto_dpr.py`.
+
 ---
 
 ## 7. WhatsApp side — responsibilities

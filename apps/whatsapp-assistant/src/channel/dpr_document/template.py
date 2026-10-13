@@ -82,7 +82,7 @@ _DOCUMENT_TEMPLATE_SRC = """
       <th style="width:17%">Workers</th></tr></thead>
     <tbody>
       {% for s in data.sites %}
-      <tr><td>{{ s.site_name }}</td><td>{{ "Yes" if s.reported else "Not yet" }}</td>
+      <tr><td>{{ s.site_name }}</td><td>{{ "Yes" if s.reported else "Not reported" }}</td>
         <td>{{ s.activity_count }}</td><td>{{ s.open_issue_count }}</td><td>{{ s.headcount }}</td></tr>
       {% else %}
       <tr><td colspan="5" class="empty">No active sites under this project.</td></tr>

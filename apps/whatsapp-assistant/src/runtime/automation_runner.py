@@ -22,8 +22,10 @@ One tick:
   2b. Same for every project with `auto_generate_dpr=true` whose own
      reporting_cutoff_time/reporting_timezone says it's due
      (project_auto_dpr.py's `queue_due_project_auto_dprs`) -- generates
-     that project's own DPR and notifies its ADMIN/PROJECT_MANAGER
-     recipients. Not a user-owned automation row (see that module's
+     that project's own drafts. Then `send_due_project_dprs` sends each
+     project DPR that is confirmed, past its send deadline, or requested
+     with "Send now" to its ADMIN/PROJECT_MANAGER recipients (BE-16). Not
+     a user-owned automation row (see that module's
      docstring for why), but the same due-check/claim/mark shape, so it
      rides the same tick rather than needing its own scheduler.
   3. Drain and send every pending notification
@@ -180,12 +182,17 @@ async def run_tick(*, db: Any) -> dict[str, int] | None:
         try:
             fired = await _queue_due_automations(conn, db=db)
 
-            from .project_auto_dpr import queue_due_project_auto_dprs
+            from .project_auto_dpr import queue_due_project_auto_dprs, send_due_project_dprs
 
             try:
                 fired += await queue_due_project_auto_dprs(conn, db=db)
             except Exception:  # noqa: BLE001
                 logger.exception("automation_runner.project_auto_dpr_failed")
+
+            try:
+                fired += await send_due_project_dprs(conn, db=db)
+            except Exception:  # noqa: BLE001
+                logger.exception("automation_runner.project_dpr_send_failed")
 
             sent_skipped = {"sent": 0, "skipped": 0}
             try:

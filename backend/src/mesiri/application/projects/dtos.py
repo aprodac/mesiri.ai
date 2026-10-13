@@ -31,4 +31,5 @@ class ProjectDTO:
     reporting_timezone: str = "UTC"
     reporting_cutoff_time: str = "18:00"
     auto_generate_dpr: bool = False
+    dpr_send_deadline: str = "21:00"
     required_report_types: list[str] | None = None

@@ -39,6 +39,7 @@ class PostgresProjectRepository(ProjectRepository):
             sa.Column("reporting_timezone", sa.String),
             sa.Column("reporting_cutoff_time", sa.String),
             sa.Column("auto_generate_dpr", sa.Boolean),
+            sa.Column("dpr_send_deadline", sa.String),
             sa.Column("required_report_types", sa.JSON),
         )
 
@@ -78,6 +79,7 @@ class PostgresProjectRepository(ProjectRepository):
             self._projects.c.reporting_timezone,
             self._projects.c.reporting_cutoff_time,
             self._projects.c.auto_generate_dpr,
+            self._projects.c.dpr_send_deadline,
             self._projects.c.required_report_types,
         ).where(self._projects.c.organization_id == organization_id)
 
@@ -108,6 +110,7 @@ class PostgresProjectRepository(ProjectRepository):
                 reporting_timezone=row.reporting_timezone or "UTC",
                 reporting_cutoff_time=row.reporting_cutoff_time or "18:00",
                 auto_generate_dpr=bool(row.auto_generate_dpr),
+                dpr_send_deadline=row.dpr_send_deadline or "21:00",
                 required_report_types=row.required_report_types or None,
             )
             for row in rows

@@ -214,7 +214,7 @@ def test_render_html_shows_sites_table_and_site_column_for_project_level():
     assert "1/2" in html
     assert "Block A" in html
     assert "Block B" in html
-    assert "Not yet" in html
+    assert "Not reported" in html
 
 
 def test_render_html_shows_activities_not_sites_for_site_level():

@@ -145,7 +145,7 @@ def render_dpr_pdf_bytes(
         for site in sites:
             row = [
                 _truncate(site.get("site_name"), 30),
-                "Yes" if site.get("reported") else "Not yet",
+                "Yes" if site.get("reported") else "Not reported",
                 str(site.get("activity_count") or 0),
                 str(site.get("open_issue_count") or 0),
                 str(site.get("headcount") or 0),
