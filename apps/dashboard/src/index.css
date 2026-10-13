@@ -3,80 +3,104 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Mesiri V1 look (tracker WEB-01, per the "Mesiri V1 — DPR Design" canvas):
+   a warm off-white ground, near-black ink, one site-orange accent kept for
+   primary actions and attention, and dedicated status tokens for the
+   confirmed / draft / info / AI states the DPR screens are built from.
+   Every shadcn component reads these, so this block IS the theme. */
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --background: #f6f5f2;
+  --foreground: #1a1d21;
+  --card: #ffffff;
+  --card-foreground: #1a1d21;
+  --popover: #ffffff;
+  --popover-foreground: #1a1d21;
+  --primary: #c2410c;
+  --primary-foreground: #ffffff;
+  --secondary: #f1efea;
+  --secondary-foreground: #1a1d21;
+  --muted: #f1efea;
+  --muted-foreground: #5b6168;
+  --accent: #f1efea;
+  --accent-foreground: #1a1d21;
+  --destructive: #b42318;
+  --border: #e3e1dc;
+  --input: #d9d6cf;
+  --ring: #c2410c;
+  --chart-1: #c2410c;
+  --chart-2: #1e3a8a;
+  --chart-3: #0f766e;
+  --chart-4: #b45309;
+  --chart-5: #6b7178;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #3d4248;
+  --sidebar-primary: #1a1d21;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f1efea;
+  --sidebar-accent-foreground: #1a1d21;
+  --sidebar-border: #e3e1dc;
+  --sidebar-ring: #c2410c;
+  /* Status: text colour on its soft background clears 4.5:1 in both themes. */
+  --success: #0f5132;
+  --success-soft: #dcf1e4;
+  --draft: #9a3e0b;
+  --draft-soft: #fdf0e6;
+  --info: #1e3a8a;
+  --info-soft: #e0e8fb;
+  --ai: #4338ca;
+  --ai-soft: #eef0ff;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #141518;
+  --foreground: #ecebe7;
+  --card: #1c1e22;
+  --card-foreground: #ecebe7;
+  --popover: #1c1e22;
+  --popover-foreground: #ecebe7;
+  /* Lighter orange with dark text: white on the light-theme orange would
+     fall under 4.5:1 against this ground's button sizes. */
+  --primary: #f0843f;
+  --primary-foreground: #1a1d21;
+  --secondary: #26282d;
+  --secondary-foreground: #ecebe7;
+  --muted: #26282d;
+  --muted-foreground: #a3a8af;
+  --accent: #2a2c31;
+  --accent-foreground: #ecebe7;
+  --destructive: #f2756a;
+  --border: #2e3136;
+  --input: #3a3d43;
+  --ring: #f0843f;
+  --chart-1: #f0843f;
+  --chart-2: #8fa9f2;
+  --chart-3: #5cc8bd;
+  --chart-4: #e3a64d;
+  --chart-5: #a3a8af;
+  --sidebar: #18191c;
+  --sidebar-foreground: #c9cbcf;
+  --sidebar-primary: #ecebe7;
+  --sidebar-primary-foreground: #18191c;
+  --sidebar-accent: #26282d;
+  --sidebar-accent-foreground: #ecebe7;
+  --sidebar-border: #2e3136;
+  --sidebar-ring: #f0843f;
+  --success: #7fd6a3;
+  --success-soft: #183424;
+  --draft: #f6ad7a;
+  --draft-soft: #3a2415;
+  --info: #a9bdf5;
+  --info-soft: #1c2742;
+  --ai: #b7b4ff;
+  --ai-soft: #25234a;
 }
 
 @theme inline {
-  /* Inter is the default UI face — normal weight body text, with
-     font-medium/semibold/bold used deliberately for headings, labels,
-     and emphasis instead of relying on a heavier default weight. */
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* IBM Plex Sans is the UI face (WEB-01; previously Inter, de46920) --
+     normal weight body text, with font-medium/semibold/bold used
+     deliberately for headings, labels and emphasis. */
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   /* Geist Mono is used for numeric displays throughout the dashboard
      (stat values, tables, chart ticks) via the font-mono utility. */
   --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -111,6 +135,14 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-draft: var(--draft);
+  --color-draft-soft: var(--draft-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-ai: var(--ai);
+  --color-ai-soft: var(--ai-soft);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

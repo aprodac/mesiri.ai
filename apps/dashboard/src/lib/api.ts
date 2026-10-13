@@ -58,6 +58,16 @@ export interface Me {
   role: string
   full_name: string
   access_policy: AccessPolicy
+  // What the production /auth/me (apps/whatsapp-assistant/src/auth/router.py)
+  // actually returns. The four fields above come from the backend identity
+  // router, which production does not mount -- read both shapes until the
+  // two are reconciled (see companyName / userName in app-sidebar.tsx).
+  org_id?: string
+  org_name?: string
+  name?: string
+  is_platform_admin?: boolean
+  // Product modules switched on for the company (tracker BE-06 / WEB-02).
+  enabled_modules?: string[]
 }
 
 export async function login(email: string, password: string): Promise<void> {
