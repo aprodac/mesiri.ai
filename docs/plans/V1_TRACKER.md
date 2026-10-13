@@ -147,7 +147,7 @@
 | SA-04 | Messages viewer per company, linked to what each message created | M | Must | BE-26 | todo | | Extend the existing Logs screen |
 | SA-05 | Costs view per message, company and day | M | Must | BE-25 | todo | | |
 | SA-06 | Health view (DPR delivery, gap-check replies, WhatsApp number quality) | M | Later | BE-27 | todo | | |
-| SA-07 | Module toggles per company | S | Must | BE-06 | claimed | Claude (session 13 Oct, foundations) | Backend ready: `PUT /admin/organizations/{id}/settings` with key `enabled_modules` |
+| SA-07 | Module toggles per company | S | Must | BE-06 | done | Claude (session 13 Oct, foundations) | `d338389`. Modules card on the company Settings tab; not yet clicked through in a browser (needs a platform-admin login on the live control panel) |
 | SA-08 | Audit log viewer | S | Later | BE-05 | todo | | |
 
 ---
@@ -161,3 +161,4 @@
 | 2026-10-13 | BE-06 module switch, enforced by the API | `faffdef` |
 | 2026-10-13 | Deploy health check waits up to 60 s (healthy deploy had been rolled back) | `7fa35c9` |
 | 2026-10-13 | BE-06 fix: gate no longer turns route 401s into 500s | `595a162` |
+| 2026-10-13 | SA-07 module switches in the control panel | `d338389` |
