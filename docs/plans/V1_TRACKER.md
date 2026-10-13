@@ -135,7 +135,7 @@
 | WEB-04 | Site DPR page: sections, confirm/edit/remove drafts, sources panel, approve & send, versions | L | Must | BE-09 | todo | | |
 | WEB-05 | Project DPR page | M | Must | BE-16 | todo | | |
 | WEB-06 | Daily Reports history (rework existing page) | M | Must | BE-08 | todo | | |
-| WEB-07 | Issues page | S | Must | — | claimed | Claude (session 13 Oct, foundations) | |
+| WEB-07 | Issues page | S | Must | — | done | Claude (session 13 Oct, foundations) | `0a43723`. "What's stuck" view; grid removed; no Assigned column (API has ids only) |
 | WEB-08 | Projects & sites settings, incl. DPR settings, recipients, site label (Tower/Block/Phase) | M | Must | BE-15 | todo | | |
 | WEB-09 | Team page (roles, sites) | S | Must | BE-01 | todo | | |
 | WEB-10 | Company page incl. branding | S | Must | BE-20 | todo | | |
@@ -194,4 +194,5 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | 2026-10-13 | Dashboard: trips / logistics page removed | `15b85fc` |
 | 2026-10-13 | WEB-01 new look and V1 shell | `c0e1fce` |
 | 2026-10-13 | WEB-02 + WA-07: switched-off modules hidden on dashboard and WhatsApp; default modules = V1 | `1129cfc` |
+| 2026-10-13 | WEB-07 Issues page reworked as "What's stuck" | `0a43723` |
 | 2026-10-13 | Security: removed unauthenticated `/auth/register` (anyone could mint a platform-admin token) | `c669783` |
