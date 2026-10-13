@@ -22,6 +22,101 @@ interface ReconcileStatus {
   recent_runs: ReconcileRun[];
 }
 
+interface ShadowMismatch {
+  port: string;
+  method: string;
+  args: Record<string, unknown>;
+  context_result: unknown;
+  main_result: unknown;
+  hits: number;
+  first_seen_at: string;
+  last_seen_at: string;
+}
+
+interface ShadowStatus {
+  identity_source: string;
+  mismatches: ShadowMismatch[];
+}
+
+const SOURCE_LABEL: Record<string, string> = {
+  context: 'WhatsApp copy only',
+  shadow: 'WhatsApp copy, checked against the main tables',
+  main: 'Main tables',
+};
+
+// BE-01: before WhatsApp stops reading its own copy of people, projects and
+// sites, both are asked the same questions side by side. An empty list after
+// a few days of real messages means the switch is safe.
+function IdentityShadow() {
+  const [shadow, setShadow] = useState<ShadowStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .get<ShadowStatus>('/admin/reconcile/shadow')
+      .then((res) => setShadow(res.data))
+      .catch((err) => setError(err.response?.data?.detail || 'Failed to load the comparison'));
+  }, []);
+
+  if (error) return <p style={{ color: 'var(--error)' }}>{error}</p>;
+  if (!shadow) return null;
+
+  const clean = shadow.mismatches.length === 0;
+  return (
+    <div style={{ marginTop: 'var(--space-8)' }}>
+      <h2 style={{ fontSize: '18px', marginBottom: 'var(--space-2)' }}>
+        WhatsApp copy vs main tables
+      </h2>
+      <p className="subtitle" style={{ marginBottom: 'var(--space-4)' }}>
+        Reading from: {SOURCE_LABEL[shadow.identity_source] || shadow.identity_source}.{' '}
+        {shadow.identity_source === 'shadow' &&
+          (clean
+            ? 'No differences so far.'
+            : `${shadow.mismatches.length} question${shadow.mismatches.length === 1 ? '' : 's'} answered differently.`)}
+      </p>
+      {!clean && (
+        <div className="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Last seen</th>
+                <th>Lookup</th>
+                <th>Times</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shadow.mismatches.map((m, i) => (
+                <tr key={i}>
+                  <td style={{ fontSize: '13px', whiteSpace: 'nowrap' }}>
+                    {new Date(m.last_seen_at).toLocaleString()}
+                  </td>
+                  <td style={{ fontSize: '13px' }}>
+                    {m.port}.{m.method}
+                  </td>
+                  <td style={{ fontSize: '13px' }}>{m.hits}</td>
+                  <td style={{ fontSize: '12px' }}>
+                    <details>
+                      <summary style={{ cursor: 'pointer' }}>Show</summary>
+                      <pre style={{ fontSize: '11px', whiteSpace: 'pre-wrap', margin: '8px 0 0' }}>
+                        {JSON.stringify(
+                          { asked: m.args, copy: m.context_result, main: m.main_result },
+                          null,
+                          2,
+                        )}
+                      </pre>
+                    </details>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const STATUS_LABEL: Record<string, string> = {
   succeeded: 'Healthy',
   completed_with_errors: 'Completed with errors',
@@ -255,6 +350,8 @@ export default function SyncHealth() {
           </tbody>
         </table>
       </div>
+
+      <IdentityShadow />
     </div>
   );
 }
