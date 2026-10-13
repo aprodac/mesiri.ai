@@ -123,6 +123,7 @@
 | WA-09 | Welcome and opt-in messages; handle "YES" | S | Must | BE-15 | todo | | |
 | WA-10 | Get all templates approved by Meta | S | Must | WA-04, WA-06, WA-09 | todo | | Ops task, not code |
 | WA-11 | Reply in the sender's language (check and fix) | S | Must | — | todo | | |
+| WA-12 | **Send approved template messages** (outbound has text/list/button/image/document only). Today a scheduled notification to anyone silent for 24 h is skipped with `outside_whatsapp_session_window_needs_template`. Add template sending + a registry of approved templates | M | Must | — | todo | | Found 13 Oct (SS-01 investigation). Blocks WA-04, WA-06, WA-09, SS-06, SS-08 in practice |
 
 ## WEB — Web dashboard
 
@@ -164,7 +165,7 @@ later. Every path must use the same company-creation step as the superadmin wiza
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| SS-01 | Investigation + plan for self-serve signup and trials | S | Must | — | in-progress | Claude (session 13 Oct, strategy) | Plan comes back to Ilan for approval before any SS code |
+| SS-01 | Investigation + plan for self-serve signup and trials | S | Must | — | in-progress | Claude (session 13 Oct, strategy) | Plan presented 13 Oct, waiting on Ilan's approval before any SS code |
 | SS-02 | Company lifecycle model: status (trial / active / expired / suspended), trial start and end, plan, usage limits; defaults set in superadmin | M | Must | BE-07 | todo | | Trial days configurable, never hardcoded |
 | SS-03 | One "create company" service used by the superadmin wizard, the API and self-serve | M | Must | BE-02 | todo | | Core of BE-23; coordinate so there is one path, not three |
 | SS-04 | WhatsApp signup for unknown numbers: replaces the "not registered" dead end with "start a free trial / I'm part of a company" | M | Must | SS-02, SS-03, BE-24 | todo | | Phone already verified by WhatsApp |
