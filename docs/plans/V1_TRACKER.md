@@ -58,6 +58,7 @@
 | INF-07 | Error alerting (Sentry or similar) for API, worker, dashboard | S | Later | — | todo | | Ilan: do this last |
 | INF-08 | Uptime monitor | S | Later | — | todo | | |
 | INF-09 | **Production photo storage is the FAKE adapter**: `/health` reports `media_storage: fake`, so every WhatsApp photo is kept in memory and lost on restart. Set `MESIRI_OBJECT_STORAGE__PROVIDER=r2` + endpoint/credentials in `/opt/mesiri/.env` | S | Must | — | todo | | Found 13 Oct via `/health`; startup log says the same. Needs VPS access + R2 credentials (Ilan). DPR photos depend on it |
+| INF-10 | Migrate Mesiri's WhatsApp Business Account billing to INR (Meta: required by 31 Dec 2026, non-INR accounts stop delivering from 1 Jan 2027) | S | Must | — | todo | | Ops task in Meta Business Manager, not code. Found 13 Oct via Meta's pricing docs |
 
 ## BE — Backend
 
@@ -103,6 +104,7 @@
 | BE-26 | Messages API for superadmin (per company, user, site; linked to what each message created) | S | Must | BE-09 | todo | | |
 | BE-27 | Health numbers API (DPRs sent vs expected, gap-check reply rate) | S | Later | BE-08 | todo | | |
 | BE-28 | `PostgresDatabase.transaction()` maps every exception raised while open (incl. a route's own `HTTPException` 401/403/404/422) to 500 "postgres unavailable"; routes using `get_db_conn` likely return 500 for ordinary client errors | S | Must | — | todo | | Found 13 Oct while fixing BE-06 (`595a162`); let `HTTPException` pass through unmapped, with a test |
+| BE-29 | Check the DeepSeek model name: `deepseek-chat` is no longer on DeepSeek's price page (legacy names are served by V4.1 Flash); pin the current name. Also confirm whether production runs Gemini 2.5 Flash or 2.0 Flash (2.0 is gone from Google's price page) | S | Must | — | todo | | Found 13 Oct while pricing BE-25; BE-25's tracking will record the real model per call |
 
 ## WA — WhatsApp assistant
 
@@ -162,3 +164,5 @@
 | 2026-10-13 | Deploy health check waits up to 60 s (healthy deploy had been rolled back) | `7fa35c9` |
 | 2026-10-13 | BE-06 fix: gate no longer turns route 401s into 500s | `595a162` |
 | 2026-10-13 | SA-07 module switches in the control panel | `d338389` |
+| 2026-10-13 | Labour: withdraw an attendance report filed on the wrong site (migration 0462, applied in prod); fixes superseded reports double-counting in the DPR and WhatsApp labour query | `6a4b20d` |
+| 2026-10-13 | Dashboard: trips / logistics page removed | `15b85fc` |
