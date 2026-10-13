@@ -87,7 +87,7 @@
 | BE-13 | Late entry for an approved day creates a flagged revision; next day's opening shows the adjustment | M | Must | BE-08 | todo | | Keeps frozen DPRs frozen. "Approved" = confirmed by the engineer |
 | BE-14 | Tomorrow's plan, weather (manual), hours lost, site working yes/half/no | S | Must | BE-08 | done | Claude (session 13 Oct, BE-08) | `73c4905`, migration 0468. On the site day row, copied into each version. `PATCH /dpr/site-days/{site_id}/conditions?date=`. Hours lost defaults to issue delays. "No work" = ready with nothing required. Both PDFs show them. Setting them from WhatsApp is not built yet |
 | BE-15 | Report recipients (users and outside contacts) with opt-in records | S | Must | — | todo | | Meta requires opt-in |
-| BE-16 | Project DPR roll-up from approved site DPRs, send deadline, "Not reported" sites | M | Must | BE-08 | claimed | Claude (session 13 Oct, BE-08) | Single-site projects: site DPR is the project DPR. Rolls up engineer-confirmed site DPRs |
+| BE-16 | Project DPR roll-up from approved site DPRs, send deadline, "Not reported" sites | M | Must | BE-08 | done | Claude (session 13 Oct, BE-08) | `2bfd869`, migration 0469. Cutoff now only builds drafts. Sent to admins/PMs when every site is confirmed, at `dpr_send_deadline` (default 21:00) or on "Send now" (`POST /dpr/projects/{id}/send`); single-site sends its site DPR; unconfirmed sites "Not reported". PDF rendered before sending. Also fixed: only one admin/PM ever got the auto DPR (notification key had no recipient). **Gap: BE-35** (deadline and auto-DPR can't be set from the dashboard yet) |
 | BE-17 | Fix labour events being dropped from `timeline_entries` | S | Must | — | todo | | DAILY_REPORTING_PLAN Phase 6.0 |
 | BE-18 | AI summary generated only from confirmed facts | S | Must | BE-09 | todo | | |
 | BE-19 | DPR PDF with the customer's letterhead (logo, colour, address, GSTIN, signatory) + "Generated with Mesiri" footer | M | Must | BE-20 | todo | | Client logo on project DPRs: yes (BE-33). Signature/stamp image: not in V1 (decided 13 Oct) |
@@ -111,6 +111,7 @@
 | BE-32 | Material transfers between sites (out of one site's stock, into another's) | M | Must | BE-12 | todo | | Added 13 Oct: transfers decided in for V1 |
 | BE-33 | Client logo per project (stored with BE-20's upload) shown on project DPRs | S | Must | BE-20 | done | Claude (session 13 Oct, blockers) | `669c5f8`. `projects.client_logo_object_key` (migration 0467); GET/PUT/DELETE `/projects/{id}/client-logo`; `hasClientLogo` on project responses. Showing it on the PDF is BE-19 |
 | BE-34 | WhatsApp ignores "explicit sites only" access: anyone on a project can report on all its sites (a site is authorized whenever its project is). Decide whether V1 enforces it | S | Must | BE-01 | todo | | Found 13 Oct in BE-01; kept as-is so the switch changes nothing |
+| BE-35 | The live `/projects` API (`apps/whatsapp-assistant/src/projects/router.py`) ignores reporting settings: timezone, cutoff, auto-generate DPR, send deadline, required report types. The dashboard's Reporting tab looks like it saves but nothing is stored, so auto DPR can't be switched on from the dashboard. Add them to the live router (the backend copy in `domains/projects/router.py` already has them but isn't mounted) | S | Must | — | todo | | Found 13 Oct in BE-16. Shared component: waiting for Ilan's approval. Overlaps BE-02's "two copies" problem |
 
 ## WA — WhatsApp assistant
 
@@ -136,7 +137,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | WEB-01 | New look and shell (IBM Plex Sans, colour tokens, 6-item sidebar) per the UI design | M | Must | — | done | Claude (session 13 Oct, foundations) | `c0e1fce`. IBM Plex Sans; tokens + dark mode; sidebar V1 order with More; fixed the never-rendering active highlight. Existing pages keep hardcoded status colours |
 | WEB-02 | Hide non-V1 modules using the module switch | S | Must | BE-06 | done | Claude (session 13 Oct, foundations) | `1129cfc` (with WA-07 + default flip). Sidebar filtered, 32 module routes guarded, project page finance button hidden |
-| WEB-03 | Today page, grouped by project | M | Must | BE-08 | claimed | Claude (session 13 Oct, BE-08) | |
+| WEB-03 | Today page, grouped by project | M | Must | BE-08 | done | Claude (session 13 Oct, BE-08) | `d36416c`. `/today` is the home page; per the UI design: summary, sites by project with status/counts/missing, project DPR state + Send now, Mark as no work, needs-attention, open issues. Not clicked through in a browser (needs a running backend) |
 | WEB-04 | Site DPR page: sections, confirm/edit/remove drafts, sources panel, approve & send, versions | L | Must | BE-09 | todo | | "Approve & send" = the engineer's confirm (decided 13 Oct) |
 | WEB-05 | Project DPR page | M | Must | BE-16 | todo | | |
 | WEB-06 | Daily Reports history (rework existing page) | M | Must | BE-08 | todo | | |
@@ -206,6 +207,8 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | 2026-10-13 | INF-09 local-disk media storage (off until .env switched); BE-31 shared JWT secret + startup warning | `ada65a3` |
 
 | 2026-10-13 | BE-01 step 0: identity from main tables in shadow (migration 0465), Sync Health comparison panel | `abaa073`, `b3d30f5` |
+| 2026-10-13 | BE-16 project DPR sent when confirmed or at the deadline (migration 0469) | `2bfd869` |
+| 2026-10-13 | WEB-03 Today page | `d36416c` |
 | 2026-10-13 | BE-14 site conditions: weather, hours lost, site working, tomorrow's plan (migration 0468) | `73c4905` |
 | 2026-10-13 | BE-08 site working day: needs details / ready statuses (migration 0466), every site gets its day, `/dpr/site-days` | `30fa1b7` |
 | 2026-10-13 | BE-31: users/projects routers use the configured login secret (were hardcoded) | `1ac48eb` |
