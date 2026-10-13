@@ -118,7 +118,7 @@
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| WA-01 | Capture flows save drafts first (work done, labour, materials, issues, photos) | L | Must | BE-09 | todo | | |
+| WA-01 | Capture flows save drafts first (work done, labour, materials, issues, photos) | L | Must | BE-09 | claimed | Claude (session 13 Oct, BE-08) | |
 | WA-02 | Forwarded batches: one summary reply; assumed to be today unless stated | M | Must | WA-01 | todo | | |
 | WA-03 | Quiet daytime: ask only when it can't wait; defer to the evening | S | Must | WA-01 | todo | | |
 | WA-04 | Evening gap-check per site, built from missing sections (template) | M | Must | BE-08 | todo | | Asks the engineer why details are missing and to send them (decided 13 Oct) |
