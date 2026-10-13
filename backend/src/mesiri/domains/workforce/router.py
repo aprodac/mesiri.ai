@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.media import assert_downloadable_url
+from mesiri.domains.shared.modules import require_module
 from mesiri.domains.shared.money import Money, Quantity
 from mesiri.domains.workforce.matching import MatchOutcome, ReportedWorker, match_worker
 from mesiri.domains.workforce.reports import (
@@ -58,7 +59,11 @@ from mesiri_contracts.common.storage import ObjectStoragePort
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/labour", tags=["labour"])
+router = APIRouter(
+    prefix="/labour",
+    tags=["labour"],
+    dependencies=[Depends(require_module("labour"))],
+)
 
 #: Who may run the destructive development-cleanup endpoints below.
 #: A bare "ADMIN" was too narrow: OWNER and SUPER_ADMIN are already treated as

@@ -573,6 +573,41 @@ def workflow_that_provides(entity_type: EntityType) -> WorkflowKey | None:
     return providers[0]
 
 
+# Which product module (backend domains/organizations/settings.py's MODULES)
+# each category belongs to, for the per-company module switch (V1 tracker
+# BE-06). None = not a module: every company always has it. The strings are
+# checked against the backend catalogue in tests rather than imported, so this
+# lookup layer keeps depending on contracts only.
+_CATEGORY_MODULES: dict[WorkflowCategory, str | None] = {
+    WorkflowCategory.PROGRESS: "dpr",
+    WorkflowCategory.LABOUR: "labour",
+    WorkflowCategory.MATERIAL: "materials",
+    WorkflowCategory.FINANCE: "finance",
+    WorkflowCategory.AUTOMATION: "automations",
+    WorkflowCategory.PROJECT: None,
+    WorkflowCategory.IDENTITY: None,
+}
+
+# Workflows whose category doesn't say which module they act on. REVERSE is
+# filed under FINANCE but also undoes attendance and activities, so gating it
+# on finance would block V1 corrections; whether its *target* is available is
+# for the caller to check against the record being reversed.
+_MODULE_OVERRIDES: dict[WorkflowKey, str | None] = {
+    WorkflowKey.REVERSE: None,
+}
+
+
+def module_for_workflow(key: WorkflowKey) -> str | None:
+    """The module a company needs switched on to use ``key``, or None when the
+    workflow is always available (or isn't registered)."""
+    if key in _MODULE_OVERRIDES:
+        return _MODULE_OVERRIDES[key]
+    definition = _DEFINITIONS.get(key)
+    if definition is None:
+        return None
+    return _CATEGORY_MODULES[definition.category]
+
+
 def is_informational(key: WorkflowKey) -> bool:
     """True if ``key`` only answers a question and never produces a draft_action.
 

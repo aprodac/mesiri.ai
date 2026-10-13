@@ -32,6 +32,35 @@ VALID_ROLES: frozenset[str] = frozenset(
 WHATSAPP_MATERIAL_CREATE_ROLES = "whatsapp_material_create_roles"
 FINANCE_SETTINGS = "finance_settings"
 LABOUR_SETTINGS = "labour_settings"
+ENABLED_MODULES = "enabled_modules"
+
+# Product modules a company can have switched on (V1 tracker BE-06). Each key
+# gates one or more API routers (domains/shared/modules.py's require_module)
+# and the WhatsApp workflows of the same area. Company, projects, sites, users
+# and auth are not modules: every company always has them.
+MODULES: dict[str, str] = {
+    "dpr": "Daily progress: activities, issues, photos, timeline and DPRs",
+    "labour": "Labour attendance and workforce",
+    "materials": "Materials received, used and stock",
+    "finance": "Expenses, petty cash, transfers, accounts and vendors",
+    "automations": "User-defined scheduled messages",
+}
+
+# DPR is the product: a company without it has nothing to use.
+ALWAYS_ON_MODULES: frozenset[str] = frozenset({"dpr"})
+
+# What V1 sells. Not yet the default: the default flips to this in the same
+# release as the dashboard hiding (WEB-02) and the WhatsApp polite refusal
+# (WA-07), so no page or message breaks in between.
+V1_MODULES: tuple[str, ...] = ("dpr", "labour", "materials")
+
+# Every module on, which is exactly how every company behaved before this
+# setting existed -- the same "default IS the old behaviour" rule as above.
+DEFAULT_ENABLED_MODULES: list[str] = list(MODULES)
+
+# Settings only a platform admin may change. Modules are tied to what a
+# customer pays for, so a company's own admin can read them but not edit them.
+SUPERADMIN_ONLY_KEYS: frozenset[str] = frozenset({ENABLED_MODULES})
 
 DEFAULT_FINANCE_SETTINGS = {
     "base_currency": "INR",
@@ -92,6 +121,15 @@ _SPECS: dict[str, SettingSpec] = {
         default=DEFAULT_LABOUR_SETTINGS,
         description="Organization-wide labour attendance preferences & WhatsApp assistant policies.",
     ),
+    ENABLED_MODULES: SettingSpec(
+        key=ENABLED_MODULES,
+        default=DEFAULT_ENABLED_MODULES,
+        description=(
+            "Product modules switched on for this company. Changed by the "
+            "Mesiri team only; a switched-off module's pages and WhatsApp "
+            "flows are unavailable."
+        ),
+    ),
 }
 
 
@@ -133,12 +171,54 @@ def validate_role_list(value: object) -> list[str]:
     return roles
 
 
+def validate_module_list(value: object) -> list[str]:
+    """Coerce and validate an enabled-modules payload.
+
+    Lowercases, drops duplicates, always includes the always-on modules, and
+    returns the list in catalogue order so the stored value is canonical and
+    two equivalent payloads persist identically.
+    """
+    if not isinstance(value, list):
+        raise ValueError("value must be a list of module names")
+    wanted: set[str] = set(ALWAYS_ON_MODULES)
+    for entry in value:
+        if not isinstance(entry, str):
+            raise ValueError("value must be a list of module names")
+        module = entry.strip().lower()
+        if module not in MODULES:
+            raise ValueError(f"unknown module: {entry}")
+        wanted.add(module)
+    return [module for module in MODULES if module in wanted]
+
+
+def enabled_modules(stored: object) -> list[str]:
+    """The canonical enabled list for a stored value.
+
+    Defensive about the stored shape: a hand-edited or legacy row that isn't
+    a valid module list falls back to the default rather than switching a
+    company's modules off by accident.
+    """
+    try:
+        return validate_module_list(stored)
+    except ValueError:
+        return list(DEFAULT_ENABLED_MODULES)
+
+
+def module_enabled(module: str, stored: object) -> bool:
+    """True if `module` is on for a company whose setting value is `stored`."""
+    if module in ALWAYS_ON_MODULES:
+        return True
+    return module in enabled_modules(stored)
+
+
 def validate(key: str, value: object) -> object:
     """Validate `value` for `key`, returning the canonical form to persist."""
     if not is_known_key(key):
         raise ValueError(f"unknown organization setting: {key}")
     if key == WHATSAPP_MATERIAL_CREATE_ROLES:
         return validate_role_list(value)
+    if key == ENABLED_MODULES:
+        return validate_module_list(value)
     return value
 
 

@@ -29,6 +29,7 @@ from mesiri.application.finance.transfer_handler import TransferMoneyHandler
 from mesiri.application.finance.transfer_resolution import PostgresTransferAccountResolver
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.domains.projects.router import get_auth_context
+from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.repositories.expenses import (
     PostgresExpenseCategoryRepository,
@@ -48,7 +49,11 @@ from mesiri.infrastructure.postgres.repositories.users import _users
 from mesiri.infrastructure.postgres.repositories.vendors import PostgresVendorRepository
 from mesiri_contracts.application.results.execution_result import ExecutionStatus
 
-router = APIRouter(prefix="/finance", tags=["finance"])
+router = APIRouter(
+    prefix="/finance",
+    tags=["finance"],
+    dependencies=[Depends(require_module("finance"))],
+)
 
 
 # ---------------------------------------------------------------------------

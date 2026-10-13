@@ -30,10 +30,15 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from mesiri.application.automations.scheduling import parse_time_of_day
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.domains.projects.router import get_auth_context
+from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.repositories.automations import PostgresAutomationRepository
 
-router = APIRouter(prefix="/automations", tags=["automations"])
+router = APIRouter(
+    prefix="/automations",
+    tags=["automations"],
+    dependencies=[Depends(require_module("automations"))],
+)
 
 _VALID_ACTIONS = {"SEND_DPR", "COMPLIANCE_SUMMARY", "REMINDER"}
 _VALID_AUDIENCES = {"SELF", "USERS", "ROLE", "NON_REPORTERS"}

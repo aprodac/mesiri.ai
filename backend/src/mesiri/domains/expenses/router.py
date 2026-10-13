@@ -40,6 +40,7 @@ from mesiri.authorization.context import AuthorizationContext
 from mesiri.domains.expenses.responses import ExpenseResponse, RecordExpenseResponse
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.media import assert_downloadable_url
+from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.objectstorage.dependency import get_object_storage
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.repositories.expense_execution import (
@@ -57,7 +58,11 @@ from mesiri.infrastructure.postgres.repositories.vendors import PostgresVendorRe
 from mesiri_contracts.application.results.execution_result import ExecutionStatus
 from mesiri_contracts.common.storage import ObjectStoragePort
 
-router = APIRouter(prefix="/expenses", tags=["expenses"])
+router = APIRouter(
+    prefix="/expenses",
+    tags=["expenses"],
+    dependencies=[Depends(require_module("finance"))],
+)
 
 # Presigned URLs are short-lived by design (they must be re-fetched, never
 # cached across sessions) -- 10 minutes is long enough to load a lightbox or

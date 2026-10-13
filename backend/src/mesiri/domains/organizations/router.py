@@ -283,6 +283,14 @@ async def update_company_setting(
     if not org_id:
         raise HTTPException(status_code=400, detail="Token missing org claim")
 
+    # Modules are tied to what a customer pays for: a company admin can read
+    # them (GET above) but only a platform admin may change them, through
+    # PUT /admin/organizations/{org_id}/settings.
+    if body.key in org_settings.SUPERADMIN_ONLY_KEYS:
+        raise HTTPException(
+            status_code=403, detail=f"'{body.key}' can only be changed by the Mesiri team"
+        )
+
     try:
         canonical = org_settings.validate(body.key, body.value)
     except ValueError as exc:

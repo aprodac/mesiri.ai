@@ -47,6 +47,7 @@ from mesiri_contracts.common.storage import ObjectStoragePort
 #: Matches the expenses router's TTL — long enough to open the document, short
 #: enough that a copied link stops working.
 _ATTACHMENT_URL_TTL_SECONDS = 600
+from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.postgres.repositories.materials import (
     MaterialMovementsRepository,
     PostgresMaterialCatalogRepository,
@@ -54,7 +55,11 @@ from mesiri.infrastructure.postgres.repositories.materials import (
     UnitsOfMeasureRepository,
 )
 
-router = APIRouter(prefix="/materials", tags=["materials"])
+router = APIRouter(
+    prefix="/materials",
+    tags=["materials"],
+    dependencies=[Depends(require_module("materials"))],
+)
 
 
 def _site_filter_denied(

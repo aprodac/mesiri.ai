@@ -9,10 +9,15 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.domains.projects.router import get_auth_context
+from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.repositories.vendors import PostgresVendorRepository
 
-router = APIRouter(prefix="/finance/vendors", tags=["vendors"])
+router = APIRouter(
+    prefix="/finance/vendors",
+    tags=["vendors"],
+    dependencies=[Depends(require_module("finance"))],
+)
 
 
 class VendorResponse(BaseModel):

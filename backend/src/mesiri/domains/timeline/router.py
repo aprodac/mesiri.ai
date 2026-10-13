@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.domains.projects.router import get_auth_context
+from mesiri.domains.shared.modules import require_module
 from mesiri.domains.timeline.responses import (
     TimelineDaySummaryResponse,
     TimelineEntriesListResponse,
@@ -15,7 +16,11 @@ from mesiri.domains.timeline.responses import (
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.repositories.timeline import PostgresTimelineReadRepository
 
-router = APIRouter(prefix="/timeline", tags=["timeline"])
+router = APIRouter(
+    prefix="/timeline",
+    tags=["timeline"],
+    dependencies=[Depends(require_module("dpr"))],
+)
 
 
 def _resolve_project_ids(

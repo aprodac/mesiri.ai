@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.domains.dpr.pdf import render_dpr_pdf_bytes
 from mesiri.domains.projects.router import get_auth_context
+from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.objectstorage.dependency import get_object_storage
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.repositories.dpr import PostgresDprRepository
@@ -30,7 +31,11 @@ from mesiri_contracts.common.storage import ObjectStoragePort
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/dpr", tags=["dpr"])
+router = APIRouter(
+    prefix="/dpr",
+    tags=["dpr"],
+    dependencies=[Depends(require_module("dpr"))],
+)
 
 
 class CreateDprRequest(BaseModel):

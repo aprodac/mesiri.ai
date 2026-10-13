@@ -102,6 +102,10 @@ class Me(BaseModel):
     name: str
     org_name: str
     is_platform_admin: bool
+    # Product modules switched on for the caller's company (V1 tracker
+    # BE-06), so the dashboard can show only what the company has. A platform
+    # admin has no company and sees every module.
+    enabled_modules: list[str] = Field(default_factory=list)
 
 
 class ChangePassword(BaseModel):
@@ -199,7 +203,36 @@ async def me(authorization: str = Header(None)) -> Me:
         name=payload.get("name", ""),
         org_name=payload.get("org_name", ""),
         is_platform_admin=role == "ADMIN" and not org,
+        enabled_modules=await _enabled_modules_for(org),
     )
+
+
+async def _enabled_modules_for(org: str) -> list[str]:
+    """The company's enabled modules; every module for a platform admin.
+
+    Never raises: /auth/me gates every dashboard page load, so a settings
+    lookup failure degrades to the default (every module on, the same as a
+    company that never changed the setting) instead of logging the user out.
+    """
+    from mesiri.domains.organizations import settings as org_settings
+
+    if not org:
+        return list(org_settings.MODULES)
+    try:
+        from mesiri.infrastructure.postgres.repositories.organization_settings import (
+            PostgresOrganizationSettingsRepository,
+        )
+
+        async with get_engine().connect() as conn:
+            stored = await PostgresOrganizationSettingsRepository(conn).get(
+                uuid.UUID(org), org_settings.ENABLED_MODULES
+            )
+        return org_settings.enabled_modules(stored)
+    except Exception:  # noqa: BLE001 — see docstring: /me must not fail on this
+        import logging
+
+        logging.getLogger("mesiri.auth").exception("auth.me.enabled_modules_lookup_failed")
+        return list(org_settings.DEFAULT_ENABLED_MODULES)
 
 
 @router.post("/change-password", status_code=204)
