@@ -8,15 +8,17 @@ import {
   Briefcase,
   Loader2,
   CheckCircle,
+  FileText,
 } from 'lucide-react'
 import { fetchCompany, fetchCompanySummary } from '@/lib/api'
 import { OverviewTab } from './company/OverviewTab'
 import { UsersTab } from './company/UsersTab'
 import { WhatsAppMessagesTab } from './company/WhatsAppMessagesTab'
 import { SettingsTab } from './company/SettingsTab'
+import { BrandingTab } from './company/BrandingTab'
 import { Badge } from '@/components/ui/badge'
 
-type TabType = 'overview' | 'users' | 'messages' | 'settings'
+type TabType = 'overview' | 'users' | 'messages' | 'letterhead' | 'settings'
 
 export default function CompanyDetails() {
   const [activeTab, setActiveTab] = React.useState<TabType>('overview')
@@ -139,6 +141,17 @@ export default function CompanyDetails() {
           WhatsApp History
         </button>
         <button
+          onClick={() => setActiveTab('letterhead')}
+          className={`flex items-center gap-1.5 px-4 py-2 border-b-2 font-medium text-xs transition-colors whitespace-nowrap ${
+            activeTab === 'letterhead'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <FileText className="size-3.5" />
+          Letterhead
+        </button>
+        <button
           onClick={() => setActiveTab('settings')}
           className={`flex items-center gap-1.5 px-4 py-2 border-b-2 font-medium text-xs transition-colors whitespace-nowrap ${
             activeTab === 'settings'
@@ -158,6 +171,7 @@ export default function CompanyDetails() {
         )}
         {activeTab === 'users' && <UsersTab />}
         {activeTab === 'messages' && <WhatsAppMessagesTab />}
+        {activeTab === 'letterhead' && <BrandingTab />}
         {activeTab === 'settings' && <SettingsTab company={company} />}
       </div>
     </div>

@@ -476,6 +476,52 @@ export async function updateCompany(payload: Partial<Company>): Promise<Company>
   return res.data
 }
 
+// Company letterhead for DPRs (tracker BE-20 / WEB-10). Name, address, phone
+// and email come from the company record and are edited through updateCompany.
+export interface CompanyBranding {
+  company_name: string
+  address: string | null
+  phone: string | null
+  email: string | null
+  letterhead_name: string | null
+  brand_color: string | null
+  gstin: string | null
+  signatory_name: string | null
+  signatory_designation: string | null
+  has_logo: boolean
+  logo_url: string | null
+}
+
+export type BrandingFields = Partial<
+  Pick<
+    CompanyBranding,
+    'letterhead_name' | 'brand_color' | 'gstin' | 'signatory_name' | 'signatory_designation'
+  >
+>
+
+export async function fetchBranding(): Promise<CompanyBranding> {
+  const res = await api.get<CompanyBranding>('/company/branding')
+  return res.data
+}
+
+export async function updateBranding(payload: BrandingFields): Promise<CompanyBranding> {
+  const res = await api.put<CompanyBranding>('/company/branding', payload)
+  return res.data
+}
+
+export async function uploadCompanyLogo(contentType: string, dataBase64: string): Promise<CompanyBranding> {
+  const res = await api.put<CompanyBranding>('/company/branding/logo', {
+    content_type: contentType,
+    data_base64: dataBase64,
+  })
+  return res.data
+}
+
+export async function removeCompanyLogo(): Promise<CompanyBranding> {
+  const res = await api.delete<CompanyBranding>('/company/branding/logo')
+  return res.data
+}
+
 export async function fetchCompanySummary(): Promise<CompanySummary> {
   const res = await api.get<CompanySummary>('/company/summary')
   return res.data
