@@ -19,6 +19,16 @@ if TYPE_CHECKING:  # pragma: no cover
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 
+def _is_http_error(exc: BaseException) -> bool:
+    """FastAPI's HTTPException subclasses Starlette's; checked lazily so this
+    module stays importable without the web stack (workers, scripts)."""
+    try:
+        from starlette.exceptions import HTTPException
+    except ImportError:  # pragma: no cover
+        return False
+    return isinstance(exc, HTTPException)
+
+
 class PostgresDatabase:
     name = "postgres"
     required = True
@@ -57,12 +67,20 @@ class PostgresDatabase:
     @asynccontextmanager
     async def transaction(self) -> AsyncIterator[AsyncConnection]:
         """Yield a connection inside a transaction; commit on success, roll back
-        on any error (which is mapped to the shared error contract)."""
+        on any error (which is mapped to the shared error contract).
+
+        An HTTP error raised by the code using the connection -- a route's
+        own 401/403/404/409/422 -- still rolls back but is re-raised as it
+        is (BE-28). Routes get their connection from `get_db_conn`, which
+        holds this transaction open for the whole request, so mapping those
+        turned every ordinary client error into 500 "postgres unavailable"."""
         engine = self._require_engine
         try:
             async with engine.begin() as conn:
                 yield conn
         except Exception as exc:  # noqa: BLE001
+            if _is_http_error(exc):
+                raise
             raise map_postgres_error(exc) from exc
 
     async def execute(self, statement: str, params: dict[str, Any] | None = None) -> Any:

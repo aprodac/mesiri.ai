@@ -55,6 +55,14 @@ function formatTime(iso: string | null): string | null {
   return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
+// The API's own reason ("today's DPR ... has already been sent"), which
+// reaches the page since BE-28 stopped turning such errors into 500s.
+function errorDetail(err: unknown): string | null {
+  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+  if (typeof detail !== 'string' || !detail) return null
+  return detail.charAt(0).toUpperCase() + detail.slice(1)
+}
+
 function hasUpdates(site: SiteDayItem): boolean {
   return site.work_items > 0 || site.workers > 0 || site.site_working === 'none'
 }
@@ -267,8 +275,8 @@ export default function TodayPage() {
       await setSiteDayConditionsApi(site.site_id, date, { site_working: 'none' })
       toast.success('Marked as no work', `${site.site_name} has nothing to report today.`)
       refresh()
-    } catch {
-      toast.error('Could not update', `${site.site_name} could not be marked. The day may already be confirmed.`)
+    } catch (err) {
+      toast.error('Could not update', errorDetail(err) ?? `${site.site_name} could not be marked.`)
     } finally {
       setBusySite(null)
     }
@@ -280,8 +288,8 @@ export default function TodayPage() {
       await sendProjectDprNowApi(project.project_id)
       toast.success('Sending the DPR', `${project.project_name}'s DPR goes out within a minute.`)
       refresh()
-    } catch {
-      toast.error('Could not send', `${project.project_name}'s DPR may already have been sent today.`)
+    } catch (err) {
+      toast.error('Could not send', errorDetail(err) ?? `${project.project_name}'s DPR could not be sent.`)
     } finally {
       setBusyProject(null)
     }
