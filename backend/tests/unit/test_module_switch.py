@@ -27,10 +27,13 @@ from mesiri.domains.shared.auth import get_current_user
 # --- the setting -------------------------------------------------------------
 
 
-def test_default_is_every_module_on():
-    """No row exists for any company until someone changes it, so the default
-    is the behaviour of every existing company: everything on, as before."""
-    assert settings.default_for(settings.ENABLED_MODULES) == list(settings.MODULES)
+def test_default_is_v1():
+    """A company whose modules were never set gets what V1 sells (flipped
+    from "everything on" together with WEB-02 and WA-07): finance and
+    automations are switched on per company from the control panel."""
+    assert settings.default_for(settings.ENABLED_MODULES) == list(settings.V1_MODULES)
+    assert not settings.module_enabled("finance", None)
+    assert not settings.module_enabled("automations", None)
 
 
 def test_v1_modules_are_known_and_include_dpr():
@@ -63,8 +66,10 @@ def test_validate_rejects_non_list():
         ("finance", ["dpr", "labour"], False),
         ("labour", ["dpr", "labour"], True),
         ("dpr", [], True),  # always on, even if a stored row omits it
-        ("finance", "garbage", True),  # malformed row falls back to the default
-        ("finance", None, True),
+        ("finance", "garbage", False),  # malformed row falls back to the V1 default
+        ("labour", "garbage", True),
+        ("finance", None, False),
+        ("finance", ["dpr", "finance"], True),
     ],
 )
 def test_module_enabled(module, stored, expected):
@@ -144,7 +149,15 @@ def test_route_auth_errors_are_not_turned_into_500s(client):
 
 
 def test_gate_passes_when_module_is_on(client):
+    client.stored[ORG] = ["dpr", "finance"]
     assert client.get("/thing", headers={"Authorization": _token(str(ORG))}).status_code == 200
+
+
+def test_gate_blocks_finance_for_a_company_on_the_default(client):
+    """No stored row = the V1 default, which has no finance."""
+    response = client.get("/thing", headers={"Authorization": _token(str(ORG))})
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "MODULE_DISABLED"
 
 
 def test_gate_blocks_when_module_is_off(client):

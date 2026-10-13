@@ -54,6 +54,7 @@ import {
 } from '@/components/project-dialogs'
 import { ProjectReportingTab } from '@/components/project-reporting-tab'
 import { ProjectOverviewTab } from '@/components/project-overview-tab'
+import { useModuleEnabled } from '@/lib/modules'
 
 const STATUS_BADGES = {
   success: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-none',
@@ -65,6 +66,7 @@ const STATUS_BADGES = {
 export default function ProjectDetails() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const isModuleEnabled = useModuleEnabled()
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const isNewProject = searchParams.get('new') === '1'
@@ -211,14 +213,16 @@ export default function ProjectDetails() {
             <Button size="sm" onClick={handleOpenProject} className="h-7 gap-1">
               Open Project
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => navigate(`/finance/expenses?project_id=${project.id}`)}
-              className="h-7 gap-1 text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10 font-semibold"
-            >
-              View Finance
-            </Button>
+            {isModuleEnabled('finance') && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => navigate(`/finance/expenses?project_id=${project.id}`)}
+                className="h-7 gap-1 text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10 font-semibold"
+              >
+                View Finance
+              </Button>
+            )}
             <Button size="sm" variant="outline" onClick={() => setProjectDialogOpen(true)} className="h-7 gap-1">
               <Edit2 className="size-3" /> Edit Settings
             </Button>

@@ -52,3 +52,11 @@ class OrganizationSettingsQueryService:
                 return settings_spec.default_for(key)
             except KeyError:
                 return None
+
+    async def enabled_modules(self, *, organization_id: str) -> list[str]:
+        """The company's switched-on modules (BE-06 / WA-07), canonical and
+        defaulted. Never raises, for the same reason as get()."""
+        from mesiri.domains.organizations import settings as settings_spec
+
+        stored = await self.get(organization_id=organization_id, key=settings_spec.ENABLED_MODULES)
+        return settings_spec.enabled_modules(stored)

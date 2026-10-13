@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AppLayout } from '@/components/app-layout'
+import { RequireModule } from '@/components/require-module'
 import Login from '@/pages/Login'
 import Overview from '@/pages/Overview'
 import Users from '@/pages/Users'
@@ -82,46 +83,46 @@ export default function App() {
 
         <Route path="operations/analytics" element={<OperationsAnalyticsPage />} />
 
-        <Route path="operations/automations" element={<AutomationsPage />} />
+        <Route path="operations/automations" element={<RequireModule module="automations"><AutomationsPage /></RequireModule>} />
 
         <Route path="operations/settings" element={<OperationsSettingsPage />} />
 
 
 
         {/* Finance Section */}
-        <Route path="finance" element={<Navigate to="/finance/expenses" replace />} />
-        <Route path="finance/overview" element={<FinanceOverviewPage />} />
-        <Route path="finance/expenses" element={<ExpensesPage />} />
-        <Route path="finance/expenses/:id" element={<ExpenseDetailPage />} />
-        <Route path="finance/receipts" element={<ReceiptsPage />} />
-        <Route path="finance/accounts" element={<AccountsPage />} />
-        <Route path="finance/whatsapp" element={<WhatsAppFinancePage />} />
-        <Route path="whatsapp/finance" element={<WhatsAppFinancePage />} />
-        <Route path="finance/transactions" element={<TransactionsPage />} />
-        <Route path="finance/petty-cash" element={<PettyCashPage />} />
-        <Route path="finance/vendors" element={<VendorsPage />} />
-        <Route path="finance/categories" element={<CategoriesPage />} />
-        <Route path="finance/reports" element={<FinanceReportsPage />} />
-        <Route path="finance/settings" element={<FinanceSettingsPage />} />
+        <Route path="finance" element={<RequireModule module="finance"><Navigate to="/finance/expenses" replace /></RequireModule>} />
+        <Route path="finance/overview" element={<RequireModule module="finance"><FinanceOverviewPage /></RequireModule>} />
+        <Route path="finance/expenses" element={<RequireModule module="finance"><ExpensesPage /></RequireModule>} />
+        <Route path="finance/expenses/:id" element={<RequireModule module="finance"><ExpenseDetailPage /></RequireModule>} />
+        <Route path="finance/receipts" element={<RequireModule module="finance"><ReceiptsPage /></RequireModule>} />
+        <Route path="finance/accounts" element={<RequireModule module="finance"><AccountsPage /></RequireModule>} />
+        <Route path="finance/whatsapp" element={<RequireModule module="finance"><WhatsAppFinancePage /></RequireModule>} />
+        <Route path="whatsapp/finance" element={<RequireModule module="finance"><WhatsAppFinancePage /></RequireModule>} />
+        <Route path="finance/transactions" element={<RequireModule module="finance"><TransactionsPage /></RequireModule>} />
+        <Route path="finance/petty-cash" element={<RequireModule module="finance"><PettyCashPage /></RequireModule>} />
+        <Route path="finance/vendors" element={<RequireModule module="finance"><VendorsPage /></RequireModule>} />
+        <Route path="finance/categories" element={<RequireModule module="finance"><CategoriesPage /></RequireModule>} />
+        <Route path="finance/reports" element={<RequireModule module="finance"><FinanceReportsPage /></RequireModule>} />
+        <Route path="finance/settings" element={<RequireModule module="finance"><FinanceSettingsPage /></RequireModule>} />
 
         {/* Materials Section */}
-        <Route path="materials" element={<MaterialsPage />} />
-        <Route path="materials/overview" element={<MaterialsPage />} />
-        <Route path="materials/inventory" element={<OperationalPlaceholder title="Material Inventory" />} />
-        <Route path="materials/purchases" element={<OperationalPlaceholder title="Material Purchases" />} />
-        <Route path="materials/suppliers" element={<OperationalPlaceholder title="Suppliers" />} />
-        <Route path="materials/categories" element={<OperationalPlaceholder title="Material Categories" />} />
+        <Route path="materials" element={<RequireModule module="materials"><MaterialsPage /></RequireModule>} />
+        <Route path="materials/overview" element={<RequireModule module="materials"><MaterialsPage /></RequireModule>} />
+        <Route path="materials/inventory" element={<RequireModule module="materials"><OperationalPlaceholder title="Material Inventory" /></RequireModule>} />
+        <Route path="materials/purchases" element={<RequireModule module="materials"><OperationalPlaceholder title="Material Purchases" /></RequireModule>} />
+        <Route path="materials/suppliers" element={<RequireModule module="materials"><OperationalPlaceholder title="Suppliers" /></RequireModule>} />
+        <Route path="materials/categories" element={<RequireModule module="materials"><OperationalPlaceholder title="Material Categories" /></RequireModule>} />
 
         {/* Labour & Workforce Section */}
-        <Route path="labour" element={<Navigate to="/labour/attendance" replace />} />
-        <Route path="labour/overview" element={<LabourOverviewPage />} />
-        <Route path="labour/attendance" element={<AttendancePage />} />
-        <Route path="labour/workers" element={<WorkersPage />} />
-        <Route path="labour/whatsapp" element={<WhatsAppLabourPage />} />
-        <Route path="whatsapp/labour" element={<WhatsAppLabourPage />} />
-        <Route path="labour/analytics" element={<LabourAnalyticsPage />} />
-        <Route path="labour/reports" element={<LabourReportsPage />} />
-        <Route path="labour/settings" element={<LabourSettingsPage />} />
+        <Route path="labour" element={<RequireModule module="labour"><Navigate to="/labour/attendance" replace /></RequireModule>} />
+        <Route path="labour/overview" element={<RequireModule module="labour"><LabourOverviewPage /></RequireModule>} />
+        <Route path="labour/attendance" element={<RequireModule module="labour"><AttendancePage /></RequireModule>} />
+        <Route path="labour/workers" element={<RequireModule module="labour"><WorkersPage /></RequireModule>} />
+        <Route path="labour/whatsapp" element={<RequireModule module="labour"><WhatsAppLabourPage /></RequireModule>} />
+        <Route path="whatsapp/labour" element={<RequireModule module="labour"><WhatsAppLabourPage /></RequireModule>} />
+        <Route path="labour/analytics" element={<RequireModule module="labour"><LabourAnalyticsPage /></RequireModule>} />
+        <Route path="labour/reports" element={<RequireModule module="labour"><LabourReportsPage /></RequireModule>} />
+        <Route path="labour/settings" element={<RequireModule module="labour"><LabourSettingsPage /></RequireModule>} />
 
         {/* Legacy operational routes fallbacks */}
         <Route path="timeline" element={<OperationsTimelinePage />} />
@@ -130,8 +131,8 @@ export default function App() {
         <Route path="gallery" element={<OperationsGalleryPage />} />
 
         <Route path="reports" element={<OperationalPlaceholder title="Reports" />} />
-        <Route path="expenses" element={<ExpensesPage />} />
-        <Route path="petty-cash" element={<PettyCashPage />} />
+        <Route path="expenses" element={<RequireModule module="finance"><ExpensesPage /></RequireModule>} />
+        <Route path="petty-cash" element={<RequireModule module="finance"><PettyCashPage /></RequireModule>} />
       </Route>
     </Routes>
     </ToastProvider>

@@ -60,6 +60,7 @@ from runtime.inbound_journey import (
 )
 from runtime.reply_dispatch import send_reply_spec
 from runtime.step_timing import StepTimer
+from workflows import registry as workflow_registry
 
 if TYPE_CHECKING:
     from backend.ports import ActorReader
@@ -365,6 +366,13 @@ def build_message_handlers(
             ctx.user_id,
             ctx.organization_id,
             len(ctx.projects),
+        )
+
+        # WA-07: the company's switched-on modules, set before the fast paths
+        # below (slot answers, confirmations, the account command) so they
+        # see it too; process_inbound_message sets it again for its own path.
+        workflow_registry.set_enabled_modules(
+            await org_settings_query.enabled_modules(organization_id=str(ctx.organization_id))
         )
 
         # A message type Mesiri can't act on yet (PDF, video, sticker,
@@ -757,14 +765,18 @@ def build_message_handlers(
         # Module Slice 6, account-admin scope) -- bypasses the AI pipeline
         # entirely, same priority as the slot-answer/confirmation fast paths
         # above. See runtime/account_admin_journey.py.
-        try:
-            account_admin_handled = await try_handle_account_admin_command(
-                message, ctx, workflow_runtime
-            )
-            timer.lap("account_admin_command")
-        except Exception:  # noqa: BLE001 — a resume error must not drop the message
-            _log.exception("account_admin.command_failed user=%s", ctx.user_id)
-            account_admin_handled = None
+        # Only when finance is switched on (WA-07): otherwise the message falls
+        # through to the normal path, whose module gate answers it politely.
+        account_admin_handled = None
+        if workflow_registry.module_is_enabled("finance"):
+            try:
+                account_admin_handled = await try_handle_account_admin_command(
+                    message, ctx, workflow_runtime
+                )
+                timer.lap("account_admin_command")
+            except Exception:  # noqa: BLE001 — a resume error must not drop the message
+                _log.exception("account_admin.command_failed user=%s", ctx.user_id)
+                account_admin_handled = None
         if account_admin_handled is not None:
             # send_reply_spec, not sender.send_text -- account_admin_handled
             # .reply carries Yes/No buttons for a real confirmable draft

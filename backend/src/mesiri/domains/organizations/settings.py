@@ -58,14 +58,15 @@ MODULE_LABELS: dict[str, str] = {
 # DPR is the product: a company without it has nothing to use.
 ALWAYS_ON_MODULES: frozenset[str] = frozenset({"dpr"})
 
-# What V1 sells. Not yet the default: the default flips to this in the same
-# release as the dashboard hiding (WEB-02) and the WhatsApp polite refusal
-# (WA-07), so no page or message breaks in between.
+# What V1 sells.
 V1_MODULES: tuple[str, ...] = ("dpr", "labour", "materials")
 
-# Every module on, which is exactly how every company behaved before this
-# setting existed -- the same "default IS the old behaviour" rule as above.
-DEFAULT_ENABLED_MODULES: list[str] = list(MODULES)
+# A company that has never had its modules set gets V1. Flipped from "every
+# module on" in the same release as the dashboard hiding (WEB-02) and the
+# WhatsApp polite refusal (WA-07), so a switched-off module is hidden
+# everywhere at the moment it stops working. Finance and automations are
+# switched on per company from the control panel (SA-07).
+DEFAULT_ENABLED_MODULES: list[str] = list(V1_MODULES)
 
 # Settings only a platform admin may change. Modules are tied to what a
 # customer pays for, so a company's own admin can read them but not edit them.

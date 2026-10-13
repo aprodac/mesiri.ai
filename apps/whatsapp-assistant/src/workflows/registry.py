@@ -8,7 +8,8 @@ never trigger a graph recompilation.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -608,6 +609,59 @@ def module_for_workflow(key: WorkflowKey) -> str | None:
     return _CATEGORY_MODULES[definition.category]
 
 
+# REVERSE acts on whatever it undoes, so its module comes from the target
+# (WA-07). An empty target_kind falls back to the latest expense or transfer
+# (runtime/inbound_journey/seeding.py), so it needs finance too.
+_REVERSAL_TARGET_MODULES: dict[str, str | None] = {
+    "": "finance",
+    "expense": "finance",
+    "transfer": "finance",
+    "petty_cash": "finance",
+    "attendance": "labour",
+    "activity": None,
+}
+
+
+def module_for_event(key: WorkflowKey | None, fields: Mapping[str, Any] | None) -> str | None:
+    """The module a company needs switched on for this specific request:
+    the workflow's module, except REVERSE, which is judged by its target."""
+    if key is None:
+        return None
+    if key is WorkflowKey.REVERSE:
+        target = str((fields or {}).get("target_kind") or "").strip().lower()
+        return _REVERSAL_TARGET_MODULES.get(target, "finance")
+    return module_for_workflow(key)
+
+
+# The company's switched-on modules for the message being handled (WA-07),
+# set once at the start of every inbound message by
+# runtime/inbound_journey/process.py. A context variable rather than a
+# parameter because every discovery surface -- the category menu, "what can
+# you do?", the unsupported reply -- already funnels through this registry,
+# and threading the set through each renderer would touch a dozen call sites
+# for no gain. None means "not known": nothing is filtered, which is how
+# every caller without a company (the control panel, tests) already behaves.
+_ENABLED_MODULES: ContextVar[frozenset[str] | None] = ContextVar(
+    "mesiri_enabled_modules", default=None
+)
+
+
+def set_enabled_modules(modules: Iterable[str] | None) -> None:
+    """Record the current message's company modules (None = unknown)."""
+    _ENABLED_MODULES.set(None if modules is None else frozenset(modules))
+
+
+def current_enabled_modules() -> frozenset[str] | None:
+    return _ENABLED_MODULES.get()
+
+
+def module_is_enabled(module: str | None) -> bool:
+    """True when ``module`` is always available or switched on for the
+    current message's company (or the company's modules aren't known)."""
+    enabled = _ENABLED_MODULES.get()
+    return module is None or enabled is None or module in enabled
+
+
 def is_informational(key: WorkflowKey) -> bool:
     """True if ``key`` only answers a question and never produces a draft_action.
 
@@ -660,6 +714,9 @@ def _visible_to(definition: WorkflowDefinition, role: str | None) -> bool:
     """
     if not definition.user_initiable:
         return False
+    # A switched-off module's workflows are never advertised (WA-07).
+    if not module_is_enabled(module_for_workflow(definition.key)):
+        return False
     if role is None or definition.allowed_roles is None:
         return True
     return role.upper() in definition.allowed_roles
@@ -682,7 +739,11 @@ def _menu_categories(role: str | None = None) -> tuple[MenuCategory, ...]:
             one_liner=one_liner,
         )
         for category, title, one_liner in _CATEGORY_DISPLAY
-        if any(d.category is category and _visible_to(d, role) for d in _DEFINITIONS.values())
+        # The category's own module must be on (WA-07): REVERSE is filed
+        # under FINANCE but always available, and must not keep the "Money"
+        # row on the menu of a company without finance.
+        if module_is_enabled(_CATEGORY_MODULES[category])
+        and any(d.category is category and _visible_to(d, role) for d in _DEFINITIONS.values())
     )
 
 

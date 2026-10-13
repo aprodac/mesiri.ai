@@ -56,6 +56,7 @@ import { useAllowedScopes, useScope } from '@/lib/ScopeContext'
 import { logout } from '@/lib/api'
 import type { ScopeKind } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
+import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
 
 type NavItem = {
   title: string
@@ -63,6 +64,8 @@ type NavItem = {
   icon: React.ComponentType<{ className?: string }>
   requiredScope?: ScopeKind
   requiredRole?: string
+  // Switched-off modules are hidden (WEB-02); see lib/modules.tsx.
+  module?: ModuleKey
 }
 
 type NavCategory = {
@@ -70,6 +73,7 @@ type NavCategory = {
   icon: React.ElementType
   items: NavItem[]
   requiredRole?: string
+  module?: ModuleKey
 }
 
 const OPERATIONS_CATEGORY: NavCategory = {
@@ -83,13 +87,14 @@ const OPERATIONS_CATEGORY: NavCategory = {
     { title: 'Issues', url: '/operations/issues', icon: AlertCircle },
     { title: 'Gallery', url: '/operations/gallery', icon: ImageIcon },
     { title: 'Analytics', url: '/operations/analytics', icon: BarChart3 },
-    { title: 'Automations', url: '/operations/automations', icon: Clock },
+    { title: 'Automations', url: '/operations/automations', icon: Clock, module: 'automations' },
     { title: 'Settings', url: '/operations/settings', icon: SlidersHorizontal },
   ],
 }
 
 const FINANCE_CATEGORY: NavCategory = {
   title: 'Finance',
+  module: 'finance',
   icon: Landmark,
   items: [
     { title: 'Overview', url: '/finance/overview', icon: PieChart },
@@ -107,6 +112,7 @@ const FINANCE_CATEGORY: NavCategory = {
 
 const LABOUR_CATEGORY: NavCategory = {
   title: 'Labour & Workforce',
+  module: 'labour',
   icon: HardHat,
   items: [
     { title: 'Overview', url: '/labour/overview', icon: PieChart },
@@ -121,6 +127,7 @@ const LABOUR_CATEGORY: NavCategory = {
 
 const MATERIALS_CATEGORY: NavCategory = {
   title: 'Materials',
+  module: 'materials',
   icon: Boxes,
   items: [
     { title: 'Overview', url: '/materials/overview', icon: Boxes },
@@ -387,8 +394,16 @@ export function AppSidebar() {
   const companyName = me?.org_name || me?.organization_name || 'Mesiri'
   const userName = me?.name || me?.full_name || ''
 
+  const isModuleEnabled = useModuleEnabled()
+  const visibleMoreCategories = MORE_CATEGORIES.filter((category) =>
+    isModuleEnabled(category.module)
+  ).map((category) => ({
+    ...category,
+    items: category.items.filter((item) => isModuleEnabled(item.module)),
+  }))
+
   const isMoreActive =
-    MORE_CATEGORIES.some((category) =>
+    visibleMoreCategories.some((category) =>
       category.items.some((item) => checkIsItemActive(location.pathname, item.url))
     ) || checkIsItemActive(location.pathname, '/whatsapp/inbox')
   const [isMoreOpen, setIsMoreOpen] = useState(isMoreActive)
@@ -483,7 +498,7 @@ export function AppSidebar() {
             {isMoreOpen && (
               <>
                 {renderLink({ title: 'WhatsApp Inbox', url: '/whatsapp/inbox', icon: MessageSquare })}
-                {MORE_CATEGORIES.map((category) => (
+                {visibleMoreCategories.map((category) => (
                   <CollapsibleNavCategory
                     key={category.title}
                     category={category}

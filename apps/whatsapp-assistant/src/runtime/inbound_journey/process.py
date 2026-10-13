@@ -104,6 +104,19 @@ from workflows import (
     WorkflowRuntime,
     log_workflow_run,
 )
+from workflows import registry as workflow_registry
+
+
+async def _company_modules(
+    org_settings_query: OrganizationSettingsQueryService | None,
+    actor: ActorIdentity | None,
+) -> list[str] | None:
+    """The sender's company's switched-on modules (WA-07), or None when there
+    is no company to ask about. Never raises: the settings service already
+    degrades to the default on a lookup failure."""
+    if org_settings_query is None or actor is None or not actor.organization_id:
+        return None
+    return await org_settings_query.enabled_modules(organization_id=str(actor.organization_id))
 
 # Matches runtime/account_admin_journey.py's _ACCOUNT_ADMIN_ROLES exactly --
 # that module gates the deterministic-parser fast path; this gates the
@@ -237,6 +250,11 @@ async def process_inbound_message(
     mlog: MessageLogger = message_logger or NoopMessageLogger()
     tlog: TraceLogger = trace_logger or NoopTraceLogger()
     correlation_id = message.correlation_id
+
+    # WA-07: set for EVERY message (None when unknown), so one company's
+    # modules can never carry over to the next message handled in this task.
+    # Every menu, help reply and the module gate below read it.
+    workflow_registry.set_enabled_modules(await _company_modules(org_settings_query, actor))
 
     # M19 conversation memory: loaded concurrently with understanding below
     # (independent reads -- see memory/context_loader.py's own docstring for
@@ -901,6 +919,32 @@ async def process_inbound_message(
                     _seed_account_admin_role(canonical_event, planner_decision, actor)
                     _seed_project_create_role(canonical_event, planner_decision, actor)
                     _seed_automation_setup_role(canonical_event, planner_decision, actor)
+
+                    # Module gate (WA-07): a request for a module this
+                    # company hasn't switched on is refused before the
+                    # workflow starts, with a reply that says so and lists
+                    # what is available. REVERSE is judged by what it would
+                    # undo. The API's MODULE_DISABLED check (BE-06) is the
+                    # backstop if a path ever gets past this.
+                    required_module = workflow_registry.module_for_event(
+                        planner_decision.workflow_key, canonical_event.fields
+                    )
+                    if not workflow_registry.module_is_enabled(required_module):
+                        from channel.replies import render_module_disabled_reply
+
+                        disabled_reply = render_module_disabled_reply(str(required_module))
+                        await send_text(message.sender.wa_id, disabled_reply)
+                        await _safe(
+                            mlog.log_reply(correlation_id=correlation_id, reply=disabled_reply)
+                        )
+                        await _safe(mlog.mark_completed(correlation_id=correlation_id))
+                        return JourneyResult(
+                            understanding=understanding,
+                            resolved_context=resolved,
+                            canonical_event=canonical_event,
+                            planner_decision=planner_decision,
+                            workflow_run=None,
+                        )
 
                     # Account-admin role gate: refused before the workflow
                     # even starts (no draft, no confirmation prompt) --

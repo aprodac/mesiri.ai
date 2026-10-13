@@ -84,6 +84,7 @@ from channel.replies import (
     render_material_create_offer,
     render_material_create_unit_picker,
     render_material_created_reply,
+    render_module_disabled_reply,
     render_no_projects_reply,
     render_plan_preview_reply,
     render_project_picker,
@@ -97,6 +98,7 @@ from mesiri_contracts.assistant.understanding_result import UnderstandingResult
 from mesiri_contracts.assistant.v2.canonical_event import CanonicalEventV2
 from mesiri_contracts.assistant.v2.resolved_context import ResolvedContextV2
 from mesiri_contracts.common.ids import new_id
+from planner.routing import WORKFLOW_KEY_BY_EVENT
 from planning.decomposition import build_plan_from_segments
 from planning.plan_store import PlanStore
 from planning.preview import render_plan_preview
@@ -114,6 +116,7 @@ from runtime.inventory_query import MaterialInventoryQueryService
 from runtime.material_catalog_query import MaterialCatalogQueryService
 from runtime.org_settings_query import OrganizationSettingsQueryService
 from understanding.pipeline import UnderstandingPipeline
+from workflows import registry as workflow_registry
 
 #: Decomposition only makes sense where there is text to split.
 #: IMAGE/DOCUMENT go through vision first and their "text" is a rendering of
@@ -342,12 +345,39 @@ async def _finish_with_events(
     """Turn a fully-gated event list into a Plan and send the §8 preview --
     the shared tail of the fresh-message path and every resume leg below,
     once _process_remaining_segments has nothing left to pause on."""
+    # WA-07: steps for a module the company hasn't switched on are dropped
+    # here, before anything is persisted, and the preview says so. If every
+    # step needs a switched-off module, the user gets the same polite reply
+    # a single request would.
+    kept: list[CanonicalEventV2] = []
+    skipped_modules: list[str] = []
+    for event in events:
+        module = workflow_registry.module_for_event(
+            WORKFLOW_KEY_BY_EVENT.get(event.event_type), event.fields
+        )
+        if workflow_registry.module_is_enabled(module):
+            kept.append(event)
+        else:
+            skipped_modules.append(str(module))
+    if skipped_modules and not kept:
+        return ReplySpec(text=render_module_disabled_reply(skipped_modules[0]))
+    events = kept
+
     result = build_plan_from_segments(events, plan_id=new_id("plan"))
     if result.plan is None:
         return None
     try:
         await plan_store.start_plan(plan=result.plan)
-        return render_plan_preview_reply(render_plan_preview(result.plan))
+        preview = render_plan_preview(result.plan)
+        if skipped_modules:
+            n = len(skipped_modules)
+            preview = (
+                f"{n} part{'' if n == 1 else 's'} of your message "
+                f"{'needs' if n == 1 else 'need'} a feature that isn't switched on "
+                "for your company, so I left "
+                f"{'it' if n == 1 else 'them'} out.\n\n{preview}"
+            )
+        return render_plan_preview_reply(preview)
     except Exception:  # noqa: BLE001 -- see module docstring: never let a
         # plan-persist failure take down the message.
         _log.exception("plan.persist_failed correlation_id=%s", correlation_id)

@@ -1097,6 +1097,36 @@ def render_understanding_failed_reply() -> str:
     )
 
 
+# How each switchable module is named to a WhatsApp user (WA-07). The keys
+# are backend domains/organizations/settings.py's MODULES.
+_MODULE_USER_NAMES: dict[str, str] = {
+    "dpr": "Daily progress reports",
+    "labour": "Labour attendance",
+    "materials": "Materials",
+    "finance": "Expenses and money",
+    "automations": "Scheduled messages",
+}
+
+
+def render_module_disabled_reply(module: str) -> str:
+    """A request for a module the company hasn't switched on (WA-07).
+
+    Says plainly that it is off for the company -- not that the user typed
+    something wrong -- and lists what IS available. The list comes from the
+    registry, which already hides switched-off modules for this message.
+    """
+    from workflows.registry import iter_menu_categories
+
+    name = _MODULE_USER_NAMES.get(module, module.capitalize())
+    lines = "\n".join(f"  • {c.title} — {c.one_liner.lower()}" for c in iter_menu_categories())
+    available = f"\n\nHere's what I can help with:\n{lines}" if lines else ""
+    return (
+        f"{name} isn't switched on for your company, so I can't record that."
+        f"{available}\n\n"
+        "Ask your admin if you need it."
+    )
+
+
 def render_unsupported_reply() -> str:
     """The intent was understood but no workflow exists for it yet.
 
