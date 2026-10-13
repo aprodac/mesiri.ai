@@ -67,12 +67,12 @@
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | BE-01 | Single identity model: control-plane tables are the only source; move phone identities, default project/site, roles onto them; retire `context_*` copies and the reconcile watchdog | L | Must | decision | blocked | | Waiting on approval (see Decisions) |
-| BE-02 | One tenant provisioning path (remove the duplicate in `apps/whatsapp-assistant/src/admin/router.py` vs `backend/.../admin/router.py`) | S | Must | — | todo | | |
+| BE-02 | One tenant provisioning path (remove the duplicate in `apps/whatsapp-assistant/src/admin/router.py` vs `backend/.../admin/router.py`) | S | Must | — | todo | | Will be done inside SS-03 (one create-company step) |
 | BE-03 | Database-level tenant isolation (Postgres row-level security on `organization_id`) | L | Must | BE-01 | todo | | |
 | BE-04 | Phone rules: one person in several companies; never file across companies by guess | M | Must | BE-01 | todo | | Loophole #1 |
 | BE-05 | Audit log of superadmin actions (who created/changed/suspended what) | S | Must | — | todo | | |
 | BE-06 | Module on/off switch per company (`enabled_modules`), enforced by the API | S | Must | — | done | Claude (session 13 Oct, foundations) | `faffdef`, fix `595a162` (gate turned route 401s into 500s, ~15 min in prod), deploy health-check fix `7fa35c9`. Default flipped to V1 in `1129cfc` |
-| BE-07 | Normalise status values (`Active` vs `active`) | S | Must | — | todo | | Has locked a user out of WhatsApp before |
+| BE-07 | Normalise status values (`Active` vs `active`) | S | Must | — | claimed | Claude (session 13 Oct, strategy) | Has locked a user out of WhatsApp before. Stage A of self-serve (approved 13 Oct) |
 
 ### DPR data
 
@@ -123,7 +123,7 @@
 | WA-09 | Welcome and opt-in messages; handle "YES" | S | Must | BE-15 | todo | | |
 | WA-10 | Get all templates approved by Meta | S | Must | WA-04, WA-06, WA-09 | todo | | Ops task, not code |
 | WA-11 | Reply in the sender's language (check and fix) | S | Must | — | todo | | |
-| WA-12 | **Send approved template messages** (outbound has text/list/button/image/document only). Today a scheduled notification to anyone silent for 24 h is skipped with `outside_whatsapp_session_window_needs_template`. Add template sending + a registry of approved templates | M | Must | — | todo | | Found 13 Oct (SS-01 investigation). Blocks WA-04, WA-06, WA-09, SS-06, SS-08 in practice |
+| WA-12 | **Send approved template messages** (outbound has text/list/button/image/document only). Today a scheduled notification to anyone silent for 24 h is skipped with `outside_whatsapp_session_window_needs_template`. Add template sending + a registry of approved templates | M | Must | — | todo | | Found 13 Oct (SS-01 investigation). Blocks WA-04, WA-06, WA-09, SS-06, SS-08 in practice. Queued for Claude (session 13 Oct, strategy) after BE-07 (Stage A, approved 13 Oct). Ask before picking up |
 
 ## WEB — Web dashboard
 
@@ -166,8 +166,8 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | SS-01 | Investigation + plan for self-serve signup and trials | S | Must | — | in-progress | Claude (session 13 Oct, strategy) | Plan presented 13 Oct, waiting on Ilan's approval before any SS code |
-| SS-02 | Company lifecycle model: status (trial / active / expired / suspended), trial start and end, plan, usage limits; defaults set in superadmin | M | Must | BE-07 | todo | | Trial days configurable, never hardcoded |
-| SS-03 | One "create company" service used by the superadmin wizard, the API and self-serve | M | Must | BE-02 | todo | | Core of BE-23; coordinate so there is one path, not three |
+| SS-02 | Company lifecycle model: status (trial / active / expired / suspended), trial start and end, plan, usage limits; defaults set in superadmin | M | Must | BE-07 | todo | | Trial days configurable, never hardcoded. Queued for Claude (session 13 Oct, strategy) after BE-07 (Stage A, approved 13 Oct). Ask before picking up |
+| SS-03 | One "create company" service used by the superadmin wizard, the API and self-serve | M | Must | BE-02 | todo | | Core of BE-23; coordinate so there is one path, not three. Queued for Claude (session 13 Oct, strategy) after BE-07 (Stage A, approved 13 Oct). Ask before picking up |
 | SS-04 | WhatsApp signup for unknown numbers: replaces the "not registered" dead end with "start a free trial / I'm part of a company" | M | Must | SS-02, SS-03, BE-24 | todo | | Phone already verified by WhatsApp |
 | SS-05 | Team joins by link or code (`JOIN ACME-4821`), owner approves or rejects | M | Must | SS-03, BE-04 | todo | | A leaked code can't add strangers |
 | SS-06 | Web signup: phone → code on WhatsApp → same questions → same creation step; login link | M | Must | SS-03 | todo | | Needs a Meta authentication template |
