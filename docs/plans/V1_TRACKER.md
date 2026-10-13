@@ -79,7 +79,7 @@
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| BE-08 | `site_days`: one working-day record per site per date, with statuses (collecting → needs confirmation → ready → approved → sent) | M | Must | — | claimed | Claude (session 13 Oct, BE-08) | Engineer confirms, then it goes out (decided 13 Oct): collecting → needs details → ready → with engineer → confirmed → sent |
+| BE-08 | `site_days`: one working-day record per site per date, with statuses (collecting → needs confirmation → ready → approved → sent) | M | Must | — | done | Claude (session 13 Oct, BE-08) | `30fa1b7`, migration 0466. **No new table:** the SITE `daily_reports` row is the site day. Added `NEEDS_DETAILS`/`READY` + `missing_sections`; ready = a work item AND a labour count (photos/materials listed, never block). Every active site gets its day at cutoff; refresh keeps "with engineer"; confirm stamps who/when; `GET /dpr/site-days?date=`. Rules in `application/dpr/site_day.py` |
 | BE-09 | Draft/confirmed status on every fact, plus `extractions` (what the AI read, model, confidence) | M | Must | BE-08 | todo | | Save first, confirm later (decided 13 Oct) |
 | BE-10 | Labour counted as a snapshot per contractor+trade+day (latest replaces earlier) | S | Must | BE-09 | todo | | Prevents double counting |
 | BE-11 | Duplicate detection: repeated work items (Must), re-used photos across days (Later) | M | Must | BE-09 | todo | | |
@@ -206,3 +206,4 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | 2026-10-13 | INF-09 local-disk media storage (off until .env switched); BE-31 shared JWT secret + startup warning | `ada65a3` |
 
 | 2026-10-13 | BE-01 step 0: identity from main tables in shadow (migration 0465), Sync Health comparison panel | `abaa073`, `b3d30f5` |
+| 2026-10-13 | BE-08 site working day: needs details / ready statuses (migration 0466), every site gets its day, `/dpr/site-days` | `30fa1b7` |
