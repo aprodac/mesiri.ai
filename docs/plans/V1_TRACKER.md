@@ -67,7 +67,7 @@
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| BE-01 | Single identity model: control-plane tables are the only source; move phone identities, default project/site, roles onto them; retire `context_*` copies and the reconcile watchdog | L | Must | — | in-progress | Claude (session 13 Oct, blockers) | Approved 13 Oct. Plan needed before code |
+| BE-01 | Single identity model: control-plane tables are the only source; move phone identities, default project/site, roles onto them; retire `context_*` copies and the reconcile watchdog | L | Must | — | in-progress | Claude (session 13 Oct, blockers) | Approved 13 Oct. **Step 0 shipped** (`abaa073`, `b3d30f5`): WhatsApp reads identity from the main tables alongside the copy (`MESIRI_IDENTITY_SOURCE`, default `shadow`); differences show on control panel → Sync Health → "WhatsApp copy vs main tables". Same IDs as the copy (`ctx_user_<uuid>` etc.), so nothing downstream changes. Step 2 (move data) needs nothing: roles, permissions and per-user defaults have no writer in the code. **Next:** after ~3 days with no differences, change `DEFAULT_SOURCE` in `context/shadow.py` to `main` (step 1); a few days later delete the copy, projection hooks, watchdog and tables (step 3) |
 | BE-02 | One tenant provisioning path (remove the duplicate in `apps/whatsapp-assistant/src/admin/router.py` vs `backend/.../admin/router.py`) | S | Must | — | todo | | Will be done inside SS-03 (one create-company step) |
 | BE-03 | Database-level tenant isolation (Postgres row-level security on `organization_id`) | L | Must | BE-01 | todo | | |
 | BE-04 | Phone rules: one person in several companies; never file across companies by guess | M | Must | BE-01 | todo | | Loophole #1 |
@@ -110,6 +110,7 @@
 | BE-29 | Check the DeepSeek model name: `deepseek-chat` is no longer on DeepSeek's price page (legacy names are served by V4.1 Flash); pin the current name. Also confirm whether production runs Gemini 2.5 Flash or 2.0 Flash (2.0 is gone from Google's price page) | S | Must | — | todo | | Found 13 Oct while pricing BE-25; BE-25's tracking will record the real model per call |
 | BE-32 | Material transfers between sites (out of one site's stock, into another's) | M | Must | BE-12 | todo | | Added 13 Oct: transfers decided in for V1 |
 | BE-33 | Client logo per project (stored with BE-20's upload) shown on project DPRs | S | Must | BE-20 | todo | | Added 13 Oct: client logo decided in for V1 |
+| BE-34 | WhatsApp ignores "explicit sites only" access: anyone on a project can report on all its sites (a site is authorized whenever its project is). Decide whether V1 enforces it | S | Must | BE-01 | todo | | Found 13 Oct in BE-01; kept as-is so the switch changes nothing |
 
 ## WA — WhatsApp assistant
 
@@ -203,3 +204,5 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | 2026-10-13 | BE-07 statuses lowercase (migration 0463); automatic DPR now finds companies | `3b5c8e1` |
 | 2026-10-13 | Security: removed unauthenticated `/auth/register` (anyone could mint a platform-admin token) | `c669783` |
 | 2026-10-13 | INF-09 local-disk media storage (off until .env switched); BE-31 shared JWT secret + startup warning | `ada65a3` |
+
+| 2026-10-13 | BE-01 step 0: identity from main tables in shadow (migration 0465), Sync Health comparison panel | `abaa073`, `b3d30f5` |
