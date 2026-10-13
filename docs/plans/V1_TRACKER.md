@@ -71,7 +71,7 @@
 | BE-03 | Database-level tenant isolation (Postgres row-level security on `organization_id`) | L | Must | BE-01 | todo | | |
 | BE-04 | Phone rules: one person in several companies; never file across companies by guess | M | Must | BE-01 | todo | | Loophole #1 |
 | BE-05 | Audit log of superadmin actions (who created/changed/suspended what) | S | Must | — | todo | | |
-| BE-06 | Module on/off switch per company (`enabled_modules`), enforced by the API | S | Must | — | done | Claude (session 13 Oct, foundations) | `faffdef`, fix `595a162` (gate turned route 401s into 500s, ~15 min in prod), deploy health-check fix `7fa35c9`. Default is still every module on; flip `DEFAULT_ENABLED_MODULES` to `V1_MODULES` in the same release as WEB-02 + WA-07 |
+| BE-06 | Module on/off switch per company (`enabled_modules`), enforced by the API | S | Must | — | done | Claude (session 13 Oct, foundations) | `faffdef`, fix `595a162` (gate turned route 401s into 500s, ~15 min in prod), deploy health-check fix `7fa35c9`. Default flipped to V1 in `1129cfc` |
 | BE-07 | Normalise status values (`Active` vs `active`) | S | Must | — | todo | | Has locked a user out of WhatsApp before |
 
 ### DPR data
@@ -118,7 +118,7 @@
 | WA-04 | Evening gap-check per site, built from missing sections (template) | M | Must | BE-08 | todo | | |
 | WA-05 | Confirmation message; "Confirm all" only for high-confidence items; "Fix something" flow | M | Must | WA-04 | todo | | |
 | WA-06 | No-update reminder, owner approval message, DPR delivery message (templates) | M | Must | BE-16 | todo | | |
-| WA-07 | Polite reply for switched-off features | S | Must | BE-06 | claimed | Claude (session 13 Oct, foundations) | Use `workflows/registry.py`'s `module_for_workflow()` + the org setting; REVERSE is always allowed but should check the target record's module |
+| WA-07 | Polite reply for switched-off features | S | Must | BE-06 | done | Claude (session 13 Oct, foundations) | `1129cfc` (with WEB-02). Gate in process.py + fast path + multi-request plans; menus list only switched-on modules; REVERSE judged by target |
 | WA-08 | Ask "which company?" for people in several companies | S | Must | BE-04 | todo | | |
 | WA-09 | Welcome and opt-in messages; handle "YES" | S | Must | BE-15 | todo | | |
 | WA-10 | Get all templates approved by Meta | S | Must | WA-04, WA-06, WA-09 | todo | | Ops task, not code |
@@ -130,7 +130,7 @@
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | WEB-01 | New look and shell (IBM Plex Sans, colour tokens, 6-item sidebar) per the UI design | M | Must | — | done | Claude (session 13 Oct, foundations) | `c0e1fce`. IBM Plex Sans; tokens + dark mode; sidebar V1 order with More; fixed the never-rendering active highlight. Existing pages keep hardcoded status colours |
-| WEB-02 | Hide non-V1 modules using the module switch | S | Must | BE-06 | claimed | Claude (session 13 Oct, foundations) | Hide, don't delete. `/auth/me` now returns `enabled_modules`; disabled APIs return 403 `MODULE_DISABLED` |
+| WEB-02 | Hide non-V1 modules using the module switch | S | Must | BE-06 | done | Claude (session 13 Oct, foundations) | `1129cfc` (with WA-07 + default flip). Sidebar filtered, 32 module routes guarded, project page finance button hidden |
 | WEB-03 | Today page, grouped by project | M | Must | BE-08 | todo | | |
 | WEB-04 | Site DPR page: sections, confirm/edit/remove drafts, sources panel, approve & send, versions | L | Must | BE-09 | todo | | |
 | WEB-05 | Project DPR page | M | Must | BE-16 | todo | | |
@@ -193,4 +193,5 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | 2026-10-13 | Labour: withdraw an attendance report filed on the wrong site (migration 0462, applied in prod); fixes superseded reports double-counting in the DPR and WhatsApp labour query | `6a4b20d` |
 | 2026-10-13 | Dashboard: trips / logistics page removed | `15b85fc` |
 | 2026-10-13 | WEB-01 new look and V1 shell | `c0e1fce` |
+| 2026-10-13 | WEB-02 + WA-07: switched-off modules hidden on dashboard and WhatsApp; default modules = V1 | `1129cfc` |
 | 2026-10-13 | Security: removed unauthenticated `/auth/register` (anyone could mint a platform-admin token) | `c669783` |
