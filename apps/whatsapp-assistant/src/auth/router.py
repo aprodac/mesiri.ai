@@ -13,14 +13,20 @@ from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from mesiri.domains.identity.auth_service import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    ALGORITHM,
+    SECRET_KEY,
+)
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # ---------------------------------------------------------------------------
 # Shared crypto config
 # ---------------------------------------------------------------------------
-SECRET_KEY = os.environ.get("MESIRI_JWT_SECRET", "mesiri-temp-secret-key-change-in-production")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 1 week
+# SECRET_KEY, ALGORITHM and ACCESS_TOKEN_EXPIRE_MINUTES come from
+# mesiri.domains.identity.auth_service (imported above): one definition, so
+# the two apps can never sign with different secrets.
 
 
 def _hash_pw(plain: str) -> str:

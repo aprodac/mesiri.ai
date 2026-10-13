@@ -35,6 +35,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """Initialize and tear down shared runtime dependencies."""
         async with httpx.AsyncClient(timeout=30.0) as http_client:
             app.state.container = build_container(app_settings, http_client)
+            # BE-31: logins signed with the public fallback secret can be
+            # forged by anyone. Logged, not fatal, until production's .env is
+            # confirmed to set MESIRI_JWT_SECRET -- refusing to boot before
+            # that is known could take the live app down on deploy.
+            from mesiri.domains.identity.auth_service import jwt_secret_is_default
+
+            if jwt_secret_is_default():
+                import logging
+
+                logging.getLogger("mesiri.startup").error(
+                    "MESIRI_JWT_SECRET is not set: logins are signed with the public "
+                    "default secret and can be forged. Set it in /opt/mesiri/.env."
+                )
             # Connect the Redis client (no-op for FakeRedis; real connection
             # for RedisClient when MESIRI_REDIS__HOST is configured).
             await app.state.container.redis_client.connect()
@@ -365,6 +378,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         import logging
 
         logging.getLogger(__name__).warning("DPR router not loaded: %s", exc)
+
+    # Signed download links for media kept on this server's disk (INF-09,
+    # object storage provider "local"). Answers 404 under any other provider.
+    try:
+        from mesiri.domains.shared.media_router import router as media_router
+
+        app.include_router(media_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Media router not loaded: %s", exc)
 
     # Automations -- user-defined recurring schedules (GET/POST
     # /automations, PATCH/DELETE /automations/{id}, GET

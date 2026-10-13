@@ -92,6 +92,7 @@ class RedisSettings(_Section):
 class ObjectStorageProvider(str, Enum):
     FAKE = "fake"
     R2 = "r2"
+    LOCAL = "local"
 
 
 class ObjectStorageSettings(_Section):
@@ -102,6 +103,11 @@ class ObjectStorageSettings(_Section):
     secret_access_key: SecretStr | None = None
     region: str = "auto"
     presign_ttl_seconds: int = 900
+    # provider=local: files live under local_root on this server and are served
+    # by the app's own /media route, at public_base_url, via signed links.
+    local_root: str = "/var/lib/mesiri/media"
+    public_base_url: str | None = None
+    signing_secret: SecretStr | None = None
 
 
 class SarvamSettings(_Section):
@@ -204,6 +210,13 @@ class Settings(BaseSettings):
                 ("MESIRI_OBJECT_STORAGE__ENDPOINT_URL", self.object_storage.endpoint_url),
                 ("MESIRI_OBJECT_STORAGE__ACCESS_KEY_ID", self.object_storage.access_key_id),
                 ("MESIRI_OBJECT_STORAGE__SECRET_ACCESS_KEY", self.object_storage.secret_access_key),
+            ):
+                if not val:
+                    missing.append(name)
+        elif self.object_storage.provider is ObjectStorageProvider.LOCAL:
+            for name, val in (
+                ("MESIRI_OBJECT_STORAGE__PUBLIC_BASE_URL", self.object_storage.public_base_url),
+                ("MESIRI_OBJECT_STORAGE__SIGNING_SECRET", self.object_storage.signing_secret),
             ):
                 if not val:
                     missing.append(name)

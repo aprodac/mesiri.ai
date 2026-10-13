@@ -187,8 +187,8 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         _logging.getLogger("mesiri.startup").error(
             "object storage is the FAKE adapter in a %s environment -- every photo "
             "will be written to memory, lost on restart, and undisplayable in the "
-            "dashboard. Set MESIRI_OBJECT_STORAGE__PROVIDER=r2 with its endpoint "
-            "and credentials.",
+            "dashboard. Set MESIRI_OBJECT_STORAGE__PROVIDER=local (with "
+            "PUBLIC_BASE_URL and SIGNING_SECRET) or r2 with its endpoint and credentials.",
             _backend_settings.environment.value,
         )
 

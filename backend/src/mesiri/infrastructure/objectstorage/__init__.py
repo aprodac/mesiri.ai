@@ -18,7 +18,8 @@ def build_object_storage(settings: Settings) -> ObjectStoragePort:
     """Select the object-storage adapter from configuration.
 
     Local/test use the in-process fake; ``r2`` selects the Cloudflare R2 adapter
-    (imported lazily so boto3 is only required for that lane).
+    (imported lazily so boto3 is only required for that lane); ``local`` keeps
+    files on this server's disk.
     """
     provider = settings.object_storage.provider
     if provider is ObjectStorageProvider.FAKE:
@@ -27,4 +28,8 @@ def build_object_storage(settings: Settings) -> ObjectStoragePort:
         from .r2 import R2ObjectStorage
 
         return R2ObjectStorage(settings.object_storage)
+    if provider is ObjectStorageProvider.LOCAL:
+        from .local_disk import LocalDiskObjectStorage
+
+        return LocalDiskObjectStorage(settings.object_storage)
     raise ValueError(f"unknown object storage provider: {provider}")

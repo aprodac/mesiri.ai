@@ -6,9 +6,17 @@ from passlib.context import CryptContext
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-SECRET_KEY = os.environ.get("MESIRI_JWT_SECRET", "mesiri-temp-secret-key-change-in-production")
+# The fallback is public (it is in this repository), so a server running on it
+# accepts tokens anyone can forge. jwt_secret_is_default() lets startup say so.
+_DEFAULT_SECRET = "mesiri-temp-secret-key-change-in-production"
+SECRET_KEY = os.environ.get("MESIRI_JWT_SECRET") or _DEFAULT_SECRET
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 1 week
+
+
+def jwt_secret_is_default() -> bool:
+    """True when logins are signed with the public fallback secret (BE-31)."""
+    return SECRET_KEY == _DEFAULT_SECRET
 
 
 def hash_password(password: str) -> str:
