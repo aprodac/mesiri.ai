@@ -120,10 +120,13 @@ async def list_site_days(
 ):
     """Every active site's working day for one date (BE-08): status
     (draft = collecting, needs_details, ready, in_review = with engineer,
-    approved = confirmed, published = sent) and what is missing."""
+    approved = confirmed, published = sent), what is missing, and live
+    counts (workers, work items, photos, open issues, latest update). Plus
+    each project's cutoff, send deadline and DPR status -- everything the
+    Today page shows (WEB-03)."""
     project_ids, denied = _resolve_project_ids(auth_context, project_id)
     if denied:
-        return {"items": []}
+        return {"date": report_date.isoformat(), "items": [], "projects": []}
 
     repo = PostgresDprRepository(conn)
     items = await repo.list_site_days(
@@ -131,7 +134,12 @@ async def list_site_days(
         project_ids=project_ids,
         report_date=report_date,
     )
-    return {"items": items}
+    projects = await repo.list_project_days(
+        organization_id=auth_context.organization_id,
+        project_ids=project_ids,
+        report_date=report_date,
+    )
+    return {"date": report_date.isoformat(), "items": items, "projects": projects}
 
 
 class SiteDayConditionsRequest(BaseModel):

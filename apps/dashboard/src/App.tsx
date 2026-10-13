@@ -3,6 +3,7 @@ import { AppLayout } from '@/components/app-layout'
 import { RequireModule } from '@/components/require-module'
 import Login from '@/pages/Login'
 import Overview from '@/pages/Overview'
+import TodayPage from '@/pages/TodayPage'
 import Users from '@/pages/Users'
 import UserDetails from '@/pages/UserDetails'
 import CompanyDetails from '@/pages/CompanyDetails'
@@ -48,7 +49,7 @@ import { ToastProvider } from '@/components/ui/toast-notification'
 
 function IndexRedirect() {
   const location = useLocation()
-  return <Navigate to={`/overview${location.search}`} replace />
+  return <Navigate to={`/today${location.search}`} replace />
 }
 
 function OperationsIndexRedirect() {
@@ -63,6 +64,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/" element={<AppLayout />}>
         <Route index element={<IndexRedirect />} />
+        <Route path="today" element={<TodayPage />} />
         <Route path="overview" element={<Overview />} />
         <Route path="whatsapp/inbox" element={<WhatsAppInboxPage />} />
         <Route path="users" element={<Users />} />

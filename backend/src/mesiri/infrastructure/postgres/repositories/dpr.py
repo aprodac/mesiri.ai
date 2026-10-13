@@ -1036,9 +1036,18 @@ class PostgresDprRepository:
         report_date: datetime.date,
     ) -> list[dict[str, Any]]:
         """Every active site's working day for `report_date` (BE-08), for
-        the Today page. A site with no record yet (before cutoff, nothing
-        logged) is listed as collecting with no report id rather than left
-        out -- an absent site is exactly what the reader needs to see."""
+        the Today page (WEB-03). A site with no record yet (before cutoff,
+        nothing logged) is listed as collecting with no report id rather
+        than left out -- an absent site is exactly what the reader needs.
+
+        Counts are live, not from a version: during the day no version
+        exists yet. Workers use the same "live report" rule as the DPR and
+        the labour dashboard (workforce.live_report_sql), so the three can't
+        disagree; a line with no headcount counts as one person, as the DPR
+        does. `open_issues` is everything still open on the site, not only
+        today's."""
+        from mesiri.infrastructure.postgres.repositories.workforce import live_report_sql
+
         where = ["s.organization_id = :org_id", "s.status = 'active'"]
         params: dict[str, Any] = {"org_id": organization_id, "report_date": report_date}
         if project_ids is not None:
@@ -1048,17 +1057,66 @@ class PostgresDprRepository:
             await self._conn.execute(
                 text(
                     f"""
+                    WITH acts AS (
+                        SELECT site_id, count(*) AS work_items, max(created_at) AS last_at
+                        FROM activities
+                        WHERE organization_id = :org_id AND activity_date = :report_date
+                          AND deleted_at IS NULL
+                        GROUP BY site_id
+                    ), latest_act AS (
+                        SELECT DISTINCT ON (a.site_id) a.site_id, a.narrative,
+                               u.full_name AS reporter_name
+                        FROM activities a
+                        LEFT JOIN users u ON u.id = a.reported_by_user_id
+                        WHERE a.organization_id = :org_id AND a.activity_date = :report_date
+                          AND a.deleted_at IS NULL
+                        ORDER BY a.site_id, a.created_at DESC
+                    ), photos AS (
+                        SELECT a.site_id, count(pa.id) AS photos
+                        FROM activities a
+                        JOIN progress_attachments pa
+                          ON pa.parent_type = 'ACTIVITY' AND pa.parent_id = a.id
+                        WHERE a.organization_id = :org_id AND a.activity_date = :report_date
+                          AND a.deleted_at IS NULL
+                        GROUP BY a.site_id
+                    ), labour AS (
+                        SELECT lar.site_id,
+                               sum(COALESCE(NULLIF(lal.headcount, 0), 1)) AS workers,
+                               max(lar.created_at) AS last_at
+                        FROM labour_attendance_lines lal
+                        JOIN labour_attendance_reports lar ON lar.id = lal.report_id
+                        WHERE lar.organization_id = :org_id AND lar.occurred_date = :report_date
+                          AND {live_report_sql("lar")}
+                        GROUP BY lar.site_id
+                    ), issues AS (
+                        SELECT site_id, count(*) AS open_issues
+                        FROM site_issues
+                        WHERE organization_id = :org_id AND status IN ('OPEN', 'ACKNOWLEDGED')
+                        GROUP BY site_id
+                    )
                     SELECT s.id AS site_id, s.name AS site_name,
                            p.id AS project_id, p.name AS project_name,
                            dr.id AS daily_report_id, dr.code,
                            COALESCE(LOWER(dr.status::text), 'draft') AS status,
-                           dr.missing_sections
+                           dr.missing_sections, dr.site_working,
+                           COALESCE(labour.workers, 0) AS workers,
+                           COALESCE(acts.work_items, 0) AS work_items,
+                           COALESCE(photos.photos, 0) AS photos,
+                           COALESCE(issues.open_issues, 0) AS open_issues,
+                           GREATEST(acts.last_at, labour.last_at) AS last_update_at,
+                           latest_act.reporter_name AS last_update_by,
+                           latest_act.narrative AS latest_update
                     FROM sites s
                     JOIN projects p ON p.id = s.project_id
                     LEFT JOIN daily_reports dr
                       ON dr.site_id = s.id AND dr.level = 'SITE'
                      AND dr.report_date = :report_date
                      AND dr.organization_id = s.organization_id
+                    LEFT JOIN acts ON acts.site_id = s.id
+                    LEFT JOIN latest_act ON latest_act.site_id = s.id
+                    LEFT JOIN photos ON photos.site_id = s.id
+                    LEFT JOIN labour ON labour.site_id = s.id
+                    LEFT JOIN issues ON issues.site_id = s.id
                     WHERE {" AND ".join(where)}
                     ORDER BY p.name, s.name
                     """
@@ -1071,8 +1129,59 @@ class PostgresDprRepository:
             day = dict(row)
             if isinstance(day["missing_sections"], str):
                 day["missing_sections"] = json.loads(day["missing_sections"])
+            for key in ("workers", "work_items", "photos", "open_issues"):
+                day[key] = int(day[key] or 0)
             days.append(day)
         return days
+
+    async def list_project_days(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        project_ids: set[uuid.UUID] | None,
+        report_date: datetime.date,
+    ) -> list[dict[str, Any]]:
+        """Each project's side of the day for the Today page (WEB-03): its
+        cutoff and send deadline, how many active sites it has, its PROJECT
+        roll-up status, and whether the DPR went out (BE-16)."""
+        where = ["p.organization_id = :org_id", "p.status != 'archived'"]
+        params: dict[str, Any] = {"org_id": organization_id, "report_date": report_date}
+        if project_ids is not None:
+            where.append("p.id = ANY(:project_ids)")
+            params["project_ids"] = list(project_ids)
+        rows = (
+            await self._conn.execute(
+                text(
+                    f"""
+                    SELECT p.id AS project_id, p.name AS project_name,
+                           p.reporting_cutoff_time, p.dpr_send_deadline, p.auto_generate_dpr,
+                           (p.dpr_last_sent_on = :report_date) AS sent,
+                           (p.dpr_send_requested_on = :report_date) AS send_requested,
+                           (SELECT count(*) FROM sites s
+                             WHERE s.project_id = p.id AND s.status = 'active') AS site_count,
+                           LOWER(pr.status::text) AS project_report_status,
+                           pr.id AS project_report_id
+                    FROM projects p
+                    LEFT JOIN daily_reports pr
+                      ON pr.project_id = p.id AND pr.level = 'PROJECT'
+                     AND pr.report_date = :report_date
+                    WHERE {" AND ".join(where)}
+                    ORDER BY p.name
+                    """
+                ),
+                params,
+            )
+        ).mappings().all()
+        projects = []
+        for row in rows:
+            project = dict(row)
+            project["site_count"] = int(project["site_count"] or 0)
+            project["sent"] = bool(project["sent"])
+            project["send_requested"] = bool(project["send_requested"])
+            project["auto_generate_dpr"] = bool(project["auto_generate_dpr"])
+            if project["site_count"]:
+                projects.append(project)
+        return projects
 
     async def get_report_scope(
         self, *, organization_id: uuid.UUID, report_id: uuid.UUID

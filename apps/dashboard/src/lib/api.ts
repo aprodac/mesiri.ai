@@ -1663,6 +1663,81 @@ export async function fetchDailyReportDetailApi(reportId: string): Promise<Daily
   return res.data
 }
 
+// ─── The site's working day (BE-08 / BE-14 / BE-16, Today page WEB-03) ───────
+
+export type SiteDayStatus =
+  | 'draft'
+  | 'needs_details'
+  | 'ready'
+  | 'in_review'
+  | 'approved'
+  | 'published'
+  | 'not_reported'
+
+export interface SiteDayItem {
+  site_id: string
+  site_name: string
+  project_id: string
+  project_name: string
+  daily_report_id: string | null
+  code: string | null
+  status: SiteDayStatus
+  missing_sections: { blocking: string[]; optional: string[] } | null
+  site_working: 'full' | 'half' | 'none' | null
+  workers: number
+  work_items: number
+  photos: number
+  open_issues: number
+  last_update_at: string | null
+  last_update_by: string | null
+  latest_update: string | null
+}
+
+export interface ProjectDayItem {
+  project_id: string
+  project_name: string
+  reporting_cutoff_time: string | null
+  dpr_send_deadline: string | null
+  auto_generate_dpr: boolean
+  sent: boolean
+  send_requested: boolean
+  site_count: number
+  project_report_status: SiteDayStatus | null
+  project_report_id: string | null
+}
+
+export interface SiteDaysResponse {
+  date: string
+  items: SiteDayItem[]
+  projects: ProjectDayItem[]
+}
+
+export async function fetchSiteDaysApi(date: string, projectId?: string): Promise<SiteDaysResponse> {
+  const res = await api.get<SiteDaysResponse>('/dpr/site-days', {
+    params: { date, project_id: projectId },
+  })
+  return res.data
+}
+
+export interface SiteDayConditions {
+  weather?: 'sunny' | 'cloudy' | 'rainy' | 'windy' | 'extreme_heat' | null
+  hours_lost?: number | null
+  site_working?: 'full' | 'half' | 'none' | null
+  tomorrow_plan?: string | null
+}
+
+export async function setSiteDayConditionsApi(
+  siteId: string,
+  date: string,
+  conditions: SiteDayConditions,
+): Promise<void> {
+  await api.patch(`/dpr/site-days/${siteId}/conditions`, conditions, { params: { date } })
+}
+
+export async function sendProjectDprNowApi(projectId: string): Promise<void> {
+  await api.post(`/dpr/projects/${projectId}/send`)
+}
+
 export async function submitDailyReportForReviewApi(reportId: string): Promise<void> {
   await api.post(`/dpr/daily-reports/${reportId}/submit-for-review`)
 }

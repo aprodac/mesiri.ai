@@ -509,3 +509,77 @@ def test_plain_pdf_shows_conditions_and_tomorrows_plan():
         payload={"level": "SITE", "conditions": {"weather": "sunny", "tomorrow_plan": "Rebar"}},
     )
     assert pdf.startswith(b"%PDF")
+
+
+# ---------------------------------------------------------------------------
+# WEB-03: the Today page's data
+# ---------------------------------------------------------------------------
+
+
+async def test_site_days_carry_live_counts_as_numbers_and_parsed_missing_sections():
+    row = {
+        "site_id": uuid.uuid4(),
+        "site_name": "Tower B",
+        "project_id": uuid.uuid4(),
+        "project_name": "Green Valley",
+        "daily_report_id": None,
+        "code": None,
+        "status": "needs_details",
+        "missing_sections": '{"blocking": ["labour"], "optional": []}',
+        "site_working": None,
+        "workers": None,
+        "work_items": 4,
+        "photos": 0,
+        "open_issues": 2,
+        "last_update_at": None,
+        "last_update_by": None,
+        "latest_update": None,
+    }
+    conn = _Conn({"WITH acts AS": _Result([row])})
+
+    [day] = await PostgresDprRepository(conn).list_site_days(
+        organization_id=uuid.uuid4(), project_ids=None, report_date=datetime.date(2026, 10, 13)
+    )
+
+    assert day["missing_sections"] == {"blocking": ["labour"], "optional": []}
+    assert (day["workers"], day["work_items"], day["open_issues"]) == (0, 4, 2)
+    sql, params = conn.calls[0]
+    assert "COALESCE(NULLIF(lal.headcount, 0), 1)" in sql  # same per-line rule as the DPR
+    assert "project_ids" not in params
+
+
+async def test_site_days_are_limited_to_the_projects_the_user_can_see():
+    conn = _Conn({"WITH acts AS": _Result([])})
+    allowed = {uuid.uuid4()}
+
+    await PostgresDprRepository(conn).list_site_days(
+        organization_id=uuid.uuid4(), project_ids=allowed, report_date=datetime.date(2026, 10, 13)
+    )
+
+    sql, params = conn.calls[0]
+    assert "s.project_id = ANY(:project_ids)" in sql
+    assert params["project_ids"] == list(allowed)
+
+
+async def test_project_days_skip_projects_without_active_sites():
+    with_sites = {
+        "project_id": uuid.uuid4(),
+        "project_name": "A",
+        "reporting_cutoff_time": "18:00",
+        "dpr_send_deadline": "21:00",
+        "auto_generate_dpr": True,
+        "sent": None,
+        "send_requested": None,
+        "site_count": 2,
+        "project_report_status": None,
+        "project_report_id": None,
+    }
+    without_sites = {**with_sites, "project_id": uuid.uuid4(), "project_name": "B", "site_count": 0}
+    conn = _Conn({"FROM projects p": _Result([with_sites, without_sites])})
+
+    projects = await PostgresDprRepository(conn).list_project_days(
+        organization_id=uuid.uuid4(), project_ids=None, report_date=datetime.date(2026, 10, 13)
+    )
+
+    assert [p["project_name"] for p in projects] == ["A"]
+    assert projects[0]["sent"] is False and projects[0]["send_requested"] is False

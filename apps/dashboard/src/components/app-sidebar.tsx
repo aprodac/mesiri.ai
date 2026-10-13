@@ -138,10 +138,10 @@ const MATERIALS_CATEGORY: NavCategory = {
   ],
 }
 
-// V1 primary navigation (tracker WEB-01). "Today" points at the existing
-// overview until WEB-03 builds the real Today page.
+// V1 primary navigation (tracker WEB-01). "Today" is the WEB-03 page; the
+// older overview stays reachable under More > Operations.
 const PRIMARY_ITEMS: NavItem[] = [
-  { title: 'Today', url: '/overview', icon: CalendarDays },
+  { title: 'Today', url: '/today', icon: CalendarDays },
   { title: 'Daily Reports', url: '/operations/daily-reports', icon: FileText },
   { title: 'Issues', url: '/operations/issues', icon: AlertCircle },
 ]
@@ -158,7 +158,7 @@ const OPERATIONS_MORE_CATEGORY: NavCategory = {
   ...OPERATIONS_CATEGORY,
   items: OPERATIONS_CATEGORY.items.filter(
     (item) =>
-      !['/operations/dashboard', '/operations/daily-reports', '/operations/issues'].includes(
+      !['/operations/daily-reports', '/operations/issues'].includes(
         item.url
       )
   ),
@@ -197,7 +197,7 @@ const NAV_LINK_IDLE =
 
 function checkIsItemActive(pathname: string, itemUrl: string): boolean {
   if (pathname === itemUrl) return true
-  if (itemUrl === '/overview' && pathname === '/') return true
+  if (itemUrl === '/today' && pathname === '/') return true
   if (itemUrl === '/operations/dashboard' && (pathname === '/operations' || pathname === '/operations/dashboard' || pathname === '/overview')) return true
   if (itemUrl === '/finance/overview' && pathname === '/finance') return true
   if (itemUrl === '/materials/overview' && pathname === '/materials') return true
