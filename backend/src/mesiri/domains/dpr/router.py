@@ -1,6 +1,7 @@
 """REST API for Daily Progress Reports (DPR).
 
 Mounted at /dpr so:
+  GET   /dpr/site-days?date=YYYY-MM-DD     every active site's working day (BE-08)
   GET   /dpr/daily-reports                 list daily reports
   GET   /dpr/daily-reports/{report_id}     get daily report details
   POST  /dpr/daily-reports                 create daily report draft
@@ -105,6 +106,29 @@ async def list_daily_reports(
         offset=offset,
     )
     return {"items": items, "total": total}
+
+
+@router.get("/site-days")
+async def list_site_days(
+    report_date: datetime.date = Query(alias="date"),
+    project_id: uuid.UUID | None = None,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Every active site's working day for one date (BE-08): status
+    (draft = collecting, needs_details, ready, in_review = with engineer,
+    approved = confirmed, published = sent) and what is missing."""
+    project_ids, denied = _resolve_project_ids(auth_context, project_id)
+    if denied:
+        return {"items": []}
+
+    repo = PostgresDprRepository(conn)
+    items = await repo.list_site_days(
+        organization_id=auth_context.organization_id,
+        project_ids=project_ids,
+        report_date=report_date,
+    )
+    return {"items": items}
 
 
 @router.get("/daily-reports/{report_id}")

@@ -143,6 +143,20 @@ function DPRStatusBadge({ status }: { status: string }) {
           Draft
         </Badge>
       )
+    case 'needs_details':
+      return (
+        <Badge variant="outline" className="bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30 gap-1 font-semibold text-[11px]">
+          <AlertTriangle className="size-3" />
+          Needs Details
+        </Badge>
+      )
+    case 'ready':
+      return (
+        <Badge variant="outline" className="bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30 gap-1 font-semibold text-[11px]">
+          <CheckCircle2 className="size-3" />
+          Ready
+        </Badge>
+      )
     case 'not_reported':
       return (
         <Badge variant="outline" className="bg-muted text-muted-foreground border-border/60 gap-1 font-semibold text-[11px]">
@@ -325,6 +339,8 @@ function DPRCalendarView({
                       r.workflow_status.toLowerCase() === 'published' && 'bg-indigo-500/10 border-indigo-500/30 text-indigo-950 dark:text-indigo-200',
                       r.workflow_status.toLowerCase() === 'in_review' && 'bg-amber-500/10 border-amber-500/30 text-amber-950 dark:text-amber-200',
                       r.workflow_status.toLowerCase() === 'draft' && 'bg-zinc-500/10 border-zinc-500/30 text-zinc-900 dark:text-zinc-200',
+                      r.workflow_status.toLowerCase() === 'needs_details' && 'bg-orange-500/10 border-orange-500/30 text-orange-950 dark:text-orange-200',
+                      r.workflow_status.toLowerCase() === 'ready' && 'bg-sky-500/10 border-sky-500/30 text-sky-950 dark:text-sky-200',
                       r.workflow_status.toLowerCase() === 'not_reported' && 'bg-muted border-border/60 text-muted-foreground'
                     )}
                   >
@@ -784,6 +800,8 @@ export default function DailyReportsPage() {
               <SelectContent>
                 <SelectItem value="ALL">All Statuses</SelectItem>
                 <SelectItem value="DRAFT">Draft</SelectItem>
+                <SelectItem value="NEEDS_DETAILS">Needs Details</SelectItem>
+                <SelectItem value="READY">Ready</SelectItem>
                 <SelectItem value="IN_REVIEW">In Review</SelectItem>
                 <SelectItem value="APPROVED">Approved</SelectItem>
                 <SelectItem value="PUBLISHED">Published & Signed</SelectItem>
@@ -1202,12 +1220,16 @@ export default function DailyReportsPage() {
               <div className="space-y-5 text-xs">
 
                 {/* Workflow Status Banner */}
-                {detailData.workflow_status.toLowerCase() === 'draft' && (
+                {['draft', 'needs_details', 'ready'].includes(detailData.workflow_status.toLowerCase()) && (
                   <div className="p-3.5 rounded-lg border border-zinc-500/30 bg-zinc-500/10 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 text-zinc-700 dark:text-zinc-300">
                       <FileText className="size-4 shrink-0" />
                       <span className="text-xs font-semibold">
-                        Draft report — not yet submitted for review.
+                        {detailData.workflow_status.toLowerCase() === 'needs_details'
+                          ? 'Some required details are missing — not yet submitted for review.'
+                          : detailData.workflow_status.toLowerCase() === 'ready'
+                            ? 'Ready — not yet submitted for review.'
+                            : 'Draft report — not yet submitted for review.'}
                       </span>
                     </div>
                     <Button

@@ -1037,7 +1037,9 @@ daily_reports
   level            SITE | PROJECT                      (ADR-D6)
   report_date      date
   code             sequential — DPR-001 (reuse 0400's generator)
-  status           DRAFT | IN_REVIEW | APPROVED | PUBLISHED | NOT_REPORTED
+  status           DRAFT | NEEDS_DETAILS | READY | IN_REVIEW | APPROVED | PUBLISHED | NOT_REPORTED
+                   (NEEDS_DETAILS, READY added in 0466 -- BE-08)
+  missing_sections JSONB, nullable   -- {"blocking": [...], "optional": [...]} (0466)
   current_version_id → daily_report_versions.id, nullable
   UNIQUE (project_id, site_id, report_date, level)
 
@@ -1054,6 +1056,24 @@ daily_report_sources                      -- P8 composition
   id, project_version_id → daily_report_versions.id
   site_daily_report_id, site_version_id (NULL ⇒ NOT_REPORTED)
 ```
+
+**The site's working day (V1, BE-08, 13 Oct 2026).** A SITE-level
+`daily_reports` row *is* the site day; there is no separate `site_days`
+table. Rules live in `backend/src/mesiri/application/dpr/site_day.py`:
+
+| V1 step | Status | Set by |
+| --- | --- | --- |
+| collecting | `DRAFT` | a draft refreshed before cutoff |
+| needs details | `NEEDS_DETAILS` | cutoff: no work item, or no labour count |
+| ready | `READY` | cutoff: at least one work item and a labour count |
+| with engineer | `IN_REVIEW` | `submit-for-review`; a refresh no longer resets it |
+| confirmed | `APPROVED` | the site engineer (only approver); stamps `approved_by_user_id`/`approved_at` |
+| sent | `PUBLISHED` | `publish` |
+
+At cutoff, `open_site_days` gives every active site its day, including sites
+that logged nothing (labelled, no version). Photos and materials are listed
+in `missing_sections.optional` but never block. `GET /dpr/site-days?date=`
+lists every active site's day.
 
 ---
 

@@ -28,11 +28,14 @@ not silently done halfway.
 from __future__ import annotations
 
 import datetime
+import json
 import uuid
 from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
+
+from mesiri.application.dpr import site_day
 
 
 class PostgresDprRepository:
@@ -210,45 +213,73 @@ class PostgresDprRepository:
     async def submit_for_review(
         self, organization_id: uuid.UUID, report_id: uuid.UUID
     ) -> bool:
-        """DRAFT -> IN_REVIEW. The step a manually-created report was
-        missing entirely: without it, a report sat in DRAFT forever since
-        approve_report only ever fired from the (unreachable) 'in_review'
-        state the dashboard's detail view checks for."""
+        """Collecting / needs details / ready -> IN_REVIEW ("with engineer",
+        BE-08). The allowed starting statuses come from site_day's
+        transition table, so this and the WhatsApp flow cannot disagree."""
         query = """
             UPDATE daily_reports
             SET status = 'IN_REVIEW', updated_at = now()
-            WHERE organization_id = :org_id AND id = :id AND status = 'DRAFT'
+            WHERE organization_id = :org_id AND id = :id AND status::text = ANY(:from_statuses)
         """
-        res = await self._conn.execute(text(query), {"org_id": organization_id, "id": report_id})
+        res = await self._conn.execute(
+            text(query),
+            {"org_id": organization_id, "id": report_id, "from_statuses": site_day.sources_for(site_day.IN_REVIEW)},
+        )
         return res.rowcount > 0
 
     async def approve_report(
         self, organization_id: uuid.UUID, user_id: uuid.UUID, report_id: uuid.UUID, notes: str | None
     ) -> bool:
-        # Accepts DRAFT or IN_REVIEW -> APPROVED. Kept permissive (not
-        # restricted to IN_REVIEW only) so the existing bulk-approve action,
-        # which never calls submit_for_review first, keeps working.
+        """The engineer's confirmation (decided 13 Oct: the engineer is the
+        only approver) -> APPROVED, frozen (P7). Any pre-confirmation status
+        is accepted, not only IN_REVIEW: the bulk-approve action never calls
+        submit_for_review first, and an engineer may confirm a day that is
+        still missing parts ("site closed, no labour today").
+
+        Also records who confirmed and when on the current version, which
+        the version table always had columns for but nothing ever set. The
+        user is looked up rather than trusted, so an id with no users row
+        leaves the field empty instead of failing the confirmation."""
         query = """
             UPDATE daily_reports
             SET status = 'APPROVED', updated_at = now()
-            WHERE organization_id = :org_id AND id = :id AND status IN ('DRAFT', 'IN_REVIEW')
+            WHERE organization_id = :org_id AND id = :id AND status::text = ANY(:from_statuses)
         """
-        res = await self._conn.execute(text(query), {"org_id": organization_id, "id": report_id})
-        return res.rowcount > 0
+        res = await self._conn.execute(
+            text(query),
+            {"org_id": organization_id, "id": report_id, "from_statuses": site_day.sources_for(site_day.APPROVED)},
+        )
+        if res.rowcount == 0:
+            return False
+        await self._conn.execute(
+            text(
+                """
+                UPDATE daily_report_versions v
+                SET approved_by_user_id = (SELECT id FROM users WHERE id = :user_id),
+                    approved_at = now()
+                FROM daily_reports dr
+                WHERE dr.id = :id AND v.id = dr.current_version_id
+                """
+            ),
+            {"id": report_id, "user_id": user_id},
+        )
+        return True
 
     async def publish_report(
         self, organization_id: uuid.UUID, report_id: uuid.UUID
     ) -> bool:
-        """APPROVED -> PUBLISHED. Terminal per P7 (create_version already
-        refuses to regenerate a payload once status is APPROVED/PUBLISHED);
-        this is the explicit sign-off action the dashboard's 'Frozen &
-        Signed' badge described but nothing ever set."""
+        """APPROVED -> PUBLISHED ("sent"). Terminal per P7 (create_version
+        already refuses to regenerate a payload once status is APPROVED/
+        PUBLISHED)."""
         query = """
             UPDATE daily_reports
             SET status = 'PUBLISHED', updated_at = now()
-            WHERE organization_id = :org_id AND id = :id AND status = 'APPROVED'
+            WHERE organization_id = :org_id AND id = :id AND status::text = ANY(:from_statuses)
         """
-        res = await self._conn.execute(text(query), {"org_id": organization_id, "id": report_id})
+        res = await self._conn.execute(
+            text(query),
+            {"org_id": organization_id, "id": report_id, "from_statuses": site_day.sources_for(site_day.PUBLISHED)},
+        )
         return res.rowcount > 0
 
     # ------------------------------------------------------------------
@@ -725,25 +756,42 @@ class PostgresDprRepository:
         daily_report_id: uuid.UUID,
         payload: dict[str, Any],
         narrative_summary: str | None = None,
+        evaluate_readiness: bool = False,
     ) -> dict[str, Any]:
         """Insert a new version (P7: never mutate a prior version's
         payload) and point `daily_reports.current_version_id` at it. A
         report already APPROVED/PUBLISHED is left alone -- regenerating a
         frozen day's DRAFT payload after approval would defeat the freeze
         this table exists to enforce; callers that need to correct an
-        approved day must go through a revision with `revision_reason`,
-        not this happy-path insert (not built here -- see module docstring)."""
+        approved day must go through `revise_version` with a reason.
+
+        Status after the insert (BE-08): a SITE day takes
+        `site_day.status_after_refresh` -- needs details / ready once
+        `evaluate_readiness` is set (the project's cutoff has passed), and a
+        day with the engineer stays with the engineer. A PROJECT roll-up
+        keeps the old behaviour (back to DRAFT, unless it is IN_REVIEW)."""
         report_row = (
             await self._conn.execute(
-                text("SELECT status FROM daily_reports WHERE id = :id"),
+                text("SELECT status::text AS status, level::text AS level FROM daily_reports WHERE id = :id"),
                 {"id": daily_report_id},
             )
         ).mappings().first()
-        if report_row and report_row["status"] in ("APPROVED", "PUBLISHED"):
+        if report_row and report_row["status"] in site_day.FROZEN:
             raise ValueError(
                 f"daily_report {daily_report_id} is already {report_row['status']} -- "
                 "cannot silently overwrite an approved version's payload"
             )
+
+        current_status = report_row["status"] if report_row else site_day.DRAFT
+        missing: dict[str, list[str]] | None = None
+        if report_row and report_row["level"] == "SITE":
+            new_status = site_day.status_after_refresh(
+                current_status, payload, evaluate_readiness=evaluate_readiness
+            )
+            if new_status in (site_day.NEEDS_DETAILS, site_day.READY):
+                missing = site_day.missing_sections(payload)
+        else:
+            new_status = current_status if current_status == site_day.IN_REVIEW else site_day.DRAFT
 
         next_version_row = (
             await self._conn.execute(
@@ -780,11 +828,137 @@ class PostgresDprRepository:
         await self._conn.execute(
             text(
                 "UPDATE daily_reports SET current_version_id = :version_id, "
-                "status = 'DRAFT', updated_at = now() WHERE id = :id"
+                "status = CAST(:status AS daily_report_status), "
+                "missing_sections = CAST(:missing AS JSONB), updated_at = now() WHERE id = :id"
             ),
-            {"version_id": version_id, "id": daily_report_id},
+            {
+                "version_id": version_id,
+                "id": daily_report_id,
+                "status": new_status,
+                "missing": json.dumps(missing) if missing is not None else None,
+            },
         )
         return {"id": version_id, "daily_report_id": daily_report_id, "version_no": version_no}
+
+    async def open_site_days(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        project_id: uuid.UUID,
+        report_date: datetime.date,
+    ) -> int:
+        """Make sure every active site of the project has its working-day
+        record for `report_date` (BE-08), and label the ones nobody drafted
+        a version for. Run at the project's cutoff, after the drafts.
+
+        A site that logged nothing used to have no row at all until the
+        project roll-up created a bare DRAFT one, so the evening gap-check
+        had nothing to ask about. Now such a day is checked against what was
+        recorded (labour can exist with no work items) and marked needs
+        details or ready. No version is created for it: an empty payload is
+        not a report, and would only feed the PDF renderer a blank page.
+        Returns how many days were labelled."""
+        site_rows = (
+            await self._conn.execute(
+                text(
+                    """
+                    SELECT id FROM sites
+                    WHERE organization_id = :org_id AND project_id = :project_id
+                      AND status = 'active'
+                    """
+                ),
+                {"org_id": organization_id, "project_id": project_id},
+            )
+        ).mappings().all()
+
+        labelled = 0
+        for site_row in site_rows:
+            daily_report_id = await self.get_or_create_daily_report(
+                organization_id=organization_id,
+                project_id=project_id,
+                site_id=site_row["id"],
+                report_date=report_date,
+            )
+            report_row = (
+                await self._conn.execute(
+                    text(
+                        "SELECT status::text AS status, current_version_id "
+                        "FROM daily_reports WHERE id = :id"
+                    ),
+                    {"id": daily_report_id},
+                )
+            ).mappings().first()
+            if (
+                report_row is None
+                or report_row["current_version_id"] is not None
+                or report_row["status"] not in site_day.REEVALUATED
+            ):
+                continue
+            payload = await self.assemble_site_report_payload(
+                organization_id=organization_id,
+                project_id=project_id,
+                site_id=site_row["id"],
+                report_date=report_date,
+            )
+            await self._conn.execute(
+                text(
+                    "UPDATE daily_reports SET status = CAST(:status AS daily_report_status), "
+                    "missing_sections = CAST(:missing AS JSONB), updated_at = now() WHERE id = :id"
+                ),
+                {
+                    "id": daily_report_id,
+                    "status": site_day.readiness_status(payload),
+                    "missing": json.dumps(site_day.missing_sections(payload)),
+                },
+            )
+            labelled += 1
+        return labelled
+
+    async def list_site_days(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        project_ids: set[uuid.UUID] | None,
+        report_date: datetime.date,
+    ) -> list[dict[str, Any]]:
+        """Every active site's working day for `report_date` (BE-08), for
+        the Today page. A site with no record yet (before cutoff, nothing
+        logged) is listed as collecting with no report id rather than left
+        out -- an absent site is exactly what the reader needs to see."""
+        where = ["s.organization_id = :org_id", "s.status = 'active'"]
+        params: dict[str, Any] = {"org_id": organization_id, "report_date": report_date}
+        if project_ids is not None:
+            where.append("s.project_id = ANY(:project_ids)")
+            params["project_ids"] = list(project_ids)
+        rows = (
+            await self._conn.execute(
+                text(
+                    f"""
+                    SELECT s.id AS site_id, s.name AS site_name,
+                           p.id AS project_id, p.name AS project_name,
+                           dr.id AS daily_report_id, dr.code,
+                           COALESCE(LOWER(dr.status::text), 'draft') AS status,
+                           dr.missing_sections
+                    FROM sites s
+                    JOIN projects p ON p.id = s.project_id
+                    LEFT JOIN daily_reports dr
+                      ON dr.site_id = s.id AND dr.level = 'SITE'
+                     AND dr.report_date = :report_date
+                     AND dr.organization_id = s.organization_id
+                    WHERE {" AND ".join(where)}
+                    ORDER BY p.name, s.name
+                    """
+                ),
+                params,
+            )
+        ).mappings().all()
+        days = []
+        for row in rows:
+            day = dict(row)
+            if isinstance(day["missing_sections"], str):
+                day["missing_sections"] = json.loads(day["missing_sections"])
+            days.append(day)
+        return days
 
     async def get_report_scope(
         self, *, organization_id: uuid.UUID, report_id: uuid.UUID

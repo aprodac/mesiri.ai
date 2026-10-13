@@ -120,7 +120,13 @@ async def run(*, report_date: datetime.date | None = None) -> int:
                         report_date=target_date,
                     )
                     try:
-                        await repo.create_version(daily_report_id=daily_report_id, payload=payload)
+                        # Runs after the working day, so days are labelled
+                        # needs details or ready (BE-08).
+                        await repo.create_version(
+                            daily_report_id=daily_report_id,
+                            payload=payload,
+                            evaluate_readiness=True,
+                        )
                         total += 1
                     except ValueError:
                         # Already APPROVED/PUBLISHED -- refuse to overwrite a
@@ -138,6 +144,12 @@ async def run(*, report_date: datetime.date | None = None) -> int:
                     conn, organization_id=organization_id
                 )
                 for project_id in project_ids:
+                    # Sites that logged no activity still get their day.
+                    await repo.open_site_days(
+                        organization_id=organization_id,
+                        project_id=project_id,
+                        report_date=target_date,
+                    )
                     payload, sources = await repo.assemble_project_report_payload(
                         organization_id=organization_id,
                         project_id=project_id,

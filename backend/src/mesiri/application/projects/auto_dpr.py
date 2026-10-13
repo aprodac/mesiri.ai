@@ -146,9 +146,19 @@ async def generate_project_dpr(
             report_date=report_date,
         )
         try:
-            await repo.create_version(daily_report_id=daily_report_id, payload=payload)
+            # The project's cutoff has passed, so each day is labelled
+            # needs details or ready (BE-08).
+            await repo.create_version(
+                daily_report_id=daily_report_id, payload=payload, evaluate_readiness=True
+            )
         except ValueError:
             continue
+
+    # Sites that logged no activity still get their day, labelled, so the
+    # evening gap-check has something to ask about.
+    await repo.open_site_days(
+        organization_id=organization_id, project_id=project_id, report_date=report_date
+    )
 
     payload, sources = await repo.assemble_project_report_payload(
         organization_id=organization_id, project_id=project_id, report_date=report_date

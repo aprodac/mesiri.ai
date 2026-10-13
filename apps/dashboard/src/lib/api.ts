@@ -1568,7 +1568,7 @@ export interface DailyReportSummary {
   weather: 'sunny' | 'rainy' | 'cloudy' | 'extreme_heat' | 'windy'
   temperature_celsius?: number
   shift: 'day' | 'night' | 'full_day'
-  workflow_status: 'draft' | 'in_review' | 'approved' | 'published' | 'not_reported'
+  workflow_status: 'draft' | 'needs_details' | 'ready' | 'in_review' | 'approved' | 'published' | 'not_reported'
   activities_count: number
   labour_count: number
   issues_count: number
