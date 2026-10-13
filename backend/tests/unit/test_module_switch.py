@@ -10,6 +10,8 @@ error, so adding it to a router can't break a route that worked before.
 from __future__ import annotations
 
 import uuid
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
 
 import jwt
 import pytest
@@ -20,7 +22,7 @@ from mesiri.domains.identity.auth_service import ALGORITHM, SECRET_KEY
 from mesiri.domains.organizations import router as org_router
 from mesiri.domains.organizations import settings
 from mesiri.domains.shared import modules
-from mesiri.infrastructure.postgres.dependency import get_db_conn
+from mesiri.domains.shared.auth import get_current_user
 
 # --- the setting -------------------------------------------------------------
 
@@ -84,9 +86,26 @@ def _token(org: str) -> str:
     )
 
 
+class _FakeDatabase:
+    """Mimics PostgresDatabase.transaction(), including its habit of mapping
+    ANY exception raised while it is open to a 500-class error -- the trap
+    the gate's first version fell into."""
+
+    class MappedError(Exception):
+        pass
+
+    @asynccontextmanager
+    async def transaction(self):
+        try:
+            yield object()
+        except Exception as exc:
+            raise self.MappedError("postgres unavailable") from exc
+
+
 @pytest.fixture
 def client(monkeypatch):
-    """A one-route app gated on `finance`, with the settings read faked."""
+    """A gated app: `/thing` has no auth of its own, `/secured` requires a
+    token like real routes do. The settings read is faked."""
     stored: dict[uuid.UUID, object] = {}
 
     class FakeRepo:
@@ -105,16 +124,23 @@ def client(monkeypatch):
     async def thing() -> dict:
         return {"ok": True}
 
+    @router.get("/secured")
+    async def secured(user: dict = Depends(get_current_user)) -> dict:
+        return {"ok": True}
+
     app = FastAPI()
     app.include_router(router)
-
-    async def fake_conn():
-        yield object()
-
-    app.dependency_overrides[get_db_conn] = fake_conn
-    test_client = TestClient(app)
+    app.state.container = SimpleNamespace(material_db=_FakeDatabase())
+    test_client = TestClient(app, raise_server_exceptions=False)
     test_client.stored = stored  # type: ignore[attr-defined]
     return test_client
+
+
+def test_route_auth_errors_are_not_turned_into_500s(client):
+    """Regression (production, 2026-10-13): the gate held the request's DB
+    transaction open around the route, so the route's own 401 was mapped to
+    a 500. The gate's read must be closed before the route runs."""
+    assert client.get("/secured").status_code == 401
 
 
 def test_gate_passes_when_module_is_on(client):

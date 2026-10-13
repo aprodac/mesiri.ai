@@ -16,22 +16,23 @@ company is asking. No token, an invalid token, or a platform admin (no
 company) passes straight through, so adding it to a router can never turn a
 working request into a 401.
 
-Shares the request's connection with the route: FastAPI caches `get_db_conn`
-per request, so the gate costs one indexed settings read on the same
-transaction, not a second connection.
+The settings read runs in its own short transaction that is closed before
+the route starts. It must NOT share the request's `get_db_conn` transaction:
+that context maps every exception raised while it is open -- including the
+route's own HTTPException(401) -- to a 500 "postgres unavailable", which is
+exactly what the first version of this gate did to unauthenticated requests
+in production on 2026-10-13.
 """
 
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import jwt
-from fastapi import Depends, Header, HTTPException
-from sqlalchemy.ext.asyncio import AsyncConnection  # noqa: TC002 — FastAPI resolves it at runtime
+from fastapi import Header, HTTPException, Request
 
 from mesiri.domains.organizations import settings as org_settings
-from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.repositories.organization_settings import (
     PostgresOrganizationSettingsRepository,
 )
@@ -63,22 +64,41 @@ def organization_from_token(authorization: str | None) -> uuid.UUID | None:
         return None
 
 
+def _database_for(request: Request) -> Any | None:
+    """The app's Postgres, resolved the same way `get_db_conn` does
+    (infrastructure/postgres/dependency.py), or None when the app has none
+    wired (a bare test app), in which case the gate uses the default."""
+    state = request.app.state
+    if hasattr(state, "lifecycle"):
+        return state.lifecycle.container.postgres
+    if hasattr(state, "container"):
+        return state.container.material_db
+    return None
+
+
+async def read_enabled_modules(request: Request, organization_id: uuid.UUID) -> object:
+    """The company's stored `enabled_modules` value (or the default), read in
+    a transaction that is fully closed when this returns."""
+    database = _database_for(request)
+    if database is None:
+        return org_settings.default_for(org_settings.ENABLED_MODULES)
+    async with database.transaction() as conn:
+        return await PostgresOrganizationSettingsRepository(conn).get(
+            organization_id, org_settings.ENABLED_MODULES
+        )
+
+
 def require_module(module: str) -> Callable[..., Awaitable[None]]:
     """Build the gate for `module`. Raises at import time for an unknown name,
     so a typo in a router declaration fails the test suite, not a customer."""
     if module not in org_settings.MODULES:
         raise ValueError(f"unknown module: {module}")
 
-    async def _gate(
-        authorization: str | None = Header(None),
-        conn: AsyncConnection = Depends(get_db_conn),
-    ) -> None:
+    async def _gate(request: Request, authorization: str | None = Header(None)) -> None:
         organization_id = organization_from_token(authorization)
         if organization_id is None:
             return
-        stored = await PostgresOrganizationSettingsRepository(conn).get(
-            organization_id, org_settings.ENABLED_MODULES
-        )
+        stored = await read_enabled_modules(request, organization_id)
         if not org_settings.module_enabled(module, stored):
             raise HTTPException(
                 status_code=403,
