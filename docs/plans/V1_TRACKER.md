@@ -145,7 +145,7 @@
 | WEB-07 | Issues page | S | Must | — | done | Claude (session 13 Oct, foundations) | `0a43723`. "What's stuck" view; grid removed; no Assigned column (API has ids only) |
 | WEB-08 | Projects & sites settings, incl. DPR settings, recipients, site label (Tower/Block/Phase) | M | Must | BE-15 | todo | | Also client logo upload per project (BE-33) |
 | WEB-09 | Team page (roles, sites) | S | Must | BE-01 | todo | | |
-| WEB-10 | Company page incl. branding | S | Must | BE-20 | claimed | Claude (session 13 Oct, blockers) | |
+| WEB-10 | Company page incl. branding | S | Must | BE-20 | done | Claude (session 13 Oct, blockers) | `8042a2e`. Company → Letterhead tab: logo upload/replace/remove, name on letterhead, GSTIN, signatory, brand colour, live DPR header preview. Verified in Chromium against the real API. Logos persist in prod only once INF-09 storage is switched on |
 | WEB-11 | Opening stock and stock adjustment screens | S | Must | BE-12 | todo | | Transfers between sites too (BE-32) |
 | WEB-12 | Owner login by WhatsApp/SMS code instead of password | M | Later | BE-01 | todo | | |
 
@@ -217,3 +217,4 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | 2026-10-13 | BE-08 site working day: needs details / ready statuses (migration 0466), every site gets its day, `/dpr/site-days` | `30fa1b7` |
 | 2026-10-13 | BE-31: users/projects routers use the configured login secret (were hardcoded) | `1ac48eb` |
 | 2026-10-13 | BE-20 company branding + logo upload; BE-33 project client logo (migration 0467) | `669c5f8` |
+| 2026-10-13 | WEB-10 Company → Letterhead tab (branding form, logo upload, preview) | `8042a2e` |
