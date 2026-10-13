@@ -69,7 +69,7 @@
 | BE-03 | Database-level tenant isolation (Postgres row-level security on `organization_id`) | L | Must | BE-01 | todo | | |
 | BE-04 | Phone rules: one person in several companies; never file across companies by guess | M | Must | BE-01 | todo | | Loophole #1 |
 | BE-05 | Audit log of superadmin actions (who created/changed/suspended what) | S | Must | — | todo | | |
-| BE-06 | Module on/off switch per company (`enabled_modules`), enforced by the API | S | Must | — | claimed | Claude (session 13 Oct, foundations) | Reuse `organization_settings` |
+| BE-06 | Module on/off switch per company (`enabled_modules`), enforced by the API | S | Must | — | done | Claude (session 13 Oct, foundations) | `faffdef`. Default is still every module on; flip `DEFAULT_ENABLED_MODULES` to `V1_MODULES` in the same release as WEB-02 + WA-07 |
 | BE-07 | Normalise status values (`Active` vs `active`) | S | Must | — | todo | | Has locked a user out of WhatsApp before |
 
 ### DPR data
@@ -112,7 +112,7 @@
 | WA-04 | Evening gap-check per site, built from missing sections (template) | M | Must | BE-08 | todo | | |
 | WA-05 | Confirmation message; "Confirm all" only for high-confidence items; "Fix something" flow | M | Must | WA-04 | todo | | |
 | WA-06 | No-update reminder, owner approval message, DPR delivery message (templates) | M | Must | BE-16 | todo | | |
-| WA-07 | Polite reply for switched-off features | S | Must | BE-06 | todo | | |
+| WA-07 | Polite reply for switched-off features | S | Must | BE-06 | todo | | Use `workflows/registry.py`'s `module_for_workflow()` + the org setting; REVERSE is always allowed but should check the target record's module |
 | WA-08 | Ask "which company?" for people in several companies | S | Must | BE-04 | todo | | |
 | WA-09 | Welcome and opt-in messages; handle "YES" | S | Must | BE-15 | todo | | |
 | WA-10 | Get all templates approved by Meta | S | Must | WA-04, WA-06, WA-09 | todo | | Ops task, not code |
@@ -123,7 +123,7 @@
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | WEB-01 | New look and shell (IBM Plex Sans, colour tokens, 6-item sidebar) per the UI design | M | Must | — | todo | | |
-| WEB-02 | Hide non-V1 modules using the module switch | S | Must | BE-06 | todo | | Hide, don't delete |
+| WEB-02 | Hide non-V1 modules using the module switch | S | Must | BE-06 | todo | | Hide, don't delete. `/auth/me` now returns `enabled_modules`; disabled APIs return 403 `MODULE_DISABLED` |
 | WEB-03 | Today page, grouped by project | M | Must | BE-08 | todo | | |
 | WEB-04 | Site DPR page: sections, confirm/edit/remove drafts, sources panel, approve & send, versions | L | Must | BE-09 | todo | | |
 | WEB-05 | Project DPR page | M | Must | BE-16 | todo | | |
@@ -145,7 +145,7 @@
 | SA-04 | Messages viewer per company, linked to what each message created | M | Must | BE-26 | todo | | Extend the existing Logs screen |
 | SA-05 | Costs view per message, company and day | M | Must | BE-25 | todo | | |
 | SA-06 | Health view (DPR delivery, gap-check replies, WhatsApp number quality) | M | Later | BE-27 | todo | | |
-| SA-07 | Module toggles per company | S | Must | BE-06 | todo | | |
+| SA-07 | Module toggles per company | S | Must | BE-06 | todo | | Backend ready: `PUT /admin/organizations/{id}/settings` with key `enabled_modules` |
 | SA-08 | Audit log viewer | S | Later | BE-05 | todo | | |
 
 ---
@@ -156,3 +156,4 @@
 | --- | --- | --- |
 | 2026-10-13 | Removed empty stub apps and modules (pre-V1 cleanup) | `9cbf157` |
 | 2026-10-13 | INF-04 scripts (backup, smoke test), migration rule in DEPLOYMENT.md | `94f88fd` |
+| 2026-10-13 | BE-06 module switch, enforced by the API | `faffdef` |
