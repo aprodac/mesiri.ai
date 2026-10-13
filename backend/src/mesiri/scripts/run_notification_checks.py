@@ -32,6 +32,7 @@ from datetime import UTC, datetime
 
 from ..application.notifications.checks import DEFAULT_STUCK_CONFIRMATION_AFTER
 from ..bootstrap.settings import Settings
+from ..domains.organizations.lifecycle import operational_sql
 from ..infrastructure.postgres.database import PostgresDatabase
 from ..infrastructure.postgres.repositories.notifications import (
     STUCK_CONFIRMATION_RULE_KEY,
@@ -72,7 +73,7 @@ async def run() -> int:
     try:
         async with db.transaction() as conn:
             org_rows = (
-                await conn.execute(text("SELECT id FROM organizations WHERE status = 'active'"))
+                await conn.execute(text(f"SELECT id FROM organizations WHERE {operational_sql('')}"))
             ).mappings().all()
             repo = PostgresNotificationRepository(conn)
             for org_row in org_rows:

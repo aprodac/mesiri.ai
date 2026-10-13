@@ -96,5 +96,7 @@ def test_company_status_is_compared_case_insensitively():
     from mesiri.application.projects import auto_dpr
 
     sql = inspect.getsource(auto_dpr.due_projects_for_auto_dpr)
-    assert "lower(o.status) = 'active'" in sql
+    # Since SS-02 the rule lives in one place (lifecycle.operational_sql),
+    # which compares lower(status) and also admits running trials.
+    assert 'operational_sql("o")' in sql
     assert "AND o.status = 'active'" not in sql

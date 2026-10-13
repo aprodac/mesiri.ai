@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -12,6 +13,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
 from mesiri.authorization.roles import is_org_wide
+from mesiri.domains.organizations.lifecycle import is_operational
 
 from .identity_bridge import (
     context_organization_id,
@@ -153,14 +155,18 @@ class IdentityProjectionService:
     def _project_organization(self, conn, canonical_id: UUID) -> None:
         row = (
             conn.execute(
-                text("SELECT id, name, status FROM organizations WHERE id = :id"),
+                text("SELECT id, name, status, trial_ends_at FROM organizations WHERE id = :id"),
                 {"id": canonical_id},
             )
             .mappings()
             .one()
         )
         ctx_id = context_organization_id(canonical_id)
-        is_active = _status_is(row["status"], "active")
+        # lifecycle.is_operational: active, or a trial that hasn't ended
+        # (SS-02). A trial that expires between reconciles stays active here
+        # until the next sweep; the live gate (backend/postgres/actor.py)
+        # checks the date on every message, so access still stops on time.
+        is_active = is_operational(row["status"], row.get("trial_ends_at"), datetime.now(UTC))
         conn.execute(
             text(
                 """

@@ -16,6 +16,9 @@ class OrganizationStatus(str, enum.Enum):
     # Lowercase, like every other status in the database (migration 0463).
     ACTIVE = "active"
     SUSPENDED = "suspended"
+    # Self-serve trials (SS-02); rules in domains/organizations/lifecycle.py.
+    TRIAL = "trial"
+    EXPIRED = "expired"
 
     @classmethod
     def _missing_(cls, value: object) -> "OrganizationStatus | None":

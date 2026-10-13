@@ -14,11 +14,11 @@ from __future__ import annotations
 
 import os
 import re
+from datetime import UTC, datetime
 
 from backend.ports import ActorIdentity, ProjectSummary, SiteSummary
 from mesiri.authorization.roles import is_org_wide
-
-_ORG_ACTIVE_STATUS = "active"
+from mesiri.domains.organizations.lifecycle import is_operational
 
 # Who reaches every project in their org (an org-wide role, or an
 # all_projects access policy) is defined once in
@@ -146,7 +146,8 @@ class PostgresActorReader:
                     await conn.execute(
                         text(
                             "SELECT u.id, u.full_name, u.role, u.organization_id,"
-                            "       u.access_policy, o.name AS org_name, o.status AS org_status "
+                            "       u.access_policy, o.name AS org_name, o.status AS org_status, "
+                            "       o.trial_ends_at AS org_trial_ends_at "
                             "FROM users u "
                             "LEFT JOIN organizations o ON o.id = u.organization_id "
                             "WHERE u.whatsapp_number IS NOT NULL "
@@ -230,11 +231,12 @@ class PostgresActorReader:
             role=str(row["role"]),
             organization_id=str(org_id) if org_id is not None else None,
             org_name=row["org_name"],
-            # Case-insensitive for the same reason the user status check
-            # above is: statuses are stored lowercase (migration 0463), but
-            # rows written before it, or by an older build after a rollback,
-            # may say "Active", and that must not silently suspend a tenant.
-            org_active=(str(row["org_status"]).strip().lower() == _ORG_ACTIVE_STATUS.lower())
+            # lifecycle.is_operational: active, or a trial that hasn't
+            # ended (SS-02). Case-insensitive, so a row written "Active"
+            # before migration 0463 doesn't silently suspend a tenant.
+            org_active=is_operational(
+                row["org_status"], row.get("org_trial_ends_at"), datetime.now(UTC)
+            )
             if row["org_status"] is not None
             else False,
             projects=[

@@ -43,6 +43,7 @@ import sys
 import uuid
 
 from ..bootstrap.settings import Settings
+from ..domains.organizations.lifecycle import operational_sql
 from ..infrastructure.postgres.database import PostgresDatabase
 from ..infrastructure.postgres.repositories.dpr import PostgresDprRepository
 
@@ -97,7 +98,7 @@ async def run(*, report_date: datetime.date | None = None) -> int:
     try:
         async with db.transaction() as conn:
             org_rows = (
-                await conn.execute(text("SELECT id FROM organizations WHERE status = 'active'"))
+                await conn.execute(text(f"SELECT id FROM organizations WHERE {operational_sql('')}"))
             ).mappings().all()
             repo = PostgresDprRepository(conn)
             for org_row in org_rows:

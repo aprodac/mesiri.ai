@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any
 import sqlalchemy as sa
 
 from mesiri.application.automations.scheduling import is_due
+from mesiri.domains.organizations.lifecycle import operational_sql
 from mesiri.infrastructure.postgres.repositories.dpr import PostgresDprRepository
 
 if TYPE_CHECKING:
@@ -41,20 +42,21 @@ async def due_projects_for_auto_dpr(
 ) -> list[dict[str, Any]]:
     """Every project with auto_generate_dpr=true whose own reporting_cutoff_
     time/reporting_timezone says it's due, and hasn't already fired for its
-    own local date (auto_dpr_last_run_on). Archived projects and projects
-    in a suspended organization are excluded -- same reasoning as
-    run_dpr_generation.py's `WHERE status = 'active'` on organizations."""
+    own local date (auto_dpr_last_run_on). Archived projects, and projects
+    in a company that may not use Mesiri right now (suspended, or a trial
+    that has expired), are excluded -- lifecycle.operational_sql, the same
+    rule every other "is this company active?" check uses."""
     rows = (
         await conn.execute(
             sa.text(
-                """
+                f"""
                 SELECT p.id, p.organization_id, p.reporting_cutoff_time,
                        p.reporting_timezone, p.auto_dpr_last_run_on
                 FROM projects p
                 JOIN organizations o ON o.id = p.organization_id
                 WHERE p.auto_generate_dpr = true
                   AND p.status != 'archived'
-                  AND lower(o.status) = 'active'
+                  AND {operational_sql("o")}
                 """
             )
         )
