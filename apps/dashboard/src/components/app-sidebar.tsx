@@ -76,7 +76,6 @@ const OPERATIONS_CATEGORY: NavCategory = {
   icon: Activity,
   items: [
     { title: 'Dashboard', url: '/operations/dashboard', icon: LayoutDashboard },
-    { title: 'Create Trip', url: '/trips/new', icon: Truck },
     { title: 'Activities', url: '/operations/activities', icon: Activity },
     { title: 'Timeline', url: '/operations/timeline', icon: History },
     { title: 'Daily Reports', url: '/operations/daily-reports', icon: FileText },

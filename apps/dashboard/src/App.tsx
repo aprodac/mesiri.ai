@@ -36,7 +36,6 @@ import OperationsGalleryPage from '@/pages/OperationsGalleryPage'
 import OperationsAnalyticsPage from '@/pages/OperationsAnalyticsPage'
 import OperationsSettingsPage from '@/pages/OperationsSettingsPage'
 import AutomationsPage from '@/pages/AutomationsPage'
-import CreateTripPage from '@/pages/CreateTripPage'
 
 
 
@@ -123,10 +122,6 @@ export default function App() {
         <Route path="labour/analytics" element={<LabourAnalyticsPage />} />
         <Route path="labour/reports" element={<LabourReportsPage />} />
         <Route path="labour/settings" element={<LabourSettingsPage />} />
-
-        {/* Trips / Logistics Section */}
-        <Route path="trips" element={<Navigate to="/trips/new" replace />} />
-        <Route path="trips/new" element={<CreateTripPage />} />
 
         {/* Legacy operational routes fallbacks */}
         <Route path="timeline" element={<OperationsTimelinePage />} />
