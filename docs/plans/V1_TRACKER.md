@@ -116,7 +116,7 @@
 | WA-04 | Evening gap-check per site, built from missing sections (template) | M | Must | BE-08 | todo | | |
 | WA-05 | Confirmation message; "Confirm all" only for high-confidence items; "Fix something" flow | M | Must | WA-04 | todo | | |
 | WA-06 | No-update reminder, owner approval message, DPR delivery message (templates) | M | Must | BE-16 | todo | | |
-| WA-07 | Polite reply for switched-off features | S | Must | BE-06 | todo | | Use `workflows/registry.py`'s `module_for_workflow()` + the org setting; REVERSE is always allowed but should check the target record's module |
+| WA-07 | Polite reply for switched-off features | S | Must | BE-06 | claimed | Claude (session 13 Oct, foundations) | Use `workflows/registry.py`'s `module_for_workflow()` + the org setting; REVERSE is always allowed but should check the target record's module |
 | WA-08 | Ask "which company?" for people in several companies | S | Must | BE-04 | todo | | |
 | WA-09 | Welcome and opt-in messages; handle "YES" | S | Must | BE-15 | todo | | |
 | WA-10 | Get all templates approved by Meta | S | Must | WA-04, WA-06, WA-09 | todo | | Ops task, not code |
@@ -127,7 +127,7 @@
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | WEB-01 | New look and shell (IBM Plex Sans, colour tokens, 6-item sidebar) per the UI design | M | Must | — | done | Claude (session 13 Oct, foundations) | `c0e1fce`. IBM Plex Sans; tokens + dark mode; sidebar V1 order with More; fixed the never-rendering active highlight. Existing pages keep hardcoded status colours |
-| WEB-02 | Hide non-V1 modules using the module switch | S | Must | BE-06 | todo | | Hide, don't delete. `/auth/me` now returns `enabled_modules`; disabled APIs return 403 `MODULE_DISABLED` |
+| WEB-02 | Hide non-V1 modules using the module switch | S | Must | BE-06 | claimed | Claude (session 13 Oct, foundations) | Hide, don't delete. `/auth/me` now returns `enabled_modules`; disabled APIs return 403 `MODULE_DISABLED` |
 | WEB-03 | Today page, grouped by project | M | Must | BE-08 | todo | | |
 | WEB-04 | Site DPR page: sections, confirm/edit/remove drafts, sources panel, approve & send, versions | L | Must | BE-09 | todo | | |
 | WEB-05 | Project DPR page | M | Must | BE-16 | todo | | |
