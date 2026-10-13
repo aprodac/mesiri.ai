@@ -69,7 +69,7 @@
 | BE-03 | Database-level tenant isolation (Postgres row-level security on `organization_id`) | L | Must | BE-01 | todo | | |
 | BE-04 | Phone rules: one person in several companies; never file across companies by guess | M | Must | BE-01 | todo | | Loophole #1 |
 | BE-05 | Audit log of superadmin actions (who created/changed/suspended what) | S | Must | — | todo | | |
-| BE-06 | Module on/off switch per company (`enabled_modules`), enforced by the API | S | Must | — | todo | | Reuse `organization_settings` |
+| BE-06 | Module on/off switch per company (`enabled_modules`), enforced by the API | S | Must | — | claimed | Claude (session 13 Oct, foundations) | Reuse `organization_settings` |
 | BE-07 | Normalise status values (`Active` vs `active`) | S | Must | — | todo | | Has locked a user out of WhatsApp before |
 
 ### DPR data
