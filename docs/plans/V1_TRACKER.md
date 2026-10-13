@@ -85,7 +85,7 @@
 | BE-11 | Duplicate detection: repeated work items (Must), re-used photos across days (Later) | M | Must | BE-09 | todo | | |
 | BE-12 | Materials: one-time opening stock, approved stock adjustments, flag (not block) usage beyond known stock | M | Must | BE-09 | todo | | Transfers are BE-32 |
 | BE-13 | Late entry for an approved day creates a flagged revision; next day's opening shows the adjustment | M | Must | BE-08 | todo | | Keeps frozen DPRs frozen. "Approved" = confirmed by the engineer |
-| BE-14 | Tomorrow's plan, weather (manual), hours lost, site working yes/half/no | S | Must | BE-08 | claimed | Claude (session 13 Oct, BE-08) | |
+| BE-14 | Tomorrow's plan, weather (manual), hours lost, site working yes/half/no | S | Must | BE-08 | done | Claude (session 13 Oct, BE-08) | `73c4905`, migration 0468. On the site day row, copied into each version. `PATCH /dpr/site-days/{site_id}/conditions?date=`. Hours lost defaults to issue delays. "No work" = ready with nothing required. Both PDFs show them. Setting them from WhatsApp is not built yet |
 | BE-15 | Report recipients (users and outside contacts) with opt-in records | S | Must | — | todo | | Meta requires opt-in |
 | BE-16 | Project DPR roll-up from approved site DPRs, send deadline, "Not reported" sites | M | Must | BE-08 | claimed | Claude (session 13 Oct, BE-08) | Single-site projects: site DPR is the project DPR. Rolls up engineer-confirmed site DPRs |
 | BE-17 | Fix labour events being dropped from `timeline_entries` | S | Must | — | todo | | DAILY_REPORTING_PLAN Phase 6.0 |
@@ -206,6 +206,7 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | 2026-10-13 | INF-09 local-disk media storage (off until .env switched); BE-31 shared JWT secret + startup warning | `ada65a3` |
 
 | 2026-10-13 | BE-01 step 0: identity from main tables in shadow (migration 0465), Sync Health comparison panel | `abaa073`, `b3d30f5` |
+| 2026-10-13 | BE-14 site conditions: weather, hours lost, site working, tomorrow's plan (migration 0468) | `73c4905` |
 | 2026-10-13 | BE-08 site working day: needs details / ready statuses (migration 0466), every site gets its day, `/dpr/site-days` | `30fa1b7` |
 | 2026-10-13 | BE-31: users/projects routers use the configured login secret (were hardcoded) | `1ac48eb` |
 | 2026-10-13 | BE-20 company branding + logo upload; BE-33 project client logo (migration 0467) | `669c5f8` |
