@@ -135,7 +135,7 @@
 | WEB-04 | Site DPR page: sections, confirm/edit/remove drafts, sources panel, approve & send, versions | L | Must | BE-09 | todo | | |
 | WEB-05 | Project DPR page | M | Must | BE-16 | todo | | |
 | WEB-06 | Daily Reports history (rework existing page) | M | Must | BE-08 | todo | | |
-| WEB-07 | Issues page | S | Must | — | todo | | |
+| WEB-07 | Issues page | S | Must | — | claimed | Claude (session 13 Oct, foundations) | |
 | WEB-08 | Projects & sites settings, incl. DPR settings, recipients, site label (Tower/Block/Phase) | M | Must | BE-15 | todo | | |
 | WEB-09 | Team page (roles, sites) | S | Must | BE-01 | todo | | |
 | WEB-10 | Company page incl. branding | S | Must | BE-20 | todo | | |
