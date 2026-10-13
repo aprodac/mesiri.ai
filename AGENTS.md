@@ -18,6 +18,12 @@
 > **never write code before the plan is approved**, and **never continue into the next phase
 > without explicit approval.**
 
+> ## 📋 V1 work is tracked in [docs/plans/V1_TRACKER.md](docs/plans/V1_TRACKER.md)
+>
+> Several sessions work on V1 at the same time. Before starting any V1 work: pull, read the
+> tracker, **claim** an unblocked item (commit + push the claim on its own), and mark it
+> `done` with the commit hash when it ships. The claiming rules are at the top of the file.
+
 ---
 
 ## The 3 R's of Coding

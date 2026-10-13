@@ -1,0 +1,158 @@
+# Mesiri V1 Tracker — DPR for construction
+
+> **The single list of V1 work.** Every session (Claude Code or human) checks this file
+> before starting V1 work and updates it when claiming and finishing an item.
+>
+> - **What V1 is:** one feature, an automatic daily progress report (DPR) for construction
+>   companies, on production-grade foundations (AI layer, tenancy, infra, superadmin,
+>   dashboard). Surfaces: **web dashboard + WhatsApp assistant only**. Mobile app parked.
+> - **Why and what was decided:** the architecture doc
+>   ([Mesiri — Target Architecture](https://claude.ai/code/artifact/399eaa7f-c055-4e17-b3aa-a916670dd901)),
+>   the [database map](https://claude.ai/code/artifact/80bacce6-0497-4a75-aa1b-08a5cd93c259)
+>   and the [UI design](https://claude.ai/artifact/WW1bwDkePpTp8EWK2EswBu).
+> - **Process:** [CLAUDE.md](../../CLAUDE.md) still applies to every item: investigate,
+>   plan, wait for approval, implement, test, push to `main`, report.
+
+## How to use this file with several sessions at once
+
+1. **Pull first.** `git pull origin main`, then read this file.
+2. **Pick an item** whose status is `todo` and whose **Depends on** items are all `done`
+   (or say `—`). Prefer `Must` over `Later`.
+3. **Claim it before working.** Change its row to `claimed`, put your name/session in
+   **Owner**, then commit and push *only this file* straight away:
+   `git commit -m "tracker: claim BE-15"`. If the push is rejected, pull: if someone else
+   claimed it first, pick another item.
+4. **One item per session at a time.** Don't edit other people's rows, except to add a note.
+5. **While working:** `in-progress`. If stuck on a decision or another item: `blocked`
+   with the reason in **Notes**.
+6. **When finished and pushed:** `done`, with the commit hash(es) in **Notes**. Commit
+   messages for the work itself start with the item ID, e.g. `feat(dpr): BE-15 add site_days`.
+7. **New work found?** Add a row at the end of the right section with the next free ID,
+   status `todo`, and say so in your report. Don't renumber existing IDs.
+
+**Status values:** `todo` · `claimed` · `in-progress` · `blocked` · `done` · `dropped`
+**Size (rough, focused days):** S ≈ 1 · M ≈ 2–4 · L ≈ 5–10. Estimates, not commitments.
+
+## Decisions still open (block the items listed)
+
+| Decision | Blocks | Status |
+| --- | --- | --- |
+| Approve single identity model (retire the assistant's `context_*` copy) | BE-01, and everything that depends on it | **waiting on Ilan** |
+| Who approves a site DPR: engineer only, or engineer then PM/owner | WA-06, WEB-04 | design assumes engineer then owner |
+| Client logo on project DPRs in V1? | BE-19 | open |
+| Signature/stamp image on approved DPRs in V1? | BE-19 | open |
+| Material transfers between sites in V1? | BE-12 | open |
+
+---
+
+## INF — Shipping & infrastructure
+
+| ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| INF-01 | Read-only VPS check (RAM, disk, cron, timers, backups, ports, DBs) | S | Must | — | blocked | Claude (session 13 Oct) | Needs Ilan to run the check script; Claude's own SSH is blocked by the safety classifier |
+| INF-02 | Staging environment: `/opt/mesiri-staging`, DB `mesiri_staging`, port 8001, nginx, `staging.mesiri.mercon.tech`, services | M | Must | INF-01 | todo | | Automated tests use simulated WhatsApp; a Meta test number is optional for manual testing |
+| INF-03 | Deploy pipeline: push to main → staging → smoke test → prod backup → prod → smoke test | M | Must | INF-02, INF-04 | todo | | Approved 13 Oct 2026 |
+| INF-04 | Backup-before-migrate and post-deploy smoke test scripts | S | Must | — | in-progress | Claude (session 13 Oct) | Scripts written and pushed (`94f88fd`, `infra/deploy/`); wiring into `deploy.yml` is part of INF-03 |
+| INF-05 | Scheduled jobs as systemd timers in the repo (DPR PDF render, timeline projector, event consumers) | S | Must | INF-01 | todo | | Check the VPS first to avoid double-running existing cron jobs |
+| INF-06 | Nightly database backup copied off the VPS (object storage) | S | Must | INF-04 | todo | | |
+| INF-07 | Error alerting (Sentry or similar) for API, worker, dashboard | S | Later | — | todo | | Ilan: do this last |
+| INF-08 | Uptime monitor | S | Later | — | todo | | |
+
+## BE — Backend
+
+### Foundations
+
+| ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| BE-01 | Single identity model: control-plane tables are the only source; move phone identities, default project/site, roles onto them; retire `context_*` copies and the reconcile watchdog | L | Must | decision | blocked | | Waiting on approval (see Decisions) |
+| BE-02 | One tenant provisioning path (remove the duplicate in `apps/whatsapp-assistant/src/admin/router.py` vs `backend/.../admin/router.py`) | S | Must | — | todo | | |
+| BE-03 | Database-level tenant isolation (Postgres row-level security on `organization_id`) | L | Must | BE-01 | todo | | |
+| BE-04 | Phone rules: one person in several companies; never file across companies by guess | M | Must | BE-01 | todo | | Loophole #1 |
+| BE-05 | Audit log of superadmin actions (who created/changed/suspended what) | S | Must | — | todo | | |
+| BE-06 | Module on/off switch per company (`enabled_modules`), enforced by the API | S | Must | — | todo | | Reuse `organization_settings` |
+| BE-07 | Normalise status values (`Active` vs `active`) | S | Must | — | todo | | Has locked a user out of WhatsApp before |
+
+### DPR data
+
+| ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| BE-08 | `site_days`: one working-day record per site per date, with statuses (collecting → needs confirmation → ready → approved → sent) | M | Must | — | todo | | |
+| BE-09 | Draft/confirmed status on every fact, plus `extractions` (what the AI read, model, confidence) | M | Must | BE-08 | todo | | Save first, confirm later (decided 13 Oct) |
+| BE-10 | Labour counted as a snapshot per contractor+trade+day (latest replaces earlier) | S | Must | BE-09 | todo | | Prevents double counting |
+| BE-11 | Duplicate detection: repeated work items (Must), re-used photos across days (Later) | M | Must | BE-09 | todo | | |
+| BE-12 | Materials: one-time opening stock, approved stock adjustments, flag (not block) usage beyond known stock | M | Must | BE-09 | todo | | Transfers pending decision |
+| BE-13 | Late entry for an approved day creates a flagged revision; next day's opening shows the adjustment | M | Must | BE-08 | todo | | Keeps frozen DPRs frozen |
+| BE-14 | Tomorrow's plan, weather (manual), hours lost, site working yes/half/no | S | Must | BE-08 | todo | | |
+| BE-15 | Report recipients (users and outside contacts) with opt-in records | S | Must | — | todo | | Meta requires opt-in |
+| BE-16 | Project DPR roll-up from approved site DPRs, send deadline, "Not reported" sites | M | Must | BE-08 | todo | | Single-site projects: site DPR is the project DPR |
+| BE-17 | Fix labour events being dropped from `timeline_entries` | S | Must | — | todo | | DAILY_REPORTING_PLAN Phase 6.0 |
+| BE-18 | AI summary generated only from confirmed facts | S | Must | BE-09 | todo | | |
+| BE-19 | DPR PDF with the customer's letterhead (logo, colour, address, GSTIN, signatory) + "Generated with Mesiri" footer | M | Must | BE-20 | todo | | Client logo / signature pending decision |
+| BE-20 | Branding storage (`organization_settings` "branding") + logo upload to object storage | S | Must | — | todo | | |
+| BE-21 | Anomaly flags (manpower jump vs average, material used with no work logged) | M | Later | BE-09 | todo | | |
+| BE-22 | Update `docs/execution/DAILY_REPORTING_PLAN.md` rule P2 to save-first | S | Must | — | todo | | |
+
+### Onboarding & visibility
+
+| ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| BE-23 | Onboarding APIs for the wizard steps (company, owner, projects & sites, team, DPR settings, go-live) | M | Must | BE-02 | todo | | Bulk CSV import is Later |
+| BE-24 | Construction defaults seeded per new company (materials, units, trades, issue types) | S | Must | — | todo | | Follow the finance seeder pattern |
+| BE-25 | Cost tracking: every AI call (model, tokens, cost) and WhatsApp message (category, cost), per company | M | Must | — | todo | | Extend `provider_executions` |
+| BE-26 | Messages API for superadmin (per company, user, site; linked to what each message created) | S | Must | BE-09 | todo | | |
+| BE-27 | Health numbers API (DPRs sent vs expected, gap-check reply rate) | S | Later | BE-08 | todo | | |
+
+## WA — WhatsApp assistant
+
+| ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| WA-01 | Capture flows save drafts first (work done, labour, materials, issues, photos) | L | Must | BE-09 | todo | | |
+| WA-02 | Forwarded batches: one summary reply; assumed to be today unless stated | M | Must | WA-01 | todo | | |
+| WA-03 | Quiet daytime: ask only when it can't wait; defer to the evening | S | Must | WA-01 | todo | | |
+| WA-04 | Evening gap-check per site, built from missing sections (template) | M | Must | BE-08 | todo | | |
+| WA-05 | Confirmation message; "Confirm all" only for high-confidence items; "Fix something" flow | M | Must | WA-04 | todo | | |
+| WA-06 | No-update reminder, owner approval message, DPR delivery message (templates) | M | Must | BE-16 | todo | | |
+| WA-07 | Polite reply for switched-off features | S | Must | BE-06 | todo | | |
+| WA-08 | Ask "which company?" for people in several companies | S | Must | BE-04 | todo | | |
+| WA-09 | Welcome and opt-in messages; handle "YES" | S | Must | BE-15 | todo | | |
+| WA-10 | Get all templates approved by Meta | S | Must | WA-04, WA-06, WA-09 | todo | | Ops task, not code |
+| WA-11 | Reply in the sender's language (check and fix) | S | Must | — | todo | | |
+
+## WEB — Web dashboard
+
+| ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| WEB-01 | New look and shell (IBM Plex Sans, colour tokens, 6-item sidebar) per the UI design | M | Must | — | todo | | |
+| WEB-02 | Hide non-V1 modules using the module switch | S | Must | BE-06 | todo | | Hide, don't delete |
+| WEB-03 | Today page, grouped by project | M | Must | BE-08 | todo | | |
+| WEB-04 | Site DPR page: sections, confirm/edit/remove drafts, sources panel, approve & send, versions | L | Must | BE-09 | todo | | |
+| WEB-05 | Project DPR page | M | Must | BE-16 | todo | | |
+| WEB-06 | Daily Reports history (rework existing page) | M | Must | BE-08 | todo | | |
+| WEB-07 | Issues page | S | Must | — | todo | | |
+| WEB-08 | Projects & sites settings, incl. DPR settings, recipients, site label (Tower/Block/Phase) | M | Must | BE-15 | todo | | |
+| WEB-09 | Team page (roles, sites) | S | Must | BE-01 | todo | | |
+| WEB-10 | Company page incl. branding | S | Must | BE-20 | todo | | |
+| WEB-11 | Opening stock and stock adjustment screens | S | Must | BE-12 | todo | | |
+| WEB-12 | Owner login by WhatsApp/SMS code instead of password | M | Later | BE-01 | todo | | |
+
+## SA — Superadmin (control panel)
+
+| ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| SA-01 | Onboarding wizard (7 steps) with DPR letterhead preview | L | Must | BE-23, BE-20 | todo | | Until it exists, onboard via the API |
+| SA-02 | Companies list with status and setup progress | S | Must | BE-23 | todo | | |
+| SA-03 | Company page: edit, suspend (export is Later) | M | Must | BE-05 | todo | | |
+| SA-04 | Messages viewer per company, linked to what each message created | M | Must | BE-26 | todo | | Extend the existing Logs screen |
+| SA-05 | Costs view per message, company and day | M | Must | BE-25 | todo | | |
+| SA-06 | Health view (DPR delivery, gap-check replies, WhatsApp number quality) | M | Later | BE-27 | todo | | |
+| SA-07 | Module toggles per company | S | Must | BE-06 | todo | | |
+| SA-08 | Audit log viewer | S | Later | BE-05 | todo | | |
+
+---
+
+## Done log
+
+| Date | ID / work | Commit |
+| --- | --- | --- |
+| 2026-10-13 | Removed empty stub apps and modules (pre-V1 cleanup) | `9cbf157` |
+| 2026-10-13 | INF-04 scripts (backup, smoke test), migration rule in DEPLOYMENT.md | `94f88fd` |
