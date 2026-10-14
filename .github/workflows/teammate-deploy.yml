@@ -92,9 +92,12 @@ jobs:
             command -v python3 >/dev/null || apt-get install -y python3
             id teammate-brain >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/teammate-brain --shell /usr/sbin/nologin teammate-brain
             chmod 700 /var/lib/teammate-brain
-            (cd /opt/teammate/brain && npm ci --omit=dev --no-audit --no-fund \
-              && PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers npx playwright-core install --with-deps chromium) \
+            # Code and browser must be readable by the brain's user (the umask above keeps .env files private).
+            (umask 022 && cd /opt/teammate/brain && npm ci --omit=dev --no-audit --no-fund)
+            (umask 022 && cd /opt/teammate/brain && PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers npx playwright-core install --with-deps chromium) \
               || echo "brain: browser install failed; previews stay off"
+            chmod -R a+rX /opt/teammate/brain /opt/pw-browsers 2>/dev/null || true
+            chmod a+x /opt/teammate   # enter only; /opt/teammate/.env and brain.env stay root-only (600)
             chown -R root:root /opt/teammate/brain/hooks && chmod 755 /opt/teammate/brain/hooks/pre-push
             {
               printf 'TEAMMATE_API_TOKEN=%s\nTEAMMATE_API=http://127.0.0.1:8790\nTEAMMATE_BRAIN_PORT=8791\n' "$TEAMMATE_API_TOKEN"
