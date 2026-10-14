@@ -17,6 +17,21 @@ if TYPE_CHECKING:
     from backend.ports import ActorReader
     from mesiri.infrastructure.postgres.database import PostgresDatabase
 
+# BE-38: where quiet hours are judged when neither the project nor the
+# company has a timezone of its own. V1 is India-only.
+DEFAULT_NOTIFICATION_TIMEZONE = "Asia/Kolkata"
+
+
+def pick_notification_timezone(*, project_timezone: str | None, org_timezone: str | None) -> str:
+    """The project's reporting timezone, else the company's, else
+    DEFAULT_NOTIFICATION_TIMEZONE. Both columns are NOT NULL with a
+    server default of 'UTC' (migrations 0260, 0280), so a stored 'UTC'
+    almost always means "never set" and falls through rather than wins."""
+    for name in (project_timezone, org_timezone):
+        if name and name.strip() and name.strip().upper() != "UTC":
+            return name.strip()
+    return DEFAULT_NOTIFICATION_TIMEZONE
+
 
 class NotificationSendQueueService:
     def __init__(self, db: PostgresDatabase, actor_reader: ActorReader) -> None:
@@ -55,6 +70,37 @@ class NotificationSendQueueService:
             return await PostgresReportRecipientRepository(conn).latest_consent_state(
                 organization_id=organization_id, phone=phone
             )
+
+    async def timezone_for(self, *, organization_id: Any, project_id: Any) -> str:
+        """BE-38: the timezone a notification's quiet hours are judged in
+        (see pick_notification_timezone)."""
+        if organization_id is None:
+            return DEFAULT_NOTIFICATION_TIMEZONE
+        from sqlalchemy import text
+
+        async with self._db.transaction() as conn:
+            row = (
+                (
+                    await conn.execute(
+                        text(
+                            "SELECT o.timezone AS org_timezone, "
+                            "p.reporting_timezone AS project_timezone "
+                            "FROM organizations o "
+                            "LEFT JOIN projects p ON p.id = :project_id "
+                            "AND p.organization_id = o.id "
+                            "WHERE o.id = :organization_id"
+                        ),
+                        {"organization_id": organization_id, "project_id": project_id},
+                    )
+                )
+                .mappings()
+                .first()
+            )
+        if row is None:
+            return DEFAULT_NOTIFICATION_TIMEZONE
+        return pick_notification_timezone(
+            project_timezone=row["project_timezone"], org_timezone=row["org_timezone"]
+        )
 
     async def last_inbound_at(self, wa_id: str):
         """The recipient's most recent inbound message time, for the

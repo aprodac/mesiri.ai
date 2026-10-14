@@ -26,6 +26,7 @@ from ingress.receiver import _log_failed_statuses
 from runtime.send_pending_notifications import drain_and_send
 
 APPROVED = frozenset({DPR_DELIVERY.name})
+_REAL_IS_QUIET_HOURS = checks.is_quiet_hours
 
 
 def _template_payload(params=("Tower A", "13 Oct 2026", "All sites reported.")):
@@ -180,7 +181,15 @@ class _Storage:
 
 @pytest.fixture
 def queue(monkeypatch):
-    state = {"rows": [], "last_inbound": None, "sent": [], "skipped": [], "consent": {}}
+    state = {
+        "rows": [],
+        "last_inbound": None,
+        "sent": [],
+        "skipped": [],
+        "consent": {},
+        "timezone": "Asia/Kolkata",
+        "timezone_lookups": [],
+    }
 
     class _Queue:
         def __init__(self, db, actor_reader):
@@ -194,6 +203,10 @@ def queue(monkeypatch):
 
         async def consent_state(self, *, organization_id, wa_id):
             return state["consent"].get(wa_id)
+
+        async def timezone_for(self, *, organization_id, project_id):
+            state["timezone_lookups"].append((organization_id, project_id))
+            return state["timezone"]
 
         async def last_inbound_at(self, wa_id):
             return state["last_inbound"]
@@ -219,13 +232,14 @@ def _row(payload, *, recipient_user_id="u1"):
     }
 
 
-async def _drain(sender, *, approved=APPROVED, storage=None):
+async def _drain(sender, *, approved=APPROVED, storage=None, now_utc=None):
     return await drain_and_send(
         db=None,
         actor_reader=None,
         sender=sender,
         object_storage=storage or _Storage(),
         approved_templates=approved,
+        now_utc=now_utc,
     )
 
 
@@ -379,3 +393,109 @@ async def test_a_contact_row_with_no_number_is_skipped(queue):
 
     assert await _drain(sender) == {"sent": 0, "skipped": 1}
     assert queue["skipped"] == [("n1", "no_resolvable_recipient")]
+
+
+# --- BE-38: quiet hours in local time ---------------------------------------
+
+
+@pytest.fixture
+def quiet(queue, monkeypatch):
+    """The `queue` fixture with the real quiet-hours check (21:00-07:00)."""
+    monkeypatch.setattr(checks, "is_quiet_hours", _REAL_IS_QUIET_HOURS)
+    return queue
+
+
+def _nudge(n="n1", *, project_id=None):
+    return {
+        "id": n,
+        "organization_id": "org1",
+        "project_id": project_id,
+        "rule_key": "stuck_confirmation",
+        "recipient_user_id": "u1",
+        "payload": {},
+    }
+
+
+async def _drain_at(state, now_utc):
+    state["last_inbound"] = now_utc - timedelta(hours=1)
+    sender = _FakeSender()
+    return await _drain(sender, now_utc=now_utc), sender
+
+
+@pytest.mark.asyncio
+async def test_22_00_india_time_is_held_though_it_is_16_30_utc(quiet):
+    quiet["rows"] = [_nudge()]
+    counts, sender = await _drain_at(quiet, datetime(2026, 10, 14, 16, 30, tzinfo=UTC))
+
+    assert counts == {"sent": 0, "skipped": 0}
+    assert sender.texts == [] and quiet["skipped"] == []  # left pending
+
+
+@pytest.mark.asyncio
+async def test_04_30_india_time_is_held_though_it_is_23_00_utc(quiet):
+    quiet["rows"] = [_nudge()]
+    counts, sender = await _drain_at(quiet, datetime(2026, 10, 14, 23, 0, tzinfo=UTC))
+
+    assert counts == {"sent": 0, "skipped": 0}
+    assert sender.texts == []
+
+
+@pytest.mark.asyncio
+async def test_10_00_india_time_is_sent_though_it_is_04_30_utc(quiet):
+    quiet["rows"] = [_nudge()]
+    counts, sender = await _drain_at(quiet, datetime(2026, 10, 14, 4, 30, tzinfo=UTC))
+
+    assert counts == {"sent": 1, "skipped": 0}
+    assert len(sender.texts) == 1
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_timezone_name_falls_back_to_utc_instead_of_crashing(quiet):
+    quiet["timezone"] = "Not/AZone"
+    quiet["rows"] = [_nudge()]
+    counts, _ = await _drain_at(quiet, datetime(2026, 10, 14, 12, 0, tzinfo=UTC))
+
+    assert counts == {"sent": 1, "skipped": 0}
+
+
+@pytest.mark.asyncio
+async def test_the_project_dpr_at_its_21_00_deadline_is_not_held(quiet):
+    quiet["rows"] = [_row(_template_payload())]  # project_dpr_send:p1
+    counts, sender = await _drain_at(quiet, datetime(2026, 10, 14, 15, 35, tzinfo=UTC))
+
+    assert counts == {"sent": 1, "skipped": 0}
+    assert sender.documents == [("919999999999", "DPR.pdf")]
+    assert quiet["timezone_lookups"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_nudge_at_21_05_india_time_is_still_held(quiet):
+    quiet["rows"] = [_nudge()]
+    counts, _ = await _drain_at(quiet, datetime(2026, 10, 14, 15, 35, tzinfo=UTC))
+
+    assert counts == {"sent": 0, "skipped": 0}
+
+
+@pytest.mark.asyncio
+async def test_the_timezone_is_looked_up_once_per_project(quiet):
+    quiet["rows"] = [_nudge("n1", project_id="p1"), _nudge("n2", project_id="p1")]
+    counts, _ = await _drain_at(quiet, datetime(2026, 10, 14, 4, 30, tzinfo=UTC))
+
+    assert counts == {"sent": 2, "skipped": 0}
+    assert quiet["timezone_lookups"] == [("org1", "p1")]
+
+
+def test_the_project_timezone_wins_over_the_company_timezone():
+    assert (
+        notification_query.pick_notification_timezone(
+            project_timezone="Asia/Dubai", org_timezone="Asia/Kolkata"
+        )
+        == "Asia/Dubai"
+    )
+
+
+def test_utc_counts_as_not_set_and_falls_through():
+    pick = notification_query.pick_notification_timezone
+    assert pick(project_timezone="UTC", org_timezone="Asia/Dubai") == "Asia/Dubai"
+    assert pick(project_timezone="UTC", org_timezone="UTC") == "Asia/Kolkata"
+    assert pick(project_timezone=None, org_timezone=None) == "Asia/Kolkata"

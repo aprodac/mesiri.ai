@@ -24,6 +24,13 @@ when present sends a document (SEND_DPR with a rendered PDF ready),
 otherwise `payload["message"]` as plain text. Every other rule_key keeps
 using the static `_RULE_KEY_MESSAGES` table.
 
+Quiet hours (BE-38) are judged in the row's local time -- the project's
+`reporting_timezone`, else the company's `timezone`, else Asia/Kolkata
+(runtime/notification_query.py's `pick_notification_timezone`) -- never
+server UTC. BE-16's `project_dpr_send:` rows skip quiet hours: the owner
+chose the send deadline (default 21:00, exactly when quiet hours start),
+so holding the DPR until 07:00 would defeat it.
+
 Outside the session window (WA-12) a row goes out as an approved template
 when its payload names one (`payload["template"]`) and that template is
 listed in `WHATSAPP_APPROVED_TEMPLATES`; otherwise it is skipped with the
@@ -56,6 +63,9 @@ _RULE_KEY_MESSAGES: dict[str, str] = {
 }
 
 _DOCUMENT_MIME_TYPE = "application/pdf"
+
+# BE-38: rows whose send time the owner chose themselves.
+_QUIET_HOURS_EXEMPT_PREFIXES = ("project_dpr_send:",)
 
 
 def _render(row: dict[str, Any]) -> str:
@@ -155,12 +165,14 @@ async def drain_and_send(
     sender: Any,
     object_storage: Any | None = None,
     approved_templates: frozenset[str] = frozenset(),
+    now_utc: datetime | None = None,
 ) -> dict[str, int]:
     """The reusable core: drain every 'pending' notification and send or
     skip each with a recorded reason. Shared by this script's own `run()`
     and runtime/automation_runner.py's scheduler tick -- one send/skip
     policy, never two copies drifting apart."""
     from channel.whatsapp.templates import choose_template
+    from mesiri.application.automations.scheduling import local_now
     from mesiri.application.dpr.recipients import may_message
     from mesiri.application.notifications.checks import (
         is_quiet_hours,
@@ -170,6 +182,7 @@ async def drain_and_send(
 
     queue = NotificationSendQueueService(db, actor_reader)
     counts = {"sent": 0, "skipped": 0}
+    timezones: dict[tuple[str, str], str] = {}
 
     pending = await queue.list_pending()
     for row in pending:
@@ -200,7 +213,7 @@ async def drain_and_send(
             continue
 
         last_inbound = await queue.last_inbound_at(wa_id)
-        now = datetime.now(tz=UTC)
+        now = now_utc or datetime.now(tz=UTC)
         template_choice = None
         if not is_within_whatsapp_session_window(last_inbound_at=last_inbound, now=now):
             # Outside Meta's free-form window -- a free-form send would be
@@ -215,10 +228,18 @@ async def drain_and_send(
                 counts["skipped"] += 1
                 continue
 
-        if is_quiet_hours(local_now=now):
-            # Left 'pending' on purpose -- not skipped -- so the next drain
-            # picks it back up once quiet hours end, rather than losing it.
-            continue
+        if not str(row.get("rule_key") or "").startswith(_QUIET_HOURS_EXEMPT_PREFIXES):
+            # BE-38: in the row's local time, never server UTC.
+            tz_key = (str(row.get("organization_id")), str(row.get("project_id")))
+            if tz_key not in timezones:
+                timezones[tz_key] = await queue.timezone_for(
+                    organization_id=row.get("organization_id"), project_id=row.get("project_id")
+                )
+            if is_quiet_hours(local_now=local_now(timezone_name=timezones[tz_key], now_utc=now)):
+                # Left 'pending' on purpose -- not skipped -- so the next
+                # drain picks it back up once quiet hours end, rather than
+                # losing it.
+                continue
 
         if template_choice is not None:
             sent = await _send_template(
