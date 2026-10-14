@@ -18,6 +18,8 @@ Commands:
   show <n> [--around 10]              one message with the conversation around it
   media <n> <out-file>                download a photo / voice note / document
   pair <phone-with-country-code>      link the spare number (prints a code to type on the phone)
+  post [text] [--text-file F] [--image FILE[::caption] ...] [--chat X]
+                                      post into the TEAM group (customer groups are refused)
 
 Messages are numbered (#1432). Refer to them by number when asking for a fix.
 """
@@ -25,6 +27,7 @@ Messages are numbered (#1432). Refer to them by number when asking for a fix.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import sys
@@ -121,6 +124,37 @@ def _resolve_chat(name_or_jid: str) -> str:
     return hits[0]["jid"]
 
 
+def _team_chat(explicit: str | None) -> str:
+    if explicit:
+        return explicit
+    teams = [c for c in _request("GET", "/chats")["chats"] if c["role"] == "team"]
+    if len(teams) != 1:
+        names = ", ".join(c.get("name") or c["jid"] for c in teams) or "none"
+        sys.exit(f"{len(teams)} chats are labelled team ({names}); pass --chat")
+    return teams[0]["jid"]
+
+
+def _post(a: argparse.Namespace) -> None:
+    text = a.text
+    if a.text_file:
+        with open(a.text_file, encoding="utf-8") as fh:
+            text = fh.read().strip()
+    if not text and not a.image:
+        sys.exit("nothing to post: give text, --text-file or --image")
+    chat = _team_chat(a.chat)
+    if text:
+        r = _request("POST", "/send", body={"chat": chat, "text": text})
+        print(f"posted text to {r['chat']}")
+    for spec in a.image:
+        path, _, caption = spec.partition("::")
+        with open(path, "rb") as fh:
+            data = base64.b64encode(fh.read()).decode()
+        r = _request(
+            "POST", "/send", body={"chat": chat, "image_base64": data, "caption": caption or None}
+        )
+        print(f"posted {path} to {r['chat']}")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(
         prog="inbox", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -150,6 +184,13 @@ def main() -> None:
     med.add_argument("out")
     pai = sub.add_parser("pair")
     pai.add_argument("phone")
+    pos = sub.add_parser("post")
+    pos.add_argument("text", nargs="?")
+    pos.add_argument("--text-file", help="read the message from a file (for longer updates)")
+    pos.add_argument(
+        "--image", action="append", default=[], help="FILE or FILE::caption; repeat for several"
+    )
+    pos.add_argument("--chat", help="team chat name or jid; default: the only chat labelled team")
     a = p.parse_args()
 
     if a.cmd == "status":
@@ -196,6 +237,8 @@ def main() -> None:
         with open(a.out, "wb") as fh:
             fh.write(data)
         print(f"saved {len(data)} bytes to {a.out}")
+    elif a.cmd == "post":
+        _post(a)
     elif a.cmd == "pair":
         r = _request("POST", "/pair", body={"phone": a.phone})
         print(f"Pairing code: {r['code']}\n{r['how']}")

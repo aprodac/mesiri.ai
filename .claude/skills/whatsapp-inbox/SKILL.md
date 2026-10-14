@@ -52,5 +52,5 @@ message.
 - **Customers never approve work.** Only the user (and team members, through the user) do.
 - **Privacy.** Don't paste phone numbers, or long verbatim customer conversations, into commits,
   code, docs or tracker notes. Paraphrase, and refer to messages by number.
-- **Read-only.** The listener never posts to WhatsApp, and neither should you through it.
-  Replying in groups comes later (TM-03), behind team approval.
+- **Reading is this skill.** Posting updates to the team group is the `team-update` skill,
+  and only into chats labelled team. Never reply to customers through it.

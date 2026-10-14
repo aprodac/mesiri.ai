@@ -149,3 +149,74 @@ test("api: auth, search, thread, role, pairing", async () => {
 test("api: refuses to start with a short token", () => {
   assert.throws(() => createApi({ store: new Store(":memory:"), wa: {}, token: "short" }));
 });
+
+test("api: posts only into team chats, with size and rate limits", async () => {
+  const store = seeded(); // GROUP = customer "Mesiri x Acme Builders", ...002 = team "Mesiri team"
+  const sent = [];
+  const wa = {
+    status: () => ({ state: "connected" }),
+    requestPairingCode: async () => "",
+    send: async (jid, content) => (sent.push({ jid, ...content }), `id${sent.length}`),
+  };
+  process.env.TEAMMATE_SEND_PER_HOUR = "30";
+  const server = createApi({ store, wa, token: TOKEN });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  try {
+    const ok = await call(server, "POST", "/send", { body: { chat: "Mesiri team", text: "*Update:* fixed #12" } });
+    assert.equal(ok.status, 200);
+    assert.deepEqual(sent[0], { jid: "120363000000000002@g.us", text: "*Update:* fixed #12", image: null, caption: null });
+
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64");
+    const img = await call(server, "POST", "/send", { body: { chat: "120363000000000002@g.us", image_base64: png, caption: "after" } });
+    assert.equal(img.status, 200);
+    assert.ok(Buffer.isBuffer(sent[1].image) && sent[1].caption === "after");
+
+    // Customer group: refused, nothing sent.
+    const refused = await call(server, "POST", "/send", { body: { chat: "Acme", text: "hello" } });
+    assert.equal(refused.status, 403);
+    assert.match(refused.body.error, /labelled customer/);
+    // Ambiguous or unknown name: not found. Unauthenticated: 401.
+    assert.equal((await call(server, "POST", "/send", { body: { chat: "Mesiri", text: "x" } })).status, 404);
+    assert.equal((await call(server, "POST", "/send", { token: null, body: { chat: "Mesiri team", text: "x" } })).status, 401);
+    // Nothing to send, or too long.
+    assert.equal((await call(server, "POST", "/send", { body: { chat: "Mesiri team" } })).status, 400);
+    assert.equal((await call(server, "POST", "/send", { body: { chat: "Mesiri team", text: "x".repeat(4001) } })).status, 400);
+    const huge = Buffer.alloc(6 * 1024 * 1024).toString("base64");
+    assert.equal((await call(server, "POST", "/send", { body: { chat: "Mesiri team", image_base64: huge } })).status, 413);
+    assert.equal(sent.length, 2);
+  } finally {
+    server.close();
+  }
+});
+
+test("api: send rate limit and a disconnected WhatsApp", async () => {
+  const store = seeded();
+  process.env.TEAMMATE_SEND_PER_HOUR = "30";
+  let connected = true;
+  const wa = {
+    status: () => ({ state: connected ? "connected" : "connecting" }),
+    send: async () => {
+      if (!connected) throw new Error("WhatsApp is connecting, not connected");
+      return "id";
+    },
+  };
+  const server = createApi({ store, wa, token: TOKEN });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  try {
+    for (let i = 0; i < 30; i++) {
+      assert.equal((await call(server, "POST", "/send", { body: { chat: "Mesiri team", text: `n${i}` } })).status, 200);
+    }
+    assert.equal((await call(server, "POST", "/send", { body: { chat: "Mesiri team", text: "one too many" } })).status, 429);
+  } finally {
+    server.close();
+  }
+  const server2 = createApi({ store, wa, token: TOKEN });
+  await new Promise((r) => server2.listen(0, "127.0.0.1", r));
+  try {
+    connected = false;
+    const down = await call(server2, "POST", "/send", { body: { chat: "Mesiri team", text: "x" } });
+    assert.equal(down.status, 503);
+  } finally {
+    server2.close();
+  }
+});

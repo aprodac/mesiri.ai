@@ -1,8 +1,8 @@
 // The linked-device connection to the spare WhatsApp number.
 //
-// Read-only by design: this module never sends a message, reaction, read
-// receipt or presence update. It records what it sees and nothing else.
-// (Sending into groups is TM-03, behind team approval.)
+// It records everything it sees. The only thing it ever sends is a message
+// through send() (TM-04), which the API allows only into chats labelled
+// "team" -- never a customer group, a reaction, a read receipt or presence.
 
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -124,6 +124,14 @@ export class WhatsAppListener {
     if (this.registered) throw new Error("already linked; unlink it from the phone first to link another number");
     if (!this.sock || !this.pairingReady) throw new Error("not connected to WhatsApp yet, try again in a few seconds");
     return this.sock.requestPairingCode(phone);
+  }
+
+  /** Sends text, or an image with an optional caption. Callers check the chat is a team chat. */
+  async send(jid, { text = null, image = null, caption = null } = {}) {
+    if (this.state !== "connected" || !this.sock) throw new Error(`WhatsApp is ${this.state}, not connected`);
+    const content = image ? { image, caption: caption || undefined } : { text };
+    const sent = await this.sock.sendMessage(jid, content);
+    return sent?.key?.id || null;
   }
 
   async record(msg, { downloadMedia }) {

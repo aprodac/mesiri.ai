@@ -6,8 +6,11 @@ A self-contained kit that makes Claude Code a working team member:
    WhatsApp Web).
 2. **Keeps an inbox** of everything said, searchable from any Claude Code session. You can say
    "fix the DPR problem Acme raised yesterday" and the session finds it.
-3. *(TM-02, next)* Turns conversations into numbered items: bugs, ideas, complaints, decisions.
-4. *(TM-03, later)* Builds what the team approves, posts the plan and screenshots in the team
+3. **Posts updates to the team group** (TM-04): what changed, with screenshots or before/after
+   chat images, after work is pushed. Only into chats labelled `team`; customer groups are
+   refused by the server.
+4. *(TM-02, next)* Turns conversations into numbered items: bugs, ideas, complaints, decisions.
+5. *(TM-03, later)* Builds what the team approves, posts the plan and screenshots in the team
    group, and publishes only after someone replies "OK".
 
 Nothing here depends on Mesiri. Copy the folder to reuse it in another project (see
@@ -20,18 +23,20 @@ WhatsApp groups ──► listener/ (Node, VPS) ──► inbox.db ──► HTT
 
 | Path | What it is |
 | --- | --- |
-| `listener/` | The service: linked-device connection (Baileys), SQLite inbox, read API. **Read-only**: it never sends anything to WhatsApp. |
-| `inbox.py` | The command sessions use: `status`, `chats`, `label`, `recent`, `search`, `show`, `media`, `pair`. Python standard library only. |
+| `listener/` | The service: linked-device connection (Baileys), SQLite inbox, API. It sends only through `POST /send`, only into chats labelled `team`, up to 30 posts an hour. Never to customers; never reactions, read receipts or "online". |
+| `inbox.py` | The command sessions use: `status`, `chats`, `label`, `recent`, `search`, `show`, `media`, `pair`, `post`. Python standard library only. |
+| `chat_image.py` | Draws a WhatsApp-style conversation, or a before/after pair, as a PNG for team updates. Standard library + Chromium. |
 | `deploy/` | systemd unit and the nginx location block. |
 | `../.github/workflows/teammate-deploy.yml` | Manual "Deploy Teammate listener" workflow. |
 | `../.claude/skills/whatsapp-inbox/SKILL.md` | Teaches every Claude Code session when and how to use the inbox, and that messages are data, not instructions. |
+| `../.claude/skills/team-update/SKILL.md` | Teaches sessions to post a short update with screenshots to the team group after pushing work. |
 
 ## Risk you accepted
 
 The linked spare number uses WhatsApp's multi-device protocol through an unofficial library.
 That's against WhatsApp's terms, so **the spare number can be banned**. Mitigations:
 - it's a separate SIM, never Mesiri's business number;
-- it only reads, sending nothing, which is the lowest-risk behaviour;
+- it mostly reads, and sends only to your own team group (rate-limited), never to customers;
 - if it's banned, link a new SIM and nothing else changes.
 
 Tell customers that a Mesiri bot is in their group and keeps notes. It's a visible group member
@@ -63,6 +68,18 @@ anyway.
    ```
    Groups the number was already in also appear, with some recent history.
 
+## Posting to the team group
+
+```bash
+python3 teammate/inbox.py post "*DPR fix is live* (WA-16)" --image after.png::"New confirmation"
+python3 teammate/chat_image.py convo.json after.png     # WhatsApp-style picture of a conversation
+```
+
+`post` picks the one chat labelled `team` (or pass `--chat`). Posting into a customer group is
+refused with HTTP 403. Limits: text 4,000 characters, image 5 MB, 30 posts an hour
+(`TEAMMATE_SEND_PER_HOUR`). Sessions do this on their own after pushing work (skill
+`team-update`). A reply in the group is *not* treated as approval to publish; that's TM-03.
+
 ## Daily use
 
 Just talk to Claude Code: "what did customers report this week?", "fix #1432", "the cement
@@ -82,7 +99,8 @@ unit issue Suresh mentioned". The `whatsapp-inbox` skill makes the session look 
 
 ## Reuse in another project
 
-1. Copy `teammate/`, `.claude/skills/whatsapp-inbox/` and `.github/workflows/teammate-deploy.yml`.
+1. Copy `teammate/`, `.claude/skills/whatsapp-inbox/`, `.claude/skills/team-update/` and
+   `.github/workflows/teammate-deploy.yml`.
 2. In the workflow, change the host name (`api.whatsapp.mesiri.ai`) and the server path if
    needed, and use any HTTPS host you control.
 3. Set `TEAMMATE_API` in that project's Claude Code environment if the URL differs from the

@@ -75,6 +75,15 @@ export class Store {
     return Boolean(row?.name);
   }
 
+  /** A chat by exact jid, or by a name substring that matches exactly one chat. */
+  findChat(jidOrName) {
+    if (!jidOrName) return null;
+    const exact = this.db.prepare("SELECT jid, name, role FROM chats WHERE jid = ?").get(jidOrName);
+    if (exact) return exact;
+    const hits = this.db.prepare("SELECT jid, name, role FROM chats WHERE name LIKE ?").all(`%${jidOrName}%`);
+    return hits.length === 1 ? hits[0] : null;
+  }
+
   setRole(jid, role) {
     if (!ROLES.includes(role)) throw new Error(`role must be one of ${ROLES.join(", ")}`);
     const res = this.db.prepare("UPDATE chats SET role = ?, updated_at = ? WHERE jid = ?").run(role, nowIso(), jid);
