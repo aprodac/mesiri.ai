@@ -119,6 +119,12 @@ const listener = {
   send: (b) => call("POST", "/send", b).catch(() => null),
   addItem: (b) => call("POST", "/items", b),
   updateItem: (id, b) => call("POST", `/items/${id}`, b),
+  /** A group photo / file by message number: { data: Buffer, mime }. */
+  media: async (n, project) => {
+    const res = await fetch(`${api}/media/${n}?project=${encodeURIComponent(project)}`, { headers: { authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return { data: Buffer.from(await res.arrayBuffer()), mime: res.headers.get("content-type") || "" };
+  },
 };
 
 let render = null;

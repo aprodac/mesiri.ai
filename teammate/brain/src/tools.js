@@ -77,6 +77,25 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts }) {
       },
     ),
     tool(
+      "view_media",
+      "Look at a photo, screenshot or other image someone sent in the groups, by its message number (e.g. 6 for #6). Returns the image so you can see it. For voice notes, read the transcript in the inbox instead.",
+      { n: z.number().int().positive().describe("The message number, without #") },
+      async ({ n }) => {
+        if (!listener.media) return fail("Media isn't available here.");
+        let file;
+        try {
+          file = await listener.media(n, ctx.project);
+        } catch (e) {
+          return fail(`Couldn't get #${n}: ${e.message}. It may have no file, or be from another project.`);
+        }
+        const mime = (file.mime || "").split(";")[0];
+        if (!/^image\/(png|jpe?g|gif|webp)$/.test(mime)) return fail(`#${n} is ${mime || "not an image"}; only images can be shown. Check its transcript or caption in the inbox.`);
+        if (file.data.length > 8 * 1024 * 1024) return fail(`#${n} is too large to show (${Math.round(file.data.length / 1e6)} MB).`);
+        return { content: [{ type: "image", data: file.data.toString("base64"), mimeType: mime }] };
+      },
+      { annotations: { readOnlyHint: true } },
+    ),
+    tool(
       "propose_plan",
       "Record a plan for a change so the team can approve it. Call this once your plan is ready (after any previews). It logs a request and returns its number; end your reply by asking for '@bot ok <number>'. Nothing gets changed until then. The approved plan may be carried out by a separate session that hasn't seen this conversation, so make it self-contained: the problem, the files and functions to change, the exact change, how to test it, and anything decided in the chat.",
       {
@@ -114,4 +133,4 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts }) {
   return createSdkMcpServer({ name: "whatsapp", version: "1.0.0", tools });
 }
 
-export const BRAIN_TOOL_NAMES = ["post_message", "preview_html", "screenshot_url", "propose_plan", "needs_attention"].map((t) => `mcp__whatsapp__${t}`);
+export const BRAIN_TOOL_NAMES = ["post_message", "preview_html", "screenshot_url", "view_media", "propose_plan", "needs_attention"].map((t) => `mcp__whatsapp__${t}`);

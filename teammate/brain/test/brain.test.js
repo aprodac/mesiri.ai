@@ -153,7 +153,13 @@ test("brain: order per group, customer questions, reset, failures, long replies,
 test("tools: team group only, plan recording, attention flags, allowed screenshot hosts", async () => {
   const sent = [];
   const added = [];
-  const listener = { send: async (b) => sent.push(b), addItem: async (b) => (added.push(b), { item: { id: 12 } }) };
+  const media = { 6: { data: Buffer.from([0xff, 0xd8, 0xff]), mime: "image/jpeg" }, 7: { data: Buffer.from("OggS"), mime: "audio/ogg" } };
+  const asked = [];
+  const listener = {
+    send: async (b) => sent.push(b),
+    addItem: async (b) => (added.push(b), { item: { id: 12 } }),
+    media: async (n, project) => (asked.push([n, project]), media[n] || Promise.reject(new Error("HTTP 404"))),
+  };
   const saved = [];
   const ctx = { project: "mercon", chat: "C@g.us", chat_name: "Mercon history", reply_chat: "T@g.us", sender: "Ilan" };
   const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
@@ -185,6 +191,12 @@ test("tools: team group only, plan recording, attention flags, allowed screensho
 
   await call("needs_attention", { what: "Approve the widget in Claude Code", kind: "check_claude_code" });
   assert.match(sent.at(-1).text, /👀 \*Please check Claude Code\*\nApprove the widget/);
+
+  const seen = await call("view_media", { n: 6 });
+  assert.deepEqual(seen.content[0], { type: "image", data: Buffer.from([0xff, 0xd8, 0xff]).toString("base64"), mimeType: "image/jpeg" });
+  assert.deepEqual(asked[0], [6, "mercon"]);
+  assert.match((await call("view_media", { n: 7 })).content[0].text, /audio\/ogg; only images/);
+  assert.equal((await call("view_media", { n: 99 })).isError, true);
 
   assert.equal(hostAllowed("http://dev.mercon.app/a", ["dev.mercon.app"]), true);
   assert.equal(hostAllowed("file:///etc/passwd", ["dev.mercon.app"]), false);

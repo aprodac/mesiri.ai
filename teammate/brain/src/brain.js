@@ -59,6 +59,8 @@ export function systemAppend({ project, flow, owner }) {
     "",
     "Context: `python3 teammate/inbox.py` reads the groups (messages with English translations of voice notes and",
     "Malayalam), and the request log (`summary`, `items`, `item show`). Use it before answering about what was said.",
+    "To look at a photo or screenshot someone sent (shown as <image ✓file> in the inbox), call view_media with its",
+    "message number. Always look at the images a request refers to before planning.",
     "",
     "Two kinds of turn, enforced by your tool permissions:",
     "- Planning (normal messages): you can read but not change anything. Answer questions directly. For a change,",
