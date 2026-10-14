@@ -95,7 +95,7 @@
 | BE-19 | DPR PDF with the customer's letterhead (logo, colour, address, GSTIN, signatory) + "Generated with Mesiri" footer | M | Must | BE-20 | done | Claude (session 13 Oct, blockers) | `48e7b8d`. Letterhead (logo, name, address, contact, GSTIN, brand colour), client logo + name, signatory name/designation, "Generated with Mesiri" footer. Logos embedded as data URIs; never blocks a DPR (falls back to plain header). Signature/stamp image: not in V1. Template header/footer only, so BE-36 (escaping) should merge cleanly |
 | BE-20 | Branding storage (`organization_settings` "branding") + logo upload to object storage | S | Must | — | done | Claude (session 13 Oct, blockers) | `669c5f8`. `branding` org setting (printed name, colour, GSTIN, signatory, logo key); name/address/phone/email read from `organizations`. GET/PUT `/company/branding`, PUT/DELETE `/company/branding/logo` (PNG/JPEG/WebP, ≤700 KB, base64 JSON). Generic settings API refuses `branding`. Logos need INF-09 storage switched on to survive restarts |
 | BE-21 | Anomaly flags (manpower jump vs average, material used with no work logged) | M | Later | BE-09 | todo | | |
-| BE-22 | Update `docs/execution/DAILY_REPORTING_PLAN.md` rule P2 to save-first | S | Must | — | todo | | |
+| BE-22 | Update `docs/execution/DAILY_REPORTING_PLAN.md` rule P2 to save-first | S | Must | — | claimed | Claude (session 14 Oct, DPR path) | |
 
 ### Onboarding & visibility
 
