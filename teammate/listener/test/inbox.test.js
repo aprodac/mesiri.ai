@@ -363,3 +363,22 @@ test("history (TM-06): API resolves the chat, keeps to the project, reports fail
     server.close();
   }
 });
+
+test("normalize (Baileys 7): a sender under a privacy id keeps their phone number", () => {
+  const lid = normalizeMessage({
+    key: { id: "L1", remoteJid: GROUP, participant: "123456789@lid", participantAlt: "919876500000@s.whatsapp.net", fromMe: false },
+    pushName: "Lazin",
+    messageTimestamp: 1_760_000_300,
+    message: { conversation: "mail id onnu vitero" },
+  });
+  assert.equal(lid.sender_jid, "123456789@lid");
+  assert.equal(lid.sender_pn, "919876500000@s.whatsapp.net");
+
+  const dm = normalizeMessage({
+    key: { id: "D1", remoteJid: "55555@lid", remoteJidAlt: "919800000001@s.whatsapp.net", fromMe: false },
+    messageTimestamp: 1_760_000_400,
+    message: { conversation: "hi" },
+  });
+  assert.equal(dm.sender_pn, "919800000001@s.whatsapp.net");
+  assert.equal(dm.is_group, false);
+});

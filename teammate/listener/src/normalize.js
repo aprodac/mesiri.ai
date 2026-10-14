@@ -68,6 +68,16 @@ function toIso(ts) {
  *   media_mime: string | null, reaction_to: string | null
  * }}
  */
+// The sender's phone-number address. Senders may arrive under a privacy id
+// (@lid) with the number in another field: participantAlt / remoteJidAlt in
+// Baileys 7, participantPn / senderPn in 6.x.
+function phoneJid(key, isGroup) {
+  const candidates = isGroup
+    ? [key.participantPn, key.participantAlt, key.participant]
+    : [key.senderPn, key.remoteJidAlt, key.fromMe ? null : key.remoteJid];
+  return candidates.find((j) => typeof j === "string" && j.endsWith("@s.whatsapp.net")) || null;
+}
+
 export function normalizeMessage(msg) {
   const key = msg?.key;
   if (!key?.id || !key.remoteJid) return null;
@@ -88,7 +98,7 @@ export function normalizeMessage(msg) {
     chat_jid: key.remoteJid,
     is_group: isGroup,
     sender_jid: isGroup ? key.participant || null : key.fromMe ? null : key.remoteJid,
-    sender_pn: key.participantPn || key.senderPn || null,
+    sender_pn: phoneJid(key, isGroup),
     sender_name: msg.pushName || null,
     from_me: Boolean(key.fromMe),
     at: toIso(msg.messageTimestamp),

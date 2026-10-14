@@ -4,13 +4,15 @@
   "private": true,
   "description": "Listens to WhatsApp groups as a linked device and keeps a searchable inbox for Claude Code.",
   "type": "module",
-  "engines": { "node": ">=22.13" },
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
     "start": "node src/main.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "6.7.24",
+    "@whiskeysockets/baileys": "7.0.0-rc14",
     "pino": "9.6.0"
   }
 }
