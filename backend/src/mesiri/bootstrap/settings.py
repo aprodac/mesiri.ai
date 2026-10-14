@@ -139,7 +139,8 @@ class GeminiSettings(_Section):
 
 class DeepSeekSettings(_Section):
     api_key: SecretStr | None = None
-    model: str = "deepseek-chat"
+    # deepseek-chat stopped resolving 24 Jul 2026 (BE-29; mesiri_ai/model_names.py).
+    model: str = "deepseek-flash"
     base_url: str = "https://api.deepseek.com"
     timeout_seconds: float = 30.0
     max_retries: int = 2

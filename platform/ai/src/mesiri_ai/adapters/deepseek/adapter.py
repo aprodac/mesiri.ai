@@ -464,6 +464,10 @@ class DeepSeekExtractionProvider:
                         ],
                         "response_format": {"type": "json_object"},
                         "temperature": 0,
+                        # deepseek-flash thinks by default (high effort);
+                        # deepseek-chat did not. Off keeps extraction fast
+                        # and inside the timeout (BE-29).
+                        "thinking": {"type": "disabled"},
                     },
                 )
                 resp.raise_for_status()
@@ -509,6 +513,10 @@ class DeepSeekExtractionProvider:
                         ],
                         "response_format": {"type": "json_object"},
                         "temperature": 0,
+                        # deepseek-flash thinks by default (high effort);
+                        # deepseek-chat did not. Off keeps extraction fast
+                        # and inside the timeout (BE-29).
+                        "thinking": {"type": "disabled"},
                     },
                 )
                 resp.raise_for_status()
@@ -562,6 +570,10 @@ class DeepSeekExtractionProvider:
                         ],
                         "response_format": {"type": "json_object"},
                         "temperature": 0,
+                        # deepseek-flash thinks by default (high effort);
+                        # deepseek-chat did not. Off keeps extraction fast
+                        # and inside the timeout (BE-29).
+                        "thinking": {"type": "disabled"},
                     },
                 )
                 resp.raise_for_status()

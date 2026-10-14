@@ -15,6 +15,7 @@ import logging
 from typing import Any
 
 from mesiri_ai import fixtures
+from mesiri_ai.model_names import current_model_name
 from mesiri_ai.models import (
     DecompositionResult,
     ExtractionResult,
@@ -43,7 +44,7 @@ def _build_gemini_provider(config: dict, model: str, env_settings: Any):
         raise MesiriError.configuration("Gemini API Key is not configured.", code="CONFIG_MISSING")
     settings = GeminiSettings(
         api_key=SecretStr(api_key),
-        model=model or env_settings.gemini.model,
+        model=current_model_name(model or env_settings.gemini.model),
         timeout_seconds=env_settings.gemini.timeout_seconds,
         max_retries=env_settings.gemini.max_retries,
         # Test doubles for env_settings don't always carry this (it's newer
@@ -69,7 +70,7 @@ def _build_deepseek_provider(config: dict, model: str, env_settings: Any):
         )
     settings = DeepSeekSettings(
         api_key=SecretStr(api_key),
-        model=model or env_settings.deepseek.model,
+        model=current_model_name(model or env_settings.deepseek.model),
         base_url=base_url,
         timeout_seconds=env_settings.deepseek.timeout_seconds,
         max_retries=env_settings.deepseek.max_retries,
