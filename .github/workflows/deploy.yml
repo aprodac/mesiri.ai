@@ -177,8 +177,14 @@ jobs:
           done
 
           echo "→ Running database migrations..."
-          cd "${REPO}/backend"
-          ${VENV}/bin/alembic upgrade head
+          # From the repo root, not backend/: the settings loader reads `.env`
+          # from the current directory, and /opt/mesiri/.env is the only one.
+          # Run from backend/ it found none and silently connected with the
+          # built-in development defaults (localhost:5432, dev password) --
+          # which only worked because production used exactly those (INF-11).
+          # alembic.ini resolves its paths from its own location (%(here)s).
+          cd "${REPO}"
+          ${VENV}/bin/alembic -c backend/alembic.ini upgrade head
 
           # The app's port: 8000 unless the server's .env sets MESIRI_APP_PORT
           # (INF-11 -- the 2026-10 server already uses 8000 for another app).
