@@ -74,6 +74,10 @@ export class WhatsAppListener {
       markOnlineOnConnect: false, // keep the phone getting notifications; never look "online"
       syncFullHistory: false,
       shouldIgnoreJid: (jid) => jid === "status@broadcast" || jid?.endsWith("@newsletter"),
+      // While unlinked, WhatsApp drops the connection after 6 link refreshes
+      // (default ~2.5 min), killing any pairing code issued on it. 2 min each
+      // gives ~12 min to type the code.
+      qrTimeout: 120_000,
     });
     this.sock = sock;
     this.state = this.registered ? "connecting" : "waiting_for_pairing";
@@ -83,7 +87,7 @@ export class WhatsAppListener {
     sock.ev.on("creds.update", () => {
       this.saving = this.saving.then(saveCreds).catch((e) => this.log(`saving the session failed: ${e}`));
     });
-    sock.ev.on("connection.update", (u) => this.onConnectionUpdate(u));
+    sock.ev.on("connection.update", (u) => sock === this.sock && this.onConnectionUpdate(u));
     sock.ev.on("messages.upsert", ({ messages }) => {
       for (const msg of messages) this.record(msg, { downloadMedia: true }).catch((e) => this.log(`record failed: ${e}`));
     });
@@ -136,12 +140,21 @@ export class WhatsAppListener {
     }
     const delay = code === DisconnectReason.restartRequired ? 0 : this.retryDelayMs;
     this.retryDelayMs = Math.min(this.retryDelayMs * 2, 60_000);
-    setTimeout(() => this.start().catch((e) => this.log(`restart failed: ${e}`)), delay);
+    this.restartTimer = setTimeout(() => this.start().catch((e) => this.log(`restart failed: ${e}`)), delay);
   }
 
   async requestPairingCode(phone) {
     if (this.registered) throw new Error("already linked; unlink it from the phone first to link another number");
-    if (!this.sock || !this.pairingReady) throw new Error("not connected to WhatsApp yet, try again in a few seconds");
+    // A code lives only as long as the connection it was issued on, so start a
+    // fresh one: the code then gets the connection's whole lifetime.
+    clearTimeout(this.restartTimer);
+    const old = this.sock;
+    this.sock = null; // the old socket's close event is now ignored
+    old?.end(undefined);
+    await this.start();
+    for (let i = 0; i < 40 && !this.pairingReady; i++) await new Promise((r) => setTimeout(r, 500));
+    if (!this.pairingReady) throw new Error("not connected to WhatsApp yet, try again in a few seconds");
+    this.log("pairing code requested");
     return this.sock.requestPairingCode(phone);
   }
 
