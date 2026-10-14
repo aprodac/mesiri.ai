@@ -105,6 +105,8 @@ jobs:
             {
               printf 'TEAMMATE_API_TOKEN=%s\nTEAMMATE_API=http://127.0.0.1:8790\nTEAMMATE_BRAIN_PORT=8791\n' "$TEAMMATE_API_TOKEN"
               printf 'TEAMMATE_BRAIN_PROJECTS=mercon=aprodac/MERCON@ilan,mesiri=StarShape-in/mesiri.ai@main\n'
+              # Dev sites only (never production or this server's own local addresses).
+              printf 'TEAMMATE_BRAIN_SCREENSHOT_HOSTS=dev.mercon.tech,track-dev.mercon.tech\n'
               # Pasted secrets can carry stray spaces / newlines, which break the login.
               printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\nGH_TOKEN=%s\n' \
                 "$(printf %s "$TEAMMATE_CLAUDE_TOKEN" | tr -d '[:space:]')" "$(printf %s "$TEAMMATE_GITHUB_TOKEN" | tr -d '[:space:]')"
