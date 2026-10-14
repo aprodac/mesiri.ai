@@ -2,6 +2,21 @@
 
 This project uses GitHub Actions for automated CI/CD. Every push to `main` that passes tests is automatically deployed to the VPS. Two frontends are served from the same box on different domains:
 
+> **Since 14 Oct 2026 (INF-11, INF-12):** Mesiri runs on **`82.29.167.128`** (a server
+> shared with other apps) under its own domain, DNS in Cloudflare (`mesiri.ai`):
+>
+> - `api.whatsapp.mesiri.ai` — backend API, WhatsApp webhook (`/webhook`), `control-panel` under `/mesiriadmin`. nginx: [`infra/nginx/api.whatsapp.mesiri.ai.conf`](infra/nginx/api.whatsapp.mesiri.ai.conf).
+> - `app.whatsapp.mesiri.ai` — `apps/dashboard`, static files. nginx: [`infra/nginx/app.whatsapp.mesiri.ai.conf`](infra/nginx/app.whatsapp.mesiri.ai.conf).
+> - The app listens on `127.0.0.1:8100` (`MESIRI_APP_PORT` in `/opt/mesiri/.env`; 8000 is taken on this server).
+> - Postgres 16 and Redis 7 run from [`infra/docker-compose.prod.yml`](infra/docker-compose.prod.yml), bound to `127.0.0.1` only (Postgres on 5434): `docker compose -p mesiri -f infra/docker-compose.prod.yml --env-file .env up -d`.
+> - Photos are stored on disk at `/var/lib/mesiri/media` (back it up with the database).
+> - Migrations run from `/opt/mesiri` (`alembic -c backend/alembic.ini`) so the real `.env` is read.
+> - The old names `mesiri.mercon.tech` / `mesiriweb.mercon.tech` still work: the old server
+>   (`187.127.180.98`) forwards them here until Meta's webhook and users have moved. Everything
+>   below that mentions those names or that IP describes the old setup.
+
+Previously:
+
 - `mesiri.mercon.tech` — backend API + `control-panel` (internal admin UI, under `/mesiriadmin`). Config: `/etc/nginx/sites-available/mesiri.mercon.tech.conf` (tracked in the repo as `mercon.conf`).
 - `mesiriweb.mercon.tech` — `apps/dashboard` (customer-facing web app), static files only, talks to the same backend cross-origin. Config: `/etc/nginx/sites-available/mesiriweb.mercon.tech.conf` (tracked in the repo as `mercon_web.conf`).
 
@@ -15,7 +30,7 @@ git push → main
 GitHub Actions: deploy.yml
     ├── Unit tests (Python, fakes only)
     ├── Build control-panel (Vite)
-    ├── Build dashboard (Vite, VITE_API_URL=https://mesiri.mercon.tech)
+    ├── Build dashboard (Vite, VITE_API_URL=https://api.whatsapp.mesiri.ai)
     └── Deploy (only if all above pass)
             ├── SSH → git pull origin/main
             ├── uv pip install (Python deps)

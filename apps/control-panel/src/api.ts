@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const BASE_URL = 'https://mesiri.mercon.tech';
+// The API (INF-12: api.whatsapp.mesiri.ai since 14 Oct 2026). VITE_API_URL
+// overrides it, the same setting the dashboard build uses.
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://api.whatsapp.mesiri.ai';
 const TOKEN_KEY = 'mesiri_token';
 
 export const api = axios.create({ baseURL: BASE_URL });
