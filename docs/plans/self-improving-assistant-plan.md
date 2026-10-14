@@ -1,6 +1,6 @@
 # Self-improving WhatsApp assistant — Implementation Plan
 
-> Status: **Phase 2 plan, awaiting approval.** No code written yet.
+> Status: **WA-14 built** (14 Oct). WA-15–17 await approval.
 > Tracker: WA-14 … WA-17 in [V1_TRACKER.md](V1_TRACKER.md).
 > Requested 14 Oct 2026: "listen to the messages sent to the assistant, have Claude Code judge
 > every reply, and keep improving it — speed, replies, UX, and adding workflows too — with as
@@ -48,8 +48,10 @@ It does not run per message: one-off reactions chase noise, and a daily batch se
   `message_logger` / `trace_logger` (no new SQL owner).
 - **Service account:** a platform-admin token for the reviewer, stored only as a Routine/Actions
   secret.
-- **Reviewer:** a nightly Claude Code Routine (fresh session each run) pulls the export and
-  scores each conversation against `docs/product/assistant-review-rubric.md`:
+- **Reviewer:** a nightly Claude Code Routine (fresh session each run) follows
+  [`docs/ops/assistant-review.md`](../ops/assistant-review.md), pulls the export with
+  `apps/whatsapp-assistant/scripts/fetch_review_export.py` and scores each conversation against
+  [`docs/product/assistant-review-rubric.md`](../product/assistant-review-rubric.md):
   1. Understood the request?
   2. Right action / right workflow?
   3. Reply short, clear, in the sender's language, right for someone on site?
@@ -58,7 +60,9 @@ It does not run per message: one-off reactions chase noise, and a daily batch se
 - **Output:** a dated report (artifact + `docs/reviews/YYYY-MM-DD.md`) listing the worst
   conversations, recurring problems with counts, unmet requests clustered by intent, and latency
   regressions.
-- **Error alarm:** an hourly Routine that only reports when `processing_status=failed` spikes.
+- **Alerts:** folded into the nightly report (an **ALERT** first line on failures or a p95 that
+  doubled) rather than a separate hourly session, which would cost a full session every hour.
+  A real-time alarm can come later if the nightly cadence proves too slow.
 - Run it for 1–2 weeks. Alan checks that the scores match his own judgement and tunes the rubric.
 
 ### WA-15 — Friction signals + real-traffic replay suite

@@ -210,6 +210,61 @@ class PostgresTraceLogger:
             )
         return [dict(row) for row in rows]
 
+    async def get_review_stages(self, correlation_ids: list[str]) -> list[dict[str, Any]]:
+        """Read path for the assistant review export: per-stage timing and
+        outcome for a batch of messages. Like ``get_by_correlation_id``,
+        ``stage_payload`` is excluded (it can carry user content); so is
+        ``error_message`` (free text that can echo it) -- ``error_code``
+        says enough for review. A query failure is NOT swallowed."""
+        from sqlalchemy import bindparam, text
+
+        if not correlation_ids:
+            return []
+        async with self._get_engine().connect() as conn:
+            rows = (
+                (
+                    await conn.execute(
+                        text(
+                            "SELECT correlation_id, stage, succeeded, duration_ms, error_code, "
+                            "created_at "
+                            "FROM journey_traces WHERE correlation_id IN :ids "
+                            "ORDER BY created_at ASC"
+                        ).bindparams(bindparam("ids", expanding=True)),
+                        {"ids": correlation_ids},
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return [dict(row) for row in rows]
+
+    async def get_review_providers(self, correlation_ids: list[str]) -> list[dict[str, Any]]:
+        """Read path for the assistant review export: which AI/API calls each
+        message made and how long they took. Same columns as
+        ``get_provider_executions``, batched. A query failure is NOT
+        swallowed."""
+        from sqlalchemy import bindparam, text
+
+        if not correlation_ids:
+            return []
+        async with self._get_engine().connect() as conn:
+            rows = (
+                (
+                    await conn.execute(
+                        text(
+                            "SELECT correlation_id, stage, provider, operation, model, latency_ms, "
+                            "succeeded, error_code, created_at "
+                            "FROM provider_executions WHERE correlation_id IN :ids "
+                            "ORDER BY created_at ASC"
+                        ).bindparams(bindparam("ids", expanding=True)),
+                        {"ids": correlation_ids},
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return [dict(row) for row in rows]
+
     async def get_stage_summary(self, since: datetime) -> list[dict[str, Any]]:
         """Read path for the control-panel Performance page's stage
         breakdown -- per-stage avg/p50/p95/max duration_ms and failure

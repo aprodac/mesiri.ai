@@ -324,6 +324,45 @@ class PostgresMessageLogger:
                 total = (await conn.execute(count_stmt, count_params)).scalar_one()
         return [dict(row) for row in rows], total
 
+    async def list_for_review(self, *, since: datetime, limit: int) -> list[dict[str, Any]]:
+        """Read path for the assistant review export (admin/review_router.py).
+
+        Every message received after `since`, oldest first, with the full
+        body and reply -- the reviewer judges whole conversations, so a
+        preview is not enough. Callers MUST gate this behind platform-admin
+        auth and anonymise before returning it (admin/review_export.py);
+        `sender_wa_id`/`organization_id` come back raw here. Workflow
+        resolution is the same two-path join as `list_recent`. A query
+        failure is NOT swallowed.
+        """
+        from sqlalchemy import text
+
+        async with self._get_engine().connect() as conn:
+            rows = (
+                (
+                    await conn.execute(
+                        text(
+                            "SELECT im.correlation_id, im.sender_wa_id, im.organization_id, "
+                            "im.message_type, im.body_text, im.assistant_reply, "
+                            "im.processing_status, im.error_code, im.received_at, im.processed_at, "
+                            "COALESCE(wi.workflow_key, wi_origin.workflow_key) AS workflow_key, "
+                            "COALESCE(wi.phase, wi_origin.phase) AS workflow_phase "
+                            "FROM inbound_messages im "
+                            "LEFT JOIN workflow_instances wi ON wi.id = im.workflow_instance_id "
+                            "LEFT JOIN workflow_instances wi_origin "
+                            "ON wi_origin.correlation_id = im.interaction_group_id "
+                            "WHERE im.received_at > :since "
+                            "ORDER BY im.received_at ASC, im.id ASC "
+                            "LIMIT :limit"
+                        ),
+                        {"since": since, "limit": limit},
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return [dict(row) for row in rows]
+
     async def get_message_detail(self, message_id: str) -> dict[str, Any] | None:
         """Full record for the log detail view — the only place full
         `body_text` and `raw_payload` are ever returned."""

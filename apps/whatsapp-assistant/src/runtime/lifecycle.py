@@ -204,6 +204,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Perf router not loaded: %s", exc)
 
+    # Assistant review export for the scheduled reviewer (platform-admin only)
+    try:
+        from admin.review_router import router as review_router
+
+        app.include_router(review_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Review router not loaded: %s", exc)
+
     # System graph — assistant pipeline visualization (platform-admin only)
     try:
         from admin.system_graph_router import router as system_graph_router
