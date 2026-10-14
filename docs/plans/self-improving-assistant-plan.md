@@ -1,6 +1,6 @@
 # Self-improving WhatsApp assistant — Implementation Plan
 
-> Status: **WA-14 built** (14 Oct). WA-15–17 await approval.
+> Status: **WA-14 and WA-15 built** (14 Oct). WA-16–17 await approval.
 > Tracker: WA-14 … WA-17 in [V1_TRACKER.md](V1_TRACKER.md).
 > Requested 14 Oct 2026: "listen to the messages sent to the assistant, have Claude Code judge
 > every reply, and keep improving it — speed, replies, UX, and adding workflows too — with as
@@ -65,22 +65,44 @@ It does not run per message: one-off reactions chase noise, and a daily batch se
   A real-time alarm can come later if the nightly cadence proves too slow.
 - Run it for 1–2 weeks. Alan checks that the scores match his own judgement and tunes the rubric.
 
-### WA-15 — Friction signals + real-traffic replay suite
+### WA-15 — Friction signals + replay suite (built 14 Oct)
 
-- **Friction signals per conversation** (computed, not entered):
-  - rephrase/repeat within 2 min
-  - "no / wrong / cancel" after a confirmation
-  - corrections (`activity_correction`, `reverse`)
-  - abandoned workflow instance
-  - turns per completed task
-  - unsupported or capability-help replies
-  - latency, errors
-- **Storage:** one additive table `assistant_review_findings` (conversation ref, signal, score,
-  rubric verdict, status). One file owns its SQL. Migration is additive only.
-- **Replay harness:** turn any reviewed failure into a replay case. The recorded inbound
-  messages are anonymised; outbound WhatsApp is stubbed; AI calls are recorded/replayed so the
-  run is deterministic. Expected outcome: workflow key, draft fields, reply constraints. Cases
-  live in `apps/whatsapp-assistant/tests/replay/` and run in the normal pytest suite.
+As built:
+- **Friction signals** (`apps/whatsapp-assistant/src/admin/friction.py`, pure, no AI): repeat
+  within 3 min, strong negative ("wrong", "galat", "thettu"…), weak negative (a bare "no"
+  after a reply), correction/reverse workflow, abandoned workflow (conversation ends in an open
+  phase), "can't do that" reply, failed message or stage, slow (> 15 s text, > 30 s media).
+  Weighted into a score per conversation; every export conversation carries it, and the
+  summary carries totals and friction rate per workflow.
+- **Trend:** `GET /admin/review/friction?days=14` gives friction per local day and per
+  workflow, so WA-16 can tell whether a fix helped.
+- **Findings:** table `assistant_review_findings` (migration 0473, additive), one row per
+  *problem* keyed by the reviewer's `fingerprint`, with occurrences, days seen, examples
+  (pseudonymous refs only), linked replay cases, status (`open`/`fixing`/`fixed`/`wont_fix`)
+  and fix commit. Recording a `fixed` problem again reopens it, so regressions are visible.
+  `GET/POST /admin/review/findings`, `PATCH /admin/review/findings/{fingerprint}`; script
+  `scripts/review_findings.py`. SQL owner: `backend/postgres/review_findings.py`.
+- **Export:** each message now has a scrubbed `understanding` (type, language, fields), so a
+  failure can be turned into a case.
+- **Replay suite** (`apps/whatsapp-assistant/tests/replay/`): one message plus the recorded
+  AI understanding, run through the real pipeline after the AI step (context,
+  canonicalization, gates, planner, workflow registry, reply). Deterministic and offline. Cases
+  are `passing` (regression guard) or `known_failure` (strict xfail: CI stays green while the
+  bug exists, and turns red when it's fixed until the case is flipped). Seeded with 5 cases,
+  including one real known failure: confirmations print internal field names
+  (`material_name: cement`).
+- **Runbook:** the nightly reviewer reads in friction order, records findings, writes a replay
+  case for each recurring problem, and reports the 14-day trend.
+
+**Different from the original plan:**
+- Replay is "one real message, paraphrased onto the seed company", not a literal replay of
+  production. A literal replay would need a copy of production data, and recorded raw AI
+  responses, which aren't stored.
+- Multi-turn replay (follow-up answers, button taps) is not done. It goes through
+  `runtime/message_journey.py`, which takes about 45 dependencies → **WA-15b**.
+- **CI gap:** CI installs without the `workflow` extra, so cases that reach a real workflow
+  are skipped there. They run locally and in the nightly session. Adding `workflow` to
+  `ci-python.yml` is a shared-CI change awaiting approval.
 
 ### WA-16 — Claude fixes what it finds (copy, prompts, examples, latency)
 
