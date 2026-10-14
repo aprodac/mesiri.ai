@@ -1,0 +1,125 @@
+name: Deploy Teammate listener
+
+# Manual only: installs/updates teammate/listener on the VPS as its own
+# systemd service (`teammate`), separate from the Mesiri app, and exposes its
+# token-protected inbox API at https://api.whatsapp.mesiri.ai/teammate/.
+# Never runs on push, so it cannot affect a normal Mesiri deploy.
+#
+# Needs the repository/environment secret TEAMMATE_API_TOKEN (any long random
+# string; the same value goes into the Claude Code environment as
+# TEAMMATE_TOKEN). See teammate/README.md.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: teammate-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check token secret
+        env:
+          TEAMMATE_API_TOKEN: ${{ secrets.TEAMMATE_API_TOKEN }}
+        run: |
+          if [ "${#TEAMMATE_API_TOKEN}" -lt 32 ]; then
+            echo "::error::Add a TEAMMATE_API_TOKEN secret of at least 32 characters (e.g. the output of 'openssl rand -hex 32') first."
+            exit 1
+          fi
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" | tr -d '\r' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Upload teammate/
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          rsync -az --delete --exclude node_modules --exclude data \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            teammate/ "${VPS_USER}@${VPS_HOST}:/opt/teammate/"
+
+      - name: Install and start the service
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          TEAMMATE_API_TOKEN: ${{ secrets.TEAMMATE_API_TOKEN }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
+            "TEAMMATE_API_TOKEN='${TEAMMATE_API_TOKEN}' bash -s" << 'ENDSSH'
+          set -euo pipefail
+
+          # Node >= 22.13 (node:sqlite). Install Node 22 from NodeSource if missing/older.
+          need_node=1
+          if command -v node >/dev/null; then
+            node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&b>=13)?0:1)' && need_node=0
+          fi
+          if [ "$need_node" = 1 ]; then
+            echo "Installing Node 22"
+            curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+            apt-get install -y nodejs
+          fi
+          echo "node $(node --version) at $(command -v node)"
+
+          cd /opt/teammate/listener
+          npm ci --omit=dev --no-audit --no-fund
+
+          umask 077
+          printf 'TEAMMATE_API_TOKEN=%s\nTEAMMATE_HOST=127.0.0.1\nTEAMMATE_PORT=8790\n' "$TEAMMATE_API_TOKEN" > /opt/teammate/.env
+
+          sed "s#/usr/bin/node#$(command -v node)#" /opt/teammate/deploy/teammate.service > /etc/systemd/system/teammate.service
+          systemctl daemon-reload
+          systemctl enable teammate
+          systemctl restart teammate
+
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8790/health; then echo; break; fi
+            sleep 1
+          done
+          systemctl is-active teammate || { journalctl -u teammate -n 50 --no-pager; exit 1; }
+
+          # nginx: add the /teammate/ location to the api.whatsapp.mesiri.ai
+          # HTTPS server once. Backed up, tested, rolled back if nginx -t fails.
+          CONF=$(grep -rl "server_name api.whatsapp.mesiri.ai" /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null | head -1 || true)
+          if [ -z "$CONF" ]; then echo "::error::no nginx config for api.whatsapp.mesiri.ai found"; exit 1; fi
+          CONF=$(readlink -f "$CONF")
+          if ! grep -q "location ^~ /teammate/" "$CONF"; then
+            cp "$CONF" "/root/$(basename "$CONF").bak.$(date +%s)"
+            python3 - "$CONF" /opt/teammate/deploy/nginx-location.conf << 'PY'
+          import sys
+          conf, snippet = sys.argv[1], open(sys.argv[2]).read()
+          text = open(conf).read()
+          anchor = "    location / {"
+          if anchor not in text:
+              sys.exit("could not find '    location / {' in " + conf)
+          open(conf, "w").write(text.replace(anchor, snippet + anchor, 1))
+          PY
+            if nginx -t; then
+              systemctl reload nginx
+              echo "nginx: /teammate/ added"
+            else
+              cp "$(ls -t /root/$(basename "$CONF").bak.* | head -1)" "$CONF"
+              echo "::error::nginx -t failed; config restored"
+              exit 1
+            fi
+          else
+            echo "nginx: /teammate/ already present"
+          fi
+          ENDSSH
+
+      - name: Check from outside
+        run: |
+          sleep 2
+          curl -fsS https://api.whatsapp.mesiri.ai/teammate/health
+          echo
+          echo "### Teammate listener deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Next: link the spare number with \`python3 teammate/inbox.py pair <phone>\` (see teammate/README.md)." >> "$GITHUB_STEP_SUMMARY"

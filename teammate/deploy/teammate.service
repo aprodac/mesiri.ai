@@ -1,0 +1,28 @@
+# systemd unit for the teammate listener. Installed by
+# .github/workflows/teammate-deploy.yml; edit there or here, not on the server.
+[Unit]
+Description=Teammate listener (WhatsApp groups -> inbox for Claude Code)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/teammate/listener
+EnvironmentFile=/opt/teammate/.env
+Environment=TEAMMATE_DATA_DIR=/var/lib/teammate
+Environment=NODE_NO_WARNINGS=1
+ExecStart=/usr/bin/node src/main.js
+Restart=always
+RestartSec=5
+# Own unprivileged user; the inbox, WhatsApp session and media live in
+# /var/lib/teammate (StateDirectory), which survives redeploys.
+DynamicUser=yes
+StateDirectory=teammate
+StateDirectoryMode=0700
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
