@@ -130,7 +130,7 @@
 | WA-08 | Ask "which company?" for people in several companies | S | Must | BE-04 | todo | | |
 | WA-09 | Welcome and opt-in messages; handle "YES" | S | Must | BE-15 | todo | | |
 | WA-10 | Get all templates approved by Meta | S | Must | WA-04, WA-06, WA-09 | todo | | Ops task, not code |
-| WA-11 | Reply in the sender's language (check and fix) | S | Must | — | todo | | |
+| WA-11 | Reply in the sender's language (check and fix) | S | Must | — | in-progress | Claude (session 13 Oct, BE-08) | Widened 14 Oct (Ilan): greetings/small talk get one short warm line with a copyable example, in the sender's language; capability text lists only switched-on modules (said "money" with finance off); menu only when asked |
 | WA-12 | **Send approved template messages** (outbound has text/list/button/image/document only). Today a scheduled notification to anyone silent for 24 h is skipped with `outside_whatsapp_session_window_needs_template`. Add template sending + a registry of approved templates | M | Must | — | todo | | Found 13 Oct (SS-01 investigation). Blocks WA-04, WA-06, WA-09, SS-06, SS-08 in practice. Queued for Claude (session 13 Oct, strategy) after BE-07 (Stage A, approved 13 Oct). Ask before picking up |
 | WA-13 | Set the company or client logo by sending the image on WhatsApp ("this is the client logo for Project X") | S | Must | BE-33 | todo | | Added 13 Oct: logo must be settable from WhatsApp as well as the web |
 
