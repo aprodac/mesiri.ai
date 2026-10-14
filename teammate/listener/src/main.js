@@ -14,6 +14,7 @@ import { join, resolve } from "node:path";
 import { createApi } from "./api.js";
 import { Store } from "./store.js";
 import { AiWorker, Transcriber } from "./transcribe.js";
+import { Bot } from "./bot.js";
 import { WhatsAppListener } from "./whatsapp.js";
 
 const dataDir = resolve(process.env.TEAMMATE_DATA_DIR || "./data");
@@ -28,6 +29,8 @@ const geminiKey = process.env.TEAMMATE_GEMINI_API_KEY;
 const transcriber = geminiKey ? new Transcriber({ apiKey: geminiKey, model: process.env.TEAMMATE_GEMINI_MODEL || undefined }) : null;
 const ai = new AiWorker({ store, transcriber, readFile: (p) => readFileSync(p), log });
 wa.onStored = () => ai.kick();
+const bot = new Bot({ store, wa, log });
+wa.onLive = (rec, n) => bot.handle(rec, n).catch((e) => log(`bot failed on #${n}: ${e}`));
 const api = createApi({ store, wa, token: process.env.TEAMMATE_API_TOKEN, ai });
 
 api.listen(port, host, () => log(`inbox API on http://${host}:${port}`));

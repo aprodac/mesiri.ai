@@ -1,0 +1,176 @@
+// Tagging the bot (TM-03): approved people @-mention the linked number to ask
+// for work; owners also approve / remove people from the group itself.
+//
+// Rules:
+// - Only messages that @-mention the bot, from a chat that belongs to a project.
+// - Commands and replies only in that project's team chat. In customer chats
+//   the bot never answers; an approved person's tag there is logged as a
+//   request and announced in the team chat instead.
+// - Senders who aren't approved are ignored (logged on the server only).
+// - Owners approve / remove; members request work and say OK. The first owner
+//   is set on the server (inbox.py allow ... --role owner), never by a message.
+// - At most REPLIES_PER_HOUR replies, so two bots tagging each other can't loop.
+//
+// Message text is data: it is stored as the request's title / summary for a
+// person to plan from, never executed.
+
+const REPLIES_PER_HOUR = Number(process.env.TEAMMATE_BOT_REPLIES_PER_HOUR || 20);
+const TITLE_MAX = 120;
+
+/** "@919544376072 approve @9198…" -> { verb: "approve", rest: "…" }; leading mentions dropped. */
+export function parseCommand(text) {
+  const words = String(text || "").replace(/@\S+/g, " ").trim();
+  const [first = "", ...others] = words.split(/\s+/);
+  const verb = first.toLowerCase().replace(/[^a-z]/g, "");
+  const rest = others.join(" ").trim();
+  if (verb === "make" && /^owner\b/i.test(rest)) return { verb: "owner", rest: rest.replace(/^owner\s*/i, "") };
+  if (["approve", "allow", "add"].includes(verb)) return { verb: "approve", rest };
+  if (["remove", "disallow", "revoke"].includes(verb)) return { verb: "remove", rest };
+  if (["who", "list"].includes(verb)) return { verb: "who", rest };
+  if (["help", "commands"].includes(verb)) return { verb: "help", rest };
+  if (["ok", "okay", "approved", "go", "yes"].includes(verb)) {
+    const id = rest.match(/\[?#?(\d+)\]?/)?.[1];
+    return { verb: "ok", id: id ? Number(id) : null, rest };
+  }
+  if (!words) return { verb: "help", rest: "" };
+  return { verb: "request", rest: words };
+}
+
+const HELP =
+  "I log requests and pass them to Claude Code.\n" +
+  "• @me <what to do>, ideally as a reply to the message it's about: log a request\n" +
+  "• @me ok <request number>: approve its plan\n" +
+  "• @me who: who is approved here\n" +
+  "Owners: @me approve @person · @me remove @person · @me make owner @person";
+
+export class Bot {
+  /**
+   * @param {{ store: import('./store.js').Store, wa: { ownIds(): string[], pnFor(jid: string): Promise<string|null>, send(jid: string, c: object): Promise<string|null> }, log?: (m: string) => void, onRequest?: (item: object) => void, onApproved?: (item: object, by: string) => void }} opts
+   */
+  constructor({ store, wa, log = () => {}, onRequest = null, onApproved = null }) {
+    this.store = store;
+    this.wa = wa;
+    this.log = log;
+    this.onRequest = onRequest;
+    this.onApproved = onApproved;
+    this.sentAt = [];
+  }
+
+  mentionsMe(rec) {
+    const mine = new Set(this.wa.ownIds());
+    return rec.mentions?.some((j) => mine.has(j)) ?? false;
+  }
+
+  /** Called for every live (not history) message once it is stored as number `n`. */
+  async handle(rec, n) {
+    if (rec.from_me || !rec.is_group || !this.mentionsMe(rec)) return;
+    const chat = this.store.findChat(rec.chat_jid);
+    if (!chat?.project || !["team", "customer"].includes(chat.role)) return;
+    const project = chat.project;
+    const who = rec.sender_name || (rec.sender_pn || rec.sender_jid || "?").split("@")[0];
+    const person = this.store.findPerson(project, [rec.sender_jid, rec.sender_pn]);
+    if (!person) {
+      this.log(`bot: ignored a tag from ${who} in ${chat.name} (not approved for ${project})`);
+      return;
+    }
+    const cmd = parseCommand(rec.text);
+    const team = this.store.teamChat(project);
+
+    if (chat.role === "customer") {
+      // Never answer in a customer group: log it, tell the team.
+      if (cmd.verb !== "request") return;
+      const item = this.logRequest(rec, n, chat, cmd.rest, who);
+      if (team) await this.reply(team.jid, `📝 Request [${item.id}] from ${who} in ${chat.name}: ${item.title}`);
+      return;
+    }
+
+    const owners = ["approve", "remove", "owner"];
+    if (owners.includes(cmd.verb) && person.role !== "owner") {
+      return this.reply(chat.jid, `Only an owner can ${cmd.verb === "owner" ? "make owners" : `${cmd.verb} people`}.`);
+    }
+    if (owners.includes(cmd.verb)) return this.changePeople(rec, chat, cmd.verb, who);
+    if (cmd.verb === "who") return this.reply(chat.jid, this.whoText(project));
+    if (cmd.verb === "help") return this.reply(chat.jid, HELP);
+    if (cmd.verb === "ok") return this.approve(chat, cmd.id, who);
+    const item = this.logRequest(rec, n, chat, cmd.rest, who);
+    const next = this.onRequest ? "Claude Code will post a plan here; reply @me ok " + item.id + " to go ahead." : "Logged for Claude Code (automatic start isn't switched on yet).";
+    return this.reply(chat.jid, `📝 Request [${item.id}]: ${item.title}\n${next}`);
+  }
+
+  logRequest(rec, n, chat, text, who) {
+    const quoted = rec.quoted_id ? this.store.messageNumber(rec.chat_jid, rec.quoted_id) : null;
+    const title = text.length > TITLE_MAX ? `${text.slice(0, TITLE_MAX - 1)}…` : text;
+    const id = this.store.addItem({
+      chat_jid: chat.jid,
+      type: "task",
+      title,
+      summary: [text.length > TITLE_MAX ? text : null, rec.quoted_text ? `About: "${rec.quoted_text.slice(0, 300)}"` : null]
+        .filter(Boolean)
+        .join("\n") || null,
+      source: [quoted, n].filter(Boolean).join(","),
+      created_by: `${who} (WhatsApp)`,
+    });
+    const item = this.store.getItem(id);
+    this.log(`bot: request [${id}] from ${who} in ${chat.name}`);
+    this.onRequest?.(item);
+    return item;
+  }
+
+  async changePeople(rec, chat, verb, who) {
+    const mine = new Set(this.wa.ownIds());
+    const targets = (rec.mentions || []).filter((j) => !mine.has(j));
+    if (!targets.length) return this.reply(chat.jid, "Tag the person too, e.g. @me approve @Name.");
+    const done = [];
+    for (const jid of targets) {
+      const pn = jid.endsWith("@s.whatsapp.net") ? jid : await this.wa.pnFor(jid).catch(() => null);
+      const label = `@${(pn || jid).split("@")[0]}`;
+      if (verb === "remove") {
+        const removed = this.store.removePerson(chat.project, [jid, pn], who);
+        done.push(removed ? `removed ${label}` : `${label} wasn't approved`);
+      } else {
+        this.store.allowPerson({ project: chat.project, jid, pn, role: verb === "owner" ? "owner" : "member", added_by: who });
+        done.push(verb === "owner" ? `${label} is now an owner` : `approved ${label}`);
+      }
+    }
+    this.log(`bot: ${who} in ${chat.name}: ${done.join("; ")}`);
+    return this.reply(chat.jid, `✅ ${done.join("; ")} (${chat.project})`, targets);
+  }
+
+  approve(chat, id, who) {
+    const open = this.store.listItems({ project: chat.project }).filter((i) => i.status === "open" || i.status === "in_progress");
+    const item = id ? open.find((i) => i.id === id) : open.length === 1 ? open[0] : null;
+    if (!item) {
+      const hint = open.length ? `Which one? ${open.slice(0, 5).map((i) => `[${i.id}]`).join(" ")}` : "Nothing is waiting.";
+      return this.reply(chat.jid, `Say @me ok <number>. ${hint}`);
+    }
+    const updated = this.store.updateItem(item.id, { status: "in_progress", note: `OK from ${who} in ${chat.name}` });
+    this.onApproved?.(updated, who);
+    return this.reply(chat.jid, `👍 [${item.id}] approved by ${who}. ${this.onApproved ? "Starting." : "Logged; a Claude Code session will pick it up."}`);
+  }
+
+  whoText(project) {
+    const people = this.store.listPeople(project);
+    if (!people.length) return `Nobody is approved for ${project} yet.`;
+    const line = (p) => `• ${p.name || "@" + (p.pn || p.jid).split("@")[0]}${p.role === "owner" ? " (owner)" : ""}`;
+    return `Approved for ${project}:\n${people.map(line).join("\n")}`;
+  }
+
+  /** Replies only into team chats, at most REPLIES_PER_HOUR an hour. */
+  async reply(jid, text, mentions = []) {
+    const chat = this.store.findChat(jid);
+    if (chat?.role !== "team") return null;
+    const hourAgo = Date.now() - 3_600_000;
+    while (this.sentAt.length && this.sentAt[0] < hourAgo) this.sentAt.shift();
+    if (this.sentAt.length >= REPLIES_PER_HOUR) {
+      this.log("bot: reply limit reached; not answering");
+      return null;
+    }
+    this.sentAt.push(Date.now());
+    try {
+      return await this.wa.send(jid, { text, mentions });
+    } catch (e) {
+      this.log(`bot: reply failed: ${e.message || e}`);
+      return null;
+    }
+  }
+}

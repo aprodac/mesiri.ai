@@ -117,6 +117,25 @@ python3 teammate/inbox.py items --status open                    # everything st
 python3 teammate/inbox.py item show 12                           # one request with its history
 ```
 
+## Tagging the bot (TM-03)
+
+In a project's **team** group, approved people @-mention the linked number:
+
+| Message | Who | Effect |
+| --- | --- | --- |
+| `@bot <what to do>` (best as a reply to the message it's about) | approved | logs a request (TM-08) and confirms in the group |
+| `@bot ok <request number>` | approved | approves it: status → in progress, "OK from …" in its history |
+| `@bot who` · `@bot help` | approved | who is approved · the commands |
+| `@bot approve @person` · `@bot remove @person` · `@bot make owner @person` | owners | manage approvals from the group |
+
+- In **customer** groups the bot never answers; an approved person's tag there is logged and
+  announced in the team group. Everyone else's tags are ignored.
+- Owners are set on the server first: `inbox.py allow 9170… --role owner --project '*'`
+  (`*` = every project). An all-projects owner can't be removed from a group.
+- At most 20 bot replies an hour (`TEAMMATE_BOT_REPLIES_PER_HOUR`), so bots can't loop.
+- Starting Claude Code automatically from an approved request is TM-03b; until then a session
+  picks approved requests up with `inbox.py items --status in_progress`.
+
 ## Backups
 
 Everything above lives on the VPS in `/var/lib/teammate`: `inbox.db` (messages, transcripts and

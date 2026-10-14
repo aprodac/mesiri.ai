@@ -32,6 +32,10 @@ Commands:
   item done <id> --ref R [--note N]   mark it done; R = commit / PR, e.g. aprodac/MERCON#262
   item wontdo <id> --note N           close it without doing it, with the reason
   summary <chat>                      one group on a page: open and done requests
+  allow <phone> [--name N] [--role owner|member]   approve someone to tag the bot (TM-03);
+                                      owners can then approve others from the team group
+  disallow <phone>                    remove an approval
+  allowed                             who is approved (this project, or all)
   pair <phone-with-country-code>      link the spare number (prints a code to type on the phone)
   post [text] [--text-file F] [--image FILE[::caption] ...] [--chat X]
                                       post into the TEAM group (customer groups are refused)
@@ -321,6 +325,15 @@ def main() -> None:
     itm.add_argument("--note")
     sm = sub.add_parser("summary")
     sm.add_argument("chat")
+    alw = sub.add_parser("allow")
+    alw.add_argument("phone")
+    alw.add_argument("--name")
+    alw.add_argument("--role", choices=["owner", "member"], default="member")
+    alw.add_argument("--project", default=PROJECT)
+    dis = sub.add_parser("disallow")
+    dis.add_argument("phone")
+    dis.add_argument("--project", default=PROJECT)
+    sub.add_parser("allowed")
     pai = sub.add_parser("pair")
     pai.add_argument("phone")
     pos = sub.add_parser("post")
@@ -421,6 +434,25 @@ def main() -> None:
         _item(a)
     elif a.cmd == "summary":
         _summary(a.chat)
+    elif a.cmd in ("allow", "disallow"):
+        if not a.project:
+            sys.exit("say which project: --project mercon (or set TEAMMATE_PROJECT)")
+        if a.cmd == "allow":
+            body = {"project": a.project, "phone": a.phone, "name": a.name, "role": a.role}
+            p = _request("POST", "/people", body=body)["person"]
+            print(f"approved {p.get('name') or a.phone} as {p['role']} for {p['project']}")
+        else:
+            _request("POST", "/people/remove", body={"project": a.project, "phone": a.phone})
+            print(f"removed {a.phone} from {a.project}")
+    elif a.cmd == "allowed":
+        people = _request("GET", "/people", params={"project": PROJECT})["people"]
+        if not people:
+            print("(nobody approved yet)")
+        for p in people:
+            num = (p.get("pn") or p.get("jid") or "").split("@")[0]
+            print(
+                f"{p['project']:<8} {p['role']:<7} {p.get('name') or '-':<16} …{num[-4:]}  added by {p.get('added_by') or '-'} {_when(p.get('added_at'))}"
+            )
     elif a.cmd == "pair":
         r = _request("POST", "/pair", body={"phone": a.phone})
         print(f"Pairing code: {r['code']}\n{r['how']}")

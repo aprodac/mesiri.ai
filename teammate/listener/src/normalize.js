@@ -108,5 +108,7 @@ export function normalizeMessage(msg) {
     quoted_text: quotedText(context?.quotedMessage),
     media_mime: MEDIA_KINDS.has(kind === "voice" ? "audio" : kind) ? inner?.mimetype || null : null,
     reaction_to: kind === "reaction" ? inner?.key?.id || null : null,
+    // Who the message @-mentions (TM-03: tagging the bot). Not stored.
+    mentions: Array.isArray(context?.mentionedJid) ? context.mentionedJid.filter(Boolean) : [],
   };
 }

@@ -60,6 +60,20 @@ CREATE TABLE IF NOT EXISTS items (
   updated_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_items_chat ON items (chat_jid, status);
+-- TM-03: who may tag the bot to request work (member) or also approve others (owner), per project.
+CREATE TABLE IF NOT EXISTS people (
+  id          INTEGER PRIMARY KEY,
+  project     TEXT NOT NULL,
+  jid         TEXT,
+  pn          TEXT,
+  name        TEXT,
+  role        TEXT NOT NULL,
+  added_by    TEXT,
+  added_at    TEXT NOT NULL,
+  removed_by  TEXT,
+  removed_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_people_project ON people (project, removed_at);
 CREATE TABLE IF NOT EXISTS item_log (
   item_id  INTEGER NOT NULL REFERENCES items(id),
   at       TEXT NOT NULL,
@@ -70,6 +84,7 @@ CREATE TABLE IF NOT EXISTS item_log (
 `;
 export const ITEM_TYPES = ["bug", "feature", "question", "complaint", "task"];
 export const ITEM_STATUSES = ["open", "in_progress", "done", "wont_do"];
+export const PEOPLE_ROLES = ["owner", "member"];
 
 const nowIso = () => new Date().toISOString();
 
@@ -369,6 +384,70 @@ export class Store {
          ORDER BY i.updated_at DESC, i.id DESC`,
       )
       .all(...params);
+  }
+
+  /** The active approval matching any of these ids (jid or phone-number jid), or null. Project "*" = every project. */
+  findPerson(project, ids) {
+    const list = [...new Set(ids.filter(Boolean))];
+    if (!project || !list.length) return null;
+    const marks = list.map(() => "?").join(", ");
+    return (
+      this.db
+        .prepare(
+          `SELECT * FROM people WHERE project IN (?, '*') AND removed_at IS NULL AND (jid IN (${marks}) OR pn IN (${marks}))
+           ORDER BY role = 'owner' DESC, project = '*' LIMIT 1`,
+        )
+        .get(project, ...list, ...list) || null
+    );
+  }
+
+  /** Approves someone for a project (or changes their role). Returns the row. */
+  allowPerson({ project, jid = null, pn = null, name = null, role = "member", added_by = null }) {
+    if (project !== "*" && !PROJECT_RE.test(project || "")) throw new Error('project must be a lowercase slug, e.g. mercon, or "*" for all');
+    if (!PEOPLE_ROLES.includes(role)) throw new Error(`role must be one of ${PEOPLE_ROLES.join(", ")}`);
+    if (!jid && !pn) throw new Error("a phone number or WhatsApp id is required");
+    const existing = this.findPerson(project, [jid, pn]);
+    const now = nowIso();
+    // An all-projects approval already covers this one: don't add a narrower duplicate.
+    if (existing?.project === "*" && project !== "*" && existing.role === "owner") return existing;
+    if (existing) {
+      this.db
+        .prepare("UPDATE people SET role = ?, name = COALESCE(?, name), jid = COALESCE(jid, ?), pn = COALESCE(pn, ?) WHERE id = ?")
+        .run(role, name, jid, pn, existing.id);
+      return this.db.prepare("SELECT * FROM people WHERE id = ?").get(existing.id);
+    }
+    const res = this.db
+      .prepare("INSERT INTO people (project, jid, pn, name, role, added_by, added_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(project, jid, pn, name, role, added_by, now);
+    return this.db.prepare("SELECT * FROM people WHERE id = ?").get(Number(res.lastInsertRowid));
+  }
+
+  /** Removes an approval (kept, marked removed, for the record). */
+  removePerson(project, ids, removed_by = null) {
+    const person = this.findPerson(project, ids);
+    // An all-projects approval can only be removed at that level (from the server), not from one project's group.
+    if (!person || (person.project === "*" && project !== "*")) return null;
+    this.db.prepare("UPDATE people SET removed_at = ?, removed_by = ? WHERE id = ?").run(nowIso(), removed_by, person.id);
+    return person;
+  }
+
+  listPeople(project) {
+    return this.db
+      .prepare(
+        `SELECT project, jid, pn, name, role, added_by, added_at FROM people
+         WHERE removed_at IS NULL ${project ? "AND project IN (?, '*')" : ""} ORDER BY project, role = 'owner' DESC, added_at`,
+      )
+      .all(...(project ? [project] : []));
+  }
+
+  /** The chat labelled team for a project (where the bot may reply), or null. */
+  teamChat(project) {
+    return this.db.prepare("SELECT jid, name FROM chats WHERE project = ? AND role = 'team' ORDER BY updated_at DESC LIMIT 1").get(project) || null;
+  }
+
+  /** Our stored number for a message id in a chat (to find what a reply quotes). */
+  messageNumber(chat_jid, id) {
+    return this.db.prepare("SELECT rowid AS n FROM messages WHERE chat_jid = ? AND id = ?").get(chat_jid, id)?.n ?? null;
   }
 
   stats() {

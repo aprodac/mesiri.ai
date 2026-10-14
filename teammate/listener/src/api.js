@@ -15,6 +15,9 @@
 //   POST /items        {chat, type, title, summary?, source?, created_by?, project?}
 //   GET  /items/:id?project=          one request with its history
 //   POST /items/:id    {status?, ref?, note?, title?, summary?, type?, project?}
+//   GET  /people?project=             who may tag the bot (TM-03)
+//   POST /people       {project, phone, name?, role?}   approve someone (role owner | member)
+//   POST /people/remove {project, phone}
 //   POST /pair         {phone}        start linking the spare number; returns the code
 //   POST /send         {chat, project?, text?, image_base64?, caption?}
 //                                     post into a chat labelled "team" -- refused anywhere else
@@ -148,6 +151,25 @@ export function createApi({ store, wa, token, ai = null }) {
         try {
           const { status, ref, note, title, summary, type } = body;
           return send(res, 200, { item: store.updateItem(item.id, { status, ref, note, title, summary, type }) });
+        } catch (err) {
+          return send(res, 400, { error: err.message });
+        }
+      }
+      if (req.method === "GET" && path === "/people") {
+        return send(res, 200, { people: store.listPeople(url.searchParams.get("project") || undefined) });
+      }
+      if (req.method === "POST" && (path === "/people" || path === "/people/remove")) {
+        const body = await readJson(req);
+        const digits = String(body.phone || "").replace(/\D/g, "");
+        if (digits.length < 10) return send(res, 400, { error: "phone must include the country code" });
+        const pn = `${digits}@s.whatsapp.net`;
+        try {
+          if (path === "/people/remove") {
+            const removed = store.removePerson(body.project, [pn], "api");
+            return removed ? send(res, 200, { removed }) : send(res, 404, { error: "not approved" });
+          }
+          const person = store.allowPerson({ project: body.project, pn, name: body.name || null, role: body.role || "member", added_by: "api" });
+          return send(res, 200, { person });
         } catch (err) {
           return send(res, 400, { error: err.message });
         }

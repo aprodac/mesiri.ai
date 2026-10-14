@@ -11,6 +11,7 @@ import {
   DisconnectReason,
   downloadMediaMessage,
   fetchLatestBaileysVersion,
+  jidNormalizedUser,
   makeWASocket,
   normalizeMessageContent,
   proto,
@@ -98,8 +99,10 @@ export class WhatsAppListener {
       this.saving = this.saving.then(saveCreds).catch((e) => this.log(`saving the session failed: ${e}`));
     });
     sock.ev.on("connection.update", (u) => sock === this.sock && this.onConnectionUpdate(u));
-    sock.ev.on("messages.upsert", ({ messages }) => {
-      for (const msg of messages) this.record(msg, { downloadMedia: true }).catch((e) => this.log(`record failed: ${e}`));
+    sock.ev.on("messages.upsert", ({ messages, type }) => {
+      // "notify" = arriving now; anything else is a resend / append, never a fresh tag for the bot.
+      const live = type === "notify";
+      for (const msg of messages) this.record(msg, { downloadMedia: true, live }).catch((e) => this.log(`record failed: ${e}`));
     });
     sock.ev.on("messaging-history.set", (e) => this.onHistorySet(e));
     sock.ev.on("groups.upsert", (groups) => groups.forEach((g) => this.saveGroup(g)));
@@ -178,10 +181,23 @@ export class WhatsAppListener {
     return this.sock.requestPairingCode(phone);
   }
 
-  /** Sends text, or an image with an optional caption. Callers check the chat is a team chat. */
-  async send(jid, { text = null, image = null, caption = null } = {}) {
+  /** The linked number's own ids (phone-number jid and privacy id), as mentions carry them. */
+  ownIds() {
+    const u = this.sock?.user;
+    return [u?.id, u?.lid].filter(Boolean).map((j) => jidNormalizedUser(j));
+  }
+
+  /** Phone-number jid for a privacy id (@lid), when WhatsApp has told us the mapping. */
+  async pnFor(jid) {
+    if (!jid || jid.endsWith("@s.whatsapp.net")) return jid || null;
+    const pn = await this.sock?.signalRepository?.lidMapping?.getPNForLID?.(jid);
+    return pn ? jidNormalizedUser(pn) : null;
+  }
+
+  /** Sends text (optionally @-mentioning people), or an image with an optional caption. Callers check the chat is a team chat. */
+  async send(jid, { text = null, image = null, caption = null, mentions = [] } = {}) {
     if (this.state !== "connected" || !this.sock) throw new Error(`WhatsApp is ${this.state}, not connected`);
-    const content = image ? { image, caption: caption || undefined } : { text };
+    const content = image ? { image, caption: caption || undefined } : { text, ...(mentions.length ? { mentions } : {}) };
     const sent = await this.sock.sendMessage(jid, content);
     return sent?.key?.id || null;
   }
@@ -228,7 +244,7 @@ export class WhatsAppListener {
   }
 
   /** Stores one message (and its media); returns its number, or null if not stored. */
-  async record(msg, { downloadMedia }) {
+  async record(msg, { downloadMedia, live = false }) {
     const rec = normalizeMessage(msg);
     if (!rec) return null;
     this.lastEventAt = new Date().toISOString();
@@ -238,6 +254,7 @@ export class WhatsAppListener {
     }
     const n = this.store.addMessage(rec);
     if (n === null) return null; // seen before
+    if (live) this.onLive?.(rec, n); // TM-03: the bot looks for tags
     if (!(downloadMedia && MEDIA_KINDS.has(rec.kind === "voice" ? "audio" : rec.kind))) this.onStored?.(n);
 
     if (rec.is_group && !this.store.hasChatName(rec.chat_jid) && !this.namesTried.has(rec.chat_jid)) {

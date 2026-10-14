@@ -5,6 +5,7 @@ import { normalizeMessage } from "../src/normalize.js";
 import { Store } from "../src/store.js";
 import { WhatsAppListener } from "../src/whatsapp.js";
 import { AiWorker, Transcriber, needsTranslation } from "../src/transcribe.js";
+import { Bot, parseCommand } from "../src/bot.js";
 
 const GROUP = "120363000000000001@g.us";
 const TOKEN = "test-token-0123456789";
@@ -509,4 +510,115 @@ test("items (TM-08): log a request, track it to done, keep the history, scope by
   } finally {
     server.close();
   }
+});
+
+test("bot (TM-03): parseCommand", () => {
+  assert.deepEqual(parseCommand("@919544376072 approve @9198"), { verb: "approve", rest: "" });
+  assert.deepEqual(parseCommand("@1 make owner @2"), { verb: "owner", rest: "" });
+  assert.equal(parseCommand("@1 who").verb, "who");
+  assert.deepEqual(parseCommand("@1 ok [7]"), { verb: "ok", id: 7, rest: "[7]" });
+  assert.equal(parseCommand("@1 OK").id, null);
+  assert.deepEqual(parseCommand("@1 fix the transit time from loading"), { verb: "request", rest: "fix the transit time from loading" });
+  assert.equal(parseCommand("@1").verb, "help");
+});
+
+function botSetup() {
+  const store = seeded(); // GROUP = customer "Acme", ...002 = team "Mesiri team"
+  const TEAM = "120363000000000002@g.us";
+  store.setRole(GROUP, "customer", "mercon");
+  store.setRole(TEAM, "team", "mercon");
+  const OWNER_PN = "917034926395@s.whatsapp.net";
+  store.allowPerson({ project: "*", pn: OWNER_PN, name: "Ilan", role: "owner", added_by: "api" });
+  const sent = [];
+  const wa = {
+    ownIds: () => ["919544376072@s.whatsapp.net", "56672747843793@lid"],
+    pnFor: async (jid) => ({ "222@lid": "919800000002@s.whatsapp.net", "333@lid": "919800000003@s.whatsapp.net" })[jid] || null,
+    send: async (jid, c) => (sent.push({ jid, ...c }), "id"),
+  };
+  const logs = [];
+  const bot = new Bot({ store, wa, log: (m) => logs.push(m) });
+  let seq = 0;
+  const msg = (chat, text, { from = "111@lid", pn = OWNER_PN, name = "Ilan", mentions = ["56672747843793@lid"], quoted_id = null } = {}) => {
+    const rec = {
+      id: `M${++seq}`, chat_jid: chat, is_group: true, sender_jid: from, sender_pn: pn, sender_name: name, from_me: false,
+      at: new Date(1_760_001_000_000 + seq * 1000).toISOString(), kind: "text", text, quoted_id, quoted_text: null,
+      media_mime: null, reaction_to: null, mentions,
+    };
+    return { rec, n: store.addMessage(rec) };
+  };
+  return { store, TEAM, sent, bot, msg, logs, OWNER_PN };
+}
+
+test("bot (TM-03): owners approve people from the team group; members request; customers never get replies", async () => {
+  const { store, TEAM, sent, bot, msg, logs, OWNER_PN } = botSetup();
+
+  // Not approved yet: ignored, no reply.
+  let m = msg(TEAM, "@bot fix it", { from: "222@lid", pn: null, name: "Alan" });
+  await bot.handle(m.rec, m.n);
+  assert.equal(sent.length, 0);
+  assert.match(logs.at(-1), /ignored a tag from Alan/);
+
+  // No mention of the bot: not for us, even from the owner.
+  m = msg(TEAM, "fix it", { mentions: [] });
+  await bot.handle(m.rec, m.n);
+  assert.equal(sent.length, 0);
+
+  // The all-projects owner approves Alan (tagged by privacy id; the number is looked up).
+  m = msg(TEAM, "@bot approve @Alan", { mentions: ["56672747843793@lid", "222@lid"] });
+  await bot.handle(m.rec, m.n);
+  assert.match(sent.at(-1).text, /approved @919800000002/);
+  assert.deepEqual(sent.at(-1).mentions, ["222@lid"]);
+  assert.equal(store.findPerson("mercon", ["222@lid"]).role, "member");
+  assert.equal(store.findPerson("mesiri", ["222@lid"]), null); // per project
+
+  // Alan (member) can't approve others.
+  m = msg(TEAM, "@bot approve @Bob", { from: "222@lid", pn: null, name: "Alan", mentions: ["56672747843793@lid", "333@lid"] });
+  await bot.handle(m.rec, m.n);
+  assert.match(sent.at(-1).text, /Only an owner/);
+  assert.equal(store.findPerson("mercon", ["333@lid"]), null);
+
+  // Alan requests work, replying to a stored message: logged with both message numbers.
+  const quoted = store.findMessages({ chat: TEAM })[0];
+  m = msg(TEAM, "@bot fix the transit time from loading", { from: "222@lid", pn: null, name: "Alan", quoted_id: quoted.id });
+  await bot.handle(m.rec, m.n);
+  const item = store.listItems({ project: "mercon" })[0];
+  assert.equal(item.title, "fix the transit time from loading");
+  assert.equal(item.source, `${quoted.n},${m.n}`);
+  assert.ok(sent.at(-1).text.includes(`Request [${item.id}]`));
+
+  // The owner tags the bot in the customer group: logged, announced in the team group, nothing sent to customers.
+  m = msg(GROUP, "@bot driver count is wrong");
+  await bot.handle(m.rec, m.n);
+  assert.ok(sent.every((s) => s.jid === TEAM));
+  assert.match(sent.at(-1).text, /from Ilan in Mesiri x Acme Builders: driver count is wrong/);
+
+  // OK needs the number when more than one is open; then it moves to in progress.
+  m = msg(TEAM, "@bot ok");
+  await bot.handle(m.rec, m.n);
+  assert.match(sent.at(-1).text, /Which one\?/);
+  m = msg(TEAM, `@bot ok ${item.id}`);
+  await bot.handle(m.rec, m.n);
+  assert.equal(store.getItem(item.id).status, "in_progress");
+  assert.match(store.getItem(item.id).log.at(-1).note, /OK from Ilan/);
+
+  // who, remove; the all-projects owner can't be removed from a group.
+  m = msg(TEAM, "@bot who");
+  await bot.handle(m.rec, m.n);
+  assert.match(sent.at(-1).text, /Ilan \(owner\)/);
+  m = msg(TEAM, "@bot remove @Alan", { mentions: ["56672747843793@lid", "222@lid"] });
+  await bot.handle(m.rec, m.n);
+  assert.equal(store.findPerson("mercon", ["222@lid"]), null);
+  m = msg(TEAM, "@bot remove @Ilan", { mentions: ["56672747843793@lid", OWNER_PN] });
+  await bot.handle(m.rec, m.n);
+  assert.match(sent.at(-1).text, /wasn't approved/);
+  assert.equal(store.findPerson("mercon", [OWNER_PN]).role, "owner");
+});
+
+test("bot (TM-03): replies are capped per hour so bots can't loop", async () => {
+  const { TEAM, sent, bot, msg } = botSetup();
+  for (let i = 0; i < 25; i++) {
+    const m = msg(TEAM, "@bot who");
+    await bot.handle(m.rec, m.n);
+  }
+  assert.equal(sent.length, 20);
 });
