@@ -4,6 +4,11 @@ Mounted at /dpr so:
   GET   /dpr/site-days?date=YYYY-MM-DD     every active site's working day (BE-08)
   PATCH /dpr/site-days/{site_id}/conditions?date=  weather, hours lost, site working, plan (BE-14)
   POST  /dpr/projects/{project_id}/send    "Send now": project DPR out on the next tick (BE-16)
+  GET   /dpr/projects/{project_id}/recipients               who gets the project DPR (BE-15)
+  POST  /dpr/projects/{project_id}/recipients               add a user or outside contact
+  DELETE /dpr/projects/{project_id}/recipients/{id}         remove one
+  POST  /dpr/projects/{project_id}/recipients/{id}/opt-in   record their WhatsApp opt-in
+  POST  /dpr/projects/{project_id}/recipients/{id}/opt-out  record their opt-out
   POST  /dpr/facts/{fact_type}/{fact_id}/confirm   confirm one draft (BE-09)
   POST  /dpr/facts/{fact_type}/{fact_id}/reject    reject one draft, with a reason (BE-09)
   GET   /dpr/daily-reports                 list daily reports
@@ -224,6 +229,239 @@ async def send_project_dpr_now(
     if report_date is None:
         raise HTTPException(status_code=404, detail="Project not found")
     return {"status": "queued", "report_date": report_date.isoformat()}
+
+
+# ---------------------------------------------------------------------------
+# Recipients and opt-ins (BE-15)
+# ---------------------------------------------------------------------------
+
+
+class AddRecipientRequest(BaseModel):
+    """A company user (`user_id`) or an outside contact (`name` + `phone`).
+    `opted_in` records, in the same step, that the contact agreed to get
+    the DPR on WhatsApp (e.g. in the contract); `opt_in_note` says how."""
+
+    user_id: uuid.UUID | None = None
+    name: str | None = None
+    phone: str | None = None
+    label: str | None = None
+    opted_in: bool = False
+    opt_in_note: str | None = None
+
+
+class ConsentRequest(BaseModel):
+    note: str | None = None
+
+
+def _present_recipient(row: dict[str, Any]) -> dict[str, Any]:
+    is_user = row["user_id"] is not None
+    return {
+        "id": str(row["id"]),
+        "kind": "user" if is_user else "contact",
+        "user_id": str(row["user_id"]) if is_user else None,
+        "name": row["name"],
+        "phone": row["phone"],
+        "label": row["label"],
+        "role": row.get("user_role"),
+        # "opted_in" / "opted_out" / None. A contact with None is not sent
+        # anything yet; a user with None is (joining the company counts).
+        "opt_in": row.get("consent_state"),
+        "will_receive": _will_receive(row),
+    }
+
+
+def _will_receive(row: dict[str, Any]) -> bool:
+    from mesiri.application.dpr.recipients import may_message
+
+    if not row["phone"]:
+        return False  # a user with no WhatsApp number on file
+    allowed, _ = may_message(
+        consent_state=row.get("consent_state"), requires_opt_in=row["user_id"] is None
+    )
+    return allowed
+
+
+async def _recipients_scope(
+    auth_context: AuthorizationContext, conn: AsyncConnection, project_id: uuid.UUID, *, write: bool
+):
+    from mesiri.application.dpr.recipients import MANAGER_ROLES
+    from mesiri.infrastructure.postgres.repositories.report_recipients import (
+        PostgresReportRecipientRepository,
+    )
+
+    _, denied = _resolve_project_ids(auth_context, project_id)
+    repo = PostgresReportRecipientRepository(conn)
+    if denied or not await repo.project_exists(
+        organization_id=auth_context.organization_id, project_id=project_id
+    ):
+        raise HTTPException(status_code=404, detail="Project not found")
+    if write and (auth_context.role or "").upper() not in MANAGER_ROLES:
+        raise HTTPException(
+            status_code=403, detail="Only admins and project managers can change DPR recipients"
+        )
+    return repo
+
+
+@router.get("/projects/{project_id}/recipients")
+async def list_report_recipients(
+    project_id: uuid.UUID,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Who gets this project's DPR (BE-15). `using_defaults: true` means no
+    list is set and the project's admins and project managers get it."""
+    repo = await _recipients_scope(auth_context, conn, project_id, write=False)
+    rows = await repo.list_active(organization_id=auth_context.organization_id, project_id=project_id)
+    return {
+        "project_id": str(project_id),
+        "using_defaults": not rows,
+        "recipients": [_present_recipient(row) for row in rows],
+    }
+
+
+@router.post("/projects/{project_id}/recipients", status_code=201)
+async def add_report_recipient(
+    project_id: uuid.UUID,
+    req: AddRecipientRequest,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Add a company user or an outside contact to this project's DPR list.
+    Adding the first one replaces the default audience (admins + PMs)."""
+    from mesiri.application.dpr.recipients import (
+        OPTED_IN,
+        RECORDED_BY_ADMIN,
+        RecipientError,
+        clean_contact,
+    )
+
+    repo = await _recipients_scope(auth_context, conn, project_id, write=True)
+    org_id = auth_context.organization_id
+
+    if req.user_id is not None:
+        if req.name or req.phone:
+            raise HTTPException(status_code=422, detail="Send either user_id or name and phone, not both")
+        if not await repo.active_user_in_org(organization_id=org_id, user_id=req.user_id):
+            raise HTTPException(status_code=422, detail="No active user with that id in this company")
+        if await repo.has_active(project_id=project_id, user_id=req.user_id):
+            raise HTTPException(status_code=409, detail="Already a recipient")
+        recipient_id = await repo.add(
+            organization_id=org_id,
+            project_id=project_id,
+            actor_user_id=auth_context.user_id,
+            user_id=req.user_id,
+            label=(req.label or "").strip() or None,
+        )
+    else:
+        try:
+            contact = clean_contact(name=req.name, phone=req.phone, label=req.label)
+        except RecipientError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if await repo.has_active(project_id=project_id, phone=contact["phone"]):
+            raise HTTPException(status_code=409, detail="Already a recipient")
+        recipient_id = await repo.add(
+            organization_id=org_id,
+            project_id=project_id,
+            actor_user_id=auth_context.user_id,
+            **contact,
+        )
+        if req.opted_in:
+            await repo.record_consent(
+                organization_id=org_id,
+                phone=contact["phone"],
+                state=OPTED_IN,
+                method=RECORDED_BY_ADMIN,
+                note=(req.opt_in_note or "").strip() or None,
+                actor_user_id=auth_context.user_id,
+            )
+
+    row = await repo.find_active(organization_id=org_id, project_id=project_id, recipient_id=recipient_id)
+    return _present_recipient(row)
+
+
+@router.delete("/projects/{project_id}/recipients/{recipient_id}", status_code=204)
+async def remove_report_recipient(
+    project_id: uuid.UUID,
+    recipient_id: uuid.UUID,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Take someone off the list. Removing the last one brings the default
+    audience (admins + PMs) back."""
+    repo = await _recipients_scope(auth_context, conn, project_id, write=True)
+    removed = await repo.remove(
+        organization_id=auth_context.organization_id,
+        project_id=project_id,
+        recipient_id=recipient_id,
+        actor_user_id=auth_context.user_id,
+    )
+    if not removed:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+    return Response(status_code=204)
+
+
+async def _record_recipient_consent(
+    project_id: uuid.UUID,
+    recipient_id: uuid.UUID,
+    req: ConsentRequest,
+    auth_context: AuthorizationContext,
+    conn: AsyncConnection,
+    *,
+    state: str,
+) -> dict[str, Any]:
+    from mesiri.application.dpr.recipients import RECORDED_BY_ADMIN
+
+    repo = await _recipients_scope(auth_context, conn, project_id, write=True)
+    org_id = auth_context.organization_id
+    row = await repo.find_active(organization_id=org_id, project_id=project_id, recipient_id=recipient_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+    if not row["phone"]:
+        raise HTTPException(status_code=422, detail="This user has no WhatsApp number on file")
+    await repo.record_consent(
+        organization_id=org_id,
+        phone=row["phone"],
+        state=state,
+        method=RECORDED_BY_ADMIN,
+        note=(req.note or "").strip() or None,
+        actor_user_id=auth_context.user_id,
+    )
+    row = await repo.find_active(organization_id=org_id, project_id=project_id, recipient_id=recipient_id)
+    return _present_recipient(row)
+
+
+@router.post("/projects/{project_id}/recipients/{recipient_id}/opt-in")
+async def record_recipient_opt_in(
+    project_id: uuid.UUID,
+    recipient_id: uuid.UUID,
+    req: ConsentRequest,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Record that this person agreed to get the DPR on WhatsApp (given
+    outside Mesiri, e.g. in the contract or by email); `note` says how."""
+    from mesiri.application.dpr.recipients import OPTED_IN
+
+    return await _record_recipient_consent(
+        project_id, recipient_id, req, auth_context, conn, state=OPTED_IN
+    )
+
+
+@router.post("/projects/{project_id}/recipients/{recipient_id}/opt-out")
+async def record_recipient_opt_out(
+    project_id: uuid.UUID,
+    recipient_id: uuid.UUID,
+    req: ConsentRequest,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Record that this person asked not to get WhatsApp messages from this
+    company. Stops every message to that number, not only the DPR."""
+    from mesiri.application.dpr.recipients import OPTED_OUT
+
+    return await _record_recipient_consent(
+        project_id, recipient_id, req, auth_context, conn, state=OPTED_OUT
+    )
 
 
 class RejectFactRequest(BaseModel):

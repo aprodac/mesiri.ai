@@ -10,7 +10,8 @@ adapter). `drain_and_send()` below is also called directly (same process,
 no subprocess) by runtime/automation_runner.py's in-app scheduler, so
 automations reuse this exact send/skip logic rather than a second copy.
 
-For each pending row: resolve the recipient's wa_id, check quiet hours and
+For each pending row: resolve the recipient's wa_id, check their opt-in /
+opt-out (BE-15), quiet hours and
 the WhatsApp 24h session window (application/notifications/checks.py, in
 the backend package -- pure logic, safe to import from either side), and
 either send or skip with a recorded reason. Never sends silently outside
@@ -160,6 +161,7 @@ async def drain_and_send(
     and runtime/automation_runner.py's scheduler tick -- one send/skip
     policy, never two copies drifting apart."""
     from channel.whatsapp.templates import choose_template
+    from mesiri.application.dpr.recipients import may_message
     from mesiri.application.notifications.checks import (
         is_quiet_hours,
         is_within_whatsapp_session_window,
@@ -172,11 +174,28 @@ async def drain_and_send(
     pending = await queue.list_pending()
     for row in pending:
         notification_id = str(row["id"])
-        wa_id = await queue.resolve_recipient_wa_id(
-            str(row["recipient_user_id"]) if row.get("recipient_user_id") else None
-        )
+        payload = row.get("payload") or {}
+        if row.get("recipient_user_id"):
+            wa_id = await queue.resolve_recipient_wa_id(str(row["recipient_user_id"]))
+        else:
+            # BE-15: an outside contact has no user row; the number is in
+            # the payload.
+            wa_id = payload.get("to_wa_id") or None
         if wa_id is None:
             await queue.mark_skipped(notification_id=notification_id, reason="no_resolvable_recipient")
+            counts["skipped"] += 1
+            continue
+
+        # BE-15: an opt-out stops everything; an outside contact also needs
+        # an opt-in on record (application/dpr/recipients.py).
+        allowed, consent_reason = may_message(
+            consent_state=await queue.consent_state(
+                organization_id=row.get("organization_id"), wa_id=wa_id
+            ),
+            requires_opt_in=bool(payload.get("requires_opt_in")),
+        )
+        if not allowed:
+            await queue.mark_skipped(notification_id=notification_id, reason=consent_reason or "no_opt_in")
             counts["skipped"] += 1
             continue
 

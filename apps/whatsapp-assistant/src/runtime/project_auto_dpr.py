@@ -49,6 +49,34 @@ async def _project_dpr_recipients(
     return sorted(set(admins) | set(managers))
 
 
+async def _dpr_audience(
+    conn: Any, db: Any, *, organization_id: Any, project_id: Any
+) -> list[dict[str, str]]:
+    """BE-15: the project's own recipient list (report_recipients) when it
+    has one -- company users by user id, outside contacts by phone --
+    otherwise the default admins + project managers. Whether each may
+    actually be messaged (opt-in / opt-out) is decided at send time, in
+    runtime/send_pending_notifications.py, so a skip is recorded per row."""
+    from mesiri.infrastructure.postgres.repositories.report_recipients import (
+        PostgresReportRecipientRepository,
+    )
+
+    rows = await PostgresReportRecipientRepository(conn).list_active(
+        organization_id=organization_id, project_id=project_id
+    )
+    if not rows:
+        defaults = await _project_dpr_recipients(
+            db, organization_id=str(organization_id), project_id=str(project_id)
+        )
+        return [{"user_id": user_id} for user_id in defaults]
+    return [
+        {"user_id": str(row["user_id"])}
+        if row["user_id"] is not None
+        else {"recipient_id": str(row["id"]), "phone": row["phone"]}
+        for row in rows
+    ]
+
+
 async def queue_due_project_auto_dprs(conn: Any, *, db: Any) -> int:
     """At each due project's cutoff: builds today's drafts (SITE-level days,
     labelled needs details / ready) and marks the cutoff run. Sends
@@ -239,12 +267,28 @@ async def send_due_project_dprs(
                         reason=project["reason"],
                         report_date=project["report_date"],
                     )
-                    recipients = await _project_dpr_recipients(
+                    recipients = await _dpr_audience(
+                        conn,
                         db,
-                        organization_id=str(project["organization_id"]),
-                        project_id=project_id,
+                        organization_id=project["organization_id"],
+                        project_id=project["id"],
                     )
-                    for recipient_id in recipients:
+                    for recipient in recipients:
+                        payload = {
+                            "message": message,
+                            "document_object_key": object_key,
+                            "template": {
+                                "name": DPR_DELIVERY.name,
+                                "body_params": template_params,
+                            },
+                        }
+                        user_id = recipient.get("user_id")
+                        if user_id is None:
+                            # BE-15 outside contact: no user row, so the
+                            # number rides in the payload, and nothing goes
+                            # until they have opted in.
+                            payload["to_wa_id"] = recipient["phone"]
+                            payload["requires_opt_in"] = True
                         # subject = the recipient: the notifications UNIQUE
                         # key is (org, rule, subject, date), so a shared
                         # subject let only the first recipient through --
@@ -252,19 +296,12 @@ async def send_due_project_dprs(
                         await notifications_repo.claim(
                             organization_id=project["organization_id"],
                             rule_key=f"project_dpr_send:{project_id}",
-                            subject_id=recipient_id,
+                            subject_id=user_id or f"contact:{recipient['recipient_id']}",
                             occurred_on=project["report_date"],
-                            recipient_user_id=uuid.UUID(recipient_id),
+                            recipient_user_id=uuid.UUID(user_id) if user_id else None,
                             project_id=project["id"],
                             site_id=target["site_id"],
-                            payload={
-                                "message": message,
-                                "document_object_key": object_key,
-                                "template": {
-                                    "name": DPR_DELIVERY.name,
-                                    "body_params": template_params,
-                                },
-                            },
+                            payload=payload,
                         )
                     await mark_project_dpr_sent(
                         conn,

@@ -53,6 +53,22 @@ What fills the variables: `{{1}}` the project name, `{{2}}` the report date,
 `{{3}}` "All sites reported." / "N of M sites not reported." / "Confirmed by the
 site engineer." (single-site projects), plus " Sent on request." after "Send now".
 
+## Who receives the DPR, and opt-in (BE-15)
+
+- Each project can have its own DPR list (`/dpr/projects/{id}/recipients`):
+  company users and outside contacts (client, architect...) by name and phone.
+  With no list, the project's admins and project managers get it, as before.
+- **Opt-in:** Meta requires a person to agree before a business messages them.
+  Company users count as agreed by joining the company. An **outside contact
+  gets nothing until an opt-in is recorded**: an admin records it when adding
+  them ("opted in", with a note on how, e.g. "contract clause 12"), or later
+  with `.../recipients/{id}/opt-in`. The WhatsApp "reply YES" opt-in is WA-09.
+- **Opt-out** (`.../opt-out`) stops every message to that number from that
+  company, users included. Skipped messages are recorded on the notification
+  row as `no_opt_in` or `opted_out`.
+- Records are kept per company and phone in `whatsapp_opt_ins` (append-only;
+  the latest row counts), with who recorded it and how.
+
 ## Templates still to add
 
 Each is declared and submitted by its own tracker item: evening gap-check

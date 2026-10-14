@@ -41,6 +41,21 @@ class NotificationSendQueueService:
             return None
         return await self._actor_reader.resolve_whatsapp_id_by_user_id(recipient_user_id)
 
+    async def consent_state(self, *, organization_id: Any, wa_id: str) -> str | None:
+        """The latest WhatsApp opt-in/opt-out recorded for this number in
+        this company (BE-15, whatsapp_opt_ins), or None when there is none."""
+        if organization_id is None:
+            return None
+        from mesiri.infrastructure.postgres.repositories.report_recipients import (
+            PostgresReportRecipientRepository,
+        )
+
+        phone = "".join(ch for ch in str(wa_id) if ch.isdigit())
+        async with self._db.transaction() as conn:
+            return await PostgresReportRecipientRepository(conn).latest_consent_state(
+                organization_id=organization_id, phone=phone
+            )
+
     async def last_inbound_at(self, wa_id: str):
         """The recipient's most recent inbound message time, for the
         WhatsApp 24h session-window decision (application/notifications/

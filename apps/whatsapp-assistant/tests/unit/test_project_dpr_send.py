@@ -16,6 +16,7 @@ import runtime.render_pending_dpr_pdfs as render_module
 from mesiri.application.projects import auto_dpr
 from mesiri.infrastructure.postgres.repositories import dpr as dpr_repo_module
 from mesiri.infrastructure.postgres.repositories import notifications as notifications_module
+from mesiri.infrastructure.postgres.repositories import report_recipients as recipients_module
 
 TODAY = datetime.date(2026, 10, 13)
 
@@ -59,12 +60,25 @@ class _Notifications:
         type(self).claims.append(kwargs)
 
 
+class _Recipients:
+    """BE-15's recipient list; empty = the default admins + PMs."""
+
+    rows: list = []
+
+    def __init__(self, conn):
+        pass
+
+    async def list_active(self, *, organization_id, project_id):
+        return type(self).rows
+
+
 @pytest.fixture
 def world(monkeypatch):
     state = {"due": [], "targets": {}, "sent": [], "rendered": [], "fail_render_for": set()}
     _Repo.reports = {}
     _Repo.keys_set = []
     _Notifications.claims = []
+    _Recipients.rows = []
 
     async def no_letterhead(*_args):
         # This fake world has no company rows; the letterhead (BE-19) has its
@@ -98,6 +112,7 @@ def world(monkeypatch):
     monkeypatch.setattr(sender, "_project_dpr_recipients", recipients)
     monkeypatch.setattr(dpr_repo_module, "PostgresDprRepository", _Repo)
     monkeypatch.setattr(notifications_module, "PostgresNotificationRepository", _Notifications)
+    monkeypatch.setattr(recipients_module, "PostgresReportRecipientRepository", _Recipients)
     return state
 
 
@@ -210,3 +225,28 @@ async def test_a_single_site_dpr_template_says_the_engineer_confirmed_it(world):
 
     params = _Notifications.claims[0]["payload"]["template"]["body_params"]
     assert params == ["DPR-P-1", "13 Oct 2026", "Confirmed by the site engineer. Sent on request."]
+
+
+async def test_a_set_recipient_list_replaces_the_defaults(world):
+    # BE-15: one company user and one outside contact; the defaults (two
+    # random admins from the fixture) are not used.
+    user_id = uuid.uuid4()
+    contact_id = uuid.uuid4()
+    _Recipients.rows = [
+        {"id": uuid.uuid4(), "user_id": user_id, "phone": "919999999999"},
+        {"id": contact_id, "user_id": None, "phone": "447911123456"},
+    ]
+    _project(world)
+
+    await _send()
+
+    user_claim, contact_claim = _Notifications.claims
+    assert user_claim["recipient_user_id"] == user_id
+    assert user_claim["subject_id"] == str(user_id)
+    assert "to_wa_id" not in user_claim["payload"]
+
+    assert contact_claim["recipient_user_id"] is None
+    assert contact_claim["subject_id"] == f"contact:{contact_id}"
+    assert contact_claim["payload"]["to_wa_id"] == "447911123456"
+    assert contact_claim["payload"]["requires_opt_in"] is True
+    assert contact_claim["payload"]["document_object_key"]

@@ -180,7 +180,7 @@ class _Storage:
 
 @pytest.fixture
 def queue(monkeypatch):
-    state = {"rows": [], "last_inbound": None, "sent": [], "skipped": []}
+    state = {"rows": [], "last_inbound": None, "sent": [], "skipped": [], "consent": {}}
 
     class _Queue:
         def __init__(self, db, actor_reader):
@@ -191,6 +191,9 @@ def queue(monkeypatch):
 
         async def resolve_recipient_wa_id(self, user_id):
             return "919999999999"
+
+        async def consent_state(self, *, organization_id, wa_id):
+            return state["consent"].get(wa_id)
 
         async def last_inbound_at(self, wa_id):
             return state["last_inbound"]
@@ -206,8 +209,14 @@ def queue(monkeypatch):
     return state
 
 
-def _row(payload):
-    return {"id": "n1", "rule_key": "project_dpr_send:p1", "recipient_user_id": "u1", "payload": payload}
+def _row(payload, *, recipient_user_id="u1"):
+    return {
+        "id": "n1",
+        "organization_id": "org1",
+        "rule_key": "project_dpr_send:p1",
+        "recipient_user_id": recipient_user_id,
+        "payload": payload,
+    }
 
 
 async def _drain(sender, *, approved=APPROVED, storage=None):
@@ -321,3 +330,52 @@ def test_failed_delivery_statuses_are_logged(caplog):
         "whatsapp.delivery_failed wamid=wamid.tpl.1 to=919999999999 code=132001 "
         "title=Template name does not exist"
     ]
+
+
+# --- BE-15: opt-in / opt-out at send time -------------------------------------
+
+
+def _contact_payload():
+    return {**_template_payload(), "to_wa_id": "447911123456", "requires_opt_in": True}
+
+
+@pytest.mark.asyncio
+async def test_a_contact_without_an_opt_in_is_skipped(queue):
+    queue["rows"] = [_row(_contact_payload(), recipient_user_id=None)]
+    queue["last_inbound"] = datetime.now(tz=UTC) - timedelta(hours=1)
+    sender = _FakeSender()
+
+    assert await _drain(sender) == {"sent": 0, "skipped": 1}
+    assert queue["skipped"] == [("n1", "no_opt_in")]
+    assert sender.texts == [] and sender.templates == []
+
+
+@pytest.mark.asyncio
+async def test_an_opted_in_contact_gets_the_dpr_at_their_own_number(queue):
+    queue["rows"] = [_row(_contact_payload(), recipient_user_id=None)]
+    queue["consent"] = {"447911123456": "opted_in"}
+    sender = _FakeSender()
+
+    assert await _drain(sender) == {"sent": 1, "skipped": 0}
+    ((wa_id, _),) = sender.templates  # never messaged us, so the template
+    assert wa_id == "447911123456"
+
+
+@pytest.mark.asyncio
+async def test_a_user_who_opted_out_is_skipped(queue):
+    queue["rows"] = [_row(_template_payload())]
+    queue["last_inbound"] = datetime.now(tz=UTC) - timedelta(hours=1)
+    queue["consent"] = {"919999999999": "opted_out"}
+    sender = _FakeSender()
+
+    assert await _drain(sender) == {"sent": 0, "skipped": 1}
+    assert queue["skipped"] == [("n1", "opted_out")]
+
+
+@pytest.mark.asyncio
+async def test_a_contact_row_with_no_number_is_skipped(queue):
+    queue["rows"] = [_row({"requires_opt_in": True}, recipient_user_id=None)]
+    sender = _FakeSender()
+
+    assert await _drain(sender) == {"sent": 0, "skipped": 1}
+    assert queue["skipped"] == [("n1", "no_resolvable_recipient")]
