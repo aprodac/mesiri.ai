@@ -10,6 +10,7 @@ import {
   Browsers,
   DisconnectReason,
   downloadMediaMessage,
+  fetchLatestBaileysVersion,
   makeWASocket,
   normalizeMessageContent,
   useMultiFileAuthState,
@@ -41,6 +42,8 @@ export class WhatsAppListener {
     this.registered = false;
     this.lastEventAt = null;
     this.retryDelayMs = 2_000;
+    this.saving = Promise.resolve();
+    this.waVersion = undefined;
     this.namesTried = new Set();
     this.waLogger = pino({ level: process.env.TEAMMATE_WA_LOG_LEVEL || "warn" });
   }
@@ -56,7 +59,15 @@ export class WhatsAppListener {
   async start() {
     const { state, saveCreds } = await useMultiFileAuthState(this.authDir);
     this.registered = Boolean(state.creds.registered);
+    // An outdated client version makes WhatsApp refuse to link ("Something went
+    // wrong"); ask for the current one once, fall back to Baileys' built-in.
+    if (this.waVersion === undefined) {
+      const { version, error } = await fetchLatestBaileysVersion().catch((e) => ({ error: e }));
+      this.waVersion = error ? null : version;
+      this.log(`WhatsApp client version: ${this.waVersion ? this.waVersion.join(".") : "built-in (lookup failed)"}`);
+    }
     const sock = makeWASocket({
+      ...(this.waVersion ? { version: this.waVersion } : {}),
       auth: state,
       logger: this.waLogger,
       browser: Browsers.macOS("Chrome"),
@@ -68,7 +79,10 @@ export class WhatsAppListener {
     this.state = this.registered ? "connecting" : "waiting_for_pairing";
     this.pairingReady = false;
 
-    sock.ev.on("creds.update", saveCreds);
+    // Writes are chained so a restart can wait for the last one (see onConnectionUpdate).
+    sock.ev.on("creds.update", () => {
+      this.saving = this.saving.then(saveCreds).catch((e) => this.log(`saving the session failed: ${e}`));
+    });
     sock.ev.on("connection.update", (u) => this.onConnectionUpdate(u));
     sock.ev.on("messages.upsert", ({ messages }) => {
       for (const msg of messages) this.record(msg, { downloadMedia: true }).catch((e) => this.log(`record failed: ${e}`));
@@ -105,6 +119,11 @@ export class WhatsAppListener {
     if (connection !== "close") return;
 
     const code = lastDisconnect?.error?.output?.statusCode;
+    this.log(`connection closed: ${code ?? "no code"} ${lastDisconnect?.error?.message || ""}`.trim());
+    // Linking ends with WhatsApp asking for a restart. Reconnecting before the new
+    // session is on disk logs in with a half-written one, which WhatsApp answers
+    // with "logged out" -- so always let pending writes finish first.
+    await this.saving;
     if (code === DisconnectReason.loggedOut) {
       // Unlinked from the phone (or banned). Forget the session so the number
       // can be linked again with POST /pair.
