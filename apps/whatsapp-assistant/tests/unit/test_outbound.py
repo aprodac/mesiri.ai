@@ -275,3 +275,129 @@ async def test_send_image_still_uploads_with_its_own_filename():
     payload = json.loads(requests[1].content)
     assert payload["type"] == "image"
     assert payload["image"] == {"id": "media-123", "caption": "Saved"}
+
+
+# --- WA-14: image headers, link buttons --------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_image_uploads_with_the_given_filename():
+    requests: list[httpx.Request] = []
+    sender = _two_step_sender(requests)
+
+    await sender.send_image("919876543210", b"\x89PNG fake", filename="card.png")
+
+    assert b"card.png" in requests[0].content
+    assert b"receipt.png" not in requests[0].content
+
+
+@pytest.mark.asyncio
+async def test_send_button_with_header_image_is_one_message_with_an_image_header():
+    """Card + next-step buttons arrive as ONE message: the image is uploaded,
+    then referenced as the reply-button message's header (Cloud API:
+    interactive.header = {type: image, image: {id}})."""
+    requests: list[httpx.Request] = []
+    sender = _two_step_sender(requests)
+
+    ok = await sender.send_button(
+        "919876543210",
+        body="14 materials on site.",
+        buttons=[ListRow("pdf_full", "Full list (PDF)"), ListRow("low", "Low stock only")],
+        header_image=b"\x89PNG fake",
+    )
+
+    assert ok is True
+    assert [r.url.path.rsplit("/", 1)[-1] for r in requests] == ["media", "messages"]
+    assert b"card.png" in requests[0].content
+    interactive = json.loads(requests[1].content)["interactive"]
+    assert interactive["type"] == "button"
+    assert interactive["header"] == {"type": "image", "image": {"id": "media-123"}}
+    assert interactive["body"] == {"text": "14 materials on site."}
+    assert [b["reply"]["id"] for b in interactive["action"]["buttons"]] == ["pdf_full", "low"]
+
+
+@pytest.mark.asyncio
+async def test_send_button_without_header_image_makes_no_upload_and_has_no_header():
+    captured: list[httpx.Request] = []
+    sender = _sender(captured)
+
+    await sender.send_button("919876543210", body="Confirm?", buttons=[ListRow("y", "Yes")])
+
+    assert len(captured) == 1
+    assert "header" not in json.loads(captured[0].content)["interactive"]
+
+
+@pytest.mark.asyncio
+async def test_send_button_still_sends_the_buttons_when_the_header_upload_fails():
+    """The body carries the answer; a failed image upload must not lose the
+    message."""
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path.endswith("/media"):
+            return httpx.Response(500, text="upload broke")
+        return httpx.Response(200, json={"messages": [{"id": "wamid.out.1"}]})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    sender = WhatsAppSender(client=client, access_token="token", phone_number_id="PHONE_NUMBER_ID")
+
+    ok = await sender.send_button(
+        "919876543210", body="Answer", buttons=[ListRow("y", "Yes")], header_image=b"png"
+    )
+
+    assert ok is True
+    interactive = json.loads(requests[-1].content)["interactive"]
+    assert "header" not in interactive
+
+
+@pytest.mark.asyncio
+async def test_send_cta_url_payload_matches_cloud_api_shape():
+    captured: list[httpx.Request] = []
+    sender = _sender(captured)
+
+    ok = await sender.send_cta_url(
+        "919876543210",
+        body="Today's DPR is ready.",
+        label="Open on dashboard",
+        url="https://app.whatsapp.mesiri.ai/dpr/123",
+    )
+
+    assert ok is True
+    payload = json.loads(captured[0].content)
+    assert payload["type"] == "interactive"
+    assert payload["interactive"] == {
+        "type": "cta_url",
+        "body": {"text": "Today's DPR is ready."},
+        "action": {
+            "name": "cta_url",
+            "parameters": {
+                "display_text": "Open on dashboard",
+                "url": "https://app.whatsapp.mesiri.ai/dpr/123",
+            },
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_send_cta_url_truncates_label_to_twenty_chars():
+    captured: list[httpx.Request] = []
+    sender = _sender(captured)
+
+    await sender.send_cta_url("919876543210", body="b", label="X" * 30, url="https://e.x")
+
+    params = json.loads(captured[0].content)["interactive"]["action"]["parameters"]
+    assert params["display_text"] == "X" * 20
+
+
+@pytest.mark.asyncio
+async def test_send_cta_url_with_header_image():
+    requests: list[httpx.Request] = []
+    sender = _two_step_sender(requests)
+
+    await sender.send_cta_url(
+        "919876543210", body="b", label="Open", url="https://e.x", header_image=b"png"
+    )
+
+    interactive = json.loads(requests[1].content)["interactive"]
+    assert interactive["header"] == {"type": "image", "image": {"id": "media-123"}}

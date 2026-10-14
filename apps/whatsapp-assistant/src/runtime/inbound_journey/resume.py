@@ -452,12 +452,7 @@ async def _create_material_and_resume(
         # Prepend the creation confirmation so the user sees the catalog
         # entry landed even though the report is now paused on a different
         # question (which project/site).
-        return ReplySpec(
-            text=f"{confirmation}\n\n{held_reply.text}",
-            list_button_label=held_reply.list_button_label,
-            list_rows=held_reply.list_rows,
-            buttons=held_reply.buttons,
-        )
+        return held_reply.with_prefix(confirmation)
 
     reply = await _plan_and_run(
         event,
@@ -470,12 +465,7 @@ async def _create_material_and_resume(
     await _complete_resume_leg(message, event, message_logger)
     if reply is None:
         return ReplySpec(text=confirmation)
-    return ReplySpec(
-        text=f"{confirmation}\n\n{reply.text}",
-        list_button_label=reply.list_button_label,
-        list_rows=reply.list_rows,
-        buttons=reply.buttons,
-    )
+    return reply.with_prefix(confirmation)
 
 
 async def resume_pending_report_with_material_create(

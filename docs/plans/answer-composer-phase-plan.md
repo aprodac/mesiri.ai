@@ -1,6 +1,6 @@
 # Answer Composer — phase plan (WhatsApp rich replies)
 
-> **Status:** Phase 2 plan, **awaiting approval**. Nothing here is implemented.
+> **Status:** Phase A (WA-14) **implemented** 14 Oct 2026; Phases B–E not started, each waits for approval.
 > **Design page:** [Mesiri Answer Composer](https://claude.ai/artifact/HjkNXhWS35YTyDyWunSt1S)
 > **Tracker:** WA-14 … WA-18 and the open decision "Answer composer in V1" in
 > [V1_TRACKER.md](V1_TRACKER.md).
@@ -88,6 +88,18 @@ Outbound shapes and a card renderer. No change to what any existing reply says.
 
 **Done when:** the new shapes are tested against the fake sender, and one live send of
 each shape to a test number has been made and screenshotted. Receipts are unchanged.
+
+**Result (14 Oct):** implemented as above.
+- 34 new tests. The full assistant suite went from 1,788 to 1,822 passed (13 skipped both
+  times), and the other CI suites stayed at 1,312 passed.
+- The receipt PNG is byte-identical before and after the move.
+- Stock and roster cards were rendered and checked visually.
+- Also fixed: five call sites rebuilt `ReplySpec` field by field and would have silently
+  dropped the new fields. They now use `ReplySpec.with_prefix()` / `dataclasses.replace`.
+- **Not done:** the live send to a test number. No production reply sets `image`, `document`
+  or `cta` yet; WA-16 is the first. Fast-path handlers in `runtime/message_journey.py` that
+  call `send_reply_spec` directly still wire only text/list/buttons, so an image on one of
+  those paths would be dropped and its text sent.
 
 ### Phase B — Data, not sentences, for V1 lookups (WA-16) · M · Must if approved · depends on WA-14
 

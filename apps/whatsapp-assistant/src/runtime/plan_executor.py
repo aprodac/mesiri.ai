@@ -47,6 +47,8 @@ never a blanket "all done" that papers over a partial failure).
 
 from __future__ import annotations
 
+import dataclasses
+
 from backend.ports import ActorIdentity
 from channel.replies import ReplySpec
 from interactions.handler import InteractionHandled
@@ -254,12 +256,7 @@ async def _start_next_runnable(
         spec = render_workflow_run_reply_spec(run)
         prefix = _progress_prefix(plan)
         if prefix:
-            spec = ReplySpec(
-                text=prefix + spec.text,
-                list_button_label=spec.list_button_label,
-                list_rows=spec.list_rows,
-                buttons=spec.buttons,
-            )
+            spec = dataclasses.replace(spec, text=prefix + spec.text)
         return spec
 
     # Nothing left to run: report every step's real outcome and release the

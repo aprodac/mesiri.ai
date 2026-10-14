@@ -13,7 +13,7 @@ reach a user.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -46,21 +46,68 @@ class ListRow:
 
 
 @dataclass(frozen=True, slots=True)
+class CtaLink:
+    """A single "open this link" button (WhatsApp's cta_url message), e.g.
+    to open a page on the dashboard. ``label`` is the button text."""
+
+    label: str
+    url: str
+
+
+@dataclass(frozen=True, slots=True)
+class ReplyDocument:
+    """A file sent with the reply, e.g. the full list as a PDF."""
+
+    data: bytes
+    filename: str
+    mime_type: str = "application/pdf"
+
+
+@dataclass(frozen=True, slots=True)
 class ReplySpec:
     """What to send back, decoupled from how. `list_rows` is set for a
     deterministic picker (category menu, image-purpose picker, etc.) or for
     a workflow's mid-flow slot-fill question when the node supplied
-    candidates (see workflows/slots.py's `slot_options`); `buttons` is only
-    ever set for a workflow confirmation prompt (see
-    runtime/inbound_journey.py's _render_reply). At most one of the two is
-    ever populated. The caller (runtime/inbound_journey.py) picks send_text
-    vs send_list vs send_button based on which is set -- render_* functions
-    never touch the transport."""
+    candidates (see workflows/slots.py's `slot_options`); `buttons` is set
+    for a confirmation prompt or any reply with up to 3 next steps. At most
+    one of the two is ever populated. The caller (runtime/reply_dispatch.py)
+    picks the transport based on which is set -- render_* functions never
+    touch the transport.
+
+    Media and links (WA-14), all optional:
+
+    - `image`: a PNG (e.g. an answer card from channel/cards/). Sent as the
+      header of the button message when `buttons` is set (one message),
+      otherwise with `text` as its caption. Always optional: `text` must
+      carry the answer on its own, because the image can fail to render or
+      send and the dispatcher then sends the text alone.
+    - `document`: a file (e.g. the full list as a PDF), sent before the text.
+    - `cta`: one link button. WhatsApp's link-button message cannot also
+      carry reply buttons or a list, so `cta` excludes both.
+
+    `image` and `document` are mutually exclusive: together with the text
+    they would make three messages for one answer.
+    """
 
     text: str
     list_button_label: str | None = None
     list_rows: tuple[ListRow, ...] | None = None
     buttons: tuple[ListRow, ...] | None = None
+    image: bytes | None = None
+    document: ReplyDocument | None = None
+    cta: CtaLink | None = None
+
+    def __post_init__(self) -> None:
+        if self.image is not None and self.document is not None:
+            raise ValueError("ReplySpec: image and document are mutually exclusive")
+        if self.cta is not None and (self.buttons or self.list_rows):
+            raise ValueError("ReplySpec: cta cannot be combined with buttons or list_rows")
+
+    def with_prefix(self, prefix: str) -> ReplySpec:
+        """This reply with `prefix` and a blank line in front of its text,
+        every other field kept. Use this rather than rebuilding a ReplySpec
+        field by field, which silently drops any field the copy forgets."""
+        return replace(self, text=f"{prefix}\n\n{self.text}")
 
 
 # The two reply buttons shown under every "Confirm this record?" prompt.

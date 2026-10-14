@@ -904,12 +904,7 @@ async def resume_pending_decomposition_with_material_create(
         )
         if reply is None:
             return ReplySpec(text=confirmation)
-        return ReplySpec(
-            text=f"{confirmation}\n\n{reply.text}",
-            list_button_label=reply.list_button_label,
-            list_rows=reply.list_rows,
-            buttons=reply.buttons,
-        )
+        return reply.with_prefix(confirmation)
 
     try:
         units = await catalog_query.list_units()
@@ -994,12 +989,7 @@ async def resume_pending_decomposition_with_material_unit_choice(
     )
     if reply is None:
         return ReplySpec(text=confirmation)
-    return ReplySpec(
-        text=f"{confirmation}\n\n{reply.text}",
-        list_button_label=reply.list_button_label,
-        list_rows=reply.list_rows,
-        buttons=reply.buttons,
-    )
+    return reply.with_prefix(confirmation)
 
 
 async def resume_pending_decomposition_with_unit(

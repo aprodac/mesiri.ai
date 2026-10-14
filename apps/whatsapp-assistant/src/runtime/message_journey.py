@@ -418,6 +418,9 @@ def build_message_handlers(
                 send_text=sender.send_text,
                 send_list=sender.send_list,
                 send_button=sender.send_button,
+                send_image=sender.send_image,
+                send_document=sender.send_document,
+                send_cta=sender.send_cta_url,
             )
 
         async def _park_team_photo_report(store, user_id: str, report_id: str) -> None:
@@ -1003,6 +1006,7 @@ def build_message_handlers(
                 send_button=sender.send_button,
                 send_image=sender.send_image,
                 send_document=sender.send_document,
+                send_cta=sender.send_cta_url,
                 object_storage=object_storage,
                 context_debug=settings.context_debug,
                 message_logger=message_logger,

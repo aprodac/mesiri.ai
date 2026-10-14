@@ -212,6 +212,7 @@ async def process_inbound_message(
     send_button: Callable[[str, str, tuple[ListRow, ...]], Awaitable[Any]] | None = None,
     send_image: Callable[[str, bytes], Awaitable[Any]] | None = None,
     send_document: Callable[..., Awaitable[Any]] | None = None,
+    send_cta: Callable[..., Awaitable[Any]] | None = None,
     object_storage: ObjectStoragePort | None = None,
     context_debug: bool = False,
     message_logger: MessageLogger | None = None,
@@ -1271,12 +1272,7 @@ async def process_inbound_message(
     ):
         caveat = caveat_text(ambiguity_decision)
         if caveat:
-            reply = ReplySpec(
-                text=f"{caveat}\n\n{reply.text}",
-                list_button_label=reply.list_button_label,
-                list_rows=reply.list_rows,
-                buttons=reply.buttons,
-            )
+            reply = reply.with_prefix(caveat)
 
     if reply is not None:
         send_result = await send_reply_spec(
@@ -1285,6 +1281,9 @@ async def process_inbound_message(
             send_text=send_text,
             send_list=send_list,
             send_button=send_button,
+            send_image=send_image,
+            send_document=send_document,
+            send_cta=send_cta,
         )
         await _safe(mlog.log_reply(correlation_id=correlation_id, reply=reply.text))
         # #11 Reply Workflow: only the plain-text branch of send_reply_spec

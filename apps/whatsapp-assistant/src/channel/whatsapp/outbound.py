@@ -27,6 +27,7 @@ _LIST_ROW_DESCRIPTION_MAX_CHARS = 72
 _LIST_MAX_ROWS = 10
 _REPLY_BUTTON_TITLE_MAX_CHARS = 20
 _REPLY_BUTTON_MAX_COUNT = 3
+_CTA_DISPLAY_TEXT_MAX_CHARS = 20
 
 
 class WhatsAppSender:
@@ -165,12 +166,19 @@ class WhatsAppSender:
         *,
         body: str,
         buttons: list[ListRow],
+        header_image: bytes | None = None,
     ) -> bool:
         """Send up to 3 tappable quick-reply buttons (e.g. Yes/No confirmation).
 
         Returns True on success. Meta Cloud API limits: max 3 buttons,
         20-char titles -- enforced here rather than trusted from the caller,
         same reasoning as send_list.
+
+        `header_image` (PNG bytes, WA-14) puts an image above the body, so an
+        answer card and its next-step buttons arrive as one message. Reply-
+        button messages are the only interactive type whose header may be an
+        image (list headers are text only). If the upload fails the buttons
+        are still sent, without the image: the body carries the answer.
         """
         if not buttons:
             logger.error("send_button called with no buttons to %s", to_wa_id)
@@ -200,10 +208,55 @@ class WhatsAppSender:
                 ]
             },
         }
+        await self._attach_image_header(interactive, header_image)
         return (await self._send(to_wa_id, {"type": "interactive", "interactive": interactive})) is not None
 
+    async def send_cta_url(
+        self,
+        to_wa_id: str,
+        *,
+        body: str,
+        label: str,
+        url: str,
+        header_image: bytes | None = None,
+    ) -> bool:
+        """Send one "open this link" button (WhatsApp's cta_url interactive
+        message), e.g. to open a dashboard page without pasting a raw URL.
+        Returns True on success. One link per message, and it cannot carry
+        reply buttons or a list alongside it. 20-char label, enforced here.
+        `header_image` behaves as in send_button."""
+        interactive: dict = {
+            "type": "cta_url",
+            "body": {"text": body},
+            "action": {
+                "name": "cta_url",
+                "parameters": {
+                    "display_text": label[:_CTA_DISPLAY_TEXT_MAX_CHARS],
+                    "url": url,
+                },
+            },
+        }
+        await self._attach_image_header(interactive, header_image)
+        return (await self._send(to_wa_id, {"type": "interactive", "interactive": interactive})) is not None
+
+    async def _attach_image_header(self, interactive: dict, image: bytes | None) -> None:
+        """Upload `image` and set it as the interactive message's header.
+        Degrades to no header (logged) rather than failing the message."""
+        if image is None or not self.enabled:
+            return
+        media_id = await self._upload_media(image, mime_type="image/png", filename="card.png")
+        if media_id is None:
+            logger.warning("whatsapp.header_image_dropped reason=upload_failed")
+            return
+        interactive["header"] = {"type": "image", "image": {"id": media_id}}
+
     async def send_image(
-        self, to_wa_id: str, image_bytes: bytes, *, caption: str | None = None
+        self,
+        to_wa_id: str,
+        image_bytes: bytes,
+        *,
+        caption: str | None = None,
+        filename: str = "receipt.png",
     ) -> bool:
         """Upload an image and send it. Returns True on success.
 
@@ -217,7 +270,7 @@ class WhatsAppSender:
             logger.warning("WhatsApp sender disabled (missing phone_number_id/access_token)")
             return False
 
-        media_id = await self._upload_media(image_bytes, mime_type="image/png", filename="receipt.png")
+        media_id = await self._upload_media(image_bytes, mime_type="image/png", filename=filename)
         if media_id is None:
             return False
 
