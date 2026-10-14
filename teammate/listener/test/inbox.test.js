@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { createApi } from "../src/api.js";
 import { normalizeMessage } from "../src/normalize.js";
 import { Store } from "../src/store.js";
+import { WhatsAppListener } from "../src/whatsapp.js";
 
 const GROUP = "120363000000000001@g.us";
 const TOKEN = "test-token-0123456789";
@@ -293,5 +294,72 @@ test("project (TM-05): an inbox from before TM-05 gains the column, data kept", 
     store.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("history (TM-06): pages back through the phone's older messages, then stops", async () => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(join(tmpdir(), "tm06-"));
+  try {
+    const store = seeded(); // GROUP has A1 (oldest, ts 1_760_000_000) and A2
+    const wa = new WhatsAppListener({ store, dataDir: dir, log: () => {} });
+    const asked = [];
+    // The phone has two older messages; the second request gets nothing new.
+    const older = [groupMsg("H1", "old: invoice wrong", { ts: 1_759_000_000 }), groupMsg("H2", "old: need report", { ts: 1_759_100_000 })];
+    wa.state = "connected";
+    wa.sock = {
+      fetchMessageHistory: async (count, key, tsMs) => {
+        asked.push({ count, id: key.id, remoteJid: key.remoteJid, tsMs });
+        const reply = asked.length === 1 ? older : [older[0]];
+        // The answer arrives as a history event, with an id other than the request's.
+        setImmediate(() => wa.onHistorySet({ messages: reply, syncType: 6, peerDataRequestSessionId: "other" }));
+        return `REQ${asked.length}`;
+      },
+      groupMetadata: async () => ({ id: GROUP, subject: "x" }),
+    };
+    const r = await wa.fetchHistory(GROUP, { count: 50, pages: 5 });
+    assert.equal(r.added, 2);
+    assert.equal(r.requests, 2);
+    assert.deepEqual(asked[0], { count: 50, id: "A1", remoteJid: GROUP, tsMs: 1_760_000_000_000 });
+    assert.equal(asked[1].id, "H1"); // second page anchored on the new oldest
+    assert.equal(store.findMessages({ q: "old:" }).length, 2);
+    assert.equal(wa.historyWaiters.size, 0);
+
+    // No messages yet in a chat: nothing to anchor on. Disconnected: refused.
+    await assert.rejects(wa.fetchHistory("999@g.us"), /no message stored/);
+    wa.state = "connecting";
+    await assert.rejects(wa.fetchHistory(GROUP), /not connected/);
+    store.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("history (TM-06): API resolves the chat, keeps to the project, reports failures", async () => {
+  const store = seeded();
+  store.setRole(GROUP, "customer", "mercon");
+  const calls = [];
+  const wa = {
+    status: () => ({ state: "connected" }),
+    fetchHistory: async (jid, opts) => {
+      calls.push({ jid, ...opts });
+      if (opts.pages === 2) throw new Error("the phone didn't answer");
+      return { added: 7, requests: 1, oldest_at: "2026-01-01T00:00:00.000Z" };
+    },
+  };
+  const server = createApi({ store, wa, token: TOKEN });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  try {
+    const ok = await call(server, "POST", "/history", { body: { chat: "Acme", project: "mercon", count: 500 } });
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body.added, 7);
+    assert.deepEqual(calls[0], { jid: GROUP, count: 100, pages: 1 }); // count capped, one page per call
+    assert.equal((await call(server, "POST", "/history", { body: { chat: "Acme", project: "mesiri" } })).status, 404);
+    assert.equal((await call(server, "POST", "/history", { body: { chat: "nope" } })).status, 404);
+    assert.equal((await call(server, "POST", "/history", { body: { chat: "Acme", pages: 2 } })).status, 409);
+  } finally {
+    server.close();
   }
 });

@@ -80,6 +80,18 @@ refused with HTTP 403. Limits: text 4,000 characters, image 5 MB, 30 posts an ho
 (`TEAMMATE_SEND_PER_HOUR`). Sessions do this on their own after pushing work (skill
 `team-update`). A reply in the group is *not* treated as approval to publish; that's TM-03.
 
+## Older messages (TM-06)
+
+WhatsApp shares a group's recent history with new members, so the spare **phone** often has
+messages from before the listener saw them. Pull them into the inbox, 50 per page:
+
+```bash
+python3 teammate/inbox.py history "Mercon Software discussions" --pages 20
+```
+
+The phone must be online. It can only send what it has; it stops when there's nothing older.
+Voice notes and photos of pulled messages are downloaded too, while WhatsApp still serves them.
+
 ## Daily use
 
 Just talk to Claude Code: "what did customers report this week?", "fix #1432", "the cement

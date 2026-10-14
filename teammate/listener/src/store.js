@@ -124,6 +124,13 @@ export class Store {
     return res.changes > 0 ? Number(res.lastInsertRowid) : null;
   }
 
+  /** The oldest stored message of a chat: the anchor for asking the phone for older ones (TM-06). */
+  oldestMessage(jid) {
+    return this.db
+      .prepare("SELECT id, from_me, sender_jid, at FROM messages WHERE chat_jid = ? ORDER BY at ASC, rowid ASC LIMIT 1")
+      .get(jid);
+  }
+
   setMediaPath(n, path) {
     this.db.prepare("UPDATE messages SET media_path = ? WHERE rowid = ?").run(path, n);
   }

@@ -28,6 +28,7 @@ project's conversations. Don't unset or override it to look at another project's
 | What happened lately | `recent --hours 24` (`--role customer`, `--chat "Acme"`) |
 | Find something | `search dpr pdf` (all words must match; `--days 60`, `--chat`, `--role`) |
 | Full context of one message | `show 1432 --around 15` |
+| Older messages of a group (from before the listener joined) | `history "Acme" --pages 10` (the spare phone must be online) |
 | A photo / voice note / document | `media 1432 /tmp/x.jpg`, then look at the file |
 | Label a group | `label "Acme" customer` (team / customer / ignore; tagged with this project) |
 

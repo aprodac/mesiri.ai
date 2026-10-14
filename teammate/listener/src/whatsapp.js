@@ -13,12 +13,17 @@ import {
   fetchLatestBaileysVersion,
   makeWASocket,
   normalizeMessageContent,
+  proto,
   useMultiFileAuthState,
 } from "@whiskeysockets/baileys";
 import pino from "pino";
 import { MEDIA_KINDS, normalizeMessage } from "./normalize.js";
 
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
+const ON_DEMAND = proto.HistorySync.HistorySyncType.ON_DEMAND;
+// How long to wait for the phone to answer one history request (TM-06). Under
+// nginx's 60 s proxy timeout, so one page fits in one HTTP call.
+const HISTORY_REPLY_MS = 40_000;
 const EXT_BY_MIME = {
   "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "video/mp4": "mp4",
   "audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a", "application/pdf": "pdf",
@@ -45,6 +50,7 @@ export class WhatsAppListener {
     this.saving = Promise.resolve();
     this.waVersion = undefined;
     this.namesTried = new Set();
+    this.historyWaiters = new Map(); // history request id -> resolve(messages)
     this.waLogger = pino({ level: process.env.TEAMMATE_WA_LOG_LEVEL || "warn" });
   }
 
@@ -73,6 +79,10 @@ export class WhatsAppListener {
       browser: Browsers.macOS("Chrome"),
       markOnlineOnConnect: false, // keep the phone getting notifications; never look "online"
       syncFullHistory: false,
+      // Without this Baileys drops every history packet when syncFullHistory is
+      // off. Accept only the answers to our own requests (TM-06), so personal
+      // chats' history is never pulled in wholesale.
+      shouldSyncHistoryMessage: (n) => n.syncType === ON_DEMAND,
       shouldIgnoreJid: (jid) => jid === "status@broadcast" || jid?.endsWith("@newsletter"),
       // While unlinked, WhatsApp drops the connection after 6 link refreshes
       // (default ~2.5 min), killing any pairing code issued on it. 2 min each
@@ -91,11 +101,21 @@ export class WhatsAppListener {
     sock.ev.on("messages.upsert", ({ messages }) => {
       for (const msg of messages) this.record(msg, { downloadMedia: true }).catch((e) => this.log(`record failed: ${e}`));
     });
-    sock.ev.on("messaging-history.set", ({ messages = [] }) => {
-      for (const msg of messages) this.record(msg, { downloadMedia: false }).catch(() => {});
-    });
+    sock.ev.on("messaging-history.set", (e) => this.onHistorySet(e));
     sock.ev.on("groups.upsert", (groups) => groups.forEach((g) => this.saveGroup(g)));
     sock.ev.on("groups.update", (groups) => groups.forEach((g) => g.id && g.subject && this.saveGroup(g)));
+  }
+
+  onHistorySet({ messages = [], syncType, peerDataRequestSessionId }) {
+    // Our pending request, matched by id -- or, if the phone's answer carries
+    // a different id, the only one pending (requests run one at a time).
+    const waiter =
+      this.historyWaiters.get(peerDataRequestSessionId) ??
+      (syncType === ON_DEMAND && this.historyWaiters.size === 1 ? [...this.historyWaiters.values()][0] : undefined);
+    if (waiter) return waiter(messages);
+    // Media too for on-demand pulls: old voice notes are worth having while WhatsApp still serves them.
+    const downloadMedia = syncType === ON_DEMAND;
+    for (const msg of messages) this.record(msg, { downloadMedia }).catch(() => {});
   }
 
   saveGroup(g) {
@@ -166,16 +186,52 @@ export class WhatsAppListener {
     return sent?.key?.id || null;
   }
 
+  /**
+   * Asks the phone for older messages of one chat, `count` at a time, before the
+   * oldest one stored, until it has no more or `pages` is reached (TM-06). The
+   * phone must be online, and can only send what it has itself.
+   */
+  async fetchHistory(jid, { count = 50, pages = 10 } = {}) {
+    if (this.state !== "connected" || !this.sock) throw new Error(`WhatsApp is ${this.state}, not connected`);
+    if (this.historyWaiters.size) throw new Error("a history request is already running; try again when it finishes");
+    let added = 0;
+    let done = 0;
+    for (; done < pages; done++) {
+      const oldest = this.store.oldestMessage(jid);
+      if (!oldest) throw new Error("no message stored for this chat yet; wait until someone writes in it");
+      const key = { remoteJid: jid, id: oldest.id, fromMe: Boolean(oldest.from_me), participant: oldest.sender_jid || undefined };
+      const id = await this.sock.fetchMessageHistory(count, key, Date.parse(oldest.at));
+      const messages = await new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(null), HISTORY_REPLY_MS);
+        this.historyWaiters.set(id, (m) => (clearTimeout(timer), resolve(m)));
+      }).finally(() => this.historyWaiters.delete(id));
+      if (messages === null) {
+        if (done === 0) throw new Error("the phone didn't answer; check it is online with WhatsApp open, then try again");
+        break;
+      }
+      let fresh = 0;
+      for (const msg of messages) if ((await this.record(msg, { downloadMedia: true }).catch(() => null)) != null) fresh++;
+      added += fresh;
+      if (fresh === 0) {
+        done++;
+        break; // the phone has nothing older
+      }
+    }
+    this.log(`history for ${jid}: ${added} older messages in ${done} request(s)`);
+    return { added, requests: done, oldest_at: this.store.oldestMessage(jid)?.at ?? null };
+  }
+
+  /** Stores one message (and its media); returns its number, or null if not stored. */
   async record(msg, { downloadMedia }) {
     const rec = normalizeMessage(msg);
-    if (!rec) return;
+    if (!rec) return null;
     this.lastEventAt = new Date().toISOString();
 
     if (!rec.is_group && !rec.from_me && rec.sender_name) {
       this.store.upsertChat({ jid: rec.chat_jid, name: rec.sender_name, is_group: false });
     }
     const n = this.store.addMessage(rec);
-    if (n === null) return; // seen before
+    if (n === null) return null; // seen before
 
     if (rec.is_group && !this.store.hasChatName(rec.chat_jid) && !this.namesTried.has(rec.chat_jid)) {
       this.namesTried.add(rec.chat_jid);
@@ -187,7 +243,7 @@ export class WhatsAppListener {
       const content = normalizeMessageContent(msg.message) || {};
       const inner = Object.values(content).find((v) => v && typeof v === "object" && "mimetype" in v);
       const size = Number(inner?.fileLength?.toString?.() ?? inner?.fileLength ?? 0);
-      if (size > MAX_MEDIA_BYTES) return;
+      if (size > MAX_MEDIA_BYTES) return n;
       try {
         const buf = await downloadMediaMessage(msg, "buffer", {}, {
           logger: this.waLogger,
@@ -200,5 +256,6 @@ export class WhatsAppListener {
         this.log(`media download failed for message ${n}: ${e}`);
       }
     }
+    return n;
   }
 }

@@ -8,6 +8,9 @@
 //   GET  /messages?chat=&role=&project=&q=&since=&until=&sender=&limit=&before=
 //   GET  /messages/:n?project=        one message with its surrounding thread
 //   GET  /media/:n?project=           the downloaded file for a media message
+//   POST /history      {chat, count?, pages?, project?}
+//                                     ask the phone for a chat's older messages (TM-06);
+//                                     pages defaults to 1 so a call stays under nginx's 60 s
 //   POST /pair         {phone}        start linking the spare number; returns the code
 //   POST /send         {chat, project?, text?, image_base64?, caption?}
 //                                     post into a chat labelled "team" -- refused anywhere else
@@ -99,6 +102,19 @@ export function createApi({ store, wa, token }) {
         if (!inProject(msg) || !msg.media_path || !existsSync(msg.media_path)) return send(res, 404, { error: "no media" });
         res.writeHead(200, { "content-type": msg.media_mime || "application/octet-stream" });
         return createReadStream(msg.media_path).pipe(res);
+      }
+      if (req.method === "POST" && path === "/history") {
+        const body = await readJson(req);
+        const chat = store.findChat(String(body.chat || ""));
+        if (!chat) return send(res, 404, { error: "no such chat; use the jid or a unique part of the name" });
+        if (body.project && chat.project !== body.project) return send(res, 404, { error: "no such chat in this project" });
+        const count = Math.min(Math.max(Number(body.count) || 50, 1), 100);
+        const pages = Math.min(Math.max(Number(body.pages) || 1, 1), 50);
+        try {
+          return send(res, 200, { chat: chat.name || chat.jid, ...(await wa.fetchHistory(chat.jid, { count, pages })) });
+        } catch (err) {
+          return send(res, 409, { error: err.message });
+        }
       }
       if (req.method === "POST" && path === "/pair") {
         const { phone } = await readJson(req);
