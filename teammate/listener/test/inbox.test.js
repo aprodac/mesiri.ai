@@ -322,7 +322,7 @@ test("history (TM-06): pages back through the phone's older messages, then stops
     const r = await wa.fetchHistory(GROUP, { count: 50, pages: 5 });
     assert.equal(r.added, 2);
     assert.equal(r.requests, 2);
-    assert.deepEqual(asked[0], { count: 50, id: "A1", remoteJid: GROUP, tsMs: 1_760_000_000_000 });
+    assert.deepEqual(asked[0], { count: 50, id: "A1", remoteJid: GROUP, tsMs: 1_760_000_000 }); // seconds
     assert.equal(asked[1].id, "H1"); // second page anchored on the new oldest
     assert.equal(store.findMessages({ q: "old:" }).length, 2);
     assert.equal(wa.historyWaiters.size, 0);
@@ -355,7 +355,7 @@ test("history (TM-06): API resolves the chat, keeps to the project, reports fail
     const ok = await call(server, "POST", "/history", { body: { chat: "Acme", project: "mercon", count: 500 } });
     assert.equal(ok.status, 200);
     assert.equal(ok.body.added, 7);
-    assert.deepEqual(calls[0], { jid: GROUP, count: 100, pages: 1 }); // count capped, one page per call
+    assert.deepEqual(calls[0], { jid: GROUP, count: 50, pages: 1 }); // count capped, one page per call
     assert.equal((await call(server, "POST", "/history", { body: { chat: "Acme", project: "mesiri" } })).status, 404);
     assert.equal((await call(server, "POST", "/history", { body: { chat: "nope" } })).status, 404);
     assert.equal((await call(server, "POST", "/history", { body: { chat: "Acme", pages: 2 } })).status, 409);

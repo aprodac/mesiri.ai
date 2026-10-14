@@ -200,7 +200,8 @@ export class WhatsAppListener {
       const oldest = this.store.oldestMessage(jid);
       if (!oldest) throw new Error("no message stored for this chat yet; wait until someone writes in it");
       const key = { remoteJid: jid, id: oldest.id, fromMe: Boolean(oldest.from_me), participant: oldest.sender_jid || undefined };
-      const id = await this.sock.fetchMessageHistory(count, key, Date.parse(oldest.at));
+      // Seconds, as in Baileys' own usage (msg.messageTimestamp), despite the proto field's "Ms" name.
+      const id = await this.sock.fetchMessageHistory(count, key, Math.floor(Date.parse(oldest.at) / 1000));
       const messages = await new Promise((resolve) => {
         const timer = setTimeout(() => resolve(null), HISTORY_REPLY_MS);
         this.historyWaiters.set(id, (m) => (clearTimeout(timer), resolve(m)));

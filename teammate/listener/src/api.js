@@ -108,7 +108,7 @@ export function createApi({ store, wa, token }) {
         const chat = store.findChat(String(body.chat || ""));
         if (!chat) return send(res, 404, { error: "no such chat; use the jid or a unique part of the name" });
         if (body.project && chat.project !== body.project) return send(res, 404, { error: "no such chat in this project" });
-        const count = Math.min(Math.max(Number(body.count) || 50, 1), 100);
+        const count = Math.min(Math.max(Number(body.count) || 50, 1), 50); // WhatsApp serves at most 50 per request
         const pages = Math.min(Math.max(Number(body.pages) || 1, 1), 50);
         try {
           return send(res, 200, { chat: chat.name || chat.jid, ...(await wa.fetchHistory(chat.jid, { count, pages })) });
