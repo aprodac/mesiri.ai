@@ -180,3 +180,88 @@ export async function addProjectMember(
 export async function removeProjectMember(projectId: string, userId: string): Promise<void> {
   await api.delete(`/projects/${projectId}/members/${userId}`)
 }
+
+// ---------------------------------------------------------------------------
+// DPR recipients (tracker BE-15 / WEB-08)
+// ---------------------------------------------------------------------------
+export interface ReportRecipient {
+  id: string
+  kind: 'user' | 'contact'
+  user_id: string | null
+  name: string | null
+  phone: string | null
+  label: string | null
+  role: string | null
+  // Outside contacts get nothing until they have opted in.
+  opt_in: 'opted_in' | 'opted_out' | null
+  will_receive: boolean
+}
+
+export interface RecipientList {
+  project_id: string
+  // No list set: the project's admins and project managers get the DPR.
+  using_defaults: boolean
+  recipients: ReportRecipient[]
+}
+
+export type AddRecipientPayload =
+  | { user_id: string; label?: string }
+  | { name: string; phone: string; label?: string; opted_in?: boolean; opt_in_note?: string }
+
+export async function fetchRecipients(projectId: string): Promise<RecipientList> {
+  const res = await api.get<RecipientList>(`/dpr/projects/${projectId}/recipients`)
+  return res.data
+}
+
+export async function addRecipient(projectId: string, payload: AddRecipientPayload): Promise<ReportRecipient> {
+  const res = await api.post<ReportRecipient>(`/dpr/projects/${projectId}/recipients`, payload)
+  return res.data
+}
+
+export async function removeRecipient(projectId: string, recipientId: string): Promise<void> {
+  await api.delete(`/dpr/projects/${projectId}/recipients/${recipientId}`)
+}
+
+export async function recordRecipientConsent(
+  projectId: string,
+  recipientId: string,
+  state: 'opt-in' | 'opt-out',
+  note?: string
+): Promise<ReportRecipient> {
+  const res = await api.post<ReportRecipient>(
+    `/dpr/projects/${projectId}/recipients/${recipientId}/${state}`,
+    { note: note || null }
+  )
+  return res.data
+}
+
+// ---------------------------------------------------------------------------
+// Client logo on the project's DPRs (tracker BE-33 / WEB-08)
+// ---------------------------------------------------------------------------
+export interface ClientLogo {
+  hasClientLogo: boolean
+  // Short-lived link; null when there is no logo or storage cannot serve one.
+  url: string | null
+}
+
+export async function fetchClientLogo(projectId: string): Promise<ClientLogo> {
+  const res = await api.get<ClientLogo>(`/projects/${projectId}/client-logo`)
+  return res.data
+}
+
+export async function uploadClientLogo(
+  projectId: string,
+  contentType: string,
+  dataBase64: string
+): Promise<ClientLogo> {
+  const res = await api.put<ClientLogo>(`/projects/${projectId}/client-logo`, {
+    content_type: contentType,
+    data_base64: dataBase64,
+  })
+  return res.data
+}
+
+export async function removeClientLogo(projectId: string): Promise<ClientLogo> {
+  const res = await api.delete<ClientLogo>(`/projects/${projectId}/client-logo`)
+  return res.data
+}

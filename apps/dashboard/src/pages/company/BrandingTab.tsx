@@ -11,13 +11,12 @@ import {
   type BrandingFields,
   type CompanyBranding,
 } from '@/lib/api'
+import { LOGO_TYPES, apiErrorMessage as apiError, logoFileProblem, readAsBase64 } from '@/lib/logo-upload'
 
 // How the company appears on its DPRs (tracker WEB-10, backed by BE-20).
 // Name, address, phone and email are the company record's own fields
 // (Settings tab); this tab holds only what the letterhead adds on top.
 
-const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp']
-const LOGO_MAX_BYTES = 700 * 1024 // matches the server's limit
 const DEFAULT_COLOR = '#1F6FEB'
 
 const FIELDS: { key: keyof BrandingFields; label: string; placeholder: string; hint?: string }[] = [
@@ -35,21 +34,6 @@ const FIELDS: { key: keyof BrandingFields; label: string; placeholder: string; h
   { key: 'signatory_name', label: 'Signatory name', placeholder: 'R. Rao' },
   { key: 'signatory_designation', label: 'Signatory designation', placeholder: 'Project Director' },
 ]
-
-function apiError(err: unknown): string {
-  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
-  if (typeof detail === 'string') return detail
-  return err instanceof Error ? err.message : 'Something went wrong.'
-}
-
-function readAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result).split(',', 2)[1] ?? '')
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(file)
-  })
-}
 
 function toForm(b: CompanyBranding): Record<keyof BrandingFields, string> {
   return {
@@ -119,12 +103,9 @@ export function BrandingTab() {
     e.target.value = ''
     setLogoError(null)
     if (!file) return
-    if (!LOGO_TYPES.includes(file.type)) {
-      setLogoError('Use a PNG, JPEG or WebP image.')
-      return
-    }
-    if (file.size > LOGO_MAX_BYTES) {
-      setLogoError('The logo must be 700 KB or smaller.')
+    const problem = logoFileProblem(file)
+    if (problem) {
+      setLogoError(problem)
       return
     }
     upload.mutate(file)

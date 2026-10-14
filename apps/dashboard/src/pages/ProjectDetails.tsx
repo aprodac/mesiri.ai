@@ -16,6 +16,7 @@ import {
   ShieldAlert,
   Search,
   ChevronDown,
+  Send,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -53,6 +54,8 @@ import {
   ProjectMemberDialog,
 } from '@/components/project-dialogs'
 import { ProjectReportingTab } from '@/components/project-reporting-tab'
+import { ProjectRecipientsTab } from '@/components/project-recipients-tab'
+import { ProjectClientLogoCard } from '@/components/project-client-logo-card'
 import { ProjectOverviewTab } from '@/components/project-overview-tab'
 import { useModuleEnabled } from '@/lib/modules'
 
@@ -77,7 +80,7 @@ export default function ProjectDetails() {
     setSearchParams(nextParams, { replace: true })
   }
 
-  const [activeTab, setActiveTab] = React.useState<'overview' | 'sites' | 'members' | 'reporting' | 'whatsapp' | 'settings'>('overview')
+  const [activeTab, setActiveTab] = React.useState<'overview' | 'sites' | 'members' | 'reporting' | 'recipients' | 'whatsapp' | 'settings'>('overview')
 
   // Dialog open states
   const [projectDialogOpen, setProjectDialogOpen] = React.useState(false)
@@ -267,6 +270,15 @@ export default function ProjectDetails() {
         >
           <History className="size-3.5" />
           Reporting
+        </button>
+        <button
+          onClick={() => setActiveTab('recipients')}
+          className={`pb-2 border-b-2 transition-colors ${
+            activeTab === 'recipients' ? 'border-primary text-foreground' : 'border-transparent hover:text-foreground'
+          } flex items-center gap-1.5 whitespace-nowrap`}
+        >
+          <Send className="size-3.5" />
+          DPR Recipients
         </button>
         <button
           onClick={() => setActiveTab('whatsapp')}
@@ -508,6 +520,8 @@ export default function ProjectDetails() {
           <ProjectReportingTab project={project} />
         )}
 
+        {activeTab === 'recipients' && <ProjectRecipientsTab projectId={project.id} />}
+
         {activeTab === 'whatsapp' && (
           <Card className="rounded-none border-border/70 shadow-none">
             <CardHeader className="pb-3 border-b">
@@ -533,6 +547,8 @@ export default function ProjectDetails() {
 
         {activeTab === 'settings' && (
           <div className="space-y-4">
+            <ProjectClientLogoCard projectId={project.id} clientName={project.client} />
+
             {/* Project edit triggers */}
             <Card className="rounded-none border-border/70 shadow-none">
               <CardHeader className="pb-3 border-b">
