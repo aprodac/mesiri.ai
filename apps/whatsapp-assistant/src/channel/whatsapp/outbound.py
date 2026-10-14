@@ -253,6 +253,57 @@ class WhatsAppSender:
             await self._send(to_wa_id, {"type": "document", "document": document_fields})
         ) is not None
 
+    async def send_template(
+        self,
+        to_wa_id: str,
+        *,
+        name: str,
+        language: str,
+        body_params: tuple[str, ...] | list[str] = (),
+        header_document: tuple[bytes, str] | None = None,
+        mime_type: str = "application/pdf",
+    ) -> bool:
+        """Send a Meta-approved template (WA-12) -- the only kind of message
+        Meta delivers outside the 24h session window. `header_document` is
+        (bytes, filename) for a template whose header is a document: it is
+        uploaded first, same two-step flow as send_document. Params are
+        sent as given; channel/whatsapp/templates.py cleans them."""
+        if not self.enabled:
+            logger.warning("WhatsApp sender disabled (missing phone_number_id/access_token)")
+            return False
+
+        components: list[dict] = []
+        if header_document is not None:
+            data, filename = header_document
+            media_id = await self._upload_media(data, mime_type=mime_type, filename=filename)
+            if media_id is None:
+                return False
+            components.append(
+                {
+                    "type": "header",
+                    "parameters": [
+                        {"type": "document", "document": {"id": media_id, "filename": filename}}
+                    ],
+                }
+            )
+        if body_params:
+            components.append(
+                {
+                    "type": "body",
+                    "parameters": [{"type": "text", "text": str(p)} for p in body_params],
+                }
+            )
+
+        template: dict = {"name": name, "language": {"code": language}}
+        if components:
+            template["components"] = components
+        message_id = await self._send(to_wa_id, {"type": "template", "template": template})
+        if message_id is not None:
+            # Meta reports a template failure later, on the webhook, by this
+            # id only (ingress/receiver.py logs it) -- log the pairing here.
+            logger.info("whatsapp.template_sent name=%s wamid=%s", name, message_id)
+        return message_id is not None
+
     async def _upload_media(self, data: bytes, *, mime_type: str, filename: str) -> str | None:
         url = f"{self._graph_base_url}/{self._api_version}/{self._phone_number_id}/media"
         try:

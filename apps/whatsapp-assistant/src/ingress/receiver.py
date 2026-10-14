@@ -200,6 +200,7 @@ class WhatsAppReceiver:
         arrive.
         """
         scheduled_count = 0
+        _log_failed_statuses(payload)
 
         for context in sorted(self._extract_message_contexts(payload), key=_sort_key):
             message_id = str(context.message["id"])
@@ -441,6 +442,29 @@ class WhatsAppReceiver:
         payload: Mapping[str, Any],
     ) -> Iterator[MessageIngressContext]:
         return _iter_message_contexts(payload)
+
+
+def _log_failed_statuses(payload: Mapping[str, Any]) -> None:
+    """WA-12: Meta accepts a send (template or not) and only later reports
+    that delivery failed -- e.g. a template paused or a recipient who can't
+    receive it -- as a `statuses` entry on this webhook. Nothing else reads
+    those, so log the failures; channel/whatsapp/outbound.py logs which
+    template each wamid was."""
+    for entry in payload.get("entry") or []:
+        for change in entry.get("changes") or []:
+            if change.get("field") != "messages":
+                continue
+            for status in (change.get("value") or {}).get("statuses") or []:
+                if status.get("status") != "failed":
+                    continue
+                error = (status.get("errors") or [{}])[0]
+                logger.warning(
+                    "whatsapp.delivery_failed wamid=%s to=%s code=%s title=%s",
+                    status.get("id"),
+                    status.get("recipient_id"),
+                    error.get("code"),
+                    error.get("title"),
+                )
 
 
 def _iter_message_contexts(payload: Mapping[str, Any]) -> Iterator[MessageIngressContext]:

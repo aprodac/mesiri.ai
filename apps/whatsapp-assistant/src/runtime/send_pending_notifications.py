@@ -23,6 +23,11 @@ when present sends a document (SEND_DPR with a rendered PDF ready),
 otherwise `payload["message"]` as plain text. Every other rule_key keeps
 using the static `_RULE_KEY_MESSAGES` table.
 
+Outside the session window (WA-12) a row goes out as an approved template
+when its payload names one (`payload["template"]`) and that template is
+listed in `WHATSAPP_APPROVED_TEMPLATES`; otherwise it is skipped with the
+reason saying why (channel/whatsapp/templates.py's `choose_template`).
+
 Recommended VPS crontab entry (ops-managed, not tracked in this repo) --
 kept as a manual/backup path now that automation_runner.py drains
 automation-sourced rows itself; #9's own stuck-confirmation nudges still
@@ -54,9 +59,14 @@ _DOCUMENT_MIME_TYPE = "application/pdf"
 
 def _render(row: dict[str, Any]) -> str:
     rule_key = row["rule_key"]
+    payload = row.get("payload") or {}
+    # Any row that carries its own message uses it -- BE-16's
+    # `project_dpr_send:` rows too, which until WA-12 fell through to the
+    # generic line below and sent the DPR PDF under "You have a pending item".
+    if payload.get("message"):
+        return payload["message"]
     if rule_key.startswith("automation:"):
-        payload = row.get("payload") or {}
-        return payload.get("message") or "You have a pending item that needs your attention."
+        return "You have a pending item that needs your attention."
     return _RULE_KEY_MESSAGES.get(
         rule_key, "You have a pending item that needs your attention."
     )
@@ -98,17 +108,58 @@ async def _send_one(
     return True
 
 
+async def _send_template(
+    row: dict[str, Any],
+    choice: Any,
+    *,
+    wa_id: str,
+    sender: Any,
+    object_storage: Any | None,
+) -> bool:
+    """WA-12: the out-of-window send. A document-header template cannot go
+    without its document (Meta rejects it), so a missing or unreadable
+    document fails the send rather than degrading as the in-window path
+    does."""
+    spec = choice.spec
+    header_document = None
+    if spec.header == "document":
+        object_key = (row.get("payload") or {}).get("document_object_key")
+        if not object_key or object_storage is None:
+            return False
+        try:
+            stored = await object_storage.get_object(object_key)
+        except Exception:  # noqa: BLE001
+            import logging
+
+            logging.getLogger("mesiri.notifications").warning(
+                "notification.template_document_failed object_key=%s", object_key, exc_info=True
+            )
+            return False
+        header_document = (stored.data, "DPR.pdf")
+
+    return await sender.send_template(
+        wa_id,
+        name=spec.name,
+        language=spec.language,
+        body_params=choice.body_params,
+        header_document=header_document,
+        mime_type=_DOCUMENT_MIME_TYPE,
+    )
+
+
 async def drain_and_send(
     *,
     db: Any,
     actor_reader: Any,
     sender: Any,
     object_storage: Any | None = None,
+    approved_templates: frozenset[str] = frozenset(),
 ) -> dict[str, int]:
     """The reusable core: drain every 'pending' notification and send or
     skip each with a recorded reason. Shared by this script's own `run()`
     and runtime/automation_runner.py's scheduler tick -- one send/skip
     policy, never two copies drifting apart."""
+    from channel.whatsapp.templates import choose_template
     from mesiri.application.notifications.checks import (
         is_quiet_hours,
         is_within_whatsapp_session_window,
@@ -131,24 +182,31 @@ async def drain_and_send(
 
         last_inbound = await queue.last_inbound_at(wa_id)
         now = datetime.now(tz=UTC)
+        template_choice = None
         if not is_within_whatsapp_session_window(last_inbound_at=last_inbound, now=now):
-            # Outside Meta's free-form window -- sending would be silently
-            # rejected. An approved message template would be required
-            # instead; registering one with Meta is an ops action this
-            # script cannot do on its own.
-            await queue.mark_skipped(
-                notification_id=notification_id,
-                reason="outside_whatsapp_session_window_needs_template",
-            )
-            counts["skipped"] += 1
-            continue
+            # Outside Meta's free-form window -- a free-form send would be
+            # silently rejected. Only an approved template can go (WA-12);
+            # with none, skip with the reason rather than pretend.
+            template_choice = choose_template(row.get("payload"), approved_templates)
+            if template_choice.spec is None:
+                await queue.mark_skipped(
+                    notification_id=notification_id,
+                    reason=template_choice.skip_reason or "outside_whatsapp_session_window_needs_template",
+                )
+                counts["skipped"] += 1
+                continue
 
         if is_quiet_hours(local_now=now):
             # Left 'pending' on purpose -- not skipped -- so the next drain
             # picks it back up once quiet hours end, rather than losing it.
             continue
 
-        sent = await _send_one(row, wa_id=wa_id, sender=sender, object_storage=object_storage)
+        if template_choice is not None:
+            sent = await _send_template(
+                row, template_choice, wa_id=wa_id, sender=sender, object_storage=object_storage
+            )
+        else:
+            sent = await _send_one(row, wa_id=wa_id, sender=sender, object_storage=object_storage)
         if sent:
             await queue.mark_sent(notification_id=notification_id)
             counts["sent"] += 1
@@ -164,6 +222,7 @@ async def run() -> dict[str, int]:
 
     from backend.postgres.actor import PostgresActorReader
     from channel.whatsapp.outbound import WhatsAppSender
+    from channel.whatsapp.templates import approved_template_names
     from mesiri.bootstrap.settings import Settings as BackendSettings
     from mesiri.infrastructure.objectstorage import build_object_storage
     from mesiri.infrastructure.postgres.database import PostgresDatabase
@@ -186,7 +245,11 @@ async def run() -> dict[str, int]:
             actor_reader = PostgresActorReader()
             object_storage = build_object_storage(backend_settings)
             counts = await drain_and_send(
-                db=db, actor_reader=actor_reader, sender=sender, object_storage=object_storage
+                db=db,
+                actor_reader=actor_reader,
+                sender=sender,
+                object_storage=object_storage,
+                approved_templates=approved_template_names(whatsapp_settings.approved_templates),
             )
     finally:
         await db.disconnect()

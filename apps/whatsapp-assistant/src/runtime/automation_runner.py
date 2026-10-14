@@ -223,6 +223,7 @@ async def _drain_and_send(*, db: Any) -> dict[str, int]:
 
     from backend.postgres.actor import PostgresActorReader
     from channel.whatsapp.outbound import WhatsAppSender
+    from channel.whatsapp.templates import approved_template_names
     from mesiri.bootstrap.settings import Settings as BackendSettings
     from mesiri.infrastructure.objectstorage import build_object_storage
     from runtime.dependencies import Settings as WhatsAppSettings
@@ -242,7 +243,11 @@ async def _drain_and_send(*, db: Any) -> dict[str, int]:
         actor_reader = PostgresActorReader()
         object_storage = build_object_storage(backend_settings)
         return await drain_and_send(
-            db=db, actor_reader=actor_reader, sender=sender, object_storage=object_storage
+            db=db,
+            actor_reader=actor_reader,
+            sender=sender,
+            object_storage=object_storage,
+            approved_templates=approved_template_names(whatsapp_settings.approved_templates),
         )
 
 

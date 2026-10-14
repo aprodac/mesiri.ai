@@ -26,6 +26,12 @@ def test_automation_rule_key_renders_from_its_own_payload_message():
     assert text == "Reminder: submit today's report."
 
 
+def test_project_dpr_send_rows_use_their_own_message():
+    # Before WA-12 these fell through to the generic line (BE-16 bug).
+    text = _render(_row("project_dpr_send:p1", {"message": "Today's DPR (DPR-P-1) is attached."}))
+    assert text == "Today's DPR (DPR-P-1) is attached."
+
+
 def test_automation_rule_key_with_no_message_falls_back_to_generic():
     text = _render(_row("automation:11111111-1111-4111-8111-111111111111", {}))
     assert "pending item" in text.lower()

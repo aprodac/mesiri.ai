@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     graph_base_url: str = "https://graph.facebook.com"
     dedup_ttl_hours: int = 24
     context_debug: bool = False
+    # WA-12: comma-separated names of templates Meta has approved; see
+    # channel/whatsapp/templates.py. Empty = never send a template.
+    approved_templates: str = ""
 
     model_config = SettingsConfigDict(
         env_prefix="WHATSAPP_",

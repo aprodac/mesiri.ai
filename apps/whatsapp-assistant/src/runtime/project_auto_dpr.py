@@ -108,6 +108,35 @@ def _send_message(*, code: str | None, payload: dict[str, Any], reason: str) -> 
     return message
 
 
+def _template_params(
+    *, code: str | None, payload: dict[str, Any], reason: str, report_date: datetime.date
+) -> list[str]:
+    """WA-12: the three body values of the `mesiri_dpr_delivery` template
+    (channel/whatsapp/templates.py), used when the recipient is outside the
+    24h window: project, date, and the same status line as the in-window
+    text -- above all how many sites did not report."""
+    project = payload.get("project_name") or code or "your project"
+    try:
+        day = datetime.date.fromisoformat(str(payload.get("report_date")))
+    except ValueError:
+        day = report_date
+    date_label = f"{day.day} {day.strftime('%b %Y')}"
+
+    if payload.get("level") == "PROJECT":
+        total = int(payload.get("total_site_count") or 0)
+        missing = total - int(payload.get("reported_site_count") or 0)
+        if missing > 0:
+            sites = "site" if missing == 1 else "sites"
+            status = f"{missing} of {total} {sites} not reported."
+        else:
+            status = "All sites reported."
+    else:
+        status = "Confirmed by the site engineer."
+    if reason == "requested":
+        status += " Sent on request."
+    return [str(project), date_label, status]
+
+
 async def send_due_project_dprs(
     conn: Any,
     *,
@@ -129,6 +158,7 @@ async def send_due_project_dprs(
     import json
 
     from channel.dpr_document.letterhead import load_letterhead
+    from channel.whatsapp.templates import DPR_DELIVERY
     from mesiri.application.projects.auto_dpr import (
         due_project_sends,
         finalize_project_dpr,
@@ -203,6 +233,12 @@ async def send_due_project_dprs(
                     message = _send_message(
                         code=report["code"], payload=payload, reason=project["reason"]
                     )
+                    template_params = _template_params(
+                        code=report["code"],
+                        payload=payload,
+                        reason=project["reason"],
+                        report_date=project["report_date"],
+                    )
                     recipients = await _project_dpr_recipients(
                         db,
                         organization_id=str(project["organization_id"]),
@@ -221,7 +257,14 @@ async def send_due_project_dprs(
                             recipient_user_id=uuid.UUID(recipient_id),
                             project_id=project["id"],
                             site_id=target["site_id"],
-                            payload={"message": message, "document_object_key": object_key},
+                            payload={
+                                "message": message,
+                                "document_object_key": object_key,
+                                "template": {
+                                    "name": DPR_DELIVERY.name,
+                                    "body_params": template_params,
+                                },
+                            },
                         )
                     await mark_project_dpr_sent(
                         conn,

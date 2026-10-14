@@ -180,3 +180,33 @@ async def test_nothing_due_builds_nothing(world, monkeypatch):
     monkeypatch.setattr("channel.dpr_document.render.DprPdfRenderer", _boom)
 
     assert await sender.send_due_project_dprs(_Conn(), db=None) == 0
+
+
+async def test_the_payload_names_the_delivery_template_for_quiet_recipients(world):
+    # WA-12: outside the 24h window the DPR goes as `mesiri_dpr_delivery`.
+    _project(
+        world,
+        payload={
+            "level": "PROJECT",
+            "project_name": "Green Towers",
+            "report_date": "2026-10-13",
+            "total_site_count": 3,
+            "reported_site_count": 1,
+        },
+    )
+
+    await _send()
+
+    assert _Notifications.claims[0]["payload"]["template"] == {
+        "name": "mesiri_dpr_delivery",
+        "body_params": ["Green Towers", "13 Oct 2026", "2 of 3 sites not reported."],
+    }
+
+
+async def test_a_single_site_dpr_template_says_the_engineer_confirmed_it(world):
+    _project(world, reason="requested", payload={"level": "SITE", "report_date": "2026-10-13"})
+
+    await _send()
+
+    params = _Notifications.claims[0]["payload"]["template"]["body_params"]
+    assert params == ["DPR-P-1", "13 Oct 2026", "Confirmed by the site engineer. Sent on request."]

@@ -193,6 +193,7 @@ Copy `.env.example` to `.env` and fill in your values. All variables use the `WH
 | `WHATSAPP_MEDIA_DOWNLOAD_DIR` | — | Local path for temporary media files (default: `/tmp/mesiri/whatsapp-media`) |
 | `WHATSAPP_DEDUP_TTL_HOURS` | — | Deduplication window in hours (default: `24`) |
 | `WHATSAPP_CONTEXT_DEBUG` | — | Set to `true` to log `ResolvedContext` after each message (dev only) |
+| `WHATSAPP_APPROVED_TEMPLATES` | — | Comma-separated Meta-approved template names Mesiri may send outside the 24 h window (default: none). See [docs/ops/whatsapp-templates.md](../../docs/ops/whatsapp-templates.md) |
 
 AI provider keys (set in platform-level settings, not `WHATSAPP_` prefix):
 
