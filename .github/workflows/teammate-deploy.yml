@@ -55,9 +55,14 @@ jobs:
           TEAMMATE_API_TOKEN: ${{ secrets.TEAMMATE_API_TOKEN }}
           # Optional (TM-07): voice-note transcripts and English translations.
           TEAMMATE_GEMINI_API_KEY: ${{ secrets.TEAMMATE_GEMINI_API_KEY }}
+          # Optional (TM-03b): Claude Code answers in WhatsApp -- read-only while planning,
+          # changes only after an approved "@bot ok" (enforced in teammate/brain/src/brain.js).
+          # Both secrets are needed to switch it on.
+          TEAMMATE_CLAUDE_TOKEN: ${{ secrets.TEAMMATE_CLAUDE_TOKEN }}
+          TEAMMATE_GITHUB_TOKEN: ${{ secrets.TEAMMATE_GITHUB_TOKEN }}
         run: |
           ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
-            "TEAMMATE_API_TOKEN='${TEAMMATE_API_TOKEN}' TEAMMATE_GEMINI_API_KEY='${TEAMMATE_GEMINI_API_KEY}' bash -s" << 'ENDSSH'
+            "TEAMMATE_API_TOKEN='${TEAMMATE_API_TOKEN}' TEAMMATE_GEMINI_API_KEY='${TEAMMATE_GEMINI_API_KEY}' TEAMMATE_CLAUDE_TOKEN='${TEAMMATE_CLAUDE_TOKEN}' TEAMMATE_GITHUB_TOKEN='${TEAMMATE_GITHUB_TOKEN}' bash -s" << 'ENDSSH'
           set -euo pipefail
 
           # Node >= 22.13 (node:sqlite). Install Node 22 from NodeSource if missing/older.
@@ -79,6 +84,34 @@ jobs:
           printf 'TEAMMATE_API_TOKEN=%s\nTEAMMATE_HOST=127.0.0.1\nTEAMMATE_PORT=8790\n' "$TEAMMATE_API_TOKEN" > /opt/teammate/.env
           if [ -n "${TEAMMATE_GEMINI_API_KEY:-}" ]; then
             printf 'TEAMMATE_GEMINI_API_KEY=%s\n' "$TEAMMATE_GEMINI_API_KEY" >> /opt/teammate/.env
+          fi
+
+          # TM-03b brain: Claude Code as its own locked-down user, only when both tokens exist.
+          if [ -n "${TEAMMATE_CLAUDE_TOKEN:-}" ] && [ -n "${TEAMMATE_GITHUB_TOKEN:-}" ]; then
+            command -v gh >/dev/null || apt-get install -y gh
+            command -v python3 >/dev/null || apt-get install -y python3
+            id teammate-brain >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/teammate-brain --shell /usr/sbin/nologin teammate-brain
+            chmod 700 /var/lib/teammate-brain
+            (cd /opt/teammate/brain && npm ci --omit=dev --no-audit --no-fund \
+              && PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers npx playwright-core install --with-deps chromium) \
+              || echo "brain: browser install failed; previews stay off"
+            chown -R root:root /opt/teammate/brain/hooks && chmod 755 /opt/teammate/brain/hooks/pre-push
+            {
+              printf 'TEAMMATE_API_TOKEN=%s\nTEAMMATE_API=http://127.0.0.1:8790\nTEAMMATE_BRAIN_PORT=8791\n' "$TEAMMATE_API_TOKEN"
+              printf 'TEAMMATE_BRAIN_PROJECTS=mercon=aprodac/MERCON@ilan,mesiri=StarShape-in/mesiri.ai@main\n'
+              printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\nGH_TOKEN=%s\n' "$TEAMMATE_CLAUDE_TOKEN" "$TEAMMATE_GITHUB_TOKEN"
+              printf 'GIT_AUTHOR_NAME=Teammate bot (Ilan)\nGIT_COMMITTER_NAME=Teammate bot (Ilan)\n'
+              printf 'GIT_AUTHOR_EMAIL=ilan.usman.pro@gmail.com\nGIT_COMMITTER_EMAIL=ilan.usman.pro@gmail.com\n'
+            } > /opt/teammate/brain.env
+            sed "s#/usr/bin/node#$(command -v node)#" /opt/teammate/deploy/teammate-brain.service > /etc/systemd/system/teammate-brain.service
+            systemctl daemon-reload
+            systemctl enable teammate-brain
+            systemctl restart teammate-brain
+            printf 'TEAMMATE_BRAIN_URL=http://127.0.0.1:8791\n' >> /opt/teammate/.env
+            echo "brain: on"
+          else
+            systemctl disable --now teammate-brain 2>/dev/null || true
+            echo "brain: off (add TEAMMATE_CLAUDE_TOKEN and TEAMMATE_GITHUB_TOKEN secrets to switch it on)"
           fi
 
           sed "s#/usr/bin/node#$(command -v node)#" /opt/teammate/deploy/teammate.service > /etc/systemd/system/teammate.service
