@@ -88,7 +88,7 @@
 | BE-12 | Materials: one-time opening stock, approved stock adjustments, flag (not block) usage beyond known stock | M | Must | BE-09 | todo | | Transfers are BE-32 |
 | BE-13 | Late entry for an approved day creates a flagged revision; next day's opening shows the adjustment | M | Must | BE-08 | todo | | Keeps frozen DPRs frozen. "Approved" = confirmed by the engineer |
 | BE-14 | Tomorrow's plan, weather (manual), hours lost, site working yes/half/no | S | Must | BE-08 | done | Claude (session 13 Oct, BE-08) | `73c4905`, migration 0468. On the site day row, copied into each version. `PATCH /dpr/site-days/{site_id}/conditions?date=`. Hours lost defaults to issue delays. "No work" = ready with nothing required. Both PDFs show them. Setting them from WhatsApp is not built yet |
-| BE-15 | Report recipients (users and outside contacts) with opt-in records | S | Must | — | claimed | Claude (session 14 Oct, DPR path) | Meta requires opt-in |
+| BE-15 | Report recipients (users and outside contacts) with opt-in records | S | Must | — | done | Claude (session 14 Oct, DPR path) | `de0172b`, migration 0471: `report_recipients` (user or name+phone, soft-removed) + append-only `whatsapp_opt_ins`. `/dpr/projects/{id}/recipients` list/add/remove/opt-in/opt-out (changes: ADMIN/PM). No list = admins+PMs as before. Contacts get nothing until an opt-in is recorded (admin can record it when adding, with a note); opt-out stops all messages to that number. Checked per row at send time (`no_opt_in`/`opted_out`). Dashboard screen is WEB-08; WhatsApp YES/STOP is WA-09. SQL parsed with the Postgres parser but not run against a database |
 | BE-16 | Project DPR roll-up from approved site DPRs, send deadline, "Not reported" sites | M | Must | BE-08 | done | Claude (session 13 Oct, BE-08) | `2bfd869`, migration 0469. Cutoff now only builds drafts. Sent to admins/PMs when every site is confirmed, at `dpr_send_deadline` (default 21:00) or on "Send now" (`POST /dpr/projects/{id}/send`); single-site sends its site DPR; unconfirmed sites "Not reported". PDF rendered before sending. Also fixed: only one admin/PM ever got the auto DPR (notification key had no recipient). **Gap: BE-35** (deadline and auto-DPR can't be set from the dashboard yet) |
 | BE-17 | Fix labour events being dropped from `timeline_entries` | S | Must | — | todo | | DAILY_REPORTING_PLAN Phase 6.0 |
 | BE-18 | AI summary generated only from confirmed facts | S | Must | BE-09 | todo | | |
@@ -219,6 +219,7 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | 2026-10-13 | BE-14 site conditions: weather, hours lost, site working, tomorrow's plan (migration 0468) | `73c4905` |
 | 2026-10-13 | BE-08 site working day: needs details / ready statuses (migration 0466), every site gets its day, `/dpr/site-days` | `30fa1b7` |
 | 2026-10-13 | BE-31: users/projects routers use the configured login secret (were hardcoded) | `1ac48eb` |
+| 2026-10-14 | BE-15 DPR recipients per project + WhatsApp opt-in records (migration 0471) | `de0172b` |
 | 2026-10-14 | WA-12 template messages outside the 24h window; first template `mesiri_dpr_delivery` | `abd75a5` |
 | 2026-10-13 | BE-20 company branding + logo upload; BE-33 project client logo (migration 0467) | `669c5f8` |
 | 2026-10-13 | WEB-10 Company → Letterhead tab (branding form, logo upload, preview) | `8042a2e` |
