@@ -260,14 +260,33 @@ Module → Action → Project → Site → Capture → AI Understanding
        → Preview → Confirmation → Save
 ```
 
-of which the last four are the non-negotiable core:
+**Changed 13 Oct 2026 (BE-09, BE-22): save first, confirm later.** For the
+facts a DPR is built from, the core is now:
 
 ```
-AI Extraction → Structured Preview → User Confirmation → Persistence
+AI Extraction → Save as DRAFT (+ reply "Saved as a draft… Reply UNDO")
+             → Confirmation later (engineer, evening / site DPR page) → CONFIRMED
 ```
 
-Nothing is persisted before an explicit confirmation. A supervisor who has
-learned Material or Labour has already learned this module.
+- What the AI reads is **saved straight away as a draft** -- no "Confirm?
+  YES/NO" round-trip on site. Questions a record genuinely needs (which worker,
+  which site) are still asked first.
+- A draft is **not final**: it shows in the DPR marked as a draft, the sender
+  can UNDO it, and the site engineer confirms or rejects it -- one by one, or
+  all at once by confirming the site day. Only confirmed facts go into a
+  confirmed DPR.
+- Confirming is a new fact about a fact (`fact_reviews`, append-only), never an
+  edit of the module's own row; rejecting goes through that module's own undo
+  (P3, P12). `extractions` records what the AI read and how sure it was.
+- Applies to work done / progress, labour, materials in/used and site issues
+  (`runtime/save_first.py` `SAVE_FIRST_KEYS`). Everything else -- money
+  (expenses, transfers), creating users, admin actions -- still confirms before
+  saving. The company setting `capture_mode = confirm_first` (Mesiri team only)
+  restores the old behaviour for capture too.
+
+*Previously:* "Nothing is persisted before an explicit confirmation." That
+made every site update a two-message exchange, which supervisors skipped.
+A supervisor who has learned Material or Labour has already learned this module.
 
 ### P3 — Daily Reporting is never a second writer
 
@@ -494,7 +513,7 @@ workflows/shared/
 ├── resolve_context.py      -- P11: wraps the M4 resolver call
 ├── resolve_activity.py     -- P10's "continue vs new" candidate ranking
 ├── resolve_location.py     -- gate + create-gate, materials_catalog_query pattern
-├── confirmation.py         -- P2's non-negotiable core, one implementation
+├── confirmation.py         -- P2: draft → confirmed, one implementation
 ├── attach_evidence.py      -- shared by activity_creation and evidence graphs
 ├── cross_module_trigger.py -- P12's dispatcher-call wrapper
 └── audit_log.py            -- correction/undo trail (shared shape, §1B.5/1B.7)
@@ -510,18 +529,18 @@ logic, exactly as `AGENTS.md` prescribes.
 damaged columns."*
 
 The `activity_creation` graph splits the message into candidate segments
-**before** entity extraction, runs extraction per segment, and presents **one
-confirmation covering all segments** — not N separate confirmation
-round-trips, which would be a worse experience than not splitting at all.
+**before** entity extraction, runs extraction per segment, and saves **every
+segment as a draft** with one reply covering all of them (P2, save first) — not
+N separate round-trips.
 
 ```
 Message → Split → [Segment₁, Segment₂, Segment₃] → parallel extraction
-        → single combined preview → one confirmation → save all
+        → save all as drafts → one summary reply
 ```
 
-Partial confirmation (user corrects segment 2, accepts 1 and 3) is in scope
-for V1 — the confirmation UI must support per-segment edit, not just
-accept/reject the whole batch.
+Partial confirmation (engineer corrects segment 2, accepts 1 and 3) happens
+when the drafts are confirmed — each draft is confirmed or rejected on its own
+(`/dpr/facts/{type}/{id}/confirm|reject`), not only the whole batch.
 
 ### 1B.4 Reply-based continuation — fills an existing stub
 
@@ -1136,7 +1155,7 @@ the older expense/transfer undo. Company setting `capture_mode`
 | Resolve location text → `location_nodes` | 3 | resolution gate, `material_catalog_query.py` pattern |
 | Resolve work package (best-effort, never blocking) | 3 | P4 — nullable |
 | Attach photo/voice as evidence | 3 | existing `img_site_update` list row |
-| Structured preview + confirmation | 3 | P2 — non-negotiable |
+| Save as draft, confirm later (was: preview + confirmation) | 3 | P2 — save first since 13 Oct (BE-09, WA-01) |
 | Receipt card on save | 3 | reuse `channel/receipt/` |
 | Report an issue/blocker with duration | 3 | same graph, `issue` branch |
 | Evening DPR-ready nudge + approve-by-button | 6/8 | |
