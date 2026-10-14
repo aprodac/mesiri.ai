@@ -71,8 +71,25 @@ function ensureRepo({ repo, branch, cwd }) {
 }
 
 /** Before each turn: latest code on the project's branch, without touching uncommitted work. */
-function prepare({ cwd, branch }) {
+function prepare({ name, cwd, branch }) {
   git(cwd, "fetch", "--quiet", "origin");
+  // With a cloud routine (hybrid), all changes happen in the cloud, so this copy only mirrors GitHub:
+  // set aside anything unpushed or uncommitted on a backup branch (kept, never deleted), then follow origin.
+  if (routines[name]) {
+    const ahead = git(cwd, "rev-list", "--count", `origin/${branch}..HEAD`);
+    const dirty = git(cwd, "status", "--porcelain");
+    if (ahead !== "0" || dirty) {
+      const backup = `unpushed/${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")}`;
+      if (dirty) {
+        git(cwd, "add", "-A");
+        git(cwd, "commit", "-q", "-m", "wip: left on the bot server");
+      }
+      git(cwd, "branch", backup);
+      log(`${name}: kept unpushed work on ${backup}`);
+    }
+    git(cwd, "checkout", "-q", "-B", branch, `origin/${branch}`);
+    return;
+  }
   if (git(cwd, "rev-parse", "--abbrev-ref", "HEAD") === branch && !git(cwd, "status", "--porcelain")) git(cwd, "merge", "--ff-only", "--quiet", `origin/${branch}`);
 }
 

@@ -23,6 +23,10 @@ const READ = [
   "Read", "Grep", "Glob", "TodoWrite", "WebSearch", "WebFetch",
   "Bash(git log *)", "Bash(git diff *)", "Bash(git show *)", "Bash(git status *)", "Bash(git status)", "Bash(git branch *)",
   "Bash(git blame *)", "Bash(ls *)", "Bash(ls)", "Bash(python3 teammate/inbox.py *)",
+  // Plain reading commands, so chained lookups ("cd x && cat y; grep z") aren't refused while planning.
+  "Bash(cd *)", "Bash(cat *)", "Bash(head *)", "Bash(tail *)", "Bash(grep *)", "Bash(rg *)", "Bash(wc *)",
+  "Bash(sort *)", "Bash(uniq *)", "Bash(jq *)", "Bash(echo *)", "Bash(pwd)", "Bash(tree *)", "Bash(file *)",
+  "Bash(git ls-files *)", "Bash(git grep *)", "Bash(git rev-parse *)",
   "Bash(gh pr view *)", "Bash(gh pr list *)", "Bash(gh pr checks *)", "Bash(gh run list *)", "Bash(gh run view *)",
   ...BRAIN_TOOL_NAMES,
 ];
@@ -33,7 +37,8 @@ const WORK = [
   "Bash(npm *)", "Bash(npx *)", "Bash(node *)", "Bash(pnpm *)", "Bash(yarn *)",
   "Bash(python3 *)", "Bash(python *)", "Bash(pytest *)", "Bash(uv *)", "Bash(ruff *)",
   "Bash(cat *)", "Bash(head *)", "Bash(tail *)", "Bash(grep *)", "Bash(find *)", "Bash(wc *)", "Bash(sed *)",
-  "Bash(mkdir *)", "Bash(cp *)", "Bash(mv *)", "Bash(rm *)", "Bash(touch *)", "Bash(cd *)",
+  "Bash(mkdir *)", "Bash(cp *)", "Bash(mv *)", "Bash(rm *)", "Bash(touch *)",
+  "Bash(printf *)", "Bash(which *)", "Bash(xargs *)", "Bash(test *)", "Bash(true)", "Bash(tsc *)",
 ];
 const DENY = [
   "Bash(git push --force*)", "Bash(git push -f*)", "Bash(git push * --force*)", "Bash(git push * -f *)",
@@ -284,7 +289,10 @@ export class Brain {
     // Anything the permission rules refused: tell the owner, so nothing fails silently.
     // Planning is read-only by design, so refusals there are expected and only logged.
     const denied = result?.permission_denials || [];
-    if (denied.length) this.log(`brain: ${mode}: ${denied.length} tool call(s) refused`);
+    if (denied.length) {
+      const what = denied.map((d) => `${d.tool_name}${d.tool_input?.command ? `: ${String(d.tool_input.command).slice(0, 100)}` : ""}`);
+      this.log(`brain: ${mode}: refused ${what.join(" | ")}`);
+    }
     if (denied.length && mode === "working") {
       const lines = denied.slice(0, 4).map((d) => `• ${d.tool_name}${d.tool_input?.command ? `: ${String(d.tool_input.command).slice(0, 120)}` : ""}`);
       await say(
