@@ -54,7 +54,7 @@ const SEND_PER_HOUR = Number(process.env.TEAMMATE_SEND_PER_HOUR || 30);
 /**
  * @param {{ store: import('./store.js').Store, wa: { status(): object, requestPairingCode(phone: string): Promise<string> }, token: string }} deps
  */
-export function createApi({ store, wa, token }) {
+export function createApi({ store, wa, token, ai = null }) {
   if (!token || token.length < 16) throw new Error("TEAMMATE_API_TOKEN must be at least 16 characters");
   const sentAt = [];
 
@@ -68,7 +68,7 @@ export function createApi({ store, wa, token }) {
         // Public callers learn only whether it is up; the linked number and
         // counts need the token.
         if (!authorized(req, token)) return send(res, 200, { ok: true, state: wa.status().state });
-        return send(res, 200, { ok: true, whatsapp: wa.status(), inbox: store.stats() });
+        return send(res, 200, { ok: true, whatsapp: wa.status(), inbox: store.stats(), ai: ai?.status() ?? { enabled: false } });
       }
       if (!authorized(req, token)) return send(res, 401, { error: "unauthorized" });
 

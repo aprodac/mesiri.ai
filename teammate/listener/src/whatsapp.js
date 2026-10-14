@@ -238,6 +238,7 @@ export class WhatsAppListener {
     }
     const n = this.store.addMessage(rec);
     if (n === null) return null; // seen before
+    if (!(downloadMedia && MEDIA_KINDS.has(rec.kind === "voice" ? "audio" : rec.kind))) this.onStored?.(n);
 
     if (rec.is_group && !this.store.hasChatName(rec.chat_jid) && !this.namesTried.has(rec.chat_jid)) {
       this.namesTried.add(rec.chat_jid);
@@ -261,6 +262,7 @@ export class WhatsAppListener {
       } catch (e) {
         this.log(`media download failed for message ${n}: ${e}`);
       }
+      this.onStored?.(n); // after the file is saved, so a voice note can be transcribed
     }
     return n;
   }

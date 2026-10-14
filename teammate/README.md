@@ -92,6 +92,18 @@ python3 teammate/inbox.py history "Mercon Software discussions" --pages 20
 The phone must be online. It can only send what it has; it stops when there's nothing older.
 Voice notes and photos of pulled messages are downloaded too, while WhatsApp still serves them.
 
+## Voice notes and Malayalam (TM-07)
+
+With the GitHub secret `TEAMMATE_GEMINI_API_KEY` set, the listener sends every voice note to
+Gemini (`gemini-2.5-flash`, the model Mesiri's voice pipeline uses) for a transcript in its own
+language plus an English translation, and translates non-English text (Malayalam script or
+Manglish) into English. Results are stored with the message on the server, so `recent`,
+`show` and English `search` cover voice notes too. Older messages are done in the background.
+
+- Only chats labelled `team` or `customer` are sent; personal / unlabelled chats never are.
+- `inbox.py status` shows whether the key works and how many messages are waiting.
+- A message that fails 3 times is skipped; the last error shows in `status`.
+
 ## Daily use
 
 Just talk to Claude Code: "what did customers report this week?", "fix #1432", "the cement

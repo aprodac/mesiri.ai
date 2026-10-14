@@ -5,11 +5,15 @@
 //   TEAMMATE_DATA_DIR    default ./data  (inbox.db, auth/ session, media/)
 //   TEAMMATE_HOST        default 127.0.0.1 (put nginx in front, never expose directly)
 //   TEAMMATE_PORT        default 8790
+//   TEAMMATE_GEMINI_API_KEY  optional; turns on voice-note transcripts and English
+//                            translations (TM-07)
+//   TEAMMATE_GEMINI_MODEL    default gemini-2.5-flash
 
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createApi } from "./api.js";
 import { Store } from "./store.js";
+import { AiWorker, Transcriber } from "./transcribe.js";
 import { WhatsAppListener } from "./whatsapp.js";
 
 const dataDir = resolve(process.env.TEAMMATE_DATA_DIR || "./data");
@@ -20,11 +24,16 @@ const log = (msg) => console.log(`[teammate] ${msg}`);
 mkdirSync(dataDir, { recursive: true });
 const store = new Store(join(dataDir, "inbox.db"));
 const wa = new WhatsAppListener({ store, dataDir, log });
-const api = createApi({ store, wa, token: process.env.TEAMMATE_API_TOKEN });
+const geminiKey = process.env.TEAMMATE_GEMINI_API_KEY;
+const transcriber = geminiKey ? new Transcriber({ apiKey: geminiKey, model: process.env.TEAMMATE_GEMINI_MODEL || undefined }) : null;
+const ai = new AiWorker({ store, transcriber, readFile: (p) => readFileSync(p), log });
+wa.onStored = () => ai.kick();
+const api = createApi({ store, wa, token: process.env.TEAMMATE_API_TOKEN, ai });
 
 api.listen(port, host, () => log(`inbox API on http://${host}:${port}`));
 await wa.start();
 log(wa.registered ? "linked session found, connecting" : "not linked yet -- run `inbox.py pair <phone>`");
+ai.start().catch((e) => log(`Gemini worker failed to start: ${e}`));
 
 const shutdown = () => {
   api.close();

@@ -111,7 +111,16 @@ def _line(m: dict, *, with_chat: bool = True) -> str:
     kind = "" if m["kind"] == "text" else f"<{m['kind']}{' ✓file' if m.get('has_media') else ''}> "
     text = (m.get("text") or "").replace("\n", " ⏎ ")
     quoted = f'  ↩ "{(m["quoted_text"] or "")[:80]}"' if m.get("quoted_text") else ""
-    return f"#{m['n']:<6} {_when(m['at'])}  {chat}{_who(m)}: {kind}{text}{quoted}"
+    # TM-07: what a voice note says, and English for non-English messages.
+    extra = ""
+    if m.get("transcript"):
+        extra += f' 🗣 "{m["transcript"]}"'
+    if m.get("translation") and m.get("translation") != m.get("transcript"):
+        extra += f"  ⇒ EN: {m['translation']}"
+    if extra and m.get("language"):
+        extra = f"  [{m['language']}]{extra}"
+    extra = extra.replace(chr(10), " ⏎ ")
+    return f"#{m['n']:<6} {_when(m['at'])}  {chat}{_who(m)}: {kind}{text}{quoted}{extra}"
 
 
 def _print_messages(messages: list[dict], *, oldest_first: bool = True) -> None:
@@ -236,6 +245,14 @@ def main() -> None:
         print(
             f"Inbox: {ib['messages']} messages in {ib['chats']} chats; last message {_when(ib.get('last_message_at'))}"
         )
+        ai = h.get("ai") or {}
+        if not ai.get("enabled"):
+            print("Translation: off (no Gemini key on the listener)")
+        else:
+            state = {True: "working", False: "KEY CHECK FAILED", None: "checking"}[ai.get("ok")]
+            print(f"Translation: {state} ({ai.get('model')}); {ai.get('pending', 0)} waiting")
+            if ai.get("last_error"):
+                print(f"  last error: {ai['last_error']}")
     elif a.cmd == "chats":
         for c in _request("GET", "/chats", params={"project": PROJECT})["chats"]:
             kind = "group" if c["is_group"] else "direct"

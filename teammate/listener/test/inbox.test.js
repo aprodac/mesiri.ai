@@ -4,6 +4,7 @@ import { createApi } from "../src/api.js";
 import { normalizeMessage } from "../src/normalize.js";
 import { Store } from "../src/store.js";
 import { WhatsAppListener } from "../src/whatsapp.js";
+import { AiWorker, Transcriber, needsTranslation } from "../src/transcribe.js";
 
 const GROUP = "120363000000000001@g.us";
 const TOKEN = "test-token-0123456789";
@@ -381,4 +382,79 @@ test("normalize (Baileys 7): a sender under a privacy id keeps their phone numbe
   });
   assert.equal(dm.sender_pn, "919800000001@s.whatsapp.net");
   assert.equal(dm.is_group, false);
+});
+
+function fakeGemini(replies) {
+  const calls = [];
+  const fetchImpl = async (url, init = {}) => {
+    calls.push({ url, body: init.body ? JSON.parse(init.body) : null, key: init.headers?.["x-goog-api-key"] });
+    if (url.endsWith("/models/gemini-2.5-flash")) return new Response("{}", { status: 200 });
+    const next = replies.shift();
+    if (next instanceof Error) return new Response(next.message, { status: 500 });
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(next) }] } }] }), { status: 200 });
+  };
+  return { calls, fetchImpl };
+}
+
+test("transcribe (TM-07): voice and text requests, JSON parsing, English left alone", async () => {
+  const { calls, fetchImpl } = fakeGemini([
+    { transcript: "ഡ്രൈവർ കൗണ്ട് തെറ്റാണ്", translated_text: "The driver count is wrong", detected_language: "Malayalam" },
+    { translated_text: "Send me another mail id", detected_language: "Malayalam" },
+    { translated_text: "", detected_language: "English" },
+  ]);
+  const t = new Transcriber({ apiKey: "k-123", fetchImpl });
+  assert.equal(await t.check(), true);
+  const v = await t.voice(Buffer.from("OggS"), "audio/ogg; codecs=opus");
+  assert.deepEqual(v, { transcript: "ഡ്രൈവർ കൗണ്ട് തെറ്റാണ്", translation: "The driver count is wrong", language: "Malayalam" });
+  const part = calls[1].body.contents[0].parts[0].inline_data;
+  assert.equal(part.mime_type, "audio/ogg");
+  assert.equal(part.data, Buffer.from("OggS").toString("base64"));
+  assert.equal(calls[1].key, "k-123");
+  assert.equal(calls[1].body.generationConfig.responseMimeType, "application/json");
+  assert.deepEqual(await t.text("ith vere kitya mail id onnu vitero"), { translation: "Send me another mail id", language: "Malayalam" });
+  assert.deepEqual(await t.text("total driver count still showing 27"), { translation: null, language: "English" });
+
+  assert.equal(needsTranslation(["abc@gmail.com", "xyz@gmail.com"].join(String.fromCharCode(10))), false);
+  assert.equal(needsTranslation("https://x.y/z 27"), false);
+  assert.equal(needsTranslation("Ooo"), true);
+});
+
+test("transcribe (TM-07): worker fills the queue, skips private chats, retries failures 3 times", async () => {
+  const store = seeded(); // Acme = customer, Mesiri team = team
+  const PRIVATE = "120363000000000009@g.us";
+  store.upsertChat({ jid: PRIVATE, name: "Family", is_group: true });
+  store.setRole(PRIVATE, "ignore");
+  store.addMessage(normalizeMessage({ ...groupMsg("P1", "dinner at 8"), key: { id: "P1", remoteJid: PRIVATE, participant: "f@s.whatsapp.net" } }));
+  const voiceN = store.addMessage(normalizeMessage({ ...groupMsg("V9", ""), message: { audioMessage: { ptt: true, mimetype: "audio/ogg; codecs=opus" } } }));
+  store.setMediaPath(voiceN, "/media/v9.ogg");
+  const unsaved = store.addMessage(normalizeMessage({ ...groupMsg("V8", ""), message: { audioMessage: { ptt: true, mimetype: "audio/ogg" } } }));
+
+  // 3 text messages in labelled chats + the voice note with its file; the one without a file and the private chat wait.
+  assert.equal(store.countPendingAi(), 4);
+  const { calls, fetchImpl } = fakeGemini([
+    { transcript: "സ്ലാബിൽ വിള്ളൽ", translated_text: "Crack in the slab", detected_language: "Malayalam" },
+    { translated_text: "", detected_language: "English" },
+    new Error("quota"),
+    { translated_text: "", detected_language: "English" },
+  ]);
+  const files = [];
+  const worker = new AiWorker({ store, transcriber: new Transcriber({ apiKey: "k", fetchImpl }), readFile: (p) => (files.push(p), Buffer.from("OggS")) });
+  await worker.start({ intervalMs: 60_000 });
+  await worker.running;
+  clearInterval(worker.timer);
+
+  assert.deepEqual(files, ["/media/v9.ogg"]);
+  const voice = store.getMessage(voiceN);
+  assert.equal(voice.translation, "Crack in the slab");
+  assert.equal(voice.language, "Malayalam");
+  assert.equal(store.findMessages({ q: "slab crack" })[0].n, voiceN); // English search finds the voice note
+  assert.ok(calls.every((c) => !JSON.stringify(c.body || {}).includes("dinner"))); // private chat never sent
+  assert.equal(store.getMessage(unsaved).transcript, null);
+  // One text failed once; it is retried on the next run, up to 3 attempts in all.
+  assert.equal(worker.status().pending, 1);
+  assert.match(worker.status().last_error, /quota/);
+  assert.equal(worker.status().ok, true);
+
+  const off = new AiWorker({ store, transcriber: null, readFile: () => Buffer.alloc(0) });
+  assert.deepEqual(off.status(), { enabled: false });
 });

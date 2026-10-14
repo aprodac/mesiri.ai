@@ -53,9 +53,11 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
           TEAMMATE_API_TOKEN: ${{ secrets.TEAMMATE_API_TOKEN }}
+          # Optional (TM-07): voice-note transcripts and English translations.
+          TEAMMATE_GEMINI_API_KEY: ${{ secrets.TEAMMATE_GEMINI_API_KEY }}
         run: |
           ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
-            "TEAMMATE_API_TOKEN='${TEAMMATE_API_TOKEN}' bash -s" << 'ENDSSH'
+            "TEAMMATE_API_TOKEN='${TEAMMATE_API_TOKEN}' TEAMMATE_GEMINI_API_KEY='${TEAMMATE_GEMINI_API_KEY}' bash -s" << 'ENDSSH'
           set -euo pipefail
 
           # Node >= 22.13 (node:sqlite). Install Node 22 from NodeSource if missing/older.
@@ -75,6 +77,9 @@ jobs:
 
           umask 077
           printf 'TEAMMATE_API_TOKEN=%s\nTEAMMATE_HOST=127.0.0.1\nTEAMMATE_PORT=8790\n' "$TEAMMATE_API_TOKEN" > /opt/teammate/.env
+          if [ -n "${TEAMMATE_GEMINI_API_KEY:-}" ]; then
+            printf 'TEAMMATE_GEMINI_API_KEY=%s\n' "$TEAMMATE_GEMINI_API_KEY" >> /opt/teammate/.env
+          fi
 
           sed "s#/usr/bin/node#$(command -v node)#" /opt/teammate/deploy/teammate.service > /etc/systemd/system/teammate.service
           systemctl daemon-reload

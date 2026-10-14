@@ -36,6 +36,11 @@ CREATE TABLE IF NOT EXISTS messages (
   media_path   TEXT,
   reaction_to  TEXT,
   stored_at    TEXT NOT NULL,
+  transcript   TEXT,
+  translation  TEXT,
+  language     TEXT,
+  ai_done      INTEGER NOT NULL DEFAULT 0,
+  ai_attempts  INTEGER NOT NULL DEFAULT 0,
   UNIQUE (chat_jid, id)
 );
 CREATE INDEX IF NOT EXISTS ix_messages_chat_at ON messages (chat_jid, at);
@@ -44,13 +49,20 @@ CREATE INDEX IF NOT EXISTS ix_messages_at ON messages (at);
 
 const nowIso = () => new Date().toISOString();
 
+// Messages still waiting for Gemini (TM-07); see Store.pendingAi.
+const PENDING_AI = `
+  FROM messages m JOIN chats c ON c.jid = m.chat_jid
+  WHERE m.ai_done = 0 AND m.ai_attempts < 3 AND c.role IN ('team', 'customer')
+    AND ((m.kind IN ('voice', 'audio') AND m.media_path IS NOT NULL)
+      OR (m.kind NOT IN ('voice', 'audio', 'reaction') AND COALESCE(m.text, '') != ''))`;
+
 // What the API returns for a message: the internal rowid is the public,
 // short, stable number people and sessions refer to ("message 1432").
 const MESSAGE_COLUMNS = `
   m.rowid AS n, m.id, m.chat_jid, c.name AS chat_name, c.role AS chat_role, c.project AS chat_project,
   m.sender_jid, m.sender_pn, m.sender_name, m.from_me, m.at, m.kind, m.text,
   m.quoted_id, m.quoted_text, m.media_mime, (m.media_path IS NOT NULL) AS has_media,
-  m.reaction_to`;
+  m.reaction_to, m.transcript, m.translation, m.language`;
 
 export class Store {
   constructor(path) {
@@ -60,6 +72,14 @@ export class Store {
     // Inboxes created before TM-05 have no project column; add it in place.
     const cols = this.db.prepare("PRAGMA table_info(chats)").all().map((c) => c.name);
     if (!cols.includes("project")) this.db.exec("ALTER TABLE chats ADD COLUMN project TEXT");
+    // ...and before TM-07 no transcript / translation columns.
+    const mcols = this.db.prepare("PRAGMA table_info(messages)").all().map((c) => c.name);
+    for (const [name, type] of [
+      ["transcript", "TEXT"], ["translation", "TEXT"], ["language", "TEXT"],
+      ["ai_done", "INTEGER NOT NULL DEFAULT 0"], ["ai_attempts", "INTEGER NOT NULL DEFAULT 0"],
+    ]) {
+      if (!mcols.includes(name)) this.db.exec(`ALTER TABLE messages ADD COLUMN ${name} ${type}`);
+    }
   }
 
   close() {
@@ -131,6 +151,36 @@ export class Store {
       .get(jid);
   }
 
+  /**
+   * Messages still waiting for a transcript / translation (TM-07), newest
+   * first: voice notes and audio with their file, and anything with text.
+   * Only chats labelled team or customer -- personal and unlabelled chats are
+   * never sent to Gemini.
+   */
+  pendingAi(limit = 20) {
+    return this.db
+      .prepare(
+        `SELECT m.rowid AS n, m.kind, m.text, m.media_path, m.media_mime ${PENDING_AI}
+         ORDER BY m.rowid DESC LIMIT ?`,
+      )
+      .all(limit);
+  }
+
+  /** Records the result; `null` fields mean nothing to add (e.g. already English). */
+  setAi(n, { transcript = null, translation = null, language = null } = {}) {
+    this.db
+      .prepare("UPDATE messages SET transcript = ?, translation = ?, language = ?, ai_done = 1 WHERE rowid = ?")
+      .run(transcript, translation, language, n);
+  }
+
+  failAi(n) {
+    this.db.prepare("UPDATE messages SET ai_attempts = ai_attempts + 1 WHERE rowid = ?").run(n);
+  }
+
+  countPendingAi() {
+    return this.db.prepare(`SELECT COUNT(*) AS n ${PENDING_AI}`).get().n;
+  }
+
   setMediaPath(n, path) {
     this.db.prepare("UPDATE messages SET media_path = ? WHERE rowid = ?").run(path, n);
   }
@@ -173,8 +223,8 @@ export class Store {
       params.push(role);
     }
     for (const word of (q || "").split(/\s+/).filter(Boolean)) {
-      where.push("(m.text LIKE ? OR m.quoted_text LIKE ? OR m.sender_name LIKE ?)");
-      params.push(`%${word}%`, `%${word}%`, `%${word}%`);
+      where.push("(m.text LIKE ? OR m.quoted_text LIKE ? OR m.sender_name LIKE ? OR m.transcript LIKE ? OR m.translation LIKE ?)");
+      params.push(...Array(5).fill(`%${word}%`));
     }
     if (since) {
       where.push("m.at >= ?");

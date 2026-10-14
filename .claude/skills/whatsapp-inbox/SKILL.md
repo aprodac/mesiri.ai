@@ -32,6 +32,10 @@ project's conversations. Don't unset or override it to look at another project's
 | A photo / voice note / document | `media 1432 /tmp/x.jpg`, then look at the file |
 | Label a group | `label "Acme" customer` (team / customer / ignore; tagged with this project) |
 
+Voice notes and Malayalam messages come with a transcript and an English translation
+(`🗣 "…"  ⇒ EN: …`), and `search` matches the English too. Read the original as well when the
+translation looks odd; names and amounts matter.
+
 Messages are numbered (`#1432`). Quote the number back to the user so you both mean the same
 message.
 
