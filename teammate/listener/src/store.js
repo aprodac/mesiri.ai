@@ -450,6 +450,11 @@ export class Store {
     return this.db.prepare("SELECT rowid AS n FROM messages WHERE chat_jid = ? AND id = ?").get(chat_jid, id)?.n ?? null;
   }
 
+  /** Whether a message in a chat was sent by the linked number itself (the bot). */
+  isOwnMessage(chat_jid, id) {
+    return this.db.prepare("SELECT from_me FROM messages WHERE chat_jid = ? AND id = ?").get(chat_jid, id)?.from_me === 1;
+  }
+
   stats() {
     const row = this.db.prepare("SELECT COUNT(*) AS messages, MAX(at) AS last_message_at FROM messages").get();
     const chats = this.db.prepare("SELECT COUNT(*) AS n FROM chats").get().n;

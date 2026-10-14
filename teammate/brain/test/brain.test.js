@@ -60,7 +60,7 @@ test("brain: planning turns are read-only, keep one session per group, answer in
     assert.match(calls[0].prompt, /^\[WhatsApp · PROJECT MERCON \(team\) · #5 · from Ilan\]\nReplying to: "driver count wrong"\ndid you understand/);
     assert.deepEqual(sent.map((s) => s.text), ["answer to: did you understand these issues?", "answer to: and the second one?"]);
     assert.ok(sent.every((s) => s.chat === "T@g.us" && s.project === "mercon"));
-    assert.deepEqual(JSON.parse(readFileSync(join(dir, "sessions.json"), "utf8")), { "T@g.us": "S1" });
+    assert.equal(JSON.parse(readFileSync(join(dir, "sessions.json"), "utf8")).ids["T@g.us::main"], "S1");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -138,7 +138,7 @@ test("brain: order per group, customer questions, reset, failures, long replies,
     assert.ok(sent.length - before >= 2 && sent.slice(before).every((s) => s.text.length <= 3800));
 
     await ask("reset");
-    assert.match(sent.at(-1).text, /fresh conversation/);
+    assert.match(sent.at(-1).text, /Cleared \*main\*/);
     await ask("hi again");
     assert.equal(calls.at(-1).options.resume, undefined);
 
@@ -248,6 +248,73 @@ test("brain (hybrid): with a routine, an ok starts a cloud session and posts its
     fail = false;
     await brain.approve({ project: "mercon", item_id: 42, by: "Ilan", reply_chat: "H@g.us" }); // retry works
     assert.equal(fired.length, 2);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("brain: separate conversations in one group; replying to a message continues its conversation", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "brain-"));
+  const calls = [];
+  const sent = [];
+  let n = 0;
+  let mid = 0;
+  const brain = new Brain({
+    queryFn: ({ prompt, options }) => {
+      calls.push({ prompt, options });
+      const id = options.resume || `S${++n}`;
+      return (async function* () {
+        yield { type: "result", subtype: "success", result: `re: ${prompt.split(String.fromCharCode(10)).at(-1)}`, session_id: id, duration_ms: 1, total_cost_usd: 0, permission_denials: [] };
+      })();
+    },
+    projects: { mercon: { cwd: "/r", flow: "f" } },
+    dir,
+    listener: { send: async (b) => (sent.push(b), { ok: true, id: `W${++mid}` }), addItem: async () => ({}), updateItem: async () => ({}) },
+    tools: () => ({}),
+  });
+  const ask = (text, extra = {}) => brain.ask({ project: "mercon", chat: "H@g.us", chat_name: "Mercon history", chat_role: "team", reply_chat: "H@g.us", sender: "Ilan", n: 1, text, ...extra });
+  try {
+    await ask("driver count question"); // main -> S1, reply W1
+    await ask("new transit time");
+    assert.match(sent.at(-1).text, /separate conversation \*transit-time\*/);
+    await ask("why is transit 14h?"); // transit-time -> S2, reply W3
+    assert.equal(calls.at(-1).options.resume, undefined);
+
+    // Reply to the main conversation's message (W1): goes back to S1, no @ needed upstream.
+    await ask("and the 27 count?", { quoted_id: "W1" });
+    assert.equal(calls.at(-1).options.resume, "S1");
+    // Reply to the transit conversation's answer (W3): back to S2.
+    await ask("ok and loading time?", { quoted_id: "W3" });
+    assert.equal(calls.at(-1).options.resume, "S2");
+
+    await ask("sessions");
+    assert.ok(sent.at(-1).text.includes(["• main", "• transit-time  ← current"].join(String.fromCharCode(10))));
+    await ask("switch to main");
+    assert.match(sent.at(-1).text, /Switched to \*main\*/);
+    await ask("hello again");
+    assert.equal(calls.at(-1).options.resume, "S1");
+    await ask("switch nope");
+    assert.match(sent.at(-1).text, /No conversation called \*nope\*/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("brain: old one-session-per-group files carry over as 'main'", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "brain-"));
+  const { writeFileSync } = await import("node:fs");
+  writeFileSync(join(dir, "sessions.json"), JSON.stringify({ "H@g.us": "OLD1" }));
+  const calls = [];
+  const brain = new Brain({
+    queryFn: ({ prompt, options }) => (calls.push(options), (async function* () { yield { type: "result", subtype: "success", result: "x", session_id: options.resume || "N", duration_ms: 1, total_cost_usd: 0, permission_denials: [] }; })()),
+    projects: { mercon: { cwd: "/r", flow: "f" } },
+    dir,
+    listener: { send: async () => ({ ok: true }), addItem: async () => ({}), updateItem: async () => ({}) },
+    tools: () => ({}),
+  });
+  try {
+    await brain.ask({ project: "mercon", chat: "H@g.us", chat_name: "Mercon history", chat_role: "team", reply_chat: "H@g.us", sender: "Ilan", n: 1, text: "hi" });
+    assert.equal(calls[0].resume, "OLD1");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

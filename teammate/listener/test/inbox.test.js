@@ -516,6 +516,14 @@ test("bot (TM-03): parseCommand", () => {
   assert.deepEqual(parseCommand("@919544376072 approve @9198"), { verb: "approve", rest: "" });
   assert.deepEqual(parseCommand("@1 make owner @2"), { verb: "owner", rest: "" });
   assert.equal(parseCommand("@1 who").verb, "who");
+  assert.equal(parseCommand("@1 who changed the driver count?").verb, "request");
+  assert.equal(parseCommand("@1 help me fix the driver count").verb, "request");
+  assert.equal(parseCommand("@1 help").verb, "help");
+  assert.equal(parseCommand("@1 add a filter to trips").verb, "request");
+  assert.equal(parseCommand("@1 add @2").verb, "approve");
+  assert.equal(parseCommand("@1 ok but change the colour").verb, "request");
+  assert.deepEqual(parseCommand("@1 ok #12"), { verb: "ok", id: 12, rest: "#12" });
+  assert.equal(parseCommand("@1 remove the old banner").verb, "request");
   assert.deepEqual(parseCommand("@1 ok [7]"), { verb: "ok", id: 7, rest: "[7]" });
   assert.equal(parseCommand("@1 OK").id, null);
   assert.deepEqual(parseCommand("@1 fix the transit time from loading"), { verb: "request", rest: "fix the transit time from loading" });
@@ -661,6 +669,20 @@ test("bot (TM-03b): with a brain, questions and requests go to Claude; approvals
   await bot.handle(m.rec, m.n);
   assert.equal(asked.at(-1).reply_chat, HIST);
   assert.equal(typing.at(-1), HIST);
+  asked.pop();
+
+  // A reply to one of the bot's own messages needs no @; a reply to someone else's does.
+  store.addMessage({ id: "BOT1", chat_jid: TEAM, is_group: true, sender_jid: null, sender_pn: null, sender_name: null, from_me: true,
+    at: new Date().toISOString(), kind: "text", text: "Plan [7] ready", quoted_id: null, quoted_text: null, media_mime: null, reaction_to: null });
+  m = msg(TEAM, "looks good, but also check trucks", { mentions: [], quoted_id: "BOT1" });
+  await bot.handle(m.rec, m.n);
+  assert.equal(asked.at(-1).text, "looks good, but also check trucks");
+  assert.equal(asked.at(-1).quoted_id, "BOT1");
+  const before = asked.length;
+  const other = store.findMessages({ chat: TEAM }).find((x) => !x.from_me);
+  m = msg(TEAM, "agreed", { mentions: [], quoted_id: other.id });
+  await bot.handle(m.rec, m.n);
+  assert.equal(asked.length, before);
   asked.pop();
 
   // Approval commands are still handled by the bot itself.

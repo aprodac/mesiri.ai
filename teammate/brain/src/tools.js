@@ -111,7 +111,7 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts }) {
         } catch {
           // the request log is a convenience; the plan still stands
         }
-        const saved = plans.save({ id: itemId, project: ctx.project, chat: ctx.chat, chat_name: ctx.chat_name, title, plan, by: ctx.sender });
+        const saved = plans.save({ id: itemId, project: ctx.project, chat: ctx.chat, chat_name: ctx.chat_name, session: ctx.session, title, plan, by: ctx.sender });
         return { content: [{ type: "text", text: `Plan [${saved.id}] recorded. Ask the team to reply "@bot ok ${saved.id}" to go ahead.` }] };
       },
     ),

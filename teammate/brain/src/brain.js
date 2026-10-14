@@ -121,7 +121,13 @@ export class Brain {
     Object.assign(this, { queryFn, projects, listener, tools, prepare, owner, model, env, log, now, routines, fireFn });
     this.sessionsFile = `${dir}/sessions.json`;
     this.plansFile = `${dir}/plans.json`;
-    this.sessions = readJson(this.sessionsFile, {});
+    // Several conversations per group: ids["<chat>::<name>"] = Claude session id; active[chat] = name in use;
+    // msgs[<WhatsApp message id>] = "<chat>::<name>" that wrote it, so a reply continues that conversation.
+    const saved = readJson(this.sessionsFile, {});
+    this.sessions =
+      saved.v === 2
+        ? saved
+        : { v: 2, ids: Object.fromEntries(Object.entries(saved).map(([chat, id]) => [`${chat}::main`, id])), active: {}, msgs: {} };
     this.planStore = readJson(this.plansFile, { seq: 0, plans: {} });
     this.queues = new Map(); // chat -> promise chain: one turn at a time per group
     this.today = { day: "", turns: 0 };
@@ -138,9 +144,65 @@ export class Brain {
     };
   }
 
-  /** One message for Claude: a planning turn. */
+  /** One message for Claude: a planning turn, in the conversation it replies to (or the group's active one). */
   ask(req) {
-    return this.enqueue(req.chat, () => this.turn(req, "planning"));
+    const fromReply = req.quoted_id && this.sessions.msgs[req.quoted_id];
+    if (fromReply && fromReply.startsWith(`${req.chat}::`)) {
+      req.session = fromReply.slice(req.chat.length + 2);
+      this.sessions.active[req.chat] = req.session;
+    }
+    req.session ||= this.sessions.active[req.chat] || "main";
+    return this.enqueue(`${req.chat}::${req.session}`, () => this.turn(req, "planning"));
+  }
+
+  saveSessions() {
+    const ids = Object.keys(this.sessions.msgs);
+    if (ids.length > 2000) for (const id of ids.slice(0, ids.length - 2000)) delete this.sessions.msgs[id];
+    writeJson(this.sessionsFile, this.sessions);
+  }
+
+  /** Posts to the group and remembers which conversation wrote the message. */
+  async sayFor(key, { chat, project }, text) {
+    const r = await this.listener.send({ chat, project, text });
+    if (r?.id) {
+      this.sessions.msgs[r.id] = key;
+      this.saveSessions();
+    }
+    return r;
+  }
+
+  /** "new [name]", "sessions", "switch <name>", "reset": managing a group's conversations. Returns a reply or null. */
+  sessionCommand(req) {
+    const text = String(req.text || "").trim();
+    const chat = req.chat;
+    const names = Object.keys(this.sessions.ids).filter((k) => k.startsWith(`${chat}::`)).map((k) => k.slice(chat.length + 2));
+    const active = this.sessions.active[chat] || "main";
+    let m;
+    if ((m = text.match(/^(?:new|new session|start new|another session)\b[\s:-]*(.*)$/i))) {
+      let name = m[1].toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) || `session-${names.length + 1}`;
+      while (names.includes(name)) name = `${name}-2`;
+      this.sessions.ids[`${chat}::${name}`] = null;
+      this.sessions.active[chat] = name;
+      this.saveSessions();
+      return `🆕 Started a separate conversation *${name}*. The others are kept: reply to any of their messages to continue one, or @bot switch <name>. @bot sessions lists them.`;
+    }
+    if (/^sessions?$|^list sessions$/i.test(text)) {
+      if (!names.length) return "Only one conversation so far (*main*).";
+      return `Conversations in this group:\n${names.map((n) => `• ${n}${n === active ? "  ← current" : ""}`).join("\n")}\nReply to a message to continue its conversation, or @bot switch <name>.`;
+    }
+    if ((m = text.match(/^switch(?:\s+to)?\s+(.+)$/i))) {
+      const name = m[1].trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      if (!names.includes(name)) return `No conversation called *${name}*. ${names.length ? `There's: ${names.join(", ")}.` : ""}`;
+      this.sessions.active[chat] = name;
+      this.saveSessions();
+      return `↪️ Switched to *${name}*.`;
+    }
+    if (/^(reset|start over)$/i.test(text)) {
+      this.sessions.ids[`${chat}::${active}`] = null;
+      this.saveSessions();
+      return `🧹 Cleared *${active}*; it starts fresh from the next message.`;
+    }
+    return null;
   }
 
   /** "@bot ok [n]" from an approved person: run the working turn for that plan. */
@@ -152,16 +214,18 @@ export class Brain {
       const which = pending.map((p) => `[${p.id}] ${p.title}`).join("\n");
       return say(pending.length ? `Which plan? Reply @bot ok <number>:\n${which}` : "There's no plan waiting for an ok.");
     }
+    const key = `${plan.chat}::${plan.session || "main"}`;
+    const sayPlan = (text) => this.sayFor(key, { chat: reply_chat, project }, text);
     plan.status = "approved";
     plan.approved_by = by;
     plan.approved_at = this.now().toISOString();
     writeJson(this.plansFile, this.planStore);
     if (typeof plan.id === "number") this.listener.updateItem(plan.id, { status: "in_progress", note: `OK from ${by} in WhatsApp`, project }).catch(() => {});
-    if (this.routines[project] && this.fireFn) return this.runInCloud(plan, { project, by, reply_chat, say });
+    if (this.routines[project] && this.fireFn) return this.runInCloud(plan, { project, by, reply_chat, say: sayPlan });
     const text =
       `${by} approved plan [${plan.id}] "${plan.title}". Go ahead with exactly this plan now.\n\nThe plan:\n${plan.plan}`;
-    return this.enqueue(plan.chat, () =>
-      this.turn({ project, chat: plan.chat, chat_name: plan.chat_name, chat_role: "team", reply_chat, sender: by, n: null, text }, "working", plan),
+    return this.enqueue(key, () =>
+      this.turn({ project, chat: plan.chat, chat_name: plan.chat_name, chat_role: "team", reply_chat, sender: by, n: null, text, session: plan.session || "main" }, "working", plan),
     );
   }
 
@@ -210,13 +274,14 @@ export class Brain {
 
   async turn(req, mode, plan = null) {
     const project = this.projects[req.project];
-    const say = (text) => this.listener.send({ chat: req.reply_chat, project: req.project, text });
+    req.session ||= this.sessions.active[req.chat] || "main";
+    const key = `${req.chat}::${req.session}`;
+    const say = (text) => this.sayFor(key, { chat: req.reply_chat, project: req.project }, text);
     if (!project) return say(`I'm not set up for the ${req.project} project yet.`);
 
-    if (mode === "planning" && /^\s*(reset|new session|start over)\s*$/i.test(req.text || "")) {
-      delete this.sessions[req.chat];
-      writeJson(this.sessionsFile, this.sessions);
-      return say("🧹 Started a fresh conversation for this group.");
+    if (mode === "planning") {
+      const answer = this.sessionCommand(req);
+      if (answer) return say(answer);
     }
     if (this.overDailyCap()) return say(`⏸️ I've hit today's limit of ${DAILY_TURNS} runs. Ask again tomorrow, or raise TEAMMATE_BRAIN_DAILY_TURNS.`);
 
@@ -230,12 +295,12 @@ export class Brain {
     const header = `[WhatsApp · ${where} · #${req.n ?? "-"} · from ${req.sender}]`;
     const quoted = req.quoted_text ? `\nReplying to: "${String(req.quoted_text).slice(0, 1500)}"` : "";
     const prompt = `${header}${quoted}\n${req.text}`;
-    const ctx = { project: req.project, chat: req.chat, chat_name: req.chat_name, reply_chat: req.reply_chat, sender: req.sender };
+    const ctx = { project: req.project, chat: req.chat, chat_name: req.chat_name, reply_chat: req.reply_chat, sender: req.sender, session: req.session };
 
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), TURN_TIMEOUT_MS);
     let result = null;
-    let sessionId = this.sessions[req.chat] || null;
+    let sessionId = this.sessions.ids[key] || null;
     try {
       const stream = this.queryFn({
         prompt,
@@ -261,10 +326,10 @@ export class Brain {
     } catch (e) {
       clearTimeout(timer);
       // A stale session id (e.g. after a reinstall) fails on resume: start fresh once.
-      if (this.sessions[req.chat] && /session|resume|conversation/i.test(String(e.message))) {
+      if (this.sessions.ids[key] && /session|resume|conversation/i.test(String(e.message))) {
         this.log(`brain: resume failed for ${req.chat_name}, starting a new session`);
-        delete this.sessions[req.chat];
-        writeJson(this.sessionsFile, this.sessions);
+        this.sessions.ids[key] = null;
+        this.saveSessions();
         this.today.turns--;
         return this.turn(req, mode, plan);
       }
@@ -273,8 +338,8 @@ export class Brain {
     }
     clearTimeout(timer);
     if (sessionId) {
-      this.sessions[req.chat] = sessionId;
-      writeJson(this.sessionsFile, this.sessions);
+      this.sessions.ids[key] = sessionId;
+      this.saveSessions();
     }
     if (plan) {
       plan.status = result?.subtype === "success" ? "done" : "failed";

@@ -34,9 +34,14 @@ says so. For a hard guarantee, protect `main` on GitHub (required review).
 
 ## Group commands
 
-- `@bot <question or request>` — answered by Claude (planning turn)
+- `@bot <question or request>` — answered by Claude (planning turn); **replying to one of the bot's messages works too, no @ needed**
 - `@bot ok <n>` — approve plan *n* (working turn)
-- `@bot reset` — start a fresh conversation for this group
+- `@bot new <name>` — start a separate conversation in this group; the others are kept
+- `@bot sessions` / `@bot switch <name>` — list / change the current conversation
+- `@bot reset` — clear the current conversation
+
+A reply always continues the conversation that wrote the message you reply to, so several topics can
+run side by side in one group.
 - `@bot who` / `approve @x` / `remove @x` / `make owner @x` — handled by the listener
 
 ## Running it

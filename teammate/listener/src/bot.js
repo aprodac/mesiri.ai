@@ -23,25 +23,30 @@ export function parseCommand(text) {
   const [first = "", ...others] = words.split(/\s+/);
   const verb = first.toLowerCase().replace(/[^a-z]/g, "");
   const rest = others.join(" ").trim();
-  if (verb === "make" && /^owner\b/i.test(rest)) return { verb: "owner", rest: rest.replace(/^owner\s*/i, "") };
-  if (["approve", "allow", "add"].includes(verb)) return { verb: "approve", rest };
-  if (["remove", "disallow", "revoke"].includes(verb)) return { verb: "remove", rest };
-  if (["who", "list"].includes(verb)) return { verb: "who", rest };
-  if (["help", "commands"].includes(verb)) return { verb: "help", rest };
-  if (["ok", "okay", "approved", "go", "yes"].includes(verb)) {
-    const id = rest.match(/\[?#?(\d+)\]?/)?.[1];
+  // Commands only when the whole message is the command (people are @-tagged, so they vanish above):
+  // "add a filter to trips" or "ok but change the colour" are requests for Claude, not commands.
+  if (verb === "make" && /^owner$/i.test(rest)) return { verb: "owner", rest: "" };
+  if (["approve", "allow", "add"].includes(verb) && !rest) return { verb: "approve", rest };
+  if (["remove", "disallow", "revoke"].includes(verb) && !rest) return { verb: "remove", rest };
+  if (["who", "list"].includes(verb) && !rest) return { verb: "who", rest };
+  if (["help", "commands"].includes(verb) && !rest) return { verb: "help", rest };
+  if (["ok", "okay", "approved", "go", "yes"].includes(verb) && /^(\[?#?\d+\]?)?$/.test(rest)) {
+    const id = rest.match(/(\d+)/)?.[1];
     return { verb: "ok", id: id ? Number(id) : null, rest };
   }
   if (!words) return { verb: "help", rest: "" };
   return { verb: "request", rest: words };
 }
 
-const HELP =
-  "I log requests and pass them to Claude Code.\n" +
-  "• @me <what to do>, ideally as a reply to the message it's about: log a request\n" +
-  "• @me ok <request number>: approve its plan\n" +
-  "• @me who: who is approved here\n" +
-  "Owners: @me approve @person · @me remove @person · @me make owner @person";
+const HELP = [
+  "I pass your messages to Claude Code.",
+  "• @me <question or request>, or just reply to one of my messages (no @ needed)",
+  "• @me ok <number>: approve a plan",
+  "• @me new <name>: start a separate conversation (the others are kept)",
+  "• @me sessions / @me switch <name> / @me reset",
+  "• @me who: who is approved here",
+  "Owners: @me approve @person · @me remove @person · @me make owner @person",
+].join(String.fromCharCode(10));
 
 export class Bot {
   /**
@@ -62,9 +67,14 @@ export class Bot {
     return rec.mentions?.some((j) => mine.has(j)) ?? false;
   }
 
+  /** A reply to one of the bot's own messages counts as talking to it, no @ needed. */
+  repliesToMe(rec) {
+    return Boolean(rec.quoted_id && this.store.isOwnMessage?.(rec.chat_jid, rec.quoted_id));
+  }
+
   /** Called for every live (not history) message once it is stored as number `n`. */
   async handle(rec, n) {
-    if (rec.from_me || !rec.is_group || !this.mentionsMe(rec)) return;
+    if (rec.from_me || !rec.is_group || !(this.mentionsMe(rec) || this.repliesToMe(rec))) return;
     const chat = this.store.findChat(rec.chat_jid);
     if (!chat?.project || !["team", "customer"].includes(chat.role)) return;
     const project = chat.project;
@@ -90,13 +100,13 @@ export class Bot {
       this.log(`bot: ${who} approved ${cmd.id ?? "the pending plan"} in ${chat.name}`);
       return this.brain.approve({ project, item_id: cmd.id, by: who, reply_chat: replyTo });
     }
-    if (this.brain && team && ![...owners, "who"].includes(cmd.verb)) {
+    if (this.brain && team && ![...owners, "who", "help"].includes(cmd.verb)) {
       const text = String(rec.text || "").replace(/@\S+/g, " ").replace(/\s+/g, " ").trim() || "help";
       this.wa.typing?.(replyTo);
       this.log(`bot: ${who} in ${chat.name} -> Claude`);
       return this.brain.ask({
         project, chat: chat.jid, chat_name: chat.name, chat_role: chat.role, reply_chat: replyTo,
-        sender: who, n, text, quoted_text: rec.quoted_text || null,
+        sender: who, n, text, quoted_text: rec.quoted_text || null, quoted_id: rec.quoted_id || null,
       });
     }
 
