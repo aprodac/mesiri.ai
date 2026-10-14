@@ -653,6 +653,16 @@ test("bot (TM-03b): with a brain, questions and requests go to Claude; approvals
   assert.equal(asked[1].chat_role, "customer");
   assert.equal(asked[1].reply_chat, TEAM);
 
+  // Asked in a second team group (e.g. "Mercon history"): answered right there.
+  const HIST = "120363000000000005@g.us";
+  store.upsertChat({ jid: HIST, name: "Mercon history", is_group: true });
+  store.setRole(HIST, "team", "mercon");
+  m = msg(HIST, "@bot did you understand these issues?");
+  await bot.handle(m.rec, m.n);
+  assert.equal(asked.at(-1).reply_chat, HIST);
+  assert.equal(typing.at(-1), HIST);
+  asked.pop();
+
   // Approval commands are still handled by the bot itself.
   m = msg(TEAM, "@bot who");
   await bot.handle(m.rec, m.n);

@@ -77,22 +77,25 @@ export class Bot {
     const cmd = parseCommand(rec.text);
     const team = this.store.teamChat(project);
     const owners = ["approve", "remove", "owner"];
+    // Answer in the group where it was asked when that's a team group; from a
+    // customer group, in the project's team group instead.
+    const replyTo = chat.role === "team" ? chat.jid : team?.jid;
 
     // TM-03b: everything except the approval commands goes to Claude Code, whose
     // answer lands in the team group. Customer groups still never get a reply.
     // An ok approves a plan: only in the team group, and the brain runs that plan's working turn.
     if (this.brain && team && cmd.verb === "ok") {
       if (chat.role !== "team") return;
-      this.wa.typing?.(team.jid);
+      this.wa.typing?.(replyTo);
       this.log(`bot: ${who} approved ${cmd.id ?? "the pending plan"} in ${chat.name}`);
-      return this.brain.approve({ project, item_id: cmd.id, by: who, reply_chat: team.jid });
+      return this.brain.approve({ project, item_id: cmd.id, by: who, reply_chat: replyTo });
     }
     if (this.brain && team && ![...owners, "who"].includes(cmd.verb)) {
       const text = String(rec.text || "").replace(/@\S+/g, " ").replace(/\s+/g, " ").trim() || "help";
-      this.wa.typing?.(team.jid);
+      this.wa.typing?.(replyTo);
       this.log(`bot: ${who} in ${chat.name} -> Claude`);
       return this.brain.ask({
-        project, chat: chat.jid, chat_name: chat.name, chat_role: chat.role, reply_chat: team.jid,
+        project, chat: chat.jid, chat_name: chat.name, chat_role: chat.role, reply_chat: replyTo,
         sender: who, n, text, quoted_text: rec.quoted_text || null,
       });
     }
