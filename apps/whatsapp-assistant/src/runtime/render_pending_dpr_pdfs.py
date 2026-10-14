@@ -39,11 +39,14 @@ async def render_and_store_version(
     version_id: Any,
     code: str | None,
     payload: dict[str, Any] | str,
+    letterhead: Any = None,
 ) -> str:
     """Render one DPR version to PDF and store it; returns the object key.
     The caller records the key on the version (`set_rendered_object_key`).
     Shared with runtime/project_auto_dpr.py, which renders right before
-    sending so the owner gets the PDF itself (BE-16)."""
+    sending so the owner gets the PDF itself (BE-16). ``letterhead`` (BE-19,
+    channel/dpr_document/letterhead.py) adds the company's branding; without
+    it the plain header is used."""
     import json
 
     from channel.dpr_document.data import build_document_data
@@ -51,7 +54,7 @@ async def render_and_store_version(
 
     if isinstance(payload, str):
         payload = json.loads(payload)
-    html = render_html(build_document_data(code=code or "DPR", payload=payload))
+    html = render_html(build_document_data(code=code or "DPR", payload=payload), letterhead)
     pdf_bytes = await renderer.render_pdf(html)
     object_key = f"dpr/{daily_report_id}/{version_id}.pdf"
     await object_storage.put_object(object_key, pdf_bytes, content_type="application/pdf")
@@ -59,6 +62,7 @@ async def render_and_store_version(
 
 
 async def run() -> dict[str, int]:
+    from channel.dpr_document.letterhead import load_letterhead
     from channel.dpr_document.render import DprPdfRenderer
     from mesiri.bootstrap.settings import Settings as BackendSettings
     from mesiri.infrastructure.objectstorage import build_object_storage
@@ -79,6 +83,8 @@ async def run() -> dict[str, int]:
 
         for row in pending:
             try:
+                async with db.transaction() as conn:
+                    letterhead = await load_letterhead(conn, object_storage, row["daily_report_id"])
                 object_key = await render_and_store_version(
                     renderer=renderer,
                     object_storage=object_storage,
@@ -86,6 +92,7 @@ async def run() -> dict[str, int]:
                     version_id=row["version_id"],
                     code=row["code"],
                     payload=row["payload"],
+                    letterhead=letterhead,
                 )
 
                 async with db.transaction() as conn:

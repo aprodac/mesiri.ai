@@ -66,6 +66,13 @@ def world(monkeypatch):
     _Repo.keys_set = []
     _Notifications.claims = []
 
+    async def no_letterhead(*_args):
+        # This fake world has no company rows; the letterhead (BE-19) has its
+        # own tests in test_dpr_letterhead*.py.
+        return None
+
+    monkeypatch.setattr("channel.dpr_document.letterhead.load_letterhead", no_letterhead)
+
     async def due_project_sends(conn, *, now_utc):
         return state["due"]
 

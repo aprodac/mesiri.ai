@@ -128,6 +128,7 @@ async def send_due_project_dprs(
     injectable for tests; otherwise built only if something is due."""
     import json
 
+    from channel.dpr_document.letterhead import load_letterhead
     from mesiri.application.projects.auto_dpr import (
         due_project_sends,
         finalize_project_dpr,
@@ -191,6 +192,9 @@ async def send_due_project_dprs(
                             version_id=report["version_id"],
                             code=report["code"],
                             payload=payload,
+                            letterhead=await load_letterhead(
+                                conn, object_storage, target["daily_report_id"]
+                            ),
                         )
                         await repo.set_rendered_object_key(
                             version_id=report["version_id"], object_key=object_key
