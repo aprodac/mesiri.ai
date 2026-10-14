@@ -1,0 +1,53 @@
+# Mesiri production data services (INF-11): PostgreSQL and Redis.
+#
+# Differs from the repo-root docker-compose.yml (local development) on
+# purpose: both services listen on 127.0.0.1 ONLY -- the app runs on the same
+# server, so nothing outside it ever needs the database -- and Redis requires
+# a password. The development file publishes on every interface, which is
+# fine on a laptop and was a public, internet-reachable database on the
+# server.
+#
+# Values come from /opt/mesiri/.env:
+#   docker compose -p mesiri -f infra/docker-compose.prod.yml --env-file .env up -d
+#
+# The server may already run other Postgres instances, so the host port is
+# whatever MESIRI_POSTGRES__PORT says (5434 on the 2026-10 server).
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mesiri-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${MESIRI_POSTGRES__USER:?set MESIRI_POSTGRES__USER}
+      POSTGRES_PASSWORD: ${MESIRI_POSTGRES__PASSWORD:?set MESIRI_POSTGRES__PASSWORD}
+      POSTGRES_DB: ${MESIRI_POSTGRES__DB:-mesiri}
+    ports:
+      - "127.0.0.1:${MESIRI_POSTGRES__PORT:-5432}:5432"
+    volumes:
+      - mesiri_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: mesiri-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${MESIRI_REDIS__PASSWORD:?set MESIRI_REDIS__PASSWORD}"]
+    ports:
+      - "127.0.0.1:${MESIRI_REDIS__PORT:-6379}:6379"
+    volumes:
+      - mesiri_redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping 2>/dev/null | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    environment:
+      REDIS_PASSWORD: ${MESIRI_REDIS__PASSWORD}
+
+volumes:
+  mesiri_pg_data:
+  mesiri_redis_data:

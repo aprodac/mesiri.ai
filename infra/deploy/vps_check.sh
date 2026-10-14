@@ -57,7 +57,7 @@ pg="$(env_val MESIRI_POSTGRES__PASSWORD)"
 [ "${pg}" = "mesiri_local_dev" ] && echo "MESIRI_POSTGRES__PASSWORD: STILL THE LOCAL DEFAULT"
 
 section "Running app"
-curl -s -m 10 http://127.0.0.1:8000/health; echo
+APP_PORT="$(env_val MESIRI_APP_PORT)"; curl -s -m 10 "http://127.0.0.1:${APP_PORT:-8000}/health"; echo
 
 section "Platform-admin accounts (BE-30): role ADMIN with no company"
 DB_NAME="$(env_val MESIRI_POSTGRES__DATABASE)"; DB_NAME="${DB_NAME:-mesiri}"

@@ -12,13 +12,18 @@ WorkingDirectory=/opt/mesiri/apps/whatsapp-assistant/src
 # All four Python source roots must be on PYTHONPATH.
 Environment=PYTHONPATH=/opt/mesiri/shared/contracts/src:/opt/mesiri/platform/ai/src:/opt/mesiri/backend/src:/opt/mesiri/apps/whatsapp-assistant/src
 
+# The port the app listens on (nginx proxies to it). 8000 unless .env sets
+# MESIRI_APP_PORT -- a server that already uses 8000 for something else
+# picks another (INF-11). EnvironmentFile values override this default.
+Environment=MESIRI_APP_PORT=8000
+
 # Runtime settings come from this file. Copy .env.example → .env and fill in
 # production values. The file must NOT be committed to git.
 EnvironmentFile=/opt/mesiri/.env
 
 ExecStart=/opt/mesiri/.venv/bin/uvicorn main:app \
     --host 127.0.0.1 \
-    --port 8000 \
+    --port ${MESIRI_APP_PORT} \
     --workers 2 \
     --log-level info
 

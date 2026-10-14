@@ -180,6 +180,11 @@ jobs:
           cd "${REPO}/backend"
           ${VENV}/bin/alembic upgrade head
 
+          # The app's port: 8000 unless the server's .env sets MESIRI_APP_PORT
+          # (INF-11 -- the 2026-10 server already uses 8000 for another app).
+          APP_PORT=$(grep -E '^MESIRI_APP_PORT=' "${REPO}/.env" | tail -1 | cut -d= -f2 | tr -d "'\\\" \r" || true)
+          APP_PORT=${APP_PORT:-8000}
+
           echo "→ Restarting backend service..."
           systemctl restart mesiri
 
@@ -190,7 +195,7 @@ jobs:
           HEALTHY=false
           for i in $(seq 1 30); do
             sleep 2
-            if curl -sf http://127.0.0.1:8000/health/live > /dev/null; then
+            if curl -sf http://127.0.0.1:${APP_PORT}/health/live > /dev/null; then
               echo "✓ Service is healthy (after ~$((i * 2)) s)"
               HEALTHY=true
               break
@@ -233,7 +238,7 @@ jobs:
             ROLLED_BACK=false
             for i in $(seq 1 30); do
               sleep 2
-              if curl -sf http://127.0.0.1:8000/health/live > /dev/null; then
+              if curl -sf http://127.0.0.1:${APP_PORT}/health/live > /dev/null; then
                 ROLLED_BACK=true
                 break
               fi
