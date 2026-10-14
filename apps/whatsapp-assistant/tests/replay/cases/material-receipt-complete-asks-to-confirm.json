@@ -1,0 +1,21 @@
+{
+  "id": "material-receipt-complete-asks-to-confirm",
+  "status": "passing",
+  "source": "example (WA-15 seed case)",
+  "description": "A complete delivery starts the material receipt workflow and asks Yes/No to confirm.",
+  "sender": "engineer",
+  "message": {"text": "50 bags cement arrived"},
+  "understanding": {
+    "semantic_type": "material_update",
+    "fields": {"material_name": "cement", "quantity": 50, "unit": "bags", "direction": "received"},
+    "field_confidences": {"material_name": 0.95, "quantity": 0.97, "unit": 0.9}
+  },
+  "expect": {
+    "event_type": "MaterialReceiptRequested",
+    "decision": "start_workflow",
+    "workflow_key": "material.receipt",
+    "reply_kind": "buttons",
+    "options_include": ["Yes", "No"],
+    "reply_contains": ["cement", "50"]
+  }
+}

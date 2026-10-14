@@ -33,6 +33,8 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from typing import Any
 
+from admin.friction import annotate
+
 # A gap longer than this between two messages from one sender starts a new
 # conversation. Site workers reply in bursts; half an hour of silence is a
 # new task in practice.
@@ -80,6 +82,33 @@ def scrub(text: str | None) -> str | None:
     return text
 
 
+def _scrub_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return scrub(value)
+    if isinstance(value, dict):
+        return {k: _scrub_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_scrub_value(v) for v in value]
+    return value
+
+
+def summarize_understanding(payload: Any) -> dict[str, Any] | None:
+    """What the AI made of a message, reduced to what a replay case needs:
+    type, language, translation and the first candidate's fields, scrubbed
+    like message text. Everything else in the stage payload stays behind."""
+    if not isinstance(payload, dict):
+        return None
+    candidates = payload.get("candidates") or []
+    first = candidates[0] if candidates and isinstance(candidates[0], dict) else {}
+    return {
+        "semantic_type": payload.get("semantic_type"),
+        "detected_language": payload.get("detected_language"),
+        "translated_text": scrub(payload.get("translated_text")),
+        "fields": _scrub_value(first.get("fields") or {}),
+        "missing_fields": first.get("missing_fields") or [],
+    }
+
+
 def _ms_between(start: datetime | None, end: datetime | None) -> int | None:
     if start is None or end is None:
         return None
@@ -101,6 +130,7 @@ def build_export(
     since: datetime,
     until: datetime,
     truncated: bool,
+    understanding: list[dict[str, Any]] | None = None,
     key: bytes | None = None,
 ) -> dict[str, Any]:
     """Group messages (oldest first) into anonymised conversations.
@@ -134,6 +164,12 @@ def build_export(
             }
         )
 
+    understood_by_cid = {
+        row["correlation_id"]: summary
+        for row in understanding or []
+        if (summary := summarize_understanding(row.get("stage_payload"))) is not None
+    }
+
     conversations: list[dict[str, Any]] = []
     open_by_user: dict[str, dict[str, Any]] = {}
     last_at_by_user: dict[str, datetime] = {}
@@ -163,6 +199,7 @@ def build_export(
             "wall_ms": wall_ms,
             "stages": stages_by_cid.get(cid, []),
             "ai_calls": calls_by_cid.get(cid, []),
+            "understanding": understood_by_cid.get(cid),
         }
 
         conversation = open_by_user.get(user)
@@ -189,6 +226,7 @@ def build_export(
         if company:
             companies.add(company)
 
+    friction = annotate(conversations)
     return {
         "window": {"since": since.isoformat(), "until": until.isoformat()},
         "truncated": truncated,
@@ -204,5 +242,6 @@ def build_export(
                 for t, v in sorted(wall_by_type.items())
             },
         },
+        "friction": friction,
         "conversations": conversations,
     }

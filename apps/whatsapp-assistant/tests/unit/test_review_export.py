@@ -16,7 +16,7 @@ import jwt
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from admin.review_export import build_export, pseudonym, scrub
+from admin.review_export import build_export, pseudonym, scrub, summarize_understanding
 from admin.review_router import router
 from mesiri.domains.identity.auth_service import ALGORITHM, SECRET_KEY
 
@@ -138,6 +138,28 @@ def test_stages_and_ai_calls_attach_to_their_message():
     assert export["summary"]["wall_ms_by_type"]["text"]["p50"] == 3000
 
 
+def test_understanding_summary_keeps_only_what_a_case_needs_and_scrubs_it():
+    summary = summarize_understanding(
+        {
+            "semantic_type": "expense",
+            "detected_language": "Malayalam",
+            "translated_text": "paid 1500, call 9876543210",
+            "normalized_text": "should not appear",
+            "candidates": [
+                {"fields": {"amount": 1500, "vendor": "a@b.com"}, "missing_fields": ["unit"]}
+            ],
+        }
+    )
+    assert summary == {
+        "semantic_type": "expense",
+        "detected_language": "Malayalam",
+        "translated_text": "paid 1500, call [number]",
+        "fields": {"amount": 1500, "vendor": "[email]"},
+        "missing_fields": ["unit"],
+    }
+    assert summarize_understanding(None) is None
+
+
 # --- router -----------------------------------------------------------------
 
 
@@ -158,6 +180,21 @@ class FakeTraceLogger:
 
     async def get_review_providers(self, correlation_ids: list[str]) -> list[dict[str, Any]]:
         return []
+
+    async def get_review_understanding(self, correlation_ids: list[str]) -> list[dict[str, Any]]:
+        return [
+            {
+                "correlation_id": cid,
+                "stage_payload": {
+                    "semantic_type": "material_update",
+                    "candidates": [
+                        {"fields": {"material_name": "cement", "note": "call 9876501234"}}
+                    ],
+                    "normalized_text": "secret full text",
+                },
+            }
+            for cid in correlation_ids
+        ]
 
     async def get_stage_summary(self, since: datetime) -> list[dict[str, Any]]:
         return [
@@ -220,3 +257,7 @@ async def test_export_returns_anonymised_conversations_and_flags_truncation():
     assert body["summary"]["messages"] == 2
     assert body["stage_summary"][0]["stage"] == "understanding"
     assert "919876543210" not in resp.text
+    first = body["conversations"][0]["messages"][0]
+    assert first["understanding"]["fields"] == {"material_name": "cement", "note": "call [number]"}
+    assert "secret full text" not in resp.text
+    assert "friction" in body and "friction" in body["conversations"][0]

@@ -1,0 +1,15 @@
+{
+  "id": "greeting-shows-category-menu",
+  "status": "passing",
+  "source": "example (WA-15 seed case)",
+  "description": "A plain greeting answers with the category menu so the user can see what they can report.",
+  "sender": "engineer",
+  "message": {"text": "hi"},
+  "understanding": {"semantic_type": "greeting", "fields": {}},
+  "expect": {
+    "decision": "direct_reply",
+    "reply_kind": "list",
+    "options_include": ["Material", "Labour", "Money"],
+    "reply_max_chars": 120
+  }
+}

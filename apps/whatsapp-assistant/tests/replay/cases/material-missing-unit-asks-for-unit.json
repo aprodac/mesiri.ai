@@ -1,0 +1,20 @@
+{
+  "id": "material-missing-unit-asks-for-unit",
+  "status": "passing",
+  "source": "example (WA-15 seed case)",
+  "description": "A delivery without a unit gets one short question asking for the unit, not the menu.",
+  "sender": "engineer",
+  "message": {"text": "50 cement arrived"},
+  "understanding": {
+    "semantic_type": "material_update",
+    "fields": {"material_name": "cement", "quantity": 50, "direction": "received"},
+    "field_confidences": {"material_name": 0.95, "quantity": 0.97}
+  },
+  "expect": {
+    "event_type": "ClarificationRequired",
+    "decision": "clarify",
+    "reply_kind": "text",
+    "reply_contains": ["unit"],
+    "reply_max_chars": 200
+  }
+}

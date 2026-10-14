@@ -1,0 +1,21 @@
+{
+  "id": "expense-complete-asks-to-confirm",
+  "status": "passing",
+  "source": "example (WA-15 seed case)",
+  "description": "A paid-to-vendor message starts the expense workflow and asks Yes/No to confirm.",
+  "sender": "engineer",
+  "message": {"text": "paid 1500 to ABC Hardware"},
+  "understanding": {
+    "semantic_type": "expense",
+    "fields": {"amount": 1500, "currency": "INR", "vendor": "ABC Hardware"},
+    "field_confidences": {"amount": 0.99, "vendor": 0.9}
+  },
+  "expect": {
+    "event_type": "ExpenseRequested",
+    "decision": "start_workflow",
+    "workflow_key": "expense.submit",
+    "reply_kind": "buttons",
+    "options_include": ["Yes", "No"],
+    "reply_contains": ["1500"]
+  }
+}

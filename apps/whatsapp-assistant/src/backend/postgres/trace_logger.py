@@ -238,6 +238,33 @@ class PostgresTraceLogger:
             )
         return [dict(row) for row in rows]
 
+    async def get_review_understanding(self, correlation_ids: list[str]) -> list[dict[str, Any]]:
+        """Read path for the assistant review export: the understanding stage's
+        payload (what the AI made of each message), so the reviewer can turn a
+        failure into a replay case. Carries user content -- the export reduces
+        it to type/language/fields and scrubs it (admin/review_export.py);
+        platform-admin only. A query failure is NOT swallowed."""
+        from sqlalchemy import bindparam, text
+
+        if not correlation_ids:
+            return []
+        async with self._get_engine().connect() as conn:
+            rows = (
+                (
+                    await conn.execute(
+                        text(
+                            "SELECT correlation_id, stage_payload FROM journey_traces "
+                            "WHERE stage = 'understanding' AND succeeded "
+                            "AND correlation_id IN :ids"
+                        ).bindparams(bindparam("ids", expanding=True)),
+                        {"ids": correlation_ids},
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return [dict(row) for row in rows]
+
     async def get_review_providers(self, correlation_ids: list[str]) -> list[dict[str, Any]]:
         """Read path for the assistant review export: which AI/API calls each
         message made and how long they took. Same columns as
