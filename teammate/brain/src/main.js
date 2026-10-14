@@ -129,7 +129,13 @@ const listener = {
 
 let render = null;
 try {
-  render = createRenderer();
+  const L = process.env;
+  render = createRenderer({
+    login: L.TEAMMATE_DEV_LOGIN_HOST && L.TEAMMATE_DEV_LOGIN_USER && L.TEAMMATE_DEV_LOGIN_PASSWORD
+      ? { host: L.TEAMMATE_DEV_LOGIN_HOST, user: L.TEAMMATE_DEV_LOGIN_USER, password: L.TEAMMATE_DEV_LOGIN_PASSWORD }
+      : null,
+    stateFile: join(dir, "dev-login-state.json"),
+  });
 } catch (e) {
   log(`previews off: ${e.message}`);
 }
@@ -170,7 +176,12 @@ const brain = new Brain({
   prepare,
   owner: process.env.TEAMMATE_OWNER || "Ilan",
   model: process.env.TEAMMATE_BRAIN_MODEL || "claude-opus-5-5",
-  env: { ...process.env, TEAMMATE_TOKEN: token, TEAMMATE_API: api },
+  // What Claude Code (and anything it runs) sees: never the dev-site password or the routine token.
+  env: {
+    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^TEAMMATE_(DEV_LOGIN|ROUTINE)_/.test(k))),
+    TEAMMATE_TOKEN: token,
+    TEAMMATE_API: api,
+  },
   log,
 });
 

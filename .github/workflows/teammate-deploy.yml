@@ -63,9 +63,12 @@ jobs:
           # Optional (hybrid): approved work for Mercon runs as a cloud routine the owner can watch.
           TEAMMATE_ROUTINE_MERCON_URL: ${{ secrets.TEAMMATE_ROUTINE_MERCON_URL }}
           TEAMMATE_ROUTINE_MERCON_TOKEN: ${{ secrets.TEAMMATE_ROUTINE_MERCON_TOKEN }}
+          # Optional: a dev-only test account so the bot's screenshots of dev.mercon.tech are signed in.
+          TEAMMATE_DEV_LOGIN_USER: ${{ secrets.TEAMMATE_DEV_LOGIN_USER }}
+          TEAMMATE_DEV_LOGIN_PASSWORD: ${{ secrets.TEAMMATE_DEV_LOGIN_PASSWORD }}
         run: |
           ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
-            "TEAMMATE_API_TOKEN='${TEAMMATE_API_TOKEN}' TEAMMATE_GEMINI_API_KEY='${TEAMMATE_GEMINI_API_KEY}' TEAMMATE_CLAUDE_TOKEN='${TEAMMATE_CLAUDE_TOKEN}' TEAMMATE_GITHUB_TOKEN='${TEAMMATE_GITHUB_TOKEN}' TEAMMATE_ROUTINE_MERCON_URL='${TEAMMATE_ROUTINE_MERCON_URL}' TEAMMATE_ROUTINE_MERCON_TOKEN='${TEAMMATE_ROUTINE_MERCON_TOKEN}' bash -s" << 'ENDSSH'
+            "TEAMMATE_API_TOKEN='${TEAMMATE_API_TOKEN}' TEAMMATE_GEMINI_API_KEY='${TEAMMATE_GEMINI_API_KEY}' TEAMMATE_CLAUDE_TOKEN='${TEAMMATE_CLAUDE_TOKEN}' TEAMMATE_GITHUB_TOKEN='${TEAMMATE_GITHUB_TOKEN}' TEAMMATE_ROUTINE_MERCON_URL='${TEAMMATE_ROUTINE_MERCON_URL}' TEAMMATE_ROUTINE_MERCON_TOKEN='${TEAMMATE_ROUTINE_MERCON_TOKEN}' TEAMMATE_DEV_LOGIN_USER='${TEAMMATE_DEV_LOGIN_USER}' TEAMMATE_DEV_LOGIN_PASSWORD='${TEAMMATE_DEV_LOGIN_PASSWORD}' bash -s" << 'ENDSSH'
           set -euo pipefail
 
           # Node >= 22.13 (node:sqlite). Install Node 22 from NodeSource if missing/older.
@@ -107,6 +110,11 @@ jobs:
               printf 'TEAMMATE_BRAIN_PROJECTS=mercon=aprodac/MERCON@ilan,mesiri=StarShape-in/mesiri.ai@main\n'
               # Dev sites only (never production or this server's own local addresses).
               printf 'TEAMMATE_BRAIN_SCREENSHOT_HOSTS=dev.mercon.tech,track-dev.mercon.tech\n'
+              if [ -n "${TEAMMATE_DEV_LOGIN_USER:-}" ] && [ -n "${TEAMMATE_DEV_LOGIN_PASSWORD:-}" ]; then
+                trim() { printf %s "$1" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'; }
+                printf 'TEAMMATE_DEV_LOGIN_HOST=dev.mercon.tech\nTEAMMATE_DEV_LOGIN_USER=%s\nTEAMMATE_DEV_LOGIN_PASSWORD=%s\n' \
+                  "$(trim "$TEAMMATE_DEV_LOGIN_USER")" "$(trim "$TEAMMATE_DEV_LOGIN_PASSWORD")"
+              fi
               # Pasted secrets can carry stray spaces / newlines, which break the login.
               printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\nGH_TOKEN=%s\n' \
                 "$(printf %s "$TEAMMATE_CLAUDE_TOKEN" | tr -d '[:space:]')" "$(printf %s "$TEAMMATE_GITHUB_TOKEN" | tr -d '[:space:]')"
