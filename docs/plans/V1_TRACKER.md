@@ -196,6 +196,16 @@ later. Every path must use the same company-creation step as the superadmin wiza
 
 ---
 
+## TM — AI teammate (reusable, `teammate/`)
+
+Claude Code as a team member: listens to the team and customer WhatsApp groups, keeps an inbox any Claude Code session can search, later builds approved items and asks for sign-off in the group. Self-contained folder so other projects can reuse it.
+
+| ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TM-01 | Group listener (spare SIM, linked device, read-only) + searchable inbox API + `inbox.py` + Claude Code skill + deploy workflow | M | Later | — | claimed | Claude (session 14 Oct, self-improving) | Approved 14 Oct: spare SIM as linked device (accepted WhatsApp-terms risk; Mesiri's business number never used), folder in this repo |
+| TM-02 | Triage: turn messages into numbered items (bug / idea / complaint / question / decision), merge duplicates, voice-note transcription | M | Later | TM-01 | todo | | |
+| TM-03 | Builder: approved items run through Claude Code; plan + screenshots posted to the team group; publish only after a team "OK" | L | Later | TM-02 | todo | | Needs: how to reach the user's own Claude Code, and the "show before publish" vs push-to-main question |
+
 ## Done log
 
 | Date | ID / work | Commit |
