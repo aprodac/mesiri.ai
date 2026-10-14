@@ -187,6 +187,11 @@ export class WhatsAppListener {
     return [u?.id, u?.lid].filter(Boolean).map((j) => jidNormalizedUser(j));
   }
 
+  /** Shows "typing..." in a chat while Claude works on an answer (best effort). */
+  typing(jid) {
+    this.sock?.sendPresenceUpdate?.("composing", jid).catch?.(() => {});
+  }
+
   /** Phone-number jid for a privacy id (@lid), when WhatsApp has told us the mapping. */
   async pnFor(jid) {
     if (!jid || jid.endsWith("@s.whatsapp.net")) return jid || null;

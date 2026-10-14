@@ -622,3 +622,54 @@ test("bot (TM-03): replies are capped per hour so bots can't loop", async () => 
   }
   assert.equal(sent.length, 20);
 });
+
+test("bot (TM-03b): with a brain, questions and requests go to Claude; approvals stay local", async () => {
+  const { store, TEAM, sent, msg } = botSetup();
+  const asked = [];
+  const typing = [];
+  const wa = {
+    ownIds: () => ["919544376072@s.whatsapp.net", "56672747843793@lid"],
+    pnFor: async () => null,
+    send: async (jid, c) => (sent.push({ jid, ...c }), "id"),
+    typing: (jid) => typing.push(jid),
+  };
+  const approved = [];
+  const bot = new Bot({ store, wa, brain: { ask: async (req) => asked.push(req), approve: async (req) => approved.push(req) } });
+
+  let m = msg(TEAM, "@bot did you understand these issues?");
+  await bot.handle(m.rec, m.n);
+  assert.equal(asked.length, 1);
+  assert.equal(asked[0].text, "did you understand these issues?");
+  assert.equal(asked[0].reply_chat, TEAM);
+  assert.equal(asked[0].project, "mercon");
+  assert.deepEqual(typing, [TEAM]);
+  assert.equal(sent.length, 0); // Claude answers, not the bot
+  assert.equal(store.listItems({ project: "mercon" }).length, 0); // Claude logs requests itself
+
+  // Asked in a customer group: answer still goes to the team group.
+  m = msg(GROUP, "@bot what did they ask for?");
+  await bot.handle(m.rec, m.n);
+  assert.equal(asked[1].chat, GROUP);
+  assert.equal(asked[1].chat_role, "customer");
+  assert.equal(asked[1].reply_chat, TEAM);
+
+  // Approval commands are still handled by the bot itself.
+  m = msg(TEAM, "@bot who");
+  await bot.handle(m.rec, m.n);
+  assert.equal(asked.length, 2);
+  assert.match(sent.at(-1).text, /Approved for mercon/);
+
+  // "ok 7" approves plan 7 through the brain -- only from the team group.
+  m = msg(TEAM, "@bot ok 7");
+  await bot.handle(m.rec, m.n);
+  assert.deepEqual(approved, [{ project: "mercon", item_id: 7, by: "Ilan", reply_chat: TEAM }]);
+  m = msg(GROUP, "@bot ok 7");
+  await bot.handle(m.rec, m.n);
+  assert.equal(approved.length, 1);
+  assert.equal(asked.length, 2);
+
+  // Unapproved: neither.
+  m = msg(TEAM, "@bot hello", { from: "999@lid", pn: null, name: "Stranger" });
+  await bot.handle(m.rec, m.n);
+  assert.equal(asked.length, 2);
+});

@@ -8,6 +8,7 @@
 //   TEAMMATE_GEMINI_API_KEY  optional; turns on voice-note transcripts and English
 //                            translations (TM-07)
 //   TEAMMATE_GEMINI_MODEL    default gemini-2.5-flash
+//   TEAMMATE_BRAIN_URL       optional, e.g. http://127.0.0.1:8791: approved tags go to Claude Code (TM-03b)
 
 import { mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -29,7 +30,21 @@ const geminiKey = process.env.TEAMMATE_GEMINI_API_KEY;
 const transcriber = geminiKey ? new Transcriber({ apiKey: geminiKey, model: process.env.TEAMMATE_GEMINI_MODEL || undefined }) : null;
 const ai = new AiWorker({ store, transcriber, readFile: (p) => readFileSync(p), log });
 wa.onStored = () => ai.kick();
-const bot = new Bot({ store, wa, log });
+const brainUrl = process.env.TEAMMATE_BRAIN_URL?.replace(/\/$/, "");
+const brain = brainUrl
+  ? (() => {
+      const call = (path, body) =>
+        fetch(`${brainUrl}${path}`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${process.env.TEAMMATE_API_TOKEN}`, "content-type": "application/json" },
+          body: JSON.stringify(body),
+        })
+          .then((r) => r.ok || log(`brain refused ${path}: HTTP ${r.status}`))
+          .catch((e) => log(`brain unreachable: ${e.message}`));
+      return { ask: (req) => call("/ask", req), approve: (req) => call("/approve", req) };
+    })()
+  : null;
+const bot = new Bot({ store, wa, log, brain });
 wa.onLive = (rec, n) => bot.handle(rec, n).catch((e) => log(`bot failed on #${n}: ${e}`));
 const api = createApi({ store, wa, token: process.env.TEAMMATE_API_TOKEN, ai });
 

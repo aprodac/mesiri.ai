@@ -47,8 +47,9 @@ export class Bot {
   /**
    * @param {{ store: import('./store.js').Store, wa: { ownIds(): string[], pnFor(jid: string): Promise<string|null>, send(jid: string, c: object): Promise<string|null> }, log?: (m: string) => void, onRequest?: (item: object) => void, onApproved?: (item: object, by: string) => void }} opts
    */
-  constructor({ store, wa, log = () => {}, onRequest = null, onApproved = null }) {
+  constructor({ store, wa, log = () => {}, onRequest = null, onApproved = null, brain = null }) {
     this.store = store;
+    this.brain = brain; // TM-03b: { ask(req) } -- Claude Code answers; null = log requests only
     this.wa = wa;
     this.log = log;
     this.onRequest = onRequest;
@@ -75,6 +76,26 @@ export class Bot {
     }
     const cmd = parseCommand(rec.text);
     const team = this.store.teamChat(project);
+    const owners = ["approve", "remove", "owner"];
+
+    // TM-03b: everything except the approval commands goes to Claude Code, whose
+    // answer lands in the team group. Customer groups still never get a reply.
+    // An ok approves a plan: only in the team group, and the brain runs that plan's working turn.
+    if (this.brain && team && cmd.verb === "ok") {
+      if (chat.role !== "team") return;
+      this.wa.typing?.(team.jid);
+      this.log(`bot: ${who} approved ${cmd.id ?? "the pending plan"} in ${chat.name}`);
+      return this.brain.approve({ project, item_id: cmd.id, by: who, reply_chat: team.jid });
+    }
+    if (this.brain && team && ![...owners, "who"].includes(cmd.verb)) {
+      const text = String(rec.text || "").replace(/@\S+/g, " ").replace(/\s+/g, " ").trim() || "help";
+      this.wa.typing?.(team.jid);
+      this.log(`bot: ${who} in ${chat.name} -> Claude`);
+      return this.brain.ask({
+        project, chat: chat.jid, chat_name: chat.name, chat_role: chat.role, reply_chat: team.jid,
+        sender: who, n, text, quoted_text: rec.quoted_text || null,
+      });
+    }
 
     if (chat.role === "customer") {
       // Never answer in a customer group: log it, tell the team.
@@ -84,7 +105,6 @@ export class Bot {
       return;
     }
 
-    const owners = ["approve", "remove", "owner"];
     if (owners.includes(cmd.verb) && person.role !== "owner") {
       return this.reply(chat.jid, `Only an owner can ${cmd.verb === "owner" ? "make owners" : `${cmd.verb} people`}.`);
     }

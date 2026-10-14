@@ -1,0 +1,36 @@
+# Claude Code behind the WhatsApp bot (TM-03b). Installed by
+# .github/workflows/teammate-deploy.yml when TEAMMATE_CLAUDE_TOKEN and
+# TEAMMATE_GITHUB_TOKEN are set. Runs as its own user, can write only its own
+# folder (repos, sessions, Claude Code's home), and can't see the other apps on
+# this server. What Claude may do inside is limited in code (src/brain.js):
+# read-only while planning, a fixed command list only after an approved ok.
+[Unit]
+Description=Teammate brain (Claude Code sessions for the WhatsApp bot)
+After=network-online.target teammate.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=teammate-brain
+Group=teammate-brain
+WorkingDirectory=/opt/teammate/brain
+EnvironmentFile=/opt/teammate/brain.env
+Environment=HOME=/var/lib/teammate-brain
+Environment=TEAMMATE_BRAIN_DIR=/var/lib/teammate-brain
+Environment=NODE_NO_WARNINGS=1
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
+ExecStart=/usr/bin/node src/main.js
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/teammate-brain
+InaccessiblePaths=-/opt/mesiri -/var/lib/teammate -/var/lib/private -/var/backups -/root -/srv
+MemoryMax=3G
+CPUQuota=150%
+TasksMax=512
+
+[Install]
+WantedBy=multi-user.target
