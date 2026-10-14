@@ -173,10 +173,15 @@ export class AiWorker {
           }
           done++;
         } catch (e) {
-          this.store.failAi(m.n);
+          const msg = String(e.message || e);
+          this.lastError = `#${m.n}: ${msg.slice(0, 200)}`;
+          this.log(`Gemini failed on #${m.n}: ${msg.replace(/\s+/g, " ").slice(0, 160)}`);
           failed.add(m.n);
-          this.lastError = `#${m.n}: ${String(e.message || e).slice(0, 200)}`;
-          this.log(`Gemini failed on ${this.lastError}`);
+          // Busy / rate-limited is temporary: it doesn't use up the message's 3
+          // attempts. On a rate limit, stop until the next run (every 5 min).
+          const status = Number(msg.match(/^Gemini (\d{3})/)?.[1]);
+          if (status === 429) return done;
+          if (![500, 502, 503, 504].includes(status)) this.store.failAi(m.n);
         }
       }
     }

@@ -390,7 +390,7 @@ function fakeGemini(replies) {
     calls.push({ url, body: init.body ? JSON.parse(init.body) : null, key: init.headers?.["x-goog-api-key"] });
     if (url.endsWith("/models/gemini-2.5-flash")) return new Response("{}", { status: 200 });
     const next = replies.shift();
-    if (next instanceof Error) return new Response(next.message, { status: 500 });
+    if (next instanceof Error) return new Response(next.message, { status: next.status || 500 });
     return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(next) }] } }] }), { status: 200 });
   };
   return { calls, fetchImpl };
@@ -457,4 +457,16 @@ test("transcribe (TM-07): worker fills the queue, skips private chats, retries f
 
   const off = new AiWorker({ store, transcriber: null, readFile: () => Buffer.alloc(0) });
   assert.deepEqual(off.status(), { enabled: false });
+});
+
+test("transcribe (TM-07): a rate limit pauses the queue without using up attempts", async () => {
+  const store = seeded(); // 3 pending text messages
+  const limited = Object.assign(new Error("quota exceeded"), { status: 429 });
+  const { calls, fetchImpl } = fakeGemini([limited, { translated_text: "", detected_language: "English" }]);
+  const worker = new AiWorker({ store, transcriber: new Transcriber({ apiKey: "k", fetchImpl }), readFile: () => Buffer.alloc(0) });
+  worker.ok = true;
+  assert.equal(await worker.drain(), 0);
+  assert.equal(calls.length, 1); // stopped at the first 429
+  assert.equal(store.countPendingAi(), 3); // nothing marked done or failed
+  assert.match(worker.status().last_error, /429/);
 });
