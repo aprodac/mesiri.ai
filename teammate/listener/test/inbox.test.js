@@ -470,3 +470,43 @@ test("transcribe (TM-07): a rate limit pauses the queue without using up attempt
   assert.equal(store.countPendingAi(), 3); // nothing marked done or failed
   assert.match(worker.status().last_error, /429/);
 });
+
+test("items (TM-08): log a request, track it to done, keep the history, scope by project", async () => {
+  const store = seeded(); // Acme = customer, Mesiri team = team
+  store.setRole(GROUP, "customer", "mercon");
+  const server = createApi({ store, wa: { status: () => ({ state: "connected" }) }, token: TOKEN });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  try {
+    const add = await call(server, "POST", "/items", {
+      body: { chat: "Acme", project: "mercon", type: "bug", title: "Transit time counts from planned pickup", source: "9", created_by: "claude" },
+    });
+    assert.equal(add.status, 200);
+    const id = add.body.item.id;
+    assert.equal(add.body.item.status, "open");
+    assert.equal(add.body.item.project, "mercon");
+
+    // Wrong project, bad type, missing title: refused.
+    assert.equal((await call(server, "POST", "/items", { body: { chat: "Acme", project: "mesiri", type: "bug", title: "x" } })).status, 404);
+    assert.equal((await call(server, "POST", "/items", { body: { chat: "Acme", type: "wish", title: "x" } })).status, 400);
+    assert.equal((await call(server, "POST", "/items", { body: { chat: "Acme", type: "bug", title: " " } })).status, 400);
+
+    await call(server, "POST", `/items/${id}`, { body: { status: "in_progress", note: "planning" } });
+    const done = await call(server, "POST", `/items/${id}`, { body: { status: "done", ref: "aprodac/MERCON#262", note: "count from actual loading time" } });
+    assert.equal(done.body.item.status, "done");
+    assert.equal(done.body.item.done_ref, "aprodac/MERCON#262");
+    await call(server, "POST", `/items/${id}`, { body: { ref: "fdc9f0ef", note: "released" } });
+    const shown = await call(server, "GET", `/items/${id}?project=mercon`);
+    assert.equal(shown.body.item.done_ref, "aprodac/MERCON#262, fdc9f0ef");
+    assert.deepEqual(shown.body.item.log.map((l) => l.status), ["open", "in_progress", "done", null]);
+    assert.equal((await call(server, "GET", `/items/${id}?project=mesiri`)).status, 404);
+    assert.equal((await call(server, "POST", `/items/${id}`, { body: { status: "finished" } })).status, 400);
+
+    store.addItem({ chat_jid: "120363000000000002@g.us", type: "task", title: "Mesiri-only item" });
+    const mercon = await call(server, "GET", "/items?project=mercon");
+    assert.deepEqual(mercon.body.items.map((i) => i.title), ["Transit time counts from planned pickup"]);
+    assert.equal((await call(server, "GET", "/items?status=done")).body.items.length, 1);
+    assert.equal((await call(server, "GET", "/items")).body.items.length, 2);
+  } finally {
+    server.close();
+  }
+});

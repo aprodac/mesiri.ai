@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly teammate inbox backup
+
+[Timer]
+# 02:30 IST
+OnCalendar=*-*-* 21:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

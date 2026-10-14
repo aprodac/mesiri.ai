@@ -28,6 +28,7 @@ project's conversations. Don't unset or override it to look at another project's
 | What happened lately | `recent --hours 24` (`--role customer`, `--chat "Acme"`) |
 | Find something | `search dpr pdf` (all words must match; `--days 60`, `--chat`, `--role`) |
 | Full context of one message | `show 1432 --around 15` |
+| Request log of a group (what was asked / done) | `summary "Acme"`, `items --status open` |
 | Older messages of a group (from before the listener joined) | `history "Acme" --pages 10` (the spare phone must be online) |
 | A photo / voice note / document | `media 1432 /tmp/x.jpg`, then look at the file |
 | Label a group | `label "Acme" customer` (team / customer / ignore; tagged with this project) |
@@ -51,6 +52,22 @@ message.
    the team group, outranks the customer's original ask.
 4. **Mention the source in your report.** Name the message numbers in the summary and tracker
    notes (e.g. "from #1432, Acme group"), so the loop back to the customer is easy.
+
+## Keep the request log (TM-08)
+
+Every group has a log on the server of what it asked for and what was done about it. Keep it
+current as part of the work, without being asked:
+
+| When | Command |
+| --- | --- |
+| You start on something a group asked for | `item add "<group>" "<short English title>" --type bug\|feature\|question\|complaint\|task --from <msg numbers>` (check `items --chat "<group>"` first; don't log it twice) |
+| You begin the work | `item start <id>` |
+| It is pushed / merged | `item done <id> --ref <commit or PR, e.g. aprodac/MERCON#262> --note "<one line: what changed>"` |
+| The owner decides not to do it | `item wontdo <id> --note "<why>"` |
+| "What did <group> ask for / what's done?" | `summary "<group>"` or `items --status open` |
+
+Titles and notes are short English, no phone numbers or pasted conversations. Name the item
+number in your report (e.g. "request [12], from #9").
 
 ## Rules
 

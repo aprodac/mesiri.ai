@@ -92,6 +92,13 @@ jobs:
           done
           systemctl is-active teammate || { journalctl -u teammate -n 50 --no-pager; exit 1; }
 
+          # Nightly backup of the inbox, requests, media and session (TM-08), plus one now.
+          chmod 700 /opt/teammate/deploy/backup.sh
+          cp /opt/teammate/deploy/teammate-backup.service /opt/teammate/deploy/teammate-backup.timer /etc/systemd/system/
+          systemctl daemon-reload
+          systemctl enable --now teammate-backup.timer
+          systemctl start teammate-backup.service && journalctl -u teammate-backup -n 3 --no-pager -o cat
+
           # nginx: add the /teammate/ location to the api.whatsapp.mesiri.ai
           # HTTPS server once. Backed up, tested, rolled back if nginx -t fails.
           CONF=$(grep -rl "server_name api.whatsapp.mesiri.ai" /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null | head -1 || true)

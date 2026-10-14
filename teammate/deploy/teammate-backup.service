@@ -1,0 +1,8 @@
+# Runs deploy/backup.sh; started by teammate-backup.timer. Installed by
+# .github/workflows/teammate-deploy.yml.
+[Unit]
+Description=Back up the teammate inbox (messages, translations, requests, media, session)
+
+[Service]
+Type=oneshot
+ExecStart=/opt/teammate/deploy/backup.sh

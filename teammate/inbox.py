@@ -24,6 +24,14 @@ Commands:
   history <chat> [--pages 10]         pull a group's older messages from the spare phone
                                       (it must be online); 50 per request
   media <n> <out-file>                download a photo / voice note / document
+  items [--chat X] [--status S] [--type T]
+                                      what the groups asked for, and what was done (TM-08)
+  item show <id>                      one request with its history
+  item add <chat> <title> --type bug|feature|question|complaint|task [--from 6,7] [--summary S]
+  item start <id> [--note N]          mark it in progress
+  item done <id> --ref R [--note N]   mark it done; R = commit / PR, e.g. aprodac/MERCON#262
+  item wontdo <id> --note N           close it without doing it, with the reason
+  summary <chat>                      one group on a page: open and done requests
   pair <phone-with-country-code>      link the spare number (prints a code to type on the phone)
   post [text] [--text-file F] [--image FILE[::caption] ...] [--chat X]
                                       post into the TEAM group (customer groups are refused)
@@ -189,6 +197,81 @@ def _post(a: argparse.Namespace) -> None:
         print(f"posted {path} to {r['chat']}")
 
 
+_STATUS_MARK = {
+    "open": "○ open",
+    "in_progress": "◐ in progress",
+    "done": "● done",
+    "wont_do": "✕ won't do",
+}
+
+
+def _item_line(i: dict) -> str:
+    src = f"  (from #{i['source'].replace(',', ', #')})" if i.get("source") else ""
+    ref = f"  → {i['done_ref']}" if i.get("done_ref") else ""
+    status = _STATUS_MARK.get(i["status"], i["status"])
+    return f"[{i['id']:>3}] {status:<14} {i['type']:<9} {i['title']}{src}{ref}"
+
+
+def _item(a: argparse.Namespace) -> None:
+    if a.action == "add":
+        if len(a.args) < 2 or not a.type:
+            sys.exit('usage: item add <chat> "<title>" --type bug|feature|question|complaint|task')
+        body = {
+            "chat": a.args[0],
+            "title": " ".join(a.args[1:]),
+            "type": a.type,
+            "summary": a.summary,
+            "source": a.source,
+            "project": PROJECT,
+            "created_by": "claude-code",
+        }
+        i = _request("POST", "/items", body=body)["item"]
+        print(f"logged {_item_line(i)}  in {i['chat_name']}")
+        return
+    if len(a.args) != 1 or not a.args[0].isdigit():
+        sys.exit(f"usage: item {a.action} <id>")
+    n = a.args[0]
+    if a.action == "show":
+        i = _request("GET", f"/items/{n}", params={"project": PROJECT})["item"]
+        print(_item_line(i))
+        print(f"  group: {i['chat_name']} ({i.get('project') or '-'})")
+        if i.get("summary"):
+            print(f"  summary: {i['summary']}")
+        for entry in i.get("log", []):
+            bits = [entry.get("status") or "", entry.get("ref") or "", entry.get("note") or ""]
+            print(f"  {_when(entry['at'])}  " + "  ".join(b for b in bits if b))
+        return
+    change = {
+        "start": {"status": "in_progress"},
+        "done": {"status": "done"},
+        "wontdo": {"status": "wont_do"},
+    }[a.action]
+    if a.action == "done" and not a.ref:
+        sys.exit("item done needs --ref (the commit or PR that did it)")
+    if a.action == "wontdo" and not a.note:
+        sys.exit("item wontdo needs --note (why)")
+    body = {**change, "ref": a.ref, "note": a.note, "project": PROJECT}
+    i = _request("POST", f"/items/{n}", body=body)["item"]
+    print(_item_line(i))
+
+
+def _summary(chat: str) -> None:
+    items = _request("GET", "/items", params={"chat": chat, "project": PROJECT})["items"]
+    chats = _request("GET", "/chats", params={"project": PROJECT})["chats"]
+    hits = [c for c in chats if chat.lower() in (c.get("name") or "").lower() or c["jid"] == chat]
+    for c in hits:
+        print(
+            f"{c.get('name')}  ({c['role']}, {c.get('project') or '-'}): {c['messages']} messages, "
+            f"last {_when(c.get('last_message_at'))}"
+        )
+    for label, statuses in (("Open", ("open", "in_progress")), ("Done", ("done", "wont_do"))):
+        group = [i for i in items if i["status"] in statuses]
+        print()
+        print(f"{label} ({len(group)})")
+        for i in group:
+            print("  " + _item_line(i))
+
+
 def main() -> None:
     # Windows consoles default to a legacy code page that can't print · … ⏎.
     if hasattr(sys.stdout, "reconfigure"):
@@ -224,6 +307,20 @@ def main() -> None:
     med = sub.add_parser("media")
     med.add_argument("n", type=int)
     med.add_argument("out")
+    its = sub.add_parser("items")
+    its.add_argument("--chat")
+    its.add_argument("--status", choices=["open", "in_progress", "done", "wont_do"])
+    its.add_argument("--type", choices=["bug", "feature", "question", "complaint", "task"])
+    itm = sub.add_parser("item")
+    itm.add_argument("action", choices=["show", "add", "start", "done", "wontdo"])
+    itm.add_argument("args", nargs="*")
+    itm.add_argument("--type", choices=["bug", "feature", "question", "complaint", "task"])
+    itm.add_argument("--from", dest="source", help="message numbers, e.g. 6,7")
+    itm.add_argument("--summary")
+    itm.add_argument("--ref", help="commit or PR, e.g. aprodac/MERCON#262")
+    itm.add_argument("--note")
+    sm = sub.add_parser("summary")
+    sm.add_argument("chat")
     pai = sub.add_parser("pair")
     pai.add_argument("phone")
     pos = sub.add_parser("post")
@@ -313,6 +410,17 @@ def main() -> None:
         print(f"saved {len(data)} bytes to {a.out}")
     elif a.cmd == "post":
         _post(a)
+    elif a.cmd == "items":
+        params = {"chat": a.chat, "status": a.status, "type": a.type, "project": PROJECT}
+        items = _request("GET", "/items", params=params)["items"]
+        if not items:
+            print("(no requests logged)")
+        for i in items:
+            print(f"{_item_line(i)}  · {i['chat_name']}")
+    elif a.cmd == "item":
+        _item(a)
+    elif a.cmd == "summary":
+        _summary(a.chat)
     elif a.cmd == "pair":
         r = _request("POST", "/pair", body={"phone": a.phone})
         print(f"Pairing code: {r['code']}\n{r['how']}")

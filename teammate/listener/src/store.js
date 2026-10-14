@@ -45,7 +45,31 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS ix_messages_chat_at ON messages (chat_jid, at);
 CREATE INDEX IF NOT EXISTS ix_messages_at ON messages (at);
+-- TM-08: what each group asked for, and what was done about it.
+CREATE TABLE IF NOT EXISTS items (
+  id          INTEGER PRIMARY KEY,
+  chat_jid    TEXT NOT NULL REFERENCES chats(jid),
+  type        TEXT NOT NULL,
+  title       TEXT NOT NULL,
+  summary     TEXT,
+  source      TEXT,
+  status      TEXT NOT NULL DEFAULT 'open',
+  done_ref    TEXT,
+  created_by  TEXT,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_items_chat ON items (chat_jid, status);
+CREATE TABLE IF NOT EXISTS item_log (
+  item_id  INTEGER NOT NULL REFERENCES items(id),
+  at       TEXT NOT NULL,
+  status   TEXT,
+  ref      TEXT,
+  note     TEXT
+);
 `;
+export const ITEM_TYPES = ["bug", "feature", "question", "complaint", "task"];
+export const ITEM_STATUSES = ["open", "in_progress", "done", "wont_do"];
 
 const nowIso = () => new Date().toISOString();
 
@@ -279,6 +303,72 @@ export class Store {
       .all(msg.chat_jid, msg.at, msg.at, msg.n, around);
     delete msg.media_path;
     return { message: msg, thread: [...before, msg, ...after] };
+  }
+
+  /** Logs a request from a group (TM-08). `source`: message numbers, e.g. "6,7". */
+  addItem({ chat_jid, type, title, summary = null, source = null, created_by = null }) {
+    if (!ITEM_TYPES.includes(type)) throw new Error(`type must be one of ${ITEM_TYPES.join(", ")}`);
+    if (!String(title || "").trim()) throw new Error("title is required");
+    const now = nowIso();
+    const res = this.db
+      .prepare(
+        `INSERT INTO items (chat_jid, type, title, summary, source, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(chat_jid, type, String(title).trim(), summary, source, created_by, now, now);
+    const id = Number(res.lastInsertRowid);
+    this.db.prepare("INSERT INTO item_log (item_id, at, status, note) VALUES (?, ?, 'open', ?)").run(id, now, "logged");
+    return id;
+  }
+
+  /** Changes status / details; every change is kept in the item's log. */
+  updateItem(id, { status, ref = null, note = null, title, summary, type } = {}) {
+    const item = this.getItem(id);
+    if (!item) return null;
+    if (status !== undefined && !ITEM_STATUSES.includes(status)) throw new Error(`status must be one of ${ITEM_STATUSES.join(", ")}`);
+    if (type !== undefined && !ITEM_TYPES.includes(type)) throw new Error(`type must be one of ${ITEM_TYPES.join(", ")}`);
+    const now = nowIso();
+    this.db
+      .prepare("UPDATE items SET status = ?, type = ?, title = ?, summary = ?, done_ref = ?, updated_at = ? WHERE id = ?")
+      .run(
+        status ?? item.status, type ?? item.type, title ?? item.title, summary ?? item.summary,
+        ref ? (item.done_ref ? `${item.done_ref}, ${ref}` : ref) : item.done_ref, now, id,
+      );
+    this.db.prepare("INSERT INTO item_log (item_id, at, status, ref, note) VALUES (?, ?, ?, ?, ?)").run(id, now, status ?? null, ref, note);
+    return this.getItem(id);
+  }
+
+  getItem(id) {
+    const item = this.db
+      .prepare("SELECT i.*, c.name AS chat_name, c.project AS project FROM items i JOIN chats c ON c.jid = i.chat_jid WHERE i.id = ?")
+      .get(Number(id));
+    if (item) item.log = this.db.prepare("SELECT at, status, ref, note FROM item_log WHERE item_id = ? ORDER BY at, rowid").all(item.id);
+    return item;
+  }
+
+  /** Newest first. `chat` matches a jid or a name substring; `project` keeps to that project's chats. */
+  listItems({ chat, project, status, type } = {}) {
+    const where = [];
+    const params = [];
+    if (chat) {
+      where.push("(i.chat_jid = ? OR c.name LIKE ?)");
+      params.push(chat, `%${chat}%`);
+    }
+    for (const [col, val] of [["c.project", project], ["i.status", status], ["i.type", type]]) {
+      if (val) {
+        where.push(`${col} = ?`);
+        params.push(val);
+      }
+    }
+    return this.db
+      .prepare(
+        `SELECT i.id, i.chat_jid, c.name AS chat_name, c.project, i.type, i.title, i.summary, i.source,
+                i.status, i.done_ref, i.created_at, i.updated_at
+         FROM items i JOIN chats c ON c.jid = i.chat_jid
+         ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+         ORDER BY i.updated_at DESC, i.id DESC`,
+      )
+      .all(...params);
   }
 
   stats() {

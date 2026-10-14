@@ -11,6 +11,10 @@
 //   POST /history      {chat, count?, pages?, project?}
 //                                     ask the phone for a chat's older messages (TM-06);
 //                                     pages defaults to 1 so a call stays under nginx's 60 s
+//   GET  /items?chat=&project=&status=&type=     what groups asked for (TM-08)
+//   POST /items        {chat, type, title, summary?, source?, created_by?, project?}
+//   GET  /items/:id?project=          one request with its history
+//   POST /items/:id    {status?, ref?, note?, title?, summary?, type?, project?}
 //   POST /pair         {phone}        start linking the spare number; returns the code
 //   POST /send         {chat, project?, text?, image_base64?, caption?}
 //                                     post into a chat labelled "team" -- refused anywhere else
@@ -114,6 +118,38 @@ export function createApi({ store, wa, token, ai = null }) {
           return send(res, 200, { chat: chat.name || chat.jid, ...(await wa.fetchHistory(chat.jid, { count, pages })) });
         } catch (err) {
           return send(res, 409, { error: err.message });
+        }
+      }
+      if (req.method === "GET" && path === "/items") {
+        return send(res, 200, { items: store.listItems(Object.fromEntries(url.searchParams)) });
+      }
+      if (req.method === "POST" && path === "/items") {
+        const body = await readJson(req);
+        const chat = store.findChat(String(body.chat || ""));
+        if (!chat || (body.project && chat.project !== body.project)) {
+          return send(res, 404, { error: "no such chat in this project; use the jid or a unique part of the name" });
+        }
+        try {
+          const id = store.addItem({ ...body, chat_jid: chat.jid, source: body.source ? String(body.source) : null });
+          return send(res, 200, { item: store.getItem(id) });
+        } catch (err) {
+          return send(res, 400, { error: err.message });
+        }
+      }
+      m = path.match(/^\/items\/(\d+)$/);
+      if (m && (req.method === "GET" || req.method === "POST")) {
+        const item = store.getItem(m[1]);
+        const scope = req.method === "GET" ? project : null;
+        const body = req.method === "POST" ? await readJson(req) : {};
+        if (!item || ((scope || body.project) && item.project !== (scope || body.project))) {
+          return send(res, 404, { error: "no such item" });
+        }
+        if (req.method === "GET") return send(res, 200, { item });
+        try {
+          const { status, ref, note, title, summary, type } = body;
+          return send(res, 200, { item: store.updateItem(item.id, { status, ref, note, title, summary, type }) });
+        } catch (err) {
+          return send(res, 400, { error: err.message });
         }
       }
       if (req.method === "POST" && path === "/pair") {

@@ -104,6 +104,27 @@ Manglish) into English. Results are stored with the message on the server, so `r
 - `inbox.py status` shows whether the key works and how many messages are waiting.
 - A message that fails 3 times is skipped; the last error shows in `status`.
 
+## Request log per group (TM-08)
+
+The inbox also keeps, per group, **what it asked for and what was done about it**: type
+(bug / feature / question / complaint / task), English title and summary, the source message
+numbers, status (open → in progress → done / won't do), the commit or PR that did it, and a dated
+history of every change. Claude Code sessions keep it current (skill `whatsapp-inbox`).
+
+```bash
+python3 teammate/inbox.py summary "Mercon Software discussions"   # one group on a page
+python3 teammate/inbox.py items --status open                    # everything still open
+python3 teammate/inbox.py item show 12                           # one request with its history
+```
+
+## Backups
+
+Everything above lives on the VPS in `/var/lib/teammate`: `inbox.db` (messages, transcripts and
+translations, request log), `media/`, and `auth/` (the WhatsApp session). `teammate-backup.timer`
+copies all of it nightly at 02:30 IST to `/var/backups/teammate/teammate-<stamp>.tar.gz`
+(root-only, newest 14 kept); every deploy also takes one. Restore steps are at the top of
+`deploy/backup.sh`. The backups are on the same server, so they don't survive losing the VPS.
+
 ## Daily use
 
 Just talk to Claude Code: "what did customers report this week?", "fix #1432", "the cement
@@ -116,7 +137,7 @@ unit issue Suresh mentioned". The `whatsapp-inbox` skill makes the session look 
 | --- | --- |
 | Logs | `journalctl -u teammate -f` on the VPS |
 | Restart | `systemctl restart teammate` |
-| Data | `/var/lib/teammate/` (`inbox.db`, `auth/` = the WhatsApp session, `media/`). Back this up; it survives redeploys. |
+| Data | `/var/lib/teammate/` (`inbox.db`, `auth/` = the WhatsApp session, `media/`); survives redeploys. Backed up nightly to `/var/backups/teammate` (see Backups) |
 | Unlink / relink | Remove the linked device on the phone; the service clears its session; run `pair` again |
 | Rotate the token | Change both secrets, re-run the workflow |
 | Remove entirely | `systemctl disable --now teammate`, delete the `/teammate/` block from the nginx config, `rm -rf /opt/teammate /var/lib/teammate` |
