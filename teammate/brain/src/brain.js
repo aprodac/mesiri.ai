@@ -108,8 +108,10 @@ export class Brain {
    *   owner?: string, model?: string, env?: Record<string, string>, log?: (m: string) => void, now?: () => Date,
    * }} opts
    */
-  constructor({ queryFn, projects, dir, listener, tools, prepare = () => {}, owner = "Ilan", model, env = process.env, log = () => {}, now = () => new Date() }) {
-    Object.assign(this, { queryFn, projects, listener, tools, prepare, owner, model, env, log, now });
+  constructor({ queryFn, projects, dir, listener, tools, prepare = () => {}, owner = "Ilan", model, env = process.env, log = () => {}, now = () => new Date(), routines = {}, fireFn = null }) {
+    // routines: { project: { url, token } } -- approved work runs as a cloud routine session the owner can
+    // watch in Claude Code (hybrid, TM-03b); projects without one run the working turn here.
+    Object.assign(this, { queryFn, projects, listener, tools, prepare, owner, model, env, log, now, routines, fireFn });
     this.sessionsFile = `${dir}/sessions.json`;
     this.plansFile = `${dir}/plans.json`;
     this.sessions = readJson(this.sessionsFile, {});
@@ -148,11 +150,41 @@ export class Brain {
     plan.approved_at = this.now().toISOString();
     writeJson(this.plansFile, this.planStore);
     if (typeof plan.id === "number") this.listener.updateItem(plan.id, { status: "in_progress", note: `OK from ${by} in WhatsApp`, project }).catch(() => {});
+    if (this.routines[project] && this.fireFn) return this.runInCloud(plan, { project, by, reply_chat, say });
     const text =
       `${by} approved plan [${plan.id}] "${plan.title}". Go ahead with exactly this plan now.\n\nThe plan:\n${plan.plan}`;
     return this.enqueue(plan.chat, () =>
       this.turn({ project, chat: plan.chat, chat_name: plan.chat_name, chat_role: "team", reply_chat, sender: by, n: null, text }, "working", plan),
     );
+  }
+
+  /** Starts the approved plan as a cloud routine session and posts its link, so the owner can watch it. */
+  async runInCloud(plan, { project, by, reply_chat, say }) {
+    const payload = [
+      `Project: ${project}`,
+      `Approved by: ${by} (in WhatsApp; the listener checked ${by} is on the approved list)`,
+      `Request log item: ${typeof plan.id === "number" ? plan.id : "none"}`,
+      `Reply group jid: ${reply_chat}`,
+      `Plan [${plan.id}]: ${plan.title}`,
+      "",
+      plan.plan,
+    ].join("\n");
+    try {
+      const r = await this.fireFn(this.routines[project], payload);
+      plan.status = "running_in_cloud";
+      plan.session_url = r?.claude_code_session_url || null;
+      writeJson(this.plansFile, this.planStore);
+      this.log(`brain: plan [${plan.id}] started in the cloud: ${plan.session_url}`);
+      if (typeof plan.id === "number" && plan.session_url) {
+        this.listener.updateItem(plan.id, { note: `cloud session ${plan.session_url}`, project }).catch(() => {});
+      }
+      return say(`▶️ Working on [${plan.id}] ${plan.title}\nWatch it live in Claude Code: ${plan.session_url || "(link not returned)"}\nI'll post progress and the result here.`);
+    } catch (e) {
+      plan.status = "proposed"; // let them try the ok again
+      writeJson(this.plansFile, this.planStore);
+      this.log(`brain: cloud start failed for [${plan.id}]: ${e.message}`);
+      return say(`⚠️ Couldn't start the cloud session for [${plan.id}] (${String(e.message).slice(0, 150)}). Reply @bot ok ${plan.id} to try again.`);
+    }
   }
 
   enqueue(key, fn) {

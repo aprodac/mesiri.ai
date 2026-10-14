@@ -199,3 +199,44 @@ test("brain: chunk and system prompt", () => {
   assert.match(sys, /needs_attention/);
   assert.match(sys, /preview_html/);
 });
+
+test("brain (hybrid): with a routine, an ok starts a cloud session and posts its link", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "brain-"));
+  const sent = [];
+  const fired = [];
+  let fail = false;
+  const brain = new Brain({
+    queryFn: () => {
+      throw new Error("no local working turn expected");
+    },
+    projects: { mercon: { cwd: "/repos/mercon", flow: "work on ilan" } },
+    dir,
+    listener: { send: async (b) => sent.push(b), addItem: async () => ({}), updateItem: async () => ({}) },
+    tools: () => ({}),
+    routines: { mercon: { url: "https://api.anthropic.com/v1/claude_code/routines/trig_X/fire", token: "t" } },
+    fireFn: async (routine, text) => {
+      if (fail) throw new Error("routine fire HTTP 429");
+      fired.push({ routine, text });
+      return { type: "routine_fire", claude_code_session_url: "https://claude.ai/code/session_ABC" };
+    },
+  });
+  try {
+    brain.plans.save({ id: 41, project: "mercon", chat: "H@g.us", chat_name: "Mercon history", title: "Driver count", plan: "Count active drivers only; test with 25+5.", by: "Ilan" });
+    brain.plans.save({ id: 42, project: "mercon", chat: "H@g.us", chat_name: "Mercon history", title: "Other", plan: "x", by: "Ilan" });
+
+    await brain.approve({ project: "mercon", item_id: 41, by: "Ilan", reply_chat: "H@g.us" });
+    assert.equal(fired.length, 1);
+    assert.match(fired[0].text, /Approved by: Ilan[\s\S]*Request log item: 41[\s\S]*Reply group jid: H@g\.us[\s\S]*Count active drivers only/);
+    assert.match(sent.at(-1).text, /▶️ Working on \[41\] Driver count\nWatch it live in Claude Code: https:\/\/claude\.ai\/code\/session_ABC/);
+    assert.equal(sent.at(-1).chat, "H@g.us");
+
+    fail = true;
+    await brain.approve({ project: "mercon", item_id: 42, by: "Ilan", reply_chat: "H@g.us" });
+    assert.match(sent.at(-1).text, /Couldn't start the cloud session for \[42\][\s\S]*ok 42/);
+    fail = false;
+    await brain.approve({ project: "mercon", item_id: 42, by: "Ilan", reply_chat: "H@g.us" }); // retry works
+    assert.equal(fired.length, 2);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

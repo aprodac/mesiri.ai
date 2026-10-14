@@ -112,7 +112,33 @@ try {
 }
 const screenshotHosts = (process.env.TEAMMATE_BRAIN_SCREENSHOT_HOSTS || "").split(",").map((s) => s.trim()).filter(Boolean);
 
+// Hybrid (TM-03b): a project with a cloud routine runs approved work there, where the owner can watch it in
+// Claude Code. Per project: TEAMMATE_ROUTINE_<PROJECT>_URL (the routine's /fire URL) and _TOKEN (its API token).
+const routines = {};
+for (const name of Object.keys(projects)) {
+  const url = process.env[`TEAMMATE_ROUTINE_${name.toUpperCase()}_URL`];
+  const rtoken = process.env[`TEAMMATE_ROUTINE_${name.toUpperCase()}_TOKEN`];
+  if (url && rtoken) routines[name] = { url, token: rtoken };
+}
+async function fireRoutine({ url, token: rtoken }, text) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${rtoken}`,
+      "anthropic-beta": "experimental-cc-routine-2026-04-01",
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ text }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`routine fire HTTP ${res.status} ${data?.error?.message || ""}`.trim());
+  return data;
+}
+
 const brain = new Brain({
+  routines,
+  fireFn: fireRoutine,
   queryFn: query,
   projects,
   dir,

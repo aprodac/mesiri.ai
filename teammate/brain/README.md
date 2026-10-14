@@ -23,6 +23,12 @@ dollars per turn. Refusals during a working turn are posted as **🔐 Needs your
 Claude flags anything else that needs the owner (**👀 Please check Claude Code**, a decision, a
 credential) with its `needs_attention` tool.
 
+**Hybrid:** when a project has a cloud routine (`TEAMMATE_ROUTINE_<PROJECT>_URL` / `_TOKEN`), an approved
+plan isn't worked on here: the brain fires the routine with the plan, and the group gets
+"▶️ Working on [n] — watch it live in Claude Code: <session link>". The cloud session (your Teammate
+environment, visible in your Claude Code app and on claude.ai) does the work and posts progress back.
+Setup: `ROUTINE_PROMPT.md`.
+
 Merging to `main` (production) is never part of the default flow; it happens only when the group
 says so. For a hard guarantee, protect `main` on GitHub (required review).
 

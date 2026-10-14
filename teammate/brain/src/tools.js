@@ -78,7 +78,7 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts }) {
     ),
     tool(
       "propose_plan",
-      "Record a plan for a change so the team can approve it. Call this once your plan is ready (after any previews). It logs a request and returns its number; end your reply by asking for '@bot ok <number>'. Nothing gets changed until then.",
+      "Record a plan for a change so the team can approve it. Call this once your plan is ready (after any previews). It logs a request and returns its number; end your reply by asking for '@bot ok <number>'. Nothing gets changed until then. The approved plan may be carried out by a separate session that hasn't seen this conversation, so make it self-contained: the problem, the files and functions to change, the exact change, how to test it, and anything decided in the chat.",
       {
         title: z.string().min(3).max(120).describe("Short English title"),
         plan: z.string().min(10).max(6000).describe("What you'll change, where, how you'll test it, and the git steps"),
