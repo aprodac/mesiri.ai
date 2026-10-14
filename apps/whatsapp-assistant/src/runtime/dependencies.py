@@ -792,6 +792,12 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     from runtime.capability_help import CapabilityHelpService
 
     capability_help = CapabilityHelpService(ai_resolver, trace_logger=trace_logger)
+    # WA-11: conversational replies in the sender's language, using the same
+    # resolver; the language each sender speaks is remembered in Redis.
+    from runtime.reply_language import ReplyComposer, UserLanguageStore
+
+    reply_composer = ReplyComposer(ai_resolver)
+    user_language_store = UserLanguageStore(redis_client)
     # Resolves a picker reply the deterministic matcher (workflows/slots.py's
     # match_slot_answer) couldn't -- e.g. "New cause it's 3rd floor" instead
     # of a bare number or "This is new work". Same resolver as above:
@@ -871,6 +877,8 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         evidence_query=evidence_query,
         escalation_query=escalation_query,
         capability_help=capability_help,
+        reply_composer=reply_composer,
+        user_language_store=user_language_store,
         first_message_query=first_message_query,
         member_resolver=member_resolver,
         plan_store=plan_store,

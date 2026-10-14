@@ -163,7 +163,7 @@ def test_question_gets_capability_answer_not_a_greeting():
     reply = render_direct_reply(
         _decision(PlannerDecisionType.DIRECT_REPLY, CanonicalEventType.GENERAL_QUESTION_ASKED)
     )
-    assert "record" in reply.text
+    assert "send me what happened" in reply.text
     assert not reply.text.startswith(("Hello", "Good "))
     assert reply.list_rows == CATEGORY_ROWS
 
@@ -294,7 +294,7 @@ def test_suggestion_rows_reuse_the_menu_tap_ids():
 def test_no_matches_falls_back_to_the_capability_overview():
     for empty in (None, [], "garbage", {}):
         reply = render_capability_answer(empty)
-        assert "record" in reply.text
+        assert "send me what happened" in reply.text
         assert reply.list_rows == CATEGORY_ROWS
 
 

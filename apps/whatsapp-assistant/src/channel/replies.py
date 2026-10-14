@@ -1003,11 +1003,16 @@ def _render_capability_overview(role: str | None) -> ReplySpec:
     """
     from workflows.registry import iter_menu_categories
 
+    # WA-11: short, friendly and with one example to copy -- a supervisor
+    # asking "what is this?" needs to know what to send, not a feature list.
+    # No module names here: the old list said "money" to companies with
+    # finance switched off. The menu below is already filtered to the
+    # company's switched-on modules (WA-07).
     return ReplySpec(
         text=(
-            "I record work from WhatsApp and answer questions about it — "
-            "materials, labour, money, site progress, and daily reports.\n\n"
-            "Pick a category to see what you can send:"
+            "I'm here to help. Just send me what happened on site today, for example:\n"
+            "“6 masons and 4 helpers, slab work on floor 3 done”\n\n"
+            "You can type it or send a voice note. Or pick what you're reporting:"
         ),
         list_button_label="Choose one",
         list_rows=tuple(

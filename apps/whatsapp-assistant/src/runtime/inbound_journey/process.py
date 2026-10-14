@@ -92,6 +92,7 @@ from runtime.petty_cash_query import PettyCashRecipientQueryService
 from runtime.plan_executor import _progress_prefix
 from runtime.project_detail_query import ProjectDetailQueryService
 from runtime.reply_dispatch import send_reply_spec
+from runtime.reply_language import ReplyComposer, UserLanguageStore
 from runtime.reversal_query import ReversalTargetQueryService
 from runtime.site_issue_query import SiteIssueTargetQueryService
 from runtime.vendor_query import VendorQueryService
@@ -246,8 +247,13 @@ async def process_inbound_message(
     decomposition: DecompositionProvider | None = None,
     plan_store: PlanStore | None = None,
     pending_decomposition_store: PendingDecompositionStore | None = None,
+    reply_composer: ReplyComposer | None = None,
+    user_language_store: UserLanguageStore | None = None,
 ) -> JourneyResult:
     mlog: MessageLogger = message_logger or NoopMessageLogger()
+    # WA-11, set once understanding has run (see below).
+    reply_language: str | None = None
+    reply_user_message: str | None = message.text
     tlog: TraceLogger = trace_logger or NoopTraceLogger()
     correlation_id = message.correlation_id
 
@@ -284,6 +290,15 @@ async def process_inbound_message(
         understanding = await pipeline.understand(
             message, semantic_hint=semantic_hint, expense_categories=expense_categories
         )
+        # WA-11: remember the language this sender speaks, for every reply
+        # (including the instant "hi" answer that never reaches the AI), and
+        # keep what they said for answering small talk below.
+        reply_language = understanding.detected_language
+        reply_user_message = understanding.transcript or understanding.normalized_text or message.text
+        if user_language_store is not None and understanding.detected_language:
+            await user_language_store.remember(
+                user_id=actor_user_id, detected_language=understanding.detected_language
+            )
         await _safe(
             tlog.log_stage(
                 correlation_id=correlation_id,
@@ -1199,6 +1214,33 @@ async def process_inbound_message(
         resolved,
         is_first_message=is_first_message,
     )
+
+    # WA-11: a conversational reply (greeting, small talk, "what can you
+    # do?", "I didn't follow") goes out in the sender's language, opening
+    # with a word for their small talk when there was some. Workflow prompts,
+    # confirmations and receipts are untouched (exact quantities and names).
+    # Only the body text: list buttons and row titles have tight length
+    # limits and stay as they are.
+    if (
+        reply is not None
+        and reply_composer is not None
+        and held_reply is None
+        and workflow_run is None
+        and workflow_resume is None
+        and planner_decision is not None
+        and planner_decision.decision_type is PlannerDecisionType.DIRECT_REPLY
+    ):
+        language = reply_language
+        if language is None and user_language_store is not None:
+            language = await user_language_store.get(user_id=actor_user_id)
+        composed = await reply_composer.compose(
+            reply.text,
+            language=language,
+            user_message=reply_user_message,
+            correlation_id=correlation_id,
+        )
+        if composed != reply.text:
+            reply = dataclasses.replace(reply, text=composed)
 
     # WA-01 save first: a capture draft (work done, labour, materials,
     # issues) is not asked "Confirm?" -- the caller (message_journey) saves

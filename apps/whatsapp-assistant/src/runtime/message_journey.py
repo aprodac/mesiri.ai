@@ -17,6 +17,7 @@ separate files. The nested closures' bodies are unchanged from the original.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -102,6 +103,7 @@ if TYPE_CHECKING:
     from runtime.org_settings_query import OrganizationSettingsQueryService
     from runtime.petty_cash_query import PettyCashRecipientQueryService
     from runtime.project_detail_query import ProjectDetailQueryService
+    from runtime.reply_language import ReplyComposer, UserLanguageStore
     from runtime.reversal_query import ReversalTargetQueryService
     from runtime.site_issue_query import SiteIssueTargetQueryService
     from runtime.vendor_query import VendorQueryService
@@ -168,6 +170,8 @@ def build_message_handlers(
     project_setup_offer_store: ProjectSetupOfferStore,
     memory_loader: ConversationMemoryLoader,
     memory_coordinator: ConversationMemoryCoordinator,
+    reply_composer: ReplyComposer | None = None,
+    user_language_store: UserLanguageStore | None = None,
 ) -> tuple[Any, Any]:
     """Build the `on_normalized`/`on_message_claimed` callbacks WhatsAppReceiver
     invokes for every inbound message, closing over the already-built services
@@ -1030,6 +1034,8 @@ def build_message_handlers(
                 capability_help=capability_help,
                 first_message_query=first_message_query,
                 member_resolver=member_resolver,
+                reply_composer=reply_composer,
+                user_language_store=user_language_store,
             )
             timer.lap("process_inbound_message_held_media")
             await _save_first_after_journey(held_journey)
@@ -1061,6 +1067,17 @@ def build_message_handlers(
                     sender_wa_id=wa_id, correlation_id=message.correlation_id
                 ),
             )
+        if greeting_reply is not None and reply_composer is not None and user_language_store is not None:
+            # WA-11: in the language this sender last spoke. English (or not
+            # known yet) returns at once with no AI call, so "hi" stays instant.
+            known_language = await user_language_store.get(user_id=ctx.user_id)
+            if known_language is not None:
+                greeting_text = await reply_composer.compose(
+                    greeting_reply.text,
+                    language=known_language,
+                    correlation_id=message.correlation_id,
+                )
+                greeting_reply = dataclasses.replace(greeting_reply, text=greeting_text)
         if greeting_reply is not None:
             if greeting_reply.list_rows:
                 await sender.send_list(
@@ -1823,6 +1840,8 @@ def build_message_handlers(
             capability_help=capability_help,
             first_message_query=first_message_query,
             member_resolver=member_resolver,
+            reply_composer=reply_composer,
+            user_language_store=user_language_store,
         )
         timer.lap("process_inbound_message")
         await _save_first_after_journey(journey)
