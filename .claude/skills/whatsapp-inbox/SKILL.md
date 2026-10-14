@@ -15,6 +15,10 @@ python3 teammate/inbox.py <command>
 It needs `TEAMMATE_TOKEN` in the environment (the user adds it to the Claude Code environment
 secrets). If it's missing, say so and stop; don't guess what was said.
 
+The same number sits in other projects' groups too. `TEAMMATE_PROJECT` (set in this repo's
+`.claude/settings.json`) keeps every command to this project's groups, so you only see this
+project's conversations. Don't unset or override it to look at another project's chats.
+
 ## Commands
 
 | Need | Command |
@@ -25,7 +29,7 @@ secrets). If it's missing, say so and stop; don't guess what was said.
 | Find something | `search dpr pdf` (all words must match; `--days 60`, `--chat`, `--role`) |
 | Full context of one message | `show 1432 --around 15` |
 | A photo / voice note / document | `media 1432 /tmp/x.jpg`, then look at the file |
-| Label a group | `label "Acme" customer` (team / customer / ignore) |
+| Label a group | `label "Acme" customer` (team / customer / ignore; tagged with this project) |
 
 Messages are numbered (`#1432`). Quote the number back to the user so you both mean the same
 message.

@@ -5,6 +5,9 @@
 import { DatabaseSync } from "node:sqlite";
 
 export const ROLES = ["unlabelled", "team", "customer", "ignore"];
+// One listener serves several repos' groups; a chat's project keeps each repo's
+// sessions to their own groups (TM-05). Lowercase slug, e.g. "mesiri", "mercon".
+const PROJECT_RE = /^[a-z0-9][a-z0-9_-]{0,39}$/;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS chats (
@@ -12,6 +15,7 @@ CREATE TABLE IF NOT EXISTS chats (
   name        TEXT,
   is_group    INTEGER NOT NULL,
   role        TEXT NOT NULL DEFAULT 'unlabelled',
+  project     TEXT,
   first_seen  TEXT NOT NULL,
   updated_at  TEXT NOT NULL
 );
@@ -43,7 +47,7 @@ const nowIso = () => new Date().toISOString();
 // What the API returns for a message: the internal rowid is the public,
 // short, stable number people and sessions refer to ("message 1432").
 const MESSAGE_COLUMNS = `
-  m.rowid AS n, m.id, m.chat_jid, c.name AS chat_name, c.role AS chat_role,
+  m.rowid AS n, m.id, m.chat_jid, c.name AS chat_name, c.role AS chat_role, c.project AS chat_project,
   m.sender_jid, m.sender_pn, m.sender_name, m.from_me, m.at, m.kind, m.text,
   m.quoted_id, m.quoted_text, m.media_mime, (m.media_path IS NOT NULL) AS has_media,
   m.reaction_to`;
@@ -53,6 +57,9 @@ export class Store {
     this.db = new DatabaseSync(path);
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
     this.db.exec(SCHEMA);
+    // Inboxes created before TM-05 have no project column; add it in place.
+    const cols = this.db.prepare("PRAGMA table_info(chats)").all().map((c) => c.name);
+    if (!cols.includes("project")) this.db.exec("ALTER TABLE chats ADD COLUMN project TEXT");
   }
 
   close() {
@@ -78,15 +85,24 @@ export class Store {
   /** A chat by exact jid, or by a name substring that matches exactly one chat. */
   findChat(jidOrName) {
     if (!jidOrName) return null;
-    const exact = this.db.prepare("SELECT jid, name, role FROM chats WHERE jid = ?").get(jidOrName);
+    const exact = this.db.prepare("SELECT jid, name, role, project FROM chats WHERE jid = ?").get(jidOrName);
     if (exact) return exact;
-    const hits = this.db.prepare("SELECT jid, name, role FROM chats WHERE name LIKE ?").all(`%${jidOrName}%`);
+    const hits = this.db.prepare("SELECT jid, name, role, project FROM chats WHERE name LIKE ?").all(`%${jidOrName}%`);
     return hits.length === 1 ? hits[0] : null;
   }
 
-  setRole(jid, role) {
+  /** `project` undefined leaves it as is; null clears it. */
+  setRole(jid, role, project) {
     if (!ROLES.includes(role)) throw new Error(`role must be one of ${ROLES.join(", ")}`);
-    const res = this.db.prepare("UPDATE chats SET role = ?, updated_at = ? WHERE jid = ?").run(role, nowIso(), jid);
+    if (project != null && !PROJECT_RE.test(project)) {
+      throw new Error("project must be a lowercase slug (letters, digits, - and _), e.g. mercon");
+    }
+    const res =
+      project === undefined
+        ? this.db.prepare("UPDATE chats SET role = ?, updated_at = ? WHERE jid = ?").run(role, nowIso(), jid)
+        : this.db
+            .prepare("UPDATE chats SET role = ?, project = ?, updated_at = ? WHERE jid = ?")
+            .run(role, project, nowIso(), jid);
     return res.changes > 0;
   }
 
@@ -112,26 +128,33 @@ export class Store {
     this.db.prepare("UPDATE messages SET media_path = ? WHERE rowid = ?").run(path, n);
   }
 
-  listChats() {
+  /** With `project`: that project's chats plus untagged ones (so new groups can be labelled). */
+  listChats({ project } = {}) {
     return this.db
       .prepare(
-        `SELECT c.jid, c.name, c.is_group, c.role, c.first_seen,
+        `SELECT c.jid, c.name, c.is_group, c.role, c.project, c.first_seen,
                 COUNT(m.rowid) AS messages, MAX(m.at) AS last_message_at
          FROM chats c LEFT JOIN messages m ON m.chat_jid = c.jid
+         ${project ? "WHERE c.project = ? OR c.project IS NULL" : ""}
          GROUP BY c.jid ORDER BY last_message_at DESC NULLS LAST`,
       )
-      .all();
+      .all(...(project ? [project] : []));
   }
 
   /**
    * Newest first. `chat` matches a jid exactly or a chat name by substring;
    * `q` is space-separated words that must all appear (case-insensitive) in
    * the text, the quoted text, or the sender's name. Chats labelled "ignore"
-   * are left out unless asked for by jid.
+   * are left out unless asked for by jid. `project` keeps only that project's
+   * chats -- untagged chats are left out, since they may belong to another.
    */
-  findMessages({ chat, role, q, since, until, sender, limit = 50, before } = {}) {
+  findMessages({ chat, role, project, q, since, until, sender, limit = 50, before } = {}) {
     const where = [];
     const params = [];
+    if (project) {
+      where.push("c.project = ?");
+      params.push(project);
+    }
     if (chat) {
       where.push("(m.chat_jid = ? OR c.name LIKE ?)");
       params.push(chat, `%${chat}%`);

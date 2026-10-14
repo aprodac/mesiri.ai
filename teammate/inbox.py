@@ -8,11 +8,16 @@ Environment:
   TEAMMATE_TOKEN   the listener's API token (required)
   TEAMMATE_API     default https://api.whatsapp.mesiri.ai/teammate
   TEAMMATE_TZ      timezone for printed times, default Asia/Kolkata
+  TEAMMATE_PROJECT this repo's project, e.g. mesiri or mercon (set in the repo's
+                   .claude/settings.json). Every command then sees and posts to
+                   that project's groups only; unset, everything is visible.
 
 Commands:
   status                              is the listener linked and receiving?
   chats                               every group/chat with its label and counts
-  label <chat> team|customer|ignore   label a chat (name substring or jid)
+  label <chat> team|customer|ignore [--project P]
+                                      label a chat (name substring or jid); the project
+                                      defaults to TEAMMATE_PROJECT
   recent [--chat X] [--role R] [--hours 24] [--limit 100]
   search <words...> [--chat X] [--role R] [--days 60] [--limit 50]
   show <n> [--around 10]              one message with the conversation around it
@@ -34,11 +39,18 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import UTC, datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+UTC = timezone.utc  # noqa: UP017 -- datetime.UTC needs Python 3.11; this runs on 3.9+
 API = os.environ.get("TEAMMATE_API", "https://api.whatsapp.mesiri.ai/teammate").rstrip("/")
-TZ = ZoneInfo(os.environ.get("TEAMMATE_TZ", "Asia/Kolkata"))
+PROJECT = os.environ.get("TEAMMATE_PROJECT") or None
+_TZ_NAME = os.environ.get("TEAMMATE_TZ", "Asia/Kolkata")
+try:
+    TZ = ZoneInfo(_TZ_NAME)
+except ZoneInfoNotFoundError:
+    # Windows Python ships without time zone data (pip install tzdata adds it).
+    TZ = timezone(timedelta(hours=5, minutes=30)) if _TZ_NAME == "Asia/Kolkata" else UTC
 
 
 def _request(
@@ -114,7 +126,7 @@ def _since(**delta) -> str:
 def _resolve_chat(name_or_jid: str) -> str:
     if "@" in name_or_jid:
         return name_or_jid
-    chats = _request("GET", "/chats")["chats"]
+    chats = _request("GET", "/chats", params={"project": PROJECT})["chats"]
     hits = [c for c in chats if name_or_jid.lower() in (c.get("name") or "").lower()]
     if len(hits) != 1:
         names = ", ".join(c.get("name") or c["jid"] for c in hits) or "none"
@@ -127,7 +139,10 @@ def _resolve_chat(name_or_jid: str) -> str:
 def _team_chat(explicit: str | None) -> str:
     if explicit:
         return explicit
-    teams = [c for c in _request("GET", "/chats")["chats"] if c["role"] == "team"]
+    chats = _request("GET", "/chats", params={"project": PROJECT})["chats"]
+    teams = [
+        c for c in chats if c["role"] == "team" and (not PROJECT or c.get("project") == PROJECT)
+    ]
     if len(teams) != 1:
         names = ", ".join(c.get("name") or c["jid"] for c in teams) or "none"
         sys.exit(f"{len(teams)} chats are labelled team ({names}); pass --chat")
@@ -143,19 +158,29 @@ def _post(a: argparse.Namespace) -> None:
         sys.exit("nothing to post: give text, --text-file or --image")
     chat = _team_chat(a.chat)
     if text:
-        r = _request("POST", "/send", body={"chat": chat, "text": text})
+        r = _request("POST", "/send", body={"chat": chat, "project": PROJECT, "text": text})
         print(f"posted text to {r['chat']}")
     for spec in a.image:
         path, _, caption = spec.partition("::")
         with open(path, "rb") as fh:
             data = base64.b64encode(fh.read()).decode()
         r = _request(
-            "POST", "/send", body={"chat": chat, "image_base64": data, "caption": caption or None}
+            "POST",
+            "/send",
+            body={
+                "chat": chat,
+                "project": PROJECT,
+                "image_base64": data,
+                "caption": caption or None,
+            },
         )
         print(f"posted {path} to {r['chat']}")
 
 
 def main() -> None:
+    # Windows consoles default to a legacy code page that can't print · … ⏎.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     p = argparse.ArgumentParser(
         prog="inbox", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -165,6 +190,7 @@ def main() -> None:
     lab = sub.add_parser("label")
     lab.add_argument("chat")
     lab.add_argument("role", choices=["team", "customer", "ignore", "unlabelled"])
+    lab.add_argument("--project", default=PROJECT, help="default: TEAMMATE_PROJECT")
     rec = sub.add_parser("recent")
     rec.add_argument("--chat")
     rec.add_argument("--role", choices=["team", "customer", "unlabelled"])
@@ -204,36 +230,46 @@ def main() -> None:
             f"Inbox: {ib['messages']} messages in {ib['chats']} chats; last message {_when(ib.get('last_message_at'))}"
         )
     elif a.cmd == "chats":
-        for c in _request("GET", "/chats")["chats"]:
+        for c in _request("GET", "/chats", params={"project": PROJECT})["chats"]:
             kind = "group" if c["is_group"] else "direct"
             print(
-                f"{c['role']:<10} {c['messages']:>6} msgs  last {_when(c.get('last_message_at')):<13} {kind:<6} {c.get('name') or '?'}  ({c['jid']})"
+                f"{c['role']:<10} {c.get('project') or '-':<10} {c['messages']:>6} msgs  last {_when(c.get('last_message_at')):<13} {kind:<6} {c.get('name') or '?'}  ({c['jid']})"
             )
     elif a.cmd == "label":
         jid = _resolve_chat(a.chat)
-        _request("POST", "/chats/role", body={"jid": jid, "role": a.role})
-        print(f"{jid} labelled {a.role}")
+        body = {"jid": jid, "role": a.role}
+        if a.project:
+            body["project"] = a.project
+        _request("POST", "/chats/role", body=body)
+        print(f"{jid} labelled {a.role}" + (f", project {a.project}" if a.project else ""))
     elif a.cmd == "recent":
-        params = {"chat": a.chat, "role": a.role, "since": _since(hours=a.hours), "limit": a.limit}
+        params = {
+            "chat": a.chat,
+            "role": a.role,
+            "project": PROJECT,
+            "since": _since(hours=a.hours),
+            "limit": a.limit,
+        }
         _print_messages(_request("GET", "/messages", params=params)["messages"])
     elif a.cmd == "search":
         params = {
             "q": " ".join(a.words),
             "chat": a.chat,
             "role": a.role,
+            "project": PROJECT,
             "since": _since(days=a.days),
             "limit": a.limit,
         }
         _print_messages(_request("GET", "/messages", params=params)["messages"])
     elif a.cmd == "show":
-        ctx = _request("GET", f"/messages/{a.n}", params={"around": a.around})
+        ctx = _request("GET", f"/messages/{a.n}", params={"around": a.around, "project": PROJECT})
         m = ctx["message"]
         print(f"{m.get('chat_name') or m['chat_jid']} ({m.get('chat_role')})\n")
         for t in ctx["thread"]:
             mark = ">>" if t["n"] == m["n"] else "  "
             print(mark, _line(t, with_chat=False))
     elif a.cmd == "media":
-        data = _request("GET", f"/media/{a.n}", raw=True)
+        data = _request("GET", f"/media/{a.n}", params={"project": PROJECT}, raw=True)
         with open(a.out, "wb") as fh:
             fh.write(data)
         print(f"saved {len(data)} bytes to {a.out}")

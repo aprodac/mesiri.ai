@@ -2,16 +2,18 @@
 // Plain node:http -- the surface is small and the folder stays dependency-light.
 //
 //   GET  /health                      no auth: up + state; with token: linked number, counts
-//   GET  /chats                       every chat with role and counts
-//   POST /chats/role   {jid, role}    label a chat team | customer | ignore
-//   GET  /messages?chat=&role=&q=&since=&until=&sender=&limit=&before=
-//   GET  /messages/:n                 one message with its surrounding thread
-//   GET  /media/:n                    the downloaded file for a media message
+//   GET  /chats?project=              every chat with role, project and counts
+//   POST /chats/role   {jid, role, project?}
+//                                     label a chat team | customer | ignore, and its project
+//   GET  /messages?chat=&role=&project=&q=&since=&until=&sender=&limit=&before=
+//   GET  /messages/:n?project=        one message with its surrounding thread
+//   GET  /media/:n?project=           the downloaded file for a media message
 //   POST /pair         {phone}        start linking the spare number; returns the code
-//   POST /send         {chat, text?, image_base64?, caption?}
+//   POST /send         {chat, project?, text?, image_base64?, caption?}
 //                                     post into a chat labelled "team" -- refused anywhere else
 //
 // Every route except /health needs `Authorization: Bearer <TEAMMATE_API_TOKEN>`.
+// `project` (TM-05) scopes a call to one repo's groups; without it, all are visible.
 
 import { createReadStream, existsSync } from "node:fs";
 import { createServer } from "node:http";
@@ -68,12 +70,12 @@ export function createApi({ store, wa, token }) {
       if (!authorized(req, token)) return send(res, 401, { error: "unauthorized" });
 
       if (req.method === "GET" && path === "/chats") {
-        return send(res, 200, { chats: store.listChats() });
+        return send(res, 200, { chats: store.listChats({ project: url.searchParams.get("project") || undefined }) });
       }
       if (req.method === "POST" && path === "/chats/role") {
-        const { jid, role } = await readJson(req);
+        const { jid, role, project } = await readJson(req);
         try {
-          return store.setRole(jid, role) ? send(res, 200, { ok: true }) : send(res, 404, { error: "unknown chat" });
+          return store.setRole(jid, role, project) ? send(res, 200, { ok: true }) : send(res, 404, { error: "unknown chat" });
         } catch (err) {
           return send(res, 400, { error: err.message });
         }
@@ -82,16 +84,19 @@ export function createApi({ store, wa, token }) {
         const p = Object.fromEntries(url.searchParams);
         return send(res, 200, { messages: store.findMessages(p) });
       }
+      // A message from another project's chat is reported as missing.
+      const project = url.searchParams.get("project");
+      const inProject = (msg) => msg && (!project || msg.chat_project === project);
       let m = path.match(/^\/messages\/(\d+)$/);
       if (req.method === "GET" && m) {
         const around = Number(url.searchParams.get("around") ?? 10);
         const ctx = store.getContext(m[1], Math.min(Math.max(around, 0), 100));
-        return ctx ? send(res, 200, ctx) : send(res, 404, { error: "no such message" });
+        return inProject(ctx?.message) ? send(res, 200, ctx) : send(res, 404, { error: "no such message" });
       }
       m = path.match(/^\/media\/(\d+)$/);
       if (req.method === "GET" && m) {
         const msg = store.getMessage(m[1]);
-        if (!msg?.media_path || !existsSync(msg.media_path)) return send(res, 404, { error: "no media" });
+        if (!inProject(msg) || !msg.media_path || !existsSync(msg.media_path)) return send(res, 404, { error: "no media" });
         res.writeHead(200, { "content-type": msg.media_mime || "application/octet-stream" });
         return createReadStream(msg.media_path).pipe(res);
       }
@@ -115,6 +120,9 @@ export function createApi({ store, wa, token }) {
         if (!chat) return send(res, 404, { error: "no such chat; use the jid or a unique part of the name" });
         if (chat.role !== "team") {
           return send(res, 403, { error: `refused: '${chat.name || chat.jid}' is labelled ${chat.role}; only team chats can be posted to` });
+        }
+        if (body.project && chat.project !== body.project) {
+          return send(res, 403, { error: `refused: '${chat.name || chat.jid}' is not a ${body.project} chat` });
         }
         const text = body.text ? String(body.text) : null;
         const caption = body.caption ? String(body.caption) : null;

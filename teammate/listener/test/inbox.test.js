@@ -220,3 +220,78 @@ test("api: send rate limit and a disconnected WhatsApp", async () => {
     server2.close();
   }
 });
+
+test("project (TM-05): each repo sees and posts to its own groups only", async () => {
+  const store = seeded(); // Acme (customer) + Mesiri team, untagged
+  const MERCON = "120363000000000003@g.us";
+  store.upsertChat({ jid: MERCON, name: "Mercon Software discussions", is_group: true });
+  store.addMessage(
+    normalizeMessage({ ...groupMsg("M1", "trip report shows wrong date", { ts: 1_760_000_200 }), key: { id: "M1", remoteJid: MERCON, participant: "c@s.whatsapp.net" } }),
+  );
+  store.setRole(GROUP, "customer", "mesiri");
+  store.setRole("120363000000000002@g.us", "team", "mesiri");
+  assert.throws(() => store.setRole(MERCON, "customer", "Mercon!"));
+
+  // Untagged chats are listed (so they can be labelled) but their messages stay out of project views.
+  assert.equal(store.findMessages({ project: "mercon" }).length, 0);
+  assert.equal(store.listChats({ project: "mercon" }).length, 1);
+  store.setRole(MERCON, "customer", "mercon");
+  assert.equal(store.setRole(MERCON, "customer"), true); // project left as is
+  assert.deepEqual(store.findMessages({ project: "mercon" }).map((m) => m.id), ["M1"]);
+  assert.equal(store.findMessages({ project: "mesiri", q: "trip" }).length, 0);
+  assert.equal(store.findMessages({ q: "trip" }).length, 1); // no project: everything, as before
+
+  const sent = [];
+  const wa = { status: () => ({ state: "connected" }), send: async (jid) => (sent.push(jid), "id") };
+  const server = createApi({ store, wa, token: TOKEN });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  try {
+    const chats = await call(server, "GET", "/chats?project=mercon");
+    assert.deepEqual(chats.body.chats.map((c) => c.project), ["mercon"]);
+    const msgs = await call(server, "GET", "/messages?project=mesiri");
+    assert.equal(msgs.body.messages.length, 3);
+    assert.ok(msgs.body.messages.every((m) => m.chat_project === "mesiri"));
+
+    const n = store.findMessages({ project: "mercon" })[0].n;
+    assert.equal((await call(server, "GET", `/messages/${n}?project=mercon`)).status, 200);
+    assert.equal((await call(server, "GET", `/messages/${n}?project=mesiri`)).status, 404);
+    assert.equal((await call(server, "GET", `/media/${n}?project=mesiri`)).status, 404);
+
+    const label = await call(server, "POST", "/chats/role", { body: { jid: MERCON, role: "ignore", project: "mercon" } });
+    assert.equal(label.status, 200);
+    assert.equal((await call(server, "POST", "/chats/role", { body: { jid: MERCON, role: "customer", project: "BAD X" } })).status, 400);
+
+    // Posting: a mercon session can't post into the mesiri team group.
+    assert.equal((await call(server, "POST", "/send", { body: { chat: "Mesiri team", project: "mercon", text: "x" } })).status, 403);
+    assert.equal((await call(server, "POST", "/send", { body: { chat: "Mesiri team", project: "mesiri", text: "x" } })).status, 200);
+    assert.deepEqual(sent, ["120363000000000002@g.us"]);
+  } finally {
+    server.close();
+  }
+});
+
+test("project (TM-05): an inbox from before TM-05 gains the column, data kept", async () => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(join(tmpdir(), "tm05-"));
+  const path = join(dir, "inbox.db");
+  try {
+    const old = new DatabaseSync(path);
+    old.exec(`CREATE TABLE chats (jid TEXT PRIMARY KEY, name TEXT, is_group INTEGER NOT NULL,
+      role TEXT NOT NULL DEFAULT 'unlabelled', first_seen TEXT NOT NULL, updated_at TEXT NOT NULL);
+      INSERT INTO chats VALUES ('${GROUP}', 'Old group', 1, 'customer', '2026-10-01', '2026-10-01');`);
+    old.close();
+    const store = new Store(path);
+    assert.deepEqual(
+      store.listChats().map((c) => [c.name, c.role, c.project]),
+      [["Old group", "customer", null]],
+    );
+    store.setRole(GROUP, "customer", "mesiri");
+    assert.equal(store.listChats({ project: "mesiri" })[0].project, "mesiri");
+    store.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

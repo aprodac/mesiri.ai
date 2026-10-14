@@ -97,17 +97,35 @@ unit issue Suresh mentioned". The `whatsapp-inbox` skill makes the session look 
 | Rotate the token | Change both secrets, re-run the workflow |
 | Remove entirely | `systemctl disable --now teammate`, delete the `/teammate/` block from the nginx config, `rm -rf /opt/teammate /var/lib/teammate` |
 
-## Reuse in another project
+## Several projects, one listener (TM-05)
 
-1. Copy `teammate/`, `.claude/skills/whatsapp-inbox/`, `.claude/skills/team-update/` and
-   `.github/workflows/teammate-deploy.yml`.
-2. In the workflow, change the host name (`api.whatsapp.mesiri.ai`) and the server path if
-   needed, and use any HTTPS host you control.
-3. Set `TEAMMATE_API` in that project's Claude Code environment if the URL differs from the
-   default in `inbox.py`.
+One spare number sits in every project's groups; each chat carries a **project** tag so each
+repo's Claude Code sessions see, and post to, only their own groups.
 
-One listener per WhatsApp number; one number can sit in many projects' groups. Label chats per
-project, or run a second listener on another port.
+- Each repo sets `TEAMMATE_PROJECT` in its committed `.claude/settings.json` (`"env":
+  {"TEAMMATE_PROJECT": "mesiri"}`). Every `inbox.py` command is then scoped to that project.
+- Label with the project: `inbox.py label "Mercon Software discussions" customer --project mercon`
+  (the project defaults to `TEAMMATE_PROJECT`).
+- Scoped sessions never see messages from untagged chats; new groups still show in `chats` so
+  they can be labelled. Posting is refused into another project's team chat.
+- Without `TEAMMATE_PROJECT` everything is visible, as before.
+
+| Project | Repo | Groups |
+| --- | --- | --- |
+| `mesiri` | this repo | team group (to add), customer groups |
+| `mercon` | `aprodac/MERCON` (`teammate/inbox.py` + `whatsapp-inbox` skill copied in) | Mercon Software discussions (customer) |
+
+## Connecting another repo
+
+1. Copy `teammate/inbox.py` (and `chat_image.py` if it will post) into that repo's `teammate/`,
+   and `.claude/skills/whatsapp-inbox/` (plus `team-update/` if it has a team group).
+2. Add `"env": {"TEAMMATE_PROJECT": "<name>"}` to its `.claude/settings.json`.
+3. Put `TEAMMATE_TOKEN` in that repo's Claude Code environment (never commit it).
+4. Label its groups with `--project <name>`.
+
+To run a whole separate listener instead (another number or host), copy `teammate/` and
+`.github/workflows/teammate-deploy.yml`, change the host name in the workflow, and set
+`TEAMMATE_API` if the URL differs from the default in `inbox.py`.
 
 ## Development
 
