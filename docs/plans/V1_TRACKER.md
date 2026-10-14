@@ -147,11 +147,12 @@
 | WEB-05 | Project DPR page | M | Must | BE-16 | todo | | |
 | WEB-06 | Daily Reports history (rework existing page) | M | Must | BE-08 | todo | | |
 | WEB-07 | Issues page | S | Must | — | done | Claude (session 13 Oct, foundations) | `0a43723`. "What's stuck" view; grid removed; no Assigned column (API has ids only) |
-| WEB-08 | Projects & sites settings, incl. DPR settings, recipients, site label (Tower/Block/Phase) | M | Must | BE-15 | todo | | Also client logo upload per project (BE-33) |
+| WEB-08 | Projects & sites settings, incl. DPR settings, recipients, site label (Tower/Block/Phase) | M | Must | BE-15 | claimed | Claude (session 13 Oct, blockers) | Also client logo upload per project (BE-33). DPR settings already on the Reporting tab (BE-35). Scope here: Recipients tab + client logo card. Site label split out to WEB-13 |
 | WEB-09 | Team page (roles, sites) | S | Must | BE-01 | todo | | |
 | WEB-10 | Company page incl. branding | S | Must | BE-20 | done | Claude (session 13 Oct, blockers) | `8042a2e`. Company → Letterhead tab: logo upload/replace/remove, name on letterhead, GSTIN, signatory, brand colour, live DPR header preview. Verified in Chromium against the real API. Logos persist in prod only once INF-09 storage is switched on |
 | WEB-11 | Opening stock and stock adjustment screens | S | Must | BE-12 | todo | | Transfers between sites too (BE-32) |
 | WEB-12 | Owner login by WhatsApp/SMS code instead of password | M | Later | BE-01 | todo | | |
+| WEB-13 | Site label per project (Tower / Block / Phase): what a project calls its sites, used in WhatsApp wording, the dashboard and the DPR | S | Later | — | todo | | Split from WEB-08 on 14 Oct: nothing stores or uses it yet (needs a `projects` column + wording changes), so it was not built as a setting nothing reads |
 
 ## SA — Superadmin (control panel)
 
