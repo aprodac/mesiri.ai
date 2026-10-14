@@ -433,3 +433,28 @@ async def test_the_dpr_leaves_out_withdrawn_issues_and_reversed_materials():
     assert "status != 'CANCELLED'" in source
     assert "mm.reversal_of_movement_id IS NULL" in source
     assert "r.reversal_of_movement_id = mm.id" in source
+
+
+# ---------------------------------------------------------------------------
+# WA-01: the company switch for save-first
+# ---------------------------------------------------------------------------
+
+
+def test_capture_mode_defaults_to_save_first_and_only_the_team_changes_it():
+    from mesiri.domains.organizations import settings
+
+    assert settings.default_for(settings.CAPTURE_MODE) == "save_first"
+    assert settings.CAPTURE_MODE in settings.SUPERADMIN_ONLY_KEYS
+    assert settings.validate(settings.CAPTURE_MODE, " Confirm_First ") == "confirm_first"
+    with pytest.raises(ValueError):
+        settings.validate(settings.CAPTURE_MODE, "ask_sometimes")
+
+
+@pytest.mark.parametrize(
+    ("stored", "expected"),
+    [(None, True), ("save_first", True), ("confirm_first", False), (["junk"], True)],
+)
+def test_only_an_explicit_confirm_first_turns_save_first_off(stored, expected):
+    from mesiri.domains.organizations import settings
+
+    assert settings.saves_first(stored) is expected

@@ -118,7 +118,7 @@
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| WA-01 | Capture flows save drafts first (work done, labour, materials, issues, photos) | L | Must | BE-09 | claimed | Claude (session 13 Oct, BE-08) | |
+| WA-01 | Capture flows save drafts first (work done, labour, materials, issues, photos) | L | Must | BE-09 | done | Claude (session 13 Oct, BE-08) | Saved straight away as drafts via the YES path (`InteractionHandler.save_now`); questions a record needs still asked first; reply ends "Saved as a draft... Reply UNDO if it's wrong"; UNDO now removes the latest draft (it only reached expenses/transfers before). Company switch `capture_mode` (Mesiri team only). Not tried on a real phone yet |
 | WA-02 | Forwarded batches: one summary reply; assumed to be today unless stated | M | Must | WA-01 | todo | | |
 | WA-03 | Quiet daytime: ask only when it can't wait; defer to the evening | S | Must | WA-01 | todo | | |
 | WA-04 | Evening gap-check per site, built from missing sections (template) | M | Must | BE-08 | todo | | Asks the engineer why details are missing and to send them (decided 13 Oct) |
@@ -208,6 +208,7 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | 2026-10-13 | INF-09 local-disk media storage (off until .env switched); BE-31 shared JWT secret + startup warning | `ada65a3` |
 
 | 2026-10-13 | BE-01 step 0: identity from main tables in shadow (migration 0465), Sync Health comparison panel | `abaa073`, `b3d30f5` |
+| 2026-10-14 | WA-01 WhatsApp saves capture updates first as drafts; UNDO removes the latest draft | see WA-01 |
 | 2026-10-13 | BE-09 save first, confirm later: fact reviews + extractions (migration 0470) | see BE-09 |
 | 2026-10-13 | BE-28 route 401/403/404/409/422 no longer turned into 500 | see BE-28 |
 | 2026-10-13 | BE-35 live /projects API saves reporting settings (timezone, cutoff, auto DPR, send deadline, report types) | see BE-35 |

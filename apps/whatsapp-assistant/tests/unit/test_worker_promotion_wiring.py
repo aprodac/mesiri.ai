@@ -37,14 +37,32 @@ def _block_after(source: str, marker: str, stop: str) -> str:
     return source[start:end]
 
 
+def _confirmation_block(source: str) -> str:
+    """The follow-ups a confirmed item gets. Since WA-01 they live in
+    message_journey's `_deliver_handled`, shared by a typed "YES" (the fast
+    path) and by save-first, so the fast path must hand over to it and the
+    hooks must sit inside it."""
+    fast_path = _block_after(
+        source, "handle_fast_path(ctx.user_id, message, actor=ctx)", "handle_slot_answer"
+    )
+    assert "await _deliver_handled(handled)" in fast_path
+    return _block_after(source, "async def _deliver_handled(", "async def _save_first_now(")
+
+
+def test_save_first_gets_the_same_follow_ups_as_a_typed_yes():
+    """WA-01: attendance saved without asking must still get the promotion
+    and team-photo offers -- so save-first must deliver through the same
+    `_deliver_handled`, not a copy."""
+    block = _block_after(
+        _dependencies_source(), "async def _save_first_now(", "async def _save_first_after_journey("
+    )
+    assert "await _deliver_handled(saved)" in block
+
+
 def test_the_confirmation_fast_path_triggers_the_promotion_offer():
     """Attendance is confirmed here, so the follow-up offer has to be here."""
     source = _dependencies_source()
-    block = _block_after(
-        source,
-        "handle_fast_path(ctx.user_id, message, actor=ctx)",
-        "handle_slot_answer",
-    )
+    block = _confirmation_block(source)
     # The *call*, not the import line -- an import alone proves nothing, and
     # matching the bare name let a first version of this test pass against a
     # hook that had been removed.
@@ -86,11 +104,7 @@ def test_the_inbound_journey_does_not_pretend_to_handle_promotion():
 def test_the_team_photo_offer_follows_a_recorded_attendance():
     """Fires from the confirmation fast path when nothing is being promoted,
     so a report with no new names still gets the offer."""
-    block = _block_after(
-        _dependencies_source(),
-        "handle_fast_path(ctx.user_id, message, actor=ctx)",
-        "handle_slot_answer",
-    )
+    block = _confirmation_block(_dependencies_source())
     assert "await _offer_team_photo(" in block
 
 
@@ -137,11 +151,7 @@ def test_the_report_id_is_parked_before_the_offer_is_deferred():
     to want a photo. Both halves are asserted together because either alone
     looks correct.
     """
-    block = _block_after(
-        _dependencies_source(),
-        "handle_fast_path(ctx.user_id, message, actor=ctx)",
-        "handle_slot_answer",
-    )
+    block = _confirmation_block(_dependencies_source())
     park_at = block.index("_park_team_photo_report(")
     offer_at = block.index("await _offer_team_photo(")
 

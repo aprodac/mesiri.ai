@@ -1110,6 +1110,21 @@ first. The payload marks each activity/issue `review` and counts `drafts` per
 section. The site DPR now leaves out cancelled issues and reversed material
 movements (with their reversals). WA-01 is what starts saving drafts.
 
+**WhatsApp saves first (WA-01).** For work done, progress updates, labour,
+materials in/used and site issues (`runtime/save_first.py` `SAVE_FIRST_KEYS`)
+the "Confirm? YES/NO" step is skipped: `InteractionHandler.save_now` resumes the
+waiting draft with CONFIRM -- the very path a typed YES takes -- then
+`record_draft` writes the extraction and marks the item draft, and the reply
+ends "Saved as a draft. You'll confirm it with tonight's report. Reply UNDO if
+it's wrong." Questions the record needs (which worker, which site, replace
+today's list) are still asked first. `process_inbound_message` holds back the
+"Confirm?" for these; `message_journey` saves after the journey, after a slot
+answer and for a plan's next step, all through the shared `_deliver_handled`
+(so promotion / team-photo / plan follow-ups are unchanged). A bare "UNDO"
+rejects the sender's latest draft from the last 6 hours before falling back to
+the older expense/transfer undo. Company setting `capture_mode`
+(`save_first` default, `confirm_first`; Mesiri team only) switches it off.
+
 ---
 
 ## 7. WhatsApp side — responsibilities

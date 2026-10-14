@@ -23,7 +23,7 @@ import asyncio
 import logging
 from collections.abc import Coroutine
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from backend.ports import ActorIdentity
 from channel.replies import (
@@ -49,6 +49,7 @@ from mesiri_contracts.assistant.normalized_message import NormalizedMessage
 from mesiri_contracts.assistant.planner_decision import WorkflowKey
 from mesiri_contracts.assistant.v2.interaction_spec import FieldCorrection, InteractionIntent
 from workflows import (
+    ResumeAction,
     WorkflowResumeResult,
     WorkflowResumeStatus,
     WorkflowRunResult,
@@ -66,6 +67,9 @@ from .policy import InteractionRoute, decide
 from .ports import ExecutionDispatcher, ReceiptBuilder
 from .response_handler import render_execution_reply, render_resume_reply, render_workflow_run_reply
 from .slot_answer_classifier_port import SlotAnswerClassifierPort
+
+if TYPE_CHECKING:
+    from runtime.save_first import SaveFirstService
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +134,7 @@ class InteractionHandler:
         memory_coordinator: ConversationMemoryCoordinator | None = None,
         completion_photo_hint_store: CompletionPhotoHintStore | None = None,
         slot_answer_classifier: SlotAnswerClassifierPort | None = None,
+        save_first: SaveFirstService | None = None,
     ) -> None:
         self._runtime = workflow_runtime
         self._classifier = classifier
@@ -138,6 +143,87 @@ class InteractionHandler:
         self._receipt_builder = receipt_builder
         self._memory_coordinator = memory_coordinator
         self._completion_photo_hint_store = completion_photo_hint_store
+        self._save_first = save_first
+
+    async def saves_first(self, *, workflow_key: WorkflowKey | None, organization_id: str | None) -> bool:
+        """Whether a draft of this kind, for this company, is saved straight
+        away instead of asking "Confirm?" (WA-01). False when save-first is
+        not wired (tests, scripts) -- the old confirm-first behaviour."""
+        if self._save_first is None or self._dispatcher is None:
+            return False
+        try:
+            return await self._save_first.applies(
+                workflow_key=workflow_key, organization_id=organization_id
+            )
+        except Exception:  # noqa: BLE001 -- unsure means ask, as before
+            logger.exception("save_first.applies_failed key=%s", workflow_key)
+            return False
+
+    async def save_now(self, user_id: str, actor: ActorIdentity | None = None) -> InteractionHandled | None:
+        """Save the user's waiting capture draft without asking (WA-01).
+
+        Runs the very path a "YES" reply takes -- `_resume_and_render` with
+        CONFIRM -- so dispatch, receipt, memory and follow-ups are identical;
+        then marks the saved item as a draft for the engineer's evening
+        confirmation and adds the "saved as a draft" line. None when nothing
+        is waiting, or the waiting draft is not a save-first kind (it keeps
+        its "Confirm?" as before)."""
+        loaded = await self._runtime.get_awaiting_confirmation(user_id)
+        if loaded is None:
+            return None
+        draft = loaded.state.draft_action
+        organization_id = (draft.organization_id if draft else None) or loaded.state.organization_id
+        if not await self.saves_first(
+            workflow_key=loaded.state.workflow_key, organization_id=organization_id
+        ):
+            return None
+
+        result, reply_text, execution_result, receipt_coro, next_segment_reply = await self._resume_and_render(
+            user_id, loaded, ResumeAction.CONFIRM, log_prefix="save_first", actor=actor
+        )
+        if (
+            execution_result is not None
+            and execution_result.status is ExecutionStatus.SUCCEEDED
+            and execution_result.material_row_id is not None
+            and result.confirmed_action is not None
+            and self._save_first is not None
+        ):
+            confirmed_draft = result.confirmed_action.draft_action
+            await self._save_first.record_draft(
+                organization_id=str(confirmed_draft.organization_id or organization_id),
+                actor_user_id=loaded.state.user_id,
+                action_type=confirmed_draft.action_type,
+                fact_id=str(execution_result.material_row_id),
+                fields=dict(confirmed_draft.fields),
+                correlation_id=loaded.state.correlation_id,
+            )
+            from runtime.save_first import DRAFT_NOTE
+
+            reply_text = f"{reply_text}\n\n{DRAFT_NOTE}"
+        logger.info(
+            "save_first.saved user=%s key=%s status=%s",
+            user_id,
+            loaded.state.workflow_key.value,
+            execution_result.status.value if execution_result else "none",
+        )
+        return InteractionHandled(
+            result=result,
+            reply_text=reply_text,
+            execution_result=execution_result,
+            receipt_coro=receipt_coro,
+            next_segment_reply=next_segment_reply,
+            project_id=str(loaded.state.project_id) if loaded.state.project_id else None,
+            site_id=str(loaded.state.site_id) if loaded.state.site_id else None,
+        )
+
+    async def undo_latest_draft(self, *, organization_id: str | None, user_id: str | None) -> str | None:
+        """"UNDO" for a save-first draft: the reply, or None when there is no
+        recent draft of the sender's to undo (the old undo handling runs)."""
+        if self._save_first is None:
+            return None
+        return await self._save_first.undo_latest_draft(
+            organization_id=organization_id, actor_user_id=user_id
+        )
 
     async def _resume_and_render(
         self, user_id: str, loaded, resume_action, *, log_prefix: str, actor: ActorIdentity | None = None

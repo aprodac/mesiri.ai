@@ -60,6 +60,7 @@ from runtime.inbound_journey import (
 )
 from runtime.reply_dispatch import send_reply_spec
 from runtime.step_timing import StepTimer
+from workflows import WorkflowRunResult, WorkflowRunStatus
 from workflows import registry as workflow_registry
 
 if TYPE_CHECKING:
@@ -526,16 +527,12 @@ def build_message_handlers(
             await message_logger.mark_completed(correlation_id=message.correlation_id)
             return
 
-        # M7: if the user has a workflow awaiting confirmation and this message
-        # is a confirmation reply, resume it and stop — the AI pipeline (and its
-        # token cost) is never touched. A plain "yes" ends here.
-        try:
-            handled = await interaction_handler.handle_fast_path(ctx.user_id, message, actor=ctx)
-            timer.lap("handle_fast_path")
-        except Exception:  # noqa: BLE001 — a resume error must not drop the message
-            _log.exception("interaction.handle_failed user=%s", ctx.user_id)
-            handled = None
-        if handled is not None:
+        async def _deliver_handled(handled) -> None:  # type: ignore[no-untyped-def]
+            """Everything that follows a saved/answered confirmation: the
+            reply, the receipt image, the worker-promotion / team-photo /
+            project-setup offers, the plan advance and the audit rows. Shared
+            by a typed "YES" (the fast path) and by save-first (WA-01), so
+            an item saved without asking gets exactly the same follow-ups."""
             # Phase 4: send confirmation text FIRST so the user sees it
             # immediately, then await the receipt PNG (Playwright render) and
             # send the image. This keeps the reply feeling instant even when
@@ -635,6 +632,11 @@ def build_message_handlers(
                     workflow_runtime=workflow_runtime,
                     actor=ctx,
                 )
+                if plan_reply is not None and await _save_first_now():
+                    # WA-01: the plan's next step was a capture draft --
+                    # saved and answered already; its "Confirm?" prompt
+                    # is not sent.
+                    plan_reply = None
                 if plan_reply is not None:
                     # send_reply_spec, not sender.send_text -- a mid-plan
                     # reply carries Yes/No buttons for whatever step just
@@ -680,6 +682,57 @@ def build_message_handlers(
                 message_logger.mark_completed(correlation_id=message.correlation_id),
                 return_exceptions=True,
             )
+
+        async def _save_first_now() -> bool:
+            """WA-01: save the sender's waiting capture draft without asking
+            and deliver it like a confirmed one. False when there is nothing
+            to save first (no draft waiting, or not a save-first kind)."""
+            try:
+                saved = await interaction_handler.save_now(ctx.user_id, actor=ctx)
+            except Exception:  # noqa: BLE001 -- the draft stays waiting; nothing lost
+                _log.exception("save_first.failed user=%s", ctx.user_id)
+                return False
+            if saved is None:
+                return False
+            await _deliver_handled(saved)
+            return True
+
+        async def _save_first_after_journey(journey) -> None:  # type: ignore[no-untyped-def]
+            """After the normal journey: when it started a capture draft
+            (process_inbound_message then sent no "Confirm?"), save it now.
+            Keyed on THIS message having started a draft, so a draft left
+            waiting from an earlier message is never saved by an unrelated
+            one."""
+            run = getattr(journey, "workflow_run", None)
+            if run is None or run.status is not WorkflowRunStatus.STARTED:
+                return
+            if await _save_first_now():
+                return
+            # Not saved after all (a failure, or the company was switched in
+            # between): if the journey held back its "Confirm?" for us, send
+            # it now, so the sender is never left with no reply at all.
+            try:
+                held_back = await interaction_handler.saves_first(
+                    workflow_key=run.workflow_key, organization_id=str(ctx.organization_id)
+                )
+            except Exception:  # noqa: BLE001
+                held_back = False
+            if held_back:
+                from runtime.inbound_journey import render_workflow_run_reply_spec
+
+                await _send_spec(render_workflow_run_reply_spec(run), wa_id)
+
+        # M7: if the user has a workflow awaiting confirmation and this message
+        # is a confirmation reply, resume it and stop — the AI pipeline (and its
+        # token cost) is never touched. A plain "yes" ends here.
+        try:
+            handled = await interaction_handler.handle_fast_path(ctx.user_id, message, actor=ctx)
+            timer.lap("handle_fast_path")
+        except Exception:  # noqa: BLE001 — a resume error must not drop the message
+            _log.exception("interaction.handle_failed user=%s", ctx.user_id)
+            handled = None
+        if handled is not None:
+            await _deliver_handled(handled)
             return
 
         # Finance Module Slice 1: if the user has a workflow awaiting a slot
@@ -702,6 +755,16 @@ def build_message_handlers(
             # runtime/inbound_journey.py's render_workflow_run_reply_spec
             # docstring for the bug this fixes.
             from runtime.inbound_journey import render_workflow_run_reply_spec
+
+            # WA-01: the answer completed a capture draft (e.g. "which
+            # worker?" answered) -- save it now instead of asking "Confirm?".
+            # _deliver_handled sends the reply and writes the audit rows.
+            if (
+                isinstance(slot_handled.result, WorkflowRunResult)
+                and slot_handled.result.status is WorkflowRunStatus.STARTED
+                and await _save_first_now()
+            ):
+                return
 
             reply = render_workflow_run_reply_spec(slot_handled.result)
             await send_reply_spec(
@@ -920,7 +983,7 @@ def build_message_handlers(
 
             held_message = held_batch[0]
             _fire_processing_ack(wa_id, held_message.modality)
-            await process_inbound_message(
+            held_journey = await process_inbound_message(
                 held_message,
                 actor_user_id=ctx.user_id,
                 actor=ctx,
@@ -969,6 +1032,7 @@ def build_message_handlers(
                 member_resolver=member_resolver,
             )
             timer.lap("process_inbound_message_held_media")
+            await _save_first_after_journey(held_journey)
             if len(held_batch) > 1:
                 overflow_reply = render_batch_overflow_reply(
                     held_count=len(held_batch), remaining_count=len(held_batch) - 1
@@ -1694,8 +1758,24 @@ def build_message_handlers(
             if message.modality is InputModality.TEXT and is_undo_trigger(message.text)
             else None
         )
+        # WA-01: "UNDO" right after a save-first update removes that draft
+        # (through its own module's undo). Only when there is no recent draft
+        # of the sender's does it fall through to the older undo handling.
+        if undo_hint is not None:
+            try:
+                undo_reply = await interaction_handler.undo_latest_draft(
+                    organization_id=str(ctx.organization_id), user_id=ctx.user_id
+                )
+            except Exception:  # noqa: BLE001 -- fall back to the older undo handling
+                _log.exception("save_first.undo_failed user=%s", ctx.user_id)
+                undo_reply = None
+            if undo_reply is not None:
+                await sender.send_text(wa_id, undo_reply)
+                await message_logger.log_reply(correlation_id=message.correlation_id, reply=undo_reply)
+                await message_logger.mark_completed(correlation_id=message.correlation_id)
+                return
         _fire_processing_ack(wa_id, message.modality)
-        await process_inbound_message(
+        journey = await process_inbound_message(
             message,
             actor_user_id=ctx.user_id,
             actor=ctx,
@@ -1745,5 +1825,6 @@ def build_message_handlers(
             member_resolver=member_resolver,
         )
         timer.lap("process_inbound_message")
+        await _save_first_after_journey(journey)
 
     return _on_normalized, _mark_read_on_claim

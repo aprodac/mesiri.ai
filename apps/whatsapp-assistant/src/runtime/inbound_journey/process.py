@@ -1200,6 +1200,21 @@ async def process_inbound_message(
         is_first_message=is_first_message,
     )
 
+    # WA-01 save first: a capture draft (work done, labour, materials,
+    # issues) is not asked "Confirm?" -- the caller (message_journey) saves
+    # it straight away through InteractionHandler.save_now and sends the
+    # saved reply instead, so nothing is sent from here.
+    if (
+        held_reply is None
+        and workflow_run is not None
+        and workflow_run.status is WorkflowRunStatus.STARTED
+        and await interaction_handler.saves_first(
+            workflow_key=workflow_run.workflow_key,
+            organization_id=str(actor.organization_id) if actor and actor.organization_id else None,
+        )
+    ):
+        reply = None
+
     # Attach the low-confidence caveat (if any) ONLY to a freshly-started
     # confirmation for THIS message (workflow_run.status STARTED). Never on
     # held_reply (a gate prompt is asking about something else entirely) and

@@ -37,6 +37,14 @@ LABOUR_SETTINGS = "labour_settings"
 ENABLED_MODULES = "enabled_modules"
 # Letterhead details and logo (BE-20); rules in domains/organizations/branding.py.
 BRANDING = "branding"
+# How WhatsApp updates are saved (WA-01). "save_first": saved straight away as
+# a draft the engineer confirms with the evening DPR (decided 13 Oct 2026, on
+# for every company). "confirm_first": the old "Confirm? YES/NO" before
+# saving -- kept as a per-company switch back, not deleted.
+CAPTURE_MODE = "capture_mode"
+CAPTURE_MODE_SAVE_FIRST = "save_first"
+CAPTURE_MODE_CONFIRM_FIRST = "confirm_first"
+CAPTURE_MODES: frozenset[str] = frozenset({CAPTURE_MODE_SAVE_FIRST, CAPTURE_MODE_CONFIRM_FIRST})
 
 # Product modules a company can have switched on (V1 tracker BE-06). Each key
 # gates one or more API routers (domains/shared/modules.py's require_module)
@@ -74,7 +82,7 @@ DEFAULT_ENABLED_MODULES: list[str] = list(V1_MODULES)
 
 # Settings only a platform admin may change. Modules are tied to what a
 # customer pays for, so a company's own admin can read them but not edit them.
-SUPERADMIN_ONLY_KEYS: frozenset[str] = frozenset({ENABLED_MODULES})
+SUPERADMIN_ONLY_KEYS: frozenset[str] = frozenset({ENABLED_MODULES, CAPTURE_MODE})
 
 DEFAULT_FINANCE_SETTINGS = {
     "base_currency": "INR",
@@ -142,6 +150,15 @@ _SPECS: dict[str, SettingSpec] = {
             "Product modules switched on for this company. Changed by the "
             "Mesiri team only; a switched-off module's pages and WhatsApp "
             "flows are unavailable."
+        ),
+    ),
+    CAPTURE_MODE: SettingSpec(
+        key=CAPTURE_MODE,
+        default=CAPTURE_MODE_SAVE_FIRST,
+        description=(
+            "How WhatsApp updates are saved: 'save_first' (saved straight away as a "
+            "draft, confirmed with the evening DPR) or 'confirm_first' (asks "
+            "'Confirm?' before saving). Changed by the Mesiri team only."
         ),
     ),
     BRANDING: SettingSpec(
@@ -263,7 +280,18 @@ def validate(key: str, value: object) -> object:
         return validate_role_list(value)
     if key == ENABLED_MODULES:
         return validate_module_list(value)
+    if key == CAPTURE_MODE:
+        mode = str(value).strip().lower() if isinstance(value, str) else ""
+        if mode not in CAPTURE_MODES:
+            raise ValueError(f"capture_mode must be one of {sorted(CAPTURE_MODES)}")
+        return mode
     return value
+
+
+def saves_first(stored: object) -> bool:
+    """True unless the company was switched back to confirm-first. Anything
+    unreadable counts as the default (save first), never as an error."""
+    return stored != CAPTURE_MODE_CONFIRM_FIRST
 
 
 def role_allowed(role: str | None, allowed: object) -> bool:

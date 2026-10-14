@@ -616,6 +616,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     # same reasoning and same material_db as catalog_query above. See
     # runtime/org_settings_query.py.
     from runtime.org_settings_query import OrganizationSettingsQueryService
+    from runtime.save_first import SaveFirstService
 
     org_settings_query = OrganizationSettingsQueryService(material_db)
     # Read-only expense category names, fed into the extraction call so the
@@ -822,6 +823,9 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         memory_coordinator=memory_coordinator,
         completion_photo_hint_store=completion_photo_hint_store,
         slot_answer_classifier=slot_answer_classifier,
+        # WA-01: capture updates are saved straight away as drafts unless the
+        # company's capture_mode is switched back to confirm_first.
+        save_first=SaveFirstService(material_db, org_settings_query),
     )
     sender = WhatsAppSender(
         client=http_client,

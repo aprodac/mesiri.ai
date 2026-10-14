@@ -7,6 +7,8 @@ making the dependency graph explicit.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from memory.coordinator import ConversationMemoryCoordinator
 from workflows import WorkflowRuntime
 
@@ -15,6 +17,9 @@ from .completion_photo_hint import CompletionPhotoHintStore
 from .handler import InteractionHandler
 from .ports import ExecutionDispatcher, ReceiptBuilder
 from .slot_answer_classifier_port import SlotAnswerClassifierPort
+
+if TYPE_CHECKING:
+    from runtime.save_first import SaveFirstService
 
 
 def build_interaction_handler(
@@ -25,6 +30,7 @@ def build_interaction_handler(
     memory_coordinator: ConversationMemoryCoordinator | None = None,
     completion_photo_hint_store: CompletionPhotoHintStore | None = None,
     slot_answer_classifier: SlotAnswerClassifierPort | None = None,
+    save_first: SaveFirstService | None = None,
 ) -> InteractionHandler:
     """Construct an ``InteractionHandler`` wired to ``workflow_runtime`` and,
     once M8 is wired, an ``ExecutionDispatcher`` that executes confirmed
@@ -49,4 +55,5 @@ def build_interaction_handler(
         memory_coordinator=memory_coordinator,
         completion_photo_hint_store=completion_photo_hint_store,
         slot_answer_classifier=slot_answer_classifier,
+        save_first=save_first,
     )
