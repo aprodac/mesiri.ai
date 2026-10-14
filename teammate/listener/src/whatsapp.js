@@ -212,6 +212,11 @@ export class WhatsAppListener {
       let fresh = 0;
       for (const msg of messages) if ((await this.record(msg, { downloadMedia: true }).catch(() => null)) != null) fresh++;
       added += fresh;
+      const ts = messages.map((m) => Number(m.messageTimestamp)).filter(Boolean);
+      this.log(
+        `history reply for ${jid}: ${messages.length} messages (${fresh} new)` +
+          (ts.length ? `, ${new Date(Math.min(...ts) * 1000).toISOString()} .. ${new Date(Math.max(...ts) * 1000).toISOString()}` : ""),
+      );
       if (fresh === 0) {
         done++;
         break; // the phone has nothing older
