@@ -147,7 +147,7 @@
 | WEB-05 | Project DPR page | M | Must | BE-16 | todo | | |
 | WEB-06 | Daily Reports history (rework existing page) | M | Must | BE-08 | todo | | |
 | WEB-07 | Issues page | S | Must | — | done | Claude (session 13 Oct, foundations) | `0a43723`. "What's stuck" view; grid removed; no Assigned column (API has ids only) |
-| WEB-08 | Projects & sites settings, incl. DPR settings, recipients, site label (Tower/Block/Phase) | M | Must | BE-15 | claimed | Claude (session 13 Oct, blockers) | Also client logo upload per project (BE-33). DPR settings already on the Reporting tab (BE-35). Scope here: Recipients tab + client logo card. Site label split out to WEB-13 |
+| WEB-08 | Projects & sites settings, incl. DPR settings, recipients, site label (Tower/Block/Phase) | M | Must | BE-15 | done | Claude (session 13 Oct, blockers) | `59fdb26`. Project → DPR Recipients tab (team members, outside contacts, opt-in/out, remove; status per person) and Settings → client logo card. DPR settings were already on Reporting (BE-35). Site label split out to WEB-13 |
 | WEB-09 | Team page (roles, sites) | S | Must | BE-01 | todo | | |
 | WEB-10 | Company page incl. branding | S | Must | BE-20 | done | Claude (session 13 Oct, blockers) | `8042a2e`. Company → Letterhead tab: logo upload/replace/remove, name on letterhead, GSTIN, signatory, brand colour, live DPR header preview. Verified in Chromium against the real API. Logos persist in prod only once INF-09 storage is switched on |
 | WEB-11 | Opening stock and stock adjustment screens | S | Must | BE-12 | todo | | Transfers between sites too (BE-32) |
@@ -231,3 +231,4 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | 2026-10-13 | WEB-10 Company → Letterhead tab (branding form, logo upload, preview) | `8042a2e` |
 | 2026-10-14 | BE-19 DPR PDF letterhead: company + client logos, branding, signatory | `48e7b8d` |
 | 2026-10-14 | BE-38 notification quiet hours in local time; project DPR exempt | `323a2f7` |
+| 2026-10-14 | WEB-08 project DPR recipients tab + client logo card | `59fdb26` |
