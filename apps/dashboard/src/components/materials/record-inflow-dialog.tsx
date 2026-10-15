@@ -22,6 +22,7 @@ import {
   newIdempotencyKey,
   INFLOW_REASONS,
   ADJUSTMENT_REASONS,
+  TRANSFER_REASONS,
   type InflowReason,
 } from '@/lib/materials'
 import type { AppScope } from '@/lib/scope-types'
@@ -65,7 +66,9 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
   const [idempotencyKey, setIdempotencyKey] = React.useState(newIdempotencyKey)
 
   const canUseAdjustment = me?.role === 'ADMIN' || me?.role === 'PROJECT_MANAGER'
-  const visibleReasons = INFLOW_REASONS.filter((r) => canUseAdjustment || !ADJUSTMENT_REASONS.has(r.value))
+  const visibleReasons = INFLOW_REASONS.filter(
+    (r) => !TRANSFER_REASONS.has(r.value) && (canUseAdjustment || !ADJUSTMENT_REASONS.has(r.value))
+  )
 
   React.useEffect(() => {
     if (open) {
@@ -328,6 +331,13 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
               />
             </div>
           </div>
+
+          {reason === 'OPENING_STOCK' && (
+            <p className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
+              What was already on this site before it started using Mesiri. Entered once per site and
+              material; to change it later, correct this entry or record an adjustment.
+            </p>
+          )}
 
           <div className="grid gap-1.5">
             <Label htmlFor="supplier">Supplier / Vendor</Label>

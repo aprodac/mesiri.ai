@@ -22,6 +22,7 @@ import {
   newIdempotencyKey,
   OUTFLOW_REASONS,
   ADJUSTMENT_REASONS,
+  TRANSFER_REASONS,
   type OutflowReason,
   type OverStockConflict,
 } from '@/lib/materials'
@@ -61,7 +62,9 @@ export function RecordOutflowDialog({ open, onOpenChange, scope }: RecordOutflow
   const [idempotencyKey, setIdempotencyKey] = React.useState(newIdempotencyKey)
 
   const canUseAdjustment = me?.role === 'ADMIN' || me?.role === 'PROJECT_MANAGER'
-  const visibleReasons = OUTFLOW_REASONS.filter((r) => canUseAdjustment || !ADJUSTMENT_REASONS.has(r.value))
+  const visibleReasons = OUTFLOW_REASONS.filter(
+    (r) => !TRANSFER_REASONS.has(r.value) && (canUseAdjustment || !ADJUSTMENT_REASONS.has(r.value))
+  )
 
   React.useEffect(() => {
     if (open) {

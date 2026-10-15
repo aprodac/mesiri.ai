@@ -264,6 +264,7 @@ class WhatsAppSender:
         header_document: tuple[bytes, str] | None = None,
         mime_type: str = "application/pdf",
         button_url_param: str | None = None,
+        quick_reply_payloads: tuple[str, ...] | list[str] = (),
     ) -> bool:
         """Send a Meta-approved template (WA-12) -- the only kind of message
         Meta delivers outside the 24h session window. `header_document` is
@@ -271,6 +272,8 @@ class WhatsAppSender:
         uploaded first, same two-step flow as send_document.
         `button_url_param` fills the first button's variable; an
         authentication template's "Copy code" button takes the code here.
+        `quick_reply_payloads` gives each quick-reply button, in order, the
+        payload its tap comes back with (WA-04).
         Params are sent as given; channel/whatsapp/templates.py cleans them."""
         if not self.enabled:
             logger.warning("WhatsApp sender disabled (missing phone_number_id/access_token)")
@@ -304,6 +307,15 @@ class WhatsAppSender:
                     "sub_type": "url",
                     "index": "0",
                     "parameters": [{"type": "text", "text": str(button_url_param)}],
+                }
+            )
+        for index, payload in enumerate(quick_reply_payloads):
+            components.append(
+                {
+                    "type": "button",
+                    "sub_type": "quick_reply",
+                    "index": str(index),
+                    "parameters": [{"type": "payload", "payload": str(payload)}],
                 }
             )
 

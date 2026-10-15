@@ -212,6 +212,7 @@ export function MovementDetailsSheet({ direction, id, open, onOpenChange }: Move
         <CorrectionDialog
           direction={direction}
           movementId={id}
+          transferId={movement.transfer_id}
           originalSummary={`${movement.material_name} · ${movement.quantity} ${movement.unit} · ${movement.movement_reason}`}
           open={correctionOpen}
           onOpenChange={setCorrectionOpen}

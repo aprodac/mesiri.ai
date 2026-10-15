@@ -1557,3 +1557,13 @@ async def test_unknown_transfer_reverse_is_404(client, admin_ctx):
     resp = await client.post(f"/materials/transfers/{uuid.uuid4()}/reverse", json={},
                              headers=_auth(admin_ctx["token"]))
     assert resp.status_code == 404
+
+
+async def test_catalog_list_carries_the_stock_unit_id(client, admin_ctx):
+    """The dashboard's record dialogs send the catalog's default_unit_id as
+    unit_id; a list without it made every dashboard write a 422."""
+    bags_id = await _bags_unit_id(client, admin_ctx["token"])
+    await _make_material(client, admin_ctx["token"], "Cement UNIT", bags_id)
+    resp = await client.get("/materials", headers=_auth(admin_ctx["token"]))
+    [item] = [m for m in resp.json()["items"] if m["name"] == "Cement UNIT"]
+    assert item["default_unit_id"] == bags_id
