@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Boxes, PackagePlus, PackageMinus, ListTree, ShoppingBag } from 'lucide-react'
+import { Boxes, PackagePlus, PackageMinus, ListTree, ShoppingBag, ArrowLeftRight } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
 import { useAuth } from '@/lib/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -12,10 +12,12 @@ import { CatalogueView } from '@/components/materials/catalogue-view'
 import { PurchaseHistoryView } from '@/components/materials/purchase-history-view'
 import { RecordInflowDialog } from '@/components/materials/record-inflow-dialog'
 import { RecordOutflowDialog } from '@/components/materials/record-outflow-dialog'
+import { RecordTransferDialog } from '@/components/materials/record-transfer-dialog'
+import { TransfersView } from '@/components/materials/transfers-view'
 
-type MaterialsView = 'inventory' | 'inflows' | 'outflows' | 'purchases' | 'catalogue'
+type MaterialsView = 'inventory' | 'inflows' | 'outflows' | 'transfers' | 'purchases' | 'catalogue'
 
-const VALID_VIEWS: MaterialsView[] = ['inventory', 'inflows', 'outflows', 'purchases', 'catalogue']
+const VALID_VIEWS: MaterialsView[] = ['inventory', 'inflows', 'outflows', 'transfers', 'purchases', 'catalogue']
 
 export default function MaterialsPage() {
   const { scope } = useScope()
@@ -34,6 +36,7 @@ export default function MaterialsPage() {
 
   const [inflowDialogOpen, setInflowDialogOpen] = React.useState(false)
   const [outflowDialogOpen, setOutflowDialogOpen] = React.useState(false)
+  const [transferDialogOpen, setTransferDialogOpen] = React.useState(false)
 
   const selectView = (next: string) => {
     setSearchParams((prev) => {
@@ -94,6 +97,15 @@ export default function MaterialsPage() {
                 <PackageMinus className="size-3.5" />
                 Record Outflow
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5 text-xs font-bold"
+                onClick={() => setTransferDialogOpen(true)}
+              >
+                <ArrowLeftRight className="size-3.5" />
+                Transfer
+              </Button>
             </>
           )}
         </div>
@@ -105,6 +117,7 @@ export default function MaterialsPage() {
           <TabsTrigger value="inventory">Inventory</TabsTrigger>
           <TabsTrigger value="inflows">Inflows</TabsTrigger>
           <TabsTrigger value="outflows">Outflows</TabsTrigger>
+          <TabsTrigger value="transfers">Transfers</TabsTrigger>
           <TabsTrigger value="purchases" className="gap-1.5">
             <ShoppingBag className="size-3.5" />
             Purchase History
@@ -121,6 +134,7 @@ export default function MaterialsPage() {
       {view === 'inventory' && <InventoryView projectId={projectId} siteId={siteId} />}
       {view === 'inflows' && <InflowsView projectId={projectId} siteId={siteId} />}
       {view === 'outflows' && <OutflowsView projectId={projectId} siteId={siteId} />}
+      {view === 'transfers' && <TransfersView projectId={projectId} siteId={siteId} />}
       {view === 'purchases' && <PurchaseHistoryView projectId={projectId} siteId={siteId} />}
       {view === 'catalogue' && <CatalogueView />}
 
@@ -132,6 +146,11 @@ export default function MaterialsPage() {
       <RecordOutflowDialog
         open={outflowDialogOpen}
         onOpenChange={setOutflowDialogOpen}
+        scope={scope}
+      />
+      <RecordTransferDialog
+        open={transferDialogOpen}
+        onOpenChange={setTransferDialogOpen}
         scope={scope}
       />
     </div>

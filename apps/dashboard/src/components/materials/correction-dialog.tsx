@@ -10,11 +10,14 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import { reverseInflow, reverseOutflow } from '@/lib/materials'
+import { reverseInflow, reverseOutflow, reverseTransfer } from '@/lib/materials'
 
 interface CorrectionDialogProps {
   direction: 'IN' | 'OUT'
   movementId: string
+  // When the movement is one half of a transfer between sites, the transfer
+  // is corrected as a whole -- both sites go back together.
+  transferId?: string | null
   originalSummary: string
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -24,6 +27,7 @@ interface CorrectionDialogProps {
 export function CorrectionDialog({
   direction,
   movementId,
+  transferId,
   originalSummary,
   open,
   onOpenChange,
@@ -42,9 +46,11 @@ export function CorrectionDialog({
 
   const mutation = useMutation({
     mutationFn: () =>
-      direction === 'IN'
-        ? reverseInflow(movementId, { reason_note: reasonNote || undefined })
-        : reverseOutflow(movementId, { reason_note: reasonNote || undefined }),
+      transferId
+        ? reverseTransfer(transferId, { reason_note: reasonNote || undefined })
+        : direction === 'IN'
+          ? reverseInflow(movementId, { reason_note: reasonNote || undefined })
+          : reverseOutflow(movementId, { reason_note: reasonNote || undefined }),
     onSuccess: () => {
       // A prefix match on ['materials'] covers inflows/outflows/inventory/
       // ledger/catalog query keys used throughout this domain.
@@ -68,6 +74,11 @@ export function CorrectionDialog({
             Confirmed material movements are not edited directly. A correcting movement will be
             recorded to preserve the audit trail.
           </p>
+          {transferId && (
+            <p className="text-muted-foreground leading-relaxed">
+              This is part of a transfer between sites. Both sites are corrected together.
+            </p>
+          )}
 
           <div className="bg-muted/30 border border-border/60 rounded p-2.5">
             <span className="block text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
