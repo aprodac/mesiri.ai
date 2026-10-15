@@ -814,3 +814,73 @@ test("bot (TM-09): '@bot upgrade: ...' is for owners and starts an upgrade conve
 
   assert.equal(parseCommand("@1 upgrade the truck screen layout").verb, "upgrade"); // starts with "upgrade"
 });
+
+test("bot: a voice note replying to the bot is transcribed and answered; never a command", async () => {
+  const { store, TEAM, sent, msg, OWNER_PN } = botSetup();
+  const translated = [];
+  let fail = false;
+  const ai = {
+    translate: async (n) => {
+      translated.push(n);
+      if (fail) throw new Error("gemini down");
+      return { n, transcript: "ok 15", translation: "ok 15", language: "English", cost: { inr: 0.12 } };
+    },
+  };
+  const asked = [], approved = [];
+  const wa = { ownIds: () => ["919544376072@s.whatsapp.net", "56672747843793@lid"], pnFor: async () => null, send: async (jid, c) => (sent.push({ jid, ...c }), "id") };
+  const bot = new Bot({ store, wa, ai, brain: { ask: async (r) => asked.push(r), approve: async (r) => approved.push(r) } });
+  const botMsg = store.addMessage({ id: "BOT1", chat_jid: TEAM, is_group: true, sender_jid: "56672747843793@lid", sender_pn: null, sender_name: "bot", from_me: true,
+    at: new Date().toISOString(), kind: "text", text: "hi", quoted_id: null, quoted_text: null, media_mime: null, reaction_to: null });
+  assert.ok(botMsg);
+  const voice = (chat, opts = {}) => {
+    const m = msg(chat, null, { mentions: [], quoted_id: "BOT1", ...opts });
+    m.rec.kind = "voice";
+    return m;
+  };
+
+  let m = voice(TEAM); // says "ok 15": must not approve
+  await bot.handle(m.rec, m.n);
+  assert.equal(translated.length, 1);
+  assert.equal(approved.length, 0);
+  assert.equal(asked.length, 1);
+  assert.equal(asked[0].text, "ok 15");
+  assert.match(sent.at(-1).text, /🗣 Heard: "ok 15" · ₹0\.12/);
+
+  m = voice(TEAM, { from: "999@lid", pn: "919000000000@s.whatsapp.net", name: "Stranger" }); // unapproved
+  await bot.handle(m.rec, m.n);
+  assert.equal(translated.length, 1);
+
+  m = voice(GROUP); // customer group
+  await bot.handle(m.rec, m.n);
+  assert.equal(translated.length, 1);
+
+  fail = true;
+  const before = asked.length;
+  m = voice(TEAM);
+  await bot.handle(m.rec, m.n);
+  assert.equal(asked.length, before);
+  assert.match(sent.at(-1).text, /Couldn't understand the voice note: gemini down/);
+
+  const noAi = new Bot({ store, wa, brain: { ask: async () => assert.fail("no ask") } });
+  m = voice(TEAM);
+  await noAi.handle(m.rec, m.n);
+  assert.match(sent.at(-1).text, /Voice notes need translation/);
+  void OWNER_PN;
+});
+
+test("whatsapp record(): voice notes call onLive after the download; other kinds before", async () => {
+  const { WhatsAppListener: WhatsApp } = await import("../src/whatsapp.js");
+  for (const [kind, message, expected] of [
+    ["voice", { audioMessage: { ptt: true, mimetype: "audio/ogg" } }, ["stored", "live"]],
+    ["text", { conversation: "@bot hi" }, ["live", "stored"]],
+  ]) {
+    const store = seeded();
+    const order = [];
+    const wa = Object.create(WhatsApp.prototype);
+    Object.assign(wa, { store, log: () => {}, namesTried: new Set(), mediaDir: "/nonexistent", onLive: () => order.push("live"), onStored: () => order.push("stored"), sock: null });
+    await wa.record({ ...groupMsg(`L-${kind}`, ""), message }, { downloadMedia: true, live: true });
+    assert.equal(order.length, 2, kind);
+    if (kind === "voice") assert.deepEqual(order, expected); // download fails (no socket) -> still onLive
+    else assert.deepEqual(order[0], "live");
+  }
+});

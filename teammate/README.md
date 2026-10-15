@@ -101,6 +101,9 @@ with Gemini (`gemini-3.8-flash`; `TEAMMATE_GEMINI_MODEL` overrides it).
 **Only when someone asks** (owner's choice, 15 Oct): nothing is translated in the background.
 - In WhatsApp: reply to the voice note with `@bot translate`, or write `@bot translate #123`. The bot
   answers with the transcript, the English, and what that call cost: `💰 ₹0.13 · 1,000 in / 200 out tokens`.
+- Voice note as a reply to the bot (you can't @-mention in a voice note): it's transcribed (Gemini, ~₹0.10-0.50),
+  the bot posts `🗣 Heard: "…" · ₹x.xx`, and Claude answers. Team groups only; a voice note is never a command
+  (approvals still need typed `@bot ok <n>`).
 - `@bot cost`: Gemini spend today and this month (India time), in rupees.
 - The WhatsApp brain (Claude) has the same as a tool, used only for the messages a question is about.
 - Here: `inbox.py translate 123`, `inbox.py cost`.

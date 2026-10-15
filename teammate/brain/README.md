@@ -35,6 +35,7 @@ says so. For a hard guarantee, protect `main` on GitHub (required review).
 ## Group commands
 
 - `@bot <question or request>` — answered by Claude (planning turn); **replying to one of the bot's messages works too, no @ needed**
+- **Voice note sent as a reply to the bot** — transcribed (Gemini, ~₹0.10-0.50), echoed as `🗣 Heard: "…"`, then answered like a normal question. Team groups only; never run as a command (approvals need typed `@bot ok <n>`)
 - `@bot ok <n>` — approve plan *n* (working turn)
 - `@bot new <name>` — start a separate conversation in this group; the others are kept
 - `@bot sessions` / `@bot switch <name>` — list / change the current conversation

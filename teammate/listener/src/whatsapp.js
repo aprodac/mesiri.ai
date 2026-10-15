@@ -259,7 +259,9 @@ export class WhatsAppListener {
     }
     const n = this.store.addMessage(rec);
     if (n === null) return null; // seen before
-    if (live) this.onLive?.(rec, n); // TM-03: the bot looks for tags
+    // TM-03: the bot looks for tags. A voice note waits for its download, so the bot can hear it.
+    const voiceWait = live && downloadMedia && (rec.kind === "voice" || rec.kind === "audio");
+    if (live && !voiceWait) this.onLive?.(rec, n);
     if (!(downloadMedia && MEDIA_KINDS.has(rec.kind === "voice" ? "audio" : rec.kind))) this.onStored?.(n);
 
     if (rec.is_group && !this.store.hasChatName(rec.chat_jid) && !this.namesTried.has(rec.chat_jid)) {
@@ -272,7 +274,10 @@ export class WhatsAppListener {
       const content = normalizeMessageContent(msg.message) || {};
       const inner = Object.values(content).find((v) => v && typeof v === "object" && "mimetype" in v);
       const size = Number(inner?.fileLength?.toString?.() ?? inner?.fileLength ?? 0);
-      if (size > MAX_MEDIA_BYTES) return n;
+      if (size > MAX_MEDIA_BYTES) {
+        if (voiceWait) this.onLive?.(rec, n);
+        return n;
+      }
       try {
         const buf = await downloadMediaMessage(msg, "buffer", {}, {
           logger: this.waLogger,
@@ -285,6 +290,7 @@ export class WhatsAppListener {
         this.log(`media download failed for message ${n}: ${e}`);
       }
       this.onStored?.(n); // after the file is saved, so a voice note can be transcribed
+      if (voiceWait) this.onLive?.(rec, n); // even if the download failed: the bot says it couldn't hear it
     }
     return n;
   }

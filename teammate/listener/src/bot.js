@@ -55,6 +55,7 @@ const HELP = [
   "• @me ok <number>: approve a plan",
   "• @me new <name>: start a separate conversation (the others are kept)",
   "• @me sessions / @me switch <name> / @me reset",
+  "• send a voice note as a reply to me: it's transcribed (Gemini, ~₹0.10-0.50) and answered",
   "• reply to a voice note with @me translate (or @me translate #123): transcript + English + what it cost",
   "• @me cost: Gemini spend today and this month, in ₹",
   "• @me upgrade: <what to change in the bot> (owners): plan → @me ok <n> → it updates and redeploys itself",
@@ -100,7 +101,9 @@ export class Bot {
       this.log(`bot: ignored a tag from ${who} in ${chat.name} (not approved for ${project})`);
       return;
     }
-    const cmd = parseCommand(rec.text);
+    // A voice note in a team group is never parsed as a command: it can only become a question for Claude.
+    const isVoice = (rec.kind === "voice" || rec.kind === "audio") && chat.role === "team" && Boolean(this.brain);
+    const cmd = isVoice ? { verb: "request", rest: "" } : parseCommand(rec.text);
     const team = this.store.teamChat(project);
     const owners = ["approve", "remove", "owner"];
     // Answer in the group where it was asked when that's a team group; from a
@@ -145,6 +148,27 @@ export class Bot {
       this.wa.typing?.(replyTo);
       this.log(`bot: ${who} approved ${cmd.id ?? "the pending plan"} in ${chat.name}`);
       return this.brain.approve({ project, item_id: cmd.id, by: who, reply_chat: replyTo, sender_role: person.role });
+    }
+    if (isVoice) {
+      if (!this.ai?.translate) return this.reply(replyTo, "Voice notes need translation, which is off on the server.");
+      this.wa.typing?.(replyTo);
+      let r;
+      try {
+        r = await this.ai.translate(n);
+      } catch (e) {
+        return this.reply(replyTo, `⚠️ Couldn't understand the voice note: ${String(e.message || e).slice(0, 200)}`);
+      }
+      const english = String(r.translation || r.transcript || "").trim();
+      if (!english) return this.reply(replyTo, "⚠️ Couldn't understand the voice note: nothing was heard.");
+      const inr = r.cost ? ` · ₹${r.cost.inr.toFixed(2)}` : "";
+      await this.reply(replyTo, `🗣 Heard: "${english.slice(0, 500)}"${inr}`);
+      const original = r.transcript && r.translation && r.transcript !== r.translation
+        ? ` (original${r.language ? `, ${r.language}` : ""}: ${r.transcript})` : "";
+      this.log(`bot: ${who} in ${chat.name} -> Claude (voice note)`);
+      return this.brain.ask({
+        project, chat: chat.jid, chat_name: chat.name, chat_role: chat.role, reply_chat: replyTo,
+        sender: who, sender_role: person.role, n, text: english + original, quoted_text: rec.quoted_text || null, quoted_id: rec.quoted_id || null,
+      });
     }
     if (this.brain && team && ![...owners, "who", "help"].includes(cmd.verb)) {
       const text = String(rec.text || "").replace(/@\S+/g, " ").replace(/\s+/g, " ").trim() || "help";
