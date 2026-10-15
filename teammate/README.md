@@ -23,7 +23,7 @@ WhatsApp groups ──► listener/ (Node, VPS) ──► inbox.db ──► HTT
 
 | Path | What it is |
 | --- | --- |
-| `listener/` | The service: linked-device connection (Baileys), SQLite inbox, API. It sends only through `POST /send`, only into chats labelled `team`, up to 30 posts an hour. Never to customers; never reactions, read receipts or "online". |
+| `listener/` | The service: linked-device connection (Baileys), SQLite inbox, API. It sends only through `POST /send`, only into chats labelled `team` (30 posts an hour), an approved person's own 1-on-1 chat, and the `assistant-test` chat (10 an hour). Never to customers; never reactions, read receipts or "online". |
 | `inbox.py` | The command sessions use: `status`, `chats`, `label`, `recent`, `search`, `show`, `media`, `pair`, `post`. Python standard library only. |
 | `chat_image.py` | Draws a WhatsApp-style conversation, or a before/after pair, as a PNG for team updates. Standard library + Chromium. |
 | `deploy/` | systemd unit and the nginx location block. |
@@ -142,6 +142,18 @@ In a project's **team** group, approved people @-mention the linked number:
   announced in the team group. Everyone else's tags are ignored.
 - Owners are set on the server first: `inbox.py allow 9170… --role owner --project '*'`
   (`*` = every project). An all-projects owner can't be removed from a group.
+- **1-on-1 chats (plan 15).** An approved person can also message the linked number directly, no @ needed;
+  unapproved senders are ignored. If they're approved for one project that's used; if several (or `*`) the
+  bot asks "mesiri" / "mercon" and remembers the answer for that chat (`project <name>` changes it). Each
+  person's chat is its own ongoing conversation; replies go to that chat only (`/send` allows an unlabelled
+  1-on-1 chat only when the person is approved for the `project` in the call). `ok <n>` works for the
+  sender's own project; approve / remove / make owner / upgrade / model stay in the team group.
+- **Testing the Mesiri assistant (plan 15).** A chat labelled `assistant-test` (owner, on the server:
+  `inbox.py label <jid> assistant-test --project mesiri`; never automatic) is the bot's test conversation
+  with the Mesiri assistant's number. `/send` allows it for text and images, for its own project only,
+  `TEAMMATE_TEST_SENDS_PER_HOUR` (default 10) an hour. Setup: the linked number messages the assistant once,
+  then label that chat; register the bot's number as a worker in a **test** company in Mesiri. Undo:
+  `inbox.py label <jid> unlabelled`.
 - At most 20 bot replies an hour (`TEAMMATE_BOT_REPLIES_PER_HOUR`), so bots can't loop.
 - Starting Claude Code automatically from an approved request is TM-03b; until then a session
   picks approved requests up with `inbox.py items --status in_progress`.

@@ -15,7 +15,7 @@ Environment:
 Commands:
   status                              is the listener linked and receiving?
   chats                               every group/chat with its label and counts
-  label <chat> team|customer|ignore [--project P]
+  label <chat> team|customer|ignore|assistant-test|unlabelled [--project P]
                                       label a chat (name substring or jid); the project
                                       defaults to TEAMMATE_PROJECT
   recent [--chat X] [--role R] [--hours 24] [--limit 100]
@@ -291,17 +291,17 @@ def main() -> None:
     sub.add_parser("chats")
     lab = sub.add_parser("label")
     lab.add_argument("chat")
-    lab.add_argument("role", choices=["team", "customer", "ignore", "unlabelled"])
+    lab.add_argument("role", choices=["team", "customer", "ignore", "assistant-test", "unlabelled"])
     lab.add_argument("--project", default=PROJECT, help="default: TEAMMATE_PROJECT")
     rec = sub.add_parser("recent")
     rec.add_argument("--chat")
-    rec.add_argument("--role", choices=["team", "customer", "unlabelled"])
+    rec.add_argument("--role", choices=["team", "customer", "assistant-test", "unlabelled"])
     rec.add_argument("--hours", type=float, default=24)
     rec.add_argument("--limit", type=int, default=100)
     sea = sub.add_parser("search")
     sea.add_argument("words", nargs="+")
     sea.add_argument("--chat")
-    sea.add_argument("--role", choices=["team", "customer", "unlabelled"])
+    sea.add_argument("--role", choices=["team", "customer", "assistant-test", "unlabelled"])
     sea.add_argument("--days", type=float, default=60)
     sea.add_argument("--limit", type=int, default=50)
     sho = sub.add_parser("show")

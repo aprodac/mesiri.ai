@@ -22,7 +22,9 @@
 //   GET  /ai/usage?project=           Gemini spend today / this month (USD and INR)
 //   POST /pair         {phone}        start linking the spare number; returns the code
 //   POST /send         {chat, project?, text?, image_base64?, caption?}
-//                                     post into a chat labelled "team" -- refused anywhere else
+//                                     post into a chat labelled "team" -- refused anywhere else, except:
+//                                     - a 1-on-1 chat with a person approved for body.project (a reply to their DM)
+//                                     - the chat labelled "assistant-test" for body.project (text / images, few per hour)
 //
 // Every route except /health needs `Authorization: Bearer <TEAMMATE_API_TOKEN>`.
 // `project` (TM-05) scopes a call to one repo's groups; without it, all are visible.
@@ -60,6 +62,7 @@ async function readJson(req, maxBytes = 10_000) {
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_TEXT_CHARS = 4000;
 const SEND_PER_HOUR = Number(process.env.TEAMMATE_SEND_PER_HOUR || 30);
+const TEST_SENDS_PER_HOUR = Number(process.env.TEAMMATE_TEST_SENDS_PER_HOUR || 10);
 
 /**
  * @param {{ store: import('./store.js').Store, wa: { status(): object, requestPairingCode(phone: string): Promise<string> }, token: string }} deps
@@ -67,6 +70,7 @@ const SEND_PER_HOUR = Number(process.env.TEAMMATE_SEND_PER_HOUR || 30);
 export function createApi({ store, wa, token, ai = null }) {
   if (!token || token.length < 16) throw new Error("TEAMMATE_API_TOKEN must be at least 16 characters");
   const sentAt = [];
+  const testSentAt = [];
 
   return createServer(async (req, res) => {
     try {
@@ -215,10 +219,18 @@ export function createApi({ store, wa, token, ai = null }) {
         const body = await readJson(req, Math.ceil(MAX_IMAGE_BYTES * 1.4) + 20_000);
         const chat = store.findChat(String(body.chat || ""));
         if (!chat) return send(res, 404, { error: "no such chat; use the jid or a unique part of the name" });
-        if (chat.role !== "team") {
-          return send(res, 403, { error: `refused: '${chat.name || chat.jid}' is labelled ${chat.role}; only team chats can be posted to` });
-        }
-        if (body.project && chat.project !== body.project) {
+        const isTest = chat.role === "assistant-test";
+        if (isTest) {
+          if (!body.project || chat.project !== body.project) {
+            return send(res, 403, { error: `refused: '${chat.name || chat.jid}' is not a ${body.project || "(no project given)"} chat` });
+          }
+        } else if (chat.role !== "team") {
+          // A reply to an approved person's 1-on-1 chat; nothing else unlabelled is reachable.
+          const isDm = !chat.is_group && chat.role === "unlabelled";
+          if (!isDm || !body.project || (chat.project && chat.project !== body.project) || !store.findPerson(body.project, store.chatIdentities(chat.jid))) {
+            return send(res, 403, { error: `refused: '${chat.name || chat.jid}' is labelled ${chat.role}; only team chats and approved people's own chats can be posted to` });
+          }
+        } else if (body.project && chat.project !== body.project) {
           return send(res, 403, { error: `refused: '${chat.name || chat.jid}' is not a ${body.project} chat` });
         }
         const text = body.text ? String(body.text) : null;
@@ -230,11 +242,12 @@ export function createApi({ store, wa, token, ai = null }) {
         }
         if (image && image.length > MAX_IMAGE_BYTES) return send(res, 400, { error: "image is over 5 MB" });
         const hourAgo = Date.now() - 3_600_000;
-        while (sentAt.length && sentAt[0] < hourAgo) sentAt.shift();
-        if (sentAt.length >= SEND_PER_HOUR) return send(res, 429, { error: `limit of ${SEND_PER_HOUR} posts per hour reached` });
+        const [log, limit] = isTest ? [testSentAt, TEST_SENDS_PER_HOUR] : [sentAt, SEND_PER_HOUR];
+        while (log.length && log[0] < hourAgo) log.shift();
+        if (log.length >= limit) return send(res, 429, { error: `limit of ${limit} ${isTest ? "test messages" : "posts"} per hour reached` });
         try {
           const id = await wa.send(chat.jid, { text, image, caption });
-          sentAt.push(Date.now());
+          log.push(Date.now());
           return send(res, 200, { ok: true, id, chat: chat.name || chat.jid });
         } catch (err) {
           return send(res, 503, { error: err.message });

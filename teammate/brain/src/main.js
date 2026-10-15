@@ -134,6 +134,10 @@ async function call(method, path, body) {
 }
 const listener = {
   send: (b) => call("POST", "/send", b).catch(() => null),
+  /** Like send, but a refusal (limit, wrong chat) comes back as an error to report. */
+  sendStrict: (b) => call("POST", "/send", b),
+  chats: (project) => call("GET", `/chats?project=${encodeURIComponent(project)}`),
+  messages: (q) => call("GET", `/messages?${new URLSearchParams(q)}`),
   addItem: (b) => call("POST", "/items", b),
   updateItem: (id, b) => call("POST", `/items/${id}`, b),
   /** Translate one message on request (Gemini, in the listener); returns text + cost. */
