@@ -30,6 +30,8 @@ class MaterialReceiptResponse(BaseModel):
     movement_reason: str
     notes: str | None
     reverses_movement_id: uuid.UUID | None
+    # BE-32: set on both halves of a transfer between sites.
+    transfer_id: uuid.UUID | None = None
     # True when a correction has already been posted against THIS movement, so
     # the UI can hide "Correct" rather than offer an action that now 409s.
     # Absent on list endpoints (it needs a per-row lookup); only the detail
@@ -64,6 +66,8 @@ class MaterialUsageResponse(BaseModel):
     movement_reason: str
     notes: str | None
     reverses_movement_id: uuid.UUID | None
+    # BE-32: set on both halves of a transfer between sites.
+    transfer_id: uuid.UUID | None = None
     # True when a correction has already been posted against THIS movement, so
     # the UI can hide "Correct" rather than offer an action that now 409s.
     # Absent on list endpoints (it needs a per-row lookup); only the detail
