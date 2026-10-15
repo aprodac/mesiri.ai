@@ -48,6 +48,28 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts }) {
       async ({ text }) => (await post({ text }), { content: [{ type: "text", text: "Posted." }] }),
     ),
     tool(
+      "post_image",
+      "Post an image file from /tmp (e.g. a downloaded TestFlight screenshot) to the project's WhatsApp team group with a caption.",
+      {
+        path: z.string().describe("Absolute path under /tmp/, a .png, .jpg, .jpeg or .webp file"),
+        caption: z.string().max(1000),
+      },
+      async ({ path, caption }) => {
+        const { realpathSync, readFileSync, statSync } = await import("node:fs");
+        let real;
+        try {
+          real = realpathSync(path);
+        } catch {
+          return fail(`No file at ${path}.`);
+        }
+        if (!real.startsWith("/tmp/") || !/\.(png|jpe?g|webp)$/i.test(real)) return fail("Only .png/.jpg/.webp files under /tmp/ can be posted.");
+        if (statSync(real).size > 5 * 1024 * 1024) return fail("That image is over 5 MB.");
+        const data = readFileSync(real);
+        await post({ image_base64: data.toString("base64"), caption: caption || undefined });
+        return { content: [{ type: "text", text: "Posted to the team group." }] };
+      },
+    ),
+    tool(
       "preview_html",
       "Render a self-contained HTML mockup (inline CSS, no external URLs) to a PNG and post it to the team group with a caption. Use it to show what a proposed screen or change will look like before building it.",
       {
@@ -133,4 +155,4 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts }) {
   return createSdkMcpServer({ name: "whatsapp", version: "1.0.0", tools });
 }
 
-export const BRAIN_TOOL_NAMES = ["post_message", "preview_html", "screenshot_url", "view_media", "propose_plan", "needs_attention"].map((t) => `mcp__whatsapp__${t}`);
+export const BRAIN_TOOL_NAMES = ["post_message", "post_image", "preview_html", "screenshot_url", "view_media", "propose_plan", "needs_attention"].map((t) => `mcp__whatsapp__${t}`);

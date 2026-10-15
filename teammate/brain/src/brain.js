@@ -27,6 +27,9 @@ const READ = [
   "Bash(cd *)", "Bash(cat *)", "Bash(head *)", "Bash(tail *)", "Bash(grep *)", "Bash(rg *)", "Bash(wc *)",
   "Bash(sort *)", "Bash(uniq *)", "Bash(jq *)", "Bash(echo *)", "Bash(pwd)", "Bash(tree *)", "Bash(file *)",
   "Bash(git ls-files *)", "Bash(git grep *)", "Bash(git rev-parse *)",
+  // TestFlight feedback (owner's OK, 15 Oct): start only that workflow, read its runs, download files to /tmp.
+  "Bash(gh workflow run testflight-feedback.yml *)", "Bash(gh workflow run testflight-feedback.yml)",
+  "Bash(gh run watch *)", "Bash(gh run download * -D /tmp/*)", "Bash(gh run download * --dir /tmp/*)",
   "Bash(gh pr view *)", "Bash(gh pr list *)", "Bash(gh pr checks *)", "Bash(gh run list *)", "Bash(gh run view *)",
   ...BRAIN_TOOL_NAMES,
 ];
@@ -61,6 +64,10 @@ export function systemAppend({ project, flow, owner }) {
     "Malayalam), and the request log (`summary`, `items`, `item show`). Use it before answering about what was said.",
     "To look at a photo or screenshot someone sent (shown as <image ✓file> in the inbox), call view_media with its",
     "message number. Always look at the images a request refers to before planning.",
+    "TestFlight feedback: `gh workflow run testflight-feedback.yml -f ...` (check the workflow file for its inputs),",
+    "`gh run watch <id>`, then `gh run download <id> -D /tmp/feedback-<id>` and open the screenshots with Read.",
+    "Always download into /tmp, never into the repo. Look at the screenshots with Read, then post the useful ones",
+    "to the group with post_image (a PNG/JPEG under /tmp, with a short caption).",
     "",
     "Two kinds of turn, enforced by your tool permissions:",
     "- Planning (normal messages): you can read but not change anything. Answer questions directly. For a change,",

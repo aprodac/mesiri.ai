@@ -53,6 +53,9 @@ test("brain: planning turns are read-only, keep one session per group, answer in
     assert.ok(o.allowedTools.includes("Read") && o.allowedTools.includes("mcp__whatsapp__preview_html"));
     assert.ok(!o.allowedTools.includes("Edit") && !o.allowedTools.some((t) => t.startsWith("Bash(git *)")));
     assert.ok(o.disallowedTools.includes("Bash(git push --force*)") && o.disallowedTools.includes("Read(**/.env)"));
+    assert.ok(o.allowedTools.includes("Bash(gh workflow run testflight-feedback.yml *)"));
+    assert.ok(!o.allowedTools.some((t) => t === "Bash(gh workflow run *)"));
+    assert.ok(o.allowedTools.includes("Bash(gh run download * -D /tmp/*)") && !o.allowedTools.includes("Bash(gh run download *)"));
     assert.equal(o.maxBudgetUsd, 3);
     assert.deepEqual(o.settingSources, ["project"]);
     assert.equal(o.env.TEAMMATE_PROJECT, "mercon");
@@ -197,6 +200,8 @@ test("tools: team group only, plan recording, attention flags, allowed screensho
   assert.deepEqual(asked[0], [6, "mercon"]);
   assert.match((await call("view_media", { n: 7 })).content[0].text, /audio\/ogg; only images/);
   assert.equal((await call("view_media", { n: 99 })).isError, true);
+
+  assert.equal((await call("post_image", { path: "/etc/passwd", caption: "x" })).isError, true);
 
   assert.equal(hostAllowed("http://dev.mercon.app/a", ["dev.mercon.app"]), true);
   assert.equal(hostAllowed("file:///etc/passwd", ["dev.mercon.app"]), false);
