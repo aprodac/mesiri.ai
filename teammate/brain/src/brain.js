@@ -294,7 +294,9 @@ export class Brain {
     try {
       const r = await this.fireFn(this.routines[project], payload);
       plan.status = "running_in_cloud";
-      plan.session_url = r?.claude_code_session_url || null;
+      // The fire API can return the id in its cse_ form; the web address needs session_.
+      const sid = r?.claude_code_session_id || String(r?.claude_code_session_url || "").split("/").pop() || "";
+      plan.session_url = sid ? `https://claude.ai/code/${sid.replace(/^cse_/, "session_")}` : r?.claude_code_session_url || null;
       writeJson(this.plansFile, this.planStore);
       this.log(`brain: plan [${plan.id}] started in the cloud: ${plan.session_url}`);
       if (typeof plan.id === "number" && plan.session_url) {

@@ -234,7 +234,7 @@ test("brain (hybrid): with a routine, an ok starts a cloud session and posts its
     fireFn: async (routine, text) => {
       if (fail) throw new Error("routine fire HTTP 429");
       fired.push({ routine, text });
-      return { type: "routine_fire", claude_code_session_url: "https://claude.ai/code/session_ABC" };
+      return { type: "routine_fire", claude_code_session_id: "cse_ABC", claude_code_session_url: "https://claude.ai/code/cse_ABC" };
     },
   });
   try {
