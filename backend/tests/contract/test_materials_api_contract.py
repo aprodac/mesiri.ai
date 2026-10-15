@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import json
 import uuid
 from decimal import Decimal
 
@@ -1375,3 +1376,184 @@ async def test_dpr_flags_usage_beyond_known_stock(client, test_engine, test_org,
     assert Decimal(cement["closing"]) == Decimal("-15")
     assert cement["beyond_stock"] is True
     assert payload["stock_flags"] == 1
+
+
+# ---------------------------------------------------------------------------
+# BE-32: transfers between sites
+# ---------------------------------------------------------------------------
+
+
+async def _site_stock(client, token, project_id, site_id, material_id) -> Decimal:
+    resp = await client.get(
+        "/materials/inventory",
+        params={"project_id": str(project_id), "site_id": str(site_id), "material_id": material_id},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 200, resp.text
+    rows = resp.json()
+    return Decimal(rows[0]["current_stock"]) if rows else Decimal("0")
+
+
+async def _transfer_setup(client, test_engine, test_org, admin_ctx, *, other_project=False):
+    bags_id = await _bags_unit_id(client, admin_ctx["token"])
+    material_id = await _make_material(client, admin_ctx["token"], "Cement TR", bags_id)
+    to_project = (
+        await _make_project(test_engine, test_org) if other_project else admin_ctx["project_id"]
+    )
+    to_site = await _make_site(test_engine, test_org, to_project)
+    resp = await client.post(
+        "/materials/inflows",
+        json={
+            "project_id": str(admin_ctx["project_id"]),
+            "site_id": str(admin_ctx["site_id"]),
+            "material_id": material_id,
+            "unit_id": bags_id,
+            "quantity": "100",
+            "movement_reason": "RECEIVED",
+            "occurred_date": str(datetime.date.today()),
+        },
+        headers=_auth(admin_ctx["token"]),
+    )
+    assert resp.status_code == 201
+    body = {
+        "from_site_id": str(admin_ctx["site_id"]),
+        "to_site_id": str(to_site),
+        "material_id": material_id,
+        "unit_id": bags_id,
+        "quantity": "30",
+        "occurred_date": str(datetime.date.today()),
+        "notes": "leftover from block A",
+    }
+    return material_id, to_project, to_site, body
+
+
+async def test_transfer_moves_stock_between_sites(client, test_engine, test_org, admin_ctx):
+    material_id, to_project, to_site, body = await _transfer_setup(
+        client, test_engine, test_org, admin_ctx
+    )
+    token = admin_ctx["token"]
+    resp = await client.post("/materials/transfers", json=body, headers=_auth(token))
+    assert resp.status_code == 201, resp.text
+    transfer_id = resp.json()["id"]
+
+    pid = admin_ctx["project_id"]
+    assert await _site_stock(client, token, pid, admin_ctx["site_id"], material_id) == Decimal("70")
+    assert await _site_stock(client, token, to_project, to_site, material_id) == Decimal("30")
+
+    listed = (await client.get("/materials/transfers", params={"project_id": str(pid)},
+                               headers=_auth(token))).json()
+    assert listed["total"] == 1
+    [row] = listed["items"]
+    assert row["id"] == transfer_id
+    assert row["from_site_id"] == str(admin_ctx["site_id"])
+    assert row["to_site_id"] == str(to_site)
+    assert Decimal(row["quantity"]) == Decimal("30")
+    assert row["is_reversed"] is False
+
+    inflows = (await client.get("/materials/inflows", params={"project_id": str(pid),
+               "movement_reason": "TRANSFER_IN"}, headers=_auth(token))).json()["items"]
+    assert [i["transfer_id"] for i in inflows] == [transfer_id]
+
+
+async def test_transfer_between_projects(client, test_engine, test_org, admin_ctx):
+    material_id, to_project, to_site, body = await _transfer_setup(
+        client, test_engine, test_org, admin_ctx, other_project=True
+    )
+    token = admin_ctx["token"]
+    resp = await client.post("/materials/transfers", json=body, headers=_auth(token))
+    assert resp.status_code == 201, resp.text
+    assert await _site_stock(client, token, to_project, to_site, material_id) == Decimal("30")
+    # Visible from either project.
+    for pid in (admin_ctx["project_id"], to_project):
+        listed = await client.get("/materials/transfers", params={"project_id": str(pid)},
+                                  headers=_auth(token))
+        assert listed.json()["total"] == 1
+
+
+async def test_transfer_beyond_sending_stock_needs_confirmation(
+    client, test_engine, test_org, admin_ctx
+):
+    material_id, to_project, to_site, body = await _transfer_setup(
+        client, test_engine, test_org, admin_ctx
+    )
+    token = admin_ctx["token"]
+    resp = await client.post("/materials/transfers", json={**body, "quantity": "150"},
+                             headers=_auth(token))
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["available"] == "100.00"
+    # Nothing half-written.
+    assert await _site_stock(client, token, to_project, to_site, material_id) == Decimal("0")
+
+    resp = await client.post("/materials/transfers",
+                             json={**body, "quantity": "150", "allow_negative": True},
+                             headers=_auth(token))
+    assert resp.status_code == 201
+
+
+async def test_transfer_needs_two_different_sites(client, test_engine, test_org, admin_ctx):
+    _, _, _, body = await _transfer_setup(client, test_engine, test_org, admin_ctx)
+    resp = await client.post("/materials/transfers", json={**body, "to_site_id": body["from_site_id"]},
+                             headers=_auth(admin_ctx["token"]))
+    assert resp.status_code == 422
+
+
+async def test_transfer_needs_access_to_both_projects(client, test_engine, test_org, admin_ctx):
+    _, to_project, _, body = await _transfer_setup(
+        client, test_engine, test_org, admin_ctx, other_project=True
+    )
+    user = await _make_user(test_engine, test_org, "site_engineer")
+    policy = json.dumps(
+        {
+            "mode": "custom_projects",
+            "projects": [
+                {
+                    "projectId": str(admin_ctx["project_id"]),
+                    "siteAccess": {"mode": "all_sites", "siteIds": []},
+                }
+            ],
+        }
+    )
+    async with test_engine.begin() as conn:
+        await conn.execute(
+            sa.text("UPDATE users SET access_policy = CAST(:p AS jsonb) WHERE id = :id"),
+            {"p": policy, "id": user},
+        )
+    token = _token(user, test_org, "site_engineer")
+    resp = await client.post("/materials/transfers", json=body, headers=_auth(token))
+    assert resp.status_code == 403
+
+
+async def test_reversing_a_transfer_restores_both_sites(client, test_engine, test_org, admin_ctx):
+    material_id, to_project, to_site, body = await _transfer_setup(
+        client, test_engine, test_org, admin_ctx
+    )
+    token = admin_ctx["token"]
+    created = (await client.post("/materials/transfers", json=body, headers=_auth(token))).json()
+
+    # One half alone cannot be corrected: the other site would stay wrong.
+    half = await client.post(f"/materials/inflows/{created['inflow_id']}/reverse",
+                             json={"reason_note": "x"}, headers=_auth(token))
+    assert half.status_code == 409
+
+    resp = await client.post(f"/materials/transfers/{created['id']}/reverse",
+                             json={"reason_note": "sent to wrong site"}, headers=_auth(token))
+    assert resp.status_code == 201, resp.text
+    pid = admin_ctx["project_id"]
+    assert await _site_stock(client, token, pid, admin_ctx["site_id"], material_id) == Decimal("100")
+    assert await _site_stock(client, token, to_project, to_site, material_id) == Decimal("0")
+
+    listed = (await client.get("/materials/transfers", params={"project_id": str(pid)},
+                               headers=_auth(token))).json()
+    assert listed["items"][0]["is_reversed"] is True
+
+    again = await client.post(f"/materials/transfers/{created['id']}/reverse",
+                              json={"reason_note": "again"}, headers=_auth(token))
+    assert again.status_code == 409
+    # The failed second correction wrote nothing.
+    assert await _site_stock(client, token, pid, admin_ctx["site_id"], material_id) == Decimal("100")
+
+
+async def test_unknown_transfer_reverse_is_404(client, admin_ctx):
+    resp = await client.post(f"/materials/transfers/{uuid.uuid4()}/reverse", json={},
+                             headers=_auth(admin_ctx["token"]))
+    assert resp.status_code == 404

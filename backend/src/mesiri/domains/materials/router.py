@@ -1360,6 +1360,276 @@ class MaterialReversalCreate(BaseModel):
     occurred_date: datetime.date | None = None
 
 
+# ---------------------------------------------------------------------------
+# Transfers between sites (BE-32)
+# ---------------------------------------------------------------------------
+class MaterialTransferCreate(BaseModel):
+    from_site_id: uuid.UUID
+    to_site_id: uuid.UUID
+    material_id: uuid.UUID
+    unit_id: uuid.UUID
+    quantity: Decimal
+    occurred_date: datetime.date
+    notes: str | None = None
+    # Same guard as an outflow: refuse to send more than the sending site
+    # holds unless the user confirmed it. Off by default -- this endpoint is
+    # new, so no caller relies on the outflow route's permissive default.
+    allow_negative: bool = False
+
+
+async def _site_project_id(
+    conn: AsyncConnection, organization_id: uuid.UUID, site_id: uuid.UUID
+) -> uuid.UUID:
+    row = (
+        await conn.execute(
+            text("SELECT project_id FROM sites WHERE id = :site_id AND organization_id = :org_id"),
+            {"site_id": site_id, "org_id": organization_id},
+        )
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=422, detail="Site not found")
+    return row[0]
+
+
+@router.post("/transfers", status_code=201)
+async def create_transfer(
+    body: MaterialTransferCreate,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Move material from one site's stock into another's, as one record.
+
+    Writes a TRANSFER_OUT outflow at the sending site and a TRANSFER_IN
+    inflow at the receiving one, each with its ledger movement, in the
+    request's one transaction and sharing `transfer_id` -- so a transfer is
+    never half-recorded. The sites may be in different projects (leftover
+    shuttering moved to the next job); the caller needs write access to both.
+    """
+    if idempotency_key:
+        replayed = await _claim_idempotency_key(conn, idempotency_key, "material_transfer_rest")
+        if replayed is not None:
+            return {**replayed, "status": "replayed"}
+    if body.quantity <= 0:
+        raise HTTPException(status_code=422, detail="quantity must be greater than zero")
+    if body.from_site_id == body.to_site_id:
+        raise HTTPException(status_code=422, detail="A transfer needs two different sites")
+
+    org_id = auth_context.organization_id
+    from_project_id = await _site_project_id(conn, org_id, body.from_site_id)
+    to_project_id = await _site_project_id(conn, org_id, body.to_site_id)
+    _authorize_write(auth_context, from_project_id, body.from_site_id)
+    _authorize_write(auth_context, to_project_id, body.to_site_id)
+
+    material, unit = await _resolve_and_validate_material_unit(
+        conn, org_id, body.material_id, body.unit_id
+    )
+
+    if not body.allow_negative:
+        read_repo = PostgresMaterialReadRepository(conn)
+        await read_repo.lock_stock_for_update(body.from_site_id, material["id"])
+        available = await read_repo.get_available_stock(org_id, body.from_site_id, material["id"])
+        if body.quantity > available:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": (
+                        f"Only {available} {unit['code']} of {material['name']} "
+                        f"at the sending site, but {body.quantity} was entered."
+                    ),
+                    "available": str(available),
+                    "requested": str(body.quantity),
+                    "unit": unit["code"],
+                    "material_name": material["name"],
+                },
+            )
+
+    transfer_id = uuid.uuid4()
+    outflow_id = uuid.uuid4()
+    inflow_id = uuid.uuid4()
+    notes = body.notes.strip() if body.notes else None
+    occurred_at = datetime.datetime.combine(body.occurred_date, datetime.time.min)
+    common = {
+        "organization_id": org_id,
+        "material_name": material["name"],
+        "quantity": body.quantity,
+        "unit": unit["code"],
+        "unit_id": unit["id"],
+        "occurred_date": body.occurred_date,
+        "notes": notes,
+        "material_id": material["id"],
+        "created_by": auth_context.user_id,
+        "transfer_id": transfer_id,
+    }
+    await conn.execute(
+        text(
+            "INSERT INTO material_usage "
+            "(id, organization_id, project_id, site_id, material_name, quantity, unit, unit_id, "
+            "work_item, occurred_date, occurred_date_source, source, movement_reason, notes, "
+            "material_id, created_by, transfer_id) "
+            "VALUES (:id, :organization_id, :project_id, :site_id, :material_name, "
+            ":quantity, :unit, :unit_id, NULL, :occurred_date, 'reported', 'web', "
+            "'TRANSFER_OUT', :notes, :material_id, :created_by, :transfer_id)"
+        ),
+        {**common, "id": outflow_id, "project_id": from_project_id, "site_id": body.from_site_id},
+    )
+    await conn.execute(
+        text(
+            "INSERT INTO material_receipts "
+            "(id, organization_id, project_id, site_id, material_name, quantity, unit, unit_id, "
+            "supplier, occurred_date, occurred_date_source, source, movement_reason, notes, "
+            "material_id, created_by, transfer_id) "
+            "VALUES (:id, :organization_id, :project_id, :site_id, :material_name, "
+            ":quantity, :unit, :unit_id, NULL, :occurred_date, 'reported', 'web', "
+            "'TRANSFER_IN', :notes, :material_id, :created_by, :transfer_id)"
+        ),
+        {**common, "id": inflow_id, "project_id": to_project_id, "site_id": body.to_site_id},
+    )
+    for movement_type, source_type, source_id, project_id, site_id in (
+        ("ISSUE", "material_usage", outflow_id, from_project_id, body.from_site_id),
+        ("RECEIPT", "material_receipt", inflow_id, to_project_id, body.to_site_id),
+    ):
+        await post_material_movement(
+            conn,
+            movement_type=movement_type,
+            material_id=material["id"],
+            unit_id=unit["id"],
+            quantity=body.quantity,
+            organization_id=org_id,
+            project_id=project_id,
+            site_id=site_id,
+            occurred_at=occurred_at,
+            source_type=source_type,
+            source_id=source_id,
+            recorded_by_user_id=auth_context.user_id,
+        )
+    event = {
+        "material_name": material["name"],
+        "quantity": str(body.quantity),
+        "unit": unit["code"],
+        "occurred_date": body.occurred_date.isoformat(),
+        "occurred_date_source": "reported",
+        "transfer_id": str(transfer_id),
+    }
+    await _publish_outbox_event(
+        conn,
+        aggregate_type="material_usage",
+        aggregate_id=outflow_id,
+        event_type="MaterialUsed",
+        payload={**event, "movement_reason": "TRANSFER_OUT"},
+    )
+    await _publish_outbox_event(
+        conn,
+        aggregate_type="material_receipt",
+        aggregate_id=inflow_id,
+        event_type="MaterialReceived",
+        payload={**event, "movement_reason": "TRANSFER_IN"},
+    )
+    result = {
+        "id": transfer_id,
+        "outflow_id": outflow_id,
+        "inflow_id": inflow_id,
+        "status": "success",
+    }
+    if idempotency_key:
+        await _complete_idempotency_key(conn, idempotency_key, result)
+    return result
+
+
+@router.get("/transfers")
+async def list_transfers(
+    project_id: uuid.UUID | None = None,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Transfers that leave or enter a project the caller can see, newest first."""
+    project_ids, denied = _resolve_project_ids(auth_context, project_id)
+    if denied:
+        return {"items": [], "total": 0}
+    scope = ""
+    params: dict[str, Any] = {"org_id": auth_context.organization_id, "limit": limit, "offset": offset}
+    if project_ids is not None:
+        scope = "AND (u.project_id = ANY(:project_ids) OR r.project_id = ANY(:project_ids))"
+        params["project_ids"] = list(project_ids)
+    rows = (
+        await conn.execute(
+            text(
+                f"""
+                SELECT u.transfer_id AS id, u.material_id, u.material_name, u.quantity, u.unit,
+                       u.occurred_date, u.notes, u.created_by,
+                       u.id AS outflow_id, u.project_id AS from_project_id,
+                       u.site_id AS from_site_id, fs.name AS from_site_name,
+                       r.id AS inflow_id, r.project_id AS to_project_id,
+                       r.site_id AS to_site_id, ts.name AS to_site_name,
+                       EXISTS (SELECT 1 FROM material_receipts c
+                               WHERE c.reverses_movement_id = u.id) AS is_reversed,
+                       COUNT(*) OVER () AS total
+                FROM material_usage u
+                JOIN material_receipts r ON r.transfer_id = u.transfer_id
+                LEFT JOIN sites fs ON fs.id = u.site_id
+                LEFT JOIN sites ts ON ts.id = r.site_id
+                WHERE u.organization_id = :org_id AND u.transfer_id IS NOT NULL {scope}
+                ORDER BY u.occurred_date DESC, u.created_at DESC
+                LIMIT :limit OFFSET :offset
+                """  # noqa: S608 - `scope` is one of two fixed strings
+            ),
+            params,
+        )
+    ).mappings().all()
+    total = rows[0]["total"] if rows else 0
+    return {"items": [{k: v for k, v in r.items() if k != "total"} for r in rows], "total": total}
+
+
+@router.post("/transfers/{transfer_id}/reverse", status_code=201)
+async def reverse_transfer(
+    transfer_id: uuid.UUID,
+    body: MaterialReversalCreate,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Correct a transfer: both halves are reversed together, through the same
+    correction as any inflow/outflow, so stock goes back to where it was at
+    both sites. Never one half alone."""
+    if not role_can_adjust(auth_context.role):
+        raise HTTPException(status_code=403, detail="Not authorized to correct movements")
+    org_id = auth_context.organization_id
+    halves = (
+        await conn.execute(
+            text(
+                "SELECT 'usage' AS kind, id FROM material_usage "
+                "WHERE organization_id = :org_id AND transfer_id = :transfer_id "
+                "UNION ALL "
+                "SELECT 'receipt' AS kind, id FROM material_receipts "
+                "WHERE organization_id = :org_id AND transfer_id = :transfer_id"
+            ),
+            {"org_id": org_id, "transfer_id": transfer_id},
+        )
+    ).all()
+    if not halves:
+        raise HTTPException(status_code=404, detail="Transfer not found")
+
+    correction_ids = []
+    for kind, record_id in sorted(halves, key=lambda h: h[0] != "usage"):
+        correction_ids.append(
+            await reverse_material_record(
+                conn,
+                kind=kind,
+                record_id=record_id,
+                organization_id=org_id,
+                user_id=auth_context.user_id,
+                reason_note=body.reason_note,
+                occurred_date=body.occurred_date,
+                authorize=lambda original: _authorize_write(
+                    auth_context, original["project_id"], original["site_id"]
+                ),
+                transfer_half=True,
+            )
+        )
+    return {"id": transfer_id, "correction_ids": correction_ids, "status": "success"}
+
+
 @contextlib.contextmanager
 def _reversal_race_as_conflict():
     """Turn the 0459 uniqueness violation into the same 409 the pre-check gives.
@@ -1478,6 +1748,7 @@ async def reverse_material_record(
     reason_note: str | None,
     occurred_date: datetime.date | None = None,
     authorize: Callable[[dict], None] | None = None,
+    transfer_half: bool = False,
 ) -> uuid.UUID:
     """Reverse one inflow (`kind="receipt"`) or outflow (`kind="usage"`):
     an offsetting ADJUSTMENT_OUT/IN record plus its movement, never an edit
@@ -1500,6 +1771,12 @@ async def reverse_material_record(
         raise ValueError(f"unknown material record kind: {kind}")
     if authorize is not None:
         authorize(original)
+    if original.get("transfer_id") is not None and not transfer_half:
+        # Correcting one half alone would leave the other site's stock wrong.
+        raise HTTPException(
+            status_code=409,
+            detail="This movement is part of a transfer between sites. Correct the transfer.",
+        )
     await _assert_not_already_reversed(repo, organization_id, record_id)
 
     row_id = uuid.uuid4()
