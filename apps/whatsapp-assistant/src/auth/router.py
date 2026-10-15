@@ -90,6 +90,17 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class CompanyStatus(BaseModel):
+    # trial / active / expired / suspended, by the one lifecycle rule (a
+    # trial past its end reads expired, as the read-only guard sees it).
+    status: str
+    trial_ends_at: datetime | None = None
+    trial_days_left: int | None = None
+    # An owner already asked to continue (POST /company/trial/continue or
+    # CONTINUE on WhatsApp) and the team hasn't closed it yet.
+    continue_requested: bool = False
+
+
 class Me(BaseModel):
     user_id: str
     org_id: str
@@ -101,6 +112,9 @@ class Me(BaseModel):
     # BE-06), so the dashboard can show only what the company has. A platform
     # admin has no company and sees every module.
     enabled_modules: list[str] = Field(default_factory=list)
+    # The company's trial status (SS-15), so every page can show the "trial
+    # ended, read-only" banner. None for a platform admin, or if unreadable.
+    company: CompanyStatus | None = None
 
 
 class ChangePassword(BaseModel):
@@ -199,7 +213,55 @@ async def me(authorization: str = Header(None)) -> Me:
         org_name=payload.get("org_name", ""),
         is_platform_admin=role == "ADMIN" and not org,
         enabled_modules=await _enabled_modules_for(org),
+        company=await _company_status_for(org),
     )
+
+
+async def _company_status_for(org: str) -> CompanyStatus | None:
+    """The company's trial status for the banner. Never raises, for the same
+    reason as `_enabled_modules_for`: an unreadable status shows no banner
+    rather than logging the user out."""
+    if not org:
+        return None
+    try:
+        from mesiri.domains.organizations import lifecycle
+        from mesiri.domains.organizations import settings as org_settings
+        from mesiri.domains.organizations.trial_notices import OPEN
+        from mesiri.infrastructure.postgres.repositories.organization_settings import (
+            PostgresOrganizationSettingsRepository,
+        )
+
+        org_id = uuid.UUID(org)
+        async with get_engine().connect() as conn:
+            row = (
+                await conn.execute(
+                    sa.text("SELECT status, trial_ends_at FROM organizations WHERE id = :id"),
+                    {"id": org_id},
+                )
+            ).first()
+            if row is None:
+                return None
+            requests = await PostgresOrganizationSettingsRepository(conn).get(
+                org_id, org_settings.CONTINUE_REQUESTS
+            )
+        now = datetime.now(UTC)
+        status = lifecycle.effective_status(row.status, row.trial_ends_at, now)
+        return CompanyStatus(
+            status=status,
+            trial_ends_at=row.trial_ends_at,
+            trial_days_left=(
+                lifecycle.trial_days_left(row.trial_ends_at, now)
+                if status == lifecycle.TRIAL
+                else None
+            ),
+            continue_requested=isinstance(requests, list)
+            and any(isinstance(r, dict) and r.get("status") == OPEN for r in requests),
+        )
+    except Exception:  # noqa: BLE001 — see docstring: /me must not fail on this
+        import logging
+
+        logging.getLogger("mesiri.auth").exception("auth.me.company_status_lookup_failed")
+        return None
 
 
 async def _enabled_modules_for(org: str) -> list[str]:
