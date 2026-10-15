@@ -103,6 +103,10 @@ class MaterialCatalogResponse(BaseModel):
     organization_id: uuid.UUID
     name: str
     default_unit: str | None
+    # The Stock Unit's id: what every inflow/outflow/transfer for this
+    # material must send as unit_id. The dashboard's record dialogs read it
+    # from here; without it they send no unit_id and every write is a 422.
+    default_unit_id: uuid.UUID | None = None
     category: str | None
     sku: str | None
     is_active: bool
