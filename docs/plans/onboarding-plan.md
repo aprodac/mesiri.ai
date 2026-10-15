@@ -68,6 +68,10 @@ nudges and trial reminders need Meta-approved templates (SS-12). Apply early.
 - **All-or-nothing:** it uses the caller's transaction and never commits. A taken
   email (any case) or WhatsApp number (compared as digits) is refused before anything
   is written (`CompanyCreationError`, `conflict=True` → HTTP 409).
+- **Audit log (BE-05):** writes one `company.created` entry in the same transaction:
+  the platform admin on `/provision` (callers pass `actor=`), the owner themselves
+  (`self_signup`) for a WhatsApp/web signup, otherwise `system`. See
+  [admin-audit-log.md](../backend/admin-audit-log.md).
 - **WhatsApp visibility:** making the new rows visible to WhatsApp (context projection)
   is the caller's job after commit. The assistant's `/provision` does it.
 - **Starter materials (BE-24):** every new company gets 19 common materials, each
