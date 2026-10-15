@@ -45,6 +45,12 @@ CAPTURE_MODE = "capture_mode"
 CAPTURE_MODE_SAVE_FIRST = "save_first"
 CAPTURE_MODE_CONFIRM_FIRST = "confirm_first"
 CAPTURE_MODES: frozenset[str] = frozenset({CAPTURE_MODE_SAVE_FIRST, CAPTURE_MODE_CONFIRM_FIRST})
+# Getting-started answers that change nothing else (SS-07, SS-14): "the
+# default report time is fine". Without it a company that keeps 9 pm looks the
+# same as one that never looked. Read by the setup progress
+# (application/organizations/companies_overview.py).
+GETTING_STARTED = "getting_started"
+DEFAULT_GETTING_STARTED: dict[str, bool] = {"report_time_ok": False}
 
 # Product modules a company can have switched on (V1 tracker BE-06). Each key
 # gates one or more API routers (domains/shared/modules.py's require_module)
@@ -169,6 +175,14 @@ _SPECS: dict[str, SettingSpec] = {
             "signatory and logo. Edited through the branding page, not here."
         ),
     ),
+    GETTING_STARTED: SettingSpec(
+        key=GETTING_STARTED,
+        default=DEFAULT_GETTING_STARTED,
+        description=(
+            "Getting-started answers the owner gave (e.g. the default report time is "
+            "fine), so the checklist and WhatsApp setup questions don't ask again."
+        ),
+    ),
 }
 
 # Settings with their own endpoint (GET/PUT /company/branding and the logo
@@ -285,7 +299,21 @@ def validate(key: str, value: object) -> object:
         if mode not in CAPTURE_MODES:
             raise ValueError(f"capture_mode must be one of {sorted(CAPTURE_MODES)}")
         return mode
+    if key == GETTING_STARTED:
+        return validate_getting_started(value)
     return value
+
+
+def validate_getting_started(value: object) -> dict[str, bool]:
+    """Only known answers, each true or false; missing ones keep their default."""
+    if not isinstance(value, dict):
+        raise ValueError("getting_started must be an object")
+    unknown = set(value) - set(DEFAULT_GETTING_STARTED)
+    if unknown:
+        raise ValueError(f"unknown getting_started answers: {sorted(unknown)}")
+    if not all(isinstance(v, bool) for v in value.values()):
+        raise ValueError("getting_started answers must be true or false")
+    return {**DEFAULT_GETTING_STARTED, **value}
 
 
 def saves_first(stored: object) -> bool:
