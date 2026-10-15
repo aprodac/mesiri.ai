@@ -42,7 +42,7 @@ nudges and trial reminders need Meta-approved templates (SS-12). Apply early.
 | # | Piece | Tracker |
 | --- | --- | --- |
 | 1 | One create-company step | SS-03 (**done**, includes BE-02) |
-| 2 | Construction defaults seeded per new company | BE-24 |
+| 2 | Starter materials seeded per new company | BE-24 (**done**); `cft`/`load` units BE-39 |
 | 3 | WhatsApp signup for unknown numbers | SS-04 |
 | 4 | Add a team member by sharing a contact; welcome message | new, with SS-05 |
 | 5 | One-screen create form + companies list in the control panel | SA-01, SA-02 |
@@ -70,8 +70,14 @@ nudges and trial reminders need Meta-approved templates (SS-12). Apply early.
   is written (`CompanyCreationError`, `conflict=True` → HTTP 409).
 - **WhatsApp visibility:** making the new rows visible to WhatsApp (context projection)
   is the caller's job after commit. The assistant's `/provision` does it.
-- **BE-24 hook:** BE-24 seeds its defaults inside this function, in the same
-  transaction.
+- **Starter materials (BE-24):** every new company gets 19 common materials, each
+  with its stock unit (`domains/materials/defaults.py`), seeded in the same
+  transaction and recorded as created by the owner. Without them, a supervisor's
+  first "40 bags cement" gets "ask your admin", because only ADMIN/PM may add
+  materials from WhatsApp. Names are plain words because WhatsApp only resolves
+  a material silently on an exact name match. Seeding is safe to re-run (it skips
+  names the company has). Units, issue types and trades are platform-wide already,
+  so nothing else is seeded per company. Existing companies were not backfilled.
 
 **API:** `POST /admin/organizations/provision` (both the assistant copy, which is the
 one deployed, and the backend copy) now calls this step.
@@ -81,7 +87,7 @@ one deployed, and the backend copy) now calls this step.
 - **New optional fields:** `admin_whatsapp_number`, `project_name`, `site_name`,
   `start_as`. `admin_email` and `admin_password` are now optional.
 - **Response:** adds `signup_source`, `timezone`, `trial_started_at`,
-  `trial_ends_at`, `owner_user_id`, `project_id`, `site_id`.
+  `trial_ends_at`, `owner_user_id`, `project_id`, `site_id`, `materials_seeded`.
 
 **Not in this step (yet):** a new project's automatic DPR stays off (column default);
 the WhatsApp signup (SS-04) decides whether a trial's first project switches it on.
