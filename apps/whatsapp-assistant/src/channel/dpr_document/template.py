@@ -216,7 +216,10 @@ def render_html(data: DprDocumentData, letterhead: Letterhead | None = None) -> 
     if _document_template is None:
         from jinja2 import Template
 
-        _document_template = Template(_DOCUMENT_TEMPLATE_SRC)
+        # BE-36: every value is escaped. The DPR is built from what people
+        # typed on WhatsApp and rendered in a real browser; nothing in `data`
+        # or the letterhead is markup.
+        _document_template = Template(_DOCUMENT_TEMPLATE_SRC, autoescape=True)
 
     accent = (letterhead.brand_color if letterhead else None) or _ACCENT
     return _document_template.render(

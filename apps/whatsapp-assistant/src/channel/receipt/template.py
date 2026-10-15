@@ -212,13 +212,17 @@ def render_html(data: ReceiptData) -> str:
     if _card_template is None:
         from jinja2 import Template
 
-        _card_template = Template(_CARD_TEMPLATE_SRC)
+        # BE-36: every value is escaped (receipt text comes from WhatsApp
+        # messages); only the built-in SVG icons below are trusted markup.
+        _card_template = Template(_CARD_TEMPLATE_SRC, autoescape=True)
 
-    def icon(name: str) -> str:
+    from markupsafe import Markup
+
+    def icon(name: str) -> Markup:
         # WhatsApp keeps its brand green, matching the original design --
         # every other icon uses the standard ink color.
         color = _WHATSAPP if name == "whatsapp" else _INK
-        return _icon_svg(name, color=color)
+        return Markup(_icon_svg(name, color=color))
 
     return _card_template.render(
         data=data,
@@ -227,12 +231,16 @@ def render_html(data: ReceiptData) -> str:
         line=_LINE,
         accent=data.accent,
         icon=icon,
-        icon_barchart=_icon_svg("barchart", size=16),
-        icon_barchart_accent=_icon_svg("barchart", size=13, color=data.accent),
-        icon_check=f'<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">{_ICONS["check"]}</svg>',
-        icon_undo=f'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">{_ICONS["undo"]}</svg>',
-        icon_badge=_icon_svg(data.badge_icon, size=12, color=data.accent),
-        icon_calendar=_icon_svg("calendar"),
-        icon_clock=_icon_svg("clock"),
-        icon_hash=_icon_svg("hash"),
+        icon_barchart=Markup(_icon_svg("barchart", size=16)),
+        icon_barchart_accent=Markup(_icon_svg("barchart", size=13, color=data.accent)),
+        icon_check=Markup(
+            f'<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">{_ICONS["check"]}</svg>'
+        ),
+        icon_undo=Markup(
+            f'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">{_ICONS["undo"]}</svg>'
+        ),
+        icon_badge=Markup(_icon_svg(data.badge_icon, size=12, color=data.accent)),
+        icon_calendar=Markup(_icon_svg("calendar")),
+        icon_clock=Markup(_icon_svg("clock")),
+        icon_hash=Markup(_icon_svg("hash")),
     )

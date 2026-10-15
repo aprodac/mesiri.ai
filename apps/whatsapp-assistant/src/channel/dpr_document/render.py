@@ -16,6 +16,8 @@ import logging
 import time
 from typing import Any
 
+from channel.locked_page import new_locked_page
+
 logger = logging.getLogger(__name__)
 
 
@@ -47,7 +49,7 @@ class DprPdfRenderer:
         """Render the given HTML to A4 PDF bytes."""
         browser = await self._ensure_browser()
         started = time.perf_counter()
-        page = await browser.new_page()
+        page = await new_locked_page(browser)
         try:
             await page.set_content(html, wait_until="domcontentloaded")
             result = await page.pdf(

@@ -22,6 +22,8 @@ import logging
 import time
 from typing import Any
 
+from channel.locked_page import new_locked_page
+
 logger = logging.getLogger(__name__)
 
 _CARD_SELECTOR = ".card"
@@ -74,7 +76,7 @@ class ReceiptRenderer:
                 browser = await self._ensure_browser()
                 pool: asyncio.Queue[Any] = asyncio.Queue(maxsize=_PRE_WARMED_PAGES)
                 for _ in range(_PRE_WARMED_PAGES):
-                    page = await browser.new_page(viewport=_PAGE_VIEWPORT)
+                    page = await new_locked_page(browser, viewport=_PAGE_VIEWPORT)
                     await pool.put(page)
                 self._page_pool = pool
         return self._page_pool
@@ -95,7 +97,7 @@ class ReceiptRenderer:
                 pass
             try:
                 browser = await self._ensure_browser()
-                fresh = await browser.new_page(viewport=_PAGE_VIEWPORT)
+                fresh = await new_locked_page(browser, viewport=_PAGE_VIEWPORT)
                 await pool.put(fresh)
             except Exception:  # noqa: BLE001
                 pass  # pool shrinks by 1; next render will still work
