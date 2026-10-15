@@ -183,9 +183,10 @@ export class AiWorker {
           // attempts. On a rate limit, stop until the next run (every 5 min).
           const status = Number(msg.match(/^Gemini (\d{3})/)?.[1]);
           if (status === 429) return done;
-          // A retired / unknown model (404) is a setup problem, not this message's: don't use up its attempts.
-          if (![404, 500, 502, 503, 504].includes(status)) this.store.failAi(m.n);
-          if (status === 404) return done;
+          // Key / account / model problems (401, 403, 404) are setup problems, not this message's:
+          // stop until the next run without using up its attempts.
+          if (![401, 403, 404, 500, 502, 503, 504].includes(status)) this.store.failAi(m.n);
+          if ([401, 403, 404].includes(status)) return done;
         }
       }
     }
