@@ -9,7 +9,7 @@ One call makes everything a company needs to start sending updates:
 
     organizations   the company, `active` or on a free trial
     users           the owner (ADMIN), by email, WhatsApp number or both
-    projects/sites  optionally the first project and its first site
+    projects/sites  optionally the first project and its site(s)
     materials       the starter catalogue (BE-24, domains/materials/defaults)
 
 Takes an externally-supplied connection and never commits, so the caller's
@@ -50,6 +50,8 @@ START_TRIAL = lifecycle.TRIAL
 _START_AS = (START_ACTIVE, START_TRIAL)
 
 _NAME_MAX = 120
+# Sites created in one go (SA-01); more can be added later from the dashboard.
+MAX_SITES = 20
 
 _md = sa.MetaData()
 _organizations = sa.Table(
@@ -123,6 +125,10 @@ class NewCompany:
     project_name: str | None = None
     # Defaults to the project's name when a project is given without one.
     site_name: str | None = None
+    # Several sites under the one project (SA-01), instead of `site_name`.
+    # Blank entries are dropped; after `validate` it holds every site,
+    # `site_name` being the first.
+    site_names: tuple[str, ...] = ()
     # Switch the first project's automatic DPR on (cutoff and send deadline
     # keep their column defaults). Self-serve signups want a report the
     # first evening; the superadmin keeps choosing per project.
@@ -132,6 +138,12 @@ class NewCompany:
     deployment_type: str = DEFAULT_DEPLOYMENT_TYPE
     db_route: str = DEFAULT_DB_ROUTE
     timezone: str = DEFAULT_TIMEZONE
+
+
+@dataclass(frozen=True, slots=True)
+class CreatedSite:
+    site_id: uuid.UUID
+    name: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,6 +164,8 @@ class CreatedCompany:
     project_id: uuid.UUID | None
     site_id: uuid.UUID | None
     materials_seeded: int = 0
+    # Every site created, in order; `site_id` is the first one's.
+    sites: tuple[CreatedSite, ...] = ()
 
 
 def _clean_name(label: str, value: object, *, required: bool) -> str | None:
@@ -193,10 +207,19 @@ def validate(new: NewCompany) -> NewCompany:
 
     project = _clean_name("Project name", new.project_name, required=False)
     site = _clean_name("Site name", new.site_name, required=False)
+    sites = _clean_site_names(new.site_names)
+    # A validated NewCompany carries both (site_name is the first of
+    # site_names), so validating it again must still pass.
+    if sites and site is not None and site.casefold() != sites[0].casefold():
+        raise CompanyCreationError("Give site_name or site_names, not both")
+    if sites:
+        site = sites[0]
     if site is not None and project is None:
         raise CompanyCreationError("A site needs a project")
     if project is not None and site is None:
         site = project
+    if site is not None and not sites:
+        sites = (site,)
 
     start_as = (new.start_as or "").strip().lower()
     if start_as not in _START_AS:
@@ -214,6 +237,7 @@ def validate(new: NewCompany) -> NewCompany:
         owner_password=password,
         project_name=project,
         site_name=site,
+        site_names=sites,
         auto_dpr=bool(new.auto_dpr),
         start_as=start_as,
         signup_source=source,
@@ -221,6 +245,22 @@ def validate(new: NewCompany) -> NewCompany:
         db_route=(new.db_route or "").strip() or DEFAULT_DB_ROUTE,
         timezone=(new.timezone or "").strip() or DEFAULT_TIMEZONE,
     )
+
+
+def _clean_site_names(names: tuple[str, ...] | list[str] | None) -> tuple[str, ...]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw in names or ():
+        name = _clean_name("Site name", raw, required=False)
+        if name is None:
+            continue  # an empty row left on the form
+        if name.casefold() in seen:
+            raise CompanyCreationError(f"Site name '{name}' is given twice")
+        seen.add(name.casefold())
+        cleaned.append(name)
+    if len(cleaned) > MAX_SITES:
+        raise CompanyCreationError(f"At most {MAX_SITES} sites can be created at once")
+    return tuple(cleaned)
 
 
 def _hash_password(plain: str) -> str:
@@ -303,6 +343,7 @@ async def create_company(
     )
 
     project_id = site_id = None
+    sites: list[CreatedSite] = []
     if new.project_name is not None:
         # The owner is ADMIN, which reaches every project by role, so no
         # project_members row is needed.
@@ -316,16 +357,21 @@ async def create_company(
                 auto_generate_dpr=new.auto_dpr,
             )
         )
-        site_id = uuid.uuid4()
-        await conn.execute(
-            _sites.insert().values(
-                id=site_id,
-                project_id=project_id,
-                organization_id=org_id,
-                name=new.site_name,
-                status="active",
+        # One project, one or more sites: each site gets its own report and
+        # the project's report combines them.
+        for site_name in new.site_names:
+            created_site = CreatedSite(site_id=uuid.uuid4(), name=site_name)
+            await conn.execute(
+                _sites.insert().values(
+                    id=created_site.site_id,
+                    project_id=project_id,
+                    organization_id=org_id,
+                    name=created_site.name,
+                    status="active",
+                )
             )
-        )
+            sites.append(created_site)
+        site_id = sites[0].site_id
 
     # Starter materials (BE-24), so a supervisor's first "40 bags cement"
     # resolves instead of "ask your admin". Units, issue types and trades are
@@ -349,4 +395,5 @@ async def create_company(
         project_id=project_id,
         site_id=site_id,
         materials_seeded=materials_seeded,
+        sites=tuple(sites),
     )

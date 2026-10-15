@@ -46,6 +46,29 @@ def test_site_defaults_to_project_name() -> None:
     assert cleaned.site_name == "Green Villa, Kakkanad"
 
 
+def test_one_site_is_also_listed_in_site_names() -> None:
+    cleaned = validate(_new(project_name="Green Villa"))
+    assert cleaned.site_names == ("Green Villa",)
+
+
+def test_several_sites_under_one_project() -> None:
+    cleaned = validate(
+        _new(project_name="Skyline Apartments", site_names=(" Block  A ", "", "Block B", "  "))
+    )
+    assert cleaned.site_names == ("Block A", "Block B")  # trimmed, empty rows dropped
+    assert cleaned.site_name == "Block A"
+
+
+def test_only_empty_site_rows_fall_back_to_the_project_name() -> None:
+    cleaned = validate(_new(project_name="Skyline", site_names=("", " ")))
+    assert cleaned.site_names == ("Skyline",)
+
+
+def test_validating_twice_gives_the_same_result() -> None:
+    once = validate(_new(project_name="Skyline", site_names=("Block A", "Block B")))
+    assert validate(once) == once
+
+
 @pytest.mark.parametrize(
     ("overrides", "message"),
     [
@@ -59,6 +82,19 @@ def test_site_defaults_to_project_name() -> None:
         ({"start_as": "expired"}, "start_as must be one of"),
         ({"signup_source": "carrier-pigeon"}, "signup_source must be one of"),
         ({"name": "x" * 121}, "longer than 120"),
+        ({"site_names": ("Block A",)}, "A site needs a project"),
+        (
+            {"project_name": "P", "site_names": ("Block A", "block a")},
+            "'block a' is given twice",
+        ),
+        (
+            {"project_name": "P", "site_name": "Tower", "site_names": ("Block A",)},
+            "not both",
+        ),
+        (
+            {"project_name": "P", "site_names": tuple(f"Block {i}" for i in range(21))},
+            "At most 20 sites",
+        ),
     ],
 )
 def test_bad_requests_are_refused(overrides, message) -> None:

@@ -13,6 +13,7 @@ from admin import router as admin_router
 from mesiri.application.organizations.create_company import (
     CompanyCreationError,
     CreatedCompany,
+    CreatedSite,
 )
 
 
@@ -120,6 +121,32 @@ async def test_first_project_and_site_are_projected(wired) -> None:
     assert calls["new"][0].owner_phone == "9876543210"
     assert ("project", created.project_id) in calls["projected"]
     assert ("site", created.site_id) in calls["projected"]
+
+
+async def test_several_sites_are_passed_on_returned_and_projected(wired) -> None:
+    calls, result = wired
+    sites = (CreatedSite(uuid.uuid4(), "Block A"), CreatedSite(uuid.uuid4(), "Block B"))
+    created = _created(project_id=uuid.uuid4(), site_id=sites[0].site_id, sites=sites)
+    result["value"] = created
+    body = admin_router.OrganizationProvision(
+        name="Skyline Builders",
+        admin_name="Ravi",
+        admin_whatsapp_number="9876543210",
+        project_name="Skyline Apartments",
+        site_names=["Block A", "Block B"],
+        start_as="trial",
+    )
+
+    response = await admin_router.provision_tenant(body, {})
+
+    assert calls["new"][0].site_names == ("Block A", "Block B")
+    assert [(s.site_id, s.name) for s in response.sites] == [
+        (sites[0].site_id, "Block A"),
+        (sites[1].site_id, "Block B"),
+    ]
+    assert response.site_id == sites[0].site_id
+    projected_sites = [eid for kind, eid in calls["projected"] if kind == "site"]
+    assert projected_sites == [sites[0].site_id, sites[1].site_id]
 
 
 @pytest.mark.parametrize(("conflict", "status"), [(True, 409), (False, 400)])
