@@ -61,8 +61,7 @@ class CompanyOverview:
     setup: SetupProgress
 
 
-_QUERY = sa.text(
-    """
+_SELECT = """
     SELECT o.id, o.name, o.deployment_type, o.db_route, o.status,
            o.trial_started_at, o.trial_ends_at, o.converted_at, o.signup_source,
            o.created_at, o.updated_at,
@@ -78,9 +77,9 @@ _QUERY = sa.text(
            (SELECT min(d.updated_at) FROM daily_reports d
              WHERE d.organization_id = o.id AND d.status = 'PUBLISHED') AS first_dpr_sent_at
     FROM organizations o
-    ORDER BY o.created_at DESC NULLS LAST, o.name
-    """
-)
+"""
+_QUERY = sa.text(_SELECT + " ORDER BY o.created_at DESC NULLS LAST, o.name")
+_QUERY_ONE = sa.text(_SELECT + " WHERE o.id = :id")
 
 
 def to_overview(row: sa.RowMapping, now: dt.datetime) -> CompanyOverview:
@@ -122,3 +121,12 @@ async def list_companies(
     now = now or dt.datetime.now(dt.UTC)
     rows = (await conn.execute(_QUERY)).mappings().all()
     return [to_overview(row, now) for row in rows]
+
+
+async def get_company(
+    conn: AsyncConnection, organization_id: uuid.UUID, *, now: dt.datetime | None = None
+) -> CompanyOverview | None:
+    """One company as the list shows it (the company page's plan card), or
+    None when there is no such company."""
+    row = (await conn.execute(_QUERY_ONE, {"id": organization_id})).mappings().first()
+    return to_overview(row, now or dt.datetime.now(dt.UTC)) if row is not None else None

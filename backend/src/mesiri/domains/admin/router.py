@@ -10,7 +10,8 @@ from pydantic import BaseModel
 from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from mesiri.application.organizations.companies_overview import list_companies
+from mesiri.application.organizations import trial_controls
+from mesiri.application.organizations.companies_overview import get_company, list_companies
 from mesiri.application.organizations.create_company import (
     DEFAULT_DB_ROUTE,
     START_ACTIVE,
@@ -19,6 +20,7 @@ from mesiri.application.organizations.create_company import (
     create_company,
 )
 from mesiri.domains.audit.actions import actor_from_admin
+from mesiri.domains.organizations import lifecycle
 from mesiri.domains.shared.auth import require_platform_admin
 from mesiri.domains.timeline.responses import TimelineEntriesListResponse
 from mesiri.infrastructure.postgres.dependency import get_db_conn
@@ -87,6 +89,23 @@ class CompanyListItem(OrganizationResponse):
     setup: SetupProgressResponse
 
 
+class TrialExtendRequest(BaseModel):
+    days: int
+
+
+class SuspendRequest(BaseModel):
+    reason: str | None = None
+
+
+class PlanChangeResponse(BaseModel):
+    organization_id: uuid.UUID
+    status: str
+    effective_status: str
+    trial_started_at: datetime | None = None
+    trial_ends_at: datetime | None = None
+    converted_at: datetime | None = None
+
+
 @router.post("", response_model=OrganizationResponse)
 async def create_organization(
     org_in: OrganizationCreate,
@@ -122,6 +141,88 @@ async def list_organizations(
     """Every company, newest first, with status and setup progress (SA-02)."""
     companies = await list_companies(conn)
     return [CompanyListItem.model_validate(company, from_attributes=True) for company in companies]
+
+
+@router.get("/{org_id}/overview", response_model=CompanyListItem)
+async def get_organization_overview(
+    org_id: uuid.UUID,
+    conn: AsyncConnection = Depends(get_db_conn),
+    _admin: dict = Depends(require_platform_admin),
+):
+    """One company's status, trial dates and setup progress (SS-10 plan card)."""
+    company = await get_company(conn, org_id)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    return CompanyListItem.model_validate(company, from_attributes=True)
+
+
+async def _change_plan(
+    conn: AsyncConnection,
+    org_id: uuid.UUID,
+    action: str,
+    admin: dict,
+    *,
+    days: int | None = None,
+    reason: str | None = None,
+) -> PlanChangeResponse:
+    """Extend / convert / suspend / reactivate (SS-10), audited in the
+    request's transaction (get_db_conn)."""
+    try:
+        after = await trial_controls.apply_trial_action(
+            conn, org_id, action, actor=actor_from_admin(admin), days=days, reason=reason
+        )
+    except trial_controls.TrialControlError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return PlanChangeResponse(
+        organization_id=org_id,
+        status=after.status,
+        effective_status=lifecycle.effective_status(
+            after.status, after.trial_ends_at, dt.datetime.now(dt.UTC)
+        ),
+        trial_started_at=after.trial_started_at,
+        trial_ends_at=after.trial_ends_at,
+        converted_at=after.converted_at,
+    )
+
+
+@router.post("/{org_id}/trial/extend", response_model=PlanChangeResponse)
+async def extend_organization_trial(
+    org_id: uuid.UUID,
+    body: TrialExtendRequest,
+    conn: AsyncConnection = Depends(get_db_conn),
+    _admin: dict = Depends(require_platform_admin),
+):
+    return await _change_plan(conn, org_id, trial_controls.EXTEND, _admin, days=body.days)
+
+
+@router.post("/{org_id}/convert", response_model=PlanChangeResponse)
+async def convert_organization(
+    org_id: uuid.UUID,
+    conn: AsyncConnection = Depends(get_db_conn),
+    _admin: dict = Depends(require_platform_admin),
+):
+    return await _change_plan(conn, org_id, trial_controls.CONVERT, _admin)
+
+
+@router.post("/{org_id}/suspend", response_model=PlanChangeResponse)
+async def suspend_organization(
+    org_id: uuid.UUID,
+    body: SuspendRequest | None = None,
+    conn: AsyncConnection = Depends(get_db_conn),
+    _admin: dict = Depends(require_platform_admin),
+):
+    return await _change_plan(
+        conn, org_id, trial_controls.SUSPEND, _admin, reason=body.reason if body else None
+    )
+
+
+@router.post("/{org_id}/reactivate", response_model=PlanChangeResponse)
+async def reactivate_organization(
+    org_id: uuid.UUID,
+    conn: AsyncConnection = Depends(get_db_conn),
+    _admin: dict = Depends(require_platform_admin),
+):
+    return await _change_plan(conn, org_id, trial_controls.REACTIVATE, _admin)
 
 
 @router.get("/{org_id}", response_model=OrganizationResponse)

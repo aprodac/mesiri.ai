@@ -244,6 +244,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Platform users router not loaded: %s", exc)
 
+    # Platform-wide settings: trial length, signup switch (SS-10)
+    try:
+        from admin.platform_settings_router import router as platform_settings_router
+
+        app.include_router(platform_settings_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Platform settings router not loaded: %s", exc)
+
     # Auth routes (mobile app login/register)
     try:
         from auth.router import router as auth_router
