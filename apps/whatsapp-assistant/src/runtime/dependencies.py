@@ -897,6 +897,11 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         start_site_followup=start_project_setup_followup,
     )
 
+    # WA-04: taps on the evening message about a site's day.
+    from runtime.site_day_review import SiteDayReview
+
+    site_day_review = SiteDayReview(db=material_db)
+
     from runtime.message_journey import build_message_handlers
 
     _on_normalized, _mark_read_on_claim = build_message_handlers(
@@ -960,6 +965,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         signup_journey=signup_journey,
         contact_share=contact_share,
         setup_questions=setup_questions,
+        site_day_review=site_day_review,
     )
 
     receiver = WhatsAppReceiver(

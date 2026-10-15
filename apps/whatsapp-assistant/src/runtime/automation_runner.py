@@ -28,6 +28,9 @@ One tick:
      a user-owned automation row (see that module's
      docstring for why), but the same due-check/claim/mark shape, so it
      rides the same tick rather than needing its own scheduler.
+  2c. Between those two, the evening review of each site's day
+     (site_day_review.py, WA-04): days that changed since the cutoff are
+     refreshed and each site's engineer is told what is still missing.
   3. Drain and send every pending notification
      (runtime/send_pending_notifications.py's `drain_and_send` -- the exact
      same 24h-session-window / quiet-hours / skip-with-reason policy #9
@@ -188,6 +191,16 @@ async def run_tick(*, db: Any) -> dict[str, int] | None:
                 fired += await queue_due_project_auto_dprs(conn, db=db)
             except Exception:  # noqa: BLE001
                 logger.exception("automation_runner.project_auto_dpr_failed")
+
+            # WA-04: between the cutoff and the send deadline, each site's
+            # engineer hears what their day is missing. Before the DPR send,
+            # so a day the engineer just completed is refreshed first.
+            from .site_day_review import queue_site_day_reviews
+
+            try:
+                fired += await queue_site_day_reviews(conn, db=db)
+            except Exception:  # noqa: BLE001
+                logger.exception("automation_runner.site_day_review_failed")
 
             try:
                 fired += await send_due_project_dprs(conn, db=db)

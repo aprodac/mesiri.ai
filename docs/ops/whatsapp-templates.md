@@ -76,6 +76,50 @@ To switch it on: add `mesiri_login_code` to `WHATSAPP_APPROVED_TEMPLATES`.
 `MESIRI_LOGIN_CODE_SENDER` must be unset or `whatsapp` (never `dev` on a server
 real people use: `dev` shows the code on the page instead of sending it).
 
+### `mesiri_site_day_review` — the evening review of a site's day (WA-04)
+
+Sent between the project's cutoff and its send deadline to a site engineer
+who has not messaged in 24 h, when their site's day is missing something
+(no work items, or no labour count). Engineers who reported that day are
+usually inside the window and get the full message instead, with a
+**Site closed today** button. Tapping **Open report** opens the window and
+brings that full message.
+
+| Field | Value |
+| --- | --- |
+| Name | `mesiri_site_day_review` |
+| Category | Utility |
+| Language | English (`en`) |
+| Header | None |
+| Body | `Today's report for {{1}}: {{2}} Please reply before {{3}} so it goes out complete.` |
+| Footer | `Sent by Mesiri` |
+| Buttons | Quick reply: `Open report` |
+
+Sample values for the submission: `{{1}}` = `Block A (Green Towers)`,
+`{{2}}` = `Labour count is missing.`, `{{3}}` = `9:00 pm`.
+
+What fills the variables: `{{1}}` the site (with its project when the names
+differ), `{{2}}` what is missing ("Labour count is missing." / "Work done and
+labour count are missing."), `{{3}}` the project's send deadline. The button
+is sent with a payload naming the site and day, so the tap needs no memory.
+
+### `mesiri_site_no_update` — no update from a site today (WA-06)
+
+Submit now so it is approved by the time WA-06 is built; the code declares
+it with WA-06. For a site that sent nothing at all by the cutoff.
+
+| Field | Value |
+| --- | --- |
+| Name | `mesiri_site_no_update` |
+| Category | Utility |
+| Language | English (`en`) |
+| Header | None |
+| Body | `No update has come in today for {{1}}. Send today's work, labour and photos here before {{2}}, or tap below if the site was closed.` |
+| Footer | `Sent by Mesiri` |
+| Buttons | Quick reply: `Site closed today` |
+
+Sample values: `{{1}}` = `Block A (Green Towers)`, `{{2}}` = `9:00 pm`.
+
 ## Who receives the DPR, and opt-in (BE-15)
 
 - Each project can have its own DPR list (`/dpr/projects/{id}/recipients`):
@@ -94,6 +138,6 @@ real people use: `dev` shows the code on the page instead of sending it).
 
 ## Templates still to add
 
-Each is declared and submitted by its own tracker item: evening gap-check
-(WA-04), no-update reminder (WA-06), welcome / opt-in (WA-09), trial messages
-(SS-08, SS-12). The login code (SS-06) is above. Getting them all approved is WA-10.
+Each is declared and submitted by its own tracker item: welcome / opt-in
+(WA-09), trial messages (SS-08, SS-12). The evening review (WA-04) and the
+no-update reminder (WA-06) are above. The login code (SS-06) is above. Getting them all approved is WA-10.
