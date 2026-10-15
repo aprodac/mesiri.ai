@@ -166,7 +166,7 @@
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | SA-01 | One-screen "create company" in the control panel: company name, owner name, owner WhatsApp number (email + password optional), site name(s), start as trial or active → Create. Calls `POST /admin/organizations/provision` (SS-03) | M | Must | SS-03 | done (0580e1c) | Claude (session 15 Oct, onboarding, Lane B) | **Done** `c405d9d` (API: `site_names` creates several sites under the one project, response `sites[]`) + `0580e1c` (screen, `CreateCompany.tsx`). Replaces the old 7-step wizard idea (see [onboarding-plan.md](onboarding-plan.md)). Letterhead/branding comes later by WhatsApp photo (SS-07), not this screen |
-| SA-02 | Companies list with status (trial / active / expired / suspended, effective), trial days left, signup source and setup progress (has team, has site, first update received, first DPR sent) | S | Must | SS-02 | claimed | Claude (session 15 Oct, onboarding, Lane B) | |
+| SA-02 | Companies list with status (trial / active / expired / suspended, effective), trial days left, signup source and setup progress (has team, has site, first update received, first DPR sent) | S | Must | SS-02 | done (8f9b605) | Claude (session 15 Oct, onboarding, Lane B) | **Done** `1895165` (API: `GET /admin/organizations` adds effective status, trial days left, source, `setup{}`; one read `companies_overview.py` for both routers) + `8f9b605` (Companies page with filters and setup ticks). "Update" = earliest `activities`/`timeline_entries` row; "DPR" = first PUBLISHED daily report |
 | SA-03 | Company page: edit, suspend (export is Later) | M | Must | BE-05 | todo | | |
 | SA-04 | Messages viewer per company, linked to what each message created | M | Must | BE-26 | todo | | Extend the existing Logs screen |
 | SA-05 | Costs view per message, company and day | M | Must | BE-25 | todo | | |
@@ -263,6 +263,7 @@ Claude Code as a team member: listens to the team and customer WhatsApp groups, 
 | 2026-10-15 | SS-06 web signup + WEB-12 login by WhatsApp code (migration 0476) | `b2e33ef`, `3db2a9a`, `72216fe`, `5d623a9`, `dec3a65` |
 | 2026-10-15 | BE-24 starter materials for every new company | `9c938da` |
 | 2026-10-15 | SA-01 one-screen "Create company" in the control panel (+ several sites per project) | `c405d9d`, `0580e1c` |
+| 2026-10-15 | SA-02 companies list with status and setup progress | `1895165`, `8f9b605` |
 | 2026-10-15 | SS-04 WhatsApp signup for unknown numbers (off until switched on) | `aa5f9bc` |
 | 2026-10-15 | SS-13 add a teammate by sharing their WhatsApp contact | `3032686` |
 | 2026-10-15 | BE-05 audit log of superadmin actions | `04c4479`, `fe2f8f0`, `12970f0` |
