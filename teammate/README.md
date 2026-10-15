@@ -92,17 +92,24 @@ python3 teammate/inbox.py history "Mercon Software discussions" --pages 20
 The phone must be online. It can only send what it has; it stops when there's nothing older.
 Voice notes and photos of pulled messages are downloaded too, while WhatsApp still serves them.
 
-## Voice notes and Malayalam (TM-07)
+## Voice notes and Malayalam (TM-07) — on request, with costs in rupees
 
-With the GitHub secret `TEAMMATE_GEMINI_API_KEY` set, the listener sends every voice note to
-Gemini (`gemini-3.8-flash`; `TEAMMATE_GEMINI_MODEL` overrides it) for a transcript in its own
-language plus an English translation, and translates non-English text (Malayalam script or
-Manglish) into English. Results are stored with the message on the server, so `recent`,
-`show` and English `search` cover voice notes too. Older messages are done in the background.
+With the GitHub secret `TEAMMATE_GEMINI_API_KEY` set, the listener can turn a voice note into a
+transcript in its own language plus English, and Malayalam (script or Manglish) text into English,
+with Gemini (`gemini-3.8-flash`; `TEAMMATE_GEMINI_MODEL` overrides it).
 
-- Only chats labelled `team` or `customer` are sent; personal / unlabelled chats never are.
-- `inbox.py status` shows whether the key works and how many messages are waiting.
-- A message that fails 3 times is skipped; the last error shows in `status`.
+**Only when someone asks** (owner's choice, 15 Oct): nothing is translated in the background.
+- In WhatsApp: reply to the voice note with `@bot translate`, or write `@bot translate #123`. The bot
+  answers with the transcript, the English, and what that call cost: `💰 ₹0.13 · 1,000 in / 200 out tokens`.
+- `@bot cost`: Gemini spend today and this month (India time), in rupees.
+- The WhatsApp brain (Claude) has the same as a tool, used only for the messages a question is about.
+- Here: `inbox.py translate 123`, `inbox.py cost`.
+- A translated message is stored; asking again is free.
+- Costs come from the token counts Gemini returns with every answer, at $0.75 in / $3.75 out per 1M
+  tokens (gemini-3.8-flash, through 31 Dec 2026; both double from 1 Jan 2027) and ₹88 = $1. Change them with
+  `TEAMMATE_GEMINI_PRICE_IN`, `TEAMMATE_GEMINI_PRICE_OUT`, `TEAMMATE_USD_INR`.
+- Only chats labelled `team` or `customer`; personal / unlabelled chats are never sent.
+- `TEAMMATE_AI_AUTO=1` brings back translating everything automatically.
 
 ## Request log per group (TM-08)
 

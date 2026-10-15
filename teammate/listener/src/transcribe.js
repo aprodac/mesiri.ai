@@ -26,13 +26,31 @@ const TEXT_PROMPT =
   '"detected_language": the language\'s common English name, e.g. "Malayalam", "English"}.\n\n' +
   "Message:\n";
 
+/**
+ * What a call cost, from the token counts Gemini reports with every answer.
+ * Prices are USD per 1M tokens (gemini-3.8-flash paid tier, ai.google.dev/gemini-api/docs/pricing, read
+ * 15 Oct 2026: input $0.75, output incl. thinking $3.75 through 31 Dec 2026; both double from 1 Jan 2027).
+ * Override with TEAMMATE_GEMINI_PRICE_IN / _OUT and the rupee rate with TEAMMATE_USD_INR.
+ */
+export function costOf(usage, { priceIn, priceOut, usdInr }) {
+  const input = Number(usage?.promptTokenCount || 0);
+  const output = Number(usage?.candidatesTokenCount || 0) + Number(usage?.thoughtsTokenCount || 0);
+  const usd = (input * priceIn + output * priceOut) / 1e6;
+  return { input_tokens: input, output_tokens: output, usd, inr: usd * usdInr };
+}
+
 export class Transcriber {
-  /** @param {{ apiKey: string, model?: string, fetchImpl?: typeof fetch }} opts */
-  constructor({ apiKey, model = "gemini-3.8-flash", fetchImpl = fetch }) {
+  /** @param {{ apiKey: string, model?: string, fetchImpl?: typeof fetch, prices?: { priceIn: number, priceOut: number, usdInr: number } }} opts */
+  constructor({ apiKey, model = "gemini-3.8-flash", fetchImpl = fetch, prices = {} }) {
     if (!apiKey) throw new Error("Gemini API key missing");
     this.apiKey = apiKey;
     this.model = model;
     this.fetch = fetchImpl;
+    this.prices = {
+      priceIn: Number(prices.priceIn ?? process.env.TEAMMATE_GEMINI_PRICE_IN ?? 0.75),
+      priceOut: Number(prices.priceOut ?? process.env.TEAMMATE_GEMINI_PRICE_OUT ?? 3.75),
+      usdInr: Number(prices.usdInr ?? process.env.TEAMMATE_USD_INR ?? 88),
+    };
   }
 
   /** Confirms the key and model work; throws a readable error if not. */
@@ -45,9 +63,9 @@ export class Transcriber {
     return true;
   }
 
-  /** @returns {Promise<{transcript: string, translation: string, language: string|null}>} */
+  /** @returns {Promise<{transcript: string, translation: string, language: string|null, cost: object}>} */
   async voice(audio, mime = "audio/ogg") {
-    const data = await this.generate([
+    const { data, cost } = await this.generate([
       { inline_data: { mime_type: mime.split(";")[0].trim(), data: audio.toString("base64") } },
       { text: VOICE_PROMPT },
     ]);
@@ -56,32 +74,46 @@ export class Transcriber {
       transcript,
       translation: String(data.translated_text || "").trim() || transcript,
       language: data.detected_language || null,
+      cost,
     };
   }
 
-  /** @returns {Promise<{translation: string|null, language: string|null}>} null translation = already English */
+  /** @returns {Promise<{translation: string|null, language: string|null, cost: object}>} null translation = already English */
   async text(text) {
-    const data = await this.generate([{ text: TEXT_PROMPT + text }]);
+    const { data, cost } = await this.generate([{ text: TEXT_PROMPT + text }]);
     const translation = String(data.translated_text || "").trim();
-    return { translation: translation && translation !== text.trim() ? translation : null, language: data.detected_language || null };
+    return { translation: translation && translation !== text.trim() ? translation : null, language: data.detected_language || null, cost };
   }
 
   async generate(parts) {
-    const res = await this.fetch(`${API}/models/${this.model}:generateContent`, {
-      method: "POST",
-      headers: { "x-goog-api-key": this.apiKey, "content-type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts }],
-        generationConfig: { temperature: 0, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 } },
-      }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
+    const call = (thinkingOff) =>
+      this.fetch(`${API}/models/${this.model}:generateContent`, {
+        method: "POST",
+        headers: { "x-goog-api-key": this.apiKey, "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts }],
+          generationConfig: {
+            temperature: 0,
+            responseMimeType: "application/json",
+            ...(thinkingOff ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+          },
+        }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+    let res = await call(!this.noThinkingConfig);
+    // Newer models may not take a thinking budget: retry once without it, and remember.
+    if (res.status === 400 && !this.noThinkingConfig) {
+      const text = await res.text();
+      if (!/thinking/i.test(text)) throw new Error(`Gemini 400: ${text.slice(0, 200)}`);
+      this.noThinkingConfig = true;
+      res = await call(false);
+    }
     if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const body = await res.json();
     const raw = body?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
     const json = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
     if (!json) throw new Error(`Gemini returned no JSON (${body?.candidates?.[0]?.finishReason || "no candidates"})`);
-    return JSON.parse(json);
+    return { data: JSON.parse(json), cost: { model: this.model, ...costOf(body.usageMetadata, this.prices) } };
   }
 }
 
@@ -98,8 +130,13 @@ export function needsTranslation(text) {
  * fails three times is left alone.
  */
 export class AiWorker {
-  /** @param {{ store: import('./store.js').Store, transcriber: Transcriber | null, readFile: (path: string) => Buffer, log?: (msg: string) => void }} opts */
-  constructor({ store, transcriber, readFile, log = () => {} }) {
+  /**
+   * @param {{ store: import('./store.js').Store, transcriber: Transcriber | null, readFile: (path: string) => Buffer, log?: (msg: string) => void, auto?: boolean }} opts
+   * auto: translate every new message in team/customer chats in the background. Off by default (owner's
+   * choice, 15 Oct): messages are translated only when someone asks (translate()).
+   */
+  constructor({ store, transcriber, readFile, log = () => {}, auto = false }) {
+    this.auto = auto;
     this.store = store;
     this.transcriber = transcriber;
     this.readFile = readFile;
@@ -114,6 +151,7 @@ export class AiWorker {
     if (!this.transcriber) return { enabled: false };
     return {
       enabled: true,
+      auto: this.auto,
       model: this.transcriber.model,
       ok: this.ok,
       last_error: this.lastError,
@@ -126,7 +164,8 @@ export class AiWorker {
     try {
       await this.transcriber.check();
       this.ok = true;
-      this.log(`Gemini: key works (${this.transcriber.model})`);
+      this.log(`Gemini: key works (${this.transcriber.model}); ${this.auto ? "translating new messages automatically" : "translating on request only"}`);
+      if (!this.auto) return;
       const retried = this.store.retryFailedAi();
       if (retried) this.log(`Gemini: retrying ${retried} message(s) that failed before`);
     } catch (e) {
@@ -139,8 +178,38 @@ export class AiWorker {
     this.kick();
   }
 
-  /** Runs the queue now, or once more after the current run. */
+  /**
+   * Translates one message on request (voice note / audio: transcript + English; text: English), records
+   * what the call cost, and returns it. Already-translated messages come back from the store, free.
+   * Only messages in chats labelled team or customer; personal / unlabelled chats are never sent.
+   */
+  async translate(n, { force = false } = {}) {
+    if (!this.transcriber) throw new Error("translation is off (no Gemini key)");
+    const m = this.store.getMessage(n);
+    if (!m) throw new Error(`no message #${n}`);
+    if (!["team", "customer"].includes(m.chat_role)) throw new Error(`#${n} is in a chat that isn't labelled team or customer`);
+    if (!force && (m.transcript || m.translation)) {
+      return { n, cached: true, transcript: m.transcript, translation: m.translation, language: m.language, cost: null };
+    }
+    let r;
+    if (m.kind === "voice" || m.kind === "audio") {
+      if (!m.media_path) throw new Error(`#${n} has no audio file saved`);
+      r = await this.transcriber.voice(this.readFile(m.media_path), m.media_mime || "audio/ogg");
+      this.store.setAi(n, { transcript: r.transcript, translation: r.translation, language: r.language });
+    } else if (m.text && needsTranslation(m.text)) {
+      r = await this.transcriber.text(m.text);
+      this.store.setAi(n, { translation: r.translation, language: r.language });
+    } else {
+      throw new Error(`#${n} has nothing to translate`);
+    }
+    this.store.addAiUsage({ n, model: r.cost.model, input_tokens: r.cost.input_tokens, output_tokens: r.cost.output_tokens, usd: r.cost.usd, inr: r.cost.inr });
+    this.log(`Gemini: #${n} translated for Rs ${r.cost.inr.toFixed(3)}`);
+    return { n, cached: false, transcript: r.transcript || null, translation: r.translation, language: r.language, cost: r.cost };
+  }
+
+  /** Runs the queue now, or once more after the current run (automatic mode only). */
   kick() {
+    if (!this.auto) return null;
     if (!this.transcriber || this.ok === false) return this.running;
     if (this.running) {
       this.again = true;
@@ -167,9 +236,11 @@ export class AiWorker {
           if (m.kind === "voice" || m.kind === "audio") {
             const r = await this.transcriber.voice(this.readFile(m.media_path), m.media_mime || "audio/ogg");
             this.store.setAi(m.n, r);
+            this.store.addAiUsage({ n: m.n, model: r.cost.model, input_tokens: r.cost.input_tokens, output_tokens: r.cost.output_tokens, usd: r.cost.usd, inr: r.cost.inr });
           } else if (needsTranslation(m.text)) {
             const r = await this.transcriber.text(m.text);
             this.store.setAi(m.n, { translation: r.translation, language: r.language });
+            this.store.addAiUsage({ n: m.n, model: r.cost.model, input_tokens: r.cost.input_tokens, output_tokens: r.cost.output_tokens, usd: r.cost.usd, inr: r.cost.inr });
           } else {
             this.store.setAi(m.n, {});
           }

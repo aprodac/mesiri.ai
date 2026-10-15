@@ -18,6 +18,8 @@
 //   GET  /people?project=             who may tag the bot (TM-03)
 //   POST /people       {project, phone, name?, role?}   approve someone (role owner | member)
 //   POST /people/remove {project, phone}
+//   POST /messages/:n/translate?project=&force=1   translate one message on request; returns text + cost
+//   GET  /ai/usage?project=           Gemini spend today / this month (USD and INR)
 //   POST /pair         {phone}        start linking the spare number; returns the code
 //   POST /send         {chat, project?, text?, image_base64?, caption?}
 //                                     post into a chat labelled "team" -- refused anywhere else
@@ -28,6 +30,7 @@
 import { createReadStream, existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { timingSafeEqual } from "node:crypto";
+import { istStarts } from "./store.js";
 
 function send(res, status, body) {
   const json = JSON.stringify(body);
@@ -102,6 +105,26 @@ export function createApi({ store, wa, token, ai = null }) {
         const around = Number(url.searchParams.get("around") ?? 10);
         const ctx = store.getContext(m[1], Math.min(Math.max(around, 0), 100));
         return inProject(ctx?.message) ? send(res, 200, ctx) : send(res, 404, { error: "no such message" });
+      }
+      // On-demand translation (Gemini) of one message, with what it cost.
+      m = path.match(/^\/messages\/(\d+)\/translate$/);
+      if (req.method === "POST" && m) {
+        if (!ai?.translate) return send(res, 409, { error: "translation is off" });
+        if (!inProject(store.getMessage(m[1]))) return send(res, 404, { error: "no such message" });
+        try {
+          return send(res, 200, await ai.translate(Number(m[1]), { force: url.searchParams.get("force") === "1" }));
+        } catch (err) {
+          return send(res, 409, { error: String(err.message || err).slice(0, 300) });
+        }
+      }
+      if (req.method === "GET" && path === "/ai/usage") {
+        const { day, month } = istStarts(); // India time
+        return send(res, 200, {
+          today: store.aiUsageSince(day, project || undefined),
+          month: store.aiUsageSince(month, project || undefined),
+          model: ai?.transcriber?.model || null,
+          prices: ai?.transcriber?.prices || null,
+        });
       }
       m = path.match(/^\/media\/(\d+)$/);
       if (req.method === "GET" && m) {

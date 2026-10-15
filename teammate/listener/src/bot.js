@@ -1,3 +1,5 @@
+import { istStarts } from "./store.js";
+
 // Tagging the bot (TM-03): approved people @-mention the linked number to ask
 // for work; owners also approve / remove people from the group itself.
 //
@@ -34,6 +36,12 @@ export function parseCommand(text) {
     const id = rest.match(/(\d+)/)?.[1];
     return { verb: "ok", id: id ? Number(id) : null, rest };
   }
+  // Gemini, on request only: "translate" (reply to the voice note / message, or "translate #123"), "cost".
+  if (["translate", "transcribe", "translation"].includes(verb) && /^(this|it|that)?\s*(#?\d+)?$/i.test(rest)) {
+    const id = rest.match(/(\d+)/)?.[1];
+    return { verb: "translate", id: id ? Number(id) : null, rest };
+  }
+  if (/^(gemini\s+)?(cost|costs|spend|usage)(\s+(today|month|this month))?$/i.test(words)) return { verb: "cost", rest };
   if (!words) return { verb: "help", rest: "" };
   return { verb: "request", rest: words };
 }
@@ -44,6 +52,8 @@ const HELP = [
   "• @me ok <number>: approve a plan",
   "• @me new <name>: start a separate conversation (the others are kept)",
   "• @me sessions / @me switch <name> / @me reset",
+  "• reply to a voice note with @me translate (or @me translate #123): transcript + English + what it cost",
+  "• @me cost: Gemini spend today and this month, in ₹",
   "• @me who: who is approved here",
   "Owners: @me approve @person · @me remove @person · @me make owner @person",
 ].join(String.fromCharCode(10));
@@ -52,7 +62,8 @@ export class Bot {
   /**
    * @param {{ store: import('./store.js').Store, wa: { ownIds(): string[], pnFor(jid: string): Promise<string|null>, send(jid: string, c: object): Promise<string|null> }, log?: (m: string) => void, onRequest?: (item: object) => void, onApproved?: (item: object, by: string) => void }} opts
    */
-  constructor({ store, wa, log = () => {}, onRequest = null, onApproved = null, brain = null }) {
+  constructor({ store, wa, log = () => {}, onRequest = null, onApproved = null, brain = null, ai = null }) {
+    this.ai = ai; // Gemini translation, on request (translate / cost)
     this.store = store;
     this.brain = brain; // TM-03b: { ask(req) } -- Claude Code answers; null = log requests only
     this.wa = wa;
@@ -90,6 +101,23 @@ export class Bot {
     // Answer in the group where it was asked when that's a team group; from a
     // customer group, in the project's team group instead.
     const replyTo = chat.role === "team" ? chat.jid : team?.jid;
+
+    // Translation and its cost: handled here (fast, no Claude), answered in the team group.
+    if (cmd.verb === "translate" || cmd.verb === "cost") {
+      if (!replyTo) return;
+      if (cmd.verb === "cost") return this.reply(replyTo, this.costText(project));
+      const target = cmd.id ?? (rec.quoted_id ? this.store.messageNumber(rec.chat_jid, rec.quoted_id) : null);
+      if (!target) return this.reply(replyTo, "Reply to the voice note (or message) with @bot translate, or write @bot translate #123.");
+      if (!this.ai?.translate) return this.reply(replyTo, "Translation is off (no Gemini key on the server).");
+      if (this.store.getMessage(target)?.chat_project !== project) return this.reply(replyTo, `#${target} isn't in this project.`);
+      this.wa.typing?.(replyTo);
+      try {
+        const r = await this.ai.translate(target);
+        return this.reply(replyTo, this.translationText(r));
+      } catch (e) {
+        return this.reply(replyTo, `⚠️ Couldn't translate #${target}: ${String(e.message || e).slice(0, 200)}`);
+      }
+    }
 
     // TM-03b: everything except the approval commands goes to Claude Code, whose
     // answer lands in the team group. Customer groups still never get a reply.
@@ -179,6 +207,30 @@ export class Bot {
     const updated = this.store.updateItem(item.id, { status: "in_progress", note: `OK from ${who} in ${chat.name}` });
     this.onApproved?.(updated, who);
     return this.reply(chat.jid, `👍 [${item.id}] approved by ${who}. ${this.onApproved ? "Starting." : "Logged; a Claude Code session will pick it up."}`);
+  }
+
+  translationText(r) {
+    const lines = [`🗣 #${r.n}${r.language ? ` (${r.language})` : ""}`];
+    if (r.transcript) lines.push(`"${r.transcript}"`);
+    if (r.translation && r.translation !== r.transcript) lines.push(`⇒ EN: ${r.translation}`);
+    if (!r.transcript && !r.translation) lines.push("(it's already in English)");
+    lines.push(r.cost
+      ? `💰 ₹${r.cost.inr.toFixed(2)} · ${r.cost.input_tokens.toLocaleString("en-IN")} in / ${r.cost.output_tokens.toLocaleString("en-IN")} out tokens · ${r.cost.model}`
+      : "💰 already translated before, no new cost");
+    return lines.join(String.fromCharCode(10)).slice(0, 3900);
+  }
+
+  costText(project) {
+    const { day, month } = istStarts();
+    const t = this.store.aiUsageSince(day, project);
+    const mo = this.store.aiUsageSince(month, project);
+    const rate = this.ai?.transcriber?.prices?.usdInr;
+    return [
+      `💰 Gemini spend (${project})`,
+      `• Today: ₹${t.inr.toFixed(2)} · ${t.calls} call(s)`,
+      `• This month: ₹${mo.inr.toFixed(2)} · ${mo.calls} call(s)`,
+      rate ? `Prices: $${this.ai.transcriber.prices.priceIn} in / $${this.ai.transcriber.prices.priceOut} out per 1M tokens, ₹${rate} = $1` : "",
+    ].filter(Boolean).join(String.fromCharCode(10));
   }
 
   whoText(project) {

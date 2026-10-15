@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createApi } from "../src/api.js";
 import { normalizeMessage } from "../src/normalize.js";
-import { Store } from "../src/store.js";
+import { Store, istStarts } from "../src/store.js";
 import { WhatsAppListener } from "../src/whatsapp.js";
 import { AiWorker, Transcriber, needsTranslation } from "../src/transcribe.js";
 import { Bot, parseCommand } from "../src/bot.js";
@@ -392,7 +392,7 @@ function fakeGemini(replies) {
     if (url.endsWith("/models/gemini-3.8-flash")) return new Response("{}", { status: 200 });
     const next = replies.shift();
     if (next instanceof Error) return new Response(next.message, { status: next.status || 500 });
-    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(next) }] } }] }), { status: 200 });
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(next) }] } }], usageMetadata: { promptTokenCount: 1000, candidatesTokenCount: 150, thoughtsTokenCount: 50 } }), { status: 200 });
   };
   return { calls, fetchImpl };
 }
@@ -406,14 +406,20 @@ test("transcribe (TM-07): voice and text requests, JSON parsing, English left al
   const t = new Transcriber({ apiKey: "k-123", fetchImpl });
   assert.equal(await t.check(), true);
   const v = await t.voice(Buffer.from("OggS"), "audio/ogg; codecs=opus");
-  assert.deepEqual(v, { transcript: "ഡ്രൈവർ കൗണ്ട് തെറ്റാണ്", translation: "The driver count is wrong", language: "Malayalam" });
+  const { cost, ...said } = v;
+  assert.deepEqual(said, { transcript: "ഡ്രൈവർ കൗണ്ട് തെറ്റാണ്", translation: "The driver count is wrong", language: "Malayalam" });
+  // 1,000 in x $0.75 + 200 out (150 + 50 thinking) x $3.75 per 1M = $0.0015; x Rs 88 = Rs 0.132
+  assert.equal(cost.input_tokens, 1000);
+  assert.equal(cost.output_tokens, 200);
+  assert.ok(Math.abs(cost.usd - 0.0015) < 1e-12);
+  assert.ok(Math.abs(cost.inr - 0.132) < 1e-9);
   const part = calls[1].body.contents[0].parts[0].inline_data;
   assert.equal(part.mime_type, "audio/ogg");
   assert.equal(part.data, Buffer.from("OggS").toString("base64"));
   assert.equal(calls[1].key, "k-123");
   assert.equal(calls[1].body.generationConfig.responseMimeType, "application/json");
-  assert.deepEqual(await t.text("ith vere kitya mail id onnu vitero"), { translation: "Send me another mail id", language: "Malayalam" });
-  assert.deepEqual(await t.text("total driver count still showing 27"), { translation: null, language: "English" });
+  assert.deepEqual((({ cost, ...r }) => r)(await t.text("ith vere kitya mail id onnu vitero")), { translation: "Send me another mail id", language: "Malayalam" });
+  assert.deepEqual((({ cost, ...r }) => r)(await t.text("total driver count still showing 27")), { translation: null, language: "English" });
 
   assert.equal(needsTranslation(["abc@gmail.com", "xyz@gmail.com"].join(String.fromCharCode(10))), false);
   assert.equal(needsTranslation("https://x.y/z 27"), false);
@@ -439,7 +445,7 @@ test("transcribe (TM-07): worker fills the queue, skips private chats, retries f
     { translated_text: "", detected_language: "English" },
   ]);
   const files = [];
-  const worker = new AiWorker({ store, transcriber: new Transcriber({ apiKey: "k", fetchImpl }), readFile: (p) => (files.push(p), Buffer.from("OggS")) });
+  const worker = new AiWorker({ store, auto: true, transcriber: new Transcriber({ apiKey: "k", fetchImpl }), readFile: (p) => (files.push(p), Buffer.from("OggS")) });
   await worker.start({ intervalMs: 60_000 });
   await worker.running;
   clearInterval(worker.timer);
@@ -722,4 +728,65 @@ test("transcribe: a retired model (404) pauses the queue and doesn't use up atte
   assert.equal(store.countPendingAi(), 2);
   assert.equal(store.retryFailedAi(), 1);
   assert.equal(store.countPendingAi(), 3);
+});
+
+test("translation on request (default): nothing in the background; translate(n) returns text + cost, once", async () => {
+  const store = seeded(); // Acme = customer, Mesiri team = team
+  const voiceN = store.addMessage(normalizeMessage({ ...groupMsg("V7", ""), message: { audioMessage: { ptt: true, mimetype: "audio/ogg" } } }));
+  store.setMediaPath(voiceN, "/media/v7.ogg");
+  const PRIVATE = "120363000000000009@g.us";
+  store.upsertChat({ jid: PRIVATE, name: "Family", is_group: true });
+  const privN = store.addMessage(normalizeMessage({ ...groupMsg("P2", "ninte veedu evide"), key: { id: "P2", remoteJid: PRIVATE, participant: "f@s.whatsapp.net" } }));
+  const { calls, fetchImpl } = fakeGemini([{ transcript: "ലോഡിംഗ് സമയം", translated_text: "Loading time", detected_language: "Malayalam" }]);
+  const worker = new AiWorker({ store, transcriber: new Transcriber({ apiKey: "k", fetchImpl }), readFile: () => Buffer.from("OggS") });
+  await worker.start();
+  assert.equal(worker.status().auto, false);
+  assert.equal(calls.length, 1); // only the key check -- nothing translated by itself
+
+  const r = await worker.translate(voiceN);
+  assert.equal(r.translation, "Loading time");
+  assert.ok(r.cost.inr > 0);
+  const again = await worker.translate(voiceN); // stored: no new call, no new cost
+  assert.equal(again.cached, true);
+  assert.equal(calls.length, 2);
+  const { day } = istStarts();
+  assert.equal(store.aiUsageSince(day).calls, 1);
+  assert.ok(Math.abs(store.aiUsageSince(day).inr - r.cost.inr) < 1e-9);
+
+  await assert.rejects(worker.translate(privN), /isn't labelled team or customer/); // private chats never sent
+  assert.equal(calls.length, 2);
+});
+
+test("bot: '@bot translate' as a reply, '#n', and '@bot cost' in rupees", async () => {
+  const { store, TEAM, sent, msg } = botSetup();
+  const vN = store.addMessage({ id: "VN1", chat_jid: TEAM, is_group: true, sender_jid: "c@lid", sender_pn: null, sender_name: "Customer", from_me: false,
+    at: new Date().toISOString(), kind: "voice", text: null, quoted_id: null, quoted_text: null, media_mime: "audio/ogg", reaction_to: null });
+  const translated = [];
+  const ai = {
+    transcriber: { prices: { priceIn: 0.75, priceOut: 3.75, usdInr: 88 } },
+    translate: async (n) => (translated.push(n), store.addAiUsage({ n, model: "gemini-3.8-flash", input_tokens: 900, output_tokens: 100, usd: 0.001, inr: 0.088 }),
+      { n, cached: false, transcript: "ലോഡിംഗ്", translation: "Loading", language: "Malayalam", cost: { model: "gemini-3.8-flash", input_tokens: 900, output_tokens: 100, usd: 0.001, inr: 0.088 } }),
+  };
+  const wa = { ownIds: () => ["919544376072@s.whatsapp.net", "56672747843793@lid"], pnFor: async () => null, send: async (jid, c) => (sent.push({ jid, ...c }), "id") };
+  const bot = new Bot({ store, wa, ai, brain: { ask: async () => assert.fail("translate must not go to Claude") } });
+
+  let m = msg(TEAM, "@bot translate", { quoted_id: "VN1" });
+  await bot.handle(m.rec, m.n);
+  assert.deepEqual(translated, [vN]);
+  assert.match(sent.at(-1).text, /🗣 #\d+ \(Malayalam\)[\s\S]*⇒ EN: Loading[\s\S]*💰 ₹0\.09 · 900 in \/ 100 out tokens · gemini-3\.8-flash/);
+
+  m = msg(TEAM, `@bot translate #${vN}`);
+  await bot.handle(m.rec, m.n);
+  assert.equal(translated.length, 2);
+
+  m = msg(TEAM, "@bot translate");
+  await bot.handle(m.rec, m.n);
+  assert.match(sent.at(-1).text, /Reply to the voice note/);
+
+  m = msg(TEAM, "@bot cost");
+  await bot.handle(m.rec, m.n);
+  assert.match(sent.at(-1).text, /Today: ₹0\.18 · 2 call\(s\)[\s\S]*This month: ₹0\.18/);
+
+  assert.equal(parseCommand("@1 translate this paragraph into arabic please").verb, "request"); // that's for Claude
+  assert.equal(parseCommand("@1 gemini cost").verb, "cost");
 });

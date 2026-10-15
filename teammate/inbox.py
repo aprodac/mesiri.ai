@@ -32,6 +32,9 @@ Commands:
   item done <id> --ref R [--note N]   mark it done; R = commit / PR, e.g. aprodac/MERCON#262
   item wontdo <id> --note N           close it without doing it, with the reason
   summary <chat>                      one group on a page: open and done requests
+  translate <n>                       transcript + English of a voice note / Malayalam message,
+                                      on request (Gemini), with what it cost in rupees
+  cost                                Gemini spend today and this month, in rupees
   allow <phone> [--name N] [--role owner|member]   approve someone to tag the bot (TM-03);
                                       owners can then approve others from the team group
   disallow <phone>                    remove an approval
@@ -325,6 +328,9 @@ def main() -> None:
     itm.add_argument("--note")
     sm = sub.add_parser("summary")
     sm.add_argument("chat")
+    trn = sub.add_parser("translate")
+    trn.add_argument("n", type=int)
+    sub.add_parser("cost")
     alw = sub.add_parser("allow")
     alw.add_argument("phone")
     alw.add_argument("--name")
@@ -434,6 +440,27 @@ def main() -> None:
         _item(a)
     elif a.cmd == "summary":
         _summary(a.chat)
+    elif a.cmd == "translate":
+        r = _request("POST", f"/messages/{a.n}/translate?project={PROJECT or ''}", timeout=120)
+        print(f"#{r['n']} ({r.get('language') or '?'})")
+        if r.get("transcript"):
+            print(f"  said: {r['transcript']}")
+        if r.get("translation"):
+            print(f"  EN:   {r['translation']}")
+        c = r.get("cost")
+        if c:
+            print(
+                f"  cost: Rs {c['inr']:.2f} ({c['input_tokens']} in / {c['output_tokens']} out tokens, {c['model']})"
+            )
+        else:
+            print("  cost: already translated before, no new cost")
+    elif a.cmd == "cost":
+        u = _request("GET", "/ai/usage", params={"project": PROJECT})
+        for label in ("today", "month"):
+            x = u[label]
+            print(
+                f"{label:<6} Rs {x['inr']:.2f}  ({x['calls']} calls, {x['input_tokens']} in / {x['output_tokens']} out tokens)"
+            )
     elif a.cmd in ("allow", "disallow"):
         if not a.project:
             sys.exit("say which project: --project mercon (or set TEAMMATE_PROJECT)")

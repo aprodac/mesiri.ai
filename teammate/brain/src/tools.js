@@ -118,6 +118,21 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts }) {
       { annotations: { readOnlyHint: true } },
     ),
     tool(
+      "translate_message",
+      "Get the transcript and English of a voice note (or a Malayalam message) by its message number. Gemini is only called when a message hasn't been translated yet; use it only for the messages the user's question is about, not to translate everything. Returns the cost in rupees; mention it in your answer.",
+      { n: z.number().int().positive().describe("The message number, without #") },
+      async ({ n }) => {
+        if (!listener.translate) return fail("Translation isn't available here.");
+        try {
+          const r = await listener.translate(n, ctx.project);
+          const cost = r.cost ? `cost ₹${r.cost.inr.toFixed(2)} (${r.cost.input_tokens} in / ${r.cost.output_tokens} out tokens, ${r.cost.model})` : "already translated before, no new cost";
+          return { content: [{ type: "text", text: [`#${n}${r.language ? ` (${r.language})` : ""}`, r.transcript ? `Transcript: ${r.transcript}` : "", r.translation ? `English: ${r.translation}` : "", cost].filter(Boolean).join("\n") }] };
+        } catch (e) {
+          return fail(`Couldn't translate #${n}: ${e.message}`);
+        }
+      },
+    ),
+    tool(
       "propose_plan",
       "Record a plan for a change so the team can approve it. Call this once your plan is ready (after any previews). It logs a request and returns its number; end your reply by asking for '@bot ok <number>'. Nothing gets changed until then. The approved plan may be carried out by a separate session that hasn't seen this conversation, so make it self-contained: the problem, the files and functions to change, the exact change, how to test it, and anything decided in the chat.",
       {
@@ -155,4 +170,4 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts }) {
   return createSdkMcpServer({ name: "whatsapp", version: "1.0.0", tools });
 }
 
-export const BRAIN_TOOL_NAMES = ["post_message", "post_image", "preview_html", "screenshot_url", "view_media", "propose_plan", "needs_attention"].map((t) => `mcp__whatsapp__${t}`);
+export const BRAIN_TOOL_NAMES = ["post_message", "post_image", "preview_html", "screenshot_url", "view_media", "translate_message", "propose_plan", "needs_attention"].map((t) => `mcp__whatsapp__${t}`);

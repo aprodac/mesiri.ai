@@ -8,6 +8,8 @@
 //   TEAMMATE_GEMINI_API_KEY  optional; turns on voice-note transcripts and English
 //                            translations (TM-07)
 //   TEAMMATE_GEMINI_MODEL    default gemini-3.8-flash
+//   TEAMMATE_AI_AUTO         1 = translate every message automatically; default: only on request
+//   TEAMMATE_GEMINI_PRICE_IN / _OUT   USD per 1M tokens (default 0.75 / 3.75); TEAMMATE_USD_INR (default 88)
 //   TEAMMATE_BRAIN_URL       optional, e.g. http://127.0.0.1:8791: approved tags go to Claude Code (TM-03b)
 
 import { mkdirSync, readFileSync } from "node:fs";
@@ -28,7 +30,8 @@ const store = new Store(join(dataDir, "inbox.db"));
 const wa = new WhatsAppListener({ store, dataDir, log });
 const geminiKey = process.env.TEAMMATE_GEMINI_API_KEY;
 const transcriber = geminiKey ? new Transcriber({ apiKey: geminiKey, model: process.env.TEAMMATE_GEMINI_MODEL || undefined }) : null;
-const ai = new AiWorker({ store, transcriber, readFile: (p) => readFileSync(p), log });
+// Translation runs only when someone asks, unless TEAMMATE_AI_AUTO=1 (translate everything in the background).
+const ai = new AiWorker({ store, transcriber, readFile: (p) => readFileSync(p), log, auto: process.env.TEAMMATE_AI_AUTO === "1" });
 wa.onStored = () => ai.kick();
 const brainUrl = process.env.TEAMMATE_BRAIN_URL?.replace(/\/$/, "");
 const brain = brainUrl
@@ -44,7 +47,7 @@ const brain = brainUrl
       return { ask: (req) => call("/ask", req), approve: (req) => call("/approve", req) };
     })()
   : null;
-const bot = new Bot({ store, wa, log, brain });
+const bot = new Bot({ store, wa, log, brain, ai });
 wa.onLive = (rec, n) => bot.handle(rec, n).catch((e) => log(`bot failed on #${n}: ${e}`));
 const api = createApi({ store, wa, token: process.env.TEAMMATE_API_TOKEN, ai });
 

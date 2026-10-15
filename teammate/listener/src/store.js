@@ -74,6 +74,17 @@ CREATE TABLE IF NOT EXISTS people (
   removed_at  TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_people_project ON people (project, removed_at);
+-- Every Gemini call: what it was for and what it cost (owner wants costs in rupees).
+CREATE TABLE IF NOT EXISTS ai_usage (
+  id             INTEGER PRIMARY KEY,
+  at             TEXT NOT NULL,
+  n              INTEGER,
+  model          TEXT,
+  input_tokens   INTEGER,
+  output_tokens  INTEGER,
+  usd            REAL,
+  inr            REAL
+);
 CREATE TABLE IF NOT EXISTS item_log (
   item_id  INTEGER NOT NULL REFERENCES items(id),
   at       TEXT NOT NULL,
@@ -85,6 +96,16 @@ CREATE TABLE IF NOT EXISTS item_log (
 export const ITEM_TYPES = ["bug", "feature", "question", "complaint", "task"];
 export const ITEM_STATUSES = ["open", "in_progress", "done", "wont_do"];
 export const PEOPLE_ROLES = ["owner", "member"];
+
+/** Start of today and of this month in India time (UTC+5:30), as ISO strings. */
+export function istStarts(now = Date.now()) {
+  const IST = 330 * 60_000;
+  const local = new Date(now + IST);
+  return {
+    day: new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) - IST).toISOString(),
+    month: new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), 1) - IST).toISOString(),
+  };
+}
 
 const nowIso = () => new Date().toISOString();
 
@@ -219,6 +240,25 @@ export class Store {
   /** Gives messages that used up their attempts (e.g. while the model was misconfigured) another chance. */
   retryFailedAi() {
     return Number(this.db.prepare("UPDATE messages SET ai_attempts = 0 WHERE ai_done = 0 AND ai_attempts > 0").run().changes);
+  }
+
+  addAiUsage({ n = null, model = null, input_tokens = 0, output_tokens = 0, usd = 0, inr = 0 }) {
+    this.db
+      .prepare("INSERT INTO ai_usage (at, n, model, input_tokens, output_tokens, usd, inr) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(nowIso(), n, model, input_tokens, output_tokens, usd, inr);
+  }
+
+  /** Gemini spend since a time (ISO), optionally only for one project's chats. */
+  aiUsageSince(since, project) {
+    const where = project ? "AND c.project = ?" : "";
+    return this.db
+      .prepare(
+        `SELECT COUNT(*) AS calls, COALESCE(SUM(u.input_tokens), 0) AS input_tokens, COALESCE(SUM(u.output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(u.usd), 0) AS usd, COALESCE(SUM(u.inr), 0) AS inr
+         FROM ai_usage u LEFT JOIN messages m ON m.rowid = u.n LEFT JOIN chats c ON c.jid = m.chat_jid
+         WHERE u.at >= ? ${where}`,
+      )
+      .get(...(project ? [since, project] : [since]));
   }
 
   countPendingAi() {

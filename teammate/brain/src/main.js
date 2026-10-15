@@ -119,6 +119,8 @@ const listener = {
   send: (b) => call("POST", "/send", b).catch(() => null),
   addItem: (b) => call("POST", "/items", b),
   updateItem: (id, b) => call("POST", `/items/${id}`, b),
+  /** Translate one message on request (Gemini, in the listener); returns text + cost. */
+  translate: (n, project) => call("POST", `/messages/${n}/translate?project=${encodeURIComponent(project)}`),
   /** A group photo / file by message number: { data: Buffer, mime }. */
   media: async (n, project) => {
     const res = await fetch(`${api}/media/${n}?project=${encodeURIComponent(project)}`, { headers: { authorization: `Bearer ${token}` } });

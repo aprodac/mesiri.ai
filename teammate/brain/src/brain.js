@@ -64,6 +64,8 @@ export function systemAppend({ project, flow, owner }) {
     "Malayalam), and the request log (`summary`, `items`, `item show`). Use it before answering about what was said.",
     "To look at a photo or screenshot someone sent (shown as <image ✓file> in the inbox), call view_media with its",
     "message number. Always look at the images a request refers to before planning.",
+    "Voice notes are NOT translated automatically. When a question is about a voice note (or a Malayalam message), call",
+    "translate_message with its number; do it only for the messages that matter, and say what it cost (₹).",
     "TestFlight feedback: `gh workflow run testflight-feedback.yml -f ...` (check the workflow file for its inputs),",
     "`gh run watch <id>`, then `gh run download <id> -D /tmp/feedback-<id>` and open the screenshots with Read.",
     "Always download into /tmp, never into the repo. Look at the screenshots with Read, then post the useful ones",
