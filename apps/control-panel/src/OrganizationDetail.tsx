@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, CheckCircle, Cloud, Plus, Server, Sparkles, Trash2, X } from 'lucide-react';
 import { api } from './api';
 import UserAccessEditor, { type OrgProject } from './UserAccessEditor';
 import AddUserDialog from './AddUserDialog';
+import PlanCard from './PlanCard';
 import { useToast, getErrorMessage } from './Toast';
 
 interface Organization {
@@ -101,6 +102,10 @@ export default function OrganizationDetail() {
   const [editingUser, setEditingUser] = useState<OrgUser | null>(null);
   const [addingUser, setAddingUser] = useState(false);
   const [orgSettings, setOrgSettings] = useState<OrgSettingsPayload | null>(null);
+  // The plan card's effective status (SS-10); stable, so it doesn't reload the card.
+  const showStatus = useCallback((status: string) => {
+    setOrg((prev) => (prev ? { ...prev, status } : prev));
+  }, []);
   const [savingSetting, setSavingSetting] = useState<string | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
 
@@ -327,7 +332,7 @@ export default function OrganizationDetail() {
     return (
       <div className="animate-fade-in" style={{ maxWidth: '1200px' }}>
         <Link to="/organizations" className="btn-secondary" style={{ display: 'inline-flex', marginBottom: 'var(--space-6)' }}>
-          <ArrowLeft size={16} /> Back to Organizations
+          <ArrowLeft size={16} /> Back to Companies
         </Link>
         <p style={{ color: 'var(--error)' }}>{error}</p>
       </div>
@@ -339,7 +344,7 @@ export default function OrganizationDetail() {
   return (
     <div className="animate-fade-in" style={{ maxWidth: '1200px' }}>
       <Link to="/organizations" className="btn-secondary" style={{ display: 'inline-flex', marginBottom: 'var(--space-6)' }}>
-        <ArrowLeft size={16} /> Back to Organizations
+        <ArrowLeft size={16} /> Back to Companies
       </Link>
 
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 'var(--space-6)' }}>
@@ -383,6 +388,8 @@ export default function OrganizationDetail() {
       )}
 
       {error && <p style={{ color: 'var(--error)', marginBottom: 'var(--space-4)' }}>{error}</p>}
+
+      <PlanCard orgId={org.id} onStatus={showStatus} />
 
       <div className="card" style={{ marginBottom: 'var(--space-6)' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>

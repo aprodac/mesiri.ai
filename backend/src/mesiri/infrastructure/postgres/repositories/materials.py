@@ -17,6 +17,7 @@ _material_receipts = sa.Table(
     sa.Column("material_name", sa.String),
     sa.Column("quantity", sa.Numeric),
     sa.Column("unit", sa.String),
+    sa.Column("unit_id", sa.UUID(as_uuid=True)),
     sa.Column("unit_cost", sa.Numeric),
     sa.Column("total_cost", sa.Numeric),
     sa.Column("supplier", sa.String),
@@ -45,6 +46,7 @@ _material_usage = sa.Table(
     sa.Column("material_name", sa.String),
     sa.Column("quantity", sa.Numeric),
     sa.Column("unit", sa.String),
+    sa.Column("unit_id", sa.UUID(as_uuid=True)),
     sa.Column("work_item", sa.String),
     sa.Column("occurred_date", sa.Date),
     sa.Column("occurred_time", sa.Time),
@@ -510,41 +512,41 @@ class PostgresMaterialReadRepository:
                     (_material_movements.c.movement_type == "RECEIPT", "IN"),
                     else_="OUT"
                 ).label("direction"),
-                sa.coalesce(
+                sa.func.coalesce(
                     _material_receipts.c.movement_reason,
                     _material_usage.c.movement_reason,
                     _material_movements.c.movement_type,
                 ).label("movement_reason"),
                 _material_movements.c.quantity,
                 _units_of_measure.c.code.label("unit"),
-                sa.coalesce(
+                sa.func.coalesce(
                     _material_receipts.c.occurred_date,
                     _material_usage.c.occurred_date,
                     sa.cast(_material_movements.c.occurred_at, sa.Date),
                 ).label("occurred_date"),
-                sa.coalesce(
+                sa.func.coalesce(
                     _material_receipts.c.occurred_time,
                     _material_usage.c.occurred_time,
                     sa.cast(_material_movements.c.occurred_at, sa.Time),
                 ).label("occurred_time"),
-                sa.coalesce(
+                sa.func.coalesce(
                     _material_receipts.c.source,
                     _material_usage.c.source,
                     sa.literal("system"),
                 ).label("source"),
-                sa.coalesce(
+                sa.func.coalesce(
                     _material_receipts.c.notes,
                     _material_usage.c.notes
                 ).label("notes"),
-                sa.coalesce(
+                sa.func.coalesce(
                     _material_receipts.c.supplier,
                     _material_usage.c.work_item
                 ).label("context"),
-                sa.coalesce(
+                sa.func.coalesce(
                     _material_receipts.c.reverses_movement_id,
                     _material_usage.c.reverses_movement_id
                 ).label("reverses_movement_id"),
-                sa.coalesce(
+                sa.func.coalesce(
                     _material_movements.c.recorded_by_user_id,
                     _material_receipts.c.created_by,
                     _material_usage.c.created_by,

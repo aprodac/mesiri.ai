@@ -43,6 +43,10 @@ class DprMaterialRow:
     received: str
     used: str
     unit: str
+    # BE-12: stock after the day, and whether more was used than the site is
+    # known to hold. Absent from reports stored before BE-12.
+    closing: str | None = None
+    beyond_stock: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +147,8 @@ def build_document_data(*, code: str, payload: dict[str, Any]) -> DprDocumentDat
             received=str(m.get("received") or "0"),
             used=str(m.get("used") or "0"),
             unit=m.get("unit") or "—",
+            closing=m.get("closing"),
+            beyond_stock=bool(m.get("beyond_stock")),
         )
         for m in payload.get("materials", [])
     ]

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -13,7 +13,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from context.projection_hooks import project_entity, project_new_company
 from mesiri.application.audit.record import record_admin_action
-from mesiri.application.organizations.companies_overview import list_companies
+from mesiri.application.organizations import trial_controls
+from mesiri.application.organizations.companies_overview import company_setup, list_companies
 from mesiri.application.organizations.create_company import (
     DEFAULT_DB_ROUTE,
     DEFAULT_DEPLOYMENT_TYPE,
@@ -25,6 +26,7 @@ from mesiri.application.organizations.create_company import (
 from mesiri.authorization.roles import ALL_PROJECTS_MODE, is_org_wide
 from mesiri.domains.audit import actions as audit
 from mesiri.domains.audit.actions import actor_from_admin
+from mesiri.domains.organizations import lifecycle
 from mesiri.domains.organizations import settings as org_settings
 from mesiri.domains.organizations.settings import VALID_ROLES
 from mesiri.domains.shared.auth import require_platform_admin
@@ -141,6 +143,23 @@ class CompanyListItem(OrganizationResponse):
     setup: SetupProgressResponse
 
 
+class TrialExtendRequest(BaseModel):
+    days: int
+
+
+class SuspendRequest(BaseModel):
+    reason: str | None = None
+
+
+class PlanChangeResponse(BaseModel):
+    organization_id: uuid.UUID
+    status: str
+    effective_status: str
+    trial_started_at: datetime | None = None
+    trial_ends_at: datetime | None = None
+    converted_at: datetime | None = None
+
+
 class OrganizationProvision(BaseModel):
     """What the control panel sends to create a company. The original six
     fields still work unchanged; the rest are optional (SS-03)."""
@@ -230,6 +249,79 @@ async def list_organizations(_admin: dict = Depends(require_platform_admin)):
     async with get_engine().connect() as conn:
         companies = await list_companies(conn)
     return [CompanyListItem.model_validate(company, from_attributes=True) for company in companies]
+
+
+@router.get("/{org_id}/overview", response_model=CompanyListItem)
+async def get_organization_overview(
+    org_id: uuid.UUID, _admin: dict = Depends(require_platform_admin)
+):
+    """One company's status, trial dates and setup progress (SS-10 plan card)."""
+    async with get_engine().connect() as conn:
+        company = await company_setup(conn, org_id)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    return CompanyListItem.model_validate(company, from_attributes=True)
+
+
+async def _change_plan(
+    org_id: uuid.UUID,
+    action: str,
+    admin: dict,
+    *,
+    days: int | None = None,
+    reason: str | None = None,
+) -> PlanChangeResponse:
+    """Extend / convert / suspend / reactivate (SS-10), audited in the same
+    transaction, then re-projected so WhatsApp's cached copy of the company
+    follows at once (the live gate reads the row on every message anyway)."""
+    try:
+        async with get_engine().begin() as conn:  # commits, or rolls back on error
+            after = await trial_controls.apply_trial_action(
+                conn, org_id, action, actor=actor_from_admin(admin), days=days, reason=reason
+            )
+    except trial_controls.TrialControlError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    await project_entity("organization", org_id)
+    return PlanChangeResponse(
+        organization_id=org_id,
+        status=after.status,
+        effective_status=lifecycle.effective_status(
+            after.status, after.trial_ends_at, datetime.now(UTC)
+        ),
+        trial_started_at=after.trial_started_at,
+        trial_ends_at=after.trial_ends_at,
+        converted_at=after.converted_at,
+    )
+
+
+@router.post("/{org_id}/trial/extend", response_model=PlanChangeResponse)
+async def extend_organization_trial(
+    org_id: uuid.UUID, body: TrialExtendRequest, _admin: dict = Depends(require_platform_admin)
+):
+    return await _change_plan(org_id, trial_controls.EXTEND, _admin, days=body.days)
+
+
+@router.post("/{org_id}/convert", response_model=PlanChangeResponse)
+async def convert_organization(org_id: uuid.UUID, _admin: dict = Depends(require_platform_admin)):
+    return await _change_plan(org_id, trial_controls.CONVERT, _admin)
+
+
+@router.post("/{org_id}/suspend", response_model=PlanChangeResponse)
+async def suspend_organization(
+    org_id: uuid.UUID,
+    body: SuspendRequest | None = None,
+    _admin: dict = Depends(require_platform_admin),
+):
+    return await _change_plan(
+        org_id, trial_controls.SUSPEND, _admin, reason=body.reason if body else None
+    )
+
+
+@router.post("/{org_id}/reactivate", response_model=PlanChangeResponse)
+async def reactivate_organization(
+    org_id: uuid.UUID, _admin: dict = Depends(require_platform_admin)
+):
+    return await _change_plan(org_id, trial_controls.REACTIVATE, _admin)
 
 
 @router.get("/{org_id}", response_model=OrganizationResponse)
