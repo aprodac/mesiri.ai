@@ -174,7 +174,7 @@
 | SA-06 | Health view (DPR delivery, gap-check replies, WhatsApp number quality) | M | Later | BE-27 | todo | | |
 | SA-07 | Module toggles per company | S | Must | BE-06 | done | Claude (session 13 Oct, foundations) | `d338389`. Modules card on the company Settings tab; not yet clicked through in a browser (needs a platform-admin login on the live control panel) |
 | SA-08 | Audit log viewer | S | Later | BE-05 | todo | | |
-| SA-09 | Branding requests in the control panel: list of owners' letterhead/logo photo requests (SS-14) across companies, company-page branding panel (photos next to the letterhead fields + logo upload, reusing BE-20's rules), "Mark done" (assistant tells the owner); audited | M | Must | SS-14, BE-20, BE-05 | claimed | Claude (session 15 Oct, onboarding, Lane B) | |
+| SA-09 | Branding requests in the control panel: list of owners' letterhead/logo photo requests (SS-14) across companies, company-page branding panel (photos next to the letterhead fields + logo upload, reusing BE-20's rules), "Mark done" (assistant tells the owner); audited | M | Must | SS-14, BE-20, BE-05 | done (2345fff) | Claude (session 15 Oct, onboarding, Lane B) | **Done** `bbd7016` (letterhead logic lifted from the dashboard's /company/branding* into `application/organizations/branding_admin.py`, both call it; dashboard tests 8/8 unchanged) + `0bdc58f` (API: `domains/admin/branding_router.py` mounted by both apps; list, letterhead + contact, logo, photo by position, mark done; audited; `open_branding_requests` on the companies list) + `2345fff` (Branding requests page, company Letterhead tab, list badge). Known gap: assistant appends photos without a lock, so a photo arriving at the instant of Mark done can undo one write (fix is Lane A side) |
 
 ## SS — Self-serve signup & trials
 
@@ -268,6 +268,7 @@ Claude Code as a team member: listens to the team and customer WhatsApp groups, 
 | 2026-10-15 | SA-01 one-screen "Create company" in the control panel (+ several sites per project) | `c405d9d`, `0580e1c` |
 | 2026-10-15 | SA-02 companies list with status and setup progress | `1895165`, `8f9b605` |
 | 2026-10-15 | SS-10 superadmin trial controls and trial/signup settings | `055498f`, `ace2a76` |
+| 2026-10-15 | SA-09 branding requests and letterhead in the control panel | `bbd7016`, `0bdc58f`, `2345fff` |
 | 2026-10-15 | SS-04 WhatsApp signup for unknown numbers (off until switched on) | `aa5f9bc` |
 | 2026-10-15 | SS-13 add a teammate by sharing their WhatsApp contact | `3032686` |
 | 2026-10-15 | BE-05 audit log of superadmin actions | `04c4479`, `fe2f8f0`, `12970f0` |
