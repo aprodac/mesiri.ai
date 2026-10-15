@@ -2,7 +2,7 @@
 // text -> English, through Gemini (TM-07).
 //
 // Same model and response shape as Mesiri's voice pipeline
-// (platform/ai GeminiProvider.understand_voice: gemini-2.5-flash, JSON, no
+// (platform/ai GeminiProvider.understand_voice: JSON, no
 // thinking; transcript / translated_text / detected_language), called over
 // plain REST so this kit stays a dependency-light Node service other repos
 // can use too.
@@ -28,7 +28,7 @@ const TEXT_PROMPT =
 
 export class Transcriber {
   /** @param {{ apiKey: string, model?: string, fetchImpl?: typeof fetch }} opts */
-  constructor({ apiKey, model = "gemini-2.5-flash", fetchImpl = fetch }) {
+  constructor({ apiKey, model = "gemini-3.8-flash", fetchImpl = fetch }) {
     if (!apiKey) throw new Error("Gemini API key missing");
     this.apiKey = apiKey;
     this.model = model;
@@ -127,6 +127,8 @@ export class AiWorker {
       await this.transcriber.check();
       this.ok = true;
       this.log(`Gemini: key works (${this.transcriber.model})`);
+      const retried = this.store.retryFailedAi();
+      if (retried) this.log(`Gemini: retrying ${retried} message(s) that failed before`);
     } catch (e) {
       this.ok = false;
       this.lastError = String(e.message || e);
@@ -181,7 +183,9 @@ export class AiWorker {
           // attempts. On a rate limit, stop until the next run (every 5 min).
           const status = Number(msg.match(/^Gemini (\d{3})/)?.[1]);
           if (status === 429) return done;
-          if (![500, 502, 503, 504].includes(status)) this.store.failAi(m.n);
+          // A retired / unknown model (404) is a setup problem, not this message's: don't use up its attempts.
+          if (![404, 500, 502, 503, 504].includes(status)) this.store.failAi(m.n);
+          if (status === 404) return done;
         }
       }
     }

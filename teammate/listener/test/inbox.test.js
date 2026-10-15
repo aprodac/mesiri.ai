@@ -389,7 +389,7 @@ function fakeGemini(replies) {
   const calls = [];
   const fetchImpl = async (url, init = {}) => {
     calls.push({ url, body: init.body ? JSON.parse(init.body) : null, key: init.headers?.["x-goog-api-key"] });
-    if (url.endsWith("/models/gemini-2.5-flash")) return new Response("{}", { status: 200 });
+    if (url.endsWith("/models/gemini-3.8-flash")) return new Response("{}", { status: 200 });
     const next = replies.shift();
     if (next instanceof Error) return new Response(next.message, { status: next.status || 500 });
     return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(next) }] } }] }), { status: 200 });
@@ -704,4 +704,22 @@ test("bot (TM-03b): with a brain, questions and requests go to Claude; approvals
   m = msg(TEAM, "@bot hello", { from: "999@lid", pn: null, name: "Stranger" });
   await bot.handle(m.rec, m.n);
   assert.equal(asked.length, 2);
+});
+
+test("transcribe: a retired model (404) pauses the queue and doesn't use up attempts; failures are retried on start", async () => {
+  const store = seeded(); // 3 pending text messages
+  const retired = Object.assign(new Error("models/gemini-2.5-flash is no longer available"), { status: 404 });
+  const { calls, fetchImpl } = fakeGemini([retired]);
+  const worker = new AiWorker({ store, transcriber: new Transcriber({ apiKey: "k", fetchImpl }), readFile: () => Buffer.alloc(0) });
+  worker.ok = true;
+  assert.equal(await worker.drain(), 0);
+  assert.equal(calls.length, 1);
+  assert.equal(store.countPendingAi(), 3);
+
+  // Messages that used up their attempts earlier get another chance.
+  const n = store.pendingAi(1)[0].n;
+  for (let i = 0; i < 3; i++) store.failAi(n);
+  assert.equal(store.countPendingAi(), 2);
+  assert.equal(store.retryFailedAi(), 1);
+  assert.equal(store.countPendingAi(), 3);
 });

@@ -7,7 +7,7 @@
 //   TEAMMATE_PORT        default 8790
 //   TEAMMATE_GEMINI_API_KEY  optional; turns on voice-note transcripts and English
 //                            translations (TM-07)
-//   TEAMMATE_GEMINI_MODEL    default gemini-2.5-flash
+//   TEAMMATE_GEMINI_MODEL    default gemini-3.8-flash
 //   TEAMMATE_BRAIN_URL       optional, e.g. http://127.0.0.1:8791: approved tags go to Claude Code (TM-03b)
 
 import { mkdirSync, readFileSync } from "node:fs";

@@ -95,7 +95,7 @@ Voice notes and photos of pulled messages are downloaded too, while WhatsApp sti
 ## Voice notes and Malayalam (TM-07)
 
 With the GitHub secret `TEAMMATE_GEMINI_API_KEY` set, the listener sends every voice note to
-Gemini (`gemini-2.5-flash`, the model Mesiri's voice pipeline uses) for a transcript in its own
+Gemini (`gemini-3.8-flash`; `TEAMMATE_GEMINI_MODEL` overrides it) for a transcript in its own
 language plus an English translation, and translates non-English text (Malayalam script or
 Manglish) into English. Results are stored with the message on the server, so `recent`,
 `show` and English `search` cover voice notes too. Older messages are done in the background.

@@ -216,6 +216,11 @@ export class Store {
     this.db.prepare("UPDATE messages SET ai_attempts = ai_attempts + 1 WHERE rowid = ?").run(n);
   }
 
+  /** Gives messages that used up their attempts (e.g. while the model was misconfigured) another chance. */
+  retryFailedAi() {
+    return Number(this.db.prepare("UPDATE messages SET ai_attempts = 0 WHERE ai_done = 0 AND ai_attempts > 0").run().changes);
+  }
+
   countPendingAi() {
     return this.db.prepare(`SELECT COUNT(*) AS n ${PENDING_AI}`).get().n;
   }
