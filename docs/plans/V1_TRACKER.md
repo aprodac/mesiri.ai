@@ -164,7 +164,7 @@
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| SA-01 | One-screen "create company" in the control panel: company name, owner name, owner WhatsApp number (email + password optional), site name(s), start as trial or active → Create. Calls `POST /admin/organizations/provision` (SS-03) | M | Must | SS-03 | claimed | Claude (session 15 Oct, onboarding, Lane B) | Replaces the old 7-step wizard idea (see [onboarding-plan.md](onboarding-plan.md)). Letterhead/branding comes later by WhatsApp photo (SS-07), not this screen |
+| SA-01 | One-screen "create company" in the control panel: company name, owner name, owner WhatsApp number (email + password optional), site name(s), start as trial or active → Create. Calls `POST /admin/organizations/provision` (SS-03) | M | Must | SS-03 | done (0580e1c) | Claude (session 15 Oct, onboarding, Lane B) | **Done** `c405d9d` (API: `site_names` creates several sites under the one project, response `sites[]`) + `0580e1c` (screen, `CreateCompany.tsx`). Replaces the old 7-step wizard idea (see [onboarding-plan.md](onboarding-plan.md)). Letterhead/branding comes later by WhatsApp photo (SS-07), not this screen |
 | SA-02 | Companies list with status and setup progress | S | Must | BE-23 | todo | | |
 | SA-03 | Company page: edit, suspend (export is Later) | M | Must | BE-05 | todo | | |
 | SA-04 | Messages viewer per company, linked to what each message created | M | Must | BE-26 | todo | | Extend the existing Logs screen |
@@ -259,5 +259,6 @@ Claude Code as a team member: listens to the team and customer WhatsApp groups, 
 | 2026-10-14 | WEB-08 project DPR recipients tab + client logo card | `59fdb26` |
 | 2026-10-15 | SS-03 one create-company step (+ BE-02 single provisioning path) | `c84cc5d` |
 | 2026-10-15 | BE-24 starter materials for every new company | `9c938da` |
+| 2026-10-15 | SA-01 one-screen "Create company" in the control panel (+ several sites per project) | `c405d9d`, `0580e1c` |
 | 2026-10-15 | SS-04 WhatsApp signup for unknown numbers (off until switched on) | `aa5f9bc` |
 | 2026-10-15 | SS-13 add a teammate by sharing their WhatsApp contact | `3032686` |
