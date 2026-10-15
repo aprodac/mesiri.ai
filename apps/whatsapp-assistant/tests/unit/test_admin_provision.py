@@ -56,8 +56,9 @@ def wired(monkeypatch):
     calls: dict[str, list] = {"new": [], "projected": []}
     result: dict[str, object] = {}
 
-    async def fake_create(conn, new):
+    async def fake_create(conn, new, *, actor=None):
         calls["new"].append(new)
+        calls.setdefault("actor", []).append(actor)
         if isinstance(result.get("value"), Exception):
             raise result["value"]
         return result["value"]
@@ -86,8 +87,12 @@ async def test_original_control_panel_request_still_works(wired) -> None:
         admin_password="Temp-pass-1",
     )
 
-    response = await admin_router.provision_tenant(body, {})
+    admin_id = uuid.uuid4()
+    response = await admin_router.provision_tenant(body, {"sub": str(admin_id), "name": "Ops"})
 
+    # Recorded in the audit log as the platform admin who did it (BE-05).
+    actor = calls["actor"][0]
+    assert (actor.kind, actor.user_id, actor.label) == ("platform_admin", admin_id, "Ops")
     new = calls["new"][0]
     assert new.owner_email == "john@acme.example"
     assert new.owner_password == "Temp-pass-1"
