@@ -81,7 +81,7 @@ still counts.
 and the tenant dashboard's message detail (`users/router.py`) skip `stage = 'metered'`. The
 control panel's per-message log view shows the new rows.
 
-## Schema (migration 0477)
+## Schema (migration 0478)
 
 New columns on `provider_executions`:
 

@@ -30,8 +30,8 @@ Expand-only: older code neither reads nor writes any of it. The downgrade
 deletes the metered rows (they mean nothing without these columns) and
 restores NOT NULL on correlation_id.
 
-Revision ID: 0477
-Revises: 0476
+Revision ID: 0478
+Revises: 0477
 Create Date: 2026-10-15
 """
 
@@ -40,8 +40,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0477"
-down_revision = "0476"
+revision = "0478"
+down_revision = "0477"
 branch_labels = None
 depends_on = None
 

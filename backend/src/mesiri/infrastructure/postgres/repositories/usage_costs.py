@@ -1,4 +1,4 @@
-"""PostgreSQL store for per-call costs (migration 0477, BE-25).
+"""PostgreSQL store for per-call costs (migration 0478, BE-25).
 
 Cost rows live in `provider_executions` with `metered = true`: one per AI
 provider response and one per outbound WhatsApp message (keyed by its wamid,
