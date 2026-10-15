@@ -86,8 +86,19 @@ SITE_DAY_REVIEW = TemplateSpec(
     quick_replies=("Open report",),
 )
 
+#: Trial ending soon (SS-08), to an owner who has not messaged in 24 h.
+#: Body (submitted text, docs/ops/whatsapp-templates.md):
+#:   "Your Mesiri free trial for {{1}} ends on {{2}}. Reply CONTINUE and our
+#:    team will call you to keep your daily reports going."
+TRIAL_ENDING = TemplateSpec(
+    name="mesiri_trial_ending",
+    language="en",
+    category="UTILITY",
+    body_param_count=2,
+)
+
 TEMPLATES: dict[str, TemplateSpec] = {
-    spec.name: spec for spec in (DPR_DELIVERY, LOGIN_CODE, SITE_DAY_REVIEW)
+    spec.name: spec for spec in (DPR_DELIVERY, LOGIN_CODE, SITE_DAY_REVIEW, TRIAL_ENDING)
 }
 
 

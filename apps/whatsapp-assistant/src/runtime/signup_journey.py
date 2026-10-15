@@ -35,6 +35,11 @@ from mesiri.application.organizations.create_company import (
     NewCompany,
     create_company,
 )
+from mesiri.application.organizations.signup_guard import (
+    SignupAttempt,
+    SignupRefused,
+    check_signup,
+)
 from mesiri.domains.organizations.platform_settings import SELF_SERVE
 from mesiri.infrastructure.postgres.repositories.platform_settings import (
     PostgresPlatformSettingsRepository,
@@ -128,6 +133,12 @@ class SignupJourney:
         state = await self._store.get(wa_id)
 
         if tap == START_TRIAL_ID:
+            # SS-09: refuse up front (an earlier trial, a foreign number, the
+            # daily limit) rather than after three questions.
+            refusal = await self._refusal(wa_id)
+            if refusal is not None:
+                await self._store.clear(wa_id)
+                return await self._say(wa_id, refusal)
             await self._store.set(wa_id, SignupState(stage="company"))
             return await self._say(wa_id, ASK_COMPANY)
         if tap == IN_COMPANY_ID:
@@ -169,6 +180,22 @@ class SignupJourney:
         # owner_name
         return await self._create(wa_id, state, text)
 
+    async def _refusal(self, wa_id: str) -> str | None:
+        """The guardrails' refusal message for this number, or None to go
+        ahead (SS-09). Fails closed, like signup_enabled."""
+        try:
+            async with self._db.transaction() as conn:
+                try:
+                    await check_signup(
+                        conn, SignupAttempt(phone=wa_id, signup_source="whatsapp"), now=self._now()
+                    )
+                except SignupRefused as exc:
+                    return str(exc)
+        except Exception:  # noqa: BLE001
+            _log.exception("signup.guard_failed wa_id=%s", wa_id)
+            return FAILED_MESSAGE
+        return None
+
     async def _welcome(self, wa_id: str, profile_name: str | None) -> str:
         await self._store.set(wa_id, SignupState(stage="welcome"))
         name = _clean_profile_name(profile_name)
@@ -196,10 +223,18 @@ class SignupJourney:
         )
         created: CreatedCompany | None = None
         refused: CompanyCreationError | None = None
+        guard_refusal: SignupRefused | None = None
         try:
             async with self._db.transaction() as conn:
                 try:
+                    # SS-09 guardrails, in the same transaction as the create.
+                    await check_signup(
+                        conn, SignupAttempt(phone=wa_id, signup_source="whatsapp"), now=self._now()
+                    )
                     created = await create_company(conn, new, now=self._now())
+                except SignupRefused as exc:
+                    # Caught inside, so the transaction commits the attempt row.
+                    guard_refusal = exc
                 except CompanyCreationError as exc:
                     # Raised before anything is written (validation and the
                     # taken-number check come first), so letting the empty
@@ -212,6 +247,8 @@ class SignupJourney:
             return await self._say(wa_id, FAILED_MESSAGE)
 
         await self._store.clear(wa_id)
+        if guard_refusal is not None:
+            return await self._say(wa_id, str(guard_refusal))
         if refused is not None:
             _log.info("signup.refused wa_id=%s reason=%s", wa_id, refused)
             if refused.conflict:

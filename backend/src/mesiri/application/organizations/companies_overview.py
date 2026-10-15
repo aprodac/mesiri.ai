@@ -70,6 +70,8 @@ class CompanyOverview:
     created_at: dt.datetime | None
     updated_at: dt.datetime | None
     setup: SetupProgress
+    # Owner's letterhead photos the Mesiri team hasn't finished (SA-09).
+    open_branding_requests: int = 0
 
 
 # A project's report times when nobody has changed them (the column defaults,
@@ -101,7 +103,13 @@ _SELECT = """
                      OR p.dpr_send_deadline <> :default_send))
             OR EXISTS (SELECT 1 FROM organization_settings st
               WHERE st.organization_id = o.id AND st.key = 'setup_progress'
-                AND st.value -> 'report_time' ->> 'state' = 'answered')) AS report_time_set
+                AND st.value -> 'report_time' ->> 'state' = 'answered')) AS report_time_set,
+           (SELECT count(*) FROM organization_settings st,
+                   jsonb_array_elements(
+                     CASE WHEN jsonb_typeof(st.value) = 'array' THEN st.value ELSE '[]' END
+                   ) AS r
+             WHERE st.organization_id = o.id AND st.key = 'branding_requests'
+               AND r ->> 'status' = 'open') AS open_branding_requests
     FROM organizations o
 """
 _DEFAULTS = {"default_cutoff": DEFAULT_CUTOFF_TIME, "default_send": DEFAULT_SEND_TIME}
@@ -131,6 +139,7 @@ def to_overview(row: sa.RowMapping, now: dt.datetime) -> CompanyOverview:
         signup_source=row["signup_source"] or "superadmin",
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+        open_branding_requests=int(row.get("open_branding_requests") or 0),
         setup=SetupProgress(
             # The owner alone isn't a team.
             has_team=(row["active_users"] or 0) >= 2,

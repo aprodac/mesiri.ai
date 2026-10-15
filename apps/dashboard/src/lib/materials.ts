@@ -35,7 +35,14 @@ export interface UnitsOfMeasureListResponse {
   items: UnitOfMeasure[]
 }
 
-export type InflowReason = 'RECEIVED' | 'TRANSFER_IN' | 'RETURN_IN' | 'ADJUSTMENT_IN'
+export type InflowReason =
+  | 'RECEIVED'
+  | 'TRANSFER_IN'
+  | 'RETURN_IN'
+  | 'ADJUSTMENT_IN'
+  // What was already on site when it started using Mesiri. Once per site and
+  // material (the backend 409s a second one).
+  | 'OPENING_STOCK'
 export type OutflowReason = 'CONSUMED' | 'TRANSFER_OUT' | 'RETURN_TO_VENDOR' | 'WASTAGE' | 'ADJUSTMENT_OUT'
 
 export interface MaterialReceipt {
@@ -65,6 +72,9 @@ export interface MaterialReceipt {
   movement_reason: InflowReason
   notes: string | null
   reverses_movement_id: string | null
+  // Set on both halves of a transfer between sites: such a movement is
+  // corrected through its transfer, never alone.
+  transfer_id?: string | null
   // Only populated by the detail endpoints — a correction has already been
   // posted against this movement, so offering "Correct" again would 409.
   already_reversed?: boolean
@@ -93,6 +103,9 @@ export interface MaterialUsage {
   movement_reason: OutflowReason
   notes: string | null
   reverses_movement_id: string | null
+  // Set on both halves of a transfer between sites: such a movement is
+  // corrected through its transfer, never alone.
+  transfer_id?: string | null
   // Only populated by the detail endpoints — a correction has already been
   // posted against this movement, so offering "Correct" again would 409.
   already_reversed?: boolean
@@ -534,13 +547,19 @@ export async function fetchLedger(
 
 // Reasons that require ADMIN/PROJECT_MANAGER to submit — see backend
 // authorization rules on POST /materials/inflows and /materials/outflows.
-export const ADJUSTMENT_REASONS = new Set(['ADJUSTMENT_IN', 'ADJUSTMENT_OUT'])
+export const ADJUSTMENT_REASONS = new Set(['ADJUSTMENT_IN', 'ADJUSTMENT_OUT', 'OPENING_STOCK'])
+
+// Recorded only through a transfer (POST /materials/transfers), which writes
+// both halves together -- so the record dialogs don't offer them, though the
+// list filters do.
+export const TRANSFER_REASONS = new Set(['TRANSFER_IN', 'TRANSFER_OUT'])
 
 export const INFLOW_REASONS: Array<{ value: InflowReason; label: string }> = [
   { value: 'RECEIVED', label: 'Received' },
   { value: 'TRANSFER_IN', label: 'Transfer In' },
   { value: 'RETURN_IN', label: 'Return In' },
   { value: 'ADJUSTMENT_IN', label: 'Adjustment In' },
+  { value: 'OPENING_STOCK', label: 'Opening Stock' },
 ]
 
 export const OUTFLOW_REASONS: Array<{ value: OutflowReason; label: string }> = [
@@ -550,3 +569,69 @@ export const OUTFLOW_REASONS: Array<{ value: OutflowReason; label: string }> = [
   { value: 'WASTAGE', label: 'Wastage' },
   { value: 'ADJUSTMENT_OUT', label: 'Adjustment Out' },
 ]
+
+// ---------------------------------------------------------------------
+// Transfers between sites
+// ---------------------------------------------------------------------
+
+export interface CreateTransferPayload {
+  from_site_id: string
+  to_site_id: string
+  material_id: string
+  unit_id: string
+  quantity: string | number
+  occurred_date: string
+  notes?: string
+  // As for outflows: false makes the backend refuse sending more than the
+  // sending site holds (409 with the real balance).
+  allow_negative?: boolean
+}
+
+export interface MaterialTransfer {
+  id: string
+  material_id: string
+  material_name: string
+  quantity: string
+  unit: string
+  occurred_date: string
+  notes: string | null
+  created_by: string | null
+  outflow_id: string
+  from_project_id: string
+  from_site_id: string
+  from_site_name: string | null
+  inflow_id: string
+  to_project_id: string
+  to_site_id: string
+  to_site_name: string | null
+  is_reversed: boolean
+}
+
+export async function createTransfer(
+  payload: CreateTransferPayload,
+  idempotencyKey?: string
+): Promise<{ id: string; outflow_id: string; inflow_id: string; status: string }> {
+  const res = await api.post<{ id: string; outflow_id: string; inflow_id: string; status: string }>(
+    '/materials/transfers',
+    payload,
+    idempotencyHeaders(idempotencyKey)
+  )
+  return res.data
+}
+
+export async function fetchTransfers(
+  params: { project_id?: string; limit?: number; offset?: number } = {}
+): Promise<MaterialMovementListResponse<MaterialTransfer>> {
+  const res = await api.get<MaterialMovementListResponse<MaterialTransfer>>('/materials/transfers', {
+    params,
+  })
+  return res.data
+}
+
+export async function reverseTransfer(
+  id: string,
+  payload: { reason_note?: string; occurred_date?: string } = {}
+): Promise<{ id: string; status: string }> {
+  const res = await api.post<{ id: string; status: string }>(`/materials/transfers/${id}/reverse`, payload)
+  return res.data
+}

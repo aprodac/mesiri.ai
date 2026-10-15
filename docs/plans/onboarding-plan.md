@@ -47,7 +47,7 @@ nudges and trial reminders need Meta-approved templates (SS-12). Apply early.
 | 3b | Web signup and dashboard login by WhatsApp code | SS-06 + WEB-12 (**done**, off until switched on) |
 | 4 | Add a team member by sharing a contact; invite to forward | SS-13 (**done**) |
 | 5 | One-screen create form + companies list in the control panel | SA-01, SA-02 (**done**) |
-| 6 | Daily setup questions (letterhead/logo photos → team, report time, more sites) | SS-14 (**done**, WhatsApp side); control-panel requests list: Lane B |
+| 6 | Daily setup questions (letterhead/logo photos → team, report time, more sites) | SS-14 (**done**, WhatsApp side), SA-09 (**done**, control panel) |
 | 6b | Getting-started checklist on the dashboard's Today page | SS-07 (**done**) |
 | 7 | Trial reminders, expiry, limits, superadmin trial controls | SS-08, SS-09, SS-10 (**done**) |
 
@@ -142,6 +142,32 @@ Organizations page. Replaces the old "Provision New Tenant" form.
   `trial_started_at`, `trial_ends_at`, `converted_at`, `signup_source` and
   `setup {has_team, has_site, first_update_at, first_dpr_sent_at}`.
 - Deployment type and database route moved off the list (still on the company page).
+
+## Branding requests in the control panel (SA-09, built 15 Oct)
+
+The other half of SS-14's letterhead question: the owner's photos are worked here.
+
+- **Branding requests** (sidebar): every company's requests, open first and oldest
+  first, with when it came in, file count and status (open / done, owner told or not
+  yet). **Open** goes to the company's **Letterhead** tab (`?tab=letterhead`). The
+  Companies list shows a "Letterhead photos" badge while a request is open.
+- **Letterhead tab** (`BrandingPanel.tsx`): the photos (full size on click; "File no
+  longer available" when storage lost one, see INF-09) next to the letterhead form
+  (name on letterhead, GSTIN, signatory, brand colour, address, phone, email) and
+  logo upload. **Mark done** sets `status: "done"` and `done_at`; the assistant tells
+  the owner on their next message and sets `owner_notified`. The control panel sends
+  no WhatsApp messages.
+- **Code:** one router, `domains/admin/branding_router.py`, mounted by both apps.
+  The letterhead logic moved out of the dashboard's `/company/branding*` routes into
+  `application/organizations/branding_admin.py`, which both now call (same behaviour
+  for the dashboard). Every change is audited (`company.setting_changed`).
+- **API:** `GET /admin/branding-requests`; `GET`/`PUT /admin/organizations/{id}/branding`;
+  `PUT`/`DELETE .../branding/logo`; `GET .../branding-requests/{rid}/files/{n}` (a photo
+  by its position in that company's own request); `POST .../branding-requests/{rid}/done`
+  (409 if already done). The companies list adds `open_branding_requests`.
+- **Known gap:** the assistant adds photos with a read-and-rewrite of the request list
+  without a lock. A photo arriving at the very moment the team clicks Mark done can undo
+  one of the two writes. Rare; fixing it means locking on the assistant side (Lane A).
 
 ## Superadmin trial controls (SS-10, built 15 Oct)
 
@@ -311,3 +337,93 @@ Nothing is ticked by hand: every item comes from what happened.
   logo.
 - **Hiding:** gone for good once everything is done; "Hide for now" is remembered in
   that browser only.
+
+## Trial reminders and expiry (SS-08, built 15 Oct)
+
+Decided 15 Oct:
+- reminders go out 2 days before the end and on the last day;
+- after expiry the dashboard is **read-only**, not blocked;
+- after the retention period the company is flagged for the team to decide on,
+  and **never auto-deleted**.
+
+**Reminders** (`application/organizations/trial.py`):
+- **Queued by** the in-app scheduler tick (`runtime/automation_runner.py`), next to the
+  project auto-DPR, as `trial_reminder` notification rows for each owner (ADMIN with a
+  WhatsApp number). Each owner gets each reminder once.
+- **Sent by** the notification sender:
+  - plain text inside the 24-hour window ("Reply *CONTINUE*…");
+  - outside it, the `mesiri_trial_ending` template, once it's approved (text in
+    `docs/ops/whatsapp-templates.md`);
+  - held during quiet hours, with a reason recorded whenever a reminder is skipped.
+
+**After the trial ends** (`runtime/trial_journey.py`):
+- **Owner:** "your trial ended on 22 Oct, data safe for 30 days" **[Continue with
+  Mesiri]**.
+- **Anyone else:** "ask <owner> to continue".
+- **Suspended companies:** keep the generic reply.
+
+**"Continue"** (a tap, typing CONTINUE, or `POST /company/trial/continue` from the
+dashboard):
+- records one open request in `organization_settings` `continue_requests` (refused by
+  the generic settings API);
+- posts in the team WhatsApp group;
+- tells the owner the team will call. Converting to paid stays manual (SS-10).
+
+**Read-only dashboard** (`domains/shared/trial_guard.py`, an app middleware):
+- For a company whose trial has ended, every change request answers
+  `403 {"code": "TRIAL_EXPIRED"}`. Reading still works.
+- Login, code login, the webhook, health and `/company/trial/*` are exempt.
+- No token, a bad token or a platform admin passes through untouched.
+- The status is cached for a minute per company.
+
+## Trial guardrails (SS-09, built 15 Oct)
+
+Protect cost and the shared WhatsApp number's quality rating once self-serve signup
+is switched on. All limits are the platform setting `trial_guardrails`, changeable
+(and audited) through `PUT /admin/platform-settings/trial_guardrails`. The control
+panel's settings card doesn't show these fields yet; that's Lane B's.
+
+**Before a signup** (`check_signup` in `application/organizations/signup_guard.py`):
+both doors ask it. The web door (SS-06) asks on code request and before creating; the
+WhatsApp door (SS-04) asks on the "Start free trial" tap and before creating. In order:
+
+| Rule | Default | What the person is told |
+| --- | --- | --- |
+| Signup switch (`self_serve.signup_enabled`) | off | "Sign-up is closed for now…" |
+| Number's country code is allowed | `["91"]` | "Mesiri is only available for Indian WhatsApp numbers for now…" |
+| One free trial per number per N days | 365 | "This number has already had a free trial. Message us…" |
+| Self-serve trials across the platform in 24 h | 25 | "We're getting a lot of sign-ups right now. Please try again tomorrow." |
+| Web: different numbers from one IP in 24 h | 3 | same as above |
+
+- **Past trials** come from the audit log (BE-05), which outlives deleted companies. A
+  deleted trial doesn't free its number for a new one.
+- **The daily count** is self-serve companies only; companies made by staff don't count.
+
+**Flags**, recorded but never blocking:
+
+| Flag | When |
+| --- | --- |
+| `shared_ip` | the IP was used by another number in 24 h |
+| `previous_trial` | the number had a trial before the window |
+| `burst` | signups are over 80% of the daily limit |
+| `foreign_number` | the number's country isn't allowed |
+
+Every check is logged in `signup_attempts` (migration 0480) with the outcome, reason and
+flags. Read a number's flags with `PostgresSignupAttemptRepository.flags_for_phone`.
+The web door rolls back on a refusal, so only its allowed attempts are kept (that's all
+the per-IP count needs). Refusals are also in the app log (`signup.refused`), flags as
+`signup.flagged`.
+
+**During a trial** (`TrialUsageGuard` in `application/organizations/trial_usage.py`):
+- **What's checked:** every inbound message from a `trial` company is checked against
+  today's usage, from BE-25's cost rows since midnight India time.
+- **Defaults:** ₹50 of AI and 200 WhatsApp messages a day. That's about 15 times a
+  normal trial day.
+- **When over:**
+  - the sender gets "You've reached today's free-trial limit… back tomorrow morning";
+  - no AI runs;
+  - the message is still logged;
+  - queued sends, such as the evening report, still go out.
+- **Cost of the check:** cached a minute per company.
+- **Fails open:** a broken check never blocks a message.
+- **Paying companies** are never capped. A cap of 0 means no cap.

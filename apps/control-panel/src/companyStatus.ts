@@ -21,6 +21,7 @@ export interface Company {
   signup_source: string;
   created_at: string | null;
   setup: Setup;
+  open_branding_requests?: number;
 }
 
 export const FILTERS = ['all', 'trial', 'active', 'expired', 'suspended'] as const;

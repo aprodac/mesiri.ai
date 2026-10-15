@@ -194,11 +194,13 @@ async def run_tick(*, db: Any) -> dict[str, int] | None:
 
             # WA-04: between the cutoff and the send deadline, each site's
             # engineer hears what their day is missing. Before the DPR send,
-            # so a day the engineer just completed is refreshed first.
+            # so a day the engineer just completed is refreshed first. In a
+            # savepoint: a failure here must not abort this tick's transaction.
             from .site_day_review import queue_site_day_reviews
 
             try:
-                fired += await queue_site_day_reviews(conn, db=db)
+                async with conn.begin_nested():
+                    fired += await queue_site_day_reviews(conn, db=db)
             except Exception:  # noqa: BLE001
                 logger.exception("automation_runner.site_day_review_failed")
 
@@ -206,6 +208,16 @@ async def run_tick(*, db: Any) -> dict[str, int] | None:
                 fired += await send_due_project_dprs(conn, db=db)
             except Exception:  # noqa: BLE001
                 logger.exception("automation_runner.project_dpr_send_failed")
+
+            # SS-08: trial-ending reminders, queued for the drain below. In a
+            # savepoint: a failure here must not abort this tick's transaction.
+            try:
+                from mesiri.application.organizations.trial import queue_trial_reminders
+
+                async with conn.begin_nested():
+                    fired += await queue_trial_reminders(conn)
+            except Exception:  # noqa: BLE001
+                logger.exception("automation_runner.trial_reminders_failed")
 
             sent_skipped = {"sent": 0, "skipped": 0}
             try:

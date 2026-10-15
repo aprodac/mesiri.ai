@@ -256,3 +256,77 @@ async def test_several_sites_under_one_project(conn) -> None:
     assert {r["project_id"] for r in rows} == {created.project_id}
     assert [s.name for s in created.sites] == ["Block A", "Block B"]
     assert created.site_id == created.sites[0].site_id
+
+
+# --- SS-08: trial reminders and continue requests -------------------------------
+
+
+async def test_trial_reminders_are_queued_once_for_owners_only(conn) -> None:
+    from mesiri.application.organizations.trial import queue_trial_reminders
+
+    real_now = dt.datetime.now(dt.UTC)
+    created = await create_company(
+        conn,
+        NewCompany(
+            name="Ending Co", owner_name="Owner", owner_phone="9876500021", start_as="trial"
+        ),
+        now=real_now - dt.timedelta(days=5, hours=12),  # 7-day trial: 1.5 days left
+    )
+    # A supervisor in the same company: never reminded.
+    await conn.execute(
+        text(
+            "INSERT INTO users (id, organization_id, full_name, role, status, whatsapp_number, "
+            "hashed_password) VALUES (gen_random_uuid(), :org, 'Biju', 'SITE_ENGINEER', 'active', "
+            "'919876500022', 'x')"
+        ),
+        {"org": created.organization_id},
+    )
+    # A company with days left: nothing yet.
+    await create_company(
+        conn,
+        NewCompany(name="Fresh Co", owner_name="F", owner_phone="9876500023", start_as="trial"),
+        now=real_now,
+    )
+
+    assert await queue_trial_reminders(conn, now=real_now) == 1
+    assert await queue_trial_reminders(conn, now=real_now) == 0  # once
+
+    row = await _one(
+        conn,
+        "SELECT * FROM notifications WHERE organization_id = :org",
+        org=created.organization_id,
+    )
+    assert row["rule_key"] == "trial_reminder"
+    assert row["recipient_user_id"] == created.owner_user_id
+    assert row["payload"]["kind"] == "ending_soon"
+    assert "Ending Co" in row["payload"]["message"]
+    assert row["payload"]["template"]["name"] == "mesiri_trial_ending"
+    assert row["payload"]["template"]["body_params"][0] == "Ending Co"
+
+
+async def test_continue_request_and_expiry_details(conn) -> None:
+    from mesiri.application.organizations.trial import expiry_details, record_continue_request
+
+    real_now = dt.datetime.now(dt.UTC)
+    created = await create_company(
+        conn,
+        NewCompany(name="Over Co", owner_name="Asha K", owner_phone="9876500024", start_as="trial"),
+        now=real_now - dt.timedelta(days=8),
+    )
+    details = await expiry_details(conn, created.organization_id)
+    assert details["effective_status"] == "expired"
+    assert details["owner_name"] == "Asha K"
+    assert details["retention_days"] == 30
+
+    org = created.organization_id
+    assert await record_continue_request(
+        conn, org, user_id=str(created.owner_user_id), via="whatsapp"
+    )
+    assert not await record_continue_request(conn, org, user_id="x", via="dashboard")
+    stored = await _one(
+        conn,
+        "SELECT value FROM organization_settings WHERE organization_id = :org "
+        "AND key = 'continue_requests'",
+        org=org,
+    )
+    assert len(stored["value"]) == 1 and stored["value"][0]["via"] == "whatsapp"

@@ -120,6 +120,23 @@ it with WA-06. For a site that sent nothing at all by the cutoff.
 
 Sample values: `{{1}}` = `Block A (Green Towers)`, `{{2}}` = `9:00 pm`.
 
+### `mesiri_trial_ending` — trial ending soon (SS-08)
+
+Sent to a trial company's owner 2 days before and on the last day of the free
+trial, when they haven't messaged Mesiri in the last 24 hours (inside the window
+the same reminder goes as plain text).
+
+| Field | Value |
+| --- | --- |
+| Name | `mesiri_trial_ending` |
+| Category | **Utility** |
+| Language | English (`en`) |
+| Body | `Your Mesiri free trial for {{1}} ends on {{2}}. Reply CONTINUE and our team will call you to keep your daily reports going.` |
+
+Sample values: `{{1}}` = `Suresh Builders`, `{{2}}` = `22 Oct`.
+
+To switch it on: add `mesiri_trial_ending` to `WHATSAPP_APPROVED_TEMPLATES`.
+
 ## Who receives the DPR, and opt-in (BE-15)
 
 - Each project can have its own DPR list (`/dpr/projects/{id}/recipients`):
@@ -139,5 +156,7 @@ Sample values: `{{1}}` = `Block A (Green Towers)`, `{{2}}` = `9:00 pm`.
 ## Templates still to add
 
 Each is declared and submitted by its own tracker item: welcome / opt-in
-(WA-09), trial messages (SS-08, SS-12). The evening review (WA-04) and the
-no-update reminder (WA-06) are above. The login code (SS-06) is above. Getting them all approved is WA-10.
+(WA-09), team invite (SS-13, text in docs/plans/onboarding-plan.md), SS-12.
+The evening review (WA-04), the no-update reminder (WA-06), the trial
+ending (SS-08) and the login code (SS-06) are above. Getting them all
+approved is WA-10.

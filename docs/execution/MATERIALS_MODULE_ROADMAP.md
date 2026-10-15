@@ -17,6 +17,27 @@ append-only corrections, WhatsApp capture with disambiguation, mobile read views
 **Done (Phase 1):** Purchase History, Purchase Details, KPI cards, search, filter, sort,
 responsive layout, empty states. *Currently uncommitted in the working tree.*
 
+**Done (V1 tracker, 15 Oct 2026):**
+- **Units:** `cft` and `load` units (BE-39, migration 0474).
+- **Opening stock (BE-12, 0477):** an `OPENING_STOCK` inflow reason, ADMIN/PM only, once per
+  site+material; it can be entered again after a correction.
+- **DPR stock lines (BE-12):** the DPR materials section shows opening, received, adjusted, used
+  and closing per material. Opening stock and adjustments are no longer counted as deliveries.
+  Usage beyond known stock is flagged (`beyond_stock`, `stock_flags`, a PDF line), never blocked.
+- **Transfers between sites (BE-32, 0479):** `POST /materials/transfers` writes both halves in
+  one transaction, linked by `transfer_id`, and works across projects. A transfer is corrected
+  only as a pair.
+- **Dashboard (WEB-11):** opening stock in Record Inflow, a Transfer dialog, a Transfers tab, and
+  transfer-aware corrections.
+- **Bugs fixed on the way:**
+  - Corrections crashed: the repository tables had no `unit_id`.
+  - The ledger endpoint used `sa.coalesce`, which isn't SQLAlchemy API.
+  - The catalog response had no `default_unit_id`, so dashboard writes had no unit.
+- **Still open:**
+  - No WhatsApp transfer command.
+  - No approval queue for adjustments a supervisor proposes.
+  - The starter sand/aggregate unit is still `cum`, pending clients (BE-40).
+
 **Architecture that must not be disturbed:** one canonical ledger writer
 (`posting.py::post_material_movement`), one transaction per request, stock derived by `SUM`
 and never stored, corrections as opposite-direction rows and never edits. Everything in this
