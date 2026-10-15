@@ -195,7 +195,7 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | SS-10 | Superadmin: trial defaults, per-company extend / convert / suspend, days used and activity | M | Must | SS-02 | todo | | |
 | SS-11 | Superadmin: trials funnel (started → first update → first DPR → converted) and cost per trial | M | Must | SS-10, BE-25 | todo | | |
 | SS-12 | Message templates for self-serve: login code (authentication), join request, trial reminders | S | Must | SS-04, SS-05, SS-08 | todo | | Meta approval needed |
-| SS-13 | Add a team member by sharing a WhatsApp contact: owner/PM shares a contact card → person added to the company and site → they get a welcome message telling them how to report | M | Must | SS-04 | claimed | Claude (session 15 Oct, onboarding, Lane A) | From the onboarding plan (15 Oct): contacts are shared, not typed |
+| SS-13 | Add a team member by sharing a WhatsApp contact: owner/PM shares a contact card → person added to the company and site → they get a welcome message telling them how to report | M | Must | SS-04 | done | Claude (session 15 Oct, onboarding, Lane A) | `3032686`. Reuses CREATE_USER → ADD_PROJECT_MEMBER (two confirm taps for a new number, one for someone already in the company); other company refused; project picker; then a ready-to-forward invite with a wa.me link (Mesiri can't message them first without a template); their Hi gets the existing first-message intro. Proposed SS-12 invite template text in onboarding-plan.md |
 
 ---
 
@@ -260,3 +260,4 @@ Claude Code as a team member: listens to the team and customer WhatsApp groups, 
 | 2026-10-15 | SS-03 one create-company step (+ BE-02 single provisioning path) | `c84cc5d` |
 | 2026-10-15 | BE-24 starter materials for every new company | `9c938da` |
 | 2026-10-15 | SS-04 WhatsApp signup for unknown numbers (off until switched on) | `aa5f9bc` |
+| 2026-10-15 | SS-13 add a teammate by sharing their WhatsApp contact | `3032686` |
