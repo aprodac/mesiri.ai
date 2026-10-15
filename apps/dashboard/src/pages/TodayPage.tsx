@@ -13,9 +13,10 @@ import {
   type SiteIssueItem,
 } from '@/lib/api'
 import { useToast } from '@/components/ui/toast-notification'
+import { GettingStartedCard } from '@/components/getting-started-card'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { cn } from '@/lib/utils'
+import { cn, formatClock } from '@/lib/utils'
 
 // Today page (WEB-03): every site's working day, grouped by project, with
 // what is missing and where each project's DPR stands. Data comes from
@@ -39,15 +40,6 @@ const FROZEN = ['approved', 'published']
 function localIsoDate(d: Date): string {
   const offset = d.getTimezoneOffset() * 60_000
   return new Date(d.getTime() - offset).toISOString().slice(0, 10)
-}
-
-function formatClock(hhmm: string | null | undefined): string | null {
-  if (!hhmm) return null
-  const [h, m] = hhmm.split(':').map(Number)
-  if (Number.isNaN(h) || Number.isNaN(m)) return hhmm
-  const suffix = h >= 12 ? 'pm' : 'am'
-  const hour = h % 12 === 0 ? 12 : h % 12
-  return `${hour}:${String(m).padStart(2, '0')} ${suffix}`
 }
 
 function formatTime(iso: string | null): string | null {
@@ -325,6 +317,8 @@ export default function TodayPage() {
           Refresh
         </Button>
       </header>
+
+      <GettingStartedCard />
 
       <section aria-label="Summary" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="rounded-xl border bg-card px-5 py-4 flex flex-col gap-1">

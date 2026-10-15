@@ -1045,3 +1045,10 @@ async def list_conversation_messages(
         )
 
     return items
+
+
+# The getting-started checklist (SS-07), served under the same /company prefix.
+# Imported last so its module can't see a half-built router.
+from mesiri.domains.organizations.setup_router import router as _setup_router  # noqa: E402
+
+router.include_router(_setup_router)

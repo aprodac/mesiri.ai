@@ -1958,3 +1958,29 @@ export async function fetchAutomationRunsApi(automationId: string): Promise<Auto
 }
 
 
+
+// Getting-started checklist (SS-07): backend/src/mesiri/domains/organizations/setup_router.py.
+// Every item is worked out from what already happened; nothing is ticked by hand.
+export interface SetupProgress {
+  has_team: boolean
+  has_site: boolean
+  has_logo: boolean
+  report_time_set: boolean
+  first_update_at: string | null
+  first_dpr_sent_at: string | null
+  first_project: { id: string; name: string; send_time: string } | null
+  effective_status: string
+  trial_days_left: number | null
+}
+
+export async function fetchSetupProgress(): Promise<SetupProgress> {
+  const res = await api.get<SetupProgress>('/company/setup-progress')
+  return res.data
+}
+
+/** "The default report time is fine": the one item the data can't show.
+ * Answers the WhatsApp setup question too (SS-14), so it isn't asked again. */
+export async function confirmReportTime(): Promise<SetupProgress> {
+  const res = await api.post<SetupProgress>('/company/setup-progress/report-time-ok')
+  return res.data
+}

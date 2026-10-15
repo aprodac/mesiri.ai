@@ -48,6 +48,7 @@ nudges and trial reminders need Meta-approved templates (SS-12). Apply early.
 | 4 | Add a team member by sharing a contact; invite to forward | SS-13 (**done**) |
 | 5 | One-screen create form + companies list in the control panel | SA-01, SA-02 (**done**) |
 | 6 | Daily setup questions (letterhead/logo photos → team, report time, more sites) | SS-14 (**done**, WhatsApp side); control-panel requests list: Lane B |
+| 6b | Getting-started checklist on the dashboard's Today page | SS-07 (**done**) |
 | 7 | Trial reminders, expiry, limits, superadmin trial controls | SS-08 to SS-10 |
 
 ## The create-company step (SS-03, built 15 Oct)
@@ -255,3 +256,29 @@ The owner sends photos on WhatsApp, and we fill in the letterhead from the contr
   requests are still saved for the control panel.
 - **Not included yet:** "who else gets the report?". It waits for WA-09 (opt-in),
   because outside contacts receive nothing until they opt in.
+
+## Getting-started checklist (SS-07, built 15 Oct)
+
+A card at the top of **Today** for company admins
+(`apps/dashboard/src/components/getting-started-card.tsx`), fed by
+`GET /company/setup-progress` (`backend/.../domains/organizations/setup_router.py`).
+Nothing is ticked by hand: every item comes from what happened.
+
+- **One definition of "done":** the card uses the same setup read as the control
+  panel's companies list (`companies_overview.py`, SA-02), extended with two items.
+  The owner and the Mesiri team always see the same progress.
+- **Items:** first site · site supervisor (an active user besides the owner) · first
+  update from site · report time · logo on the report · first DPR sent. Each open
+  item links to where it's done (Team, Project → Reporting, Company → Letterhead),
+  plus the trial days left.
+- **Report time** is the one item the data can't show (keeping 9 pm looks like never
+  looking). It counts as done when a project's time was changed from 18:00 / 21:00,
+  or the report-time setup question was **answered**, on WhatsApp (SS-14) or with the
+  card's "9:00 pm is fine" (`POST /company/setup-progress/report-time-ok`). Both write
+  SS-14's own `setup_progress` record, so neither side asks again. A skipped question
+  doesn't count.
+- **Logo:** done when the letterhead has a logo (`branding.logo_object_key`). A
+  branding request sent on WhatsApp (SS-14) ticks it once the team has uploaded the
+  logo.
+- **Hiding:** gone for good once everything is done; "Hide for now" is remembered in
+  that browser only.
