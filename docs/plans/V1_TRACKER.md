@@ -196,6 +196,7 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | SS-11 | Superadmin: trials funnel (started → first update → first DPR → converted) and cost per trial | M | Must | SS-10, BE-25 | todo | | |
 | SS-12 | Message templates for self-serve: login code (authentication), join request, trial reminders | S | Must | SS-04, SS-05, SS-08 | todo | | Meta approval needed |
 | SS-13 | Add a team member by sharing a WhatsApp contact: owner/PM shares a contact card → person added to the company and site → they get a welcome message telling them how to report | M | Must | SS-04 | done | Claude (session 15 Oct, onboarding, Lane A) | `3032686`. Reuses CREATE_USER → ADD_PROJECT_MEMBER (two confirm taps for a new number, one for someone already in the company); other company refused; project picker; then a ready-to-forward invite with a wa.me link (Mesiri can't message them first without a template); their Hi gets the existing first-message intro. Proposed SS-12 invite template text in onboarding-plan.md |
+| SS-14 | Daily setup questions on WhatsApp after signup: one question a day when useful (letterhead/visiting-card photo → logo, address, GSTIN; who else gets the report; report time; more sites) | M | Must | SS-04, BE-20, BE-15 | claimed | Claude (session 15 Oct, onboarding, Lane A) | From the onboarding plan (15 Oct). Overlaps WA-13 (logo by WhatsApp image) |
 
 ---
 
