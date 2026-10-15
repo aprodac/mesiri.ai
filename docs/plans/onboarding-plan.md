@@ -47,7 +47,7 @@ nudges and trial reminders need Meta-approved templates (SS-12). Apply early.
 | 3b | Web signup and dashboard login by WhatsApp code | SS-06 + WEB-12 (**done**, off until switched on) |
 | 4 | Add a team member by sharing a contact; invite to forward | SS-13 (**done**) |
 | 5 | One-screen create form + companies list in the control panel | SA-01 (**done**), SA-02 |
-| 6 | Daily setup questions (letterhead photo → branding, recipients, report time) | SS-07 + new |
+| 6 | Daily setup questions (letterhead/logo photos → team, report time, more sites) | SS-14 (**done**, WhatsApp side); control-panel requests list: Lane B |
 | 7 | Trial reminders, expiry, limits, superadmin trial controls | SS-08 to SS-10 |
 
 ## The create-company step (SS-03, built 15 Oct)
@@ -197,3 +197,39 @@ yours, for signing up or for logging in to the dashboard without a password.
 - **To switch on:** get the template approved, add it to
   `WHATSAPP_APPROVED_TEMPLATES`, and (for signup) turn on `self_serve.signup_enabled`.
   Code login works as soon as the template is approved, even with signup off.
+
+## Daily setup questions (SS-14, built 15 Oct)
+
+Decided 15 Oct: the **logo and letterhead are set up by the Mesiri team, not read by AI**.
+The owner sends photos on WhatsApp, and we fill in the letterhead from the control panel.
+
+- **Code:** `apps/whatsapp-assistant/src/runtime/setup_questions.py`. The rules are in
+  `backend/src/mesiri/domains/organizations/setup_questions.py`.
+- **When questions go out:** to the owner (ADMIN) only, at most one a day, right
+  after Mesiri replies to one of their own messages. That keeps them inside
+  WhatsApp's 24-hour window, so no template is needed. Nothing is asked while a
+  confirmation or question is open, or more than 30 days after the company was
+  created. Each question is asked once; answered or skipped, it isn't repeated.
+- **The questions, in order:**
+  1. **Letterhead / visiting card / logo photos.** Photos sent in the next 30
+     minutes are saved as one **branding request** (`organization_settings`
+     key `branding_requests`). Each photo is posted to the Mesiri team WhatsApp
+     group through the teammate listener (`runtime/team_notify.py`).
+  2. **Report time:** 7 pm / 8 pm / keep 9 pm. This sets `dpr_send_deadline` on
+     every project of the company.
+  3. **Another site?** Starts the existing "add a site" workflow.
+- **Contract with the control panel:**
+  - Each branding request is `{id, status: open|done, created_at,
+    sent_by_user_id, files: [{object_key, content_type, received_at}], done_at,
+    owner_notified}`.
+  - The team fills the letterhead in (the existing branding setting and logo
+    upload), then sets `status: "done"` and `done_at`.
+  - The owner hears "✅ Your letterhead is set up" on their next message, within
+    3 hours.
+  - The progress per question is in `setup_progress`.
+  - The generic settings API refuses both keys.
+- **To switch the team-group posts on**, the app needs `TEAMMATE_TOKEN` (the
+  listener's token) in its environment. Without it nothing is posted, but the
+  requests are still saved for the control panel.
+- **Not included yet:** "who else gets the report?". It waits for WA-09 (opt-in),
+  because outside contacts receive nothing until they opt in.

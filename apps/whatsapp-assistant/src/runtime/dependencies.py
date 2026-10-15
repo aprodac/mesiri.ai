@@ -876,6 +876,21 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         workflow_runtime=workflow_runtime,
     )
 
+    # SS-14: one setup question a day for a new company's owner; letterhead
+    # and logo photos go to the Mesiri team's WhatsApp group.
+    from runtime.inbound_journey import start_project_setup_followup
+    from runtime.setup_questions import SetupQuestions
+    from runtime.team_notify import TeamNotifier
+
+    setup_questions = SetupQuestions(
+        db=material_db,
+        redis=redis_client,
+        storage=object_storage,
+        notifier=TeamNotifier(),
+        workflow_runtime=workflow_runtime,
+        start_site_followup=start_project_setup_followup,
+    )
+
     from runtime.message_journey import build_message_handlers
 
     _on_normalized, _mark_read_on_claim = build_message_handlers(
@@ -938,6 +953,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         memory_coordinator=memory_coordinator,
         signup_journey=signup_journey,
         contact_share=contact_share,
+        setup_questions=setup_questions,
     )
 
     receiver = WhatsAppReceiver(
