@@ -19,6 +19,7 @@ from channel.whatsapp.outbound import WhatsAppSender
 from channel.whatsapp.templates import (
     DPR_DELIVERY,
     LOGIN_CODE,
+    SITE_DAY_REVIEW,
     approved_template_names,
     choose_template,
     clean_param,
@@ -191,6 +192,11 @@ class _FakeSender:
 
     async def send_template(self, wa_id, **kwargs):
         self.templates.append((wa_id, kwargs))
+        return True
+
+    async def send_button(self, wa_id, *, body, buttons):
+        self.buttons = getattr(self, "buttons", [])
+        self.buttons.append((wa_id, body, [(b.id, b.title) for b in buttons]))
         return True
 
 
@@ -524,3 +530,99 @@ def test_utc_counts_as_not_set_and_falls_through():
     assert pick(project_timezone="UTC", org_timezone="Asia/Dubai") == "Asia/Dubai"
     assert pick(project_timezone="UTC", org_timezone="UTC") == "Asia/Kolkata"
     assert pick(project_timezone=None, org_timezone=None) == "Asia/Kolkata"
+
+
+# --- WA-04: quick replies, buttons, the evening review's send time ----------------
+
+
+def _review_payload(button_payloads=("sdr:open:s1:20261015",)):
+    return {
+        "message": "Block A is missing the labour count.",
+        "buttons": [{"id": "sdr:closed:s1:20261015", "title": "Site closed today"}],
+        "template": {
+            "name": SITE_DAY_REVIEW.name,
+            "body_params": ["Block A", "Labour count is missing.", "9:00 pm"],
+            "button_payloads": list(button_payloads),
+        },
+    }
+
+
+def test_a_quick_reply_template_needs_a_payload_per_button():
+    approved = frozenset({SITE_DAY_REVIEW.name})
+    assert choose_template(_review_payload(button_payloads=()), approved).skip_reason == (
+        "template_buttons_mismatch:mesiri_site_day_review"
+    )
+    choice = choose_template(_review_payload(), approved)
+    assert choice.spec is SITE_DAY_REVIEW
+    assert choice.button_payloads == ("sdr:open:s1:20261015",)
+
+
+def test_a_template_without_buttons_must_not_be_given_payloads():
+    payload = _template_payload()
+    payload["template"]["button_payloads"] = ["x"]
+    assert choose_template(payload, APPROVED).skip_reason == "template_buttons_mismatch:mesiri_dpr_delivery"
+
+
+@pytest.mark.asyncio
+async def test_quick_reply_payloads_follow_the_cloud_api_shape():
+    captured: list[httpx.Request] = []
+    assert await _sender(captured).send_template(
+        "91",
+        name=SITE_DAY_REVIEW.name,
+        language="en",
+        body_params=("Block A", "Labour count is missing.", "9:00 pm"),
+        quick_reply_payloads=("sdr:open:s1:20261015",),
+    )
+    assert json.loads(captured[0].content)["template"]["components"][-1] == {
+        "type": "button",
+        "sub_type": "quick_reply",
+        "index": "0",
+        "parameters": [{"type": "payload", "payload": "sdr:open:s1:20261015"}],
+    }
+
+
+def _review_row(payload):
+    return {**_row(payload), "rule_key": "site_day_gap:s1", "project_id": "p1"}
+
+
+@pytest.mark.asyncio
+async def test_inside_the_window_a_row_with_buttons_is_sent_with_them(queue):
+    queue["rows"] = [_review_row(_review_payload())]
+    queue["last_inbound"] = datetime.now(tz=UTC) - timedelta(hours=1)
+    sender = _FakeSender()
+
+    assert await _drain(sender) == {"sent": 1, "skipped": 0}
+    assert sender.texts == []
+    assert sender.buttons == [
+        (
+            "919999999999",
+            "Block A is missing the labour count.",
+            [("sdr:closed:s1:20261015", "Site closed today")],
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_outside_the_window_the_review_goes_as_its_template_with_the_tap(queue):
+    queue["rows"] = [_review_row(_review_payload())]
+    sender = _FakeSender()
+
+    assert await _drain(sender, approved=frozenset({SITE_DAY_REVIEW.name})) == {"sent": 1, "skipped": 0}
+    ((_, kwargs),) = sender.templates
+    assert kwargs["name"] == "mesiri_site_day_review"
+    assert kwargs["quick_reply_payloads"] == ("sdr:open:s1:20261015",)
+    assert kwargs["header_document"] is None
+
+
+@pytest.mark.asyncio
+async def test_the_evening_review_is_not_held_by_quiet_hours(queue, monkeypatch):
+    monkeypatch.setattr(checks, "is_quiet_hours", lambda *, local_now: True)
+    queue["rows"] = [
+        _review_row(_review_payload()),
+        {**_row({"message": "x"}), "id": "n2", "rule_key": "stuck_confirmation"},
+    ]
+    queue["last_inbound"] = datetime.now(tz=UTC) - timedelta(hours=1)
+    sender = _FakeSender()
+
+    assert await _drain(sender) == {"sent": 1, "skipped": 0}
+    assert queue["sent"] == ["n1"]  # the other row waits for the morning

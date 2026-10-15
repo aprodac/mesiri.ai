@@ -1321,6 +1321,15 @@ Reuse `Labour*.tsx` page structure, `kpi-card.tsx`, `bulk-action-bar.tsx`,
 - [ ] Read `reporting_cutoff_time` / `auto_generate_dpr` / `required_report_types`
 - [ ] "Who owes a report today" from `project_members`
 - [ ] Cutoff nudges + escalation
+  - [x] **Evening gap-check (WA-04, 15 Oct 2026).** Between a project's cutoff
+    and its send deadline, each site's engineer is told what their day is
+    missing (no work items / no labour count), with "Site closed today".
+    Replies are saved as usual and the day is refreshed within a tick, so a
+    filled gap turns it ready. Rules: `application/dpr/evening_review.py`;
+    reads/refresh: `application/projects/auto_dpr.py`; WhatsApp side:
+    `runtime/site_day_review.py`, run from the automation runner's tick.
+    Template: `mesiri_site_day_review` (docs/ops/whatsapp-templates.md).
+  - [ ] Confirmation of a ready day (WA-05), no-update reminder (WA-06)
 - [ ] Operations Overview compliance strip
 
 ### Phase 9 — Work Packages (spec "Phase 2")

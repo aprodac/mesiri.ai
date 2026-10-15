@@ -108,6 +108,7 @@ if TYPE_CHECKING:
     from runtime.reversal_query import ReversalTargetQueryService
     from runtime.setup_questions import SetupQuestions
     from runtime.signup_journey import SignupJourney
+    from runtime.site_day_review import SiteDayReview
     from runtime.site_issue_query import SiteIssueTargetQueryService
     from runtime.trial_journey import TrialJourney
     from runtime.vendor_query import VendorQueryService
@@ -177,6 +178,7 @@ def build_message_handlers(
     signup_journey: SignupJourney | None = None,
     contact_share: ContactShareJourney | None = None,
     setup_questions: SetupQuestions | None = None,
+    site_day_review: SiteDayReview | None = None,
     trial_journey: TrialJourney | None = None,
     reply_composer: ReplyComposer | None = None,
     user_language_store: UserLanguageStore | None = None,
@@ -611,6 +613,21 @@ def build_message_handlers(
                 await _send_spec(setup_reply, wa_id)
                 await message_logger.log_reply(
                     correlation_id=message.correlation_id, reply=setup_reply.text
+                )
+                await message_logger.mark_completed(correlation_id=message.correlation_id)
+                return
+
+        if site_day_review is not None:
+            # WA-04: a tap on the evening message about a site's day.
+            try:
+                review_reply = await site_day_review.handle_tap(message, ctx)
+            except Exception:  # noqa: BLE001 — a tap must always get some reply
+                _log.exception("site_day_review.tap_failed user=%s", ctx.user_id)
+                review_reply = ReplySpec(text="Sorry, that didn't work — please try again.")
+            if review_reply is not None:
+                await _send_spec(review_reply, wa_id)
+                await message_logger.log_reply(
+                    correlation_id=message.correlation_id, reply=review_reply.text
                 )
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
                 return
