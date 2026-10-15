@@ -18,7 +18,9 @@ Per company:
                          has_logo           a letterhead logo is uploaded
                          report_time_set    a project's report time was
                                             changed from the default, or the
-                                            owner said the default is fine
+                                            owner answered the report-time
+                                            question (setup_progress, SS-14:
+                                            on WhatsApp or the dashboard)
 
 Read-only, one query; at our number of companies the per-company subqueries
 cost nothing worth caching. The same setup block is the owner's
@@ -98,8 +100,8 @@ _SELECT = """
                 AND (p.reporting_cutoff_time <> :default_cutoff
                      OR p.dpr_send_deadline <> :default_send))
             OR EXISTS (SELECT 1 FROM organization_settings st
-              WHERE st.organization_id = o.id AND st.key = 'getting_started'
-                AND st.value ->> 'report_time_ok' = 'true')) AS report_time_set
+              WHERE st.organization_id = o.id AND st.key = 'setup_progress'
+                AND st.value -> 'report_time' ->> 'state' = 'answered')) AS report_time_set
     FROM organizations o
 """
 _DEFAULTS = {"default_cutoff": DEFAULT_CUTOFF_TIME, "default_send": DEFAULT_SEND_TIME}

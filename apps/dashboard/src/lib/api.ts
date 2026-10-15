@@ -1978,7 +1978,9 @@ export async function fetchSetupProgress(): Promise<SetupProgress> {
   return res.data
 }
 
-/** "The default report time is fine": the one item the data can't show. */
-export async function confirmReportTime(): Promise<void> {
-  await api.put('/company/settings', { key: 'getting_started', value: { report_time_ok: true } })
+/** "The default report time is fine": the one item the data can't show.
+ * Answers the WhatsApp setup question too (SS-14), so it isn't asked again. */
+export async function confirmReportTime(): Promise<SetupProgress> {
+  const res = await api.post<SetupProgress>('/company/setup-progress/report-time-ok')
+  return res.data
 }

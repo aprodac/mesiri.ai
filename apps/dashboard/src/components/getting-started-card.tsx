@@ -127,7 +127,7 @@ export function GettingStartedCard() {
   })
   const timeOk = useMutation({
     mutationFn: confirmReportTime,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['setup-progress'] }),
+    onSuccess: (data) => queryClient.setQueryData(['setup-progress'], data),
   })
 
   if (!isCompanyAdmin || hidden || !progress.data) return null

@@ -193,11 +193,11 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | SS-07 | Getting-started checklist in the dashboard (team, DPR time, logo, first update) | S | Must | SS-06 | claimed | Claude (session 15 Oct, onboarding, Lane D) | Overlaps SA-02's setup progress: plan proposes one shared computation |
 | SS-08 | Trial lifecycle: reminder messages, expiry behaviour (read-only dashboard, WhatsApp reply), data kept N days (setting) | M | Must | SS-02 | todo | | |
 | SS-09 | Guardrails: one active trial per phone, signup rate limits, per-trial AI and WhatsApp caps, flag suspicious signups | M | Must | SS-02, BE-25 | todo | | Protects cost and the shared number's quality rating |
-| SS-10 | Superadmin: trial defaults, per-company extend / convert / suspend, days used and activity | M | Must | SS-02 | todo | | |
+| SS-10 | Superadmin: trial defaults, per-company extend / convert / suspend, days used and activity | M | Must | SS-02 | claimed | Claude (session 15 Oct, onboarding, Lane B) | |
 | SS-11 | Superadmin: trials funnel (started → first update → first DPR → converted) and cost per trial | M | Must | SS-10, BE-25 | todo | | |
 | SS-12 | Message templates for self-serve: login code (authentication), join request, trial reminders | S | Must | SS-04, SS-05, SS-08 | todo | | Meta approval needed |
 | SS-13 | Add a team member by sharing a WhatsApp contact: owner/PM shares a contact card → person added to the company and site → they get a welcome message telling them how to report | M | Must | SS-04 | done | Claude (session 15 Oct, onboarding, Lane A) | `3032686`. Reuses CREATE_USER → ADD_PROJECT_MEMBER (two confirm taps for a new number, one for someone already in the company); other company refused; project picker; then a ready-to-forward invite with a wa.me link (Mesiri can't message them first without a template); their Hi gets the existing first-message intro. Proposed SS-12 invite template text in onboarding-plan.md |
-| SS-14 | Daily setup questions on WhatsApp after signup: one question a day when useful (letterhead/visiting-card photo → logo, address, GSTIN; who else gets the report; report time; more sites) | M | Must | SS-04, BE-20, BE-15 | claimed | Claude (session 15 Oct, onboarding, Lane A) | From the onboarding plan (15 Oct). Overlaps WA-13 (logo by WhatsApp image) |
+| SS-14 | Daily setup questions on WhatsApp after signup: one question a day when useful (letterhead/visiting-card/logo photos → Mesiri team; report time; more sites) | M | Must | SS-04, BE-20, BE-15 | done | Claude (session 15 Oct, onboarding, Lane A) | `5bb21e1`. Decided 15 Oct: the team sets up letterhead/logo by hand from photos (no AI reading). Photos → `branding_requests` + team WhatsApp group (needs `TEAMMATE_TOKEN` in the app env); report time 7/8/9 pm; add a site. Control-panel list of branding requests: Lane B (SA). Recipients question waits for WA-09 |
 
 ---
 
@@ -267,3 +267,4 @@ Claude Code as a team member: listens to the team and customer WhatsApp groups, 
 | 2026-10-15 | SS-04 WhatsApp signup for unknown numbers (off until switched on) | `aa5f9bc` |
 | 2026-10-15 | SS-13 add a teammate by sharing their WhatsApp contact | `3032686` |
 | 2026-10-15 | BE-05 audit log of superadmin actions | `04c4479`, `fe2f8f0`, `12970f0` |
+| 2026-10-15 | SS-14 daily setup questions (letterhead photos → team, report time, more sites) | `5bb21e1` |

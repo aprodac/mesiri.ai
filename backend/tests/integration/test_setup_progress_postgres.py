@@ -12,7 +12,8 @@ from sqlalchemy import text
 
 from mesiri.application.organizations.create_company import NewCompany, create_company
 from mesiri.domains.organizations import settings as org_settings
-from mesiri.domains.organizations.setup_router import get_setup_progress
+from mesiri.domains.organizations import setup_questions
+from mesiri.domains.organizations.setup_router import get_setup_progress, keep_report_time
 from mesiri.infrastructure.postgres.repositories.organization_settings import (
     PostgresOrganizationSettingsRepository,
 )
@@ -49,7 +50,11 @@ async def _signup(conn, phone: str):
         ),
         now=_NOW,
     )
-    admin = {"sub": str(created.owner_user_id), "org": str(created.organization_id), "role": "ADMIN"}
+    admin = {
+        "sub": str(created.owner_user_id),
+        "org": str(created.organization_id),
+        "role": "ADMIN",
+    }
     return created, admin
 
 
@@ -76,7 +81,7 @@ async def test_logo_ticks_when_branding_holds_one(conn) -> None:
         text(
             "INSERT INTO organization_settings (id, organization_id, key, value, created_at, updated_at) "
             "VALUES (gen_random_uuid(), :org, 'branding', "
-            "CAST('{\"logo_object_key\": \"branding/x/logo.png\"}' AS jsonb), now(), now())"
+            'CAST(\'{"logo_object_key": "branding/x/logo.png"}\' AS jsonb), now(), now())'
         ),
         {"org": created.organization_id},
     )
@@ -94,17 +99,39 @@ async def test_report_time_ticks_when_changed(conn) -> None:
     assert progress.first_project.send_time == "19:30"
 
 
-async def test_report_time_ticks_when_the_default_is_kept_on_purpose(conn) -> None:
+async def test_keeping_the_default_in_the_dashboard_answers_the_whatsapp_question(conn) -> None:
     created, admin = await _signup(conn, "+91 98765 20004")
-    repo = PostgresOrganizationSettingsRepository(conn)
-    await repo.set(
-        created.organization_id,
-        org_settings.GETTING_STARTED,
-        org_settings.validate(org_settings.GETTING_STARTED, {"report_time_ok": True}),
-        updated_by=created.owner_user_id,
+    progress = await keep_report_time(admin=admin, conn=conn)
+    assert progress.report_time_set is True
+
+    # Recorded in SS-14's own record, so WhatsApp won't ask it again.
+    stored = await PostgresOrganizationSettingsRepository(conn).get(
+        created.organization_id, org_settings.SETUP_PROGRESS
     )
-    assert (await get_setup_progress(admin=admin, conn=conn)).report_time_set is True
+    assert stored["report_time"]["state"] == setup_questions.ANSWERED
+    assert (
+        setup_questions.next_question(stored, today=_NOW.date(), company_created_on=_NOW.date())
+        != setup_questions.REPORT_TIME
+    )
 
     # Another company's answer is not this one's.
     _, other_admin = await _signup(conn, "+91 98765 20005")
     assert (await get_setup_progress(admin=other_admin, conn=conn)).report_time_set is False
+
+
+async def test_whatsapp_answer_ticks_it_but_a_skip_does_not(conn) -> None:
+    created, admin = await _signup(conn, "+91 98765 20006")
+    repo = PostgresOrganizationSettingsRepository(conn)
+
+    async def answer(state):
+        await repo.set(
+            created.organization_id,
+            org_settings.SETUP_PROGRESS,
+            setup_questions.record({}, setup_questions.REPORT_TIME, state, today=_NOW.date()),
+            updated_by=None,
+        )
+
+    await answer(setup_questions.SKIPPED)
+    assert (await get_setup_progress(admin=admin, conn=conn)).report_time_set is False
+    await answer(setup_questions.ANSWERED)
+    assert (await get_setup_progress(admin=admin, conn=conn)).report_time_set is True
