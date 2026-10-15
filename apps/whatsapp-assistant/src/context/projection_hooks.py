@@ -16,9 +16,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from .identity_projection import EntityType, IdentityProjectionService
+
+if TYPE_CHECKING:
+    from mesiri.application.organizations.create_company import CreatedCompany
 
 _log = logging.getLogger("mesiri.context")
 _service: IdentityProjectionService | None = None
@@ -45,3 +49,16 @@ async def project_entity(entity_type: EntityType, entity_id: UUID) -> None:
         _log.exception(
             "context.projection_failed entity_type=%s entity_id=%s", entity_type, entity_id
         )
+
+
+async def project_new_company(created: CreatedCompany) -> None:
+    """Project everything the create-company step (SS-03) just committed,
+    so the owner's first WhatsApp message is recognised without waiting for
+    a reconcile. Shared by the superadmin's /provision and WhatsApp signup."""
+    await project_entity("organization", created.organization_id)
+    await project_entity("user", created.owner_user_id)
+    if created.project_id is not None:
+        await project_entity("project", created.project_id)
+    if created.site_id is not None:
+        await project_entity("site", created.site_id)
+    await project_entity("membership", created.owner_user_id)

@@ -49,6 +49,7 @@ async def test_whatsapp_owner_with_first_site_on_trial(conn) -> None:
             owner_phone="+91 98765 00001",
             project_name="Green Villa",
             site_name="Kakkanad",
+            auto_dpr=True,
             start_as="trial",
             signup_source="whatsapp",
         ),
@@ -73,6 +74,7 @@ async def test_whatsapp_owner_with_first_site_on_trial(conn) -> None:
     project = await _one(conn, "SELECT * FROM projects WHERE id = :id", id=created.project_id)
     assert project["name"] == "Green Villa"
     assert project["reporting_timezone"] == "Asia/Kolkata"
+    assert project["auto_generate_dpr"] is True
     site = await _one(conn, "SELECT * FROM sites WHERE id = :id", id=created.site_id)
     assert site["name"] == "Kakkanad"
     assert site["project_id"] == created.project_id

@@ -67,7 +67,9 @@ def wired(monkeypatch):
 
     monkeypatch.setattr(admin_router, "get_engine", lambda: _Engine())
     monkeypatch.setattr(admin_router, "create_company", fake_create)
-    monkeypatch.setattr(admin_router, "project_entity", fake_project)
+    from context import projection_hooks
+
+    monkeypatch.setattr(projection_hooks, "project_entity", fake_project)
     return calls, result
 
 

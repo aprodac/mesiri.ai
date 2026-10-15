@@ -86,6 +86,7 @@ _projects = sa.Table(
     sa.Column("organization_id", sa.UUID(as_uuid=True)),
     sa.Column("name", sa.String),
     sa.Column("reporting_timezone", sa.String),
+    sa.Column("auto_generate_dpr", sa.Boolean),
 )
 _sites = sa.Table(
     "sites",
@@ -122,6 +123,10 @@ class NewCompany:
     project_name: str | None = None
     # Defaults to the project's name when a project is given without one.
     site_name: str | None = None
+    # Switch the first project's automatic DPR on (cutoff and send deadline
+    # keep their column defaults). Self-serve signups want a report the
+    # first evening; the superadmin keeps choosing per project.
+    auto_dpr: bool = False
     start_as: str = START_ACTIVE
     signup_source: str = "superadmin"
     deployment_type: str = DEFAULT_DEPLOYMENT_TYPE
@@ -209,6 +214,7 @@ def validate(new: NewCompany) -> NewCompany:
         owner_password=password,
         project_name=project,
         site_name=site,
+        auto_dpr=bool(new.auto_dpr),
         start_as=start_as,
         signup_source=source,
         deployment_type=(new.deployment_type or "").strip() or DEFAULT_DEPLOYMENT_TYPE,
@@ -307,6 +313,7 @@ async def create_company(
                 organization_id=org_id,
                 name=new.project_name,
                 reporting_timezone=new.timezone,
+                auto_generate_dpr=new.auto_dpr,
             )
         )
         site_id = uuid.uuid4()

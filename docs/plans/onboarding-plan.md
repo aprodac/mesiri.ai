@@ -43,7 +43,7 @@ nudges and trial reminders need Meta-approved templates (SS-12). Apply early.
 | --- | --- | --- |
 | 1 | One create-company step | SS-03 (**done**, includes BE-02) |
 | 2 | Starter materials seeded per new company | BE-24 (**done**); `cft`/`load` units BE-39 |
-| 3 | WhatsApp signup for unknown numbers | SS-04 |
+| 3 | WhatsApp signup for unknown numbers | SS-04 (**done**, off until switched on) |
 | 4 | Add a team member by sharing a contact; welcome message | new, with SS-05 |
 | 5 | One-screen create form + companies list in the control panel | SA-01, SA-02 |
 | 6 | Daily setup questions (letterhead photo → branding, recipients, report time) | SS-07 + new |
@@ -89,5 +89,27 @@ one deployed, and the backend copy) now calls this step.
 - **Response:** adds `signup_source`, `timezone`, `trial_started_at`,
   `trial_ends_at`, `owner_user_id`, `project_id`, `site_id`, `materials_seeded`.
 
-**Not in this step (yet):** a new project's automatic DPR stays off (column default);
-the WhatsApp signup (SS-04) decides whether a trial's first project switches it on.
+`auto_dpr=True` switches the first project's automatic DPR on (cutoff 18:00 and
+send by 21:00 keep their defaults); the WhatsApp signup uses it, the superadmin's
+`/provision` doesn't.
+
+## WhatsApp signup (SS-04, built 15 Oct)
+
+- **Code:** `apps/whatsapp-assistant/src/runtime/signup_journey.py`, with its state in
+  `interactions/signup_state.py` (Redis, keyed by WhatsApp number, 24 h).
+- **When it runs:** called from the unknown-number branch of `runtime/message_journey.py`,
+  only when the platform setting `self_serve.signup_enabled` is on. It's **off by
+  default**, and while off the old "not registered" reply is unchanged. Reading the
+  setting fails closed.
+- **The conversation:**
+  1. Welcome with buttons: **Start free trial** / **I'm in a company**.
+  2. "I'm in a company": ask your admin to add this number (join codes are SS-05).
+  3. "Start free trial": company name, then site name. The owner's name comes from
+     their WhatsApp profile and is asked only when the profile has none.
+  4. The company is created as a trial, source `whatsapp`, with the first site's
+     automatic DPR on and the starter materials. It is then projected, so the
+     owner's next message takes the normal path.
+- **Other replies:** "cancel" stops the signup. A voice note or photo gets "please type
+  it". If the number is already taken, the reply says it's already set up.
+- **Before switching it on in production:** guardrails (SS-09). There is no UI for the
+  switch yet (SS-10); today it's a `platform_settings` row.

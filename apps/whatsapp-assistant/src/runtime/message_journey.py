@@ -105,6 +105,7 @@ if TYPE_CHECKING:
     from runtime.project_detail_query import ProjectDetailQueryService
     from runtime.reply_language import ReplyComposer, UserLanguageStore
     from runtime.reversal_query import ReversalTargetQueryService
+    from runtime.signup_journey import SignupJourney
     from runtime.site_issue_query import SiteIssueTargetQueryService
     from runtime.vendor_query import VendorQueryService
     from runtime.workforce_query import WorkforceQueryService
@@ -170,6 +171,7 @@ def build_message_handlers(
     project_setup_offer_store: ProjectSetupOfferStore,
     memory_loader: ConversationMemoryLoader,
     memory_coordinator: ConversationMemoryCoordinator,
+    signup_journey: SignupJourney | None = None,
     reply_composer: ReplyComposer | None = None,
     user_language_store: UserLanguageStore | None = None,
 ) -> tuple[Any, Any]:
@@ -342,10 +344,13 @@ def build_message_handlers(
 
         if ctx is None:
             _log.info("context.sender_unregistered wa_id=%s", wa_id)
-            await sender.send_text(wa_id, UNREGISTERED_MESSAGE)
-            await message_logger.log_reply(
-                correlation_id=message.correlation_id, reply=UNREGISTERED_MESSAGE
-            )
+            # SS-04: when self-serve signup is on, an unknown number can start
+            # a free trial instead of hitting a dead end.
+            reply = await signup_journey.handle(message) if signup_journey else None
+            if reply is None:
+                reply = UNREGISTERED_MESSAGE
+                await sender.send_text(wa_id, reply)
+            await message_logger.log_reply(correlation_id=message.correlation_id, reply=reply)
             await message_logger.mark_completed(correlation_id=message.correlation_id)
             return
 

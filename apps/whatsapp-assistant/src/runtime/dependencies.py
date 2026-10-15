@@ -852,6 +852,19 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     actor_reader = PostgresActorReader()
     message_logger: MessageLogger = PostgresMessageLogger()
 
+    # SS-04: unknown numbers can start a free trial when self-serve signup is
+    # switched on (platform setting, off by default).
+    from context.projection_hooks import project_new_company
+    from interactions.signup_state import SignupStateStore
+    from runtime.signup_journey import SignupJourney
+
+    signup_journey = SignupJourney(
+        sender=sender,
+        store=SignupStateStore(redis_client),
+        db=material_db,
+        project_new_company=project_new_company,
+    )
+
     from runtime.message_journey import build_message_handlers
 
     _on_normalized, _mark_read_on_claim = build_message_handlers(
@@ -912,6 +925,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         project_setup_offer_store=project_setup_offer_store,
         memory_loader=memory_loader,
         memory_coordinator=memory_coordinator,
+        signup_journey=signup_journey,
     )
 
     receiver = WhatsAppReceiver(

@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from context.projection_hooks import project_entity
+from context.projection_hooks import project_entity, project_new_company
 from mesiri.application.organizations.create_company import (
     DEFAULT_DB_ROUTE,
     DEFAULT_DEPLOYMENT_TYPE,
@@ -1122,13 +1122,7 @@ async def provision_tenant(
 
     # After commit: make the new rows visible to the WhatsApp assistant, so the
     # owner's first message is recognised without waiting for a reconcile.
-    await project_entity("organization", created.organization_id)
-    await project_entity("user", created.owner_user_id)
-    if created.project_id is not None:
-        await project_entity("project", created.project_id)
-    if created.site_id is not None:
-        await project_entity("site", created.site_id)
-    await project_entity("membership", created.owner_user_id)
+    await project_new_company(created)
 
     return ProvisionResponse(
         id=created.organization_id,
