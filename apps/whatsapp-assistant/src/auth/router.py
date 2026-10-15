@@ -263,3 +263,10 @@ async def change_password(body: ChangePassword, authorization: str = Header(None
 # `organization_id` without authentication, so anyone could mint a platform-
 # admin token (role ADMIN, no org). Users are created only by an authenticated
 # admin (admin/router.py, admin/platform_users_router.py) or by provisioning.
+
+
+# Login by WhatsApp code and web signup (SS-06, WEB-12), served under the same
+# /auth prefix. Imported last: auth.code_login reads this module's helpers.
+from auth.code_login import router as _code_login_router  # noqa: E402
+
+router.include_router(_code_login_router)

@@ -262,12 +262,15 @@ class WhatsAppSender:
         body_params: tuple[str, ...] | list[str] = (),
         header_document: tuple[bytes, str] | None = None,
         mime_type: str = "application/pdf",
+        button_url_param: str | None = None,
     ) -> bool:
         """Send a Meta-approved template (WA-12) -- the only kind of message
         Meta delivers outside the 24h session window. `header_document` is
         (bytes, filename) for a template whose header is a document: it is
-        uploaded first, same two-step flow as send_document. Params are
-        sent as given; channel/whatsapp/templates.py cleans them."""
+        uploaded first, same two-step flow as send_document.
+        `button_url_param` fills the first button's variable; an
+        authentication template's "Copy code" button takes the code here.
+        Params are sent as given; channel/whatsapp/templates.py cleans them."""
         if not self.enabled:
             logger.warning("WhatsApp sender disabled (missing phone_number_id/access_token)")
             return False
@@ -291,6 +294,15 @@ class WhatsAppSender:
                 {
                     "type": "body",
                     "parameters": [{"type": "text", "text": str(p)} for p in body_params],
+                }
+            )
+        if button_url_param is not None:
+            components.append(
+                {
+                    "type": "button",
+                    "sub_type": "url",
+                    "index": "0",
+                    "parameters": [{"type": "text", "text": str(button_url_param)}],
                 }
             )
 

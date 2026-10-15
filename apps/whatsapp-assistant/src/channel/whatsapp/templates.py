@@ -56,7 +56,18 @@ DPR_DELIVERY = TemplateSpec(
     header="document",
 )
 
-TEMPLATES: dict[str, TemplateSpec] = {spec.name: spec for spec in (DPR_DELIVERY,)}
+#: A one-time login / signup code (SS-06, WEB-12). An AUTHENTICATION
+#: template: Meta fixes the wording, "{{1}} is your verification code.", plus
+#: the security line, a 10-minute expiry footer and a "Copy code" button. The
+#: code is sent twice, as the body param and as the button's url param.
+LOGIN_CODE = TemplateSpec(
+    name="mesiri_login_code",
+    language="en",
+    category="AUTHENTICATION",
+    body_param_count=1,
+)
+
+TEMPLATES: dict[str, TemplateSpec] = {spec.name: spec for spec in (DPR_DELIVERY, LOGIN_CODE)}
 
 
 def approved_template_names(raw: str | None) -> frozenset[str]:

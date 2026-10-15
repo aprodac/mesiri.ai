@@ -18,6 +18,7 @@ import runtime.notification_query as notification_query
 from channel.whatsapp.outbound import WhatsAppSender
 from channel.whatsapp.templates import (
     DPR_DELIVERY,
+    LOGIN_CODE,
     approved_template_names,
     choose_template,
     clean_param,
@@ -128,6 +129,30 @@ async def test_send_template_payload_matches_cloud_api_shape():
             },
         ],
     }
+
+
+@pytest.mark.asyncio
+async def test_login_code_template_sends_the_code_to_body_and_copy_button():
+    # SS-06: an authentication template takes the code twice -- body {{1}}
+    # and the "Copy code" button's url parameter.
+    captured: list[httpx.Request] = []
+    ok = await _sender(captured).send_template(
+        "919999999999",
+        name=LOGIN_CODE.name,
+        language=LOGIN_CODE.language,
+        body_params=("482913",),
+        button_url_param="482913",
+    )
+    assert ok is True
+    assert json.loads(captured[0].content)["template"]["components"] == [
+        {"type": "body", "parameters": [{"type": "text", "text": "482913"}]},
+        {
+            "type": "button",
+            "sub_type": "url",
+            "index": "0",
+            "parameters": [{"type": "text", "text": "482913"}],
+        },
+    ]
 
 
 @pytest.mark.asyncio
