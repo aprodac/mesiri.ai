@@ -76,9 +76,12 @@ jobs:
           # Optional: a dev-only test account so the bot's screenshots of dev.mercon.tech are signed in.
           TEAMMATE_DEV_LOGIN_USER: ${{ secrets.TEAMMATE_DEV_LOGIN_USER }}
           TEAMMATE_DEV_LOGIN_PASSWORD: ${{ secrets.TEAMMATE_DEV_LOGIN_PASSWORD }}
+          # Optional: a test account on the Mesiri dashboard (app.whatsapp.mesiri.ai) for signed-in screenshots.
+          TEAMMATE_DEV_LOGIN_MESIRI_USER: ${{ secrets.TEAMMATE_DEV_LOGIN_MESIRI_USER }}
+          TEAMMATE_DEV_LOGIN_MESIRI_PASSWORD: ${{ secrets.TEAMMATE_DEV_LOGIN_MESIRI_PASSWORD }}
         run: |
           ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
-            "TEAMMATE_API_TOKEN='${TEAMMATE_API_TOKEN}' TEAMMATE_GEMINI_API_KEY='${TEAMMATE_GEMINI_API_KEY}' TEAMMATE_CLAUDE_TOKEN='${TEAMMATE_CLAUDE_TOKEN}' TEAMMATE_GITHUB_TOKEN='${TEAMMATE_GITHUB_TOKEN}' TEAMMATE_ROUTINE_MERCON_URL='${TEAMMATE_ROUTINE_MERCON_URL}' TEAMMATE_ROUTINE_MERCON_TOKEN='${TEAMMATE_ROUTINE_MERCON_TOKEN}' TEAMMATE_GITHUB_TOKEN_MESIRI='${TEAMMATE_GITHUB_TOKEN_MESIRI}' TEAMMATE_ROUTINE_MESIRI_URL='${TEAMMATE_ROUTINE_MESIRI_URL}' TEAMMATE_ROUTINE_MESIRI_TOKEN='${TEAMMATE_ROUTINE_MESIRI_TOKEN}' TEAMMATE_DEV_LOGIN_USER='${TEAMMATE_DEV_LOGIN_USER}' TEAMMATE_DEV_LOGIN_PASSWORD='${TEAMMATE_DEV_LOGIN_PASSWORD}' bash -s" << 'ENDSSH'
+            "TEAMMATE_API_TOKEN='${TEAMMATE_API_TOKEN}' TEAMMATE_GEMINI_API_KEY='${TEAMMATE_GEMINI_API_KEY}' TEAMMATE_CLAUDE_TOKEN='${TEAMMATE_CLAUDE_TOKEN}' TEAMMATE_GITHUB_TOKEN='${TEAMMATE_GITHUB_TOKEN}' TEAMMATE_ROUTINE_MERCON_URL='${TEAMMATE_ROUTINE_MERCON_URL}' TEAMMATE_ROUTINE_MERCON_TOKEN='${TEAMMATE_ROUTINE_MERCON_TOKEN}' TEAMMATE_GITHUB_TOKEN_MESIRI='${TEAMMATE_GITHUB_TOKEN_MESIRI}' TEAMMATE_ROUTINE_MESIRI_URL='${TEAMMATE_ROUTINE_MESIRI_URL}' TEAMMATE_ROUTINE_MESIRI_TOKEN='${TEAMMATE_ROUTINE_MESIRI_TOKEN}' TEAMMATE_DEV_LOGIN_USER='${TEAMMATE_DEV_LOGIN_USER}' TEAMMATE_DEV_LOGIN_PASSWORD='${TEAMMATE_DEV_LOGIN_PASSWORD}' TEAMMATE_DEV_LOGIN_MESIRI_USER='${TEAMMATE_DEV_LOGIN_MESIRI_USER}' TEAMMATE_DEV_LOGIN_MESIRI_PASSWORD='${TEAMMATE_DEV_LOGIN_MESIRI_PASSWORD}' bash -s" << 'ENDSSH'
           set -euo pipefail
 
           # Node >= 22.13 (node:sqlite). Install Node 22 from NodeSource if missing/older.
@@ -118,10 +121,15 @@ jobs:
             {
               printf 'TEAMMATE_API_TOKEN=%s\nTEAMMATE_API=http://127.0.0.1:8790\nTEAMMATE_BRAIN_PORT=8791\n' "$TEAMMATE_API_TOKEN"
               printf 'TEAMMATE_BRAIN_PROJECTS=mercon=aprodac/MERCON@ilan,mesiri=StarShape-in/mesiri.ai@main\n'
-              # Dev sites only (never production or this server's own local addresses).
-              printf 'TEAMMATE_BRAIN_SCREENSHOT_HOSTS=dev.mercon.tech,track-dev.mercon.tech\n'
+              # Mercon dev sites and the Mesiri dashboard (Mesiri has no dev site); never this server's own
+              # local addresses. Screenshots only look, signed in with a test account, never a real user's.
+              printf 'TEAMMATE_BRAIN_SCREENSHOT_HOSTS=dev.mercon.tech,track-dev.mercon.tech,app.whatsapp.mesiri.ai\n'
+              trim() { printf %s "$1" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'; }
+              if [ -n "${TEAMMATE_DEV_LOGIN_MESIRI_USER:-}" ] && [ -n "${TEAMMATE_DEV_LOGIN_MESIRI_PASSWORD:-}" ]; then
+                printf 'TEAMMATE_DEV_LOGIN_MESIRI_HOST=app.whatsapp.mesiri.ai\nTEAMMATE_DEV_LOGIN_MESIRI_USER=%s\nTEAMMATE_DEV_LOGIN_MESIRI_PASSWORD=%s\n' \
+                  "$(trim "$TEAMMATE_DEV_LOGIN_MESIRI_USER")" "$(trim "$TEAMMATE_DEV_LOGIN_MESIRI_PASSWORD")"
+              fi
               if [ -n "${TEAMMATE_DEV_LOGIN_USER:-}" ] && [ -n "${TEAMMATE_DEV_LOGIN_PASSWORD:-}" ]; then
-                trim() { printf %s "$1" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'; }
                 printf 'TEAMMATE_DEV_LOGIN_HOST=dev.mercon.tech\nTEAMMATE_DEV_LOGIN_USER=%s\nTEAMMATE_DEV_LOGIN_PASSWORD=%s\n' \
                   "$(trim "$TEAMMATE_DEV_LOGIN_USER")" "$(trim "$TEAMMATE_DEV_LOGIN_PASSWORD")"
               fi

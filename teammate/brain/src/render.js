@@ -2,22 +2,28 @@
 // Headless Chromium via playwright-core; the browser is installed by the deploy
 // workflow into PLAYWRIGHT_BROWSERS_PATH (/opt/pw-browsers).
 //
-// Dev-site login (optional): with TEAMMATE_DEV_LOGIN_HOST / _USER / _PASSWORD set, a page on that host that
-// redirects to /login is signed in with that test account, and the session is kept in `stateFile` so later
-// screenshots don't log in again. The credentials stay in this process; Claude only ever gets the picture.
+// Site logins (optional): one test account per host (Mercon dev site, Mesiri dashboard). A page on that host
+// that redirects to /login is signed in with that account, and the session is kept in a per-host state file
+// next to `stateFile` so later screenshots don't log in again. The credentials stay in this process; Claude
+// only ever gets the picture.
 
 import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { chromium } from "playwright-core";
 
 export function createRenderer({
   executablePath = process.env.TEAMMATE_CHROMIUM || undefined,
-  login = null, // { host, user, password, path? }
-  stateFile = null,
+  logins = [], // [{ host, user, password, path? }]
+  stateFile = null, // a file in the state folder; each host gets its own "<host>.login-state.json" beside it
 } = {}) {
-  async function withPage(viewport, fn, { javaScriptEnabled = true, blockNetwork = false, keepState = false } = {}) {
+  const loginFor = (url) => logins.find((l) => l.host === new URL(url).hostname) || null;
+  const stateFor = (url) => (stateFile ? join(dirname(stateFile), `${new URL(url).hostname}.login-state.json`) : null);
+
+  async function withPage(viewport, fn, { javaScriptEnabled = true, blockNetwork = false, stateFrom = null } = {}) {
     const browser = await chromium.launch({ headless: true, executablePath });
     try {
-      const storageState = keepState && stateFile && existsSync(stateFile) ? stateFile : undefined;
+      const state = stateFrom && stateFor(stateFrom);
+      const storageState = state && existsSync(state) ? state : undefined;
       const context = await browser.newContext({ viewport, javaScriptEnabled, deviceScaleFactor: 2, storageState });
       if (blockNetwork) await context.route("**/*", (r) => (r.request().url().startsWith("data:") ? r.continue() : r.abort()));
       const page = await context.newPage();
@@ -28,15 +34,17 @@ export function createRenderer({
   }
 
   async function signInIfAsked(page, context, url) {
-    if (!login || new URL(url).hostname !== login.host) return;
+    const login = loginFor(url);
+    if (!login) return;
     if (!new URL(page.url()).pathname.startsWith(login.path || "/login")) return;
-    await page.fill('input[name="username"]', login.user);
-    await page.fill('input[name="password"]', login.password);
+    // Mercon's form names its fields; Mesiri's dashboard uses an email input.
+    await page.locator('input[name="username"], input[name="email"], input[type="email"]').first().fill(login.user);
+    await page.locator('input[type="password"]').first().fill(login.password);
     await Promise.all([
       page.waitForURL((u) => !new URL(u).pathname.startsWith(login.path || "/login"), { timeout: 30_000 }),
       page.click('button[type="submit"]'),
     ]);
-    if (stateFile) await context.storageState({ path: stateFile });
+    if (stateFor(url)) await context.storageState({ path: stateFor(url) });
     await page.goto(url, { waitUntil: "networkidle", timeout: 45_000 });
   }
 
@@ -47,12 +55,12 @@ export function createRenderer({
         await page.setContent(html, { waitUntil: "load", timeout: 15_000 });
         return page.screenshot({ fullPage: true, type: "png" });
       }, { javaScriptEnabled: false, blockNetwork: true }),
-    /** A real page on an allowed host (checked by the caller); signs in to the dev site when it asks. */
+    /** A real page on an allowed host (checked by the caller); signs in when the site asks and has an account. */
     url: (url, width, fullPage) =>
       withPage({ width, height: 900 }, async (page, context) => {
         await page.goto(url, { waitUntil: "networkidle", timeout: 45_000 });
         await signInIfAsked(page, context, url);
         return page.screenshot({ fullPage, type: "png" });
-      }, { keepState: true }),
+      }, { stateFrom: url }),
   };
 }

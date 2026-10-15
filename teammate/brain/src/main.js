@@ -149,12 +149,12 @@ const listener = {
 let render = null;
 try {
   const L = process.env;
-  render = createRenderer({
-    login: L.TEAMMATE_DEV_LOGIN_HOST && L.TEAMMATE_DEV_LOGIN_USER && L.TEAMMATE_DEV_LOGIN_PASSWORD
-      ? { host: L.TEAMMATE_DEV_LOGIN_HOST, user: L.TEAMMATE_DEV_LOGIN_USER, password: L.TEAMMATE_DEV_LOGIN_PASSWORD }
-      : null,
-    stateFile: join(dir, "dev-login-state.json"),
-  });
+  // TEAMMATE_DEV_LOGIN_HOST/_USER/_PASSWORD (Mercon dev site) and TEAMMATE_DEV_LOGIN_MESIRI_HOST/... (Mesiri
+  // dashboard). All TEAMMATE_DEV_LOGIN_* are kept out of Claude's environment below.
+  const logins = ["TEAMMATE_DEV_LOGIN", "TEAMMATE_DEV_LOGIN_MESIRI"]
+    .map((p) => ({ host: L[`${p}_HOST`], user: L[`${p}_USER`], password: L[`${p}_PASSWORD`] }))
+    .filter((l) => l.host && l.user && l.password);
+  render = createRenderer({ logins, stateFile: join(dir, "login-state.json") });
 } catch (e) {
   log(`previews off: ${e.message}`);
 }
