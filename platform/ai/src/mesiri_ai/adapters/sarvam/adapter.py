@@ -21,6 +21,7 @@ from __future__ import annotations
 import io
 from typing import Any
 
+from ... import usage
 from ...core.fallback import call_with_resilience
 from ...models import SpeechResult
 
@@ -76,6 +77,17 @@ class SarvamSpeechProvider:
             timeout_seconds=self._settings.timeout_seconds,
             max_retries=self._settings.max_retries,
             correlation_id=correlation_id,
+        )
+        # BE-25: Sarvam bills by audio length, read from the Ogg file itself.
+        usage.report(
+            usage.ProviderUsage(
+                provider=self.provider,
+                operation="speech_to_text_translate",
+                model=_TRANSLATE_MODEL,
+                correlation_id=correlation_id,
+                latency_ms=latency_ms,
+                audio_seconds=usage.ogg_duration_seconds(audio),
+            )
         )
         return self._to_result(raw, latency_ms)
 
