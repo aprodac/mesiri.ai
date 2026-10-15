@@ -44,10 +44,18 @@ const FLOWS = {
     "work on branch ilan (pull first); commit and push to origin ilan; open a PR ilan -> dev with `gh pr create`; " +
     "when its CI passes, merge it into dev; then open (or update) the release PR dev -> main. Merge the release PR only when told in the group.",
   // TM-09: in this repo the bot only upgrades itself (teammate/), for its owner.
+  // Plan 25 (15 Oct, owner-approved): the whole Mesiri repo except .github/ and .env files, by CLAUDE.md.
   mesiri:
-    "this is the bot's own code. Change only teammate/, .claude/skills/ and the teammate rows of docs/plans/V1_TRACKER.md; " +
-    "say plainly in the plan if it touches your permissions or safety rules. Approved upgrades run in a cloud session that tests, " +
-    "pushes to main and redeploys the bot; only an owner can approve them.",
+    "follow CLAUDE.md exactly. Pushing to main deploys Mesiri production (incl. alembic upgrade head), so an approved plan " +
+    "IS a production deploy and only an owner can approve it. Work on main only (git checkout main; git pull origin main), no " +
+    "branches, logical commits. Before every push run the CLAUDE.md verification for what you touched: backend pytest " +
+    "--ignore=tests/integration + ruff on backend/src, backend/tests, backend/migrations; dashboard tsc -b --noEmit, oxlint, " +
+    "vite build; platform/ai pytest; whatsapp-assistant pytest with PYTHONPATH (~9 min); teammate/ npm test in listener and " +
+    "brain. Then pull, combine by hand, re-verify if the pull brought changes, push. Migrations: check the alembic head right " +
+    "before writing one and confirm there's no fork. Labour / Attendance / Payroll / Workforce or a shared component: say so " +
+    "plainly in the plan. Claim and mark the docs/plans/V1_TRACKER.md row with the commit hash, end with the CLAUDE.md phase " +
+    "report (Executive / Technical / Git summary, verified against the remote SHA) and say plainly what wasn't verified. " +
+    "Never touch .github/ or .env files. Changes under teammate/ are bot upgrades: label them so in the plan.",
 };
 
 function parseProjects(spec) {

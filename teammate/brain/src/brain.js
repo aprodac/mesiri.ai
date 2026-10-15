@@ -54,6 +54,9 @@ const DENY = [
   "Bash(env)", "Bash(env *)", "Bash(printenv*)", "Bash(gh auth *)", "Bash(gh secret *)", "Bash(gh api *)",
   "Read(**/.env)", "Read(**/.env.*)", "Bash(cat *.env*)",
   "Edit(**/.git/**)", "Write(**/.git/**)",
+  // Plan 25: the deploy pipeline / CI and secrets stay human-only.
+  "Edit(**/.github/**)", "Write(**/.github/**)", "Edit(**/.env*)", "Write(**/.env*)",
+  "Edit(infra/**/secrets*)", "Write(infra/**/secrets*)",
 ];
 
 export function systemAppend({ project, flow, owner }) {
@@ -277,7 +280,8 @@ export class Brain {
     const pending = Object.values(this.planStore.plans).filter((p) => (p.chat_project || p.project) === project && p.status === "proposed");
     const plan = item_id != null ? pending.find((p) => String(p.id) === String(item_id)) : pending.length === 1 ? pending[0] : null;
     const say = (text) => this.listener.send({ chat: reply_chat, project, text });
-    if (plan && plan.project === UPGRADE_PROJECT && project !== UPGRADE_PROJECT && sender_role !== "owner") {
+    // Any Mesiri plan (bot upgrade or product work) can deploy production: owners only, from any group (plan 25).
+    if (plan && plan.project === UPGRADE_PROJECT && sender_role !== "owner") {
       return say(`Only an owner can approve upgrades to the bot ([${plan.id}]).`);
     }
     if (!plan) {

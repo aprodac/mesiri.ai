@@ -414,3 +414,31 @@ test("brain (TM-09): upgrades run in the bot's repo with its token, answer in th
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("brain (plan 25): Mesiri plans need an owner from any group; .github/.env/secrets edits are denied", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "brain-"));
+  const sent = [];
+  const calls = [];
+  const brain = new Brain({
+    queryFn: ({ prompt, options }) => (calls.push(options), (async function* () {
+      yield { type: "result", subtype: "success", result: "done", session_id: "S", duration_ms: 1, total_cost_usd: 0, permission_denials: [] };
+    })()),
+    projects: { mesiri: { cwd: "/r/mesiri", flow: "claude.md", ghToken: "g" } },
+    dir,
+    listener: { send: async (b) => (sent.push(b), { ok: true }), addItem: async () => ({}), updateItem: async () => ({}) },
+    tools: () => ({}),
+  });
+  try {
+    brain.plans.save({ id: 40, project: "mesiri", chat_project: "mesiri", chat: "M@g.us", chat_name: "Mesiri group with ai", title: "Fix DPR export", plan: "edit backend", by: "Hysam" });
+    await brain.approve({ project: "mesiri", item_id: 40, by: "Hysam", reply_chat: "M@g.us", sender_role: "member" });
+    assert.match(sent.at(-1).text, /Only an owner can approve/);
+    assert.equal(calls.length, 0);
+    await brain.approve({ project: "mesiri", item_id: 40, by: "Ilan", reply_chat: "M@g.us", sender_role: "owner" });
+    assert.equal(calls.length, 1);
+    for (const rule of ["Edit(**/.github/**)", "Write(**/.github/**)", "Edit(**/.env*)", "Write(**/.env*)", "Edit(infra/**/secrets*)", "Write(infra/**/secrets*)"]) {
+      assert.ok(calls[0].disallowedTools.includes(rule), rule);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
