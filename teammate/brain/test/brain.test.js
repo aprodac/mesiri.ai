@@ -442,3 +442,57 @@ test("brain (plan 25): Mesiri plans need an owner from any group; .github/.env/s
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("tools (assistant test): sends to the project's assistant-test chat and returns its replies", async () => {
+  const sent = [];
+  let polls = 0;
+  const listener = {
+    send: async () => null,
+    sendStrict: async (b) => (sent.push(b), { ok: true }),
+    chats: async (project) => ({ chats: [{ jid: "G@g.us", role: "team", project }, { jid: "A@s.whatsapp.net", role: "assistant-test", project }] }),
+    messages: async () => {
+      polls++;
+      const out = [{ n: 1, from_me: true, kind: "text", text: "5 bags cement used" }];
+      if (polls >= 2) out.push({ n: 2, from_me: false, kind: "text", text: "Saved: 5 bags cement." });
+      if (polls >= 3) out.push({ n: 3, from_me: false, kind: "text", text: "Anything else?" });
+      return { messages: out };
+    },
+    media: async () => Promise.reject(new Error("none")),
+  };
+  const ctx = { project: "mesiri", chat: "T@g.us", chat_name: "Mesiri team", reply_chat: "T@g.us", sender: "Ilan" };
+  const server = brainTools({ ctx, listener, render: null, plans: { save: (p) => p }, screenshotHosts: [], wait: async () => {} });
+  const tools = Object.fromEntries(Object.entries(server.instance._registeredTools));
+  const call = (name, args) => (tools[name].callback || tools[name].handler)(args, {});
+
+  const r = await call("test_assistant", { text: "5 bags cement used" });
+  assert.deepEqual(sent[0], { chat: "A@s.whatsapp.net", project: "mesiri", text: "5 bags cement used" });
+  assert.match(r.content[0].text, /Assistant: Saved: 5 bags cement\.\nAssistant: Anything else\?/);
+  assert.doesNotMatch(r.content[0].text, /Assistant: 5 bags/); // its own message isn't a reply
+
+  assert.equal((await call("test_assistant", {})).isError, true);
+  assert.equal((await call("test_assistant", { image_path: "/etc/passwd" })).isError, true);
+
+  // No test chat for the project -> told what the owner must do; refusal from the listener is reported.
+  listener.chats = async () => ({ chats: [] });
+  const none = await call("test_assistant", { text: "x" });
+  assert.equal(none.isError, true);
+  assert.match(none.content[0].text, /needs_attention/);
+  listener.chats = async (project) => ({ chats: [{ jid: "A@s.whatsapp.net", role: "assistant-test", project }] });
+  listener.sendStrict = async () => Promise.reject(new Error("limit of 10 test messages per hour reached"));
+  assert.match((await call("test_assistant", { text: "x" })).content[0].text, /limit of 10/);
+});
+
+test("brain (DM): model changes and the system prompt stay private to the chat", async () => {
+  const { dir, sent, calls, ask } = setup((p, id) => ok("done", id));
+  try {
+    await ask("model sonnet", { sender_role: "owner", dm: true, chat_role: "dm" });
+    assert.match(sent.at(-1).text, /team group only/);
+    await ask("hi", { dm: true, chat_role: "dm", chat_name: "Ravi" });
+    assert.match(calls.at(-1).prompt, /\[WhatsApp · Ravi \(direct message\)/);
+    assert.match(calls.at(-1).options.systemPrompt.append, /private 1-on-1 chat/);
+    assert.doesNotMatch(systemAppend({ project: "mercon", flow: "x", owner: "Ilan" }), /private 1-on-1/);
+    assert.ok(calls.at(-1).options.allowedTools.includes("mcp__whatsapp__test_assistant"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -884,3 +884,182 @@ test("whatsapp record(): voice notes call onLive after the download; other kinds
     else assert.deepEqual(order[0], "live");
   }
 });
+
+// ---- 1-on-1 chats and the assistant test chat ----------------------------------------------
+
+const DM = "919800000009@s.whatsapp.net";
+const ASSISTANT = "919700000001@s.whatsapp.net";
+
+function dmSetup() {
+  const store = new Store(":memory:");
+  const MESIRI_TEAM = "120363000000000010@g.us";
+  const MERCON_TEAM = "120363000000000011@g.us";
+  store.upsertChat({ jid: MESIRI_TEAM, name: "Mesiri team", is_group: true });
+  store.upsertChat({ jid: MERCON_TEAM, name: "Mercon team", is_group: true });
+  store.setRole(MESIRI_TEAM, "team", "mesiri");
+  store.setRole(MERCON_TEAM, "team", "mercon");
+  store.allowPerson({ project: "mesiri", pn: DM, name: "Ravi", role: "member", added_by: "api" });
+  store.upsertChat({ jid: ASSISTANT, name: "Mesiri assistant", is_group: false });
+  store.setRole(ASSISTANT, "assistant-test", "mesiri");
+  const sent = [];
+  const wa = {
+    status: () => ({ state: "connected" }),
+    ownIds: () => ["919544376072@s.whatsapp.net"],
+    pnFor: async () => null,
+    send: async (jid, c) => (sent.push({ jid, ...c }), "id"),
+  };
+  const asked = [];
+  const approved = [];
+  const bot = new Bot({ store, wa, brain: { ask: async (r) => asked.push(r), approve: async (r) => approved.push(r) } });
+  let seq = 0;
+  const dm = (text, { from = DM, name = "Ravi", kind = "text" } = {}) => {
+    const rec = {
+      id: `D${++seq}`, chat_jid: from, is_group: false, sender_jid: from, sender_pn: from, sender_name: name, from_me: false,
+      at: new Date(1_760_002_000_000 + seq * 1000).toISOString(), kind, text, quoted_id: null, quoted_text: null,
+      media_mime: null, reaction_to: null, mentions: [],
+    };
+    store.upsertChat({ jid: from, name, is_group: false });
+    return { rec, n: store.addMessage(rec) };
+  };
+  return { store, wa, sent, asked, approved, bot, dm, MESIRI_TEAM, MERCON_TEAM };
+}
+
+test("bot (DM): an approved person is answered without an @; unapproved senders are ignored", async () => {
+  const { store, sent, asked, bot, dm } = dmSetup();
+  let m = dm("how many workers came today?");
+  await bot.handle(m.rec, m.n);
+  assert.equal(asked.length, 1);
+  assert.deepEqual(
+    { project: asked[0].project, chat: asked[0].chat, reply_chat: asked[0].reply_chat, dm: asked[0].dm, chat_role: asked[0].chat_role, sender_role: asked[0].sender_role },
+    { project: "mesiri", chat: DM, reply_chat: DM, dm: true, chat_role: "dm", sender_role: "member" },
+  );
+  assert.equal(store.findChat(DM).project, "mesiri"); // remembered, so images and replies stay in this project
+
+  // Someone not on the list: nothing asked, nothing sent.
+  const stranger = "919811111111@s.whatsapp.net";
+  m = dm("hello?", { from: stranger, name: "Stranger" });
+  await bot.handle(m.rec, m.n);
+  assert.equal(asked.length, 1);
+  assert.equal(sent.length, 0);
+
+  // Voice notes and the like are not parsed in a DM.
+  m = dm("", { kind: "voice" });
+  await bot.handle(m.rec, m.n);
+  assert.equal(asked.length, 1);
+});
+
+test("bot (DM): owner-only commands stay in the group; 'ok' approves for the sender's own project", async () => {
+  const { sent, asked, approved, bot, dm } = dmSetup();
+  for (const text of ["approve", "remove", "make owner", "upgrade: add a thing"]) {
+    const m = dm(text);
+    await bot.handle(m.rec, m.n);
+    assert.match(sent.at(-1).text, /team group only/, text);
+  }
+  assert.equal(asked.length, 0);
+  assert.equal(sent.every((s) => s.jid === DM), true);
+
+  const m = dm("ok 7");
+  await bot.handle(m.rec, m.n);
+  assert.deepEqual(approved, [{ project: "mesiri", item_id: 7, by: "Ravi", reply_chat: DM, sender_role: "member", dm: true }]);
+});
+
+test("bot (DM): someone approved for several projects is asked which, and it is remembered", async () => {
+  const { store, sent, asked, bot, dm } = dmSetup();
+  store.allowPerson({ project: "mercon", pn: DM, name: "Ravi", role: "member", added_by: "api" });
+  let m = dm("show me today's trips");
+  await bot.handle(m.rec, m.n);
+  assert.equal(asked.length, 0);
+  assert.match(sent.at(-1).text, /Which project/);
+  assert.match(sent.at(-1).text, /"mercon" \/ "mesiri"/);
+  assert.equal(sent.at(-1).jid, DM);
+
+  m = dm("mercon");
+  await bot.handle(m.rec, m.n);
+  assert.match(sent.at(-1).text, /Using \*mercon\*/);
+  assert.equal(store.findChat(DM).project, "mercon");
+
+  m = dm("show me today's trips");
+  await bot.handle(m.rec, m.n);
+  assert.equal(asked.at(-1).project, "mercon");
+
+  // An all-projects approval is asked the same way, and can switch.
+  const { store: s2, sent: sent2, asked: asked2, bot: bot2, dm: dm2 } = dmSetup();
+  s2.allowPerson({ project: "*", pn: DM, role: "owner", added_by: "api" });
+  m = dm2("hi");
+  await bot2.handle(m.rec, m.n);
+  assert.match(sent2.at(-1).text, /Which project/);
+  m = dm2("mesiri");
+  await bot2.handle(m.rec, m.n);
+  m = dm2("project mercon");
+  await bot2.handle(m.rec, m.n);
+  m = dm2("hi again");
+  await bot2.handle(m.rec, m.n);
+  assert.equal(asked2.at(-1).project, "mercon");
+});
+
+test("bot (DM): the assistant-test chat and customer chats are never treated as people", async () => {
+  const { store, sent, asked, bot, dm } = dmSetup();
+  store.allowPerson({ project: "mesiri", pn: ASSISTANT, role: "member", added_by: "api" }); // even if its number were approved
+  let m = dm("Your site update is saved", { from: ASSISTANT, name: "Mesiri assistant" });
+  await bot.handle(m.rec, m.n);
+  m = dm("hello");
+  store.setRole(DM, "customer");
+  await bot.handle(m.rec, m.n);
+  assert.equal(asked.length, 0);
+  assert.equal(sent.length, 0);
+});
+
+test("api (DM): /send reaches only approved people's own chats, for their project", async () => {
+  const { store, wa, sent, dm } = dmSetup();
+  dm("hi"); // makes the chat and records the number
+  const stranger = "919811111111@s.whatsapp.net";
+  dm("hi", { from: stranger, name: "Stranger" });
+  const server = createApi({ store, wa, token: TOKEN });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  try {
+    const ok = await call(server, "POST", "/send", { body: { chat: DM, project: "mesiri", text: "reply" } });
+    assert.equal(ok.status, 200);
+    assert.equal(sent.at(-1).jid, DM);
+    // Not approved -> 403; wrong project -> 403; no project -> 403.
+    assert.equal((await call(server, "POST", "/send", { body: { chat: stranger, project: "mesiri", text: "x" } })).status, 403);
+    assert.equal((await call(server, "POST", "/send", { body: { chat: DM, project: "mercon", text: "x" } })).status, 403);
+    assert.equal((await call(server, "POST", "/send", { body: { chat: DM, text: "x" } })).status, 403);
+    // A customer-labelled chat of an approved person stays refused.
+    store.setRole(DM, "customer");
+    assert.equal((await call(server, "POST", "/send", { body: { chat: DM, project: "mesiri", text: "x" } })).status, 403);
+    // Groups that aren't team chats stay refused too.
+    store.upsertChat({ jid: "120363000000000012@g.us", name: "Acme customers", is_group: true });
+    assert.equal((await call(server, "POST", "/send", { body: { chat: "Acme customers", project: "mesiri", text: "x" } })).status, 403);
+    assert.equal(sent.length, 1);
+  } finally {
+    server.close();
+  }
+});
+
+test("api (assistant-test): allowed for its project, rate limited, never for another project", async () => {
+  const { store, wa, sent } = dmSetup();
+  process.env.TEAMMATE_TEST_SENDS_PER_HOUR = "10";
+  const server = createApi({ store, wa, token: TOKEN });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  try {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64");
+    assert.equal((await call(server, "POST", "/send", { body: { chat: ASSISTANT, project: "mesiri", text: "5 bags cement used" } })).status, 200);
+    assert.equal((await call(server, "POST", "/send", { body: { chat: ASSISTANT, project: "mesiri", image_base64: png, caption: "site" } })).status, 200);
+    assert.equal((await call(server, "POST", "/send", { body: { chat: ASSISTANT, project: "mercon", text: "x" } })).status, 403);
+    assert.equal((await call(server, "POST", "/send", { body: { chat: ASSISTANT, text: "x" } })).status, 403);
+    for (let i = 0; i < 8; i++) {
+      assert.equal((await call(server, "POST", "/send", { body: { chat: ASSISTANT, project: "mesiri", text: `t${i}` } })).status, 200);
+    }
+    const limited = await call(server, "POST", "/send", { body: { chat: ASSISTANT, project: "mesiri", text: "one too many" } });
+    assert.equal(limited.status, 429);
+    assert.equal(sent.length, 10);
+    // The test limit doesn't use up the team chat's allowance.
+    assert.equal((await call(server, "POST", "/send", { body: { chat: "Mesiri team", project: "mesiri", text: "still fine" } })).status, 200);
+    // Customer chats still 403.
+    store.upsertChat({ jid: GROUP, name: "Acme", is_group: true });
+    store.setRole(GROUP, "customer", "mesiri");
+    assert.equal((await call(server, "POST", "/send", { body: { chat: "Acme", project: "mesiri", text: "x" } })).status, 403);
+  } finally {
+    server.close();
+  }
+});

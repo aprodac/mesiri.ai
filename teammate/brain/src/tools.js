@@ -4,13 +4,20 @@
 //   preview_html        render an HTML mockup to a PNG and post it ("this is what it will look like")
 //   screenshot_url      screenshot an allowed dev / staging page and post it
 //   propose_plan        record a plan for approval; the team replies "@bot ok <n>"
+//   test_assistant      message the Mesiri assistant's test chat as a worker and read its replies
 //   needs_attention     tell the owner something needs them (a permission, a check in Claude Code, a decision)
-// Everything goes to the team group only; customer groups are never reachable.
+// Everything goes to the team group (or the 1-on-1 chat being answered) and the project's assistant-test
+// chat; customer groups are never reachable.
 
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 
 const MAX_TEXT = 3800;
+// test_assistant: how long to wait for the assistant, and how long a quiet gap means it has finished.
+const TEST_WAIT_MS = Number(process.env.TEAMMATE_TEST_WAIT_MS || 90_000);
+const TEST_QUIET_MS = Number(process.env.TEAMMATE_TEST_QUIET_MS || 12_000);
+const TEST_POLL_MS = Number(process.env.TEAMMATE_TEST_POLL_MS || 3_000);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Hosts screenshot_url may open: TEAMMATE_BRAIN_SCREENSHOT_HOSTS, comma-separated (e.g. "dev.mercon.app,localhost"). */
 export function hostAllowed(url, hosts) {
@@ -23,6 +30,20 @@ export function hostAllowed(url, hosts) {
   }
 }
 
+/** An image file under /tmp, read for posting: { data } or { error }. */
+async function tmpImage(path) {
+  const { realpathSync, readFileSync, statSync } = await import("node:fs");
+  let real;
+  try {
+    real = realpathSync(path);
+  } catch {
+    return { error: `No file at ${path}.` };
+  }
+  if (!real.startsWith("/tmp/") || !/\.(png|jpe?g|webp)$/i.test(real)) return { error: "Only .png/.jpg/.webp files under /tmp/ can be posted." };
+  if (statSync(real).size > 5 * 1024 * 1024) return { error: "That image is over 5 MB." };
+  return { data: readFileSync(real) };
+}
+
 /**
  * @param {{
  *   ctx: { project: string, chat: string, chat_name: string, reply_chat: string, sender: string },
@@ -30,9 +51,10 @@ export function hostAllowed(url, hosts) {
  *   render: { html(html: string, width: number): Promise<Buffer>, url(url: string, width: number, fullPage: boolean): Promise<Buffer> } | null,
  *   plans: { save(plan: object): object },
  *   screenshotHosts: string[],
+ *   wait?: (ms: number) => Promise<void>,
  * }} deps
  */
-export function brainTools({ ctx, listener, render, plans, screenshotHosts }) {
+export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait = sleep }) {
   // Group-side calls use the group's project; ctx.project is the repo this conversation works in.
   const chatProject = ctx.chat_project || ctx.project;
   const post = (body) => listener.send({ chat: ctx.reply_chat, project: chatProject, ...body });
@@ -57,17 +79,9 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts }) {
         caption: z.string().max(1000),
       },
       async ({ path, caption }) => {
-        const { realpathSync, readFileSync, statSync } = await import("node:fs");
-        let real;
-        try {
-          real = realpathSync(path);
-        } catch {
-          return fail(`No file at ${path}.`);
-        }
-        if (!real.startsWith("/tmp/") || !/\.(png|jpe?g|webp)$/i.test(real)) return fail("Only .png/.jpg/.webp files under /tmp/ can be posted.");
-        if (statSync(real).size > 5 * 1024 * 1024) return fail("That image is over 5 MB.");
-        const data = readFileSync(real);
-        await post({ image_base64: data.toString("base64"), caption: caption || undefined });
+        const file = await tmpImage(path);
+        if (file.error) return fail(file.error);
+        await post({ image_base64: file.data.toString("base64"), caption: caption || undefined });
         return { content: [{ type: "text", text: "Posted to the team group." }] };
       },
     ),
@@ -155,6 +169,79 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts }) {
       },
     ),
     tool(
+      "test_assistant",
+      "Try the Mesiri assistant the way a worker would: send a text (or an image from /tmp, with optional text as caption) to the project's assistant-test WhatsApp chat, wait up to ~90 s, and get back what it replied. Talks only to that test chat. At most 10 sends an hour. Afterwards show the conversation with preview_html.",
+      {
+        text: z.string().min(1).max(2000).optional().describe("What the worker says (or the image caption)"),
+        image_path: z.string().optional().describe("Absolute path under /tmp/ to a .png, .jpg, .jpeg or .webp file to send"),
+      },
+      async ({ text, image_path }) => {
+        if (!text && !image_path) return fail("Give text, an image_path, or both.");
+        if (!listener.chats || !listener.messages || !listener.sendStrict) return fail("Testing the assistant isn't available here.");
+        let chat;
+        try {
+          chat = ((await listener.chats(chatProject)).chats || []).find((c) => c.role === "assistant-test" && c.project === chatProject);
+        } catch (e) {
+          return fail(`Couldn't look up the test chat: ${e.message}`);
+        }
+        if (!chat) {
+          return fail(`There is no assistant-test chat for ${chatProject}. Call needs_attention (check_claude_code): the owner must message the Mesiri assistant's number from the bot's number once, then run \`python3 teammate/inbox.py label <jid> assistant-test --project ${chatProject}\`, and register the bot's number as a worker in a TEST company.`);
+        }
+        let image = null;
+        if (image_path) {
+          image = await tmpImage(image_path);
+          if (image.error) return fail(image.error);
+        }
+        const startedAt = new Date(Date.now() - 2000).toISOString(); // WhatsApp stamps whole seconds
+        try {
+          await listener.sendStrict({
+            chat: chat.jid, project: chatProject,
+            ...(image ? { image_base64: image.data.toString("base64"), caption: text || undefined } : { text }),
+          });
+        } catch (e) {
+          return fail(`Couldn't send to the test chat: ${e.message}`);
+        }
+        // The listener stores the assistant's replies as they arrive; read them until they go quiet.
+        const replies = new Map();
+        let waited = 0;
+        let lastNewAt = 0;
+        while (waited < TEST_WAIT_MS) {
+          await wait(TEST_POLL_MS);
+          waited += TEST_POLL_MS;
+          let rows = [];
+          try {
+            rows = (await listener.messages({ chat: chat.jid, project: chatProject, since: startedAt, limit: 50 })).messages || [];
+          } catch {
+            continue;
+          }
+          for (const m of rows) {
+            if (!m.from_me && m.kind !== "reaction" && !replies.has(m.n)) {
+              replies.set(m.n, m);
+              lastNewAt = waited;
+            }
+          }
+          if (replies.size && waited - lastNewAt >= TEST_QUIET_MS) break;
+        }
+        const ordered = [...replies.values()].sort((a, b) => a.n - b.n);
+        const lines = ordered.map((m) => `Assistant: ${m.text || m.transcript || `(${m.kind})`}${m.kind !== "text" && m.text ? ` (${m.kind})` : ""}`);
+        const summary = ordered.length
+          ? `Sent: ${text || "(image)"}${image ? " [image]" : ""}\n\n${lines.join("\n")}`
+          : `Sent: ${text || "(image)"}${image ? " [image]" : ""}\n\nNo reply within ${Math.round(TEST_WAIT_MS / 1000)} s. The assistant may be slow, or the test chat isn't linked to it.`;
+        const content = [{ type: "text", text: summary }];
+        for (const m of ordered.filter((r) => r.kind === "image").slice(0, 3)) {
+          try {
+            const f = await listener.media(m.n, chatProject);
+            if (/^image\/(png|jpe?g|gif|webp)/.test(f.mime || "") && f.data.length < 8 * 1024 * 1024) {
+              content.push({ type: "image", data: f.data.toString("base64"), mimeType: f.mime.split(";")[0] });
+            }
+          } catch {
+            // the text summary still stands
+          }
+        }
+        return { content };
+      },
+    ),
+    tool(
       "needs_attention",
       "Tell the owner something needs them personally: a permission you were denied, something to look at in Claude Code or on the server, a credential, or a decision you can't make. Posts a clearly marked message to the team group.",
       {
@@ -172,4 +259,4 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts }) {
   return createSdkMcpServer({ name: "whatsapp", version: "1.0.0", tools });
 }
 
-export const BRAIN_TOOL_NAMES = ["post_message", "post_image", "preview_html", "screenshot_url", "view_media", "translate_message", "propose_plan", "needs_attention"].map((t) => `mcp__whatsapp__${t}`);
+export const BRAIN_TOOL_NAMES = ["post_message", "post_image", "preview_html", "screenshot_url", "view_media", "translate_message", "propose_plan", "test_assistant", "needs_attention"].map((t) => `mcp__whatsapp__${t}`);

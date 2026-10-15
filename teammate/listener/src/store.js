@@ -4,7 +4,8 @@
 
 import { DatabaseSync } from "node:sqlite";
 
-export const ROLES = ["unlabelled", "team", "customer", "ignore"];
+// "assistant-test": the chat with the Mesiri assistant's number, which the bot may message to test it (set by an owner on the server, never automatically).
+export const ROLES = ["unlabelled", "team", "customer", "ignore", "assistant-test"];
 // One listener serves several repos' groups; a chat's project keeps each repo's
 // sessions to their own groups (TM-05). Lowercase slug, e.g. "mesiri", "mercon".
 const PROJECT_RE = /^[a-z0-9][a-z0-9_-]{0,39}$/;
@@ -165,9 +166,9 @@ export class Store {
   /** A chat by exact jid, or by a name substring that matches exactly one chat. */
   findChat(jidOrName) {
     if (!jidOrName) return null;
-    const exact = this.db.prepare("SELECT jid, name, role, project FROM chats WHERE jid = ?").get(jidOrName);
+    const exact = this.db.prepare("SELECT jid, name, role, project, is_group FROM chats WHERE jid = ?").get(jidOrName);
     if (exact) return exact;
-    const hits = this.db.prepare("SELECT jid, name, role, project FROM chats WHERE name LIKE ?").all(`%${jidOrName}%`);
+    const hits = this.db.prepare("SELECT jid, name, role, project, is_group FROM chats WHERE name LIKE ?").all(`%${jidOrName}%`);
     return hits.length === 1 ? hits[0] : null;
   }
 
@@ -444,6 +445,42 @@ export class Store {
         )
         .get(project, ...list, ...list) || null
     );
+  }
+
+  /** Every project these ids are approved for ('*' = all of them), with the best role for each. */
+  personProjects(ids) {
+    const list = [...new Set(ids.filter(Boolean))];
+    if (!list.length) return [];
+    const marks = list.map(() => "?").join(", ");
+    return this.db
+      .prepare(
+        `SELECT project, MAX(role = 'owner') AS owner FROM people
+         WHERE removed_at IS NULL AND (jid IN (${marks}) OR pn IN (${marks})) GROUP BY project`,
+      )
+      .all(...list, ...list)
+      .map((r) => ({ project: r.project, role: r.owner ? "owner" : "member" }));
+  }
+
+  /** Every project that has a team chat: the ones a person can be asked to choose between. */
+  teamProjects() {
+    return this.db.prepare("SELECT DISTINCT project FROM chats WHERE role = 'team' AND project IS NOT NULL ORDER BY project").all().map((r) => r.project);
+  }
+
+  /** A 1-on-1 chat's remembered project, without changing its role. */
+  setChatProject(jid, project) {
+    if (project != null && !PROJECT_RE.test(project)) throw new Error("project must be a lowercase slug");
+    return this.db.prepare("UPDATE chats SET project = ?, updated_at = ? WHERE jid = ?").run(project, nowIso(), jid).changes > 0;
+  }
+
+  /** The ids a 1-on-1 chat's other person is known by: the chat jid and any phone number seen in it. */
+  chatIdentities(jid) {
+    const pns = this.db.prepare("SELECT DISTINCT sender_pn FROM messages WHERE chat_jid = ? AND from_me = 0 AND sender_pn IS NOT NULL").all(jid);
+    return [jid, ...pns.map((r) => r.sender_pn)];
+  }
+
+  /** The chat labelled assistant-test for a project, or null. */
+  assistantTestChat(project) {
+    return this.db.prepare("SELECT jid, name FROM chats WHERE project = ? AND role = 'assistant-test' ORDER BY updated_at DESC LIMIT 1").get(project) || null;
   }
 
   /** Approves someone for a project (or changes their role). Returns the row. */

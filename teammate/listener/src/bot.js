@@ -5,6 +5,9 @@ import { istStarts } from "./store.js";
 //
 // Rules:
 // - Only messages that @-mention the bot, from a chat that belongs to a project.
+// - 1-on-1 chats (DMs): an approved person needs no @; unapproved senders are ignored. The project is
+//   the one they're approved for, or, if several, the one they name ("mesiri" / "mercon"), remembered
+//   for that chat. Replies go back to that DM only; owner-only commands stay in the team group.
 // - Commands and replies only in that project's team chat. In customer chats
 //   the bot never answers; an approved person's tag there is logged as a
 //   request and announced in the team chat instead.
@@ -91,7 +94,9 @@ export class Bot {
 
   /** Called for every live (not history) message once it is stored as number `n`. */
   async handle(rec, n) {
-    if (rec.from_me || !rec.is_group || !(this.mentionsMe(rec) || this.repliesToMe(rec))) return;
+    if (rec.from_me) return;
+    if (!rec.is_group) return this.handleDm(rec, n);
+    if (!(this.mentionsMe(rec) || this.repliesToMe(rec))) return;
     const chat = this.store.findChat(rec.chat_jid);
     if (!chat?.project || !["team", "customer"].includes(chat.role)) return;
     const project = chat.project;
@@ -200,6 +205,61 @@ export class Bot {
     return this.reply(chat.jid, `📝 Request [${item.id}]: ${item.title}\n${next}`);
   }
 
+  /** A 1-on-1 message: answered only when the sender is approved, only in that chat. */
+  async handleDm(rec, n) {
+    if (!this.brain) return;
+    const chat = this.store.findChat(rec.chat_jid);
+    // Only plain, unlabelled chats: never the assistant-test chat, customers or ignored chats.
+    if (!chat || chat.is_group || chat.role !== "unlabelled") return;
+    if (!["text", "image"].includes(rec.kind)) return;
+    const ids = [rec.sender_jid, rec.sender_pn];
+    const approvals = this.store.personProjects(ids);
+    const who = rec.sender_name || (rec.sender_pn || rec.sender_jid || "?").split("@")[0];
+    if (!approvals.length) {
+      this.log(`bot: ignored a direct message from ${who} (not approved for any project)`);
+      return;
+    }
+    const text = String(rec.text || "").replace(/\s+/g, " ").trim();
+    const known = this.store.teamProjects();
+    // Projects this person may use: their own, or every project with a team chat for '*'.
+    const mine = approvals.some((a) => a.project === "*") ? known : approvals.map((a) => a.project).filter((p) => known.includes(p));
+    if (!mine.length) {
+      this.log(`bot: ignored a direct message from ${who} (no team chat for their projects)`);
+      return;
+    }
+    const say = (t) => this.reply(chat.jid, t, [], true);
+    const wanted = text.toLowerCase().match(/^(?:(?:project|use|switch to)\s+)?([a-z0-9][a-z0-9_-]*)$/)?.[1];
+    if (wanted && mine.includes(wanted) && (mine.length > 1 || chat.project !== wanted)) {
+      this.store.setChatProject(chat.jid, wanted);
+      return say(`👍 Using *${wanted}* in this chat. Go ahead. (Say "project <name>" to change it.)`);
+    }
+    let project = mine.length === 1 ? mine[0] : mine.includes(chat.project) ? chat.project : null;
+    if (!project) return say(`Which project is this about? Reply with one of: ${mine.map((p) => `"${p}"`).join(" / ")}.`);
+    if (chat.project !== project) this.store.setChatProject(chat.jid, project);
+
+    const person = this.store.findPerson(project, ids);
+    const team = this.store.teamChat(project);
+    const cmd = parseCommand(text);
+    if (["approve", "remove", "owner", "upgrade", "translate", "cost"].includes(cmd.verb)) {
+      return say("That one works in the team group only.");
+    }
+    if (cmd.verb === "who") return say(this.whoText(project));
+    if (cmd.verb === "help") return say(HELP);
+    // 'ok <n>' approves a plan of the project this person is approved for; the working turn reports back here.
+    if (cmd.verb === "ok") {
+      if (!team) return;
+      this.wa.typing?.(chat.jid);
+      this.log(`bot: ${who} approved ${cmd.id ?? "the pending plan"} in a direct message (${project})`);
+      return this.brain.approve({ project, item_id: cmd.id, by: who, reply_chat: chat.jid, sender_role: person.role, dm: true });
+    }
+    this.wa.typing?.(chat.jid);
+    this.log(`bot: ${who} in a direct message (${project}) -> Claude`);
+    return this.brain.ask({
+      project, chat: chat.jid, chat_name: chat.name || who, chat_role: "dm", reply_chat: chat.jid, dm: true,
+      sender: who, sender_role: person.role, n, text: text || "help", quoted_text: rec.quoted_text || null, quoted_id: rec.quoted_id || null,
+    });
+  }
+
   logRequest(rec, n, chat, text, who) {
     const quoted = rec.quoted_id ? this.store.messageNumber(rec.chat_jid, rec.quoted_id) : null;
     const title = text.length > TITLE_MAX ? `${text.slice(0, TITLE_MAX - 1)}…` : text;
@@ -282,10 +342,10 @@ export class Bot {
     return `Approved for ${project}:\n${people.map(line).join("\n")}`;
   }
 
-  /** Replies only into team chats, at most REPLIES_PER_HOUR an hour. */
-  async reply(jid, text, mentions = []) {
+  /** Replies only into team chats (and, when `dm`, an approved person's own chat), at most REPLIES_PER_HOUR an hour. */
+  async reply(jid, text, mentions = [], dm = false) {
     const chat = this.store.findChat(jid);
-    if (chat?.role !== "team") return null;
+    if (chat?.role !== "team" && !(dm && chat && !chat.is_group && chat.role === "unlabelled")) return null;
     const hourAgo = Date.now() - 3_600_000;
     while (this.sentAt.length && this.sentAt[0] < hourAgo) this.sentAt.shift();
     if (this.sentAt.length >= REPLIES_PER_HOUR) {

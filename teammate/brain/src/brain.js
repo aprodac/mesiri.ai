@@ -59,13 +59,21 @@ const DENY = [
   "Edit(infra/**/secrets*)", "Write(infra/**/secrets*)",
 ];
 
-export function systemAppend({ project, flow, owner }) {
+export function systemAppend({ project, flow, owner, dm = false }) {
   return [
     `You are ${owner}'s team bot for the ${project} project, talking through WhatsApp.`,
     "Every user message starts with a header: [WhatsApp · <group> (<team|customer>) · #<message number> · from <name>].",
     "Only approved team members reach you; they may be different people in one conversation.",
     "",
-    "Replies: your final message is posted to the project's team group as-is. Keep it short and in WhatsApp style:",
+    ...(dm
+      ? [
+          "This is a private 1-on-1 chat with one approved person (header says 'direct message'). Everything you post, including",
+          "your final message and the tools below, goes to that chat only. Changing who is approved, upgrading the bot and",
+          "changing the model are for the team group; say so if asked here.",
+          "",
+        ]
+      : []),
+    `Replies: your final message is posted to ${dm ? "this chat" : "the project's team group"} as-is. Keep it short and in WhatsApp style:`,
     "*bold*, _italic_, short lists, no markdown headers or tables. Default under ~1,200 characters unless asked for more.",
     "",
     "Context: `python3 teammate/inbox.py` reads the groups (messages with English translations of voice notes and",
@@ -88,6 +96,15 @@ export function systemAppend({ project, flow, owner }) {
     "  (`python3 teammate/inbox.py item start|done <id> --ref <PR>`), and finish with what changed and the links.",
     `  Git flow: ${flow}`,
     "- Never merge to main or deploy to production unless the latest instruction in the group explicitly says so.",
+    "",
+    "Testing the Mesiri assistant: test_assistant sends a message (or an image from /tmp) as a worker to the assistant's test",
+    "chat and returns its replies (up to ~90 s; at most 10 sends an hour). It only talks to that test chat, so you may use it in",
+    "a planning turn when asked to try something (\"test today's site update\"). Afterwards, show the conversation: call",
+    "preview_html with a WhatsApp-style chat (green bubbles for what you sent, white for the assistant's replies, phone width 390)",
+    "and a caption saying what was tested and whether it behaved. If it has no test chat, call needs_attention (kind check_claude_code):",
+    "someone must link the bot's number to the assistant's number, send it one message, then run",
+    "`inbox.py label <jid> assistant-test --project mesiri`, and register the bot's number as a worker in a TEST company in Mesiri",
+    "so test messages don't land in a real customer's data.",
     "",
     "When the owner has to do something you can't (a permission you were denied, something only visible in Claude",
     "Code or on the server, a credential, a decision), call needs_attention and say plainly what they should check.",
@@ -220,6 +237,7 @@ export class Brain {
       `⚙️ ${req.project}: model *${current.model}*, effort *${current.effort || "default"}*\n` +
       "Owners can change it: @bot model opus|sonnet|haiku|fable · @bot effort low|medium|high|xhigh|max|default";
     if (!m || !m[2]) return show();
+    if (req.dm) return "The model and effort can be changed in the team group only.";
     if (req.sender_role !== "owner") return "Only an owner can change the model or effort.";
     const what = m[1].toLowerCase();
     const value = m[2].toLowerCase();
@@ -275,7 +293,7 @@ export class Brain {
   }
 
   /** "@bot ok [n]" from an approved person: run the working turn for that plan. */
-  approve({ project, item_id, by, reply_chat, sender_role }) {
+  approve({ project, item_id, by, reply_chat, sender_role, dm = false }) {
     // `project` is the group's project; a plan made in an upgrade conversation belongs to the bot's repo.
     const pending = Object.values(this.planStore.plans).filter((p) => (p.chat_project || p.project) === project && p.status === "proposed");
     const plan = item_id != null ? pending.find((p) => String(p.id) === String(item_id)) : pending.length === 1 ? pending[0] : null;
@@ -300,7 +318,7 @@ export class Brain {
     const text =
       `${by} approved plan [${plan.id}] "${plan.title}". Go ahead with exactly this plan now.\n\nThe plan:\n${plan.plan}`;
     return this.enqueue(key, () =>
-      this.turn({ project: repo, reply_project: project, chat: plan.chat, chat_name: plan.chat_name, chat_role: "team", reply_chat, sender: by, n: null, text, session: plan.session || "main" }, "working", plan),
+      this.turn({ project: repo, reply_project: project, chat: plan.chat, chat_name: plan.chat_name, chat_role: "team", reply_chat, dm, sender: by, n: null, text, session: plan.session || "main" }, "working", plan),
     );
   }
 
@@ -368,7 +386,7 @@ export class Brain {
       this.log(`brain: prepare ${req.project}: ${e.message}`);
     }
 
-    const where = req.chat_role === "customer" ? `${req.chat_name} (customer; answer goes to the team group)` : `${req.chat_name} (team)`;
+    const where = req.dm ? `${req.chat_name} (direct message)` : req.chat_role === "customer" ? `${req.chat_name} (customer; answer goes to the team group)` : `${req.chat_name} (team)`;
     const header = `[WhatsApp · ${where} · #${req.n ?? "-"} · from ${req.sender}]`;
     const quoted = req.quoted_text ? `\nReplying to: "${String(req.quoted_text).slice(0, 1500)}"` : "";
     const prompt = `${header}${quoted}\n${req.text}`;
@@ -392,7 +410,7 @@ export class Brain {
           mcpServers: { whatsapp: this.tools(ctx, this.plans) },
           maxBudgetUsd: BUDGET[mode],
           settingSources: ["project"],
-          systemPrompt: { type: "preset", preset: "claude_code", append: systemAppend({ project: req.project, flow: project.flow, owner: this.owner }) },
+          systemPrompt: { type: "preset", preset: "claude_code", append: systemAppend({ project: req.project, flow: project.flow, owner: this.owner, dm: Boolean(req.dm) }) },
           env: { ...this.env, TEAMMATE_PROJECT: req.reply_project || req.project, ...(project.ghToken ? { GH_TOKEN: project.ghToken } : {}) },
           abortController: abort,
         },
