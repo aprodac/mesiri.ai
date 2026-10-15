@@ -10,6 +10,13 @@ from pydantic import BaseModel
 from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from mesiri.application.organizations.create_company import (
+    DEFAULT_DB_ROUTE,
+    START_ACTIVE,
+    CompanyCreationError,
+    NewCompany,
+    create_company,
+)
 from mesiri.domains.shared.auth import require_platform_admin
 from mesiri.domains.timeline.responses import TimelineEntriesListResponse
 from mesiri.infrastructure.postgres.dependency import get_db_conn
@@ -193,62 +200,74 @@ async def list_organization_timeline(
 
 
 class OrganizationProvision(BaseModel):
+    """Same request as the assistant's `/provision`: the original six fields
+    still work unchanged; the rest are optional (SS-03)."""
+
     name: str
-    deployment_type: DeploymentType
-    db_route: str
+    deployment_type: DeploymentType = DeploymentType.SAAS
+    db_route: str = DEFAULT_DB_ROUTE
     admin_name: str
-    admin_email: str
-    admin_password: str
+    admin_email: str | None = None
+    admin_password: str | None = None
+    admin_whatsapp_number: str | None = None
+    project_name: str | None = None
+    site_name: str | None = None
+    start_as: str = START_ACTIVE
 
 
-@router.post("/provision", response_model=OrganizationResponse)
+class ProvisionResponse(OrganizationResponse):
+    signup_source: str
+    timezone: str
+    trial_started_at: datetime | None = None
+    trial_ends_at: datetime | None = None
+    owner_user_id: uuid.UUID
+    project_id: uuid.UUID | None = None
+    site_id: uuid.UUID | None = None
+
+
+@router.post("/provision", response_model=ProvisionResponse)
 async def provision_tenant(
     prov_in: OrganizationProvision,
     conn: AsyncConnection = Depends(get_db_conn),
     _admin: dict = Depends(require_platform_admin),
 ):
-    # 1. Create Organization
-    stmt_org = (
-        insert(OrganizationModel)
-        .values(
-            name=prov_in.name,
-            deployment_type=prov_in.deployment_type,
-            db_route=prov_in.db_route,
-            status=OrganizationStatus.ACTIVE.value,
-        )
-        .returning(OrganizationModel)
+    """Create a company and its owner through the one create-company step
+    (application/organizations/create_company). The request's transaction
+    (get_db_conn) makes it all-or-nothing."""
+    new = NewCompany(
+        name=prov_in.name,
+        owner_name=prov_in.admin_name,
+        owner_email=prov_in.admin_email,
+        owner_phone=prov_in.admin_whatsapp_number,
+        owner_password=prov_in.admin_password,
+        project_name=prov_in.project_name,
+        site_name=prov_in.site_name,
+        start_as=prov_in.start_as,
+        signup_source="superadmin",
+        deployment_type=prov_in.deployment_type.value,
+        db_route=prov_in.db_route,
     )
-
-    result = await conn.execute(stmt_org)
-    org_row = result.first()
-    if not org_row:
-        raise HTTPException(status_code=500, detail="Failed to create organization")
-    org = org_row[0]
-
-    # 2. Create Admin User
-    from sqlalchemy.exc import IntegrityError
-
-    from mesiri.domains.identity.auth_service import hash_password
-    from mesiri.infrastructure.postgres.models.user import UserModel, UserRole
-
-    hashed_pwd = hash_password(prov_in.admin_password)
-    stmt_user = insert(UserModel).values(
-        organization_id=org.id,
-        email=prov_in.admin_email,
-        hashed_password=hashed_pwd,
-        full_name=prov_in.admin_name,
-        role=UserRole.ADMIN,
-    )
-
     try:
-        await conn.execute(stmt_user)
-    except IntegrityError as exc:
-        # Email already exists
-        raise HTTPException(status_code=400, detail="Admin email is already registered") from exc
+        created = await create_company(conn, new)
+    except CompanyCreationError as exc:
+        raise HTTPException(status_code=409 if exc.conflict else 400, detail=str(exc)) from exc
 
-    # 3. Commit transaction (if not auto-commit, but AsyncConnection execution is auto-committed in this context or managed by dependency, assuming managed)
-    # Return the created organization
-    return org
+    return ProvisionResponse(
+        id=created.organization_id,
+        name=created.name,
+        deployment_type=DeploymentType(created.deployment_type),
+        db_route=created.db_route,
+        status=OrganizationStatus(created.status),
+        created_at=created.created_at,
+        updated_at=created.created_at,
+        signup_source=created.signup_source,
+        timezone=created.timezone,
+        trial_started_at=created.trial_started_at,
+        trial_ends_at=created.trial_ends_at,
+        owner_user_id=created.owner_user_id,
+        project_id=created.project_id,
+        site_id=created.site_id,
+    )
 
 
 class FinanceSeedRequest(BaseModel):
@@ -295,5 +314,3 @@ async def seed_organization_finance(
         include_demo_transactions=payload.include_demo_transactions,
     )
     return FinanceSeedResponse(organization_id=org_id, **stats)
-
-

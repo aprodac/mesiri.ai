@@ -12,6 +12,14 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from context.projection_hooks import project_entity
+from mesiri.application.organizations.create_company import (
+    DEFAULT_DB_ROUTE,
+    DEFAULT_DEPLOYMENT_TYPE,
+    START_ACTIVE,
+    CompanyCreationError,
+    NewCompany,
+    create_company,
+)
 from mesiri.authorization.roles import ALL_PROJECTS_MODE, is_org_wide
 from mesiri.domains.organizations import settings as org_settings
 from mesiri.domains.organizations.settings import VALID_ROLES
@@ -110,12 +118,29 @@ class OrganizationResponse(BaseModel):
 
 
 class OrganizationProvision(BaseModel):
+    """What the control panel sends to create a company. The original six
+    fields still work unchanged; the rest are optional (SS-03)."""
+
     name: str
-    deployment_type: str
-    db_route: str
+    deployment_type: str = DEFAULT_DEPLOYMENT_TYPE
+    db_route: str = DEFAULT_DB_ROUTE
     admin_name: str
-    admin_email: str
-    admin_password: str
+    admin_email: str | None = None
+    admin_password: str | None = None
+    admin_whatsapp_number: str | None = None
+    project_name: str | None = None
+    site_name: str | None = None
+    start_as: str = START_ACTIVE
+
+
+class ProvisionResponse(OrganizationResponse):
+    signup_source: str
+    timezone: str
+    trial_started_at: datetime | None = None
+    trial_ends_at: datetime | None = None
+    owner_user_id: uuid.UUID
+    project_id: uuid.UUID | None = None
+    site_id: uuid.UUID | None = None
 
 
 class ProjectAccessGrant(BaseModel):
@@ -1069,61 +1094,56 @@ async def delete_organization_user(
             raise HTTPException(status_code=500, detail=f"Database error: {exc}") from exc
 
 
-@router.post("/provision", response_model=OrganizationResponse)
+@router.post("/provision", response_model=ProvisionResponse)
 async def provision_tenant(
     prov_in: OrganizationProvision, _admin: dict = Depends(require_platform_admin)
 ):
-    engine = get_engine()
-    org_id = uuid.uuid4()
-    user_id = uuid.uuid4()
-    now = datetime.utcnow()
-
-    async with engine.begin() as conn:  # begin() auto-commits or rolls back
-        # 1. Create Organization
-        await conn.execute(
-            organizations_table.insert().values(
-                id=org_id,
-                name=prov_in.name,
-                deployment_type=prov_in.deployment_type,
-                db_route=prov_in.db_route,
-                status="active",
-                created_at=now,
-                updated_at=now,
-            )
-        )
-
-        # 2. Create Admin User
-        hashed_pwd = _hash_password(prov_in.admin_password)
-        try:
-            await conn.execute(
-                users_table.insert().values(
-                    id=user_id,
-                    organization_id=org_id,
-                    email=prov_in.admin_email,
-                    hashed_password=hashed_pwd,
-                    full_name=prov_in.admin_name,
-                    role="ADMIN",
-                    whatsapp_number=None,
-                )
-            )
-        except Exception as e:
-            if "unique" in str(e).lower() or "duplicate" in str(e).lower():
-                raise HTTPException(
-                    status_code=400, detail="Admin email is already registered"
-                ) from e
-            raise HTTPException(status_code=500, detail=f"User creation failed: {e}") from e
-
-    await project_entity("organization", org_id)
-    await project_entity("user", user_id)
-
-    return OrganizationResponse(
-        id=org_id,
+    """Create a company and its owner -- through the one create-company step
+    every onboarding path shares (application/organizations/create_company)."""
+    new = NewCompany(
         name=prov_in.name,
+        owner_name=prov_in.admin_name,
+        owner_email=prov_in.admin_email,
+        owner_phone=prov_in.admin_whatsapp_number,
+        owner_password=prov_in.admin_password,
+        project_name=prov_in.project_name,
+        site_name=prov_in.site_name,
+        start_as=prov_in.start_as,
+        signup_source="superadmin",
         deployment_type=prov_in.deployment_type,
         db_route=prov_in.db_route,
-        status="active",
-        created_at=now,
-        updated_at=now,
+    )
+    try:
+        async with get_engine().begin() as conn:  # commits, or rolls back on error
+            created = await create_company(conn, new)
+    except CompanyCreationError as exc:
+        raise HTTPException(status_code=409 if exc.conflict else 400, detail=str(exc)) from exc
+
+    # After commit: make the new rows visible to the WhatsApp assistant, so the
+    # owner's first message is recognised without waiting for a reconcile.
+    await project_entity("organization", created.organization_id)
+    await project_entity("user", created.owner_user_id)
+    if created.project_id is not None:
+        await project_entity("project", created.project_id)
+    if created.site_id is not None:
+        await project_entity("site", created.site_id)
+    await project_entity("membership", created.owner_user_id)
+
+    return ProvisionResponse(
+        id=created.organization_id,
+        name=created.name,
+        deployment_type=created.deployment_type,
+        db_route=created.db_route,
+        status=created.status,
+        created_at=created.created_at,
+        updated_at=created.created_at,
+        signup_source=created.signup_source,
+        timezone=created.timezone,
+        trial_started_at=created.trial_started_at,
+        trial_ends_at=created.trial_ends_at,
+        owner_user_id=created.owner_user_id,
+        project_id=created.project_id,
+        site_id=created.site_id,
     )
 
 
