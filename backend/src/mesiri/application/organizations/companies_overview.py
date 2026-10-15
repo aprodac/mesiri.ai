@@ -15,9 +15,18 @@ Per company:
                                             reported (activities) or a material
                                             or issue (timeline_entries)
                          first_dpr_sent_at  first report sent (PUBLISHED)
+                         has_logo           a letterhead logo is uploaded
+                         report_time_set    a project's report time was
+                                            changed from the default, or the
+                                            owner answered the report-time
+                                            question (setup_progress, SS-14:
+                                            on WhatsApp or the dashboard)
 
 Read-only, one query; at our number of companies the per-company subqueries
-cost nothing worth caching.
+cost nothing worth caching. The same setup block is the owner's
+getting-started checklist in the dashboard (SS-07, `company_setup`) and tells
+the WhatsApp setup questions (SS-14) what is still missing, so all three agree
+on what "done" means.
 """
 
 from __future__ import annotations
@@ -41,6 +50,8 @@ class SetupProgress:
     has_site: bool
     first_update_at: dt.datetime | None
     first_dpr_sent_at: dt.datetime | None
+    has_logo: bool = False
+    report_time_set: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +72,11 @@ class CompanyOverview:
     setup: SetupProgress
 
 
+# A project's report times when nobody has changed them (the column defaults,
+# migrations 0260 / 0469).
+DEFAULT_CUTOFF_TIME = "18:00"
+DEFAULT_SEND_TIME = "21:00"
+
 _SELECT = """
     SELECT o.id, o.name, o.deployment_type, o.db_route, o.status,
            o.trial_started_at, o.trial_ends_at, o.converted_at, o.signup_source,
@@ -75,11 +91,22 @@ _SELECT = """
                WHERE t.organization_id = o.id)
            ) AS first_update_at,
            (SELECT min(d.updated_at) FROM daily_reports d
-             WHERE d.organization_id = o.id AND d.status = 'PUBLISHED') AS first_dpr_sent_at
+             WHERE d.organization_id = o.id AND d.status = 'PUBLISHED') AS first_dpr_sent_at,
+           EXISTS (SELECT 1 FROM organization_settings st
+             WHERE st.organization_id = o.id AND st.key = 'branding'
+               AND st.value ->> 'logo_object_key' IS NOT NULL) AS has_logo,
+           (EXISTS (SELECT 1 FROM projects p
+              WHERE p.organization_id = o.id
+                AND (p.reporting_cutoff_time <> :default_cutoff
+                     OR p.dpr_send_deadline <> :default_send))
+            OR EXISTS (SELECT 1 FROM organization_settings st
+              WHERE st.organization_id = o.id AND st.key = 'setup_progress'
+                AND st.value -> 'report_time' ->> 'state' = 'answered')) AS report_time_set
     FROM organizations o
 """
-_QUERY = sa.text(_SELECT + " ORDER BY o.created_at DESC NULLS LAST, o.name")
-_QUERY_ONE = sa.text(_SELECT + " WHERE o.id = :id")
+_DEFAULTS = {"default_cutoff": DEFAULT_CUTOFF_TIME, "default_send": DEFAULT_SEND_TIME}
+_QUERY = sa.text(_SELECT + "ORDER BY o.created_at DESC NULLS LAST, o.name")
+_ONE_QUERY = sa.text(_SELECT + "WHERE o.id = :organization_id")
 
 
 def to_overview(row: sa.RowMapping, now: dt.datetime) -> CompanyOverview:
@@ -110,6 +137,8 @@ def to_overview(row: sa.RowMapping, now: dt.datetime) -> CompanyOverview:
             has_site=bool(row["has_site"]),
             first_update_at=row["first_update_at"],
             first_dpr_sent_at=row["first_dpr_sent_at"],
+            has_logo=bool(row.get("has_logo")),
+            report_time_set=bool(row.get("report_time_set")),
         ),
     )
 
@@ -119,14 +148,18 @@ async def list_companies(
 ) -> list[CompanyOverview]:
     """Every company, newest first, with its status and setup progress."""
     now = now or dt.datetime.now(dt.UTC)
-    rows = (await conn.execute(_QUERY)).mappings().all()
+    rows = (await conn.execute(_QUERY, _DEFAULTS)).mappings().all()
     return [to_overview(row, now) for row in rows]
 
 
-async def get_company(
+async def company_setup(
     conn: AsyncConnection, organization_id: uuid.UUID, *, now: dt.datetime | None = None
 ) -> CompanyOverview | None:
-    """One company as the list shows it (the company page's plan card), or
-    None when there is no such company."""
-    row = (await conn.execute(_QUERY_ONE, {"id": organization_id})).mappings().first()
-    return to_overview(row, now or dt.datetime.now(dt.UTC)) if row is not None else None
+    """One company's status and setup progress, or None if it doesn't exist."""
+    now = now or dt.datetime.now(dt.UTC)
+    row = (
+        (await conn.execute(_ONE_QUERY, {**_DEFAULTS, "organization_id": organization_id}))
+        .mappings()
+        .first()
+    )
+    return to_overview(row, now) if row is not None else None

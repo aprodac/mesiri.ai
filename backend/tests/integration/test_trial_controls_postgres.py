@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy import text
 
 from mesiri.application.organizations import trial_controls
-from mesiri.application.organizations.companies_overview import get_company
+from mesiri.application.organizations.companies_overview import company_setup
 from mesiri.application.organizations.create_company import NewCompany, create_company
 from mesiri.application.organizations.platform_settings_admin import update_platform_setting
 from mesiri.domains.audit.actions import ACTOR_PLATFORM_ADMIN, AuditActor
@@ -65,7 +65,7 @@ async def test_extend_then_convert_are_saved_and_audited(conn) -> None:
     await trial_controls.apply_trial_action(
         conn, org, trial_controls.EXTEND, actor=_ADMIN, days=7, now=_NOW
     )
-    company = await get_company(conn, org, now=_NOW)
+    company = await company_setup(conn, org, now=_NOW)
     assert company.effective_status == "trial"
     assert company.trial_days_left == 14  # 7 default + 7
     [entry] = await _audit(conn, org, "company.trial_extended")
@@ -76,7 +76,7 @@ async def test_extend_then_convert_are_saved_and_audited(conn) -> None:
     await trial_controls.apply_trial_action(
         conn, org, trial_controls.CONVERT, actor=_ADMIN, now=_NOW
     )
-    company = await get_company(conn, org, now=_NOW)
+    company = await company_setup(conn, org, now=_NOW)
     assert company.effective_status == "active"
     assert company.converted_at == _NOW
     [entry] = await _audit(conn, org, "company.converted")
@@ -90,14 +90,14 @@ async def test_suspend_and_reactivate_back_to_the_trial(conn) -> None:
     await trial_controls.apply_trial_action(
         conn, org, trial_controls.SUSPEND, actor=_ADMIN, reason="  unpaid   invoice ", now=_NOW
     )
-    assert (await get_company(conn, org, now=_NOW)).effective_status == "suspended"
+    assert (await company_setup(conn, org, now=_NOW)).effective_status == "suspended"
     [entry] = await _audit(conn, org, "company.suspended")
     assert entry["details"]["reason"] == "unpaid invoice"
 
     await trial_controls.apply_trial_action(
         conn, org, trial_controls.REACTIVATE, actor=_ADMIN, now=_NOW
     )
-    company = await get_company(conn, org, now=_NOW)
+    company = await company_setup(conn, org, now=_NOW)
     assert company.effective_status == "trial"
     assert company.trial_days_left == 7
     assert len(await _audit(conn, org, "company.reactivated")) == 1
@@ -112,7 +112,7 @@ async def test_refused_action_changes_and_records_nothing(conn) -> None:
         )
 
     assert exc.value.status_code == 409
-    assert (await get_company(conn, org, now=_NOW)).effective_status == "trial"
+    assert (await company_setup(conn, org, now=_NOW)).effective_status == "trial"
     assert await _audit(conn, org, "company.reactivated") == []
 
 
@@ -122,7 +122,7 @@ async def test_unknown_company_is_not_found(conn) -> None:
             conn, uuid.uuid4(), trial_controls.SUSPEND, actor=_ADMIN, now=_NOW
         )
     assert exc.value.status_code == 404
-    assert await get_company(conn, uuid.uuid4()) is None
+    assert await company_setup(conn, uuid.uuid4()) is None
 
 
 async def test_trial_length_change_is_stored_audited_and_used(conn) -> None:
@@ -143,7 +143,7 @@ async def test_trial_length_change_is_stored_audited_and_used(conn) -> None:
     )
     assert entry["summary"] == "trial_policy: trial_days 7 -> 14"
     org = await _trial_company(conn, "+91 98765 20004")
-    assert (await get_company(conn, org, now=_NOW)).trial_days_left == 14
+    assert (await company_setup(conn, org, now=_NOW)).trial_days_left == 14
 
 
 async def test_bad_setting_value_is_refused_and_not_recorded(conn) -> None:

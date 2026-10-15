@@ -11,7 +11,7 @@ from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.application.organizations import trial_controls
-from mesiri.application.organizations.companies_overview import get_company, list_companies
+from mesiri.application.organizations.companies_overview import company_setup, list_companies
 from mesiri.application.organizations.create_company import (
     DEFAULT_DB_ROUTE,
     START_ACTIVE,
@@ -150,7 +150,7 @@ async def get_organization_overview(
     _admin: dict = Depends(require_platform_admin),
 ):
     """One company's status, trial dates and setup progress (SS-10 plan card)."""
-    company = await get_company(conn, org_id)
+    company = await company_setup(conn, org_id)
     if company is None:
         raise HTTPException(status_code=404, detail="Organization not found")
     return CompanyListItem.model_validate(company, from_attributes=True)

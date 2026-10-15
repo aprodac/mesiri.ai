@@ -47,7 +47,8 @@ nudges and trial reminders need Meta-approved templates (SS-12). Apply early.
 | 3b | Web signup and dashboard login by WhatsApp code | SS-06 + WEB-12 (**done**, off until switched on) |
 | 4 | Add a team member by sharing a contact; invite to forward | SS-13 (**done**) |
 | 5 | One-screen create form + companies list in the control panel | SA-01, SA-02 (**done**) |
-| 6 | Daily setup questions (letterhead photo → branding, recipients, report time) | SS-07 + new |
+| 6 | Daily setup questions (letterhead/logo photos → team, report time, more sites) | SS-14 (**done**, WhatsApp side); control-panel requests list: Lane B |
+| 6b | Getting-started checklist on the dashboard's Today page | SS-07 (**done**) |
 | 7 | Trial reminders, expiry, limits, superadmin trial controls | SS-08, SS-09, SS-10 (**done**) |
 
 ## The create-company step (SS-03, built 15 Oct)
@@ -163,7 +164,7 @@ trials only), days data is kept after a trial expires, and the self-serve signup
 
 - **Code:** rules and the transaction in `application/organizations/trial_controls.py`;
   settings save + audit in `platform_settings_admin.py`; one company's overview via
-  `companies_overview.get_company`.
+  `companies_overview.company_setup` (shared with SS-07).
 - **API:** `GET /admin/organizations/{id}/overview`, `POST /admin/organizations/{id}/trial/extend`
   `{days}`, `/convert`, `/suspend` `{reason?}`, `/reactivate` (both admin routers; the
   assistant re-projects the company after a change). `GET /admin/platform-settings`,
@@ -248,3 +249,65 @@ yours, for signing up or for logging in to the dashboard without a password.
 - **To switch on:** get the template approved, add it to
   `WHATSAPP_APPROVED_TEMPLATES`, and (for signup) turn on `self_serve.signup_enabled`.
   Code login works as soon as the template is approved, even with signup off.
+
+## Daily setup questions (SS-14, built 15 Oct)
+
+Decided 15 Oct: the **logo and letterhead are set up by the Mesiri team, not read by AI**.
+The owner sends photos on WhatsApp, and we fill in the letterhead from the control panel.
+
+- **Code:** `apps/whatsapp-assistant/src/runtime/setup_questions.py`. The rules are in
+  `backend/src/mesiri/domains/organizations/setup_questions.py`.
+- **When questions go out:** to the owner (ADMIN) only, at most one a day, right
+  after Mesiri replies to one of their own messages. That keeps them inside
+  WhatsApp's 24-hour window, so no template is needed. Nothing is asked while a
+  confirmation or question is open, or more than 30 days after the company was
+  created. Each question is asked once; answered or skipped, it isn't repeated.
+- **The questions, in order:**
+  1. **Letterhead / visiting card / logo photos.** Photos sent in the next 30
+     minutes are saved as one **branding request** (`organization_settings`
+     key `branding_requests`). Each photo is posted to the Mesiri team WhatsApp
+     group through the teammate listener (`runtime/team_notify.py`).
+  2. **Report time:** 7 pm / 8 pm / keep 9 pm. This sets `dpr_send_deadline` on
+     every project of the company.
+  3. **Another site?** Starts the existing "add a site" workflow.
+- **Contract with the control panel:**
+  - Each branding request is `{id, status: open|done, created_at,
+    sent_by_user_id, files: [{object_key, content_type, received_at}], done_at,
+    owner_notified}`.
+  - The team fills the letterhead in (the existing branding setting and logo
+    upload), then sets `status: "done"` and `done_at`.
+  - The owner hears "✅ Your letterhead is set up" on their next message, within
+    3 hours.
+  - The progress per question is in `setup_progress`.
+  - The generic settings API refuses both keys.
+- **To switch the team-group posts on**, the app needs `TEAMMATE_TOKEN` (the
+  listener's token) in its environment. Without it nothing is posted, but the
+  requests are still saved for the control panel.
+- **Not included yet:** "who else gets the report?". It waits for WA-09 (opt-in),
+  because outside contacts receive nothing until they opt in.
+
+## Getting-started checklist (SS-07, built 15 Oct)
+
+A card at the top of **Today** for company admins
+(`apps/dashboard/src/components/getting-started-card.tsx`), fed by
+`GET /company/setup-progress` (`backend/.../domains/organizations/setup_router.py`).
+Nothing is ticked by hand: every item comes from what happened.
+
+- **One definition of "done":** the card uses the same setup read as the control
+  panel's companies list (`companies_overview.py`, SA-02), extended with two items.
+  The owner and the Mesiri team always see the same progress.
+- **Items:** first site · site supervisor (an active user besides the owner) · first
+  update from site · report time · logo on the report · first DPR sent. Each open
+  item links to where it's done (Team, Project → Reporting, Company → Letterhead),
+  plus the trial days left.
+- **Report time** is the one item the data can't show (keeping 9 pm looks like never
+  looking). It counts as done when a project's time was changed from 18:00 / 21:00,
+  or the report-time setup question was **answered**, on WhatsApp (SS-14) or with the
+  card's "9:00 pm is fine" (`POST /company/setup-progress/report-time-ok`). Both write
+  SS-14's own `setup_progress` record, so neither side asks again. A skipped question
+  doesn't count.
+- **Logo:** done when the letterhead has a logo (`branding.logo_object_key`). A
+  branding request sent on WhatsApp (SS-14) ticks it once the team has uploaded the
+  logo.
+- **Hiding:** gone for good once everything is done; "Hide for now" is remembered in
+  that browser only.
