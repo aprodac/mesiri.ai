@@ -1,5 +1,7 @@
 # M6.5 — Canonical Identity Bridge
 
+> **Retired 15 Oct 2026 (BE-01).** The `context_*` copy this describes was removed in migration `0482`; WhatsApp reads the main tables directly. See [docs/backend/identity.md](../backend/identity.md).
+
 **Status:** Deployed to prod — see [M6_5_PRODUCTION_BASELINE.md](M6_5_PRODUCTION_BASELINE.md) (2026-07-08, alembic `0195`, smoke test passed)
 **Date:** 2026-07-08
 **Last revised:** 2026-07-08 (incorporates contract-versioning, sync-scope, and migration-ordering review)
