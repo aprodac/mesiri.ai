@@ -157,7 +157,7 @@
 | WEB-09 | Team page (roles, sites) | S | Must | BE-01 | todo | | |
 | WEB-10 | Company page incl. branding | S | Must | BE-20 | done | Claude (session 13 Oct, blockers) | `8042a2e`. Company → Letterhead tab: logo upload/replace/remove, name on letterhead, GSTIN, signatory, brand colour, live DPR header preview. Verified in Chromium against the real API. Logos persist in prod only once INF-09 storage is switched on |
 | WEB-11 | Opening stock and stock adjustment screens | S | Must | BE-12 | todo | | Transfers between sites too (BE-32) |
-| WEB-12 | Owner login by WhatsApp/SMS code instead of password | M | Later | BE-01 | todo | | |
+| WEB-12 | Owner login by WhatsApp/SMS code instead of password | M | Later | BE-01 | claimed | Claude (session 15 Oct, onboarding, Lane D) | Built with SS-06 (one login-code mechanism, approved 15 Oct); code login for any active user with a WhatsApp number |
 | WEB-13 | Site label per project (Tower / Block / Phase): what a project calls its sites, used in WhatsApp wording, the dashboard and the DPR | S | Later | — | todo | | Split from WEB-08 on 14 Oct: nothing stores or uses it yet (needs a `projects` column + wording changes), so it was not built as a setting nothing reads |
 
 ## SA — Superadmin (control panel)
