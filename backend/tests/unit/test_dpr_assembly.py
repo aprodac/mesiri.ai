@@ -429,3 +429,79 @@ def test_project_rollup_counts_stock_flags_per_site():
     )
     assert project["stock_flags"] == 1
     assert [s["stock_flags"] for s in project["sites"]] == [1, 0]
+
+
+# ---------------------------------------------------------------------------
+# BE-11: a work item reported twice is flagged as a possible duplicate
+# ---------------------------------------------------------------------------
+
+
+def _be11_payload(activities, quantities=None, project=False):
+    rows = [
+        {"id": uuid.uuid4(), "work_type": a[0], "narrative": a[1], "status": "COMPLETED",
+         "contractor": None, "location_id": a[2] if len(a) > 2 else None}
+        for a in activities
+    ]
+    return build_site_report_payload(
+        project_name="Skyline Towers",
+        site_name="Block A",
+        report_date=datetime.date(2026, 10, 15),
+        activity_rows=rows,
+        quantities_by_activity={
+            row["id"]: q for row, q in zip(rows, quantities or [[]] * len(rows), strict=True)
+        },
+        evidence_count_by_activity={},
+        issue_rows=[],
+    )
+
+
+def _flags(payload):
+    return [a["possible_duplicate"] for a in payload["activities"]]
+
+
+def test_same_work_and_same_quantities_is_a_possible_duplicate():
+    sqm = [{"quantity": "120", "unit": "sqm"}]
+    payload = _be11_payload(
+        [("Plastering", "2nd floor east"), ("plastering", "east side 2nd floor")],
+        [sqm, [{"quantity": "120.00", "unit": "sqm"}]],
+    )
+    assert _flags(payload) == [False, True]  # the first stays, the repeat is flagged
+    assert payload["possible_duplicates"] == 1
+
+
+def test_same_work_with_different_quantities_is_two_pieces_of_work():
+    payload = _be11_payload(
+        [("Plastering", "east wing"), ("Plastering", "west wing")],
+        [[{"quantity": "120", "unit": "sqm"}], [{"quantity": "80", "unit": "sqm"}]],
+    )
+    assert _flags(payload) == [False, False]
+
+
+def test_without_quantities_the_same_description_is_a_possible_duplicate():
+    payload = _be11_payload(
+        [("Shuttering", "Columns C1-C4, ground floor."), ("Shuttering", "columns c1 c4 ground floor"),
+         ("Shuttering", "Beams, first floor")]
+    )
+    assert _flags(payload) == [False, True, False]
+
+
+def test_different_locations_are_not_duplicates():
+    loc_a, loc_b = uuid.uuid4(), uuid.uuid4()
+    payload = _be11_payload([("Brickwork", "wall", loc_a), ("Brickwork", "wall", loc_b)])
+    assert _flags(payload) == [False, False]
+
+
+def test_activities_with_nothing_to_compare_are_not_flagged():
+    payload = _be11_payload([("Plastering", None), ("Plastering", "")])
+    assert _flags(payload) == [False, False]
+
+
+def test_project_rollup_counts_possible_duplicates():
+    site = _be11_payload([("Shuttering", "beams"), ("Shuttering", "beams")])
+    project = build_project_report_payload(
+        project_name="Skyline Towers",
+        report_date=datetime.date(2026, 10, 15),
+        site_payloads=[("Block A", site), ("Block B", None)],
+    )
+    assert project["possible_duplicates"] == 1
+    assert [s["possible_duplicates"] for s in project["sites"]] == [1, 0]

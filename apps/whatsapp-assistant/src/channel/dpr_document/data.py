@@ -17,6 +17,8 @@ class DprActivityRow:
     contractor: str
     quantities: str
     evidence_count: int
+    # BE-11: repeats an earlier work item of the day. Absent before BE-11.
+    possible_duplicate: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +124,7 @@ def build_document_data(*, code: str, payload: dict[str, Any]) -> DprDocumentDat
             contractor=a.get("contractor") or "—",
             quantities=_quantities_text(a.get("quantities") or []),
             evidence_count=int(a.get("evidence_count") or 0),
+            possible_duplicate=bool(a.get("possible_duplicate")),
         )
         for a in payload.get("activities", [])
     ]

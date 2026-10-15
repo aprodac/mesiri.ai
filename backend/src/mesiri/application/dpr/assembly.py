@@ -134,6 +134,37 @@ def _material_summary(
     ]
 
 
+def _normalised(text: Any) -> str:
+    """Case, spacing and punctuation folded, so "Plastering, 2nd floor" and
+    "plastering 2nd floor" compare equal."""
+    return " ".join("".join(ch if ch.isalnum() else " " for ch in str(text or "").lower()).split())
+
+
+def _flag_possible_duplicates(activities: list[dict[str, Any]], rows: list[dict[str, Any]]) -> None:
+    """BE-11: mark a work item that repeats an earlier one on the same day.
+
+    Two people (or one person twice) reporting the same work counts it twice.
+    A later activity is a possible duplicate of an earlier one when both have
+    the same work type and location, and either the same quantities or --
+    when neither gave quantities -- the same description. Different
+    quantities of the same work (east wing 120 sqm, west wing 80 sqm) are two
+    pieces of work, not a duplicate. A flag for the engineer, who confirms or
+    rejects the day's drafts; nothing is merged or removed here."""
+    seen: set[tuple[Any, ...]] = set()
+    for activity, row in zip(activities, rows, strict=True):
+        work_type = _normalised(row.get("work_type"))
+        quantities = tuple(
+            sorted(
+                (str(Decimal(str(q.get("quantity") or 0)).normalize()), str(q.get("unit") or ""))
+                for q in activity["quantities"]
+            )
+        )
+        what = quantities or _normalised(row.get("narrative"))
+        key = (work_type, row.get("location_id"), what)
+        activity["possible_duplicate"] = bool(work_type and what) and key in seen
+        seen.add(key)
+
+
 def build_site_report_payload(
     *,
     project_name: str | None,
@@ -179,6 +210,7 @@ def build_site_report_payload(
         }
         for row in activity_rows
     ]
+    _flag_possible_duplicates(activities, activity_rows)
     issues = [
         {
             "issue_type": row.get("issue_type"),
@@ -198,6 +230,7 @@ def build_site_report_payload(
         "report_date": report_date.isoformat(),
         "activities": activities,
         "activity_count": len(activities),
+        "possible_duplicates": sum(1 for a in activities if a["possible_duplicate"]),
         "issues": issues,
         "open_issue_count": sum(1 for i in issues if i["status"] == "OPEN"),
         "evidence_count": sum(a["evidence_count"] for a in activities),
@@ -273,6 +306,7 @@ def build_project_report_payload(
                     "headcount": 0,
                     "labour_cost": "0",
                     "stock_flags": 0,
+                    "possible_duplicates": 0,
                 }
             )
             continue
@@ -291,6 +325,7 @@ def build_project_report_payload(
                 "headcount": site_headcount,
                 "labour_cost": site_cost,
                 "stock_flags": payload.get("stock_flags", 0),
+                "possible_duplicates": payload.get("possible_duplicates", 0),
             }
         )
         activity_count += site_activity_count
@@ -320,6 +355,7 @@ def build_project_report_payload(
         "evidence_count": evidence_count,
         "issues": issues,
         "stock_flags": sum(site["stock_flags"] for site in sites),
+        "possible_duplicates": sum(site["possible_duplicates"] for site in sites),
         "labour": {
             "headcount": headcount,
             "named_count": 0,

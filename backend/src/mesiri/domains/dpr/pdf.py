@@ -183,6 +183,22 @@ def render_dpr_pdf_bytes(
             for value, width in zip(row, col_widths, strict=False):
                 pdf.cell(width, 7, value, border=1)
             pdf.ln()
+        # BE-11: a work item reported twice is flagged, never merged.
+        for activity in activities:
+            if activity.get("possible_duplicate"):
+                pdf.set_text_color(170, 30, 30)
+                pdf.multi_cell(
+                    0,
+                    5,
+                    _truncate(
+                        f"Check: {activity.get('work_type')} is reported more than once with the "
+                        "same details. A possible duplicate report.",
+                        300,
+                    ),
+                    new_x="LMARGIN",
+                    new_y="NEXT",
+                )
+                pdf.set_text_color(0, 0, 0)
 
     pdf.ln(4)
 

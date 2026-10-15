@@ -130,7 +130,7 @@ _DOCUMENT_TEMPLATE_SRC = """
       <th style="width:16%">Quantities</th><th style="width:6%">Photos</th></tr></thead>
     <tbody>
       {% for a in data.activities %}
-      <tr><td>{{ a.work_type }}</td><td>{{ a.narrative }}</td><td>{{ a.status }}</td>
+      <tr><td>{{ a.work_type }}{% if a.possible_duplicate %}<div class="stock-flag">Possible duplicate</div>{% endif %}</td><td>{{ a.narrative }}</td><td>{{ a.status }}</td>
         <td>{{ a.contractor }}</td><td>{{ a.quantities }}</td><td>{{ a.evidence_count }}</td></tr>
       {% else %}
       <tr><td colspan="6" class="empty">No activities logged for this date.</td></tr>

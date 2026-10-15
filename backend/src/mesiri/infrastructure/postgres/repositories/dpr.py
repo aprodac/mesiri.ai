@@ -376,7 +376,7 @@ class PostgresDprRepository:
         activities_query = text(
             """
             SELECT a.id, a.work_type, a.narrative, a.status, a.contractor,
-                   a.started_at, a.ended_at
+                   a.started_at, a.ended_at, a.location_id
             FROM activities a
             WHERE a.organization_id = :org_id
               AND a.project_id = :project_id
