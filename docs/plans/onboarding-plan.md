@@ -376,6 +376,27 @@ dashboard):
 - No token, a bad token or a platform admin passes through untouched.
 - The status is cached for a minute per company.
 
+### The dashboard once the trial has ended (SS-15, built 15 Oct)
+
+- **Banner on every page** (`apps/dashboard/src/components/trial-banner.tsx`): "Your
+  free trial has ended — your data is read-only." The owner gets **Continue with
+  Mesiri** (`POST /company/trial/continue`), then "our team will call you"; anyone else
+  is told to ask the owner. An open request (from WhatsApp or the dashboard) shows as
+  already asked.
+- **Where the status comes from:** `/auth/me` now carries `company {status,
+  trial_ends_at, trial_days_left, continue_requested}` (the effective status, so a
+  trial past its end reads `expired`). It never fails the page: unreadable means no
+  banner. Platform admins get `null`.
+- **A refused save** (`403 TRIAL_EXPIRED`): the API client (`lib/api.ts`) turns the
+  `{code, message}` detail into the message text, so every page's existing error
+  display shows it (no generic error, no crash), and switches the app to read-only at
+  once (`lib/trial.ts`), covering a page loaded just before the trial ended.
+- **Edit actions hidden or disabled while read-only** (`useReadOnly()`): Today's "Send
+  now" and "Mark as no work", the getting-started card, "Create Project", "Add User",
+  and the letterhead save/upload. Everything else relies on the clear message.
+- **During the trial**, the getting-started card's "N days left" links to the same
+  Continue action.
+
 ## Trial guardrails (SS-09, built 15 Oct)
 
 Protect cost and the shared WhatsApp number's quality rating once self-serve signup

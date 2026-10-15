@@ -2,9 +2,10 @@ import * as React from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check } from 'lucide-react'
-import { confirmReportTime, fetchSetupProgress, type SetupProgress } from '@/lib/api'
+import { confirmReportTime, fetchSetupProgress, requestContinue, type SetupProgress } from '@/lib/api'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { useAuth } from '@/lib/AuthContext'
+import { useTrial } from '@/lib/trial'
 import { Button } from '@/components/ui/button'
 import { cn, formatClock } from '@/lib/utils'
 
@@ -125,16 +126,20 @@ export function GettingStartedCard() {
     enabled: isCompanyAdmin && !hidden,
     refetchInterval: 60_000,
   })
+  const trial = useTrial()
+  const continueAsk = useMutation({ mutationFn: requestContinue })
   const timeOk = useMutation({
     mutationFn: confirmReportTime,
     onSuccess: (data) => queryClient.setQueryData(['setup-progress'], data),
   })
 
-  if (!isCompanyAdmin || hidden || !progress.data) return null
+  // Once the trial has ended the banner (trial-banner.tsx) takes over.
+  if (!isCompanyAdmin || hidden || trial.readOnly || !progress.data) return null
   const list = items(progress.data, () => timeOk.mutate(), timeOk.isPending)
   const doneCount = list.filter((i) => i.done).length
   if (doneCount === list.length) return null
   const daysLeft = progress.data.effective_status === 'trial' ? progress.data.trial_days_left : null
+  const continueAsked = trial.continueRequested || continueAsk.isSuccess
 
   return (
     <section aria-label="Getting started" className="rounded-xl border bg-card px-5 py-4 flex flex-col gap-3">
@@ -144,6 +149,22 @@ export function GettingStartedCard() {
           <p className="text-sm text-muted-foreground">
             {doneCount} of {list.length} done
             {daysLeft !== null && ` · ${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left in your free trial`}
+            {daysLeft !== null &&
+              (continueAsked ? (
+                ' · our team will call you'
+              ) : (
+                <>
+                  {' · '}
+                  <button
+                    type="button"
+                    className="font-medium text-foreground underline underline-offset-2 disabled:opacity-60"
+                    disabled={continueAsk.isPending}
+                    onClick={() => continueAsk.mutate()}
+                  >
+                    Continue with Mesiri
+                  </button>
+                </>
+              ))}
           </p>
         </div>
         <button
@@ -185,6 +206,7 @@ export function GettingStartedCard() {
         ))}
       </ul>
       {timeOk.isError && <p className="text-sm text-destructive">{apiErrorMessage(timeOk.error)}</p>}
+      {continueAsk.isError && <p className="text-sm text-destructive">{apiErrorMessage(continueAsk.error)}</p>}
     </section>
   )
 }

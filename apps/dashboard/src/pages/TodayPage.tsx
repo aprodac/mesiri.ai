@@ -14,6 +14,7 @@ import {
 } from '@/lib/api'
 import { useToast } from '@/components/ui/toast-notification'
 import { GettingStartedCard } from '@/components/getting-started-card'
+import { useReadOnly } from '@/lib/trial'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn, formatClock } from '@/lib/utils'
@@ -132,7 +133,10 @@ function SiteCard({
   const status = siteStatus(site)
   const missing = missingText(site)
   const lastAt = formatTime(site.last_update_at)
-  const canMarkNoWork = !hasUpdates(site) && !FROZEN.includes(site.status) && site.status !== 'in_review'
+  // Hidden once the free trial has ended: the save would be refused (SS-15).
+  const readOnly = useReadOnly()
+  const canMarkNoWork =
+    !readOnly && !hasUpdates(site) && !FROZEN.includes(site.status) && site.status !== 'in_review'
 
   return (
     <article className="rounded-2xl border bg-card p-5 flex flex-col gap-4">
@@ -200,6 +204,7 @@ export default function TodayPage() {
   const projectFilter = scope.mode === 'portfolio' ? undefined : scope.projectId
   const [busySite, setBusySite] = React.useState<string | null>(null)
   const [busyProject, setBusyProject] = React.useState<string | null>(null)
+  const readOnly = useReadOnly()
 
   const daysQuery = useQuery({
     queryKey: ['site-days', date, projectFilter],
@@ -370,7 +375,7 @@ export default function TodayPage() {
                     <span className={cn(CHIP, project.sent ? 'bg-success-soft text-success' : 'bg-muted text-muted-foreground')}>
                       {projectDprLabel(project, projectSites)}
                     </span>
-                    {canSend && (
+                    {canSend && !readOnly && (
                       <Button
                         variant="outline"
                         size="sm"

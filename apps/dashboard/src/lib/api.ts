@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { TRIAL_EXPIRED_CODE, markTrialExpired } from './trial'
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const TOKEN_KEY = 'mesiri_dashboard_token'
@@ -33,6 +34,16 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // A save refused because the free trial has ended (SS-08's read-only
+    // guard): the body's `detail` is {code, message}. Pages show `detail` as
+    // text, so hand them the message, and switch the app to read-only.
+    const detail = error.response?.data?.detail
+    if (error.response?.status === 403 && detail?.code === TRIAL_EXPIRED_CODE) {
+      const message = String(detail.message || 'Your free trial has ended, so your data is read-only.')
+      error.response.data.detail = message
+      error.message = message
+      markTrialExpired(message)
+    }
     // A 401 from a login or signup call is a wrong password or code, not a
     // stale session: the page shows it, nothing to clear.
     const publicAuthCall = /^\/auth\/(login|code\/|signup)/.test(error.config?.url ?? '')
@@ -71,6 +82,13 @@ export interface Me {
   is_platform_admin?: boolean
   // Product modules switched on for the company (tracker BE-06 / WEB-02).
   enabled_modules?: string[]
+  // The company's trial status (SS-15); null for a platform admin.
+  company?: {
+    status: 'trial' | 'active' | 'expired' | 'suspended' | string
+    trial_ends_at: string | null
+    trial_days_left: number | null
+    continue_requested: boolean
+  } | null
 }
 
 export async function login(email: string, password: string): Promise<void> {
@@ -1982,5 +2000,12 @@ export async function fetchSetupProgress(): Promise<SetupProgress> {
  * Answers the WhatsApp setup question too (SS-14), so it isn't asked again. */
 export async function confirmReportTime(): Promise<SetupProgress> {
   const res = await api.post<SetupProgress>('/company/setup-progress/report-time-ok')
+  return res.data
+}
+
+/** "Continue with Mesiri" after (or near the end of) the free trial (SS-08):
+ * apps/whatsapp-assistant/src/trial/router.py. Owners only. */
+export async function requestContinue(): Promise<{ requested: boolean; already_requested: boolean }> {
+  const res = await api.post('/company/trial/continue')
   return res.data
 }

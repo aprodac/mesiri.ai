@@ -4,6 +4,7 @@ import { ScopeBar } from '@/components/scope-bar'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
 import { RequireAuth } from '@/lib/AuthContext'
+import { TrialBanner } from '@/components/trial-banner'
 
 export function AppLayout() {
   return (
@@ -17,6 +18,7 @@ export function AppLayout() {
             <ScopeBar />
           </header>
           <div className="flex flex-1 flex-col gap-4 p-4">
+            <TrialBanner />
             <Outlet />
           </div>
         </SidebarInset>
