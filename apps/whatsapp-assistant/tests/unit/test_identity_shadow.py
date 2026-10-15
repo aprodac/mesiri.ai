@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from context import runtime
-from context.main_table_repositories import MainProjectRepository
+from context.main_table_repositories import MainExternalIdentityRepository, MainProjectRepository
 from context.models import Project
 from context.postgres_repositories import PostgresProjectRepository
 from context.shadow import ShadowPort, identity_source
@@ -76,11 +76,11 @@ async def test_copy_failure_still_raises():
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
-        (None, "shadow"),
+        (None, "main"),
         ("context", "context"),
         ("MAIN", "main"),
         ("shadow", "shadow"),
-        ("x", "shadow"),
+        ("x", "main"),
     ],
 )
 def test_identity_source_setting(monkeypatch, value, expected):
@@ -105,3 +105,13 @@ def test_resolver_is_wired_from_the_setting(monkeypatch, source, expected):
     resolver = runtime.build_context_resolver()
 
     assert isinstance(resolver._d.projects, expected)  # noqa: SLF001
+
+
+def test_resolver_reads_the_main_tables_by_default(monkeypatch):
+    """BE-01 step 1: with no setting, WhatsApp identity comes from the main tables."""
+    monkeypatch.delenv("MESIRI_IDENTITY_SOURCE", raising=False)
+
+    resolver = runtime.build_context_resolver()
+
+    assert isinstance(resolver._d.projects, MainProjectRepository)  # noqa: SLF001
+    assert isinstance(resolver._d.identities, MainExternalIdentityRepository)  # noqa: SLF001

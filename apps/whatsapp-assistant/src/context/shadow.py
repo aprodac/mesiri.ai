@@ -4,10 +4,13 @@
 sender is and what they may reach:
 
 - ``context``: the ``context_*`` copy only (the old behaviour).
-- ``shadow`` (default): the copy still answers; the same question is also put
+- ``shadow``: the copy still answers; the same question is also put
   to the main tables, and any difference is recorded. Nothing a user sees
   changes. A failure on the main-table side is recorded, never raised.
-- ``main``: the main tables answer; the copy is not read.
+- ``main`` (default since BE-01 step 1): the main tables answer; the copy is
+  not read. It is still kept up to date (projection hooks, reconcile
+  watchdog), so ``MESIRI_IDENTITY_SOURCE=shadow`` plus a restart is a safe,
+  instant way back until step 3 removes it.
 
 Differences go to ``identity_shadow_mismatches`` (one row per distinct
 question, with a hit count), readable at ``GET /admin/reconcile/shadow``. A
@@ -30,7 +33,7 @@ if TYPE_CHECKING:  # pragma: no cover
 logger = logging.getLogger("mesiri.identity.shadow")
 
 SOURCES = ("context", "shadow", "main")
-DEFAULT_SOURCE = "shadow"
+DEFAULT_SOURCE = "main"
 
 
 def identity_source() -> str:
