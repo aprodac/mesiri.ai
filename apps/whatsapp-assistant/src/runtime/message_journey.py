@@ -178,6 +178,7 @@ def build_message_handlers(
     setup_questions: SetupQuestions | None = None,
     reply_composer: ReplyComposer | None = None,
     user_language_store: UserLanguageStore | None = None,
+    trial_usage_guard: Any | None = None,
 ) -> tuple[Any, Any]:
     """Build the `on_normalized`/`on_message_claimed` callbacks WhatsAppReceiver
     invokes for every inbound message, closing over the already-built services
@@ -398,6 +399,21 @@ def build_message_handlers(
             )
             await message_logger.mark_completed(correlation_id=message.correlation_id)
             return
+
+        # SS-09: a trial company over today's AI/WhatsApp cap is paused until
+        # tomorrow (India time) instead of running more AI. The message is
+        # still logged; queued sends (the evening report) still go out.
+        if trial_usage_guard is not None:
+            usage_verdict = await trial_usage_guard.check(ctx.organization_id)
+            if usage_verdict.over_cap:
+                from mesiri.domains.organizations.guardrails import TRIAL_LIMIT_MESSAGE
+
+                await sender.send_text(wa_id, TRIAL_LIMIT_MESSAGE)
+                await message_logger.log_reply(
+                    correlation_id=message.correlation_id, reply=TRIAL_LIMIT_MESSAGE
+                )
+                await message_logger.mark_completed(correlation_id=message.correlation_id)
+                return
 
         _log.info(
             "context.resolved user=%s org=%s projects=%s",

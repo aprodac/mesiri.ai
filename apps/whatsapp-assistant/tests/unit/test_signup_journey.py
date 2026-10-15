@@ -111,7 +111,15 @@ def journey(monkeypatch):
     async def fake_project(created):
         projected.append(created)
 
+    guard: dict = {"refuse": None, "calls": []}
+
+    async def fake_check_signup(conn, attempt, *, now=None):
+        guard["calls"].append(attempt)
+        if guard["refuse"]:
+            raise sj.SignupRefused(guard["refuse"], reason="previous_trial")
+
     monkeypatch.setattr(sj, "create_company", fake_create)
+    monkeypatch.setattr(sj, "check_signup", fake_check_signup)
     j = sj.SignupJourney(
         sender=sender,
         store=SignupStateStore(FakeRedis()),
@@ -126,7 +134,7 @@ def journey(monkeypatch):
     j.signup_enabled = fake_enabled  # type: ignore[method-assign]
     return SimpleNamespace(
         j=j, sender=sender, created_with=created_with, projected=projected,
-        outcome=outcome, enabled=enabled,
+        outcome=outcome, enabled=enabled, guard=guard,
     )  # fmt: skip
 
 
@@ -212,3 +220,36 @@ async def test_database_failure_says_sorry(journey) -> None:
     await journey.j.handle(_tap(sj.START_TRIAL_ID))
     await journey.j.handle(_text("Acme"))
     assert await journey.j.handle(_text("Site 1")) == sj.FAILED_MESSAGE
+
+
+# --- SS-09 guardrails ---------------------------------------------------------
+
+
+async def test_guardrails_are_checked_on_tap_and_before_creating(journey) -> None:
+    await journey.j.handle(_tap(sj.START_TRIAL_ID))
+    await journey.j.handle(_text("Suresh Builders"))
+    await journey.j.handle(_text("Green Villa, Kakkanad"))
+    assert [(a.phone, a.signup_source, a.ip_address) for a in journey.guard["calls"]] == [
+        (WA_ID, "whatsapp", None),
+        (WA_ID, "whatsapp", None),
+    ]
+    assert len(journey.created_with) == 1
+
+
+async def test_refused_on_tap_says_why_and_asks_nothing(journey) -> None:
+    journey.guard["refuse"] = "This number has already had a free trial."
+    reply = await journey.j.handle(_tap(sj.START_TRIAL_ID))
+    assert reply == "This number has already had a free trial."
+    # Back to the start: the next message is the welcome again, not a question.
+    assert await journey.j._store.get(WA_ID) is None
+    assert journey.created_with == []
+
+
+async def test_refused_at_create_creates_nothing(journey) -> None:
+    await journey.j.handle(_tap(sj.START_TRIAL_ID))
+    await journey.j.handle(_text("Suresh Builders"))
+    journey.guard["refuse"] = "We're getting a lot of sign-ups right now."
+    reply = await journey.j.handle(_text("Green Villa, Kakkanad"))
+    assert reply == "We're getting a lot of sign-ups right now."
+    assert journey.created_with == []
+    assert journey.projected == []

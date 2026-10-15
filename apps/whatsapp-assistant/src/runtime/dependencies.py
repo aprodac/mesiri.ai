@@ -290,6 +290,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
 
     # BE-25: price every AI call and WhatsApp message, per company.
     from channel.whatsapp import usage as message_usage
+    from mesiri.application.organizations.trial_usage import TrialUsageGuard
     from mesiri.application.usage.recorder import install_usage_recorder
 
     message_usage.set_sink(install_usage_recorder(material_db))
@@ -960,6 +961,8 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         signup_journey=signup_journey,
         contact_share=contact_share,
         setup_questions=setup_questions,
+        # SS-09: pause a trial company that runs past today's usage caps.
+        trial_usage_guard=TrialUsageGuard(material_db),
     )
 
     receiver = WhatsAppReceiver(
