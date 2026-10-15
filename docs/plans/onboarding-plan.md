@@ -47,7 +47,7 @@ nudges and trial reminders need Meta-approved templates (SS-12). Apply early.
 | 3b | Web signup and dashboard login by WhatsApp code | SS-06 + WEB-12 (**done**, off until switched on) |
 | 4 | Add a team member by sharing a contact; invite to forward | SS-13 (**done**) |
 | 5 | One-screen create form + companies list in the control panel | SA-01, SA-02 (**done**) |
-| 6 | Daily setup questions (letterhead/logo photos → team, report time, more sites) | SS-14 (**done**, WhatsApp side); control-panel requests list: Lane B |
+| 6 | Daily setup questions (letterhead/logo photos → team, report time, more sites) | SS-14 (**done**, WhatsApp side), SA-09 (**done**, control panel) |
 | 6b | Getting-started checklist on the dashboard's Today page | SS-07 (**done**) |
 | 7 | Trial reminders, expiry, limits, superadmin trial controls | SS-08, SS-09, SS-10 (**done**) |
 
@@ -142,6 +142,32 @@ Organizations page. Replaces the old "Provision New Tenant" form.
   `trial_started_at`, `trial_ends_at`, `converted_at`, `signup_source` and
   `setup {has_team, has_site, first_update_at, first_dpr_sent_at}`.
 - Deployment type and database route moved off the list (still on the company page).
+
+## Branding requests in the control panel (SA-09, built 15 Oct)
+
+The other half of SS-14's letterhead question: the owner's photos are worked here.
+
+- **Branding requests** (sidebar): every company's requests, open first and oldest
+  first, with when it came in, file count and status (open / done, owner told or not
+  yet). **Open** goes to the company's **Letterhead** tab (`?tab=letterhead`). The
+  Companies list shows a "Letterhead photos" badge while a request is open.
+- **Letterhead tab** (`BrandingPanel.tsx`): the photos (full size on click; "File no
+  longer available" when storage lost one, see INF-09) next to the letterhead form
+  (name on letterhead, GSTIN, signatory, brand colour, address, phone, email) and
+  logo upload. **Mark done** sets `status: "done"` and `done_at`; the assistant tells
+  the owner on their next message and sets `owner_notified`. The control panel sends
+  no WhatsApp messages.
+- **Code:** one router, `domains/admin/branding_router.py`, mounted by both apps.
+  The letterhead logic moved out of the dashboard's `/company/branding*` routes into
+  `application/organizations/branding_admin.py`, which both now call (same behaviour
+  for the dashboard). Every change is audited (`company.setting_changed`).
+- **API:** `GET /admin/branding-requests`; `GET`/`PUT /admin/organizations/{id}/branding`;
+  `PUT`/`DELETE .../branding/logo`; `GET .../branding-requests/{rid}/files/{n}` (a photo
+  by its position in that company's own request); `POST .../branding-requests/{rid}/done`
+  (409 if already done). The companies list adds `open_branding_requests`.
+- **Known gap:** the assistant adds photos with a read-and-rewrite of the request list
+  without a lock. A photo arriving at the very moment the team clicks Mark done can undo
+  one of the two writes. Rare; fixing it means locking on the assistant side (Lane A).
 
 ## Superadmin trial controls (SS-10, built 15 Oct)
 
