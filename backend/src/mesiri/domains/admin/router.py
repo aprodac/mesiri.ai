@@ -17,6 +17,7 @@ from mesiri.application.organizations.create_company import (
     NewCompany,
     create_company,
 )
+from mesiri.domains.audit.actions import actor_from_admin
 from mesiri.domains.shared.auth import require_platform_admin
 from mesiri.domains.timeline.responses import TimelineEntriesListResponse
 from mesiri.infrastructure.postgres.dependency import get_db_conn
@@ -249,7 +250,7 @@ async def provision_tenant(
         db_route=prov_in.db_route,
     )
     try:
-        created = await create_company(conn, new)
+        created = await create_company(conn, new, actor=actor_from_admin(_admin))
     except CompanyCreationError as exc:
         raise HTTPException(status_code=409 if exc.conflict else 400, detail=str(exc)) from exc
 

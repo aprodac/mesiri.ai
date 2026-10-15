@@ -28,8 +28,10 @@ from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
 
+from mesiri.application.audit.record import record_admin_action
 from mesiri.application.dpr.recipients import RecipientError, normalize_phone
 from mesiri.application.materials.starter_catalog import seed_starter_materials
+from mesiri.domains.audit import actions as audit
 from mesiri.domains.organizations import lifecycle
 from mesiri.domains.organizations.platform_settings import TRIAL_POLICY
 from mesiri.infrastructure.postgres.repositories.platform_settings import (
@@ -253,11 +255,30 @@ async def _assert_owner_free(conn: AsyncConnection, email: str | None, phone: st
             )
 
 
+def _default_actor(new: NewCompany, owner_id: uuid.UUID) -> audit.AuditActor:
+    if new.signup_source in ("whatsapp", "web"):
+        # The new owner signed themselves up.
+        return audit.AuditActor(
+            kind=audit.ACTOR_SELF_SIGNUP,
+            user_id=owner_id,
+            label=new.owner_phone or new.owner_email,
+        )
+    return audit.SYSTEM
+
+
 async def create_company(
-    conn: AsyncConnection, new: NewCompany, *, now: dt.datetime | None = None
+    conn: AsyncConnection,
+    new: NewCompany,
+    *,
+    now: dt.datetime | None = None,
+    actor: audit.AuditActor | None = None,
 ) -> CreatedCompany:
     """Create the company, its owner and optionally its first project and
-    site, inside the caller's transaction. Raises CompanyCreationError."""
+    site, inside the caller's transaction. Raises CompanyCreationError.
+
+    `actor` is who is creating it, for the audit log (BE-05): the platform
+    admin on /provision. Left out, a self-serve signup is recorded as the
+    owner signing up and anything else as the system."""
     new = validate(new)
     now = now or dt.datetime.now(dt.UTC)
 
@@ -331,6 +352,28 @@ async def create_company(
     # resolves instead of "ask your admin". Units, issue types and trades are
     # platform-wide already; only the materials catalogue is per company.
     materials_seeded = await seed_starter_materials(conn, org_id, created_by=owner_id)
+
+    await record_admin_action(
+        conn,
+        actor=actor or _default_actor(new, owner_id),
+        action=audit.COMPANY_CREATED,
+        organization_id=org_id,
+        target_type="organization",
+        target_id=org_id,
+        summary=f"Created {new.name} ({new.start_as}, via {new.signup_source})",
+        details={
+            "name": new.name,
+            "status": new.start_as,
+            "signup_source": new.signup_source,
+            "trial_ends_at": trial_ends_at,
+            "owner_user_id": owner_id,
+            "owner_email": new.owner_email,
+            "owner_whatsapp_number": new.owner_phone,
+            "project_id": project_id,
+            "site_id": site_id,
+        },
+        now=now,
+    )
 
     return CreatedCompany(
         organization_id=org_id,
