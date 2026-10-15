@@ -29,6 +29,7 @@ independent of whenever the ops cron happens to run.
 from __future__ import annotations
 
 import datetime
+import json
 import uuid
 from typing import TYPE_CHECKING, Any
 
@@ -428,3 +429,228 @@ async def mark_project_auto_dpr_run(
         sa.text("UPDATE projects SET auto_dpr_last_run_on = :ran_on WHERE id = :id"),
         {"ran_on": ran_on, "id": project_id},
     )
+
+
+# ---------------------------------------------------------------------------
+# The evening review (WA-04)
+#
+# Between the cutoff (drafts built, each site day labelled) and the send
+# deadline, each site's engineer is messaged about their day -- what is
+# missing, or that it is ready to confirm (application/dpr/evening_review.py).
+# What they send in reply is saved as usual; `refresh_site_day` then brings
+# the day up to date, so a filled gap turns the day ready within a tick.
+# ---------------------------------------------------------------------------
+
+_DEFAULT_SEND_DEADLINE = "21:00"
+
+
+def send_deadline_or_default(value: str | None) -> str:
+    """The project's send deadline ("HH:MM"), or 21:00 when unset or bad."""
+    try:
+        parse_time_of_day(value or _DEFAULT_SEND_DEADLINE)
+    except (ValueError, IndexError):
+        return _DEFAULT_SEND_DEADLINE
+    return value or _DEFAULT_SEND_DEADLINE
+
+
+async def projects_in_review_window(
+    conn: AsyncConnection, *, now_utc: datetime.datetime
+) -> list[dict[str, Any]]:
+    """Projects whose day is under review right now: the automatic DPR's
+    cutoff has run for today (local date), the DPR has not been sent yet,
+    and the send deadline has not passed. Same company/archived rules as
+    the cutoff."""
+    rows = (
+        await conn.execute(
+            sa.text(
+                f"""
+                SELECT p.id, p.organization_id, p.name, p.reporting_timezone,
+                       p.dpr_send_deadline, p.auto_dpr_last_run_on, p.dpr_last_sent_on
+                FROM projects p
+                JOIN organizations o ON o.id = p.organization_id
+                WHERE p.auto_generate_dpr = true
+                  AND p.status != 'archived'
+                  AND {operational_sql("o")}
+                """
+            )
+        )
+    ).mappings().all()
+
+    window: list[dict[str, Any]] = []
+    for row in rows:
+        local = local_now(timezone_name=row["reporting_timezone"] or "UTC", now_utc=now_utc)
+        report_date = local.date()
+        if row["auto_dpr_last_run_on"] != report_date or row["dpr_last_sent_on"] == report_date:
+            continue
+        deadline = send_deadline_or_default(row["dpr_send_deadline"])
+        if local.time() >= parse_time_of_day(deadline):
+            continue
+        window.append(
+            {
+                "id": row["id"],
+                "organization_id": row["organization_id"],
+                "name": row["name"],
+                "report_date": report_date,
+                "send_deadline": deadline,
+            }
+        )
+    return window
+
+
+async def site_days_for_review(
+    conn: AsyncConnection,
+    *,
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    report_date: datetime.date,
+) -> list[dict[str, Any]]:
+    """Every active site of the project with its day: status, missing
+    sections, when the day was last labelled, when anything was last saved
+    on it, and whether anything was saved at all. Labour is read only."""
+    rows = (
+        await conn.execute(
+            sa.text(
+                """
+                WITH facts AS (
+                    SELECT site_id, created_at AS at, true AS live FROM fact_reviews
+                     WHERE organization_id = :org_id AND fact_date = :d
+                    UNION ALL
+                    SELECT site_id, updated_at, deleted_at IS NULL FROM activities
+                     WHERE organization_id = :org_id AND activity_date = :d
+                    UNION ALL
+                    SELECT site_id, updated_at, true FROM site_issues
+                     WHERE organization_id = :org_id AND occurred_at::date = :d
+                    UNION ALL
+                    SELECT site_id, GREATEST(created_at, voided_at), voided_at IS NULL
+                      FROM labour_attendance_reports
+                     WHERE organization_id = :org_id AND occurred_date = :d
+                    UNION ALL
+                    SELECT site_id, updated_at, true FROM material_receipts
+                     WHERE organization_id = :org_id AND occurred_date = :d
+                    UNION ALL
+                    SELECT site_id, updated_at, true FROM material_usage
+                     WHERE organization_id = :org_id AND occurred_date = :d
+                )
+                SELECT s.id AS site_id, s.name AS site_name,
+                       dr.id AS daily_report_id, dr.status::text AS status,
+                       dr.missing_sections, dr.updated_at AS day_updated_at,
+                       (SELECT max(f.at) FROM facts f WHERE f.site_id = s.id) AS last_fact_at,
+                       EXISTS (SELECT 1 FROM facts f WHERE f.site_id = s.id AND f.live)
+                         AS has_facts
+                FROM sites s
+                LEFT JOIN daily_reports dr
+                  ON dr.site_id = s.id AND dr.level = 'SITE' AND dr.report_date = :d
+                WHERE s.organization_id = :org_id AND s.project_id = :project_id
+                  AND s.status = 'active'
+                ORDER BY s.name
+                """
+            ),
+            {"org_id": organization_id, "project_id": project_id, "d": report_date},
+        )
+    ).mappings().all()
+    days = []
+    for row in rows:
+        day = dict(row)
+        if isinstance(day["missing_sections"], str):
+            day["missing_sections"] = json.loads(day["missing_sections"])
+        days.append(day)
+    return days
+
+
+async def refresh_site_day(
+    conn: AsyncConnection,
+    *,
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    site_id: uuid.UUID,
+    report_date: datetime.date,
+) -> dict[str, Any] | None:
+    """Bring a site day up to date after the cutoff, e.g. once the engineer
+    has sent the labour count the gap-check asked for. A new version only
+    when the payload changed; a day with nothing recorded is only
+    labelled. Leaves a confirmed day alone (P7). Returns the day's
+    {"status", "missing_sections"}, or None for a confirmed day."""
+    from mesiri.application.dpr import evening_review
+
+    repo = PostgresDprRepository(conn)
+    daily_report_id = await repo.get_or_create_daily_report(
+        organization_id=organization_id,
+        project_id=project_id,
+        site_id=site_id,
+        report_date=report_date,
+    )
+    row = (
+        await conn.execute(
+            sa.text(
+                """
+                SELECT dr.status::text AS status, dr.current_version_id, v.payload
+                FROM daily_reports dr
+                LEFT JOIN daily_report_versions v ON v.id = dr.current_version_id
+                WHERE dr.id = :id
+                """
+            ),
+            {"id": daily_report_id},
+        )
+    ).mappings().first()
+    if row is None or row["status"] in site_day.FROZEN:
+        return None
+
+    payload = await repo.assemble_site_report_payload(
+        organization_id=organization_id,
+        project_id=project_id,
+        site_id=site_id,
+        report_date=report_date,
+    )
+    current = row["payload"]
+    if isinstance(current, str):
+        current = json.loads(current)
+    if row["current_version_id"] is not None and current == json.loads(json.dumps(payload)):
+        # Nothing new: just note that the day was looked at.
+        await conn.execute(
+            sa.text("UPDATE daily_reports SET updated_at = now() WHERE id = :id"),
+            {"id": daily_report_id},
+        )
+    elif row["current_version_id"] is not None or evening_review.has_content(payload):
+        await repo.create_version(
+            daily_report_id=daily_report_id, payload=payload, evaluate_readiness=True
+        )
+    else:
+        await repo.label_site_day(daily_report_id=daily_report_id, payload=payload)
+
+    status_row = (
+        await conn.execute(
+            sa.text(
+                "SELECT status::text AS status, missing_sections FROM daily_reports WHERE id = :id"
+            ),
+            {"id": daily_report_id},
+        )
+    ).mappings().first()
+    missing = status_row["missing_sections"]
+    if isinstance(missing, str):
+        missing = json.loads(missing)
+    return {"status": status_row["status"], "missing_sections": missing}
+
+
+async def site_day_reporters(
+    conn: AsyncConnection,
+    *,
+    organization_id: uuid.UUID,
+    site_id: uuid.UUID,
+    report_date: datetime.date,
+) -> list[str]:
+    """Who saved drafts on the site's day -- the evening message's
+    recipients when the site has no engineer."""
+    rows = (
+        await conn.execute(
+            sa.text(
+                """
+                SELECT DISTINCT fr.actor_user_id FROM fact_reviews fr
+                JOIN users u ON u.id = fr.actor_user_id AND lower(u.status) = 'active'
+                WHERE fr.organization_id = :org_id AND fr.site_id = :site_id
+                  AND fr.fact_date = :d AND fr.state = 'draft'
+                """
+            ),
+            {"org_id": organization_id, "site_id": site_id, "d": report_date},
+        )
+    ).mappings().all()
+    return sorted(str(row["actor_user_id"]) for row in rows)

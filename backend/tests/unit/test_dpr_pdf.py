@@ -209,3 +209,17 @@ def test_renders_a_stock_flag_for_usage_beyond_known_stock():
         payload=payload,
     )
     assert pdf_bytes.startswith(b"%PDF")
+
+
+def test_renders_a_possible_duplicate_line():
+    activity = {**_FULL_PAYLOAD["activities"][0], "possible_duplicate": True}
+    payload = {**_FULL_PAYLOAD, "activities": [_FULL_PAYLOAD["activities"][0], activity]}
+    pdf_bytes = render_dpr_pdf_bytes(
+        code="DPR-001",
+        report_date="2026-10-15",
+        project_name="Skyline Towers",
+        site_name="Site A",
+        workflow_status="in_review",
+        payload=payload,
+    )
+    assert pdf_bytes.startswith(b"%PDF")

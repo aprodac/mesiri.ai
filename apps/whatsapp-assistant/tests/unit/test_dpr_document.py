@@ -298,3 +298,11 @@ def test_reports_stored_before_be12_have_no_stock_flag():
     data = build_document_data(code="DPR-1", payload=payload)
     assert data.materials[0].beyond_stock is False
     assert "known stock" not in render_html(data)
+
+
+def test_render_html_marks_a_possible_duplicate_work_item():
+    base = {"work_type": "plastering", "narrative": "2nd floor", "status": "completed",
+            "contractor": None, "quantities": [], "evidence_count": 0}
+    payload = _payload(activities=[base, {**base, "possible_duplicate": True}], activity_count=2)
+    html = render_html(build_document_data(code="DPR-1", payload=payload))
+    assert html.count("Possible duplicate") == 1

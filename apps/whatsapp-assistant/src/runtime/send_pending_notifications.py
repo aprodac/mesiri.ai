@@ -21,7 +21,8 @@ otherwise would be worse than skipping honestly.
 `rule_key`s starting with "automation:" (runtime/automation_runner.py's own
 convention) render from the row's own `payload` -- `document_object_key`
 when present sends a document (SEND_DPR with a rendered PDF ready),
-otherwise `payload["message"]` as plain text. Every other rule_key keeps
+otherwise `payload["message"]` as plain text, or with tappable buttons when
+the payload has `buttons` (WA-04). Every other rule_key keeps
 using the static `_RULE_KEY_MESSAGES` table.
 
 Quiet hours (BE-38) are judged in the row's local time -- the project's
@@ -64,8 +65,10 @@ _RULE_KEY_MESSAGES: dict[str, str] = {
 
 _DOCUMENT_MIME_TYPE = "application/pdf"
 
-# BE-38: rows whose send time the owner chose themselves.
-_QUIET_HOURS_EXEMPT_PREFIXES = ("project_dpr_send:",)
+# BE-38: rows whose send time the owner chose themselves -- the project
+# DPR, and the evening review of each site's day (WA-04), which runs between
+# the owner's cutoff and send deadline.
+_QUIET_HOURS_EXEMPT_PREFIXES = ("project_dpr_send:", "site_day_")
 
 
 def _render(row: dict[str, Any]) -> str:
@@ -83,6 +86,17 @@ def _render(row: dict[str, Any]) -> str:
     )
 
 
+def _buttons(payload: dict[str, Any]) -> list[Any]:
+    """`payload["buttons"]` ([{"id", "title"}, ...]) as quick-reply buttons."""
+    from channel.replies import ListRow
+
+    return [
+        ListRow(id=str(button["id"]), title=str(button["title"]))
+        for button in payload.get("buttons") or []
+        if isinstance(button, dict) and button.get("id") and button.get("title")
+    ]
+
+
 async def _send_one(
     row: dict[str, Any],
     *,
@@ -95,11 +109,16 @@ async def _send_one(
     matching how the DPR chat trigger's own document side-channel works
     (runtime/inbound_journey.py): the reply is never JUST a bare document
     with no words around it."""
-    text_sent = await sender.send_text(wa_id, _render(row))
+    payload = row.get("payload") or {}
+    buttons = _buttons(payload)
+    if buttons:
+        # WA-04: tappable answers, e.g. "Site closed today".
+        text_sent = await sender.send_button(wa_id, body=_render(row), buttons=buttons)
+    else:
+        text_sent = await sender.send_text(wa_id, _render(row))
     if not text_sent:
         return False
 
-    payload = row.get("payload") or {}
     object_key = payload.get("document_object_key")
     if object_key and object_storage is not None:
         try:
@@ -155,6 +174,7 @@ async def _send_template(
         body_params=choice.body_params,
         header_document=header_document,
         mime_type=_DOCUMENT_MIME_TYPE,
+        quick_reply_payloads=choice.button_payloads,
     )
 
 

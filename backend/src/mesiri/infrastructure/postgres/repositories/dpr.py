@@ -376,7 +376,7 @@ class PostgresDprRepository:
         activities_query = text(
             """
             SELECT a.id, a.work_type, a.narrative, a.status, a.contractor,
-                   a.started_at, a.ended_at
+                   a.started_at, a.ended_at, a.location_id
             FROM activities a
             WHERE a.organization_id = :org_id
               AND a.project_id = :project_id
@@ -1041,19 +1041,27 @@ class PostgresDprRepository:
                 site_id=site_row["id"],
                 report_date=report_date,
             )
-            await self._conn.execute(
-                text(
-                    "UPDATE daily_reports SET status = CAST(:status AS daily_report_status), "
-                    "missing_sections = CAST(:missing AS JSONB), updated_at = now() WHERE id = :id"
-                ),
-                {
-                    "id": daily_report_id,
-                    "status": site_day.readiness_status(payload),
-                    "missing": json.dumps(site_day.missing_sections(payload)),
-                },
-            )
+            await self.label_site_day(daily_report_id=daily_report_id, payload=payload)
             labelled += 1
         return labelled
+
+    async def label_site_day(self, *, daily_report_id: uuid.UUID, payload: dict[str, Any]) -> str:
+        """Label a day that has no version as needs details or ready, from
+        what was recorded (no version: an empty payload is not a report).
+        Returns the status set."""
+        status = site_day.readiness_status(payload)
+        await self._conn.execute(
+            text(
+                "UPDATE daily_reports SET status = CAST(:status AS daily_report_status), "
+                "missing_sections = CAST(:missing AS JSONB), updated_at = now() WHERE id = :id"
+            ),
+            {
+                "id": daily_report_id,
+                "status": status,
+                "missing": json.dumps(site_day.missing_sections(payload)),
+            },
+        )
+        return status
 
     async def set_site_day_conditions(
         self,

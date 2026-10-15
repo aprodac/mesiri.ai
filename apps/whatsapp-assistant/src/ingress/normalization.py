@@ -17,6 +17,9 @@ _SUPPORTED_TYPES = {
     "image": InputModality.IMAGE,
     "audio": InputModality.VOICE,
     "interactive": InputModality.INTERACTIVE,
+    # A tap on a template's quick-reply button (WA-04) -- a menu tap like
+    # any other, carrying the payload the template was sent with.
+    "button": InputModality.INTERACTIVE,
 }
 
 
@@ -171,14 +174,25 @@ class MessageNormalizer:
     def _resolve_interactive_reply(self, message: Mapping[str, Any]) -> dict[str, str] | None:
         """Extract the tapped list row or button from an interactive reply.
 
-        Meta's shape (verified against the Cloud API reference): the outer
-        message carries `type: "interactive"`; the nested `interactive.type`
+        Meta's shape (verified against the Cloud API reference): a template
+        quick-reply tap is `type: "button"` with `button.payload`/`text`;
+        otherwise the outer message carries `type: "interactive"`; the nested `interactive.type`
         is `"list_reply"` or `"button_reply"`, each with its own object of
         the same name holding `id` and `title`. Anything else (e.g. a Flow's
         `nfm_reply`, which Mesiri doesn't send) is not a menu tap -- returns
         None rather than raising, so the message still normalizes with no
         text/selection rather than being dropped outright.
         """
+        if message.get("type") == "button":
+            # A template quick-reply tap: `button.payload` is what the
+            # template was sent with, `button.text` the button's label.
+            button = message.get("button") or {}
+            title = button.get("text")
+            reply_id = button.get("payload") or title
+            if not reply_id or not title:
+                return None
+            return {"id": str(reply_id), "title": str(title), "type": "template_button"}
+
         interactive = message.get("interactive") or {}
         reply_type = interactive.get("type")
         if reply_type not in ("list_reply", "button_reply"):

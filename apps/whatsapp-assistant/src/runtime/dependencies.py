@@ -899,6 +899,11 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         start_site_followup=start_project_setup_followup,
     )
 
+    # WA-04: taps on the evening message about a site's day.
+    from runtime.site_day_review import SiteDayReview
+
+    site_day_review = SiteDayReview(db=material_db)
+
     # SS-08: expired-trial replies and "CONTINUE" from a trial owner.
     from runtime.trial_journey import TrialJourney
 
@@ -967,6 +972,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         signup_journey=signup_journey,
         contact_share=contact_share,
         setup_questions=setup_questions,
+        site_day_review=site_day_review,
         trial_journey=trial_journey,
         # SS-09: pause a trial company that runs past today's usage caps.
         trial_usage_guard=TrialUsageGuard(material_db),
