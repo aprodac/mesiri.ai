@@ -503,10 +503,15 @@ class PostgresDprRepository:
         material_query = text(
             """
             SELECT mm.material_id, mc.name AS material_name, u.code AS unit,
-                   mm.movement_type, mm.quantity, mm.source_type, mm.source_id
+                   mm.movement_type, mm.quantity, mm.source_type, mm.source_id,
+                   COALESCE(mr.movement_reason, mu.movement_reason) AS movement_reason
             FROM material_movements mm
             JOIN materials_catalog mc ON mc.id = mm.material_id
             JOIN units_of_measure u ON u.id = mm.unit_id
+            LEFT JOIN material_receipts mr
+                   ON mm.source_type = 'material_receipt' AND mr.id = mm.source_id
+            LEFT JOIN material_usage mu
+                   ON mm.source_type = 'material_usage' AND mu.id = mm.source_id
             WHERE mm.organization_id = :org_id
               AND mm.project_id = :project_id
               AND mm.site_id = :site_id
@@ -529,6 +534,35 @@ class PostgresDprRepository:
                     "site_id": site_id,
                     "report_date": report_date,
                 },
+            )
+        ).mappings().all()
+
+        # BE-12: stock before and after the day, for every material that moved
+        # on it. From the whole ledger (corrections included), the same sum
+        # get_available_stock uses, so "closing" is what the site really held.
+        # Stock is per site, not per project, matching the outflow guard.
+        stock_rows = (
+            await self._conn.execute(
+                text(
+                    """
+                    SELECT mm.material_id, mc.name AS material_name, u.code AS unit,
+                           SUM(CASE WHEN mm.occurred_at::date < :report_date
+                                    THEN CASE WHEN mm.movement_type = 'RECEIPT'
+                                              THEN mm.quantity ELSE -mm.quantity END
+                                    ELSE 0 END) AS opening,
+                           SUM(CASE WHEN mm.movement_type = 'RECEIPT'
+                                    THEN mm.quantity ELSE -mm.quantity END) AS closing
+                    FROM material_movements mm
+                    JOIN materials_catalog mc ON mc.id = mm.material_id
+                    JOIN units_of_measure u ON u.id = mm.unit_id
+                    WHERE mm.organization_id = :org_id
+                      AND mm.site_id = :site_id
+                      AND mm.occurred_at::date <= :report_date
+                    GROUP BY mm.material_id, mc.name, u.code
+                    HAVING bool_or(mm.occurred_at::date = :report_date)
+                    """
+                ),
+                {"org_id": organization_id, "site_id": site_id, "report_date": report_date},
             )
         ).mappings().all()
 
@@ -592,6 +626,7 @@ class PostgresDprRepository:
             issue_rows=[dict(row) for row in issue_rows],
             labour_lines=[dict(row) for row in labour_rows],
             material_movement_rows=[dict(row) for row in material_rows],
+            material_stock_rows=[dict(row) for row in stock_rows],
         )
 
     async def find_site_report(

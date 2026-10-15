@@ -275,6 +275,23 @@ def render_dpr_pdf_bytes(
         for value, width in zip(row, material_col_widths, strict=False):
             pdf.cell(width, 7, value, border=1)
         pdf.ln()
+    # BE-12: usage beyond known stock is recorded, not blocked -- say so here.
+    for material in materials:
+        if material.get("beyond_stock"):
+            pdf.set_text_color(170, 30, 30)
+            pdf.multi_cell(
+                0,
+                5,
+                _truncate(
+                    f"Check: more {material.get('material_name')} used than the site's known stock "
+                    f"(stock now {material.get('closing')} {material.get('unit') or ''}). "
+                    "A delivery or opening stock may be missing.",
+                    300,
+                ),
+                new_x="LMARGIN",
+                new_y="NEXT",
+            )
+            pdf.set_text_color(0, 0, 0)
 
     if not is_project and conditions.get("tomorrow_plan"):
         pdf.ln(4)

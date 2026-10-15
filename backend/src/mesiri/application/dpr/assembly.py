@@ -54,7 +54,18 @@ def _labour_summary(labour_lines: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _material_summary(movement_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+# BE-12: which movement reasons are a delivery or a use. Everything else
+# (adjustments, opening stock, corrections) changes stock without either and
+# is shown as `adjusted`, so a stock correction never reads as a delivery.
+# A row with no reason (older callers) counts by direction, as before.
+_RECEIVED_REASONS = frozenset({None, "RECEIVED", "RETURN_IN", "TRANSFER_IN"})
+_USED_REASONS = frozenset({None, "CONSUMED", "WASTAGE", "RETURN_TO_VENDOR", "TRANSFER_OUT"})
+
+
+def _material_summary(
+    movement_rows: list[dict[str, Any]],
+    stock_rows: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     """Received/used quantities per material for one site+date, derived from
     material_movements the same way runtime/inventory_query.py re-aggregates
     stock levels -- RECEIPT adds to `received`, ISSUE adds to `used`. Day-
@@ -63,26 +74,61 @@ def _material_summary(movement_rows: list[dict[str, Any]]) -> list[dict[str, Any
     position. Cost is deliberately not included here: material_receipts.
     unit_cost is nullable and inconsistently recorded, unlike labour's wage
     (always copied at recording time) -- a partial cost figure would read as
-    complete and mislead more than omitting it."""
+    complete and mislead more than omitting it.
+
+    `stock_rows` (BE-12) carry each material's `opening` (stock before the
+    day) and `closing` (after it) from the whole ledger. With them, `adjusted`
+    is whatever moved stock that day besides deliveries and use -- opening
+    stock, adjustments, corrections of earlier days -- so opening + received
+    + adjusted - used always equals closing. `beyond_stock` flags a closing
+    below zero: more used than the site is known to hold. It is a flag, not
+    a block (usage is recorded as reported); the usual cause is a delivery
+    or opening stock nobody entered."""
     materials: dict[Any, dict[str, Any]] = {}
-    for row in movement_rows:
-        key = row.get("material_id")
-        entry = materials.setdefault(
-            key,
+
+    def entry_for(row: dict[str, Any]) -> dict[str, Any]:
+        return materials.setdefault(
+            row.get("material_id"),
             {"material_name": row.get("material_name"), "unit": row.get("unit"),
-             "received": Decimal("0"), "used": Decimal("0")},
+             "received": Decimal("0"), "used": Decimal("0"), "adjusted": Decimal("0"),
+             "opening": None, "closing": None},
         )
+
+    for row in movement_rows:
+        entry = entry_for(row)
         quantity = Decimal(str(row.get("quantity") or 0))
+        reason = row.get("movement_reason")
         if row.get("movement_type") == "RECEIPT":
-            entry["received"] += quantity
+            if reason in _RECEIVED_REASONS:
+                entry["received"] += quantity
+            else:
+                entry["adjusted"] += quantity
         elif row.get("movement_type") == "ISSUE":
-            entry["used"] += quantity
+            if reason in _USED_REASONS:
+                entry["used"] += quantity
+            else:
+                entry["adjusted"] -= quantity
+
+    for row in stock_rows or []:
+        opening = Decimal(str(row.get("opening") or 0))
+        closing = Decimal(str(row.get("closing") or 0))
+        if row.get("material_id") not in materials and opening == closing:
+            continue  # moved and was corrected the same day: nothing to show
+        entry = entry_for(row)
+        entry["opening"] = opening
+        entry["closing"] = closing
+        entry["adjusted"] = closing - opening - entry["received"] + entry["used"]
+
     return [
         {
             "material_name": entry["material_name"],
             "unit": entry["unit"],
             "received": str(entry["received"]),
             "used": str(entry["used"]),
+            "adjusted": str(entry["adjusted"]),
+            "opening": None if entry["opening"] is None else str(entry["opening"]),
+            "closing": None if entry["closing"] is None else str(entry["closing"]),
+            "beyond_stock": entry["closing"] is not None and entry["closing"] < 0,
         }
         for entry in materials.values()
     ]
@@ -99,6 +145,7 @@ def build_site_report_payload(
     issue_rows: list[dict[str, Any]],
     labour_lines: list[dict[str, Any]] | None = None,
     material_movement_rows: list[dict[str, Any]] | None = None,
+    material_stock_rows: list[dict[str, Any]] | None = None,
     conditions: dict[str, Any] | None = None,
     review_states: dict[str, dict[Any, str]] | None = None,
 ) -> dict[str, Any]:
@@ -143,6 +190,7 @@ def build_site_report_payload(
         }
         for row in issue_rows
     ]
+    materials = _material_summary(material_movement_rows or [], material_stock_rows)
     return {
         "level": "SITE",
         "project_name": project_name,
@@ -154,7 +202,8 @@ def build_site_report_payload(
         "open_issue_count": sum(1 for i in issues if i["status"] == "OPEN"),
         "evidence_count": sum(a["evidence_count"] for a in activities),
         "labour": _labour_summary(labour_lines or []),
-        "materials": _material_summary(material_movement_rows or []),
+        "materials": materials,
+        "stock_flags": sum(1 for m in materials if m["beyond_stock"]),
         "conditions": _conditions(conditions or {}, issues),
         "drafts": fact_review.review_counts(review_states),
     }
@@ -223,6 +272,7 @@ def build_project_report_payload(
                     "open_issue_count": 0,
                     "headcount": 0,
                     "labour_cost": "0",
+                    "stock_flags": 0,
                 }
             )
             continue
@@ -240,6 +290,7 @@ def build_project_report_payload(
                 "open_issue_count": site_open_issue_count,
                 "headcount": site_headcount,
                 "labour_cost": site_cost,
+                "stock_flags": payload.get("stock_flags", 0),
             }
         )
         activity_count += site_activity_count
@@ -268,6 +319,7 @@ def build_project_report_payload(
         "open_issue_count": open_issue_count,
         "evidence_count": evidence_count,
         "issues": issues,
+        "stock_flags": sum(site["stock_flags"] for site in sites),
         "labour": {
             "headcount": headcount,
             "named_count": 0,

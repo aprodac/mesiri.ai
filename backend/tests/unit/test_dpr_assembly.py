@@ -333,3 +333,99 @@ def test_project_payload_site_breakdown_reflects_each_sites_own_figures():
     assert site["open_issue_count"] == 1
     assert site["headcount"] == 10
     assert site["labour_cost"] == "5000"
+
+
+# ---------------------------------------------------------------------------
+# BE-12: stock corrections are not deliveries; usage beyond stock is flagged
+# ---------------------------------------------------------------------------
+
+CEMENT = uuid.uuid4()
+
+
+def _be12_payload(movement_rows, stock_rows=None):
+    return build_site_report_payload(
+        project_name="Skyline Towers",
+        site_name="Block A",
+        report_date=datetime.date(2026, 10, 15),
+        activity_rows=[],
+        quantities_by_activity={},
+        evidence_count_by_activity={},
+        issue_rows=[],
+        material_movement_rows=movement_rows,
+        material_stock_rows=stock_rows,
+    )
+
+
+def _move(movement_type, quantity, reason):
+    return {"material_id": CEMENT, "material_name": "Cement", "unit": "bags",
+            "movement_type": movement_type, "quantity": quantity, "movement_reason": reason}
+
+
+def test_opening_stock_and_adjustments_are_not_received_or_used():
+    payload = _be12_payload([
+        _move("RECEIPT", "50", "RECEIVED"),
+        _move("RECEIPT", "30", "OPENING_STOCK"),
+        _move("ISSUE", "20", "CONSUMED"),
+        _move("ISSUE", "4", "ADJUSTMENT_OUT"),
+    ])
+    [cement] = payload["materials"]
+    assert cement["received"] == "50"
+    assert cement["used"] == "20"
+    assert cement["adjusted"] == "26"
+    assert cement["closing"] is None  # no stock rows: no flag either way
+    assert cement["beyond_stock"] is False
+    assert payload["stock_flags"] == 0
+
+
+def test_rows_without_a_reason_count_by_direction_as_before():
+    [cement] = _be12_payload([_move("RECEIPT", "50", None), _move("ISSUE", "20", None)])["materials"]
+    assert (cement["received"], cement["used"], cement["adjusted"]) == ("50", "20", "0")
+
+
+def test_stock_rows_balance_the_day_and_flag_negative_closing():
+    payload = _be12_payload(
+        [_move("RECEIPT", "10", "RECEIVED"), _move("ISSUE", "50", "CONSUMED")],
+        [{"material_id": CEMENT, "material_name": "Cement", "unit": "bags",
+          "opening": "20", "closing": "-15"}],
+    )
+    [cement] = payload["materials"]
+    assert cement["opening"] == "20"
+    assert cement["closing"] == "-15"
+    # 20 + 10 + adjusted - 50 = -15 -> adjusted = 5 (e.g. opening stock entered today)
+    assert cement["adjusted"] == "5"
+    assert cement["beyond_stock"] is True
+    assert payload["stock_flags"] == 1
+
+
+def test_correction_of_an_earlier_day_shows_as_adjusted():
+    # Today's only movements were a correction pair excluded from the day rows,
+    # but stock moved: yesterday's 10-bag receipt was reversed today.
+    [cement] = _be12_payload(
+        [], [{"material_id": CEMENT, "material_name": "Cement", "unit": "bags",
+              "opening": "30", "closing": "20"}],
+    )["materials"]
+    assert cement["adjusted"] == "-10"
+    assert cement["beyond_stock"] is False
+
+
+def test_same_day_move_and_correction_is_not_listed():
+    payload = _be12_payload(
+        [], [{"material_id": CEMENT, "material_name": "Cement", "unit": "bags",
+              "opening": "30", "closing": "30"}],
+    )
+    assert payload["materials"] == []
+
+
+def test_project_rollup_counts_stock_flags_per_site():
+    flagged = _be12_payload(
+        [_move("ISSUE", "50", "CONSUMED")],
+        [{"material_id": CEMENT, "material_name": "Cement", "unit": "bags",
+          "opening": "0", "closing": "-50"}],
+    )
+    project = build_project_report_payload(
+        project_name="Skyline Towers",
+        report_date=datetime.date(2026, 10, 15),
+        site_payloads=[("Block A", flagged), ("Block B", None)],
+    )
+    assert project["stock_flags"] == 1
+    assert [s["stock_flags"] for s in project["sites"]] == [1, 0]

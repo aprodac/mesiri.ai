@@ -190,3 +190,22 @@ def test_renders_a_project_level_pdf_with_no_sites_yet():
         payload=payload,
     )
     assert pdf_bytes.startswith(b"%PDF")
+
+
+def test_renders_a_stock_flag_for_usage_beyond_known_stock():
+    payload = {
+        **_FULL_PAYLOAD,
+        "materials": [
+            {"material_name": "Cement", "unit": "bags", "received": "0", "used": "50",
+             "closing": "-50", "beyond_stock": True},
+        ],
+    }
+    pdf_bytes = render_dpr_pdf_bytes(
+        code="DPR-001",
+        report_date="2026-10-15",
+        project_name="Skyline Towers",
+        site_name="Site A",
+        workflow_status="approved",
+        payload=payload,
+    )
+    assert pdf_bytes.startswith(b"%PDF")
