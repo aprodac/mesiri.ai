@@ -160,6 +160,7 @@
 | WEB-11 | Opening stock and stock adjustment screens | S | Must | BE-12 | todo | | Transfers between sites too (BE-32) |
 | WEB-12 | Owner login by WhatsApp/SMS code instead of password | M | Later | BE-01 | done | Claude (session 15 Oct, onboarding, Lane D) | **Done with SS-06 (`b2e33ef`, `3db2a9a`, `72216fe`, `5d623a9`, merge `dec3a65` (migration 0476)).** "WhatsApp code" tab on the login page, for any active user with a WhatsApp number (approved 15 Oct). A number on two accounts is refused (BE-04). Live once `mesiri_login_code` is approved |
 | WEB-13 | Site label per project (Tower / Block / Phase): what a project calls its sites, used in WhatsApp wording, the dashboard and the DPR | S | Later | — | todo | | Split from WEB-08 on 14 Oct: nothing stores or uses it yet (needs a `projects` column + wording changes), so it was not built as a setting nothing reads |
+| WEB-14 | Dashboard visual refresh: new default theme (palette, type, spacing, surfaces, light/dark, DPR status colours) through the design tokens, so every page picks it up | M | Must | — | claimed | Claude (session 15 Oct, onboarding, Lane D) | Asked for 15 Oct ("the current default theme is not good"). 2–3 directions shown as screenshots before any code. Control panel not in scope (Lane B) |
 
 ## SA — Superadmin (control panel)
 
