@@ -85,6 +85,7 @@ if TYPE_CHECKING:
     from runtime.activity_query import ActivityQueryService
     from runtime.activity_search_service import ActivitySearchService
     from runtime.capability_help import CapabilityHelpService
+    from runtime.contact_share_journey import ContactShareJourney
     from runtime.dependencies import Settings
     from runtime.dpr_request_query import DprRequestQueryService
     from runtime.duplicate_expense_query import DuplicateExpenseQueryService
@@ -172,6 +173,7 @@ def build_message_handlers(
     memory_loader: ConversationMemoryLoader,
     memory_coordinator: ConversationMemoryCoordinator,
     signup_journey: SignupJourney | None = None,
+    contact_share: ContactShareJourney | None = None,
     reply_composer: ReplyComposer | None = None,
     user_language_store: UserLanguageStore | None = None,
 ) -> tuple[Any, Any]:
@@ -398,6 +400,28 @@ def build_message_handlers(
         # path because an UNKNOWN-modality message can never be a
         # confirmation reply or a menu tap, and must not be able to resolve
         # a pending draft.
+        if (
+            contact_share is not None
+            and (message.metadata or {}).get("raw_type") == "contacts"
+            and (message.metadata or {}).get("shared_contacts")
+        ):
+            # SS-13: a shared contact card adds that person to the team.
+            try:
+                reply = await contact_share.handle_contacts(message, ctx)
+            except Exception:  # noqa: BLE001 — a shared contact always gets a reply
+                _log.exception("contact_share.failed user=%s", ctx.user_id)
+                reply = ReplySpec(text="Sorry, I couldn't read that contact. Please try again.")
+            await send_reply_spec(
+                reply,
+                wa_id,
+                send_text=sender.send_text,
+                send_list=sender.send_list,
+                send_button=sender.send_button,
+            )
+            await message_logger.log_reply(correlation_id=message.correlation_id, reply=reply.text)
+            await message_logger.mark_completed(correlation_id=message.correlation_id)
+            return
+
         if message.modality is InputModality.UNKNOWN:
             raw_type = (message.metadata or {}).get("raw_type")
             if str(raw_type or "") in SILENTLY_IGNORED_RAW_TYPES:
@@ -481,6 +505,26 @@ def build_message_handlers(
         # runtime/inbound_journey/seeding.py). Handled before everything
         # else for the same reason as the team-photo tap above: "Skip" must
         # not fall through to the confirmation classifier.
+        if contact_share is not None:
+            try:
+                contact_reply = await contact_share.handle_project_tap(message, ctx)
+            except Exception:  # noqa: BLE001 — a tap must always get some reply
+                _log.exception("contact_share.tap_failed user=%s", ctx.user_id)
+                contact_reply = ReplySpec(text="Sorry, I couldn't start that — please try again.")
+            if contact_reply is not None:
+                await send_reply_spec(
+                    contact_reply,
+                    wa_id,
+                    send_text=sender.send_text,
+                    send_list=sender.send_list,
+                    send_button=sender.send_button,
+                )
+                await message_logger.log_reply(
+                    correlation_id=message.correlation_id, reply=contact_reply.text
+                )
+                await message_logger.mark_completed(correlation_id=message.correlation_id)
+                return
+
         setup_tap = str((message.metadata or {}).get("interactive_reply_id") or "")
         if setup_tap in (
             "setup_add_site",
@@ -665,6 +709,30 @@ def build_message_handlers(
             except Exception:  # noqa: BLE001 — the confirmed/rejected step's own
                 # outcome was already recorded either way.
                 _log.exception("plan.advance_failed user=%s", ctx.user_id)
+            # SS-13: the person whose contact was shared is now on the
+            # project; hand the owner an invite to forward them. After the
+            # plan summary, so the message to forward is the last one.
+            if contact_share is not None:
+                try:
+                    from mesiri_contracts.application.results.execution_result import (
+                        ExecutionStatus,
+                    )
+
+                    confirmed = getattr(handled.result, "confirmed_action", None)
+                    execution = handled.execution_result
+                    if (
+                        confirmed is not None
+                        and execution is not None
+                        and execution.status is ExecutionStatus.SUCCEEDED
+                    ):
+                        for text in await contact_share.invite_after_member_added(
+                            action_type=confirmed.draft_action.action_type,
+                            member_name=confirmed.draft_action.fields.get("member_name"),
+                            actor=ctx,
+                        ):
+                            await sender.send_text(wa_id, text)
+                except Exception:  # noqa: BLE001 — the member is already added
+                    _log.exception("contact_share.invite_failed user=%s", ctx.user_id)
             # Was missing until now: every other fast-path step laps the
             # timer, but this one (and its three siblings above) didn't --
             # so the "prepipeline" trace a user pastes back for debugging

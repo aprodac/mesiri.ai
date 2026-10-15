@@ -865,6 +865,17 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         project_new_company=project_new_company,
     )
 
+    # SS-13: a shared contact card adds that person to the team, through the
+    # same CREATE_USER / ADD_PROJECT_MEMBER workflows as a typed request.
+    from runtime.contact_share_journey import ContactShareJourney
+
+    contact_share = ContactShareJourney(
+        redis=redis_client,
+        db=material_db,
+        plan_store=plan_store,
+        workflow_runtime=workflow_runtime,
+    )
+
     from runtime.message_journey import build_message_handlers
 
     _on_normalized, _mark_read_on_claim = build_message_handlers(
@@ -926,6 +937,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         memory_loader=memory_loader,
         memory_coordinator=memory_coordinator,
         signup_journey=signup_journey,
+        contact_share=contact_share,
     )
 
     receiver = WhatsAppReceiver(

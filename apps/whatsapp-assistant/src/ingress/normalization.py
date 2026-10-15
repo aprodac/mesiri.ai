@@ -53,6 +53,12 @@ class MessageNormalizer:
             if frequently_forwarded:
                 metadata["frequently_forwarded"] = True
 
+        if message.get("type") == "contacts":
+            # SS-13: a shared contact card adds that person to the team.
+            # Still modality UNKNOWN (there's nothing to understand); the
+            # people on the card travel in metadata.
+            metadata["shared_contacts"] = self._resolve_shared_contacts(message)
+
         if modality is InputModality.INTERACTIVE:
             interactive_reply = self._resolve_interactive_reply(message)
             if interactive_reply is not None:
@@ -116,6 +122,32 @@ class MessageNormalizer:
             phone_number=wa_id,
             profile_name=profile_name,
         )
+
+    @staticmethod
+    def _resolve_shared_contacts(message: Mapping[str, Any]) -> list[dict[str, str]]:
+        """Each card's name and number from a `contacts` message. The number
+        is the card's WhatsApp id when Meta knows the person is on WhatsApp
+        (digits, country code first), else the first phone as written.
+        Cards without a number are dropped."""
+        people: list[dict[str, str]] = []
+        for card in message.get("contacts") or []:
+            if not isinstance(card, Mapping):
+                continue
+            name_obj = card.get("name") or {}
+            name = str(
+                name_obj.get("formatted_name")
+                or " ".join(
+                    p for p in (name_obj.get("first_name"), name_obj.get("last_name")) if p
+                )
+                or ""
+            ).strip()
+            phones = [p for p in (card.get("phones") or []) if isinstance(p, Mapping)]
+            number = next((str(p["wa_id"]) for p in phones if p.get("wa_id")), None) or next(
+                (str(p["phone"]) for p in phones if p.get("phone")), None
+            )
+            if number:
+                people.append({"name": name, "phone": number})
+        return people
 
     def _resolve_timestamp(self, message: Mapping[str, Any]) -> datetime:
         timestamp = int(message["timestamp"])
