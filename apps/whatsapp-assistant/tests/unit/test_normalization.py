@@ -157,6 +157,31 @@ def test_normalize_button_reply_uses_the_same_shape_as_list_reply() -> None:
     assert normalized.metadata["interactive_reply_type"] == "button_reply"
 
 
+def test_normalize_template_quick_reply_carries_its_payload() -> None:
+    """WA-04: a tap on a template's quick-reply button arrives as
+    `type: "button"`; it reads like any other menu tap, id = the payload."""
+    normalizer = MessageNormalizer()
+    message = {
+        "from": "919876543210",
+        "id": "wamid.template_tap",
+        "timestamp": "1710000005",
+        "type": "button",
+        "button": {"payload": "sdr:open:site-1:20261015", "text": "Open report"},
+    }
+
+    normalized = normalizer.normalize(
+        message,
+        contacts=[],
+        phone_number_id="PHONE_NUMBER_ID",
+        display_phone_number="15550001111",
+    )
+
+    assert normalized.modality is InputModality.INTERACTIVE
+    assert normalized.text == "Open report"
+    assert normalized.metadata["interactive_reply_id"] == "sdr:open:site-1:20261015"
+    assert normalized.metadata["interactive_reply_type"] == "template_button"
+
+
 def test_normalize_unrecognized_interactive_subtype_does_not_raise() -> None:
     """A WhatsApp Flow's nfm_reply (Mesiri doesn't send Flows) or any other
     unrecognized interactive subtype must not drop the message -- it

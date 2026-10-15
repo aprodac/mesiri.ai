@@ -17,8 +17,10 @@ The text to submit for each template lives in docs/ops/whatsapp-templates.md.
 
 A notification row asks for a template through its payload:
     {"template": {"name": "<name>", "body_params": ["...", ...]}}
-plus, for a template with a document header, the existing
-`document_object_key` (the same PDF the in-window send attaches).
+with `"button_payloads": [...]` inside it for a template with quick-reply
+buttons (one each; the tap comes back with that payload), plus, for a
+template with a document header, the existing `document_object_key` (the
+same PDF the in-window send attaches).
 """
 
 from __future__ import annotations
@@ -42,6 +44,9 @@ class TemplateSpec:
     category: str  # UTILITY / AUTHENTICATION / MARKETING, as submitted to Meta
     body_param_count: int
     header: str | None = None  # "document" or None
+    # Quick-reply buttons, in order. Each is sent with a payload (the tap
+    # id the reply comes back with), given per message.
+    quick_replies: tuple[str, ...] = ()
 
 
 #: The project DPR (BE-16) for an owner/PM who has not messaged in 24 h.
@@ -67,7 +72,23 @@ LOGIN_CODE = TemplateSpec(
     body_param_count=1,
 )
 
-TEMPLATES: dict[str, TemplateSpec] = {spec.name: spec for spec in (DPR_DELIVERY, LOGIN_CODE)}
+#: The evening review of a site's day (WA-04) for an engineer who has not
+#: messaged in 24 h. Body (submitted text, docs/ops/whatsapp-templates.md):
+#:   "Today's report for {{1}}: {{2}} Please reply before {{3}} so it goes
+#:    out complete."
+#: The "Open report" tap opens the 24h window, and the full message (with
+#: its own buttons) follows.
+SITE_DAY_REVIEW = TemplateSpec(
+    name="mesiri_site_day_review",
+    language="en",
+    category="UTILITY",
+    body_param_count=3,
+    quick_replies=("Open report",),
+)
+
+TEMPLATES: dict[str, TemplateSpec] = {
+    spec.name: spec for spec in (DPR_DELIVERY, LOGIN_CODE, SITE_DAY_REVIEW)
+}
 
 
 def approved_template_names(raw: str | None) -> frozenset[str]:
@@ -92,6 +113,7 @@ class TemplateChoice:
     spec: TemplateSpec | None
     body_params: tuple[str, ...] = ()
     skip_reason: str | None = None
+    button_payloads: tuple[str, ...] = ()
 
 
 def choose_template(payload: dict[str, Any] | None, approved: frozenset[str]) -> TemplateChoice:
@@ -110,4 +132,7 @@ def choose_template(payload: dict[str, Any] | None, approved: frozenset[str]) ->
     params = tuple(clean_param(p) for p in (request.get("body_params") or []))
     if len(params) != spec.body_param_count:
         return TemplateChoice(None, skip_reason=f"template_params_mismatch:{name}")
-    return TemplateChoice(spec, body_params=params)
+    payloads = tuple(str(p) for p in (request.get("button_payloads") or []))
+    if len(payloads) != len(spec.quick_replies):
+        return TemplateChoice(None, skip_reason=f"template_buttons_mismatch:{name}")
+    return TemplateChoice(spec, body_params=params, button_payloads=payloads)
