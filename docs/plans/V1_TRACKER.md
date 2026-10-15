@@ -195,6 +195,7 @@ later. Every path must use the same company-creation step as the superadmin wiza
 | SS-10 | Superadmin: trial defaults, per-company extend / convert / suspend, days used and activity | M | Must | SS-02 | todo | | |
 | SS-11 | Superadmin: trials funnel (started → first update → first DPR → converted) and cost per trial | M | Must | SS-10, BE-25 | todo | | |
 | SS-12 | Message templates for self-serve: login code (authentication), join request, trial reminders | S | Must | SS-04, SS-05, SS-08 | todo | | Meta approval needed |
+| SS-13 | Add a team member by sharing a WhatsApp contact: owner/PM shares a contact card → person added to the company and site → they get a welcome message telling them how to report | M | Must | SS-04 | claimed | Claude (session 15 Oct, onboarding, Lane A) | From the onboarding plan (15 Oct): contacts are shared, not typed |
 
 ---
 
