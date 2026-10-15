@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 TRIAL_POLICY = "trial_policy"
 SELF_SERVE = "self_serve"
+USAGE_PRICING = "usage_pricing"
 
 DEFAULT_TRIAL_POLICY: dict[str, int] = {
     # Length of a new company's free trial. Extendable per company.
@@ -29,9 +30,17 @@ DEFAULT_SELF_SERVE: dict[str, bool] = {
     "signup_enabled": False,
 }
 
+DEFAULT_USAGE_PRICING: dict[str, float] = {
+    # USD -> INR for AI costs priced in dollars (BE-25). Each cost row keeps
+    # the INR it was worth when written, so changing this never rewrites
+    # history. Default: RBI reference rate of 18 May 2026, the latest found.
+    "usd_inr": 96.29,
+}
+
 # Bounds a superadmin can't go past by typo.
 _TRIAL_DAYS_RANGE = (1, 365)
 _RETENTION_DAYS_RANGE = (0, 3650)
+_USD_INR_RANGE = (50.0, 200.0)
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +60,11 @@ _SPECS: dict[str, PlatformSettingSpec] = {
         key=SELF_SERVE,
         default=DEFAULT_SELF_SERVE,
         description="Whether new companies can sign up on their own (WhatsApp and web).",
+    ),
+    USAGE_PRICING: PlatformSettingSpec(
+        key=USAGE_PRICING,
+        default=DEFAULT_USAGE_PRICING,
+        description="Exchange rate used to show AI costs (billed in USD) in rupees.",
     ),
 }
 
@@ -109,4 +123,12 @@ def validate(key: str, value: object) -> dict[str, object]:
     elif key == SELF_SERVE:
         if not isinstance(merged["signup_enabled"], bool):
             raise ValueError("signup_enabled must be true or false")
+    elif key == USAGE_PRICING:
+        rate = merged["usd_inr"]
+        if isinstance(rate, bool) or not isinstance(rate, (int, float)):
+            raise ValueError("usd_inr must be a number")
+        low, high = _USD_INR_RANGE
+        if not low <= rate <= high:
+            raise ValueError(f"usd_inr must be between {low:g} and {high:g}")
+        merged["usd_inr"] = float(rate)
     return merged
