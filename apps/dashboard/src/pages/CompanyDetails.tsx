@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import {
   Building2,
   Users,
@@ -21,7 +22,12 @@ import { Badge } from '@/components/ui/badge'
 type TabType = 'overview' | 'users' | 'messages' | 'letterhead' | 'settings'
 
 export default function CompanyDetails() {
-  const [activeTab, setActiveTab] = React.useState<TabType>('overview')
+  const [searchParams] = useSearchParams()
+  // ?tab=letterhead opens a tab directly (the getting-started checklist links here).
+  const [activeTab, setActiveTab] = React.useState<TabType>(() => {
+    const tab = searchParams.get('tab')
+    return tab && ['users', 'messages', 'letterhead', 'settings'].includes(tab) ? (tab as TabType) : 'overview'
+  })
 
   // Fetch Company Profile
   const {

@@ -80,7 +80,14 @@ export default function ProjectDetails() {
     setSearchParams(nextParams, { replace: true })
   }
 
-  const [activeTab, setActiveTab] = React.useState<'overview' | 'sites' | 'members' | 'reporting' | 'recipients' | 'whatsapp' | 'settings'>('overview')
+  type ProjectTab = 'overview' | 'sites' | 'members' | 'reporting' | 'recipients' | 'whatsapp' | 'settings'
+  // ?tab=reporting opens a tab directly (the getting-started checklist links here).
+  const [activeTab, setActiveTab] = React.useState<ProjectTab>(() => {
+    const tab = searchParams.get('tab')
+    return tab && ['sites', 'members', 'reporting', 'recipients', 'whatsapp', 'settings'].includes(tab)
+      ? (tab as ProjectTab)
+      : 'overview'
+  })
 
   // Dialog open states
   const [projectDialogOpen, setProjectDialogOpen] = React.useState(false)
