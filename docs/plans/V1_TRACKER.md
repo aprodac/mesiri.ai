@@ -102,7 +102,7 @@
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | BE-23 | Onboarding APIs for the wizard steps (company, owner, projects & sites, team, DPR settings, go-live) | M | Must | BE-02 | todo | | Bulk CSV import is Later |
-| BE-24 | Construction defaults seeded per new company (materials, units, trades, issue types) | S | Must | — | todo | | Follow the finance seeder pattern |
+| BE-24 | Construction defaults seeded per new company (materials, units, trades, issue types) | S | Must | — | claimed | Claude (session 15 Oct, onboarding) | Follow the finance seeder pattern |
 | BE-25 | Cost tracking: every AI call (model, tokens, cost) and WhatsApp message (category, cost), per company | M | Must | — | todo | | Extend `provider_executions`. Plan, INR prices and official sources are in the 13 Oct session; released unstarted |
 | BE-26 | Messages API for superadmin (per company, user, site; linked to what each message created) | S | Must | BE-09 | todo | | |
 | BE-27 | Health numbers API (DPRs sent vs expected, gap-check reply rate) | S | Later | BE-08 | todo | | |
