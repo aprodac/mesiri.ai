@@ -44,7 +44,7 @@ nudges and trial reminders need Meta-approved templates (SS-12). Apply early.
 | 1 | One create-company step | SS-03 (**done**, includes BE-02) |
 | 2 | Starter materials seeded per new company | BE-24 (**done**); `cft`/`load` units BE-39 |
 | 3 | WhatsApp signup for unknown numbers | SS-04 (**done**, off until switched on) |
-| 4 | Add a team member by sharing a contact; welcome message | new, with SS-05 |
+| 4 | Add a team member by sharing a contact; invite to forward | SS-13 (**done**) |
 | 5 | One-screen create form + companies list in the control panel | SA-01 (**done**), SA-02 |
 | 6 | Daily setup questions (letterhead photo → branding, recipients, report time) | SS-07 + new |
 | 7 | Trial reminders, expiry, limits, superadmin trial controls | SS-08 to SS-10 |
@@ -139,3 +139,28 @@ Organizations page. Replaces the old "Provision New Tenant" form.
   it". If the number is already taken, the reply says it's already set up.
 - **Before switching it on in production:** guardrails (SS-09). There is no UI for the
   switch yet (SS-10); today it's a `platform_settings` row.
+
+## Team by shared contact (SS-13, built 15 Oct)
+
+- **Code:** `apps/whatsapp-assistant/src/runtime/contact_share_journey.py`. Shared
+  contact cards are read in `ingress/normalization.py` into
+  `metadata["shared_contacts"]`.
+- **What happens when an Admin or PM shares a contact.** Nothing new writes users or
+  memberships; it uses the same workflows as a typed "add Rajesh, 98765..., as site
+  engineer":
+  - **New number:** the CREATE_USER → ADD_PROJECT_MEMBER plan
+    (`start_member_create_plan`, now accepting an explicit `whatsapp_number`). That's
+    **two confirmation taps**: create the user, then add them to the project.
+  - **Already in this company:** ADD_PROJECT_MEMBER only (one tap).
+  - **In another company:** refused (BE-04).
+  - **Several projects:** a project picker first.
+  - **Several cards in one share:** the first is added, and the owner is asked to
+    share the others one at a time (one plan per user).
+- **The invite.** Mesiri can't message the new person first, because WhatsApp only
+  allows that within 24 h of their own message unless a template is used. So after
+  the add succeeds, the owner gets a ready-to-forward invite with a
+  `wa.me/<Mesiri number>?text=Hi` link. When the person says Hi they're already a
+  user, and the existing first-message intro welcomes them.
+- **Proposed template for SS-12** (utility, for direct invites later):
+  *"Hi {{1}}, {{2}} has added you to Mesiri to send daily site updates on WhatsApp.
+  Reply Hi to start."*
