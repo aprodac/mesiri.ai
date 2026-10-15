@@ -194,6 +194,16 @@ async def run_tick(*, db: Any) -> dict[str, int] | None:
             except Exception:  # noqa: BLE001
                 logger.exception("automation_runner.project_dpr_send_failed")
 
+            # SS-08: trial-ending reminders, queued for the drain below. In a
+            # savepoint: a failure here must not abort this tick's transaction.
+            try:
+                from mesiri.application.organizations.trial import queue_trial_reminders
+
+                async with conn.begin_nested():
+                    fired += await queue_trial_reminders(conn)
+            except Exception:  # noqa: BLE001
+                logger.exception("automation_runner.trial_reminders_failed")
+
             sent_skipped = {"sent": 0, "skipped": 0}
             try:
                 sent_skipped = await _drain_and_send(db=db)

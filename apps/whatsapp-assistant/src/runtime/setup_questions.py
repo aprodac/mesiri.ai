@@ -132,7 +132,7 @@ class SetupQuestions:
     async def after_reply(self, actor: ActorIdentity | None, send: Callable[..., Any]) -> None:
         """Send today's setup question (or a "your letterhead is ready"
         notice) if one is due. `send(spec)` delivers a ReplySpec."""
-        if actor is None or actor.organization_id is None:
+        if actor is None or actor.organization_id is None or not actor.org_active:
             return
         if str(actor.role or "").upper() != _OWNER_ROLE:
             return
