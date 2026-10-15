@@ -11,8 +11,8 @@ No new table: the two rows already hold everything a transfer is
 (material, unit, quantity, date, who, which sites). Nullable, since every
 row before this and every non-transfer row has none.
 
-Revision ID: 0478
-Revises: 0477
+Revision ID: 0479
+Revises: 0478
 """
 
 from __future__ import annotations
@@ -20,8 +20,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0478"
-down_revision = "0477"
+revision = "0479"
+down_revision = "0478"
 branch_labels = None
 depends_on = None
 
