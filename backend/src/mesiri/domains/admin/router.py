@@ -87,6 +87,7 @@ class CompanyListItem(OrganizationResponse):
     converted_at: datetime | None = None
     signup_source: str
     setup: SetupProgressResponse
+    open_branding_requests: int = 0
 
 
 class TrialExtendRequest(BaseModel):
