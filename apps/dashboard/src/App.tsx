@@ -2,6 +2,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AppLayout } from '@/components/app-layout'
 import { RequireModule } from '@/components/require-module'
 import Login from '@/pages/Login'
+import Signup from '@/pages/Signup'
 import Overview from '@/pages/Overview'
 import TodayPage from '@/pages/TodayPage'
 import Users from '@/pages/Users'
@@ -62,6 +63,7 @@ export default function App() {
     <ToastProvider>
       <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
       <Route path="/" element={<AppLayout />}>
         <Route index element={<IndexRedirect />} />
         <Route path="today" element={<TodayPage />} />

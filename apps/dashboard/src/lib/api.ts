@@ -33,7 +33,10 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    // A 401 from a login or signup call is a wrong password or code, not a
+    // stale session: the page shows it, nothing to clear.
+    const publicAuthCall = /^\/auth\/(login|code\/|signup)/.test(error.config?.url ?? '')
+    if (error.response?.status === 401 && !publicAuthCall) {
       clearToken()
       if (window.location.pathname !== '/login') {
         window.location.href = '/login'
@@ -72,6 +75,43 @@ export interface Me {
 
 export async function login(email: string, password: string): Promise<void> {
   const res = await api.post('/auth/login', { email, password })
+  setToken(res.data.access_token)
+}
+
+// Login by a code sent on WhatsApp, and web signup (SS-06, WEB-12):
+// apps/whatsapp-assistant/src/auth/code_login.py.
+export type CodePurpose = 'login' | 'signup'
+
+export interface CodeRequested {
+  resend_after_s: number
+  expires_in_s: number
+  /** Only from a test server that sends nothing (MESIRI_LOGIN_CODE_SENDER=dev). */
+  dev_code: string | null
+}
+
+export async function requestCode(phone: string, purpose: CodePurpose): Promise<CodeRequested> {
+  const res = await api.post<CodeRequested>('/auth/code/request', { phone, purpose })
+  return res.data
+}
+
+export async function loginWithCode(phone: string, code: string): Promise<void> {
+  const res = await api.post('/auth/code/login', { phone, code })
+  setToken(res.data.access_token)
+}
+
+/** A right signup code gives a short-lived ticket for the signup itself. */
+export async function verifySignupCode(phone: string, code: string): Promise<string> {
+  const res = await api.post<{ signup_token: string }>('/auth/code/verify', { phone, code })
+  return res.data.signup_token
+}
+
+export async function signup(body: {
+  signup_token: string
+  owner_name: string
+  company_name: string
+  site_name: string
+}): Promise<void> {
+  const res = await api.post('/auth/signup', body)
   setToken(res.data.access_token)
 }
 
