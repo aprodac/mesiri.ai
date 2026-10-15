@@ -43,7 +43,11 @@ const FLOWS = {
   mercon:
     "work on branch ilan (pull first); commit and push to origin ilan; open a PR ilan -> dev with `gh pr create`; " +
     "when its CI passes, merge it into dev; then open (or update) the release PR dev -> main. Merge the release PR only when told in the group.",
-  mesiri: "work on main (pull first); run the verification listed in CLAUDE.md; push to main (main deploys, so say so in the plan).",
+  // TM-09: in this repo the bot only upgrades itself (teammate/), for its owner.
+  mesiri:
+    "this is the bot's own code. Change only teammate/, .claude/skills/ and the teammate rows of docs/plans/V1_TRACKER.md; " +
+    "say plainly in the plan if it touches your permissions or safety rules. Approved upgrades run in a cloud session that tests, " +
+    "pushes to main and redeploys the bot; only an owner can approve them.",
 };
 
 function parseProjects(spec) {
@@ -52,26 +56,31 @@ function parseProjects(spec) {
     const m = part.match(/^([a-z0-9_-]+)=([\w.-]+\/[\w.-]+)@([\w./-]+)$/);
     if (!m) throw new Error(`bad TEAMMATE_BRAIN_PROJECTS entry: ${part}`);
     const [, name, repo, branch] = m;
-    out[name] = { name, repo, branch, cwd: join(dir, "repos", name), flow: FLOWS[name] || `work on branch ${branch}; open a PR; never merge to main unless told.` };
+    // Each project's own GitHub token (TEAMMATE_GITHUB_TOKEN_<NAME>), else the default GH_TOKEN.
+    const ghToken = process.env[`TEAMMATE_GITHUB_TOKEN_${name.toUpperCase()}`] || process.env.GH_TOKEN || "";
+    out[name] = { name, repo, branch, ghToken, cwd: join(dir, "repos", name), flow: FLOWS[name] || `work on branch ${branch}; open a PR; never merge to main unless told.` };
   }
   return out;
 }
 
-const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], { stdio: "pipe" }).toString().trim();
+const withToken = (ghToken) => ({ ...process.env, ...(ghToken ? { GH_TOKEN: ghToken } : {}) });
+const gitAs = (ghToken) => (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], { stdio: "pipe", env: withToken(ghToken) }).toString().trim();
 
 /** First start: clone; every start: point hooks at the read-only folder. */
-function ensureRepo({ repo, branch, cwd }) {
+function ensureRepo({ repo, branch, cwd, ghToken }) {
+  const git = gitAs(ghToken);
   if (!existsSync(join(cwd, ".git"))) {
     mkdirSync(join(dir, "repos"), { recursive: true });
     log(`cloning ${repo} (${branch})`);
-    execFileSync("gh", ["repo", "clone", repo, cwd, "--", "--branch", branch], { stdio: "inherit" });
+    execFileSync("gh", ["repo", "clone", repo, cwd, "--", "--branch", branch], { stdio: "inherit", env: withToken(ghToken) });
   }
-  execFileSync("gh", ["auth", "setup-git"], { stdio: "inherit" });
+  execFileSync("gh", ["auth", "setup-git"], { stdio: "inherit", env: withToken(ghToken) });
   git(cwd, "config", "core.hooksPath", hooksDir);
 }
 
 /** Before each turn: latest code on the project's branch, without touching uncommitted work. */
-function prepare({ name, cwd, branch }) {
+function prepare({ name, cwd, branch, ghToken }) {
+  const git = gitAs(ghToken);
   git(cwd, "fetch", "--quiet", "origin");
   // With a cloud routine (hybrid), all changes happen in the cloud, so this copy only mirrors GitHub:
   // set aside anything unpushed or uncommitted on a backup branch (kept, never deleted), then follow origin.
@@ -180,7 +189,7 @@ const brain = new Brain({
   model: process.env.TEAMMATE_BRAIN_MODEL || "claude-opus-5-5",
   // What Claude Code (and anything it runs) sees: never the dev-site password or the routine token.
   env: {
-    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^TEAMMATE_(DEV_LOGIN|ROUTINE)_/.test(k))),
+    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^TEAMMATE_(DEV_LOGIN|ROUTINE|GITHUB_TOKEN)_/.test(k))),
     TEAMMATE_TOKEN: token,
     TEAMMATE_API: api,
   },

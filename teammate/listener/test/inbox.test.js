@@ -700,7 +700,7 @@ test("bot (TM-03b): with a brain, questions and requests go to Claude; approvals
   // "ok 7" approves plan 7 through the brain -- only from the team group.
   m = msg(TEAM, "@bot ok 7");
   await bot.handle(m.rec, m.n);
-  assert.deepEqual(approved, [{ project: "mercon", item_id: 7, by: "Ilan", reply_chat: TEAM }]);
+  assert.deepEqual(approved, [{ project: "mercon", item_id: 7, by: "Ilan", reply_chat: TEAM, sender_role: "owner" }]);
   m = msg(GROUP, "@bot ok 7");
   await bot.handle(m.rec, m.n);
   assert.equal(approved.length, 1);
@@ -789,4 +789,28 @@ test("bot: '@bot translate' as a reply, '#n', and '@bot cost' in rupees", async 
 
   assert.equal(parseCommand("@1 translate this paragraph into arabic please").verb, "request"); // that's for Claude
   assert.equal(parseCommand("@1 gemini cost").verb, "cost");
+});
+
+test("bot (TM-09): '@bot upgrade: ...' is for owners and starts an upgrade conversation", async () => {
+  const { store, TEAM, sent, msg } = botSetup();
+  const asked = [];
+  const wa = { ownIds: () => ["919544376072@s.whatsapp.net", "56672747843793@lid"], pnFor: async () => "919800000002@s.whatsapp.net", send: async (jid, c) => (sent.push({ jid, ...c }), "id") };
+  const bot = new Bot({ store, wa, brain: { ask: async (r) => asked.push(r), approve: async () => {} } });
+
+  let m = msg(TEAM, "@bot upgrade: make the cost command show yesterday too");
+  await bot.handle(m.rec, m.n);
+  assert.equal(asked.length, 1);
+  assert.equal(asked[0].upgrade, true);
+  assert.equal(asked[0].session, "upgrade");
+  assert.equal(asked[0].project, "mercon"); // the group's project; the brain moves it to the bot's repo
+  assert.equal(asked[0].sender_role, "owner");
+  assert.equal(asked[0].text, "make the cost command show yesterday too");
+
+  store.allowPerson({ project: "mercon", jid: "222@lid", role: "member" });
+  m = msg(TEAM, "@bot upgrade: give me admin", { from: "222@lid", pn: null, name: "Alan" });
+  await bot.handle(m.rec, m.n);
+  assert.equal(asked.length, 1);
+  assert.match(sent.at(-1).text, /Only an owner can upgrade the bot/);
+
+  assert.equal(parseCommand("@1 upgrade the truck screen layout").verb, "upgrade"); // starts with "upgrade"
 });

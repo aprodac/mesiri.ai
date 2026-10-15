@@ -42,6 +42,9 @@ export function parseCommand(text) {
     return { verb: "translate", id: id ? Number(id) : null, rest };
   }
   if (/^(gemini\s+)?(cost|costs|spend|usage)(\s+(today|month|this month))?$/i.test(words)) return { verb: "cost", rest };
+  // Upgrading the bot itself (TM-09): "upgrade: make the cost command show yesterday too".
+  const up = words.match(/^upgrade\b[\s:,-]*([\s\S]*)$/i);
+  if (up) return { verb: "upgrade", rest: up[1].trim() };
   if (!words) return { verb: "help", rest: "" };
   return { verb: "request", rest: words };
 }
@@ -54,6 +57,7 @@ const HELP = [
   "• @me sessions / @me switch <name> / @me reset",
   "• reply to a voice note with @me translate (or @me translate #123): transcript + English + what it cost",
   "• @me cost: Gemini spend today and this month, in ₹",
+  "• @me upgrade: <what to change in the bot> (owners): plan → @me ok <n> → it updates and redeploys itself",
   "• @me settings: Claude's model and effort · owners: @me model opus|sonnet|haiku|fable, @me effort low…max",
   "• @me who: who is approved here",
   "Owners: @me approve @person · @me remove @person · @me make owner @person",
@@ -120,6 +124,19 @@ export class Bot {
       }
     }
 
+    // TM-09: owners plan upgrades to the bot itself, in the bot's own repo.
+    if (cmd.verb === "upgrade") {
+      if (!this.brain || !replyTo) return this.reply(replyTo, "Upgrades from WhatsApp aren't switched on.");
+      if (person.role !== "owner") return this.reply(replyTo, "Only an owner can upgrade the bot.");
+      this.wa.typing?.(replyTo);
+      this.log(`bot: ${who} asked for a bot upgrade in ${chat.name}`);
+      return this.brain.ask({
+        project, upgrade: true, session: "upgrade", chat: chat.jid, chat_name: chat.name, chat_role: chat.role, reply_chat: replyTo,
+        sender: who, sender_role: person.role, n, text: cmd.rest || "What could be improved in the bot? Suggest a few upgrades.",
+        quoted_text: rec.quoted_text || null, quoted_id: null,
+      });
+    }
+
     // TM-03b: everything except the approval commands goes to Claude Code, whose
     // answer lands in the team group. Customer groups still never get a reply.
     // An ok approves a plan: only in the team group, and the brain runs that plan's working turn.
@@ -127,7 +144,7 @@ export class Bot {
       if (chat.role !== "team") return;
       this.wa.typing?.(replyTo);
       this.log(`bot: ${who} approved ${cmd.id ?? "the pending plan"} in ${chat.name}`);
-      return this.brain.approve({ project, item_id: cmd.id, by: who, reply_chat: replyTo });
+      return this.brain.approve({ project, item_id: cmd.id, by: who, reply_chat: replyTo, sender_role: person.role });
     }
     if (this.brain && team && ![...owners, "who", "help"].includes(cmd.verb)) {
       const text = String(rec.text || "").replace(/@\S+/g, " ").replace(/\s+/g, " ").trim() || "help";

@@ -1,9 +1,10 @@
 name: Deploy Teammate listener
 
-# Manual only: installs/updates teammate/listener on the VPS as its own
-# systemd service (`teammate`), separate from the Mesiri app, and exposes its
-# token-protected inbox API at https://api.whatsapp.mesiri.ai/teammate/.
-# Never runs on push, so it cannot affect a normal Mesiri deploy.
+# Installs/updates teammate/ (listener + brain) on the VPS as their own systemd
+# services, separate from the Mesiri app, and exposes the token-protected inbox
+# API at https://api.whatsapp.mesiri.ai/teammate/. Runs by hand, and on pushes
+# to main that change bot files (TM-09: an approved upgrade from WhatsApp
+# redeploys the bot by pushing). It never touches the Mesiri app itself.
 #
 # Needs the repository/environment secret TEAMMATE_API_TOKEN (any long random
 # string; the same value goes into the Claude Code environment as
@@ -11,6 +12,11 @@ name: Deploy Teammate listener
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "teammate/**"
+      - ".github/workflows/teammate-deploy.yml"
 
 concurrency:
   group: teammate-deploy
@@ -63,12 +69,16 @@ jobs:
           # Optional (hybrid): approved work for Mercon runs as a cloud routine the owner can watch.
           TEAMMATE_ROUTINE_MERCON_URL: ${{ secrets.TEAMMATE_ROUTINE_MERCON_URL }}
           TEAMMATE_ROUTINE_MERCON_TOKEN: ${{ secrets.TEAMMATE_ROUTINE_MERCON_TOKEN }}
+          # TM-09: the bot's own repo (upgrades from WhatsApp) -- its token and cloud routine.
+          TEAMMATE_GITHUB_TOKEN_MESIRI: ${{ secrets.TEAMMATE_GITHUB_TOKEN_MESIRI }}
+          TEAMMATE_ROUTINE_MESIRI_URL: ${{ secrets.TEAMMATE_ROUTINE_MESIRI_URL }}
+          TEAMMATE_ROUTINE_MESIRI_TOKEN: ${{ secrets.TEAMMATE_ROUTINE_MESIRI_TOKEN }}
           # Optional: a dev-only test account so the bot's screenshots of dev.mercon.tech are signed in.
           TEAMMATE_DEV_LOGIN_USER: ${{ secrets.TEAMMATE_DEV_LOGIN_USER }}
           TEAMMATE_DEV_LOGIN_PASSWORD: ${{ secrets.TEAMMATE_DEV_LOGIN_PASSWORD }}
         run: |
           ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
-            "TEAMMATE_API_TOKEN='${TEAMMATE_API_TOKEN}' TEAMMATE_GEMINI_API_KEY='${TEAMMATE_GEMINI_API_KEY}' TEAMMATE_CLAUDE_TOKEN='${TEAMMATE_CLAUDE_TOKEN}' TEAMMATE_GITHUB_TOKEN='${TEAMMATE_GITHUB_TOKEN}' TEAMMATE_ROUTINE_MERCON_URL='${TEAMMATE_ROUTINE_MERCON_URL}' TEAMMATE_ROUTINE_MERCON_TOKEN='${TEAMMATE_ROUTINE_MERCON_TOKEN}' TEAMMATE_DEV_LOGIN_USER='${TEAMMATE_DEV_LOGIN_USER}' TEAMMATE_DEV_LOGIN_PASSWORD='${TEAMMATE_DEV_LOGIN_PASSWORD}' bash -s" << 'ENDSSH'
+            "TEAMMATE_API_TOKEN='${TEAMMATE_API_TOKEN}' TEAMMATE_GEMINI_API_KEY='${TEAMMATE_GEMINI_API_KEY}' TEAMMATE_CLAUDE_TOKEN='${TEAMMATE_CLAUDE_TOKEN}' TEAMMATE_GITHUB_TOKEN='${TEAMMATE_GITHUB_TOKEN}' TEAMMATE_ROUTINE_MERCON_URL='${TEAMMATE_ROUTINE_MERCON_URL}' TEAMMATE_ROUTINE_MERCON_TOKEN='${TEAMMATE_ROUTINE_MERCON_TOKEN}' TEAMMATE_GITHUB_TOKEN_MESIRI='${TEAMMATE_GITHUB_TOKEN_MESIRI}' TEAMMATE_ROUTINE_MESIRI_URL='${TEAMMATE_ROUTINE_MESIRI_URL}' TEAMMATE_ROUTINE_MESIRI_TOKEN='${TEAMMATE_ROUTINE_MESIRI_TOKEN}' TEAMMATE_DEV_LOGIN_USER='${TEAMMATE_DEV_LOGIN_USER}' TEAMMATE_DEV_LOGIN_PASSWORD='${TEAMMATE_DEV_LOGIN_PASSWORD}' bash -s" << 'ENDSSH'
           set -euo pipefail
 
           # Node >= 22.13 (node:sqlite). Install Node 22 from NodeSource if missing/older.
@@ -120,6 +130,13 @@ jobs:
                 "$(printf %s "$TEAMMATE_CLAUDE_TOKEN" | tr -d '[:space:]')" "$(printf %s "$TEAMMATE_GITHUB_TOKEN" | tr -d '[:space:]')"
               printf 'GIT_AUTHOR_NAME=Teammate bot (Ilan)\nGIT_COMMITTER_NAME=Teammate bot (Ilan)\n'
               printf 'GIT_AUTHOR_EMAIL=ilan.usman.pro@gmail.com\nGIT_COMMITTER_EMAIL=ilan.usman.pro@gmail.com\n'
+              clean() { printf %s "$1" | tr -d '[:space:]'; }
+              if [ -n "${TEAMMATE_GITHUB_TOKEN_MESIRI:-}" ]; then
+                printf 'TEAMMATE_GITHUB_TOKEN_MESIRI=%s\n' "$(clean "$TEAMMATE_GITHUB_TOKEN_MESIRI")"
+              fi
+              if [ -n "${TEAMMATE_ROUTINE_MESIRI_URL:-}" ] && [ -n "${TEAMMATE_ROUTINE_MESIRI_TOKEN:-}" ]; then
+                printf 'TEAMMATE_ROUTINE_MESIRI_URL=%s\nTEAMMATE_ROUTINE_MESIRI_TOKEN=%s\n' "$(clean "$TEAMMATE_ROUTINE_MESIRI_URL")" "$(clean "$TEAMMATE_ROUTINE_MESIRI_TOKEN")"
+              fi
               if [ -n "${TEAMMATE_ROUTINE_MERCON_URL:-}" ] && [ -n "${TEAMMATE_ROUTINE_MERCON_TOKEN:-}" ]; then
                 printf 'TEAMMATE_ROUTINE_MERCON_URL=%s\nTEAMMATE_ROUTINE_MERCON_TOKEN=%s\n' \
                   "$(printf %s "$TEAMMATE_ROUTINE_MERCON_URL" | tr -d '[:space:]')" "$(printf %s "$TEAMMATE_ROUTINE_MERCON_TOKEN" | tr -d '[:space:]')"

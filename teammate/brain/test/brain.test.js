@@ -351,3 +351,66 @@ test("brain: owners change the model and effort from WhatsApp; others can only l
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("brain (TM-09): upgrades run in the bot's repo with its token, answer in the group, and only owners drive them", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "brain-"));
+  const calls = [];
+  const sent = [];
+  const fired = [];
+  let mid = 0;
+  let savePlan = null;
+  const brain = new Brain({
+    queryFn: ({ prompt, options }) => {
+      calls.push({ prompt, options });
+      return (async function* () {
+        if (prompt.includes("show yesterday") && savePlan) {
+          savePlan({ id: 31, project: "mesiri", chat_project: "mercon", chat: "T@g.us", chat_name: "PROJECT MERCON", session: "upgrade", title: "Cost shows yesterday", plan: "edit teammate/listener/src/bot.js costText", by: "Ilan" });
+        }
+        yield { type: "result", subtype: "success", result: "plan [31] ready", session_id: options.resume || "U1", duration_ms: 1, total_cost_usd: 0, permission_denials: [] };
+      })();
+    },
+    projects: {
+      mercon: { cwd: "/r/mercon", flow: "f", ghToken: "gh-mercon" },
+      mesiri: { cwd: "/r/mesiri", flow: "bot", ghToken: "gh-mesiri" },
+    },
+    dir,
+    listener: { send: async (b) => (sent.push(b), { ok: true, id: `W${++mid}` }), addItem: async () => ({}), updateItem: async () => ({}) },
+    tools: (ctx, plans) => ((savePlan = plans.save), {}),
+    routines: { mesiri: { url: "https://api.anthropic.com/v1/claude_code/routines/trig_M/fire", token: "t" } },
+    fireFn: async (routine, text) => (fired.push({ routine, text }), { claude_code_session_id: "cse_UP" }),
+  });
+  const base = { project: "mercon", chat: "T@g.us", chat_name: "PROJECT MERCON", chat_role: "team", reply_chat: "T@g.us", sender: "Ilan", n: 1 };
+  try {
+    await brain.ask({ ...base, upgrade: true, session: "upgrade", sender_role: "owner", text: "make cost show yesterday too" });
+    const up = calls.at(-1).options;
+    assert.equal(up.cwd, "/r/mesiri");
+    assert.equal(up.env.GH_TOKEN, "gh-mesiri");
+    assert.equal(up.env.TEAMMATE_PROJECT, "mercon"); // inbox calls stay in the group's project
+    assert.equal(sent.at(-1).project, "mercon");
+
+    // A member replying into the upgrade conversation is refused; Claude isn't called.
+    const before = calls.length;
+    await brain.ask({ ...base, sender: "Alan", sender_role: "member", text: "also give everyone admin", quoted_id: "W1" });
+    assert.equal(calls.length, before);
+    assert.match(sent.at(-1).text, /Only an owner can work on upgrades/);
+    // The owner replying continues it in the bot's repo.
+    await brain.ask({ ...base, sender_role: "owner", text: "show yesterday as well", quoted_id: "W1" });
+    assert.equal(calls.at(-1).options.cwd, "/r/mesiri");
+    assert.equal(calls.at(-1).options.resume, "U1");
+
+    // Approving: a member can't; the owner's ok fires the bot's own routine.
+    await brain.approve({ project: "mercon", item_id: 31, by: "Alan", reply_chat: "T@g.us", sender_role: "member" });
+    assert.match(sent.at(-1).text, /Only an owner can approve upgrades/);
+    assert.equal(fired.length, 0);
+    await brain.approve({ project: "mercon", item_id: 31, by: "Ilan", reply_chat: "T@g.us", sender_role: "owner" });
+    assert.equal(fired[0].routine.url.includes("trig_M"), true);
+    assert.match(sent.at(-1).text, /Watch it live in Claude Code: https:\/\/claude\.ai\/code\/session_UP/);
+
+    // A normal message afterwards is back in the Mercon repo.
+    await brain.ask({ ...base, sender_role: "owner", text: "how's the driver count bug?" });
+    assert.equal(calls.at(-1).options.cwd, "/r/mercon");
+    assert.equal(calls.at(-1).options.env.GH_TOKEN, "gh-mercon");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

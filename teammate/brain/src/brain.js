@@ -20,6 +20,8 @@ const DAILY_TURNS = Number(process.env.TEAMMATE_BRAIN_DAILY_TURNS || 60);
 // "@bot model <name>": short names for the current models; a full claude-* id also works.
 const MODEL_ALIASES = { opus: "claude-opus-5-5", sonnet: "claude-sonnet-5-5", haiku: "claude-haiku-5-5", fable: "claude-fable-5-1" };
 const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+// The bot's own repo: "@bot upgrade: …" plans changes to the bot there (TM-09).
+const UPGRADE_PROJECT = process.env.TEAMMATE_UPGRADE_PROJECT || "mesiri";
 const BUDGET = { planning: Number(process.env.TEAMMATE_BRAIN_PLAN_USD || 3), working: Number(process.env.TEAMMATE_BRAIN_WORK_USD || 25) };
 
 const READ = [
@@ -161,12 +163,25 @@ export class Brain {
 
   /** One message for Claude: a planning turn, in the conversation it replies to (or the group's active one). */
   ask(req) {
+    req.reply_project ||= req.project; // the group's project; req.project is the repo the turn runs in
     const fromReply = req.quoted_id && this.sessions.msgs[req.quoted_id];
     if (fromReply && fromReply.startsWith(`${req.chat}::`)) {
       req.session = fromReply.slice(req.chat.length + 2);
       this.sessions.active[req.chat] = req.session;
+      req.project = this.sessions.repo?.[fromReply] || req.project;
     }
-    req.session ||= this.sessions.active[req.chat] || "main";
+    if (req.session === "upgrade") req.project = UPGRADE_PROJECT;
+    // Upgrading the bot itself (TM-09) is for owners only.
+    if (req.project === UPGRADE_PROJECT && req.reply_project !== UPGRADE_PROJECT && req.sender_role !== "owner") {
+      return this.listener.send({ chat: req.reply_chat, project: req.reply_project, text: "Only an owner can work on upgrades to the bot." });
+    }
+    if (!req.session) req.session = this.sessions.active[req.chat] || "main";
+    if (req.session === "upgrade" && this.sessions.active[req.chat] === "upgrade" && !req.quoted_id && !req.upgrade) {
+      // A plain message after an upgrade chat goes back to the group's normal conversation.
+      req.session = "main";
+      req.project = req.reply_project;
+      this.sessions.active[req.chat] = "main";
+    }
     return this.enqueue(`${req.chat}::${req.session}`, () => this.turn(req, "planning"));
   }
 
@@ -257,26 +272,31 @@ export class Brain {
   }
 
   /** "@bot ok [n]" from an approved person: run the working turn for that plan. */
-  approve({ project, item_id, by, reply_chat }) {
-    const pending = Object.values(this.planStore.plans).filter((p) => p.project === project && p.status === "proposed");
+  approve({ project, item_id, by, reply_chat, sender_role }) {
+    // `project` is the group's project; a plan made in an upgrade conversation belongs to the bot's repo.
+    const pending = Object.values(this.planStore.plans).filter((p) => (p.chat_project || p.project) === project && p.status === "proposed");
     const plan = item_id != null ? pending.find((p) => String(p.id) === String(item_id)) : pending.length === 1 ? pending[0] : null;
     const say = (text) => this.listener.send({ chat: reply_chat, project, text });
+    if (plan && plan.project === UPGRADE_PROJECT && project !== UPGRADE_PROJECT && sender_role !== "owner") {
+      return say(`Only an owner can approve upgrades to the bot ([${plan.id}]).`);
+    }
     if (!plan) {
       const which = pending.map((p) => `[${p.id}] ${p.title}`).join("\n");
       return say(pending.length ? `Which plan? Reply @bot ok <number>:\n${which}` : "There's no plan waiting for an ok.");
     }
     const key = `${plan.chat}::${plan.session || "main"}`;
     const sayPlan = (text) => this.sayFor(key, { chat: reply_chat, project }, text);
+    const repo = plan.project;
     plan.status = "approved";
     plan.approved_by = by;
     plan.approved_at = this.now().toISOString();
     writeJson(this.plansFile, this.planStore);
     if (typeof plan.id === "number") this.listener.updateItem(plan.id, { status: "in_progress", note: `OK from ${by} in WhatsApp`, project }).catch(() => {});
-    if (this.routines[project] && this.fireFn) return this.runInCloud(plan, { project, by, reply_chat, say: sayPlan });
+    if (this.routines[plan.project] && this.fireFn) return this.runInCloud(plan, { project, by, reply_chat, say: sayPlan });
     const text =
       `${by} approved plan [${plan.id}] "${plan.title}". Go ahead with exactly this plan now.\n\nThe plan:\n${plan.plan}`;
     return this.enqueue(key, () =>
-      this.turn({ project, chat: plan.chat, chat_name: plan.chat_name, chat_role: "team", reply_chat, sender: by, n: null, text, session: plan.session || "main" }, "working", plan),
+      this.turn({ project: repo, reply_project: project, chat: plan.chat, chat_name: plan.chat_name, chat_role: "team", reply_chat, sender: by, n: null, text, session: plan.session || "main" }, "working", plan),
     );
   }
 
@@ -292,7 +312,7 @@ export class Brain {
       plan.plan,
     ].join("\n");
     try {
-      const r = await this.fireFn(this.routines[project], payload);
+      const r = await this.fireFn(this.routines[plan.project], payload);
       plan.status = "running_in_cloud";
       // The fire API can return the id in its cse_ form; the web address needs session_.
       const sid = r?.claude_code_session_id || String(r?.claude_code_session_url || "").split("/").pop() || "";
@@ -329,7 +349,7 @@ export class Brain {
     const project = this.projects[req.project];
     req.session ||= this.sessions.active[req.chat] || "main";
     const key = `${req.chat}::${req.session}`;
-    const say = (text) => this.sayFor(key, { chat: req.reply_chat, project: req.project }, text);
+    const say = (text) => this.sayFor(key, { chat: req.reply_chat, project: req.reply_project || req.project }, text);
     if (!project) return say(`I'm not set up for the ${req.project} project yet.`);
 
     if (mode === "planning") {
@@ -348,7 +368,7 @@ export class Brain {
     const header = `[WhatsApp · ${where} · #${req.n ?? "-"} · from ${req.sender}]`;
     const quoted = req.quoted_text ? `\nReplying to: "${String(req.quoted_text).slice(0, 1500)}"` : "";
     const prompt = `${header}${quoted}\n${req.text}`;
-    const ctx = { project: req.project, chat: req.chat, chat_name: req.chat_name, reply_chat: req.reply_chat, sender: req.sender, session: req.session };
+    const ctx = { project: req.project, chat_project: req.reply_project || req.project, chat: req.chat, chat_name: req.chat_name, reply_chat: req.reply_chat, sender: req.sender, session: req.session };
 
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), TURN_TIMEOUT_MS);
@@ -369,7 +389,7 @@ export class Brain {
           maxBudgetUsd: BUDGET[mode],
           settingSources: ["project"],
           systemPrompt: { type: "preset", preset: "claude_code", append: systemAppend({ project: req.project, flow: project.flow, owner: this.owner }) },
-          env: { ...this.env, TEAMMATE_PROJECT: req.project },
+          env: { ...this.env, TEAMMATE_PROJECT: req.reply_project || req.project, ...(project.ghToken ? { GH_TOKEN: project.ghToken } : {}) },
           abortController: abort,
         },
       });
@@ -393,6 +413,7 @@ export class Brain {
     clearTimeout(timer);
     if (sessionId) {
       this.sessions.ids[key] = sessionId;
+      (this.sessions.repo ||= {})[key] = req.project; // replies to this conversation continue in the same repo
       this.saveSessions();
     }
     if (plan) {

@@ -33,7 +33,9 @@ export function hostAllowed(url, hosts) {
  * }} deps
  */
 export function brainTools({ ctx, listener, render, plans, screenshotHosts }) {
-  const post = (body) => listener.send({ chat: ctx.reply_chat, project: ctx.project, ...body });
+  // Group-side calls use the group's project; ctx.project is the repo this conversation works in.
+  const chatProject = ctx.chat_project || ctx.project;
+  const post = (body) => listener.send({ chat: ctx.reply_chat, project: chatProject, ...body });
   const image = async (png, caption) => {
     await post({ image_base64: png.toString("base64"), caption: caption?.slice(0, 1000) || undefined });
     return { content: [{ type: "image", data: png.toString("base64"), mimeType: "image/png" }, { type: "text", text: "Posted to the team group." }] };
@@ -106,7 +108,7 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts }) {
         if (!listener.media) return fail("Media isn't available here.");
         let file;
         try {
-          file = await listener.media(n, ctx.project);
+          file = await listener.media(n, chatProject);
         } catch (e) {
           return fail(`Couldn't get #${n}: ${e.message}. It may have no file, or be from another project.`);
         }
@@ -124,7 +126,7 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts }) {
       async ({ n }) => {
         if (!listener.translate) return fail("Translation isn't available here.");
         try {
-          const r = await listener.translate(n, ctx.project);
+          const r = await listener.translate(n, chatProject);
           const cost = r.cost ? `cost ₹${r.cost.inr.toFixed(2)} (${r.cost.input_tokens} in / ${r.cost.output_tokens} out tokens, ${r.cost.model})` : "already translated before, no new cost";
           return { content: [{ type: "text", text: [`#${n}${r.language ? ` (${r.language})` : ""}`, r.transcript ? `Transcript: ${r.transcript}` : "", r.translation ? `English: ${r.translation}` : "", cost].filter(Boolean).join("\n") }] };
         } catch (e) {
@@ -143,12 +145,12 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts }) {
       async ({ title, plan, type }) => {
         let itemId = null;
         try {
-          const r = await listener.addItem({ chat: ctx.chat, project: ctx.project, type: type || "task", title, summary: plan, created_by: `${ctx.sender} via bot` });
+          const r = await listener.addItem({ chat: ctx.chat, project: chatProject, type: type || "task", title: ctx.project !== chatProject ? `[bot upgrade] ${title}` : title, summary: plan, created_by: `${ctx.sender} via bot` });
           itemId = r?.item?.id ?? null;
         } catch {
           // the request log is a convenience; the plan still stands
         }
-        const saved = plans.save({ id: itemId, project: ctx.project, chat: ctx.chat, chat_name: ctx.chat_name, session: ctx.session, title, plan, by: ctx.sender });
+        const saved = plans.save({ id: itemId, project: ctx.project, chat_project: chatProject, chat: ctx.chat, chat_name: ctx.chat_name, session: ctx.session, title, plan, by: ctx.sender });
         return { content: [{ type: "text", text: `Plan [${saved.id}] recorded. Ask the team to reply "@bot ok ${saved.id}" to go ahead.` }] };
       },
     ),

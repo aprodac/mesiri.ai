@@ -39,6 +39,7 @@ says so. For a hard guarantee, protect `main` on GitHub (required review).
 - `@bot new <name>` — start a separate conversation in this group; the others are kept
 - `@bot sessions` / `@bot switch <name>` — list / change the current conversation
 - `@bot reset` — clear the current conversation
+- `@bot upgrade: <what to change in the bot>` (owners) — plans the change in the bot's own repo (`StarShape-in/mesiri.ai`, `teammate/`) in a separate "upgrade" conversation; `@bot ok <n>` from an **owner** starts the **Teammate upgrade — Mesiri bot** cloud routine, which edits `teammate/` only, runs the bot's tests, pushes to `main`, and the push redeploys the bot automatically (`ROUTINE_PROMPT_MESIRI.md`). If an upgrade breaks the bot, fix it from a Claude Code session on the PC.
 - `@bot settings` — the project's Claude model and effort; owners change them with `@bot model opus|sonnet|haiku|fable` (or a full `claude-…` id) and `@bot effort low|medium|high|xhigh|max|default`. Applies to the server brain; the cloud routine keeps the model set in the routine.
 
 A reply always continues the conversation that wrote the message you reply to, so several topics can
