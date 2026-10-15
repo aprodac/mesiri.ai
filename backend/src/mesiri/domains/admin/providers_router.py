@@ -16,7 +16,9 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from mesiri.application.audit.record import record_admin_action
 from mesiri.bootstrap.settings import Settings, get_settings
+from mesiri.domains.audit import actions as audit
 from mesiri.domains.shared.auth import require_platform_admin
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.repositories.ai_config import PostgresAIConfigRepository
@@ -242,6 +244,26 @@ async def update_ai_config(
                 await repo.update_provider_secret(
                     provider_id=provider, api_key=existing_key or "", base_url=secret.base_url
                 )
+
+    # Audit (BE-05), in the request's transaction. Keys are never stored:
+    # only which providers got a new one.
+    await record_admin_action(
+        conn,
+        actor=audit.actor_from_admin(_admin),
+        action=audit.AI_CONFIG_CHANGED,
+        target_type="ai_config",
+        summary="AI routing and provider settings saved",
+        details={
+            "routing": {cap: route.model_dump() for cap, route in data.routing.items()},
+            "providers": {
+                provider: {
+                    "base_url": secret.base_url,
+                    "new_api_key": bool(secret.api_key) and "*" not in secret.api_key,
+                }
+                for provider, secret in data.secrets.items()
+            },
+        },
+    )
 
     # 3. Invalidate Redis cache. Best-effort: the DB write above already
     # succeeded, so a cache-layer failure here must not surface as a 500 for

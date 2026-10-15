@@ -1,4 +1,4 @@
-"""PostgreSQL store for one-time login and signup codes (migration 0475).
+"""PostgreSQL store for one-time login and signup codes (migration 0476).
 
 The rules live in application/identity/login_codes.py; this only reads and
 writes rows. Takes an externally-supplied connection and never commits.

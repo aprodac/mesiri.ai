@@ -968,6 +968,7 @@ async def start_member_create_plan(
     plan_store: PlanStore,
     workflow_runtime: WorkflowRuntime,
     recent_turns: RecentTurnsStore | None = None,
+    whatsapp_number: str | None = None,
 ) -> ReplySpec | None:
     """Start CREATE_USER for real, and remember (in the shared PlanStore)
     that the held ADD_PROJECT_MEMBER request should resume once it succeeds.
@@ -1032,8 +1033,11 @@ async def start_member_create_plan(
 
     role_hint = original_event.fields.get("role")
 
-    recalled_number: str | None = None
-    if recent_turns is not None:
+    # ``whatsapp_number``, when given, is a number the sender handed over
+    # explicitly (a shared contact card, SS-13) and is used as-is; recall
+    # from recent turns is only the fallback for a typed request.
+    recalled_number: str | None = whatsapp_number
+    if recalled_number is None and recent_turns is not None:
         try:
             turns = await recent_turns.recent(user_id=user_id)
             recalled_number = find_mentioned_phone_number(t.user_text for t in turns)

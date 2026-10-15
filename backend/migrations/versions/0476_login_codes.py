@@ -11,8 +11,8 @@ is `login` or `signup`. Nothing references a user: a signup code exists
 before its user does, and a login code is logged even for a number nobody
 has, so the limits look the same either way.
 
-Revision ID: 0475
-Revises: 0474
+Revision ID: 0476
+Revises: 0475
 """
 
 from __future__ import annotations
@@ -20,8 +20,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0475"
-down_revision = "0474"
+revision = "0476"
+down_revision = "0475"
 branch_labels = None
 depends_on = None
 

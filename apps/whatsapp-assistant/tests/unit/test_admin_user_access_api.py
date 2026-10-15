@@ -302,8 +302,9 @@ async def test_update_organization_user_status(monkeypatch):
 
     conn = _Conn(
         [
-            [SimpleNamespace(id=user_id)],  # select user check
+            [SimpleNamespace(id=user_id, full_name="Jane Doe", status="active")],  # user check
             [],  # update status query execution
+            [],  # audit log entry (BE-05)
             [
                 SimpleNamespace(
                     id=user_id,
@@ -321,10 +322,19 @@ async def test_update_organization_user_status(monkeypatch):
     )
     monkeypatch.setattr(admin_router, "get_engine", lambda: _Engine(conn))
 
+    admin_id = uuid.uuid4()
     res = await admin_router.update_organization_user_status(
-        org_id, user_id, UserStatusUpdate(status="inactive")
+        org_id, user_id, UserStatusUpdate(status="inactive"), {"sub": str(admin_id), "name": "Ops"}
     )
 
     assert res.id == user_id
     assert res.status == "Inactive"
+    audit_insert = conn.executed[2].compile().params
+    assert audit_insert["action"] == "company_user.status_changed"
+    assert audit_insert["actor_user_id"] == admin_id
+    assert audit_insert["organization_id"] == org_id
+    assert audit_insert["details"] == {
+        "before": {"status": "active"},
+        "after": {"status": "inactive"},
+    }
 

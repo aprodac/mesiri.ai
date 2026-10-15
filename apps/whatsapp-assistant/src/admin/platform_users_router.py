@@ -19,6 +19,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from mesiri.application.audit.record import record_admin_action
+from mesiri.domains.audit import actions as audit
+from mesiri.domains.audit.actions import actor_from_admin
 from mesiri.domains.shared.auth import require_platform_admin
 
 router = APIRouter(prefix="/admin/platform-users", tags=["admin"])
@@ -137,6 +140,15 @@ async def create_platform_user(
                 status="active",
             )
         )
+        await record_admin_action(
+            conn,
+            actor=actor_from_admin(_admin),
+            action=audit.PLATFORM_ADMIN_CREATED,
+            target_type="user",
+            target_id=user_id,
+            summary=f"Added platform admin {user_in.full_name}",
+            details={"email": user_in.email, "full_name": user_in.full_name},
+        )
 
     return PlatformUser(
         id=user_id, email=user_in.email, full_name=user_in.full_name, status="active"
@@ -200,6 +212,19 @@ async def update_platform_user(
         if values:
             await conn.execute(
                 users_table.update().where(users_table.c.id == user_id).values(**values)
+            )
+            await record_admin_action(
+                conn,
+                actor=actor_from_admin(admin),
+                action=audit.PLATFORM_ADMIN_UPDATED,
+                target_type="user",
+                target_id=user_id,
+                summary=f"Platform admin {row.full_name or row.email}: changed "
+                + ", ".join(sorted("password" if k == "hashed_password" else k for k in values)),
+                details={
+                    "before": {k: getattr(row, k) for k in values if k != "hashed_password"},
+                    "after": values,
+                },
             )
 
         final = await conn.execute(

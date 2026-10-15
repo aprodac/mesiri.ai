@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from context.projection_hooks import project_entity, project_new_company
+from mesiri.application.audit.record import record_admin_action
 from mesiri.application.organizations.create_company import (
     DEFAULT_DB_ROUTE,
     DEFAULT_DEPLOYMENT_TYPE,
@@ -21,6 +22,8 @@ from mesiri.application.organizations.create_company import (
     create_company,
 )
 from mesiri.authorization.roles import ALL_PROJECTS_MODE, is_org_wide
+from mesiri.domains.audit import actions as audit
+from mesiri.domains.audit.actions import actor_from_admin
 from mesiri.domains.organizations import settings as org_settings
 from mesiri.domains.organizations.settings import VALID_ROLES
 from mesiri.domains.shared.auth import require_platform_admin
@@ -247,9 +250,11 @@ async def delete_organization(org_id: uuid.UUID, _admin: dict = Depends(require_
     engine = get_engine()
     async with engine.begin() as conn:
         result = await conn.execute(
-            sa.select(organizations_table.c.id).where(organizations_table.c.id == org_id)
+            sa.select(organizations_table.c.id, organizations_table.c.name, organizations_table.c.status)
+            .where(organizations_table.c.id == org_id)
         )
-        if result.first() is None:
+        org_row = result.first()
+        if org_row is None:
             raise HTTPException(status_code=404, detail="Organization not found")
 
         org_id_str = str(org_id)
@@ -428,6 +433,19 @@ async def delete_organization(org_id: uuid.UUID, _admin: dict = Depends(require_
                 status_code=500, detail=f"Failed to delete organization: {exc}"
             ) from exc
 
+        # The audit log has no foreign key to organizations, so this entry
+        # outlives the company it describes.
+        await record_admin_action(
+            conn,
+            actor=actor_from_admin(_admin),
+            action=audit.COMPANY_DELETED,
+            organization_id=org_id,
+            target_type="organization",
+            target_id=org_id,
+            summary=f"Deleted {org_row.name}",
+            details={"name": org_row.name, "status": org_row.status, "users_deleted": len(user_ids)},
+        )
+
 
 @router.get("/{org_id}/timeline", response_model=TimelineEntriesListResponse)
 async def list_organization_timeline(
@@ -592,17 +610,28 @@ async def update_organization_user_status(
     engine = get_engine()
     async with engine.begin() as conn:
         result = await conn.execute(
-            sa.select(users_table.c.id).where(
+            sa.select(users_table.c.id, users_table.c.full_name, users_table.c.status).where(
                 users_table.c.id == user_id, users_table.c.organization_id == org_id
             )
         )
-        if result.first() is None:
+        user_row = result.first()
+        if user_row is None:
             raise HTTPException(status_code=404, detail="User not found in this organization")
 
         await conn.execute(
             users_table.update()
             .where(users_table.c.id == user_id, users_table.c.organization_id == org_id)
             .values(status=normalized_status)
+        )
+        await record_admin_action(
+            conn,
+            actor=actor_from_admin(_admin),
+            action=audit.COMPANY_USER_STATUS_CHANGED,
+            organization_id=org_id,
+            target_type="user",
+            target_id=user_id,
+            summary=f"{user_row.full_name}: {user_row.status} -> {normalized_status}",
+            details={"before": {"status": user_row.status}, "after": {"status": normalized_status}},
         )
 
     # Outside the transaction: active/inactive is projected into the context
@@ -694,6 +723,7 @@ async def update_organization_setting(
             raise HTTPException(status_code=404, detail="Organization not found")
 
         repo = PostgresOrganizationSettingsRepository(conn)
+        before = (await repo.get_all(org_id)).get(body.key)
         user_id = admin.get("sub")
         await repo.set(
             org_id,
@@ -701,7 +731,67 @@ async def update_organization_setting(
             canonical,
             updated_by=uuid.UUID(user_id) if user_id else None,
         )
+        await record_admin_action(
+            conn,
+            actor=actor_from_admin(admin),
+            action=audit.COMPANY_SETTING_CHANGED,
+            organization_id=org_id,
+            target_type="setting",
+            target_id=body.key,
+            summary=f"Setting {body.key} changed",
+            details={"key": body.key, "before": before, "after": canonical},
+        )
     return {"key": body.key, "value": canonical}
+
+
+class AuditEntryResponse(BaseModel):
+    id: uuid.UUID
+    occurred_at: datetime
+    actor_kind: str
+    actor_user_id: uuid.UUID | None = None
+    actor_label: str | None = None
+    action: str
+    target_type: str | None = None
+    target_id: str | None = None
+    summary: str | None = None
+    details: dict = {}
+
+
+@router.get("/{org_id}/audit", response_model=list[AuditEntryResponse])
+async def list_organization_audit(
+    org_id: uuid.UUID,
+    limit: int = Query(default=50, ge=1, le=200),
+    before: datetime | None = None,
+    _admin: dict = Depends(require_platform_admin),
+):
+    """What Mesiri operators (and a self-serve signup) did to this company,
+    newest first (BE-05). Page back with `before` = the last entry's
+    `occurred_at`. Still answers after the company is deleted: the log has
+    no foreign key to it."""
+    from mesiri.infrastructure.postgres.repositories.admin_audit import (
+        PostgresAdminAuditRepository,
+    )
+
+    engine = get_engine()
+    async with engine.connect() as conn:
+        entries = await PostgresAdminAuditRepository(conn).list_for_organization(
+            org_id, limit=limit, before=before
+        )
+    return [
+        AuditEntryResponse(
+            id=e.id,
+            occurred_at=e.occurred_at,
+            actor_kind=e.actor_kind,
+            actor_user_id=e.actor_user_id,
+            actor_label=e.actor_label,
+            action=e.action,
+            target_type=e.target_type,
+            target_id=e.target_id,
+            summary=e.summary,
+            details=e.details,
+        )
+        for e in entries
+    ]
 
 
 class OrgSiteSummary(BaseModel):
@@ -849,6 +939,21 @@ async def create_organization_user(
                 access_policy=DEFAULT_ACCESS_POLICY,
             )
         )
+        await record_admin_action(
+            conn,
+            actor=actor_from_admin(_admin),
+            action=audit.COMPANY_USER_CREATED,
+            organization_id=org_id,
+            target_type="user",
+            target_id=user_id,
+            summary=f"Added {full_name} ({role})",
+            details={
+                "full_name": full_name,
+                "email": email,
+                "role": role,
+                "whatsapp_number": whatsapp,
+            },
+        )
 
     # Outside the transaction: writes the external_identities row that maps
     # the WhatsApp number to this user, plus their membership set.
@@ -893,9 +998,12 @@ async def update_organization_user_access(
     engine = get_engine()
     async with engine.begin() as conn:
         result = await conn.execute(
-            sa.select(users_table.c.id, users_table.c.role).where(
-                users_table.c.id == user_id, users_table.c.organization_id == org_id
-            )
+            sa.select(
+                users_table.c.id,
+                users_table.c.role,
+                users_table.c.full_name,
+                users_table.c.access_policy,
+            ).where(users_table.c.id == user_id, users_table.c.organization_id == org_id)
         )
         user_row = result.first()
         if user_row is None:
@@ -907,6 +1015,16 @@ async def update_organization_user_access(
             org_id=org_id,
             user_role=user_row.role,
             policy=policy,
+        )
+        await record_admin_action(
+            conn,
+            actor=actor_from_admin(_admin),
+            action=audit.COMPANY_USER_ACCESS_CHANGED,
+            organization_id=org_id,
+            target_type="user",
+            target_id=user_id,
+            summary=f"{user_row.full_name}: project access set to {policy.mode}",
+            details={"before": user_row.access_policy, "after": policy.model_dump()},
         )
 
     # Outside the transaction, same as the tenant-side endpoint: pushes the
@@ -959,11 +1077,15 @@ async def update_organization_user_profile(
     engine = get_engine()
     async with engine.begin() as conn:
         result = await conn.execute(
-            sa.select(users_table.c.id).where(
-                users_table.c.id == user_id, users_table.c.organization_id == org_id
-            )
+            sa.select(
+                users_table.c.id,
+                users_table.c.role,
+                users_table.c.whatsapp_number,
+                users_table.c.full_name,
+            ).where(users_table.c.id == user_id, users_table.c.organization_id == org_id)
         )
-        if result.first() is None:
+        user_row = result.first()
+        if user_row is None:
             raise HTTPException(status_code=404, detail="User not found in this organization")
 
         if "whatsapp_number" in updates and updates["whatsapp_number"]:
@@ -985,6 +1107,19 @@ async def update_organization_user_profile(
             users_table.update()
             .where(users_table.c.id == user_id, users_table.c.organization_id == org_id)
             .values(**updates)
+        )
+        await record_admin_action(
+            conn,
+            actor=actor_from_admin(_admin),
+            action=audit.COMPANY_USER_UPDATED,
+            organization_id=org_id,
+            target_type="user",
+            target_id=user_id,
+            summary=f"{user_row.full_name}: changed {', '.join(sorted(updates))}",
+            details={
+                "before": {k: getattr(user_row, k) for k in updates},
+                "after": updates,
+            },
         )
 
     await project_entity("user", user_id)
@@ -1010,11 +1145,16 @@ async def delete_organization_user(
     engine = get_engine()
     async with engine.begin() as conn:
         result = await conn.execute(
-            sa.select(users_table.c.id).where(
-                users_table.c.id == user_id, users_table.c.organization_id == org_id
-            )
+            sa.select(
+                users_table.c.id,
+                users_table.c.full_name,
+                users_table.c.email,
+                users_table.c.role,
+                users_table.c.whatsapp_number,
+            ).where(users_table.c.id == user_id, users_table.c.organization_id == org_id)
         )
-        if result.first() is None:
+        user_row = result.first()
+        if user_row is None:
             raise HTTPException(status_code=404, detail="User not found in this organization")
 
         if force:
@@ -1102,6 +1242,23 @@ async def delete_organization_user(
                 ) from exc
             raise HTTPException(status_code=500, detail=f"Database error: {exc}") from exc
 
+        await record_admin_action(
+            conn,
+            actor=actor_from_admin(_admin),
+            action=audit.COMPANY_USER_DELETED,
+            organization_id=org_id,
+            target_type="user",
+            target_id=user_id,
+            summary=f"Deleted {user_row.full_name}" + (" (force)" if force else ""),
+            details={
+                "full_name": user_row.full_name,
+                "email": user_row.email,
+                "role": user_row.role,
+                "whatsapp_number": user_row.whatsapp_number,
+                "force": force,
+            },
+        )
+
 
 @router.post("/provision", response_model=ProvisionResponse)
 async def provision_tenant(
@@ -1125,7 +1282,7 @@ async def provision_tenant(
     )
     try:
         async with get_engine().begin() as conn:  # commits, or rolls back on error
-            created = await create_company(conn, new)
+            created = await create_company(conn, new, actor=actor_from_admin(_admin))
     except CompanyCreationError as exc:
         raise HTTPException(status_code=409 if exc.conflict else 400, detail=str(exc)) from exc
 
@@ -1185,6 +1342,20 @@ async def seed_organization_finance(
                 organization_id=org_id,
                 created_by=admin_user_id,
                 include_demo_transactions=payload.include_demo_transactions,
+            )
+            await record_admin_action(
+                conn,
+                actor=actor_from_admin(admin),
+                action=audit.COMPANY_FINANCE_SEEDED,
+                organization_id=org_id,
+                target_type="organization",
+                target_id=org_id,
+                summary="Seeded finance data"
+                + (" with demo transactions" if payload.include_demo_transactions else ""),
+                details={
+                    "include_demo_transactions": payload.include_demo_transactions,
+                    "stats": stats,
+                },
             )
     except HTTPException:
         raise
