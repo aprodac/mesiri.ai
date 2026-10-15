@@ -28,7 +28,7 @@ class _Guard:
         return TrialUsageVerdict(over_cap=self.over, reason="ai_cost" if self.over else None)
 
 
-def _handlers(monkeypatch, guard):
+def _handlers(monkeypatch, guard, trial_journey=None):
     async def fake_resolve(_reader, wa_id):
         return SimpleNamespace(
             organization_id=ORG,
@@ -51,7 +51,9 @@ def _handlers(monkeypatch, guard):
         if p.default is inspect.Parameter.empty
     }
     sender = deps["sender"]
-    on_normalized, _ = mj.build_message_handlers(**deps, trial_usage_guard=guard)
+    on_normalized, _ = mj.build_message_handlers(
+        **deps, trial_usage_guard=guard, trial_journey=trial_journey
+    )
     return on_normalized, sender, reached
 
 
@@ -90,3 +92,21 @@ async def test_under_cap_continues_into_the_journey(monkeypatch) -> None:
     assert guard.asked == [ORG]
     reached.assert_called_once()
     assert TRIAL_LIMIT_MESSAGE not in [c.args[1] for c in sender.send_text.await_args_list]
+
+
+@pytest.mark.asyncio
+async def test_over_cap_owner_can_still_ask_to_continue(monkeypatch) -> None:
+    from channel.replies import ReplySpec
+
+    class _TrialJourney:
+        async def handle_continue(self, message, ctx):
+            return ReplySpec(text="Thanks! Our team will call you.")
+
+    guard = _Guard(over=True)
+    on_normalized, sender, reached = _handlers(monkeypatch, guard, _TrialJourney())
+
+    await on_normalized(_message(), {})
+
+    sent = [c.args[1] for c in sender.send_text.await_args_list]
+    assert sent == ["Thanks! Our team will call you."]
+    reached.assert_not_called()

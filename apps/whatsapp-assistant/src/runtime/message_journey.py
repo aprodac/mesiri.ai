@@ -426,9 +426,25 @@ def build_message_handlers(
             if usage_verdict.over_cap:
                 from mesiri.domains.organizations.guardrails import TRIAL_LIMIT_MESSAGE
 
-                await sender.send_text(wa_id, TRIAL_LIMIT_MESSAGE)
+                # An owner answering CONTINUE (SS-08) is asking to pay -- the
+                # way out of the cap -- so that still gets its own reply.
+                limit_reply: ReplySpec | None = None
+                if trial_journey is not None:
+                    try:
+                        limit_reply = await trial_journey.handle_continue(message, ctx)
+                    except Exception:  # noqa: BLE001 — fall back to the limit reply
+                        _log.exception("trial.continue_failed user=%s", ctx.user_id)
+                if limit_reply is None:
+                    limit_reply = ReplySpec(text=TRIAL_LIMIT_MESSAGE)
+                await send_reply_spec(
+                    limit_reply,
+                    wa_id,
+                    send_text=sender.send_text,
+                    send_list=sender.send_list,
+                    send_button=sender.send_button,
+                )
                 await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=TRIAL_LIMIT_MESSAGE
+                    correlation_id=message.correlation_id, reply=limit_reply.text
                 )
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
                 return
