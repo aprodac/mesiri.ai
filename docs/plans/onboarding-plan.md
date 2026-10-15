@@ -311,3 +311,55 @@ Nothing is ticked by hand: every item comes from what happened.
   logo.
 - **Hiding:** gone for good once everything is done; "Hide for now" is remembered in
   that browser only.
+
+## Trial guardrails (SS-09, built 15 Oct)
+
+Protect cost and the shared WhatsApp number's quality rating once self-serve signup
+is switched on. All limits are the platform setting `trial_guardrails`, changeable
+(and audited) through `PUT /admin/platform-settings/trial_guardrails`. The control
+panel's settings card doesn't show these fields yet; that's Lane B's.
+
+**Before a signup** (`check_signup` in `application/organizations/signup_guard.py`):
+both doors ask it. The web door (SS-06) asks on code request and before creating; the
+WhatsApp door (SS-04) asks on the "Start free trial" tap and before creating. In order:
+
+| Rule | Default | What the person is told |
+| --- | --- | --- |
+| Signup switch (`self_serve.signup_enabled`) | off | "Sign-up is closed for now…" |
+| Number's country code is allowed | `["91"]` | "Mesiri is only available for Indian WhatsApp numbers for now…" |
+| One free trial per number per N days | 365 | "This number has already had a free trial. Message us…" |
+| Self-serve trials across the platform in 24 h | 25 | "We're getting a lot of sign-ups right now. Please try again tomorrow." |
+| Web: different numbers from one IP in 24 h | 3 | same as above |
+
+- **Past trials** come from the audit log (BE-05), which outlives deleted companies. A
+  deleted trial doesn't free its number for a new one.
+- **The daily count** is self-serve companies only; companies made by staff don't count.
+
+**Flags**, recorded but never blocking:
+
+| Flag | When |
+| --- | --- |
+| `shared_ip` | the IP was used by another number in 24 h |
+| `previous_trial` | the number had a trial before the window |
+| `burst` | signups are over 80% of the daily limit |
+| `foreign_number` | the number's country isn't allowed |
+
+Every check is logged in `signup_attempts` (migration 0480) with the outcome, reason and
+flags. Read a number's flags with `PostgresSignupAttemptRepository.flags_for_phone`.
+The web door rolls back on a refusal, so only its allowed attempts are kept (that's all
+the per-IP count needs). Refusals are also in the app log (`signup.refused`), flags as
+`signup.flagged`.
+
+**During a trial** (`TrialUsageGuard` in `application/organizations/trial_usage.py`):
+- **What's checked:** every inbound message from a `trial` company is checked against
+  today's usage, from BE-25's cost rows since midnight India time.
+- **Defaults:** ₹50 of AI and 200 WhatsApp messages a day. That's about 15 times a
+  normal trial day.
+- **When over:**
+  - the sender gets "You've reached today's free-trial limit… back tomorrow morning";
+  - no AI runs;
+  - the message is still logged;
+  - queued sends, such as the evening report, still go out.
+- **Cost of the check:** cached a minute per company.
+- **Fails open:** a broken check never blocks a message.
+- **Paying companies** are never capped. A cap of 0 means no cap.
