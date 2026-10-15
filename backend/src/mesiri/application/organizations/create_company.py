@@ -10,6 +10,7 @@ One call makes everything a company needs to start sending updates:
     organizations   the company, `active` or on a free trial
     users           the owner (ADMIN), by email, WhatsApp number or both
     projects/sites  optionally the first project and its first site
+    materials       the starter catalogue (BE-24, domains/materials/defaults)
 
 Takes an externally-supplied connection and never commits, so the caller's
 transaction makes it all-or-nothing: a refused owner leaves no company behind.
@@ -28,6 +29,7 @@ from typing import TYPE_CHECKING
 import sqlalchemy as sa
 
 from mesiri.application.dpr.recipients import RecipientError, normalize_phone
+from mesiri.application.materials.starter_catalog import seed_starter_materials
 from mesiri.domains.organizations import lifecycle
 from mesiri.domains.organizations.platform_settings import TRIAL_POLICY
 from mesiri.infrastructure.postgres.repositories.platform_settings import (
@@ -144,6 +146,7 @@ class CreatedCompany:
     owner_whatsapp_number: str | None
     project_id: uuid.UUID | None
     site_id: uuid.UUID | None
+    materials_seeded: int = 0
 
 
 def _clean_name(label: str, value: object, *, required: bool) -> str | None:
@@ -317,8 +320,10 @@ async def create_company(
             )
         )
 
-    # BE-24 (construction defaults: materials, units, trades, issue types)
-    # seeds here, in the same transaction.
+    # Starter materials (BE-24), so a supervisor's first "40 bags cement"
+    # resolves instead of "ask your admin". Units, issue types and trades are
+    # platform-wide already; only the materials catalogue is per company.
+    materials_seeded = await seed_starter_materials(conn, org_id, created_by=owner_id)
 
     return CreatedCompany(
         organization_id=org_id,
@@ -336,4 +341,5 @@ async def create_company(
         owner_whatsapp_number=new.owner_phone,
         project_id=project_id,
         site_id=site_id,
+        materials_seeded=materials_seeded,
     )

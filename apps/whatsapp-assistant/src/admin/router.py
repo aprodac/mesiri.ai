@@ -141,6 +141,7 @@ class ProvisionResponse(OrganizationResponse):
     owner_user_id: uuid.UUID
     project_id: uuid.UUID | None = None
     site_id: uuid.UUID | None = None
+    materials_seeded: int = 0
 
 
 class ProjectAccessGrant(BaseModel):
@@ -1144,6 +1145,7 @@ async def provision_tenant(
         owner_user_id=created.owner_user_id,
         project_id=created.project_id,
         site_id=created.site_id,
+        materials_seeded=created.materials_seeded,
     )
 
 

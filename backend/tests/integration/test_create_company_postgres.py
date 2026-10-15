@@ -155,3 +155,78 @@ async def test_taken_email_is_refused_whatever_its_case(conn) -> None:
             now=_NOW,
         )
     assert exc.value.conflict is True
+
+
+# --- BE-24: starter materials -------------------------------------------------
+
+
+async def test_new_company_gets_the_starter_materials(conn) -> None:
+    from mesiri.domains.materials.defaults import STARTER_MATERIALS
+    from mesiri.infrastructure.postgres.repositories.materials import (
+        PostgresMaterialCatalogRepository,
+    )
+
+    created = await create_company(
+        conn, NewCompany(name="Suresh Builders", owner_name="S", owner_phone="9876500010"), now=_NOW
+    )
+    assert created.materials_seeded == len(STARTER_MATERIALS)
+
+    rows = (
+        (
+            await conn.execute(
+                text(
+                    "SELECT m.name, m.default_unit, u.code, m.created_by, m.is_active "
+                    "FROM materials_catalog m JOIN units_of_measure u ON u.id = m.default_unit_id "
+                    "WHERE m.organization_id = :org"
+                ),
+                {"org": created.organization_id},
+            )
+        )
+        .mappings()
+        .all()
+    )
+    by_name = {r["name"]: r for r in rows}
+    assert set(by_name) == {m.name for m in STARTER_MATERIALS}
+    for material in STARTER_MATERIALS:
+        row = by_name[material.name]
+        assert row["code"] == row["default_unit"] == material.unit_code
+        assert row["created_by"] == created.owner_user_id
+        assert row["is_active"] is True
+
+    # What the WhatsApp material gate asks first: "cement" resolves exactly.
+    repo = PostgresMaterialCatalogRepository(conn)
+    hit = await repo.find_by_name_exact_active(created.organization_id, "cement")
+    assert hit is not None and hit["name"] == "Cement"
+
+
+async def test_seeding_again_adds_nothing_and_keeps_existing_names(conn) -> None:
+    from mesiri.application.materials.starter_catalog import seed_starter_materials
+
+    created = await create_company(
+        conn, NewCompany(name="Again Co", owner_name="A", owner_phone="9876500011"), now=_NOW
+    )
+    # The company deleted one of the starter rows.
+    await conn.execute(
+        text("DELETE FROM materials_catalog WHERE organization_id = :org AND name = 'Steel'"),
+        {"org": created.organization_id},
+    )
+    added = await seed_starter_materials(
+        conn, created.organization_id, created_by=created.owner_user_id
+    )
+    assert added == 1  # only the deleted one comes back
+    assert (
+        await seed_starter_materials(
+            conn, created.organization_id, created_by=created.owner_user_id
+        )
+        == 0
+    )
+
+
+async def test_materials_stay_per_company(conn) -> None:
+    a = await create_company(
+        conn, NewCompany(name="A Co", owner_name="A", owner_phone="9876500012"), now=_NOW
+    )
+    b = await create_company(
+        conn, NewCompany(name="B Co", owner_name="B", owner_phone="9876500013"), now=_NOW
+    )
+    assert a.materials_seeded == b.materials_seeded > 0
