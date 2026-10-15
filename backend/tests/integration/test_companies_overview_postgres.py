@@ -133,3 +133,25 @@ async def test_ended_trial_reads_expired_and_newest_comes_first(conn) -> None:
     assert expired.trial_days_left is None
     ids = [c.id for c in companies]
     assert ids.index(newer.organization_id) < ids.index(older.organization_id)
+
+
+async def test_open_branding_requests_are_counted(conn) -> None:
+    import json
+
+    created = await _company(conn, "Logo Builders", "+91 98765 10005")
+    requests = [
+        {"id": "a", "status": "open", "files": []},
+        {"id": "b", "status": "done", "files": []},
+        {"id": "c", "status": "open", "files": []},
+    ]
+    await conn.execute(
+        text(
+            "INSERT INTO organization_settings (id, organization_id, key, value)"
+            " VALUES (:id, :org, 'branding_requests', CAST(:v AS jsonb))"
+        ),
+        {"id": uuid.uuid4(), "org": created.organization_id, "v": json.dumps(requests)},
+    )
+
+    company = _find(await list_companies(conn, now=_NOW), created.organization_id)
+
+    assert company.open_branding_requests == 2

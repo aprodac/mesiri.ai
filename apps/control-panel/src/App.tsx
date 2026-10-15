@@ -16,7 +16,8 @@ import {
   FlaskConical,
   HeartPulse,
   Timer,
-  ListOrdered
+  ListOrdered,
+  Stamp
 } from 'lucide-react';
 import { RequireAuth } from './AuthContext';
 import Login from './Login';
@@ -30,6 +31,7 @@ import Workflows from './Workflows';
 import TestMessage from './TestMessage';
 import OrganizationDetail from './OrganizationDetail';
 import Companies from './Companies';
+import BrandingRequests from './BrandingRequests';
 import SyncHealth from './SyncHealth';
 import Perf from './Perf';
 import QueueHealth from './QueueHealth';
@@ -51,6 +53,10 @@ const Sidebar = () => (
       <NavLink to="/organizations" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
         <Building2 size={16} />
         Companies
+      </NavLink>
+      <NavLink to="/branding-requests" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <Stamp size={16} />
+        Branding requests
       </NavLink>
       <NavLink to="/logs" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
         <ScrollText size={16} />
@@ -168,6 +174,7 @@ function AppLayout() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/organizations" element={<Companies />} />
             <Route path="/organizations/:id" element={<OrganizationDetail />} />
+            <Route path="/branding-requests" element={<BrandingRequests />} />
             <Route path="/logs" element={<Logs />} />
             <Route path="/providers" element={<Providers />} />
             <Route path="/sync-health" element={<SyncHealth />} />

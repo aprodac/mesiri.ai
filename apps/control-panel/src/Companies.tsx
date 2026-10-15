@@ -92,7 +92,19 @@ export default function Companies() {
             )}
             {!loading && !error && shown.map((c) => (
               <tr key={c.id}>
-                <td style={{ fontWeight: 500, color: 'var(--neutral-900)' }}>{c.name}</td>
+                <td style={{ fontWeight: 500, color: 'var(--neutral-900)' }}>
+                  {c.name}
+                  {!!c.open_branding_requests && (
+                    <button
+                      className="badge badge-warning"
+                      title="The owner sent letterhead / logo photos; open the Letterhead tab"
+                      style={{ marginLeft: 8, border: 'none', cursor: 'pointer' }}
+                      onClick={() => navigate(`/organizations/${c.id}?tab=letterhead`)}
+                    >
+                      Letterhead photos
+                    </button>
+                  )}
+                </td>
                 <td>
                   <span
                     className={`badge ${STATUS_BADGE[c.effective_status] ?? 'badge-warning'}`}

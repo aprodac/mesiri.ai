@@ -143,6 +143,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(webhook_router, prefix="/webhook")
 
+    # SS-08: an expired trial company's dashboard is read-only. Registered
+    # before CORS so CORS wraps it and the 403 still reaches the browser.
+    from mesiri.domains.shared.trial_guard import trial_guard_middleware
+
+    app.middleware("http")(trial_guard_middleware)
+
     # CORS for Control Plane dashboard
     from fastapi.middleware.cors import CORSMiddleware
 
@@ -254,6 +260,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Platform settings router not loaded: %s", exc)
 
+    # Branding requests and a company's letterhead for the control panel
+    # (SA-09); the backend's router, mounted here like /company.
+    try:
+        from mesiri.domains.admin.branding_router import router as branding_admin_router
+
+        app.include_router(branding_admin_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Branding admin router not loaded: %s", exc)
+
     # Auth routes (mobile app login/register)
     try:
         from auth.router import router as auth_router
@@ -263,6 +280,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         import logging
 
         logging.getLogger(__name__).warning("Auth router not loaded: %s", exc)
+
+    # SS-08: "Continue with Mesiri" from the dashboard after a trial.
+    try:
+        from trial.router import router as trial_router
+
+        app.include_router(trial_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Trial router not loaded: %s", exc)
 
     # Users routes (tenant management)
     try:

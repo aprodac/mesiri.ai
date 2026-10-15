@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, CheckCircle, Cloud, Plus, Server, Sparkles, Trash2, X } from 'lucide-react';
 import { api } from './api';
 import UserAccessEditor, { type OrgProject } from './UserAccessEditor';
 import AddUserDialog from './AddUserDialog';
 import PlanCard from './PlanCard';
+import BrandingPanel from './BrandingPanel';
 import { useToast, getErrorMessage } from './Toast';
 
 interface Organization {
@@ -78,7 +79,7 @@ const ROLE_LABELS: Record<string, string> = {
   FINANCE: 'Finance',
 };
 
-type Tab = 'users' | 'activity' | 'settings';
+type Tab = 'users' | 'activity' | 'settings' | 'letterhead';
 
 const statusBadgeClass = (status: string) =>
   (status || '').toLowerCase() === 'active' ? 'badge-success' : 'badge-warning';
@@ -91,7 +92,9 @@ export default function OrganizationDetail() {
   const [org, setOrg] = useState<Organization | null>(null);
   const [users, setUsers] = useState<OrgUser[]>([]);
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
-  const [tab, setTab] = useState<Tab>('users');
+  // ?tab=letterhead opens the Letterhead tab (from Branding requests, SA-09).
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<Tab>(searchParams.get('tab') === 'letterhead' ? 'letterhead' : 'users');
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -409,7 +412,7 @@ export default function OrganizationDetail() {
       </div>
 
       <nav style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)', borderBottom: '1px solid var(--border-strong)' }}>
-        {(['users', 'activity', 'settings'] as Tab[]).map((t) => (
+        {(['users', 'activity', 'settings', 'letterhead'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -424,7 +427,7 @@ export default function OrganizationDetail() {
               cursor: 'pointer',
             }}
           >
-            {t === 'users' ? 'Users & Roles' : t === 'activity' ? 'Activity' : 'Settings'}
+            {t === 'users' ? 'Users & Roles' : t === 'activity' ? 'Activity' : t === 'settings' ? 'Settings' : 'Letterhead'}
           </button>
         ))}
       </nav>
@@ -561,6 +564,8 @@ export default function OrganizationDetail() {
           </table>
         </div>
       )}
+
+      {tab === 'letterhead' && <BrandingPanel orgId={org.id} />}
 
       {tab === 'settings' && (
         <div>

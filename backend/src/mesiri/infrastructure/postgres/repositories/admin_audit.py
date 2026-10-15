@@ -87,3 +87,31 @@ class PostgresAdminAuditRepository:
         stmt = stmt.order_by(admin_audit_log.c.occurred_at.desc()).limit(limit)
         rows = (await self._conn.execute(stmt)).mappings().all()
         return [AuditEntry(**{**row, "details": row["details"] or {}}) for row in rows]
+
+    # -- Self-serve history (SS-09). The log outlives deleted companies, so
+    # it is the record of every trial a number has started.
+
+    async def last_trial_started_for_phone(self, phone: str) -> dt.datetime | None:
+        """When a company owned by this number (digits) last started as a
+        trial, however it was created and whether or not it still exists."""
+        return (
+            await self._conn.execute(
+                sa.select(sa.func.max(admin_audit_log.c.occurred_at)).where(
+                    admin_audit_log.c.action == "company.created",
+                    admin_audit_log.c.details["status"].astext == "trial",
+                    admin_audit_log.c.details["owner_whatsapp_number"].astext == phone,
+                )
+            )
+        ).scalar_one_or_none()
+
+    async def count_self_signups_since(self, since: dt.datetime) -> int:
+        """Companies created by self-serve signup (not by Mesiri staff)."""
+        return (
+            await self._conn.execute(
+                sa.select(sa.func.count()).where(
+                    admin_audit_log.c.action == "company.created",
+                    admin_audit_log.c.actor_kind == "self_signup",
+                    admin_audit_log.c.occurred_at >= since,
+                )
+            )
+        ).scalar_one()
