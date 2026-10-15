@@ -1,107 +1,23 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Check, Circle } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { api } from './api';
 import CreateCompany from './CreateCompany';
+import {
+  FILTERS,
+  FILTER_LABELS,
+  SOURCE_LABELS,
+  STATUS_BADGE,
+  shortDate,
+  statusText,
+  type Company,
+  type Filter,
+} from './companyStatus';
+import SetupSteps from './SetupSteps';
 
 // SA-02: every company with its real status (a trial past its end reads
 // expired) and how far it got with setup, so stuck trials stand out. The
 // numbers come from GET /admin/organizations (companies_overview.py).
-
-interface Setup {
-  has_team: boolean;
-  has_site: boolean;
-  first_update_at: string | null;
-  first_dpr_sent_at: string | null;
-}
-
-interface Company {
-  id: string;
-  name: string;
-  effective_status: string;
-  trial_days_left: number | null;
-  trial_ends_at: string | null;
-  signup_source: string;
-  created_at: string | null;
-  setup: Setup;
-}
-
-const FILTERS = ['all', 'trial', 'active', 'expired', 'suspended'] as const;
-type Filter = (typeof FILTERS)[number];
-
-const FILTER_LABELS: Record<Filter, string> = {
-  all: 'All',
-  trial: 'Trial',
-  active: 'Active',
-  expired: 'Expired',
-  suspended: 'Suspended',
-};
-
-const SOURCE_LABELS: Record<string, string> = {
-  superadmin: 'Superadmin',
-  whatsapp: 'WhatsApp',
-  web: 'Web',
-  api: 'API',
-};
-
-const STATUS_BADGE: Record<string, string> = {
-  trial: 'badge-info',
-  active: 'badge-success',
-  expired: 'badge-warning',
-  suspended: 'badge-error',
-};
-
-function shortDate(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-function statusText(c: Company): string {
-  if (c.effective_status === 'trial') {
-    if (c.trial_days_left === null) return 'Trial';
-    if (c.trial_days_left <= 1) return 'Trial · last day';
-    return `Trial · ${c.trial_days_left} days left`;
-  }
-  return FILTER_LABELS[c.effective_status as Filter] ?? c.effective_status;
-}
-
-function Step({ label, done, title }: { label: string; done: boolean; title: string }) {
-  return (
-    <span
-      title={title}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 3,
-        fontSize: '12px',
-        marginRight: 'var(--space-3)',
-        color: done ? 'var(--success)' : 'var(--neutral-400)',
-      }}
-    >
-      {done ? <Check size={13} /> : <Circle size={11} />}
-      {label}
-    </span>
-  );
-}
-
-function SetupSteps({ setup }: { setup: Setup }) {
-  return (
-    <span style={{ whiteSpace: 'nowrap' }}>
-      <Step label="Team" done={setup.has_team} title={setup.has_team ? 'Has people besides the owner' : 'Only the owner so far'} />
-      <Step label="Site" done={setup.has_site} title={setup.has_site ? 'Has a site' : 'No site yet'} />
-      <Step
-        label="Update"
-        done={!!setup.first_update_at}
-        title={setup.first_update_at ? `First update ${shortDate(setup.first_update_at)}` : 'No site update yet'}
-      />
-      <Step
-        label="DPR"
-        done={!!setup.first_dpr_sent_at}
-        title={setup.first_dpr_sent_at ? `First DPR sent ${shortDate(setup.first_dpr_sent_at)}` : 'No DPR sent yet'}
-      />
-    </span>
-  );
-}
 
 export default function Companies() {
   const navigate = useNavigate();

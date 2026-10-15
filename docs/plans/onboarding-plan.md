@@ -49,7 +49,7 @@ nudges and trial reminders need Meta-approved templates (SS-12). Apply early.
 | 5 | One-screen create form + companies list in the control panel | SA-01, SA-02 (**done**) |
 | 6 | Daily setup questions (letterhead/logo photos → team, report time, more sites) | SS-14 (**done**, WhatsApp side); control-panel requests list: Lane B |
 | 6b | Getting-started checklist on the dashboard's Today page | SS-07 (**done**) |
-| 7 | Trial reminders, expiry, limits, superadmin trial controls | SS-08 to SS-10 |
+| 7 | Trial reminders, expiry, limits, superadmin trial controls | SS-08, SS-09, SS-10 (**done**) |
 
 ## The create-company step (SS-03, built 15 Oct)
 
@@ -143,6 +143,35 @@ Organizations page. Replaces the old "Provision New Tenant" form.
   `setup {has_team, has_site, first_update_at, first_dpr_sent_at}`.
 - Deployment type and database route moved off the list (still on the company page).
 
+## Superadmin trial controls (SS-10, built 15 Oct)
+
+**Company page → Plan card** (`apps/control-panel/src/PlanCard.tsx`): effective status,
+trial start/end, days used, converted date, setup ticks, and four actions, each behind a
+confirmation and recorded in the audit log (BE-05) in the same transaction:
+
+| Action | Allowed when | Result |
+| --- | --- | --- |
+| Extend trial (1-90 days) | trial or expired | end = later of old end and now, + N days; back to `trial` |
+| Convert to paid | trial or expired | `active`, `converted_at` = now; trial dates kept as history |
+| Suspend (optional reason) | anything but suspended | `suspended`; WhatsApp refuses the company from its next message |
+| Reactivate | suspended | `active` if it was converted or never on a trial, else back to its trial (expired at once if the end has passed) |
+
+Anything else is refused with 409; nothing is changed or recorded.
+
+**Settings → Trials & signup** (`PlatformSettingsCard.tsx`): free trial length (new
+trials only), days data is kept after a trial expires, and the self-serve signup switch
+(warns that the SS-09 guardrails aren't built yet).
+
+- **Code:** rules and the transaction in `application/organizations/trial_controls.py`;
+  settings save + audit in `platform_settings_admin.py`; one company's overview via
+  `companies_overview.company_setup` (shared with SS-07).
+- **API:** `GET /admin/organizations/{id}/overview`, `POST /admin/organizations/{id}/trial/extend`
+  `{days}`, `/convert`, `/suspend` `{reason?}`, `/reactivate` (both admin routers; the
+  assistant re-projects the company after a change). `GET /admin/platform-settings`,
+  `PUT /admin/platform-settings/{key}` (assistant only, like platform users).
+- **Not in it:** trial reminders and expiry messages (SS-08), deleting data after the
+  retention period, the trials funnel (SS-11).
+
 ## WhatsApp signup (SS-04, built 15 Oct)
 
 - **Code:** `apps/whatsapp-assistant/src/runtime/signup_journey.py`, with its state in
@@ -161,8 +190,8 @@ Organizations page. Replaces the old "Provision New Tenant" form.
      owner's next message takes the normal path.
 - **Other replies:** "cancel" stops the signup. A voice note or photo gets "please type
   it". If the number is already taken, the reply says it's already set up.
-- **Before switching it on in production:** guardrails (SS-09). There is no UI for the
-  switch yet (SS-10); today it's a `platform_settings` row.
+- **Before switching it on in production:** guardrails (SS-09). The switch is in the control panel's
+  Settings → Trials & signup (SS-10).
 
 ## Team by shared contact (SS-13, built 15 Oct)
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from './api';
+import PlatformSettingsCard from './PlatformSettingsCard';
 
 export default function Settings() {
   const [currentPassword, setCurrentPassword] = useState('');
@@ -39,13 +40,18 @@ export default function Settings() {
   };
 
   return (
-    <div className="animate-fade-in" style={{ maxWidth: '480px' }}>
+    <div className="animate-fade-in" style={{ maxWidth: '640px' }}>
       <header style={{ marginBottom: 'var(--space-6)' }}>
         <h1>Settings</h1>
-        <p className="subtitle">Change your account password.</p>
+        <p className="subtitle">Platform-wide rules, and your account password.</p>
       </header>
 
+      <div style={{ marginBottom: 'var(--space-6)' }}>
+        <PlatformSettingsCard />
+      </div>
+
       <div className="card">
+        <h3 style={{ marginTop: 0, fontSize: '16px' }}>Your password</h3>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Current password</label>
