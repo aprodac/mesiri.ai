@@ -274,3 +274,27 @@ def test_conditions_default_to_not_set():
         "—",
         "",
     )
+
+
+def test_render_html_flags_usage_beyond_known_stock():
+    payload = _payload(
+        materials=[
+            {"material_name": "cement", "unit": "bags", "received": "0", "used": "50",
+             "closing": "-50", "beyond_stock": True},
+            {"material_name": "steel", "unit": "kg", "received": "10", "used": "5",
+             "closing": "5", "beyond_stock": False},
+        ],
+    )
+    html = render_html(build_document_data(code="DPR-1", payload=payload))
+    assert "more Cement used than the site&#39;s known stock" in html or (
+        "more Cement used than the site's known stock" in html
+    )
+    assert "more Steel used" not in html
+
+
+def test_reports_stored_before_be12_have_no_stock_flag():
+    payload = _payload(materials=[{"material_name": "cement", "unit": "bags",
+                                   "received": "50", "used": "20"}])
+    data = build_document_data(code="DPR-1", payload=payload)
+    assert data.materials[0].beyond_stock is False
+    assert "known stock" not in render_html(data)

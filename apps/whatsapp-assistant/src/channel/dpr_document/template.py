@@ -45,6 +45,7 @@ _DOCUMENT_TEMPLATE_SRC = """
   tr:last-child td { border-bottom: none; }
   .empty { color: {{ sub }}; font-style: italic; padding: 10px 8px; }
   .severity-critical, .severity-high { color: {{ warn }}; font-weight: 600; }
+  .stock-flag { color: {{ warn }}; font-size: 11px; margin: 4px 0 0; }
   .letterhead { display: flex; justify-content: space-between; align-items: center; gap: 16px;
     border-bottom: 3px solid {{ accent }}; padding-bottom: 10px; margin-bottom: 14px; }
   .lh-company { display: flex; align-items: center; gap: 12px; min-width: 0; }
@@ -181,6 +182,10 @@ _DOCUMENT_TEMPLATE_SRC = """
       {% endfor %}
     </tbody>
   </table>
+  {% for m in data.materials if m.beyond_stock %}
+  <p class="stock-flag">Check: more {{ m.material_name }} used than the site's known stock
+    (stock now {{ m.closing }} {{ m.unit }}). A delivery or opening stock may be missing.</p>
+  {% endfor %}
 
   {% if data.tomorrow_plan %}
   <div class="section-title">Tomorrow's Plan</div>
