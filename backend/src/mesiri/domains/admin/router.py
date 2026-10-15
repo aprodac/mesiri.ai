@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from mesiri.application.organizations.companies_overview import list_companies
 from mesiri.application.organizations.create_company import (
     DEFAULT_DB_ROUTE,
     START_ACTIVE,
@@ -64,6 +65,28 @@ class OrganizationResponse(BaseModel):
         from_attributes = True
 
 
+class SetupProgressResponse(BaseModel):
+    has_team: bool
+    has_site: bool
+    first_update_at: datetime | None = None
+    first_dpr_sent_at: datetime | None = None
+
+
+class CompanyListItem(OrganizationResponse):
+    """A row of the companies list (SA-02): the company plus its effective
+    status and setup progress (application/organizations/companies_overview)."""
+
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    effective_status: str
+    trial_started_at: datetime | None = None
+    trial_ends_at: datetime | None = None
+    trial_days_left: int | None = None
+    converted_at: datetime | None = None
+    signup_source: str
+    setup: SetupProgressResponse
+
+
 @router.post("", response_model=OrganizationResponse)
 async def create_organization(
     org_in: OrganizationCreate,
@@ -91,14 +114,14 @@ async def create_organization(
     return org
 
 
-@router.get("", response_model=list[OrganizationResponse])
+@router.get("", response_model=list[CompanyListItem])
 async def list_organizations(
     conn: AsyncConnection = Depends(get_db_conn),
     _admin: dict = Depends(require_platform_admin),
 ):
-    result = await conn.execute(select(OrganizationModel))
-    orgs = result.scalars().all()
-    return orgs
+    """Every company, newest first, with status and setup progress (SA-02)."""
+    companies = await list_companies(conn)
+    return [CompanyListItem.model_validate(company, from_attributes=True) for company in companies]
 
 
 @router.get("/{org_id}", response_model=OrganizationResponse)

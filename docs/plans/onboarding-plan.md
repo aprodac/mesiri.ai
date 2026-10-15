@@ -46,7 +46,7 @@ nudges and trial reminders need Meta-approved templates (SS-12). Apply early.
 | 3 | WhatsApp signup for unknown numbers | SS-04 (**done**, off until switched on) |
 | 3b | Web signup and dashboard login by WhatsApp code | SS-06 + WEB-12 (**done**, off until switched on) |
 | 4 | Add a team member by sharing a contact; invite to forward | SS-13 (**done**) |
-| 5 | One-screen create form + companies list in the control panel | SA-01 (**done**), SA-02 |
+| 5 | One-screen create form + companies list in the control panel | SA-01, SA-02 (**done**) |
 | 6 | Daily setup questions (letterhead/logo photos → team, report time, more sites) | SS-14 (**done**, WhatsApp side); control-panel requests list: Lane B |
 | 7 | Trial reminders, expiry, limits, superadmin trial controls | SS-08 to SS-10 |
 
@@ -119,6 +119,28 @@ Organizations page. Replaces the old "Provision New Tenant" form.
 - **Not yet:** the project's automatic DPR stays off for superadmin-created companies
   (`/provision` doesn't pass `auto_dpr`), unlike WhatsApp signup; and the owner gets no
   WhatsApp welcome message (the welcome is part of the team-member work with SS-05).
+
+## Control panel companies list (SA-02, built 15 Oct)
+
+`apps/control-panel/src/Companies.tsx` (sidebar **Companies**), fed by
+`GET /admin/organizations`, which both admin routers answer from one read:
+`application/organizations/companies_overview.py`.
+
+- **Status:** the effective status (`lifecycle.effective_status`), so a trial past its
+  end shows **Expired** while its stored status still says `trial`; trials show days
+  left. Filters: All / Trial / Active / Expired / Suspended.
+- **Source:** `signup_source` (Superadmin, WhatsApp, Web, API).
+- **Setup ticks:**
+  - **Team**: an active user besides the owner.
+  - **Site**: at least one site.
+  - **Update**: the first confirmed site record, the earliest of `activities` (work
+    reported) and `timeline_entries` (materials, issues). The timeline is filled by a
+    job every few minutes, so a material-only first update can show a little late.
+  - **DPR**: the first `PUBLISHED` daily report (automatic or "Send now").
+- **API (additive):** each item adds `effective_status`, `trial_days_left`,
+  `trial_started_at`, `trial_ends_at`, `converted_at`, `signup_source` and
+  `setup {has_team, has_site, first_update_at, first_dpr_sent_at}`.
+- Deployment type and database route moved off the list (still on the company page).
 
 ## WhatsApp signup (SS-04, built 15 Oct)
 

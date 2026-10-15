@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from context.projection_hooks import project_entity, project_new_company
 from mesiri.application.audit.record import record_admin_action
+from mesiri.application.organizations.companies_overview import list_companies
 from mesiri.application.organizations.create_company import (
     DEFAULT_DB_ROUTE,
     DEFAULT_DEPLOYMENT_TYPE,
@@ -120,6 +121,26 @@ class OrganizationResponse(BaseModel):
     updated_at: datetime | None = None
 
 
+class SetupProgressResponse(BaseModel):
+    has_team: bool
+    has_site: bool
+    first_update_at: datetime | None = None
+    first_dpr_sent_at: datetime | None = None
+
+
+class CompanyListItem(OrganizationResponse):
+    """A row of the companies list (SA-02): the company plus its effective
+    status and setup progress (application/organizations/companies_overview)."""
+
+    effective_status: str
+    trial_started_at: datetime | None = None
+    trial_ends_at: datetime | None = None
+    trial_days_left: int | None = None
+    converted_at: datetime | None = None
+    signup_source: str
+    setup: SetupProgressResponse
+
+
 class OrganizationProvision(BaseModel):
     """What the control panel sends to create a company. The original six
     fields still work unchanged; the rest are optional (SS-03)."""
@@ -203,24 +224,12 @@ def _hash_password(plain: str) -> str:
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
-@router.get("", response_model=list[OrganizationResponse])
+@router.get("", response_model=list[CompanyListItem])
 async def list_organizations(_admin: dict = Depends(require_platform_admin)):
-    engine = get_engine()
-    async with engine.connect() as conn:
-        result = await conn.execute(sa.select(organizations_table))
-        rows = result.fetchall()
-    return [
-        OrganizationResponse(
-            id=row.id,
-            name=row.name,
-            deployment_type=row.deployment_type,
-            db_route=row.db_route,
-            status=row.status,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
-        )
-        for row in rows
-    ]
+    """Every company, newest first, with status and setup progress (SA-02)."""
+    async with get_engine().connect() as conn:
+        companies = await list_companies(conn)
+    return [CompanyListItem.model_validate(company, from_attributes=True) for company in companies]
 
 
 @router.get("/{org_id}", response_model=OrganizationResponse)

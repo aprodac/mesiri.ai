@@ -1,0 +1,124 @@
+"""The superadmin's companies list: status and setup progress (SA-02).
+
+One read for both admin routers (the assistant's, which is deployed, and the
+backend's), so the list can't answer differently depending on which serves it.
+
+Per company:
+
+    effective_status   trial / active / expired / suspended, by the one
+                       lifecycle rule (a trial past its end reads expired)
+    trial_days_left    whole days, for a company that is still on trial
+    setup              how far the company got with Mesiri:
+                         has_team           someone active besides the owner
+                         has_site           at least one site
+                         first_update_at    first confirmed site record: work
+                                            reported (activities) or a material
+                                            or issue (timeline_entries)
+                         first_dpr_sent_at  first report sent (PUBLISHED)
+
+Read-only, one query; at our number of companies the per-company subqueries
+cost nothing worth caching.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import uuid
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+import sqlalchemy as sa
+
+from mesiri.domains.organizations import lifecycle
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncConnection
+
+
+@dataclass(frozen=True, slots=True)
+class SetupProgress:
+    has_team: bool
+    has_site: bool
+    first_update_at: dt.datetime | None
+    first_dpr_sent_at: dt.datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class CompanyOverview:
+    id: uuid.UUID
+    name: str
+    deployment_type: str
+    db_route: str
+    status: str
+    effective_status: str
+    trial_started_at: dt.datetime | None
+    trial_ends_at: dt.datetime | None
+    trial_days_left: int | None
+    converted_at: dt.datetime | None
+    signup_source: str
+    created_at: dt.datetime | None
+    updated_at: dt.datetime | None
+    setup: SetupProgress
+
+
+_QUERY = sa.text(
+    """
+    SELECT o.id, o.name, o.deployment_type, o.db_route, o.status,
+           o.trial_started_at, o.trial_ends_at, o.converted_at, o.signup_source,
+           o.created_at, o.updated_at,
+           (SELECT count(*) FROM users u
+             WHERE u.organization_id = o.id AND lower(u.status) = 'active') AS active_users,
+           EXISTS (SELECT 1 FROM sites s WHERE s.organization_id = o.id) AS has_site,
+           LEAST(
+             (SELECT min(a.created_at) FROM activities a
+               WHERE a.organization_id = o.id AND a.deleted_at IS NULL),
+             (SELECT min(t.occurred_at) FROM timeline_entries t
+               WHERE t.organization_id = o.id)
+           ) AS first_update_at,
+           (SELECT min(d.updated_at) FROM daily_reports d
+             WHERE d.organization_id = o.id AND d.status = 'PUBLISHED') AS first_dpr_sent_at
+    FROM organizations o
+    ORDER BY o.created_at DESC NULLS LAST, o.name
+    """
+)
+
+
+def to_overview(row: sa.RowMapping, now: dt.datetime) -> CompanyOverview:
+    """One query row as the list shows it. Pure, so testable without a database."""
+    effective = lifecycle.effective_status(row["status"], row["trial_ends_at"], now)
+    days_left = (
+        lifecycle.trial_days_left(row["trial_ends_at"], now)
+        if effective == lifecycle.TRIAL
+        else None
+    )
+    return CompanyOverview(
+        id=row["id"],
+        name=row["name"],
+        deployment_type=row["deployment_type"],
+        db_route=row["db_route"],
+        status=row["status"],
+        effective_status=effective,
+        trial_started_at=row["trial_started_at"],
+        trial_ends_at=row["trial_ends_at"],
+        trial_days_left=days_left,
+        converted_at=row["converted_at"],
+        signup_source=row["signup_source"] or "superadmin",
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+        setup=SetupProgress(
+            # The owner alone isn't a team.
+            has_team=(row["active_users"] or 0) >= 2,
+            has_site=bool(row["has_site"]),
+            first_update_at=row["first_update_at"],
+            first_dpr_sent_at=row["first_dpr_sent_at"],
+        ),
+    )
+
+
+async def list_companies(
+    conn: AsyncConnection, *, now: dt.datetime | None = None
+) -> list[CompanyOverview]:
+    """Every company, newest first, with its status and setup progress."""
+    now = now or dt.datetime.now(dt.UTC)
+    rows = (await conn.execute(_QUERY)).mappings().all()
+    return [to_overview(row, now) for row in rows]
