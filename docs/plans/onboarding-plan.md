@@ -45,7 +45,7 @@ nudges and trial reminders need Meta-approved templates (SS-12). Apply early.
 | 2 | Starter materials seeded per new company | BE-24 (**done**); `cft`/`load` units BE-39 |
 | 3 | WhatsApp signup for unknown numbers | SS-04 (**done**, off until switched on) |
 | 4 | Add a team member by sharing a contact; welcome message | new, with SS-05 |
-| 5 | One-screen create form + companies list in the control panel | SA-01, SA-02 |
+| 5 | One-screen create form + companies list in the control panel | SA-01 (**done**), SA-02 |
 | 6 | Daily setup questions (letterhead photo → branding, recipients, report time) | SS-07 + new |
 | 7 | Trial reminders, expiry, limits, superadmin trial controls | SS-08 to SS-10 |
 
@@ -88,10 +88,32 @@ one deployed, and the backend copy) now calls this step.
   `start_as`. `admin_email` and `admin_password` are now optional.
 - **Response:** adds `signup_source`, `timezone`, `trial_started_at`,
   `trial_ends_at`, `owner_user_id`, `project_id`, `site_id`, `materials_seeded`.
+- **Several sites (SA-01):** optional `site_names: [...]` creates every name as a
+  site under the one project (each site gets its own report; the project's report
+  combines them). Empty entries are dropped; duplicates (any case), more than 20, or
+  a `site_name` that disagrees are refused (400). The response's `sites` lists
+  `{site_id, name}` for each; `project_id`/`site_id` still name the first. Every
+  site is projected to WhatsApp.
 
 `auto_dpr=True` switches the first project's automatic DPR on (cutoff 18:00 and
 send by 21:00 keep their defaults); the WhatsApp signup uses it, the superadmin's
 `/provision` doesn't.
+
+## Control panel "Create company" (SA-01, built 15 Oct)
+
+`apps/control-panel/src/CreateCompany.tsx`, opened by **Create company** on the
+Organizations page. Replaces the old "Provision New Tenant" form.
+
+- **Asks:** company name, owner name, owner WhatsApp number, project name, one or
+  more site names (empty → one site named after the project), free trial (default)
+  or active. Owner email + password sit under "Dashboard login (optional)".
+- **Doesn't ask:** deployment type and database route (server defaults).
+- **After Create:** trial end date, the sites made, starter materials count, and
+  **Open company**. Errors (taken number/email, bad input) show in the form.
+- **One project per company here;** more projects are added later from the dashboard.
+- **Not yet:** the project's automatic DPR stays off for superadmin-created companies
+  (`/provision` doesn't pass `auto_dpr`), unlike WhatsApp signup; and the owner gets no
+  WhatsApp welcome message (the welcome is part of the team-member work with SS-05).
 
 ## WhatsApp signup (SS-04, built 15 Oct)
 
