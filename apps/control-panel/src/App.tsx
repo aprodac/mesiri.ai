@@ -1,11 +1,9 @@
-import { useEffect, useState } from 'react';
-import { Routes, Route, NavLink, useNavigate } from 'react-router-dom';
+import { Routes, Route, NavLink } from 'react-router-dom';
 import {
   Building2,
   LayoutDashboard,
   Users,
   Settings,
-  Plus,
   Server,
   Cloud,
   TrendingUp,
@@ -20,7 +18,6 @@ import {
   Timer,
   ListOrdered
 } from 'lucide-react';
-import { api } from './api';
 import { RequireAuth } from './AuthContext';
 import Login from './Login';
 import Logs from './Logs';
@@ -32,7 +29,7 @@ import SemanticTypes from './SemanticTypes';
 import Workflows from './Workflows';
 import TestMessage from './TestMessage';
 import OrganizationDetail from './OrganizationDetail';
-import CreateCompany from './CreateCompany';
+import Companies from './Companies';
 import SyncHealth from './SyncHealth';
 import Perf from './Perf';
 import QueueHealth from './QueueHealth';
@@ -53,7 +50,7 @@ const Sidebar = () => (
       </NavLink>
       <NavLink to="/organizations" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
         <Building2 size={16} />
-        Organizations
+        Companies
       </NavLink>
       <NavLink to="/logs" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
         <ScrollText size={16} />
@@ -161,104 +158,6 @@ const Dashboard = () => (
   </div>
 );
 
-interface Organization {
-  id: string;
-  name: string;
-  deployment_type: string;
-  db_route: string;
-  status: string;
-}
-
-const Organizations = () => {
-  const navigate = useNavigate();
-  const [orgs, setOrgs] = useState<Organization[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-
-  const fetchOrgs = () => {
-    setLoading(true);
-    api.get('/admin/organizations')
-      .then(res => setOrgs(res.data))
-      .catch(err => console.error("Failed to fetch organizations", err))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    fetchOrgs();
-  }, []);
-
-  return (
-    <div className="animate-fade-in" style={{ maxWidth: '1200px' }}>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 'var(--space-6)' }}>
-        <div>
-          <h1>Organizations</h1>
-          <p className="subtitle">Manage all construction ERP tenants.</p>
-        </div>
-        <button className="btn-primary" onClick={() => setIsModalOpen(true)}>
-          <Plus size={16} /> Create company
-        </button>
-      </header>
-      
-      <div className="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Deployment</th>
-              <th>Database Route</th>
-              <th>Status</th>
-              <th style={{ textAlign: 'right' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={5} style={{textAlign: 'center', color: 'var(--neutral-500)'}}>Loading live data...</td></tr>
-            ) : orgs.map(org => (
-              <tr key={org.id}>
-                <td style={{ fontWeight: 500, color: 'var(--neutral-900)' }}>{org.name}</td>
-                <td>
-                  <span className={`badge ${org.deployment_type === 'SaaS' ? 'badge-info' : 'badge-warning'}`}>
-                    {org.deployment_type === 'SaaS' ? <Cloud size={12} style={{ marginRight: 4 }} /> : <Server size={12} style={{ marginRight: 4 }} />}
-                    {org.deployment_type}
-                  </span>
-                </td>
-                <td style={{ fontFamily: 'monospace', fontSize: '13px', color: 'var(--neutral-500)' }}>{org.db_route}</td>
-                <td>
-                  <span
-                    className={`badge ${(org.status || '').toLowerCase() === 'active' ? 'badge-success' : 'badge-warning'}`}
-                    style={{ textTransform: 'capitalize' }}
-                  >
-                    {org.status}
-                  </span>
-                </td>
-                <td style={{ textAlign: 'right' }}>
-                  <button
-                    style={{ background: 'none', border: 'none', color: 'var(--neutral-600)', fontWeight: 500, cursor: 'pointer', fontSize: '13px' }}
-                    onClick={() => navigate(`/organizations/${org.id}`)}
-                  >
-                    Manage
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {!loading && orgs.length === 0 && (
-              <tr><td colSpan={5} style={{textAlign: 'center', color: 'var(--neutral-500)'}}>No organizations found. Click "Create company" to add one.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {isModalOpen && (
-        <CreateCompany
-          onClose={() => setIsModalOpen(false)}
-          onCreated={fetchOrgs}
-          onOpen={(orgId) => navigate(`/organizations/${orgId}`)}
-        />
-      )}
-    </div>
-  );
-};
-
 function AppLayout() {
   return (
     <RequireAuth>
@@ -267,7 +166,7 @@ function AppLayout() {
         <main className="main-content">
           <Routes>
             <Route path="/" element={<Dashboard />} />
-            <Route path="/organizations" element={<Organizations />} />
+            <Route path="/organizations" element={<Companies />} />
             <Route path="/organizations/:id" element={<OrganizationDetail />} />
             <Route path="/logs" element={<Logs />} />
             <Route path="/providers" element={<Providers />} />
