@@ -53,6 +53,29 @@ What fills the variables: `{{1}}` the project name, `{{2}}` the report date,
 `{{3}}` "All sites reported." / "N of M sites not reported." / "Confirmed by the
 site engineer." (single-site projects), plus " Sent on request." after "Send now".
 
+### `mesiri_login_code` — login / signup code (SS-06, WEB-12)
+
+Sent when someone asks for a code on the dashboard's sign-in or signup page.
+Authentication templates have fixed wording set by Meta; you only choose the
+options below.
+
+| Field | Value |
+| --- | --- |
+| Name | `mesiri_login_code` |
+| Category | **Authentication** |
+| Language | English (`en`) |
+| Code delivery | **Copy code** (button text: `Copy code`) |
+| Body (fixed by Meta) | `{{1}} is your verification code.` |
+| Add security recommendation | **On** ("For your security, do not share this code.") |
+| Add expiry time | **On**, **10 minutes** |
+
+Sample value: `{{1}}` = `482913`. The code is sent as the body parameter and as
+the Copy code button's parameter.
+
+To switch it on: add `mesiri_login_code` to `WHATSAPP_APPROVED_TEMPLATES`.
+`MESIRI_LOGIN_CODE_SENDER` must be unset or `whatsapp` (never `dev` on a server
+real people use: `dev` shows the code on the page instead of sending it).
+
 ## Who receives the DPR, and opt-in (BE-15)
 
 - Each project can have its own DPR list (`/dpr/projects/{id}/recipients`):
@@ -72,5 +95,5 @@ site engineer." (single-site projects), plus " Sent on request." after "Send now
 ## Templates still to add
 
 Each is declared and submitted by its own tracker item: evening gap-check
-(WA-04), no-update reminder (WA-06), welcome / opt-in (WA-09), signup login code
-and trial messages (SS-06, SS-08, SS-12). Getting them all approved is WA-10.
+(WA-04), no-update reminder (WA-06), welcome / opt-in (WA-09), trial messages
+(SS-08, SS-12). The login code (SS-06) is above. Getting them all approved is WA-10.

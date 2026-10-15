@@ -44,6 +44,7 @@ nudges and trial reminders need Meta-approved templates (SS-12). Apply early.
 | 1 | One create-company step | SS-03 (**done**, includes BE-02) |
 | 2 | Starter materials seeded per new company | BE-24 (**done**); `cft`/`load` units BE-39 |
 | 3 | WhatsApp signup for unknown numbers | SS-04 (**done**, off until switched on) |
+| 3b | Web signup and dashboard login by WhatsApp code | SS-06 + WEB-12 (**done**, off until switched on) |
 | 4 | Add a team member by sharing a contact; welcome message | new, with SS-05 |
 | 5 | One-screen create form + companies list in the control panel | SA-01, SA-02 |
 | 6 | Daily setup questions (letterhead photo → branding, recipients, report time) | SS-07 + new |
@@ -113,3 +114,35 @@ send by 21:00 keep their defaults); the WhatsApp signup uses it, the superadmin'
   it". If the number is already taken, the reply says it's already set up.
 - **Before switching it on in production:** guardrails (SS-09). There is no UI for the
   switch yet (SS-10); today it's a `platform_settings` row.
+
+## Web signup and login by WhatsApp code (SS-06 + WEB-12, built 15 Oct)
+
+One code mechanism for both: a 6-digit code sent on WhatsApp proves the number is
+yours, for signing up or for logging in to the dashboard without a password.
+
+- **Signup page** `/signup`: WhatsApp number → code → your name, company name, site
+  name → straight into the dashboard (`/today`). Same result as the WhatsApp signup:
+  a trial, source `web`, the site is also the first project, its automatic DPR on,
+  starter materials, projected to WhatsApp (`project_new_company`).
+- **Login page:** a "WhatsApp code" tab next to email and password. Works for any
+  active user with a WhatsApp number, owner or not, so owners created without a
+  password can now reach the dashboard. A number on two accounts is refused (BE-04).
+- **Code rules** (`backend/.../application/identity/login_codes.py`): 6 digits, 10
+  minutes, one use, 5 wrong tries; one new code a minute and 5 an hour per number;
+  only an HMAC of the code is stored (`login_codes`, migration 0475). Asking for a
+  login code for a number nobody has answers the same and sends nothing.
+- **Routes** (`apps/whatsapp-assistant/src/auth/code_login.py`, under `/auth`):
+  `code/request`, `code/login`, `code/verify` (signup code → 30-minute signup ticket),
+  `signup`.
+- **Signup checks:** `application/organizations/signup_guard.check_signup` runs before
+  a signup code is sent and before the company is created. Today it only enforces
+  `self_serve.signup_enabled`; **SS-09 adds its guardrails there** (it gets the phone,
+  the door and the caller's IP).
+- **Sending the code:** server setting `MESIRI_LOGIN_CODE_SENDER`. `whatsapp`
+  (default) uses the authentication template `mesiri_login_code`, and only once it
+  is in `WHATSAPP_APPROVED_TEMPLATES`; until then both pages say code login isn't
+  available yet. `dev` sends nothing and shows the code on the page, for testing
+  only. Template to submit: [whatsapp-templates.md](../ops/whatsapp-templates.md).
+- **To switch on:** get the template approved, add it to
+  `WHATSAPP_APPROVED_TEMPLATES`, and (for signup) turn on `self_serve.signup_enabled`.
+  Code login works as soon as the template is approved, even with signup off.
