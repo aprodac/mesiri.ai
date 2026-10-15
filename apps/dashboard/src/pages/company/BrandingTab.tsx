@@ -12,6 +12,7 @@ import {
   type CompanyBranding,
 } from '@/lib/api'
 import { LOGO_TYPES, apiErrorMessage as apiError, logoFileProblem, readAsBase64 } from '@/lib/logo-upload'
+import { useReadOnly } from '@/lib/trial'
 
 // How the company appears on its DPRs (tracker WEB-10, backed by BE-20).
 // Name, address, phone and email are the company record's own fields
@@ -46,6 +47,8 @@ function toForm(b: CompanyBranding): Record<keyof BrandingFields, string> {
 }
 
 export function BrandingTab() {
+  // Free trial over: saves are refused, so don't offer them (SS-15).
+  const readOnly = useReadOnly()
   const queryClient = useQueryClient()
   const { data: branding, isLoading, isError, error } = useQuery({
     queryKey: ['company-branding'],
@@ -118,7 +121,7 @@ export function BrandingTab() {
 
   const color = form.brand_color || DEFAULT_COLOR
   const printedName = form.letterhead_name || branding.company_name
-  const busy = upload.isPending || remove.isPending
+  const busy = upload.isPending || remove.isPending || readOnly
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] max-w-5xl text-xs">
@@ -232,7 +235,7 @@ export function BrandingTab() {
             ) : (
               <span />
             )}
-            <Button type="submit" disabled={save.isPending} className="h-9 text-xs gap-1.5">
+            <Button type="submit" disabled={save.isPending || readOnly} className="h-9 text-xs gap-1.5">
               {save.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
               Save letterhead
             </Button>

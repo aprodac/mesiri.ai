@@ -58,6 +58,7 @@ import {
   WhatsAppManagerDialog,
 } from '@/components/user-dialogs'
 import type { ProjectItem } from '@/lib/scope-types'
+import { useReadOnly } from '@/lib/trial'
 
 const ROLE_BADGES = {
   ADMIN: 'destructive',
@@ -67,6 +68,8 @@ const ROLE_BADGES = {
 } as const
 
 export default function Users() {
+  // Free trial over: saves are refused, so don't offer them (SS-15).
+  const readOnly = useReadOnly()
   const queryClient = useQueryClient()
   const [search, setSearch] = React.useState('')
   const [roleFilter, setRoleFilter] = React.useState('ALL')
@@ -264,6 +267,7 @@ export default function Users() {
           </p>
         </div>
         <div className="flex gap-2">
+          {!readOnly && (
           <Button
             size="sm"
             onClick={() => {
@@ -275,6 +279,7 @@ export default function Users() {
             <Plus className="size-4" />
             Add User
           </Button>
+          )}
         </div>
       </div>
 

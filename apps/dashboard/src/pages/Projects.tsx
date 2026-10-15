@@ -50,6 +50,7 @@ import {
   type Project,
 } from '@/lib/projects'
 import { AddEditProjectDialog } from '@/components/project-dialogs'
+import { useReadOnly } from '@/lib/trial'
 
 const STATUS_BADGES = {
   success: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-none',
@@ -59,6 +60,8 @@ const STATUS_BADGES = {
 } as const
 
 export default function Projects() {
+  // Free trial over: saves are refused, so don't offer them (SS-15).
+  const readOnly = useReadOnly()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
@@ -153,6 +156,7 @@ export default function Projects() {
           </p>
         </div>
         <div className="flex gap-2">
+          {!readOnly && (
           <Button
             size="sm"
             onClick={() => {
@@ -164,6 +168,7 @@ export default function Projects() {
             <Plus className="size-4" />
             Create Project
           </Button>
+          )}
         </div>
       </div>
 
