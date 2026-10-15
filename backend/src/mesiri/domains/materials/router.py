@@ -34,6 +34,8 @@ from mesiri.domains.materials.responses import (
 )
 from mesiri.domains.materials.validation import (
     ADJUSTMENT_REASONS,
+    ELEVATED_REASONS,
+    OPENING_STOCK,
     is_valid_receipt_reason,
     is_valid_usage_reason,
     role_can_adjust,
@@ -738,6 +740,48 @@ async def _resolve_and_validate_material_unit(
     return material, unit
 
 
+async def _assert_no_opening_stock(
+    conn: AsyncConnection,
+    organization_id: uuid.UUID,
+    site_id: uuid.UUID | None,
+    material: dict,
+) -> None:
+    """Opening stock is entered once per site+material (BE-12). A second one
+    would count what was on site twice; the fix for a wrong figure is to
+    correct the first entry or post an adjustment. A corrected (reversed)
+    opening entry no longer counts, so it can be entered again.
+
+    Takes the same per-site+material lock as the outflow stock guard, so two
+    people entering opening stock at once cannot both pass."""
+    await PostgresMaterialReadRepository(conn).lock_stock_for_update(site_id, material["id"])
+    existing = (
+        await conn.execute(
+            text(
+                "SELECT r.occurred_date FROM material_receipts r "
+                "WHERE r.organization_id = :org_id AND r.material_id = :material_id "
+                "AND r.site_id IS NOT DISTINCT FROM CAST(:site_id AS uuid) "
+                "AND r.movement_reason = :reason "
+                "AND NOT EXISTS (SELECT 1 FROM material_usage u WHERE u.reverses_movement_id = r.id) "
+                "LIMIT 1"
+            ),
+            {
+                "org_id": organization_id,
+                "material_id": material["id"],
+                "site_id": site_id,
+                "reason": OPENING_STOCK,
+            },
+        )
+    ).first()
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Opening stock for {material['name']} at this site was already entered "
+                f"(dated {existing[0]}). Correct that entry, or record an adjustment."
+            ),
+        )
+
+
 @router.post("/inflows", status_code=201)
 async def create_inflow(
     body: MaterialInflowCreate,
@@ -760,7 +804,7 @@ async def create_inflow(
         raise HTTPException(
             status_code=422, detail=f"Invalid inflow movement_reason: {body.movement_reason}"
         )
-    if body.movement_reason in ADJUSTMENT_REASONS and not role_can_adjust(auth_context.role):
+    if body.movement_reason in ELEVATED_REASONS and not role_can_adjust(auth_context.role):
         raise HTTPException(status_code=403, detail="Not authorized to record adjustment movements")
     if body.quantity <= 0:
         raise HTTPException(status_code=422, detail="quantity must be greater than zero")
@@ -774,6 +818,8 @@ async def create_inflow(
     material, unit = await _resolve_and_validate_material_unit(
         conn, auth_context.organization_id, body.material_id, body.unit_id
     )
+    if body.movement_reason == OPENING_STOCK:
+        await _assert_no_opening_stock(conn, auth_context.organization_id, body.site_id, material)
     unit_cost, total_cost = _resolve_costs(body.quantity, body.unit_cost, body.total_cost)
 
     row_id = uuid.uuid4()

@@ -1238,3 +1238,140 @@ async def test_a_corrected_purchase_is_flagged_so_spend_totals_can_exclude_it(
     # total that must leave it out, which is what the flag enables.
     assert Decimal(original["total_cost"]) == Decimal("31250.00")  # 100 x 312.50
 
+
+# ---------------------------------------------------------------------------
+# BE-12: opening stock, and usage beyond known stock flagged in the DPR
+# ---------------------------------------------------------------------------
+
+
+def _opening_body(ctx: dict, material_id: str, unit_id: str, quantity: str = "40") -> dict:
+    return {
+        "project_id": str(ctx["project_id"]),
+        "site_id": str(ctx["site_id"]),
+        "material_id": material_id,
+        "unit_id": unit_id,
+        "quantity": quantity,
+        "movement_reason": "OPENING_STOCK",
+        "occurred_date": str(datetime.date.today()),
+    }
+
+
+async def test_opening_stock_counts_into_stock(client, admin_ctx):
+    bags_id = await _bags_unit_id(client, admin_ctx["token"])
+    material_id = await _make_material(client, admin_ctx["token"], "Cement", bags_id)
+    resp = await client.post(
+        "/materials/inflows",
+        json=_opening_body(admin_ctx, material_id, bags_id),
+        headers=_auth(admin_ctx["token"]),
+    )
+    assert resp.status_code == 201, resp.text
+
+    resp = await client.get(
+        "/materials/inventory",
+        params={"project_id": str(admin_ctx["project_id"])},
+        headers=_auth(admin_ctx["token"]),
+    )
+    assert resp.json()[0]["current_stock"] == "40.00"
+
+
+async def test_opening_stock_entered_once_per_site_and_material(client, admin_ctx):
+    bags_id = await _bags_unit_id(client, admin_ctx["token"])
+    material_id = await _make_material(client, admin_ctx["token"], "Cement", bags_id)
+    body = _opening_body(admin_ctx, material_id, bags_id)
+    first = await client.post("/materials/inflows", json=body, headers=_auth(admin_ctx["token"]))
+    assert first.status_code == 201
+
+    second = await client.post("/materials/inflows", json=body, headers=_auth(admin_ctx["token"]))
+    assert second.status_code == 409
+    assert "already entered" in second.json()["detail"]
+
+    # Another material at the same site is its own opening figure.
+    steel_id = await _make_material(client, admin_ctx["token"], "Steel", bags_id)
+    other = await client.post(
+        "/materials/inflows",
+        json=_opening_body(admin_ctx, steel_id, bags_id),
+        headers=_auth(admin_ctx["token"]),
+    )
+    assert other.status_code == 201
+
+
+async def test_corrected_opening_stock_can_be_entered_again(client, admin_ctx):
+    bags_id = await _bags_unit_id(client, admin_ctx["token"])
+    material_id = await _make_material(client, admin_ctx["token"], "Cement", bags_id)
+    body = _opening_body(admin_ctx, material_id, bags_id)
+    first = await client.post("/materials/inflows", json=body, headers=_auth(admin_ctx["token"]))
+    reverse = await client.post(
+        f"/materials/inflows/{first.json()['id']}/reverse",
+        json={"reason_note": "counted wrong"},
+        headers=_auth(admin_ctx["token"]),
+    )
+    assert reverse.status_code == 201
+
+    again = await client.post(
+        "/materials/inflows",
+        json={**body, "quantity": "35"},
+        headers=_auth(admin_ctx["token"]),
+    )
+    assert again.status_code == 201
+
+
+async def test_opening_stock_forbidden_for_non_elevated_role(
+    client, test_engine, test_org, admin_ctx
+):
+    bags_id = await _bags_unit_id(client, admin_ctx["token"])
+    material_id = await _make_material(client, admin_ctx["token"], "Cement", bags_id)
+    site_engineer = await _make_user(test_engine, test_org, "site_engineer")
+    token = _token(site_engineer, test_org, "site_engineer")
+    resp = await client.post(
+        "/materials/inflows",
+        json=_opening_body(admin_ctx, material_id, bags_id),
+        headers=_auth(token),
+    )
+    assert resp.status_code == 403
+
+
+async def test_dpr_flags_usage_beyond_known_stock(client, test_engine, test_org, admin_ctx):
+    from mesiri.infrastructure.postgres.repositories.dpr import PostgresDprRepository
+
+    bags_id = await _bags_unit_id(client, admin_ctx["token"])
+    material_id = await _make_material(client, admin_ctx["token"], "Cement", bags_id)
+    today = datetime.date.today()
+    yesterday = today - datetime.timedelta(days=1)
+    base = {
+        "project_id": str(admin_ctx["project_id"]),
+        "site_id": str(admin_ctx["site_id"]),
+        "material_id": material_id,
+        "unit_id": bags_id,
+    }
+    headers = _auth(admin_ctx["token"])
+    # Yesterday: 20 delivered. Today: opening stock 5 entered, 10 delivered,
+    # 50 used -- 15 more than the site is known to hold.
+    for path, quantity, reason, day in (
+        ("/materials/inflows", "20", "RECEIVED", yesterday),
+        ("/materials/inflows", "5", "OPENING_STOCK", today),
+        ("/materials/inflows", "10", "RECEIVED", today),
+        ("/materials/outflows", "50", "CONSUMED", today),
+    ):
+        resp = await client.post(
+            path,
+            json={**base, "quantity": quantity, "movement_reason": reason, "occurred_date": str(day)},
+            headers=headers,
+        )
+        assert resp.status_code == 201, resp.text
+
+    async with test_engine.connect() as conn:
+        payload = await PostgresDprRepository(conn).assemble_site_report_payload(
+            organization_id=test_org,
+            project_id=admin_ctx["project_id"],
+            site_id=admin_ctx["site_id"],
+            report_date=today,
+        )
+
+    [cement] = payload["materials"]
+    assert Decimal(cement["opening"]) == Decimal("20")
+    assert Decimal(cement["received"]) == Decimal("10")  # opening stock is not a delivery
+    assert Decimal(cement["adjusted"]) == Decimal("5")
+    assert Decimal(cement["used"]) == Decimal("50")
+    assert Decimal(cement["closing"]) == Decimal("-15")
+    assert cement["beyond_stock"] is True
+    assert payload["stock_flags"] == 1

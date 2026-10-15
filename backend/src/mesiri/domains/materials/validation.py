@@ -52,9 +52,15 @@ def validate(cmd: RecordMaterialReceiptCommand | RecordMaterialUsageCommand) -> 
 # ---------------------------------------------------------------------------
 # Movement reason rules (dashboard Materials surface — direct web writes)
 # ---------------------------------------------------------------------------
-RECEIPT_REASONS = ("RECEIVED", "TRANSFER_IN", "RETURN_IN", "ADJUSTMENT_IN")
+# OPENING_STOCK (BE-12): what was already on site when it started using
+# Mesiri, entered once per site+material by an elevated role.
+OPENING_STOCK = "OPENING_STOCK"
+RECEIPT_REASONS = ("RECEIVED", "TRANSFER_IN", "RETURN_IN", "ADJUSTMENT_IN", OPENING_STOCK)
 USAGE_REASONS = ("CONSUMED", "TRANSFER_OUT", "RETURN_TO_VENDOR", "WASTAGE", "ADJUSTMENT_OUT")
 ADJUSTMENT_REASONS = ("ADJUSTMENT_IN", "ADJUSTMENT_OUT")
+# Reasons only ADJUSTMENT_ROLES may record: they change stock without a
+# delivery or a use behind them.
+ELEVATED_REASONS = (*ADJUSTMENT_REASONS, OPENING_STOCK)
 ADJUSTMENT_ROLES = ("ADMIN", "PROJECT_MANAGER")
 
 
