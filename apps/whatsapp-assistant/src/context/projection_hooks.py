@@ -59,6 +59,10 @@ async def project_new_company(created: CreatedCompany) -> None:
     await project_entity("user", created.owner_user_id)
     if created.project_id is not None:
         await project_entity("project", created.project_id)
-    if created.site_id is not None:
-        await project_entity("site", created.site_id)
+    # Every site (SA-01 can create several); `site_id` is the first of them.
+    site_ids = [site.site_id for site in created.sites]
+    if created.site_id is not None and created.site_id not in site_ids:
+        site_ids.insert(0, created.site_id)
+    for site_id in site_ids:
+        await project_entity("site", site_id)
     await project_entity("membership", created.owner_user_id)
