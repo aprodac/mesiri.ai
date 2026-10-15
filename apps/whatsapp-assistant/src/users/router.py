@@ -1092,6 +1092,8 @@ async def get_user_whatsapp_message_detail(
         pe_res = await conn.execute(
             sa.select(provider_executions_table)
             .where(provider_executions_table.c.correlation_id == cid)
+            # BE-25 per-call cost rows are for the control panel, not tenants.
+            .where(provider_executions_table.c.stage != "metered")
             .order_by(provider_executions_table.c.created_at.asc())
         )
         providers = [

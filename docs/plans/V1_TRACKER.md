@@ -173,6 +173,7 @@
 | SA-06 | Health view (DPR delivery, gap-check replies, WhatsApp number quality) | M | Later | BE-27 | todo | | |
 | SA-07 | Module toggles per company | S | Must | BE-06 | done | Claude (session 13 Oct, foundations) | `d338389`. Modules card on the company Settings tab; not yet clicked through in a browser (needs a platform-admin login on the live control panel) |
 | SA-08 | Audit log viewer | S | Later | BE-05 | todo | | |
+| SA-09 | Branding requests in the control panel: list of owners' letterhead/logo photo requests (SS-14) across companies, company-page branding panel (photos next to the letterhead fields + logo upload, reusing BE-20's rules), "Mark done" (assistant tells the owner); audited | M | Must | SS-14, BE-20, BE-05 | claimed | Claude (session 15 Oct, onboarding, Lane B) | |
 
 ## SS — Self-serve signup & trials
 

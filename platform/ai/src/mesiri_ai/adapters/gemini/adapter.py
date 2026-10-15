@@ -16,6 +16,7 @@ import json
 import logging
 from typing import Any
 
+from ... import usage
 from ...core.errors import malformed_output
 from ...core.fallback import call_with_resilience
 from ...models import (
@@ -702,6 +703,17 @@ class GeminiProvider:
             timeout_seconds=self._settings.timeout_seconds,
             max_retries=self._settings.max_retries,
             correlation_id=correlation_id,
+        )
+        # BE-25: what this call used, for per-company cost tracking.
+        usage.report(
+            usage.ProviderUsage(
+                provider=self.provider,
+                operation=operation,
+                model=self._settings.model,
+                correlation_id=correlation_id,
+                latency_ms=latency_ms,
+                **usage.gemini_usage(resp),
+            )
         )
         text = getattr(resp, "text", None) or ""
         return text, latency_ms
