@@ -106,6 +106,7 @@ if TYPE_CHECKING:
     from runtime.project_detail_query import ProjectDetailQueryService
     from runtime.reply_language import ReplyComposer, UserLanguageStore
     from runtime.reversal_query import ReversalTargetQueryService
+    from runtime.setup_questions import SetupQuestions
     from runtime.signup_journey import SignupJourney
     from runtime.site_issue_query import SiteIssueTargetQueryService
     from runtime.vendor_query import VendorQueryService
@@ -174,6 +175,7 @@ def build_message_handlers(
     memory_coordinator: ConversationMemoryCoordinator,
     signup_journey: SignupJourney | None = None,
     contact_share: ContactShareJourney | None = None,
+    setup_questions: SetupQuestions | None = None,
     reply_composer: ReplyComposer | None = None,
     user_language_store: UserLanguageStore | None = None,
 ) -> tuple[Any, Any]:
@@ -272,11 +274,33 @@ def build_message_handlers(
                 "processing_ack_failed wa_id=%s modality=%s", wa_id, modality.value
             )
 
+    # The sender each in-flight message resolved to, for the follow-up below.
+    _resolved_actors: dict[str, Any] = {}
+
     async def _run_journey(message, raw_payload, retry_of_id=None) -> None:  # type: ignore[no-untyped-def]
         timer = StepTimer()
         try:
             await _run_journey_steps(message, raw_payload, retry_of_id, timer)
+            # SS-14: after Mesiri has answered the owner, today's setup
+            # question (if any). Here, after every path's reply, rather than
+            # in each of the journey's many early returns.
+            actor = _resolved_actors.get(message.correlation_id)
+            if setup_questions is not None and actor is not None:
+                try:
+                    await setup_questions.after_reply(
+                        actor,
+                        send=lambda spec: send_reply_spec(
+                            spec,
+                            message.sender.wa_id,
+                            send_text=sender.send_text,
+                            send_list=sender.send_list,
+                            send_button=sender.send_button,
+                        ),
+                    )
+                except Exception:  # noqa: BLE001 — a setup question never breaks a reply
+                    _log.exception("setup_question.follow_up_failed user=%s", actor.user_id)
         finally:
+            _resolved_actors.pop(message.correlation_id, None)
             # Emitted in `finally` so every path is covered by one write --
             # this block has a dozen early returns (unregistered sender,
             # suspended org, a fast path that handled the message outright),
@@ -306,6 +330,8 @@ def build_message_handlers(
 
         timer.lap("resolve_sender")
         org_id = ctx.organization_id if ctx else None
+        if ctx is not None:
+            _resolved_actors[message.correlation_id] = ctx
 
         # Best-effort inbound message log (for debugging/replay). raw_payload
         # is a self-contained, replayable envelope of the raw Meta webhook
@@ -505,6 +531,25 @@ def build_message_handlers(
         # runtime/inbound_journey/seeding.py). Handled before everything
         # else for the same reason as the team-photo tap above: "Skip" must
         # not fall through to the confirmation classifier.
+        if setup_questions is not None:
+            # SS-14: an answer to a daily setup question -- a tap on its
+            # buttons, or the letterhead/logo photo it asked for. Before the
+            # photo picker and the other taps: it is the question just asked.
+            try:
+                setup_reply = await setup_questions.handle_tap(message, ctx)
+                if setup_reply is None:
+                    setup_reply = await setup_questions.handle_media(message, ctx)
+            except Exception:  # noqa: BLE001 — fall through to the normal journey
+                _log.exception("setup_question.answer_failed user=%s", ctx.user_id)
+                setup_reply = None
+            if setup_reply is not None:
+                await _send_spec(setup_reply, wa_id)
+                await message_logger.log_reply(
+                    correlation_id=message.correlation_id, reply=setup_reply.text
+                )
+                await message_logger.mark_completed(correlation_id=message.correlation_id)
+                return
+
         if contact_share is not None:
             try:
                 contact_reply = await contact_share.handle_project_tap(message, ctx)

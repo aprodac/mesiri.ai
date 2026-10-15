@@ -37,6 +37,9 @@ LABOUR_SETTINGS = "labour_settings"
 ENABLED_MODULES = "enabled_modules"
 # Letterhead details and logo (BE-20); rules in domains/organizations/branding.py.
 BRANDING = "branding"
+# Daily setup questions (SS-14); rules in domains/organizations/setup_questions.py.
+SETUP_PROGRESS = "setup_progress"
+BRANDING_REQUESTS = "branding_requests"
 # How WhatsApp updates are saved (WA-01). "save_first": saved straight away as
 # a draft the engineer confirms with the evening DPR (decided 13 Oct 2026, on
 # for every company). "confirm_first": the old "Confirm? YES/NO" before
@@ -169,12 +172,28 @@ _SPECS: dict[str, SettingSpec] = {
             "signatory and logo. Edited through the branding page, not here."
         ),
     ),
+    SETUP_PROGRESS: SettingSpec(
+        key=SETUP_PROGRESS,
+        default={},
+        description=(
+            "Which daily setup questions WhatsApp has asked the owner, and their "
+            "answers. Written by the assistant only."
+        ),
+    ),
+    BRANDING_REQUESTS: SettingSpec(
+        key=BRANDING_REQUESTS,
+        default=[],
+        description=(
+            "Letterhead, visiting card and logo files the owner sent on WhatsApp for "
+            "the Mesiri team to set up. Handled from the control panel."
+        ),
+    ),
 }
 
 # Settings with their own endpoint (GET/PUT /company/branding and the logo
-# upload). The generic settings API refuses them: a hand-written logo key could
-# point at another company's file.
-DEDICATED_ENDPOINT_KEYS: frozenset[str] = frozenset({BRANDING})
+# upload), or written only by the assistant (SS-14). The generic settings API
+# refuses them: a hand-written logo key could point at another company's file.
+DEDICATED_ENDPOINT_KEYS: frozenset[str] = frozenset({BRANDING, SETUP_PROGRESS, BRANDING_REQUESTS})
 
 
 def is_known_key(key: str) -> bool:

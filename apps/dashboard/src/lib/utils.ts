@@ -36,3 +36,13 @@ export function timeAgo(dateString: string): string {
   const months = Math.round(days / 30)
   return `${months}mo ago`
 }
+
+/** "21:00" -> "9:00 pm": a stored "HH:MM" wall-clock time as people say it. */
+export function formatClock(hhmm: string | null | undefined): string | null {
+  if (!hhmm) return null
+  const [h, m] = hhmm.split(':').map(Number)
+  if (Number.isNaN(h) || Number.isNaN(m)) return hhmm
+  const suffix = h >= 12 ? 'pm' : 'am'
+  const hour = h % 12 === 0 ? 12 : h % 12
+  return `${hour}:${String(m).padStart(2, '0')} ${suffix}`
+}
