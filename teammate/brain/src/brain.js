@@ -17,6 +17,9 @@ import { BRAIN_TOOL_NAMES } from "./tools.js";
 const MAX_CHUNK = 3800; // the listener refuses posts over 4,000 characters
 const TURN_TIMEOUT_MS = Number(process.env.TEAMMATE_BRAIN_TURN_TIMEOUT_MS || 60 * 60_000);
 const DAILY_TURNS = Number(process.env.TEAMMATE_BRAIN_DAILY_TURNS || 60);
+// "@bot model <name>": short names for the current models; a full claude-* id also works.
+const MODEL_ALIASES = { opus: "claude-opus-5-5", sonnet: "claude-sonnet-5-5", haiku: "claude-haiku-5-5", fable: "claude-fable-5-1" };
+const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 const BUDGET = { planning: Number(process.env.TEAMMATE_BRAIN_PLAN_USD || 3), working: Number(process.env.TEAMMATE_BRAIN_WORK_USD || 25) };
 
 const READ = [
@@ -130,6 +133,9 @@ export class Brain {
     Object.assign(this, { queryFn, projects, listener, tools, prepare, owner, model, env, log, now, routines, fireFn });
     this.sessionsFile = `${dir}/sessions.json`;
     this.plansFile = `${dir}/plans.json`;
+    // Per-project model / effort, changed by owners from WhatsApp ("@bot model sonnet", "@bot effort high").
+    this.settingsFile = `${dir}/settings.json`;
+    this.settings = readJson(this.settingsFile, {});
     // Several conversations per group: ids["<chat>::<name>"] = Claude session id; active[chat] = name in use;
     // msgs[<WhatsApp message id>] = "<chat>::<name>" that wrote it, so a reply continues that conversation.
     const saved = readJson(this.sessionsFile, {});
@@ -178,6 +184,42 @@ export class Brain {
       this.saveSessions();
     }
     return r;
+  }
+
+  /** The model and effort a project's turns use (its setting, else the server default). */
+  modelFor(project) {
+    const s = this.settings[project] || {};
+    return { model: s.model || this.model, effort: s.effort || null };
+  }
+
+  /** "model [name]", "effort [level]", "settings": owners change, anyone approved can look. Returns a reply or null. */
+  settingsCommand(req) {
+    const text = String(req.text || "").trim();
+    let m = text.match(/^(model|effort)(?:\s+(?:to\s+)?(\S+))?\s*$/i);
+    if (!m && !/^(settings|model settings)$/i.test(text)) return null;
+    const current = this.modelFor(req.project);
+    const show = () =>
+      `⚙️ ${req.project}: model *${current.model}*, effort *${current.effort || "default"}*\n` +
+      "Owners can change it: @bot model opus|sonnet|haiku|fable · @bot effort low|medium|high|xhigh|max|default";
+    if (!m || !m[2]) return show();
+    if (req.sender_role !== "owner") return "Only an owner can change the model or effort.";
+    const what = m[1].toLowerCase();
+    const value = m[2].toLowerCase();
+    const next = { ...(this.settings[req.project] || {}) };
+    if (what === "model") {
+      const id = MODEL_ALIASES[value] || (/^claude-[a-z0-9-]+$/.test(value) ? value : null);
+      if (!id) return `I don't know the model *${value}*. Use opus, sonnet, haiku, fable, or a full id like claude-sonnet-5-5.`;
+      next.model = id;
+    } else {
+      if (value === "default") delete next.effort;
+      else if (!EFFORTS.includes(value)) return `Effort is one of ${EFFORTS.join(", ")} or default.`;
+      else next.effort = value;
+    }
+    this.settings[req.project] = next;
+    writeJson(this.settingsFile, this.settings);
+    this.log(`brain: ${req.sender} set ${what} ${value} for ${req.project}`);
+    const now = this.modelFor(req.project);
+    return `✅ ${req.project} now uses *${now.model}*, effort *${now.effort || "default"}* (from the next message).`;
   }
 
   /** "new [name]", "sessions", "switch <name>", "reset": managing a group's conversations. Returns a reply or null. */
@@ -289,7 +331,7 @@ export class Brain {
     if (!project) return say(`I'm not set up for the ${req.project} project yet.`);
 
     if (mode === "planning") {
-      const answer = this.sessionCommand(req);
+      const answer = this.settingsCommand(req) || this.sessionCommand(req);
       if (answer) return say(answer);
     }
     if (this.overDailyCap()) return say(`⏸️ I've hit today's limit of ${DAILY_TURNS} runs. Ask again tomorrow, or raise TEAMMATE_BRAIN_DAILY_TURNS.`);
@@ -316,7 +358,8 @@ export class Brain {
         options: {
           cwd: project.cwd,
           resume: sessionId || undefined,
-          model: this.model,
+          model: this.modelFor(req.project).model,
+          ...(this.modelFor(req.project).effort ? { effort: this.modelFor(req.project).effort } : {}),
           permissionMode: "dontAsk",
           allowedTools: mode === "working" ? WORK : READ,
           disallowedTools: DENY,

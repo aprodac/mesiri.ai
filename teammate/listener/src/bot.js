@@ -54,6 +54,7 @@ const HELP = [
   "• @me sessions / @me switch <name> / @me reset",
   "• reply to a voice note with @me translate (or @me translate #123): transcript + English + what it cost",
   "• @me cost: Gemini spend today and this month, in ₹",
+  "• @me settings: Claude's model and effort · owners: @me model opus|sonnet|haiku|fable, @me effort low…max",
   "• @me who: who is approved here",
   "Owners: @me approve @person · @me remove @person · @me make owner @person",
 ].join(String.fromCharCode(10));
@@ -134,7 +135,7 @@ export class Bot {
       this.log(`bot: ${who} in ${chat.name} -> Claude`);
       return this.brain.ask({
         project, chat: chat.jid, chat_name: chat.name, chat_role: chat.role, reply_chat: replyTo,
-        sender: who, n, text, quoted_text: rec.quoted_text || null, quoted_id: rec.quoted_id || null,
+        sender: who, sender_role: person.role, n, text, quoted_text: rec.quoted_text || null, quoted_id: rec.quoted_id || null,
       });
     }
 

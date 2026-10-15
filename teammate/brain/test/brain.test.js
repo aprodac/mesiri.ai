@@ -324,3 +324,30 @@ test("brain: old one-session-per-group files carry over as 'main'", async () => 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("brain: owners change the model and effort from WhatsApp; others can only look", async () => {
+  const { dir, calls, sent, ask } = setup((p, id) => ok("x", id));
+  try {
+    await ask("settings");
+    assert.match(sent.at(-1).text, /model \*claude-opus-5-5\*, effort \*default\*/);
+
+    await ask("model sonnet", { sender_role: "member" });
+    assert.match(sent.at(-1).text, /Only an owner/);
+
+    await ask("model sonnet", { sender_role: "owner" });
+    assert.match(sent.at(-1).text, /now uses \*claude-sonnet-5-5\*/);
+    await ask("effort high", { sender_role: "owner" });
+    await ask("what changed?");
+    assert.equal(calls.at(-1).options.model, "claude-sonnet-5-5");
+    assert.equal(calls.at(-1).options.effort, "high");
+
+    await ask("model gpt4", { sender_role: "owner" });
+    assert.match(sent.at(-1).text, /don't know the model/);
+    await ask("effort default", { sender_role: "owner" });
+    await ask("again");
+    assert.equal(calls.at(-1).options.effort, undefined);
+    assert.equal(JSON.parse(readFileSync(join(dir, "settings.json"), "utf8")).mercon.model, "claude-sonnet-5-5");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
