@@ -1,8 +1,9 @@
 """Context resolver production wiring and development diagnostics.
 
 Constructs the authoritative M4 ContextResolver with:
-- Real PostgreSQL adapters for identity, membership, roles, projects, sites,
-  and preferences (lazily initialized — no sqlalchemy import at module load).
+- Adapters reading the main (control-plane) tables for identity, membership,
+  roles, projects, sites, and preferences (lazily initialized — no sqlalchemy
+  import at module load).
 - A caller-supplied Redis client for the active-context store: a real
   ``RedisClient`` in production (connected by the lifespan handler) or
   ``FakeRedis`` for the unit-test / no-Redis lane.
@@ -14,7 +15,6 @@ import logging
 import os
 
 from context.active_context import RedisActiveContextStore
-from context.identity_bridge import PostgresIdentityBridgeRepository
 from context.main_table_repositories import (
     MainContextPreferenceRepository,
     MainExternalIdentityRepository,
@@ -26,18 +26,7 @@ from context.main_table_repositories import (
     MainSiteRepository,
     MainWorkflowContextProvider,
 )
-from context.postgres_repositories import (
-    PostgresContextPreferenceRepository,
-    PostgresExternalIdentityRepository,
-    PostgresMembershipRepository,
-    PostgresProjectRepository,
-    PostgresReplyContextProvider,
-    PostgresRolePermissionRepository,
-    PostgresSiteRepository,
-    PostgresWorkflowContextProvider,
-)
 from context.resolver import ContextDependencies, ContextResolver
-from context.shadow import MismatchRecorder, ShadowPort, identity_source
 from mesiri_contracts.assistant.v2.resolved_context import ResolvedContextV2
 
 logger = logging.getLogger(__name__)
@@ -73,26 +62,8 @@ class _LazyAsyncEngine:
 
 
 def _identity_ports(engine) -> dict:
-    """The identity/scope ports, from the copy, the main tables, or both (BE-01).
-
-    See context/shadow.py for what each MESIRI_IDENTITY_SOURCE value does.
-    """
-    context_ports = {
-        "identities": PostgresExternalIdentityRepository(engine),
-        "memberships": PostgresMembershipRepository(engine),
-        "roles": PostgresRolePermissionRepository(engine),
-        "projects": PostgresProjectRepository(engine),
-        "sites": PostgresSiteRepository(engine),
-        "preferences": PostgresContextPreferenceRepository(engine),
-        "reply_context": PostgresReplyContextProvider(engine),
-        "workflow_context": PostgresWorkflowContextProvider(engine),
-        "bridge": PostgresIdentityBridgeRepository(engine),
-    }
-    source = identity_source()
-    logger.info("identity source: %s", source)
-    if source == "context":
-        return context_ports
-    main_ports = {
+    """The identity/scope ports, read straight from the main tables (BE-01)."""
+    return {
         "identities": MainExternalIdentityRepository(engine),
         "memberships": MainMembershipRepository(engine),
         "roles": MainRolePermissionRepository(),
@@ -102,13 +73,6 @@ def _identity_ports(engine) -> dict:
         "reply_context": MainReplyContextProvider(engine),
         "workflow_context": MainWorkflowContextProvider(engine),
         "bridge": MainIdentityBridgeRepository(engine),
-    }
-    if source == "main":
-        return main_ports
-    recorder = MismatchRecorder(engine)
-    return {
-        name: ShadowPort(name, context_ports[name], main_ports[name], recorder)
-        for name in context_ports
     }
 
 

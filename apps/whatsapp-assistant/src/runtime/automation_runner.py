@@ -2,10 +2,9 @@
 digests -- "every day at 5pm send me the DPR", "at 3pm tell me who hasn't
 reported").
 
-Modelled directly on context/reconcile_watchdog.py: an async loop started
-from runtime/lifecycle.py's FastAPI lifespan, electing exactly one runner
-across `uvicorn --workers N` via a Postgres advisory lock (a different key
-from the reconcile watchdog's own), interval/startup-delay tunable via
+An async loop started from runtime/lifecycle.py's FastAPI lifespan,
+electing exactly one runner across `uvicorn --workers N` via a Postgres
+advisory lock, interval/startup-delay tunable via
 environment, every tick logged. This is what removes automations'
 dependency on an ops-managed cron -- the existing Makefile targets
 (dpr-generate, notification-checks, ...) stay as manual/backup entry
@@ -51,8 +50,8 @@ from typing import Any
 
 logger = logging.getLogger("mesiri.automation_runner")
 
-# Distinct from context/reconcile_watchdog.py's _ADVISORY_LOCK_KEY -- two
-# unrelated schedulers must never contend for the same lock.
+# Unique to this scheduler -- unrelated schedulers must never contend for
+# the same lock.
 _ADVISORY_LOCK_KEY = 0x4A70_6D0B  # "automations" -- mnemonic only
 
 
@@ -298,8 +297,7 @@ async def _drain_and_send(*, db: Any) -> dict[str, int]:
 async def runner_loop(*, db: Any) -> None:
     """Forever-loop driving the scheduled tick. Cancelled on shutdown.
 
-    Every failure mode is swallowed and retried on the next tick, same
-    reasoning as reconcile_watchdog.py's identical loop: this is the thing
+    Every failure mode is swallowed and retried on the next tick: this is the thing
     that exists to make sure automations fire, so it must not be able to
     die from one bad tick.
     """

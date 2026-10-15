@@ -1,6 +1,6 @@
 """Resolves an automation's `audience` column into concrete recipient user
 ids -- wiring layer only, composes the same membership rules
-context/postgres_repositories.py and projects/router.py already use, no new
+context/main_table_repositories.py and projects/router.py already use, no new
 SQL concept.
 
 Four audiences, four completely different shapes (see migration 0455's

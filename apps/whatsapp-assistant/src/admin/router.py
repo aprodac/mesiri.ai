@@ -11,7 +11,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from context.projection_hooks import project_entity, project_new_company
 from mesiri.application.audit.record import record_admin_action
 from mesiri.application.organizations import trial_controls
 from mesiri.application.organizations.companies_overview import company_setup, list_companies
@@ -273,8 +272,7 @@ async def _change_plan(
     reason: str | None = None,
 ) -> PlanChangeResponse:
     """Extend / convert / suspend / reactivate (SS-10), audited in the same
-    transaction, then re-projected so WhatsApp's cached copy of the company
-    follows at once (the live gate reads the row on every message anyway)."""
+    transaction. WhatsApp reads the row on every message, so it follows at once."""
     try:
         async with get_engine().begin() as conn:  # commits, or rolls back on error
             after = await trial_controls.apply_trial_action(
@@ -282,7 +280,6 @@ async def _change_plan(
             )
     except trial_controls.TrialControlError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-    await project_entity("organization", org_id)
     return PlanChangeResponse(
         organization_id=org_id,
         status=after.status,
@@ -359,173 +356,22 @@ async def delete_organization(org_id: uuid.UUID, _admin: dict = Depends(require_
         if org_row is None:
             raise HTTPException(status_code=404, detail="Organization not found")
 
-        org_id_str = str(org_id)
-
         # 1. Fetch user IDs belonging to this organization
         user_rows = await conn.execute(
             sa.select(users_table.c.id).where(users_table.c.organization_id == org_id)
         )
         user_ids = [r[0] for r in user_rows.fetchall()]
-        user_id_strs = [str(uid) for uid in user_ids]
 
-        # 2. Fetch context_user IDs linked to these users
+        # 2. Interactions reference users without cascading
         if user_ids:
-            ctx_user_rows = await conn.execute(
-                sa.text(
-                    "SELECT id FROM context_users WHERE canonical_user_id IN :uids OR id IN :uid_strs"
-                ).bindparams(
-                    sa.bindparam("uids", expanding=True),
-                    sa.bindparam("uid_strs", expanding=True),
-                ),
-                {"uids": user_ids, "uid_strs": user_id_strs},
-            )
-            ctx_uids = [r[0] for r in ctx_user_rows.fetchall()]
-        else:
-            ctx_uids = []
-
-        # 3. Clean user-level context & identity subsystem rows to prevent FK violation on users table deletion
-        if ctx_uids or user_ids:
-            all_uids_str = list(set(ctx_uids + user_id_strs))
             await conn.execute(
                 sa.text(
-                    "DELETE FROM user_context_preferences WHERE user_id IN :u_strs"
-                ).bindparams(sa.bindparam("u_strs", expanding=True)),
-                {"u_strs": all_uids_str},
-            )
-            await conn.execute(
-                sa.text(
-                    "DELETE FROM site_memberships WHERE user_id IN :u_strs"
-                ).bindparams(sa.bindparam("u_strs", expanding=True)),
-                {"u_strs": all_uids_str},
-            )
-            await conn.execute(
-                sa.text(
-                    "DELETE FROM project_memberships WHERE user_id IN :u_strs"
-                ).bindparams(sa.bindparam("u_strs", expanding=True)),
-                {"u_strs": all_uids_str},
-            )
-            await conn.execute(
-                sa.text(
-                    "DELETE FROM membership_roles WHERE membership_id IN (SELECT id FROM organization_memberships WHERE user_id IN :u_strs)"
-                ).bindparams(sa.bindparam("u_strs", expanding=True)),
-                {"u_strs": all_uids_str},
-            )
-            await conn.execute(
-                sa.text(
-                    "DELETE FROM organization_memberships WHERE user_id IN :u_strs"
-                ).bindparams(sa.bindparam("u_strs", expanding=True)),
-                {"u_strs": all_uids_str},
-            )
-            await conn.execute(
-                sa.text(
-                    "DELETE FROM external_identities WHERE user_id IN :u_strs"
-                ).bindparams(sa.bindparam("u_strs", expanding=True)),
-                {"u_strs": all_uids_str},
-            )
-            if user_ids:
-                await conn.execute(
-                    sa.text(
-                        "DELETE FROM interactions WHERE user_id IN :uids"
-                    ).bindparams(sa.bindparam("uids", expanding=True)),
-                    {"uids": user_ids},
-                )
-            if user_ids:
-                await conn.execute(
-                    sa.text(
-                        "DELETE FROM context_users WHERE canonical_user_id IN :uids OR id IN :u_strs"
-                    ).bindparams(
-                        sa.bindparam("uids", expanding=True),
-                        sa.bindparam("u_strs", expanding=True),
-                    ),
-                    {"uids": user_ids, "u_strs": all_uids_str},
-                )
-            else:
-                await conn.execute(
-                    sa.text(
-                        "DELETE FROM context_users WHERE id IN :u_strs"
-                    ).bindparams(sa.bindparam("u_strs", expanding=True)),
-                    {"u_strs": all_uids_str},
-                )
-
-        # 4. Clean org-level context subsystem rows referencing this organization
-        ctx_org_rows = await conn.execute(
-            sa.text(
-                "SELECT id FROM context_organizations WHERE canonical_organization_id = :org_id OR id = :org_id_str"
-            ),
-            {"org_id": org_id, "org_id_str": org_id_str},
-        )
-        ctx_ids = [r[0] for r in ctx_org_rows.fetchall()]
-
-        if ctx_ids:
-            await conn.execute(
-                sa.text(
-                    "DELETE FROM user_context_preferences WHERE organization_id IN :ctx_ids"
-                ).bindparams(sa.bindparam("ctx_ids", expanding=True)),
-                {"ctx_ids": ctx_ids},
-            )
-            await conn.execute(
-                sa.text(
-                    "DELETE FROM site_memberships WHERE site_id IN (SELECT id FROM context_sites WHERE organization_id IN :ctx_ids)"
-                ).bindparams(sa.bindparam("ctx_ids", expanding=True)),
-                {"ctx_ids": ctx_ids},
-            )
-            await conn.execute(
-                sa.text(
-                    "DELETE FROM project_memberships WHERE project_id IN (SELECT id FROM context_projects WHERE organization_id IN :ctx_ids)"
-                ).bindparams(sa.bindparam("ctx_ids", expanding=True)),
-                {"ctx_ids": ctx_ids},
-            )
-            await conn.execute(
-                sa.text(
-                    "DELETE FROM context_sites WHERE organization_id IN :ctx_ids"
-                ).bindparams(sa.bindparam("ctx_ids", expanding=True)),
-                {"ctx_ids": ctx_ids},
-            )
-            await conn.execute(
-                sa.text(
-                    "DELETE FROM context_projects WHERE organization_id IN :ctx_ids"
-                ).bindparams(sa.bindparam("ctx_ids", expanding=True)),
-                {"ctx_ids": ctx_ids},
-            )
-            await conn.execute(
-                sa.text(
-                    "DELETE FROM membership_roles WHERE membership_id IN (SELECT id FROM organization_memberships WHERE organization_id IN :ctx_ids)"
-                ).bindparams(sa.bindparam("ctx_ids", expanding=True)),
-                {"ctx_ids": ctx_ids},
-            )
-            await conn.execute(
-                sa.text(
-                    "DELETE FROM role_permissions WHERE role_id IN (SELECT id FROM roles WHERE organization_id IN :ctx_ids)"
-                ).bindparams(sa.bindparam("ctx_ids", expanding=True)),
-                {"ctx_ids": ctx_ids},
-            )
-            await conn.execute(
-                sa.text(
-                    "DELETE FROM organization_memberships WHERE organization_id IN :ctx_ids"
-                ).bindparams(sa.bindparam("ctx_ids", expanding=True)),
-                {"ctx_ids": ctx_ids},
-            )
-            await conn.execute(
-                sa.text(
-                    "DELETE FROM roles WHERE organization_id IN :ctx_ids"
-                ).bindparams(sa.bindparam("ctx_ids", expanding=True)),
-                {"ctx_ids": ctx_ids},
-            )
-            await conn.execute(
-                sa.text(
-                    "DELETE FROM context_organizations WHERE id IN :ctx_ids OR canonical_organization_id = :org_id"
-                ).bindparams(sa.bindparam("ctx_ids", expanding=True)),
-                {"ctx_ids": ctx_ids, "org_id": org_id},
-            )
-        else:
-            await conn.execute(
-                sa.text(
-                    "DELETE FROM context_organizations WHERE canonical_organization_id = :org_id OR id = :org_id_str"
-                ),
-                {"org_id": org_id, "org_id_str": org_id_str},
+                    "DELETE FROM interactions WHERE user_id IN :uids"
+                ).bindparams(sa.bindparam("uids", expanding=True)),
+                {"uids": user_ids},
             )
 
-        # 5. Delete main organization row (ON DELETE CASCADE sweeps all domain tables)
+        # 3. Delete main organization row (ON DELETE CASCADE sweeps all domain tables)
         try:
             await conn.execute(
                 organizations_table.delete().where(organizations_table.c.id == org_id)
@@ -735,12 +581,6 @@ async def update_organization_user_status(
             summary=f"{user_row.full_name}: {user_row.status} -> {normalized_status}",
             details={"before": {"status": user_row.status}, "after": {"status": normalized_status}},
         )
-
-    # Outside the transaction: active/inactive is projected into the context
-    # layer, so without this a reactivated user stayed inactive there until
-    # the next reconcile sweep (up to 15 minutes of still being unable to
-    # message).
-    await project_entity("user", user_id)
 
     async with engine.connect() as conn:
         fetched = await _fetch_org_users(conn, org_id, user_id)
@@ -977,10 +817,6 @@ async def create_organization_user(
     someone grants them -- except an ADMIN, who reaches everything by role
     (mesiri/authorization/roles.py). Access is then editable via
     PUT /{org_id}/users/{user_id}/access.
-
-    Projecting into the context layer is what links the WhatsApp number to
-    this person, so an inbound message resolves to them immediately rather
-    than at the next reconcile sweep.
     """
     email = body.email.strip().lower()
     if not email:
@@ -1057,11 +893,6 @@ async def create_organization_user(
             },
         )
 
-    # Outside the transaction: writes the external_identities row that maps
-    # the WhatsApp number to this user, plus their membership set.
-    await project_entity("user", user_id)
-    await project_entity("membership", user_id)
-
     async with engine.connect() as conn:
         fetched = await _fetch_org_users(conn, org_id, user_id)
     if not fetched:
@@ -1129,11 +960,6 @@ async def update_organization_user_access(
             details={"before": user_row.access_policy, "after": policy.model_dump()},
         )
 
-    # Outside the transaction, same as the tenant-side endpoint: pushes the
-    # change into the context layer so the WhatsApp assistant picks it up
-    # immediately instead of at the next reconcile sweep.
-    await project_entity("membership", user_id)
-
     async with engine.connect() as conn:
         fetched = await _fetch_org_users(conn, org_id, user_id)
     if not fetched:
@@ -1151,9 +977,8 @@ async def update_organization_user_profile(
     """Set a user's role, WhatsApp number, or name from the control panel.
 
     The WhatsApp number is what maps an inbound message to this person at
-    all (external_identities, keyed on the number's digits), and role feeds
-    the org-wide access bypass -- so both are re-projected before returning
-    rather than waiting for the reconcile watchdog.
+    all (matched on its digits), and role feeds the org-wide access bypass.
+    WhatsApp reads both from this row on every message.
     """
     updates: dict = {}
     if body.role is not None:
@@ -1165,7 +990,7 @@ async def update_organization_user_profile(
         updates["role"] = role
     if body.whatsapp_number is not None:
         # Empty string clears the mapping; anything else is stored as typed
-        # (the projection normalizes to digits when writing the identity).
+        # (WhatsApp compares digits only).
         updates["whatsapp_number"] = body.whatsapp_number.strip() or None
     if body.full_name is not None:
         name = body.full_name.strip()
@@ -1224,12 +1049,6 @@ async def update_organization_user_profile(
             },
         )
 
-    await project_entity("user", user_id)
-    if "role" in updates:
-        # Role feeds the org-wide bypass, which the membership projection
-        # materializes -- re-run it so the change lands everywhere at once.
-        await project_entity("membership", user_id)
-
     async with engine.connect() as conn:
         fetched = await _fetch_org_users(conn, org_id, user_id)
     if not fetched:
@@ -1260,7 +1079,6 @@ async def delete_organization_user(
             raise HTTPException(status_code=404, detail="User not found in this organization")
 
         if force:
-            user_id_str = str(user_id)
             # Nullify created_by user references in domain tables that have created_by
             for table_name in (
                 "money_accounts",
@@ -1288,42 +1106,9 @@ async def delete_organization_user(
                 {"user_id": user_id},
             )
 
-            # Clear context and identity user rows
-            await conn.execute(
-                sa.text("DELETE FROM user_context_preferences WHERE user_id = :user_id_str"),
-                {"user_id_str": user_id_str},
-            )
-            await conn.execute(
-                sa.text("DELETE FROM site_memberships WHERE user_id = :user_id_str"),
-                {"user_id_str": user_id_str},
-            )
-            await conn.execute(
-                sa.text("DELETE FROM project_memberships WHERE user_id = :user_id_str"),
-                {"user_id_str": user_id_str},
-            )
-            await conn.execute(
-                sa.text(
-                    "DELETE FROM membership_roles WHERE membership_id IN (SELECT id FROM organization_memberships WHERE user_id = :user_id_str)"
-                ),
-                {"user_id_str": user_id_str},
-            )
-            await conn.execute(
-                sa.text("DELETE FROM organization_memberships WHERE user_id = :user_id_str"),
-                {"user_id_str": user_id_str},
-            )
-            await conn.execute(
-                sa.text("DELETE FROM external_identities WHERE user_id = :user_id_str"),
-                {"user_id_str": user_id_str},
-            )
             await conn.execute(
                 sa.text("DELETE FROM interactions WHERE user_id = :user_id"),
                 {"user_id": user_id},
-            )
-            await conn.execute(
-                sa.text(
-                    "DELETE FROM context_users WHERE canonical_user_id = :user_id OR id = :user_id_str"
-                ),
-                {"user_id": user_id, "user_id_str": user_id_str},
             )
 
         try:
@@ -1387,10 +1172,6 @@ async def provision_tenant(
             created = await create_company(conn, new, actor=actor_from_admin(_admin))
     except CompanyCreationError as exc:
         raise HTTPException(status_code=409 if exc.conflict else 400, detail=str(exc)) from exc
-
-    # After commit: make the new rows visible to the WhatsApp assistant, so the
-    # owner's first message is recognised without waiting for a reconcile.
-    await project_new_company(created)
 
     return ProvisionResponse(
         id=created.organization_id,

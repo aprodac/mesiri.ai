@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 from uuid import UUID, uuid5
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncEngine
 
 
 def context_organization_id(canonical_id: UUID) -> str:
@@ -33,42 +30,6 @@ class IdentityBridgeRepository(Protocol):
     async def canonical_project_id(self, context_project_id: str) -> str | None: ...
 
     async def canonical_site_id(self, context_site_id: str) -> str | None: ...
-
-
-class PostgresIdentityBridgeRepository:
-    """Reads canonical_*_id bridge columns from context entity tables."""
-
-    def __init__(self, engine: AsyncEngine) -> None:
-        self._engine = engine
-
-    async def _lookup(self, table: str, column: str, context_id: str) -> str | None:
-        from sqlalchemy import text
-
-        from mesiri.infrastructure.errors import map_postgres_error
-
-        sql = f"SELECT {column}::text AS cid FROM {table} WHERE id = :id"
-        try:
-            async with self._engine.connect() as conn:
-                row = (await conn.execute(text(sql), {"id": context_id})).mappings().first()
-        except Exception as exc:  # noqa: BLE001
-            raise map_postgres_error(exc) from exc
-        if row is None or row["cid"] is None:
-            return None
-        return str(row["cid"])
-
-    async def canonical_organization_id(self, context_organization_id: str) -> str | None:
-        return await self._lookup(
-            "context_organizations", "canonical_organization_id", context_organization_id
-        )
-
-    async def canonical_user_id(self, context_user_id: str) -> str | None:
-        return await self._lookup("context_users", "canonical_user_id", context_user_id)
-
-    async def canonical_project_id(self, context_project_id: str) -> str | None:
-        return await self._lookup("context_projects", "canonical_project_id", context_project_id)
-
-    async def canonical_site_id(self, context_site_id: str) -> str | None:
-        return await self._lookup("context_sites", "canonical_site_id", context_site_id)
 
 
 FAKE_BRIDGE_NAMESPACE = UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")

@@ -86,7 +86,6 @@ def env(monkeypatch):
         users=[],
         signup_open=True,
         created=[],
-        projected=[],
         create_error=None,
     )
 
@@ -120,16 +119,12 @@ def env(monkeypatch):
             site_id=uuid.uuid4(),
         )
 
-    async def fake_project(created):
-        state.projected.append(created.organization_id)
-
     monkeypatch.setenv(code_senders.SENDER_SETTING, "dev")
     monkeypatch.setattr(code_login, "_engine", lambda: _Engine())
     monkeypatch.setattr(code_login, "PostgresLoginCodeStore", _Store)
     monkeypatch.setattr(code_login, "_users_with_phone", fake_users)
     monkeypatch.setattr(code_login, "check_signup", fake_check_signup)
     monkeypatch.setattr(code_login, "create_company", fake_create)
-    monkeypatch.setattr(code_login, "project_new_company", fake_project)
 
     app = FastAPI()
     app.include_router(auth_router)
@@ -261,7 +256,7 @@ def test_signup_creates_a_web_trial_and_logs_the_owner_in(env) -> None:
     assert claims["role"] == "ADMIN"
     assert claims["name"] == "Suresh Kumar"
     assert claims["org_name"] == "Suresh Builders"
-    assert env.projected == [uuid.UUID(claims["org"])]
+    assert len(env.created) == 1
 
 
 def test_signup_closed_is_403_before_any_code(env) -> None:
@@ -305,7 +300,7 @@ def test_signup_switched_off_after_the_code_is_refused(env) -> None:
         json={"signup_token": ticket, "owner_name": "A", "company_name": "B", "site_name": "C"},
     )
     assert response.status_code == 403
-    assert env.created == [] and env.projected == []
+    assert env.created == []
 
 
 def test_create_company_refusals_keep_their_status(env) -> None:
@@ -317,4 +312,3 @@ def test_create_company_refusals_keep_their_status(env) -> None:
     assert env.client.post("/auth/signup", json=body).status_code == 409
     env.create_error = CompanyCreationError("Company name is required")
     assert env.client.post("/auth/signup", json=body).status_code == 400
-    assert env.projected == []

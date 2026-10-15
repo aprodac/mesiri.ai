@@ -99,7 +99,6 @@ def _created(new) -> CreatedCompany:
 def journey(monkeypatch):
     sender = _Sender()
     created_with: list = []
-    projected: list = []
     outcome: dict = {}
 
     async def fake_create(conn, new, *, now=None):
@@ -107,9 +106,6 @@ def journey(monkeypatch):
         if "error" in outcome:
             raise outcome["error"]
         return _created(new)
-
-    async def fake_project(created):
-        projected.append(created)
 
     guard: dict = {"refuse": None, "calls": []}
 
@@ -124,7 +120,6 @@ def journey(monkeypatch):
         sender=sender,
         store=SignupStateStore(FakeRedis()),
         db=_Db(),
-        project_new_company=fake_project,
     )
     enabled = {"on": True}
 
@@ -133,7 +128,7 @@ def journey(monkeypatch):
 
     j.signup_enabled = fake_enabled  # type: ignore[method-assign]
     return SimpleNamespace(
-        j=j, sender=sender, created_with=created_with, projected=projected,
+        j=j, sender=sender, created_with=created_with,
         outcome=outcome, enabled=enabled, guard=guard,
     )  # fmt: skip
 
@@ -161,7 +156,6 @@ async def test_full_signup_creates_a_trial_company(journey) -> None:
     assert new.project_name == new.site_name == "Green Villa, Kakkanad"
     assert new.start_as == "trial" and new.signup_source == "whatsapp"
     assert new.auto_dpr is True
-    assert len(journey.projected) == 1
     assert "Suresh Builders" in done and "22 Oct" in done
 
     # The signup is over: a further message starts afresh, not a second company.
@@ -212,7 +206,6 @@ async def test_refused_creation(journey, conflict, expected) -> None:
     await journey.j.handle(_tap(sj.START_TRIAL_ID))
     await journey.j.handle(_text("Acme"))
     assert await journey.j.handle(_text("Site 1")) == expected
-    assert journey.projected == []
 
 
 async def test_database_failure_says_sorry(journey) -> None:
@@ -252,4 +245,3 @@ async def test_refused_at_create_creates_nothing(journey) -> None:
     reply = await journey.j.handle(_text("Green Villa, Kakkanad"))
     assert reply == "We're getting a lot of sign-ups right now."
     assert journey.created_with == []
-    assert journey.projected == []

@@ -12,8 +12,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
+from tests.fixtures.db import build_sync_engine
 
-from context.identity_projection import build_sync_engine
 from mesiri.domains.identity.auth_service import ALGORITHM, SECRET_KEY
 from mesiri.domains.organizations.router import router as company_router
 from mesiri.infrastructure.objectstorage.fake import FakeObjectStorage

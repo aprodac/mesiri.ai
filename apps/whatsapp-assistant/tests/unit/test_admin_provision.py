@@ -54,7 +54,7 @@ def _created(**overrides) -> CreatedCompany:
 
 @pytest.fixture
 def wired(monkeypatch):
-    calls: dict[str, list] = {"new": [], "projected": []}
+    calls: dict[str, list] = {"new": []}
     result: dict[str, object] = {}
 
     async def fake_create(conn, new, *, actor=None):
@@ -64,14 +64,8 @@ def wired(monkeypatch):
             raise result["value"]
         return result["value"]
 
-    async def fake_project(entity_type, entity_id):
-        calls["projected"].append((entity_type, entity_id))
-
     monkeypatch.setattr(admin_router, "get_engine", lambda: _Engine())
     monkeypatch.setattr(admin_router, "create_company", fake_create)
-    from context import projection_hooks
-
-    monkeypatch.setattr(projection_hooks, "project_entity", fake_project)
     return calls, result
 
 
@@ -102,14 +96,9 @@ async def test_original_control_panel_request_still_works(wired) -> None:
     assert response.id == created.organization_id
     assert response.status == "active"
     assert response.owner_user_id == created.owner_user_id
-    assert calls["projected"] == [
-        ("organization", created.organization_id),
-        ("user", created.owner_user_id),
-        ("membership", created.owner_user_id),
-    ]
 
 
-async def test_first_project_and_site_are_projected(wired) -> None:
+async def test_first_project_and_site_are_passed_on(wired) -> None:
     calls, result = wired
     created = _created(project_id=uuid.uuid4(), site_id=uuid.uuid4(), status="trial")
     result["value"] = created
@@ -124,11 +113,10 @@ async def test_first_project_and_site_are_projected(wired) -> None:
     await admin_router.provision_tenant(body, {})
 
     assert calls["new"][0].owner_phone == "9876543210"
-    assert ("project", created.project_id) in calls["projected"]
-    assert ("site", created.site_id) in calls["projected"]
+    assert calls["new"][0].project_name == "Green Villa"
 
 
-async def test_several_sites_are_passed_on_returned_and_projected(wired) -> None:
+async def test_several_sites_are_passed_on_and_returned(wired) -> None:
     calls, result = wired
     sites = (CreatedSite(uuid.uuid4(), "Block A"), CreatedSite(uuid.uuid4(), "Block B"))
     created = _created(project_id=uuid.uuid4(), site_id=sites[0].site_id, sites=sites)
@@ -150,12 +138,10 @@ async def test_several_sites_are_passed_on_returned_and_projected(wired) -> None
         (sites[1].site_id, "Block B"),
     ]
     assert response.site_id == sites[0].site_id
-    projected_sites = [eid for kind, eid in calls["projected"] if kind == "site"]
-    assert projected_sites == [sites[0].site_id, sites[1].site_id]
 
 
 @pytest.mark.parametrize(("conflict", "status"), [(True, 409), (False, 400)])
-async def test_refusals_map_to_http_errors_and_project_nothing(wired, conflict, status) -> None:
+async def test_refusals_map_to_http_errors(wired, conflict, status) -> None:
     calls, result = wired
     result["value"] = CompanyCreationError("nope", conflict=conflict)
     body = admin_router.OrganizationProvision(name="X", admin_name="Y", admin_email="y@x.example")
@@ -165,4 +151,3 @@ async def test_refusals_map_to_http_errors_and_project_nothing(wired, conflict, 
 
     assert exc.value.status_code == status
     assert exc.value.detail == "nope"
-    assert calls["projected"] == []

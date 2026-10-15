@@ -17,8 +17,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from context.projection_hooks import project_entity
-from mesiri.authorization.roles import is_org_wide, policy_is_org_wide, role_is_org_wide
+from mesiri.authorization.roles import policy_is_org_wide, role_is_org_wide
 from mesiri.domains.identity.auth_service import ALGORITHM, SECRET_KEY
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -341,8 +340,8 @@ async def _is_org_wide(conn, payload: dict) -> bool:
     an org-wide role, or a non-admin whose access_policy.mode is
     "all_projects". The latter is a live check against the DB, not read off
     the JWT: it's a standing bypass (see users/router.py's update_user_access
-    and identity_projection.py's _project_membership, which apply the same
-    rule), not a project_members snapshot, so it can't be baked into the
+    and context/main_table_repositories.py, which apply the same rule), not
+    a project_members snapshot, so it can't be baked into the
     token at login and must be re-checked on every request."""
     if role_is_org_wide(payload.get("role")):
         return True
@@ -359,7 +358,7 @@ async def _is_org_wide(conn, payload: dict) -> bool:
 def _member_project_ids_clause(user_id: uuid.UUID):
     """id IN (...) clause: a direct project_members row, or a site_members row
     on one of the project's sites (site access implies its project) -- same
-    rule context/postgres_repositories.py's _AUTHORIZED_PROJECT_IDS applies
+    rule context/main_table_repositories.py's _AUTHORIZED_PROJECT_IDS applies
     for the WhatsApp side, kept consistent here for the REST side."""
     return projects_table.c.id.in_(
         sa.select(project_members_table.c.project_id).where(
@@ -468,7 +467,6 @@ async def update_project(
         )
         row = refetch.first()
 
-    await project_entity("project", project_id)
     return _to_response(row)
 
 
@@ -495,7 +493,6 @@ async def archive_project(project_id: uuid.UUID, payload: dict = Depends(get_cur
             projects_table.update().where(projects_table.c.id == project_id).values(status="archived")
         )
 
-    await project_entity("project", project_id)
 
 
 @router.get("/{project_id}/sites", response_model=list[SiteResponse])
@@ -590,40 +587,6 @@ async def create_project_site(
             )
         )
 
-        # Users whose access to this project already implies "every site" --
-        # an org-wide role, an access_policy "all_projects" bypass, or an
-        # explicit all_sites project_members row -- need their membership set
-        # re-synced once the new site exists in the context layer below.
-        # Without this, a site created after a member's last sync stayed
-        # invisible to them until the next full reconcile (see
-        # identity_projection.py's _project_membership docstring on why a
-        # project's site set can't be cached at grant time).
-        #
-        # access_policy is filtered in Python, not SQL -- generic sa.JSON
-        # (dialect-agnostic, unlike postgresql.JSONB) doesn't expose a portable
-        # ->> operator, and this table is small enough per org that it isn't
-        # worth a JSONB-specific column just for this one check.
-        candidate_rows = await conn.execute(
-            sa.select(users_table.c.id, users_table.c.role, users_table.c.access_policy).where(
-                users_table.c.organization_id == org_id,
-            )
-        )
-        all_sites_project_members = await conn.execute(
-            sa.select(project_members_table.c.user_id).where(
-                project_members_table.c.project_id == project_id,
-                project_members_table.c.site_access_mode == "all_sites",
-            )
-        )
-        all_sites_member_ids = {r.user_id for r in all_sites_project_members.fetchall()}
-        member_ids_to_resync = [
-            r.id
-            for r in candidate_rows.fetchall()
-            if is_org_wide(r.role, r.access_policy) or r.id in all_sites_member_ids
-        ]
-
-    await project_entity("site", site_id)
-    for member_id in member_ids_to_resync:
-        await project_entity("membership", member_id)
     return SiteResponse(id=site_id, project_id=project_id, name=name, status=status)
 
 
@@ -665,7 +628,6 @@ async def update_project_site(
         refetch = await conn.execute(sa.select(sites_table).where(sites_table.c.id == site_id))
         row = refetch.first()
 
-    await project_entity("site", site_id)
     return SiteResponse(
         id=row.id,
         project_id=row.project_id,
@@ -702,7 +664,6 @@ async def archive_project_site(
             sites_table.update().where(sites_table.c.id == site_id).values(status="archived")
         )
 
-    await project_entity("site", site_id)
 
 
 @router.get("/{project_id}/sites/{site_id}/overview", response_model=SiteOverviewData)
@@ -850,9 +811,6 @@ async def create_project(project_in: ProjectCreate, payload: dict = Depends(get_
                 )
             )
 
-    await project_entity("project", project_id)
-    if grant_creator:
-        await project_entity("membership", creator_id)
 
     # Built from what was inserted; settings not sent show their column
     # defaults (_to_response's fallbacks), which is what the row holds.
@@ -878,7 +836,7 @@ async def create_project(project_in: ProjectCreate, payload: dict = Depends(get_
 # ---------------------------------------------------------------------------
 # Project members -- the source of truth AuthorizationService and the
 # WhatsApp context resolver both now read (see project/site membership audit
-# and context/identity_projection.py's _project_membership). These endpoints
+# and context/main_table_repositories.py). These endpoints
 # were previously only defined in backend/src/mesiri/domains/projects/router
 # .py, a router that is never mounted by the app actually deployed in
 # production (this one) -- the dashboard's Project Members tab has been
@@ -982,7 +940,6 @@ async def add_project_member(
                 ) from exc
             raise
 
-    await project_entity("membership", body.userId)
     return ProjectMemberResponse(
         userId=user_row.id,
         email=user_row.email,
@@ -1022,7 +979,6 @@ async def remove_project_member(
             )
         )
 
-    await project_entity("membership", user_id)
 
 
 # ---------------------------------------------------------------------------

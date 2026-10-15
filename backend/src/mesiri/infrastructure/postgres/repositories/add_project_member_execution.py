@@ -6,13 +6,7 @@ boundary convention, mirrors site_execution.py). Every method takes an
 externally-supplied connection.
 
 `ExecutionResult.material_row_id` is set to the *user's* id, not the new
-project_members row's id -- unlike CreateProject/CreateSite, the thing that
-needs immediate context-layer visibility here is the user's membership set,
-projected via `project_entity("membership", user_id)` (see
-interactions/projecting_dispatcher.py, keyed the same way projects/
-router.py's own add_project_member REST endpoint already calls it). Keying
-material_row_id this way lets the same ProjectingExecutionDispatcher wrapper
-be reused unchanged.
+project_members row's id (the membership set is what changed).
 """
 
 from __future__ import annotations

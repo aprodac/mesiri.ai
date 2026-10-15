@@ -23,7 +23,7 @@ import re
 
 import pytest
 
-from context.identity_projection import _status_is
+from context.main_table_repositories import _status_is
 
 _APP_SRC = pathlib.Path(__file__).resolve().parents[2] / "src"
 
@@ -83,18 +83,6 @@ def test_no_writer_capitalizes_user_status():
         for match in re.finditer(r"status.{0,20}\.capitalize\(\)", text):
             offenders.append(f"{path.name}: {match.group(0)}")
     assert not offenders, f"user status must be written lowercase, found: {offenders}"
-
-
-def test_status_change_resyncs_to_the_context_layer():
-    """Active/inactive is projected, so a status change that doesn't
-    re-project leaves the person unable to message until the next reconcile
-    sweep -- up to 15 minutes."""
-    admin_router = (_APP_SRC / "admin" / "router.py").read_text(encoding="utf-8")
-    status_fn = admin_router[admin_router.index("async def update_organization_user_status") :]
-    status_fn = status_fn[: status_fn.index("\n@router")]
-    assert "project_entity" in status_fn, (
-        "the status endpoint must re-project so the change reaches WhatsApp immediately"
-    )
 
 
 def test_migration_0368_lowercases_only_users():

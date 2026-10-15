@@ -9,7 +9,6 @@ from contextlib import asynccontextmanager, suppress
 import httpx
 from fastapi import FastAPI
 
-from context.reconcile_watchdog import watchdog_enabled, watchdog_loop
 from ingress.webhook import router as webhook_router
 from runtime.automation_runner import runner_enabled, runner_loop
 from runtime.dependencies import Settings, build_container
@@ -60,26 +59,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if app.state.container.message_enqueuer is not None:
                 await app.state.container.message_enqueuer.connect()
 
-            # Context-sync watchdog: dashboard project/site assignment changes
-            # are projected into the context layer best-effort (see
-            # context/projection_hooks.py, which swallows failures so a
-            # projection error can't fail the dashboard request). This
-            # periodically re-runs the idempotent reconcile so drift repairs
-            # itself, and records every run so a failing watchdog is visible
-            # instead of being the same silent failure one level up.
-            # A Postgres advisory lock inside the loop keeps the two uvicorn
-            # workers (infra/mesiri.service) from both running it.
-            reconcile_task = None
-            if watchdog_enabled():
-                reconcile_task = asyncio.create_task(watchdog_loop())
-            else:
-                logger.info("Context reconcile watchdog disabled by configuration")
-
             # User-defined automations ("every day at 5pm send me the DPR"):
-            # same advisory-lock-elected, one-tick-at-a-time shape as the
-            # reconcile watchdog immediately above, with its own lock key
-            # (runtime/automation_runner.py's _ADVISORY_LOCK_KEY) so the two
-            # schedulers never contend with each other. Reuses material_db
+            # advisory-lock-elected (runtime/automation_runner.py's
+            # _ADVISORY_LOCK_KEY), one tick at a time. Reuses material_db
             # rather than opening a second connection pool.
             automation_task = None
             if runner_enabled():
@@ -93,14 +75,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             try:
                 yield
             finally:
-                if reconcile_task is not None:
-                    reconcile_task.cancel()
-                    # Swallow the CancelledError the task raises on shutdown;
-                    # it's the expected way the loop stops, not an error.
-                    with suppress(asyncio.CancelledError):
-                        await reconcile_task
                 if automation_task is not None:
                     automation_task.cancel()
+                    # Swallow the CancelledError the task raises on shutdown;
+                    # it's the expected way the loop stops, not an error.
                     with suppress(asyncio.CancelledError):
                         await automation_task
                 await app.state.container.material_db.disconnect()
@@ -179,16 +157,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         import logging
 
         logging.getLogger(__name__).warning("Logs router not loaded: %s", exc)
-
-    # Context-sync watchdog status/history (platform-admin only)
-    try:
-        from admin.reconcile_router import router as reconcile_router
-
-        app.include_router(reconcile_router)
-    except Exception as exc:
-        import logging
-
-        logging.getLogger(__name__).warning("Reconcile router not loaded: %s", exc)
 
     # Durable ingress queue / worker health (platform-admin only)
     try:

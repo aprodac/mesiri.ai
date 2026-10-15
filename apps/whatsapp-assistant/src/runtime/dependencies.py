@@ -489,11 +489,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     # Project creation: same in-process capability-boundary wiring as the
     # Progress handlers above, reusing the same material_db transaction
     # pool. No resolver -- there is nothing to look up (create is the only
-    # action, unlike account admin's rename/deactivate). Wrapped in
-    # ProjectingExecutionDispatcher so a WhatsApp-created project is
-    # immediately visible to context resolution, same as the REST endpoint's
-    # project_entity() call (see interactions/projecting_dispatcher.py).
-    from interactions.projecting_dispatcher import ProjectingExecutionDispatcher
+    # action, unlike account admin's rename/deactivate).
     from mesiri.application.projects.create_dispatcher import CreateProjectExecutionDispatcher
     from mesiri.application.projects.create_site_dispatcher import CreateSiteExecutionDispatcher
     from mesiri.application.projects.handlers import CreateProjectHandler, CreateSiteHandler
@@ -508,23 +504,17 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         PostgresCreateProjectExecutionRepository(),
         db=material_db,
     )
-    create_project_dispatcher = ProjectingExecutionDispatcher(
-        CreateProjectExecutionDispatcher(create_project_handler), "project"
-    )
+    create_project_dispatcher = CreateProjectExecutionDispatcher(create_project_handler)
     # Site creation (under an existing project resolved by context): same
     # in-process capability-boundary wiring as Project creation above.
     create_site_handler = CreateSiteHandler(
         PostgresCreateSiteExecutionRepository(),
         db=material_db,
     )
-    create_site_dispatcher = ProjectingExecutionDispatcher(
-        CreateSiteExecutionDispatcher(create_site_handler), "site"
-    )
+    create_site_dispatcher = CreateSiteExecutionDispatcher(create_site_handler)
     # Automation setup: same in-process capability-boundary wiring as
-    # Project/Site creation above. No ProjectingExecutionDispatcher wrapper
-    # -- an automation row carries no context-layer entity of its own for
-    # resolver.py to need immediate visibility of, unlike a new Project/
-    # Site. name_resolver turns audience_names into audience_user_ids right
+    # Project/Site creation above. name_resolver turns audience_names into
+    # audience_user_ids right
     # before persist (see application/automations/handlers.py).
     from mesiri.application.automations.create_dispatcher import (
         CreateAutomationExecutionDispatcher,
@@ -543,13 +533,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     create_automation_dispatcher = CreateAutomationExecutionDispatcher(create_automation_handler)
 
     # Add project member: same in-process capability-boundary wiring as
-    # Project/Site creation above. Wrapped in ProjectingExecutionDispatcher
-    # with entity_type "membership" -- the repository sets
-    # ExecutionResult.material_row_id to the *user's* id specifically so
-    # this reuses the same wrapper unchanged (see
-    # add_project_member_execution.py's docstring), same as
-    # projects/router.py's own REST endpoint calling
-    # project_entity("membership", user_id) after its own insert.
+    # Project/Site creation above.
     from mesiri.application.projects.add_member_dispatcher import (
         AddProjectMemberExecutionDispatcher,
     )
@@ -564,17 +548,12 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         PostgresMemberNameResolver(),
         db=material_db,
     )
-    add_project_member_dispatcher = ProjectingExecutionDispatcher(
-        AddProjectMemberExecutionDispatcher(add_project_member_handler), "membership"
+    add_project_member_dispatcher = AddProjectMemberExecutionDispatcher(
+        add_project_member_handler
     )
 
     # Create user: same in-process capability-boundary wiring as
-    # Project/Site creation above. Wrapped in ProjectingExecutionDispatcher
-    # with entity_type "user" -- same as users/router.py's own REST
-    # create_user endpoint calling project_entity("user", user_id) after its
-    # own insert, so the new person is immediately resolvable by name (e.g.
-    # so "add them to Skyline Towers" right after works without waiting for
-    # the next reconcile tick).
+    # Project/Site creation above.
     from mesiri.application.identity.create_user_dispatcher import CreateUserExecutionDispatcher
     from mesiri.application.identity.handlers import CreateUserHandler
     from mesiri.infrastructure.postgres.repositories.create_user_execution import (
@@ -585,9 +564,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         PostgresCreateUserExecutionRepository(),
         db=material_db,
     )
-    create_user_dispatcher = ProjectingExecutionDispatcher(
-        CreateUserExecutionDispatcher(create_user_handler), "user"
-    )
+    create_user_dispatcher = CreateUserExecutionDispatcher(create_user_handler)
 
     execution_dispatcher = ActionTypeRoutingDispatcher(
         {
@@ -861,7 +838,6 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
 
     # SS-04: unknown numbers can start a free trial when self-serve signup is
     # switched on (platform setting, off by default).
-    from context.projection_hooks import project_new_company
     from interactions.signup_state import SignupStateStore
     from runtime.signup_journey import SignupJourney
 
@@ -869,7 +845,6 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         sender=sender,
         store=SignupStateStore(redis_client),
         db=material_db,
-        project_new_company=project_new_company,
     )
 
     # SS-13: a shared contact card adds that person to the team, through the

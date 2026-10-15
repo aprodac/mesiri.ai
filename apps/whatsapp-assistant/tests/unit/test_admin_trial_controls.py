@@ -35,7 +35,7 @@ class _Engine:
 
 @pytest.fixture
 def wired(monkeypatch):
-    calls: dict[str, list] = {"actions": [], "projected": []}
+    calls: dict[str, list] = {"actions": []}
     result: dict[str, object] = {}
 
     async def fake_apply(conn, org_id, action, *, actor, days=None, reason=None):
@@ -44,16 +44,12 @@ def wired(monkeypatch):
             raise result["value"]
         return result["value"]
 
-    async def fake_project(entity_type, entity_id):
-        calls["projected"].append((entity_type, entity_id))
-
     monkeypatch.setattr(admin_router, "get_engine", lambda: _Engine())
     monkeypatch.setattr(trial_controls, "apply_trial_action", fake_apply)
-    monkeypatch.setattr(admin_router, "project_entity", fake_project)
     return calls, result
 
 
-async def test_extend_passes_days_and_reprojects(wired) -> None:
+async def test_extend_passes_days(wired) -> None:
     calls, result = wired
     org = uuid.uuid4()
     result["value"] = PlanState("trial", _NOW, _NOW + dt.timedelta(days=10), None)
@@ -63,7 +59,6 @@ async def test_extend_passes_days_and_reprojects(wired) -> None:
     )
 
     assert calls["actions"] == [(org, "extend", 7, None, "Alan")]
-    assert calls["projected"] == [("organization", org)]
     assert response.status == "trial"
     assert response.effective_status == "trial"
 
@@ -90,7 +85,7 @@ async def test_convert_and_reactivate_route_to_their_actions(wired) -> None:
 
 
 @pytest.mark.parametrize("status", [404, 409, 400])
-async def test_refusals_map_to_http_and_project_nothing(wired, status) -> None:
+async def test_refusals_map_to_http(wired, status) -> None:
     calls, result = wired
     result["value"] = TrialControlError("nope", status_code=status)
 
@@ -99,7 +94,6 @@ async def test_refusals_map_to_http_and_project_nothing(wired, status) -> None:
 
     assert exc.value.status_code == status
     assert exc.value.detail == "nope"
-    assert calls["projected"] == []
 
 
 @pytest.fixture

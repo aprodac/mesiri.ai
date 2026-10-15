@@ -1,17 +1,15 @@
 """BE-01: the M4 context ports, read straight from the main (control-plane) tables.
 
-Same ports, same answers, same IDs as ``postgres_repositories.py`` -- but with
-no ``context_*`` copy in between. Context IDs are pure functions of the main
-UUIDs (``ctx_user_<uuid>``, see identity_bridge.py), so every ID this module
-returns is exactly the one the copy would have held: Redis active context,
-replies, workflows and everything downstream keep working unchanged.
+The only source since BE-01 step 3: the ``context_*`` copy these ports used to
+read (and the projection that filled it) is gone. Context IDs are pure
+functions of the main UUIDs (``ctx_user_<uuid>``, see identity_bridge.py), so
+they are the same IDs the copy held: Redis active context, replies, workflows
+and everything downstream are unchanged.
 
-Each rule below mirrors what identity_projection.py writes into the copy, so
-"what the copy would say" and "what this says" can only differ where the copy
-has drifted -- which is what the shadow comparison (shadow.py) is there to
-catch before this becomes the only source.
+Each rule below reproduces what the copy computed, so the switch changed no
+answer (checked side by side in production, BE-01 step 0).
 
-Known behaviours kept on purpose (not fixed here, so the switch changes
+Known behaviours kept on purpose (not fixed here, so the switch changed
 nothing):
 
 - A site is authorized whenever its project is, so ``site_access_mode`` ==
@@ -198,8 +196,8 @@ _AUTHORIZED_PROJECT_IDS = (
 )
 
 
-# Sites the copy lists as this user's site memberships (identity_projection
-# ._project_membership): every site of every project they are a member of
+# Sites this user reaches through site membership (as the old copy computed
+# them): every site of every project they are a member of
 # with site_access_mode "all_sites", their site_members sites in their other
 # projects, or every site of every project in their org if org-wide. Project
 # status plays no part here, so a site can be reachable through this even when

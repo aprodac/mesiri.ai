@@ -25,7 +25,7 @@ def test_live_identity_gate_uses_lifecycle_rule():
     assert "_ORG_ACTIVE_STATUS" not in src
 
 
-def test_context_projection_uses_lifecycle_rule():
-    src = _source("context", "identity_projection.py")
-    assert "SELECT id, name, status, trial_ends_at FROM organizations WHERE id = :id" in src
-    assert 'is_active = is_operational(row["status"], row.get("trial_ends_at")' in src
+def test_context_organization_uses_lifecycle_rule():
+    src = _source("context", "main_table_repositories.py")
+    assert "SELECT status, trial_ends_at FROM organizations WHERE id = :id" in src
+    assert 'is_operational(row["status"], row["trial_ends_at"]' in src

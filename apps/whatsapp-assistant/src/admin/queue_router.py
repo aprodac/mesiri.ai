@@ -1,8 +1,7 @@
 """Durable ingress queue visibility for the control panel (platform-admin only).
 
 Exists so "is the ARQ worker actually consuming the Redis queue" is
-answerable from the dashboard -- the same class of question sync-health/
-reconcile_router.py answers for the context watchdog. Before this, the only
+answerable from the dashboard. Before this, the only
 way to check was SSH + `journalctl -u mesiri-worker` + `redis-cli`, which is
 exactly the gap that let the worker sit un-deployed and silently swallow
 messages after the ARQ rollout (see infra/mesiri-worker.service and

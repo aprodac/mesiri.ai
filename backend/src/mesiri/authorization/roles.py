@@ -6,7 +6,7 @@ reports about their access. It was previously written out independently in
 five places:
 
   - apps/whatsapp-assistant/src/backend/postgres/actor.py   (WhatsApp)
-  - apps/whatsapp-assistant/src/context/identity_projection.py (projection)
+  - apps/whatsapp-assistant/src/context/main_table_repositories.py (WhatsApp scope)
   - apps/whatsapp-assistant/src/projects/router.py          (dashboard API)
   - apps/whatsapp-assistant/src/admin/router.py             (control panel)
   - backend/src/mesiri/authorization/service.py             (dashboard authz)

@@ -362,7 +362,7 @@ class WhatsAppSender:
         id is what #11 Reply Workflow needs: a reply to THIS message can
         only be resolved back to its context if the id was captured when
         it was sent (see channel/reply_dispatch.py's send_text_capturing_id
-        and context/postgres_repositories.py's PostgresReplyContextProvider).
+        and context/main_table_repositories.py's MainReplyContextProvider).
         """
         if not self.enabled:
             logger.warning("WhatsApp sender disabled (missing phone_number_id/access_token)")

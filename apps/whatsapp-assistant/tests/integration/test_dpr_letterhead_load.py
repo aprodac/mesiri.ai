@@ -7,9 +7,9 @@ import uuid
 
 import pytest
 from sqlalchemy import text
+from tests.fixtures.db import build_sync_engine
 
 from channel.dpr_document.letterhead import load_letterhead
-from context.identity_projection import build_sync_engine
 from context.runtime import _LazyAsyncEngine
 from mesiri.infrastructure.objectstorage.fake import FakeObjectStorage
 

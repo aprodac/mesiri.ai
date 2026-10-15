@@ -146,7 +146,7 @@ def test_the_shared_rule_is_actually_imported_by_the_surfaces_that_need_it():
     import the shared rule rather than re-deriving it."""
     required = [
         "apps/whatsapp-assistant/src/backend/postgres/actor.py",
-        "apps/whatsapp-assistant/src/context/identity_projection.py",
+        "apps/whatsapp-assistant/src/context/main_table_repositories.py",
         "apps/whatsapp-assistant/src/projects/router.py",
         "apps/whatsapp-assistant/src/admin/router.py",
         "backend/src/mesiri/authorization/service.py",

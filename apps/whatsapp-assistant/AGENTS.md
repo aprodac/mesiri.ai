@@ -761,7 +761,7 @@ Every external dependency is hidden behind a Python `Protocol`. Core logic depen
 |---|---|
 | `ingress/` | `context/`, `understanding/`, `backend/postgres/`, `mesiri.*` |
 | `understanding/` | `context/`, `ingress/`, `mesiri.*` (except via ports) |
-| `context/` (except `postgres_repositories.py`) | `mesiri.infrastructure.*`, ORM models, table names |
+| `context/` (except `main_table_repositories.py`) | `mesiri.infrastructure.*`, ORM models, table names |
 | Any module | AI SDKs directly (`google.generativeai`, `anthropic`, `openai`, `sarvam`) |
 | Any module (except `backend/postgres/`) | `sqlalchemy`, `asyncpg`, raw SQL strings |
 | Any module | Contracts defined inside `apps/whatsapp-assistant/src/` |

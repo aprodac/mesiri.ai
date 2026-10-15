@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
@@ -137,7 +136,7 @@ async def test_get_project_rejects_project_outside_org(monkeypatch):
 @pytest.mark.asyncio
 async def test_create_project_site_inserts_org_scoped_site(monkeypatch):
     project_id = uuid.uuid4()
-    conn = _Conn([[SimpleNamespace(id=project_id)], [], [], []])
+    conn = _Conn([[SimpleNamespace(id=project_id)], []])
     monkeypatch.setattr(projects_router, "get_engine", lambda: _Engine(conn))
 
     site = await projects_router.create_project_site(
@@ -149,7 +148,7 @@ async def test_create_project_site_inserts_org_scoped_site(monkeypatch):
     assert site.project_id == project_id
     assert site.name == "Tower B"
     assert site.status == "active"
-    assert len(conn.executed) == 4
+    assert len(conn.executed) == 2  # project check, site insert
 
 
 @pytest.mark.asyncio
@@ -189,9 +188,6 @@ async def test_create_project_grants_creator_membership_for_non_admin(monkeypatc
     # 3: project_members insert for the creator.
     conn = _Conn([[], [], []])
     monkeypatch.setattr(projects_router, "get_engine", lambda: _Engine(conn))
-    monkeypatch.setattr(
-        projects_router, "project_entity", AsyncMock(name="project_entity")
-    )
 
     await projects_router.create_project(
         projects_router.ProjectCreate(name="Tower C"),
@@ -210,9 +206,6 @@ async def test_create_project_skips_membership_row_for_admin(monkeypatch):
     """An ADMIN is already org-wide -- no project_members row needed."""
     conn = _Conn([[]])
     monkeypatch.setattr(projects_router, "get_engine", lambda: _Engine(conn))
-    monkeypatch.setattr(
-        projects_router, "project_entity", AsyncMock(name="project_entity")
-    )
 
     await projects_router.create_project(
         projects_router.ProjectCreate(name="Tower D"),

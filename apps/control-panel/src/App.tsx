@@ -14,7 +14,6 @@ import {
   Tags,
   ListChecks,
   FlaskConical,
-  HeartPulse,
   Timer,
   ListOrdered,
   Stamp
@@ -32,7 +31,6 @@ import TestMessage from './TestMessage';
 import OrganizationDetail from './OrganizationDetail';
 import Companies from './Companies';
 import BrandingRequests from './BrandingRequests';
-import SyncHealth from './SyncHealth';
 import Perf from './Perf';
 import QueueHealth from './QueueHealth';
 
@@ -65,10 +63,6 @@ const Sidebar = () => (
       <NavLink to="/providers" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
         <Cpu size={16} />
         AI Providers
-      </NavLink>
-      <NavLink to="/sync-health" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-        <HeartPulse size={16} />
-        Sync Health
       </NavLink>
       <NavLink to="/perf" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
         <Timer size={16} />
@@ -177,7 +171,6 @@ function AppLayout() {
             <Route path="/branding-requests" element={<BrandingRequests />} />
             <Route path="/logs" element={<Logs />} />
             <Route path="/providers" element={<Providers />} />
-            <Route path="/sync-health" element={<SyncHealth />} />
             <Route path="/perf" element={<Perf />} />
             <Route path="/queue-health" element={<QueueHealth />} />
             <Route path="/system-graph" element={<SystemGraph />} />

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from datetime import datetime
 
@@ -13,7 +14,6 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from context.projection_hooks import project_entity
 from mesiri.domains.identity.auth_service import ALGORITHM, SECRET_KEY
 from users.access_service import AccessPolicy, apply_access_policy
 
@@ -83,8 +83,8 @@ sites_table = sa.Table(
 )
 
 # project_members/site_members are the tables AuthorizationService (REST) and
-# the WhatsApp context resolver (via identity_projection's membership
-# projection) actually authorize against -- see migration 0350. access_policy
+# the WhatsApp context resolver (context/main_table_repositories.py) actually
+# authorize against -- see migration 0350. access_policy
 # below is written alongside for GET /me backward compatibility only; it is
 # no longer read for authorization decisions anywhere.
 project_members_table = sa.Table(
@@ -254,7 +254,6 @@ async def create_user(user_in: UserCreate, admin_payload: dict = Depends(get_cur
         result = await conn.execute(sa.select(users_table).where(users_table.c.id == user_id))
         row = result.first()
 
-    await project_entity("user", user_id)
     return _row_to_response(row)
 
 
@@ -314,17 +313,6 @@ async def update_user(
         result = await conn.execute(sa.select(users_table).where(users_table.c.id == user_id))
         row = result.first()
 
-    if values:
-        await project_entity("user", user_id)
-        if "role" in values:
-            # A role change can move a user into or out of an org-wide role
-            # (_ORG_WIDE_ROLES) -- promoting to ADMIN should grant every
-            # project immediately, demoting away from it should drop the
-            # bypass, and _project_membership is what applies that rule.
-            # project_entity("user", ...) alone only re-syncs the profile
-            # row; without this, the grant/revoke waited for the next full
-            # reconcile instead of taking effect on save.
-            await project_entity("membership", user_id)
     return _row_to_response(row)
 
 
@@ -358,7 +346,6 @@ async def delete_user(user_id: uuid.UUID, admin_payload: dict = Depends(get_curr
                 ) from exc
             raise
 
-    await project_entity("user", user_id)
 
 
 @router.patch("/{user_id}/status", response_model=UserResponse)
@@ -402,7 +389,6 @@ async def update_user_status(
         result = await conn.execute(sa.select(users_table).where(users_table.c.id == user_id))
         row = result.first()
 
-    await project_entity("user", user_id)
     return _row_to_response(row)
 
 
@@ -445,15 +431,14 @@ async def update_user_access(
     dashboard's own UserDetails/Users pages (which still render
     access_policy) while the user's actual REST and WhatsApp access were
     untouched. This now writes project_members/site_members -- a full
-    replace of this user's membership set, same approach as
-    identity_projection.py's _project_membership -- and re-runs the identity
-    projection so the WhatsApp context resolver picks it up without waiting
-    for the next reconcile.
+    replace of this user's membership set, which the WhatsApp context
+    resolver reads directly (context/main_table_repositories.py).
 
     "all_projects" writes zero project_members rows on purpose: it's read as
     a live, standing bypass everywhere access is checked (AuthorizationService
-    ._resolve_project_scope, backend/postgres/actor.py, identity_projection.py
-    ._project_membership, and this app's own projects/router.py._is_org_wide)
+    ._resolve_project_scope, backend/postgres/actor.py,
+    context/main_table_repositories.py, and this app's own
+    projects/router.py._is_org_wide)
     -- the same treatment the ADMIN role already gets. An earlier version of
     this endpoint materialized one project_members row per project that
     existed *at grant time*, which silently excluded every project created
@@ -488,22 +473,17 @@ async def update_user_access(
             policy=policy,
         )
 
-    await project_entity("membership", user_id)
     return policy
 
 
 # ---------------------------------------------------------------------------
 # WhatsApp Messages Explorer DB Tables
 # ---------------------------------------------------------------------------
-external_identities_table = sa.Table(
-    "external_identities",
-    sa.MetaData(),
-    sa.Column("id", sa.String, primary_key=True),
-    sa.Column("provider", sa.String),
-    sa.Column("external_subject", sa.String),
-    sa.Column("user_id", sa.String),
-    sa.Column("created_at", sa.DateTime(timezone=True)),
-)
+def _wa_ids(whatsapp_number: str | None) -> list[str]:
+    """The sender IDs this user's messages carry: their number's digits."""
+    digits = re.sub(r"\D", "", whatsapp_number or "")
+    return [digits] if digits else []
+
 
 inbound_messages_table = sa.Table(
     "inbound_messages",
@@ -705,14 +685,8 @@ async def list_user_whatsapp_messages(
         if not target_user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        # Resolve WhatsApp Identities mapped to the user
-        identities_res = await conn.execute(
-            sa.select(external_identities_table.c.external_subject).where(
-                external_identities_table.c.user_id == f"ctx_user_{user_id}",
-                external_identities_table.c.provider == "whatsapp",
-            )
-        )
-        wa_ids = [row.external_subject for row in identities_res.fetchall()]
+        # The user's WhatsApp number, as inbound messages store it (digits)
+        wa_ids = _wa_ids(target_user.whatsapp_number)
 
         if not wa_ids:
             return UserWhatsAppMessageListResponse(items=[], total=0)
@@ -994,14 +968,8 @@ async def get_user_whatsapp_message_detail(
         if not target_user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        # Resolve WhatsApp Identities mapped to the user
-        identities_res = await conn.execute(
-            sa.select(external_identities_table.c.external_subject).where(
-                external_identities_table.c.user_id == f"ctx_user_{user_id}",
-                external_identities_table.c.provider == "whatsapp",
-            )
-        )
-        wa_ids = {row.external_subject for row in identities_res.fetchall()}
+        # The user's WhatsApp number, as inbound messages store it (digits)
+        wa_ids = set(_wa_ids(target_user.whatsapp_number))
 
         # Fetch message detail
         msg_res = await conn.execute(

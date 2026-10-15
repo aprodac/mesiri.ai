@@ -31,7 +31,6 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from auth.code_senders import CodeLoginUnavailable, build_login_code_sender
-from context.projection_hooks import project_new_company
 from mesiri.application.dpr.recipients import RecipientError, normalize_phone
 from mesiri.application.identity.login_codes import (
     CODE_TTL,
@@ -293,7 +292,6 @@ async def signup(body: SignupRequest, request: Request) -> dict:
     except CompanyCreationError as exc:
         raise HTTPException(status_code=409 if exc.conflict else 400, detail=str(exc)) from exc
 
-    await project_new_company(created)
     _log.info("signup.web_created org_id=%s", created.organization_id)
 
     token = _token(

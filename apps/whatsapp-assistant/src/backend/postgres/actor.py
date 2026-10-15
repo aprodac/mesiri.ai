@@ -28,7 +28,7 @@ from mesiri.domains.organizations.lifecycle import is_operational
 
 # A user reaches a project via a direct project_members row, or via a
 # site_members row on one of its sites (site access implies its project --
-# same rule the M4 context layer applies in context/postgres_repositories.py's
+# same rule the M4 context layer applies in context/main_table_repositories.py's
 # _AUTHORIZED_PROJECT_IDS). Non-admins get exactly this and nothing more.
 _MEMBER_PROJECTS_SQL = """
 SELECT p.id, p.name, p.location, p.code, p.status, p.progress, p.open_issues

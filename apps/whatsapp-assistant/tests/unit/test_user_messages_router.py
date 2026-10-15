@@ -146,11 +146,10 @@ async def test_list_messages_rejects_cross_org_admin(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_list_messages_returns_empty_when_no_identities(monkeypatch):
-    user_row = {"id": USER_ID, "organization_id": ORG_ID}
-    # 1. user lookup -> user_row
-    # 2. identities lookup -> empty list
-    app = _app([[user_row], []])
+async def test_list_messages_returns_empty_when_user_has_no_number(monkeypatch):
+    user_row = SimpleNamespace(id=USER_ID, organization_id=ORG_ID, whatsapp_number=None)
+    # 1. user lookup -> user_row (no WhatsApp number, so nothing else is read)
+    app = _app([[user_row]])
     patch_get_engine.engine = app.state.engine
     async with await _client(app) as client:
         resp = await client.get(
@@ -165,8 +164,10 @@ async def test_list_messages_returns_empty_when_no_identities(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_list_messages_with_data(monkeypatch):
-    user_row = {"id": USER_ID, "organization_id": ORG_ID}
-    identity_row = SimpleNamespace(external_subject="919000000000")
+    # Stored as typed; messages carry the digits only.
+    user_row = SimpleNamespace(
+        id=USER_ID, organization_id=ORG_ID, whatsapp_number="+91 90000 00000"
+    )
     message_row = {
         "id": "22222222-2222-4222-8222-222222222222",
         "correlation_id": "cor_123",
@@ -180,12 +181,11 @@ async def test_list_messages_with_data(monkeypatch):
         "error_code": None,
     }
     # 1. user lookup
-    # 2. identities lookup
-    # 3. messages list (UNION SELECT * FROM...)
-    # 4. messages count (UNION SELECT COUNT(*)...)
-    # 5. timeline entries lookup -> empty list
-    # 6. interactions lookup -> empty list
-    app = _app([[user_row], [identity_row], [message_row], [1], [], []])
+    # 2. messages list (UNION SELECT * FROM...)
+    # 3. messages count (UNION SELECT COUNT(*)...)
+    # 4. timeline entries lookup -> empty list
+    # 5. interactions lookup -> empty list
+    app = _app([[user_row], [message_row], [1], [], []])
     patch_get_engine.engine = app.state.engine
     async with await _client(app) as client:
         resp = await client.get(
@@ -197,6 +197,8 @@ async def test_list_messages_with_data(monkeypatch):
     assert data["total"] == 1
     assert data["items"][0]["correlation_id"] == "cor_123"
     assert data["items"][0]["body_text"] == "hello"
+    _, params = app.state.engine.conn.executed_queries[1]
+    assert params["wa_ids"] == ["919000000000"]
 
 
 @pytest.mark.asyncio

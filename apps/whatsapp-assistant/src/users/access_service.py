@@ -20,8 +20,6 @@ Three things happen together, and all three matter:
      consult (migration 0350). Writing only access_policy made an earlier
      version of this a no-op: the dashboard showed the change while the
      user's real access was untouched.
-  3. The identity projection re-runs, so the WhatsApp assistant sees the
-     change immediately rather than at the next reconcile sweep.
 
 "all_projects" deliberately writes zero project_members rows: it is a live
 standing bypass, so a project created after the grant is still reachable
@@ -184,10 +182,8 @@ async def apply_access_policy(
 ) -> None:
     """Write the policy and rebuild the user's membership rows.
 
-    Caller owns the transaction and must call
-    ``project_entity("membership", user_id)`` afterwards (outside the
-    transaction) so the WhatsApp context layer picks the change up without
-    waiting for the reconcile watchdog.
+    Caller owns the transaction. WhatsApp reads these rows directly, so the
+    change applies to the next message.
     """
     await validate_access_policy(conn, org_id, policy)
 

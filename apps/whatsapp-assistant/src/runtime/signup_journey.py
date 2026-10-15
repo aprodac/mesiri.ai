@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
@@ -97,13 +97,11 @@ class SignupJourney:
         sender: WhatsAppSender,
         store: SignupStateStore,
         db: PostgresDatabase,
-        project_new_company: Callable[[CreatedCompany], Awaitable[None]],
         now: Callable[[], dt.datetime] | None = None,
     ) -> None:
         self._sender = sender
         self._store = store
         self._db = db
-        self._project = project_new_company
         self._now = now or (lambda: dt.datetime.now(dt.UTC))
 
     async def signup_enabled(self) -> bool:
@@ -259,7 +257,6 @@ class SignupJourney:
         _log.info(
             "signup.company_created org=%s owner=%s", created.organization_id, created.owner_user_id
         )
-        await self._project(created)
         return await self._say(
             wa_id,
             DONE_MESSAGE.format(

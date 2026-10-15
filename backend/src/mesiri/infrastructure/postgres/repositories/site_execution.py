@@ -5,17 +5,8 @@ Only file permitted to hold SQL for CreateSite execution (capability-
 boundary convention, mirrors project_execution.py). Every method takes an
 externally-supplied connection.
 
-Deliberately narrower than apps/whatsapp-assistant/src/projects/router.py's
-create_project_site REST endpoint in one respect: this does not re-sync
-existing all-sites project members' cached membership after the new site
-appears (that endpoint's "member_ids_to_resync" step) -- context.
-reconcile_watchdog's periodic reconcile_all() catches that up for anyone
-already holding all-sites access, same safety net create_execution.py's
-docstring on this same class of gap describes. It does still trigger the
-new site's own context-layer projection immediately (see
-interactions/projecting_dispatcher.py), so the site itself is usable right
-away -- only *other members'* view of it may lag until the next reconcile
-tick.
+WhatsApp reads sites and memberships straight from the main tables, so the
+new site is usable at once by everyone who can reach it.
 """
 
 from __future__ import annotations
