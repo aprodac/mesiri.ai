@@ -73,7 +73,7 @@
 | BE-02 | One tenant provisioning path (remove the duplicate in `apps/whatsapp-assistant/src/admin/router.py` vs `backend/.../admin/router.py`) | S | Must | — | done | Claude (session 15 Oct, onboarding) | Done inside SS-03 (`c84cc5d`): both `/provision` routes are thin wrappers over one `create_company` |
 | BE-03 | Database-level tenant isolation (Postgres row-level security on `organization_id`) | L | Must | BE-01 | todo | | |
 | BE-04 | Phone rules: one person in several companies; never file across companies by guess | M | Must | BE-01 | todo | | Loophole #1 |
-| BE-05 | Audit log of superadmin actions (who created/changed/suspended what) | S | Must | — | todo | | |
+| BE-05 | Audit log of superadmin actions (who created/changed/suspended what) | S | Must | — | claimed | Claude (session 15 Oct, onboarding, Lane C) | Covers create_company (SS-03) and the admin routes; shared `record_admin_action` for SS-10 trial controls |
 | BE-06 | Module on/off switch per company (`enabled_modules`), enforced by the API | S | Must | — | done | Claude (session 13 Oct, foundations) | `faffdef`, fix `595a162` (gate turned route 401s into 500s, ~15 min in prod), deploy health-check fix `7fa35c9`. Default flipped to V1 in `1129cfc` |
 | BE-07 | Normalise status values (`Active` vs `active`) | S | Must | — | done | Claude (session 13 Oct, strategy) | `3b5c8e1`, deployed. Migration 0463 lowercased org + user statuses. Also fixed: auto-DPR query matched no company (`o.status = 'active'` vs stored "Active") |
 
