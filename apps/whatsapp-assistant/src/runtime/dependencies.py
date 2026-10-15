@@ -288,6 +288,12 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     # lifecycle pattern as redis_client.
     material_db = PostgresDatabase(_backend_settings.postgres)
 
+    # BE-25: price every AI call and WhatsApp message, per company.
+    from channel.whatsapp import usage as message_usage
+    from mesiri.application.usage.recorder import install_usage_recorder
+
+    message_usage.set_sink(install_usage_recorder(material_db))
+
     pipeline = build_pipeline(object_storage, material_db, redis_client)
     context_resolver = build_context_resolver(redis=redis_client)
     planner = Planner()  # stateless — safe to construct once and share

@@ -14,6 +14,7 @@ import time
 import httpx
 
 from channel.replies import ListRow
+from channel.whatsapp import usage as message_usage
 
 logger = logging.getLogger(__name__)
 
@@ -400,7 +401,13 @@ class WhatsAppSender:
         # reply-trackable) rather than raising -- the send itself succeeded.
         try:
             messages = resp.json().get("messages") or []
-            return str(messages[0]["id"]) if messages else None
+            wamid = str(messages[0]["id"]) if messages else None
         except (ValueError, KeyError, IndexError, TypeError):
             logger.warning("whatsapp.sent response had no parseable message id to=%s", to_wa_id)
             return None
+        if wamid is not None:
+            # BE-25: what this message costs (corrected later by the webhook).
+            message_usage.report_sent(
+                wamid=wamid, recipient=to_wa_id, message_fields=message_fields
+            )
+        return wamid

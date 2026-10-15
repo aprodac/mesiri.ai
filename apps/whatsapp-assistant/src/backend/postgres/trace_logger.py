@@ -343,7 +343,8 @@ class PostgresTraceLogger:
                             "percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) AS p95_ms, "
                             "max(latency_ms) AS max_ms "
                             "FROM provider_executions "
-                            "WHERE created_at > :since "
+                            # BE-25 per-call cost rows are not latency stages.
+                            "WHERE created_at > :since AND stage <> 'metered' "
                             "GROUP BY stage, provider, operation, model "
                             "ORDER BY avg_ms DESC NULLS LAST"
                         ),
