@@ -247,12 +247,11 @@ async def test_several_sites_under_one_project(conn) -> None:
         now=_NOW,
     )
 
-    rows = (
-        await conn.execute(
-            text("SELECT id, name, project_id FROM sites WHERE organization_id = :org"),
-            {"org": created.organization_id},
-        )
-    ).mappings().all()
+    result = await conn.execute(
+        text("SELECT id, name, project_id FROM sites WHERE organization_id = :org"),
+        {"org": created.organization_id},
+    )
+    rows = result.mappings().all()
     assert sorted(r["name"] for r in rows) == ["Block A", "Block B"]
     assert {r["project_id"] for r in rows} == {created.project_id}
     assert [s.name for s in created.sites] == ["Block A", "Block B"]
