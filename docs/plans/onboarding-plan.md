@@ -311,3 +311,41 @@ Nothing is ticked by hand: every item comes from what happened.
   logo.
 - **Hiding:** gone for good once everything is done; "Hide for now" is remembered in
   that browser only.
+
+## Trial reminders and expiry (SS-08, built 15 Oct)
+
+Decided 15 Oct:
+- reminders go out 2 days before the end and on the last day;
+- after expiry the dashboard is **read-only**, not blocked;
+- after the retention period the company is flagged for the team to decide on,
+  and **never auto-deleted**.
+
+**Reminders** (`application/organizations/trial.py`):
+- **Queued by** the in-app scheduler tick (`runtime/automation_runner.py`), next to the
+  project auto-DPR, as `trial_reminder` notification rows for each owner (ADMIN with a
+  WhatsApp number). Each owner gets each reminder once.
+- **Sent by** the notification sender:
+  - plain text inside the 24-hour window ("Reply *CONTINUE*…");
+  - outside it, the `mesiri_trial_ending` template, once it's approved (text in
+    `docs/ops/whatsapp-templates.md`);
+  - held during quiet hours, with a reason recorded whenever a reminder is skipped.
+
+**After the trial ends** (`runtime/trial_journey.py`):
+- **Owner:** "your trial ended on 22 Oct, data safe for 30 days" **[Continue with
+  Mesiri]**.
+- **Anyone else:** "ask <owner> to continue".
+- **Suspended companies:** keep the generic reply.
+
+**"Continue"** (a tap, typing CONTINUE, or `POST /company/trial/continue` from the
+dashboard):
+- records one open request in `organization_settings` `continue_requests` (refused by
+  the generic settings API);
+- posts in the team WhatsApp group;
+- tells the owner the team will call. Converting to paid stays manual (SS-10).
+
+**Read-only dashboard** (`domains/shared/trial_guard.py`, an app middleware):
+- For a company whose trial has ended, every change request answers
+  `403 {"code": "TRIAL_EXPIRED"}`. Reading still works.
+- Login, code login, the webhook, health and `/company/trial/*` are exempt.
+- No token, a bad token or a platform admin passes through untouched.
+- The status is cached for a minute per company.
