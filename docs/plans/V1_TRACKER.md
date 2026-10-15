@@ -160,7 +160,7 @@
 | WEB-11 | Opening stock and stock adjustment screens | S | Must | BE-12 | claimed | Claude (session 15 Oct, materials lane) | Transfers between sites too (BE-32) |
 | WEB-12 | Owner login by WhatsApp/SMS code instead of password | M | Later | BE-01 | done | Claude (session 15 Oct, onboarding, Lane D) | **Done with SS-06 (`b2e33ef`, `3db2a9a`, `72216fe`, `5d623a9`, merge `dec3a65` (migration 0476)).** "WhatsApp code" tab on the login page, for any active user with a WhatsApp number (approved 15 Oct). A number on two accounts is refused (BE-04). Live once `mesiri_login_code` is approved |
 | WEB-13 | Site label per project (Tower / Block / Phase): what a project calls its sites, used in WhatsApp wording, the dashboard and the DPR | S | Later | — | todo | | Split from WEB-08 on 14 Oct: nothing stores or uses it yet (needs a `projects` column + wording changes), so it was not built as a setting nothing reads |
-| WEB-14 | Dashboard visual refresh: new default theme (palette, type, spacing, surfaces, light/dark, DPR status colours) through the design tokens, so every page picks it up | M | Must | — | claimed | Claude (session 15 Oct, onboarding, Lane D) | Asked for 15 Oct ("the current default theme is not good"). 2–3 directions shown as screenshots before any code. Control panel not in scope (Lane B) |
+| WEB-14 | Dashboard visual refresh: new default theme (palette, type, spacing, surfaces, light/dark, DPR status colours) through the design tokens, so every page picks it up | M | Later | — | todo | | Asked for 15 Oct. **Deferred 15 Oct by the user ("design we will do later")** after seeing 3 directions (A Warm Site, B Blueprint, C Mesiri Green); none chosen, no code written. Findings for whoever picks it up: tokens are in `apps/dashboard/src/index.css`, but ~2,400 hard-coded palette classes in 89 files bypass them; they can all be re-themed from the token layer by redefining `--color-emerald-*`/`amber`/`rose`/`blue`… (Tailwind v4 compiles them to `var(--color-…)`). A dark sidebar needs `app-sidebar.tsx` to use sidebar tokens. `docs/DESIGN_SYSTEM.md` (lime #7ED957) disagrees with the live orange |
 
 ## SA — Superadmin (control panel)
 
@@ -174,7 +174,8 @@
 | SA-06 | Health view (DPR delivery, gap-check replies, WhatsApp number quality) | M | Later | BE-27 | todo | | |
 | SA-07 | Module toggles per company | S | Must | BE-06 | done | Claude (session 13 Oct, foundations) | `d338389`. Modules card on the company Settings tab; not yet clicked through in a browser (needs a platform-admin login on the live control panel) |
 | SA-08 | Audit log viewer | S | Later | BE-05 | todo | | |
-| SA-09 | Branding requests in the control panel: list of owners' letterhead/logo photo requests (SS-14) across companies, company-page branding panel (photos next to the letterhead fields + logo upload, reusing BE-20's rules), "Mark done" (assistant tells the owner); audited | M | Must | SS-14, BE-20, BE-05 | claimed | Claude (session 15 Oct, onboarding, Lane B) | |
+| SA-09 | Branding requests in the control panel: list of owners' letterhead/logo photo requests (SS-14) across companies, company-page branding panel (photos next to the letterhead fields + logo upload, reusing BE-20's rules), "Mark done" (assistant tells the owner); audited | M | Must | SS-14, BE-20, BE-05 | done (2345fff) | Claude (session 15 Oct, onboarding, Lane B) | **Done** `bbd7016` (letterhead logic lifted from the dashboard's /company/branding* into `application/organizations/branding_admin.py`, both call it; dashboard tests 8/8 unchanged) + `0bdc58f` (API: `domains/admin/branding_router.py` mounted by both apps; list, letterhead + contact, logo, photo by position, mark done; audited; `open_branding_requests` on the companies list) + `2345fff` (Branding requests page, company Letterhead tab, list badge). Known gap: assistant appends photos without a lock, so a photo arriving at the instant of Mark done can undo one write (fix is Lane A side) |
+| SA-10 | Trial follow-ups in the control panel (from SS-08): owners' "continue with Mesiri" requests shown on the companies list and company page, closed by convert/extend (audited); companies flagged "eligible for deletion" once a trial expired more than `retention_days_after_expiry` days ago (nothing auto-deleted; existing delete only on explicit confirm) | S | Must | SS-08, SS-10 | claimed | Claude (session 15 Oct, onboarding, Lane B) | |
 
 ## SS — Self-serve signup & trials
 
@@ -268,6 +269,7 @@ Claude Code as a team member: listens to the team and customer WhatsApp groups, 
 | 2026-10-15 | SA-01 one-screen "Create company" in the control panel (+ several sites per project) | `c405d9d`, `0580e1c` |
 | 2026-10-15 | SA-02 companies list with status and setup progress | `1895165`, `8f9b605` |
 | 2026-10-15 | SS-10 superadmin trial controls and trial/signup settings | `055498f`, `ace2a76` |
+| 2026-10-15 | SA-09 branding requests and letterhead in the control panel | `bbd7016`, `0bdc58f`, `2345fff` |
 | 2026-10-15 | SS-04 WhatsApp signup for unknown numbers (off until switched on) | `aa5f9bc` |
 | 2026-10-15 | SS-13 add a teammate by sharing their WhatsApp contact | `3032686` |
 | 2026-10-15 | BE-05 audit log of superadmin actions | `04c4479`, `fe2f8f0`, `12970f0` |

@@ -260,6 +260,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Platform settings router not loaded: %s", exc)
 
+    # Branding requests and a company's letterhead for the control panel
+    # (SA-09); the backend's router, mounted here like /company.
+    try:
+        from mesiri.domains.admin.branding_router import router as branding_admin_router
+
+        app.include_router(branding_admin_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Branding admin router not loaded: %s", exc)
+
     # Auth routes (mobile app login/register)
     try:
         from auth.router import router as auth_router
