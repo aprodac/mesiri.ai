@@ -185,6 +185,25 @@ async def run_tick(*, db: Any) -> dict[str, int] | None:
         try:
             fired = await _queue_due_automations(conn, db=db)
 
+            # BE-13: entries that reached an already-confirmed site day:
+            # reopen the day (report not sent yet) or record a revision.
+            # Before the auto-DPR send below, so an entry that arrives before
+            # the report goes out reopens the day instead of missing it.
+            try:
+                from mesiri.application.dpr.late_entries import process_late_entries
+
+                async with conn.begin_nested():
+                    late = await process_late_entries(conn)
+                if late.recorded:
+                    logger.info(
+                        "automation_runner.late_entries recorded=%s reopened=%s revised=%s",
+                        late.recorded,
+                        late.reopened_days,
+                        late.revised_days,
+                    )
+            except Exception:  # noqa: BLE001
+                logger.exception("automation_runner.late_entries_failed")
+
             from .project_auto_dpr import queue_due_project_auto_dprs, send_due_project_dprs
 
             try:

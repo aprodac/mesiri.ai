@@ -367,6 +367,24 @@ change. Corrections produce a **new revision** with a visible diff against the
 prior one. The same applies to planned quantities: a revised take-off does not
 silently rewrite the completion % printed in an already-approved report.
 
+**Late entries (BE-13, decided 15 Oct 2026).** An entry for a confirmed site
+day that was created after that day's version was built (`late_entries`,
+migration 0481; `application/dpr/late_entries.py`, run on the scheduler tick
+before the auto-DPR send):
+
+- **The report hasn't gone out yet:** the day **reopens** (a new version,
+  back for confirmation).
+- **It was sent:** a **revised version** is recorded with the reason, the
+  status is unchanged, and **nothing is re-sent**.
+- **Either way, the next report shows it once:** the site's next report lists
+  it once under "Late entries for earlier days", and confirming that report
+  confirms the late draft. A reopened day claims its own late entries when
+  re-confirmed.
+- **It can be withdrawn:** a late entry can be removed even though its day is
+  frozen, because it was never part of the confirmed version.
+- **The supervisor is told:** the WhatsApp reply says which of the two
+  happened.
+
 ### P8 — Project DPR is a composition of Site DPRs
 
 The project-level DPR is built **from approved site DPRs**, never independently

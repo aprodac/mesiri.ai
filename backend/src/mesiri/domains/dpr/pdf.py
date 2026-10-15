@@ -309,6 +309,25 @@ def render_dpr_pdf_bytes(
             )
             pdf.set_text_color(0, 0, 0)
 
+    late_entries = payload.get("late_entries") or []
+    if not is_project and late_entries:
+        # BE-13: earlier days' entries that arrived after that day was confirmed.
+        pdf.ln(4)
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 8, "Late entries for earlier days", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "I", 8)
+        pdf.multi_cell(
+            0,
+            4,
+            "Sent after that day's report was confirmed. Not part of the confirmed report for that day.",
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
+        pdf.set_font("Helvetica", "", 9)
+        for entry in late_entries[:30]:
+            line = f"{entry.get('report_date') or '-'}  {entry.get('summary') or '-'}"
+            pdf.multi_cell(0, 5, _truncate(line, 200), new_x="LMARGIN", new_y="NEXT")
+
     if not is_project and conditions.get("tomorrow_plan"):
         pdf.ln(4)
         pdf.set_font("Helvetica", "B", 12)

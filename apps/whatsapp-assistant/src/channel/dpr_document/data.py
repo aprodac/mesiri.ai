@@ -61,6 +61,14 @@ class DprSiteRow:
 
 
 @dataclass(frozen=True, slots=True)
+class DprLateEntryRow:
+    """An earlier day's entry that arrived after that day was confirmed (BE-13)."""
+
+    report_date: str
+    summary: str
+
+
+@dataclass(frozen=True, slots=True)
 class DprDocumentData:
     code: str
     project_name: str
@@ -84,6 +92,7 @@ class DprDocumentData:
     site_working: str = "Not set"
     hours_lost: str = "—"
     tomorrow_plan: str = ""
+    late_entries: list[DprLateEntryRow] = field(default_factory=list)
 
 
 _WEATHER_LABELS = {
@@ -172,6 +181,12 @@ def build_document_data(*, code: str, payload: dict[str, Any]) -> DprDocumentDat
         site_working=_SITE_WORKING_LABELS.get(conditions.get("site_working") or "", "Not set"),
         hours_lost=f"{hours_lost} h" if hours_lost is not None else "—",
         tomorrow_plan=conditions.get("tomorrow_plan") or "",
+        late_entries=[
+            DprLateEntryRow(
+                report_date=str(e.get("report_date") or "—"), summary=str(e.get("summary") or "—")
+            )
+            for e in payload.get("late_entries") or []
+        ],
         code=code,
         project_name=payload.get("project_name") or "—",
         site_name=payload.get("site_name") or "—",

@@ -303,6 +303,18 @@ class PostgresDprRepository:
             report_date=scope["report_date"],
             actor_user_id=user_id,
         )
+        # BE-13: earlier days' late entries listed in this report are now
+        # shown here (once) and confirmed with it.
+        from mesiri.application.dpr.late_entries import claim_for_report
+
+        confirmed += await claim_for_report(
+            self._conn,
+            organization_id=organization_id,
+            site_id=scope["site_id"],
+            report_date=scope["report_date"],
+            report_id=report_id,
+            actor_user_id=user_id,
+        )
         if confirmed:
             payload = await self.assemble_site_report_payload(
                 organization_id=organization_id,
@@ -612,10 +624,32 @@ class PostgresDprRepository:
             ),
         }
 
+        # BE-13: earlier days' late entries this report lists.
+        from mesiri.application.dpr.late_entries import late_entries_for_report
+
+        this_report = (
+            await self._conn.execute(
+                text(
+                    "SELECT id FROM daily_reports WHERE organization_id = :org_id "
+                    "AND site_id = :site_id AND report_date = :report_date "
+                    "AND level::text = 'SITE'"
+                ),
+                {"org_id": organization_id, "site_id": site_id, "report_date": report_date},
+            )
+        ).first()
+        late_entries = await late_entries_for_report(
+            self._conn,
+            organization_id=organization_id,
+            site_id=site_id,
+            report_date=report_date,
+            report_id=this_report.id if this_report else None,
+        )
+
         from mesiri.application.dpr.assembly import build_site_report_payload
 
         return build_site_report_payload(
             review_states=review_states,
+            late_entries=late_entries,
             conditions=dict(conditions_row) if conditions_row else None,
             project_name=header["project_name"] if header else None,
             site_name=header["site_name"] if header else None,
@@ -1341,6 +1375,7 @@ class PostgresDprRepository:
         payload: dict[str, Any],
         narrative_summary: str | None,
         revision_reason: str,
+        reset_status: bool = True,
     ) -> dict[str, Any]:
         """Create a new version that supersedes the current one, for a
         report already APPROVED/PUBLISHED -- the counterpart create_version
@@ -1354,6 +1389,10 @@ class PostgresDprRepository:
         same lifecycle a fresh day's report follows -- P7's freeze exists to
         stop an approved day being overwritten *silently*, not to make it
         permanently uncorrectable.
+
+        `reset_status=False` (BE-13, a late entry for a day whose report was
+        already sent) records the revised version but leaves the status
+        alone, so nothing is confirmed or sent again.
         """
         if not revision_reason or not revision_reason.strip():
             raise ValueError("revision_reason is required to revise an approved report")
@@ -1410,10 +1449,11 @@ class PostgresDprRepository:
                 "revision_reason": revision_reason,
             },
         )
+        status_sql = "status = 'DRAFT', " if reset_status else ""
         await self._conn.execute(
             text(
                 "UPDATE daily_reports SET current_version_id = :version_id, "
-                "status = 'DRAFT', updated_at = now() WHERE id = :id"
+                f"{status_sql}updated_at = now() WHERE id = :id"
             ),
             {"version_id": version_id, "id": daily_report_id},
         )

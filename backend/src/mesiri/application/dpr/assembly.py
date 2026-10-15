@@ -179,6 +179,7 @@ def build_site_report_payload(
     material_stock_rows: list[dict[str, Any]] | None = None,
     conditions: dict[str, Any] | None = None,
     review_states: dict[str, dict[Any, str]] | None = None,
+    late_entries: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Compose the payload dict. `activity_rows`/`issue_rows`/`labour_lines`/
     `material_movement_rows` are already scoped to the one site+date by the
@@ -190,7 +191,11 @@ def build_site_report_payload(
     `review_states` (BE-09) is fact type -> {fact id -> draft/confirmed};
     each activity and issue carries its `review`, and `drafts` counts what
     the engineer still has to confirm, per section. A fact not listed is
-    confirmed."""
+    confirmed.
+
+    `late_entries` (BE-13) are earlier days' entries that arrived after that
+    day was confirmed; this report lists them once, under "Late entries for
+    earlier days" (application/dpr/late_entries.py)."""
     from mesiri.application.dpr import fact_review
 
     review_states = review_states or {}
@@ -239,6 +244,7 @@ def build_site_report_payload(
         "stock_flags": sum(1 for m in materials if m["beyond_stock"]),
         "conditions": _conditions(conditions or {}, issues),
         "drafts": fact_review.review_counts(review_states),
+        "late_entries": list(late_entries or []),
     }
 
 

@@ -147,7 +147,12 @@ class PostgresFactReviewRepository:
         reason = reason.strip()
         located = await self._locate(organization_id, fact_type, fact_id)
         fact_review.check_reject((await self.states_for(fact_type, [fact_id]))[fact_id])
-        await self._refuse_if_day_frozen(organization_id, located)
+        # BE-13: a late entry was never in the confirmed version, so
+        # withdrawing it can't change what was confirmed.
+        from mesiri.application.dpr.late_entries import is_recorded_late
+
+        if not await is_recorded_late(self._conn, fact_type=fact_type, fact_id=fact_id):
+            await self._refuse_if_day_frozen(organization_id, located)
 
         await self._undo(organization_id, fact_type, fact_id, actor_user_id, reason)
         await self._append(

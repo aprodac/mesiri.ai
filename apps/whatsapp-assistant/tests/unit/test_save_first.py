@@ -67,6 +67,11 @@ class _FakeSaveFirst:
         self.drafts.append(kwargs)
         return True
 
+    async def note_for(self, **kwargs) -> str:
+        # An open day: the usual draft note (BE-13's late-entry notes are
+        # covered against a real database).
+        return DRAFT_NOTE
+
     async def undo_latest_draft(self, **kwargs):
         return None
 

@@ -197,9 +197,13 @@ class InteractionHandler:
                 fields=dict(confirmed_draft.fields),
                 correlation_id=loaded.state.correlation_id,
             )
-            from runtime.save_first import DRAFT_NOTE
-
-            reply_text = f"{reply_text}\n\n{DRAFT_NOTE}"
+            # BE-13: a late entry for an already-confirmed day says so.
+            note = await self._save_first.note_for(
+                organization_id=str(confirmed_draft.organization_id or organization_id),
+                action_type=confirmed_draft.action_type,
+                fact_id=str(execution_result.material_row_id),
+            )
+            reply_text = f"{reply_text}\n\n{note}"
         logger.info(
             "save_first.saved user=%s key=%s status=%s",
             user_id,

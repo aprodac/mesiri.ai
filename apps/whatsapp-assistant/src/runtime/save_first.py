@@ -60,6 +60,17 @@ FACT_TYPE_BY_ACTION: dict[DraftActionType, str] = {
 #: Appended to the saved reply (wording approved 13 Oct).
 DRAFT_NOTE = "Saved as a draft. You'll confirm it with tonight's report. Reply UNDO if it's wrong."
 
+#: BE-13: the note instead, when the entry's day was already confirmed.
+LATE_REOPEN_NOTE = (
+    "Saved. {site}'s report for {day} was already confirmed but hasn't gone out yet, "
+    "so I've reopened it. Please confirm the day again. Reply UNDO if it's wrong."
+)
+LATE_REVISED_NOTE = (
+    "Saved as a late entry. {site}'s report for {day} was already confirmed and sent, "
+    "so this shows in your next report and in a revised copy of {day}'s. "
+    "Reply UNDO if it's wrong."
+)
+
 #: What a reply to "UNDO" says, per fact type.
 _UNDONE_LABEL: dict[str, str] = {
     "activity": "the work update",
@@ -175,6 +186,53 @@ class SaveFirstService:
                 "save_first.record_draft_failed fact_type=%s fact_id=%s", fact_type, fact_id
             )
             return False
+
+    async def note_for(
+        self, *, organization_id: str, action_type: DraftActionType, fact_id: str
+    ) -> str:
+        """The line under the saved reply: the usual draft note, or -- when
+        the entry's site day was already confirmed -- what happens to it
+        (BE-13). Falls back to the usual note on any doubt."""
+        fact_type = FACT_TYPE_BY_ACTION.get(action_type)
+        org_uuid = canonical_uuid(organization_id)
+        fact_uuid = canonical_uuid(fact_id)
+        if fact_type is None or org_uuid is None or fact_uuid is None:
+            return DRAFT_NOTE
+        try:
+            from sqlalchemy import text
+
+            from mesiri.application.dpr.late_entries import REOPENED, day_status_for_fact
+            from mesiri.infrastructure.postgres.repositories.fact_reviews import _FACT_SOURCES
+
+            table, date_expr = _FACT_SOURCES[fact_type]
+            async with self._db.transaction() as conn:
+                located = (
+                    await conn.execute(
+                        text(
+                            f"SELECT t.site_id, {date_expr} AS fact_date, s.name AS site_name "
+                            f"FROM {table} t LEFT JOIN sites s ON s.id = t.site_id "
+                            "WHERE t.organization_id = :org AND t.id = :id"
+                        ),
+                        {"org": org_uuid, "id": fact_uuid},
+                    )
+                ).mappings().first()
+                if located is None or located["site_id"] is None:
+                    return DRAFT_NOTE
+                outcome = await day_status_for_fact(
+                    conn,
+                    organization_id=org_uuid,
+                    site_id=located["site_id"],
+                    fact_date=located["fact_date"],
+                )
+        except Exception:  # noqa: BLE001 -- the usual note is never wrong to show
+            _log.exception("save_first.note_failed fact_type=%s fact_id=%s", fact_type, fact_id)
+            return DRAFT_NOTE
+        if outcome is None:
+            return DRAFT_NOTE
+        day = f"{located['fact_date'].day} {located['fact_date']:%b}"
+        site = located["site_name"] or "This site"
+        template = LATE_REOPEN_NOTE if outcome == REOPENED else LATE_REVISED_NOTE
+        return template.format(site=site, day=day)
 
     async def undo_latest_draft(
         self, *, organization_id: str | None, actor_user_id: str | None

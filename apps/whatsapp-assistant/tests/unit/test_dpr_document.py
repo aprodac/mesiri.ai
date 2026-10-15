@@ -306,3 +306,26 @@ def test_render_html_marks_a_possible_duplicate_work_item():
     payload = _payload(activities=[base, {**base, "possible_duplicate": True}], activity_count=2)
     html = render_html(build_document_data(code="DPR-1", payload=payload))
     assert html.count("Possible duplicate") == 1
+
+
+def test_late_entries_section_lists_earlier_days_escaped():
+    """BE-13: earlier days' entries that arrived after that day was confirmed."""
+    data = build_document_data(
+        code="DPR-2",
+        payload=_payload(
+            late_entries=[
+                {"report_date": "2026-07-26", "summary": "Received 20 bags Cement"},
+                {"report_date": "2026-07-26", "summary": "<b>x</b>"},
+            ]
+        ),
+    )
+    assert [e.summary for e in data.late_entries] == ["Received 20 bags Cement", "<b>x</b>"]
+    html = render_html(data)
+    assert "Late entries for earlier days" in html
+    assert "Received 20 bags Cement" in html
+    assert "&lt;b&gt;x&lt;/b&gt;" in html
+
+
+def test_no_late_entries_section_when_there_are_none():
+    html = render_html(build_document_data(code="DPR-3", payload=_payload()))
+    assert "Late entries for earlier days" not in html

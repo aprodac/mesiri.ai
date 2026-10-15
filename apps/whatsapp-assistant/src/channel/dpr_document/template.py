@@ -187,6 +187,19 @@ _DOCUMENT_TEMPLATE_SRC = """
     (stock now {{ m.closing }} {{ m.unit }}). A delivery or opening stock may be missing.</p>
   {% endfor %}
 
+  {% if data.late_entries %}
+  <div class="section-title">Late entries for earlier days</div>
+  <p class="stock-flag">Sent after that day's report was confirmed. Not part of the confirmed report for that day.</p>
+  <table>
+    <thead><tr><th style="width:18%">Day</th><th>Entry</th></tr></thead>
+    <tbody>
+      {% for e in data.late_entries %}
+      <tr><td>{{ e.report_date }}</td><td>{{ e.summary }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
   {% if data.tomorrow_plan %}
   <div class="section-title">Tomorrow's Plan</div>
   <p>{{ data.tomorrow_plan|e }}</p>
