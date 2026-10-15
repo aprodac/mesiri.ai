@@ -43,6 +43,9 @@ async def test_engine():
 async def clean_db(test_engine: AsyncEngine):
     async with test_engine.begin() as conn:
         await conn.execute(sa.text("DELETE FROM material_movements"))
+        # A correction row points at the row it corrects, across the two tables.
+        await conn.execute(sa.text("UPDATE material_usage SET reverses_movement_id = NULL"))
+        await conn.execute(sa.text("UPDATE material_receipts SET reverses_movement_id = NULL"))
         await conn.execute(sa.text("DELETE FROM material_receipts"))
         await conn.execute(sa.text("DELETE FROM material_usage"))
         await conn.execute(sa.text("DELETE FROM materials_catalog"))
@@ -62,7 +65,12 @@ async def clean_db(test_engine: AsyncEngine):
 
 
 @pytest.fixture
-async def client(test_engine: AsyncEngine):
+async def client(test_engine: AsyncEngine, monkeypatch):
+    # The module gate reads enabled modules through the app container's
+    # Postgres, which is the in-memory fake under the test storage settings
+    # (no `transaction`). Every test org has the default modules, so read
+    # those, as a bare app does.
+    monkeypatch.setattr("mesiri.domains.shared.modules._database_for", lambda request: None)
     app = create_app()
 
     async def override_get_db_conn():
@@ -1228,4 +1236,5 @@ async def test_a_corrected_purchase_is_flagged_so_spend_totals_can_exclude_it(
     assert original["is_reversed"] is True
     # The cost stays on the row -- the purchase did happen. It is the spend
     # total that must leave it out, which is what the flag enables.
-    assert Decimal(original["total_cost"]) == Decimal("62500.00")
+    assert Decimal(original["total_cost"]) == Decimal("31250.00")  # 100 x 312.50
+
