@@ -50,7 +50,13 @@ async def test_superadmin_creation_is_recorded_with_the_admin(conn) -> None:
     admin_id = uuid.uuid4()
     created = await create_company(
         conn,
-        NewCompany(name="Suresh Builders", owner_name="Suresh", owner_phone=_phone()),
+        NewCompany(
+            name="Suresh Builders",
+            owner_name="Suresh",
+            owner_phone=_phone(),
+            project_name="Green Villa",
+            site_names=("Block A", "Block B"),
+        ),
         now=_NOW,
         actor=audit.actor_from_admin({"sub": str(admin_id), "name": "Priya"}),
     )
@@ -66,6 +72,7 @@ async def test_superadmin_creation_is_recorded_with_the_admin(conn) -> None:
     assert entry.occurred_at == _NOW
     assert entry.details["owner_user_id"] == str(created.owner_user_id)
     assert entry.details["signup_source"] == "superadmin"
+    assert entry.details["site_ids"] == [str(site.site_id) for site in created.sites]
 
 
 async def test_whatsapp_signup_is_recorded_as_the_owner(conn) -> None:

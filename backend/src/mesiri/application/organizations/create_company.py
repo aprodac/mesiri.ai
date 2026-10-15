@@ -416,7 +416,7 @@ async def create_company(
             "owner_email": new.owner_email,
             "owner_whatsapp_number": new.owner_phone,
             "project_id": project_id,
-            "site_id": site_id,
+            "site_ids": [site.site_id for site in sites],
         },
         now=now,
     )
