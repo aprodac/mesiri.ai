@@ -888,14 +888,20 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     from runtime.setup_questions import SetupQuestions
     from runtime.team_notify import TeamNotifier
 
+    team_notifier = TeamNotifier()
     setup_questions = SetupQuestions(
         db=material_db,
         redis=redis_client,
         storage=object_storage,
-        notifier=TeamNotifier(),
+        notifier=team_notifier,
         workflow_runtime=workflow_runtime,
         start_site_followup=start_project_setup_followup,
     )
+
+    # SS-08: expired-trial replies and "CONTINUE" from a trial owner.
+    from runtime.trial_journey import TrialJourney
+
+    trial_journey = TrialJourney(db=material_db, notifier=team_notifier)
 
     from runtime.message_journey import build_message_handlers
 
@@ -960,6 +966,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         signup_journey=signup_journey,
         contact_share=contact_share,
         setup_questions=setup_questions,
+        trial_journey=trial_journey,
     )
 
     receiver = WhatsAppReceiver(

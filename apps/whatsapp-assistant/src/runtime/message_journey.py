@@ -109,6 +109,7 @@ if TYPE_CHECKING:
     from runtime.setup_questions import SetupQuestions
     from runtime.signup_journey import SignupJourney
     from runtime.site_issue_query import SiteIssueTargetQueryService
+    from runtime.trial_journey import TrialJourney
     from runtime.vendor_query import VendorQueryService
     from runtime.workforce_query import WorkforceQueryService
     from understanding.pipeline import UnderstandingPipeline
@@ -176,6 +177,7 @@ def build_message_handlers(
     signup_journey: SignupJourney | None = None,
     contact_share: ContactShareJourney | None = None,
     setup_questions: SetupQuestions | None = None,
+    trial_journey: TrialJourney | None = None,
     reply_composer: ReplyComposer | None = None,
     user_language_store: UserLanguageStore | None = None,
 ) -> tuple[Any, Any]:
@@ -392,9 +394,25 @@ def build_message_handlers(
 
         if not ctx.org_active:
             _log.info("context.org_suspended org=%s", ctx.organization_id)
-            await sender.send_text(wa_id, ORG_SUSPENDED_MESSAGE)
+            # SS-08: an ended trial gets its own reply (and "continue");
+            # a suspended company keeps the generic one.
+            inactive_reply = None
+            if trial_journey is not None:
+                try:
+                    inactive_reply = await trial_journey.handle_inactive(message, ctx)
+                except Exception:  # noqa: BLE001 — fall back to the generic reply
+                    _log.exception("trial.inactive_reply_failed org=%s", ctx.organization_id)
+            if inactive_reply is None:
+                inactive_reply = ReplySpec(text=ORG_SUSPENDED_MESSAGE)
+            await send_reply_spec(
+                inactive_reply,
+                wa_id,
+                send_text=sender.send_text,
+                send_list=sender.send_list,
+                send_button=sender.send_button,
+            )
             await message_logger.log_reply(
-                correlation_id=message.correlation_id, reply=ORG_SUSPENDED_MESSAGE
+                correlation_id=message.correlation_id, reply=inactive_reply.text
             )
             await message_logger.mark_completed(correlation_id=message.correlation_id)
             return
@@ -531,6 +549,21 @@ def build_message_handlers(
         # runtime/inbound_journey/seeding.py). Handled before everything
         # else for the same reason as the team-photo tap above: "Skip" must
         # not fall through to the confirmation classifier.
+        if trial_journey is not None:
+            # SS-08: a trial owner answering the trial reminder with CONTINUE.
+            try:
+                continue_reply = await trial_journey.handle_continue(message, ctx)
+            except Exception:  # noqa: BLE001 — fall through to the normal journey
+                _log.exception("trial.continue_failed user=%s", ctx.user_id)
+                continue_reply = None
+            if continue_reply is not None:
+                await _send_spec(continue_reply, wa_id)
+                await message_logger.log_reply(
+                    correlation_id=message.correlation_id, reply=continue_reply.text
+                )
+                await message_logger.mark_completed(correlation_id=message.correlation_id)
+                return
+
         if setup_questions is not None:
             # SS-14: an answer to a daily setup question -- a tap on its
             # buttons, or the letterhead/logo photo it asked for. Before the
