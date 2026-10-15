@@ -10,6 +10,7 @@ from collections.abc import Awaitable, Callable, Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from channel.whatsapp import usage as message_usage
 from ingress.deduplication import DeduplicationStore
 from ingress.media_handoff import upload_downloaded_media
 from ingress.media_ingestion import DownloadedMedia, MediaDownloader
@@ -201,6 +202,8 @@ class WhatsAppReceiver:
         """
         scheduled_count = 0
         _log_failed_statuses(payload)
+        # BE-25: Meta's pricing for messages we sent (billable, category).
+        message_usage.report_pricing(payload)
 
         for context in sorted(self._extract_message_contexts(payload), key=_sort_key):
             message_id = str(context.message["id"])

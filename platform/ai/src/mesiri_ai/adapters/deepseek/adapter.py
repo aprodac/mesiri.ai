@@ -13,6 +13,7 @@ from typing import Any
 
 import httpx
 
+from ... import usage
 from ...core.errors import malformed_output
 from ...core.fallback import call_with_resilience
 from ...models import (
@@ -481,6 +482,17 @@ class DeepSeekExtractionProvider:
             max_retries=self._s.max_retries,
             correlation_id=correlation_id,
         )
+        # BE-25: what this call used, for per-company cost tracking.
+        usage.report(
+            usage.ProviderUsage(
+                provider=self.provider,
+                operation="extract",
+                model=self._s.model,
+                correlation_id=correlation_id,
+                latency_ms=latency_ms,
+                **usage.openai_style_usage(raw),
+            )
+        )
         try:
             content = raw["choices"][0]["message"]["content"]
             data = json.loads(content)
@@ -529,6 +541,17 @@ class DeepSeekExtractionProvider:
             timeout_seconds=self._s.timeout_seconds,
             max_retries=self._s.max_retries,
             correlation_id=correlation_id,
+        )
+        # BE-25: what this call used, for per-company cost tracking.
+        usage.report(
+            usage.ProviderUsage(
+                provider=self.provider,
+                operation="decompose",
+                model=self._s.model,
+                correlation_id=correlation_id,
+                latency_ms=latency_ms,
+                **usage.openai_style_usage(raw),
+            )
         )
         try:
             content = raw["choices"][0]["message"]["content"]
@@ -586,6 +609,17 @@ class DeepSeekExtractionProvider:
             timeout_seconds=self._s.timeout_seconds,
             max_retries=self._s.max_retries,
             correlation_id=correlation_id,
+        )
+        # BE-25: what this call used, for per-company cost tracking.
+        usage.report(
+            usage.ProviderUsage(
+                provider=self.provider,
+                operation="translate",
+                model=self._s.model,
+                correlation_id=correlation_id,
+                latency_ms=latency_ms,
+                **usage.openai_style_usage(raw),
+            )
         )
         try:
             content = raw["choices"][0]["message"]["content"]
