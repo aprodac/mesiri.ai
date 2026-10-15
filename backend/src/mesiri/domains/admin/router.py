@@ -212,7 +212,14 @@ class OrganizationProvision(BaseModel):
     admin_whatsapp_number: str | None = None
     project_name: str | None = None
     site_name: str | None = None
+    # Several sites under the one project (SA-01), instead of site_name.
+    site_names: list[str] | None = None
     start_as: str = START_ACTIVE
+
+
+class ProvisionedSite(BaseModel):
+    site_id: uuid.UUID
+    name: str
 
 
 class ProvisionResponse(OrganizationResponse):
@@ -224,6 +231,7 @@ class ProvisionResponse(OrganizationResponse):
     project_id: uuid.UUID | None = None
     site_id: uuid.UUID | None = None
     materials_seeded: int = 0
+    sites: list[ProvisionedSite] = []
 
 
 @router.post("/provision", response_model=ProvisionResponse)
@@ -243,6 +251,7 @@ async def provision_tenant(
         owner_password=prov_in.admin_password,
         project_name=prov_in.project_name,
         site_name=prov_in.site_name,
+        site_names=tuple(prov_in.site_names or ()),
         start_as=prov_in.start_as,
         signup_source="superadmin",
         deployment_type=prov_in.deployment_type.value,
@@ -269,6 +278,7 @@ async def provision_tenant(
         project_id=created.project_id,
         site_id=created.site_id,
         materials_seeded=created.materials_seeded,
+        sites=[ProvisionedSite(site_id=s.site_id, name=s.name) for s in created.sites],
     )
 
 

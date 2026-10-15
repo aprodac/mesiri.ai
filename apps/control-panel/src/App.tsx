@@ -32,6 +32,7 @@ import SemanticTypes from './SemanticTypes';
 import Workflows from './Workflows';
 import TestMessage from './TestMessage';
 import OrganizationDetail from './OrganizationDetail';
+import CreateCompany from './CreateCompany';
 import SyncHealth from './SyncHealth';
 import Perf from './Perf';
 import QueueHealth from './QueueHealth';
@@ -173,17 +174,6 @@ const Organizations = () => {
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [provisioning, setProvisioning] = useState(false);
-  
-  // Form State
-  const [formData, setFormData] = useState({
-    name: '',
-    deployment_type: 'SaaS',
-    db_route: 'shared-cluster-01',
-    admin_name: '',
-    admin_email: '',
-    admin_password: ''
-  });
 
   const fetchOrgs = () => {
     setLoading(true);
@@ -197,25 +187,6 @@ const Organizations = () => {
     fetchOrgs();
   }, []);
 
-  const handleProvision = (e: React.FormEvent) => {
-    e.preventDefault();
-    setProvisioning(true);
-    api.post('/admin/organizations/provision', formData)
-      .then(() => {
-        setIsModalOpen(false);
-        setFormData({
-          name: '', deployment_type: 'SaaS', db_route: 'shared-cluster-01',
-          admin_name: '', admin_email: '', admin_password: ''
-        });
-        fetchOrgs();
-      })
-      .catch(err => {
-        console.error("Provisioning failed", err);
-        alert(err.response?.data?.detail || "Provisioning failed");
-      })
-      .finally(() => setProvisioning(false));
-  };
-
   return (
     <div className="animate-fade-in" style={{ maxWidth: '1200px' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 'var(--space-6)' }}>
@@ -224,7 +195,7 @@ const Organizations = () => {
           <p className="subtitle">Manage all construction ERP tenants.</p>
         </div>
         <button className="btn-primary" onClick={() => setIsModalOpen(true)}>
-          <Plus size={16} /> Add Tenant
+          <Plus size={16} /> Create company
         </button>
       </header>
       
@@ -271,60 +242,18 @@ const Organizations = () => {
               </tr>
             ))}
             {!loading && orgs.length === 0 && (
-              <tr><td colSpan={5} style={{textAlign: 'center', color: 'var(--neutral-500)'}}>No organizations found. Click "Add Tenant" to create one.</td></tr>
+              <tr><td colSpan={5} style={{textAlign: 'center', color: 'var(--neutral-500)'}}>No organizations found. Click "Create company" to add one.</td></tr>
             )}
           </tbody>
         </table>
       </div>
 
       {isModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h2 style={{ marginBottom: 'var(--space-6)' }}>Provision New Tenant</h2>
-            <form onSubmit={handleProvision}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
-                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                  <label>Company Name</label>
-                  <input required type="text" className="form-input" placeholder="e.g. Acme Construction" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
-                </div>
-                <div className="form-group">
-                  <label>Deployment Type</label>
-                  <select className="form-input" value={formData.deployment_type} onChange={e => setFormData({...formData, deployment_type: e.target.value})}>
-                    <option value="SaaS">SaaS (Shared)</option>
-                    <option value="On-Prem">On-Premise (Dedicated)</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label>Database Route</label>
-                  <input required type="text" className="form-input" value={formData.db_route} onChange={e => setFormData({...formData, db_route: e.target.value})} />
-                </div>
-              </div>
-              
-              <h3 style={{ fontSize: '16px', fontWeight: 600, marginTop: 'var(--space-6)', marginBottom: 'var(--space-4)', color: 'var(--neutral-900)' }}>Initial Admin User</h3>
-              <div className="form-group">
-                <label>Admin Full Name</label>
-                <input required type="text" className="form-input" placeholder="John Doe" value={formData.admin_name} onChange={e => setFormData({...formData, admin_name: e.target.value})} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
-                <div className="form-group">
-                  <label>Admin Email</label>
-                  <input required type="email" className="form-input" placeholder="john@acme.com" value={formData.admin_email} onChange={e => setFormData({...formData, admin_email: e.target.value})} />
-                </div>
-                <div className="form-group">
-                  <label>Admin Password</label>
-                  <input required type="password" className="form-input" placeholder="Temporary password" value={formData.admin_password} onChange={e => setFormData({...formData, admin_password: e.target.value})} />
-                </div>
-              </div>
-
-              <div className="modal-actions">
-                <button type="button" className="btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                <button type="submit" className="btn-primary" disabled={provisioning}>
-                  {provisioning ? 'Provisioning...' : 'Provision Tenant'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <CreateCompany
+          onClose={() => setIsModalOpen(false)}
+          onCreated={fetchOrgs}
+          onOpen={(orgId) => navigate(`/organizations/${orgId}`)}
+        />
       )}
     </div>
   );

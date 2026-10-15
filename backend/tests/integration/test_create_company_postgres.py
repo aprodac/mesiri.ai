@@ -232,3 +232,27 @@ async def test_materials_stay_per_company(conn) -> None:
         conn, NewCompany(name="B Co", owner_name="B", owner_phone="9876500013"), now=_NOW
     )
     assert a.materials_seeded == b.materials_seeded > 0
+
+
+async def test_several_sites_under_one_project(conn) -> None:
+    created = await create_company(
+        conn,
+        NewCompany(
+            name="Skyline Builders",
+            owner_name="Ravi",
+            owner_phone="+91 98765 00009",
+            project_name="Skyline Apartments",
+            site_names=("Block A", "Block B"),
+        ),
+        now=_NOW,
+    )
+
+    result = await conn.execute(
+        text("SELECT id, name, project_id FROM sites WHERE organization_id = :org"),
+        {"org": created.organization_id},
+    )
+    rows = result.mappings().all()
+    assert sorted(r["name"] for r in rows) == ["Block A", "Block B"]
+    assert {r["project_id"] for r in rows} == {created.project_id}
+    assert [s.name for s in created.sites] == ["Block A", "Block B"]
+    assert created.site_id == created.sites[0].site_id
