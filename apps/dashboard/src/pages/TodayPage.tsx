@@ -18,74 +18,28 @@ import { useReadOnly } from '@/lib/trial'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn, formatClock } from '@/lib/utils'
+import {
+  CHIP,
+  FROZEN,
+  MISSING_LABELS,
+  errorDetail,
+  hasUpdates,
+  localIsoDate,
+  missingText,
+  siteDayPath,
+  siteStatus,
+} from '@/lib/site-day'
 
 // Today page (WEB-03): every site's working day, grouped by project, with
 // what is missing and where each project's DPR stands. Data comes from
 // GET /dpr/site-days (BE-08), live counts included; "no work today" is the
 // BE-14 site condition and "Send now" the BE-16 send.
 
-const CHIP = 'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap'
-
-const MISSING_LABELS: Record<string, string> = {
-  work_done: 'work done',
-  labour: 'labour count',
-  photos: 'photos',
-  materials: 'materials',
-  weather: 'weather',
-  tomorrow_plan: "tomorrow's plan",
-}
-
 const SEVERITY_RANK: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 }
-const FROZEN = ['approved', 'published']
-
-function localIsoDate(d: Date): string {
-  const offset = d.getTimezoneOffset() * 60_000
-  return new Date(d.getTime() - offset).toISOString().slice(0, 10)
-}
 
 function formatTime(iso: string | null): string | null {
   if (!iso) return null
   return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-}
-
-// The API's own reason ("today's DPR ... has already been sent"), which
-// reaches the page since BE-28 stopped turning such errors into 500s.
-function errorDetail(err: unknown): string | null {
-  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
-  if (typeof detail !== 'string' || !detail) return null
-  return detail.charAt(0).toUpperCase() + detail.slice(1)
-}
-
-function hasUpdates(site: SiteDayItem): boolean {
-  return site.work_items > 0 || site.workers > 0 || site.site_working === 'none'
-}
-
-function siteStatus(site: SiteDayItem): { label: string; className: string } {
-  switch (site.status) {
-    case 'needs_details':
-      return { label: 'Needs details', className: 'bg-draft-soft text-draft' }
-    case 'ready':
-      return { label: 'Ready', className: 'bg-info-soft text-info' }
-    case 'in_review':
-      return { label: 'With engineer', className: 'bg-info-soft text-info' }
-    case 'approved':
-      return { label: 'Confirmed', className: 'bg-success-soft text-success' }
-    case 'published':
-      return { label: 'Sent', className: 'bg-success-soft text-success' }
-    case 'not_reported':
-      return { label: 'Not reported', className: 'bg-muted text-muted-foreground' }
-    default:
-      return hasUpdates(site)
-        ? { label: 'Collecting', className: 'bg-info-soft text-info' }
-        : { label: 'No updates', className: 'bg-muted text-muted-foreground' }
-  }
-}
-
-function missingText(site: SiteDayItem): string | null {
-  const missing = site.missing_sections
-  if (!missing) return null
-  const parts = [...missing.blocking, ...missing.optional].map((key) => MISSING_LABELS[key] ?? key)
-  return parts.length ? `Missing: ${parts.join(', ')}` : null
 }
 
 function projectDprLabel(project: ProjectDayItem, sites: SiteDayItem[]): string {
@@ -121,11 +75,13 @@ function Stat({ value, label }: { value: number; label: string }) {
 
 function SiteCard({
   site,
+  date,
   singleSite,
   busy,
   onNoWork,
 }: {
   site: SiteDayItem
+  date: string
   singleSite: boolean
   busy: boolean
   onNoWork: (site: SiteDayItem) => void
@@ -186,8 +142,8 @@ function SiteCard({
           </Button>
         )}
         <Button asChild variant="outline" className="h-11 font-semibold">
-          <Link to={`/operations/daily-reports?project=${site.project_id}`}>
-            {site.daily_report_id ? 'Open daily reports' : 'Daily reports'}
+          <Link to={siteDayPath(site.site_id, date)}>
+            {(site.drafts ?? 0) > 0 ? 'Review and confirm' : 'Open site DPR'}
           </Link>
         </Button>
       </div>
@@ -394,6 +350,7 @@ export default function TodayPage() {
                     <SiteCard
                       key={site.site_id}
                       site={site}
+                      date={date}
                       singleSite={singleSite}
                       busy={busySite === site.site_id}
                       onNoWork={markNoWork}
