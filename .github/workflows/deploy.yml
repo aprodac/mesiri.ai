@@ -184,7 +184,21 @@ jobs:
           # which only worked because production used exactly those (INF-11).
           # alembic.ini resolves its paths from its own location (%(here)s).
           cd "${REPO}"
-          ${VENV}/bin/alembic -c backend/alembic.ini upgrade head
+          # BE-03: once the app logs in as mesiri_app (no rights to change
+          # tables), migrations use the owner login kept in
+          # MESIRI_MIGRATION_POSTGRES__USER/PASSWORD. Environment variables
+          # win over .env in the settings loader. Unset = the app login, as
+          # before the switch (infra/deploy/app_db_login.sh).
+          MIG_USER=$(grep -E '^MESIRI_MIGRATION_POSTGRES__USER=' .env | tail -1 | cut -d= -f2- | tr -d "'\\\" \r" || true)
+          MIG_PASS=$(grep -E '^MESIRI_MIGRATION_POSTGRES__PASSWORD=' .env | tail -1 | cut -d= -f2- | tr -d "'\\\" \r" || true)
+          if [ -n "${MIG_USER}" ]; then
+            echo "  as the migration login (${MIG_USER})"
+            MESIRI_POSTGRES__USER="${MIG_USER}" MESIRI_POSTGRES__PASSWORD="${MIG_PASS}" \
+              ${VENV}/bin/alembic -c backend/alembic.ini upgrade head
+          else
+            ${VENV}/bin/alembic -c backend/alembic.ini upgrade head
+          fi
+          unset MIG_USER MIG_PASS
 
           # The app's port: 8000 unless the server's .env sets MESIRI_APP_PORT
           # (INF-11 -- the 2026-10 server already uses 8000 for another app).

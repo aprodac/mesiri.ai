@@ -32,6 +32,42 @@ Only to a login that is neither superuser nor table owner. Production's app
 login is the Docker image's superuser until BE-03 step 3 switches the app and
 worker to `mesiri_app`; migrations keep the owner login.
 
+## Switching production to `mesiri_app` (step 3, run once by Ilan)
+
+On the VPS, as root, after the deploy that brings migration `0484`:
+
+```bash
+bash /opt/mesiri/infra/deploy/app_db_login.sh check    # read-only
+bash /opt/mesiri/infra/deploy/app_db_login.sh switch
+```
+
+`switch`:
+1. creates `mesiri_app` (login; not superuser; no BYPASSRLS; read/write on
+   tables, sequences and functions, including ones later migrations create)
+   with a random password, and checks it connects and is not exempt;
+2. copies `.env` to `.env.before-be03-<time>`, then sets
+   `MESIRI_POSTGRES__USER/PASSWORD` to `mesiri_app` and keeps the old login as
+   `MESIRI_MIGRATION_POSTGRES__USER/PASSWORD` (deploy.yml runs migrations with
+   it);
+3. restarts `mesiri` and `mesiri-worker`, waits for `/health`, and restores
+   the previous `.env` by itself if it fails.
+
+Then: one WhatsApp test message and the dashboard Today page.
+
+**Rollback:** `bash /opt/mesiri/infra/deploy/app_db_login.sh rollback`
+(restores the latest `.env` backup and restarts; `mesiri_app` stays, unused).
+
+If Postgres runs from `infra/docker-compose.prod.yml`: that file reads
+`MESIRI_POSTGRES__USER/PASSWORD` for the container's own user, which only
+matters when a new, empty volume is initialised. With an existing volume the
+switch changes nothing there.
+
+Never prints a password. Rehearsed locally on 16 Oct against Postgres 16 with
+password authentication: check, switch, app click-through as `mesiri_app`,
+an automation-runner tick, migrations through deploy's migration login,
+a new table usable by the app, rollback, re-switch, and the automatic
+rollback when `/health` fails.
+
 ## Writing new code
 
 - A new table with `organization_id` needs the policy in its migration;
