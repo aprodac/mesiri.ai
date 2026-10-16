@@ -1867,9 +1867,121 @@ export async function reviseDailyReportApi(reportId: string, revisionReason: str
 /** Fetches the DPR PDF as a Blob -- GET /dpr/daily-reports/{id}/pdf serves
  * either the already-rendered Playwright artifact (if the nightly cron has
  * caught up) or an on-demand fpdf2 fallback, transparently to the caller. */
-export async function fetchDailyReportPdfApi(reportId: string): Promise<Blob> {
-  const res = await api.get(`/dpr/daily-reports/${reportId}/pdf`, { responseType: 'blob' })
+export async function fetchDailyReportPdfApi(reportId: string, versionId?: string): Promise<Blob> {
+  const res = await api.get(`/dpr/daily-reports/${reportId}/pdf`, {
+    responseType: 'blob',
+    params: versionId ? { version_id: versionId } : undefined,
+  })
   return res.data
+}
+
+// ─── One site's day, for the site DPR page (WEB-04) ──────────────────────────
+
+export type FactType = 'activity' | 'labour_report' | 'material_receipt' | 'material_usage' | 'site_issue'
+
+/** One item the engineer can confirm or remove (GET /dpr/site-days/{id}). */
+export interface ReviewItem {
+  fact_type: FactType
+  id: string
+  section: 'work' | 'labour' | 'materials' | 'issues'
+  title: string | null
+  detail: string | null
+  review: 'draft' | 'confirmed'
+  flags: ('possible_duplicate' | 'beyond_stock')[]
+  quantities?: { work_type: string | null; quantity: string; unit: string }[]
+  evidence_count?: number
+  severity?: string | null
+  status?: string | null
+}
+
+export interface SiteDayMaterialLine {
+  material_name: string | null
+  unit: string | null
+  received: string
+  used: string
+  adjusted: string
+  opening: string | null
+  closing: string | null
+  beyond_stock: boolean
+}
+
+/** The report as it stands now (the payload a version stores). */
+export interface SiteDayReport {
+  activity_count: number
+  evidence_count: number
+  labour: { headcount: number; named_count: number; trades: { trade: string; headcount: number }[]; total_cost: string }
+  materials: SiteDayMaterialLine[]
+  conditions: {
+    weather: SiteDayConditions['weather']
+    site_working: SiteDayConditions['site_working']
+    tomorrow_plan: string | null
+    hours_lost: string | null
+    hours_lost_source: 'entered' | 'issues' | null
+  }
+  late_entries: { report_date: string; summary: string; outcome: string }[]
+}
+
+export interface DprVersion {
+  id: string
+  version_no: number
+  created_at: string
+  approved_at: string | null
+  approved_by: string | null
+  revision_reason: string | null
+  is_current: boolean
+}
+
+export interface SiteDayDetail {
+  date: string
+  site_id: string
+  project_id: string
+  day: SiteDayItem | null
+  project: ProjectDayItem | null
+  report: SiteDayReport
+  items: ReviewItem[]
+  drafts: number
+  versions: DprVersion[]
+}
+
+export async function fetchSiteDayApi(siteId: string, date: string): Promise<SiteDayDetail> {
+  const res = await api.get<SiteDayDetail>(`/dpr/site-days/${siteId}`, { params: { date } })
+  return res.data
+}
+
+export interface FactSources {
+  messages: {
+    id: string
+    type: string
+    text: string | null
+    media_url: string | null
+    received_at: string | null
+    sender_name: string | null
+    sender_number: string | null
+  }[]
+  readings: {
+    provider: string | null
+    model: string | null
+    confidence: string | null
+    extracted: Record<string, unknown>
+    created_at: string | null
+  }[]
+  photos: { url: string | null; mime_type: string | null; caption: string | null }[]
+  history: { state: string; note: string | null; at: string | null; by: string | null }[]
+}
+
+export async function fetchFactSourcesApi(factType: FactType, factId: string): Promise<FactSources> {
+  const res = await api.get<FactSources>(`/dpr/facts/${factType}/${factId}/sources`)
+  return res.data
+}
+
+/** Confirm one draft (BE-09). */
+export async function confirmFactApi(factType: FactType, factId: string): Promise<void> {
+  await api.post(`/dpr/facts/${factType}/${factId}/confirm`)
+}
+
+/** Remove one draft (BE-09): withdrawn through its own module's undo. */
+export async function rejectFactApi(factType: FactType, factId: string, reason: string): Promise<void> {
+  await api.post(`/dpr/facts/${factType}/${factId}/reject`, { reason })
 }
 
 export interface CreateDailyReportPayload {
