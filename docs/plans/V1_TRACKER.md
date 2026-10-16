@@ -150,7 +150,7 @@
 | WEB-01 | New look and shell (IBM Plex Sans, colour tokens, 6-item sidebar) per the UI design | M | Must | — | done | Claude (session 13 Oct, foundations) | `c0e1fce`. IBM Plex Sans; tokens + dark mode; sidebar V1 order with More; fixed the never-rendering active highlight. Existing pages keep hardcoded status colours |
 | WEB-02 | Hide non-V1 modules using the module switch | S | Must | BE-06 | done | Claude (session 13 Oct, foundations) | `1129cfc` (with WA-07 + default flip). Sidebar filtered, 32 module routes guarded, project page finance button hidden |
 | WEB-03 | Today page, grouped by project | M | Must | BE-08 | done | Claude (session 13 Oct, BE-08) | `d36416c`. `/today` is the home page; per the UI design: summary, sites by project with status/counts/missing, project DPR state + Send now, Mark as no work, needs-attention, open issues. Not clicked through in a browser (needs a running backend) |
-| WEB-04 | Site DPR page: sections, confirm/edit/remove drafts, sources panel, approve & send, versions | L | Must | BE-09 | todo | | "Approve & send" = the engineer's confirm (decided 13 Oct) |
+| WEB-04 | Site DPR page: sections, confirm/edit/remove drafts, sources panel, approve & send, versions | L | Must | BE-09 | claimed | Claude (session 16 Oct) | "Approve & send" = the engineer's confirm (decided 13 Oct) |
 | WEB-05 | Project DPR page | M | Must | BE-16 | todo | | |
 | WEB-06 | Daily Reports history (rework existing page) | M | Must | BE-08 | todo | | |
 | WEB-07 | Issues page | S | Must | — | done | Claude (session 13 Oct, foundations) | `0a43723`. "What's stuck" view; grid removed; no Assigned column (API has ids only) |
