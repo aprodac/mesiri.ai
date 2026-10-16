@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from mesiri.application.audit.record import record_admin_action
+from mesiri.application.identity.phone_numbers import NUMBER_TAKEN_MESSAGE, whatsapp_number_taken
 from mesiri.application.organizations import trial_controls
 from mesiri.application.organizations.companies_overview import company_setup, list_companies
 from mesiri.application.organizations.create_company import (
@@ -852,17 +853,10 @@ async def create_organization_user(
         if clash.first() is not None:
             raise HTTPException(status_code=409, detail="Email already registered")
 
-        if whatsapp:
-            # The number is the join key for inbound WhatsApp messages; two
-            # users sharing one would make routing ambiguous.
-            wa_clash = await conn.execute(
-                sa.select(users_table.c.id).where(users_table.c.whatsapp_number == whatsapp)
-            )
-            if wa_clash.first() is not None:
-                raise HTTPException(
-                    status_code=409,
-                    detail="That WhatsApp number is already mapped to another user",
-                )
+        # The number is the join key for inbound WhatsApp messages (on its
+        # digits); two users sharing one would make routing ambiguous.
+        if whatsapp and await whatsapp_number_taken(conn, whatsapp):
+            raise HTTPException(status_code=409, detail=NUMBER_TAKEN_MESSAGE)
 
         await conn.execute(
             users_table.insert().values(
@@ -1015,20 +1009,12 @@ async def update_organization_user_profile(
         if user_row is None:
             raise HTTPException(status_code=404, detail="User not found in this organization")
 
-        if "whatsapp_number" in updates and updates["whatsapp_number"]:
-            # The number is the join key for inbound messages; two users
-            # sharing one would make routing ambiguous.
-            clash = await conn.execute(
-                sa.select(users_table.c.id).where(
-                    users_table.c.whatsapp_number == updates["whatsapp_number"],
-                    users_table.c.id != user_id,
-                )
-            )
-            if clash.first() is not None:
-                raise HTTPException(
-                    status_code=409,
-                    detail="That WhatsApp number is already mapped to another user",
-                )
+        if updates.get("whatsapp_number") and await whatsapp_number_taken(
+            conn, updates["whatsapp_number"], except_user_id=user_id
+        ):
+            # The number is the join key for inbound messages (on its digits);
+            # two users sharing one would make routing ambiguous.
+            raise HTTPException(status_code=409, detail=NUMBER_TAKEN_MESSAGE)
 
         await conn.execute(
             users_table.update()

@@ -30,6 +30,7 @@ import sqlalchemy as sa
 
 from mesiri.application.audit.record import record_admin_action
 from mesiri.application.dpr.recipients import RecipientError, normalize_phone
+from mesiri.application.identity.phone_numbers import NUMBER_TAKEN_MESSAGE, whatsapp_number_taken
 from mesiri.application.materials.starter_catalog import seed_starter_materials
 from mesiri.domains.audit import actions as audit
 from mesiri.domains.organizations import lifecycle
@@ -280,19 +281,9 @@ async def _assert_owner_free(conn: AsyncConnection, email: str | None, phone: st
         )
         if taken.first() is not None:
             raise CompanyCreationError("Owner email is already registered", conflict=True)
-    if phone is not None:
-        # Compared as digits: older rows may hold "+91 98765 43210".
-        taken = await conn.execute(
-            sa.select(_users.c.id).where(
-                sa.func.regexp_replace(_users.c.whatsapp_number, r"\D", "", "g") == phone
-            )
-        )
-        if taken.first() is not None:
-            # One person in several companies is BE-04; until then a number
-            # belongs to one user, or inbound messages can't be routed.
-            raise CompanyCreationError(
-                "That WhatsApp number already belongs to another user", conflict=True
-            )
+    if phone is not None and await whatsapp_number_taken(conn, phone):
+        # A number belongs to one person, or inbound messages can't be routed.
+        raise CompanyCreationError(NUMBER_TAKEN_MESSAGE, conflict=True)
 
 
 def _default_actor(new: NewCompany, owner_id: uuid.UUID) -> audit.AuditActor:

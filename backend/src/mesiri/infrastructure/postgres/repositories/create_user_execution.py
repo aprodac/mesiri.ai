@@ -5,7 +5,7 @@ Only file permitted to hold SQL for CreateUser execution (capability-
 boundary convention, mirrors add_project_member_execution.py).
 
 The new row gets `username` set to its WhatsApp number's digits (already
-unique via ix_users_whatsapp_number, so reusing it as the login identifier
+unique via ux_users_whatsapp_digits, so reusing it as the login identifier
 sidesteps inventing a separate slug/dedupe scheme -- see migration 0457's
 docstring) and `email` left NULL. `hashed_password` is a bcrypt hash of a
 random secret nobody is ever told -- the column is NOT NULL and auth/
@@ -28,6 +28,10 @@ import bcrypt
 import sqlalchemy as sa
 
 from mesiri.application.identity.create_user_commands import CreateUserCommand
+from mesiri.application.identity.phone_numbers import (
+    NUMBER_TAKEN_MESSAGE,
+    whatsapp_number_taken,
+)
 from mesiri.application.identity.repository import CreateUserExecutionRepository
 from mesiri.infrastructure.postgres.workflow_instance import (
     get_by_id_on_connection,
@@ -119,23 +123,17 @@ class PostgresCreateUserExecutionRepository(CreateUserExecutionRepository):
 
         # Defense-in-depth re-check: the number may have been registered to
         # someone else between draft-build and confirmation (also enforced
-        # by ix_users_whatsapp_number/ix_users_username, but a friendly
-        # rejection beats a raw IntegrityError reaching the user).
-        existing_number = (
+        # by ux_users_whatsapp_digits/ix_users_username, but a friendly
+        # rejection beats a raw IntegrityError reaching the user). Compared on
+        # digits, and never naming the holder: they may be in another company.
+        username_taken = (
             await conn.execute(
-                sa.text(
-                    "SELECT id, full_name FROM users "
-                    "WHERE whatsapp_number = :number OR username = :number"
-                ),
+                sa.text("SELECT 1 FROM users WHERE username = :number"),
                 {"number": cmd.whatsapp_number},
             )
-        ).mappings().first()
-        if existing_number is not None:
-            return await self._reject(
-                conn,
-                cmd.idempotency_key,
-                [f"that WhatsApp number is already registered to {existing_number['full_name']}"],
-            )
+        ).first() is not None
+        if username_taken or await whatsapp_number_taken(conn, cmd.whatsapp_number):
+            return await self._reject(conn, cmd.idempotency_key, [NUMBER_TAKEN_MESSAGE])
 
         user_id = uuid.uuid4()
         await conn.execute(

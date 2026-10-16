@@ -135,7 +135,7 @@ async def test_taken_number_is_refused_before_anything_is_written(conn) -> None:
     )
     before = (await conn.execute(text("SELECT count(*) FROM organizations"))).scalar_one()
 
-    with pytest.raises(CompanyCreationError, match="already belongs") as exc:
+    with pytest.raises(CompanyCreationError, match="already registered on Mesiri") as exc:
         await create_company(
             conn,
             NewCompany(name="Second Co", owner_name="B", owner_phone="098765 00003"),

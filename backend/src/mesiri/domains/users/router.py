@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from ...application.identity.phone_numbers import NUMBER_TAKEN_MESSAGE, whatsapp_number_taken
 from ...infrastructure.postgres.dependency import get_db_conn
 from ..shared.auth import require_admin
 
@@ -129,6 +130,8 @@ async def create_user(
     existing = await conn.execute(sa.select(_users.c.id).where(_users.c.email == body.email))
     if existing.first():
         raise HTTPException(status_code=409, detail="A user with this email already exists")
+    if body.whatsapp_number and await whatsapp_number_taken(conn, body.whatsapp_number):
+        raise HTTPException(status_code=409, detail=NUMBER_TAKEN_MESSAGE)
 
     hashed_password = _bcrypt.hashpw(body.password.encode(), _bcrypt.gensalt()).decode()
 
@@ -216,6 +219,10 @@ async def update_user(
         values["role"] = body.role
     if body.whatsapp_number is not None:
         values["whatsapp_number"] = body.whatsapp_number.strip() or None
+        if values["whatsapp_number"] and await whatsapp_number_taken(
+            conn, values["whatsapp_number"], except_user_id=user_id
+        ):
+            raise HTTPException(status_code=409, detail=NUMBER_TAKEN_MESSAGE)
     if body.password:
         values["hashed_password"] = _bcrypt.hashpw(
             body.password.encode(), _bcrypt.gensalt()

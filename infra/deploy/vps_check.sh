@@ -64,4 +64,8 @@ DB_NAME="$(env_val MESIRI_POSTGRES__DATABASE)"; DB_NAME="${DB_NAME:-mesiri}"
 sudo -u postgres psql -d "${DB_NAME}" -c \
   "SELECT id, email, status, created_at FROM users WHERE role = 'ADMIN' AND organization_id IS NULL ORDER BY created_at"
 
+section "WhatsApp numbers held by more than one user (BE-04): migration 0483 stops if any"
+sudo -u postgres psql -d "${DB_NAME}" -c \
+  "SELECT regexp_replace(whatsapp_number, '\\D', '', 'g') AS digits, count(*) AS users FROM users WHERE whatsapp_number IS NOT NULL AND regexp_replace(whatsapp_number, '\\D', '', 'g') <> '' GROUP BY 1 HAVING count(*) > 1"
+
 section "Done"

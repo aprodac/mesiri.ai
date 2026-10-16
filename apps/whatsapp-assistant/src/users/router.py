@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from mesiri.application.identity.phone_numbers import NUMBER_TAKEN_MESSAGE, whatsapp_number_taken
 from mesiri.domains.identity.auth_service import ALGORITHM, SECRET_KEY
 from users.access_service import AccessPolicy, apply_access_policy
 
@@ -234,6 +235,8 @@ async def create_user(user_in: UserCreate, admin_payload: dict = Depends(get_cur
         )
         if result.first():
             raise HTTPException(status_code=400, detail="Email already registered")
+        if user_in.whatsapp_number and await whatsapp_number_taken(conn, user_in.whatsapp_number):
+            raise HTTPException(status_code=409, detail=NUMBER_TAKEN_MESSAGE)
 
         hashed_pwd = _hash_pw(user_in.password)
         await conn.execute(
@@ -298,6 +301,10 @@ async def update_user(
         existing = result.first()
         if existing is None:
             raise HTTPException(status_code=404, detail="User not found")
+        if values.get("whatsapp_number") and await whatsapp_number_taken(
+            conn, values["whatsapp_number"], except_user_id=user_id
+        ):
+            raise HTTPException(status_code=409, detail=NUMBER_TAKEN_MESSAGE)
 
         if values:
             await conn.execute(
