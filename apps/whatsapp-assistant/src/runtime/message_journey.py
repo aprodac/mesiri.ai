@@ -37,6 +37,7 @@ from interactions.image_purpose import try_hold_new_image_for_purpose_picker
 from mesiri.infrastructure.postgres.tenant import bind_tenant, tenant_scope
 from mesiri_ai.undo_classifier import UNDO_SEMANTIC_HINT, is_undo_trigger
 from mesiri_contracts.assistant.enums import InputModality
+from runtime import forward_batch
 from runtime.account_admin_journey import try_handle_account_admin_command
 from runtime.inbound_journey import (
     process_inbound_message,
@@ -178,6 +179,7 @@ def build_message_handlers(
     memory_coordinator: ConversationMemoryCoordinator,
     signup_journey: SignupJourney | None = None,
     opt_in_journey: Any = None,
+    forward_batcher: Any = None,
     contact_share: ContactShareJourney | None = None,
     setup_questions: SetupQuestions | None = None,
     site_day_review: SiteDayReview | None = None,
@@ -250,6 +252,8 @@ def build_message_handlers(
         """Schedule _send_processing_ack without awaiting it -- the caller's
         real work (the slow understanding call that follows) must start
         immediately, not after this ~600-900ms Meta round trip."""
+        if forward_batch.is_capturing():
+            return  # WA-02: a forwarded batch gets one summary, no acks
         task = asyncio.create_task(_send_processing_ack(wa_id, modality))
         _ack_tasks.add(task)
         task.add_done_callback(_ack_tasks.discard)
@@ -286,7 +290,30 @@ def build_message_handlers(
 
     async def _run_journey(message, raw_payload, retry_of_id=None) -> None:  # type: ignore[no-untyped-def]
         with tenant_scope(None):  # BE-03: bound once the sender is known
-            await _run_journey_scoped(message, raw_payload, retry_of_id)
+            if forward_batcher is None:
+                await _run_journey_scoped(message, raw_payload, retry_of_id)
+                return
+            wa_id = message.sender.wa_id
+            # WA-02: a batch whose summary was lost (a restart) goes first.
+            try:
+                await forward_batcher.flush(wa_id, stale_only=True)
+            except Exception:  # noqa: BLE001 -- never let it cost this message
+                _log.exception("forward_batch.stale_flush_failed")
+            if not forward_batch.is_forwarded(message):
+                await _run_journey_scoped(message, raw_payload, retry_of_id)
+                return
+            # WA-02: processed as usual; its replies join the sender's batch.
+            await forward_batcher.begin(wa_id)
+            capture = None
+            try:
+                with forward_batcher.capturing() as capture:
+                    await _run_journey_scoped(message, raw_payload, retry_of_id)
+            finally:
+                await forward_batcher.finish(
+                    wa_id,
+                    capture.sends if capture else [],
+                    known_sender=capture.known_sender if capture else False,
+                )
 
     async def _run_journey_scoped(message, raw_payload, retry_of_id) -> None:  # type: ignore[no-untyped-def]
         timer = StepTimer()
@@ -345,6 +372,7 @@ def build_message_handlers(
             _resolved_actors[message.correlation_id] = ctx
             # BE-03: the rest of this message works for the sender's company.
             bind_tenant(org_id)
+            forward_batch.mark_known_sender()  # WA-02: only users' forwards batch
 
         # Best-effort inbound message log (for debugging/replay). raw_payload
         # is a self-contained, replayable envelope of the raw Meta webhook

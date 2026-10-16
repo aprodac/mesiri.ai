@@ -820,12 +820,22 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         # company's capture_mode is switched back to confirm_first.
         save_first=SaveFirstService(material_db, org_settings_query),
     )
-    sender = WhatsAppSender(
+    # WA-02: replies to a forwarded batch are held back for one summary.
+    from runtime.forward_batch import BatchingSender, ForwardBatcher
+
+    whatsapp_sender = WhatsAppSender(
         client=http_client,
         access_token=settings.access_token,
         phone_number_id=settings.phone_number_id,
         api_version=settings.api_version,
         graph_base_url=settings.graph_base_url,
+    )
+    sender = BatchingSender(whatsapp_sender)
+    forward_window = float(os.environ.get("MESIRI_FORWARD_BATCH_SECONDS", "10") or 0)
+    forward_batcher = (
+        ForwardBatcher(redis=redis_client, sender=whatsapp_sender, window_seconds=forward_window)
+        if forward_window > 0
+        else None
     )
 
     # Backend capability boundary: create once, reuse the connection pool.
@@ -951,6 +961,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         memory_coordinator=memory_coordinator,
         signup_journey=signup_journey,
         opt_in_journey=opt_in_journey,
+        forward_batcher=forward_batcher,
         contact_share=contact_share,
         setup_questions=setup_questions,
         site_day_review=site_day_review,
