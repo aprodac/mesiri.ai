@@ -262,6 +262,123 @@ class PostgresFactReviewRepository:
         ).mappings().all()
         return {row["site_id"]: int(row["drafts"]) for row in rows}
 
+    async def sources(
+        self, *, organization_id: uuid.UUID, fact_type: str, fact_id: uuid.UUID
+    ) -> dict[str, Any]:
+        """Where one item came from (WEB-04's sources panel): the WhatsApp
+        message(s) behind it with who sent them, what the AI read and how
+        sure it was, its photos, and its draft/confirm/reject history.
+        Media come back as object keys; the router signs them. An item typed
+        on the dashboard simply has no messages."""
+        if fact_type not in _FACT_SOURCES:
+            raise FactReviewError(f"unknown fact type {fact_type!r}")
+        params = {"org": organization_id, "type": fact_type, "id": fact_id}
+        history = (
+            await self._conn.execute(
+                text(
+                    "SELECT fr.state, fr.note, fr.created_at, u.full_name AS actor_name "
+                    "FROM fact_reviews fr LEFT JOIN users u ON u.id = fr.actor_user_id "
+                    "WHERE fr.organization_id = :org AND fr.fact_type = :type "
+                    "AND fr.fact_id = :id ORDER BY fr.created_at, fr.id"
+                ),
+                params,
+            )
+        ).mappings().all()
+        readings = (
+            await self._conn.execute(
+                text(
+                    "SELECT DISTINCT ON (e.id) e.id, e.correlation_id, e.inbound_message_id, "
+                    "e.provider, e.model, e.confidence, e.extracted, e.created_at "
+                    "FROM fact_reviews fr JOIN extractions e ON e.id = fr.extraction_id "
+                    "WHERE fr.organization_id = :org AND fr.fact_type = :type "
+                    "AND fr.fact_id = :id AND e.organization_id = :org"
+                ),
+                params,
+            )
+        ).mappings().all()
+        message_ids = [r["inbound_message_id"] for r in readings if r["inbound_message_id"]]
+        correlation_ids = [r["correlation_id"] for r in readings if r["correlation_id"]]
+        messages: list[Any] = []
+        if message_ids or correlation_ids:
+            messages = (
+                await self._conn.execute(
+                    text(
+                        "SELECT im.id, im.message_type, im.body_text, im.media_object_key, "
+                        "im.received_at, im.sender_wa_id, u.full_name AS sender_name "
+                        "FROM inbound_messages im "
+                        "LEFT JOIN users u ON u.organization_id = im.organization_id "
+                        "  AND u.whatsapp_number IS NOT NULL "
+                        "  AND regexp_replace(u.whatsapp_number, '\\D', '', 'g') "
+                        "      = regexp_replace(im.sender_wa_id, '\\D', '', 'g') "
+                        "WHERE im.organization_id = :org "
+                        "AND (im.id = ANY(:ids) OR im.correlation_id = ANY(:cids)) "
+                        "ORDER BY im.received_at, im.id"
+                    ),
+                    {"org": organization_id, "ids": message_ids, "cids": correlation_ids},
+                )
+            ).mappings().all()
+        photos: list[Any] = []
+        if fact_type == fact_review.ACTIVITY:
+            photos = (
+                await self._conn.execute(
+                    text(
+                        "SELECT pa.media_object_key, pa.mime_type, "
+                        "COALESCE(pa.caption, pa.ai_caption) AS caption, pa.created_at "
+                        "FROM progress_attachments pa JOIN activities a ON a.id = pa.parent_id "
+                        "WHERE pa.parent_type = 'ACTIVITY' AND pa.parent_id = :id "
+                        "AND a.organization_id = :org AND pa.media_object_key IS NOT NULL "
+                        "ORDER BY pa.created_at"
+                    ),
+                    {"org": organization_id, "id": fact_id},
+                )
+            ).mappings().all()
+
+        def when(value: Any) -> str | None:
+            return value.isoformat() if value is not None else None
+
+        return {
+            "messages": [
+                {
+                    "id": str(m["id"]),
+                    "type": m["message_type"],
+                    "text": m["body_text"],
+                    "media_object_key": m["media_object_key"],
+                    "received_at": when(m["received_at"]),
+                    "sender_name": m["sender_name"],
+                    "sender_number": m["sender_wa_id"],
+                }
+                for m in messages
+            ],
+            "readings": [
+                {
+                    "provider": r["provider"],
+                    "model": r["model"],
+                    "confidence": r["confidence"],
+                    "extracted": r["extracted"] if not isinstance(r["extracted"], str)
+                    else json.loads(r["extracted"]),
+                    "created_at": when(r["created_at"]),
+                }
+                for r in readings
+            ],
+            "photos": [
+                {
+                    "media_object_key": p["media_object_key"],
+                    "mime_type": p["mime_type"],
+                    "caption": p["caption"],
+                }
+                for p in photos
+            ],
+            "history": [
+                {
+                    "state": h["state"],
+                    "note": h["note"],
+                    "at": when(h["created_at"]),
+                    "by": h["actor_name"],
+                }
+                for h in history
+            ],
+        }
+
     async def locate(
         self, organization_id: uuid.UUID, fact_type: str, fact_id: uuid.UUID
     ) -> dict[str, Any]:

@@ -283,6 +283,15 @@ AI Extraction → Save as DRAFT (+ reply "Saved as a draft… Reply UNDO")
   (expenses, transfers), creating users, admin actions -- still confirms before
   saving. The company setting `capture_mode = confirm_first` (Mesiri team only)
   restores the old behaviour for capture too.
+- **Site DPR page reads (WEB-04):** `GET /dpr/site-days/{site_id}?date=` (the
+  day, the report as it stands, `items` = every confirmable item with its fact
+  type, id, draft/confirmed and flags, and the versions);
+  `GET /dpr/facts/{type}/{id}/sources` (WhatsApp messages and sender, what the
+  AI read and its confidence, photos, review history);
+  `GET /dpr/daily-reports/{id}/versions`, and `.../pdf?version_id=` for an
+  older version. `items` is built beside the payload, never stored in it, so
+  versions and PDFs are unchanged. All of them 404 for a site outside the
+  caller's site access (custom sites, BE-34).
 
 *Previously:* "Nothing is persisted before an explicit confirmation." That
 made every site update a two-message exchange, which supervisors skipped.

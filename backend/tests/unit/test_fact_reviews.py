@@ -429,7 +429,7 @@ async def test_the_dpr_leaves_out_withdrawn_issues_and_reversed_materials():
 
     from mesiri.infrastructure.postgres.repositories.dpr import PostgresDprRepository
 
-    source = inspect.getsource(PostgresDprRepository.assemble_site_report_payload)
+    source = inspect.getsource(PostgresDprRepository.assemble_site_day)
     assert "status != 'CANCELLED'" in source
     assert "mm.reversal_of_movement_id IS NULL" in source
     assert "r.reversal_of_movement_id = mm.id" in source

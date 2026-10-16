@@ -353,7 +353,26 @@ class PostgresDprRepository:
         site_id: uuid.UUID,
         report_date: datetime.date,
     ) -> dict[str, Any]:
-        """Compose one SITE-level DPR payload from what was actually
+        payload, _ = await self.assemble_site_day(
+            organization_id=organization_id,
+            project_id=project_id,
+            site_id=site_id,
+            report_date=report_date,
+        )
+        return payload
+
+    async def assemble_site_day(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        project_id: uuid.UUID,
+        site_id: uuid.UUID,
+        report_date: datetime.date,
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        """The payload below, plus the day's reviewable items with their ids
+        (WEB-04's site DPR page; application/dpr/assembly.build_review_items).
+
+        Compose one SITE-level DPR payload from what was actually
         recorded on `report_date` -- activities (with their quantities),
         open+resolved-today site issues, an evidence count per activity,
         the day's labour attendance, and the day's material movements.
@@ -645,9 +664,9 @@ class PostgresDprRepository:
             report_id=this_report.id if this_report else None,
         )
 
-        from mesiri.application.dpr.assembly import build_site_report_payload
+        from mesiri.application.dpr.assembly import build_review_items, build_site_report_payload
 
-        return build_site_report_payload(
+        payload = build_site_report_payload(
             review_states=review_states,
             late_entries=late_entries,
             conditions=dict(conditions_row) if conditions_row else None,
@@ -662,6 +681,15 @@ class PostgresDprRepository:
             material_movement_rows=[dict(row) for row in material_rows],
             material_stock_rows=[dict(row) for row in stock_rows],
         )
+        items = build_review_items(
+            payload=payload,
+            activity_rows=[dict(row) for row in activity_rows],
+            issue_rows=[dict(row) for row in issue_rows],
+            labour_lines=[dict(row) for row in labour_rows],
+            material_movement_rows=[dict(row) for row in material_rows],
+            review_states=review_states,
+        )
+        return payload, items
 
     async def find_site_report(
         self,
@@ -1464,8 +1492,47 @@ class PostgresDprRepository:
             "supersedes_version_id": report_row["current_version_id"],
         }
 
-    async def get_report_for_pdf(
+    async def list_versions(
         self, *, organization_id: uuid.UUID, report_id: uuid.UUID
+    ) -> list[dict[str, Any]]:
+        """Every version of one report, newest first (WEB-04): when it was
+        made, who approved it, why it was revised, and which is current."""
+        rows = (
+            await self._conn.execute(
+                text(
+                    """
+                    SELECT v.id, v.version_no, v.created_at, v.approved_at,
+                           u.full_name AS approved_by, v.revision_reason,
+                           (v.id = dr.current_version_id) AS is_current
+                    FROM daily_report_versions v
+                    JOIN daily_reports dr ON dr.id = v.daily_report_id
+                    LEFT JOIN users u ON u.id = v.approved_by_user_id
+                    WHERE dr.organization_id = :org_id AND dr.id = :id
+                    ORDER BY v.version_no DESC
+                    """
+                ),
+                {"org_id": organization_id, "id": report_id},
+            )
+        ).mappings().all()
+        return [
+            {
+                "id": str(r["id"]),
+                "version_no": r["version_no"],
+                "created_at": r["created_at"].isoformat(),
+                "approved_at": r["approved_at"].isoformat() if r["approved_at"] else None,
+                "approved_by": r["approved_by"],
+                "revision_reason": r["revision_reason"],
+                "is_current": bool(r["is_current"]),
+            }
+            for r in rows
+        ]
+
+    async def get_report_for_pdf(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        report_id: uuid.UUID,
+        version_id: uuid.UUID | None = None,
     ) -> dict[str, Any] | None:
         """Everything a PDF export needs for one report: its current
         version's `payload` (the same JSON the assistant-side Playwright
@@ -1492,11 +1559,13 @@ class PostgresDprRepository:
                     FROM daily_reports dr
                     JOIN projects p ON p.id = dr.project_id
                     LEFT JOIN sites s ON s.id = dr.site_id
-                    LEFT JOIN daily_report_versions v ON v.id = dr.current_version_id
+                    LEFT JOIN daily_report_versions v
+                           ON v.daily_report_id = dr.id
+                          AND v.id = COALESCE(CAST(:version_id AS uuid), dr.current_version_id)
                     WHERE dr.organization_id = :org_id AND dr.id = :id
                     """
                 ),
-                {"org_id": organization_id, "id": report_id},
+                {"org_id": organization_id, "id": report_id, "version_id": version_id},
             )
         ).mappings().first()
         if row is None or row["version_id"] is None:

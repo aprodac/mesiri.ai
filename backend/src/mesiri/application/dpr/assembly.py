@@ -267,6 +267,107 @@ def _conditions(conditions: dict[str, Any], issues: list[dict[str, Any]]) -> dic
     }
 
 
+def build_review_items(
+    *,
+    payload: dict[str, Any],
+    activity_rows: list[dict[str, Any]],
+    issue_rows: list[dict[str, Any]],
+    labour_lines: list[dict[str, Any]],
+    material_movement_rows: list[dict[str, Any]],
+    review_states: dict[str, dict[Any, str]],
+) -> list[dict[str, Any]]:
+    """WEB-04: every item on a site's day the engineer can confirm or remove,
+    with its id and fact type (what /dpr/facts/{type}/{id}/... takes), from
+    the same rows `build_site_report_payload` used. Kept out of the payload
+    on purpose: the payload is what a version stores and the PDF prints.
+
+    Labour and materials are one item per report / receipt-or-usage record,
+    the unit people send and the unit BE-09 reviews."""
+    from mesiri.application.dpr import fact_review
+
+    def review_of(fact_type: str, fact_id: Any) -> str:
+        return (review_states.get(fact_type) or {}).get(fact_id, fact_review.CONFIRMED)
+
+    items: list[dict[str, Any]] = []
+    for activity, row in zip(payload["activities"], activity_rows, strict=True):
+        items.append(
+            {
+                "fact_type": fact_review.ACTIVITY,
+                "id": str(row["id"]),
+                "section": "work",
+                "title": row.get("work_type") or "Work",
+                "detail": row.get("narrative"),
+                "quantities": activity["quantities"],
+                "evidence_count": activity["evidence_count"],
+                "review": activity["review"],
+                "flags": ["possible_duplicate"] if activity.get("possible_duplicate") else [],
+            }
+        )
+
+    by_report: dict[Any, list[dict[str, Any]]] = {}
+    for line in labour_lines:
+        by_report.setdefault(line["report_id"], []).append(line)
+    for report_id, lines in by_report.items():
+        summary = _labour_summary(lines)
+        trades = ", ".join(f"{t['trade']} {t['headcount']}" for t in summary["trades"])
+        items.append(
+            {
+                "fact_type": fact_review.LABOUR_REPORT,
+                "id": str(report_id),
+                "section": "labour",
+                "title": f"{summary['headcount']} workers",
+                "detail": trades or None,
+                "review": review_of(fact_review.LABOUR_REPORT, report_id),
+                "flags": [],
+            }
+        )
+
+    beyond = {
+        (m.get("material_name"), m.get("unit"))
+        for m in payload["materials"]
+        if m.get("beyond_stock")
+    }
+    seen: set[Any] = set()
+    for row in material_movement_rows:
+        fact_type = {
+            "material_receipt": fact_review.MATERIAL_RECEIPT,
+            "material_usage": fact_review.MATERIAL_USAGE,
+        }.get(row.get("source_type") or "")
+        if fact_type is None or row["source_id"] in seen:
+            continue
+        seen.add(row["source_id"])
+        used = fact_type == fact_review.MATERIAL_USAGE
+        flags = ["beyond_stock"] if used and (row.get("material_name"), row.get("unit")) in beyond else []
+        items.append(
+            {
+                "fact_type": fact_type,
+                "id": str(row["source_id"]),
+                "section": "materials",
+                "title": row.get("material_name"),
+                "detail": f"{Decimal(str(row['quantity'])).normalize():f} {row.get('unit') or ''} "
+                f"{'used' if used else 'received'}".replace("  ", " "),
+                "review": review_of(fact_type, row["source_id"]),
+                "flags": flags,
+            }
+        )
+
+    for row in issue_rows:
+        items.append(
+            {
+                "fact_type": fact_review.SITE_ISSUE,
+                "id": str(row["id"]),
+                "section": "issues",
+                "title": row.get("issue_type") or "Issue",
+                "detail": row.get("narrative"),
+                "severity": row.get("severity"),
+                "status": row.get("status"),
+                "review": review_of(fact_review.SITE_ISSUE, row["id"]),
+                "flags": [],
+            }
+        )
+    return items
+
+
 def build_project_report_payload(
     *,
     project_name: str | None,
