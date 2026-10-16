@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from mesiri.authorization.roles import policy_is_org_wide, role_is_org_wide
 from mesiri.domains.identity.auth_service import ALGORITHM, SECRET_KEY
+from mesiri.infrastructure.postgres.tenant import TenantScopedEngine, bind_tenant
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -53,9 +54,10 @@ _engine = None
 
 
 def get_engine():
+    """Scoped to the caller's company on every transaction (BE-03)."""
     global _engine
     if _engine is None:
-        _engine = _get_engine()
+        _engine = TenantScopedEngine(_get_engine())
     return _engine
 
 
@@ -332,7 +334,9 @@ def _decode(authorization: str | None) -> dict:
 
 
 async def get_current_user(authorization: str = Header(None)) -> dict:
-    return _decode(authorization)
+    payload = _decode(authorization)
+    bind_tenant(payload.get("org"))  # BE-03
+    return payload
 
 
 async def _is_org_wide(conn, payload: dict) -> bool:

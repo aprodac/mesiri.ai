@@ -73,6 +73,11 @@ def create_app(lifecycle: AppLifecycle | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
+    # BE-03: every request starts with no company bound (postgres/tenant.py).
+    from mesiri.infrastructure.postgres.tenant import TenantResetMiddleware
+
+    app.add_middleware(TenantResetMiddleware)
+
     # Register Routers
     import logging
 

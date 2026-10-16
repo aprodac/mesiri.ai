@@ -138,6 +138,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
+    # BE-03: every request starts with no company bound (postgres/tenant.py).
+    from mesiri.infrastructure.postgres.tenant import TenantResetMiddleware
+
+    app.add_middleware(TenantResetMiddleware)
+
     # Admin / Control Plane routes
     try:
         from admin.router import router as admin_router

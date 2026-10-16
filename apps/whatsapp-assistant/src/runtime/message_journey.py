@@ -34,6 +34,7 @@ from context.live_identity import (
     resolve_sender,
 )
 from interactions.image_purpose import try_hold_new_image_for_purpose_picker
+from mesiri.infrastructure.postgres.tenant import bind_tenant, tenant_scope
 from mesiri_ai.undo_classifier import UNDO_SEMANTIC_HINT, is_undo_trigger
 from mesiri_contracts.assistant.enums import InputModality
 from runtime.account_admin_journey import try_handle_account_admin_command
@@ -283,6 +284,10 @@ def build_message_handlers(
     _resolved_actors: dict[str, Any] = {}
 
     async def _run_journey(message, raw_payload, retry_of_id=None) -> None:  # type: ignore[no-untyped-def]
+        with tenant_scope(None):  # BE-03: bound once the sender is known
+            await _run_journey_scoped(message, raw_payload, retry_of_id)
+
+    async def _run_journey_scoped(message, raw_payload, retry_of_id) -> None:  # type: ignore[no-untyped-def]
         timer = StepTimer()
         try:
             await _run_journey_steps(message, raw_payload, retry_of_id, timer)
@@ -337,6 +342,8 @@ def build_message_handlers(
         org_id = ctx.organization_id if ctx else None
         if ctx is not None:
             _resolved_actors[message.correlation_id] = ctx
+            # BE-03: the rest of this message works for the sender's company.
+            bind_tenant(org_id)
 
         # Best-effort inbound message log (for debugging/replay). raw_payload
         # is a self-contained, replayable envelope of the raw Meta webhook

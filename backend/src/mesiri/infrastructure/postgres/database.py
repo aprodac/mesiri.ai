@@ -73,10 +73,15 @@ class PostgresDatabase:
         own 401/403/404/409/422 -- still rolls back but is re-raised as it
         is (BE-28). Routes get their connection from `get_db_conn`, which
         holds this transaction open for the whole request, so mapping those
-        turned every ordinary client error into 500 "postgres unavailable"."""
+        turned every ordinary client error into 500 "postgres unavailable".
+
+        Scoped to the bound company, if any (BE-03, postgres/tenant.py)."""
+        from mesiri.infrastructure.postgres.tenant import apply_tenant
+
         engine = self._require_engine
         try:
             async with engine.begin() as conn:
+                await apply_tenant(conn)
                 yield conn
         except Exception as exc:  # noqa: BLE001
             if _is_http_error(exc):

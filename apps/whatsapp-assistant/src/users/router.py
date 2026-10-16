@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from mesiri.application.identity.phone_numbers import NUMBER_TAKEN_MESSAGE, whatsapp_number_taken
 from mesiri.domains.identity.auth_service import ALGORITHM, SECRET_KEY
+from mesiri.infrastructure.postgres.tenant import TenantScopedEngine, bind_tenant
 from users.access_service import AccessPolicy, apply_access_policy
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -46,9 +47,10 @@ _engine = None
 
 
 def get_engine():
+    """Scoped to the caller's company on every transaction (BE-03)."""
     global _engine
     if _engine is None:
-        _engine = _get_engine()
+        _engine = TenantScopedEngine(_get_engine())
     return _engine
 
 
@@ -169,6 +171,7 @@ async def get_current_admin(authorization: str = Header(None)):
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         if (payload.get("role") or "").upper() != "ADMIN":
             raise HTTPException(status_code=403, detail="Not authorized (Admin only)")
+        bind_tenant(payload.get("org"))  # BE-03
         return payload
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=401, detail="Invalid token") from exc

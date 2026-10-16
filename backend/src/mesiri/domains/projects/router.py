@@ -29,6 +29,7 @@ from ...authorization.context import AuthorizationContext
 from ...authorization.service import AuthorizationService
 from ...infrastructure.postgres.dependency import get_db_conn
 from ...infrastructure.postgres.repositories.projects import PostgresProjectRepository
+from ...infrastructure.postgres.tenant import apply_tenant, bind_tenant
 from ..shared.auth import get_current_user, require_admin
 from .presenter import ProjectPresenter
 from .responses import ProjectResponse
@@ -174,7 +175,12 @@ async def get_auth_context(
     role = jwt_payload.get("role", "user")
 
     auth_service = AuthorizationService(conn)
-    return await auth_service.resolve_from_jwt(user_id, org_id, role)
+    context = await auth_service.resolve_from_jwt(user_id, org_id, role)
+    # BE-03: the rest of this request -- this transaction and any other the
+    # request opens -- is for this company only.
+    bind_tenant(context.organization_id)
+    await apply_tenant(conn)
+    return context
 
 
 # ---------------------------------------------------------------------------
