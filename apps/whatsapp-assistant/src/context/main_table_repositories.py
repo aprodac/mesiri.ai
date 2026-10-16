@@ -120,9 +120,8 @@ class MainExternalIdentityRepository(_EngineMixin):
         if provider != "whatsapp" or not digits:
             return None
         # Inactive users still match (the resolver then reports them as
-        # disabled, as before). If two users share a number, prefer the active
-        # one, then the oldest -- deterministic, where the copy kept whichever
-        # was projected last. BE-04 replaces this with an explicit choice.
+        # disabled, as before). Since migration 0483 a number's digits belong
+        # to one user (BE-04), so the ORDER BY only matters for a bad row.
         row = await self._row(
             "SELECT id FROM users "
             "WHERE whatsapp_number IS NOT NULL "

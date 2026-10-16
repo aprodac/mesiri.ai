@@ -8,7 +8,7 @@ site engineer" uses -- nothing here writes users or memberships itself:
                           (start_member_create_plan, the entity-resolution
                           chain), name and number taken from the card
     already in this org   ADD_PROJECT_MEMBER alone
-    in another company    refused (one person in several companies is BE-04)
+    in another company    refused (one number = one person, BE-04)
 
 Each workflow keeps its own confirmation, so the person is never added
 without a tap. Several projects: a list picker first. One contact per share:

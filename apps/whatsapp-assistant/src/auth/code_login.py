@@ -237,8 +237,8 @@ async def login_with_code(body: CodeCheck) -> dict:
     if not users:
         raise HTTPException(status_code=401, detail="No Mesiri account uses this number.")
     if len(users) > 1:
-        # One person in several companies is BE-04; until then, refuse
-        # rather than pick one of them.
+        # Unreachable since migration 0483 (one number = one person, BE-04);
+        # kept so a bad row is refused rather than one of them picked.
         raise HTTPException(
             status_code=409,
             detail="This number is on more than one account. Log in with your email instead.",

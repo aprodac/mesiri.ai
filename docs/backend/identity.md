@@ -12,7 +12,7 @@ watchdog) is gone (migration `0482`).
 
 | Question | Read from |
 | --- | --- |
-| Who sent this? | `users.whatsapp_number`, compared on digits (index `ix_users_whatsapp_digits`). Two users with one number: the active one, then the oldest (BE-04 replaces this with an explicit choice) |
+| Who sent this? | `users.whatsapp_number`, compared on digits (index `ix_users_whatsapp_digits`). One number belongs to one user: unique on its digits since migration `0483` (BE-04); one person in several companies is not supported |
 | Is the company usable? | `organizations.status` + `trial_ends_at` (`domains/organizations/lifecycle.is_operational`) |
 | Which projects? | Org-wide users (role or `access_policy`, `mesiri.authorization.roles.is_org_wide`): every on-track project; others: their `project_members` rows |
 | Which sites? | Sites of their projects, plus `site_members` sites (see BE-34: "explicit sites only" is not enforced yet) |
@@ -23,6 +23,11 @@ Context IDs stay `ctx_user_<uuid>`, `ctx_org_<uuid>`, `ctx_proj_<uuid>`,
 active context and everything downstream are unchanged.
 
 ## What this means for writers
+
+Every place that saves a number checks it first with
+`mesiri.application.identity.phone_numbers.whatsapp_number_taken` (digits,
+any company) and refuses with `NUMBER_TAKEN_MESSAGE`, which never names the
+person holding it. The unique index `ux_users_whatsapp_digits` backs it up.
 
 Nothing to sync. A user, project, site or membership written by the dashboard,
 the control panel or a WhatsApp workflow is visible to the next message. There
