@@ -63,6 +63,7 @@ from runtime.reversal_query import (
     ReversalTransferTarget,
     advance_holder_name,
 )
+from runtime.save_first import company_saves_first
 from runtime.site_issue_query import SiteIssueTargetQueryService
 from runtime.vendor_query import VendorQueryService
 from runtime.workforce_query import WorkforceQueryService
@@ -73,6 +74,7 @@ from workflows import (
     WorkflowRunStatus,
     WorkflowRuntime,
 )
+from workflows.site_update.nodes import UNCLEAR_TARGET_IS_NEW_KEY
 
 _MATERIAL_EVENT_TYPES = frozenset(
     {
@@ -617,6 +619,7 @@ async def _run_stock_gate(
     *,
     pending_report_store: PendingReportStore,
     actor_user_id: str,
+    org_settings_query: OrganizationSettingsQueryService | None = None,
 ) -> ReplySpec | None:
     """Block a usage report whose quantity exceeds what's in stock, instead
     of the old cosmetic-only warning (workflows/material/nodes.py's
@@ -632,6 +635,10 @@ async def _run_stock_gate(
     None when there's nothing to check (not a usage report, not yet
     actionable, or no stock figure available to compare against) or when the
     requested quantity is within stock.
+
+    WA-03: a company that saves first (the default) is not asked: the usage
+    is saved as a draft, flagged on the DPR (BE-12) and the saved reply says
+    so. `org_settings_query` None counts as the default.
     """
     if canonical_event.event_type is not CanonicalEventType.MATERIAL_USAGE_REQUESTED:
         return None
@@ -646,6 +653,8 @@ async def _run_stock_gate(
     except (TypeError, ValueError):
         return None
     if requested <= available:
+        return None
+    if await company_saves_first(org_settings_query, canonical_event.organization_id):
         return None
 
     await pending_report_store.set_pending(user_id=actor_user_id, event=canonical_event)
@@ -1981,6 +1990,7 @@ async def _seed_open_activity(
     actor: ActorIdentity | None,
     *,
     remembered_activity_id: str | None = None,
+    org_settings_query: OrganizationSettingsQueryService | None = None,
 ) -> None:
     """Resolve which Activity (if any) a site update message
     ("finished plastering", "completed another 40 sqm") might be about,
@@ -2007,6 +2017,8 @@ async def _seed_open_activity(
     workflows/site_update/matching.py). `workflows/site_update/nodes.py`'s
     `resolve_target` is what actually decides create-vs-continue from this
     list; this function only supplies the candidates, never the decision.
+    For a company that saves first it also tells `resolve_target` to treat
+    an unclear match as new work rather than ask (WA-03).
     """
     if activity_query is None or actor is None or not actor.organization_id:
         return
@@ -2038,6 +2050,8 @@ async def _seed_open_activity(
             }
             for c in candidates
         ]
+        if await company_saves_first(org_settings_query, str(actor.organization_id)):
+            event.fields[UNCLEAR_TARGET_IS_NEW_KEY] = True
 
 
 async def _seed_correction_target(

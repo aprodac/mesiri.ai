@@ -63,10 +63,20 @@ _NEW_WORK_LABEL = "This is new work"
 #: this one, checked only after the generic matcher comes up empty.
 _NEW_WORK_PATTERN = re.compile(r"\bnew\b", re.IGNORECASE)
 
+#: WA-03 (quiet daytime): set by seeding for a company that saves first. An
+#: unclear "open work or new work?" is then saved as new work instead of
+#: asked; the engineer sees both on the evening report.
+UNCLEAR_TARGET_IS_NEW_KEY = "_unclear_target_is_new"
+
 #: Plumbing carried through collected_fields between passes -- never a real
 #: business field, must never reach draft.fields or the confirmation prompt.
 _RESOLUTION_PLUMBING_KEYS = frozenset(
-    {"_open_activity_candidates", "_target_resolved", "_slot_answer_text"}
+    {
+        "_open_activity_candidates",
+        "_target_resolved",
+        "_slot_answer_text",
+        UNCLEAR_TARGET_IS_NEW_KEY,
+    }
 )
 
 
@@ -189,7 +199,11 @@ def resolve_target(state: WorkflowGraphState) -> dict:
         fields.pop("_open_activity_candidates", None)
         return {"collected_fields": fields}
 
-    # ASK_USER
+    # ASK_USER -- unless this company saves first (WA-03): then new work.
+    if fields.pop(UNCLEAR_TARGET_IS_NEW_KEY, False):
+        fields["_target_resolved"] = True
+        fields.pop("_open_activity_candidates", None)
+        return {"collected_fields": fields}
     options = _to_slot_candidates(result.candidates)
     return {
         "collected_fields": fields,

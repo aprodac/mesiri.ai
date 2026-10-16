@@ -213,7 +213,12 @@ async def _run_segment_gates(
             return reply
 
     await _inject_inventory_context(event, inventory_query)
-    reply = await _run_stock_gate(event, pending_report_store=null_store, actor_user_id=actor_user_id)
+    reply = await _run_stock_gate(
+        event,
+        pending_report_store=null_store,
+        actor_user_id=actor_user_id,
+        org_settings_query=org_settings_query,
+    )
     if reply is not None:
         return reply
     return None

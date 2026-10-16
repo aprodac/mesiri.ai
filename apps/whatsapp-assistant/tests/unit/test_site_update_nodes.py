@@ -31,6 +31,7 @@ from mesiri_contracts.assistant.planner_decision import WorkflowKey
 from workflows.site_update.nodes import (
     _TARGET_SLOT_NAME,
     NEW_ACTIVITY_SENTINEL,
+    UNCLEAR_TARGET_IS_NEW_KEY,
     build_draft,
     request_confirmation,
     resolve_target,
@@ -108,6 +109,43 @@ def test_clash_with_only_open_activity_asks_and_offers_new_work_option():
     assert BLOCKWORK_ID in values
     assert NEW_ACTIVITY_SENTINEL in values
     assert "Which work is this about?" in update["pending_prompt"]
+
+
+def test_save_first_company_gets_unclear_work_saved_as_new_work():
+    """WA-03 quiet daytime: the same clash, for a company that saves first,
+    is not asked -- it becomes new work, and the flag never reaches the
+    draft."""
+    state = _base_state(
+        {
+            "work_type": "plastering",
+            "narrative": "finished plastering",
+            "_open_activity_candidates": [_candidate(BLOCKWORK_ID, "blockwork", "Block A")],
+            UNCLEAR_TARGET_IS_NEW_KEY: True,
+        }
+    )
+    update = resolve_target(state)
+    assert update.get("awaiting_slot") is None
+    assert "activity_id" not in update["collected_fields"]
+    assert UNCLEAR_TARGET_IS_NEW_KEY not in update["collected_fields"]
+
+    draft = build_draft({**state, "collected_fields": update["collected_fields"]})["draft_action"]
+    assert draft.action_type is DraftActionType.CREATE_ACTIVITY
+    assert not any(k.startswith("_") for k in draft.fields)
+
+
+def test_save_first_flag_never_overrides_a_clear_match():
+    state = _base_state(
+        {
+            "work_type": "plastering",
+            "_open_activity_candidates": [
+                _candidate(PLASTERING_ID, "plastering", "2nd floor"),
+                _candidate(BLOCKWORK_ID, "blockwork", "Block A"),
+            ],
+            UNCLEAR_TARGET_IS_NEW_KEY: True,
+        }
+    )
+    update = resolve_target(state)
+    assert update["collected_fields"]["activity_id"] == PLASTERING_ID
 
 
 def test_single_open_activity_continuation_wording_auto_matches():

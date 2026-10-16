@@ -74,14 +74,30 @@ def _pending_store() -> PendingReportStore:
     return PendingReportStore(_FakeRedis())
 
 
+class _CaptureMode:
+    """OrganizationSettingsQueryService stand-in: only capture_mode."""
+
+    def __init__(self, mode: str) -> None:
+        self._mode = mode
+
+    async def get(self, *, organization_id: str, key: str) -> Any:
+        assert key == "capture_mode"
+        return self._mode
+
+
 async def test_usage_over_stock_is_blocked_with_three_choices():
-    """Reporting 70 against 50 in stock must NOT fall through to the planner
-    -- it must be held pending and return the three explicit buttons, never
-    the old cosmetic-only warning."""
+    """Confirm-first company: reporting 70 against 50 in stock must NOT fall
+    through to the planner -- it must be held pending and return the three
+    explicit buttons, never the old cosmetic-only warning."""
     store = _pending_store()
     event = _usage_event(quantity=70, available_stock=50)
 
-    reply = await _run_stock_gate(event, pending_report_store=store, actor_user_id=USR)
+    reply = await _run_stock_gate(
+        event,
+        pending_report_store=store,
+        actor_user_id=USR,
+        org_settings_query=_CaptureMode("confirm_first"),
+    )
 
     assert reply is not None
     assert reply.buttons is not None
@@ -91,6 +107,21 @@ async def test_usage_over_stock_is_blocked_with_three_choices():
 
     pending = await store.pop_pending(user_id=USR)
     assert pending is not None, "the report must be held so a button tap can resume it"
+
+
+async def test_save_first_company_is_not_asked_about_stock():
+    """WA-03 quiet daytime: a save-first company (the default, also with no
+    settings to read) saves the usage; BE-12 flags it on the DPR instead."""
+    for settings in (_CaptureMode("save_first"), None):
+        store = _pending_store()
+        event = _usage_event(quantity=70, available_stock=50)
+
+        reply = await _run_stock_gate(
+            event, pending_report_store=store, actor_user_id=USR, org_settings_query=settings
+        )
+
+        assert reply is None
+        assert await store.pop_pending(user_id=USR) is None
 
 
 async def test_usage_within_stock_is_not_blocked():

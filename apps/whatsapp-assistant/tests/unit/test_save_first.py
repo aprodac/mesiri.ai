@@ -137,6 +137,26 @@ async def test_a_waiting_attendance_is_saved_marked_draft_and_says_so():
     assert draft["correlation_id"] == "c1"
 
 
+async def test_usage_beyond_stock_is_saved_and_the_reply_says_it_is_flagged():
+    """WA-03: not asked during the day; the saved reply carries the line."""
+    state = _state(WorkflowKey.MATERIAL_USAGE, DraftActionType.RECORD_MATERIAL_USAGE)
+    draft = state.draft_action.model_copy(
+        update={"fields": {"material_name": "Cement", "quantity": 70, "unit": "bags"}}
+    )
+    state = state.model_copy(
+        update={"draft_action": draft, "collected_fields": {"available_stock": 50}}
+    )
+    handler, dispatcher = _handler(state)
+
+    handled = await handler.save_now(USR)
+
+    assert handled is not None and len(dispatcher.dispatched) == 1
+    assert handled.reply_text.endswith(
+        "That's more than the 50 bags in stock, so it's flagged on tonight's report.\n"
+        + DRAFT_NOTE
+    )
+
+
 async def test_nothing_waiting_means_nothing_saved():
     handler, dispatcher = _handler(None)
     assert await handler.save_now(USR) is None
@@ -385,3 +405,18 @@ def test_the_journey_holds_back_confirm_for_save_first_drafts():
     assert "and await _save_first_now()" in source  # slot answer
     assert "if plan_reply is not None and await _save_first_now():" in source
     assert "interaction_handler.undo_latest_draft(" in source
+
+
+def test_over_stock_note_only_for_usage_beyond_stock():
+    """WA-03: the saved reply's line for usage beyond known stock."""
+    from mesiri_contracts.assistant.draft_action import DraftActionType as _T
+    from runtime.save_first import over_stock_note
+
+    usage = _T.RECORD_MATERIAL_USAGE
+    assert over_stock_note(usage, 70, "bags", 50) == (
+        "That's more than the 50 bags in stock, so it's flagged on tonight's report."
+    )
+    assert over_stock_note(usage, 50, "bags", 50) is None
+    assert over_stock_note(usage, 70, "bags", None) is None
+    assert over_stock_note(usage, "lots", "bags", 50) is None
+    assert over_stock_note(_T.RECORD_MATERIAL_RECEIPT, 70, "bags", 50) is None

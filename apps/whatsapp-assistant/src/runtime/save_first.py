@@ -7,6 +7,17 @@ engineer confirms the day's drafts with the evening DPR. The old
 genuinely needs (which worker? which site? replace today's list?) are still
 asked before saving.
 
+Quiet daytime (WA-03): during the day ask only what is needed to file the
+update correctly -- which project, site, material or unit; arrived or used;
+a missing quantity; which worker; replace or add to today's list. Anything
+else is saved and shown on the evening report instead. So far that is:
+
+- usage beyond known stock: saved, flagged on the DPR (BE-12's
+  ``beyond_stock``), and the saved reply says so (``over_stock_note``);
+- "is this the open work or new work?": saved as new work.
+
+A company switched back to confirm-first keeps every question.
+
 Saving goes through the exact path a "YES" takes (InteractionHandler.
 save_now -> runtime.resume(CONFIRM) -> the module's own dispatcher), so the
 duplicate guard, gates, events and multi-part plans behave exactly as for a
@@ -60,6 +71,9 @@ FACT_TYPE_BY_ACTION: dict[DraftActionType, str] = {
 #: Appended to the saved reply (wording approved 13 Oct).
 DRAFT_NOTE = "Saved as a draft. You'll confirm it with tonight's report. Reply UNDO if it's wrong."
 
+#: WA-03: above the draft note when a saved usage is more than the known stock.
+OVER_STOCK_NOTE = "That's more than the {available} in stock, so it's flagged on tonight's report."
+
 #: BE-13: the note instead, when the entry's day was already confirmed.
 LATE_REOPEN_NOTE = (
     "Saved. {site}'s report for {day} was already confirmed but hasn't gone out yet, "
@@ -100,6 +114,38 @@ def canonical_uuid(value: Any) -> uuid.UUID | None:
         return None
 
 
+async def company_saves_first(
+    org_settings_query: OrganizationSettingsQueryService | None, organization_id: str | None
+) -> bool:
+    """Whether this company saves capture drafts without asking (the default,
+    also when its setting can't be read)."""
+    if org_settings_query is None or not organization_id:
+        return True
+    from mesiri.domains.organizations import settings as settings_spec
+
+    stored = await org_settings_query.get(
+        organization_id=str(organization_id), key=settings_spec.CAPTURE_MODE
+    )
+    return settings_spec.saves_first(stored)
+
+
+def over_stock_note(
+    action_type: DraftActionType, quantity: Any, unit: Any, available_stock: Any
+) -> str | None:
+    """WA-03: the line saying a saved usage is more than the known stock, or
+    None when it is not (or the figures can't be read)."""
+    if action_type is not DraftActionType.RECORD_MATERIAL_USAGE or available_stock is None:
+        return None
+    try:
+        used, available = float(quantity), float(available_stock)
+    except (TypeError, ValueError):
+        return None
+    if used <= available:
+        return None
+    unit_text = f" {unit}" if unit else ""
+    return OVER_STOCK_NOTE.format(available=f"{available:g}{unit_text}")
+
+
 class SaveFirstService:
     """Never raises into the journey: a failure to record the draft is
     logged and the save itself (already done) stands."""
@@ -116,14 +162,7 @@ class SaveFirstService:
         """Whether this flow, for this company, saves without asking."""
         if workflow_key not in SAVE_FIRST_KEYS:
             return False
-        if self._settings is None or not organization_id:
-            return True
-        from mesiri.domains.organizations import settings as settings_spec
-
-        stored = await self._settings.get(
-            organization_id=str(organization_id), key=settings_spec.CAPTURE_MODE
-        )
-        return settings_spec.saves_first(stored)
+        return await company_saves_first(self._settings, organization_id)
 
     async def record_draft(
         self,

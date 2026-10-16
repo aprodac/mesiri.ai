@@ -183,7 +183,8 @@ async def _plan_and_run(
     inventory context is injected, same as the first-pass journey -- a
     material-picker or unit-mismatch tap can be the leg that first makes a
     usage report ACTIONABLE, so the over-stock check can't only live before
-    those gates."""
+    those gates. With no settings here the company counts as saving first,
+    so the check doesn't ask (WA-03)."""
     await _inject_inventory_context(event, inventory_query)
     if pending_report_store is not None and actor_user_id is not None:
         stock_reply = await _run_stock_gate(
@@ -757,6 +758,7 @@ async def process_inbound_message(
                     canonical_event,
                     pending_report_store=pending_report_store,
                     actor_user_id=actor_user_id,
+                    org_settings_query=org_settings_query,
                 )
 
         if held_reply is None:
@@ -878,6 +880,7 @@ async def process_inbound_message(
                             remembered_activity_id=(
                                 memory_pack.current_activity_id if memory_pack else None
                             ),
+                            org_settings_query=org_settings_query,
                         ),
                         _seed_correction_target(
                             canonical_event,

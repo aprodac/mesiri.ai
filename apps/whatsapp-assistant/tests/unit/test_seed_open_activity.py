@@ -218,3 +218,30 @@ async def test_is_a_safe_no_op_with_no_service_wired():
     await _seed_open_activity(event, decision, None, _Actor())
 
     assert "activity_id" not in event.fields
+
+
+class _CaptureMode:
+    def __init__(self, mode: str) -> None:
+        self._mode = mode
+
+    async def get(self, *, organization_id: str, key: str):
+        assert key == "capture_mode"
+        return self._mode
+
+
+async def test_save_first_company_is_told_to_save_unclear_work_as_new():
+    """WA-03: seeding marks the event so resolve_target won't ask; a
+    confirm-first company keeps the question."""
+    from workflows.site_update.nodes import UNCLEAR_TARGET_IS_NEW_KEY
+
+    open_ = [{"activity_id": BLOCKWORK_ID, "work_type": "blockwork", "narrative": "Block A"}]
+    for mode, flagged in (("save_first", True), ("confirm_first", False)):
+        event = _event({"work_type": "plastering"})
+        await _seed_open_activity(
+            event,
+            _decision(),
+            _FakeActivityQueryService(open_activities=open_),
+            _Actor(),
+            org_settings_query=_CaptureMode(mode),
+        )
+        assert bool(event.fields.get(UNCLEAR_TARGET_IS_NEW_KEY)) is flagged

@@ -252,6 +252,17 @@ async def test_ambiguous_material_on_a_later_segment_holds_the_whole_decompositi
     assert s2.fields.get("material_id") == "mat_1"
 
 
+class _ConfirmFirst:
+    """Settings stand-in for a company switched back to confirm-first."""
+
+    async def get(self, *, organization_id: str, key: str):
+        from mesiri.domains.organizations import settings as settings_spec
+
+        if key == settings_spec.CAPTURE_MODE:
+            return settings_spec.CAPTURE_MODE_CONFIRM_FIRST
+        return settings_spec.default_for(key)
+
+
 async def test_an_over_stock_segment_holds_and_capping_continues_the_decomposition():
     """The stock gate, per segment, with a segment queued behind the paused
     one -- capping should both fix this segment's quantity AND let the
@@ -298,6 +309,8 @@ async def test_an_over_stock_segment_holds_and_capping_continues_the_decompositi
         pending_decomposition_store=pending_decomposition_store,
         catalog_query=catalog_query,
         inventory_query=inventory_query,
+        # WA-03: only a confirm-first company is asked about stock.
+        org_settings_query=_ConfirmFirst(),
     )
 
     assert reply is not None

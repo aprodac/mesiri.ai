@@ -203,6 +203,17 @@ class InteractionHandler:
                 action_type=confirmed_draft.action_type,
                 fact_id=str(execution_result.material_row_id),
             )
+            # WA-03: usage beyond known stock was saved, not asked about.
+            from runtime.save_first import over_stock_note
+
+            over_stock = over_stock_note(
+                confirmed_draft.action_type,
+                confirmed_draft.fields.get("quantity"),
+                confirmed_draft.fields.get("unit"),
+                (loaded.state.collected_fields or {}).get("available_stock"),
+            )
+            if over_stock:
+                note = f"{over_stock}\n{note}"
             reply_text = f"{reply_text}\n\n{note}"
         logger.info(
             "save_first.saved user=%s key=%s status=%s",
