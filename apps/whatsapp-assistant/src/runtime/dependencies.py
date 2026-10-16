@@ -847,6 +847,11 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         db=material_db,
     )
 
+    # WA-09: an outside DPR contact's YES / STOP to the opt-in invite.
+    from runtime.opt_in_journey import OptInJourney
+
+    opt_in_journey = OptInJourney(db=material_db)
+
     # SS-13: a shared contact card adds that person to the team, through the
     # same CREATE_USER / ADD_PROJECT_MEMBER workflows as a typed request.
     from runtime.contact_share_journey import ContactShareJourney
@@ -945,6 +950,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         memory_loader=memory_loader,
         memory_coordinator=memory_coordinator,
         signup_journey=signup_journey,
+        opt_in_journey=opt_in_journey,
         contact_share=contact_share,
         setup_questions=setup_questions,
         site_day_review=site_day_review,

@@ -446,7 +446,10 @@ async def add_report_recipient(
     conn: AsyncConnection = Depends(get_db_conn),
 ):
     """Add a company user or an outside contact to this project's DPR list.
-    Adding the first one replaces the default audience (admins + PMs)."""
+    Adding the first one replaces the default audience (admins + PMs).
+
+    An outside contact added without an opt-in on record is sent one
+    WhatsApp invite to opt in (WA-09); `invite_queued` says whether it was."""
     from mesiri.application.dpr.recipients import (
         OPTED_IN,
         RECORDED_BY_ADMIN,
@@ -456,6 +459,7 @@ async def add_report_recipient(
 
     repo = await _recipients_scope(auth_context, conn, project_id, write=True)
     org_id = auth_context.organization_id
+    invite_queued = False
 
     if req.user_id is not None:
         if req.name or req.phone:
@@ -493,9 +497,19 @@ async def add_report_recipient(
                 note=(req.opt_in_note or "").strip() or None,
                 actor_user_id=auth_context.user_id,
             )
+        else:
+            from mesiri.application.dpr.opt_in_invite import queue_invite
+
+            invite_queued = await queue_invite(
+                conn,
+                organization_id=org_id,
+                project_id=project_id,
+                phone=contact["phone"],
+                today=datetime.date.today(),
+            )
 
     row = await repo.find_active(organization_id=org_id, project_id=project_id, recipient_id=recipient_id)
-    return _present_recipient(row)
+    return {**_present_recipient(row), "invite_queued": invite_queued}
 
 
 @router.delete("/projects/{project_id}/recipients/{recipient_id}", status_code=204)

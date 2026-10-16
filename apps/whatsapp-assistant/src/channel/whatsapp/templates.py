@@ -99,6 +99,19 @@ SITE_NO_UPDATE = TemplateSpec(
     quick_replies=("Site closed today",),
 )
 
+#: Asking an outside DPR contact to opt in (WA-09). Body (submitted text,
+#: docs/ops/whatsapp-templates.md):
+#:   "{{1}} would like to send you the daily progress report for {{2}} on
+#:    WhatsApp. Reply YES to receive it, or STOP to never be messaged."
+#: Quick replies YES / STOP; typed replies work the same.
+DPR_OPT_IN = TemplateSpec(
+    name="mesiri_dpr_optin",
+    language="en",
+    category="UTILITY",
+    body_param_count=2,
+    quick_replies=("YES", "STOP"),
+)
+
 #: Trial ending soon (SS-08), to an owner who has not messaged in 24 h.
 #: Body (submitted text, docs/ops/whatsapp-templates.md):
 #:   "Your Mesiri free trial for {{1}} ends on {{2}}. Reply CONTINUE and our
@@ -112,7 +125,7 @@ TRIAL_ENDING = TemplateSpec(
 
 TEMPLATES: dict[str, TemplateSpec] = {
     spec.name: spec
-    for spec in (DPR_DELIVERY, LOGIN_CODE, SITE_DAY_REVIEW, SITE_NO_UPDATE, TRIAL_ENDING)
+    for spec in (DPR_DELIVERY, DPR_OPT_IN, LOGIN_CODE, SITE_DAY_REVIEW, SITE_NO_UPDATE, TRIAL_ENDING)
 }
 
 

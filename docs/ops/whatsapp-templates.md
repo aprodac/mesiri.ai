@@ -124,6 +124,26 @@ Sample values: `{{1}}` = `Block A (Green Towers)`, `{{2}}` = `9:00 pm`.
 
 To switch it on: add `mesiri_site_no_update` to `WHATSAPP_APPROVED_TEMPLATES`.
 
+### `mesiri_dpr_optin` — asking an outside DPR contact to opt in (WA-09)
+
+Sent once when an outside contact (client, architect...) is added to a
+project's DPR list without an opt-in on record. A new contact has never
+messaged the number, so this always goes as the template.
+
+| Field | Value |
+| --- | --- |
+| Name | `mesiri_dpr_optin` |
+| Category | Utility |
+| Language | English (`en`) |
+| Header | None |
+| Body | `{{1}} would like to send you the daily progress report for {{2}} on WhatsApp. Reply YES to receive it, or STOP to never be messaged.` |
+| Footer | `Sent by Mesiri` |
+| Buttons | Quick replies: `YES`, `STOP` |
+
+Sample values: `{{1}}` = `Suresh Builders`, `{{2}}` = `Green Towers`.
+
+To switch it on: add `mesiri_dpr_optin` to `WHATSAPP_APPROVED_TEMPLATES`.
+
 ### `mesiri_trial_ending` — trial ending soon (SS-08)
 
 Sent to a trial company's owner 2 days before and on the last day of the free
@@ -150,7 +170,12 @@ To switch it on: add `mesiri_trial_ending` to `WHATSAPP_APPROVED_TEMPLATES`.
   Company users count as agreed by joining the company. An **outside contact
   gets nothing until an opt-in is recorded**: an admin records it when adding
   them ("opted in", with a note on how, e.g. "contract clause 12"), or later
-  with `.../recipients/{id}/opt-in`. The WhatsApp "reply YES" opt-in is WA-09.
+  with `.../recipients/{id}/opt-in`.
+- **WhatsApp opt-in (WA-09):** a contact added without one is sent one invite
+  (`mesiri_dpr_optin`, never repeated, never sent after an opt-out). Their
+  YES or STOP (typed or tapped) is recorded as `whatsapp_reply` for every
+  company that invited the number. Only numbers that aren't company users
+  are read this way, so a user typing "stop" mid-chat is never opted out.
 - **Opt-out** (`.../opt-out`) stops every message to that number from that
   company, users included. Skipped messages are recorded on the notification
   row as `no_opt_in` or `opted_out`.
@@ -159,8 +184,8 @@ To switch it on: add `mesiri_trial_ending` to `WHATSAPP_APPROVED_TEMPLATES`.
 
 ## Templates still to add
 
-Each is declared and submitted by its own tracker item: welcome / opt-in
-(WA-09), team invite (SS-13, text in docs/plans/onboarding-plan.md), SS-12.
+Each is declared and submitted by its own tracker item: team invite (SS-13,
+text in docs/plans/onboarding-plan.md), SS-12.
 The evening review (WA-04), the no-update reminder (WA-06), the trial
 ending (SS-08) and the login code (SS-06) are above. Getting them all
 approved is WA-10.

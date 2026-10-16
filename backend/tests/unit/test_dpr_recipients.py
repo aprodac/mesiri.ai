@@ -141,7 +141,16 @@ class _FakeRepo:
 @pytest.fixture
 def repo(monkeypatch):
     _FakeRepo.rows, _FakeRepo.consents, _FakeRepo.users, _FakeRepo.projects = [], [], set(), {PROJECT}
+    _FakeRepo.invites = []
     monkeypatch.setattr(repo_module, "PostgresReportRecipientRepository", _FakeRepo)
+
+    async def queue_invite(conn, **kwargs):  # WA-09; tested against Postgres
+        _FakeRepo.invites.append(kwargs["phone"])
+        return True
+
+    from mesiri.application.dpr import opt_in_invite
+
+    monkeypatch.setattr(opt_in_invite, "queue_invite", queue_invite)
     return _FakeRepo
 
 
@@ -172,6 +181,8 @@ async def test_a_contact_added_without_opt_in_will_not_receive_yet(repo):
     assert added["phone"] == "919876543210"
     assert added["opt_in"] is None
     assert added["will_receive"] is False
+    assert added["invite_queued"] is True  # WA-09: asked on WhatsApp
+    assert repo.invites == ["919876543210"]
 
     listed = await dpr_router.list_report_recipients(PROJECT, auth_context=_auth(), conn=None)
     assert listed["using_defaults"] is False
@@ -181,6 +192,7 @@ async def test_a_contact_added_with_opt_in_records_it_in_the_same_step(repo):
     added = await _add(name="Mr Shah", phone="9876543210", opted_in=True, opt_in_note="Signed contract clause 12")
     assert added["opt_in"] == "opted_in"
     assert added["will_receive"] is True
+    assert added["invite_queued"] is False
     assert repo.consents == [
         {"phone": "919876543210", "state": "opted_in", "method": "recorded_by_admin", "note": "Signed contract clause 12"}
     ]

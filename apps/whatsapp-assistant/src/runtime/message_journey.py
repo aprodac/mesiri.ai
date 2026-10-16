@@ -177,6 +177,7 @@ def build_message_handlers(
     memory_loader: ConversationMemoryLoader,
     memory_coordinator: ConversationMemoryCoordinator,
     signup_journey: SignupJourney | None = None,
+    opt_in_journey: Any = None,
     contact_share: ContactShareJourney | None = None,
     setup_questions: SetupQuestions | None = None,
     site_day_review: SiteDayReview | None = None,
@@ -384,6 +385,13 @@ def build_message_handlers(
 
         if ctx is None:
             _log.info("context.sender_unregistered wa_id=%s", wa_id)
+            # WA-09: an outside DPR contact answering the opt-in invite.
+            reply = await opt_in_journey.handle(message) if opt_in_journey else None
+            if reply is not None:
+                await sender.send_text(wa_id, reply)
+                await message_logger.log_reply(correlation_id=message.correlation_id, reply=reply)
+                await message_logger.mark_completed(correlation_id=message.correlation_id)
+                return
             # SS-04: when self-serve signup is on, an unknown number can start
             # a free trial instead of hitting a dead end.
             reply = await signup_journey.handle(message) if signup_journey else None
