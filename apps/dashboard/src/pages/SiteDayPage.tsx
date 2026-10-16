@@ -92,6 +92,13 @@ function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`
 }
 
+/** "40.000" -> "40", "12.50" -> "12.5": quantities arrive as stored decimals. */
+function qty(value: string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '—'
+  const n = Number(value)
+  return Number.isFinite(n) ? n.toLocaleString(undefined, { maximumFractionDigits: 3 }) : value
+}
+
 function humanize(value: string | null | undefined): string {
   if (!value) return ''
   const text = value.replace(/_/g, ' ').toLowerCase()
@@ -118,7 +125,7 @@ function ItemRow({
   onSources: (item: ReviewItem) => void
 }) {
   const draft = item.review === 'draft'
-  const quantities = (item.quantities ?? []).map((q) => `${q.quantity} ${q.unit}`).join(', ')
+  const quantities = (item.quantities ?? []).map((q) => `${qty(q.quantity)} ${q.unit}`).join(', ')
   return (
     <li className="flex flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="flex min-w-0 flex-col gap-1">
@@ -751,10 +758,10 @@ export default function SiteDayPage() {
                         <td className="py-1">
                           {m.material_name} <span className="text-muted-foreground">({m.unit})</span>
                         </td>
-                        <td className="py-1 text-right">{m.opening ?? '—'}</td>
-                        <td className="py-1 text-right">{m.received}</td>
-                        <td className="py-1 text-right">{m.used}</td>
-                        <td className="py-1 text-right">{m.closing ?? '—'}</td>
+                        <td className="py-1 text-right">{qty(m.opening)}</td>
+                        <td className="py-1 text-right">{qty(m.received)}</td>
+                        <td className="py-1 text-right">{qty(m.used)}</td>
+                        <td className="py-1 text-right">{qty(m.closing)}</td>
                       </tr>
                     ))}
                   </tbody>
