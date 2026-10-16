@@ -86,6 +86,19 @@ SITE_DAY_REVIEW = TemplateSpec(
     quick_replies=("Open report",),
 )
 
+#: No update from a site by the cutoff (WA-06), to its engineer who has not
+#: messaged in 24 h. Body (submitted text, docs/ops/whatsapp-templates.md):
+#:   "No update has come in today for {{1}}. Send today's work, labour and
+#:    photos here before {{2}}, or tap below if the site was closed."
+#: The "Site closed today" tap marks the day as no work (BE-14).
+SITE_NO_UPDATE = TemplateSpec(
+    name="mesiri_site_no_update",
+    language="en",
+    category="UTILITY",
+    body_param_count=2,
+    quick_replies=("Site closed today",),
+)
+
 #: Trial ending soon (SS-08), to an owner who has not messaged in 24 h.
 #: Body (submitted text, docs/ops/whatsapp-templates.md):
 #:   "Your Mesiri free trial for {{1}} ends on {{2}}. Reply CONTINUE and our
@@ -98,7 +111,8 @@ TRIAL_ENDING = TemplateSpec(
 )
 
 TEMPLATES: dict[str, TemplateSpec] = {
-    spec.name: spec for spec in (DPR_DELIVERY, LOGIN_CODE, SITE_DAY_REVIEW, TRIAL_ENDING)
+    spec.name: spec
+    for spec in (DPR_DELIVERY, LOGIN_CODE, SITE_DAY_REVIEW, SITE_NO_UPDATE, TRIAL_ENDING)
 }
 
 

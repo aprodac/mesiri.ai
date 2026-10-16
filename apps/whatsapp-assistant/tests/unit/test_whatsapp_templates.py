@@ -83,6 +83,26 @@ def test_an_approved_template_is_chosen_with_cleaned_params():
     assert choice.body_params == ("Tower A", "13 Oct 2026", "ok")
 
 
+def test_no_update_reminder_template_is_chosen_with_its_closed_tap():
+    """WA-06: the reminder's template payload passes the shape checks."""
+    import datetime as _dt
+
+    from channel.whatsapp.templates import SITE_NO_UPDATE
+    from runtime.site_day_review import no_update_payload
+
+    payload = no_update_payload(
+        site_id="s1",
+        site_name="Block A",
+        project_name="Green Towers",
+        deadline="21:00",
+        report_date=_dt.date(2026, 10, 16),
+    )
+    choice = choose_template(payload, frozenset({SITE_NO_UPDATE.name}))
+    assert choice.spec is SITE_NO_UPDATE
+    assert choice.body_params == ("Block A (Green Towers)", "9:00 pm")
+    assert choice.button_payloads == ("sdr:closed:s1:20261016",)
+
+
 # --- sender -----------------------------------------------------------------
 
 

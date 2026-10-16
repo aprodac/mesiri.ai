@@ -105,8 +105,10 @@ is sent with a payload naming the site and day, so the tap needs no memory.
 
 ### `mesiri_site_no_update` — no update from a site today (WA-06)
 
-Submit now so it is approved by the time WA-06 is built; the code declares
-it with WA-06. For a site that sent nothing at all by the cutoff.
+Declared in code since WA-06 (`SITE_NO_UPDATE`). Sent once per site per day
+at the project's cutoff when the site sent nothing at all (if it then sends
+something partial, the evening gap-check follows). Inside the 24-hour window
+the same reminder goes as a normal message with the same button.
 
 | Field | Value |
 | --- | --- |
@@ -119,6 +121,8 @@ it with WA-06. For a site that sent nothing at all by the cutoff.
 | Buttons | Quick reply: `Site closed today` |
 
 Sample values: `{{1}}` = `Block A (Green Towers)`, `{{2}}` = `9:00 pm`.
+
+To switch it on: add `mesiri_site_no_update` to `WHATSAPP_APPROVED_TEMPLATES`.
 
 ### `mesiri_trial_ending` — trial ending soon (SS-08)
 

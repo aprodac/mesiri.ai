@@ -261,21 +261,59 @@ def world(monkeypatch):
     return state
 
 
-async def test_only_a_day_with_something_missing_gets_the_gap_check(world):
+async def test_each_day_gets_the_message_it_calls_for(world):
     gap = _day("Block A", "NEEDS_DETAILS", ["labour"])
+    silent = _day("Block C", "NEEDS_DETAILS", ["work_done", "labour"], has_facts=False)
     world["days"] = [
         gap,
-        _day("Block B", "READY", []),  # WA-05's
-        _day("Block C", "NEEDS_DETAILS", ["work_done", "labour"], has_facts=False),  # WA-06's
+        _day("Block B", "READY", []),  # WA-05's: no message yet
+        silent,
         _day("Block D", "APPROVED", []),
     ]
 
-    assert await review.queue_site_day_reviews(_Conn(), db=None) == 1
-    (claim,) = world["claims"]
-    assert claim["rule_key"] == f"site_day_gap:{gap['site_id']}"
-    assert claim["site_id"] == gap["site_id"]
-    assert claim["occurred_on"] == DAY
-    assert "missing the *labour count*" in claim["payload"]["message"]
+    assert await review.queue_site_day_reviews(_Conn(), db=None) == 2
+    gap_claim, reminder = world["claims"]
+    assert gap_claim["rule_key"] == f"site_day_gap:{gap['site_id']}"
+    assert gap_claim["site_id"] == gap["site_id"]
+    assert gap_claim["occurred_on"] == DAY
+    assert "missing the *labour count*" in gap_claim["payload"]["message"]
+    # WA-06: nothing sent at all -> the no-update reminder.
+    assert reminder["rule_key"] == f"site_day_no_update:{silent['site_id']}"
+    assert "No update has come in today for *Block C*" in reminder["payload"]["message"]
+
+
+def test_no_update_reminder_payload_and_template():
+    site = uuid.uuid4()
+    payload = review.no_update_payload(
+        site_id=site,
+        site_name="Block A",
+        project_name="Green Towers",
+        deadline="21:00",
+        report_date=DAY,
+    )
+    closed = review.tap_id(review.CLOSED, site, DAY)
+    assert payload["message"] == (
+        "📋 No update has come in today for *Block A* (Green Towers).\n"
+        "Send today's work, labour and photos here (text, voice note or photo) "
+        "before *9:00 pm* so the report goes out.\n"
+        "Site closed today? Tap below."
+    )
+    assert payload["buttons"] == [{"id": closed, "title": "Site closed today"}]
+    assert payload["template"] == {
+        "name": "mesiri_site_no_update",
+        "body_params": ["Block A (Green Towers)", "9:00 pm"],
+        "button_payloads": [closed],
+    }
+    # The template's tap is the same "site closed" tap the message's button sends.
+    assert review.parse_tap(closed) == (review.CLOSED, str(site), DAY)
+
+
+async def test_a_site_already_reminded_today_is_not_reminded_again(world):
+    silent = _day("Block C", "NEEDS_DETAILS", ["work_done", "labour"], has_facts=False)
+    world["days"] = [silent]
+
+    assert await review.queue_site_day_reviews(_Conn(messaged=[str(silent["site_id"])]), db=None) == 0
+    assert world["claims"] == []
 
 
 async def test_a_site_already_gap_checked_today_is_not_asked_again(world):

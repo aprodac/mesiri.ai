@@ -19,7 +19,7 @@ from sqlalchemy import text
 
 from backend.postgres.actor import PostgresActorReader
 from channel.whatsapp.outbound import WhatsAppSender
-from channel.whatsapp.templates import SITE_DAY_REVIEW
+from channel.whatsapp.templates import SITE_DAY_REVIEW, SITE_NO_UPDATE
 from mesiri.application.organizations.create_company import NewCompany, create_company
 from mesiri.application.projects import auto_dpr
 from mesiri.bootstrap.settings import Settings
@@ -146,22 +146,27 @@ async def test_the_evening_loop_end_to_end(world) -> None:
     db, created = world.db, world.created
     block_a, block_b = (site.site_id for site in created.sites)
 
-    # 1. One gap-check, for Block A only (Block B sent nothing: WA-06's).
-    assert await _review(db) == 1
+    # 1. A gap-check for Block A; Block B sent nothing: the no-update
+    #    reminder (WA-06).
+    assert await _review(db) == 2
     assert await _review(db) == 0  # once a day
     async with db.transaction() as conn:
         rows = (
             await conn.execute(
                 text(
                     "SELECT rule_key, recipient_user_id, payload FROM notifications"
-                    " WHERE organization_id = :o"
+                    " WHERE organization_id = :o ORDER BY rule_key"
                 ),
                 {"o": created.organization_id},
             )
         ).mappings().all()
     assert [(r["rule_key"], r["recipient_user_id"]) for r in rows] == [
-        (f"site_day_gap:{block_a}", world.engineer_id)
+        (f"site_day_gap:{block_a}", world.engineer_id),
+        (f"site_day_no_update:{block_b}", world.engineer_id),
     ]
+    reminder = rows[1]["payload"]
+    reminder = json.loads(reminder) if isinstance(reminder, str) else reminder
+    assert "No update has come in today for *Block B*" in reminder["message"]
     payload = rows[0]["payload"]
     payload = json.loads(payload) if isinstance(payload, str) else payload
     assert "missing the *labour count*" in payload["message"]
@@ -171,18 +176,22 @@ async def test_the_evening_loop_end_to_end(world) -> None:
         "9:00 pm",
     ]
 
-    # 2. Delivered: Ravi never messaged, so the approved template goes, with
-    #    the "Open report" tap carrying the site and day.
+    # 2. Delivered: Ravi never messaged, so the approved templates go, each
+    #    tap carrying the site and day.
     captured: list[dict] = []
     counts = await drain_and_send(
         db=db,
         actor_reader=PostgresActorReader(),
         sender=_meta(captured),
-        approved_templates=frozenset({SITE_DAY_REVIEW.name}),
+        approved_templates=frozenset({SITE_DAY_REVIEW.name, SITE_NO_UPDATE.name}),
         now_utc=EVENING_UTC,
     )
-    assert counts == {"sent": 1, "skipped": 0}
-    (sent,) = captured
+    assert counts == {"sent": 2, "skipped": 0}
+    by_name = {c["template"]["name"]: c for c in captured}
+    assert by_name["mesiri_site_no_update"]["template"]["components"][-1]["parameters"] == [
+        {"type": "payload", "payload": f"sdr:closed:{block_b}:20261015"}
+    ]
+    sent = by_name["mesiri_site_day_review"]
     assert sent["to"] == ENGINEER_WA
     assert sent["template"]["name"] == "mesiri_site_day_review"
     assert sent["template"]["components"][-1] == {
@@ -233,7 +242,7 @@ async def test_the_evening_loop_end_to_end(world) -> None:
     assert status == "READY"
     assert missing["blocking"] == []
 
-    # 5. "Site closed today" for Block B: no work, nothing required.
+    # 5. The reminder's "Site closed today" for Block B: no work, nothing required.
     closed = await review.handle_tap(
         SimpleNamespace(metadata={"interactive_reply_id": f"sdr:closed:{block_b}:20261015"}), actor
     )

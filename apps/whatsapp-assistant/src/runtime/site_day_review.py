@@ -7,7 +7,7 @@ message about their site's day. Which one is decided in the backend
 
     gap-check (WA-04, here)   "today's report is missing the labour count"
     confirm   (WA-05)         not built yet: such a day gets no message
-    reminder  (WA-06)         not built yet: such a day gets no message
+    reminder  (WA-06, here)   "no update has come in today for Block A"
 
 What the engineer sends back is saved the usual way (save first, WA-01);
 every tick `refresh_site_day` brings a day that changed up to date, so a
@@ -116,6 +116,47 @@ def gap_check_message(
     return "\n".join(lines)
 
 
+def no_update_message(*, site_name: str, project_name: str | None, deadline: str) -> str:
+    site = f"*{site_name}*" + (
+        f" ({project_name})" if site_label(site_name, project_name) != site_name else ""
+    )
+    return "\n".join(
+        [
+            f"📋 No update has come in today for {site}.",
+            f"Send today's work, labour and photos here (text, voice note or photo) "
+            f"before *{time_label(deadline)}* so the report goes out.",
+            "Site closed today? Tap below.",
+        ]
+    )
+
+
+def no_update_payload(
+    *,
+    site_id: Any,
+    site_name: str,
+    project_name: str | None,
+    deadline: str,
+    report_date: datetime.date,
+) -> dict[str, Any]:
+    """WA-06: the reminder for a site that sent nothing by the cutoff -- in
+    the window as a message with the "Site closed today" button, outside it
+    as the approved template whose quick reply is the same tap."""
+    from channel.whatsapp.templates import SITE_NO_UPDATE
+
+    closed = tap_id(CLOSED, site_id, report_date)
+    return {
+        "message": no_update_message(
+            site_name=site_name, project_name=project_name, deadline=deadline
+        ),
+        "buttons": [{"id": closed, "title": CLOSED_BUTTON_TITLE}],
+        "template": {
+            "name": SITE_NO_UPDATE.name,
+            "body_params": [site_label(site_name, project_name), time_label(deadline)],
+            "button_payloads": [closed],
+        },
+    }
+
+
 def gap_check_payload(
     *,
     site_id: Any,
@@ -210,13 +251,17 @@ async def _review_project(conn: Any, db: Any, project: dict[str, Any]) -> int:
 
     organization_id, project_id = project["organization_id"], project["id"]
     report_date = project["report_date"]
-    gap_checked = await _sites_already_messaged(
-        conn,
-        organization_id=organization_id,
-        project_id=project_id,
-        report_date=report_date,
-        prefix=evening_review.RULE_KEY_PREFIXES[evening_review.GAP_CHECK],
-    )
+    # Sites already sent each message today (one of each per site per day).
+    sent = {
+        step: await _sites_already_messaged(
+            conn,
+            organization_id=organization_id,
+            project_id=project_id,
+            report_date=report_date,
+            prefix=evening_review.RULE_KEY_PREFIXES[step],
+        )
+        for step in (evening_review.GAP_CHECK, evening_review.NO_UPDATE)
+    }
     notifications = PostgresNotificationRepository(conn)
     queued = 0
     for day in await site_days_for_review(
@@ -238,18 +283,27 @@ async def _review_project(conn: Any, db: Any, project: dict[str, Any]) -> int:
         step = evening_review.evening_step(
             status=day["status"], missing=day["missing_sections"], has_facts=day["has_facts"]
         )
-        # WA-05 (confirm) and WA-06 (reminder) add their branches here.
-        if step != evening_review.GAP_CHECK or str(day["site_id"]) in gap_checked:
+        # WA-05 (confirm) adds its branch here.
+        if step not in sent or str(day["site_id"]) in sent[step]:
             continue
 
-        payload = gap_check_payload(
-            site_id=day["site_id"],
-            site_name=day["site_name"],
-            project_name=project["name"],
-            missing=day["missing_sections"] or {},
-            deadline=project["send_deadline"],
-            report_date=report_date,
-        )
+        if step == evening_review.NO_UPDATE:
+            payload = no_update_payload(
+                site_id=day["site_id"],
+                site_name=day["site_name"],
+                project_name=project["name"],
+                deadline=project["send_deadline"],
+                report_date=report_date,
+            )
+        else:
+            payload = gap_check_payload(
+                site_id=day["site_id"],
+                site_name=day["site_name"],
+                project_name=project["name"],
+                missing=day["missing_sections"] or {},
+                deadline=project["send_deadline"],
+                report_date=report_date,
+            )
         for user_id in await _recipients(
             conn,
             db,
@@ -260,7 +314,7 @@ async def _review_project(conn: Any, db: Any, project: dict[str, Any]) -> int:
         ):
             claimed = await notifications.claim(
                 organization_id=organization_id,
-                rule_key=evening_review.rule_key(evening_review.GAP_CHECK, day["site_id"]),
+                rule_key=evening_review.rule_key(step, day["site_id"]),
                 subject_id=user_id,
                 occurred_on=report_date,
                 recipient_user_id=uuid.UUID(user_id),
@@ -271,7 +325,8 @@ async def _review_project(conn: Any, db: Any, project: dict[str, Any]) -> int:
             if claimed is not None:
                 queued += 1
         logger.info(
-            "site_day_review.gap_check site_id=%s missing=%s",
+            "site_day_review.%s site_id=%s missing=%s",
+            step,
             day["site_id"],
             (day["missing_sections"] or {}).get("blocking"),
         )
