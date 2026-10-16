@@ -33,6 +33,7 @@ from mesiri.application.identity.phone_numbers import (
     whatsapp_number_taken,
 )
 from mesiri.application.identity.repository import CreateUserExecutionRepository
+from mesiri.infrastructure.postgres.tenant import unscoped
 from mesiri.infrastructure.postgres.workflow_instance import (
     get_by_id_on_connection,
     transition_on_connection,
@@ -126,12 +127,13 @@ class PostgresCreateUserExecutionRepository(CreateUserExecutionRepository):
         # by ux_users_whatsapp_digits/ix_users_username, but a friendly
         # rejection beats a raw IntegrityError reaching the user). Compared on
         # digits, and never naming the holder: they may be in another company.
-        username_taken = (
-            await conn.execute(
-                sa.text("SELECT 1 FROM users WHERE username = :number"),
-                {"number": cmd.whatsapp_number},
-            )
-        ).first() is not None
+        async with unscoped(conn):  # usernames are unique across companies (BE-03)
+            username_taken = (
+                await conn.execute(
+                    sa.text("SELECT 1 FROM users WHERE username = :number"),
+                    {"number": cmd.whatsapp_number},
+                )
+            ).first() is not None
         if username_taken or await whatsapp_number_taken(conn, cmd.whatsapp_number):
             return await self._reject(conn, cmd.idempotency_key, [NUMBER_TAKEN_MESSAGE])
 

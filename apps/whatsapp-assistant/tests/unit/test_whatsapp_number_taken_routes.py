@@ -30,6 +30,9 @@ class _Result:
     def first(self):
         return self._rows[0] if self._rows else None
 
+    def scalar_one_or_none(self):
+        return self._rows[0] if self._rows else None
+
 
 class _Conn:
     def __init__(self, results):
@@ -77,7 +80,7 @@ def _assert_refused(exc: pytest.ExceptionInfo[HTTPException]) -> None:
 
 async def test_dashboard_add_user_refuses_a_taken_number(monkeypatch):
     calls: list = []
-    conn = _Conn([[]])  # email free
+    conn = _Conn([[], []])  # no company set (BE-03 unscoped), email free
     monkeypatch.setattr(users_router, "get_engine", lambda: _Engine(conn))
     monkeypatch.setattr(users_router, "whatsapp_number_taken", _taken(calls))
 
@@ -90,7 +93,7 @@ async def test_dashboard_add_user_refuses_a_taken_number(monkeypatch):
 
     _assert_refused(exc)
     assert calls == [("+91 98765 43210", None)]
-    assert len(conn.executed) == 1  # no insert
+    assert len(conn.executed) == 2  # company check + email check, no insert
 
 
 async def test_dashboard_edit_user_refuses_a_taken_number(monkeypatch):

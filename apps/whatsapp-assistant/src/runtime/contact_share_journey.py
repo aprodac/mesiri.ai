@@ -32,6 +32,7 @@ import sqlalchemy as sa
 
 from channel.replies import ListRow, ReplySpec
 from mesiri.application.dpr.recipients import RecipientError, normalize_phone
+from mesiri.infrastructure.postgres.tenant import unscoped
 from mesiri_contracts.assistant.canonical_event import CanonicalEventType, IntentCompleteness
 from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.planner_decision import PlannerDecisionType, WorkflowKey
@@ -252,13 +253,15 @@ class ContactShareJourney:
 
     async def _find_user(self, phone: str) -> Any | None:
         async with self._db.transaction() as conn:
-            row = (
-                await conn.execute(
-                    sa.select(_users.c.id, _users.c.organization_id, _users.c.full_name).where(
-                        sa.func.regexp_replace(_users.c.whatsapp_number, r"\D", "", "g") == phone
+            # Every company: a number held elsewhere is refused (BE-03 unscoped).
+            async with unscoped(conn):
+                row = (
+                    await conn.execute(
+                        sa.select(_users.c.id, _users.c.organization_id, _users.c.full_name).where(
+                            sa.func.regexp_replace(_users.c.whatsapp_number, r"\D", "", "g") == phone
+                        )
                     )
-                )
-            ).first()
+                ).first()
         return row
 
     @staticmethod

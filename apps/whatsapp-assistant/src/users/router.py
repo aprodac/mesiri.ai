@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from mesiri.application.identity.phone_numbers import NUMBER_TAKEN_MESSAGE, whatsapp_number_taken
 from mesiri.domains.identity.auth_service import ALGORITHM, SECRET_KEY
-from mesiri.infrastructure.postgres.tenant import TenantScopedEngine, bind_tenant
+from mesiri.infrastructure.postgres.tenant import TenantScopedEngine, bind_tenant, unscoped
 from users.access_service import AccessPolicy, apply_access_policy
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -232,10 +232,11 @@ async def create_user(user_in: UserCreate, admin_payload: dict = Depends(get_cur
 
     user_id = uuid.uuid4()
     async with engine.begin() as conn:
-        # Check existing
-        result = await conn.execute(
-            sa.select(users_table).where(users_table.c.email == user_in.email)
-        )
+        # Check existing -- emails are unique across companies (BE-03 unscoped)
+        async with unscoped(conn):
+            result = await conn.execute(
+                sa.select(users_table).where(users_table.c.email == user_in.email)
+            )
         if result.first():
             raise HTTPException(status_code=400, detail="Email already registered")
         if user_in.whatsapp_number and await whatsapp_number_taken(conn, user_in.whatsapp_number):

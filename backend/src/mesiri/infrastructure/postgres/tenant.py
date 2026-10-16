@@ -83,6 +83,37 @@ async def apply_tenant(conn: AsyncConnection, organization_id: object = None) ->
     )
 
 
+@asynccontextmanager
+async def unscoped(conn: AsyncConnection) -> AsyncIterator[AsyncConnection]:
+    """Inside a company-scoped transaction, briefly see every company -- only
+    for checks that must ("is this number or email taken anywhere?"). The
+    company is restored afterwards. RLS here guards against a forgotten
+    filter, not against our own code, so this is allowed by design."""
+    previous = (
+        await conn.execute(
+            text("SELECT current_setting(:setting, true)"), {"setting": TENANT_SETTING}
+        )
+    ).scalar_one_or_none()
+    if not previous:
+        yield conn
+        return
+    await conn.execute(
+        text("SELECT set_config(:setting, '', true)"), {"setting": TENANT_SETTING}
+    )
+    restore = text("SELECT set_config(:setting, :org, true)")
+    params = {"setting": TENANT_SETTING, "org": previous}
+    try:
+        yield conn
+    except BaseException:
+        # The transaction may already be aborted; the original error matters.
+        try:
+            await conn.execute(restore, params)
+        except Exception:  # noqa: BLE001
+            pass
+        raise
+    await conn.execute(restore, params)
+
+
 class TenantScopedEngine:
     """An AsyncEngine whose begin()/connect() scope each transaction to the
     bound company. For code that opens its own engine instead of using

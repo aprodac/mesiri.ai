@@ -18,6 +18,8 @@ import uuid
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from mesiri.infrastructure.postgres.tenant import unscoped
+
 NUMBER_TAKEN_MESSAGE = "That WhatsApp number is already registered on Mesiri"
 
 # Same expression as the unique index and the inbound sender lookup.
@@ -43,5 +45,7 @@ async def whatsapp_number_taken(
     if except_user_id is not None:
         sql += " AND id <> :uid"
         params["uid"] = uuid.UUID(str(except_user_id))
-    row = (await conn.execute(sa.text(sql + " LIMIT 1"), params)).first()
+    # Every company: a number belongs to one person anywhere (BE-03 unscoped).
+    async with unscoped(conn):
+        row = (await conn.execute(sa.text(sql + " LIMIT 1"), params)).first()
     return row is not None
