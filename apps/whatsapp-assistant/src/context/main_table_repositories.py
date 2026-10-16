@@ -195,10 +195,12 @@ _AUTHORIZED_PROJECT_IDS = (
 )
 
 
-# Sites this user reaches through site membership (as the old copy computed
-# them): every site of every project they are a member of
-# with site_access_mode "all_sites", their site_members sites in their other
-# projects, or every site of every project in their org if org-wide. Project
+# The sites this user may report on: every site of every project they are a
+# member of with site_access_mode "all_sites", their site_members sites in
+# their other ("custom_sites") projects, or every site in their org if
+# org-wide. Being on a project does not by itself reach a custom_sites
+# member's other sites (BE-34): the same rule as AuthorizationService and
+# PostgresActorReader. Project
 # status plays no part here, so a site can be reachable through this even when
 # its project is not on track -- kept as the copy has it.
 _MEMBER_SITE_IDS = (
@@ -288,7 +290,7 @@ class MainSiteRepository(_AuthorizedMixin):
         row = await self._row(
             self._COLUMNS + "WHERE s.id = :sid AND s.organization_id = :org "
             "AND lower(s.status) = 'active' "
-            f"AND (s.id IN ({_MEMBER_SITE_IDS}) OR s.project_id IN ({_AUTHORIZED_PROJECT_IDS}))",
+            f"AND s.id IN ({_MEMBER_SITE_IDS})",
             {**scope, "sid": sid},
         )
         return _site(row) if row else None
@@ -310,7 +312,7 @@ class MainSiteRepository(_AuthorizedMixin):
         rows = await self._rows(
             self._COLUMNS + "WHERE lower(s.name) = lower(:name) AND s.organization_id = :org "
             "AND lower(s.status) = 'active'" + clause + " "
-            f"AND (s.id IN ({_MEMBER_SITE_IDS}) OR s.project_id IN ({_AUTHORIZED_PROJECT_IDS}))",
+            f"AND s.id IN ({_MEMBER_SITE_IDS})",
             params,
         )
         return sorted((_site(r) for r in rows), key=lambda s: s.site_id)

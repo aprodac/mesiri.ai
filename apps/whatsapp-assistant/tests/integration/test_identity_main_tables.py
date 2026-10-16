@@ -70,6 +70,7 @@ def world():
             "s_a1",
             "s_a2",
             "s_b1",
+            "s_b2",
             "s_inactive",
             "s_paused",
             "msg",
@@ -151,6 +152,7 @@ def world():
         site("s_a1", "p_alpha", name="Block A")
         site("s_a2", "p_alpha", name="Block B")
         site("s_b1", "p_beta", name="Block A")
+        site("s_b2", "p_beta", name="Block C")
         site("s_inactive", "p_alpha", status="inactive")
         site("s_paused", "p_paused")
 
@@ -165,7 +167,7 @@ def world():
 
         member("member", "p_alpha")
         member("member", "p_paused")
-        member("explicit", "p_beta", mode="explicit")
+        member("explicit", "p_beta", mode="custom_sites")
         member("inactive", "p_alpha")
         c.execute(
             text("INSERT INTO site_members (id, site_id, user_id) VALUES (:id, :s, :u)"),
@@ -292,16 +294,22 @@ async def test_sites_each_user_reaches(world, engine):
     async def reachable(user_key):
         u = context_user_id(world[user_key])
         out = set()
-        for key in ("s_a1", "s_a2", "s_b1", "s_inactive", "s_paused"):
+        for key in ("s_a1", "s_a2", "s_b1", "s_b2", "s_inactive", "s_paused"):
             if await sites.get_authorized_site(organization_id=org, user_id=u, site_id=sid(key)):
                 out.add(key)
         return out
 
-    assert await reachable("admin") == {"s_a1", "s_a2", "s_b1", "s_paused"}
+    assert await reachable("admin") == {"s_a1", "s_a2", "s_b1", "s_b2", "s_paused"}
     # A site is reachable through membership even when its project is not on
     # track (kept as it was, see main_table_repositories.py).
     assert await reachable("member") == {"s_a1", "s_a2", "s_paused"}
+    # BE-34: "custom sites" on p_beta reaches only the listed site, not the
+    # project's other sites -- by id or by name.
     assert await reachable("explicit") == {"s_b1"}
+    explicit = context_user_id(world["explicit"])
+    assert not await sites.find_authorized_sites_by_name(
+        organization_id=org, user_id=explicit, name="Block C"
+    )
     member = context_user_id(world["member"])
     by_name = await sites.find_authorized_sites_by_name(
         organization_id=org, user_id=member, name="block a"

@@ -15,7 +15,7 @@ watchdog) is gone (migration `0482`).
 | Who sent this? | `users.whatsapp_number`, compared on digits (index `ix_users_whatsapp_digits`). One number belongs to one user: unique on its digits since migration `0483` (BE-04); one person in several companies is not supported |
 | Is the company usable? | `organizations.status` + `trial_ends_at` (`domains/organizations/lifecycle.is_operational`) |
 | Which projects? | Org-wide users (role or `access_policy`, `mesiri.authorization.roles.is_org_wide`): every on-track project; others: their `project_members` rows |
-| Which sites? | Sites of their projects, plus `site_members` sites (see BE-34: "explicit sites only" is not enforced yet) |
+| Which sites? | Org-wide users: every site. Others, per project: every site when their membership is "all sites", otherwise only their `site_members` sites (BE-34; same rule as the dashboard and the report-recording path) |
 | Reply / open workflow scope | `inbound_messages`, `workflow_instances` |
 
 Context IDs stay `ctx_user_<uuid>`, `ctx_org_<uuid>`, `ctx_proj_<uuid>`,
