@@ -10,7 +10,7 @@ from mesiri.domains.organizations import platform_settings as ps
 def test_defaults():
     assert ps.default_for(ps.TRIAL_POLICY) == {"trial_days": 7, "retention_days_after_expiry": 30}
     # Self-serve signup is off until someone switches it on.
-    assert ps.default_for(ps.SELF_SERVE) == {"signup_enabled": False}
+    assert ps.default_for(ps.SELF_SERVE) == {"signup_enabled": True}
 
 
 def test_defaults_are_copies():

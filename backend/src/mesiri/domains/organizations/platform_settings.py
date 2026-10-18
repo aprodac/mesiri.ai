@@ -29,7 +29,8 @@ DEFAULT_TRIAL_POLICY: dict[str, int] = {
 
 DEFAULT_SELF_SERVE: dict[str, bool] = {
     # Unknown WhatsApp numbers and the web signup page can create a company.
-    "signup_enabled": False,
+    # On by default (Ilan, 15 Oct); switch off in control panel Settings.
+    "signup_enabled": True,
 }
 
 DEFAULT_USAGE_PRICING: dict[str, float] = {
