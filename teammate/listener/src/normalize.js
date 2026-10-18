@@ -27,6 +27,10 @@ const KIND_BY_TYPE = {
   pollCreationMessage: "poll",
   pollCreationMessageV2: "poll",
   pollCreationMessageV3: "poll",
+  listMessage: "interactive",
+  buttonsMessage: "interactive",
+  interactiveMessage: "interactive",
+  templateMessage: "interactive",
 };
 
 export const MEDIA_KINDS = new Set(["image", "video", "audio", "document"]);
@@ -47,6 +51,63 @@ function textOf(content, type) {
   return null;
 }
 
+const clean = (v) => (typeof v === "string" && v.trim() ? v.trim() : null);
+
+function parseJson(raw) {
+  try {
+    const v = JSON.parse(raw);
+    return v && typeof v === "object" ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The menu/button shapes a business account sends: a list, reply buttons, a
+ * native-flow interactive (quick_reply / single_select) or a template. Returns
+ * the body lines and the options a person could tap, numbered from 1. Unknown
+ * shapes give the body only (or nothing) and never throw.
+ * @returns {{ body: string | null, options: Array<{n: number, id: string, title: string, type: "list"|"button"|"native_flow", name?: string}> }}
+ */
+export function parseInteractive(type, m) {
+  const parts = [];
+  const options = [];
+  const add = (id, title, kind, name) => {
+    const t = clean(title);
+    const i = clean(String(id ?? "")) ?? t;
+    if (t && i) options.push({ n: options.length + 1, id: i, title: t, type: kind, ...(name ? { name } : {}) });
+  };
+  try {
+    if (type === "listMessage") {
+      parts.push(m.title, m.description, m.footerText);
+      for (const s of m.sections || []) for (const r of s?.rows || []) add(r?.rowId, r?.title, "list");
+    } else if (type === "buttonsMessage") {
+      parts.push(m.text, m.contentText, m.footerText);
+      for (const b of m.buttons || []) add(b?.buttonId, b?.buttonText?.displayText, "button");
+    } else if (type === "interactiveMessage") {
+      parts.push(m.header?.title, m.header?.subtitle, m.body?.text, m.footer?.text);
+      for (const b of m.nativeFlowMessage?.buttons || []) {
+        const p = parseJson(b?.buttonParamsJson);
+        if (b?.name === "single_select") {
+          for (const s of p.sections || []) for (const r of s?.rows || []) add(r?.id, r?.title, "native_flow", b.name);
+        } else if (b?.name === "quick_reply") {
+          add(p.id, p.display_text, "native_flow", b.name);
+        }
+      }
+    } else if (type === "templateMessage") {
+      const t = m.hydratedTemplate || m.hydratedFourRowTemplate || {};
+      parts.push(t.hydratedTitleText, t.hydratedContentText, t.hydratedFooterText);
+      for (const b of t.hydratedButtons || []) {
+        if (b?.quickReplyButton) add(b.quickReplyButton.id, b.quickReplyButton.displayText, "button");
+      }
+    }
+  } catch {
+    // an odd shape: fall back to whatever body was read
+  }
+  const body = parts.map(clean).filter(Boolean).join("\n") || null;
+  return { body, options };
+}
+
 function quotedText(quoted) {
   if (!quoted) return null;
   const content = normalizeMessageContent(quoted);
@@ -65,7 +126,7 @@ function toIso(ts) {
  *   id: string, chat_jid: string, is_group: boolean, sender_jid: string | null,
  *   sender_pn: string | null, sender_name: string | null, from_me: boolean, at: string,
  *   kind: string, text: string | null, quoted_id: string | null, quoted_text: string | null,
- *   media_mime: string | null, reaction_to: string | null
+ *   media_mime: string | null, reaction_to: string | null, options: Array | null
  * }}
  */
 // The sender's phone-number address. Senders may arrive under a privacy id
@@ -93,6 +154,9 @@ export function normalizeMessage(msg) {
   const kind = type === "audioMessage" && inner?.ptt ? "voice" : KIND_BY_TYPE[type] || "other";
   const context = inner && typeof inner === "object" ? inner.contextInfo : null;
 
+  const menu = kind === "interactive" ? parseInteractive(type, inner || {}) : null;
+  const menuText = menu && [menu.body, ...menu.options.map((o) => `${o.n}) ${o.title}`)].filter(Boolean).join("\n");
+
   return {
     id: key.id,
     chat_jid: key.remoteJid,
@@ -103,7 +167,8 @@ export function normalizeMessage(msg) {
     from_me: Boolean(key.fromMe),
     at: toIso(msg.messageTimestamp),
     kind,
-    text: kind === "reaction" ? inner?.text || null : textOf(content, type),
+    text: menu ? menuText || null : kind === "reaction" ? inner?.text || null : textOf(content, type),
+    options: menu?.options.length ? menu.options : null,
     quoted_id: context?.stanzaId || null,
     quoted_text: quotedText(context?.quotedMessage),
     media_mime: MEDIA_KINDS.has(kind === "voice" ? "audio" : kind) ? inner?.mimetype || null : null,

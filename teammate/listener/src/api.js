@@ -25,6 +25,8 @@
 //                                     post into a chat labelled "team" -- refused anywhere else, except:
 //                                     - a 1-on-1 chat with a person approved for body.project (a reply to their DM)
 //                                     - the chat labelled "assistant-test" for body.project (text / images, few per hour)
+//                                     body.choose {message_n, option} taps a menu/button of the assistant's
+//                                     message n (option = its number or exact title); assistant-test chats only
 //
 // Every route except /health needs `Authorization: Bearer <TEAMMATE_API_TOKEN>`.
 // `project` (TM-05) scopes a call to one repo's groups; without it, all are visible.
@@ -63,6 +65,19 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_TEXT_CHARS = 4000;
 const SEND_PER_HOUR = Number(process.env.TEAMMATE_SEND_PER_HOUR || 30);
 const TEST_SENDS_PER_HOUR = Number(process.env.TEAMMATE_TEST_SENDS_PER_HOUR || 10);
+
+/** Resolves body.choose {message_n, option} to the stored option and the message it quotes. */
+function pickOption(store, chat, { message_n, option } = {}) {
+  const msg = store.getMessage(message_n);
+  if (!msg || msg.chat_jid !== chat.jid || msg.from_me) return { error: "message_n must be a message from the assistant in this chat" };
+  if (!msg.options?.length) return { error: `message ${message_n} has no options to choose` };
+  const want = String(option ?? "").trim().toLowerCase();
+  const hit = /^\d+$/.test(want)
+    ? msg.options.find((o) => o.n === Number(want))
+    : msg.options.find((o) => o.title.toLowerCase() === want);
+  if (!hit) return { error: `no such option; message ${message_n} offers: ${msg.options.map((o) => `${o.n}) ${o.title}`).join(", ")}` };
+  return { choose: { option: hit, quoted: { id: msg.id, chat_jid: msg.chat_jid, sender_jid: msg.sender_jid, text: msg.text } } };
+}
 
 /**
  * @param {{ store: import('./store.js').Store, wa: { status(): object, requestPairingCode(phone: string): Promise<string> }, token: string }} deps
@@ -220,6 +235,9 @@ export function createApi({ store, wa, token, ai = null }) {
         const chat = store.findChat(String(body.chat || ""));
         if (!chat) return send(res, 404, { error: "no such chat; use the jid or a unique part of the name" });
         const isTest = chat.role === "assistant-test";
+        if (body.choose && !isTest) {
+          return send(res, 403, { error: `refused: tapping options is only allowed in the assistant-test chat, not '${chat.name || chat.jid}'` });
+        }
         if (isTest) {
           if (!body.project || chat.project !== body.project) {
             return send(res, 403, { error: `refused: '${chat.name || chat.jid}' is not a ${body.project || "(no project given)"} chat` });
@@ -233,10 +251,16 @@ export function createApi({ store, wa, token, ai = null }) {
         } else if (body.project && chat.project !== body.project) {
           return send(res, 403, { error: `refused: '${chat.name || chat.jid}' is not a ${body.project} chat` });
         }
+        let choose = null;
+        if (body.choose) {
+          const picked = pickOption(store, chat, body.choose);
+          if (picked.error) return send(res, 400, { error: picked.error });
+          choose = picked.choose;
+        }
         const text = body.text ? String(body.text) : null;
         const caption = body.caption ? String(body.caption) : null;
         const image = body.image_base64 ? Buffer.from(String(body.image_base64), "base64") : null;
-        if (!text && !image) return send(res, 400, { error: "send text or image_base64" });
+        if (!text && !image && !choose) return send(res, 400, { error: "send text or image_base64" });
         if ((text?.length || 0) > MAX_TEXT_CHARS || (caption?.length || 0) > MAX_TEXT_CHARS) {
           return send(res, 400, { error: `text is limited to ${MAX_TEXT_CHARS} characters` });
         }
@@ -246,7 +270,7 @@ export function createApi({ store, wa, token, ai = null }) {
         while (log.length && log[0] < hourAgo) log.shift();
         if (log.length >= limit) return send(res, 429, { error: `limit of ${limit} ${isTest ? "test messages" : "posts"} per hour reached` });
         try {
-          const id = await wa.send(chat.jid, { text, image, caption });
+          const id = await wa.send(chat.jid, choose ? { choose } : { text, image, caption });
           log.push(Date.now());
           return send(res, 200, { ok: true, id, chat: chat.name || chat.jid });
         } catch (err) {

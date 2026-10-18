@@ -11,6 +11,7 @@ import {
   DisconnectReason,
   downloadMediaMessage,
   fetchLatestBaileysVersion,
+  generateWAMessageFromContent,
   jidNormalizedUser,
   makeWASocket,
   normalizeMessageContent,
@@ -33,6 +34,27 @@ const EXT_BY_MIME = {
 function extFor(mime) {
   const base = (mime || "").split(";")[0].trim();
   return EXT_BY_MIME[base] || base.split("/")[1]?.replace(/[^a-z0-9]/gi, "") || "bin";
+}
+
+/** The response message for a tapped option: Baileys sendMessage content, or a raw message to relay. */
+export function buildChoice(option, quotedMsg) {
+  if (option.type === "list") {
+    return { send: { listReply: { title: option.title, listType: 1, singleSelectReply: { selectedRowId: option.id } } } };
+  }
+  if (option.type === "button") {
+    return { send: { buttonReply: { id: option.id, displayText: option.title }, type: "plain" } };
+  }
+  if (option.type === "native_flow") {
+    return {
+      relay: {
+        interactiveResponseMessage: {
+          body: { text: option.title, format: 0 },
+          nativeFlowResponseMessage: { name: option.name || "quick_reply", paramsJson: JSON.stringify({ id: option.id }), version: 3 },
+        },
+      },
+    };
+  }
+  return { send: { text: option.title } }; // unknown shape: type the title as a reply
 }
 
 export class WhatsAppListener {
@@ -200,10 +222,29 @@ export class WhatsAppListener {
   }
 
   /** Sends text (optionally @-mentioning people), or an image with an optional caption. Callers check the chat is a team chat. */
-  async send(jid, { text = null, image = null, caption = null, mentions = [] } = {}) {
+  async send(jid, { text = null, image = null, caption = null, mentions = [], choose = null } = {}) {
     if (this.state !== "connected" || !this.sock) throw new Error(`WhatsApp is ${this.state}, not connected`);
+    if (choose) return this.choose(jid, choose);
     const content = image ? { image, caption: caption || undefined } : { text, ...(mentions.length ? { mentions } : {}) };
     const sent = await this.sock.sendMessage(jid, content);
+    return sent?.key?.id || null;
+  }
+
+  /**
+   * Taps one option of a menu/button message, quoting it, as the matching response
+   * type. Only reachable through the API's assistant-test check. Whether the
+   * Cloud API accepts a response from a linked device is verified live.
+   */
+  async choose(jid, { option, quoted }) {
+    const key = { remoteJid: jid, id: quoted.id, fromMe: false, participant: jid.endsWith("@g.us") ? quoted.sender_jid || undefined : undefined };
+    const quotedMsg = { key, message: { conversation: quoted.text || "" } };
+    const content = buildChoice(option, quotedMsg);
+    if (content.relay) {
+      const msg = generateWAMessageFromContent(jid, content.relay, { userJid: this.sock.user?.id, quoted: quotedMsg });
+      await this.sock.relayMessage(jid, msg.message, { messageId: msg.key.id });
+      return msg.key.id;
+    }
+    const sent = await this.sock.sendMessage(jid, content.send, { quoted: quotedMsg });
     return sent?.key?.id || null;
   }
 

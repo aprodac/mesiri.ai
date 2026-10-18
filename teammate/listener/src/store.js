@@ -123,7 +123,20 @@ const MESSAGE_COLUMNS = `
   m.rowid AS n, m.id, m.chat_jid, c.name AS chat_name, c.role AS chat_role, c.project AS chat_project,
   m.sender_jid, m.sender_pn, m.sender_name, m.from_me, m.at, m.kind, m.text,
   m.quoted_id, m.quoted_text, m.media_mime, (m.media_path IS NOT NULL) AS has_media,
-  m.reaction_to, m.transcript, m.translation, m.language`;
+  m.reaction_to, m.transcript, m.translation, m.language, m.options_json`;
+
+/** Swaps the stored options_json for a parsed `options` array (null when the message has none). */
+function withOptions(row) {
+  if (!row) return row;
+  const { options_json, ...rest } = row;
+  let options = null;
+  try {
+    options = options_json ? JSON.parse(options_json) : null;
+  } catch {
+    // unreadable: treat as no options
+  }
+  return { ...rest, options };
+}
 
 export class Store {
   constructor(path) {
@@ -138,6 +151,7 @@ export class Store {
     for (const [name, type] of [
       ["transcript", "TEXT"], ["translation", "TEXT"], ["language", "TEXT"],
       ["ai_done", "INTEGER NOT NULL DEFAULT 0"], ["ai_attempts", "INTEGER NOT NULL DEFAULT 0"],
+      ["options_json", "TEXT"], // menu/button options of an interactive message
     ]) {
       if (!mcols.includes(name)) this.db.exec(`ALTER TABLE messages ADD COLUMN ${name} ${type}`);
     }
@@ -194,13 +208,13 @@ export class Store {
       .prepare(
         `INSERT OR IGNORE INTO messages
           (id, chat_jid, sender_jid, sender_pn, sender_name, from_me, at, kind, text,
-           quoted_id, quoted_text, media_mime, reaction_to, stored_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           quoted_id, quoted_text, media_mime, reaction_to, options_json, stored_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         rec.id, rec.chat_jid, rec.sender_jid, rec.sender_pn, rec.sender_name, rec.from_me ? 1 : 0,
         rec.at, rec.kind, rec.text, rec.quoted_id, rec.quoted_text, rec.media_mime,
-        rec.reaction_to, nowIso(),
+        rec.reaction_to, rec.options?.length ? JSON.stringify(rec.options) : null, nowIso(),
       );
     return res.changes > 0 ? Number(res.lastInsertRowid) : null;
   }
@@ -334,13 +348,15 @@ export class Store {
          ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
          ORDER BY m.at DESC, m.rowid DESC LIMIT ?`,
       )
-      .all(...params);
+      .all(...params)
+      .map(withOptions);
   }
 
   getMessage(n) {
-    return this.db
+    const row = this.db
       .prepare(`SELECT ${MESSAGE_COLUMNS}, m.media_path FROM messages m JOIN chats c ON c.jid = m.chat_jid WHERE m.rowid = ?`)
       .get(Number(n));
+    return withOptions(row);
   }
 
   /** The message plus `around` messages either side in the same chat, oldest first. */
@@ -354,6 +370,7 @@ export class Store {
          ORDER BY m.at DESC, m.rowid DESC LIMIT ?`,
       )
       .all(msg.chat_jid, msg.at, msg.at, msg.n, around)
+      .map(withOptions)
       .reverse();
     const after = this.db
       .prepare(
@@ -361,7 +378,8 @@ export class Store {
          WHERE m.chat_jid = ? AND (m.at > ? OR (m.at = ? AND m.rowid > ?))
          ORDER BY m.at ASC, m.rowid ASC LIMIT ?`,
       )
-      .all(msg.chat_jid, msg.at, msg.at, msg.n, around);
+      .all(msg.chat_jid, msg.at, msg.at, msg.n, around)
+      .map(withOptions);
     delete msg.media_path;
     return { message: msg, thread: [...before, msg, ...after] };
   }

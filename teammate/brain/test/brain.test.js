@@ -482,6 +482,41 @@ test("tools (assistant test): sends to the project's assistant-test chat and ret
   assert.match((await call("test_assistant", { text: "x" })).content[0].text, /limit of 10/);
 });
 
+test("tools (assistant test): choose taps the latest menu and returns the reply with its options", async () => {
+  const sent = [];
+  let tapped = false;
+  const menu = { n: 5, from_me: false, kind: "interactive", text: "Welcome\n1) Start free trial\n2) I'm in a company", options: [{ n: 1, id: "start", title: "Start free trial", type: "list" }, { n: 2, id: "co", title: "I'm in a company", type: "list" }] };
+  const listener = {
+    send: async () => null,
+    sendStrict: async (b) => (sent.push(b), (tapped = true), { ok: true }),
+    chats: async (project) => ({ chats: [{ jid: "A@s.whatsapp.net", role: "assistant-test", project }] }),
+    messages: async () => ({
+      messages: tapped
+        ? [{ n: 6, from_me: false, kind: "interactive", text: "Company name?\n1) Skip", options: [{ n: 1, id: "skip", title: "Skip", type: "button" }] }, menu]
+        : [{ n: 4, from_me: false, kind: "text", text: "Hi", options: null }, menu],
+    }),
+    media: async () => Promise.reject(new Error("none")),
+  };
+  const ctx = { project: "mesiri", chat: "T@g.us", chat_name: "Mesiri team", reply_chat: "T@g.us", sender: "Ilan" };
+  const server = brainTools({ ctx, listener, render: null, plans: { save: (p) => p }, screenshotHosts: [], wait: async () => {} });
+  const tools = Object.fromEntries(Object.entries(server.instance._registeredTools));
+  const call = (name, args) => (tools[name].callback || tools[name].handler)(args, {});
+
+  const r = await call("test_assistant", { choose: 1 });
+  assert.deepEqual(sent[0], { chat: "A@s.whatsapp.net", project: "mesiri", choose: { message_n: 5, option: 1 } });
+  assert.match(r.content[0].text, /Tapped: 1 \(message 5\)/);
+  assert.match(r.content[0].text, /Company name\?\n1\) Skip/);
+  assert.match(r.content[0].text, /\[menu: tap with choose = 1\.\.1/);
+  assert.equal((await call("test_assistant", { choose: "Skip", text: "x" })).isError, true);
+
+  // nothing to tap -> told so, and nothing is sent
+  tapped = false;
+  listener.messages = async () => ({ messages: [{ n: 4, from_me: false, kind: "text", text: "Hi", options: null }] });
+  const none = await call("test_assistant", { choose: 1 });
+  assert.equal(none.isError, true);
+  assert.equal(sent.length, 1);
+});
+
 test("brain (DM): model changes and the system prompt stay private to the chat", async () => {
   const { dir, sent, calls, ask } = setup((p, id) => ok("done", id));
   try {

@@ -170,13 +170,15 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
     ),
     tool(
       "test_assistant",
-      "Try the Mesiri assistant the way a worker would: send a text (or an image from /tmp, with optional text as caption) to the project's assistant-test WhatsApp chat, wait up to ~90 s, and get back what it replied. Talks only to that test chat. At most 10 sends an hour. Afterwards show the conversation with preview_html.",
+      "Try the Mesiri assistant the way a worker would: send a text (or an image from /tmp, with optional text as caption) to the project's assistant-test WhatsApp chat, wait up to ~90 s, and get back what it replied. The assistant answers many steps with a menu or buttons: its reply then lists numbered options, and you tap one by calling again with choose (number or exact title) instead of text. Talks only to that test chat. At most 10 sends an hour. Afterwards show the conversation with preview_html.",
       {
         text: z.string().min(1).max(2000).optional().describe("What the worker says (or the image caption)"),
         image_path: z.string().optional().describe("Absolute path under /tmp/ to a .png, .jpg, .jpeg or .webp file to send"),
+        choose: z.union([z.number().int().min(1), z.string().min(1).max(200)]).optional().describe("Instead of typing: tap an option of the assistant's latest menu/button message, by its number (1, 2, ...) or exact title. Replies show their options as numbered lines."),
       },
-      async ({ text, image_path }) => {
-        if (!text && !image_path) return fail("Give text, an image_path, or both.");
+      async ({ text, image_path, choose }) => {
+        if (choose != null && (text || image_path)) return fail("Give either choose (to tap an option) or text/image_path, not both.");
+        if (!text && !image_path && choose == null) return fail("Give text, an image_path, choose, or a combination of text and image.");
         if (!listener.chats || !listener.messages || !listener.sendStrict) return fail("Testing the assistant isn't available here.");
         let chat;
         try {
@@ -192,11 +194,24 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
           image = await tmpImage(image_path);
           if (image.error) return fail(image.error);
         }
+        let tapped = null;
+        if (choose != null) {
+          try {
+            const recent = (await listener.messages({ chat: chat.jid, project: chatProject, limit: 50 })).messages || [];
+            tapped = recent.filter((m) => !m.from_me && m.options?.length).sort((a, b) => b.n - a.n)[0];
+          } catch (e) {
+            return fail(`Couldn't read the test chat: ${e.message}`);
+          }
+          if (!tapped) return fail("The assistant hasn't sent a menu or buttons recently, so there is nothing to tap. Send text first and read the options in its reply.");
+        }
+        const sentLabel = tapped ? `Tapped: ${choose} (message ${tapped.n})` : `Sent: ${text || "(image)"}${image ? " [image]" : ""}`;
         const startedAt = new Date(Date.now() - 2000).toISOString(); // WhatsApp stamps whole seconds
         try {
           await listener.sendStrict({
             chat: chat.jid, project: chatProject,
-            ...(image ? { image_base64: image.data.toString("base64"), caption: text || undefined } : { text }),
+            ...(tapped
+              ? { choose: { message_n: tapped.n, option: choose } }
+              : image ? { image_base64: image.data.toString("base64"), caption: text || undefined } : { text }),
           });
         } catch (e) {
           return fail(`Couldn't send to the test chat: ${e.message}`);
@@ -223,10 +238,13 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
           if (replies.size && waited - lastNewAt >= TEST_QUIET_MS) break;
         }
         const ordered = [...replies.values()].sort((a, b) => a.n - b.n);
-        const lines = ordered.map((m) => `Assistant: ${m.text || m.transcript || `(${m.kind})`}${m.kind !== "text" && m.text ? ` (${m.kind})` : ""}`);
+        const lines = ordered.map((m) =>
+          m.options?.length
+            ? `Assistant: ${m.text || `(${m.kind})`}\n  [menu: tap with choose = 1..${m.options.length} or the exact title]`
+            : `Assistant: ${m.text || m.transcript || `(${m.kind})`}${m.kind !== "text" && m.text ? ` (${m.kind})` : ""}`);
         const summary = ordered.length
-          ? `Sent: ${text || "(image)"}${image ? " [image]" : ""}\n\n${lines.join("\n")}`
-          : `Sent: ${text || "(image)"}${image ? " [image]" : ""}\n\nNo reply within ${Math.round(TEST_WAIT_MS / 1000)} s. The assistant may be slow, or the test chat isn't linked to it.`;
+          ? `${sentLabel}\n\n${lines.join("\n")}`
+          : `${sentLabel}\n\nNo reply within ${Math.round(TEST_WAIT_MS / 1000)} s. The assistant may be slow, or the test chat isn't linked to it.`;
         const content = [{ type: "text", text: summary }];
         for (const m of ordered.filter((r) => r.kind === "image").slice(0, 3)) {
           try {

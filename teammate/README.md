@@ -154,6 +154,12 @@ In a project's **team** group, approved people @-mention the linked number:
   `TEAMMATE_TEST_SENDS_PER_HOUR` (default 10) an hour. Setup: the linked number messages the assistant once,
   then label that chat; register the bot's number as a worker in a **test** company in Mesiri. Undo:
   `inbox.py label <jid> unlabelled`.
+  Menus and buttons (list, buttons, interactive, template messages) are stored as kind `interactive`: `text`
+  shows the body then numbered lines (`1) Start free trial`), and `options` holds `[{n, id, title, type}]`
+  (`options_json` column). `/send` with `choose: {message_n, option}` (number or exact title) taps one by
+  sending the matching list/button/native-flow response quoting that message; it is refused (403) outside
+  `assistant-test` chats and counts in the same hourly limit. Whether Meta's Cloud API accepts a response
+  from a linked device is checked live; if not, use typed text.
 - At most 20 bot replies an hour (`TEAMMATE_BOT_REPLIES_PER_HOUR`), so bots can't loop.
 - Starting Claude Code automatically from an approved request is TM-03b; until then a session
   picks approved requests up with `inbox.py items --status in_progress`.

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { createApi } from "../src/api.js";
 import { normalizeMessage } from "../src/normalize.js";
 import { Store, istStarts } from "../src/store.js";
-import { WhatsAppListener } from "../src/whatsapp.js";
+import { WhatsAppListener, buildChoice } from "../src/whatsapp.js";
 import { AiWorker, Transcriber, needsTranslation } from "../src/transcribe.js";
 import { Bot, parseCommand } from "../src/bot.js";
 
@@ -1062,4 +1062,136 @@ test("api (assistant-test): allowed for its project, rate limited, never for ano
   } finally {
     server.close();
   }
+});
+
+// ---- interactive messages (menus / buttons) ----
+
+function dmRaw(id, message) {
+  return { key: { id, remoteJid: ASSISTANT, fromMe: false }, messageTimestamp: 1_760_000_000, pushName: "Mesiri", message };
+}
+const nativeBtn = (name, params) => ({ name, buttonParamsJson: JSON.stringify(params) });
+
+test("normalize: list, buttons, native flow and template messages become kind interactive with numbered options", () => {
+  const list = normalizeMessage(dmRaw("L1", {
+    listMessage: { title: "Welcome", description: "Pick one", sections: [{ rows: [{ rowId: "start", title: "Start free trial" }, { rowId: "co", title: "I'm in a company" }] }] },
+  }));
+  assert.equal(list.kind, "interactive");
+  assert.equal(list.text, "Welcome\nPick one\n1) Start free trial\n2) I'm in a company");
+  assert.deepEqual(list.options, [
+    { n: 1, id: "start", title: "Start free trial", type: "list" },
+    { n: 2, id: "co", title: "I'm in a company", type: "list" },
+  ]);
+
+  const buttons = normalizeMessage(dmRaw("B1", {
+    buttonsMessage: { contentText: "Save this?", buttons: [{ buttonId: "yes", buttonText: { displayText: "Yes" } }, { buttonId: "no", buttonText: { displayText: "No" } }] },
+  }));
+  assert.equal(buttons.text, "Save this?\n1) Yes\n2) No");
+  assert.deepEqual(buttons.options.map((o) => [o.id, o.type]), [["yes", "button"], ["no", "button"]]);
+
+  const flow = normalizeMessage(dmRaw("N1", {
+    interactiveMessage: {
+      header: { title: "Hi" }, body: { text: "Choose" }, footer: { text: "Mesiri" },
+      nativeFlowMessage: { buttons: [
+        nativeBtn("single_select", { title: "Menu", sections: [{ rows: [{ id: "r1", title: "Attendance" }] }] }),
+        nativeBtn("quick_reply", { id: "q1", display_text: "Cancel" }),
+        nativeBtn("cta_url", { display_text: "Open", url: "https://mesiri.ai" }),
+      ] },
+    },
+  }));
+  assert.equal(flow.text, "Hi\nChoose\nMesiri\n1) Attendance\n2) Cancel");
+  assert.deepEqual(flow.options, [
+    { n: 1, id: "r1", title: "Attendance", type: "native_flow", name: "single_select" },
+    { n: 2, id: "q1", title: "Cancel", type: "native_flow", name: "quick_reply" },
+  ]);
+
+  // inside a wrapper Baileys already unwraps
+  const tpl = normalizeMessage(dmRaw("T1", {
+    ephemeralMessage: { message: { templateMessage: { hydratedTemplate: {
+      hydratedContentText: "Ready?", hydratedButtons: [{ quickReplyButton: { id: "go", displayText: "Go" } }, { urlButton: { displayText: "Site", url: "https://x" } }],
+    } } } },
+  }));
+  assert.equal(tpl.kind, "interactive");
+  assert.equal(tpl.text, "Ready?\n1) Go");
+  assert.deepEqual(tpl.options, [{ n: 1, id: "go", title: "Go", type: "button" }]);
+});
+
+test("normalize: an unknown interactive shape keeps the body and doesn't crash", () => {
+  const odd = normalizeMessage(dmRaw("O1", { interactiveMessage: { body: { text: "Just text" }, nativeFlowMessage: { buttons: [{ name: "weird", buttonParamsJson: "{not json" }, null] } } }));
+  assert.equal(odd.kind, "interactive");
+  assert.equal(odd.text, "Just text");
+  assert.equal(odd.options, null);
+  const empty = normalizeMessage(dmRaw("O2", { listMessage: { sections: "nope" } }));
+  assert.equal(empty.kind, "interactive");
+  assert.equal(empty.text, null);
+});
+
+test("store: options are saved and returned on messages, old inboxes gain the column", () => {
+  const { store } = dmSetup();
+  const rec = normalizeMessage(dmRaw("L2", { listMessage: { description: "Pick", sections: [{ rows: [{ rowId: "a", title: "A" }] }] } }));
+  const n = store.addMessage(rec);
+  assert.deepEqual(store.getMessage(n).options, [{ n: 1, id: "a", title: "A", type: "list" }]);
+  assert.equal(store.getMessage(n).options_json, undefined);
+  assert.deepEqual(store.findMessages({ chat: ASSISTANT })[0].options.length, 1);
+  assert.equal(store.getContext(n, 2).thread[0].options.length, 1);
+  const plain = store.addMessage({ ...rec, id: "P1", kind: "text", text: "hi", options: null });
+  assert.equal(store.getMessage(plain).options, null);
+});
+
+test("api: choose is refused outside the assistant-test chat", async () => {
+  const { store, wa, sent, MESIRI_TEAM } = dmSetup();
+  store.upsertChat({ jid: GROUP, name: "Acme", is_group: true });
+  store.setRole(GROUP, "customer", "mesiri");
+  store.upsertChat({ jid: DM, name: "Ravi", is_group: false });
+  const server = createApi({ store, wa, token: TOKEN });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  try {
+    for (const chat of [MESIRI_TEAM, GROUP, DM]) {
+      const r = await call(server, "POST", "/send", { body: { chat, project: "mesiri", choose: { message_n: 1, option: 1 } } });
+      assert.equal(r.status, 403, chat);
+    }
+    assert.equal(sent.length, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test("api: choose in assistant-test sends the matching response, counts in the limit, and validates the option", async () => {
+  const { store, wa, sent } = dmSetup();
+  process.env.TEAMMATE_TEST_SENDS_PER_HOUR = "10";
+  const menu = store.addMessage(normalizeMessage(dmRaw("L3", {
+    listMessage: { description: "Pick", sections: [{ rows: [{ rowId: "start", title: "Start free trial" }, { rowId: "co", title: "I'm in a company" }] }] },
+  })));
+  const own = store.addMessage({ ...normalizeMessage(dmRaw("M1", { conversation: "mine" })), from_me: true });
+  const server = createApi({ store, wa, token: TOKEN });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  try {
+    const body = (choose) => ({ body: { chat: ASSISTANT, project: "mesiri", choose } });
+    assert.equal((await call(server, "POST", "/send", body({ message_n: menu, option: 1 }))).status, 200);
+    assert.equal((await call(server, "POST", "/send", body({ message_n: menu, option: "i'm in a company" }))).status, 200);
+    assert.equal((await call(server, "POST", "/send", body({ message_n: menu, option: 9 }))).status, 400);
+    assert.equal((await call(server, "POST", "/send", body({ message_n: own, option: 1 }))).status, 400);
+    assert.equal((await call(server, "POST", "/send", body({ message_n: 999, option: 1 }))).status, 400);
+    assert.equal(sent.length, 2);
+    assert.equal(sent[0].choose.option.id, "start");
+    assert.equal(sent[0].choose.quoted.id, "L3");
+    assert.equal(sent[1].choose.option.id, "co");
+    for (let i = 0; i < 8; i++) assert.equal((await call(server, "POST", "/send", body({ message_n: menu, option: 1 }))).status, 200);
+    assert.equal((await call(server, "POST", "/send", body({ message_n: menu, option: 1 }))).status, 429);
+  } finally {
+    server.close();
+  }
+});
+
+test("whatsapp: each option type becomes its response message", () => {
+  assert.deepEqual(buildChoice({ n: 1, id: "start", title: "Start", type: "list" }).send, {
+    listReply: { title: "Start", listType: 1, singleSelectReply: { selectedRowId: "start" } },
+  });
+  assert.deepEqual(buildChoice({ n: 1, id: "yes", title: "Yes", type: "button" }).send, {
+    buttonReply: { id: "yes", displayText: "Yes" }, type: "plain",
+  });
+  const flow = buildChoice({ n: 1, id: "q1", title: "Cancel", type: "native_flow", name: "quick_reply" }).relay.interactiveResponseMessage;
+  assert.equal(flow.body.text, "Cancel");
+  assert.equal(flow.nativeFlowResponseMessage.name, "quick_reply");
+  assert.equal(flow.nativeFlowResponseMessage.paramsJson, JSON.stringify({ id: "q1" }));
+  assert.deepEqual(buildChoice({ n: 1, id: "x", title: "Hello", type: "mystery" }).send, { text: "Hello" });
 });
