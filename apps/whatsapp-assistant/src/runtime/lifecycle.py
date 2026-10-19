@@ -35,11 +35,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         async with httpx.AsyncClient(timeout=30.0) as http_client:
             app.state.container = build_container(app_settings, http_client)
             # BE-31: logins signed with the public fallback secret can be
-            # forged by anyone. Logged, not fatal, until production's .env is
-            # confirmed to set MESIRI_JWT_SECRET -- refusing to boot before
-            # that is known could take the live app down on deploy.
-            from mesiri.domains.identity.auth_service import jwt_secret_is_default
+            # forged by anyone. Production refuses to boot on it (its .env was
+            # confirmed to set MESIRI_JWT_SECRET, 19 Oct); elsewhere it is logged.
+            import os
 
+            from mesiri.domains.identity.auth_service import check_jwt_secret, jwt_secret_is_default
+
+            check_jwt_secret(os.environ.get("MESIRI_ENVIRONMENT"))
             if jwt_secret_is_default():
                 import logging
 

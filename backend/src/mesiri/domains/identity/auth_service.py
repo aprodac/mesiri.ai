@@ -19,6 +19,19 @@ def jwt_secret_is_default() -> bool:
     return SECRET_KEY == _DEFAULT_SECRET
 
 
+def check_jwt_secret(environment: str | None) -> None:
+    """Refuse to run production on the public fallback secret (BE-31 step 2).
+
+    Production's .env was confirmed to set MESIRI_JWT_SECRET on 19 Oct (vps_check.sh), so
+    booting without it now means a broken .env, and forgeable logins, not a fresh server.
+    """
+    if jwt_secret_is_default() and (environment or "").strip().lower() == "production":
+        raise RuntimeError(
+            "MESIRI_JWT_SECRET is not set: refusing to start production with the public "
+            "default secret (logins could be forged). Set it in /opt/mesiri/.env."
+        )
+
+
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
