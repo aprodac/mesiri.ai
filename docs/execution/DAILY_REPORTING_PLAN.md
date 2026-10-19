@@ -1142,6 +1142,14 @@ is approved by composition. The WhatsApp tick (`runtime/project_auto_dpr.py`
 recipient (subject = recipient), and marks the report and its confirmed sites
 PUBLISHED. Backend half: `application/projects/auto_dpr.py`.
 
+**Project DPR page (WEB-05).** `GET /dpr/projects/{id}/day?date=` reads one
+project's day: its DPR status (as on Today), every site's day, and the project
+DPR. Until the roll-up is frozen (approved/published) the page shows a preview
+built by `assemble_project_report_payload(preview=True)` -- confirmed sites only,
+the rest not reported, nothing written (the cutoff's draft roll-up is stale by
+then). Once sent it shows the frozen version's payload and the versions that
+went out (approved ones only). Dashboard: `/today/projects/:projectId/:date`.
+
 **Save first, confirm later (BE-09, migration 0470).** `extractions` records
 what the AI read from a message (model, structured output, ContextConfidence).
 `fact_reviews` is an append-only review log for activities, site issues, labour
