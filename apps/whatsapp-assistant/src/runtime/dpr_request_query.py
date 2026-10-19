@@ -56,8 +56,6 @@ class DprRequestQueryService:
         if not project_id:
             return {"status": "not_generated", "object_key": None, "code": None}
 
-        import sqlalchemy as sa
-
         try:
             org_id = uuid.UUID(organization_id)
             proj_uuid = uuid.UUID(project_id)
@@ -65,47 +63,11 @@ class DprRequestQueryService:
         except (TypeError, ValueError):
             return {"status": "not_generated", "object_key": None, "code": None}
 
-        daily_reports = sa.table(
-            "daily_reports",
-            sa.column("id"),
-            sa.column("organization_id"),
-            sa.column("project_id"),
-            sa.column("site_id"),
-            sa.column("report_date"),
-            sa.column("level"),
-            sa.column("code"),
-            sa.column("current_version_id"),
-        )
-        daily_report_versions = sa.table(
-            "daily_report_versions",
-            sa.column("id"),
-            sa.column("rendered_object_key"),
-        )
-
-        scope_clause = (
-            sa.and_(daily_reports.c.site_id == site_uuid, daily_reports.c.level == "SITE")
-            if site_uuid is not None
-            else sa.and_(daily_reports.c.site_id.is_(None), daily_reports.c.level == "PROJECT")
-        )
-        query = (
-            sa.select(
-                daily_reports.c.code,
-                daily_report_versions.c.rendered_object_key,
-            )
-            .select_from(
-                daily_reports.join(
-                    daily_report_versions,
-                    daily_reports.c.current_version_id == daily_report_versions.c.id,
-                    isouter=True,
-                )
-            )
-            .where(
-                daily_reports.c.organization_id == org_id,
-                daily_reports.c.project_id == proj_uuid,
-                daily_reports.c.report_date == report_date,
-                scope_clause,
-            )
-            .limit(1)
+        query = _report_query(
+            organization_id=org_id,
+            project_id=proj_uuid,
+            site_id=site_uuid,
+            report_date=report_date,
         )
 
         async with self._db.transaction() as conn:
@@ -116,3 +78,60 @@ class DprRequestQueryService:
         if not row["rendered_object_key"]:
             return {"status": "pending_render", "object_key": None, "code": row["code"]}
         return {"status": "ready", "object_key": row["rendered_object_key"], "code": row["code"]}
+
+
+#: Mirrors the `daily_report_level` Postgres enum (migration 0440). The bare
+#: sa.column("level") is untyped, so `level == "SITE"` binds as VARCHAR and
+#: Postgres has no `daily_report_level = varchar` operator: every real lookup
+#: failed, which "send me today's report" reported as "can't look up today's
+#: report". Typed here, same fix as runtime/activity_query.py.
+def _report_query(
+    *,
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    site_id: uuid.UUID | None,
+    report_date: datetime.date,
+):  # type: ignore[no-untyped-def]
+    import sqlalchemy as sa
+    from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
+
+    level_type = PG_ENUM("SITE", "PROJECT", name="daily_report_level", create_type=False)
+    daily_reports = sa.table(
+        "daily_reports",
+        sa.column("id"),
+        sa.column("organization_id"),
+        sa.column("project_id"),
+        sa.column("site_id"),
+        sa.column("report_date"),
+        sa.column("level", level_type),
+        sa.column("code"),
+        sa.column("current_version_id"),
+    )
+    daily_report_versions = sa.table(
+        "daily_report_versions",
+        sa.column("id"),
+        sa.column("rendered_object_key"),
+    )
+
+    scope_clause = (
+        sa.and_(daily_reports.c.site_id == site_id, daily_reports.c.level == "SITE")
+        if site_id is not None
+        else sa.and_(daily_reports.c.site_id.is_(None), daily_reports.c.level == "PROJECT")
+    )
+    return (
+        sa.select(daily_reports.c.code, daily_report_versions.c.rendered_object_key)
+        .select_from(
+            daily_reports.join(
+                daily_report_versions,
+                daily_reports.c.current_version_id == daily_report_versions.c.id,
+                isouter=True,
+            )
+        )
+        .where(
+            daily_reports.c.organization_id == organization_id,
+            daily_reports.c.project_id == project_id,
+            daily_reports.c.report_date == report_date,
+            scope_clause,
+        )
+        .limit(1)
+    )

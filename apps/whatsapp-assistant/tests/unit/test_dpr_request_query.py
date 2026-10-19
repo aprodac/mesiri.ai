@@ -72,3 +72,32 @@ async def test_malformed_organization_id_returns_not_generated_without_touching_
         report_date=TODAY,
     )
     assert result == {"status": "not_generated", "object_key": None, "code": None}
+
+
+def _compiled(site_id):
+    import uuid
+
+    from sqlalchemy.dialects.postgresql import asyncpg
+
+    from runtime.dpr_request_query import _report_query
+
+    query = _report_query(
+        organization_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        site_id=site_id,
+        report_date=TODAY,
+    )
+    return str(query.compile(dialect=asyncpg.dialect()))
+
+
+def test_level_is_compared_as_the_postgres_enum_not_as_varchar():
+    """Regression (request 57, B1): 'send me today's report' said 'can't look
+    up today's report' because `daily_report_level = VARCHAR` is not a
+    Postgres operator. Once a project is known the query really runs, so the
+    bind must be typed as the enum (a ::daily_report_level cast)."""
+    import uuid
+
+    for site in (uuid.uuid4(), None):
+        sql = _compiled(site)
+        assert "::daily_report_level" in sql
+        assert "::VARCHAR" not in sql
