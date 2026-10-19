@@ -93,6 +93,8 @@ class DprDocumentData:
     hours_lost: str = "—"
     tomorrow_plan: str = ""
     late_entries: list[DprLateEntryRow] = field(default_factory=list)
+    # BE-18: the version's AI summary of its confirmed facts; "" for none.
+    summary: str = ""
 
 
 _WEATHER_LABELS = {
@@ -120,7 +122,9 @@ def _quantities_text(quantities: list[dict[str, Any]]) -> str:
     )
 
 
-def build_document_data(*, code: str, payload: dict[str, Any]) -> DprDocumentData:
+def build_document_data(
+    *, code: str, payload: dict[str, Any], summary: str | None = None
+) -> DprDocumentData:
     """Shape an assembled DPR payload (see backend/.../dpr.py's
     `assemble_site_report_payload`) into what the template renders. Missing
     fields degrade to placeholders rather than raising -- a partially-filled
@@ -177,6 +181,7 @@ def build_document_data(*, code: str, payload: dict[str, Any]) -> DprDocumentDat
     conditions = payload.get("conditions") or {}
     hours_lost = conditions.get("hours_lost")
     return DprDocumentData(
+        summary=(summary or "").strip(),
         weather=_WEATHER_LABELS.get(conditions.get("weather") or "", "Not set"),
         site_working=_SITE_WORKING_LABELS.get(conditions.get("site_working") or "", "Not set"),
         hours_lost=f"{hours_lost} h" if hours_lost is not None else "—",

@@ -117,6 +117,10 @@ class AppContainer:
     # M8: owns the one transaction Material command execution runs in. connect()/
     # disconnect() are called by the lifespan handler, same as redis_client.
     material_db: PostgresDatabase
+    # BE-18: writes the AI summary of a frozen DPR before its PDF is sent;
+    # handed to the scheduler (runtime/automation_runner.py). None = no
+    # summaries, DPRs go out as before.
+    dpr_summary_writer: Any = None
 
 
 def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppContainer:
@@ -784,6 +788,10 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     from runtime.reply_language import ReplyComposer, UserLanguageStore
 
     reply_composer = ReplyComposer(ai_resolver)
+    # BE-18: the DPR summary uses the same resolver (generate_json).
+    from runtime.dpr_summary import DprSummaryWriter
+
+    dpr_summary_writer = DprSummaryWriter(ai_resolver)
     user_language_store = UserLanguageStore(redis_client)
     # Resolves a picker reply the deterministic matcher (workflows/slots.py's
     # match_slot_answer) couldn't -- e.g. "New cause it's 3rd floor" instead
@@ -1022,6 +1030,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         message_logger=message_logger,
         trace_logger=trace_logger,
         material_db=material_db,
+        dpr_summary_writer=dpr_summary_writer,
     )
 
 

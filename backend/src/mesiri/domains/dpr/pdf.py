@@ -30,6 +30,16 @@ def _truncate(text: str | None, max_len: int) -> str:
     return text if len(text) <= max_len else text[: max_len - 1] + '...'
 
 
+_LATIN1_PUNCTUATION = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"',
+                                     "\u2013": "-", "\u2014": "-", "\u2026": "..."})
+
+
+def _latin1(text: str) -> str:
+    """The core PDF fonts are Latin-1 only; an AI-written summary often
+    carries curly quotes or dashes, and anything else is replaced."""
+    return text.translate(_LATIN1_PUNCTUATION).encode("latin-1", "replace").decode("latin-1")
+
+
 _WEATHER_LABELS = {
     "sunny": "Sunny",
     "cloudy": "Cloudy",
@@ -56,6 +66,7 @@ def render_dpr_pdf_bytes(
     site_name: str | None,
     workflow_status: str,
     payload: dict[str, Any],
+    summary: str | None = None,
 ) -> bytes:
     """Render one DPR version's payload to PDF bytes.
 
@@ -64,6 +75,8 @@ def render_dpr_pdf_bytes(
     status, contractor, quantities[], evidence_count), activity_count,
     issues[] (issue_type, severity, narrative, status,
     delay_duration_minutes), open_issue_count, evidence_count.
+
+    `summary` (BE-18) is the version's AI summary, printed under the header.
     """
     from fpdf import FPDF
 
@@ -89,6 +102,13 @@ def render_dpr_pdf_bytes(
         pdf.cell(0, 6, _conditions_line(conditions), new_x="LMARGIN", new_y="NEXT")
     pdf.set_text_color(0, 0, 0)
     pdf.ln(4)
+
+    if summary:
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 8, "Summary", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.multi_cell(0, 5, _latin1(_truncate(summary, 800)), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(4)
 
     # Meta tiles
     activities = payload.get("activities") or []

@@ -1142,6 +1142,31 @@ is approved by composition. The WhatsApp tick (`runtime/project_auto_dpr.py`
 recipient (subject = recipient), and marks the report and its confirmed sites
 PUBLISHED. Backend half: `application/projects/auto_dpr.py`.
 
+**AI summary of the confirmed facts (BE-18, approved by Alan 19 Oct).** Each
+frozen (APPROVED/PUBLISHED) site or project version gets one 3-5 sentence,
+English, neutral summary, written right before its PDF is made and stored in
+`daily_report_versions.narrative_summary` (no migration). Never regenerated: a
+version that has one (including one a person typed on a revision) keeps it
+(`PostgresDprRepository.set_narrative_summary` writes only when empty).
+`runtime/dpr_summary.py`: `summary_facts` reduces the frozen payload to what the
+report prints, minus drafts (`review == "draft"`), money, late entries and
+internal flags; a project summary gets the roll-up and `not_reported_sites`.
+`DprSummaryWriter` makes one `generate_json` call through the shared AI resolver
+(8 s timeout) inside `usage_scope(purpose="dpr_summary")`, so BE-25 costs it to
+the company. `numbers_supported` rejects any summary with a number (digits or
+number words) not in the facts; over-long answers are rejected too. Any failure
+= no summary, the DPR goes out exactly as before. Where: the send step
+(`send_due_project_dprs`; a single-site project's already-rendered site PDF is
+re-rendered once so the owner's PDF carries it) and the render cron
+(`render_pending_dpr_pdfs.py`, frozen current versions only; installs the usage
+recorder itself). Shown in the Playwright PDF and the fpdf fallback ("Summary"
+under the header), and on the dashboard: `summary` on `GET /dpr/site-days/{id}`
+and `GET /dpr/projects/{id}/day` (sent only), and on each `GET /dpr/daily-reports`
+row, only while the report is frozen. Not in the WhatsApp delivery message (a
+fixed Meta template). **Known gap:** a multi-site project's site version whose PDF
+the cron rendered while it was still a draft, and that confirmation did not
+rebuild (no drafts to confirm), gets no summary -- see BE-43.
+
 **Project DPR page (WEB-05).** `GET /dpr/projects/{id}/day?date=` reads one
 project's day: its DPR status (as on Today), every site's day, and the project
 DPR. Until the roll-up is frozen (approved/published) the page shows a preview

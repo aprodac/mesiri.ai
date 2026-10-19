@@ -168,7 +168,7 @@ def _local_date(automation: dict[str, Any], now_utc: datetime.datetime) -> datet
     return local_now(timezone_name=automation.get("timezone") or "UTC", now_utc=now_utc).date()
 
 
-async def run_tick(*, db: Any) -> dict[str, int] | None:
+async def run_tick(*, db: Any, summary_writer: Any = None) -> dict[str, int] | None:
     """One scheduler tick. Returns counts, or None if another worker held
     the lock (not an error -- exactly one runner per tick is the point)."""
     from sqlalchemy import text
@@ -223,7 +223,7 @@ async def run_tick(*, db: Any) -> dict[str, int] | None:
                 logger.exception("automation_runner.site_day_review_failed")
 
             try:
-                fired += await send_due_project_dprs(conn, db=db)
+                fired += await send_due_project_dprs(conn, db=db, summary_writer=summary_writer)
             except Exception:  # noqa: BLE001
                 logger.exception("automation_runner.project_dpr_send_failed")
 
@@ -294,7 +294,7 @@ async def _drain_and_send(*, db: Any) -> dict[str, int]:
         )
 
 
-async def runner_loop(*, db: Any) -> None:
+async def runner_loop(*, db: Any, summary_writer: Any = None) -> None:
     """Forever-loop driving the scheduled tick. Cancelled on shutdown.
 
     Every failure mode is swallowed and retried on the next tick: this is the thing
@@ -311,7 +311,7 @@ async def runner_loop(*, db: Any) -> None:
         await asyncio.sleep(delay)
         while True:
             try:
-                await run_tick(db=db)
+                await run_tick(db=db, summary_writer=summary_writer)
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001
