@@ -6,6 +6,7 @@ name: Claude ops
 #
 #   vps-check         infra/deploy/vps_check.sh over SSH (read-only; INF-01, BE-30, BE-31, INF-09)
 #   vps-backup-now    infra/deploy/backup_db.sh over SSH (writes a dump to /var/backups/mesiri; INF-06)
+#   vps-staging       infra/deploy/staging_deploy.sh: staging on 127.0.0.1:8101 from origin/main (INF-02)
 #   vps-smoke         infra/deploy/smoke_test.sh against the live build (read-only; INF-04)
 #   bot-status        is the bot linked and receiving
 #   bot-chats         chats with their labels (names only)
@@ -26,7 +27,7 @@ on:
         description: What to run
         required: true
         type: choice
-        options: [vps-check, vps-backup-now, vps-smoke, bot-status, bot-chats, bot-test, bot-recent-test, bot-recent-team, bot-items, bot-label-test]
+        options: [vps-check, vps-backup-now, vps-staging, vps-smoke, bot-status, bot-chats, bot-test, bot-recent-test, bot-recent-team, bot-items, bot-label-test]
       text:
         description: "bot-test: the message (or choose:<n|title>); bot-label-test: the chat jid"
         required: false
@@ -75,6 +76,8 @@ jobs:
             vps-backup-now)
               ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" 'bash -s -- manual' < infra/deploy/backup_db.sh 2>&1
               ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" 'ls -la /var/backups/mesiri' ;;
+            vps-staging)
+              ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" 'bash -s' < infra/deploy/staging_deploy.sh 2>&1 | mask ;;
             vps-smoke)
               ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
                 'P=$(grep -E "^MESIRI_APP_PORT=" /opt/mesiri/.env | tail -1 | cut -d= -f2 | tr -dc 0-9); bash -s -- "$(git -C /opt/mesiri rev-parse --short HEAD)" "http://127.0.0.1:${P:-8000}"' \

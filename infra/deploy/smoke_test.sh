@@ -89,7 +89,9 @@ redis_get() {
     REDISCLI_AUTH="$(env_value MESIRI_REDIS__PASSWORD)" redis-cli --raw GET "$1"
   fi
 }
-if [ -n "${REDIS_CONTAINER}" ] || command -v redis-cli > /dev/null; then
+if [ -n "${SKIP_WORKER:-}" ]; then
+  pass "queue worker not checked (SKIP_WORKER; staging has none)"
+elif [ -n "${REDIS_CONTAINER}" ] || command -v redis-cli > /dev/null; then
   WORKER_OK=false
   for _ in $(seq 1 15); do
     if [ -n "$(redis_get "${QUEUE_HEALTH_KEY}" 2>/dev/null)" ]; then
