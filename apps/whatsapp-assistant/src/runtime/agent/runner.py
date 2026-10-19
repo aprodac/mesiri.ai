@@ -174,15 +174,25 @@ def _normalized(text: str) -> str:
 
 def _without_echoed_questions(text: str, toolbox: AgentToolbox) -> str:
     """A question saved for the engineer is in the "Saved:" list; the model
-    repeating it back on a line of its own adds nothing (request 57, B2)."""
+    repeating it back, or any other line that only plays back the sender's own
+    words, adds nothing (request 57, B2/B3)."""
     asked = {
         _normalized(item.summary[len(QUESTION_PREFIX):])
         for item in toolbox.saved
         if item.summary and item.summary.startswith(QUESTION_PREFIX)
     }
-    if not asked or not text:
+    spoken = _normalized(toolbox.user_text)
+    if not text:
         return text
-    kept = [line for line in text.split("\n") if _normalized(line) not in asked]
+    kept = []
+    for line in text.split("\n"):
+        norm = _normalized(line)
+        # The sender's own words played back ("6 mason, 10 helper vannu") say
+        # nothing the "Saved:" list does not, whatever else the line is.
+        echo = len(norm.split()) >= 3 and norm in spoken
+        if norm in asked or echo:
+            continue
+        kept.append(line)
     return "\n".join(kept).strip("\n").strip()
 
 
