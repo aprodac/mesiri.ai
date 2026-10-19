@@ -27,6 +27,7 @@ from channel.receipt.data import (
     combine_receipts,
 )
 from mesiri_contracts.assistant.draft_action import DraftActionType
+from trade_label import trade_label
 
 
 def _rows(data) -> dict[str, str]:
@@ -60,7 +61,7 @@ def test_header_and_footer_follow_the_record():
     assert data.status == "SAVED · DRAFT"
     assert data.footer_note == "Confirm with tonight's report"
     assert data.site_line == "Block A · Riverside Tower"
-    assert data.meta_line == "19 Oct 2026 · 10:57 AM · Mohammed"
+    assert data.meta_line == "19 Oct 2026 · 4:27 PM · Mohammed"
     assert receipt(*MATERIAL_IN, late_entry=True).status == "LATE ENTRY"
 
 
@@ -71,7 +72,7 @@ def test_missing_reporter_and_supplier_degrade_to_nothing_not_a_crash():
         {"material_name": "sand", "quantity": 5, "unit": "tons"},
         reporter=None,
     )
-    assert data.meta_line == "19 Oct 2026 · 10:57 AM"
+    assert data.meta_line == "19 Oct 2026 · 4:27 PM"
     assert _rows(data) == {"Material": "Sand"}  # no Supplier row rather than a dash
 
 
@@ -119,7 +120,7 @@ def test_labour_has_one_row_per_trade_with_counts(trades):
     data = labour(trades)
     assert data.kind is ReceiptKind.LABOUR
     assert [(t.name, t.count) for t in data.trades] == [
-        (name.replace("_", " ").title(), n) for name, n in trades
+        (trade_label(name), n) for name, n in trades
     ]
     assert data.hero_number == str(sum(n for _, n in trades))
     assert data.more == 0
@@ -282,3 +283,52 @@ def test_progress_update_and_close_issue():
     )
     assert closed.kind is ReceiptKind.ISSUE and closed.hero_status == "Resolved"
     assert closed.record_id.startswith("SC-")
+
+
+def _stamped(moment, timezone=None):
+    from tests.unit.receipt_samples import ORG, PRJ, SITE, USR, Named
+
+    from channel.receipt.data import build_receipt_data
+    from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
+
+    draft = DraftActionV2(
+        draft_id="d", correlation_id="c", workflow_instance_id="w",
+        action_type=DraftActionType.RECORD_LABOUR_ATTENDANCE,
+        organization_id=ORG, user_id=USR, project_id=PRJ, site_id=SITE,
+        fields={"lines": [{"worker_name": None, "trade": "mason", "headcount": 2}]},
+    )
+    return build_receipt_data(
+        draft, record_row_id="abcd1234", reporter_name=None,
+        projects=[Named(PRJ, "P")], sites=[Named(SITE, "S")],
+        confirmed_at=moment, timezone=timezone,
+    )
+
+
+def test_receipt_time_is_the_companys_clock_not_utc():
+    from datetime import UTC, datetime
+
+    data = _stamped(datetime(2026, 10, 19, 12, 35, tzinfo=UTC))
+    assert data.meta_line.startswith("19 Oct 2026 · 6:05 PM")
+
+
+def test_receipt_date_and_record_id_roll_over_at_indian_midnight():
+    from datetime import UTC, datetime
+
+    data = _stamped(datetime(2026, 10, 19, 19, 0, tzinfo=UTC))  # 00:30 IST on the 20th
+    assert data.meta_line.startswith("20 Oct 2026 · 12:30 AM")
+    assert "-201026-" in data.record_id
+
+
+def test_receipt_uses_the_given_zone_and_falls_back_to_india():
+    from datetime import UTC, datetime
+
+    moment = datetime(2026, 10, 19, 12, 35, tzinfo=UTC)
+    assert _stamped(moment, "Asia/Dubai").meta_line.startswith("19 Oct 2026 · 4:35 PM")
+    assert _stamped(moment, "Not/AZone").meta_line.startswith("19 Oct 2026 · 6:05 PM")
+
+
+def test_trade_label_is_readable_and_receipt_rows_use_it():
+    assert trade_label("steel_bender") == "Steel bender"
+    assert trade_label("Mason") == "Mason"
+    assert trade_label(None) == ""
+    assert [t.name for t in labour([("steel_bender", 5)]).trades] == ["Steel bender"]

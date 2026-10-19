@@ -77,4 +77,5 @@ class RecordReceiptBuilder:
             projects=actor.projects if actor else [],
             sites=actor.sites if actor else [],
             confirmed_at=now,
+            timezone=getattr(actor, "timezone", None),
         )

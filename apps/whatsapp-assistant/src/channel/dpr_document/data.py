@@ -8,6 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from trade_label import trade_label
+
 
 @dataclass(frozen=True, slots=True)
 class DprActivityRow:
@@ -154,7 +156,7 @@ def build_document_data(
     ]
     labour = payload.get("labour") or {}
     trades = [
-        DprTradeRow(trade=_pretty(t.get("trade")), headcount=int(t.get("headcount") or 0))
+        DprTradeRow(trade=trade_label(t.get("trade")) or "—", headcount=int(t.get("headcount") or 0))
         for t in labour.get("trades", [])
     ]
     materials = [

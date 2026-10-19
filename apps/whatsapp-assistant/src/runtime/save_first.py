@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING, Any
 
 from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.planner_decision import WorkflowKey
+from trade_label import trade_label
 
 if TYPE_CHECKING:
     from mesiri.infrastructure.postgres.database import PostgresDatabase
@@ -211,7 +212,7 @@ def snapshot_note(
             part
             for part in (
                 str(first.get("contractor") or "").strip(),
-                str(first.get("trade") or "").replace("_", " ").strip(),
+                trade_label(first.get("trade")),
             )
             if part
         ) or "workers"

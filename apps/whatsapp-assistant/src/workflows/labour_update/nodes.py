@@ -63,6 +63,7 @@ from mesiri.domains.workforce.workers import normalize_name, normalize_trade
 from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
 from mesiri_contracts.common.ids import new_id
+from trade_label import trade_label
 
 from ..readable import field_lines
 from ..slots import (
@@ -306,7 +307,7 @@ def _slot_index(awaiting_slot: str) -> int | None:
 
 
 def _pretty_trade(trade: str | None) -> str:
-    return (trade or "").replace("_", " ")
+    return trade_label(trade)
 
 
 def _slot_candidates(result: MatchResult, candidates: list[WorkerCandidate]) -> list[SlotCandidate]:

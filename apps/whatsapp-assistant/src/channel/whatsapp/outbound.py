@@ -228,7 +228,14 @@ class WhatsAppSender:
             if media_id is None:
                 return False
             interactive["header"] = {"type": "image", "image": {"id": media_id}}
-        return (await self._send(to_wa_id, {"type": "interactive", "interactive": interactive})) is not None
+        sent = (
+            await self._send(to_wa_id, {"type": "interactive", "interactive": interactive})
+        ) is not None
+        if header_image is not None and sent:
+            # Greppable proof in the server log that the card went out as the
+            # message's header image (and which uploaded media it was).
+            logger.info("receipt.sent as=header media_id=%s to=%s", media_id, to_wa_id)
+        return sent
 
     async def send_image(
         self, to_wa_id: str, image_bytes: bytes, *, caption: str | None = None
@@ -252,7 +259,10 @@ class WhatsAppSender:
         image_fields: dict = {"id": media_id}
         if caption:
             image_fields["caption"] = caption
-        return (await self._send(to_wa_id, {"type": "image", "image": image_fields})) is not None
+        sent = (await self._send(to_wa_id, {"type": "image", "image": image_fields})) is not None
+        if sent:
+            logger.info("receipt.sent as=image media_id=%s to=%s", media_id, to_wa_id)
+        return sent
 
     async def send_document(
         self,

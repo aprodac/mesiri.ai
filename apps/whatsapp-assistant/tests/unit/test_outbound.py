@@ -275,3 +275,36 @@ async def test_send_image_still_uploads_with_its_own_filename():
     payload = json.loads(requests[1].content)
     assert payload["type"] == "image"
     assert payload["image"] == {"id": "media-123", "caption": "Saved"}
+
+
+@pytest.mark.asyncio
+async def test_receipt_is_sent_as_an_interactive_message_with_an_image_header(caplog):
+    """The receipt card must ride as header.type=image with the uploaded media
+    id, and receipt.sent logs that id (request [53])."""
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        if request.url.path.endswith("/media"):
+            return httpx.Response(200, json={"id": "MEDIA-42"})
+        return httpx.Response(200, json={"messages": [{"id": "wamid.out.2"}]})
+
+    sender = WhatsAppSender(
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        access_token="token",
+        phone_number_id="PHONE_NUMBER_ID",
+    )
+
+    with caplog.at_level("INFO"):
+        ok = await sender.send_button(
+            "919876543210",
+            body="Saved",
+            buttons=[ListRow("save_undo", "Undo")],
+            header_image=b"\x89PNG-bytes",
+        )
+
+    assert ok is True
+    payload = json.loads(captured[-1].content)
+    assert payload["type"] == "interactive"
+    assert payload["interactive"]["header"] == {"type": "image", "image": {"id": "MEDIA-42"}}
+    assert "receipt.sent as=header media_id=MEDIA-42" in caplog.text

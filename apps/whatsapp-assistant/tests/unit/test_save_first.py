@@ -445,7 +445,7 @@ def test_snapshot_note_says_which_figures_a_resend_replaced():
     )
     # The same figure again is counted once, and said so.
     assert snapshot_note(labour, [day[1]], day) == (
-        "Already recorded today, counted once: Kumar helper 5."
+        "Already recorded today, counted once: Kumar Helper 5."
     )
     # A new crew or trade replaces nothing.
     assert snapshot_note(labour, [sent[1]], day) is None

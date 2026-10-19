@@ -36,6 +36,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from mesiri_ai.ports.generation import JsonGenerationProvider
+from trade_label import trade_label
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +169,7 @@ def summary_facts(payload: dict[str, Any]) -> dict[str, Any]:
             ],
             "workers_on_site": labour.get("headcount"),
             "workers_by_trade": [
-                {"trade": t.get("trade"), "workers": t.get("headcount")}
+                {"trade": trade_label(t.get("trade")) or t.get("trade"), "workers": t.get("headcount")}
                 for t in labour.get("trades") or []
                 if isinstance(t, dict)
             ],

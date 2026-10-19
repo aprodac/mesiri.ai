@@ -51,6 +51,7 @@ from mesiri.domains.workforce.matching import (
     score_candidate,
 )
 from mesiri.domains.workforce.workers import normalize_name
+from trade_label import trade_label
 
 from ..slots import SlotCandidate, slot_options
 from ..state import WorkflowGraphState
@@ -174,7 +175,7 @@ def _promotable(fields: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _pretty_trade(trade: str | None) -> str:
-    return (trade or "").replace("_", " ").strip().title()
+    return trade_label(trade)
 
 
 def _describe(worker: dict[str, Any]) -> str:

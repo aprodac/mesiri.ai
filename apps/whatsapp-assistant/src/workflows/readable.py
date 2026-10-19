@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from trade_label import trade_label
+
 #: What each known field is called to a person.
 FIELD_LABELS: dict[str, str] = {
     "material_name": "Material",
@@ -89,6 +91,8 @@ def value_text(key: str, value: Any, fields: dict[str, Any] | None = None) -> st
         return money(value, (fields or {}).get("currency"))
     if key == "paid_from_own_pocket":
         return "own pocket" if value else "company account"
+    if key == "trade":
+        return trade_label(value) or str(value)
     if key == "direction":
         return str(value).capitalize()
     if isinstance(value, bool):

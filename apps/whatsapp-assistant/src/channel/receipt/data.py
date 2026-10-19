@@ -19,12 +19,14 @@ the template.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, tzinfo
 from enum import Enum
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
+from trade_label import trade_label
 
 #: Rows shown at full size; a card with more shows MAX_ROWS - 1 and "+N more".
 MAX_ROWS = 10
@@ -169,7 +171,7 @@ def _labour_trades(fields: dict) -> tuple[list[ReceiptTrade], int, int]:
         headcount += count
         if str(line.get("worker_name") or "").strip():
             named += 1
-        trade = str(line.get("trade") or "").strip().replace("_", " ").title() or "Workers"
+        trade = trade_label(line.get("trade")) or "Workers"
         counts[trade] = counts.get(trade, 0) + count
     return [ReceiptTrade(name, count) for name, count in counts.items()], headcount, named
 
@@ -214,6 +216,15 @@ def _status_word(close_action: str) -> str:
     return {"resolve": "Resolved", "close": "Closed"}.get(close_action, close_action.title())
 
 
+def company_zone(name: str | None) -> tzinfo:
+    """The company's timezone (organizations.timezone), India by default and
+    on any unknown name -- the same fallback as runtime/setup_questions.py."""
+    try:
+        return ZoneInfo(name or "Asia/Kolkata")
+    except Exception:  # noqa: BLE001
+        return ZoneInfo("Asia/Kolkata")
+
+
 def build_receipt_data(
     draft: DraftActionV2,
     *,
@@ -223,6 +234,7 @@ def build_receipt_data(
     sites: list[Any],
     confirmed_at: datetime,
     late_entry: bool = False,
+    timezone: str | None = None,
 ) -> ReceiptData:
     """Build the generic receipt shape for a confirmed DraftAction.
 
@@ -232,6 +244,9 @@ def build_receipt_data(
     (``ExecutionResult.material_row_id``) because materials came first; it
     now carries the expense, transfer, petty-cash and labour ids too.
     """
+    # The instant is UTC; the card shows the company's clock and calendar
+    # day (record id, date and time) -- converted here, once.
+    confirmed_at = confirmed_at.astimezone(company_zone(timezone))
     fields = draft.fields
     material_name = str(fields.get("material_name", "")).strip() or "Material"
     project_name = _project_name(draft.project_id, projects)

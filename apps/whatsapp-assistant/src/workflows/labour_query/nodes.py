@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 
+from trade_label import trade_label
+
 from ..state import WorkflowGraphState
 
 
@@ -30,7 +32,7 @@ def _fmt_amount(value: object) -> str:
 
 
 def _pretty_trade(trade: str) -> str:
-    return trade.replace("_", " ").title()
+    return trade_label(trade)
 
 
 def generate_labour_query_reply(state: WorkflowGraphState) -> dict:

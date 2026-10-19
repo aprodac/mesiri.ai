@@ -63,6 +63,8 @@ class ActorIdentity:
     org_active: bool
     projects: list[ProjectSummary] = field(default_factory=list)
     sites: list[SiteSummary] = field(default_factory=list)
+    #: organizations.timezone (IANA name); None = India.
+    timezone: str | None = None
 
 
 # ---------------------------------------------------------------------------

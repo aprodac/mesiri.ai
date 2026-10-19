@@ -74,3 +74,20 @@ async def test_list_reply_falls_back_to_text_when_no_send_list_provided():
     assert result is True
     body = send_text.calls[0][0][1]
     assert "Option A" in body
+
+
+async def test_receipt_reply_goes_as_a_button_message_with_the_image_header():
+    send_button = _Recorder(True)
+    send_image = _Recorder(True)
+    reply = ReplySpec(
+        text="Saved",
+        buttons=(ListRow("save_undo", "Undo"),),
+        header_image=b"png-bytes",
+    )
+
+    await send_reply_spec(
+        reply, "919876543210", send_text=_Recorder(True), send_button=send_button, send_image=send_image
+    )
+
+    assert send_button.calls[0][1]["header_image"] == b"png-bytes"
+    assert send_image.calls == []  # not a second, separate image

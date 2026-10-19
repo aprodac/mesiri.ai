@@ -512,8 +512,8 @@ def test_preview_renders_named_and_headcount_lines_differently():
             ]
         }
     )
-    assert "Ravi Kumar — mason — ₹800" in prompt
-    assert "12 × helper — ₹600 each" in prompt
+    assert "Ravi Kumar — Mason — ₹800" in prompt
+    assert "12 × Helper — ₹600 each" in prompt
 
 
 def test_preview_totals_headcount_and_cost():

@@ -147,7 +147,7 @@ class PostgresActorReader:
                         text(
                             "SELECT u.id, u.full_name, u.role, u.organization_id,"
                             "       u.access_policy, o.name AS org_name, o.status AS org_status, "
-                            "       o.trial_ends_at AS org_trial_ends_at "
+                            "       o.trial_ends_at AS org_trial_ends_at, o.timezone AS org_timezone "
                             "FROM users u "
                             "LEFT JOIN organizations o ON o.id = u.organization_id "
                             "WHERE u.whatsapp_number IS NOT NULL "
@@ -231,6 +231,7 @@ class PostgresActorReader:
             role=str(row["role"]),
             organization_id=str(org_id) if org_id is not None else None,
             org_name=row["org_name"],
+            timezone=row.get("org_timezone"),
             # lifecycle.is_operational: active, or a trial that hasn't
             # ended (SS-02). Case-insensitive, so a row written "Active"
             # before migration 0463 doesn't silently suspend a tenant.

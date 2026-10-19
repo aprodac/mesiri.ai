@@ -95,3 +95,20 @@ async def test_the_handler_combines_what_a_multi_part_note_saved():
     assert await handler.build_combined_receipt(handled, ACTOR) == b"png"
     assert "2 SAVED · DRAFT" in renderer.html[0]
     assert await InteractionHandler(workflow_runtime=None).build_combined_receipt(handled, ACTOR) is None
+
+
+async def test_builder_stamps_the_receipt_in_the_actor_timezone(monkeypatch):
+    from datetime import UTC, datetime
+
+    import channel.receipt.builder as builder_module
+
+    class _Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 10, 19, 12, 35, tzinfo=UTC)
+
+    monkeypatch.setattr(builder_module, "datetime", _Clock)
+    renderer = _Renderer()
+    actor = SimpleNamespace(full_name="M", projects=[], sites=[], timezone="Asia/Kolkata")
+    await RecordReceiptBuilder(renderer).build(*_saved(*MATERIAL, "aaaa-1"), actor)
+    assert "6:05 PM" in renderer.html[0]
