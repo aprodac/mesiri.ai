@@ -817,7 +817,20 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     from channel.receipt import ReceiptRenderer, RecordReceiptBuilder
 
     receipt_renderer = ReceiptRenderer()
-    record_receipt_builder = RecordReceiptBuilder(receipt_renderer)
+    async def _localize_card(texts, actor):  # type: ignore[no-untyped-def]
+        """The card's free text in the sender's language when they write it in
+        its own script (request 57, B4); English letters / English: unchanged."""
+        from runtime.reply_language import normalize_language
+
+        language, script = await user_language_store.get_profile(user_id=actor.user_id)
+        if normalize_language(language) is None or script == "latin":
+            return {}
+        unique = list(dict.fromkeys(texts))
+        composed = await reply_composer.compose("\n".join(unique), language=language, script=script)
+        lines = composed.split("\n")
+        return dict(zip(unique, lines, strict=True)) if len(lines) == len(unique) else {}
+
+    record_receipt_builder = RecordReceiptBuilder(receipt_renderer, localize=_localize_card)
     # M7: resolves a confirmation reply into the pending workflow, or None
     # (fall through to the normal understanding journey). M8: when a CONFIRM
     # resolves to CONFIRMED, the dispatcher executes the domain write

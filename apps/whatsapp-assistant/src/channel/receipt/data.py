@@ -639,3 +639,30 @@ def combine_receipts(parts: list[ReceiptData]) -> ReceiptData:
         rows=rows,
         more=more,
     )
+
+
+def card_texts(data: ReceiptData) -> list[str]:
+    """The free-text pieces of a card a worker reads in their own words: the
+    text of its WORK rows and of its summary row. Names, amounts, ids, labels
+    and the date stay as they are."""
+    texts = [r.text for r in data.rows if r.kind is ReceiptKind.WORK and r.text]
+    if data.summary is not None and data.summary.kind is ReceiptKind.WORK and data.summary.text:
+        texts.append(data.summary.text)
+    return texts
+
+
+def with_card_texts(data: ReceiptData, translated: dict[str, str]) -> ReceiptData:
+    """``data`` with the pieces from ``card_texts`` replaced by their
+    translations (a missing key keeps the English text)."""
+    from dataclasses import replace
+
+    def row(r: ReceiptRow) -> ReceiptRow:
+        if r.kind is ReceiptKind.WORK and r.text in translated:
+            return replace(r, text=translated[r.text])
+        return r
+
+    return replace(
+        data,
+        rows=[row(r) for r in data.rows],
+        summary=row(data.summary) if data.summary is not None else None,
+    )

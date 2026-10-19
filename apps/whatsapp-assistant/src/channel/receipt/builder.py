@@ -9,13 +9,14 @@ rendering failure) and returns None to degrade to a text-only confirmation.
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
 from mesiri_contracts.application.results.execution_result import ExecutionResult, ExecutionStatus
 from mesiri_contracts.assistant.v2.confirmed_action import ConfirmedActionV2
 
-from .data import ReceiptData, build_receipt_data, combine_receipts
+from .data import ReceiptData, build_receipt_data, card_texts, combine_receipts, with_card_texts
 from .render import ReceiptRenderer
 from .template import render_html
 
@@ -32,8 +33,16 @@ class RecordReceiptBuilder:
     class is type-agnostic.
     """
 
-    def __init__(self, renderer: ReceiptRenderer) -> None:
+    def __init__(
+        self,
+        renderer: ReceiptRenderer,
+        localize: Callable[[list[str], Any], Awaitable[dict[str, str]]] | None = None,
+    ) -> None:
         self._renderer = renderer
+        #: ``(texts, actor) -> {english: translated}``: the card's free text in
+        #: the sender's language and letters (request 57, B4). Never raises;
+        #: an empty result leaves the card in English.
+        self._localize = localize
 
     async def build(self, confirmed: ConfirmedActionV2, execution: ExecutionResult, actor) -> bytes | None:
         return await self.build_combined([(confirmed, execution)], actor)
@@ -60,11 +69,23 @@ class RecordReceiptBuilder:
                 )
         if not parts:
             return None
+        parts = await self._localized(parts, actor)
         try:
             return await self._renderer.render_png(render_html(combine_receipts(parts)))
         except Exception:
             logger.exception("receipt.render_failed parts=%s", len(parts))
             return None
+
+    async def _localized(self, parts: list[ReceiptData], actor: Any) -> list[ReceiptData]:
+        if self._localize is None:
+            return parts
+        try:
+            texts = [t for part in parts for t in card_texts(part)]
+            translated = await self._localize(texts, actor) if texts else {}
+            return [with_card_texts(part, translated) for part in parts] if translated else parts
+        except Exception:  # noqa: BLE001 -- the card goes out in English
+            logger.warning("receipt.localize_failed", exc_info=True)
+            return parts
 
     @staticmethod
     def _data(
