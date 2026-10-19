@@ -588,3 +588,39 @@ def test_greeting_trigger_defaults_to_the_returning_user_copy():
     spec = handler.handle_greeting_trigger(_message("hi"))
     assert spec is not None
     assert "I'm Mesiri" not in spec.text
+
+
+async def test_slow_path_does_not_read_a_site_name_as_yes():
+    """Request [38]: with a site question and an expense Yes/No open together,
+    the reply "Green Villa" was read as the expense confirmation and recorded
+    it. A model-labelled CONFIRM only counts when the words are a yes."""
+    repo = FakeWorkflowInstanceRepository()
+    repo.seed(_awaiting_state(), version=0)
+    classifier = FakeInteractionClassifier()
+    classifier.next_response = InteractionSpecV2(
+        correlation_id="c1",
+        segments=[InteractionSegment(intent=InteractionIntent.CONFIRM, segment_text="Green Villa")],
+    )
+    handler = _handler(repo, classifier=classifier)
+
+    handled = await handler.handle_slow_path(USR, _message("Green Villa"), "Green Villa", None)
+
+    assert handled is None  # a fresh message, not an answer to the open question
+    assert repo._rows[WF][0].phase is WorkflowPhase.AWAITING_CONFIRMATION  # nothing recorded
+
+
+async def test_slow_path_still_confirms_a_real_yes_with_a_correction():
+    repo = FakeWorkflowInstanceRepository()
+    repo.seed(_awaiting_state(), version=0)
+    classifier = FakeInteractionClassifier()
+    classifier.next_response = InteractionSpecV2(
+        correlation_id="c1",
+        segments=[InteractionSegment(intent=InteractionIntent.CONFIRM, segment_text="go ahead")],
+    )
+    handler = _handler(repo, classifier=classifier)
+
+    handled = await handler.handle_slow_path(USR, _message("go ahead"), "go ahead", None)
+
+    assert handled is not None
+    assert handled.unrelated_text is None
+    assert handled.result.status is WorkflowResumeStatus.CONFIRMED

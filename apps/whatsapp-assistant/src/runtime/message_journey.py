@@ -330,16 +330,21 @@ def build_message_handlers(
             actor = _resolved_actors.get(message.correlation_id)
             if setup_questions is not None and actor is not None:
                 try:
-                    await setup_questions.after_reply(
-                        actor,
-                        send=lambda spec: send_reply_spec(
-                            spec,
-                            message.sender.wa_id,
-                            send_text=sender.send_text,
-                            send_list=sender.send_list,
-                            send_button=sender.send_button,
-                        ),
-                    )
+                    # Not in the middle of a multi-part note: the letterhead
+                    # question waits until the plan has finished.
+                    from runtime.plan_executor import plan_has_more_to_do
+
+                    if not await plan_has_more_to_do(plan_store, user_id=str(actor.user_id)):
+                        await setup_questions.after_reply(
+                            actor,
+                            send=lambda spec: send_reply_spec(
+                                spec,
+                                message.sender.wa_id,
+                                send_text=sender.send_text,
+                                send_list=sender.send_list,
+                                send_button=sender.send_button,
+                            ),
+                        )
                 except Exception:  # noqa: BLE001 — a setup question never breaks a reply
                     _log.exception("setup_question.follow_up_failed user=%s", actor.user_id)
         finally:
@@ -589,6 +594,13 @@ def build_message_handlers(
             except Exception:  # noqa: BLE001
                 _log.warning("team_photo.park_failed user=%s", user_id)
 
+        async def _hold_team_photo_for_plan(store, user_id: str, report_id: str) -> None:
+            """Keep the team-photo offer for after the multi-part note ends."""
+            try:
+                await store.hold(user_id=user_id, report_id=report_id)
+            except Exception:  # noqa: BLE001
+                _log.warning("team_photo.hold_failed user=%s", user_id)
+
         async def _safe_pop_pending_report(store, user_id: str) -> str | None:
             """Pop the pending team-photo report id, never raising.
 
@@ -768,7 +780,22 @@ def build_message_handlers(
             # immediately, then await the receipt PNG (Playwright render) and
             # send the image. This keeps the reply feeling instant even when
             # the page-pool is cold.
-            await sender.send_text(wa_id, handled.reply_text)
+            from runtime.plan_executor import plan_defers_rejection, plan_has_more_to_do
+            from runtime.reply_language import localize_fixed_reply
+
+            reply_text = handled.reply_text
+            try:
+                if await plan_defers_rejection(handled, plan_store=plan_store, actor=ctx):
+                    # One question at a time: this part's question comes with
+                    # the closing summary, not beside the next part's Yes/No.
+                    reply_text = "Not saved yet. I'll ask about this one after the rest."
+                if user_language_store is not None:
+                    reply_text = localize_fixed_reply(
+                        reply_text, await user_language_store.get(user_id=ctx.user_id)
+                    )
+            except Exception:  # noqa: BLE001 -- wording never costs the reply
+                _log.exception("deliver.reply_wording_failed user=%s", ctx.user_id)
+            await sender.send_text(wa_id, reply_text)
             if handled.next_segment_reply is not None:
                 # #1 Multi-Activity: the batch's next queued segment, as its
                 # own message -- not concatenated above -- so a confirmable
@@ -829,10 +856,23 @@ def build_message_handlers(
                 await _park_team_photo_report(
                     team_photo_hint_store, ctx.user_id, report_id
                 )
-            # Sent now only when nothing is being promoted; otherwise it waits
-            # for that answer, so the supervisor faces one question at a time
-            # rather than two prompts at once.
-            if report_id and not promotion_offered:
+            # Sent now only when nothing is being promoted and no multi-part
+            # note is still running; otherwise it waits (for that answer, or
+            # for the note's last part), so the supervisor faces one question
+            # at a time rather than two prompts at once.
+            photo_held_for_plan = False
+            if report_id:
+                try:
+                    photo_held_for_plan = await plan_has_more_to_do(
+                        plan_store,
+                        user_id=ctx.user_id,
+                        finishing_instance_id=getattr(handled.result, "workflow_instance_id", None),
+                    )
+                except Exception:  # noqa: BLE001 -- the offer is optional
+                    _log.exception("team_photo.plan_check_failed user=%s", ctx.user_id)
+            if photo_held_for_plan:
+                await _hold_team_photo_for_plan(team_photo_hint_store, ctx.user_id, report_id)
+            elif report_id and not promotion_offered:
                 await _offer_team_photo(
                     report_id, ctx, wa_id, team_photo_hint_store, _send_spec
                 )
@@ -887,6 +927,19 @@ def build_message_handlers(
             except Exception:  # noqa: BLE001 — the confirmed/rejected step's own
                 # outcome was already recorded either way.
                 _log.exception("plan.advance_failed user=%s", ctx.user_id)
+            # The note is finished (or was never a note): now the optional
+            # team-photo question that was held back while it ran.
+            try:
+                if not promotion_offered and not await plan_has_more_to_do(
+                    plan_store, user_id=ctx.user_id
+                ):
+                    held_report = await team_photo_hint_store.pop_held(user_id=ctx.user_id)
+                    if held_report:
+                        await _offer_team_photo(
+                            held_report, ctx, wa_id, team_photo_hint_store, _send_spec
+                        )
+            except Exception:  # noqa: BLE001 -- the offer is optional
+                _log.exception("team_photo.held_offer_failed user=%s", ctx.user_id)
             # SS-13: the person whose contact was shared is now on the
             # project; hand the owner an invite to forward them. After the
             # plan summary, so the message to forward is the last one.

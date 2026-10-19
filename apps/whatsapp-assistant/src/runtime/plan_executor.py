@@ -48,7 +48,7 @@ never a blanket "all done" that papers over a partial failure).
 from __future__ import annotations
 
 from backend.ports import ActorIdentity
-from channel.friendly_errors import friendly_rejection
+from channel.friendly_errors import friendly_rejection, is_question_rejection
 from channel.replies import ReplySpec
 from interactions.handler import InteractionHandled
 from mesiri_contracts.application.results.execution_result import ExecutionResult, ExecutionStatus
@@ -85,6 +85,59 @@ def _running_step_for(plan: Plan, workflow_instance_id: str | None) -> PlanStep 
         ):
             return step
     return None
+
+
+async def plan_defers_rejection(
+    handled: InteractionHandled,
+    *,
+    plan_store: PlanStore,
+    actor: ActorIdentity | None,
+) -> bool:
+    """True when this confirmation is a plan step that was rejected with a
+    QUESTION ("Which site is this for?") and the plan has more to do.
+
+    One question at a time (request [38]): the question is not sent now, next
+    to the following step's Yes/No -- there a reply to it was read as the
+    answer to the other one. The closing summary carries it instead, once
+    nothing else is waiting."""
+    result = handled.result
+    execution = handled.execution_result
+    if (
+        not isinstance(result, WorkflowResumeResult)
+        or execution is None
+        or execution.status is not ExecutionStatus.REJECTED
+        or not is_question_rejection(execution.rejection_reasons)
+    ):
+        return False
+    user_id = str(getattr(actor, "user_id", None) or "")
+    if not user_id:
+        return False
+    plan = await plan_store.get_plan(user_id=user_id)
+    if plan is None:
+        return False
+    step = _running_step_for(plan, result.workflow_instance_id)
+    if step is None:
+        return False
+    return any(s.status is StepStatus.PENDING for s in plan.steps)
+
+
+async def plan_has_more_to_do(
+    plan_store: PlanStore, *, user_id: str, finishing_instance_id: str | None = None
+) -> bool:
+    """True while a plan still has a step waiting or running other than the
+    one that just resolved -- used to hold optional prompts (team photo,
+    letterhead question) until the plan has finished."""
+    if not user_id:
+        return False
+    plan = await plan_store.get_plan(user_id=user_id)
+    if plan is None or plan.origin is PlanOrigin.SINGLE_MESSAGE:
+        return False
+    for step in plan.steps:
+        if step.status is StepStatus.PENDING:
+            return True
+        if step.status is StepStatus.RUNNING and step.workflow_instance_id != finishing_instance_id:
+            return True
+    return False
 
 
 def _progress_prefix(plan: Plan) -> str:
@@ -131,7 +184,10 @@ def _summarize_step_outcome(
             return f"Recorded. {execution_result.conflict_note}"
         return "Recorded."
     if execution_result.status is ExecutionStatus.REJECTED:
-        return friendly_rejection(execution_result.rejection_reasons, where="plan_step")
+        line = friendly_rejection(execution_result.rejection_reasons, where="plan_step")
+        if is_question_rejection(execution_result.rejection_reasons):
+            return f"Not saved yet. {line}"
+        return line
     return "Something went wrong — please resend this part."
 
 
@@ -145,6 +201,10 @@ def _outcome_line(step: PlanStep, index: int) -> str:
     failure inside ``_start_next_runnable``, neither of which has an
     execution result to describe."""
     label = workflow_name(step.workflow_key.value)
+    narrative = str(step.fields.get("narrative") or "").strip()
+    if narrative and step.outcome_detail is not None and step.outcome_detail.startswith("Not saved"):
+        # Name WHICH part still needs an answer, in the sender's own words.
+        label = f"{label} (“{narrative[:80]}”)"
     if step.outcome_detail is not None:
         return f"{index}. {label}: {step.outcome_detail}"
     if step.status is StepStatus.DONE:
