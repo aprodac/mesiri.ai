@@ -78,13 +78,21 @@ _DUPLICATE_SUSPICION = 0.20
 
 _NONE_WORDS = frozenset(
     {
-        "none", "no", "not", "now", "skip", "nope", "cancel", "later",
-        "nobody", "nothing", "dont", "don't",
+        "none",
+        "no",
+        "not",
+        "now",
+        "skip",
+        "nope",
+        "cancel",
+        "later",
+        "nobody",
+        "nothing",
+        "dont",
+        "don't",
     }
 )
-_ALL_WORDS = frozenset(
-    {"all", "both", "everyone", "everybody", "yes", "yeah", "yep", "ok", "okay"}
-)
+_ALL_WORDS = frozenset({"all", "both", "everyone", "everybody", "yes", "yeah", "yep", "ok", "okay"})
 #: Typed or tapped, "Choose": let me pick which of them to add.
 _CHOOSE_WORDS = frozenset({"choose", "select", "pick", "some", "few"})
 _ADD_VERBS = frozenset({"add", "save", "register", "keep", "make", "mark", "put"})
@@ -107,11 +115,42 @@ _MAX_SHORT_REPLY_WORDS = 3
 #: name matching, matched nobody, and re-asked the same question forever.
 _FILLER_WORDS = frozenset(
     {
-        "save", "saving", "add", "adding", "register", "registering", "keep",
-        "make", "mark", "set", "put", "please", "pls", "plz", "them", "these",
-        "those", "it", "to", "the", "my", "our", "as", "in", "into", "on",
-        "of", "and", "worker", "workers", "permanent", "permanently", "list",
-        "thanks", "thank", "you",
+        "save",
+        "saving",
+        "add",
+        "adding",
+        "register",
+        "registering",
+        "keep",
+        "make",
+        "mark",
+        "set",
+        "put",
+        "please",
+        "pls",
+        "plz",
+        "them",
+        "these",
+        "those",
+        "it",
+        "to",
+        "the",
+        "my",
+        "our",
+        "as",
+        "in",
+        "into",
+        "on",
+        "of",
+        "and",
+        "worker",
+        "workers",
+        "permanent",
+        "permanently",
+        "list",
+        "thanks",
+        "thank",
+        "you",
     }
 )
 
@@ -221,9 +260,7 @@ def _select_by_name(text: str, workers: list[dict[str, Any]]) -> list[int] | Non
     meaningful = reply_tokens - _FILLER_WORDS
     # A name on the list always wins over a keyword, so a worker called
     # "Sabu" is still selectable even though the reply reads like filler.
-    listed = {
-        token for worker in workers for token in normalize_name(str(worker["name"])).split()
-    }
+    listed = {token for worker in workers for token in normalize_name(str(worker["name"])).split()}
     meaningful -= listed
     # A bare "add" / "save it" (the "Add" button, typed) names nobody, so it
     # means everyone offered -- but "add Anil" has a listed name in it and
@@ -268,7 +305,7 @@ def _select_by_name(text: str, workers: list[dict[str, Any]]) -> list[int] | Non
 
 
 def _wants_to_choose(text: str, workers: list[dict[str, Any]]) -> bool:
-    """"Choose" (the button, or typed): show the names, let me pick."""
+    """ "Choose" (the button, or typed): show the names, let me pick."""
     tokens = set(normalize_name(text).split())
     listed = {tok for w in workers for tok in normalize_name(str(w["name"])).split()}
     meaningful = (tokens - _FILLER_WORDS) - listed
@@ -276,7 +313,7 @@ def _wants_to_choose(text: str, workers: list[dict[str, Any]]) -> bool:
 
 
 def _parse_same_new_skip(text: str) -> str | None:
-    """"same" / "new" / "skip" from a tap or a typed reply; None when it is
+    """ "same" / "new" / "skip" from a tap or a typed reply; None when it is
     none of the three. "Skip" outranks the others, so "not sure" and "no,
     skip it" never create a worker."""
     reply = normalize_name(text)
@@ -290,6 +327,24 @@ def _parse_same_new_skip(text: str) -> str | None:
     if tokens & _NEW_WORDS:
         return "new"
     if tokens & _SAME_WORDS:
+        return "same"
+    return None
+
+
+def _named_answer(text: str, held: dict[str, Any]) -> str | None:
+    """A typed name at "is it the same person?" (owner's decision, 19 Oct):
+    the look-alike's own name means "a new person with this name", the existing
+    worker's name means "the same person". None for anything else."""
+    reply = normalize_name(text)
+    if not reply:
+        return None
+    new, old = (
+        normalize_name(str(held.get("name") or "")),
+        normalize_name(str(held.get("_similar_to") or "")),
+    )
+    if reply == new and reply != old:
+        return "new"
+    if reply == old and reply != new:
         return "same"
     return None
 
@@ -346,7 +401,7 @@ def _likely_existing(
 
 
 def _since(iso: Any) -> str | None:
-    """"2 Oct" from an ISO date, None when there is none."""
+    """ "2 Oct" from an ISO date, None when there is none."""
     try:
         day = date.fromisoformat(str(iso)[:10])
     except ValueError:
@@ -355,8 +410,15 @@ def _since(iso: Any) -> str | None:
 
 
 def _detail(held: dict[str, Any]) -> str:
-    """" (mason, since 2 Oct)" -- what the sender knows the register entry by."""
-    parts = [p for p in (_pretty_trade(held.get("_similar_trade")).lower(), _since(held.get("_similar_since"))) if p]
+    """ " (mason, since 2 Oct)" -- what the sender knows the register entry by."""
+    parts = [
+        p
+        for p in (
+            _pretty_trade(held.get("_similar_trade")).lower(),
+            _since(held.get("_similar_since")),
+        )
+        if p
+    ]
     if not parts:
         return ""
     if len(parts) == 2:
@@ -379,9 +441,7 @@ def _duplicate_question(held: list[dict[str, Any]], index: int, *, retry: bool =
 WORKERS_TO_CREATE = "workers_to_create"
 
 
-def _queue_for_creation(
-    workers: list[dict[str, Any]], fields: dict[str, Any]
-) -> list[str]:
+def _queue_for_creation(workers: list[dict[str, Any]], fields: dict[str, Any]) -> list[str]:
     """Record which workers the caller should write. Returns their names.
 
     The node decides; it never writes. Nodes are pure (no I/O, no
@@ -497,6 +557,8 @@ def offer_and_promote(state: WorkflowGraphState) -> dict:
         held: list[dict[str, Any]] = list(fields.get("_held_for_duplicate_check") or [])
         index = int(fields.get("_dup_index") or 0)
         choice = _parse_same_new_skip(answer)
+        if choice is None and index < len(held):
+            choice = _named_answer(answer, held[index])
         if choice is None or index >= len(held):
             if index >= len(held):
                 return _finish_duplicates(fields)
@@ -542,9 +604,7 @@ def offer_and_promote(state: WorkflowGraphState) -> dict:
                     ]
                 )
             else:
-                prompt = wording.RETRY_OFFER.format(
-                    names=wording.join_names(_names_of(workers))
-                )
+                prompt = wording.RETRY_OFFER.format(names=wording.join_names(_names_of(workers)))
                 options = _offer_options(workers)
             return _ask(prompt, PROMOTION_SLOT, fields, options)
         if not selection:
