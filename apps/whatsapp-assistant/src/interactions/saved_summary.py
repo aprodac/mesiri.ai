@@ -26,7 +26,7 @@ from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
 from trade_label import trade_label
 
 SAVED_HEADER = "✅ Saved:"
-QUESTION_PREFIX = "Question for your engineer: "
+QUESTION_PREFIX = "Question for your engineer: "  # canonicalization/question_note.py
 
 
 def _text(value: Any) -> str:

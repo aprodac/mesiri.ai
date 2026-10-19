@@ -439,3 +439,25 @@ async def test_one_expense_is_one_question_then_one_saved_reply(world):
     again = await world.handler.handle_fast_path(world.actor.user_id, world.message("Yes"))
     assert again is None
     assert len(world.dispatcher.dispatched) == 1  # a second Yes saves nothing more
+
+
+async def test_a_question_in_a_note_is_noted_for_the_engineer_and_the_reply_says_so(world):
+    """Request 57, B2/B3: the question is saved (not just echoed), and the saved
+    list is built from what was saved, not from the worker's raw words."""
+    provider = FakeToolCallingProvider(
+        [
+            [
+                ("save_labour", {"workers": [{"trade": "mason", "headcount": 6}, {"trade": "helper", "headcount": 10}]}),
+                ("note_for_engineer", {"question": "Nale slab concrete cheyyan pattumo?"}),
+            ],
+            "Nale slab concrete cheyyan pattumo?",  # the model only echoes it
+        ]
+    )
+    result = await world.say(provider, "6 mason, 10 helper vannu. Nale slab concrete cheyyan pattumo?")
+    assert len(result.toolbox.saved) == 2
+    lines = result.reply.text.split("\n")
+    assert lines[0] == "✅ Saved:"
+    assert lines[1] == "• 16 workers (6 mason, 10 helper)"
+    assert lines[2] == "• Question for your engineer: Nale slab concrete cheyyan pattumo?"
+    assert "vannu" not in result.reply.text
+    assert result.reply.text.count("Nale slab concrete cheyyan pattumo?") == 1

@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from canonicalization.question_note import question_note_candidate
 from mesiri_ai.models import ToolSpec
 from mesiri_contracts.assistant.candidates import Candidate
 from mesiri_contracts.assistant.enums import SemanticType
@@ -25,6 +26,7 @@ REPORT_ISSUE = "report_issue"
 TRANSFER_MONEY = "transfer_money"
 UNDO_LAST = "undo_last"
 ASK_USER = "ask_user"
+NOTE_FOR_ENGINEER = "note_for_engineer"
 QUERY_LABOUR = "query_labour"
 QUERY_MATERIALS = "query_materials"
 QUERY_WORK_LOG = "query_work_log"
@@ -42,6 +44,7 @@ WRITE_TOOLS = frozenset(
         SAVE_MATERIAL_USAGE,
         SAVE_EXPENSE,
         REPORT_ISSUE,
+        NOTE_FOR_ENGINEER,
         TRANSFER_MONEY,
         UNDO_LAST,
     }
@@ -243,6 +246,26 @@ def tool_specs() -> list[ToolSpec]:
                     "site": _SITE,
                 },
                 ["issue_type", "narrative"],
+            ),
+        ),
+        ToolSpec(
+            name=NOTE_FOR_ENGINEER,
+            description=(
+                "Save a QUESTION the user asked (e.g. 'can we pour the slab tomorrow?') for "
+                "their engineer, when none of the query tools can answer it from the company's "
+                "records. Never for a problem or delay (report_issue) and never for work done."
+            ),
+            parameters=_obj(
+                {
+                    "question": {
+                        "type": "string",
+                        "description": "The question, in the user's own words.",
+                    },
+                    "date": _DATE,
+                    "project": _PROJECT,
+                    "site": _SITE,
+                },
+                ["question"],
             ),
         ),
         ToolSpec(
@@ -458,6 +481,13 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             "occurred_on": date,
             **sc,
         }
+        return Candidate(semantic_type=SemanticType.SITE_ISSUE, fields=_clean(fields))
+    if name == NOTE_FOR_ENGINEER:
+        question = str(args.get("question") or "").strip()
+        if not question:
+            return None
+        note = question_note_candidate(question)
+        fields = {**note.fields, "occurred_on": date, **sc}
         return Candidate(semantic_type=SemanticType.SITE_ISSUE, fields=_clean(fields))
     if name == TRANSFER_MONEY:
         fields = {

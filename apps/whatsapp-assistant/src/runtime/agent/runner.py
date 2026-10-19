@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from channel.replies import ReplySpec
-from interactions.saved_summary import render_saved
+from interactions.saved_summary import QUESTION_PREFIX, render_saved
 from mesiri_ai.models import ChatMessage, ToolRunResult
 from mesiri_ai.ports.tool_calling import ToolCallingProvider
 
@@ -115,7 +115,7 @@ class AgentRunner:
             # The "Saved:" list is the system's, built from what was saved
             # (request 57, B3): the model's own list echoed the sender's raw
             # words ("6 mason, 10 helper vannu"). What it adds is the rest.
-            rest = _without_saved_block(text)
+            rest = _without_echoed_questions(_without_saved_block(text), toolbox)
             if not rest and run.stop_reason == "max_steps":
                 rest = CHECK_LINE
             text = f"{block}\n\n{rest}".strip() if rest else block
@@ -166,6 +166,24 @@ def _saved_block(toolbox: AgentToolbox) -> str:
     if not toolbox.saved or not all(item.summary for item in toolbox.saved):
         return ""
     return render_saved([item.summary for item in toolbox.saved if item.summary])
+
+
+def _normalized(text: str) -> str:
+    return " ".join(re.sub(r"[^\w\s]", " ", text, flags=re.UNICODE).split()).casefold()
+
+
+def _without_echoed_questions(text: str, toolbox: AgentToolbox) -> str:
+    """A question saved for the engineer is in the "Saved:" list; the model
+    repeating it back on a line of its own adds nothing (request 57, B2)."""
+    asked = {
+        _normalized(item.summary[len(QUESTION_PREFIX):])
+        for item in toolbox.saved
+        if item.summary and item.summary.startswith(QUESTION_PREFIX)
+    }
+    if not asked or not text:
+        return text
+    kept = [line for line in text.split("\n") if _normalized(line) not in asked]
+    return "\n".join(kept).strip("\n").strip()
 
 
 _SAVED_HEAD = re.compile(r"^\s*✅")
