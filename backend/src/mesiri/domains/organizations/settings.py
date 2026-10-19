@@ -51,6 +51,15 @@ CAPTURE_MODE_SAVE_FIRST = "save_first"
 CAPTURE_MODE_CONFIRM_FIRST = "confirm_first"
 CAPTURE_MODES: frozenset[str] = frozenset({CAPTURE_MODE_SAVE_FIRST, CAPTURE_MODE_CONFIRM_FIRST})
 
+# How free-text and voice messages are understood (request [40]). "off": the
+# classic pipeline (classify, decompose, plan, fill slots). "agent": a
+# tool-calling model reads the message and runs the same workflows as tools.
+# Off unless the Mesiri team switches a company on; instant to switch back.
+ASSISTANT_MODE = "assistant_mode"
+ASSISTANT_MODE_OFF = "off"
+ASSISTANT_MODE_AGENT = "agent"
+ASSISTANT_MODES: frozenset[str] = frozenset({ASSISTANT_MODE_OFF, ASSISTANT_MODE_AGENT})
+
 # Product modules a company can have switched on (V1 tracker BE-06). Each key
 # gates one or more API routers (domains/shared/modules.py's require_module)
 # and the WhatsApp workflows of the same area. Company, projects, sites, users
@@ -87,7 +96,7 @@ DEFAULT_ENABLED_MODULES: list[str] = list(V1_MODULES)
 
 # Settings only a platform admin may change. Modules are tied to what a
 # customer pays for, so a company's own admin can read them but not edit them.
-SUPERADMIN_ONLY_KEYS: frozenset[str] = frozenset({ENABLED_MODULES, CAPTURE_MODE})
+SUPERADMIN_ONLY_KEYS: frozenset[str] = frozenset({ENABLED_MODULES, CAPTURE_MODE, ASSISTANT_MODE})
 
 DEFAULT_FINANCE_SETTINGS = {
     "base_currency": "INR",
@@ -164,6 +173,15 @@ _SPECS: dict[str, SettingSpec] = {
             "How WhatsApp updates are saved: 'save_first' (saved straight away as a "
             "draft, confirmed with the evening DPR) or 'confirm_first' (asks "
             "'Confirm?' before saving). Changed by the Mesiri team only."
+        ),
+    ),
+    ASSISTANT_MODE: SettingSpec(
+        key=ASSISTANT_MODE,
+        default=ASSISTANT_MODE_OFF,
+        description=(
+            "How free-text and voice WhatsApp messages are handled: 'off' (the "
+            "classic pipeline) or 'agent' (a tool-calling assistant that runs the "
+            "same workflows). Changed by the Mesiri team only."
         ),
     ),
     BRANDING: SettingSpec(
@@ -316,6 +334,11 @@ def validate(key: str, value: object) -> object:
         if mode not in CAPTURE_MODES:
             raise ValueError(f"capture_mode must be one of {sorted(CAPTURE_MODES)}")
         return mode
+    if key == ASSISTANT_MODE:
+        mode = str(value).strip().lower() if isinstance(value, str) else ""
+        if mode not in ASSISTANT_MODES:
+            raise ValueError(f"assistant_mode must be one of {sorted(ASSISTANT_MODES)}")
+        return mode
     return value
 
 
@@ -323,6 +346,12 @@ def saves_first(stored: object) -> bool:
     """True unless the company was switched back to confirm-first. Anything
     unreadable counts as the default (save first), never as an error."""
     return stored != CAPTURE_MODE_CONFIRM_FIRST
+
+
+def agent_mode(stored: object) -> bool:
+    """True only when the company was switched to the agent. Anything
+    unreadable counts as off: the classic pipeline is the safe default."""
+    return stored == ASSISTANT_MODE_AGENT
 
 
 def role_allowed(role: str | None, allowed: object) -> bool:
