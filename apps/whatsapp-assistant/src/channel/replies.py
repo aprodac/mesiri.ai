@@ -13,7 +13,7 @@ reach a user.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -61,6 +61,10 @@ class ReplySpec:
     list_button_label: str | None = None
     list_rows: tuple[ListRow, ...] | None = None
     buttons: tuple[ListRow, ...] | None = None
+    #: PNG shown above the body of a reply-button message (the receipt card).
+    #: Only the button form carries it as a header; any other form sends it
+    #: as its own image after the text (runtime/reply_dispatch.py).
+    header_image: bytes | None = field(default=None, compare=False, repr=False)
 
 
 # The two reply buttons shown under every "Confirm this record?" prompt.

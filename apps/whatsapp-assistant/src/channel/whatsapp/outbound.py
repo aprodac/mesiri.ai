@@ -179,8 +179,15 @@ class WhatsAppSender:
         *,
         body: str,
         buttons: list[ListRow],
+        header_image: bytes | None = None,
     ) -> bool:
         """Send up to 3 tappable quick-reply buttons (e.g. Yes/No confirmation).
+
+        ``header_image`` (PNG bytes) is uploaded and shown above the body as
+        the message's image header -- the receipt card travels inside the
+        reply this way. If the upload fails nothing is sent and False is
+        returned, so the caller can fall back to text+buttons and the image
+        as its own message.
 
         Returns True on success. Meta Cloud API limits: max 3 buttons,
         20-char titles -- enforced here rather than trusted from the caller,
@@ -214,6 +221,13 @@ class WhatsAppSender:
                 ]
             },
         }
+        if header_image is not None:
+            media_id = await self._upload_media(
+                header_image, mime_type="image/png", filename="receipt.png"
+            )
+            if media_id is None:
+                return False
+            interactive["header"] = {"type": "image", "image": {"id": media_id}}
         return (await self._send(to_wa_id, {"type": "interactive", "interactive": interactive})) is not None
 
     async def send_image(
