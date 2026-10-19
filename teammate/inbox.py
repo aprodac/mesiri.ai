@@ -40,6 +40,9 @@ Commands:
   disallow <phone>                    remove an approval
   allowed                             who is approved (this project, or all)
   pair <phone-with-country-code>      link the spare number (prints a code to type on the phone)
+  test [text] [--choose N|TITLE] [--wait 90]
+                                      message the Mesiri assistant's test chat (assistant-test) as a
+                                      worker, or tap an option of its latest menu, and print its replies
   post [text] [--text-file F] [--image FILE[::caption] ...] [--chat X]
                                       post into the TEAM group (customer groups are refused)
 
@@ -212,6 +215,63 @@ _STATUS_MARK = {
 }
 
 
+def _test(a: argparse.Namespace) -> None:
+    """Message the assistant-test chat (or tap its latest menu) and print the replies (TM-12)."""
+    import time
+
+    if not a.text and a.choose is None:
+        sys.exit("give the text to send, or --choose N|TITLE")
+    chats = _request("GET", "/chats", params={"project": PROJECT})["chats"]
+    tests = [
+        c
+        for c in chats
+        if c["role"] == "assistant-test" and (not PROJECT or c.get("project") == PROJECT)
+    ]
+    if not tests:
+        sys.exit(
+            "no chat is labelled assistant-test for this project: message the Mesiri assistant from the"
+            " linked number once, then `inbox.py label <jid> assistant-test`"
+        )
+    jid = tests[0]["jid"]
+    body: dict = {"chat": jid, "project": PROJECT}
+    if a.choose is not None:
+        recent = _request(
+            "GET", "/messages", params={"chat": jid, "project": PROJECT, "limit": 50}
+        )["messages"]
+        menus = sorted(
+            (m for m in recent if not m.get("from_me") and m.get("options")), key=lambda m: m["n"]
+        )
+        if not menus:
+            sys.exit("the assistant hasn't sent a menu or buttons recently; send text first")
+        option = int(a.choose) if a.choose.isdigit() else a.choose
+        body["choose"] = {"message_n": menus[-1]["n"], "option": option}
+        print(f"> tap {a.choose!r} on #{menus[-1]['n']}")
+    else:
+        body["text"] = a.text
+        print(f"> {a.text}")
+    started = _since(seconds=2)  # WhatsApp stamps whole seconds
+    t0 = time.monotonic()
+    _request("POST", "/send", body=body)
+    seen: dict[int, dict] = {}
+    last_new = None
+    while time.monotonic() - t0 < a.wait:
+        time.sleep(3)
+        msgs = _request(
+            "GET",
+            "/messages",
+            params={"chat": jid, "project": PROJECT, "since": started, "limit": 50},
+        )["messages"]
+        for m in msgs:
+            if not m.get("from_me") and m["n"] not in seen:
+                seen[m["n"]] = m
+                last_new = time.monotonic()
+                print(f"  [{last_new - t0:5.1f}s] {_line(m, with_chat=False)}")
+        if last_new and time.monotonic() - last_new > 12:
+            break
+    if not seen:
+        print(f"(no reply within {a.wait} s)")
+
+
 def _item_line(i: dict) -> str:
     src = f"  (from #{i['source'].replace(',', ', #')})" if i.get("source") else ""
     ref = f"  → {i['done_ref']}" if i.get("done_ref") else ""
@@ -342,6 +402,10 @@ def main() -> None:
     sub.add_parser("allowed")
     pai = sub.add_parser("pair")
     pai.add_argument("phone")
+    tst = sub.add_parser("test")
+    tst.add_argument("text", nargs="?")
+    tst.add_argument("--choose", help="tap an option of the latest menu: its number or exact title")
+    tst.add_argument("--wait", type=float, default=90)
     pos = sub.add_parser("post")
     pos.add_argument("text", nargs="?")
     pos.add_argument("--text-file", help="read the message from a file (for longer updates)")
@@ -429,6 +493,8 @@ def main() -> None:
         print(f"saved {len(data)} bytes to {a.out}")
     elif a.cmd == "post":
         _post(a)
+    elif a.cmd == "test":
+        _test(a)
     elif a.cmd == "items":
         params = {"chat": a.chat, "status": a.status, "type": a.type, "project": PROJECT}
         items = _request("GET", "/items", params=params)["items"]

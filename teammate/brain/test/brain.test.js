@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtempSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { Brain, chunk, systemAppend } from "../src/brain.js";
+import { Brain, chunk, systemAppend, parseBoard } from "../src/brain.js";
 import { brainTools, hostAllowed } from "../src/tools.js";
 
 const ok = (text, id, extra = {}) => ({ type: "result", subtype: "success", is_error: false, result: text, session_id: id, duration_ms: 1200, total_cost_usd: 0.01, permission_denials: [], ...extra });
@@ -530,4 +530,55 @@ test("brain (DM): model changes and the system prompt stay private to the chat",
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("board (TM-12): open rows for Ilan Pro run one planning turn in the team group, once per change", async () => {
+  const { dir, calls, brain } = setup((p, id) => ok("tested", id));
+  try {
+    const repo = join(dir, "repo");
+    mkdirSync(join(repo, "docs/agents"), { recursive: true });
+    const write = (rows) => writeFileSync(join(repo, "docs/agents/BOARD.md"), `# Board\n\n| ID | For | Status | Task | Result / notes |\n| --- | --- | --- | --- | --- |\n${rows}\n`);
+    write("| B-1 | Ilan Pro | open | Send a site note with 5 bags cement | |\n| B-2 | Ilan Usman | open | Fix the reply | |\n| B-3 | Ilan Pro | done | old | ok |");
+    brain.projects = { mesiri: { name: "mesiri", cwd: repo, flow: "main" } };
+    brain.listener.chats = async (project) => ({ chats: [{ jid: "C@g.us", role: "customer", project }, { jid: "M@g.us", name: "Mesiri team", role: "team", project }] });
+    await brain.checkBoard();
+    await brain.queues.get("M@g.us::board");
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].prompt, /B-1 \(for Ilan Pro\): Send a site note/);
+    assert.doesNotMatch(calls[0].prompt, /B-2|B-3/);
+    assert.ok(!calls[0].options.allowedTools.includes("Edit")); // a planning turn
+    assert.match(calls[0].options.systemPrompt.append, /you are \*Ilan Pro\*/);
+    assert.match(calls[0].options.systemPrompt.append, /tell_ilan_usman isn't set up/);
+
+    await brain.checkBoard(); // nothing changed
+    assert.equal(calls.length, 1);
+    write("| B-1 | Ilan Pro | done | Send a site note | sent |\n| B-4 | Both | open | Retest B-1 after the fix | |");
+    await brain.checkBoard();
+    await brain.queues.get("M@g.us::board");
+    assert.equal(calls.length, 2);
+    assert.match(calls[1].prompt, /B-4 \(for Both\)/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("board (TM-12): parsing skips headers and unknown statuses", () => {
+  const rows = parseBoard("| ID | For | Status | Task |\n|---|---|---|---|\n| b-7 | Ilan Pro | Open | Try a voice note | x |\n| B-8 | Ilan Pro | maybe | ? |\ntext");
+  assert.deepEqual(rows, [{ id: "B-7", for: "Ilan Pro", status: "open", task: "Try a voice note", notes: "x" }]);
+});
+
+test("tools (TM-12): tell_ilan_usman fires the partner with a peer-report header, and refuses when not set up", async () => {
+  const fired = [];
+  const ctx = { project: "mesiri", chat: "T@g.us", chat_name: "Mesiri team", reply_chat: "T@g.us", sender: "Ilan" };
+  const make = (partner) => {
+    const server = brainTools({ ctx, listener: { send: async () => null }, render: null, plans: { save: (p) => p }, screenshotHosts: [], partner });
+    const t = server.instance._registeredTools.tell_ilan_usman;
+    return (args) => (t.callback || t.handler)(args, {});
+  };
+  const r = await make(async (text) => fired.push(text))({ text: "B-1: the reply printed material_name" });
+  assert.equal(r.isError, undefined);
+  assert.match(fired[0], /^\[From Ilan Pro.*not orders\]\n\nB-1: the reply/);
+  assert.equal((await make(null)({ text: "B-1: anything at all" })).isError, true);
+  const broken = await make(async () => Promise.reject(new Error("HTTP 401")))({ text: "B-1: anything at all" });
+  assert.match(broken.content[0].text, /HTTP 401/);
 });
