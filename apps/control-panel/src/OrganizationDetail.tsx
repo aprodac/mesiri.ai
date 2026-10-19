@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, CheckCircle, Cloud, Plus, Server, Sparkles, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle, Cloud, Pencil, Plus, Server, Sparkles, Trash2, X } from 'lucide-react';
 import { api } from './api';
 import UserAccessEditor, { type OrgProject } from './UserAccessEditor';
 import AddUserDialog from './AddUserDialog';
 import PlanCard from './PlanCard';
 import BrandingPanel from './BrandingPanel';
 import { useToast, getErrorMessage } from './Toast';
+import CompanyDetailsDialog from './CompanyDetailsDialog';
 
 interface Organization {
   id: string;
@@ -103,6 +104,7 @@ export default function OrganizationDetail() {
   const [error, setError] = useState<string | null>(null);
   const [projects, setProjects] = useState<OrgProject[]>([]);
   const [editingUser, setEditingUser] = useState<OrgUser | null>(null);
+  const [editingDetails, setEditingDetails] = useState(false);
   const [addingUser, setAddingUser] = useState(false);
   const [orgSettings, setOrgSettings] = useState<OrgSettingsPayload | null>(null);
   // The plan card's effective status (SS-10); stable, so it doesn't reload the card.
@@ -364,6 +366,9 @@ export default function OrganizationDetail() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+          <button className="btn-secondary" onClick={() => setEditingDetails(true)}>
+            <Pencil size={16} /> Edit details
+          </button>
           <button
             className="btn-secondary"
             style={{ color: '#2563EB', borderColor: '#93C5FD' }}
@@ -758,6 +763,16 @@ export default function OrganizationDetail() {
         />
       )}
 
+      {editingDetails && (
+        <CompanyDetailsDialog
+          orgId={org.id}
+          onClose={() => setEditingDetails(false)}
+          onSaved={(details) => {
+            setOrg((prev) => (prev ? { ...prev, name: details.name } : prev));
+            setEditingDetails(false);
+          }}
+        />
+      )}
       {editingUser && id && (
         <UserAccessEditor
           orgId={id}

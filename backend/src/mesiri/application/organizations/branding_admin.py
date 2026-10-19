@@ -193,6 +193,68 @@ async def update_contact(
     )
 
 
+# The company's own details, edited from the control panel's company page
+# (SA-03). Timezone is deliberately not here: each project copies it when it
+# is created (`reporting_timezone`), so changing it on the company would not
+# move any report time.
+DETAIL_FIELDS: tuple[str, ...] = ("name", "primary_contact")
+_COMPANY_NAME_MAX = 120  # create_company's limit
+
+
+def validate_details(update: object) -> dict[str, str | None]:
+    """The name / primary contact present in `update`, spaces collapsed.
+    A name can't be emptied; a primary contact can. Pure. Raises
+    BrandingAdminError for anything else."""
+    if not isinstance(update, dict):
+        raise BrandingAdminError("Expected an object")
+    changes: dict[str, str | None] = {}
+    for field in DETAIL_FIELDS:
+        if field not in update:
+            continue
+        value = update[field]
+        if value is not None and not isinstance(value, str):
+            raise BrandingAdminError(f"{field} must be text")
+        text = " ".join((value or "").split()) or None
+        limit = _COMPANY_NAME_MAX if field == "name" else _CONTACT_MAX
+        if field == "name" and text is None:
+            raise BrandingAdminError("The company name can't be empty")
+        if text is not None and len(text) > limit:
+            raise BrandingAdminError(f"{field} is longer than {limit} characters")
+        changes[field] = text
+    return changes
+
+
+async def update_details(
+    conn: AsyncConnection, org_id: uuid.UUID, changes: dict[str, str | None]
+) -> dict[str, dict[str, str | None]]:
+    """Save validated details; returns {field: {"before", "after"}} for the
+    fields that actually changed (for the audit log). Raises
+    BrandingAdminError(404) when the company doesn't exist."""
+    current = (
+        await conn.execute(
+            sa.text("SELECT name, primary_contact FROM organizations WHERE id = :id"),
+            {"id": org_id},
+        )
+    ).mappings().first()
+    if current is None:
+        raise BrandingAdminError("Organization not found", status_code=404)
+    changed = {
+        field: {"before": current[field], "after": value}
+        for field, value in changes.items()
+        if field in DETAIL_FIELDS and current[field] != value
+    }
+    if changed:
+        await conn.execute(
+            sa.text(
+                "UPDATE organizations SET "
+                + ", ".join(f"{f} = :{f}" for f in changed)
+                + ", updated_at = now() WHERE id = :id"
+            ),
+            {"id": org_id, **{f: changes[f] for f in changed}},
+        )
+    return changed
+
+
 # ---------------------------------------------------------------------------
 # Branding requests (SS-14's photos, worked by the Mesiri team)
 # ---------------------------------------------------------------------------

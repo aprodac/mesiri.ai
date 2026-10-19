@@ -29,6 +29,8 @@ COMPANY_CREATED = "company.created"
 COMPANY_DELETED = "company.deleted"
 COMPANY_FINANCE_SEEDED = "company.finance_seeded"
 COMPANY_SETTING_CHANGED = "company.setting_changed"
+# Name or primary contact changed in the control panel (SA-03).
+COMPANY_UPDATED = "company.updated"
 # Trial controls (SS-10); listed now so its routes only need the call.
 COMPANY_TRIAL_EXTENDED = "company.trial_extended"
 COMPANY_CONVERTED = "company.converted"
@@ -55,6 +57,7 @@ ACTIONS = frozenset(
         COMPANY_DELETED,
         COMPANY_FINANCE_SEEDED,
         COMPANY_SETTING_CHANGED,
+        COMPANY_UPDATED,
         COMPANY_TRIAL_EXTENDED,
         COMPANY_CONVERTED,
         COMPANY_SUSPENDED,
