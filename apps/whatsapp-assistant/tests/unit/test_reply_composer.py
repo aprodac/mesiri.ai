@@ -261,7 +261,7 @@ def _saved_attendance(*, saved_draft=True):
     )
 
 
-def _build(monkeypatch, *, redis=None, role="SUPERVISOR"):
+def _build(monkeypatch, *, redis=None, role="SUPERVISOR", **more):
     async def fake_resolve(_reader, wa_id):
         return SimpleNamespace(
             organization_id=ORG,
@@ -309,6 +309,7 @@ def _build(monkeypatch, *, redis=None, role="SUPERVISOR"):
         "offered_choices_store": choices,
         "setup_questions": setup,
         "user_language_store": None,
+        **more,
     }
     deps.pop("user_language_store")
     on_normalized, _ = mj.build_message_handlers(**deps, **extra)
@@ -496,3 +497,169 @@ async def test_the_reaction_is_a_cloud_api_reaction_message():
         assert await sender.send_reaction("919876543210", "") is False
     assert seen[0]["type"] == "reaction"
     assert seen[0]["reaction"] == {"message_id": "wamid.in.1", "emoji": "✅"}
+
+
+# -- request [47]: the receipt card travels inside the one reply -----------------
+
+PNG = b"\x89PNG-receipt"
+
+
+def _with_receipt(handled, coro_fn):
+    handled.receipt_coro = coro_fn()
+    return handled
+
+
+async def _png():
+    return PNG
+
+
+async def _boom():
+    raise RuntimeError("playwright pool died")
+
+
+async def _slow():
+    import asyncio
+
+    await asyncio.sleep(30)
+    return PNG
+
+
+async def test_a_save_first_reply_carries_the_receipt_as_the_image_header(monkeypatch):
+    on_normalized, deps, _, _ = _build(monkeypatch)
+    deps["interaction_handler"].handle_fast_path.return_value = _with_receipt(_saved_attendance(), _png)
+
+    await on_normalized(_message(), {})
+
+    sender = deps["sender"]
+    assert len(_sends(deps)) == 1
+    sent = sender.send_button.await_args.kwargs
+    assert sent["header_image"] == PNG
+    assert [b.id for b in sent["buttons"]] == [PHOTO_ROW.id, UNDO_ROW.id]
+    sender.send_image.assert_not_awaited()  # not a second message
+
+
+async def test_a_reply_without_buttons_sends_the_receipt_right_after_the_text(monkeypatch):
+    on_normalized, deps, _, _ = _build(monkeypatch)
+    deps["team_photo_hint_store"].claim_daily_offer.return_value = False
+    handled = _with_receipt(_saved_attendance(saved_draft=False), _png)
+    deps["interaction_handler"].handle_fast_path.return_value = handled
+
+    await on_normalized(_message("yes"), {})
+
+    sender = deps["sender"]
+    sender.send_button.assert_not_awaited()
+    sender.send_text.assert_awaited_once()
+    sender.send_image.assert_awaited_once_with("919876543210", PNG, caption=None)
+
+
+async def test_a_failed_render_still_sends_the_reply_once_and_logs_an_error(monkeypatch, caplog):
+    on_normalized, deps, _, _ = _build(monkeypatch)
+    deps["interaction_handler"].handle_fast_path.return_value = _with_receipt(_saved_attendance(), _boom)
+
+    with caplog.at_level("ERROR"):
+        await on_normalized(_message(), {})
+
+    assert len(_sends(deps)) == 1
+    assert "header_image" not in deps["sender"].send_button.await_args.kwargs
+    deps["sender"].send_image.assert_not_awaited()
+    assert any("receipt.render_failed" in r.getMessage() and r.levelname == "ERROR" for r in caplog.records)
+
+
+async def test_a_slow_render_never_blocks_the_reply(monkeypatch, caplog):
+    monkeypatch.setattr(mj, "RECEIPT_TIMEOUT_S", 0.05)
+    on_normalized, deps, _, _ = _build(monkeypatch)
+    deps["interaction_handler"].handle_fast_path.return_value = _with_receipt(_saved_attendance(), _slow)
+
+    with caplog.at_level("ERROR"):
+        await on_normalized(_message(), {})
+
+    assert len(_sends(deps)) == 1
+    assert "header_image" not in deps["sender"].send_button.await_args.kwargs
+    deps["sender"].send_image.assert_not_awaited()
+    assert any("receipt.render_failed" in r.getMessage() for r in caplog.records)
+
+
+async def test_the_agents_reply_carries_the_receipt_of_the_main_part(monkeypatch):
+    from runtime.agent.runner import AgentResult
+
+    class _Runner:
+        def __init__(self, provider):
+            pass
+
+        async def run(self, *, ctx, user_text, gateway, scope, correlation_id):
+            gateway.handled.extend(
+                [_with_receipt(_saved_attendance(), _png), _with_receipt(_saved_attendance(), _png)]
+            )
+            return AgentResult(
+                outcome="ok", reply=ReplySpec(text=SAVED), toolbox=SimpleNamespace(parked=None)
+            )
+
+    monkeypatch.setattr("runtime.agent.runner.AgentRunner", _Runner)
+    on_normalized, deps, _, _ = _build(monkeypatch, agent_provider=object())
+    deps["org_settings_query"].get.return_value = "agent"
+
+    await on_normalized(_message(), {})
+
+    sender = deps["sender"]
+    assert len(_sends(deps)) == 1
+    assert sender.send_button.await_args.kwargs["header_image"] == PNG
+    sender.send_image.assert_not_awaited()
+
+
+# -- dispatch and sender -----------------------------------------------------------
+
+
+async def test_a_failed_header_send_falls_back_to_text_buttons_then_the_image():
+    send_text = AsyncMock()
+    send_button = AsyncMock(side_effect=[False, True])
+    send_image = AsyncMock(return_value=True)
+    spec = ReplySpec(text=SAVED, buttons=(UNDO_ROW,), header_image=PNG)
+
+    await send_reply_spec(
+        spec, "wa", send_text=send_text, send_button=send_button, send_image=send_image
+    )
+
+    assert send_button.await_args_list[0].kwargs["header_image"] == PNG
+    assert "header_image" not in send_button.await_args_list[1].kwargs
+    send_image.assert_awaited_once_with("wa", PNG, caption=None)
+    send_text.assert_not_awaited()
+
+
+async def test_the_sender_puts_the_uploaded_receipt_in_the_button_header():
+    import json
+
+    import httpx
+
+    from channel.whatsapp.outbound import WhatsAppSender
+
+    seen = []
+
+    def handler(request):
+        if request.url.path.endswith("/media"):
+            return httpx.Response(200, json={"id": "media-9"})
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json={"messages": [{"id": "wamid.out"}]})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        sender = WhatsAppSender(client=client, access_token="t", phone_number_id="1")
+        assert await sender.send_button("919", body="Saved", buttons=[UNDO_ROW], header_image=PNG) is True
+    interactive = seen[0]["interactive"]
+    assert interactive["header"] == {"type": "image", "image": {"id": "media-9"}}
+    assert interactive["body"] == {"text": "Saved"}
+
+
+async def test_a_failed_header_upload_sends_nothing_and_returns_false():
+    import httpx
+
+    from channel.whatsapp.outbound import WhatsAppSender
+
+    posts = []
+
+    def handler(request):
+        posts.append(request.url.path)
+        return httpx.Response(500, json={})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        sender = WhatsAppSender(client=client, access_token="t", phone_number_id="1")
+        assert await sender.send_button("919", body="Saved", buttons=[UNDO_ROW], header_image=PNG) is False
+    assert all(p.endswith("/media") for p in posts)
