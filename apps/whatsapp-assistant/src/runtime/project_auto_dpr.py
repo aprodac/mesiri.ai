@@ -121,23 +121,92 @@ async def queue_due_project_auto_dprs(conn: Any, *, db: Any) -> int:
     return fired
 
 
-def _send_message(*, code: str | None, payload: dict[str, Any], reason: str) -> str:
+async def _unconfirmed_updates(
+    conn: Any, *, organization_id: Any, project_id: Any, report_date: datetime.date
+) -> dict[str, int]:
+    """Request [58]: how many updates each site's unconfirmed day holds, by
+    site name. A site whose updates are saved but not confirmed is not
+    "not reported" -- it reported, nobody confirmed. Sites with no report row
+    or no updates are left out. Best-effort: a failure only costs the detail."""
+    import sqlalchemy as sa
+
+    try:
+        async with conn.begin_nested():  # a failed read must not poison the send's transaction
+            result = await conn.execute(
+                sa.text(
+                    """
+                    SELECT s.name AS site_name,
+                           COALESCE((v.payload ->> 'activity_count')::int, 0) AS updates
+                    FROM daily_reports r
+                    JOIN sites s ON s.id = r.site_id
+                    JOIN daily_report_versions v ON v.id = r.current_version_id
+                    WHERE r.organization_id = :org_id AND r.project_id = :project_id
+                      AND r.report_date = :report_date AND r.level = 'SITE'
+                      AND r.status IN ('DRAFT', 'IN_REVIEW')
+                    """
+                ),
+                {"org_id": organization_id, "project_id": project_id, "report_date": report_date},
+            )
+        rows = result.mappings().all()
+    except Exception:  # noqa: BLE001 -- the status line is still true without the detail
+        logger.warning("project_dpr_send.unconfirmed_lookup_failed project_id=%s", project_id, exc_info=True)
+        return {}
+    return {row["site_name"]: int(row["updates"]) for row in rows if int(row["updates"]) > 0}
+
+
+def _coverage_line(payload: dict[str, Any], unconfirmed: dict[str, int] | None) -> str:
+    """The roll-up's most important line: who is missing from it. A site with
+    saved but unconfirmed updates is named with its count ("Kakkanad: 3
+    updates, not confirmed yet"); only the rest are "not reported". Empty
+    when every site reported or the report is a single site's."""
+    if payload.get("level") != "PROJECT":
+        return ""
+    total = int(payload.get("total_site_count") or 0)
+    missing = [s for s in payload.get("sites") or [] if not s.get("reported")]
+    count = total - int(payload.get("reported_site_count") or 0)
+    if count <= 0:
+        return ""
+    parts: list[str] = []
+    waiting = 0
+    for site in missing:
+        updates = (unconfirmed or {}).get(site.get("site_name") or "", 0)
+        if updates:
+            waiting += 1
+            parts.append(
+                f"{site['site_name']}: {updates} update{'' if updates == 1 else 's'}, not confirmed yet."
+            )
+    rest = count - waiting
+    if rest > 0:
+        sites = "site" if rest == 1 else "sites"
+        parts.append(f"{rest} of {total} {sites} not reported.")
+    return " ".join(parts)
+
+
+def _send_message(
+    *,
+    code: str | None,
+    payload: dict[str, Any],
+    reason: str,
+    unconfirmed: dict[str, int] | None = None,
+) -> str:
     """The text that goes with the PDF. A roll-up sent before every site
-    confirmed says how many did not report -- the most important line."""
+    confirmed says who is missing -- the most important line."""
     message = f"Today's DPR ({code or 'DPR'}) is attached."
-    if payload.get("level") == "PROJECT":
-        total = int(payload.get("total_site_count") or 0)
-        missing = total - int(payload.get("reported_site_count") or 0)
-        if missing > 0:
-            sites = "site" if missing == 1 else "sites"
-            message += f" {missing} of {total} {sites} not reported."
+    coverage = _coverage_line(payload, unconfirmed)
+    if coverage:
+        message += f" {coverage}"
     if reason == "requested":
         message += " Sent on request."
     return message
 
 
 def _template_params(
-    *, code: str | None, payload: dict[str, Any], reason: str, report_date: datetime.date
+    *,
+    code: str | None,
+    payload: dict[str, Any],
+    reason: str,
+    report_date: datetime.date,
+    unconfirmed: dict[str, int] | None = None,
 ) -> list[str]:
     """WA-12: the three body values of the `mesiri_dpr_delivery` template
     (channel/whatsapp/templates.py), used when the recipient is outside the
@@ -151,13 +220,7 @@ def _template_params(
     date_label = f"{day.day} {day.strftime('%b %Y')}"
 
     if payload.get("level") == "PROJECT":
-        total = int(payload.get("total_site_count") or 0)
-        missing = total - int(payload.get("reported_site_count") or 0)
-        if missing > 0:
-            sites = "site" if missing == 1 else "sites"
-            status = f"{missing} of {total} {sites} not reported."
-        else:
-            status = "All sites reported."
+        status = _coverage_line(payload, unconfirmed) or "All sites reported."
     else:
         status = "Confirmed by the site engineer."
     if reason == "requested":
@@ -281,14 +344,24 @@ async def send_due_project_dprs(
                             version_id=report["version_id"], object_key=object_key
                         )
 
+                    unconfirmed = await _unconfirmed_updates(
+                        conn,
+                        organization_id=project["organization_id"],
+                        project_id=project["id"],
+                        report_date=project["report_date"],
+                    )
                     message = _send_message(
-                        code=report["code"], payload=payload, reason=project["reason"]
+                        code=report["code"],
+                        payload=payload,
+                        reason=project["reason"],
+                        unconfirmed=unconfirmed,
                     )
                     template_params = _template_params(
                         code=report["code"],
                         payload=payload,
                         reason=project["reason"],
                         report_date=project["report_date"],
+                        unconfirmed=unconfirmed,
                     )
                     recipients = await _dpr_audience(
                         conn,

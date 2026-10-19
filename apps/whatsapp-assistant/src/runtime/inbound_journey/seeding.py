@@ -36,6 +36,7 @@ from mesiri_contracts.assistant.planner_decision import PlannerDecisionType, Wor
 from mesiri_contracts.assistant.v2.canonical_event import CanonicalEventV2
 from mesiri_contracts.assistant.v2.planner_decision import PlannerDecisionV2
 from mesiri_contracts.common.ids import new_id as _new_id
+from mesiri_contracts.common.storage import ObjectStoragePort
 from runtime.activity_query import ActivityQueryService
 from runtime.activity_search_service import ActivitySearchService
 from runtime.dpr_request_query import DprRequestQueryService
@@ -1147,6 +1148,7 @@ async def _seed_dpr_request(
     dpr_request_query: DprRequestQueryService | None,
     actor: ActorIdentity | None,
     timezone_name: str | None,
+    object_storage: ObjectStoragePort | None = None,
 ) -> None:
     """Resolve today's DPR status before the graph runs -- same shape and
     reasoning as _seed_labour_query above. Only ever runs for DPR_REQUEST.
@@ -1179,7 +1181,11 @@ async def _seed_dpr_request(
             report_date=today,
         )
     except Exception:  # noqa: BLE001 -- an honest "can't check" beats a failed run
-        _log.exception("dpr_request.lookup_failed user=%s", getattr(actor, "user_id", None))
+        _log.exception(
+            "dpr_request.lookup_failed correlation_id=%s user=%s",
+            event.correlation_id,
+            getattr(actor, "user_id", None),
+        )
         event.fields["dpr_status"] = "unavailable"
         event.fields["dpr_object_key"] = None
         event.fields["dpr_code"] = None
@@ -1187,6 +1193,26 @@ async def _seed_dpr_request(
     event.fields["dpr_status"] = result["status"]
     event.fields["dpr_object_key"] = result["object_key"]
     event.fields["dpr_code"] = result["code"]
+    event.fields["dpr_confirmed"] = result.get("confirmed", True)
+    event.fields["dpr_update_count"] = result.get("update_count", 0)
+    event.fields["dpr_site_name"] = next(
+        (getattr(s, "name", None) for s in getattr(actor, "sites", None) or [] if s.id == site_id),
+        None,
+    )
+    if result["status"] == "ready" and object_storage is not None:
+        # The reply says a PDF is attached: be sure it can be fetched before
+        # saying so (the send itself comes after the reply).
+        try:
+            await object_storage.head_object(result["object_key"])
+        except Exception:  # noqa: BLE001 -- say so rather than promise a PDF
+            _log.warning(
+                "dpr_request.pdf_unavailable correlation_id=%s object_key=%s",
+                event.correlation_id,
+                result["object_key"],
+                exc_info=True,
+            )
+            event.fields["dpr_status"] = "pdf_unavailable"
+            event.fields["dpr_object_key"] = None
 
 
 async def _seed_project_detail_query(

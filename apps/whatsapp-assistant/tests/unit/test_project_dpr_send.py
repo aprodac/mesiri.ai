@@ -110,6 +110,11 @@ def world(monkeypatch):
     monkeypatch.setattr(auto_dpr, "mark_project_dpr_sent", mark_project_dpr_sent)
     monkeypatch.setattr(render_module, "render_and_store_version", render_and_store_version)
     monkeypatch.setattr(sender, "_project_dpr_recipients", recipients)
+
+    async def no_unconfirmed(conn, **kwargs):
+        return {}
+
+    monkeypatch.setattr(sender, "_unconfirmed_updates", no_unconfirmed)
     monkeypatch.setattr(dpr_repo_module, "PostgresDprRepository", _Repo)
     monkeypatch.setattr(notifications_module, "PostgresNotificationRepository", _Notifications)
     monkeypatch.setattr(recipients_module, "PostgresReportRecipientRepository", _Recipients)

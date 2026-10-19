@@ -16,16 +16,26 @@ from __future__ import annotations
 from ..state import WorkflowGraphState
 
 _STATUS_TEXT = {
-    "ready": "📄 Here's today's DPR{code_suffix}.",
-    "pending_render": (
-        "Today's DPR is being prepared -- try again in a few minutes."
+    "ready": "Today's DPR{code_suffix} attached.{unconfirmed_note}",
+    "pending_confirmation": (
+        "{site_prefix}{updates}, not confirmed yet. "
+        "The report goes out once the day is confirmed."
     ),
+    "pending_render": "Today's report is being prepared. Please ask again in a few minutes.",
     "unavailable": "I can't look up today's report right now. Please try again in a minute.",
+    "pdf_unavailable": (
+        "Today's DPR{code_suffix} is ready, but I couldn't fetch the PDF just now. "
+        "Please ask again in a minute."
+    ),
     "not_generated": (
         "No DPR has been generated for today yet. Log an activity first, "
         "or check back once today's report has run."
     ),
 }
+
+
+def _updates(count: int) -> str:
+    return f"{count} update{'' if count == 1 else 's'}"
 
 
 def generate_dpr_request_reply(state: WorkflowGraphState) -> dict:
@@ -34,7 +44,15 @@ def generate_dpr_request_reply(state: WorkflowGraphState) -> dict:
     fields = state.get("collected_fields", {})
     status = fields.get("dpr_status", "not_generated")
     code = fields.get("dpr_code")
+    site_name = fields.get("dpr_site_name")
+    confirmed = fields.get("dpr_confirmed", True)
 
     template = _STATUS_TEXT.get(status, _STATUS_TEXT["not_generated"])
-    code_suffix = f" ({code})" if status == "ready" and code else ""
-    return {"pending_prompt": template.format(code_suffix=code_suffix)}
+    return {
+        "pending_prompt": template.format(
+            code_suffix=f" ({code})" if code and status in ("ready", "pdf_unavailable") else "",
+            unconfirmed_note="" if confirmed else " Not confirmed yet.",
+            site_prefix=f"{site_name}: " if site_name else "",
+            updates=_updates(int(fields.get("dpr_update_count") or 0)),
+        )
+    }

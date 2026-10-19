@@ -52,6 +52,8 @@ async def _build_send_dpr_payload(
         }
     if status == "pending_render":
         return {"message": f"Today's DPR ({result.get('code') or ''}) is generated but not yet rendered as a PDF."}
+    if status == "pending_confirmation":
+        return {"message": "Today's updates are saved but not confirmed yet, so there is no report to send."}
     return {"message": f"No DPR has been generated yet for {report_date.isoformat()}."}
 
 

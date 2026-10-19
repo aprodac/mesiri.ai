@@ -52,7 +52,12 @@ class DprRequestQueryService:
         returns a dict (never None) -- `status` is one of "not_generated"
         (no daily_reports row for that date yet), "pending_render" (a
         version exists but rendered_object_key is still NULL), or "ready"
-        (a PDF is stored -- `object_key`/`code` are set)."""
+        (a PDF is stored -- `object_key`/`code` are set). Request [58]: a
+        version nobody has confirmed yet (`DRAFT`/`IN_REVIEW`) with no PDF is
+        "pending_confirmation", not "pending_render" -- waiting for a render
+        that is not coming is a different thing to tell the sender. Both carry
+        `update_count`, the updates the report holds; `confirmed` says whether
+        the day is signed off."""
         if not project_id:
             return {"status": "not_generated", "object_key": None, "code": None}
 
@@ -75,9 +80,16 @@ class DprRequestQueryService:
 
         if row is None:
             return {"status": "not_generated", "object_key": None, "code": None}
-        if not row["rendered_object_key"]:
-            return {"status": "pending_render", "object_key": None, "code": row["code"]}
-        return {"status": "ready", "object_key": row["rendered_object_key"], "code": row["code"]}
+        confirmed = row["report_status"] not in ("DRAFT", "IN_REVIEW")
+        found = {
+            "code": row["code"],
+            "confirmed": confirmed,
+            "update_count": int(row["update_count"] or 0),
+        }
+        if row["rendered_object_key"]:
+            return {"status": "ready", "object_key": row["rendered_object_key"], **found}
+        status = "pending_render" if confirmed else "pending_confirmation"
+        return {"status": status, "object_key": None, **found}
 
 
 #: Mirrors the `daily_report_level` Postgres enum (migration 0440). The bare
@@ -96,6 +108,15 @@ def _report_query(
     from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
 
     level_type = PG_ENUM("SITE", "PROJECT", name="daily_report_level", create_type=False)
+    status_type = PG_ENUM(
+        "DRAFT",
+        "IN_REVIEW",
+        "APPROVED",
+        "PUBLISHED",
+        "NOT_REPORTED",
+        name="daily_report_status",
+        create_type=False,
+    )
     daily_reports = sa.table(
         "daily_reports",
         sa.column("id"),
@@ -106,11 +127,13 @@ def _report_query(
         sa.column("level", level_type),
         sa.column("code"),
         sa.column("current_version_id"),
+        sa.column("status", status_type),
     )
     daily_report_versions = sa.table(
         "daily_report_versions",
         sa.column("id"),
         sa.column("rendered_object_key"),
+        sa.column("payload"),
     )
 
     scope_clause = (
@@ -119,7 +142,14 @@ def _report_query(
         else sa.and_(daily_reports.c.site_id.is_(None), daily_reports.c.level == "PROJECT")
     )
     return (
-        sa.select(daily_reports.c.code, daily_report_versions.c.rendered_object_key)
+        sa.select(
+            daily_reports.c.code,
+            sa.cast(daily_reports.c.status, sa.Text).label("report_status"),
+            daily_report_versions.c.rendered_object_key,
+            sa.cast(
+                sa.literal_column("daily_report_versions.payload ->> 'activity_count'"), sa.Integer
+            ).label("update_count"),
+        )
         .select_from(
             daily_reports.join(
                 daily_report_versions,

@@ -40,6 +40,16 @@ def test_ready_status_with_no_code_still_renders_without_a_dangling_placeholder(
     assert "{code_suffix}" not in text
 
 
+def test_unconfirmed_updates_are_named_not_called_missing():
+    state = _state(dpr_status="pending_confirmation")
+    state["collected_fields"].update(
+        {"dpr_site_name": "Green Villa", "dpr_update_count": 3, "dpr_confirmed": False}
+    )
+    text = generate_dpr_request_reply(state)["pending_prompt"]
+    assert text.startswith("Green Villa: 3 updates, not confirmed yet.")
+    assert "not reported" not in text
+
+
 def test_pending_render_status_says_it_is_being_prepared():
     reply = generate_dpr_request_reply(_state(dpr_status="pending_render"))
     assert "prepared" in reply["pending_prompt"].lower()

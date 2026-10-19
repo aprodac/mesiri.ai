@@ -1035,6 +1035,7 @@ async def process_inbound_message(
                             dpr_request_query,
                             actor,
                             timezone_name,
+                            object_storage,
                         ),
                         _seed_project_detail_query(
                             canonical_event,
@@ -1450,10 +1451,11 @@ async def process_inbound_message(
         and send_document is not None
         and object_storage is not None
     ):
+        code = canonical_event.fields.get("dpr_code") or "DPR"
+        sent: Any = None
         try:
             stored = await object_storage.get_object(canonical_event.fields["dpr_object_key"])
-            code = canonical_event.fields.get("dpr_code") or "DPR"
-            await send_document(
+            sent = await send_document(
                 message.sender.wa_id,
                 stored.data,
                 filename=f"{code}.pdf",
@@ -1461,14 +1463,30 @@ async def process_inbound_message(
             )
         except Exception:  # noqa: BLE001 -- the status text was already sent; a
             # failed document fetch/send must not fail the whole journey.
+            sent = False
             _log.warning(
-                "dpr_request.document_send_failed correlation_id=%s", correlation_id, exc_info=True
+                "dpr_request.document_send_failed correlation_id=%s object_key=%s",
+                correlation_id,
+                canonical_event.fields.get("dpr_object_key"),
+                exc_info=True,
             )
-            # The status text said a document was coming; say it did not.
+        else:
+            if sent is False:
+                # The WhatsApp sender reports a failed upload or send by
+                # returning False, not by raising (channel/whatsapp/outbound.py).
+                _log.warning(
+                    "dpr_request.document_send_failed correlation_id=%s object_key=%s "
+                    "reason=sender_returned_false",
+                    correlation_id,
+                    canonical_event.fields.get("dpr_object_key"),
+                )
+        if sent is False:
+            # The status text said a document was attached; say it was not.
             await _safe(
                 send_text(
                     message.sender.wa_id,
-                    "I couldn't attach the report PDF just now. Please ask again in a minute.",
+                    f"Sorry, the PDF didn't go through. Today's DPR ({code}) is ready, "
+                    "please ask again in a minute.",
                 )
             )
 
