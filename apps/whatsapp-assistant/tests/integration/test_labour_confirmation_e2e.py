@@ -140,7 +140,7 @@ async def test_starting_an_attendance_shows_a_preview_and_saves_nothing():
     assert "Confirm this record?" in prompt
     assert "Labour Attendance" in prompt
     assert "Ravi" in prompt
-    assert "12 × helper" in prompt
+    assert "12 × Helper" in prompt
     assert "13 workers" in prompt
     assert "Reply YES to confirm or NO to cancel." in prompt
 
