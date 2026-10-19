@@ -47,6 +47,9 @@ class AgentTurnDeps:
     #: ``(reply, wa_id, gateway)``: sends the reply with the saved items' offers
     #: (team photo, undo) folded in; None sends the reply alone.
     send_agent_reply: Callable[[ReplySpec, str, Any], Awaitable[None]] | None = None
+    #: ``(reply, gateway) -> reply``: renders the receipt card of what the turn
+    #: saved and returns the reply carrying it as ``header_image``.
+    attach_receipt: Callable[[ReplySpec, Any], Awaitable[ReplySpec]] | None = None
     now: Callable[[], Any] = default_now
 
 
@@ -174,6 +177,11 @@ async def run_agent_turn(
         return result
 
     reply = result.reply
+    if deps.attach_receipt is not None:
+        try:
+            reply = await deps.attach_receipt(reply, gateway)
+        except Exception:  # noqa: BLE001 — the reply goes out without the card
+            _log.exception("agent.receipt_attach_failed")
     if deps.send_agent_reply is not None and result.toolbox.parked is None:
         await deps.send_agent_reply(reply, wa_id, gateway)
     else:
