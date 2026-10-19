@@ -63,6 +63,7 @@ const HELP = [
   "• @me cost: Gemini spend today and this month, in ₹",
   "• @me upgrade: <what to change in the bot> (owners): plan → @me ok <n> → it updates and redeploys itself",
   "• @me settings: Claude's model and effort · owners: @me model opus|sonnet|haiku|fable, @me effort low…max",
+  "• @me auto on [hours] (owners): test, fix and verify small Conversation / report issues by itself · @me auto: its state · @me auto off or @me stop (anyone)",
   "• @me who: who is approved here",
   "Owners: @me approve @person · @me remove @person · @me make owner @person",
 ].join(String.fromCharCode(10));

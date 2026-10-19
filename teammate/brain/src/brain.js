@@ -14,6 +14,7 @@
 import { readFileSync, writeFileSync, renameSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { BRAIN_TOOL_NAMES } from "./tools.js";
+import { AutoLoop, usageLimit, clock } from "./auto.js";
 
 const MAX_CHUNK = 3800; // the listener refuses posts over 4,000 characters
 const TURN_TIMEOUT_MS = Number(process.env.TEAMMATE_BRAIN_TURN_TIMEOUT_MS || 60 * 60_000);
@@ -183,7 +184,7 @@ export class Brain {
    *   owner?: string, model?: string, env?: Record<string, string>, log?: (m: string) => void, now?: () => Date,
    * }} opts
    */
-  constructor({ queryFn, projects, dir, listener, tools, prepare = () => {}, owner = "Ilan", model, env = process.env, log = () => {}, now = () => new Date(), routines = {}, fireFn = null, partners = {} }) {
+  constructor({ queryFn, projects, dir, listener, tools, prepare = () => {}, owner = "Ilan", model, env = process.env, log = () => {}, now = () => new Date(), routines = {}, fireFn = null, partners = {}, landed }) {
     // routines: { project: { url, token } } -- approved work runs as a cloud routine session the owner can
     // watch in Claude Code (hybrid, TM-03b); projects without one run the working turn here.
     // partners: { project: { url, token } } -- the routine bound to Ilan Usman's cloud session (TM-12).
@@ -204,6 +205,12 @@ export class Brain {
     this.planStore = readJson(this.plansFile, { seq: 0, plans: {} });
     this.queues = new Map(); // chat -> promise chain: one turn at a time per group
     this.today = { day: "", turns: 0 };
+    // The auto loop (request 61): "@bot auto on [hours]"; see auto.js. landed(plan, sinceIso): is that work on main?
+    this.auto = new AutoLoop(this, { dir, ...(landed ? { landed } : {}) });
+  }
+
+  savePlans() {
+    writeJson(this.plansFile, this.planStore);
   }
 
   get plans() {
@@ -359,10 +366,12 @@ export class Brain {
   }
 
   /** Starts the approved plan as a cloud routine session and posts its link, so the owner can watch it. */
-  async runInCloud(plan, { project, by, reply_chat, say }) {
+  async runInCloud(plan, { project, by, reply_chat, say, quiet = false }) {
     const payload = [
       `Project: ${project}`,
-      `Approved by: ${by} (in WhatsApp; the listener checked ${by} is on the approved list)`,
+      by === "auto"
+        ? "Approved by: auto (the bot's auto loop; an owner switched auto on in WhatsApp, and the code checked the plan's area and guard words)"
+        : `Approved by: ${by} (in WhatsApp; the listener checked ${by} is on the approved list)`,
       `Request log item: ${typeof plan.id === "number" ? plan.id : "none"}`,
       `Reply group jid: ${reply_chat}`,
       `Plan [${plan.id}]: ${plan.title}`,
@@ -380,12 +389,17 @@ export class Brain {
       if (typeof plan.id === "number" && plan.session_url) {
         this.listener.updateItem(plan.id, { note: `cloud session ${plan.session_url}`, project }).catch(() => {});
       }
-      return say(`▶️ Working on [${plan.id}] ${plan.title}\nWatch it live in Claude Code: ${plan.session_url || "(link not returned)"}\nI'll post progress and the result here.`);
+      if (quiet) return { ok: true };
+      await say(`▶️ Working on [${plan.id}] ${plan.title}\nWatch it live in Claude Code: ${plan.session_url || "(link not returned)"}\nI'll post progress and the result here.`);
+      return { ok: true };
     } catch (e) {
-      plan.status = "proposed"; // let them try the ok again
+      const limit = usageLimit(e.message, { now: this.now().getTime() });
+      plan.status = quiet ? "approved" : "proposed"; // a human can retry the ok; the auto loop re-fires the same plan itself
       writeJson(this.plansFile, this.planStore);
       this.log(`brain: cloud start failed for [${plan.id}]: ${e.message}`);
-      return say(`⚠️ Couldn't start the cloud session for [${plan.id}] (${String(e.message).slice(0, 150)}). Reply @bot ok ${plan.id} to try again.`);
+      if (quiet) return { ok: false, error: e.message, limit: Boolean(limit) };
+      await say(`⚠️ Couldn't start the cloud session for [${plan.id}] (${String(e.message).slice(0, 150)}). Reply @bot ok ${plan.id} to try again.`);
+      return { ok: false, error: e.message, limit: Boolean(limit) };
     }
   }
 
@@ -457,11 +471,14 @@ export class Brain {
     const say = (text) => this.sayFor(key, { chat: req.reply_chat, project: req.reply_project || req.project }, text);
     if (!project) return say(`I'm not set up for the ${req.project} project yet.`);
 
-    if (mode === "planning") {
+    if (mode === "planning" && !req.auto) {
+      const auto = this.auto.command(req);
+      if (auto !== undefined) return auto ? say(auto) : undefined;
       const answer = this.settingsCommand(req) || this.sessionCommand(req);
       if (answer) return say(answer);
     }
-    if (this.overDailyCap()) return say(`⏸️ I've hit today's limit of ${DAILY_TURNS} runs. Ask again tomorrow, or raise TEAMMATE_BRAIN_DAILY_TURNS.`);
+    // Auto cycles have their own caps (pushes and cycles a day), so they don't use the daily turn allowance.
+    if (!req.auto && this.overDailyCap()) return say(`⏸️ I've hit today's limit of ${DAILY_TURNS} runs. Ask again tomorrow, or raise TEAMMATE_BRAIN_DAILY_TURNS.`);
 
     try {
       this.prepare(project); // e.g. fetch the latest code before reading it
@@ -473,7 +490,10 @@ export class Brain {
     const header = `[WhatsApp · ${where} · #${req.n ?? "-"} · from ${req.sender}]`;
     const quoted = req.quoted_text ? `\nReplying to: "${String(req.quoted_text).slice(0, 1500)}"` : "";
     const prompt = `${header}${quoted}\n${req.text}`;
-    const ctx = { project: req.project, chat_project: req.reply_project || req.project, chat: req.chat, chat_name: req.chat_name, reply_chat: req.reply_chat, sender: req.sender, session: req.session };
+    const ctx = { project: req.project, chat_project: req.reply_project || req.project, chat: req.chat, chat_name: req.chat_name, reply_chat: req.reply_chat, sender: req.sender, session: req.session, ...(req.auto ? { auto_cycle: req.auto_cycle, auto_report: req.auto_report, auto_attention: req.auto_attention } : {}) };
+    // What the auto loop needs to know about how the turn ended.
+    const outcome = { ok: false, limit: null, budget: false, denied: [], error: null };
+    let limitSeen = null;
 
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), TURN_TIMEOUT_MS);
@@ -491,7 +511,7 @@ export class Brain {
           allowedTools: mode === "working" ? WORK : READ,
           disallowedTools: DENY,
           mcpServers: { whatsapp: this.tools(ctx, this.plans) },
-          maxBudgetUsd: BUDGET[mode],
+          maxBudgetUsd: req.budget || BUDGET[mode],
           settingSources: ["project"],
           systemPrompt: { type: "preset", preset: "claude_code", append: systemAppend({ project: req.project, flow: project.flow, owner: this.owner, dm: Boolean(req.dm), partner: Boolean(this.partners[req.reply_project || req.project]) }) },
           env: { ...this.env, TEAMMATE_PROJECT: req.reply_project || req.project, ...(project.ghToken ? { GH_TOKEN: project.ghToken } : {}) },
@@ -501,6 +521,9 @@ export class Brain {
       for await (const msg of stream) {
         if (msg.session_id) sessionId = msg.session_id;
         if (msg.type === "result") result = msg;
+        // The plan's 5-hour window: the SDK reports it as a rate_limit_event / an assistant error.
+        if (msg.type === "rate_limit_event" && msg.rate_limit_info?.status === "rejected") limitSeen = { resetsAt: msg.rate_limit_info.resetsAt ? msg.rate_limit_info.resetsAt * 1000 : null };
+        if (msg.type === "assistant" && msg.error === "rate_limit") limitSeen ||= { resetsAt: null };
       }
     } catch (e) {
       clearTimeout(timer);
@@ -513,6 +536,10 @@ export class Brain {
         return this.turn(req, mode, plan);
       }
       this.log(`brain: ${req.chat_name} #${req.n}: ${e.message || e}`);
+      outcome.error = String(e.message || e);
+      outcome.limit = usageLimit(outcome.error, { resetsAt: limitSeen?.resetsAt, flagged: Boolean(limitSeen), now: this.now().getTime() });
+      if (req.auto) return outcome;
+      if (outcome.limit) return say(this.limitText(outcome.limit));
       return say(abort.signal.aborted ? "⏱️ That took too long and was stopped. Ask again, or split it up." : "⚠️ I hit an error on that one; check the logs.");
     }
     clearTimeout(timer);
@@ -525,17 +552,24 @@ export class Brain {
       plan.status = result?.subtype === "success" ? "done" : "failed";
       writeJson(this.plansFile, this.planStore);
     }
+    outcome.denied = result?.permission_denials || [];
     if (!result || result.subtype !== "success") {
       this.log(`brain: ${req.chat_name}: ${result?.subtype || "no result"} ${(result?.errors || []).join("; ")}`);
-      const why = result?.subtype === "error_max_budget_usd" ? " (it reached this turn's spending cap)" : "";
-      await say(`⚠️ I couldn't finish that one${why}; check the logs.`);
+      outcome.budget = result?.subtype === "error_max_budget_usd";
+      outcome.error = result?.subtype || "no result";
+      outcome.limit = usageLimit([result?.subtype, ...(result?.errors || []), result?.result].join(" "), { resetsAt: limitSeen?.resetsAt, flagged: Boolean(limitSeen), now: this.now().getTime() });
+      const why = outcome.budget ? " (it reached this turn's spending cap)" : "";
+      if (outcome.limit) {
+        if (!req.auto) await say(this.limitText(outcome.limit));
+      } else if (!req.auto || outcome.budget) await say(`⚠️ I couldn't finish that one${why}; check the logs.`);
     } else {
+      outcome.ok = true;
       this.log(`brain: ${req.chat_name} ${mode} done in ${Math.round(result.duration_ms / 1000)}s ($${result.total_cost_usd?.toFixed(3)})`);
       for (const part of chunk(result.result)) await say(part);
     }
     // Anything the permission rules refused: tell the owner, so nothing fails silently.
     // Planning is read-only by design, so refusals there are expected and only logged.
-    const denied = result?.permission_denials || [];
+    const denied = outcome.denied;
     if (denied.length) {
       const what = denied.map((d) => `${d.tool_name}${d.tool_input?.command ? `: ${String(d.tool_input.command).slice(0, 100)}` : ""}`);
       this.log(`brain: ${mode}: refused ${what.join(" | ")}`);
@@ -547,5 +581,11 @@ export class Brain {
           "If one of these is needed, tell me how you'd like to handle it, or check Claude Code on the server.",
       );
     }
+    return outcome;
+  }
+
+  /** What a human sees when their own message hits the usage limit. */
+  limitText(limit) {
+    return limit?.resetAt ? `⏸ Claude's usage limit is reached; it resets ~${clock(limit.resetAt)}. Ask again then.` : "⏸ Claude's usage limit is reached. Ask again in a while.";
   }
 }

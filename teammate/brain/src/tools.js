@@ -160,8 +160,9 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
         title: z.string().min(3).max(120).describe("Short English title"),
         plan: z.string().min(10).max(6000).describe("What you'll change, where, how you'll test it, and the git steps"),
         type: z.enum(["bug", "feature", "task"]).optional(),
+        auto: z.object({ area: z.string().max(40) }).optional().describe("Only in an unattended auto cycle: area is \"conversation\" or \"getting_out\". Anything else (or missing) is left for a human ok."),
       },
-      async ({ title, plan, type }) => {
+      async ({ title, plan, type, auto }) => {
         let itemId = null;
         try {
           const r = await listener.addItem({ chat: ctx.chat, project: chatProject, type: type || "task", title: ctx.project !== chatProject ? `[bot upgrade] ${title}` : title, summary: plan, created_by: `${ctx.sender} via bot` });
@@ -169,7 +170,8 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
         } catch {
           // the request log is a convenience; the plan still stands
         }
-        const saved = plans.save({ id: itemId, project: ctx.project, chat_project: chatProject, chat: ctx.chat, chat_name: ctx.chat_name, session: ctx.session, title, plan, by: ctx.sender });
+        const saved = plans.save({ id: itemId, project: ctx.project, chat_project: chatProject, chat: ctx.chat, chat_name: ctx.chat_name, session: ctx.session, title, plan, by: ctx.sender, ...(ctx.auto_cycle ? { auto: auto || null, cycle: ctx.auto_cycle } : {}) });
+        if (ctx.auto_cycle) return { content: [{ type: "text", text: `Plan [${saved.id}] recorded. The system decides about auto-approval (scope and guard words are checked in code); don't ask anyone for an ok. Now call cycle_report.` }] };
         return { content: [{ type: "text", text: `Plan [${saved.id}] recorded. Ask the team to reply "@bot ok ${saved.id}" to go ahead.` }] };
       },
     ),
@@ -294,11 +296,27 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
         const icon = { permission: "🔐", check_claude_code: "👀", decision: "❓", credential: "🔑", other: "⚠️" }[kind];
         const label = { permission: "Needs your permission", check_claude_code: "Please check Claude Code", decision: "Needs your decision", credential: "Needs a credential", other: "Needs you" }[kind];
         await post({ text: `${icon} *${label}*\n${what}` });
+        ctx.auto_attention?.(kind);
         return { content: [{ type: "text", text: "Flagged to the owner in the team group." }] };
       },
     ),
   ];
+  if (ctx.auto_cycle) {
+    // Only in unattended auto cycles: the structured end of the cycle, read by the auto loop (auto.js).
+    tools.push(
+      tool(
+        "cycle_report",
+        "End of an auto cycle: call once, last. outcome: planned (you called propose_plan), no_issue_found, fixed or not_fixed (verify turn), blocked (couldn't test). seen_not_fixed lists problems outside Conversation / Getting things out (listed in the summary only, never planned).",
+        {
+          outcome: z.enum(["planned", "no_issue_found", "fixed", "not_fixed", "blocked"]),
+          summary: z.string().min(3).max(1200),
+          seen_not_fixed: z.array(z.string().max(300)).max(10).optional(),
+        },
+        async (r) => (ctx.auto_report?.(r), { content: [{ type: "text", text: "Recorded. Finish with your short cycle summary." }] }),
+      ),
+    );
+  }
   return createSdkMcpServer({ name: "whatsapp", version: "1.0.0", tools });
 }
 
-export const BRAIN_TOOL_NAMES = ["post_message", "post_image", "preview_html", "screenshot_url", "view_media", "translate_message", "propose_plan", "test_assistant", "tell_ilan_usman", "needs_attention"].map((t) => `mcp__whatsapp__${t}`);
+export const BRAIN_TOOL_NAMES = ["post_message", "post_image", "preview_html", "screenshot_url", "view_media", "translate_message", "propose_plan", "test_assistant", "tell_ilan_usman", "needs_attention", "cycle_report"].map((t) => `mcp__whatsapp__${t}`);

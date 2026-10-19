@@ -142,6 +142,7 @@ const listener = {
   messages: (q) => call("GET", `/messages?${new URLSearchParams(q)}`),
   addItem: (b) => call("POST", "/items", b),
   updateItem: (id, b) => call("POST", `/items/${id}`, b),
+  getItem: (id, project) => call("GET", `/items/${id}?project=${encodeURIComponent(project)}`),
   /** Translate one message on request (Gemini, in the listener); returns text + cost. */
   translate: (n, project) => call("POST", `/messages/${n}/translate?project=${encodeURIComponent(project)}`),
   /** A group photo / file by message number: { data: Buffer, mime }. */
@@ -199,9 +200,19 @@ async function fireRoutine({ url, token: rtoken }, text) {
   return data;
 }
 
+// Is a plan's work on the project's branch? A commit since the approval that names the request ("request 61" or "[61]").
+async function landed(plan, sinceIso) {
+  const { cwd, branch, ghToken } = projects[plan.project];
+  const git = gitAs(ghToken);
+  git(cwd, "fetch", "--quiet", "origin");
+  const id = String(plan.id);
+  return git(cwd, "log", `origin/${branch}`, `--since=${sinceIso}`, "-E", `--grep=request ${id}([^0-9]|$)|\\[${id}\\]`, "--format=%h").length > 0;
+}
+
 const brain = new Brain({
   routines,
   fireFn: fireRoutine,
+  landed,
   partners,
   queryFn: query,
   projects,
@@ -261,3 +272,4 @@ if (boardMinutes > 0) {
   setInterval(check, boardMinutes * 60_000);
   log(`board: every ${boardMinutes} min; partner ${Object.keys(partners).join(", ") || "none"}`);
 }
+setInterval(() => brain.auto.tick().catch((e) => log(`auto: ${e.message}`)), 60_000); // the auto loop (request 61)
