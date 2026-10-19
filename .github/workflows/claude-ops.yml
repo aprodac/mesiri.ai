@@ -11,6 +11,7 @@ name: Claude ops
 #                     owner-approved 19 Oct)
 #   vps-smoke         infra/deploy/smoke_test.sh against the live build (read-only; INF-04)
 #   vps-perf          infra/deploy/perf_report.sh: where reply time goes, last `hours` (read-only; B-7)
+#   vps-evening       infra/deploy/evening_report.sh: tonight's evening review messages (`text` = yyyy-mm-dd, read-only; WA-05)
 #   bot-status        is the bot linked and receiving
 #   bot-chats         chats with their labels (names only)
 #   bot-test          send `text` to the Mesiri assistant's assistant-test chat and print its replies
@@ -30,7 +31,7 @@ on:
         description: What to run
         required: true
         type: choice
-        options: [vps-check, vps-backup-now, vps-staging, vps-app-login, vps-smoke, vps-perf, bot-status, bot-chats, bot-test, bot-recent-test, bot-recent-team, bot-items, bot-label-test]
+        options: [vps-check, vps-backup-now, vps-staging, vps-app-login, vps-smoke, vps-perf, vps-evening, bot-status, bot-chats, bot-test, bot-recent-test, bot-recent-team, bot-items, bot-label-test]
       text:
         description: "bot-test: the message (or choose:<n|title>); bot-label-test: the chat jid"
         required: false
@@ -94,6 +95,9 @@ jobs:
             vps-perf)
               ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "bash -s -- $(printf '%s' "$HOURS" | tr -dc 0-9)" \
                 < infra/deploy/perf_report.sh 2>&1 | mask ;;
+            vps-evening)
+              ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "bash -s -- $(printf '%s' "$TEXT" | tr -dc 0-9-)" \
+                < infra/deploy/evening_report.sh 2>&1 | mask ;;
             bot-status) inbox status ;;
             bot-chats) inbox chats | mask ;;
             bot-test)
