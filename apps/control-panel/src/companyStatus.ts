@@ -22,6 +22,11 @@ export interface Company {
   created_at: string | null;
   setup: Setup;
   open_branding_requests?: number;
+  // SA-10: the owner asked to continue with Mesiri (closed by convert / extend);
+  // a trial ended longer ago than the data is kept (flag only, nothing auto-deleted).
+  open_continue_requests?: number;
+  continue_requested_at?: string | null;
+  eligible_for_deletion?: boolean;
 }
 
 export const FILTERS = ['all', 'trial', 'active', 'expired', 'suspended'] as const;

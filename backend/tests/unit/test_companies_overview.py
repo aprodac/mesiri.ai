@@ -67,3 +67,28 @@ def test_setup_progress_is_carried_through() -> None:
 
 def test_missing_signup_source_counts_as_superadmin() -> None:
     assert to_overview(_row(signup_source=None), _NOW).signup_source == "superadmin"
+
+
+def test_an_expired_trial_past_the_retention_days_is_eligible_for_deletion() -> None:
+    # SA-10: flagged only; nothing is deleted automatically.
+    ended = _NOW - dt.timedelta(days=31)
+    company = to_overview(_row(trial_ends_at=ended), _NOW, retention_days=30)
+    assert company.effective_status == "expired"
+    assert company.eligible_for_deletion is True
+
+
+def test_within_retention_converted_or_still_on_trial_is_not_eligible() -> None:
+    recent = _NOW - dt.timedelta(days=29)
+    assert not to_overview(_row(trial_ends_at=recent), _NOW, retention_days=30).eligible_for_deletion
+    old = _NOW - dt.timedelta(days=90)
+    converted = _row(status="active", trial_ends_at=old, converted_at=old)
+    assert not to_overview(converted, _NOW, retention_days=30).eligible_for_deletion
+    assert not to_overview(_row(), _NOW).eligible_for_deletion
+
+
+def test_open_continue_requests_are_carried_through() -> None:
+    company = to_overview(
+        _row(open_continue_requests=1, continue_requested_at="2026-10-14T09:00:00+00:00"), _NOW
+    )
+    assert company.open_continue_requests == 1
+    assert company.continue_requested_at == "2026-10-14T09:00:00+00:00"

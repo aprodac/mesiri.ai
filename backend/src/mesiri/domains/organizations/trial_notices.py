@@ -36,6 +36,7 @@ CONTINUE_WORDS = frozenset({"continue", "continue with mesiri", "yes continue"})
 CONTINUE_TAP = "trial:continue"
 
 OPEN = "open"
+CLOSED = "closed"
 
 
 def reminder_due(trial_ends_at: dt.datetime | None, now: dt.datetime) -> str | None:
@@ -116,6 +117,20 @@ def add_continue_request(
         }
     )
     return items, True
+
+
+def close_continue_requests(
+    requests: object, *, resolution: str, by: str | None, now: dt.datetime
+) -> tuple[list[dict[str, Any]], int]:
+    """`requests` with every open request closed as `resolution` ("converted" /
+    "extended", SA-10). Returns (requests, how many were closed)."""
+    items = [dict(r) for r in requests] if isinstance(requests, list) else []
+    closed = 0
+    for r in items:
+        if r.get("status") == OPEN:
+            r.update(status=CLOSED, closed_at=now.isoformat(), closed_by=by, resolution=resolution)
+            closed += 1
+    return items, closed
 
 
 def is_continue(text: object) -> bool:

@@ -149,3 +149,22 @@ async def test_trial_length_change_is_stored_audited_and_used(conn) -> None:
 async def test_bad_setting_value_is_refused_and_not_recorded(conn) -> None:
     with pytest.raises(ValueError, match="between 1 and 365"):
         await update_platform_setting(conn, "trial_policy", {"trial_days": 0}, actor=_ADMIN)
+
+
+async def test_convert_closes_the_owners_continue_request_in_the_same_change(conn) -> None:
+    """SA-10: the request shows on the companies list until convert / extend answers it."""
+    from mesiri.application.organizations.trial import record_continue_request
+
+    org = await _trial_company(conn, "+91 98765 20009")
+    assert await record_continue_request(conn, org, user_id=str(uuid.uuid4()), via="whatsapp")
+    company = await company_setup(conn, org, now=_NOW)
+    assert company.open_continue_requests == 1
+    assert company.continue_requested_at is not None
+
+    await trial_controls.apply_trial_action(
+        conn, org, trial_controls.CONVERT, actor=_ADMIN, now=_NOW
+    )
+    company = await company_setup(conn, org, now=_NOW)
+    assert company.open_continue_requests == 0
+    [entry] = await _audit(conn, org, "company.converted")
+    assert entry["details"]["closed_continue_requests"] == 1

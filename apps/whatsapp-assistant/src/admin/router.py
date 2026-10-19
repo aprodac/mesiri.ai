@@ -142,6 +142,9 @@ class CompanyListItem(OrganizationResponse):
     signup_source: str
     setup: SetupProgressResponse
     open_branding_requests: int = 0
+    open_continue_requests: int = 0
+    continue_requested_at: str | None = None
+    eligible_for_deletion: bool = False
 
 
 class TrialExtendRequest(BaseModel):

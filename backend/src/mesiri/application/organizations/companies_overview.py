@@ -72,6 +72,13 @@ class CompanyOverview:
     setup: SetupProgress
     # Owner's letterhead photos the Mesiri team hasn't finished (SA-09).
     open_branding_requests: int = 0
+    # SA-10: the owner asked to continue with Mesiri (from SS-08), not yet
+    # answered by a convert / extend; and when the request came.
+    open_continue_requests: int = 0
+    continue_requested_at: str | None = None
+    # SA-10: trial ended more than retention_days_after_expiry ago and never
+    # converted. A flag only: nothing is deleted automatically.
+    eligible_for_deletion: bool = False
 
 
 # A project's report times when nobody has changed them (the column defaults,
@@ -109,17 +116,52 @@ _SELECT = """
                      CASE WHEN jsonb_typeof(st.value) = 'array' THEN st.value ELSE '[]' END
                    ) AS r
              WHERE st.organization_id = o.id AND st.key = 'branding_requests'
-               AND r ->> 'status' = 'open') AS open_branding_requests
+               AND r ->> 'status' = 'open') AS open_branding_requests,
+           (SELECT count(*) FROM organization_settings st,
+                   jsonb_array_elements(
+                     CASE WHEN jsonb_typeof(st.value) = 'array' THEN st.value ELSE '[]' END
+                   ) AS r
+             WHERE st.organization_id = o.id AND st.key = 'continue_requests'
+               AND r ->> 'status' = 'open') AS open_continue_requests,
+           (SELECT max(r ->> 'created_at') FROM organization_settings st,
+                   jsonb_array_elements(
+                     CASE WHEN jsonb_typeof(st.value) = 'array' THEN st.value ELSE '[]' END
+                   ) AS r
+             WHERE st.organization_id = o.id AND st.key = 'continue_requests'
+               AND r ->> 'status' = 'open') AS continue_requested_at
     FROM organizations o
 """
 _DEFAULTS = {"default_cutoff": DEFAULT_CUTOFF_TIME, "default_send": DEFAULT_SEND_TIME}
+DEFAULT_RETENTION_DAYS = 30
+
+
+async def _retention_days(conn: AsyncConnection) -> int:
+    """retention_days_after_expiry from the trial policy (SS-08 setting)."""
+    from mesiri.domains.organizations.platform_settings import TRIAL_POLICY
+    from mesiri.infrastructure.postgres.repositories.platform_settings import (
+        PostgresPlatformSettingsRepository,
+    )
+
+    policy = await PostgresPlatformSettingsRepository(conn).get(TRIAL_POLICY)
+    try:
+        return int((policy or {}).get("retention_days_after_expiry") or DEFAULT_RETENTION_DAYS)
+    except (TypeError, ValueError):
+        return DEFAULT_RETENTION_DAYS
 _QUERY = sa.text(_SELECT + "ORDER BY o.created_at DESC NULLS LAST, o.name")
 _ONE_QUERY = sa.text(_SELECT + "WHERE o.id = :organization_id")
 
 
-def to_overview(row: sa.RowMapping, now: dt.datetime) -> CompanyOverview:
+def to_overview(
+    row: sa.RowMapping, now: dt.datetime, *, retention_days: int = DEFAULT_RETENTION_DAYS
+) -> CompanyOverview:
     """One query row as the list shows it. Pure, so testable without a database."""
     effective = lifecycle.effective_status(row["status"], row["trial_ends_at"], now)
+    eligible = (
+        effective == lifecycle.EXPIRED
+        and row["converted_at"] is None
+        and row["trial_ends_at"] is not None
+        and now - row["trial_ends_at"] > dt.timedelta(days=retention_days)
+    )
     days_left = (
         lifecycle.trial_days_left(row["trial_ends_at"], now)
         if effective == lifecycle.TRIAL
@@ -140,6 +182,9 @@ def to_overview(row: sa.RowMapping, now: dt.datetime) -> CompanyOverview:
         created_at=row["created_at"],
         updated_at=row["updated_at"],
         open_branding_requests=int(row.get("open_branding_requests") or 0),
+        open_continue_requests=int(row.get("open_continue_requests") or 0),
+        continue_requested_at=row.get("continue_requested_at"),
+        eligible_for_deletion=eligible,
         setup=SetupProgress(
             # The owner alone isn't a team.
             has_team=(row["active_users"] or 0) >= 2,
@@ -158,7 +203,8 @@ async def list_companies(
     """Every company, newest first, with its status and setup progress."""
     now = now or dt.datetime.now(dt.UTC)
     rows = (await conn.execute(_QUERY, _DEFAULTS)).mappings().all()
-    return [to_overview(row, now) for row in rows]
+    retention = await _retention_days(conn)
+    return [to_overview(row, now, retention_days=retention) for row in rows]
 
 
 async def company_setup(
@@ -171,4 +217,6 @@ async def company_setup(
         .mappings()
         .first()
     )
-    return to_overview(row, now) if row is not None else None
+    if row is None:
+        return None
+    return to_overview(row, now, retention_days=await _retention_days(conn))

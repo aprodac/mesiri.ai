@@ -104,6 +104,25 @@ export default function Companies() {
                       Letterhead photos
                     </button>
                   )}
+                  {!!c.open_continue_requests && (
+                    <button
+                      className="badge badge-success"
+                      title="The owner asked to continue with Mesiri; convert or extend the trial to answer it"
+                      style={{ marginLeft: 8, border: 'none', cursor: 'pointer' }}
+                      onClick={() => navigate(`/organizations/${c.id}`)}
+                    >
+                      Wants to continue
+                    </button>
+                  )}
+                  {c.eligible_for_deletion && (
+                    <span
+                      className="badge badge-error"
+                      title="Trial ended longer ago than its data is kept. Nothing is deleted automatically."
+                      style={{ marginLeft: 8 }}
+                    >
+                      Eligible for deletion
+                    </span>
+                  )}
                 </td>
                 <td>
                   <span

@@ -102,6 +102,17 @@ export default function PlanCard({ orgId, onStatus }: Props) {
         </div>
       </div>
 
+      {!!company.open_continue_requests && (
+        <div className="badge badge-success" style={{ display: 'block', marginBottom: 'var(--space-4)', padding: '8px 12px', fontSize: '13px' }}>
+          The owner asked to continue with Mesiri
+          {company.continue_requested_at ? ` on ${shortDate(company.continue_requested_at)}` : ''}. Convert to paid or extend the trial to answer it.
+        </div>
+      )}
+      {company.eligible_for_deletion && (
+        <div className="badge badge-error" style={{ display: 'block', marginBottom: 'var(--space-4)', padding: '8px 12px', fontSize: '13px' }}>
+          Eligible for deletion: the trial ended longer ago than its data is kept. Nothing is deleted automatically.
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'var(--space-4)' }}>
         <div><div style={label}>Source</div><div style={value}>{SOURCE_LABELS[company.signup_source] ?? company.signup_source}</div></div>
         <div><div style={label}>Trial started</div><div style={value}>{shortDate(company.trial_started_at ?? null)}</div></div>

@@ -33,6 +33,11 @@ import sqlalchemy as sa
 from mesiri.application.audit.record import record_admin_action
 from mesiri.domains.audit import actions as audit
 from mesiri.domains.organizations import lifecycle
+from mesiri.domains.organizations import settings as org_settings
+from mesiri.domains.organizations import trial_notices as notices
+from mesiri.infrastructure.postgres.repositories.organization_settings import (
+    PostgresOrganizationSettingsRepository,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection
@@ -202,6 +207,19 @@ async def apply_trial_action(
         },
     )
     details: dict[str, Any] = {"before": before.as_dict(), "after": after.as_dict()}
+    if action in (EXTEND, CONVERT):
+        # SA-10: the owner's open "continue with Mesiri" request is answered by
+        # this change; closed in the same transaction, counted in the audit entry.
+        repo = PostgresOrganizationSettingsRepository(conn)
+        requests, closed = notices.close_continue_requests(
+            await repo.get(organization_id, org_settings.CONTINUE_REQUESTS),
+            resolution="converted" if action == CONVERT else "extended",
+            by=actor.label or (str(actor.user_id) if actor.user_id else None),
+            now=now,
+        )
+        if closed:
+            await repo.set(organization_id, org_settings.CONTINUE_REQUESTS, requests, updated_by=None)
+            details["closed_continue_requests"] = closed
     if days is not None and action == EXTEND:
         details["days"] = days
     if reason:
