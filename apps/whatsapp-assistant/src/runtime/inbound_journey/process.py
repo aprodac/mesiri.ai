@@ -1464,6 +1464,13 @@ async def process_inbound_message(
             _log.warning(
                 "dpr_request.document_send_failed correlation_id=%s", correlation_id, exc_info=True
             )
+            # The status text said a document was coming; say it did not.
+            await _safe(
+                send_text(
+                    message.sender.wa_id,
+                    "I couldn't attach the report PDF just now. Please ask again in a minute.",
+                )
+            )
 
     # Query "send as PDF": the text reply above always goes first (same
     # reasoning as the DPR side-channel just above), and a PDF follows only

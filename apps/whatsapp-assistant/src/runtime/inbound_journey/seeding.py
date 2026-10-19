@@ -1120,6 +1120,27 @@ async def _seed_activity_search(
     event.fields["activity_search_results"] = results
 
 
+def _dpr_scope(event: CanonicalEventV2, actor: ActorIdentity) -> tuple[str | None, str | None]:
+    """The project and site whose report to look up. A bare "send me today's
+    report" names neither, and the request has no required fields, so no gate
+    resolves them: fall back to the sender's own access -- a lone project, and
+    a lone site under it. With several sites nothing is guessed and the
+    project roll-up is looked up."""
+    project_id = event.project_id
+    site_id = event.site_id
+    projects = getattr(actor, "projects", None) or []
+    sites = getattr(actor, "sites", None) or []
+    if project_id is None and len(projects) == 1:
+        project_id = projects[0].id
+    if site_id is None:
+        under = [s for s in sites if project_id is None or s.project_id == project_id]
+        if len(under) == 1:
+            site_id = under[0].id
+            if project_id is None:
+                project_id = under[0].project_id
+    return project_id, site_id
+
+
 async def _seed_dpr_request(
     event: CanonicalEventV2,
     decision: PlannerDecisionV2,
@@ -1139,18 +1160,30 @@ async def _seed_dpr_request(
     `canonical_event.fields` rather than threading a third value through
     the node's return dict.
     """
-    if dpr_request_query is None or actor is None or not actor.organization_id:
-        return
     if decision.workflow_key is not WorkflowKey.DPR_REQUEST:
         return
+    if dpr_request_query is None or actor is None or not actor.organization_id:
+        # Not "no report exists": the lookup could not be made at all.
+        event.fields["dpr_status"] = "unavailable"
+        event.fields["dpr_object_key"] = None
+        event.fields["dpr_code"] = None
+        return
 
+    project_id, site_id = _dpr_scope(event, actor)
     today = today_for(timezone_name)
-    result = await dpr_request_query.find_report(
-        organization_id=actor.organization_id,
-        project_id=event.project_id,
-        site_id=event.site_id,
-        report_date=today,
-    )
+    try:
+        result = await dpr_request_query.find_report(
+            organization_id=actor.organization_id,
+            project_id=project_id,
+            site_id=site_id,
+            report_date=today,
+        )
+    except Exception:  # noqa: BLE001 -- an honest "can't check" beats a failed run
+        _log.exception("dpr_request.lookup_failed user=%s", getattr(actor, "user_id", None))
+        event.fields["dpr_status"] = "unavailable"
+        event.fields["dpr_object_key"] = None
+        event.fields["dpr_code"] = None
+        return
     event.fields["dpr_status"] = result["status"]
     event.fields["dpr_object_key"] = result["object_key"]
     event.fields["dpr_code"] = result["code"]
