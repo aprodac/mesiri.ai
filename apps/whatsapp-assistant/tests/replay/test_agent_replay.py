@@ -395,3 +395,31 @@ async def test_the_pipeline_around_the_model_adds_little_latency(world):
     started = time.perf_counter()
     await world.say(provider, FOUR_PART_NOTE)
     assert time.perf_counter() - started < 1.0
+
+
+async def test_one_expense_is_one_question_then_one_saved_reply(world):
+    """Request [55]: an expense must not be answered twice (the 19 Oct live
+    test showed it, with the menu, twice). The first message ends in ONE reply
+    carrying the confirm card once; the Yes tap saves once and is answered
+    once -- counted per message, not just by looking at the text."""
+    provider = FakeToolCallingProvider(
+        [
+            [("save_expense", {"amount": 500, "description": "tea and snacks"})],
+            "Paid 500 for tea and snacks. Save it?",
+        ]
+    )
+    result = await world.say(provider, "paid 500 for tea and snacks")
+
+    assert provider.calls == 1
+    assert world.journeys == 1  # one journey run for one expense
+    reply = result.reply
+    assert [b.title for b in reply.buttons] == ["Yes", "No"]  # one message, one Yes/No
+    assert "Here's what I can help with" not in reply.text  # no menu beside it
+    assert world.dispatcher.dispatched == []  # nothing saved before the Yes
+
+    handled = await world.handler.handle_fast_path(world.actor.user_id, world.message("Yes"))
+    assert handled is not None
+    assert len(world.dispatcher.dispatched) == 1  # saved once
+    again = await world.handler.handle_fast_path(world.actor.user_id, world.message("Yes"))
+    assert again is None
+    assert len(world.dispatcher.dispatched) == 1  # a second Yes saves nothing more

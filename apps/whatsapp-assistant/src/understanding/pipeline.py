@@ -159,6 +159,7 @@ class UnderstandingPipeline:
         result.transcript = text
         result.normalized_text = text
         result.detected_language = extraction.detected_language
+        result.detected_script = extraction.detected_script
         self._apply_extraction(result, extraction, is_empty=False)
         return result
 
@@ -290,6 +291,7 @@ class UnderstandingPipeline:
             correlation_id=result.correlation_id,
         )
         result.detected_language = extraction.detected_language
+        result.detected_script = extraction.detected_script
         self._apply_extraction(result, extraction, is_empty=False)
 
     async def _handle_voice(

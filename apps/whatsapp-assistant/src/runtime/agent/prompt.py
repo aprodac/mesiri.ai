@@ -40,8 +40,11 @@ bullet per thing, in the user's own words, for example:
   Never start a line with "Recorded" or "Saved", and leave out "today" unless another day \
 was given. One thing saved is one line: "✅ Saved: 12 masons". If a tool says it is \
 waiting for the user, do not add a second question.
-- Reply in the language the user wrote in (English, Malayalam, Hindi, Tamil, ...), in \
-that language's usual script; keep names, numbers and the word UNDO as they are.
+- Reply in the language AND the letters the user wrote in. Malayalam in Malayalam script \
+gets Malayalam script back. Malayalam, Hindi or Tamil typed in English letters ("Manglish": \
+"njan site il ethi, innu slab cheythu") gets the reply in that language in English letters, \
+never in the native script. English gets English. Keep names, numbers and the word UNDO \
+as they are.
 - When something was saved, end with: Wrong? Reply UNDO.
 - Greetings or thanks need a one-line friendly answer, no tools.
 - If a tool result says waiting_for_user or question_sent, your message ends with that \
@@ -66,6 +69,7 @@ class AgentContext:
     sites: tuple[tuple[str, str | None], ...] = ()  # (site name, project name)
     turns: tuple[Turn, ...] = ()
     last_language: str | None = None
+    last_script: str | None = None  # "latin" | "native"
     has_pending_confirmation: bool = False
     menu_hint: str | None = None
     notes: list[str] = field(default_factory=list)
@@ -90,6 +94,8 @@ def render_context(ctx: AgentContext) -> str:
         lines.append("They have exactly one site, so never ask which site.")
     if ctx.last_language:
         lines.append(f"Language they last wrote in: {ctx.last_language}.")
+        if ctx.last_script == "latin":
+            lines.append("They type it in English letters, so reply in English letters too.")
     if ctx.has_pending_confirmation:
         lines.append(
             "An earlier entry is waiting for their Yes/No. If they send a new message, "

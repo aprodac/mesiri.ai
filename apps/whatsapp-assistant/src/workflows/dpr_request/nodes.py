@@ -20,6 +20,7 @@ _STATUS_TEXT = {
     "pending_render": (
         "Today's DPR is being prepared -- try again in a few minutes."
     ),
+    "unavailable": "I can't look up today's report right now. Please try again in a minute.",
     "not_generated": (
         "No DPR has been generated for today yet. Log an activity first, "
         "or check back once today's report has run."

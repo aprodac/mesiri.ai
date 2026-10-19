@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 #: Fields that make up ONE intent, pre-Phase-B. Every existing constructor
 #: call (adapters, fakes, ~100+ test fixtures across the monorepo) still
@@ -155,6 +155,10 @@ class ExtractionResult(BaseModel):
     # understanding/pipeline.py's _handle_text) so nothing downstream needs
     # translation to exist to know what language the sender used.
     detected_language: str | None = None
+    # "latin" when the sender typed that language in English letters
+    # ("Manglish"), "native" for its own script. Optional: absent from older
+    # providers/data, and readers treat None as native.
+    detected_script: str | None = None
     # transcript/translated_text are only populated by understand_voice()
     # (see ports/voice_extraction.py) -- the merged transcribe+extract call
     # for voice, which returns everything _handle_voice needs (including
@@ -165,6 +169,14 @@ class ExtractionResult(BaseModel):
     provider: str | None = None
     model: str | None = None
     latency_ms: float | None = None
+
+    @field_validator("detected_script", mode="before")
+    @classmethod
+    def _known_script_or_none(cls, value: Any) -> str | None:
+        """Only "latin" / "native" survive; anything else a model invents is
+        treated as not reported."""
+        cleaned = value.strip().lower() if isinstance(value, str) else None
+        return cleaned if cleaned in {"latin", "native"} else None
 
     @model_validator(mode="before")
     @classmethod

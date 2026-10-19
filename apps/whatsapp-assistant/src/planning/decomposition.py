@@ -71,6 +71,7 @@ class SkippedSegment:
     index: int
     text: str
     reason: str
+    event_type: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,11 +143,21 @@ def build_plan_from_segments(
     for index, event in enumerate(segment_events):
         workflow_key = WORKFLOW_KEY_BY_EVENT.get(event.event_type)
         if workflow_key is None:
+            # source_text: the part as the sender wrote it, stashed by
+            # runtime/inbound_journey/decomposed_plan.py so the reply can quote
+            # a question or a part it could not read back to them.
             skipped.append(
                 SkippedSegment(
                     index=index,
-                    text=str(event.fields.get("narrative") or event.event_type.value),
-                    reason="unsupported_event_type",
+                    text=str(
+                        event.fields.get("source_text")
+                        or event.fields.get("narrative")
+                        or event.event_type.value
+                    ),
+                    reason="not_understood"
+                    if event.fields.get("not_understood")
+                    else "unsupported_event_type",
+                    event_type=event.event_type.value,
                 )
             )
             continue

@@ -68,6 +68,7 @@ def _scope_of(actor: ActorIdentity) -> ScopeLookup:
 def _context_of(
     actor: ActorIdentity, deps: AgentTurnDeps, pack: Any | None, language: str | None,
     menu_hint: str | None,
+    script: str | None = None,
 ) -> AgentContext:
     project_names = {p.id: p.name for p in actor.projects}
     return AgentContext(
@@ -81,13 +82,18 @@ def _context_of(
             Turn(t.user_text, t.assistant_reply) for t in (getattr(pack, "recent_turns", ()) or ())
         ),
         last_language=language,
+        last_script=script,
         has_pending_confirmation=bool(getattr(pack, "has_pending_confirmation", False)),
         menu_hint=menu_hint,
     )
 
 
 async def _outage(
-    message: NormalizedMessage, language: str | None, deps: AgentTurnDeps, error: BaseException
+    message: NormalizedMessage,
+    language: str | None,
+    deps: AgentTurnDeps,
+    error: BaseException,
+    user_id: str | None = None,
 ) -> None:
     """Every AI call failed before anything was saved: tell the sender it is
     queued and raise, so the worker retries the message (runtime/ai_outage.py)."""
@@ -101,7 +107,15 @@ async def _outage(
     )
     if text:
         if deps.reply_composer is not None and language:
-            text = await deps.reply_composer.compose(text, language=language, correlation_id=correlation_id)
+            script = None
+            if deps.user_language_store is not None and user_id:
+                try:
+                    script = await deps.user_language_store.get_script(user_id=user_id)
+                except Exception:  # noqa: BLE001 — wording never costs the reply
+                    script = None
+            text = await deps.reply_composer.compose(
+                text, language=language, correlation_id=correlation_id, script=script
+            )
         await deps.send_spec(ReplySpec(text=text), message.sender.wa_id)
         await _safe(deps.message_logger.log_reply(correlation_id=correlation_id, reply=text))
     if will_retry:
@@ -152,13 +166,20 @@ async def run_agent_turn(
             return None
         await _safe(deps.message_logger.update_body_text(correlation_id=correlation_id, body_text=user_text))
         if deps.user_language_store is not None and language:
-            await _safe(deps.user_language_store.remember(user_id=actor.user_id, detected_language=language))
+            await _safe(
+                deps.user_language_store.remember(
+                    user_id=actor.user_id, detected_language=language, text=user_text
+                )
+            )
 
-    if language is None and deps.user_language_store is not None:
+    script: str | None = None
+    if deps.user_language_store is not None:
         try:
-            language = await deps.user_language_store.get(user_id=actor.user_id)
+            stored_language, script = await deps.user_language_store.get_profile(user_id=actor.user_id)
+            if language is None:
+                language = stored_language
         except Exception:  # noqa: BLE001
-            language = None
+            script = None
 
     pack = None
     if deps.memory_loader is not None and actor.organization_id:
@@ -172,7 +193,7 @@ async def run_agent_turn(
     gateway = deps.make_gateway(message, language)
     _lap(deps, "agent_context")
     result = await deps.runner.run(
-        ctx=_context_of(actor, deps, pack, language, menu_hint),
+        ctx=_context_of(actor, deps, pack, language, menu_hint, script),
         user_text=user_text,
         gateway=gateway,
         scope=_scope_of(actor),
@@ -182,7 +203,7 @@ async def run_agent_turn(
     )
     _lap(deps, "agent_model")
     if result.outcome == "outage" or result.reply is None:
-        await _outage(message, language, deps, result.error or RuntimeError("no reply"))
+        await _outage(message, language, deps, result.error or RuntimeError("no reply"), actor.user_id)
         return result
 
     reply = result.reply

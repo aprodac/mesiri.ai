@@ -477,7 +477,8 @@ def build_message_handlers(
         try:
             from runtime.reply_language import localize_reply_spec
 
-            return localize_reply_spec(spec, await user_language_store.get(user_id=user_id))
+            language, script = await user_language_store.get_profile(user_id=user_id)
+            return localize_reply_spec(spec, language, script)
         except Exception:  # noqa: BLE001
             _log.exception("reply.localize_failed user=%s", user_id)
             return spec
@@ -1098,9 +1099,8 @@ def build_message_handlers(
                     # the closing summary, not beside the next part's Yes/No.
                     reply_text = "Not saved yet. I'll ask about this one after the rest."
                 if user_language_store is not None:
-                    reply_text = localize_fixed_reply(
-                        reply_text, await user_language_store.get(user_id=ctx.user_id)
-                    )
+                    language, script = await user_language_store.get_profile(user_id=ctx.user_id)
+                    reply_text = localize_fixed_reply(reply_text, language, script)
             except Exception:  # noqa: BLE001 -- wording never costs the reply
                 _log.exception("deliver.reply_wording_failed user=%s", ctx.user_id)
             if handled.saved_draft:
@@ -1765,12 +1765,13 @@ def build_message_handlers(
         if greeting_reply is not None and reply_composer is not None and user_language_store is not None:
             # WA-11: in the language this sender last spoke. English (or not
             # known yet) returns at once with no AI call, so "hi" stays instant.
-            known_language = await user_language_store.get(user_id=ctx.user_id)
+            known_language, known_script = await user_language_store.get_profile(user_id=ctx.user_id)
             if known_language is not None:
                 greeting_text = await reply_composer.compose(
                     greeting_reply.text,
                     language=known_language,
                     correlation_id=message.correlation_id,
+                    script=known_script,
                 )
                 greeting_reply = dataclasses.replace(greeting_reply, text=greeting_text)
         if greeting_reply is not None:

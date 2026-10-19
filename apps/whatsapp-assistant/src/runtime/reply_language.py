@@ -66,6 +66,28 @@ def normalize_language(value: object) -> str | None:
     return cleaned[:40]
 
 
+def normalize_script(value: object) -> str:
+    """"latin" when the sender wrote in English letters, else "native" -- the
+    default for absent / unknown values, which is how every reply behaved
+    before the script was tracked."""
+    if isinstance(value, str) and value.strip().lower() == "latin":
+        return "latin"
+    return "native"
+
+
+def infer_script(language: object, text: object) -> str | None:
+    """A fallback for when the understanding step did not report the script:
+    "latin" when ``text`` is non-English yet written (almost) entirely in
+    Latin letters -- Manglish -- else None (unknown)."""
+    if normalize_language(language) is None or not isinstance(text, str):
+        return None
+    letters = [ch for ch in text if ch.isalpha()]
+    if len(letters) < 3:
+        return None
+    latin = sum(1 for ch in letters if ord(ch) <= 0x024F)
+    return "latin" if latin / len(letters) >= 0.9 else None
+
+
 class _RedisLike(Protocol):
     def namespaced(self, *parts: str) -> str: ...
     async def set_json(self, key: str, value: Any, *, ttl_seconds: int | None = None) -> None: ...
@@ -82,36 +104,55 @@ class UserLanguageStore:
     def _key(self, user_id: str) -> str:
         return self._redis.namespaced("reply_language", user_id)
 
-    async def remember(self, *, user_id: str, detected_language: object) -> None:
+    async def remember(
+        self,
+        *,
+        user_id: str,
+        detected_language: object,
+        detected_script: object = None,
+        text: object = None,
+    ) -> None:
         """Store what the understanding step detected. English is stored too
-        (as None) so someone who switches back to English gets English."""
+        (as None) so someone who switches back to English gets English. The
+        script is what the model reported, else inferred from ``text``; a
+        sender who typed Manglish keeps getting Manglish back."""
         if not user_id or not isinstance(detected_language, str) or not detected_language.strip():
             return
+        script = normalize_script(detected_script or infer_script(detected_language, text))
         try:
             await self._redis.set_json(
                 self._key(user_id),
-                {"language": normalize_language(detected_language)},
+                {"language": normalize_language(detected_language), "script": script},
                 ttl_seconds=_LANGUAGE_TTL_SECONDS,
             )
         except Exception:  # noqa: BLE001
             logger.warning("reply_language.remember_failed user=%s", user_id)
 
     async def get(self, *, user_id: str) -> str | None:
+        return (await self.get_profile(user_id=user_id))[0]
+
+    async def get_script(self, *, user_id: str) -> str:
+        return (await self.get_profile(user_id=user_id))[1]
+
+    async def get_profile(self, *, user_id: str) -> tuple[str | None, str]:
+        """(language, script) -- script is "native" unless the sender types
+        their language in English letters."""
         try:
             stored = await self._redis.get_json(self._key(user_id))
         except Exception:  # noqa: BLE001
             logger.warning("reply_language.lookup_failed user=%s", user_id)
-            return None
+            return None, "native"
         if isinstance(stored, dict):
-            return normalize_language(stored.get("language"))
-        return None
+            return normalize_language(stored.get("language")), normalize_script(stored.get("script"))
+        return None, "native"
 
 
 _SYSTEM_PROMPT = """You write WhatsApp replies for Mesiri, an assistant that construction site supervisors in India use to report their day.
 
-You are given Mesiri's REPLY (in English), the LANGUAGE to write it in, and possibly the user's MESSAGE that it answers.
+You are given Mesiri's REPLY (in English), the LANGUAGE to write it in, the SCRIPT to write it in, and possibly the user's MESSAGE that it answers.
 
 Rules:
+0. SCRIPT "latin" means the user types LANGUAGE in English letters (for example Malayalam as "njan site il ethi"): write the reply in LANGUAGE using ONLY English/Roman letters, the same casual way they type -- never the language's own script. SCRIPT "native" means use LANGUAGE's own script.
 1. Write the reply in LANGUAGE, the way people on a construction site in India actually speak and text it -- simple, warm, everyday words, not formal or literary. Common English work words (site, mason, helper, slab, cement, report) may stay in English if that is how people say them.
 2. If the user's MESSAGE is a greeting or small talk ("hi", "how are you?", "what's up"), you may begin with at most one short, natural answer to it ("I'm good, thanks!") before the reply. Otherwise do not add an opening.
 3. Do NOT add anything else: no new facts, offers, features, promises, questions or advice that are not in the REPLY. Keep its meaning, order and line breaks.
@@ -145,16 +186,18 @@ class ReplyComposer:
         language: str | None,
         user_message: str | None = None,
         correlation_id: str = "",
+        script: str | None = None,
     ) -> str:
         """The reply in ``language``. With no language (English / unknown)
         and no small talk to answer, the reply is returned untouched without
         an AI call."""
         language = normalize_language(language)
+        script = normalize_script(script) if language else "native"
         message = (user_message or "").strip()[:500] or None
         if not reply.strip() or (language is None and message is None):
             return reply
 
-        cache_key = self._cache_key(reply, language, message)
+        cache_key = self._cache_key(reply, language, message, script)
         cached = self._cache.get(cache_key)
         if cached is not None:
             return cached
@@ -164,7 +207,12 @@ class ReplyComposer:
                 self._json.generate_json(
                     system_prompt=_SYSTEM_PROMPT,
                     user_prompt=json.dumps(
-                        {"LANGUAGE": language or "English", "MESSAGE": message, "REPLY": reply},
+                        {
+                            "LANGUAGE": language or "English",
+                            "SCRIPT": script,
+                            "MESSAGE": message,
+                            "REPLY": reply,
+                        },
                         ensure_ascii=False,
                     ),
                     correlation_id=correlation_id or None,
@@ -189,10 +237,10 @@ class ReplyComposer:
         return composed
 
     @staticmethod
-    def _cache_key(reply: str, language: str | None, message: str | None) -> str:
+    def _cache_key(reply: str, language: str | None, message: str | None, script: str = "native") -> str:
         # Small talk is answered per message, so a message makes the key
         # unique; the fixed replies without one are what the cache is for.
-        material = json.dumps([reply, (language or "").lower(), message], ensure_ascii=False)
+        material = json.dumps([reply, (language or "").lower(), message, script], ensure_ascii=False)
         return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
     @staticmethod
@@ -257,14 +305,16 @@ _FIXED_REPLIES: dict[str, dict[str, str]] = {
 _FIXED_ALIASES = {"ml": "malayalam", "hi": "hindi"}
 
 
-def localize_fixed_reply(text: str, language: str | None) -> str:
+def localize_fixed_reply(text: str, language: str | None, script: str | None = None) -> str:
     """``text`` with its fixed confirmation sentences in the sender's language.
 
     Only known sentences are swapped (longest first), so a receipt keeps its
     exact quantities, names and amounts; text with none of them, or a
-    language without wording yet, comes back unchanged."""
+    language without wording yet, comes back unchanged. A sender who types
+    their language in English letters gets the English text -- the tables
+    only hold native-script wording, which they would not read as easily."""
     normalized = normalize_language(language)
-    if not normalized or not text:
+    if not normalized or not text or normalize_script(script) == "latin":
         return text
     key = normalized.lower()
     table = _FIXED_REPLIES.get(_FIXED_ALIASES.get(key, key))
@@ -423,11 +473,12 @@ def localize_promotion_reply(text: str, language: str | None) -> str:
     return text
 
 
-def localize_reply_spec(spec, language: str | None):  # type: ignore[no-untyped-def]
+def localize_reply_spec(spec, language: str | None, script: str | None = None):  # type: ignore[no-untyped-def]
     """``spec`` with its text, and its button / list titles, in the sender's
-    language. English (or an unknown language) returns it unchanged."""
+    language. English (or an unknown language, or a sender who types in
+    English letters) returns it unchanged."""
     key = _language_key(language)
-    if key is None or (key not in _FIXED_REPLIES and key not in _PROMOTION_PATTERNS):
+    if key is None or normalize_script(script) == "latin" or (key not in _FIXED_REPLIES and key not in _PROMOTION_PATTERNS):
         return spec
     from dataclasses import replace
 

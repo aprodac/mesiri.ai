@@ -44,6 +44,8 @@ class UnderstandingResult(BaseModel):
     # Speech / language.
     transcript: str | None = None
     detected_language: str | None = None
+    # "latin" | "native" -- the letters the sender wrote in. None = unknown.
+    detected_script: str | None = None
     translated_text: str | None = None
     normalized_text: str | None = None
 
