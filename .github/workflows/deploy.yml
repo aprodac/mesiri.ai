@@ -122,6 +122,19 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
 
+      # ── Step 0: staging gate (INF-02, INF-03) ──────────────────────────────
+      # This exact commit on staging first: a fresh copy of production's data,
+      # the migrations run on it, the app started, the smoke test passed.
+      # Any failure stops here and production is never touched. Run from a
+      # file, not stdin, so the script's own commands can't read it.
+      - name: Staging gate
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          scp -i ~/.ssh/deploy_key infra/deploy/staging_deploy.sh "${VPS_USER}@${VPS_HOST}:/tmp/staging_deploy.sh"
+          ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "bash /tmp/staging_deploy.sh ${{ github.sha }}"
+
       # ── Step 1: update code + deps + run migrations + restart ──────────────
       - name: Deploy backend
         env:
