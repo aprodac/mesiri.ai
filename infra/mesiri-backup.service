@@ -1,0 +1,7 @@
+[Unit]
+Description=Mesiri.AI nightly database backup (INF-06)
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/mesiri/infra/deploy/backup_db.sh nightly

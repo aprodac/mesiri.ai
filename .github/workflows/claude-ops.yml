@@ -5,6 +5,8 @@ name: Claude ops
 # its log. Owner-approved 19 Oct ("use the env from the Git actions").
 #
 #   vps-check         infra/deploy/vps_check.sh over SSH (read-only; INF-01, BE-30, BE-31, INF-09)
+#   vps-backup-now    infra/deploy/backup_db.sh over SSH (writes a dump to /var/backups/mesiri; INF-06)
+#   vps-smoke         infra/deploy/smoke_test.sh against the live build (read-only; INF-04)
 #   bot-status        is the bot linked and receiving
 #   bot-chats         chats with their labels (names only)
 #   bot-test          send `text` to the Mesiri assistant's assistant-test chat and print its replies
@@ -24,7 +26,7 @@ on:
         description: What to run
         required: true
         type: choice
-        options: [vps-check, bot-status, bot-chats, bot-test, bot-recent-test, bot-recent-team, bot-items, bot-label-test]
+        options: [vps-check, vps-backup-now, vps-smoke, bot-status, bot-chats, bot-test, bot-recent-test, bot-recent-team, bot-items, bot-label-test]
       text:
         description: "bot-test: the message (or choose:<n|title>); bot-label-test: the chat jid"
         required: false
@@ -47,7 +49,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Configure SSH
-        if: inputs.task == 'vps-check'
+        if: startsWith(inputs.task, 'vps-')
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.VPS_SSH_KEY }}" | tr -d '\r' > ~/.ssh/deploy_key
@@ -70,6 +72,13 @@ jobs:
           case "$TASK" in
             vps-check)
               ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" 'bash -s' < infra/deploy/vps_check.sh 2>&1 | mask ;;
+            vps-backup-now)
+              ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" 'bash -s -- manual' < infra/deploy/backup_db.sh 2>&1
+              ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" 'ls -la /var/backups/mesiri' ;;
+            vps-smoke)
+              ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
+                'P=$(grep -E "^MESIRI_APP_PORT=" /opt/mesiri/.env | tail -1 | cut -d= -f2 | tr -dc 0-9); bash -s -- "$(git -C /opt/mesiri rev-parse --short HEAD)" "http://127.0.0.1:${P:-8000}"' \
+                < infra/deploy/smoke_test.sh 2>&1 | mask ;;
             bot-status) inbox status ;;
             bot-chats) inbox chats | mask ;;
             bot-test)

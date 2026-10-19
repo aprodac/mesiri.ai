@@ -1,0 +1,10 @@
+[Unit]
+Description=Mesiri.AI nightly database backup, 02:15 India time (INF-06)
+
+[Timer]
+OnCalendar=*-*-* 20:45:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
