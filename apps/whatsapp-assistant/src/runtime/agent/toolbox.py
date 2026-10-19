@@ -103,6 +103,11 @@ class AgentToolbox:
     #: B-7: called after every tool call, so the receipt card can be made
     #: while the model writes the reply.
     after_tool: Callable[[], None] | None = None
+    #: B-7: a save whose summary the system built ends the run after its
+    #: round: the reply is the "Saved:" block, with no second model round.
+    #: Set by the runner only where the reply needs no wording of the model's.
+    quick_reply: bool = False
+    failed: int = 0
     _seen: set[str] = field(default_factory=set)
     _inflight: set[asyncio.Task[Any]] = field(default_factory=set)
 
@@ -162,6 +167,7 @@ class AgentToolbox:
             step = await self._run(name, args)
         except Exception:  # noqa: BLE001 — the model is told; the trace keeps the cause
             _log.exception("agent.tool_failed tool=%s", name)
+            self.failed += 1
             return ToolOutcome(content={"status": "error", "message": "that action failed"})
         return self._outcome(name, step)
 
@@ -203,7 +209,7 @@ class AgentToolbox:
             note = _without_recorded(step.text)
             if note:
                 content["note"] = note
-            return ToolOutcome(content=content)
+            return ToolOutcome(content=content, stop=self.quick_reply and bool(step.summary))
         if step.status in ("needs_confirmation", "needs_answer"):
             question = step.reply or ReplySpec(text=step.text)
             if self.parked is None or self.parked_by == "ask":
@@ -221,6 +227,8 @@ class AgentToolbox:
         if step.status == "answer":
             self.answers.append(step.text)
             return ToolOutcome(content={"status": "answer", "text": step.text})
+        if step.status == "error":
+            self.failed += 1
         if step.text and step.text not in self.notes:
             self.notes.append(step.text)
         return ToolOutcome(content={"status": step.status, "message": step.text})

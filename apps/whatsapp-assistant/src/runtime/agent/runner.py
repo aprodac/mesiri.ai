@@ -83,6 +83,7 @@ class AgentRunner:
         toolbox = AgentToolbox(
             gateway=gateway, scope=scope, user_text=user_text, lap=lap, after_tool=after_tool
         )
+        toolbox.quick_reply = quick_reply_allowed(user_text, ctx.last_language)
         messages = [ChatMessage(role=r, text=t) for r, t in build_messages(ctx, user_text)]
         try:
             run = await self._provider.run_tools(
@@ -116,6 +117,13 @@ class AgentRunner:
             # (request 57, B3): the model's own list echoed the sender's raw
             # words ("6 mason, 10 helper vannu"). What it adds is the rest.
             rest = _without_echoed_questions(_without_saved_block(text), toolbox)
+            if run.stop_reason == "stopped_by_tool" and not text:
+                # B-7: no second model round was run; what the other calls of
+                # the round brought back is said as the pipeline worded it.
+                extra = [*toolbox.answers, *toolbox.notes]
+                if toolbox.failed:
+                    extra.append(CHECK_LINE)
+                rest = _unique_paragraphs("\n\n".join(extra))
             if not rest and run.stop_reason == "max_steps":
                 rest = CHECK_LINE
             text = f"{block}\n\n{rest}".strip() if rest else block
@@ -158,6 +166,21 @@ class AgentRunner:
             list_rows=parked.list_rows,
             buttons=parked.buttons,
         )
+
+
+_ENGLISH = frozenset({"", "en", "english"})
+
+
+def quick_reply_allowed(user_text: str, last_language: str | None) -> bool:
+    """B-7: whether a message that only saves may skip the model's second
+    round (the reply is then the system's "Saved:" block alone). Only where
+    nothing is left for the model to word: plain-Latin text from someone who
+    writes English, with no question in it."""
+    if str(last_language or "").strip().lower() not in _ENGLISH:
+        return False
+    if "?" in user_text:
+        return False
+    return all(ord(ch) < 0x250 for ch in user_text)
 
 
 def _saved_block(toolbox: AgentToolbox) -> str:

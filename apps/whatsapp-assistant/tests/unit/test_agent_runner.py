@@ -216,3 +216,61 @@ def test_the_rules_are_in_the_system_prompt(needle):
     from runtime.agent.prompt import SYSTEM_PROMPT
 
     assert needle in SYSTEM_PROMPT
+
+
+# -- B-7: a message that only saves needs no second model round ----------------
+
+
+async def test_a_note_that_only_saves_skips_the_second_model_round():
+    provider = FakeToolCallingProvider(
+        [
+            [("save_labour", {"workers": WORKERS}), ("save_material_usage", {})],
+            "never asked: the run stopped after the saves",
+        ]
+    )
+    result = await _run(
+        provider,
+        StepResult("saved", text="✅ Recorded. Thank you.", summary="3 masons"),
+        StepResult("saved", text="✅ Recorded. Thank you.", summary="5 bags cement used"),
+    )
+    assert result.run.stop_reason == "stopped_by_tool"
+    assert result.reply.text == "✅ Saved:\n• 3 masons\n• 5 bags cement used\n\nWrong? Reply UNDO."
+
+
+async def test_an_answer_in_the_same_round_is_still_said():
+    provider = FakeToolCallingProvider(
+        [[("save_labour", {"workers": WORKERS}), ("query_labour", {})], "unused"]
+    )
+    result = await _run(
+        provider,
+        StepResult("saved", text="x", summary="3 masons"),
+        StepResult("answer", text="12 workers this week."),
+    )
+    assert result.reply.text.startswith("✅ Saved: 3 masons\n\n12 workers this week.")
+
+
+@pytest.mark.parametrize(
+    ("text", "language", "allowed"),
+    [
+        ("3 masons today", None, True),
+        ("3 masons today", "english", True),
+        ("Innu 6 mason vannu", "malayalam", False),  # the model words it in Malayalam
+        ("6 മേസൺ വന്നു", None, False),
+        ("3 masons. Can we pour concrete tomorrow?", None, False),  # a question to answer
+    ],
+)
+def test_when_the_second_round_may_be_skipped(text, language, allowed):
+    assert r.quick_reply_allowed(text, language) is allowed
+
+
+async def test_another_language_still_gets_the_models_reply():
+    import dataclasses
+
+    provider = FakeToolCallingProvider([[("save_labour", {"workers": WORKERS})], "3 മേസൺ ✅"])
+    result = await r.AgentRunner(provider).run(
+        ctx=dataclasses.replace(CTX, last_language="malayalam"),
+        user_text="3 mason vannu",
+        gateway=Gateway(StepResult("saved", text="x", summary="3 masons")),
+        scope=ScopeLookup(),
+    )
+    assert result.run.stop_reason == "answered"
