@@ -28,9 +28,14 @@ class FakeMessageLogger:
     total: int | None = None
     last_call_kwargs: dict[str, Any] | None = None
 
+    created: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+
     async def list_recent(self, **kwargs: Any) -> tuple[list[dict[str, Any]], int | None]:
         self.last_call_kwargs = kwargs
         return self.rows, self.total
+
+    async def list_created(self, correlation_id: str) -> list[dict[str, Any]]:
+        return self.created.get(correlation_id, [])
 
 
 @dataclass
@@ -225,3 +230,56 @@ async def test_get_context_returns_full_stage_payload():
     assert len(body) == 1
     assert body[0]["stage"] == "understanding"
     assert body[0]["stage_payload"] == {"normalized_text": "20 bags of cement arrived"}
+
+
+async def test_messages_filter_by_company_user_project_and_site():
+    """BE-26: the superadmin can narrow messages per company, user, project, site."""
+    message_logger = FakeMessageLogger(total=0)
+    app = _app(message_logger, FakeTraceLogger())
+    org, user, project, site = (
+        "22222222-2222-4222-8222-222222222222",
+        "33333333-3333-4333-8333-333333333333",
+        "44444444-4444-4444-8444-444444444444",
+        "55555555-5555-4555-8555-555555555555",
+    )
+    async with await _client(app) as client:
+        resp = await client.get(
+            "/admin/logs/messages",
+            params={"organization_id": org, "user_id": user, "project_id": project, "site_id": site},
+            headers={"Authorization": f"Bearer {_token(role='ADMIN', org='')}"},
+        )
+    assert resp.status_code == 200
+    kw = message_logger.last_call_kwargs
+    assert [str(kw[k]) for k in ("organization_id", "user_id", "project_id", "site_id")] == [
+        org,
+        user,
+        project,
+        site,
+    ]
+
+
+async def test_a_message_lists_what_it_created_for_platform_admins_only():
+    created = {
+        "cor_1": [
+            {
+                "event_type": "LabourAttendanceRecorded",
+                "aggregate_type": "labour_attendance",
+                "aggregate_id": "66666666-6666-4666-8666-666666666666",
+                "correlation_id": "cor_1",
+                "created_at": datetime.now(UTC),
+            }
+        ]
+    }
+    app = _app(FakeMessageLogger(created=created), FakeTraceLogger())
+    async with await _client(app) as client:
+        ok = await client.get(
+            "/admin/logs/messages/cor_1/created",
+            headers={"Authorization": f"Bearer {_token(role='ADMIN', org='')}"},
+        )
+        tenant = await client.get(
+            "/admin/logs/messages/cor_1/created",
+            headers={"Authorization": f"Bearer {_token(role='ADMIN', org='org_1')}"},
+        )
+    assert ok.status_code == 200
+    assert [r["event_type"] for r in ok.json()] == ["LabourAttendanceRecorded"]
+    assert tenant.status_code == 403

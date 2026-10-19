@@ -239,6 +239,10 @@ class PostgresMessageLogger:
         since_id: str | None = None,
         limit: int = 50,
         offset: int = 0,
+        organization_id: uuid.UUID | None = None,
+        user_id: uuid.UUID | None = None,
+        project_id: uuid.UUID | None = None,
+        site_id: uuid.UUID | None = None,
     ) -> tuple[list[dict[str, Any]], int | None]:
         """Read path for the control-panel logs viewer.
 
@@ -273,6 +277,25 @@ class PostgresMessageLogger:
         params: dict[str, Any] = {"wa_id": wa_id, "status": status, "limit": limit}
         bind_types = [bindparam("wa_id", type_=String), bindparam("status", type_=String)]
 
+        # BE-26: per company / project / site, and per user (the sender is
+        # matched to a user of the message's company by WhatsApp number digits).
+        for column, value in (
+            ("organization_id", organization_id),
+            ("project_id", project_id),
+            ("site_id", site_id),
+        ):
+            if value is not None:
+                where.append(f"im.{column} = :{column}")
+                params[column] = value
+        if user_id is not None:
+            where.append(
+                "EXISTS (SELECT 1 FROM users fu WHERE fu.id = :user_id "
+                "AND fu.organization_id = im.organization_id "
+                "AND regexp_replace(fu.whatsapp_number, '\\D', '', 'g') "
+                "= regexp_replace(im.sender_wa_id, '\\D', '', 'g'))"
+            )
+            params["user_id"] = user_id
+
         if provider is not None:
             where.append(
                 "EXISTS (SELECT 1 FROM provider_executions pe "
@@ -302,10 +325,21 @@ class PostgresMessageLogger:
             "im.project_id, p.name AS project_name, im.site_id, s.name AS site_name, "
             "COALESCE(im.workflow_instance_id, wi_origin.id) AS workflow_instance_id, "
             "COALESCE(wi.workflow_key, wi_origin.workflow_key) AS workflow_key, "
-            "COALESCE(wi.phase, wi_origin.phase) AS workflow_phase "
+            "COALESCE(wi.phase, wi_origin.phase) AS workflow_phase, "
+            # BE-26: whose message, in which company, and how many records it
+            # created (domain events carry the message's correlation_id).
+            "im.organization_id, o.name AS organization_name, "
+            "su.id AS sender_user_id, su.full_name AS sender_name, "
+            "(SELECT COUNT(*) FROM outbox_events oe "
+            " WHERE oe.correlation_id = im.correlation_id) AS created_count "
             "FROM inbound_messages im "
             "LEFT JOIN projects p ON p.id = im.project_id "
             "LEFT JOIN sites s ON s.id = im.site_id "
+            "LEFT JOIN organizations o ON o.id = im.organization_id "
+            "LEFT JOIN LATERAL (SELECT u.id, u.full_name FROM users u "
+            " WHERE u.organization_id = im.organization_id "
+            " AND regexp_replace(u.whatsapp_number, '\\D', '', 'g') "
+            " = regexp_replace(im.sender_wa_id, '\\D', '', 'g') LIMIT 1) su ON true "
             "LEFT JOIN workflow_instances wi ON wi.id = im.workflow_instance_id "
             "LEFT JOIN workflow_instances wi_origin ON wi_origin.correlation_id = im.interaction_group_id "
             f"WHERE {' AND '.join(where)} "
@@ -323,6 +357,34 @@ class PostgresMessageLogger:
                 count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
                 total = (await conn.execute(count_stmt, count_params)).scalar_one()
         return [dict(row) for row in rows], total
+
+    async def list_created(self, correlation_id: str) -> list[dict[str, Any]]:
+        """What one message created (BE-26): the domain events written under
+        its correlation_id, plus those of the taps/answers that continued it
+        (inbound_messages.interaction_group_id), oldest first. Read-only; the
+        events table is written by each domain's own repository."""
+        from sqlalchemy import text
+
+        async with self._get_engine().connect() as conn:
+            rows = (
+                (
+                    await conn.execute(
+                        text(
+                            "SELECT oe.event_type, oe.aggregate_type, oe.aggregate_id, "
+                            "oe.correlation_id, oe.created_at "
+                            "FROM outbox_events oe "
+                            "WHERE oe.correlation_id = :cid "
+                            "OR oe.correlation_id IN (SELECT im.correlation_id FROM inbound_messages im "
+                            " WHERE im.interaction_group_id = :cid) "
+                            "ORDER BY oe.created_at, oe.id LIMIT 200"
+                        ),
+                        {"cid": correlation_id},
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return [dict(row) for row in rows]
 
     async def list_for_review(self, *, since: datetime, limit: int) -> list[dict[str, Any]]:
         """Read path for the assistant review export (admin/review_router.py).

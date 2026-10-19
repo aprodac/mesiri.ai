@@ -42,6 +42,12 @@ class InboundMessageSummary(BaseModel):
     workflow_instance_id: uuid.UUID | None = None
     workflow_key: str | None = None
     workflow_phase: str | None = None
+    # BE-26: whose message, which company, and how many records it created.
+    organization_id: uuid.UUID | None = None
+    organization_name: str | None = None
+    sender_user_id: uuid.UUID | None = None
+    sender_name: str | None = None
+    created_count: int = 0
 
 
 class InboundMessageList(BaseModel):
@@ -105,6 +111,16 @@ class ProviderExecutionEntry(BaseModel):
     created_at: datetime
 
 
+class CreatedRecord(BaseModel):
+    """One record a message created or changed (BE-26), from its domain event."""
+
+    event_type: str
+    aggregate_type: str
+    aggregate_id: uuid.UUID
+    correlation_id: str | None = None
+    created_at: datetime
+
+
 class AcknowledgeResponse(BaseModel):
     acknowledged: bool
 
@@ -123,10 +139,18 @@ async def list_messages(
     since_id: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    organization_id: uuid.UUID | None = None,
+    user_id: uuid.UUID | None = None,
+    project_id: uuid.UUID | None = None,
+    site_id: uuid.UUID | None = None,
     _admin: dict = Depends(require_platform_admin),
 ) -> InboundMessageList:
     message_logger = request.app.state.container.message_logger
     rows, total = await message_logger.list_recent(
+        organization_id=organization_id,
+        user_id=user_id,
+        project_id=project_id,
+        site_id=site_id,
         wa_id=wa_id,
         status=status,
         provider=provider,
@@ -152,6 +176,20 @@ async def get_message(
     if row is None:
         raise HTTPException(status_code=404, detail="Message not found")
     return InboundMessageDetail(**row)
+
+
+@router.get("/messages/{correlation_id}/created", response_model=list[CreatedRecord])
+async def get_message_created(
+    request: Request,
+    correlation_id: str,
+    _admin: dict = Depends(require_platform_admin),
+) -> list[CreatedRecord]:
+    """What this message created or changed (BE-26): attendance, materials,
+    expenses, work done, ... -- one entry per domain event, including the
+    answers and taps that continued the same report."""
+    message_logger = request.app.state.container.message_logger
+    rows = await message_logger.list_created(correlation_id)
+    return [CreatedRecord(**row) for row in rows]
 
 
 @router.get("/messages/{correlation_id}/trace", response_model=list[JourneyTraceEntry])
