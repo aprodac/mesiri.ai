@@ -79,6 +79,7 @@ def test_disabled_reply_names_the_module_and_lists_only_what_is_on():
     # ...then render the reply for a V1 company.
     registry.set_enabled_modules(["dpr", "labour", "materials"])
     reply = render_module_disabled_reply("finance")
-    assert "Expenses and money isn't switched on for your company" in reply
+    assert "Expenses aren't switched on for your company yet" in reply
+    assert "Here's what I can help with" not in reply
     for title in finance_titles:
         assert title not in reply

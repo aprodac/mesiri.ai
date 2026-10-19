@@ -221,6 +221,6 @@ class AgentToolbox:
         if step.status == "answer":
             self.answers.append(step.text)
             return ToolOutcome(content={"status": "answer", "text": step.text})
-        if step.text:
+        if step.text and step.text not in self.notes:
             self.notes.append(step.text)
         return ToolOutcome(content={"status": step.status, "message": step.text})

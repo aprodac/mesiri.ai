@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from channel.replies import ListRow, ReplySpec
+from channel.replies import ListRow, ReplySpec, is_module_disabled_reply
 from interactions.saved_summary import summarise_draft
 from mesiri_contracts.assistant.candidates import Candidate
 from mesiri_contracts.assistant.enums import InputModality
@@ -28,9 +28,9 @@ _log = logging.getLogger("mesiri.agent")
 
 
 def _without_menu(text: str) -> str:
-    """The "X isn't switched on for your company" reply is followed by the
-    capability list; the agent says the first line only (request [43])."""
-    if "isn't switched on for your company" in text:
+    """A module-disabled reply is one line; older replies carried the
+    capability list after it, which the agent never repeats (requests [43], [59])."""
+    if is_module_disabled_reply(text):
         return text.split("\n\n", 1)[0]
     return text
 
@@ -154,6 +154,10 @@ class JourneyGateway:
         reply = sink.last
         if reply is None:
             return StepResult("error", text="")
+        if is_module_disabled_reply(reply.text):
+            # The module gate sends its reply and ends the journey; it is a
+            # statement, not a question to park (request [59]).
+            return StepResult("info", text=_without_menu(reply.text))
         if decision is None or decision.decision_type is not PlannerDecisionType.DIRECT_REPLY:
             return StepResult("needs_answer", text=reply.text, reply=reply)
         return StepResult("info", text=_without_menu(reply.text))

@@ -30,7 +30,7 @@ NOTE = (
     "Received 35 bags cement from Sharma Traders. Paid 1500 rupees for tractor."
 )
 MENU = (
-    "Expenses and money isn't switched on for your company, so I can't record that."
+    "Expenses aren't switched on for your company, so I can't record that."
     "\n\nHere's what I can help with:\n  • Materials — x\n\nAsk your admin if you need it."
 )
 
@@ -135,7 +135,7 @@ async def test_switched_off_module_is_said_once_without_the_menu():
     """Finding 2: material saved, expenses off -> one short line, not the
     capability list twice."""
     assert "Here's what I can help with" not in _without_menu(MENU)
-    assert _without_menu(MENU).startswith("Expenses and money isn't switched on")
+    assert _without_menu(MENU).startswith("Expenses aren't switched on")
 
     from mesiri_ai.fakes import FakeToolCallingProvider
 
@@ -152,7 +152,7 @@ async def test_switched_off_module_is_said_once_without_the_menu():
         }
     )
     result = await _run(provider, gateway)
-    assert result.reply.text.count("isn't switched on") == 1
+    assert result.reply.text.count("switched on") == 1
     assert "Here's what I can help with" not in result.reply.text
 
 
@@ -203,3 +203,45 @@ async def test_second_team_photo_offer_of_the_day_is_not_sent():
     await _offer_team_photo("rep-1", actor, "wa", store, send)
     await _offer_team_photo("rep-2", actor, "wa", store, send)
     assert len(sent) == 1
+
+
+# -- request [59]: a switched-off module is said once, as one line -----------
+
+
+def test_disabled_reply_is_one_line_and_grammatical():
+    from channel.replies import render_module_disabled_reply
+
+    reply = render_module_disabled_reply("finance")
+    assert reply == (
+        "Expenses aren't switched on for your company yet, so I didn't record this. "
+        "Ask your admin to turn them on."
+    )
+    assert "\n" not in reply
+
+
+async def test_gate_reply_through_the_agent_gateway_is_info_not_a_parked_question():
+    from channel.replies import render_module_disabled_reply
+    from runtime.agent.journey_gateway import JourneyGateway
+
+    line = render_module_disabled_reply("finance")
+
+    async def process(message, pipeline, sink):
+        await sink.send_text("wa", line)
+        return SimpleNamespace(workflow_run=None, planner_decision=SimpleNamespace(decision_type=None))
+
+    gw = JourneyGateway(
+        message=SimpleNamespace(model_copy=lambda update: SimpleNamespace()),
+        process=process, save_now=None, undo=None, followups=None, held_prompt=None,
+    )
+    from mesiri_contracts.assistant.candidates import Candidate  # noqa: F401
+
+    step = await gw.run(SimpleNamespace(), text="Paid 1500 rs to tractor for debris removal")
+    assert step.status == "info"
+    assert step.text == line
+
+
+async def test_two_expense_segments_say_the_disabled_line_once():
+    from runtime.agent.toolbox import AgentToolbox  # noqa: F401
+    from runtime.inbound_journey.decomposed_plan import _disabled_lines
+
+    assert _disabled_lines(["finance", "finance"]).count("switched on") == 1

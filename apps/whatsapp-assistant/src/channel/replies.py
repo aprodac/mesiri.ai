@@ -1108,31 +1108,33 @@ def render_understanding_failed_reply() -> str:
 
 # How each switchable module is named to a WhatsApp user (WA-07). The keys
 # are backend domains/organizations/settings.py's MODULES.
-_MODULE_USER_NAMES: dict[str, str] = {
-    "dpr": "Daily progress reports",
-    "labour": "Labour attendance",
-    "materials": "Materials",
-    "finance": "Expenses and money",
-    "automations": "Scheduled messages",
+_MODULE_USER_NAMES: dict[str, tuple[str, str]] = {
+    "dpr": ("Daily progress reports", "them"),
+    "labour": ("Labour attendance", "it"),
+    "materials": ("Materials", "it"),
+    "finance": ("Expenses", "them"),
+    "automations": ("Scheduled messages", "them"),
 }
+
+#: Present in every module-disabled reply; lets callers recognise one.
+MODULE_DISABLED_MARKER = "switched on for your company"
+
+
+def is_module_disabled_reply(text: str) -> bool:
+    return MODULE_DISABLED_MARKER in text
 
 
 def render_module_disabled_reply(module: str) -> str:
     """A request for a module the company hasn't switched on (WA-07).
 
-    Says plainly that it is off for the company -- not that the user typed
-    something wrong -- and lists what IS available. The list comes from the
-    registry, which already hides switched-off modules for this message.
+    One short line, no menu (request [59]): it says plainly that the module is
+    off for the company -- not that the user typed something wrong.
     """
-    from workflows.registry import iter_menu_categories
-
-    name = _MODULE_USER_NAMES.get(module, module.capitalize())
-    lines = "\n".join(f"  • {c.title} — {c.one_liner.lower()}" for c in iter_menu_categories())
-    available = f"\n\nHere's what I can help with:\n{lines}" if lines else ""
+    name, pronoun = _MODULE_USER_NAMES.get(module, (module.capitalize(), "it"))
+    verb = "aren't" if pronoun == "them" else "isn't"
     return (
-        f"{name} isn't switched on for your company, so I can't record that."
-        f"{available}\n\n"
-        "Ask your admin if you need it."
+        f"{name} {verb} {MODULE_DISABLED_MARKER} yet, so I didn't record this. "
+        f"Ask your admin to turn {pronoun} on."
     )
 
 

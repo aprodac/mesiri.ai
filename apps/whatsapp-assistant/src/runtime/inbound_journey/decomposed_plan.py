@@ -435,6 +435,11 @@ async def _process_remaining_segments(
     return built_events
 
 
+def _disabled_lines(modules: list[str]) -> str:
+    """Each switched-off module is said once, however many steps hit it."""
+    return "\n".join(render_module_disabled_reply(m) for m in dict.fromkeys(modules))
+
+
 async def _finish_with_events(
     events: list[CanonicalEventV2],
     *,
@@ -459,7 +464,7 @@ async def _finish_with_events(
         else:
             skipped_modules.append(str(module))
     if skipped_modules and not kept:
-        return ReplySpec(text=render_module_disabled_reply(skipped_modules[0]))
+        return ReplySpec(text=_disabled_lines(skipped_modules))
     events = kept
 
     result = build_plan_from_segments(events, plan_id=new_id("plan"))
@@ -472,13 +477,7 @@ async def _finish_with_events(
         if note:
             preview = f"{preview}\n\n{note}"
         if skipped_modules:
-            n = len(skipped_modules)
-            preview = (
-                f"{n} part{'' if n == 1 else 's'} of your message "
-                f"{'needs' if n == 1 else 'need'} a feature that isn't switched on "
-                "for your company, so I left "
-                f"{'it' if n == 1 else 'them'} out.\n\n{preview}"
-            )
+            preview = f"{_disabled_lines(skipped_modules)}\n\n{preview}"
         return render_plan_preview_reply(preview)
     except Exception:  # noqa: BLE001 -- see module docstring: never let a
         # plan-persist failure take down the message.
