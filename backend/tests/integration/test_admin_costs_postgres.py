@@ -159,3 +159,114 @@ def test_only_platform_admins_can_read_costs() -> None:
 
     [route] = [r for r in costs_router.router.routes if r.path == "/admin/costs"]
     assert require_platform_admin in [d.call for d in route.dependant.dependencies]
+
+
+# --- SS-11: the trials funnel ----------------------------------------------
+
+
+async def _trial(conn, phone: str, name: str, started: dt.datetime):
+    from mesiri.application.organizations.create_company import (
+        START_TRIAL,
+        NewCompany,
+        create_company,
+    )
+
+    created = await create_company(
+        conn,
+        NewCompany(
+            name=name,
+            owner_name="Owner",
+            owner_phone=phone,
+            project_name="P1",
+            site_names=("S1",),
+            start_as=START_TRIAL,
+            signup_source="whatsapp",
+        ),
+        now=started,
+    )
+    return created
+
+
+async def test_trials_funnel_counts_each_step_and_trial_costs(conn) -> None:
+    # Three trials started on the 18th/19th (India), one before the range.
+    await _trial(conn, "9876500071", "Quiet Trial", _utc(18, 4))
+    active = await _trial(conn, "9876500072", "Active Trial", _utc(18, 5))
+    paying = await _trial(conn, "9876500073", "Paying Trial", _utc(19, 4))
+    await _trial(conn, "9876500074", "Old Trial", _utc(10, 4))
+
+    for created in (active, paying):  # a first update
+        await conn.execute(
+            text(
+                "INSERT INTO activities (id, organization_id, project_id, site_id, activity_date,"
+                " work_type, narrative, created_at) VALUES (gen_random_uuid(), :org, :p, :s,"
+                " '2026-10-19', 'plastering', 'walls', :at)"
+            ),
+            {"org": created.organization_id, "p": created.project_id, "s": created.site_id,
+             "at": _utc(19, 6)},
+        )
+    await conn.execute(  # a first DPR sent
+        text(
+            "INSERT INTO daily_reports (id, organization_id, project_id, site_id, level,"
+            " report_date, status, updated_at) VALUES (gen_random_uuid(), :org, :p, :s, 'SITE',"
+            " '2026-10-19', 'PUBLISHED', :at)"
+        ),
+        {"org": paying.organization_id, "p": paying.project_id, "s": paying.site_id,
+         "at": _utc(19, 15)},
+    )
+    await conn.execute(  # converted the next day
+        text("UPDATE organizations SET status = 'active', converted_at = :at WHERE id = :id"),
+        {"id": paying.organization_id, "at": _utc(20, 6)},
+    )
+    repo = PostgresUsageCostRepository(conn)
+    for org, cost, at in (
+        (paying.organization_id, "0.5000", _utc(19, 6)),
+        (paying.organization_id, "9.0000", _utc(21, 6)),  # after converting: not trial cost
+        (active.organization_id, "0.2500", _utc(18, 6)),
+    ):
+        await repo.insert(CostRow(provider="gemini", operation="extract", organization_id=org,
+                                  cost_inr=Decimal(cost), created_at=at))
+
+    funnel = await costs_router.get_trials_funnel(
+        date_from=FROM, date_to=TO, _admin={}, conn=conn
+    )
+
+    ours = {t["name"]: t for t in funnel["trials"] if t["name"].endswith(" Trial")}
+    assert set(ours) == {"Quiet Trial", "Active Trial", "Paying Trial"}  # not "Old Trial"
+    assert ours["Quiet Trial"]["reached"] == ["started"]
+    assert ours["Active Trial"]["reached"] == ["started", "first_update"]
+    assert ours["Paying Trial"]["reached"] == ["started", "first_update", "first_dpr", "converted"]
+    assert Decimal(ours["Paying Trial"]["cost_inr"]) == Decimal("0.5000")
+    assert Decimal(ours["Active Trial"]["cost_inr"]) == Decimal("0.2500")
+    assert ours["Active Trial"]["hours_to_first_update"] == 25.0
+    steps = {s["key"]: s for s in funnel["steps"]}
+    assert steps["started"]["count"] >= 3 and steps["converted"]["count"] >= 1
+
+
+def test_funnel_percentages_and_cost_per_trial() -> None:
+    from types import SimpleNamespace
+
+    from mesiri.application.organizations.trials_funnel import build_funnel
+
+    def company(i, update=None, dpr=None, converted=None, status="trial"):
+        return SimpleNamespace(
+            id=i, name=f"T{i}", signup_source="web", effective_status=status,
+            trial_started_at=_utc(18, 4), trial_ends_at=None, converted_at=converted,
+            setup=SimpleNamespace(first_update_at=update, first_dpr_sent_at=dpr),
+        )
+
+    trials = [
+        company(1),
+        company(2, update=_utc(18, 6)),
+        company(3, update=_utc(18, 6), dpr=_utc(18, 15), converted=_utc(19, 4), status="active"),
+        company(4, update=_utc(18, 6), dpr=_utc(18, 15)),
+    ]
+    funnel = build_funnel(trials, {3: {"total_cost_inr": "3.00"}, 4: {"total_cost_inr": "1.00", "unpriced": 2}})
+
+    assert [(s["key"], s["count"], s["percent"]) for s in funnel["steps"]] == [
+        ("started", 4, 100), ("first_update", 3, 75), ("first_dpr", 2, 50), ("converted", 1, 25),
+    ]
+    assert funnel["still_on_trial"] == 3
+    assert funnel["cost"] == {
+        "total_inr": "4.00", "per_trial_inr": "1.00", "per_conversion_inr": "4.00", "unpriced": 2,
+    }
+    assert build_funnel([], {})["cost"]["per_trial_inr"] is None

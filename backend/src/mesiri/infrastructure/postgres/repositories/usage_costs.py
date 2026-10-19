@@ -380,3 +380,23 @@ class PostgresUsageCostRepository:
             )
         ).mappings().all()
         return [dict(r) for r in rows]
+
+    async def trial_costs(self, organization_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
+        """What each company cost while it was on trial (SS-11): from its
+        trial start until it converted, or until now if it never did."""
+        if not organization_ids:
+            return {}
+        rows = (
+            await self._conn.execute(
+                sa.text(
+                    f"SELECT o.id AS organization_id, {self._TOTALS}"
+                    "FROM organizations o JOIN provider_executions pe "
+                    f"  ON pe.metered AND {_ORG} = o.id "
+                    "  AND pe.created_at >= o.trial_started_at "
+                    "  AND (o.converted_at IS NULL OR pe.created_at < o.converted_at) "
+                    "WHERE o.id = ANY(:ids) GROUP BY o.id"
+                ),
+                {"wa": WHATSAPP, "ids": list(organization_ids)},
+            )
+        ).mappings().all()
+        return {row["organization_id"]: dict(row) for row in rows}
