@@ -29,7 +29,10 @@ jobs:
           python-version: '3.11'
           enable-cache: true
       - run: uv venv --python 3.11 --clear
-      - run: uv pip install -e ".[dev,infra,providers,reports]"
+      # The same extras production installs (workflow = langgraph, receipt =
+      # jinja2 + the playwright package, no browser): tests of the workflow
+      # graph and the receipt cards import them (19 Oct, runs 852-857 red).
+      - run: uv pip install -e ".[dev,infra,providers,reports,workflow,receipt]"
       - name: Lint
         run: uv run ruff check .
       - name: Unit tests (fakes only)
