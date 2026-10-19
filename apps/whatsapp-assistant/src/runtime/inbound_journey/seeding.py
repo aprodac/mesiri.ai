@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from backend.ports import ActorIdentity
-from canonicalization.occurred_date import today_for
+from canonicalization.occurred_date import parse_stated_date, today_for
 from channel.replies import (
     ReplySpec,
     render_audience_candidate_picker,
@@ -1171,12 +1171,25 @@ async def _seed_dpr_request(
 
     project_id, site_id = _dpr_scope(event, actor)
     today = today_for(timezone_name)
+    report_date = today
+    stated = event.fields.get("report_date") or event.fields.get("occurred_on")
+    if stated not in (None, ""):
+        # Any day, not only today (request 57, A4). A day that cannot be read
+        # ("last Friday", tomorrow) is asked about, never answered with
+        # today's report.
+        report_date = parse_stated_date(stated, today=today)
+        if report_date is None:
+            event.fields["dpr_status"] = "bad_date"
+            event.fields["dpr_object_key"] = None
+            event.fields["dpr_code"] = None
+            return
+    event.fields["dpr_day"] = "" if report_date == today else f"{report_date:%d %b %Y}".lstrip("0")
     try:
         result = await dpr_request_query.find_report(
             organization_id=actor.organization_id,
             project_id=project_id,
             site_id=site_id,
-            report_date=today,
+            report_date=report_date,
         )
     except Exception:  # noqa: BLE001 -- an honest "can't check" beats a failed run
         _log.exception("dpr_request.lookup_failed user=%s", getattr(actor, "user_id", None))

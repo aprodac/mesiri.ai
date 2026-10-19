@@ -370,8 +370,11 @@ def tool_specs() -> list[ToolSpec]:
         ),
         ToolSpec(
             name=REQUEST_DPR,
-            description="Send the user today's Daily Progress Report as a document.",
-            parameters=_obj({"project": _PROJECT, "site": _SITE}),
+            description=(
+                "Send the user a Daily Progress Report as a document: today's, or another "
+                "day's when they name one ('yesterday's report', 'report for 12 Oct')."
+            ),
+            parameters=_obj({"date": _DATE, "project": _PROJECT, "site": _SITE}),
         ),
     ]
 
@@ -519,7 +522,10 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
         }
         return Candidate(semantic_type=SemanticType.FINANCE_QUERY, fields=_clean(fields))
     if name == REQUEST_DPR:
-        return Candidate(semantic_type=SemanticType.DPR_REQUEST, fields=_clean(dict(sc)))
+        return Candidate(
+            semantic_type=SemanticType.DPR_REQUEST,
+            fields=_clean({"report_date": date, **sc}),
+        )
     if name == UNDO_LAST:
         what = str(args.get("what") or "latest_update")
         if what == "latest_update":

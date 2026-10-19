@@ -163,6 +163,9 @@ _EXTRACTION_PROMPT = (
     'progress_percent is the plain number (40, not "40%") when the message says '
     'how much is done; a percentage below 100 is "progress", never "completed". '
     "This type is never for problems/delays/blockers (those are site_issue).\n"
+    "- dpr_request: report_date. The user asks to be SENT a Daily Progress Report as a "
+    'document. report_date is ONLY the day they name ("yesterday", "day before '
+    'yesterday" or an ISO date YYYY-MM-DD); omit it for today, never guess.\n'
     "- activity_correction: new_quantity, unit, work_type. ONLY when the "
     'sender is correcting a number already reported this conversation -- '
     'explicit correction language: "make that X", "actually it was X", '

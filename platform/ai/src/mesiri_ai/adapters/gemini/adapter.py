@@ -337,9 +337,12 @@ _EXTRACTION_PROMPT = (
     'general_site_update (recording work); "what did I log today?" is an activity_query '
     "(asking). Getting this backwards would try to record a report instead of answering "
     "a question.\n"
-    "- dpr_request: (no fields). Use this type ONLY when the user explicitly asks to be "
-    'SENT today\'s Daily Progress Report / DPR as a document (e.g. "send me today\'s DPR", '
-    '"share today\'s report", "send the daily report"). Distinct from activity_query, which '
+    "- dpr_request: report_date. Use this type ONLY when the user explicitly asks to be "
+    'SENT a Daily Progress Report / DPR as a document (e.g. "send me today\'s DPR", '
+    '"share today\'s report", "send the daily report", "send yesterday\'s report", "report for 12 Oct"). '
+    'report_date is ONLY the day they name: "yesterday", "day before yesterday" or an ISO date '
+    "YYYY-MM-DD (the year is this year unless stated); omit it for today and never guess. "
+    'Distinct from activity_query, which '
     'asks a QUESTION about the log ("what did I log today?") and gets a text answer -- '
     "dpr_request wants the actual generated PDF document sent to them. Never use this for a "
     "vague \"how's the site doing\" question -- that is activity_query or general_question.\n"

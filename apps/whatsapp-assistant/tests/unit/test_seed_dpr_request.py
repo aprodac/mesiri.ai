@@ -199,3 +199,48 @@ def test_the_agent_dpr_tool_can_carry_a_named_site():
 
     candidate = to_candidate(REQUEST_DPR, {"site": "Green Villa"}, ScopeLookup())
     assert candidate is not None and candidate.fields == {"site_name": "Green Villa"}
+
+
+# --- request 57, A4: a report for any day ---------------------------------------
+
+
+async def test_a_named_past_day_looks_up_that_day_and_says_which_day():
+    import datetime
+
+    service = _FakeDprRequestQueryService({"status": "ready", "object_key": "k", "code": "DPR-1"})
+    event = _event(CanonicalEventType.DPR_REQUESTED, {"report_date": "2026-10-12"})
+    decision = _decision(WorkflowKey.DPR_REQUEST, CanonicalEventType.DPR_REQUESTED)
+
+    await _seed_dpr_request(event, decision, service, _Actor(), "Asia/Kolkata")
+
+    assert service.calls[0]["report_date"] == datetime.date(2026, 10, 12)
+    assert event.fields["dpr_status"] == "ready"
+    assert event.fields["dpr_day"] == "12 Oct 2026"
+
+
+async def test_an_unreadable_or_future_day_is_asked_about_not_answered_with_today():
+    service = _FakeDprRequestQueryService({"status": "ready", "object_key": "k", "code": "x"})
+    decision = _decision(WorkflowKey.DPR_REQUEST, CanonicalEventType.DPR_REQUESTED)
+    for stated in ("last friday", "2999-01-01", "tomorrow"):
+        event = _event(CanonicalEventType.DPR_REQUESTED, {"report_date": stated})
+        await _seed_dpr_request(event, decision, service, _Actor(), "Asia/Kolkata")
+        assert event.fields["dpr_status"] == "bad_date", stated
+    assert service.calls == []
+
+
+def test_reply_wording_names_the_day_for_a_past_report():
+    from workflows.dpr_request.nodes import generate_dpr_request_reply
+
+    def say(**fields):
+        return generate_dpr_request_reply({"collected_fields": fields})["pending_prompt"]
+
+    assert say(dpr_status="ready", dpr_code="D-1", dpr_day="12 Oct 2026") == (
+        "📄 Here's the DPR for 12 Oct 2026 (D-1)."
+    )
+    assert say(dpr_status="ready", dpr_code="D-1") == "📄 Here's today's DPR (D-1)."
+    assert say(dpr_status="not_generated", dpr_day="12 Oct 2026").startswith("There is no DPR for 12 Oct 2026")
+    assert say(dpr_status="pending_render", dpr_day="12 Oct 2026").startswith(
+        "The DPR for 12 Oct 2026 is being prepared"
+    )
+    assert say(dpr_status="unavailable") == "I can't look up today's report right now. Please try again in a minute."
+    assert say(dpr_status="bad_date").startswith("Which day's report")
