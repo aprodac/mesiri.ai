@@ -10,6 +10,7 @@ name: Claude ops
 #   vps-app-login     infra/deploy/app_db_login.sh `text` = check | switch | rollback (BE-03; switch/rollback
 #                     owner-approved 19 Oct)
 #   vps-smoke         infra/deploy/smoke_test.sh against the live build (read-only; INF-04)
+#   vps-perf          infra/deploy/perf_report.sh: where reply time goes, last `hours` (read-only; B-7)
 #   bot-status        is the bot linked and receiving
 #   bot-chats         chats with their labels (names only)
 #   bot-test          send `text` to the Mesiri assistant's assistant-test chat and print its replies
@@ -29,13 +30,13 @@ on:
         description: What to run
         required: true
         type: choice
-        options: [vps-check, vps-backup-now, vps-staging, vps-app-login, vps-smoke, bot-status, bot-chats, bot-test, bot-recent-test, bot-recent-team, bot-items, bot-label-test]
+        options: [vps-check, vps-backup-now, vps-staging, vps-app-login, vps-smoke, vps-perf, bot-status, bot-chats, bot-test, bot-recent-test, bot-recent-team, bot-items, bot-label-test]
       text:
         description: "bot-test: the message (or choose:<n|title>); bot-label-test: the chat jid"
         required: false
         default: ""
       hours:
-        description: "bot-recent-*: how many hours back"
+        description: "bot-recent-*, vps-perf: how many hours back"
         required: false
         default: "24"
 
@@ -90,6 +91,9 @@ jobs:
               ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
                 'P=$(grep -E "^MESIRI_APP_PORT=" /opt/mesiri/.env | tail -1 | cut -d= -f2 | tr -dc 0-9); bash -s -- "$(git -C /opt/mesiri rev-parse --short HEAD)" "http://127.0.0.1:${P:-8000}"' \
                 < infra/deploy/smoke_test.sh 2>&1 | mask ;;
+            vps-perf)
+              ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "bash -s -- $(printf '%s' "$HOURS" | tr -dc 0-9)" \
+                < infra/deploy/perf_report.sh 2>&1 | mask ;;
             bot-status) inbox status ;;
             bot-chats) inbox chats | mask ;;
             bot-test)
