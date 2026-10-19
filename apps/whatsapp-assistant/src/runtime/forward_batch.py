@@ -124,6 +124,11 @@ class BatchingSender:
         captured.append({"kind": "button", **kwargs, "buttons": _rows(kwargs.get("buttons") or [])})
         return True
 
+    async def send_reaction(self, to_wa_id: str, message_id: str, emoji: str = "✅") -> bool:
+        if _capture.get() is not None:
+            return True  # a forwarded item is summarised later; no tick per item
+        return await self._inner.send_reaction(to_wa_id, message_id, emoji)
+
     def __getattr__(self, name: str) -> Any:
         return getattr(self._inner, name)
 

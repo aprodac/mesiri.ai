@@ -106,6 +106,19 @@ class WhatsAppSender:
             },
         )
 
+    async def send_reaction(self, to_wa_id: str, message_id: str, emoji: str = "✅") -> bool:
+        """React to one of the user's own messages with an emoji -- an instant
+        "got it" that costs the worker no extra message. Best effort: callers
+        treat False like every other send_* failure and carry on."""
+        if not message_id:
+            return False
+        return (
+            await self._send(
+                to_wa_id,
+                {"type": "reaction", "reaction": {"message_id": message_id, "emoji": emoji}},
+            )
+        ) is not None
+
     async def send_list(
         self,
         to_wa_id: str,
