@@ -854,7 +854,7 @@ def build_message_handlers(
             # immediately, then await the receipt PNG (Playwright render) and
             # send the image. This keeps the reply feeling instant even when
             # the page-pool is cold.
-            from runtime.plan_executor import plan_defers_rejection, plan_has_more_to_do
+            from runtime.plan_executor import plan_defers_rejection
             from runtime.reply_language import localize_fixed_reply
 
             reply_text = handled.reply_text
@@ -912,7 +912,7 @@ def build_message_handlers(
                 _offer_team_photo,
                 _recorded_attendance_report_id,
             )
-            from runtime.plan_executor import advance_plan
+            from runtime.plan_executor import advance_plan, plan_has_more_to_do
 
             try:
                 promotion_offered = await _maybe_trigger_worker_promotion(
