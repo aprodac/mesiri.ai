@@ -223,3 +223,47 @@ def test_renders_a_possible_duplicate_line():
         payload=payload,
     )
     assert pdf_bytes.startswith(b"%PDF")
+
+
+def _pdf_text(pdf_bytes: bytes) -> str:
+    """The page content streams, decompressed (fpdf2 deflates them)."""
+    import re
+    import zlib
+
+    streams = re.findall(rb"stream\r?\n(.*?)\r?\nendstream", pdf_bytes, re.S)
+    out = []
+    for raw in streams:
+        try:
+            out.append(zlib.decompress(raw).decode("latin-1"))
+        except zlib.error:
+            continue
+    return "".join(out)
+
+
+def test_prints_the_ai_summary_under_the_header():
+    # BE-18. Curly quotes and dashes from the AI must not break the core font.
+    pdf_bytes = render_dpr_pdf_bytes(
+        code="DPR-001",
+        report_date="2026-10-19",
+        project_name="Skyline Towers",
+        site_name="Site A",
+        workflow_status="approved",
+        payload=_FULL_PAYLOAD,
+        summary="Plastering was completed — the “east wing”. 18 workers were on site.",
+    )
+    text = _pdf_text(pdf_bytes)
+    assert "Summary" in text
+    assert "18 workers were on site." in text
+    assert text.index("Summary") < text.index("Activities Logged")
+
+
+def test_no_summary_heading_without_a_summary():
+    pdf_bytes = render_dpr_pdf_bytes(
+        code="DPR-001",
+        report_date="2026-10-19",
+        project_name="Skyline Towers",
+        site_name="Site A",
+        workflow_status="approved",
+        payload=_FULL_PAYLOAD,
+    )
+    assert "(Summary)" not in _pdf_text(pdf_bytes)

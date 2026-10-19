@@ -161,6 +161,31 @@ Sample values: `{{1}}` = `Suresh Builders`, `{{2}}` = `22 Oct`.
 
 To switch it on: add `mesiri_trial_ending` to `WHATSAPP_APPROVED_TEMPLATES`.
 
+### `mesiri_join_request` — someone asked to join the company (SS-05, SS-12)
+
+Sent to each company admin when a newcomer sends `JOIN <code>`, if that admin
+hasn't messaged Mesiri in the last 24 hours (inside the window the same alert
+goes as a normal message with the same buttons). Until it is approved, an
+admin outside the window is not alerted (logged as
+`team_join.admin_not_reached ... reason=outside_window`).
+
+| Field | Value |
+| --- | --- |
+| Name | `mesiri_join_request` |
+| Category | Utility |
+| Language | English (`en`) |
+| Header | None |
+| Body | `{{1}} (+{{2}}) wants to join {{3}} on Mesiri with your join code. Approve them?` |
+| Footer | `Sent by Mesiri` |
+| Buttons | Quick replies: `Approve`, `Reject` |
+
+Sample values: `{{1}}` = `Ravi Kumar`, `{{2}}` = `919876543210`, `{{3}}` = `Suresh Builders`.
+
+The taps carry the request's id, so Approve / Reject work exactly like the
+in-window buttons (only an admin of that company can decide).
+
+To switch it on: add `mesiri_join_request` to `WHATSAPP_APPROVED_TEMPLATES`.
+
 ## Who receives the DPR, and opt-in (BE-15)
 
 - Each project can have its own DPR list (`/dpr/projects/{id}/recipients`):

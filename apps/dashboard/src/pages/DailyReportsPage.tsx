@@ -90,6 +90,7 @@ function ReportRow({ item, onPdf }: { item: DprHistoryItem; onPdf: (item: DprHis
           <span className={cn(CHIP, status.className)}>{status.label}</span>
         </div>
         <span className="text-sm text-muted-foreground">{figures(item)}</span>
+        {item.summary && <p className="text-sm">{item.summary}</p>}
         {item.approved_at && item.level === 'site' && (
           <span className="text-xs text-muted-foreground">
             Confirmed{item.approved_by ? ` by ${item.approved_by}` : ''} · {item.dpr_number}

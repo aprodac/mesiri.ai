@@ -19,9 +19,11 @@ Guardrails: a number gets MAX_WRONG_CODES_PER_DAY wrong codes a day; asking
 again while a request is open sends no second alert; a company holds at
 most MAX_OPEN open requests (domains/organizations/team_join.py).
 
-Messages to the admins are sent free-form, which WhatsApp only delivers
-inside 24 hours of the admin's own last message; the "join request"
-template that covers the rest is SS-12.
+The alert to each admin is free-form (with Approve / Reject buttons) when
+the admin messaged in the last 24 hours; otherwise WhatsApp only delivers a
+template, so it goes as `mesiri_join_request` (SS-12) once that is approved
+(`WHATSAPP_APPROVED_TEMPLATES`), with the same tap ids. Until then an admin
+outside the window is logged as not reached, as before.
 """
 
 from __future__ import annotations
@@ -29,11 +31,12 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Protocol
 from urllib.parse import quote
 
 from channel.replies import ListRow, ReplySpec
+from channel.whatsapp.templates import JOIN_REQUEST, clean_param
 from mesiri.application.organizations import team_join
 from mesiri.domains.organizations import team_join as rules
 from mesiri_contracts.assistant.enums import InputModality
@@ -136,12 +139,18 @@ class JoinJourney:
         redis: _RedisLike,
         contact_share: ContactShareJourney | None,
         now: Callable[[], dt.datetime] | None = None,
+        approved_templates: frozenset[str] = frozenset(),
+        last_inbound_at: Callable[[str], Awaitable[dt.datetime | None]] | None = None,
     ) -> None:
         self._sender = sender
         self._db = db
         self._redis = redis
         self._contact_share = contact_share
         self._now = now or (lambda: dt.datetime.now(dt.UTC))
+        # SS-12: when an admin's last message is older than 24 h, the alert
+        # goes as the join-request template. No lookup = always free-form.
+        self._approved_templates = approved_templates
+        self._last_inbound_at = last_inbound_at
 
     # -- a number Mesiri doesn't know ----------------------------------------
 
@@ -210,21 +219,19 @@ class JoinJourney:
         if not is_new:
             return await self._say(wa_id, ALREADY_ASKED.format(company=company.name))
 
-        body = APPROVAL_REQUEST.format(name=name, phone=wa_id, company=company.name)
         ref = f"{company.organization_id}:{request['id']}"
         asked = 0
         for admin in admins:
             try:
-                await self._sender.send_button(
-                    _digits(admin.whatsapp_number),
-                    body=body,
-                    buttons=[
-                        ListRow(id=f"{APPROVE_PREFIX}{ref}", title="Approve"),
-                        ListRow(id=f"{REJECT_PREFIX}{ref}", title="Reject"),
-                    ],
-                )
-                asked += 1
-            except Exception:  # noqa: BLE001 -- e.g. outside the admin's 24 h window
+                if await self._ask_admin(_digits(admin.whatsapp_number), name, wa_id, company, ref):
+                    asked += 1
+                else:
+                    _log.warning(
+                        "team_join.admin_not_reached org=%s admin=%s reason=outside_window",
+                        company.organization_id,
+                        admin.user_id,
+                    )
+            except Exception:  # noqa: BLE001 -- one admin's failure must not stop the rest
                 _log.warning("team_join.admin_not_reached org=%s admin=%s", company.organization_id, admin.user_id)
         _log.info(
             "team_join.requested org=%s wa_id=%s admins=%s reached=%s",
@@ -234,6 +241,42 @@ class JoinJourney:
             asked,
         )
         return await self._say(wa_id, ASKED.format(name=name.split()[0], company=company.name))
+
+    async def _ask_admin(
+        self, admin_wa_id: str, name: str, wa_id: str, company: team_join.Company, ref: str
+    ) -> bool:
+        """One admin's Approve / Reject alert: free-form inside their 24 h
+        window, the join-request template outside it (SS-12). False when
+        neither can go (outside the window, template not approved yet)."""
+        approve_id, reject_id = f"{APPROVE_PREFIX}{ref}", f"{REJECT_PREFIX}{ref}"
+        if await self._outside_window(admin_wa_id):
+            if JOIN_REQUEST.name not in self._approved_templates:
+                return False
+            return await self._sender.send_template(
+                admin_wa_id,
+                name=JOIN_REQUEST.name,
+                language=JOIN_REQUEST.language,
+                body_params=tuple(clean_param(p) for p in (name, wa_id, company.name)),
+                quick_reply_payloads=(approve_id, reject_id),
+            )
+        await self._sender.send_button(
+            admin_wa_id,
+            body=APPROVAL_REQUEST.format(name=name, phone=wa_id, company=company.name),
+            buttons=[ListRow(id=approve_id, title="Approve"), ListRow(id=reject_id, title="Reject")],
+        )
+        return True
+
+    async def _outside_window(self, wa_id: str) -> bool:
+        if self._last_inbound_at is None:
+            return False
+        from mesiri.application.notifications.checks import is_within_whatsapp_session_window
+
+        try:
+            last = await self._last_inbound_at(wa_id)
+        except Exception:  # noqa: BLE001 -- unknown = try free-form, as before SS-12
+            _log.warning("team_join.window_lookup_failed wa_id=%s", wa_id)
+            return False
+        return not is_within_whatsapp_session_window(last_inbound_at=last, now=self._now())
 
     # -- a registered admin or project manager --------------------------------
 

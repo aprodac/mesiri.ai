@@ -58,6 +58,10 @@ _DOCUMENT_TEMPLATE_SRC = """
   .signatory { margin-top: 26px; text-align: right; font-size: 11.5px; }
   .signatory .name { font-weight: 600; }
   .signatory .role { color: {{ sub }}; }
+  .summary { margin-top: 14px; padding: 10px 12px; border-left: 3px solid {{ accent }};
+    background: #F5F5F7; font-size: 12.5px; line-height: 1.45; }
+  .summary .label { font-size: 9.5px; font-weight: 600; letter-spacing: 0.05em;
+    text-transform: uppercase; color: {{ sub }}; margin-bottom: 3px; }
   .footer { margin-top: 28px; padding-top: 10px; border-top: 1px solid {{ line }};
     display: flex; justify-content: space-between; font-size: 10px; color: {{ sub }}; }
 </style></head>
@@ -88,6 +92,10 @@ _DOCUMENT_TEMPLATE_SRC = """
     </div>
     <div class="code">{{ data.code }}<br/>{{ data.report_date }}</div>
   </div>
+
+  {% if data.summary %}
+  <div class="summary"><div class="label">Summary</div>{{ data.summary }}</div>
+  {% endif %}
 
   <div class="meta">
     {% if data.is_project %}

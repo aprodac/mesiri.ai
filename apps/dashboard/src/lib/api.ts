@@ -1815,6 +1815,8 @@ export interface SiteDayDetail {
   items: ReviewItem[]
   drafts: number
   versions: DprVersion[]
+  /** BE-18: AI summary of the confirmed report; null until it has one. */
+  summary: string | null
 }
 
 export async function fetchSiteDayApi(siteId: string, date: string): Promise<SiteDayDetail> {
@@ -1848,6 +1850,8 @@ export interface DprHistoryItem {
   version_no: number | null
   approved_at: string | null
   approved_by: string | null
+  /** BE-18: AI summary of the confirmed report; null when it has none. */
+  summary: string | null
   created_at: string
 }
 
@@ -1911,6 +1915,8 @@ export interface ProjectDayDetail {
   /** "sent": the DPR as it went out; "preview": what would go out now. */
   report_source: 'sent' | 'preview'
   versions: DprVersion[]
+  /** BE-18: AI summary of the DPR as it went out; null for a preview. */
+  summary: string | null
 }
 
 export async function fetchProjectDayApi(projectId: string, date: string): Promise<ProjectDayDetail> {

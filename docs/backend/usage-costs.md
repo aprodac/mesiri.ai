@@ -93,7 +93,7 @@ New columns on `provider_executions`:
 | --- | --- |
 | `metered` | marks the per-call cost rows |
 | `organization_id` | **no foreign key**: a deleted trial's costs stay for the funnel |
-| `purpose` | what the call was for, when the caller said |
+| `purpose` | what the call was for, when the caller said (e.g. `dpr_summary`, BE-18) |
 | `input_tokens`, `cached_input_tokens`, `audio_input_tokens`, `output_tokens` | `output_tokens` includes thinking |
 | `audio_seconds` | providers that bill by time |
 | `category`, `billable`, `external_id`, `recipient` | WhatsApp; `external_id` is the wamid, unique |

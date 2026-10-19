@@ -239,8 +239,13 @@ trials only), days data is kept after a trial expires, and the self-serve signup
   holds at most 20 open requests. Requests expire after 7 days. An ended trial or a
   suspended company takes no one. A number already on Mesiri never reaches this, and one
   in another company is refused by the SS-13 steps (BE-04).
-- **Gap:** the admin alert is a free-form message, so WhatsApp only delivers it within
-  24 h of the admin's last message. The "join request" template is SS-12.
+- **Admins outside the 24 h window (SS-12, 19 Oct):** inside the window the alert is a
+  normal message with Approve / Reject buttons; outside it, it goes as the
+  `mesiri_join_request` template with the same tap ids (text in
+  docs/ops/whatsapp-templates.md), once that is approved and listed in
+  `WHATSAPP_APPROVED_TEMPLATES`. Until then such an admin is not alerted and the
+  log says `team_join.admin_not_reached ... reason=outside_window`. The window is
+  the same last-message lookup the notification sender uses.
 
 ## Team by shared contact (SS-13, built 15 Oct)
 

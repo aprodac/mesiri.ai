@@ -238,6 +238,14 @@ async def get_site_day(
         if report_id
         else []
     )
+    # BE-18: the AI summary of the confirmed report, once it has one.
+    summary = (
+        await repo.get_current_summary(
+            organization_id=auth_context.organization_id, report_id=report_id
+        )
+        if report_id
+        else None
+    )
     return {
         "date": report_date.isoformat(),
         "site_id": str(site_id),
@@ -248,6 +256,7 @@ async def get_site_day(
         "items": items,
         "drafts": sum(1 for i in items if i["review"] == "draft"),
         "versions": versions,
+        "summary": summary,
     }
 
 
@@ -426,6 +435,14 @@ async def get_project_day(
         if report_id and source == "sent"
         else []
     )
+    # BE-18: the AI summary of the DPR as it went out; none for a preview.
+    summary = (
+        await repo.get_current_summary(
+            organization_id=auth_context.organization_id, report_id=report_id
+        )
+        if report_id and source == "sent"
+        else None
+    )
     return {
         "date": report_date.isoformat(),
         "project_id": str(project_id),
@@ -434,6 +451,7 @@ async def get_project_day(
         "report": report,
         "report_source": source,
         "versions": versions,
+        "summary": summary,
     }
 
 
@@ -976,6 +994,7 @@ async def get_daily_report_pdf(
             site_name=report["site_name"],
             workflow_status=report["workflow_status"],
             payload=payload,
+            summary=report.get("narrative_summary"),
         )
 
     return Response(

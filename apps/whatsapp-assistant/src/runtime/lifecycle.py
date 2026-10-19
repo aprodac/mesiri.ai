@@ -66,7 +66,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             automation_task = None
             if runner_enabled():
                 automation_task = asyncio.create_task(
-                    runner_loop(db=app.state.container.material_db)
+                    runner_loop(
+                        db=app.state.container.material_db,
+                        summary_writer=app.state.container.dpr_summary_writer,
+                    )
                 )
             else:
                 logger.info("Automation runner disabled by configuration")

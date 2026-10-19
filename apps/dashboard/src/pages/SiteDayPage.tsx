@@ -30,6 +30,7 @@ import {
 import { useReadOnly } from '@/lib/trial'
 import { cn, formatClock } from '@/lib/utils'
 import { useToast } from '@/components/ui/toast-notification'
+import { DprSummaryCard } from '@/components/dpr-summary-card'
 import { DprVersionsCard } from '@/components/dpr-versions-card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -668,6 +669,8 @@ export default function SiteDayPage() {
           </p>
         )}
       </div>
+
+      <DprSummaryCard summary={detail.summary} />
 
       {SECTIONS.map((section) => (
         <Section

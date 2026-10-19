@@ -117,6 +117,10 @@ class AppContainer:
     # M8: owns the one transaction Material command execution runs in. connect()/
     # disconnect() are called by the lifespan handler, same as redis_client.
     material_db: PostgresDatabase
+    # BE-18: writes the AI summary of a frozen DPR before its PDF is sent;
+    # handed to the scheduler (runtime/automation_runner.py). None = no
+    # summaries, DPRs go out as before.
+    dpr_summary_writer: Any = None
 
 
 def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppContainer:
@@ -790,6 +794,10 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     from runtime.reply_language import ReplyComposer, UserLanguageStore
 
     reply_composer = ReplyComposer(ai_resolver)
+    # BE-18: the DPR summary uses the same resolver (generate_json).
+    from runtime.dpr_summary import DprSummaryWriter
+
+    dpr_summary_writer = DprSummaryWriter(ai_resolver)
     user_language_store = UserLanguageStore(redis_client)
     # Resolves a picker reply the deterministic matcher (workflows/slots.py's
     # match_slot_answer) couldn't -- e.g. "New cause it's 3rd floor" instead
@@ -882,10 +890,20 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
 
     # SS-05: "JOIN ACME-4821" from a new number asks the company's admins;
     # Approve goes on through the contact-share steps above.
+    from channel.whatsapp.templates import approved_template_names
     from runtime.join_journey import JoinJourney
+    from runtime.notification_query import NotificationSendQueueService
 
     join_journey = JoinJourney(
-        sender=sender, db=material_db, redis=redis_client, contact_share=contact_share
+        sender=sender,
+        db=material_db,
+        redis=redis_client,
+        contact_share=contact_share,
+        # SS-12: an admin outside the 24 h window gets the join-request
+        # template, once approved. The same last-message lookup the
+        # notification sender uses.
+        approved_templates=approved_template_names(settings.approved_templates),
+        last_inbound_at=NotificationSendQueueService(material_db, actor_reader).last_inbound_at,
     )
 
     # SS-14: one setup question a day for a new company's owner; letterhead
@@ -1029,6 +1047,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         message_logger=message_logger,
         trace_logger=trace_logger,
         material_db=material_db,
+        dpr_summary_writer=dpr_summary_writer,
     )
 
 

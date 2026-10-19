@@ -123,9 +123,32 @@ TRIAL_ENDING = TemplateSpec(
     body_param_count=2,
 )
 
+#: Someone asked to join the company with its code (SS-05), to an admin who
+#: has not messaged in 24 h (SS-12). Body (submitted text,
+#: docs/ops/whatsapp-templates.md):
+#:   "{{1}} (+{{2}}) wants to join {{3}} on Mesiri with your join code.
+#:    Approve them?"
+#: The Approve / Reject taps carry the same ids as the in-window buttons
+#: (runtime/join_journey.py), so the decision is handled the same way.
+JOIN_REQUEST = TemplateSpec(
+    name="mesiri_join_request",
+    language="en",
+    category="UTILITY",
+    body_param_count=3,
+    quick_replies=("Approve", "Reject"),
+)
+
 TEMPLATES: dict[str, TemplateSpec] = {
     spec.name: spec
-    for spec in (DPR_DELIVERY, DPR_OPT_IN, LOGIN_CODE, SITE_DAY_REVIEW, SITE_NO_UPDATE, TRIAL_ENDING)
+    for spec in (
+        DPR_DELIVERY,
+        DPR_OPT_IN,
+        JOIN_REQUEST,
+        LOGIN_CODE,
+        SITE_DAY_REVIEW,
+        SITE_NO_UPDATE,
+        TRIAL_ENDING,
+    )
 }
 
 

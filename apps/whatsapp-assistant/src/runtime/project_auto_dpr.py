@@ -172,6 +172,7 @@ async def send_due_project_dprs(
     renderer: Any | None = None,
     object_storage: Any | None = None,
     now_utc: datetime.datetime | None = None,
+    summary_writer: Any | None = None,
 ) -> int:
     """BE-16: sends each project DPR that is due -- every site confirmed,
     the send deadline passed, or "Send now" pressed -- to the project's
@@ -182,7 +183,11 @@ async def send_due_project_dprs(
     Each project runs in its own savepoint: a failure (render, storage)
     rolls that project back untouched and it is retried on the next tick,
     without taking the others down. `renderer`/`object_storage` are
-    injectable for tests; otherwise built only if something is due."""
+    injectable for tests; otherwise built only if something is due.
+
+    BE-18: right before a frozen version's PDF is made, `summary_writer`
+    (runtime/dpr_summary.py) writes its summary of the confirmed facts. No
+    writer, a failure or a rejected summary: the PDF goes without one."""
     import json
 
     from channel.dpr_document.letterhead import load_letterhead
@@ -197,6 +202,7 @@ async def send_due_project_dprs(
         PostgresNotificationRepository,
     )
 
+    from .dpr_summary import ensure_summary
     from .render_pending_dpr_pdfs import render_and_store_version
 
     due = await due_project_sends(conn, now_utc=now_utc or datetime.datetime.now(datetime.UTC))
@@ -241,7 +247,23 @@ async def send_due_project_dprs(
                     if isinstance(payload, str):
                         payload = json.loads(payload)
 
+                    # BE-18: a frozen version without a summary gets one now. A
+                    # single-site project sends the site's own version, whose
+                    # PDF may predate it: re-rendered once, so the PDF the owner
+                    # gets carries the summary (stored, so never again).
                     object_key = report["rendered_object_key"]
+                    summary = report.get("narrative_summary")
+                    if report.get("workflow_status") in ("APPROVED", "PUBLISHED") and not summary:
+                        summary = await ensure_summary(
+                            summary_writer,
+                            repo.set_narrative_summary,
+                            version_id=report["version_id"],
+                            organization_id=project["organization_id"],
+                            payload=payload,
+                            existing=None,
+                        )
+                        if summary:
+                            object_key = None
                     if not object_key:
                         object_key = await render_and_store_version(
                             renderer=renderer,
@@ -253,6 +275,7 @@ async def send_due_project_dprs(
                             letterhead=await load_letterhead(
                                 conn, object_storage, target["daily_report_id"]
                             ),
+                            summary=summary,
                         )
                         await repo.set_rendered_object_key(
                             version_id=report["version_id"], object_key=object_key

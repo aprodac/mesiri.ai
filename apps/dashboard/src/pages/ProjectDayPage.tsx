@@ -24,6 +24,7 @@ import {
 import { useReadOnly } from '@/lib/trial'
 import { cn, formatClock } from '@/lib/utils'
 import { useToast } from '@/components/ui/toast-notification'
+import { DprSummaryCard } from '@/components/dpr-summary-card'
 import { DprVersionsCard } from '@/components/dpr-versions-card'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -217,6 +218,8 @@ export default function ProjectDayPage() {
           </p>
         )}
       </div>
+
+      <DprSummaryCard summary={detail.summary} />
 
       <section aria-label="Summary" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat

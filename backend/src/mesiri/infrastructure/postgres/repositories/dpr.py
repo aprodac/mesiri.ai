@@ -121,6 +121,9 @@ class PostgresDprRepository:
                 v.version_no,
                 v.approved_at,
                 u.full_name AS approved_by,
+                -- BE-18: the summary of the report as it was frozen.
+                CASE WHEN dr.status::text IN ('APPROVED', 'PUBLISHED')
+                     THEN v.narrative_summary END AS summary,
                 dr.created_at::text AS created_at
             FROM daily_reports dr
             JOIN projects p ON dr.project_id = p.id
@@ -1640,7 +1643,8 @@ class PostgresDprRepository:
                         dr.status::text AS workflow_status,
                         p.name AS project_name,
                         s.name AS site_name,
-                        v.id AS version_id, v.payload, v.rendered_object_key
+                        v.id AS version_id, v.payload, v.rendered_object_key,
+                        v.narrative_summary
                     FROM daily_reports dr
                     JOIN projects p ON p.id = dr.project_id
                     LEFT JOIN sites s ON s.id = dr.site_id
@@ -1656,6 +1660,53 @@ class PostgresDprRepository:
         if row is None or row["version_id"] is None:
             return None
         return dict(row)
+
+    async def set_narrative_summary(self, *, version_id: uuid.UUID, summary: str) -> str | None:
+        """BE-18: store a version's AI summary, only if it has none -- a
+        summary is never regenerated, and one a person gave on a revision
+        wins. Returns the summary the version now has. In a savepoint, so a
+        failed write can't abort the caller's DPR send."""
+        async with self._conn.begin_nested():
+            row = (
+                await self._conn.execute(
+                    text(
+                        "UPDATE daily_report_versions SET narrative_summary = :summary "
+                        "WHERE id = :id AND narrative_summary IS NULL RETURNING narrative_summary"
+                    ),
+                    {"summary": summary, "id": version_id},
+                )
+            ).mappings().first()
+            if row is not None:
+                return row["narrative_summary"]
+            current = (
+                await self._conn.execute(
+                    text("SELECT narrative_summary FROM daily_report_versions WHERE id = :id"),
+                    {"id": version_id},
+                )
+            ).mappings().first()
+            return current["narrative_summary"] if current else None
+
+    async def get_current_summary(
+        self, *, organization_id: uuid.UUID, report_id: uuid.UUID
+    ) -> str | None:
+        """BE-18: the summary of a report's current version, only while the
+        report is frozen (APPROVED/PUBLISHED) -- a reopened day's summary
+        describes a report that no longer stands."""
+        row = (
+            await self._conn.execute(
+                text(
+                    """
+                    SELECT v.narrative_summary
+                    FROM daily_reports dr
+                    JOIN daily_report_versions v ON v.id = dr.current_version_id
+                    WHERE dr.organization_id = :org_id AND dr.id = :id
+                      AND dr.status::text IN ('APPROVED', 'PUBLISHED')
+                    """
+                ),
+                {"org_id": organization_id, "id": report_id},
+            )
+        ).mappings().first()
+        return row["narrative_summary"] if row else None
 
     async def set_rendered_object_key(self, *, version_id: uuid.UUID, object_key: str) -> None:
         await self._conn.execute(
@@ -1677,7 +1728,11 @@ class PostgresDprRepository:
                 text(
                     """
                     SELECT v.id AS version_id, v.daily_report_id, v.payload,
-                           dr.code, dr.report_date::text AS report_date
+                           dr.code, dr.report_date::text AS report_date,
+                           dr.organization_id, v.narrative_summary,
+                           -- BE-18: only the frozen current version gets an AI summary.
+                           (dr.status::text IN ('APPROVED', 'PUBLISHED')
+                            AND v.id = dr.current_version_id) AS frozen
                     FROM daily_report_versions v
                     JOIN daily_reports dr ON dr.id = v.daily_report_id
                     WHERE v.rendered_object_key IS NULL
