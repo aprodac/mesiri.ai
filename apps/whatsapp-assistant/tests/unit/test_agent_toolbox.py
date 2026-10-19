@@ -41,9 +41,23 @@ def _box(*results, delay=0.0):
 async def test_a_saved_record_is_remembered_and_reported_to_the_model():
     box, _ = _box(StepResult("saved", text="Labour recorded"))
     out = await box.handle("save_labour", {"workers": WORKERS})
-    assert out.content == {"status": "saved", "summary": "Labour recorded"}
+    assert out.content == {"status": "saved", "note": "Labour recorded"}
     assert [i.text for i in box.saved] == ["Labour recorded"]
     assert box.attempted_writes == 1
+
+
+async def test_the_bare_recorded_line_is_not_given_to_the_model():
+    """B-9: the model copied "Recorded. Thank you." onto every line, or sent it
+    alone; only what else the pipeline said (the draft note) reaches it."""
+    box, _ = _box(
+        StepResult("saved", text="✅ Recorded. Thank you.\n\nSaved as a draft for tonight's report.")
+    )
+    out = await box.handle("save_labour", {"workers": WORKERS})
+    assert out.content == {"status": "saved", "note": "Saved as a draft for tonight's report."}
+    box, _ = _box(StepResult("saved", text="✅ Recorded. Thank you."))
+    assert (await box.handle("save_labour", {"workers": WORKERS})).content == {"status": "saved"}
+    # The fallback reply still has the pipeline's full words.
+    assert box.saved[0].text == "✅ Recorded. Thank you."
 
 
 async def test_the_same_save_twice_in_one_message_runs_once():

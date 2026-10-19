@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -36,6 +37,16 @@ MAX_CALLS = 8
 MAX_BUTTONS = 3
 MAX_LIST_ROWS = 10
 _TITLE_MAX = 24  # WhatsApp button/row title limit
+
+
+_RECORDED = re.compile(r"^\W*recorded\.?(\s+thank you\.?)?\s*$", re.IGNORECASE)
+
+
+def _without_recorded(text: str) -> str:
+    """A saved step's words without the bare "Recorded. Thank you." line:
+    what is left (the draft note, a stock warning) is worth the model knowing."""
+    kept = [p for p in (text or "").split("\n\n") if p.strip() and not _RECORDED.match(p.strip())]
+    return "\n\n".join(kept)
 
 
 def _title(option: str) -> str:
@@ -160,7 +171,14 @@ class AgentToolbox:
     def _outcome(self, name: str, step: StepResult) -> ToolOutcome:
         if step.status == "saved":
             self.saved.append(SavedItem(name, step.text))
-            return ToolOutcome(content={"status": "saved", "summary": step.text})
+            content: dict[str, Any] = {"status": "saved"}
+            # B-9: not the pipeline's "✅ Recorded. Thank you." -- the model
+            # copied it onto every line ("Recorded 12 masons present today.")
+            # or sent it alone, without saying what was saved.
+            note = _without_recorded(step.text)
+            if note:
+                content["note"] = note
+            return ToolOutcome(content=content)
         if step.status in ("needs_confirmation", "needs_answer"):
             question = step.reply or ReplySpec(text=step.text)
             if self.parked is None or self.parked_by == "ask":

@@ -53,6 +53,45 @@ async def test_a_saved_note_gets_the_models_one_message_with_the_undo_line():
     assert provider.calls == 1  # one model run, not one per part
 
 
+async def test_one_recorded_line_per_thing_becomes_one_header_and_bullets():
+    """B-9, the live reply of 19 Oct."""
+    provider = FakeToolCallingProvider(
+        [
+            [("save_labour", {"workers": WORKERS}), ("save_material_usage", {}), ("save_work", {})],
+            "Recorded 12 masons present today.\nRecorded 5 bags of cement used for slab work today."
+            "\nRecorded slab work on 2nd floor today.",
+        ]
+    )
+    result = await _run(
+        provider, StepResult("saved", text="a"), StepResult("saved", text="b"), StepResult("saved", text="c")
+    )
+    assert result.reply.text == (
+        "✅ Saved:\n• 12 masons present\n• 5 bags of cement used for slab work\n"
+        "• Slab work on 2nd floor\n\nWrong? Reply UNDO."
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "✅ Saved: 12 masons",  # one thing: as written
+        "✅ Saved:\n• 12 masons\n• 5 bags cement used",  # already a list
+        "6 mason, 3 helper വന്നത് സേവ് ചെയ്തു.\n10 bag cement ഉപയോഗിച്ചത് സേവ് ചെയ്തു.",
+        "Saved. Wrong? Reply UNDO.",
+        "Recorded. Thank you.",
+    ],
+)
+def test_other_replies_are_left_as_written(text):
+    assert r.saved_list(text) == text
+
+
+def test_saved_and_recorded_lines_mix_and_other_lines_stay():
+    text = "Recorded: Tiling done.\nSaved 4 masons and 2 helpers for today.\nGenerator noted as an issue."
+    assert r.saved_list(text) == (
+        "✅ Saved:\n• Tiling done\n• 4 masons and 2 helpers\nGenerator noted as an issue."
+    )
+
+
 async def test_an_undo_line_the_model_already_wrote_is_not_doubled():
     provider = FakeToolCallingProvider([[("save_labour", {"workers": WORKERS})], "Saved. Wrong? Reply UNDO."])
     result = await _run(provider, StepResult("saved", text="x"))

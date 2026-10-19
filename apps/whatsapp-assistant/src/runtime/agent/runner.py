@@ -14,6 +14,7 @@ Failure policy (writes make a retry unsafe):
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -102,7 +103,7 @@ class AgentRunner:
     # -- the one reply -----------------------------------------------------
 
     def _compose(self, run: ToolRunResult, toolbox: AgentToolbox) -> ReplySpec:
-        text = _unique_paragraphs((run.text or "").strip())
+        text = saved_list(_unique_paragraphs((run.text or "").strip()))
         if not text:
             return self._fallback(toolbox, partial=run.stop_reason == "max_steps")
         if toolbox.saved and "undo" not in text.casefold():
@@ -141,6 +142,32 @@ class AgentRunner:
             list_rows=parked.list_rows,
             buttons=parked.buttons,
         )
+
+
+_SAVED_LINE = re.compile(r"^\s*(?:✅\s*)?(?:recorded|saved)\s*:?\s+(?P<what>\S.*)$", re.IGNORECASE)
+_TODAY_END = re.compile(r"[\s,]+(?:for\s+|from\s+)?today\s*[.!]?\s*$", re.IGNORECASE)
+
+
+def saved_list(text: str) -> str:
+    """B-9: "Recorded 12 masons present today. / Recorded 5 bags ... today."
+    as one header and short bullets, when the model wrote one such line per
+    thing despite the prompt. Two or more such lines only; anything else
+    (one line, another language) is left as written."""
+    lines = text.split("\n")
+    hits = [i for i, line in enumerate(lines) if _SAVED_LINE.match(line)]
+    if len(hits) < 2:
+        return text
+    out: list[str] = []
+    for i, line in enumerate(lines):
+        match = _SAVED_LINE.match(line) if i in hits else None
+        if match is None:
+            out.append(line)
+            continue
+        if i == hits[0]:
+            out.append("✅ Saved:")
+        what = _TODAY_END.sub("", match.group("what")).rstrip(" .")
+        out.append(f"• {what[:1].upper()}{what[1:]}")
+    return "\n".join(out)
 
 
 def _unique_paragraphs(text: str) -> str:
