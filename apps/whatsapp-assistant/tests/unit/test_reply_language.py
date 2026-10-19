@@ -151,7 +151,7 @@ def test_only_conversational_replies_are_composed_and_greetings_follow_the_langu
     assert "await user_language_store.remember(" in source
 
     journey_source = inspect.getsource(journey)
-    assert "await user_language_store.get(user_id=ctx.user_id)" in journey_source
+    assert "await user_language_store.get_profile(user_id=ctx.user_id)" in journey_source
 
 
 def test_the_overview_has_an_example_and_no_module_list():
@@ -160,3 +160,68 @@ def test_the_overview_has_an_example_and_no_module_list():
     text = render_capability_answer([]).text
     assert "“6 masons and 4 helpers" in text
     assert "money" not in text.lower()
+
+
+# --- Reply in the script the sender typed (request [55]) -------------------------
+
+MANGLISH = "njan site il ethi, innu slab concrete cheythu"
+
+
+async def test_manglish_is_stored_as_latin_script():
+    store = UserLanguageStore(_Redis())
+    await store.remember(user_id="u1", detected_language="Malayalam", detected_script="latin")
+    assert await store.get_profile(user_id="u1") == ("Malayalam", "latin")
+
+
+async def test_script_is_inferred_from_the_text_when_the_model_did_not_report_it():
+    store = UserLanguageStore(_Redis())
+    await store.remember(user_id="u1", detected_language="Malayalam", text=MANGLISH)
+    assert await store.get_script(user_id="u1") == "latin"
+    await store.remember(user_id="u1", detected_language="Malayalam", text="ഇന്ന് സ്ലാബ് ചെയ്തു")
+    assert await store.get_script(user_id="u1") == "native"
+
+
+async def test_script_defaults_to_native_and_english_is_never_latin_script():
+    store = UserLanguageStore(_Redis())
+    assert await store.get_script(user_id="nobody") == "native"
+    await store.remember(user_id="u1", detected_language="English", text="used 10 bags cement")
+    assert await store.get_profile(user_id="u1") == (None, "native")
+
+
+async def test_compose_asks_for_english_letters_for_a_latin_script_sender():
+    ai = _Ai(text="Sheri, njan note cheythu.")
+    composed = await ReplyComposer(ai).compose(REPLY, language="Malayalam", script="latin")
+    assert composed == "Sheri, njan note cheythu."
+    [call] = ai.calls
+    assert call["SCRIPT"] == "latin"
+    from runtime.reply_language import _SYSTEM_PROMPT
+
+    assert "English/Roman letters" in _SYSTEM_PROMPT
+
+
+async def test_script_is_part_of_the_composed_reply_cache_key():
+    ai = _Ai()
+    composer = ReplyComposer(ai)
+    await composer.compose(REPLY, language="Malayalam", script="native")
+    await composer.compose(REPLY, language="Malayalam", script="latin")
+    assert [c["SCRIPT"] for c in ai.calls] == ["native", "latin"]
+
+
+def test_fixed_replies_for_a_latin_script_sender_stay_english_not_malayalam_script():
+    from channel.replies import ReplySpec
+    from runtime.reply_language import localize_fixed_reply, localize_reply_spec
+
+    text = "✅ Recorded. Thank you."
+    assert localize_fixed_reply(text, "Malayalam", "latin") == text
+    assert localize_fixed_reply(text, "Malayalam", "native") != text
+    assert localize_fixed_reply(text, "Malayalam") != text  # script unknown = native, as before
+    spec = ReplySpec(text=text)
+    assert localize_reply_spec(spec, "Malayalam", "latin") is spec
+
+
+def test_extraction_result_keeps_only_a_known_script():
+    from mesiri_ai.models import ExtractionResult
+
+    assert ExtractionResult(detected_script=" Latin ").detected_script == "latin"
+    assert ExtractionResult(detected_script="klingon").detected_script is None
+    assert ExtractionResult().detected_script is None

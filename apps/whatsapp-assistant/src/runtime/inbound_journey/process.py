@@ -314,6 +314,7 @@ async def process_inbound_message(
     mlog: MessageLogger = message_logger or NoopMessageLogger()
     # WA-11, set once understanding has run (see below).
     reply_language: str | None = None
+    reply_script: str | None = None
     reply_user_message: str | None = message.text
     tlog: TraceLogger = trace_logger or NoopTraceLogger()
     correlation_id = message.correlation_id
@@ -358,8 +359,12 @@ async def process_inbound_message(
         reply_user_message = understanding.transcript or understanding.normalized_text or message.text
         if user_language_store is not None and understanding.detected_language:
             await user_language_store.remember(
-                user_id=actor_user_id, detected_language=understanding.detected_language
+                user_id=actor_user_id,
+                detected_language=understanding.detected_language,
+                detected_script=understanding.detected_script,
+                text=reply_user_message,
             )
+            reply_script = await user_language_store.get_script(user_id=actor_user_id)
         await _safe(
             tlog.log_stage(
                 correlation_id=correlation_id,
@@ -469,7 +474,15 @@ async def process_inbound_message(
                 if language is None and user_language_store is not None:
                     language = await user_language_store.get(user_id=actor_user_id)
                 outage_text = await reply_composer.compose(
-                    outage_text, language=language, correlation_id=correlation_id
+                    outage_text,
+                    language=language,
+                    correlation_id=correlation_id,
+                    script=reply_script
+                    or (
+                        await user_language_store.get_script(user_id=actor_user_id)
+                        if user_language_store is not None
+                        else None
+                    ),
                 )
             await send_text(message.sender.wa_id, outage_text)
             await _safe(mlog.log_reply(correlation_id=correlation_id, reply=outage_text))
@@ -1355,6 +1368,12 @@ async def process_inbound_message(
             language=language,
             user_message=reply_user_message,
             correlation_id=correlation_id,
+            script=reply_script
+            or (
+                await user_language_store.get_script(user_id=actor_user_id)
+                if user_language_store is not None
+                else None
+            ),
         )
         if composed != reply.text:
             reply = dataclasses.replace(reply, text=composed)

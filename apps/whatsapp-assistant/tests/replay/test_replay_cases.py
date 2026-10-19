@@ -171,7 +171,7 @@ async def run_case(case: dict[str, Any]) -> Observed:
 class _TagComposer:
     """Stands in for ReplyComposer: shows which language a reply was sent for."""
 
-    async def compose(self, reply, *, language, user_message=None, correlation_id=""):  # noqa: ANN001
+    async def compose(self, reply, *, language, user_message=None, correlation_id="", script=None):  # noqa: ANN001
         return f"[{language}] {reply}" if language else reply
 
 
@@ -181,6 +181,12 @@ class _FixedLanguage:
 
     async def get(self, *, user_id):  # noqa: ANN001
         return self._language
+
+    async def get_script(self, *, user_id):  # noqa: ANN001
+        return "native"
+
+    async def get_profile(self, *, user_id):  # noqa: ANN001
+        return self._language, "native"
 
     async def remember(self, **kwargs):  # noqa: ANN003
         return None

@@ -59,6 +59,7 @@ _EXTRACTION_PROMPT = (
     "worker's message. Return STRICT JSON only, with keys: "
     '"detected_language" (the source language\'s common English name, e.g. '
     '"Malayalam", "English"), '
+    '"detected_script" ("latin" when the message is written in English/Roman letters even though the language is not English, e.g. Malayalam typed as "njan site il ethi"; "native" when it is written in the language\'s own script, or is English), '
     '"intents" (array -- one entry per DISTINCT request the message makes. '
     "The OVERWHELMING majority of messages state exactly ONE thing: return a "
     "single-entry array unless the text CLEARLY and explicitly asks for "
@@ -503,6 +504,7 @@ class DeepSeekExtractionProvider:
         return ExtractionResult(
             intents=parse_extracted_intents(data.get("intents")),
             detected_language=data.get("detected_language"),
+            detected_script=data.get("detected_script"),
             provider=self.provider,
             model=self._s.model,
             latency_ms=latency_ms,

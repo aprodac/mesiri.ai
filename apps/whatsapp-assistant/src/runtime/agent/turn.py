@@ -82,7 +82,11 @@ def _context_of(
 
 
 async def _outage(
-    message: NormalizedMessage, language: str | None, deps: AgentTurnDeps, error: BaseException
+    message: NormalizedMessage,
+    language: str | None,
+    deps: AgentTurnDeps,
+    error: BaseException,
+    user_id: str | None = None,
 ) -> None:
     """Every AI call failed before anything was saved: tell the sender it is
     queued and raise, so the worker retries the message (runtime/ai_outage.py)."""
@@ -96,7 +100,15 @@ async def _outage(
     )
     if text:
         if deps.reply_composer is not None and language:
-            text = await deps.reply_composer.compose(text, language=language, correlation_id=correlation_id)
+            script = None
+            if deps.user_language_store is not None and user_id:
+                try:
+                    script = await deps.user_language_store.get_script(user_id=user_id)
+                except Exception:  # noqa: BLE001 — wording never costs the reply
+                    script = None
+            text = await deps.reply_composer.compose(
+                text, language=language, correlation_id=correlation_id, script=script
+            )
         await deps.send_spec(ReplySpec(text=text), message.sender.wa_id)
         await _safe(deps.message_logger.log_reply(correlation_id=correlation_id, reply=text))
     if will_retry:
@@ -147,7 +159,11 @@ async def run_agent_turn(
             return None
         await _safe(deps.message_logger.update_body_text(correlation_id=correlation_id, body_text=user_text))
         if deps.user_language_store is not None and language:
-            await _safe(deps.user_language_store.remember(user_id=actor.user_id, detected_language=language))
+            await _safe(
+                deps.user_language_store.remember(
+                    user_id=actor.user_id, detected_language=language, text=user_text
+                )
+            )
 
     if language is None and deps.user_language_store is not None:
         try:
@@ -173,7 +189,7 @@ async def run_agent_turn(
         correlation_id=correlation_id,
     )
     if result.outcome == "outage" or result.reply is None:
-        await _outage(message, language, deps, result.error or RuntimeError("no reply"))
+        await _outage(message, language, deps, result.error or RuntimeError("no reply"), actor.user_id)
         return result
 
     reply = result.reply
