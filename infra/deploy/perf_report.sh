@@ -65,3 +65,12 @@ SELECT s.wall_s, s.message_type, to_char(s.received_at AT TIME ZONE 'Asia/Kolkat
           FROM provider_executions p WHERE p.correlation_id = s.correlation_id
            AND (p.stage <> 'metered' OR p.operation = 'run_tools')) AS ai_calls
 FROM slow s ORDER BY s.wall_s DESC;"
+
+q "Slowest 8 messages: where the time inside the journey went (step laps, ms)" "
+SELECT t.duration_ms AS total, to_char(t.created_at AT TIME ZONE 'Asia/Kolkata', 'HH24:MI') AS at_ist,
+       (SELECT string_agg(k || ' ' || round(v::numeric), ' > ' ORDER BY v::numeric DESC)
+          FROM jsonb_each_text(t.stage_payload::jsonb) AS e(k, v)
+         WHERE v ~ '^[0-9.]+$' AND v::numeric >= 100) AS laps_over_100ms
+FROM journey_traces t
+WHERE t.stage = 'prepipeline' AND t.created_at > ${SINCE}
+ORDER BY t.duration_ms DESC LIMIT 8;"
