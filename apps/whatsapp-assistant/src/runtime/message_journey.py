@@ -130,6 +130,9 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger("mesiri.context")
 
+#: How long a reply waits for its receipt card before going out without it.
+RECEIPT_TIMEOUT_S = 4.0
+
 # See _send_processing_ack below. text/interactive deliberately absent --
 # they already reply in under ~2s (measured), where a second message
 # would just add noise.
@@ -454,14 +457,21 @@ def build_message_handlers(
         except Exception:  # noqa: BLE001 -- never blocks the reply
             _log.warning("reaction.failed wa_id=%s", wa_id)
 
-    async def _send_composed(wa_id: str, user_id: str, spec) -> None:  # type: ignore[no-untyped-def]
-        """Send the composed reply and remember its choices for typed answers."""
+    async def _send_composed(  # type: ignore[no-untyped-def]
+        wa_id: str, user_id: str, spec, *, header_image: bytes | None = None
+    ) -> None:
+        """Send the composed reply and remember its choices for typed answers.
+        ``header_image`` (the receipt card) rides inside it: the header of the
+        button message, or the image right after a text-only reply."""
+        if header_image is not None:
+            spec = dataclasses.replace(spec, header_image=header_image)
         await send_reply_spec(
             spec,
             wa_id,
             send_text=sender.send_text,
             send_list=sender.send_list,
             send_button=sender.send_button,
+            send_image=sender.send_image,
         )
         options = list(spec.buttons or spec.list_rows or ())
         if offered_choices_store is not None and options:
@@ -724,7 +734,25 @@ def build_message_handlers(
                 send_text=sender.send_text,
                 send_list=sender.send_list,
                 send_button=sender.send_button,
+                send_image=sender.send_image,
             )
+
+        async def _receipt_image(handled) -> bytes | None:  # type: ignore[no-untyped-def]
+            """The receipt PNG for a saved record, or None: rendered within
+            RECEIPT_TIMEOUT_S so a cold page pool never delays the reply.
+            Never raises and never leaves the render running in the
+            background (so an image can never arrive twice)."""
+            coro = getattr(handled, "receipt_coro", None)
+            if coro is None:
+                return None
+            handled.receipt_coro = None  # consumed: awaited exactly once
+            try:
+                return await asyncio.wait_for(coro, timeout=RECEIPT_TIMEOUT_S)
+            except TimeoutError:
+                _log.error("receipt.render_failed reason=timeout user=%s", ctx.user_id)
+            except Exception:  # noqa: BLE001 -- the reply goes out without it
+                _log.exception("receipt.render_failed user=%s", ctx.user_id)
+            return None
 
         async def _park_team_photo_report(store, user_id: str, report_id: str) -> None:
             """Remember which report a team photo would belong to.
@@ -974,10 +1002,14 @@ def build_message_handlers(
                 _log.exception("offers.gather_failed user=%s", ctx.user_id)
                 gathered = _Gathered()
             _gathered[id(handled)] = gathered
+            # The receipt card is rendered first (bounded) and sent inside
+            # this one reply -- as the header of its button message.
+            receipt_image = await _receipt_image(handled)
             await _send_composed(
                 wa_id,
                 ctx.user_id,
                 compose(reply_text, gathered.offers, saved=handled.saved_draft),
+                header_image=receipt_image,
             )
             if handled.next_segment_reply is not None:
                 # #1 Multi-Activity: the batch's next queued segment, as its
@@ -991,15 +1023,6 @@ def build_message_handlers(
                     send_list=sender.send_list,
                     send_button=sender.send_button,
                 )
-            if handled.receipt_coro is not None:
-                try:
-                    image_bytes = await handled.receipt_coro
-                except Exception:  # noqa: BLE001 -- receipt failure must never drop the message
-                    image_bytes = None
-                if image_bytes is not None:
-                    sent = await sender.send_image(wa_id, image_bytes, caption=None)
-                    if not sent:
-                        pass  # image already tried; text was already sent above
             await _deliver_followups(handled)
 
         def _succeeded(handled) -> bool:  # type: ignore[no-untyped-def]
@@ -2409,13 +2432,29 @@ def build_message_handlers(
                     await _acknowledge(message, message.sender.wa_id)
                 return saved
 
+            async def _attach_receipt(reply, gateway):  # type: ignore[no-untyped-def]
+                """One card per reply: the receipt of the first saved part (the
+                main one) rides in the reply; the reply text already lists
+                the other parts."""
+                image = None
+                for handled in getattr(gateway, "handled", []):
+                    if image is None:
+                        image = await _receipt_image(handled)
+                    elif getattr(handled, "receipt_coro", None) is not None:
+                        handled.receipt_coro.close()  # not rendered: one card per reply
+                        handled.receipt_coro = None
+                return dataclasses.replace(reply, header_image=image) if image else reply
+
             async def _send_agent_reply(reply, target_wa_id, gateway) -> None:  # type: ignore[no-untyped-def]
                 """The agent's one reply, with the offers for what it saved
                 folded in (buttons for the photo / undo) instead of sent as
                 further messages."""
                 handled_list = list(getattr(gateway, "handled", []))
+                receipt_image = reply.header_image
                 if not handled_list or reply.buttons or reply.list_rows:
-                    await _send_spec(reply, target_wa_id)
+                    await _send_composed(
+                        target_wa_id, ctx.user_id, reply, header_image=receipt_image
+                    )
                     return
                 offers: list[Offer] = []
                 for handled in handled_list:
@@ -2428,7 +2467,10 @@ def build_message_handlers(
                     offers.extend(gathered.offers)
                 saved = any(h.saved_draft for h in handled_list)
                 await _send_composed(
-                    target_wa_id, ctx.user_id, compose(reply.text, offers, saved=saved)
+                    target_wa_id,
+                    ctx.user_id,
+                    compose(reply.text, offers, saved=saved),
+                    header_image=receipt_image,
                 )
 
             def _gateway(msg, language):  # type: ignore[no-untyped-def]
@@ -2447,6 +2489,7 @@ def build_message_handlers(
                 make_gateway=_gateway,
                 send_spec=_send_spec,
                 send_agent_reply=_send_agent_reply,
+                attach_receipt=_attach_receipt,
                 transcribe=pipeline.transcribe_voice,
                 message_logger=message_logger,
                 memory_loader=memory_loader,
