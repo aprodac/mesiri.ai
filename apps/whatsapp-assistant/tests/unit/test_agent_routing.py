@@ -158,6 +158,37 @@ async def test_an_ai_outage_before_any_save_is_queued_and_retried(monkeypatch):
     assert [c.args[1] for c in deps["sender"].send_text.await_args_list] == [QUEUED_REPLY]
 
 
+async def test_a_provider_blip_is_retried_at_once_and_the_sender_hears_nothing_about_it(monkeypatch):
+    """Request 57, A5: "I'll process this in a few minutes" is only said when
+    a second immediate try also fails."""
+    from mesiri_contracts.common.errors import MesiriError
+    from runtime import ai_outage
+    from runtime.ai_outage import QUEUED_REPLY, retry_attempt
+
+    monkeypatch.setattr(ai_outage, "QUICK_RETRY_PAUSE_SECONDS", 0)
+    import runtime.agent.turn as turn_module
+
+    monkeypatch.setattr(turn_module, "QUICK_RETRY_PAUSE_SECONDS", 0)
+
+    class _FlakyOnce(FakeToolCallingProvider):
+        async def run_tools(self, *args, **kwargs):  # noqa: ANN002, ANN003
+            if self.calls == 0:
+                self.calls += 1
+                raise MesiriError.configuration("x", code="PROVIDER_ERROR")
+            return await super().run_tools(*args, **kwargs)
+
+    flaky = _FlakyOnce(["Hello!"])
+    on_normalized, deps, _ = _build(monkeypatch, mode="agent", provider=flaky)
+    token = retry_attempt.set(1)
+    try:
+        await on_normalized(_message("hi"), {})
+    finally:
+        retry_attempt.reset(token)
+    sent = [c.args[1] for c in deps["sender"].send_text.await_args_list]
+    assert QUEUED_REPLY not in sent
+    assert flaky.calls == 2
+
+
 @pytest.mark.parametrize(("provider", "asked"), [(ASK, False), (FakeToolCallingProvider(["Hello!"]), True)])
 async def test_the_daily_setup_question_never_piles_on_an_open_question(monkeypatch, provider, asked):
     setup = MagicMock()

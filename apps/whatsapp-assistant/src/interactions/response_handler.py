@@ -40,6 +40,9 @@ def render_resume_reply(result: WorkflowResumeResult) -> str:
     return "That request was already handled."
 
 
+FAILED_REPLY = "⚠️ I couldn't save that just now, so nothing was recorded. Please send it again."
+
+
 def saved_line(draft: object | None) -> str:
     """"✅ Saved: 16 workers (6 mason, 10 helper)" from the saved data, or the
     generic "✅ Recorded. Thank you." when the record has no summary."""
@@ -71,7 +74,9 @@ def render_execution_reply(result: ExecutionResult, draft: object | None = None)
             return f"Not saved yet. {question}"
         return f"⚠️ Couldn't record this. {question}"
     # FAILED
-    return "⚠️ Something went wrong — we'll retry automatically."
+    # Honest (request 57, A5): nothing retries a FAILED execution, and the
+    # write was rolled back, so say nothing was recorded and ask to resend.
+    return FAILED_REPLY
 
 
 def render_workflow_run_reply(

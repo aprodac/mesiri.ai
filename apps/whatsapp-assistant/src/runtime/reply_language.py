@@ -277,8 +277,8 @@ _FIXED_REPLIES: dict[str, dict[str, str]] = {
         "❌ Discarded. Nothing was recorded.": "❌ ഒഴിവാക്കി. ഒന്നും രേഖപ്പെടുത്തിയിട്ടില്ല.",
         "Cancelled. Nothing was recorded.": "റദ്ദാക്കി. ഒന്നും രേഖപ്പെടുത്തിയിട്ടില്ല.",
         "That request was already handled.": "ഇത് നേരത്തെ തന്നെ കൈകാര്യം ചെയ്തു.",
-        "⚠️ Something went wrong — we'll retry automatically.": (
-            "⚠️ എന്തോ പിശക് സംഭവിച്ചു — ഞങ്ങൾ വീണ്ടും ശ്രമിക്കും."
+        "⚠️ I couldn't save that just now, so nothing was recorded. Please send it again.": (
+            "⚠️ ഇപ്പോൾ സേവ് ചെയ്യാൻ കഴിഞ്ഞില്ല, അതിനാൽ ഒന്നും രേഖപ്പെടുത്തിയിട്ടില്ല. ദയവായി വീണ്ടും അയയ്ക്കൂ."
         ),
         "Not saved yet.": "ഇതുവരെ സേവ് ചെയ്തിട്ടില്ല.",
         "I'll ask about this one after the rest.": "ഇതിനെക്കുറിച്ച് ബാക്കി കഴിഞ്ഞ് ചോദിക്കാം.",
@@ -293,8 +293,8 @@ _FIXED_REPLIES: dict[str, dict[str, str]] = {
         ),
         "❌ Discarded. Nothing was recorded.": "❌ रद्द किया। कुछ भी दर्ज नहीं हुआ।",
         "Cancelled. Nothing was recorded.": "रद्द किया। कुछ भी दर्ज नहीं हुआ।",
-        "⚠️ Something went wrong — we'll retry automatically.": (
-            "⚠️ कुछ गड़बड़ हुई — हम अपने आप दोबारा कोशिश करेंगे।"
+        "⚠️ I couldn't save that just now, so nothing was recorded. Please send it again.": (
+            "⚠️ अभी सेव नहीं हो सका, इसलिए कुछ भी दर्ज नहीं हुआ। कृपया फिर से भेजें।"
         ),
         "Not saved yet.": "अभी सेव नहीं हुआ।",
         "I'll ask about this one after the rest.": "इसके बारे में बाकी के बाद पूछूँगा।",

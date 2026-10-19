@@ -40,6 +40,7 @@ from planning.plan_store import PlanStore
 from runtime.activity_query import ActivityQueryService
 from runtime.activity_search_service import ActivitySearchService
 from runtime.ai_outage import (
+    QUICK_RETRY_PAUSE_SECONDS,
     AIUnavailableError,
     is_ai_outage,
     reply_for_attempt,
@@ -259,6 +260,25 @@ async def _with_extra_query_answers(
     )
 
 
+async def _send_with_one_retry(send, *, what: str, correlation_id: str) -> bool:  # type: ignore[no-untyped-def]
+    """Run ``send`` (a document fetch + send); on a failure try once more
+    before giving up, and log every failure with its cause so the team's
+    friction/alert path sees it (request 57, A5). True when it went."""
+    for attempt in (1, 2):
+        try:
+            await send()
+            return True
+        except Exception:  # noqa: BLE001 -- the text reply already went; this must not fail the journey
+            _log.warning(
+                "%s_send_failed correlation_id=%s attempt=%s",
+                what,
+                correlation_id,
+                attempt,
+                exc_info=True,
+            )
+    return False
+
+
 async def process_inbound_message(
     message: NormalizedMessage,
     actor_user_id: str,
@@ -459,6 +479,18 @@ async def process_inbound_message(
     # menu, which reads as Mesiri not understanding what was just said. Say it
     # is queued and raise, so worker.py retries the same message later (see
     # runtime/ai_outage.py). Nothing has been written at this point.
+    if is_ai_outage(understanding):
+        # One quick second try before saying anything (request 57, A5): a
+        # provider blip should cost the sender two seconds, not a "I'll
+        # process this in a few minutes" and a minute's wait. Only the
+        # read-only understanding is repeated; nothing has been written.
+        await asyncio.sleep(QUICK_RETRY_PAUSE_SECONDS)
+        try:
+            understanding = await pipeline.understand(
+                message, semantic_hint=semantic_hint, expense_categories=expense_categories
+            )
+        except Exception:  # noqa: BLE001 -- the outage path below handles it
+            _log.warning("ai.quick_retry_failed correlation_id=%s", correlation_id, exc_info=True)
     if is_ai_outage(understanding):
         attempt = retry_attempt.get()
         outage_text, will_retry = reply_for_attempt(attempt)
@@ -1442,6 +1474,7 @@ async def process_inbound_message(
     # leg's `handled.receipt_coro` branch) -- because ReplySpec has no
     # notion of a binary attachment and adding one there would ripple into
     # every other reply type that doesn't need it.
+    delivery_failed = False
     if (
         workflow_run is not None
         and workflow_run.workflow_key is WorkflowKey.DPR_REQUEST
@@ -1450,21 +1483,20 @@ async def process_inbound_message(
         and send_document is not None
         and object_storage is not None
     ):
-        try:
-            stored = await object_storage.get_object(canonical_event.fields["dpr_object_key"])
-            code = canonical_event.fields.get("dpr_code") or "DPR"
+        code = canonical_event.fields.get("dpr_code") or "DPR"
+        object_key = canonical_event.fields["dpr_object_key"]
+
+        async def _send_dpr() -> None:
+            stored = await object_storage.get_object(object_key)
             await send_document(
-                message.sender.wa_id,
-                stored.data,
-                filename=f"{code}.pdf",
-                caption=None,
+                message.sender.wa_id, stored.data, filename=f"{code}.pdf", caption=None
             )
-        except Exception:  # noqa: BLE001 -- the status text was already sent; a
-            # failed document fetch/send must not fail the whole journey.
-            _log.warning(
-                "dpr_request.document_send_failed correlation_id=%s", correlation_id, exc_info=True
-            )
-            # The status text said a document was coming; say it did not.
+
+        if not await _send_with_one_retry(_send_dpr, what="dpr_request.document", correlation_id=correlation_id):
+            # The status text said a document was coming; say it did not, and
+            # mark the message failed so the friction review sees it (request
+            # 57, A5): never a silent failure.
+            delivery_failed = True
             await _safe(
                 send_text(
                     message.sender.wa_id,
@@ -1489,17 +1521,24 @@ async def process_inbound_message(
         built = _build_query_pdf(workflow_run.workflow_key, canonical_event.fields)
         if built is not None:
             pdf_bytes, filename = built
-            try:
+
+            async def _send_pdf() -> None:
                 await send_document(message.sender.wa_id, pdf_bytes, filename=filename, caption=None)
-            except Exception:  # noqa: BLE001 -- the status text was already sent; a
-                # failed PDF build/send must not fail the whole journey.
-                _log.warning(
-                    "query_pdf.send_failed correlation_id=%s",
-                    correlation_id,
-                    exc_info=True,
+
+            if not await _send_with_one_retry(_send_pdf, what="query_pdf", correlation_id=correlation_id):
+                delivery_failed = True
+                await _safe(
+                    send_text(
+                        message.sender.wa_id,
+                        "I couldn't attach the PDF just now. The answer above is complete; "
+                        "ask again in a minute if you need the file.",
+                    )
                 )
 
-    await _safe(mlog.mark_completed(correlation_id=correlation_id))
+    if delivery_failed:
+        await _safe(mlog.mark_failed(correlation_id=correlation_id, error_code="DELIVERY_FAILED"))
+    else:
+        await _safe(mlog.mark_completed(correlation_id=correlation_id))
 
     if memory_coordinator is not None:
         user_text = understanding.transcript or understanding.normalized_text or ""

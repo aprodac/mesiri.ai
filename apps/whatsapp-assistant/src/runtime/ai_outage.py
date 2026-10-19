@@ -29,6 +29,11 @@ from mesiri_contracts.common.errors import ErrorCode
 #: Matches worker.WorkerSettings.max_tries (worker.py reads it from here).
 MAX_ATTEMPTS = 3
 
+#: The pause before the one immediate second try, so a provider blip never
+#: reaches the sender (request 57, A5); only if that also fails is "I'll
+#: process this in a few minutes" said.
+QUICK_RETRY_PAUSE_SECONDS = 1.5
+
 #: Seconds an ARQ retry waits per attempt already made (60s, then 120s).
 RETRY_DEFER_STEP_SECONDS = 60
 
