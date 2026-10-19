@@ -31,8 +31,25 @@ for f in /etc/cron.d/*; do [ -f "$f" ] && { echo "--- $f"; grep -v '^#' "$f" | g
 section "Listening ports"
 ss -tlnp
 
-section "Databases"
-sudo -u postgres psql -At -c "SELECT datname, pg_size_pretty(pg_database_size(datname)) FROM pg_database WHERE NOT datistemplate ORDER BY 1"
+section "Containers"
+docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}' 2>&1
+
+# Postgres runs in Docker on this VPS (no host postgres user): run psql inside the container that publishes the
+# app's MESIRI_POSTGRES__PORT, with the app's own login. The password goes in the environment, never on screen.
+DB_NAME="$(env_val MESIRI_POSTGRES__DB)"; DB_NAME="${DB_NAME:-$(env_val MESIRI_POSTGRES__DATABASE)}"; DB_NAME="${DB_NAME:-mesiri}"
+DB_USER="$(env_val MESIRI_POSTGRES__USER)"; DB_PORT="$(env_val MESIRI_POSTGRES__PORT)"
+PG_CONTAINER="$(docker ps --filter "publish=${DB_PORT:-5432}" --format '{{.Names}}' 2>/dev/null | head -1)"
+psql_app() {
+  if [ -n "${PG_CONTAINER}" ]; then
+    docker exec -e PGPASSWORD="$(env_val MESIRI_POSTGRES__PASSWORD)" "${PG_CONTAINER}" psql -U "${DB_USER:-postgres}" -d "${DB_NAME}" "$@"
+  else
+    sudo -u postgres psql -d "${DB_NAME}" "$@"
+  fi
+}
+
+section "Databases (container: ${PG_CONTAINER:-none found}, database ${DB_NAME})"
+psql_app -At -c "SELECT datname, pg_size_pretty(pg_database_size(datname)) FROM pg_database WHERE NOT datistemplate ORDER BY 1"
+psql_app -At -c "SELECT 'alembic head: ' || version_num FROM alembic_version"
 
 section "Backups"
 ls -la /var/backups/mesiri 2>&1 | tail -20
@@ -60,12 +77,11 @@ section "Running app"
 APP_PORT="$(env_val MESIRI_APP_PORT)"; curl -s -m 10 "http://127.0.0.1:${APP_PORT:-8000}/health"; echo
 
 section "Platform-admin accounts (BE-30): role ADMIN with no company"
-DB_NAME="$(env_val MESIRI_POSTGRES__DATABASE)"; DB_NAME="${DB_NAME:-mesiri}"
-sudo -u postgres psql -d "${DB_NAME}" -c \
+psql_app -c \
   "SELECT id, email, status, created_at FROM users WHERE role = 'ADMIN' AND organization_id IS NULL ORDER BY created_at"
 
 section "WhatsApp numbers held by more than one user (BE-04): migration 0483 stops if any"
-sudo -u postgres psql -d "${DB_NAME}" -c \
+psql_app -c \
   "SELECT regexp_replace(whatsapp_number, '\\D', '', 'g') AS digits, count(*) AS users FROM users WHERE whatsapp_number IS NOT NULL AND regexp_replace(whatsapp_number, '\\D', '', 'g') <> '' GROUP BY 1 HAVING count(*) > 1"
 
 section "Done"
