@@ -66,3 +66,33 @@ export function missingText(site: SiteDayItem): string | null {
 export function siteDayPath(siteId: string, date: string): string {
   return `/today/sites/${siteId}/${date}`
 }
+
+/** The page for one project's day: every site and the project DPR (WEB-05). */
+export function projectDayPath(projectId: string, date: string): string {
+  return `/today/projects/${projectId}/${date}`
+}
+
+export function longDate(iso: string): string {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString([], {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+export function dateTime(iso: string | null): string {
+  if (!iso) return ''
+  return new Date(iso).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+}
+
+export function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`
+}
+
+/** "40.000" -> "40", "12.50" -> "12.5": quantities arrive as stored decimals. */
+export function qty(value: string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '—'
+  const n = Number(value)
+  return Number.isFinite(n) ? n.toLocaleString(undefined, { maximumFractionDigits: 3 }) : value
+}

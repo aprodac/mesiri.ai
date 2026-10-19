@@ -4,6 +4,7 @@ Mounted at /dpr so:
   GET   /dpr/site-days?date=YYYY-MM-DD     every active site's working day (BE-08)
   PATCH /dpr/site-days/{site_id}/conditions?date=  weather, hours lost, site working, plan (BE-14)
   POST  /dpr/projects/{project_id}/send    "Send now": project DPR out on the next tick (BE-16)
+  GET   /dpr/projects/{project_id}/day?date=  the project DPR page: sites, roll-up, versions (WEB-05)
   GET   /dpr/projects/{project_id}/recipients               who gets the project DPR (BE-15)
   POST  /dpr/projects/{project_id}/recipients               add a user or outside contact
   DELETE /dpr/projects/{project_id}/recipients/{id}         remove one
@@ -348,6 +349,88 @@ async def send_project_dpr_now(
     if report_date is None:
         raise HTTPException(status_code=404, detail="Project not found")
     return {"status": "queued", "report_date": report_date.isoformat()}
+
+
+@router.get("/projects/{project_id}/day")
+async def get_project_day(
+    project_id: uuid.UUID,
+    report_date: datetime.date = Query(alias="date"),
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """One project's day, for the project DPR page (WEB-05): the project's
+    DPR status (as the Today page shows it), each site's day, and the
+    project DPR itself -- as it was sent once it has gone out
+    (`report_source: "sent"`), otherwise a preview of what would go out now,
+    built from the sites confirmed so far (`"preview"`, writes nothing).
+    Plus the project report's versions."""
+    _, denied = _resolve_project_ids(auth_context, project_id)
+    if denied:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    repo = PostgresDprRepository(conn)
+    projects = await repo.list_project_days(
+        organization_id=auth_context.organization_id,
+        project_ids={project_id},
+        report_date=report_date,
+    )
+    if not projects:
+        raise HTTPException(status_code=404, detail="Project not found")
+    project = projects[0]
+
+    sites = await repo.list_site_days(
+        organization_id=auth_context.organization_id,
+        project_ids={project_id},
+        report_date=report_date,
+    )
+    drafts = await PostgresFactReviewRepository(conn).draft_counts_by_site(
+        organization_id=auth_context.organization_id, report_date=report_date
+    )
+    for site in sites:
+        site["drafts"] = drafts.get(site["site_id"], 0)
+
+    # The cutoff already builds a draft roll-up, so only a frozen one (made
+    # ready to send, then sent) is what went out; until then it is previewed.
+    report_id = project.get("project_report_id")
+    report = (
+        await repo.get_current_payload(
+            organization_id=auth_context.organization_id, report_id=report_id
+        )
+        if report_id and project.get("project_report_status") in ("approved", "published")
+        else None
+    )
+    source = "sent"
+    if report is None:
+        source = "preview"
+        report, _ = await repo.assemble_project_report_payload(
+            organization_id=auth_context.organization_id,
+            project_id=project_id,
+            report_date=report_date,
+            preview=True,
+        )
+    # Only versions that went out (approved): the cutoff's draft roll-up was
+    # built before the sites were confirmed, so its PDF carries figures that
+    # were never sent.
+    versions = (
+        [
+            v
+            for v in await repo.list_versions(
+                organization_id=auth_context.organization_id, report_id=report_id
+            )
+            if v["approved_at"]
+        ]
+        if report_id and source == "sent"
+        else []
+    )
+    return {
+        "date": report_date.isoformat(),
+        "project_id": str(project_id),
+        "project": project,
+        "sites": sites,
+        "report": report,
+        "report_source": source,
+        "versions": versions,
+    }
 
 
 # ---------------------------------------------------------------------------

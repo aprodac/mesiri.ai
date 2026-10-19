@@ -838,6 +838,7 @@ class PostgresDprRepository:
         organization_id: uuid.UUID,
         project_id: uuid.UUID,
         report_date: datetime.date,
+        preview: bool = False,
     ) -> tuple[dict[str, Any], list[tuple[uuid.UUID, uuid.UUID | None]]]:
         """Compose one PROJECT-level DPR payload from each of its active
         sites' own APPROVED/PUBLISHED SITE-level version (ADR-D9/P8) --
@@ -860,6 +861,10 @@ class PostgresDprRepository:
         persists via `record_project_sources` once `create_version` (or
         `revise_version`) has minted a real `project_version_id` to attach
         them to.
+
+        `preview=True` (WEB-05, the project DPR page before it is sent) writes
+        nothing: a site with no report row yet is simply not reported, and
+        `sources` only lists sites that already have a row.
         """
         project_row = (
             await self._conn.execute(
@@ -885,12 +890,24 @@ class PostgresDprRepository:
         sources: list[tuple[uuid.UUID, uuid.UUID | None]] = []
 
         for site_row in site_rows:
-            site_daily_report_id = await self.get_or_create_daily_report(
-                organization_id=organization_id,
-                project_id=project_id,
-                site_id=site_row["id"],
-                report_date=report_date,
-            )
+            if preview:
+                found = await self.find_site_report(
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    site_id=site_row["id"],
+                    report_date=report_date,
+                )
+                if found is None:
+                    site_payloads.append((site_row["name"], None))
+                    continue
+                site_daily_report_id = found["id"]
+            else:
+                site_daily_report_id = await self.get_or_create_daily_report(
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    site_id=site_row["id"],
+                    report_date=report_date,
+                )
             report_row = (
                 await self._conn.execute(
                     text("SELECT status, current_version_id FROM daily_reports WHERE id = :id"),
@@ -1502,6 +1519,33 @@ class PostgresDprRepository:
             "version_no": version_no,
             "supersedes_version_id": report_row["current_version_id"],
         }
+
+    async def get_current_payload(
+        self, *, organization_id: uuid.UUID, report_id: uuid.UUID
+    ) -> dict[str, Any] | None:
+        """The payload of a report's current version, or None when it has
+        none yet (WEB-05: the project DPR as it was sent)."""
+        row = (
+            await self._conn.execute(
+                text(
+                    """
+                    SELECT v.payload
+                    FROM daily_reports dr
+                    JOIN daily_report_versions v ON v.id = dr.current_version_id
+                    WHERE dr.organization_id = :org_id AND dr.id = :id
+                    """
+                ),
+                {"org_id": organization_id, "id": report_id},
+            )
+        ).mappings().first()
+        if row is None:
+            return None
+        payload = row["payload"]
+        if isinstance(payload, str):
+            import json
+
+            payload = json.loads(payload)
+        return payload
 
     async def list_versions(
         self, *, organization_id: uuid.UUID, report_id: uuid.UUID

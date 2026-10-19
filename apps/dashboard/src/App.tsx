@@ -6,6 +6,7 @@ import Signup from '@/pages/Signup'
 import Overview from '@/pages/Overview'
 import TodayPage from '@/pages/TodayPage'
 import SiteDayPage from '@/pages/SiteDayPage'
+import ProjectDayPage from '@/pages/ProjectDayPage'
 import Users from '@/pages/Users'
 import UserDetails from '@/pages/UserDetails'
 import CompanyDetails from '@/pages/CompanyDetails'
@@ -69,6 +70,7 @@ export default function App() {
         <Route index element={<IndexRedirect />} />
         <Route path="today" element={<TodayPage />} />
         <Route path="today/sites/:siteId/:date" element={<SiteDayPage />} />
+        <Route path="today/projects/:projectId/:date" element={<ProjectDayPage />} />
         <Route path="overview" element={<Overview />} />
         <Route path="whatsapp/inbox" element={<WhatsAppInboxPage />} />
         <Route path="users" element={<Users />} />

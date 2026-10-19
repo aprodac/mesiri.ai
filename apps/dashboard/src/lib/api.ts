@@ -1948,6 +1948,60 @@ export async function fetchSiteDayApi(siteId: string, date: string): Promise<Sit
   return res.data
 }
 
+// ─── One project's day, for the project DPR page (WEB-05) ───────────────────
+
+/** One site's line in the project DPR: `reported` false = "Not reported". */
+export interface ProjectReportSite {
+  site_name: string | null
+  reported: boolean
+  activity_count: number
+  open_issue_count: number
+  headcount: number
+  labour_cost: string
+  stock_flags: number
+  possible_duplicates: number
+}
+
+/** The PROJECT payload: a roll-up of the confirmed site DPRs (BE-16). */
+export interface ProjectReport {
+  level: 'PROJECT'
+  project_name: string | null
+  report_date: string
+  sites: ProjectReportSite[]
+  reported_site_count: number
+  total_site_count: number
+  activity_count: number
+  open_issue_count: number
+  evidence_count: number
+  issues: {
+    site_name: string | null
+    issue_type: string | null
+    severity: string | null
+    narrative: string | null
+    status: string | null
+  }[]
+  stock_flags: number
+  possible_duplicates: number
+  labour: { headcount: number; total_cost: string }
+  materials: { material_name: string | null; unit: string | null; received: string; used: string }[]
+}
+
+export interface ProjectDayDetail {
+  date: string
+  project_id: string
+  project: ProjectDayItem
+  sites: SiteDayItem[]
+  report: ProjectReport
+  /** "sent": the DPR as it went out; "preview": what would go out now. */
+  report_source: 'sent' | 'preview'
+  versions: DprVersion[]
+}
+
+export async function fetchProjectDayApi(projectId: string, date: string): Promise<ProjectDayDetail> {
+  const res = await api.get<ProjectDayDetail>(`/dpr/projects/${projectId}/day`, { params: { date } })
+  return res.data
+}
+
 export interface FactSources {
   messages: {
     id: string

@@ -26,6 +26,7 @@ import {
   hasUpdates,
   localIsoDate,
   missingText,
+  projectDayPath,
   siteDayPath,
   siteStatus,
 } from '@/lib/site-day'
@@ -320,7 +321,11 @@ export default function TodayPage() {
               <div key={project.project_id} className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <h2 className="text-lg font-bold">{project.project_name}</h2>
+                    <h2 className="text-lg font-bold">
+                      <Link to={projectDayPath(project.project_id, date)} className="hover:underline">
+                        {project.project_name}
+                      </Link>
+                    </h2>
                     <span className="text-sm text-muted-foreground">
                       {singleSite
                         ? 'Single-site project · its site DPR is the project DPR'
@@ -328,6 +333,9 @@ export default function TodayPage() {
                     </span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
+                    <Button asChild variant="ghost" size="sm" className="h-9 font-semibold">
+                      <Link to={projectDayPath(project.project_id, date)}>Project DPR</Link>
+                    </Button>
                     <span className={cn(CHIP, project.sent ? 'bg-success-soft text-success' : 'bg-muted text-muted-foreground')}>
                       {projectDprLabel(project, projectSites)}
                     </span>

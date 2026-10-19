@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Check, FileText, MessageSquareText, Pencil, Trash2 } from 'lucide-react'
+import { ArrowLeft, Check, MessageSquareText, Pencil, Trash2 } from 'lucide-react'
 import {
   approveDailyReportApi,
   confirmFactApi,
@@ -16,10 +16,21 @@ import {
   type SiteDayConditions,
   type SiteDayDetail,
 } from '@/lib/api'
-import { CHIP, FROZEN, errorDetail, missingText, siteStatus } from '@/lib/site-day'
+import {
+  CHIP,
+  FROZEN,
+  dateTime,
+  errorDetail,
+  longDate,
+  missingText,
+  plural,
+  qty,
+  siteStatus,
+} from '@/lib/site-day'
 import { useReadOnly } from '@/lib/trial'
 import { cn, formatClock } from '@/lib/utils'
 import { useToast } from '@/components/ui/toast-notification'
+import { DprVersionsCard } from '@/components/dpr-versions-card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -73,31 +84,6 @@ const WORKING: { value: NonNullable<SiteDayConditions['site_working']>; label: s
   { value: 'half', label: 'Half day' },
   { value: 'none', label: 'No work' },
 ]
-
-function longDate(iso: string): string {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString([], {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
-}
-
-function dateTime(iso: string | null): string {
-  if (!iso) return ''
-  return new Date(iso).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
-}
-
-function plural(n: number, word: string): string {
-  return `${n} ${word}${n === 1 ? '' : 's'}`
-}
-
-/** "40.000" -> "40", "12.50" -> "12.5": quantities arrive as stored decimals. */
-function qty(value: string | null | undefined): string {
-  if (value === null || value === undefined || value === '') return '—'
-  const n = Number(value)
-  return Number.isFinite(n) ? n.toLocaleString(undefined, { maximumFractionDigits: 3 }) : value
-}
 
 function humanize(value: string | null | undefined): string {
   if (!value) return ''
@@ -558,51 +544,6 @@ function ConditionsCard({
   )
 }
 
-function VersionsCard({
-  reportId,
-  versions,
-  onPdf,
-}: {
-  reportId: string | null
-  versions: DprVersion[]
-  onPdf: (version: DprVersion) => void
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Versions</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {!reportId || versions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">The report is built at the project's cutoff time.</p>
-        ) : (
-          <ul className="flex flex-col divide-y">
-            {versions.map((v) => (
-              <li key={v.id} className="flex items-center justify-between gap-2 py-2">
-                <div className="flex min-w-0 flex-col">
-                  <span className="text-sm font-semibold">
-                    Version {v.version_no}
-                    {v.is_current && <span className="ml-2 text-xs font-normal text-muted-foreground">current</span>}
-                  </span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    {v.approved_at
-                      ? `Approved${v.approved_by ? ` by ${v.approved_by}` : ''} · ${dateTime(v.approved_at)}`
-                      : dateTime(v.created_at)}
-                    {v.revision_reason ? ` · ${v.revision_reason}` : ''}
-                  </span>
-                </div>
-                <Button variant="ghost" size="sm" onClick={() => onPdf(v)}>
-                  <FileText /> PDF
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function SiteDayPage() {
@@ -800,7 +741,7 @@ export default function SiteDayPage() {
             run(() => setSiteDayConditionsApi(siteId, date, changes), ['Saved', "The day's conditions are saved."], 'Could not save')
           }
         />
-        <VersionsCard reportId={reportId} versions={detail.versions} onPdf={openPdf} />
+        <DprVersionsCard reportId={reportId} versions={detail.versions} onPdf={openPdf} />
       </div>
 
       <SourcesSheet item={sourcesFor} onClose={() => setSourcesFor(null)} />
