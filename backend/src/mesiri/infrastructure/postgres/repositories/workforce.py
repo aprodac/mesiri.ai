@@ -186,6 +186,65 @@ def live_report_sql(alias: str) -> str:
     return LIVE_REPORT_SQL.format(alias=alias)
 
 
+#: BE-10: labour is a snapshot per site and day -- the latest figure replaces
+#: an earlier one. A line stops counting when a *later* live report for the
+#: same site and day carries a line with the same key:
+#:
+#: - a named worker (register id or name) is one person: their latest line
+#:   for the day is the one that counts, so "Raju" sent twice is one man-day;
+#: - a plain headcount ("10 masons", "Ravi: 12 helpers") is keyed by
+#:   contractor + trade, so 10 then 12 Ravi masons is 12, not 22, while a
+#:   different contractor or trade still adds on top.
+#:
+#: Contractor, trade and name compare trimmed and case-insensitive, the same
+#: way `_group_expressions` buckets them. Nothing is deleted or rewritten
+#: (P5): the earlier line stays readable, it just no longer feeds a total.
+#: Applies on top of `LIVE_REPORT_SQL`, never instead of it -- a superseded or
+#: voided report neither counts nor replaces anything.
+#:
+#: `{line}` / `{report}` are the lines and reports aliases in the caller's
+#: query; the line must belong to that report.
+COUNTED_LINE_SQL = (
+    "NOT EXISTS ("
+    "    SELECT 1 FROM labour_attendance_lines later_line"
+    "    JOIN labour_attendance_reports later_report"
+    "      ON later_report.id = later_line.report_id"
+    "    WHERE later_report.organization_id = {report}.organization_id"
+    "      AND later_report.project_id = {report}.project_id"
+    "      AND later_report.site_id IS NOT DISTINCT FROM {report}.site_id"
+    "      AND later_report.occurred_date = {report}.occurred_date"
+    "      AND (later_report.created_at, later_report.id)"
+    "          > ({report}.created_at, {report}.id)"
+    "      AND later_report.voided_at IS NULL"
+    "      AND later_report.id NOT IN ("
+    "          SELECT corrects_report_id FROM labour_attendance_reports"
+    "          WHERE corrects_report_id IS NOT NULL)"
+    "      AND ("
+    "        ({line}.worker_id IS NOT NULL AND later_line.worker_id = {line}.worker_id)"
+    "        OR (NULLIF(btrim({line}.worker_name), '') IS NOT NULL"
+    "            AND lower(btrim(later_line.worker_name)) = lower(btrim({line}.worker_name)))"
+    "        OR ({line}.worker_id IS NULL AND NULLIF(btrim({line}.worker_name), '') IS NULL"
+    "            AND later_line.worker_id IS NULL"
+    "            AND NULLIF(btrim(later_line.worker_name), '') IS NULL"
+    "            AND lower(btrim(COALESCE(later_line.contractor, '')))"
+    "                = lower(btrim(COALESCE({line}.contractor, '')))"
+    "            AND lower(btrim(COALESCE(later_line.trade, '')))"
+    "                = lower(btrim(COALESCE({line}.trade, ''))))"
+    "      )"
+    ")"
+)
+
+
+def counted_line_sql(line: str, report: str) -> str:
+    """`COUNTED_LINE_SQL` bound to one query's line and report aliases."""
+    return COUNTED_LINE_SQL.format(line=line, report=report)
+
+
+def _counted_line_clause():
+    """`COUNTED_LINE_SQL` for this module's unaliased Core tables."""
+    return sa.text(counted_line_sql("labour_attendance_lines", "labour_attendance_reports"))
+
+
 #: Grouping key -> the SQL expression attendance is bucketed by, and the
 #: expression that names the bucket for display. Trades and contractors are
 #: grouped case-insensitively on a trimmed value so "Mason" and "mason " are
@@ -449,6 +508,9 @@ class PostgresWorkforceReadRepository:
             conditions.append(_labour_attendance_reports.c.occurred_date >= date_from)
         if date_to is not None:
             conditions.append(_labour_attendance_reports.c.occurred_date <= date_to)
+        if not include_superseded:
+            # BE-10: a figure re-sent later the same day replaces this one.
+            conditions.append(_counted_line_clause())
         if group_by == "worker":
             # Headcount groups ("10 masons") have no identity to attribute a
             # day to. They still count toward every cost and man-day total in
@@ -544,6 +606,8 @@ class PostgresWorkforceReadRepository:
         conditions = [
             _labour_attendance_reports.c.organization_id == organization_id,
             _labour_attendance_reports.c.id.notin_(_superseded_report_ids()),
+            # BE-10: the same person sent twice for one site-day is one day.
+            _counted_line_clause(),
             sa.or_(
                 _labour_attendance_lines.c.worker_id.isnot(None),
                 _labour_attendance_lines.c.worker_name.isnot(None),

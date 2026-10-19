@@ -214,6 +214,16 @@ class InteractionHandler:
             )
             if over_stock:
                 note = f"{over_stock}\n{note}"
+            # BE-10: a labour re-send replaced earlier figures for the day.
+            from runtime.save_first import snapshot_note
+
+            replaced = snapshot_note(
+                confirmed_draft.action_type,
+                confirmed_draft.fields.get("lines"),
+                (loaded.state.collected_fields or {}).get("day_counted_lines"),
+            )
+            if replaced:
+                note = f"{replaced}\n{note}"
             reply_text = f"{reply_text}\n\n{note}"
         logger.info(
             "save_first.saved user=%s key=%s status=%s",

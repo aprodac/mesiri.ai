@@ -420,3 +420,42 @@ def test_over_stock_note_only_for_usage_beyond_stock():
     assert over_stock_note(usage, 70, "bags", None) is None
     assert over_stock_note(usage, "lots", "bags", 50) is None
     assert over_stock_note(_T.RECORD_MATERIAL_RECEIPT, 70, "bags", 50) is None
+
+
+def test_snapshot_note_says_which_figures_a_resend_replaced():
+    """BE-10: labour is the latest figure per contractor + trade (or per
+    named worker) for the day, and the saved reply says what changed."""
+    from mesiri_contracts.assistant.draft_action import DraftActionType as _T
+    from runtime.save_first import snapshot_note
+
+    labour = _T.RECORD_LABOUR_ATTENDANCE
+    day = [
+        {"contractor": "Ravi", "trade": "mason", "headcount": 10},
+        {"contractor": "Kumar", "trade": "helper", "headcount": 5},
+        {"worker_name": "Raju", "trade": "mason", "headcount": 1},
+    ]
+    sent = [
+        {"contractor": "ravi ", "trade": "Mason", "headcount": 12},
+        {"contractor": "Kumar", "trade": "painter", "headcount": 2},
+        {"worker_name": "raju", "trade": "mason"},
+    ]
+    assert snapshot_note(labour, sent, day) == (
+        "Updated today's figures: ravi Mason 10 → 12. "
+        "Already recorded today, counted once: raju."
+    )
+    # The same figure again is counted once, and said so.
+    assert snapshot_note(labour, [day[1]], day) == (
+        "Already recorded today, counted once: Kumar helper 5."
+    )
+    # A new crew or trade replaces nothing.
+    assert snapshot_note(labour, [sent[1]], day) is None
+    # A named worker never replaces a headcount, nor the other way round.
+    assert snapshot_note(labour, [{"worker_name": "Ravi", "trade": "mason"}], day) is None
+    # A register id matches even when the spelling differs.
+    by_id = [{"worker_id": "w1", "worker_name": "Raju K", "headcount": 1}]
+    assert snapshot_note(labour, [{"worker_id": "w1", "worker_name": "Rajkumar"}], by_id) == (
+        "Already recorded today, counted once: Rajkumar."
+    )
+    # Nothing on record, or not labour: no note.
+    assert snapshot_note(labour, sent, None) is None
+    assert snapshot_note(_T.RECORD_MATERIAL_USAGE, sent, day) is None

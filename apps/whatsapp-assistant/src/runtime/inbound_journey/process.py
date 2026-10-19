@@ -857,7 +857,11 @@ async def process_inbound_message(
                             canonical_event, planner_decision, workforce_query, actor
                         ),
                         _seed_existing_attendance(
-                            canonical_event, planner_decision, workforce_query, actor
+                            canonical_event,
+                            planner_decision,
+                            workforce_query,
+                            actor,
+                            org_settings_query=org_settings_query,
                         ),
                         _seed_duplicate_check(
                             canonical_event, planner_decision, duplicate_expense_query, actor

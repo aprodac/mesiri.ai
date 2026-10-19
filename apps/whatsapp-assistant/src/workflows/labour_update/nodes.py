@@ -486,8 +486,9 @@ def match_workers(state: WorkflowGraphState) -> dict:
 #: `existing_report` and `duplicate_day_answered` are how check_duplicate_day
 #: kept its place across passes -- the command needs only the answer itself
 #: (`corrects_report_id`), not the bookkeeping that produced it.
+#: `day_counted_lines` (BE-10) is read by the save-first reply, never stored.
 _INTERNAL_FIELD_KEYS = frozenset(
-    {"worker_candidates", "existing_report", "duplicate_day_answered"}
+    {"worker_candidates", "existing_report", "duplicate_day_answered", "day_counted_lines"}
 )
 
 

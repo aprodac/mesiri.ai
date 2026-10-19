@@ -112,8 +112,9 @@ class WorkforceQueryService(Protocol):
 
         Returns report_id, total_headcount, total_cost and line_count so the
         supervisor can be told what is already on record before deciding
-        whether this new report replaces it. None -- the ordinary case -- means
-        the day is clear.
+        whether this new report replaces it, plus `counted_lines` (BE-10: the
+        lines the day counts right now, across every live report). None --
+        the ordinary case -- means the day is clear.
         """
         ...
 
@@ -421,11 +422,47 @@ class PostgresWorkforceQueryService:
                 )
             ).first()
 
+            # BE-10: what the day counts right now, across every live report,
+            # so a save-first reply can say which figures a re-send replaced.
+            # Uses the backend's own rule so this cannot drift from the totals.
+            from mesiri.infrastructure.postgres.repositories.workforce import (
+                counted_line_sql,
+                live_report_sql,
+            )
+
+            counted = (
+                await conn.execute(
+                    sa.text(
+                        "SELECT lal.worker_id, lal.worker_name, lal.contractor, lal.trade, "
+                        "       lal.headcount "
+                        "FROM labour_attendance_lines lal "
+                        "JOIN labour_attendance_reports lar ON lar.id = lal.report_id "
+                        "WHERE lar.organization_id = :org_id "
+                        "  AND lar.project_id = :project_id "
+                        f"  AND lar.{site_clause} "
+                        "  AND lar.occurred_date = :occurred_date "
+                        f"  AND {live_report_sql('lar')} "
+                        f"  AND {counted_line_sql('lal', 'lar')}"
+                    ),
+                    params,
+                )
+            ).mappings().all()
+
         return {
             "report_id": str(report_uuid),
             "line_count": int(totals[0] or 0) if totals else 0,
             "total_headcount": int(totals[1] or 0) if totals else 0,
             "total_cost": str(totals[2] or "0") if totals else "0",
+            "counted_lines": [
+                {
+                    "worker_id": str(row["worker_id"]) if row["worker_id"] else None,
+                    "worker_name": row["worker_name"],
+                    "contractor": row["contractor"],
+                    "trade": row["trade"],
+                    "headcount": row["headcount"],
+                }
+                for row in counted
+            ],
         }
 
     async def attach_team_photo(

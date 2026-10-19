@@ -146,6 +146,90 @@ def over_stock_note(
     return OVER_STOCK_NOTE.format(available=f"{available:g}{unit_text}")
 
 
+def _norm(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def _replaces(new: dict[str, Any], old: dict[str, Any]) -> bool:
+    """Whether `new`, sent later the same site-day, replaces `old` -- the
+    backend's COUNTED_LINE_SQL rule (repositories/workforce.py), in Python."""
+    if old.get("worker_id") and str(new.get("worker_id") or "") == str(old["worker_id"]):
+        return True
+    if _norm(old.get("worker_name")):
+        return _norm(new.get("worker_name")) == _norm(old.get("worker_name"))
+    if old.get("worker_id"):
+        return False
+    return (
+        not new.get("worker_id")
+        and not _norm(new.get("worker_name"))
+        and _norm(new.get("contractor")) == _norm(old.get("contractor"))
+        and _norm(new.get("trade")) == _norm(old.get("trade"))
+    )
+
+
+def _headcount(line: dict[str, Any]) -> int:
+    try:
+        return int(line.get("headcount") or 1)
+    except (TypeError, ValueError):
+        return 1
+
+
+def snapshot_note(
+    action_type: DraftActionType, new_lines: Any, day_lines: Any
+) -> str | None:
+    """BE-10: the line saying which of today's figures a re-send replaced
+    ("Ravi mason 10 → 12"), or None when it replaced nothing. Labour is the
+    latest figure per contractor + trade (or per named worker) for the day,
+    so the supervisor is told instead of asked."""
+    if action_type is not DraftActionType.RECORD_LABOUR_ATTENDANCE:
+        return None
+    if not isinstance(new_lines, list) or not isinstance(day_lines, list):
+        return None
+    new = [line for line in new_lines if isinstance(line, dict)]
+    old = [line for line in day_lines if isinstance(line, dict)]
+
+    # One entry per thing a person would name: a worker, or contractor + trade.
+    groups: dict[tuple[str, ...], list[dict[str, Any]]] = {}
+    for line in new:
+        if line.get("worker_id") or _norm(line.get("worker_name")):
+            key = ("worker", str(line.get("worker_id") or _norm(line.get("worker_name"))))
+        else:
+            key = ("crew", _norm(line.get("contractor")), _norm(line.get("trade")))
+        groups.setdefault(key, []).append(line)
+
+    changed: list[str] = []
+    repeated: list[str] = []
+    for key, lines in groups.items():
+        replaced = [o for o in old if any(_replaces(n, o) for n in lines)]
+        if not replaced:
+            continue
+        first = lines[0]
+        if key[0] == "worker":
+            repeated.append(str(first.get("worker_name") or "a worker").strip())
+            continue
+        label = " ".join(
+            part
+            for part in (
+                str(first.get("contractor") or "").strip(),
+                str(first.get("trade") or "").replace("_", " ").strip(),
+            )
+            if part
+        ) or "workers"
+        before = sum(_headcount(o) for o in replaced)
+        after = sum(_headcount(n) for n in lines)
+        if before == after:
+            repeated.append(f"{label} {after}")
+        else:
+            changed.append(f"{label} {before} → {after}")
+
+    parts: list[str] = []
+    if changed:
+        parts.append("Updated today's figures: " + ", ".join(changed) + ".")
+    if repeated:
+        parts.append("Already recorded today, counted once: " + ", ".join(repeated) + ".")
+    return " ".join(parts) or None
+
+
 class SaveFirstService:
     """Never raises into the journey: a failure to record the draft is
     logged and the save itself (already done) stands."""

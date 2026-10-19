@@ -83,6 +83,8 @@ class LabourQueryService:
         """
         import sqlalchemy as sa
 
+        from mesiri.infrastructure.postgres.repositories.workforce import counted_line_sql
+
         try:
             org_id = uuid.UUID(organization_id)
         except (TypeError, ValueError):
@@ -127,6 +129,12 @@ class LabourQueryService:
             reports.c.occurred_date <= end_date,
             reports.c.voided_at.is_(None),
             reports.c.id.notin_(superseded),
+            # BE-10: a figure re-sent later the same day replaces the earlier
+            # one. Unlike the two conditions above, this rule is a correlated
+            # subquery too long to restate safely, so the backend's own text
+            # is used -- it composes here because these Core tables are named,
+            # not aliased.
+            sa.text(counted_line_sql("labour_attendance_lines", "labour_attendance_reports")),
         ]
         # Scoping mirrors expense_query: a null project/site on the caller's
         # context means "don't narrow", not "match rows with a null column".

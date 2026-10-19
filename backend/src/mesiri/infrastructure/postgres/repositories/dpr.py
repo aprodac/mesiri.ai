@@ -504,7 +504,13 @@ class PostgresDprRepository:
         # is shared with that aggregate rather than restated (see
         # repositories/workforce.py's LIVE_REPORT_SQL) so the DPR and the
         # dashboard cannot disagree about what a day cost again.
-        from mesiri.infrastructure.postgres.repositories.workforce import live_report_sql
+        # BE-10: and a figure re-sent later the same day replaces the earlier
+        # one (latest per contractor + trade, or per named worker), so 10 then
+        # 12 masons from one contractor is 12, not 22.
+        from mesiri.infrastructure.postgres.repositories.workforce import (
+            counted_line_sql,
+            live_report_sql,
+        )
 
         labour_query = text(
             f"""
@@ -517,6 +523,7 @@ class PostgresDprRepository:
               AND lar.site_id = :site_id
               AND lar.occurred_date = :report_date
               AND {live_report_sql("lar")}
+              AND {counted_line_sql("lal", "lar")}
             """
         )
         labour_rows = (
@@ -1233,11 +1240,14 @@ class PostgresDprRepository:
 
         Counts are live, not from a version: during the day no version
         exists yet. Workers use the same "live report" rule as the DPR and
-        the labour dashboard (workforce.live_report_sql), so the three can't
-        disagree; a line with no headcount counts as one person, as the DPR
+        the labour dashboard (workforce.live_report_sql, plus BE-10's
+        counted_line_sql), so the three can't disagree; a line with no headcount counts as one person, as the DPR
         does. `open_issues` is everything still open on the site, not only
         today's."""
-        from mesiri.infrastructure.postgres.repositories.workforce import live_report_sql
+        from mesiri.infrastructure.postgres.repositories.workforce import (
+            counted_line_sql,
+            live_report_sql,
+        )
 
         where = ["s.organization_id = :org_id", "s.status = 'active'"]
         params: dict[str, Any] = {"org_id": organization_id, "report_date": report_date}
@@ -1278,6 +1288,7 @@ class PostgresDprRepository:
                         JOIN labour_attendance_reports lar ON lar.id = lal.report_id
                         WHERE lar.organization_id = :org_id AND lar.occurred_date = :report_date
                           AND {live_report_sql("lar")}
+                          AND {counted_line_sql("lal", "lar")}
                         GROUP BY lar.site_id
                     ), issues AS (
                         SELECT site_id, count(*) AS open_issues

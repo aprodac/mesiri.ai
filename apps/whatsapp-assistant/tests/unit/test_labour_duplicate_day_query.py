@@ -154,3 +154,58 @@ async def test_nothing_is_asked_without_a_project():
     event = _Event(project_id=None)
     await _seed_existing_attendance(event, _Decision(), _Never(), _Actor())
     assert "existing_report" not in event.fields
+
+
+# --- BE-10: save-first companies are told, not asked -----------------------
+
+class _Found:
+    async def find_existing_report_for_day(self, **kwargs):
+        return {
+            "report_id": "55555555-5555-4555-8555-555555555555",
+            "total_headcount": 10,
+            "counted_lines": [{"contractor": "Ravi", "trade": "mason", "headcount": 10}],
+        }
+
+
+class _Settings:
+    def __init__(self, mode):
+        self.mode = mode
+
+    async def get(self, *, organization_id, key):
+        return self.mode
+
+
+async def test_a_save_first_company_is_not_asked_and_gets_the_days_lines():
+    """BE-10: labour is the latest figure per contractor + trade, so a
+    save-first company is not asked "replace or separate?". What the day
+    counts so far is seeded for the saved reply to say what changed."""
+    event = _Event()
+    await _seed_existing_attendance(
+        event, _Decision(), _Found(), _Actor(), org_settings_query=_Settings("save_first")
+    )
+    assert "existing_report" not in event.fields
+    assert event.fields["day_counted_lines"] == [
+        {"contractor": "Ravi", "trade": "mason", "headcount": 10}
+    ]
+
+
+async def test_a_confirm_first_company_is_still_asked():
+    event = _Event()
+    await _seed_existing_attendance(
+        event, _Decision(), _Found(), _Actor(), org_settings_query=_Settings("confirm_first")
+    )
+    assert event.fields["existing_report"]["report_id"]
+    assert "day_counted_lines" not in event.fields
+
+
+async def test_an_unreadable_capture_mode_falls_back_to_save_first():
+    class _Broken:
+        async def get(self, **kwargs):
+            raise RuntimeError("settings table unreachable")
+
+    event = _Event()
+    await _seed_existing_attendance(
+        event, _Decision(), _Found(), _Actor(), org_settings_query=_Broken()
+    )
+    assert "existing_report" not in event.fields
+    assert "day_counted_lines" in event.fields

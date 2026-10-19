@@ -1331,6 +1331,7 @@ async def _seed_existing_attendance(
     decision: PlannerDecisionV2,
     workforce_query: WorkforceQueryService | None,
     actor: ActorIdentity | None,
+    org_settings_query: OrganizationSettingsQueryService | None = None,
 ) -> None:
     """Flag that this site and day already has a report, before the graph runs
     (a node must never query a repository itself -- same principle as
@@ -1345,6 +1346,12 @@ async def _seed_existing_attendance(
     Needs a project and a date to ask a meaningful question; without either,
     silence is correct -- "is this a duplicate of something?" cannot be
     answered against an unresolved day.
+
+    BE-10: for a company that saves first, the question is not asked. Labour
+    is a snapshot per site and day (latest per contractor + trade, or per
+    named worker), so a re-send replaces only the figures it repeats and a
+    second crew still adds on. What the day counts so far is seeded as
+    `day_counted_lines` instead, for the saved reply to say what changed.
     """
     if workforce_query is None or actor is None or not actor.organization_id:
         return
@@ -1381,7 +1388,15 @@ async def _seed_existing_attendance(
         return
 
     if existing and existing.get("report_id"):
-        event.fields["existing_report"] = existing
+        try:
+            saves_first = await company_saves_first(org_settings_query, str(actor.organization_id))
+        except Exception:  # noqa: BLE001 -- same reason as above; the default
+            _log.exception("labour.capture_mode_read_failed org=%s", actor.organization_id)
+            saves_first = True
+        if saves_first:
+            event.fields["day_counted_lines"] = existing.get("counted_lines") or []
+        else:
+            event.fields["existing_report"] = existing
 
 
 async def _maybe_trigger_worker_promotion(
