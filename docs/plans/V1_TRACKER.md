@@ -173,7 +173,7 @@
 | SA-02 | Companies list with status (trial / active / expired / suspended, effective), trial days left, signup source and setup progress (has team, has site, first update received, first DPR sent) | S | Must | SS-02 | done (8f9b605) | Claude (session 15 Oct, onboarding, Lane B) | **Done** `1895165` (API: `GET /admin/organizations` adds effective status, trial days left, source, `setup{}`; one read `companies_overview.py` for both routers) + `8f9b605` (Companies page with filters and setup ticks). "Update" = earliest `activities`/`timeline_entries` row; "DPR" = first PUBLISHED daily report **Note (SS-07, 15 Oct):** `companies_overview.SetupProgress` also has `has_logo` and `report_time_set` now, used by the dashboard checklist; the control panel's response is unchanged and could show them |
 | SA-03 | Company page: edit, suspend (export is Later) | M | Must | BE-05 | todo | | |
 | SA-04 | Messages viewer per company, linked to what each message created | M | Must | BE-26 | todo | | Extend the existing Logs screen |
-| SA-05 | Costs view per message, company and day | M | Must | BE-25 | claimed | Claude (session 19 Oct) | |
+| SA-05 | Costs view per message, company and day | M | Must | BE-25 | done | Claude (session 19 Oct) | **Done `0a30da0`.** Control panel → Costs: totals, by company, by Indian day for today/7/30/90 days; one company adds each inbound message's AI cost and each WhatsApp message sent (category, billed, cost). Unpriced calls counted, not treated as free. `GET /admin/costs` (platform admin, read-only), no migration. WhatsApp cost rows have no inbound-message id, so reply costs show under "sent". Checked in Chromium against the local API; company admin 403. Rollback: revert `0a30da0` |
 | SA-06 | Health view (DPR delivery, gap-check replies, WhatsApp number quality) | M | Later | BE-27 | todo | | |
 | SA-07 | Module toggles per company | S | Must | BE-06 | done | Claude (session 13 Oct, foundations) | `d338389`. Modules card on the company Settings tab; not yet clicked through in a browser (needs a platform-admin login on the live control panel) |
 | SA-08 | Audit log viewer | S | Later | BE-05 | todo | | |
@@ -295,3 +295,4 @@ Claude Code as a team member: listens to the team and customer WhatsApp groups, 
 | 2026-10-19 | WA-18 AI provider fallback + outage queue/retry + 19 Oct fixes (work-done narrative, supplier, plain-words text) | `74935aa`, `8e81c31` |
 | 2026-10-19 | WEB-05 project DPR page (preview before sending, the sent DPR after) | `559b613` |
 | 2026-10-19 | WEB-06 Daily Reports history reworked (real figures, one row per report, opens the day pages) | `bae0938` |
+| 2026-10-19 | SA-05 control panel costs view (per company, day, message) | `0a30da0` |

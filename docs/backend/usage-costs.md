@@ -72,6 +72,10 @@ Use `PostgresUsageCostRepository` (`infrastructure/postgres/repositories/usage_c
 - **`usage_for_phone(digits, since=)`:** the same for one phone number: messages sent to it,
   plus the AI calls made while handling its messages. This is for signups, which have no
   company yet (SS-09).
+- **The control panel's Costs page (SA-05)**, `GET /admin/costs`: `cost_totals`, `costs_by_day`
+  (Indian calendar days), `costs_by_company`, and for one company `costs_by_inbound_message`
+  and `whatsapp_messages_sent`. Rows with no price are counted as `unpriced`. WhatsApp rows
+  have no `correlation_id`, so a reply's cost can't be tied to the message that caused it.
 
 **How the company is found:** a row's own `organization_id`, else the company of the inbound
 message with the same `correlation_id`. A message resolved to its company after the AI call
