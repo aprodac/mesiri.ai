@@ -122,6 +122,19 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
 
+      # ── Step 0: staging gate (INF-02, INF-03) ──────────────────────────────
+      # This exact commit on staging first: a fresh copy of production's data,
+      # the migrations run on it, the app started, the smoke test passed.
+      # Any failure stops here and production is never touched. Run from a
+      # file, not stdin, so the script's own commands can't read it.
+      - name: Staging gate
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          scp -i ~/.ssh/deploy_key infra/deploy/staging_deploy.sh "${VPS_USER}@${VPS_HOST}:/tmp/staging_deploy.sh"
+          ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "bash /tmp/staging_deploy.sh ${{ github.sha }}"
+
       # ── Step 1: update code + deps + run migrations + restart ──────────────
       - name: Deploy backend
         env:
@@ -175,6 +188,12 @@ jobs:
             find "${SRC}" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
             find "${SRC}" -name '*.pyc' -delete 2>/dev/null || true
           done
+
+          echo "→ Backing up the database before migrations (INF-04)..."
+          # A restore point for every migration: the code rollback below
+          # cannot undo a schema change. A failed backup stops the deploy
+          # here, before anything has changed.
+          bash "${REPO}/infra/deploy/backup_db.sh" pre-migrate
 
           echo "→ Running database migrations..."
           # From the repo root, not backend/: the settings loader reads `.env`
@@ -328,9 +347,29 @@ jobs:
             exit 1
           fi
 
+          # ── Step 1c: scheduled jobs (INF-05, INF-06) ──────────────────────
+          # Unit files live in the repo and are copied on every deploy, like
+          # the worker's. Nightly DB backup, the timeline projector, and the
+          # DPR PDF render (renders only; sending is the app's own tick).
+          echo "→ Installing/refreshing timers..."
+          for UNIT in mesiri-backup mesiri-timeline mesiri-dpr-render; do
+            cp "${REPO}/infra/${UNIT}.service" "${REPO}/infra/${UNIT}.timer" /etc/systemd/system/
+          done
+          systemctl daemon-reload
+          for UNIT in mesiri-backup mesiri-timeline mesiri-dpr-render; do
+            systemctl enable --now "${UNIT}.timer"
+          done
+          systemctl list-timers --no-pager 'mesiri-*' || true
+
           echo "──────────────────────────────────────────"
           echo "  Backend deploy complete (mesiri + mesiri-worker)"
           echo "──────────────────────────────────────────"
+
+          # ── Step 1d: smoke test (INF-04) ─────────────────────────────────
+          # Beyond "is it up": the deployed build is live, photos go to real
+          # storage, Meta's webhook handshake works, the queue worker ticks.
+          # A failure fails the job (and notifies) without rolling back.
+          bash "${REPO}/infra/deploy/smoke_test.sh" "$(git -C "${REPO}" rev-parse --short HEAD)" "http://127.0.0.1:${APP_PORT}"
           ENDSSH
 
       # ── Step 2: sync static frontend ───────────────────────────────────────

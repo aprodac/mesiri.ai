@@ -32,16 +32,25 @@ GitHub Actions: deploy.yml
     ├── Build control-panel (Vite)
     ├── Build dashboard (Vite, VITE_API_URL=https://api.whatsapp.mesiri.ai)
     └── Deploy (only if all above pass)
-            ├── SSH → git pull origin/main
-            ├── uv pip install (Python deps)
+            ├── Staging gate (infra/deploy/staging_deploy.sh, INF-02/03): this commit on
+            │     /opt/mesiri-staging, 127.0.0.1:8101, with a FRESH COPY of prod data
+            │     (database mesiri_staging), migrations, start, smoke test. Staging sends
+            │     no WhatsApp (Graph API → closed port), automations off. Fail = stop.
+            ├── SSH → git reset origin/main, uv pip install
+            ├── backup_db.sh pre-migrate (INF-04) → /var/backups/mesiri
             ├── alembic upgrade head (migrations)
-            ├── systemctl restart mesiri
-            ├── Health check /health
+            ├── systemctl restart mesiri, health check (rollback on failure)
+            ├── mesiri-worker refreshed + checked
+            ├── timers refreshed (INF-05/06): mesiri-backup (nightly 02:15 IST, 14 kept),
+            │     mesiri-timeline (every minute), mesiri-dpr-render (every 15 min)
+            ├── smoke_test.sh (INF-04): build, storage, webhook handshake, worker
             ├── rsync control-panel dist → /var/www/mesiriadmin/
             └── rsync dashboard dist → /var/www/mesiriweb/
 ```
 
-If migrations fail or the health check fails after restart, the deploy step exits with a non-zero code and GitHub marks the deployment as failed. The service is restarted again as a best-effort rollback.
+If staging fails, production is not touched. If the production health check fails after restart, the code is reverted to the previous commit; a schema change is undone from the pre-migrate dump (restore steps at the top of `infra/deploy/backup_db.sh`). A failed smoke test fails the job without rolling back.
+
+**Ops without SSH (Claude Code, TM-12):** the manual workflow `.github/workflows/claude-ops.yml` runs `vps-check`, `vps-backup-now`, `vps-staging`, `vps-smoke` and the bot test chat with the secrets that stay in GitHub.
 
 ---
 
