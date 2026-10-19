@@ -41,7 +41,7 @@ from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
 from mesiri_contracts.common.ids import new_id
 
 from ..readable import field_lines
-from ..slots import SlotCandidate, match_slot_answer, slot_options
+from ..slots import RETRY_PREFIX, SlotCandidate, match_slot_answer, slot_options
 from ..state import WorkflowGraphState
 from .matching import ActivityCandidate, MatchOutcome
 from .matching import resolve_target as score_open_activities
@@ -168,7 +168,7 @@ def resolve_target(state: WorkflowGraphState) -> dict:
                 "collected_fields": fields,
                 "awaiting_slot": _TARGET_SLOT_NAME,
                 "awaiting_slot_options": slot_options(options),
-                "pending_prompt": f"Sorry, I didn't catch that.\n\n{_build_target_prompt(candidates)}",
+                "pending_prompt": f"{RETRY_PREFIX}\n\n{_build_target_prompt(candidates)}",
             }
         if matched == NEW_ACTIVITY_SENTINEL:
             fields["_target_resolved"] = True

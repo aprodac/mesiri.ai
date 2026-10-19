@@ -457,6 +457,20 @@ def build_message_handlers(
         except Exception:  # noqa: BLE001 -- never blocks the reply
             _log.warning("reaction.failed wa_id=%s", wa_id)
 
+    async def _in_sender_language(spec, user_id: str):  # type: ignore[no-untyped-def]
+        """``spec`` with its fixed wording and button titles in the language
+        this sender last spoke (request [51]); unchanged when unknown. Wording
+        never costs the reply."""
+        if user_language_store is None:
+            return spec
+        try:
+            from runtime.reply_language import localize_reply_spec
+
+            return localize_reply_spec(spec, await user_language_store.get(user_id=user_id))
+        except Exception:  # noqa: BLE001
+            _log.exception("reply.localize_failed user=%s", user_id)
+            return spec
+
     async def _send_composed(  # type: ignore[no-untyped-def]
         wa_id: str, user_id: str, spec, *, header_image: bytes | None = None
     ) -> None:
@@ -465,6 +479,7 @@ def build_message_handlers(
         button message, or the image right after a text-only reply."""
         if header_image is not None:
             spec = dataclasses.replace(spec, header_image=header_image)
+        spec = await _in_sender_language(spec, user_id)
         await send_reply_spec(
             spec,
             wa_id,
@@ -479,6 +494,20 @@ def build_message_handlers(
                 await offered_choices_store.remember(user_id=user_id, rows=options)
             except Exception:  # noqa: BLE001
                 _log.warning("offered_choices.remember_failed user=%s", user_id)
+
+    async def _after_question_closed(closed, ctx, wa_id: str) -> None:  # type: ignore[no-untyped-def]
+        """What follows a slot question closed with its safe default: any
+        worker the promotion had already cleared is still written, and the one
+        short line goes out first -- the new message is answered after it."""
+        from runtime.inbound_journey import _create_promoted_workers
+
+        try:
+            await _create_promoted_workers(
+                closed.result, workforce_query, ctx, wa_id, sender.send_text
+            )
+        except Exception:  # noqa: BLE001 -- never disturbs saved attendance
+            _log.exception("worker_promotion.create_failed user=%s", ctx.user_id)
+        await _send_composed(wa_id, ctx.user_id, ReplySpec(text=closed.reply_text))
 
     async def _agent_enabled(message, ctx) -> bool:  # type: ignore[no-untyped-def]
         """Free text and voice only, and only for a company switched to the
@@ -1083,6 +1112,11 @@ def build_message_handlers(
                 kind = TEAM_PHOTO if spec.buttons == TEAM_PHOTO_BUTTONS else SETUP_OFFER
                 offers.append(Offer(kind, spec=spec))
 
+            async def _collect_question(spec, _wa_id) -> None:  # type: ignore[no-untyped-def]
+                # A question the record needs, with its buttons (worker
+                # promotion): one reply with the answer a tap away.
+                offers.append(Offer(QUESTION, spec=spec))
+
             # Worker promotion follow-up. This belongs *here*, not in
             # inbound_journey: a confirmation reply is resolved by the fast
             # path above and returns before the journey ever runs, so a hook
@@ -1095,6 +1129,7 @@ def build_message_handlers(
                     ctx,
                     wa_id,
                     _collect_text,
+                    send_spec_fn=_collect_question,
                 )
             except Exception:  # noqa: BLE001 — promotion never disturbs saved attendance
                 _log.exception("worker_promotion.trigger_failed user=%s", ctx.user_id)
@@ -1338,6 +1373,12 @@ def build_message_handlers(
         except Exception:  # noqa: BLE001 — a resume error must not drop the message
             _log.exception("interaction.slot_answer_failed user=%s", ctx.user_id)
             slot_handled = None
+        if slot_handled is not None and slot_handled.closed_question:
+            # The open question was not answered (a site note, a greeting, a
+            # second miss): it is closed with its safe default and THIS
+            # message carries on as the new message it is (request [51]).
+            await _after_question_closed(slot_handled, ctx, wa_id)
+            slot_handled = None
         if slot_handled is not None:
             # Resuming a slot answer can land on any WorkflowRunResult status
             # -- another AWAITING_INPUT (next slot) or STARTED (draft ready,
@@ -1359,13 +1400,9 @@ def build_message_handlers(
                 return
 
             reply = render_workflow_run_reply_spec(slot_handled.result)
-            await send_reply_spec(
-                reply,
-                wa_id,
-                send_text=sender.send_text,
-                send_list=sender.send_list,
-                send_button=sender.send_button,
-            )
+            # Sent like every composed reply: in the sender's language, with
+            # its choices remembered so a typed "2" works like the tap.
+            await _send_composed(wa_id, ctx.user_id, reply)
             # The other half of worker promotion: answering the offer arrives
             # here, as a slot answer. The node decided who to add but cannot
             # write (it is pure), so the inserts happen on this side. Same

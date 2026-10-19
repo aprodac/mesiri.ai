@@ -66,6 +66,7 @@ from mesiri_contracts.common.ids import new_id
 
 from ..readable import field_lines
 from ..slots import (
+    RETRY_PREFIX,
     SlotCandidate,
     match_slot_answer,
     resolve_single_choice_slot,
@@ -175,7 +176,7 @@ def check_duplicate_day(state: WorkflowGraphState) -> dict:
         if answer_text is not None:
             matched = match_slot_answer(answer_text, _DUPLICATE_DAY_CANDIDATES)
             if matched is None:
-                return _ask(f"Sorry, I didn't catch that. {prompt_title}")
+                return _ask(f"{RETRY_PREFIX} {prompt_title}")
             resolved = {**fields, "duplicate_day_answered": True}
             if matched == REPLACE_SENTINEL:
                 resolved["corrects_report_id"] = str(existing["report_id"])
@@ -369,7 +370,7 @@ def _match_prompt(
         header = f'Which "{reported.name}"{trade_hint} is this?'
 
     if retry:
-        header = f"Sorry, I didn't catch that. {header}"
+        header = f"{RETRY_PREFIX} {header}"
 
     lines = [header, ""]
     # Reasons are shown so the choice is auditable rather than magical: the

@@ -25,6 +25,7 @@ from mesiri_contracts.assistant.v2.resolved_context import ResolvedContextV2
 from runtime.inbound_journey._shared import _log
 from runtime.logging_ports import MessageLogger
 from workflows import WorkflowResumeResult, WorkflowRunResult, WorkflowRunStatus
+from workflows.slots import BUTTON_ID_PREFIXES
 
 
 @dataclass(slots=True)
@@ -117,6 +118,18 @@ def render_workflow_run_reply_spec(workflow_run: WorkflowRunResult) -> ReplySpec
         # text (still answerable by typing) rather than send a request Meta
         # would reject outright.
         options = workflow_run.slot_options
+        # The worker-promotion questions (ids promo_* / dup_*) are one-tap
+        # reply buttons rather than a list to open; every other slot keeps its
+        # list. A tapped button comes back with its id (interactions/handler.py).
+        if (
+            options
+            and len(options) <= 3
+            and all(o.value.startswith(BUTTON_ID_PREFIXES) and len(o.label) <= 20 for o in options)
+        ):
+            return ReplySpec(
+                text=text,
+                buttons=tuple(ListRow(o.value, o.label) for o in options),
+            )
         if options and 1 < len(options) <= 10 and all(len(o.label) <= 24 for o in options):
             return ReplySpec(
                 text=text,

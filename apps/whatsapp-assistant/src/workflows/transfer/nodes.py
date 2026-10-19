@@ -21,7 +21,13 @@ from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
 from mesiri_contracts.common.ids import new_id
 
-from ..slots import SlotCandidate, match_slot_answer, resolve_single_choice_slot, slot_options
+from ..slots import (
+    RETRY_PREFIX,
+    SlotCandidate,
+    match_slot_answer,
+    resolve_single_choice_slot,
+    slot_options,
+)
 from ..state import WorkflowGraphState
 
 _FROM_SLOT = "from_account_id"
@@ -62,7 +68,7 @@ def _resolve_slot(
                 return {"collected_fields": fields, "awaiting_slot": None}
             resolution = resolve_single_choice_slot(
                 slot_name=slot_key,
-                prompt_title=f"Sorry, I didn't catch that. {prompt_title}",
+                prompt_title=f"{RETRY_PREFIX} {prompt_title}",
                 candidates=candidates,
             )
             return {

@@ -14,6 +14,52 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+#: Opens every "that wasn't one of the choices" re-ask. The interaction layer
+#: recognises a re-ask by this prefix (is_retry_prompt) to give a question at
+#: most one second chance -- see interactions/handler.py's handle_slot_answer.
+RETRY_PREFIX = "I couldn't tell which one you meant."
+#: Promotion's own, friendlier re-ask (workflows/worker_promotion/nodes.py).
+PROMOTION_RETRY_PREFIX = "No worries."
+
+
+def is_retry_prompt(prompt: str | None) -> bool:
+    """True when ``prompt`` is a slot question's second ask."""
+    return bool(prompt) and prompt.lstrip().startswith((RETRY_PREFIX, PROMOTION_RETRY_PREFIX))
+
+
+#: Ids of the worker-promotion question buttons (workflows/worker_promotion/
+#: wording.py). Options carrying them are shown as reply buttons, and a tap is
+#: handed to the workflow as the id, so the title can be in any language.
+BUTTON_ID_PREFIXES = ("promo_", "dup_")
+
+#: Told to the sender when a question that is not about worker promotion was
+#: set aside because their message was something else.
+QUESTION_DROPPED_NOTE = "I've set that question aside. Send it again whenever you like."
+
+_GREETINGS = frozenset(
+    {"hi", "hii", "hiii", "hello", "hey", "heyy", "hai", "namaste", "namaskaram", "thanks",
+     "thankyou", "ok", "okay", "good", "gm", "mesiri", "mesii", "mesi"}
+)
+#: Words that, alone, are an answer to some question rather than a new message.
+_ANSWER_WORDS = frozenset({"ok", "okay", "thanks"})
+#: A reply this long is a sentence about something, not a pick from a list.
+_MAX_ANSWER_WORDS = 3
+
+
+def looks_unrelated(text: str | None) -> bool:
+    """True when ``text`` is plainly not an answer to a pick-from-a-list
+    question: a greeting, a question, or a sentence ("I have a work on new
+    site", "Today 5 workers came"). Anything short that merely failed to
+    match -- a typo, a half name -- is not, and gets one friendly re-ask."""
+    words = "".join(c if c.isalnum() or c.isspace() else " " for c in (text or "").lower()).split()
+    if not words:
+        return False
+    if "?" in (text or ""):
+        return True
+    if len(words) > _MAX_ANSWER_WORDS:
+        return True
+    return words[0] in _GREETINGS and not (len(words) == 1 and words[0] in _ANSWER_WORDS)
+
 
 @dataclass(frozen=True, slots=True)
 class SlotCandidate:

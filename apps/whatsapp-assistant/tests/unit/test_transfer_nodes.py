@@ -93,7 +93,7 @@ def test_resolve_from_account_unmatched_answer_reasks():
     )
     update = resolve_from_account(state)
     assert update["awaiting_slot"] == "from_account_id"
-    assert "didn't catch" in update["pending_prompt"]
+    assert "couldn't tell which one" in update["pending_prompt"]
 
 
 def test_resolve_to_account_excludes_the_already_resolved_from_account():

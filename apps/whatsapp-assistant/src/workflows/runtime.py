@@ -27,7 +27,7 @@ from mesiri_contracts.context.enums import WorkflowPhase
 
 from .ports import LoadedWorkflowInstance, SingleActiveConflict, WorkflowInstanceRepository
 from .registry import WorkflowRegistry, allows_completion_without_draft, is_informational
-from .slots import SlotCandidate
+from .slots import QUESTION_DROPPED_NOTE, SlotCandidate
 from .state import WorkflowGraphState
 
 logger = logging.getLogger(__name__)
@@ -732,6 +732,35 @@ class WorkflowRuntime:
             return False
         await self._abandon(loaded)
         return True
+
+    async def close_question(self, loaded: LoadedWorkflowInstance) -> WorkflowRunResult:
+        """End an open slot question the sender is not answering (request [51]).
+
+        A question must never trap the sender: when the reply is plainly
+        something else, or the second try missed too, it is closed with the
+        safe default and the new message is handled normally.
+
+        An informational question (worker promotion) is closed by answering
+        it "skip" -- the node's own default, nobody promoted -- so whatever
+        it had already decided still happens and the result carries its own
+        closing line. Any other workflow is cancelled: nothing was recorded
+        yet, and the sender can send it again. Always a COMPLETED run whose
+        pending_prompt is the one short line to tell the sender.
+        """
+        state = loaded.state
+        if is_informational(state.workflow_key):
+            closing = await self.provide_input(loaded, "skip")
+            if closing.status is WorkflowRunStatus.COMPLETED:
+                return closing
+            reloaded = await self._repo.get_awaiting_input(state.user_id)
+            if reloaded is not None:
+                loaded = reloaded
+        await self._abandon(loaded)
+        return WorkflowRunResult.completed(
+            workflow_key=state.workflow_key,
+            correlation_id=state.correlation_id,
+            pending_prompt=QUESTION_DROPPED_NOTE,
+        )
 
     async def _abandon(self, loaded: LoadedWorkflowInstance) -> None:
         """Close out an optional question the user moved on from.

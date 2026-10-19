@@ -317,7 +317,7 @@ def test_unmatched_answer_re_asks_the_same_line():
     asked = match_workers(_ambiguous_state())
     again = _answer(asked, "no idea honestly")
     assert again["awaiting_slot"] == asked["awaiting_slot"]
-    assert "didn't catch that" in again["pending_prompt"]
+    assert "couldn't tell which one" in again["pending_prompt"]
 
 
 def test_the_answer_text_never_leaks_into_the_draft():

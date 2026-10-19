@@ -287,3 +287,43 @@ async def test_the_offer_lists_exactly_the_new_named_workers_of_this_report():
         "Niyas",
         "Ajith",
     ]
+
+
+async def test_the_offer_goes_out_with_its_buttons_when_the_caller_takes_specs():
+    """Request [51]: the offer is handed over as a ReplySpec with its three
+    buttons (the journey folds it into the one reply), not as bare text."""
+    from workflows.slots import SlotCandidate
+
+    class _Runtime(_FakeWorkflowRuntime):
+        async def start(self, decision, event):
+            return WorkflowRunResult.awaiting_input(
+                workflow_key=WorkflowKey.WORKER_PROMOTION,
+                correlation_id=event.correlation_id,
+                workflow_instance_id="wf_promo",
+                pending_prompt="Quick check 👇",
+                slot_options=(
+                    SlotCandidate("promo_all", "Add"),
+                    SlotCandidate("promo_none", "Not now"),
+                ),
+            )
+
+    handled = _handled([{"worker_name": "Ravi", "trade": "mason", "worker_id": None}])
+    sent, send_text = await _send_text_recorder()
+    specs: list = []
+
+    async def send_spec(spec, wa_id):
+        specs.append(spec)
+
+    offered = await _maybe_trigger_worker_promotion(
+        handled,
+        _Runtime(),
+        _FakeWorkforceQuery(),
+        _FakeActor(),
+        "wa123",
+        send_text,
+        send_spec_fn=send_spec,
+    )
+
+    assert offered is True
+    assert sent == []
+    assert [b.id for b in specs[0].buttons] == ["promo_all", "promo_none"]

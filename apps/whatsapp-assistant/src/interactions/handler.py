@@ -57,6 +57,7 @@ from workflows import (
     WorkflowRuntime,
 )
 from workflows.ports import LoadedWorkflowInstance
+from workflows.slots import BUTTON_ID_PREFIXES, is_retry_prompt, looks_unrelated
 from workflows.who_am_i import is_whoami_trigger
 
 from .classifier import classify_reply
@@ -125,6 +126,11 @@ class InteractionHandled:
     # True for an item saved first as a draft (WA-01): the reply may carry an
     # Undo button, and no setup question follows it (request [45]).
     saved_draft: bool = False
+    # True when an open slot question was closed with its safe default because
+    # the message was not an answer (request [51]). ``reply_text`` is then the
+    # one short line to send first, and the caller goes on to handle the
+    # message as the new message it is.
+    closed_question: bool = False
 
 
 class InteractionHandler:
@@ -549,7 +555,17 @@ class InteractionHandler:
         if not message.text:
             return None
 
-        result = await self._runtime.provide_input(loaded, message.text)
+        # A tapped button of ours (worker promotion's Same person / Skip ...)
+        # is answered with its id, so the buttons can be shown in the sender's
+        # language without the workflow ever parsing a translation.
+        answer = message.text
+        if message.modality is InputModality.INTERACTIVE:
+            tapped_id = str((message.metadata or {}).get("interactive_reply_id") or "")
+            if tapped_id.startswith(BUTTON_ID_PREFIXES):
+                answer = tapped_id
+        was_retry = is_retry_prompt(loaded.state.pending_prompt)
+
+        result = await self._runtime.provide_input(loaded, answer)
 
         if (
             result.status is WorkflowRunStatus.AWAITING_INPUT
@@ -573,6 +589,20 @@ class InteractionHandler:
                         # -- the graph node never knows an LLM was involved.
                         result = await self._runtime.provide_input(retry_loaded, matched.label)
 
+        # No question traps the sender (request [51]): one re-ask at most. A
+        # message that is plainly something else (a site note, a greeting, a
+        # question) closes the question on the spot, and so does a second miss
+        # -- with the safe default, and the message goes on to be handled as
+        # the new message it is.
+        if (
+            result.status is WorkflowRunStatus.AWAITING_INPUT
+            and is_retry_prompt(result.pending_prompt)
+            and (was_retry or looks_unrelated(message.text))
+        ):
+            closed = await self._close_question(user_id)
+            if closed is not None:
+                return closed
+
         logger.info(
             "interaction.slot_answered user=%s status=%s instance=%s",
             user_id,
@@ -585,6 +615,28 @@ class InteractionHandler:
             reply_text=reply_text,
             project_id=str(loaded.state.project_id) if loaded.state.project_id else None,
             site_id=str(loaded.state.site_id) if loaded.state.site_id else None,
+        )
+
+    async def _close_question(self, user_id: str) -> InteractionHandled | None:
+        """Close the user's open slot question with its safe default. None
+        when it could not be closed -- the re-ask then stands."""
+        fresh = await self._runtime.get_awaiting_input(user_id)
+        if fresh is None:
+            return None
+        result = await self._runtime.close_question(fresh)
+        logger.info(
+            "interaction.slot_question_closed user=%s workflow=%s instance=%s",
+            user_id,
+            fresh.state.workflow_key.value,
+            fresh.state.workflow_instance_id,
+        )
+        note = render_workflow_run_reply(result, pending_prompt=result.pending_prompt)
+        return InteractionHandled(
+            result=result,
+            reply_text=note,
+            closed_question=True,
+            project_id=str(fresh.state.project_id) if fresh.state.project_id else None,
+            site_id=str(fresh.state.site_id) if fresh.state.site_id else None,
         )
 
     def handle_category_tap(self, message: NormalizedMessage) -> ReplySpec | None:

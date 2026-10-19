@@ -384,7 +384,7 @@ async def test_provide_input_no_match_reasks_and_stays_collecting_fields():
     graph = _FakeGraph(
         result={
             "awaiting_slot": "account_id",
-            "pending_prompt": "Sorry, I didn't catch that. Which account?",
+            "pending_prompt": "I couldn't tell which one you meant. Which account?",
             "collected_fields": {"amount": 250, "account_candidates": [{"id": "a1", "name": "Cash"}]},
         }
     )

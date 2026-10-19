@@ -124,7 +124,7 @@ def test_unmatched_answer_reasks():
     )
     update = resolve_other_account(state)
     assert update["awaiting_slot"] == "from_account_id"
-    assert "didn't catch" in update["pending_prompt"]
+    assert "couldn't tell which one" in update["pending_prompt"]
 
 
 def test_build_draft_emits_transfer_money_and_excludes_plumbing_fields():

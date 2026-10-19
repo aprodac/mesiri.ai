@@ -32,9 +32,11 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 from typing import Any, Protocol
 
 from mesiri_ai.ports.generation import JsonGenerationProvider
+from workflows.worker_promotion import wording
 
 logger = logging.getLogger(__name__)
 
@@ -271,3 +273,173 @@ def localize_fixed_reply(text: str, language: str | None) -> str:
     for english in sorted(table, key=len, reverse=True):
         text = text.replace(english, table[english])
     return text
+
+
+# --- Worker-promotion questions (request [51]) ---------------------------------
+#
+# These carry names, so they cannot be swapped as fixed sentences: each English
+# template (workflows/worker_promotion/wording.py) is turned into a pattern with
+# its {placeholders} captured, and rebuilt from the translated template. The
+# names, trades and dates inside are never touched. Buttons are translated by
+# title; a tap comes back as its id, so no translated word is ever parsed.
+
+_PROMOTION_TEMPLATES: dict[str, dict[str, str]] = {
+    "malayalam": {
+        wording.INTRO: "നിങ്ങളുടെ തൊഴിലാളി പട്ടിക വൃത്തിയായി നിലനിർത്താൻ ഒരു ചെറിയ പരിശോധന 👇",
+        wording.OFFER_ONE: (
+            "{names} ഒരു പുതിയ പേരാണ്. അടുത്ത തവണ തയ്യാറായിരിക്കാൻ ഇവരെ സ്ഥിരം "
+            "തൊഴിലാളി പട്ടികയിൽ ചേർക്കട്ടേ?"
+        ),
+        wording.OFFER_MANY: (
+            "{names} പുതിയ പേരുകളാണ്. അടുത്ത തവണ തയ്യാറായിരിക്കാൻ ഇവരെ സ്ഥിരം "
+            "തൊഴിലാളി പട്ടികയിൽ ചേർക്കട്ടേ?"
+        ),
+        wording.CHOOSE: "ആരെയൊക്കെ ചേർക്കണം? പേരുകൾ മറുപടി നൽകൂ, ഉദാ. {example}.",
+        wording.LOOKS_LIKE: (
+            "{new} നിങ്ങളുടെ പട്ടികയിലുള്ള {old} എന്നയാളെപ്പോലെയാണ്{detail}. "
+            "ഇത് അതേ ആൾ തന്നെയാണോ?"
+        ),
+        wording.LOOKS_LIKE_NEXT: (
+            "ഒന്നുകൂടി 👇\n\n{new} നിങ്ങളുടെ പട്ടികയിലുള്ള {old} എന്നയാളെപ്പോലെയാണ്"
+            "{detail}. ഇത് അതേ ആൾ തന്നെയാണോ?"
+        ),
+        wording.RETRY_OFFER: (
+            "സാരമില്ല. ഒരെണ്ണം തൊട്ടാൽ മതി: {names} സ്ഥിരം തൊഴിലാളി പട്ടികയിൽ ചേർക്കട്ടേ? "
+            "ഉറപ്പില്ലെങ്കിൽ ഇപ്പോൾ വേണ്ട എന്ന് തൊടൂ. 🙂"
+        ),
+        wording.RETRY_CHOOSE: (
+            "സാരമില്ല. ചേർക്കേണ്ടവരുടെ പേരുകൾ മറുപടി നൽകൂ, ഉദാ. {example}. "
+            "ഉറപ്പില്ലെങ്കിൽ ഇപ്പോൾ വേണ്ട എന്ന് തൊടൂ. 🙂"
+        ),
+        wording.RETRY_LOOKS_LIKE: (
+            "സാരമില്ല. ഒരെണ്ണം തൊട്ടാൽ മതി: ഇന്ന് വന്ന {new} നിങ്ങളുടെ പട്ടികയിലെ {old} "
+            "തന്നെയാണോ? ഉറപ്പില്ലെങ്കിൽ ഒഴിവാക്കുക എന്ന് തൊടൂ. 🙂"
+        ),
+        wording.MADE_PERMANENT: "✅ നിങ്ങളുടെ തൊഴിലാളി രജിസ്റ്ററിൽ സ്ഥിരമാക്കി: {names}",
+        wording.NONE_ADDED: (
+            "സാരമില്ല — അവർ താൽക്കാലിക തൊഴിലാളികളായി തുടരും. ഡാഷ്ബോർഡിലെ തൊഴിലാളി "
+            "രജിസ്റ്ററിൽ നിന്ന് എപ്പോൾ വേണമെങ്കിലും സ്ഥിരമാക്കാം."
+        ),
+        wording.SAME_NOT_ADDED: "👍 {new} വീണ്ടും ചേർക്കുന്നില്ല — ഇതിനകം പട്ടികയിൽ {old} ആയി ഉണ്ട്.",
+        wording.KEPT_SEPARATE: (
+            "ഇപ്പോൾ {names} ഒരു വേറെ പേരായി നിലനിർത്തും. തൊഴിലാളി രജിസ്റ്ററിൽ "
+            "എപ്പോൾ വേണമെങ്കിലും ശരിയാക്കാം."
+        ),
+    },
+    "hindi": {
+        wording.INTRO: "आपकी वर्कर लिस्ट साफ़ रहे, इसलिए एक छोटी जाँच 👇",
+        wording.OFFER_ONE: (
+            "{names} एक नया नाम है। क्या इन्हें स्थायी वर्कर लिस्ट में जोड़ दूँ, ताकि अगली बार तैयार रहें?"
+        ),
+        wording.OFFER_MANY: (
+            "{names} नए नाम हैं। क्या इन्हें स्थायी वर्कर लिस्ट में जोड़ दूँ, ताकि अगली बार तैयार रहें?"
+        ),
+        wording.CHOOSE: "किन्हें जोड़ना है? नाम लिखकर भेजें, जैसे {example}।",
+        wording.LOOKS_LIKE: (
+            "{new} आपकी लिस्ट में पहले से मौजूद {old} जैसा लग रहा है{detail}। क्या यह वही व्यक्ति है?"
+        ),
+        wording.LOOKS_LIKE_NEXT: (
+            "एक और 👇\n\n{new} आपकी लिस्ट में पहले से मौजूद {old} जैसा लग रहा है{detail}। "
+            "क्या यह वही व्यक्ति है?"
+        ),
+        wording.RETRY_OFFER: (
+            "कोई बात नहीं। बस एक बटन दबाएँ: {names} को स्थायी वर्कर लिस्ट में जोड़ दूँ? "
+            "पक्का न हो तो अभी नहीं दबाएँ। 🙂"
+        ),
+        wording.RETRY_CHOOSE: (
+            "कोई बात नहीं। जोड़ने वालों के नाम लिखें, जैसे {example}। पक्का न हो तो अभी नहीं दबाएँ। 🙂"
+        ),
+        wording.RETRY_LOOKS_LIKE: (
+            "कोई बात नहीं। बस एक बटन दबाएँ: आज आया {new} क्या आपकी लिस्ट वाला {old} ही है? "
+            "पक्का न हो तो छोड़ें दबाएँ। 🙂"
+        ),
+        wording.MADE_PERMANENT: "✅ वर्कर रजिस्टर में स्थायी किया: {names}",
+        wording.NONE_ADDED: (
+            "ठीक है — वे अस्थायी वर्कर बने रहेंगे। डैशबोर्ड के वर्कर रजिस्टर से कभी भी स्थायी कर सकते हैं।"
+        ),
+        wording.SAME_NOT_ADDED: "👍 {new} को दोबारा नहीं जोड़ रहा — लिस्ट में पहले से {old} नाम से है।",
+        wording.KEPT_SEPARATE: (
+            "अभी {names} को अलग नाम के रूप में रखता हूँ। वर्कर रजिस्टर में कभी भी ठीक कर सकते हैं।"
+        ),
+    },
+}
+
+_BUTTON_TITLES: dict[str, dict[str, str]] = {
+    "malayalam": {
+        wording.TITLE_ADD_ONE: "ചേർക്കുക",
+        wording.TITLE_ADD_BOTH: "രണ്ടും ചേർക്കുക",
+        wording.TITLE_ADD_ALL: "എല്ലാം ചേർക്കുക",
+        wording.TITLE_CHOOSE: "തിരഞ്ഞെടുക്കുക",
+        wording.TITLE_NOT_NOW: "ഇപ്പോൾ വേണ്ട",
+        wording.TITLE_SAME: "അതേ ആൾ",
+        wording.TITLE_NEW: "പുതിയ ആൾ",
+        wording.TITLE_SKIP: "ഒഴിവാക്കുക",
+    },
+    "hindi": {
+        wording.TITLE_ADD_ONE: "जोड़ें",
+        wording.TITLE_ADD_BOTH: "दोनों जोड़ें",
+        wording.TITLE_ADD_ALL: "सब जोड़ें",
+        wording.TITLE_CHOOSE: "चुनें",
+        wording.TITLE_NOT_NOW: "अभी नहीं",
+        wording.TITLE_SAME: "वही व्यक्ति",
+        wording.TITLE_NEW: "नया व्यक्ति",
+        wording.TITLE_SKIP: "छोड़ें",
+    },
+}
+
+_PLACEHOLDER = re.compile(r"\\\{(\w+)\\\}")
+
+
+def _template_pattern(english: str) -> re.Pattern[str]:
+    """A regex matching ``english`` with each {placeholder} captured by name."""
+    pattern = _PLACEHOLDER.sub(lambda m: f"(?P<{m.group(1)}>[^\\n]*?)", re.escape(english))
+    if english.rstrip().endswith("}"):
+        pattern += r"(?=\n|$)"
+    return re.compile(pattern)
+
+
+_PROMOTION_PATTERNS: dict[str, list[tuple[re.Pattern[str], str]]] = {
+    language: [(_template_pattern(en), tr) for en, tr in sorted(table.items(), key=lambda kv: -len(kv[0]))]
+    for language, table in _PROMOTION_TEMPLATES.items()
+}
+
+
+def _language_key(language: str | None) -> str | None:
+    normalized = normalize_language(language)
+    if not normalized:
+        return None
+    key = normalized.lower()
+    return _FIXED_ALIASES.get(key, key)
+
+
+def localize_promotion_reply(text: str, language: str | None) -> str:
+    """The worker-promotion questions in the sender's language; text that
+    matches none of them, or a language without wording, comes back as it was."""
+    key = _language_key(language)
+    if not text or key not in _PROMOTION_PATTERNS:
+        return text
+    for pattern, translated in _PROMOTION_PATTERNS[key]:
+        text = pattern.sub(lambda m, tr=translated: tr.format(**m.groupdict()), text)
+    return text
+
+
+def localize_reply_spec(spec, language: str | None):  # type: ignore[no-untyped-def]
+    """``spec`` with its text, and its button / list titles, in the sender's
+    language. English (or an unknown language) returns it unchanged."""
+    key = _language_key(language)
+    if key is None or (key not in _FIXED_REPLIES and key not in _PROMOTION_PATTERNS):
+        return spec
+    from dataclasses import replace
+
+    titles = _BUTTON_TITLES.get(key, {})
+
+    def _row(row):  # type: ignore[no-untyped-def]
+        title = titles.get(row.title)
+        return replace(row, title=title[:20]) if title else row
+
+    return replace(
+        spec,
+        text=localize_promotion_reply(localize_fixed_reply(spec.text, language), language),
+        buttons=tuple(_row(r) for r in spec.buttons) if spec.buttons else spec.buttons,
+        list_rows=tuple(_row(r) for r in spec.list_rows) if spec.list_rows else spec.list_rows,
+    )

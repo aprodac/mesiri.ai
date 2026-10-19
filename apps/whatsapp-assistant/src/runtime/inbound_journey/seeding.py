@@ -1406,6 +1406,7 @@ async def _maybe_trigger_worker_promotion(
     actor: Any,
     wa_id: str,
     send_text_fn: Callable[[str, str], Awaitable[Any]],
+    send_spec_fn: Callable[[Any, str], Awaitable[Any]] | None = None,
 ) -> bool:
     """After a confirmed RECORD_LABOUR_ATTENDANCE execution, send a follow-up
     offer to add named temporary workers to the Worker Register.
@@ -1558,7 +1559,14 @@ async def _maybe_trigger_worker_promotion(
             len(promotable),
             promo_run.status.value,
         )
-        await _safe(send_text_fn(wa_id, promo_run.pending_prompt))
+        if send_spec_fn is not None and promo_run.slot_options:
+            # The offer comes with its buttons (Add both / Choose / Not now);
+            # the caller folds it into the one reply (request [45]/[51]).
+            from runtime.inbound_journey.reply import render_workflow_run_reply_spec
+
+            await _safe(send_spec_fn(render_workflow_run_reply_spec(promo_run), wa_id))
+        else:
+            await _safe(send_text_fn(wa_id, promo_run.pending_prompt))
         return True
     else:
         # The run produced no message -- the offer exists nowhere the user can

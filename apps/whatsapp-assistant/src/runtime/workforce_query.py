@@ -164,6 +164,7 @@ class PostgresWorkforceQueryService:
             sa.column("trade"),
             sa.column("contractor"),
             sa.column("status"),
+            sa.column("created_at"),
         )
 
         def _worked_in(scope_column, scope_value: uuid.UUID):
@@ -197,6 +198,7 @@ class PostgresWorkforceQueryService:
                 workers.c.name,
                 workers.c.trade,
                 workers.c.contractor,
+                workers.c.created_at,
                 seen_on_site.label("seen_on_site"),
                 seen_on_project.label("seen_on_project"),
             )
@@ -217,6 +219,9 @@ class PostgresWorkforceQueryService:
                 "name": row["name"],
                 "trade": row["trade"],
                 "contractor": row["contractor"],
+                # Shown to the sender when a new name looks like this one
+                # ("mason, since 2 Oct"); ISO date, None if never set.
+                "since": row["created_at"].date().isoformat() if row["created_at"] else None,
                 "seen_on_site": bool(row["seen_on_site"]),
                 "seen_on_project": bool(row["seen_on_project"]),
             }

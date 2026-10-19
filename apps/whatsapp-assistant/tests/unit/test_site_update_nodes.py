@@ -231,7 +231,7 @@ def test_unrecognized_answer_reasks_with_same_candidates():
     )
     update = resolve_target(state)
     assert update["awaiting_slot"] == _TARGET_SLOT_NAME
-    assert "Sorry, I didn't catch that" in update["pending_prompt"]
+    assert "I couldn't tell which one you meant" in update["pending_prompt"]
 
 
 def test_already_resolved_activity_id_is_a_no_op():
