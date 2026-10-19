@@ -188,6 +188,7 @@ def build_message_handlers(
     reply_composer: ReplyComposer | None = None,
     user_language_store: UserLanguageStore | None = None,
     trial_usage_guard: Any | None = None,
+    agent_provider: Any | None = None,
 ) -> tuple[Any, Any]:
     """Build the `on_normalized`/`on_message_claimed` callbacks WhatsAppReceiver
     invokes for every inbound message, closing over the already-built services
@@ -328,7 +329,11 @@ def build_message_handlers(
             # question (if any). Here, after every path's reply, rather than
             # in each of the journey's many early returns.
             actor = _resolved_actors.get(message.correlation_id)
-            if setup_questions is not None and actor is not None:
+            if (
+                setup_questions is not None
+                and actor is not None
+                and message.correlation_id not in _agent_parked
+            ):
                 try:
                     await setup_questions.after_reply(
                         actor,
@@ -344,6 +349,7 @@ def build_message_handlers(
                     _log.exception("setup_question.follow_up_failed user=%s", actor.user_id)
         finally:
             _resolved_actors.pop(message.correlation_id, None)
+            _agent_parked.discard(message.correlation_id)
             # Emitted in `finally` so every path is covered by one write --
             # this block has a dozen early returns (unregistered sender,
             # suspended org, a fast path that handled the message outright),
@@ -360,6 +366,38 @@ def build_message_handlers(
                 )
             except Exception:  # noqa: BLE001 -- diagnostics must never break a message
                 _log.exception("prepipeline.trace_failed correlation_id=%s", message.correlation_id)
+
+    # -- Assistant agent (request [40]) -------------------------------------
+    _agent_runner = None
+    if agent_provider is not None:
+        from runtime.agent.runner import AgentRunner
+
+        _agent_runner = AgentRunner(agent_provider)
+    #: Correlation ids whose reply ended on a question: the daily setup
+    #: question must not pile a second one on top of it.
+    _agent_parked: set[str] = set()
+
+    async def _agent_enabled(message, ctx) -> bool:  # type: ignore[no-untyped-def]
+        """Free text and voice only, and only for a company switched to the
+        agent. Never raises: any doubt means the classic pipeline."""
+        if message.modality not in (
+            InputModality.TEXT,
+            InputModality.VOICE,
+            InputModality.INTERACTIVE,
+        ):
+            return False
+        if message.modality is not InputModality.VOICE and not (message.text or "").strip():
+            return False
+        try:
+            from mesiri.domains.organizations import settings as settings_spec
+
+            stored = await org_settings_query.get(
+                organization_id=str(ctx.organization_id), key=settings_spec.ASSISTANT_MODE
+            )
+            return settings_spec.agent_mode(stored)
+        except Exception:  # noqa: BLE001
+            _log.exception("agent.mode_lookup_failed org=%s", ctx.organization_id)
+            return False
 
     async def _run_journey_steps(message, raw_payload, retry_of_id, timer) -> None:  # type: ignore[no-untyped-def]
         wa_id = message.sender.wa_id
@@ -790,6 +828,14 @@ def build_message_handlers(
                     sent = await sender.send_image(wa_id, image_bytes, caption=None)
                     if not sent:
                         pass  # image already tried; text was already sent above
+            await _deliver_followups(handled)
+
+        async def _deliver_followups(handled, *, audit: bool = True) -> None:  # type: ignore[no-untyped-def]
+            """What follows a saved/answered confirmation once its reply is
+            out: worker promotion, team-photo and project-setup offers, the
+            plan advance, the invite, and (``audit``) the audit rows. Split out
+            of `_deliver_handled` so the agent (runtime/agent) can send its one
+            reply first and run these after it, unchanged."""
             # Worker promotion follow-up. This belongs *here*, not in
             # inbound_journey: a confirmation reply is resolved by the fast
             # path above and returns before the journey ever runs, so a hook
@@ -919,6 +965,8 @@ def build_message_handlers(
             # took some amount of time. Diagnosing a live "chain stopped at
             # user created" report needed this and didn't have it.
             timer.lap("plan_advance")
+            if not audit:
+                return
             # Phase 8 perf: user reply is already sent above. These 4 writes
             # are order-independent audit rows -- run them concurrently.
             await asyncio.gather(
@@ -2042,6 +2090,102 @@ def build_message_handlers(
                 await message_logger.log_reply(correlation_id=message.correlation_id, reply=undo_reply)
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
                 return
+        async def _run_agent(message, ctx, category_hint, timer) -> None:  # type: ignore[no-untyped-def]
+            """The agent's turn. The pipeline it drives is the one below, with
+            the senders swapped for a capture so the model writes the one reply."""
+            from runtime.agent.journey_gateway import JourneyGateway
+            from runtime.agent.turn import AgentTurnDeps, run_agent_turn
+            from runtime.inbound_journey import render_workflow_run_reply_spec
+
+            hint = category_hint.semantic_hint if category_hint else None
+            direction = category_hint.direction if category_hint else None
+
+            async def _process(msg, preset, sink):  # type: ignore[no-untyped-def]
+                return await process_inbound_message(
+                    msg,
+                    actor_user_id=ctx.user_id,
+                    actor=ctx,
+                    direction_hint=direction,
+                    category_hint_store=category_hint_store,
+                    pipeline=preset,
+                    context_resolver=context_resolver,
+                    planner=planner,
+                    workflow_runtime=workflow_runtime,
+                    interaction_handler=interaction_handler,
+                    send_text=sink.send_text,
+                    send_list=sink.send_list,
+                    send_button=sink.send_button,
+                    send_image=sender.send_image,
+                    send_document=sender.send_document,
+                    object_storage=object_storage,
+                    context_debug=settings.context_debug,
+                    trace_logger=trace_logger,
+                    inventory_query=inventory_query,
+                    catalog_query=catalog_query,
+                    org_settings_query=org_settings_query,
+                    expense_category_query=expense_category_query,
+                    money_account_query=money_account_query,
+                    petty_cash_query=petty_cash_query,
+                    reversal_query=reversal_query,
+                    site_issue_query=site_issue_query,
+                    duplicate_expense_query=duplicate_expense_query,
+                    workforce_query=workforce_query,
+                    activity_query=activity_query,
+                    labour_query_service=labour_query_service,
+                    activity_search_service=activity_search_service,
+                    dpr_request_query=dpr_request_query,
+                    project_detail_query=project_detail_query,
+                    vendor_query=vendor_query,
+                    expense_query_service=expense_query_service,
+                    pending_report_store=pending_report_store,
+                    plan_store=plan_store,
+                    pending_decomposition_store=pending_decomposition_store,
+                    escalation_query=escalation_query,
+                    capability_help=capability_help,
+                    member_resolver=member_resolver,
+                )
+
+            async def _undo() -> str | None:
+                return await interaction_handler.undo_latest_draft(
+                    organization_id=str(ctx.organization_id), user_id=ctx.user_id
+                )
+
+            def _gateway(msg, language):  # type: ignore[no-untyped-def]
+                return JourneyGateway(
+                    message=msg,
+                    process=_process,
+                    save_now=lambda: interaction_handler.save_now(ctx.user_id, actor=ctx),
+                    undo=_undo,
+                    followups=lambda handled: _deliver_followups(handled, audit=False),
+                    held_prompt=lambda journey: render_workflow_run_reply_spec(journey.workflow_run),
+                    language=language,
+                )
+
+            deps = AgentTurnDeps(
+                runner=_agent_runner,
+                make_gateway=_gateway,
+                send_spec=_send_spec,
+                transcribe=pipeline.transcribe_voice,
+                message_logger=message_logger,
+                memory_loader=memory_loader,
+                memory_coordinator=memory_coordinator,
+                user_language_store=user_language_store,
+                reply_composer=reply_composer,
+            )
+            result = await run_agent_turn(message, ctx, deps, menu_hint=hint)
+            timer.lap("agent_turn")
+            if result is not None and result.toolbox.parked is not None:
+                _agent_parked.add(message.correlation_id)
+
+        # Request [40]: a company switched to the agent has its free-text and
+        # voice messages read by a tool-calling model that runs the very same
+        # workflows. Everything above (taps, YES/NO, UNDO, menu, signup, slot
+        # answers) already had its turn; "off" (the default) falls through.
+        if agent_provider is not None and await _agent_enabled(message, ctx):
+            _fire_processing_ack(wa_id, message.modality)
+            await _run_agent(message, ctx, category_hint, timer)
+            return
+
         _fire_processing_ack(wa_id, message.modality)
         journey = await process_inbound_message(
             message,

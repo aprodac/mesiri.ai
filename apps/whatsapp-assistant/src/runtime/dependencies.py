@@ -948,6 +948,10 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         # being fully built and unit-tested -- found auditing the per-
         # segment project/site gate work, not by design.
         decomposition=ai_resolver,
+        # Request [40]: the same resolver carries tool calling (routed by the
+        # "agent" capability). Only used for companies whose assistant_mode is
+        # "agent"; everyone else never reaches it.
+        agent_provider=ai_resolver,
         pending_decomposition_store=pending_decomposition_store,
         recent_turns_store=recent_turns_store,
         labour_query_service=labour_query_service,

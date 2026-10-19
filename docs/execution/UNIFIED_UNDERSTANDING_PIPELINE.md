@@ -1152,3 +1152,22 @@ orchestrator survive unnoticed. Items 3 and 4 are informational.
 
 *Last updated: 2026-07-31 — proposed, no code written. Phase A is the next
 action; it is gated on §7 items (1) and (3) only.*
+
+
+---
+
+## 12. Update 2026-10-19 — a tool-calling agent in front of the same workflows
+
+Request [40] adds a second *front end* to this pipeline rather than another stage in it. For a
+company with `assistant_mode = "agent"`, a free-text or voice message is read by a
+tool-calling model (Gemini, via the platform/ai port) instead of the classify → decompose →
+plan chain. Each tool builds the understanding (`Candidate`) that this document's pipeline
+would have produced and feeds it to the **same** journey from context resolution on
+(`runtime/agent/preset_pipeline.py` stands in for the `understand` step), so §4's stages after
+understanding — canonicalization, gates, planner, workflow, save-first — are unchanged and
+shared. Decision and limits: [`docs/architecture/ADR-assistant-agent-wrap-not-rebuild.md`](../architecture/ADR-assistant-agent-wrap-not-rebuild.md).
+
+What this means for the phases above: the multi-intent decomposition (Phase A/B) still serves
+every company on the classic path; on the agent path "how many things is this message?" is
+answered by the model calling one tool per thing. The classic path is not deleted — "off" is
+the default and the instant rollback.
