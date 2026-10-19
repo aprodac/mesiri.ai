@@ -213,7 +213,7 @@ _EXTRACTION_PROMPT = (
     '"name_original" -- never translate a name into an English word. Translate '
     "trades into the English trade word.\n"
     "- general_site_update: narrative, work_type, quantities (array), location, "
-    "contractor, project_name, occurred_on, update_kind. "
+    "contractor, project_name, occurred_on, update_kind, progress_percent. "
     "narrative is the report in the sender's own words. work_type is the single "
     'primary kind of work if one is clear (e.g. "plastering", "concreting", '
     '"blockwork") -- omit if the message describes several unrelated things or '
@@ -237,6 +237,11 @@ _EXTRACTION_PROMPT = (
     'total). Use "completed" only when the message says the work is now fully '
     'finished (e.g. "finished plastering", "plastering done"). Use "paused" for '
     'a stoppage without finishing (e.g. "stopped for rain", "paused for lunch"). '
+    'progress_percent is the plain number (40, not "40%") when the message says '
+    'how much of the work is done ("plastering 2nd floor 40% aayi", "40 percent '
+    'done"); omit it otherwise. A percentage below 100 is "progress", NEVER '
+    '"completed" -- "aayi"/"ho gaya" after a percentage means "has reached", '
+    'not "finished", and the narrative must keep that number. '
     'Use "resumed" for explicitly restarting paused work. Omit update_kind '
     "entirely -- never guess -- when the message could equally be new work or a "
     "continuation; a plain quantity update with no other context "

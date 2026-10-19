@@ -18,6 +18,7 @@ from mesiri_contracts.common.ids import new_id
 
 from .mapping import REQUIRED_FIELDS, resolve_event_type
 from .occurred_date import resolve_occurred_date
+from .progress import apply_progress
 
 logger = logging.getLogger(__name__)
 
@@ -443,6 +444,16 @@ def _build_event_from_intent(
 
     if semantic_type is SemanticType.GENERAL_SITE_UPDATE:
         fields = _ensure_site_update_narrative(fields, understanding)
+        fields = apply_progress(
+            fields,
+            (
+                understanding.translated_text
+                or understanding.normalized_text
+                or understanding.transcript
+            )
+            if len(understanding.intents) <= 1
+            else None,
+        )
 
     if semantic_type is SemanticType.MATERIAL_UPDATE:
         fields = _normalize_material_fields(fields)

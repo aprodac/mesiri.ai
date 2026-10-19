@@ -146,6 +146,14 @@ def tool_specs() -> list[ToolSpec]:
                         ),
                     },
                     "location": {"type": "string", "description": "Place on site, if stated."},
+                    "progress_percent": {
+                        "type": "number",
+                        "description": (
+                            "How much of this work is done, when the message gives a "
+                            "percentage ('40% aayi', '40 percent done' -> 40). Omit otherwise. "
+                            "A percentage below 100 is never update_kind 'completed'."
+                        ),
+                    },
                     "update_kind": {
                         "type": "string",
                         "enum": ["started", "progress", "paused", "resumed", "completed"],
@@ -412,6 +420,7 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             "quantities": args.get("quantities"),
             "location": args.get("location"),
             "update_kind": args.get("update_kind"),
+            "progress_percent": args.get("progress_percent"),
             "occurred_on": date,
             **sc,
         }
