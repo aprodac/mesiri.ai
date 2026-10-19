@@ -654,3 +654,65 @@ async def site_day_reporters(
         )
     ).mappings().all()
     return sorted(str(row["actor_user_id"]) for row in rows)
+
+
+async def site_day_for_confirm(
+    conn: AsyncConnection,
+    *,
+    organization_id: uuid.UUID,
+    site_id: uuid.UUID,
+    report_date: datetime.date,
+) -> dict[str, Any] | None:
+    """What the evening confirmation (WA-05) needs about a site day: its
+    report id and status, the current version's payload, and each draft
+    still on it with what the AI read ({"confidence", "fields"}). None
+    when the day has no report yet."""
+    day = (
+        await conn.execute(
+            sa.text(
+                """
+                SELECT dr.id AS daily_report_id, dr.status::text AS status, v.payload
+                FROM daily_reports dr
+                LEFT JOIN daily_report_versions v ON v.id = dr.current_version_id
+                WHERE dr.organization_id = :org_id AND dr.site_id = :site_id
+                  AND dr.level = 'SITE' AND dr.report_date = :d
+                """
+            ),
+            {"org_id": organization_id, "site_id": site_id, "d": report_date},
+        )
+    ).mappings().first()
+    if day is None:
+        return None
+    drafts = (
+        await conn.execute(
+            sa.text(
+                """
+                SELECT e.confidence, e.extracted -> 'fields' AS fields FROM (
+                    SELECT DISTINCT ON (fact_type, fact_id) state, extraction_id
+                    FROM fact_reviews
+                    WHERE organization_id = :org_id AND site_id = :site_id
+                      AND fact_date = :d
+                    ORDER BY fact_type, fact_id, created_at DESC
+                ) latest
+                LEFT JOIN extractions e ON e.id = latest.extraction_id
+                WHERE latest.state = 'draft'
+                """
+            ),
+            {"org_id": organization_id, "site_id": site_id, "d": report_date},
+        )
+    ).mappings().all()
+    payload = day["payload"]
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    return {
+        "daily_report_id": day["daily_report_id"],
+        "status": day["status"],
+        "payload": payload or {},
+        "drafts": [
+            {
+                "confidence": row["confidence"],
+                "fields": json.loads(row["fields"]) if isinstance(row["fields"], str) else row["fields"],
+            }
+            for row in drafts
+        ],
+    }

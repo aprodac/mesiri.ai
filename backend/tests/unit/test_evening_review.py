@@ -64,3 +64,52 @@ def test_has_content() -> None:
     assert not review.has_content({"activity_count": 0, "labour": {"headcount": 0}})
     assert review.has_content({"labour": {"headcount": 4}})
     assert review.has_content({"materials": [{"name": "cement"}]})
+
+
+# --- WA-05: what holds back "Confirm all" --------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("confidence", "fields", "expected"),
+    [
+        ("high", {}, set()),
+        (None, {}, set()),
+        ("medium", {}, set()),
+        ("low", {}, {review.HOLD_LOW_CONFIDENCE}),
+        ("AMBIGUOUS", {}, {review.HOLD_LOW_CONFIDENCE}),
+        ("unresolved", {}, {review.HOLD_LOW_CONFIDENCE}),
+        # Sent directly, no date said: about today, no guess.
+        ("high", {"occurred_date_source": "inferred_at_confirmation"}, set()),
+        # Forwarded with a stated date: fine.
+        ("high", {"is_forwarded": True, "occurred_date_source": "stated_by_user"}, set()),
+        # Forwarded with no date: may be an old update.
+        ("high", {"is_forwarded": True}, {review.HOLD_DATE_GUESSED}),
+        (
+            "high",
+            {"is_forwarded": True, "is_frequently_forwarded": True, "occurred_date_source": "stated_by_user"},
+            {review.HOLD_FREQUENTLY_FORWARDED},
+        ),
+    ],
+)
+def test_draft_holds(confidence, fields, expected):
+    assert review.draft_holds(confidence=confidence, fields=fields) == expected
+
+
+def test_confirm_all_holds_counts_per_reason_in_order():
+    drafts = [
+        {"confidence": "low", "fields": {"is_forwarded": True}},
+        {"confidence": "low", "fields": {}},
+        {"confidence": "high", "fields": {}},
+    ]
+    holds = review.confirm_all_holds(payload={"possible_duplicates": 1, "stock_flags": 3}, drafts=drafts)
+    assert holds == {
+        review.HOLD_DUPLICATE: 1,
+        review.HOLD_LOW_CONFIDENCE: 2,
+        review.HOLD_DATE_GUESSED: 1,
+    }
+    assert list(holds) == [review.HOLD_DUPLICATE, review.HOLD_LOW_CONFIDENCE, review.HOLD_DATE_GUESSED]
+
+
+def test_nothing_holds_a_clean_day_and_stock_is_only_a_warning():
+    assert review.confirm_all_holds(payload={"stock_flags": 2}, drafts=[{"confidence": "high"}]) == {}
+    assert review.confirm_all_holds(payload=None, drafts=[]) == {}

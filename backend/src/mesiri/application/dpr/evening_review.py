@@ -88,3 +88,61 @@ def has_content(payload: Mapping[str, Any] | None) -> bool:
         or payload.get("materials")
         or payload.get("evidence_count")
     )
+
+
+# ---------------------------------------------------------------------------
+# WA-05: when "Confirm all" may be offered
+# ---------------------------------------------------------------------------
+#
+# Rule agreed 15 Oct: the engineer gets a one-tap "Confirm all" unless the
+# day holds an item worth a second look. Only these hold it back:
+#
+#   possible_duplicate     a work item that repeats an earlier one (BE-11)
+#   low_confidence         the AI was unsure what it read (low / ambiguous /
+#                          unresolved ContextConfidence)
+#   frequently_forwarded   WhatsApp's own "forwarded many times" marker:
+#                          likely a broadcast, not this site's work
+#   date_guessed           a forwarded message that never said which day it
+#                          was about, so "today" is a guess -- it may be an
+#                          old update. (A message sent directly is about
+#                          today unless it says otherwise; that is no guess.)
+#
+# Material beyond the stock on record (BE-12) is a warning line in the
+# message, never a hold; who sent an item is not a signal.
+
+HOLD_DUPLICATE = "possible_duplicate"
+HOLD_LOW_CONFIDENCE = "low_confidence"
+HOLD_FREQUENTLY_FORWARDED = "frequently_forwarded"
+HOLD_DATE_GUESSED = "date_guessed"
+HOLDS = (HOLD_DUPLICATE, HOLD_LOW_CONFIDENCE, HOLD_FREQUENTLY_FORWARDED, HOLD_DATE_GUESSED)
+
+LOW_CONFIDENCE = frozenset({"low", "ambiguous", "unresolved"})
+_DATE_STATED = "stated_by_user"
+
+
+def draft_holds(*, confidence: str | None, fields: Mapping[str, Any] | None) -> set[str]:
+    """What holds back "Confirm all" in one draft, from what the AI read
+    (its extraction's confidence and fields)."""
+    fields = fields or {}
+    holds: set[str] = set()
+    if str(confidence or "").lower() in LOW_CONFIDENCE:
+        holds.add(HOLD_LOW_CONFIDENCE)
+    if fields.get("is_frequently_forwarded"):
+        holds.add(HOLD_FREQUENTLY_FORWARDED)
+    if fields.get("is_forwarded") and fields.get("occurred_date_source") != _DATE_STATED:
+        holds.add(HOLD_DATE_GUESSED)
+    return holds
+
+
+def confirm_all_holds(
+    *, payload: Mapping[str, Any] | None, drafts: list[Mapping[str, Any]]
+) -> dict[str, int]:
+    """How many items hold back "Confirm all", per reason, in HOLDS order;
+    empty when it may be offered. `drafts` are the day's drafts as
+    {"confidence", "fields"}."""
+    counts = dict.fromkeys(HOLDS, 0)
+    counts[HOLD_DUPLICATE] = int((payload or {}).get("possible_duplicates") or 0)
+    for draft in drafts:
+        for hold in draft_holds(confidence=draft.get("confidence"), fields=draft.get("fields")):
+            counts[hold] += 1
+    return {hold: n for hold, n in counts.items() if n}

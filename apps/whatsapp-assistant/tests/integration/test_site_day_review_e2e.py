@@ -109,6 +109,22 @@ async def world():
             ),
             {"o": org},
         )
+        # A removed item (WA-05) leaves its correction; a confirmed day names
+        # who confirmed it.
+        await conn.execute(
+            text(
+                "DELETE FROM activity_corrections WHERE activity_id IN"
+                " (SELECT id FROM activities WHERE organization_id = :o)"
+            ),
+            {"o": org},
+        )
+        await conn.execute(
+            text(
+                "UPDATE daily_report_versions SET approved_by_user_id = NULL WHERE daily_report_id IN"
+                " (SELECT id FROM daily_reports WHERE organization_id = :o)"
+            ),
+            {"o": org},
+        )
         await conn.execute(text("DELETE FROM organizations WHERE id = :o"), {"o": org})
     await db.disconnect()
 
@@ -237,10 +253,27 @@ async def test_the_evening_loop_end_to_end(world) -> None:
             {"id": uuid.uuid4(), "r": report_id},
         )
     assert (await _status(db, block_a))[0] == "NEEDS_DETAILS"
-    assert await _review(db) == 0
+    # The day turns ready, so the confirmation goes (WA-05): nothing to
+    # check, so it offers Confirm all.
+    assert await _review(db) == 1
     status, missing = await _status(db, block_a)
     assert status == "READY"
     assert missing["blocking"] == []
+    async with db.transaction() as conn:
+        confirm = (
+            await conn.execute(
+                text(
+                    "SELECT payload FROM notifications WHERE organization_id = :o"
+                    " AND rule_key = :k"
+                ),
+                {"o": created.organization_id, "k": f"site_day_confirm:{block_a}"},
+            )
+        ).scalar_one()
+    confirm = json.loads(confirm) if isinstance(confirm, str) else confirm
+    assert "today's report is ready" in confirm["message"]
+    assert "• Labour: 9 workers" in confirm["message"]
+    assert [b["title"] for b in confirm["buttons"]] == ["Confirm all", "Fix something"]
+    assert confirm["template"]["body_params"][1] == "It is ready to confirm."
 
     # 5. The reminder's "Site closed today" for Block B: no work, nothing required.
     closed = await review.handle_tap(
@@ -248,6 +281,126 @@ async def test_the_evening_loop_end_to_end(world) -> None:
     )
     assert closed.text == "👍 Marked *Block B* as closed today. Today's report will say there was no work."
     assert await _status(db, block_b) == ("READY", {"blocking": [], "optional": []})
+
+    # 6. Ravi taps "Confirm all" for Block A: the day is confirmed.
+    done = await review.handle_tap(
+        SimpleNamespace(metadata={"interactive_reply_id": f"sdr:confirm:{block_a}:20261015"}), actor
+    )
+    assert done.text == site_day_review.CONFIRMED_DONE.format(site="Block A")
+    assert (await _status(db, block_a))[0] == "APPROVED"
+    again = await review.handle_tap(
+        SimpleNamespace(metadata={"interactive_reply_id": f"sdr:confirm:{block_a}:20261015"}), actor
+    )
+    assert again.text == site_day_review.ALREADY_CONFIRMED.format(site="Block A")
+
+
+async def test_confirm_all_is_held_back_until_the_unsure_item_is_checked(world) -> None:
+    """WA-05: an item the AI was unsure of holds back Confirm all; Fix
+    something lists it, Keep clears it, and the day can then be confirmed.
+    A removed item is withdrawn (BE-09's reject)."""
+    from mesiri.infrastructure.postgres.repositories.fact_reviews import (
+        PostgresFactReviewRepository,
+    )
+
+    db, created = world.db, world.created
+    block_a = created.sites[0].site_id
+    async with db.transaction() as conn:
+        work_id = (
+            await conn.execute(
+                text("SELECT id FROM activities WHERE site_id = :s"), {"s": block_a}
+            )
+        ).scalar_one()
+        await conn.execute(
+            text("UPDATE activities SET work_type = 'Plastering', narrative = 'wall 2' WHERE id = :id"),
+            {"id": work_id},
+        )
+        extra_id = uuid.uuid4()
+        await conn.execute(
+            text(
+                "INSERT INTO activities (id, organization_id, project_id, site_id, activity_date,"
+                " work_type, narrative) VALUES (:id, :org, :p, :s, :d, 'Tiling', 'lobby')"
+            ),
+            {"id": extra_id, "org": created.organization_id, "p": created.project_id, "s": block_a, "d": DAY},
+        )
+        report_id = uuid.uuid4()
+        await conn.execute(
+            text(
+                "INSERT INTO labour_attendance_reports (id, organization_id, project_id, site_id,"
+                " occurred_date, recorded_via, created_by)"
+                " VALUES (:id, :o, :p, :s, :d, 'whatsapp_text', :u)"
+            ),
+            {"id": report_id, "o": created.organization_id, "p": created.project_id, "s": block_a, "d": DAY, "u": world.engineer_id},
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO labour_attendance_lines (id, report_id, trade, headcount)"
+                " VALUES (:id, :r, 'mason', 9)"
+            ),
+            {"id": uuid.uuid4(), "r": report_id},
+        )
+        reviews = PostgresFactReviewRepository(conn)
+        unsure = await reviews.record_extraction(
+            organization_id=created.organization_id,
+            extracted={"action_type": "activity", "fields": {}},
+            confidence="low",
+        )
+        await reviews.mark_draft(
+            organization_id=created.organization_id, fact_type="activity", fact_id=work_id,
+            extraction_id=unsure, actor_user_id=world.engineer_id,
+        )
+        forwarded = await reviews.record_extraction(
+            organization_id=created.organization_id,
+            extracted={"action_type": "activity", "fields": {"is_forwarded": True, "occurred_date_source": "stated_by_user"}},
+            confidence="high",
+        )
+        await reviews.mark_draft(
+            organization_id=created.organization_id, fact_type="activity", fact_id=extra_id,
+            extraction_id=forwarded, actor_user_id=world.engineer_id,
+        )
+
+    assert await _review(db) >= 1
+    async with db.transaction() as conn:
+        confirm = (
+            await conn.execute(
+                text("SELECT payload FROM notifications WHERE rule_key = :k"),
+                {"k": f"site_day_confirm:{block_a}"},
+            )
+        ).scalar_one()
+    confirm = json.loads(confirm) if isinstance(confirm, str) else confirm
+    assert "• 1 item I wasn't sure I read right" in confirm["message"]
+    assert [b["title"] for b in confirm["buttons"]] == ["Fix something"]
+
+    actor = await PostgresActorReader().resolve_by_whatsapp_id(ENGINEER_WA)
+    review = site_day_review.SiteDayReview(db=db)
+
+    def tap(value: str):
+        return review.handle_tap(SimpleNamespace(metadata={"interactive_reply_id": value}), actor)
+
+    # Confirm all is refused while the unsure item is there.
+    held = await tap(f"sdr:confirm:{block_a}:20261015")
+    assert "Please check first" in held.text
+    assert (await _status(db, block_a))[0] == "READY"
+
+    listed = await tap(f"sdr:fix:{block_a}:20261015")
+    titles = [row.title for row in listed.list_rows]
+    assert sorted(titles) == ["Plastering", "Tiling"]
+
+    picked = await tap(f"sdr:item:{block_a}:20261015:activity:{work_id}")
+    assert picked.text.startswith("*Plastering*")
+    assert [b.title for b in picked.buttons] == ["Keep it", "Remove it"]
+
+    kept = await tap(f"sdr:keep:{block_a}:20261015:activity:{work_id}")
+    assert "Please check first" not in kept.text
+    assert [b.title for b in kept.buttons] == ["Confirm all", "Fix something"]
+
+    removed = await tap(f"sdr:rm:{block_a}:20261015:activity:{extra_id}")
+    assert "• Work: 1 item" in removed.text
+    gone = await tap(f"sdr:rm:{block_a}:20261015:activity:{extra_id}")
+    assert gone.text == site_day_review.ITEM_GONE
+
+    done = await tap(f"sdr:confirm:{block_a}:20261015")
+    assert done.text == site_day_review.CONFIRMED_DONE.format(site="Block A")
+    assert (await _status(db, block_a))[0] == "APPROVED"
 
 
 async def test_a_tap_for_a_site_of_another_company_is_refused(world) -> None:

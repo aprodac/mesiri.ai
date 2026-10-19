@@ -85,6 +85,11 @@ usually inside the window and get the full message instead, with a
 **Site closed today** button. Tapping **Open report** opens the window and
 brings that full message.
 
+The same template also carries the evening **confirmation** (WA-05) when the
+day is ready: `{{2}}` is `It is ready to confirm.` (or `Some items need a
+look before you confirm.`), and **Open report** brings the confirmation with
+its **Confirm all** / **Fix something** buttons. No new template to submit.
+
 | Field | Value |
 | --- | --- |
 | Name | `mesiri_site_day_review` |
