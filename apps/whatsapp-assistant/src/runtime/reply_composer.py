@@ -25,7 +25,7 @@ choices so a typed "undo" / "photo" / "2" works like the tap
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from channel.replies import TEAM_PHOTO_BUTTONS, ListRow, ReplySpec
 
@@ -174,3 +174,33 @@ __all__ = [
     "pick_form",
     "resolve_choice",
 ]
+
+
+def fold_note(spec: ReplySpec, note: str) -> ReplySpec:
+    """``spec`` with a short ``note`` as its last paragraph: one message, the
+    new reply first and the closed question's line after it (request [53])."""
+    if not note.strip():
+        return spec
+    room = BODY_MAX - len(note) - 2
+    text = spec.text if len(spec.text) <= room else _clip(spec.text[: max(room, 0)])
+    return replace(spec, text=f"{text}\n\n{note}")
+
+
+def let_go_note(collected: dict | None, closing_text: str) -> str:
+    """The one short line for a question that was let go. When worker
+    promotion closed with nobody added, name them: "(Vinod, Manoj and Biju
+    stay as temporary workers for now.)"; any other closing line goes as is."""
+    from workflows.worker_promotion.wording import NONE_ADDED
+
+    if closing_text == NONE_ADDED:
+        names = [
+            str(w.get("name")).strip()
+            for w in (collected or {}).get("promotable_workers") or []
+            if isinstance(w, dict) and str(w.get("name") or "").strip()
+        ]
+        if names:
+            who = names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+            verb = "stays" if len(names) == 1 else "stay"
+            return f"({who} {verb} as temporary for now.)"
+        return "(They stay as temporary workers for now.)"
+    return closing_text

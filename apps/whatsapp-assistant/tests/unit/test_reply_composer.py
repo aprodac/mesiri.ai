@@ -40,6 +40,7 @@ from runtime.reply_composer import (
 )
 from runtime.reply_dispatch import send_reply_spec
 from workflows.runtime import WorkflowResumeResult, WorkflowResumeStatus
+from workflows.worker_promotion.wording import NONE_ADDED
 
 ORG = uuid.uuid4()
 USR = str(uuid.uuid4())
@@ -708,3 +709,98 @@ async def test_a_failed_header_upload_sends_nothing_and_returns_false():
         sender = WhatsAppSender(client=client, access_token="t", phone_number_id="1")
         assert await sender.send_button("919", body="Saved", buttons=[UNDO_ROW], header_image=PNG) is False
     assert all(p.endswith("/media") for p in posts)
+
+
+def test_a_let_go_question_is_folded_into_the_new_reply_not_sent_apart():
+    from runtime.reply_composer import fold_note, let_go_note
+
+    note = let_go_note(
+        {"promotable_workers": [{"name": "Vinod"}, {"name": "Manoj"}, {"name": "Biju"}]},
+        NONE_ADDED,
+    )
+    assert note == "(Vinod, Manoj and Biju stay as temporary for now.)"
+    spec = ReplySpec(
+        text="What trade were these 5 workers?",
+        list_button_label="Choose",
+        list_rows=(ListRow("steel_bender", "Steel bender"),),
+    )
+    folded = fold_note(spec, note)
+    assert folded.text == f"What trade were these 5 workers?\n\n{note}"
+    assert folded.list_rows == spec.list_rows  # the choices are untouched
+    assert let_go_note({}, "Made permanent: X") == "Made permanent: X"
+    assert fold_note(spec, "  ") is spec
+
+
+async def _let_go(monkeypatch, *, reply_via):
+    """A message that lets an open promotion question go, then is answered by
+    ``reply_via`` -- returns the sends."""
+    from mesiri_contracts.assistant.planner_decision import WorkflowKey
+    from workflows.runtime import WorkflowRunResult
+
+    on_normalized, deps, _, _ = _build(monkeypatch)
+    closing = WorkflowRunResult.completed(
+        workflow_key=WorkflowKey.WORKER_PROMOTION,
+        correlation_id="c",
+        pending_prompt=NONE_ADDED,
+        collected_fields={"promotable_workers": [{"name": "Vinod"}, {"name": "Manoj"}]},
+    )
+    deps["interaction_handler"].handle_slot_answer.return_value = InteractionHandled(
+        result=closing, reply_text=NONE_ADDED, closed_question=True
+    )
+
+    async def new_reply(*args, **kwargs):
+        await reply_via(kwargs)
+
+    mj.process_inbound_message.side_effect = new_reply
+    await on_normalized(_message("Today 5 workers came"), {})
+    return deps
+
+
+async def test_letting_a_question_go_adds_no_message_to_the_new_reply(monkeypatch):
+    async def ask_trade(kwargs):
+        await kwargs["send_list"](
+            "919876543210",
+            body="What trade were these 5 workers?",
+            button_label="Choose",
+            rows=(ListRow("steel_bender", "Steel bender"),),
+        )
+
+    deps = await _let_go(monkeypatch, reply_via=ask_trade)
+
+    sends = _sends(deps)
+    assert len(sends) == 1
+    body = deps["sender"].send_list.await_args.kwargs["body"]
+    assert body.startswith("What trade were these 5 workers?")
+    assert "Vinod and Manoj stay as temporary for now." in body
+    assert deps["sender"].send_list.await_args.kwargs["rows"][0].id == "steel_bender"
+
+
+async def test_a_let_go_line_is_never_lost_when_the_new_message_gets_no_reply(monkeypatch):
+    async def silent(kwargs):
+        return None
+
+    deps = await _let_go(monkeypatch, reply_via=silent)
+
+    sends = _sends(deps)
+    assert len(sends) == 1
+    assert "Vinod and Manoj stay as temporary for now." in sends[0].args[1]
+
+
+def test_a_tap_or_typed_trade_label_maps_back_to_its_code():
+    from trade_label import trade_label
+
+    rows = [ListRow(code, trade_label(code)) for code in ("steel_bender", "mason", "helper")]
+    assert [r.title for r in rows] == ["Steel bender", "Mason", "Helper"]
+    assert resolve_choice("Steel bender", rows).id == "steel_bender"
+    assert resolve_choice("steel bender", rows).id == "steel_bender"
+    assert resolve_choice("1", rows).id == "steel_bender"
+
+
+def test_trade_labels_are_shared_by_the_labour_screens():
+    from workflows.labour_query.nodes import _pretty_trade as query_label
+    from workflows.labour_update.nodes import _line_summary
+    from workflows.readable import value_text
+
+    assert query_label("steel_bender") == "Steel bender"
+    assert value_text("trade", "steel_bender") == "Steel bender"
+    assert "5 × Steel bender" in _line_summary({"trade": "steel_bender", "headcount": 5})

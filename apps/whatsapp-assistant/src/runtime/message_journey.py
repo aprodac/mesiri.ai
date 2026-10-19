@@ -69,6 +69,8 @@ from runtime.reply_composer import (
     UNDO_ROW,
     Offer,
     compose,
+    fold_note,
+    let_go_note,
     resolve_choice,
 )
 from runtime.reply_dispatch import send_reply_spec
@@ -343,7 +345,15 @@ def build_message_handlers(
     async def _run_journey_scoped(message, raw_payload, retry_of_id) -> None:  # type: ignore[no-untyped-def]
         timer = StepTimer()
         try:
-            await _run_journey_steps(message, raw_payload, retry_of_id, timer)
+            try:
+                await _run_journey_steps(message, raw_payload, retry_of_id, timer)
+            finally:
+                # The new message produced no reply of its own: the let-go
+                # line still reaches the sender, alone.
+                try:
+                    await _flush_held_note(message.sender.wa_id)
+                except Exception:  # noqa: BLE001
+                    _log.exception("let_go_note.flush_failed")
             # SS-14: after Mesiri has answered the owner, today's setup
             # question (if any). Here, after every path's reply, rather than
             # in each of the journey's many early returns.
@@ -472,6 +482,44 @@ def build_message_handlers(
             _log.exception("reply.localize_failed user=%s", user_id)
             return spec
 
+    #: A let-go question's one short line, waiting to ride inside the reply
+    #: to the message that let it go (request [53]); sent alone only if that
+    #: message produces no reply of its own.
+    _held_notes: dict[str, str] = {}
+
+    def _with_held_note(spec, wa_id: str):  # type: ignore[no-untyped-def]
+        note = _held_notes.pop(wa_id, None)
+        return fold_note(spec, note) if note else spec
+
+    def _fold_text(send):  # type: ignore[no-untyped-def]
+        """``send_text`` that carries a waiting let-go line in the same message."""
+
+        async def send_with_note(to, text, *args, **kwargs):  # type: ignore[no-untyped-def]
+            note = _held_notes.pop(to, None)
+            if note:
+                text = fold_note(ReplySpec(text=text), note).text
+            return await send(to, text, *args, **kwargs)
+
+        return send_with_note
+
+    def _fold_body(send):  # type: ignore[no-untyped-def]
+        """``send_list`` / ``send_button`` that carry the waiting line in the body."""
+
+        async def send_with_note(to, *args, **kwargs):  # type: ignore[no-untyped-def]
+            note = _held_notes.pop(to, None)
+            if note and "body" in kwargs:
+                kwargs["body"] = fold_note(ReplySpec(text=kwargs["body"]), note).text
+            return await send(to, *args, **kwargs)
+
+        return send_with_note
+
+    _held_users: dict[str, str] = {}
+
+    async def _flush_held_note(wa_id: str) -> None:
+        note = _held_notes.pop(wa_id, None)
+        if note:
+            await _send_composed(wa_id, _held_users.pop(wa_id, ""), ReplySpec(text=note))
+
     async def _send_composed(  # type: ignore[no-untyped-def]
         wa_id: str, user_id: str, spec, *, header_image: bytes | None = None
     ) -> None:
@@ -480,7 +528,7 @@ def build_message_handlers(
         button message, or the image right after a text-only reply."""
         if header_image is not None:
             spec = dataclasses.replace(spec, header_image=header_image)
-        spec = await _in_sender_language(spec, user_id)
+        spec = await _in_sender_language(_with_held_note(spec, wa_id), user_id)
         await send_reply_spec(
             spec,
             wa_id,
@@ -508,7 +556,10 @@ def build_message_handlers(
             )
         except Exception:  # noqa: BLE001 -- never disturbs saved attendance
             _log.exception("worker_promotion.create_failed user=%s", ctx.user_id)
-        await _send_composed(wa_id, ctx.user_id, ReplySpec(text=closed.reply_text))
+        # Not sent yet: it is folded into the reply to the new message, so
+        # letting a question go never adds a message (request [53]).
+        _held_users[wa_id] = ctx.user_id
+        _held_notes[wa_id] = let_go_note(closed.result.collected_fields, closed.reply_text)
 
     async def _agent_enabled(message, ctx) -> bool:  # type: ignore[no-untyped-def]
         """Free text and voice only, and only for a company switched to the
@@ -758,6 +809,8 @@ def build_message_handlers(
 
         async def _send_spec(spec, target_wa_id: str) -> None:
             """Send a ReplySpec through whichever transport it asks for."""
+            if _held_notes:
+                spec = _with_held_note(spec, target_wa_id)
             await send_reply_spec(
                 spec,
                 target_wa_id,
@@ -1640,9 +1693,9 @@ def build_message_handlers(
                 planner=planner,
                 workflow_runtime=workflow_runtime,
                 interaction_handler=interaction_handler,
-                send_text=sender.send_text_capturing_id,
-                send_list=sender.send_list,
-                send_button=sender.send_button,
+                send_text=_fold_text(sender.send_text_capturing_id),
+                send_list=_fold_body(sender.send_list),
+                send_button=_fold_body(sender.send_button),
                 send_image=sender.send_image,
                 send_document=sender.send_document,
                 object_storage=object_storage,
@@ -2594,9 +2647,9 @@ def build_message_handlers(
             planner=planner,
             workflow_runtime=workflow_runtime,
             interaction_handler=interaction_handler,
-            send_text=sender.send_text_capturing_id,
-            send_list=sender.send_list,
-            send_button=sender.send_button,
+            send_text=_fold_text(sender.send_text_capturing_id),
+            send_list=_fold_body(sender.send_list),
+            send_button=_fold_body(sender.send_button),
             send_image=sender.send_image,
             send_document=sender.send_document,
             object_storage=object_storage,
