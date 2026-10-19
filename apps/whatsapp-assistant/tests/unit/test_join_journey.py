@@ -27,12 +27,17 @@ class _Sender:
     def __init__(self) -> None:
         self.texts: list[tuple[str, str]] = []
         self.buttons: list[tuple[str, str, list]] = []
+        self.templates: list[tuple] = []
 
     async def send_text(self, to, body):
         self.texts.append((to, body))
 
     async def send_button(self, to, *, body, buttons):
         self.buttons.append((to, body, buttons))
+
+    async def send_template(self, to, *, name, language, body_params=(), quick_reply_payloads=()):
+        self.templates.append((to, name, tuple(body_params), tuple(quick_reply_payloads)))
+        return True
 
 
 class _Db:
@@ -267,3 +272,69 @@ async def test_the_newcomer_is_told_directly_once_added(monkeypatch) -> None:
     [(to, body)] = sent
     assert to == NEWCOMER
     assert body.startswith("✅ You're in, Ravi! *Acme Builders* added you to *Green Villa*")
+
+
+# -- SS-12: an admin outside the 24 h window ------------------------------------
+
+
+def _journey_with_window(world, *, last_message_at, approved):
+    async def last_inbound_at(wa_id):
+        return last_message_at
+
+    return jj.JoinJourney(
+        sender=world.sender,
+        db=_Db(),
+        redis=FakeRedis(),
+        contact_share=None,
+        now=lambda: NOW,
+        approved_templates=frozenset(approved),
+        last_inbound_at=last_inbound_at,
+    )
+
+
+async def test_an_admin_outside_the_window_gets_the_join_request_template(world) -> None:
+    journey = _journey_with_window(
+        world, last_message_at=NOW - dt.timedelta(days=2), approved={"mesiri_join_request"}
+    )
+
+    await journey.handle_unregistered(_message("JOIN ACME-4821"))
+
+    assert world.sender.buttons == []
+    [(to, name, params, payloads)] = world.sender.templates
+    assert (to, name) == ("919876500099", "mesiri_join_request")
+    assert params == ("Ravi Kumar", NEWCOMER, "Acme Builders")
+    # The same tap ids as the buttons, so Approve / Reject work unchanged.
+    assert payloads == (f"{jj.APPROVE_PREFIX}{_ref(world)}", f"{jj.REJECT_PREFIX}{_ref(world)}")
+
+
+async def test_until_the_template_is_approved_an_admin_outside_the_window_is_not_messaged(world) -> None:
+    journey = _journey_with_window(world, last_message_at=None, approved=set())
+
+    reply = await journey.handle_unregistered(_message("JOIN ACME-4821"))
+
+    assert reply.startswith("Thanks Ravi!")
+    assert world.sender.buttons == [] and world.sender.templates == []
+
+
+async def test_an_admin_inside_the_window_still_gets_the_buttons(world) -> None:
+    journey = _journey_with_window(
+        world, last_message_at=NOW - dt.timedelta(hours=1), approved={"mesiri_join_request"}
+    )
+
+    await journey.handle_unregistered(_message("JOIN ACME-4821"))
+
+    assert world.sender.templates == []
+    assert len(world.sender.buttons) == 1
+
+
+async def test_a_template_tap_is_decided_like_a_button_tap(world) -> None:
+    journey = _journey_with_window(
+        world, last_message_at=None, approved={"mesiri_join_request"}
+    )
+    await journey.handle_unregistered(_message("JOIN ACME-4821"))
+    reject_payload = world.sender.templates[0][3][1]
+
+    reply = await journey.handle_tap(_message(tap=reject_payload, wa_id="919876500099"), _actor())
+
+    assert reply.text == "Okay, *Ravi Kumar* won't be added."
+    assert world.state["requests"][-1]["status"] == rules.REJECTED
