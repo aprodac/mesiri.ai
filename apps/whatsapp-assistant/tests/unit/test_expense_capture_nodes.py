@@ -145,7 +145,7 @@ def test_resolve_account_unmatched_answer_reasks_with_different_wording():
     )
     update = resolve_account(state)
     assert update["awaiting_slot"] == "account_id"
-    assert "didn't catch" in update["pending_prompt"]
+    assert "couldn't tell which one" in update["pending_prompt"]
     # The consumed answer text must not linger in collected_fields.
     assert "_slot_answer_text" not in update["collected_fields"]
 
@@ -227,7 +227,7 @@ def test_check_duplicate_unmatched_answer_reasks():
     state["awaiting_slot"] = "duplicate_confirm"
     update = check_duplicate(state)
     assert update["awaiting_slot"] == "duplicate_confirm"
-    assert "didn't catch" in update["pending_prompt"]
+    assert "couldn't tell which one" in update["pending_prompt"]
 
 
 def test_check_duplicate_already_answered_is_a_no_op():
@@ -390,7 +390,7 @@ def test_resolve_vendor_unmatched_answer_reasks():
     state["awaiting_slot"] = "vendor_confirm"
     update = resolve_vendor(state)
     assert update["awaiting_slot"] == "vendor_confirm"
-    assert "didn't catch" in update["pending_prompt"]
+    assert "couldn't tell which one" in update["pending_prompt"]
 
 
 def test_resolve_vendor_already_answered_is_a_no_op():

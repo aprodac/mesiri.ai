@@ -114,7 +114,7 @@ def test_an_unrecognised_answer_re_asks_rather_than_guessing():
     result = check_duplicate_day(state)
 
     assert result["awaiting_slot"] == DUPLICATE_DAY_SLOT_NAME
-    assert "didn't catch that" in result["pending_prompt"]
+    assert "couldn't tell which one" in result["pending_prompt"]
     assert "corrects_report_id" not in result["collected_fields"]
 
 

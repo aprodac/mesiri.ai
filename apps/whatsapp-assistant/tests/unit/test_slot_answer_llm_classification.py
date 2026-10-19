@@ -7,7 +7,7 @@ matcher (workflows/slots.py) can't resolve that (not a substring of either
 label), so the graph re-asks. Proves the LLM classifier is consulted only
 then, and that feeding its resolved candidate's exact label back through
 provide_input lets the real match_slot_answer resolve it on a second,
-same-turn pass -- no "Sorry, I didn't catch that" shown to the user, and no
+same-turn pass -- no "I couldn't tell which one you meant" shown to the user, and no
 change needed to workflows/slots.py or any workflow node.
 """
 
@@ -54,7 +54,7 @@ class _PickerGraph:
         if matched is None:
             return {
                 "awaiting_slot": "activity_target",
-                "pending_prompt": "Sorry, I didn't catch that.\n\nWhich work is this about?",
+                "pending_prompt": "I couldn't tell which one you meant.\n\nWhich work is this about?",
                 "awaiting_slot_options": slot_options(_CANDIDATES),
                 "collected_fields": state["collected_fields"],
             }
@@ -164,7 +164,7 @@ async def test_llm_returning_none_falls_back_to_the_original_reask():
 
     assert handled is not None
     assert handled.result.status is WorkflowRunStatus.AWAITING_INPUT
-    assert "Sorry, I didn't catch that" in handled.result.pending_prompt
+    assert "I couldn't tell which one you meant" in handled.result.pending_prompt
     assert len(classifier.calls) == 1
 
 
@@ -172,8 +172,8 @@ async def test_without_a_classifier_wired_behavior_is_unchanged():
     runtime = _runtime_with_open_question()
     handler = InteractionHandler(workflow_runtime=runtime)  # no slot_answer_classifier
 
-    handled = await handler.handle_slot_answer(USR, _text("New cause it's 3rd floor"))
+    handled = await handler.handle_slot_answer(USR, _text("hmm 3rd"))
 
     assert handled is not None
     assert handled.result.status is WorkflowRunStatus.AWAITING_INPUT
-    assert "Sorry, I didn't catch that" in handled.result.pending_prompt
+    assert "I couldn't tell which one you meant" in handled.result.pending_prompt

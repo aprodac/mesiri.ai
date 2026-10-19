@@ -56,7 +56,13 @@ from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
 from mesiri_contracts.common.ids import new_id
 
 from ..readable import field_lines
-from ..slots import SlotCandidate, match_slot_answer, resolve_single_choice_slot, slot_options
+from ..slots import (
+    RETRY_PREFIX,
+    SlotCandidate,
+    match_slot_answer,
+    resolve_single_choice_slot,
+    slot_options,
+)
 from ..state import WorkflowGraphState
 
 OWN_POCKET_SENTINEL = "own_pocket"
@@ -107,7 +113,7 @@ def resolve_account(state: WorkflowGraphState) -> dict:
         # silently seeing the identical prompt twice.
         resolution = resolve_single_choice_slot(
             slot_name=_ACCOUNT_SLOT_NAME,
-            prompt_title=f"Sorry, I didn't catch that. {_ACCOUNT_PROMPT_TITLE}",
+            prompt_title=f"{RETRY_PREFIX} {_ACCOUNT_PROMPT_TITLE}",
             candidates=candidates,
         )
         return {
@@ -175,7 +181,7 @@ def check_duplicate(state: WorkflowGraphState) -> dict:
                 }
             resolution = resolve_single_choice_slot(
                 slot_name=_DUPLICATE_SLOT_NAME,
-                prompt_title=f"Sorry, I didn't catch that. {_DUPLICATE_PROMPT_TITLE}",
+                prompt_title=f"{RETRY_PREFIX} {_DUPLICATE_PROMPT_TITLE}",
                 candidates=_DUPLICATE_CANDIDATES,
             )
             return {
@@ -287,7 +293,7 @@ def resolve_vendor(state: WorkflowGraphState) -> dict:
                 return _vendor_answer(matched, fields)
             resolution = resolve_single_choice_slot(
                 slot_name=_VENDOR_SLOT_NAME,
-                prompt_title=f"Sorry, I didn't catch that. {prompt_title}",
+                prompt_title=f"{RETRY_PREFIX} {prompt_title}",
                 candidates=choices,
             )
             return {
