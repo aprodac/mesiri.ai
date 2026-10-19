@@ -244,6 +244,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Branding admin router not loaded: %s", exc)
 
+    # What Mesiri costs to run, per company, day and message, for the control
+    # panel (SA-05); the backend's router, mounted here like branding.
+    try:
+        from mesiri.domains.admin.costs_router import router as costs_admin_router
+
+        app.include_router(costs_admin_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Costs admin router not loaded: %s", exc)
+
     # Auth routes (mobile app login/register)
     try:
         from auth.router import router as auth_router
