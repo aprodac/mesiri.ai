@@ -606,7 +606,7 @@ async def test_a_multi_part_note_gets_one_combined_receipt(monkeypatch):
         def __init__(self, provider):
             pass
 
-        async def run(self, *, ctx, user_text, gateway, scope, correlation_id):
+        async def run(self, *, ctx, user_text, gateway, scope, correlation_id, lap=None):
             gateway.handled.extend(parts)
             return AgentResult(
                 outcome="ok", reply=ReplySpec(text=SAVED), toolbox=SimpleNamespace(parked=None)
@@ -635,7 +635,7 @@ async def test_a_single_saved_part_keeps_its_own_receipt(monkeypatch):
         def __init__(self, provider):
             pass
 
-        async def run(self, *, ctx, user_text, gateway, scope, correlation_id):
+        async def run(self, *, ctx, user_text, gateway, scope, correlation_id, lap=None):
             gateway.handled.append(_with_receipt(_saved_attendance(), _png))
             return AgentResult(
                 outcome="ok", reply=ReplySpec(text=SAVED), toolbox=SimpleNamespace(parked=None)
