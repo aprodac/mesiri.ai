@@ -1640,6 +1640,19 @@ async def _offer_team_photo(
     user_id = str(getattr(actor, "user_id", None) or "")
     if not user_id or not report_id:
         return
+    # At most once a day: the second and third labour save of the day must not
+    # each ask for the same crew photo (request [43]).
+    claim = getattr(team_photo_hint_store, "claim_daily_offer", None)
+    if claim is not None:
+        try:
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+
+            today = datetime.now(ZoneInfo("Asia/Kolkata")).date().isoformat()
+            if not await claim(user_id=user_id, today=today):
+                return
+        except Exception:  # noqa: BLE001 -- a failed check offers, as before
+            _log.warning("team_photo.daily_check_failed user=%s", user_id)
     try:
         await team_photo_hint_store.set_hint(user_id=user_id, report_id=report_id)
     except Exception:  # noqa: BLE001 -- a hint is never worth failing a reply over

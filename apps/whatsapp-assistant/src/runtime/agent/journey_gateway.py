@@ -26,6 +26,14 @@ from .preset_pipeline import PresetUnderstandingPipeline
 _log = logging.getLogger("mesiri.agent")
 
 
+def _without_menu(text: str) -> str:
+    """The "X isn't switched on for your company" reply is followed by the
+    capability list; the agent says the first line only (request [43])."""
+    if "isn't switched on for your company" in text:
+        return text.split("\n\n", 1)[0]
+    return text
+
+
 @dataclass(slots=True)
 class CaptureSink:
     """Stands in for the send callbacks: remembers what the journey would have
@@ -132,7 +140,7 @@ class JourneyGateway:
             return StepResult("error", text="")
         if decision is None or decision.decision_type is not PlannerDecisionType.DIRECT_REPLY:
             return StepResult("needs_answer", text=reply.text, reply=reply)
-        return StepResult("info", text=reply.text)
+        return StepResult("info", text=_without_menu(reply.text))
 
     async def undo_latest_draft(self) -> StepResult:
         reply = await self.undo()

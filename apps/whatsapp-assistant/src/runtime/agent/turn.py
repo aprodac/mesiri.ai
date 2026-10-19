@@ -83,7 +83,11 @@ async def _outage(
     attempt = retry_attempt.get()
     text, will_retry = reply_for_attempt(attempt)
     correlation_id = message.correlation_id
-    _log.warning("agent.outage correlation_id=%s attempt=%s", correlation_id, attempt)
+    # error level, with the cause: this is the line an alert watches (request [43]).
+    _log.error(
+        "agent.outage correlation_id=%s attempt=%s error=%r",
+        correlation_id, attempt, error, exc_info=error,
+    )
     if text:
         if deps.reply_composer is not None and language:
             text = await deps.reply_composer.compose(text, language=language, correlation_id=correlation_id)

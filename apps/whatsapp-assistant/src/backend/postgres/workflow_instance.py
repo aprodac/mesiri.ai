@@ -8,11 +8,17 @@ user_id are canonical Control Plane UUIDs (migration 0195).
 
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 
 from mesiri_contracts.assistant.v2.workflow_state import WorkflowStateV2
 from workflows.ports import LoadedWorkflowInstance, SingleActiveConflict
+
+logger = logging.getLogger(__name__)
+
+#: How long a YES/NO question stays answerable (request [43]).
+CONFIRMATION_TTL_HOURS = 2
 
 
 def _build_engine():
@@ -79,7 +85,30 @@ class PostgresWorkflowInstanceRepository:
             ) from exc
 
     async def get_awaiting_confirmation(self, user_id: str) -> LoadedWorkflowInstance | None:
+        await self._expire_stale_confirmations(user_id)
         return await self._get_by_phase(user_id, "awaiting_confirmation")
+
+    async def _expire_stale_confirmations(self, user_id: str) -> None:
+        """A YES/NO question left unanswered for CONFIRMATION_TTL_HOURS is
+        cancelled, so a later message is never read as its answer and it no
+        longer blocks new records (request [43]). Best effort."""
+        from sqlalchemy import text
+
+        try:
+            async with self._get_engine().begin() as conn:
+                await conn.execute(
+                    text(
+                        "UPDATE workflow_instances "
+                        "SET phase = 'cancelled', status = 'cancelled', "
+                        "version = version + 1, updated_at = now() "
+                        "WHERE user_id = :user_id AND phase = 'awaiting_confirmation' "
+                        "AND status = 'active' "
+                        "AND updated_at < now() - make_interval(hours => :hours)"
+                    ),
+                    {"user_id": uuid.UUID(user_id), "hours": CONFIRMATION_TTL_HOURS},
+                )
+        except Exception:  # noqa: BLE001 -- expiry never costs the sender their message
+            logger.warning("workflow.expire_stale_failed user=%s", user_id, exc_info=True)
 
     async def get_awaiting_input(self, user_id: str) -> LoadedWorkflowInstance | None:
         return await self._get_by_phase(user_id, "collecting_fields")

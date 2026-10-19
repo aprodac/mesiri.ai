@@ -35,6 +35,12 @@ _INTENT_BY_KEY = {
 }
 
 
+#: A reply to a YES/NO question is a few words ("yes please", "no cancel"). A
+#: longer message is a new message even when it happens to contain "done" or
+#: "ok" ("Shuttering done for 3rd floor slab...") -- request [43].
+MAX_REPLY_WORDS = 4
+
+
 def _matches(normalized: str, tokens: set[str], phrases: list[str]) -> bool:
     for phrase in phrases:
         if " " in phrase:
@@ -55,7 +61,9 @@ def classify_reply(text: str | None) -> InteractionIntent:
         return InteractionIntent.UNRELATED
 
     normalized = text.strip().casefold()
-    tokens = set(normalized.split())
+    tokens = {t.strip(".,!?;:'\"") for t in normalized.split()}
+    if len(normalized.split()) > MAX_REPLY_WORDS:
+        return InteractionIntent.UNRELATED
 
     confirm = _matches(normalized, tokens, _PHRASE_SETS["confirm"])
     reject = _matches(normalized, tokens, _PHRASE_SETS["reject"])

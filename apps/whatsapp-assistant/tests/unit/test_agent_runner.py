@@ -65,7 +65,7 @@ async def test_a_pure_answer_has_no_undo_line():
     assert result.reply.text == "12 workers today."
 
 
-async def test_the_loop_is_bounded_to_three_steps_and_twelve_seconds():
+async def test_the_loop_is_bounded_to_three_steps_and_twenty_five_seconds():
     seen = {}
 
     class Spy(FakeToolCallingProvider):
@@ -75,7 +75,7 @@ async def test_the_loop_is_bounded_to_three_steps_and_twelve_seconds():
 
     await _run(Spy(["hello"]))
     assert seen["max_steps"] == 3
-    assert seen["timeout_seconds"] == 12.0
+    assert seen["timeout_seconds"] == 25.0
 
 
 async def test_a_question_keeps_its_buttons_and_the_model_wording():

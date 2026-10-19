@@ -30,7 +30,7 @@ _log = logging.getLogger("mesiri.agent")
 
 #: Per message: tool rounds, and the overall deadline (request [40]).
 MAX_STEPS = 3
-TIMEOUT_SECONDS = 12.0
+TIMEOUT_SECONDS = 25.0  # a 4-part note is ~2 model rounds + 4 saves; 12s cut it off (request [43])
 
 UNDO_LINE = "Wrong? Reply UNDO."
 CHECK_LINE = (
@@ -102,7 +102,7 @@ class AgentRunner:
     # -- the one reply -----------------------------------------------------
 
     def _compose(self, run: ToolRunResult, toolbox: AgentToolbox) -> ReplySpec:
-        text = (run.text or "").strip()
+        text = _unique_paragraphs((run.text or "").strip())
         if not text:
             return self._fallback(toolbox, partial=run.stop_reason == "max_steps")
         if toolbox.saved and "undo" not in text.casefold():
@@ -132,7 +132,7 @@ class AgentRunner:
             parts.extend(toolbox.notes[:1] or [NOTHING_LINE])
         if partial and (toolbox.saved or toolbox.attempted_writes):
             parts.append(CHECK_LINE)
-        text = "\n\n".join(p for p in parts if p)
+        text = _unique_paragraphs("\n\n".join(p for p in parts if p))
         if parked is None:
             return ReplySpec(text=text)
         return ReplySpec(
@@ -141,6 +141,20 @@ class AgentRunner:
             list_rows=parked.list_rows,
             buttons=parked.buttons,
         )
+
+
+def _unique_paragraphs(text: str) -> str:
+    """The same paragraph twice in one reply (a note the model quoted and the
+    pipeline's own words) is said once."""
+    seen: set[str] = set()
+    kept: list[str] = []
+    for part in text.split("\n\n"):
+        key = " ".join(part.split()).casefold()
+        if key and key in seen:
+            continue
+        seen.add(key)
+        kept.append(part)
+    return "\n\n".join(kept)
 
 
 def default_now() -> datetime:

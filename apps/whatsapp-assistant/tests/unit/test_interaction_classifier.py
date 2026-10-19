@@ -86,3 +86,18 @@ def test_adding_a_phrase_classifies_without_touching_logic(monkeypatch):
     }
     monkeypatch.setattr(classifier_module, "_PHRASE_SETS", extended)
     assert classifier_module.classify_reply("haan") is InteractionIntent.CONFIRM
+
+
+def test_a_long_note_containing_done_is_not_a_yes():
+    """19 Oct live test: "Shuttering done for 3rd floor slab" answered a stale
+    expense YES/NO as YES and saved Rs 1,200 (request [43])."""
+    from interactions.classifier import classify_reply
+
+    note = (
+        "Today at Green Villa: 10 masons and 4 helpers. Shuttering done for 3rd floor slab. "
+        "Received 35 bags cement from Sharma Traders. Paid 1500 rupees for tractor."
+    )
+    assert classify_reply(note) is UNRELATED
+    assert classify_reply("no, the cement was 40 bags") is UNRELATED
+    assert classify_reply("Yes, please.") is CONFIRM
+    assert classify_reply("ok done") is CONFIRM

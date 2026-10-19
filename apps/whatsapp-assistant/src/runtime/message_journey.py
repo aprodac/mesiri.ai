@@ -400,7 +400,9 @@ def build_message_handlers(
             stored = await org_settings_query.get(
                 organization_id=str(ctx.organization_id), key=settings_spec.ASSISTANT_MODE
             )
-            return settings_spec.agent_mode(stored)
+            enabled = settings_spec.agent_mode(stored)
+            _log.info("agent.mode org=%s stored=%r agent=%s", ctx.organization_id, stored, enabled)
+            return enabled
         except Exception:  # noqa: BLE001
             _log.exception("agent.mode_lookup_failed org=%s", ctx.organization_id)
             return False

@@ -94,6 +94,21 @@ class TeamPhotoHintStore:
         await self._redis.set_json(key, {}, ttl_seconds=1)
         return str(raw["report_id"])
 
+    @staticmethod
+    def _offered_key(user_id: str) -> str:
+        return f"user:{user_id}:team_photo_offered"
+
+    async def claim_daily_offer(self, *, user_id: str, today: str) -> bool:
+        """True the first time it is asked for ``today`` (an IST date), False
+        after: the crew-photo question is put to a supervisor at most once a
+        day (request [43])."""
+        key = self._offered_key(user_id)
+        raw = await self._redis.get_json(key)
+        if raw and raw.get("day") == today:
+            return False
+        await self._redis.set_json(key, {"day": today}, ttl_seconds=26 * 3600)
+        return True
+
     async def clear(self, *, user_id: str) -> None:
         """Drop the hint without acting on it -- used when the supervisor
         taps Skip, so a photo they send later for some other purpose is not
