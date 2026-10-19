@@ -196,6 +196,7 @@ def build_message_handlers(
     contact_share: ContactShareJourney | None = None,
     join_journey: Any = None,
     setup_questions: SetupQuestions | None = None,
+    logo_from_whatsapp: Any = None,
     site_day_review: SiteDayReview | None = None,
     trial_journey: TrialJourney | None = None,
     reply_composer: ReplyComposer | None = None,
@@ -895,6 +896,22 @@ def build_message_handlers(
                 )
                 await message_logger.log_reply(
                     correlation_id=message.correlation_id, reply=join_reply.text
+                )
+                await message_logger.mark_completed(correlation_id=message.correlation_id)
+                return
+
+        if logo_from_whatsapp is not None:
+            # WA-13: a photo captioned as a logo sets the company's or a
+            # client's logo straight away (owner only).
+            try:
+                logo_reply = await logo_from_whatsapp.handle_media(message, ctx)
+            except Exception:  # noqa: BLE001 — fall through to the normal journey
+                _log.exception("logo_from_whatsapp.failed user=%s", ctx.user_id)
+                logo_reply = None
+            if logo_reply is not None:
+                await _send_spec(logo_reply, wa_id)
+                await message_logger.log_reply(
+                    correlation_id=message.correlation_id, reply=logo_reply.text
                 )
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
                 return

@@ -909,6 +909,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     # SS-14: one setup question a day for a new company's owner; letterhead
     # and logo photos go to the Mesiri team's WhatsApp group.
     from runtime.inbound_journey import start_project_setup_followup
+    from runtime.logo_from_whatsapp import LogoFromWhatsApp
     from runtime.setup_questions import SetupQuestions
     from runtime.team_notify import TeamNotifier
 
@@ -1008,6 +1009,8 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         contact_share=contact_share,
         join_journey=join_journey,
         setup_questions=setup_questions,
+        # WA-13: logos sent on WhatsApp.
+        logo_from_whatsapp=LogoFromWhatsApp(db=material_db, storage=object_storage),
         site_day_review=site_day_review,
         trial_journey=trial_journey,
         # SS-09: pause a trial company that runs past today's usage caps.
