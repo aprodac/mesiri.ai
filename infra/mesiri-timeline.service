@@ -1,0 +1,14 @@
+[Unit]
+Description=Mesiri.AI timeline projector: outbox_events -> timeline_entries (INF-05)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+# The repo root: the settings loader also reads .env from the working directory.
+WorkingDirectory=/opt/mesiri
+Environment=PYTHONPATH=/opt/mesiri/shared/contracts/src:/opt/mesiri/platform/ai/src:/opt/mesiri/backend/src
+EnvironmentFile=/opt/mesiri/.env
+ExecStart=/opt/mesiri/.venv/bin/python -m mesiri.scripts.project_timeline_events
+TimeoutStartSec=5min
+SyslogIdentifier=mesiri-timeline

@@ -1,0 +1,14 @@
+[Unit]
+Description=Mesiri.AI render pending DPR PDFs (INF-05); renders only, sends nothing
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/mesiri
+Environment=PYTHONPATH=/opt/mesiri/shared/contracts/src:/opt/mesiri/platform/ai/src:/opt/mesiri/backend/src:/opt/mesiri/apps/whatsapp-assistant/src
+EnvironmentFile=/opt/mesiri/.env
+ExecStart=/opt/mesiri/.venv/bin/python -m runtime.render_pending_dpr_pdfs
+TimeoutStartSec=10min
+Nice=10
+SyslogIdentifier=mesiri-dpr-render

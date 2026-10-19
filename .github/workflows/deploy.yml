@@ -176,6 +176,12 @@ jobs:
             find "${SRC}" -name '*.pyc' -delete 2>/dev/null || true
           done
 
+          echo "→ Backing up the database before migrations (INF-04)..."
+          # A restore point for every migration: the code rollback below
+          # cannot undo a schema change. A failed backup stops the deploy
+          # here, before anything has changed.
+          bash "${REPO}/infra/deploy/backup_db.sh" pre-migrate
+
           echo "→ Running database migrations..."
           # From the repo root, not backend/: the settings loader reads `.env`
           # from the current directory, and /opt/mesiri/.env is the only one.
@@ -328,9 +334,29 @@ jobs:
             exit 1
           fi
 
+          # ── Step 1c: scheduled jobs (INF-05, INF-06) ──────────────────────
+          # Unit files live in the repo and are copied on every deploy, like
+          # the worker's. Nightly DB backup, the timeline projector, and the
+          # DPR PDF render (renders only; sending is the app's own tick).
+          echo "→ Installing/refreshing timers..."
+          for UNIT in mesiri-backup mesiri-timeline mesiri-dpr-render; do
+            cp "${REPO}/infra/${UNIT}.service" "${REPO}/infra/${UNIT}.timer" /etc/systemd/system/
+          done
+          systemctl daemon-reload
+          for UNIT in mesiri-backup mesiri-timeline mesiri-dpr-render; do
+            systemctl enable --now "${UNIT}.timer"
+          done
+          systemctl list-timers --no-pager 'mesiri-*' || true
+
           echo "──────────────────────────────────────────"
           echo "  Backend deploy complete (mesiri + mesiri-worker)"
           echo "──────────────────────────────────────────"
+
+          # ── Step 1d: smoke test (INF-04) ─────────────────────────────────
+          # Beyond "is it up": the deployed build is live, photos go to real
+          # storage, Meta's webhook handshake works, the queue worker ticks.
+          # A failure fails the job (and notifies) without rolling back.
+          bash "${REPO}/infra/deploy/smoke_test.sh" "$(git -C "${REPO}" rev-parse --short HEAD)" "http://127.0.0.1:${APP_PORT}"
           ENDSSH
 
       # ── Step 2: sync static frontend ───────────────────────────────────────
