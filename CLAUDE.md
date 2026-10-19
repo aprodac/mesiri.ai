@@ -7,7 +7,8 @@
 > Read this **before** `AGENTS.md`'s task-level conventions. Where the two overlap, this
 > document governs process; `AGENTS.md` governs code style and the Module Placement Log.
 >
-> **Authority:** set by Alan, 2026-07-30. Do not amend without his approval.
+> **Authority:** set by Alan, 2026-07-30; autonomous mode added by Alan, 2026-10-19.
+> Do not amend without his approval.
 
 ---
 
@@ -64,7 +65,8 @@ Objective · Scope · Business value · Files expected to change · Backend work
 Database work · API work · Risks · Testing strategy · **Rollback strategy** · Labour isolation ·
 Success criteria
 
-**Do not write code. Wait for approval.**
+**Do not write code. Wait for approval** — unless autonomous mode applies (see *The Most
+Important Rule*): then put the plan in the phase report and proceed.
 
 ### Phase 3 — Implementation
 
@@ -218,17 +220,31 @@ Keep documentation synchronised with the codebase.
 
 ## The Most Important Rule
 
-**Never automatically continue into the next phase.**
-
-At the end of every phase:
+**Autonomous mode (set by Alan, 2026-10-19).** Claude does not wait for approval between
+phases or between tracker items. At the end of every phase:
 
 1. Test.
 2. Commit.
 3. Push.
 4. Update documentation.
 5. Update the tracker item.
-6. Present a summary.
-7. **Wait for Alan's approval before starting the next phase.**
+6. Present a summary (the full phase report; review happens on it after the push).
+7. Continue: claim the next unblocked `todo` item in
+   [docs/plans/V1_TRACKER.md](docs/plans/V1_TRACKER.md) (`Must` before `Later`) and carry on.
+
+**Stop and wait for Alan's approval only when an item:**
+
+1. Changes Labour, Attendance, Payroll or Workforce behaviour, or a shared component
+   (Module Isolation still applies).
+2. Needs a database migration that drops, renames or rewrites existing data
+   (additive migrations may proceed).
+3. Depends on an open product decision, or its tracker row says it needs approval,
+   a decision, or is an ops task.
+4. Would push with any verification check failing.
+5. Is security-sensitive (auth, tokens, tenant isolation, permissions).
+
+When stopped, mark the item `blocked` with the reason in **Notes**, say so in the report,
+and move on to the next item that does not need approval.
 
 ---
 
