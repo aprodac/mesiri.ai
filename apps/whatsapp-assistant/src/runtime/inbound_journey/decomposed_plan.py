@@ -91,7 +91,7 @@ from channel.replies import (
     render_site_picker,
 )
 from mesiri_ai.ports.decomposition import DecompositionProvider
-from mesiri_contracts.assistant.canonical_event import CanonicalEventType
+from mesiri_contracts.assistant.canonical_event import CanonicalEventType, IntentCompleteness
 from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage
 from mesiri_contracts.assistant.understanding_result import UnderstandingResult
@@ -305,6 +305,43 @@ def _inherit_resolved_scope(
                 event.project_id = sites[0].project_id
 
 
+def _not_understood_event(resolved: ResolvedContextV2, segment_text: str) -> CanonicalEventV2:
+    """A placeholder for a part that could not be read. It maps to no
+    workflow, so build_plan_from_segments reports it as skipped and nothing
+    runs for it."""
+    return CanonicalEventV2(
+        event_id=new_id("evt"),
+        correlation_id=resolved.correlation_id,
+        source_message_id=resolved.source_message_id,
+        conversation_id=resolved.conversation_id,
+        event_type=CanonicalEventType.CLARIFICATION_REQUIRED,
+        completeness=IntentCompleteness.NOT_ACTIONABLE,
+        organization_id=resolved.organization_id,
+        user_id=resolved.user_id,
+        project_id=resolved.project_id,
+        site_id=resolved.site_id,
+        permissions=resolved.permissions,
+        fields={"source_text": segment_text, "not_understood": True},
+    )
+
+
+def render_skipped_parts_note(skipped) -> str:  # type: ignore[no-untyped-def]
+    """One short block for the plan preview naming the parts of the note that
+    are not in the plan: questions (not answerable here, so say who can) and
+    parts that could not be read. Empty when nothing was left out. Honest
+    about what happens: nothing is forwarded, so it asks them to follow up."""
+    lines: list[str] = []
+    for part in skipped:
+        text = " ".join(str(part.text).split())[:120]
+        if part.reason == "not_understood":
+            lines.append(f"I couldn't understand: \"{text}\"")
+        elif part.event_type == CanonicalEventType.GENERAL_QUESTION_ASKED.value and text:
+            lines.append(
+                f"Your question \"{text}\" isn't something I can answer yet -- please check with your engineer."
+            )
+    return "\n".join(lines)
+
+
 async def _process_remaining_segments(
     *,
     segment_texts: tuple[str, ...],
@@ -338,6 +375,10 @@ async def _process_remaining_segments(
             )
             event = build_canonical_event(segment_understanding, resolved)
             _inherit_resolved_scope(event, resolved, actor)
+            if WORKFLOW_KEY_BY_EVENT.get(event.event_type) is None:
+                # A question or small talk inside a site note: no workflow
+                # will run it, but the reply says it was seen.
+                event.fields["source_text"] = segment_text
         except Exception:  # noqa: BLE001 -- one bad segment must not sink the
             # rest -- same degrade try_start_decomposed_plan's docstring
             # already documents for this exact loop.
@@ -347,6 +388,9 @@ async def _process_remaining_segments(
                 segment_text,
                 exc_info=True,
             )
+            # Carried in built_events (which survives every picker pause) so
+            # the closing reply can say "I couldn't understand: ...".
+            built_events.append(_not_understood_event(resolved, segment_text))
             continue
 
         gate_reply = await _run_segment_gates(
@@ -408,6 +452,9 @@ async def _finish_with_events(
     try:
         await plan_store.start_plan(plan=result.plan)
         preview = render_plan_preview(result.plan)
+        note = render_skipped_parts_note(result.skipped)
+        if note:
+            preview = f"{preview}\n\n{note}"
         if skipped_modules:
             n = len(skipped_modules)
             preview = (

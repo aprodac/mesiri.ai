@@ -702,3 +702,75 @@ async def test_resume_project_ignores_a_non_project_row_id():
         actor=None,
     )
     assert reply is None
+
+
+# --- Questions and unreadable parts are not silently dropped (request [55]) --------
+
+
+class _ScriptedExtraction:
+    """One canned result per call; a ``None`` entry raises, like a provider
+    failing on that one part."""
+
+    provider = "fake"
+
+    def __init__(self, results: list[ExtractionResult | None]) -> None:
+        self._results = list(results)
+
+    async def extract(self, text, *, semantic_hint=None, expense_categories=None, correlation_id=None):
+        result = self._results.pop(0)
+        if result is None:
+            raise RuntimeError("provider failed on this part")
+        return result
+
+
+async def _preview_for(segments: list[str], results: list[ExtractionResult | None]):
+    return await try_start_decomposed_plan(
+        message_modality=InputModality.TEXT,
+        understanding=_understanding(normalized_text=" and ".join(segments)),
+        resolved=_resolved_context(),
+        pipeline=await _pipeline(_ScriptedExtraction(results)),
+        decomposition=FakeDecompositionProvider(
+            DecompositionResult(is_multi_intent=True, segments=segments)
+        ),
+        plan_store=PlanStore(_FakeRedis()),
+        expense_categories=None,
+        correlation_id="cor_1",
+    )
+
+
+_PROJECT = ExtractionResult(semantic_type="project_create", fields={"name": "Starship"}, provider="fake")
+_QUESTION = ExtractionResult(semantic_type="general_question", fields={}, provider="fake")
+
+
+async def test_a_question_inside_a_site_note_is_acknowledged_in_the_same_reply():
+    reply = await _preview_for(
+        ["create a project called Starship", "can we pour concrete tomorrow?"],
+        [_PROJECT, _QUESTION],
+    )
+    assert reply is not None
+    assert "Starship" in reply.text
+    assert 'Your question "can we pour concrete tomorrow?"' in reply.text
+    assert "engineer" in reply.text
+    assert reply.buttons  # still the one Yes/No preview, no second message
+
+
+async def test_a_part_that_could_not_be_understood_is_named_in_the_same_reply():
+    reply = await _preview_for(
+        ["create a project called Starship", "asdf qwerty zzz"],
+        [_PROJECT, None],
+    )
+    assert reply is not None
+    assert "Starship" in reply.text
+    assert 'I couldn\'t understand: "asdf qwerty zzz"' in reply.text
+
+
+async def test_a_note_with_nothing_left_out_has_no_extra_line():
+    reply = await _preview_for(
+        ["create a project called Starship", "create a site called Site A"],
+        [
+            _PROJECT,
+            ExtractionResult(semantic_type="site_create", fields={"name": "Site A"}, provider="fake"),
+        ],
+    )
+    assert reply is not None
+    assert "Your question" not in reply.text and "couldn't understand" not in reply.text
