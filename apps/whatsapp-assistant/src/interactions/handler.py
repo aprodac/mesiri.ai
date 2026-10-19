@@ -122,6 +122,9 @@ class InteractionHandled:
     # dataclass rather than removed here -- message_journey.py still reads
     # it -- to be deleted together in A6 once workflows/batch.py itself goes.
     next_segment_reply: ReplySpec | None = None
+    # True for an item saved first as a draft (WA-01): the reply may carry an
+    # Undo button, and no setup question follows it (request [45]).
+    saved_draft: bool = False
 
 
 class InteractionHandler:
@@ -239,6 +242,11 @@ class InteractionHandler:
             next_segment_reply=next_segment_reply,
             project_id=str(loaded.state.project_id) if loaded.state.project_id else None,
             site_id=str(loaded.state.site_id) if loaded.state.site_id else None,
+            saved_draft=bool(
+                execution_result is not None
+                and execution_result.status is ExecutionStatus.SUCCEEDED
+                and execution_result.material_row_id is not None
+            ),
         )
 
     async def undo_latest_draft(self, *, organization_id: str | None, user_id: str | None) -> str | None:

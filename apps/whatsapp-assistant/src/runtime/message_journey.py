@@ -62,6 +62,15 @@ from runtime.inbound_journey import (
     resume_pending_report_with_stock_choice,
     resume_pending_report_with_unit,
 )
+from runtime.reply_composer import (
+    QUESTION,
+    SETUP_OFFER,
+    TEAM_PHOTO,
+    UNDO_ROW,
+    Offer,
+    compose,
+    resolve_choice,
+)
 from runtime.reply_dispatch import send_reply_spec
 from runtime.step_timing import StepTimer
 from workflows import WorkflowRunResult, WorkflowRunStatus
@@ -190,6 +199,7 @@ def build_message_handlers(
     user_language_store: UserLanguageStore | None = None,
     trial_usage_guard: Any | None = None,
     agent_provider: Any | None = None,
+    offered_choices_store: Any | None = None,
 ) -> tuple[Any, Any]:
     """Build the `on_normalized`/`on_message_claimed` callbacks WhatsAppReceiver
     invokes for every inbound message, closing over the already-built services
@@ -294,6 +304,10 @@ def build_message_handlers(
 
     # The sender each in-flight message resolved to, for the follow-up below.
     _resolved_actors: dict[str, Any] = {}
+    # Request [45]: messages (by correlation id) that saved data, and the ones
+    # already given the instant check-mark reaction.
+    _saved_messages: set[str] = set()
+    _acknowledged: set[str] = set()
 
     async def _run_journey(message, raw_payload, retry_of_id=None) -> None:  # type: ignore[no-untyped-def]
         with tenant_scope(None):  # BE-03: bound once the sender is known
@@ -334,6 +348,8 @@ def build_message_handlers(
                 setup_questions is not None
                 and actor is not None
                 and message.correlation_id not in _agent_parked
+                # Never after a reply that saved data: it waits for a light message.
+                and message.correlation_id not in _saved_messages
             ):
                 try:
                     # Not in the middle of a multi-part note: the letterhead
@@ -355,6 +371,8 @@ def build_message_handlers(
                     _log.exception("setup_question.follow_up_failed user=%s", actor.user_id)
         finally:
             _resolved_actors.pop(message.correlation_id, None)
+            _saved_messages.discard(message.correlation_id)
+            _acknowledged.discard(message.correlation_id)
             _agent_parked.discard(message.correlation_id)
             # Emitted in `finally` so every path is covered by one write --
             # this block has a dozen early returns (unregistered sender,
@@ -382,6 +400,75 @@ def build_message_handlers(
     #: Correlation ids whose reply ended on a question: the daily setup
     #: question must not pile a second one on top of it.
     _agent_parked: set[str] = set()
+
+    def _as_tap(message, row):  # type: ignore[no-untyped-def]
+        """The message a tap on ``row`` would have been. Undo becomes the typed
+        "undo", so a tap and the word run exactly the same handler."""
+        metadata = {
+            k: v
+            for k, v in (message.metadata or {}).items()
+            if k not in ("interactive_reply_id", "interactive_reply_type")
+        }
+        if row.id == UNDO_ROW.id:
+            return message.model_copy(
+                update={"text": "undo", "modality": InputModality.TEXT, "metadata": metadata}
+            )
+        metadata["interactive_reply_id"] = row.id
+        metadata["interactive_reply_type"] = "button_reply"
+        return message.model_copy(
+            update={"text": row.title, "modality": InputModality.INTERACTIVE, "metadata": metadata}
+        )
+
+    async def _resolve_typed_choice(message, ctx):  # type: ignore[no-untyped-def]
+        """Request [45]: the choices on our last reply are good for the next
+        message only. A typed "undo" / "photo" / option title / number is the
+        tap; anything else just clears them."""
+        if offered_choices_store is None:
+            return message
+        try:
+            rows = await offered_choices_store.take(user_id=ctx.user_id)
+        except Exception:  # noqa: BLE001 -- a hint; the word is handled as before
+            return message
+        if not rows:
+            return message
+        if message.modality is InputModality.INTERACTIVE:
+            if (message.metadata or {}).get("interactive_reply_id") == UNDO_ROW.id:
+                return _as_tap(message, UNDO_ROW)
+            return message
+        if message.modality is not InputModality.TEXT:
+            return message
+        row = resolve_choice(message.text or "", rows)
+        return _as_tap(message, row) if row is not None else message
+
+    async def _acknowledge(message, wa_id: str) -> None:  # type: ignore[no-untyped-def]
+        """A check-mark reaction on the worker's message: the instant "got it"
+        that lets the reply be one message. Best effort, once per message."""
+        if message.correlation_id in _acknowledged:
+            return
+        _acknowledged.add(message.correlation_id)
+        react = getattr(sender, "send_reaction", None)
+        if react is None:
+            return
+        try:
+            await react(wa_id, message.message_id, "✅")
+        except Exception:  # noqa: BLE001 -- never blocks the reply
+            _log.warning("reaction.failed wa_id=%s", wa_id)
+
+    async def _send_composed(wa_id: str, user_id: str, spec) -> None:  # type: ignore[no-untyped-def]
+        """Send the composed reply and remember its choices for typed answers."""
+        await send_reply_spec(
+            spec,
+            wa_id,
+            send_text=sender.send_text,
+            send_list=sender.send_list,
+            send_button=sender.send_button,
+        )
+        options = list(spec.buttons or spec.list_rows or ())
+        if offered_choices_store is not None and options:
+            try:
+                await offered_choices_store.remember(user_id=user_id, rows=options)
+            except Exception:  # noqa: BLE001
+                _log.warning("offered_choices.remember_failed user=%s", user_id)
 
     async def _agent_enabled(message, ctx) -> bool:  # type: ignore[no-untyped-def]
         """Free text and voice only, and only for a company switched to the
@@ -573,6 +660,10 @@ def build_message_handlers(
             await org_settings_query.enabled_modules(organization_id=str(ctx.organization_id))
         )
 
+        # Request [45]: a typed "undo" / "photo" / "skip" / option title / number
+        # answering the choices on the last reply is the same as tapping it.
+        message = await _resolve_typed_choice(message, ctx)
+
         # A message type Mesiri can't act on yet (PDF, video, sticker,
         # location pin, shared contact, music file). Answered here rather
         # than dropped: normalization used to raise on these, aborting
@@ -685,7 +776,7 @@ def build_message_handlers(
             else:
                 # "Upload Photo" is an acknowledgement, not a command -- the
                 # hint stays live and the next photo attaches to it.
-                reply_text = "📷 Go ahead — send the photo whenever you're ready."
+                reply_text = "Send the photo now 📷"
             await sender.send_text(wa_id, reply_text)
             await message_logger.log_reply(
                 correlation_id=message.correlation_id, reply=reply_text
@@ -871,7 +962,23 @@ def build_message_handlers(
                     )
             except Exception:  # noqa: BLE001 -- wording never costs the reply
                 _log.exception("deliver.reply_wording_failed user=%s", ctx.user_id)
-            await sender.send_text(wa_id, reply_text)
+            if handled.saved_draft:
+                await _acknowledge(message, wa_id)
+            if handled.execution_result is not None and _succeeded(handled):
+                _saved_messages.add(message.correlation_id)
+            # One message: what was saved, plus the single follow-up that fits
+            # (a question the record needs, else the team photo / setup offer).
+            try:
+                gathered = await _gather_offers(handled)
+            except Exception:  # noqa: BLE001 -- the offers are optional
+                _log.exception("offers.gather_failed user=%s", ctx.user_id)
+                gathered = _Gathered()
+            _gathered[id(handled)] = gathered
+            await _send_composed(
+                wa_id,
+                ctx.user_id,
+                compose(reply_text, gathered.offers, saved=handled.saved_draft),
+            )
             if handled.next_segment_reply is not None:
                 # #1 Multi-Activity: the batch's next queued segment, as its
                 # own message -- not concatenated above -- so a confirmable
@@ -895,27 +1002,54 @@ def build_message_handlers(
                         pass  # image already tried; text was already sent above
             await _deliver_followups(handled)
 
-        async def _deliver_followups(handled, *, audit: bool = True) -> None:  # type: ignore[no-untyped-def]
-            """What follows a saved/answered confirmation once its reply is
-            out: worker promotion, team-photo and project-setup offers, the
-            plan advance, the invite, and (``audit``) the audit rows. Split out
-            of `_deliver_handled` so the agent (runtime/agent) can send its one
-            reply first and run these after it, unchanged."""
-            # Worker promotion follow-up. This belongs *here*, not in
-            # inbound_journey: a confirmation reply is resolved by the fast
-            # path above and returns before the journey ever runs, so a hook
-            # placed there never fires for the one event it exists to follow
-            # -- which is exactly why no promotion offer was ever sent.
-            # Attendance text and receipt are already delivered above; this is
-            # strictly a second-step offer that never delays either.
+        def _succeeded(handled) -> bool:  # type: ignore[no-untyped-def]
+            from mesiri_contracts.application.results.execution_result import ExecutionStatus
+
+            return handled.execution_result.status is ExecutionStatus.SUCCEEDED
+
+        class _Gathered:
+            """What a saved/answered confirmation wants to say beyond its own
+            reply: the offers (composed into that reply) and whether a
+            worker-promotion question is among them."""
+
+            def __init__(self, offers=None, promotion_offered: bool = False) -> None:  # type: ignore[no-untyped-def]
+                self.offers: list[Offer] = list(offers or [])
+                self.promotion_offered = promotion_offered
+
+        # id(handled) -> its gathered offers, for the follow-ups that run after
+        # the reply is out (the agent sends its reply before `finish`).
+        _gathered: dict[int, Any] = {}
+
+        async def _gather_offers(handled):  # type: ignore[no-untyped-def]
+            """Worker promotion, team-photo and project-setup offers, collected
+            instead of sent: request [45] puts them in the one reply. The
+            hints and once-a-day claims are still written here, exactly as
+            before; only the sending moved."""
             from runtime.inbound_journey import (
                 _maybe_trigger_worker_promotion,
                 _offer_project_setup,
                 _offer_team_photo,
                 _recorded_attendance_report_id,
             )
-            from runtime.plan_executor import advance_plan, plan_has_more_to_do
+            from runtime.plan_executor import plan_has_more_to_do
 
+            offers: list[Offer] = []
+            questions: list[str] = []
+
+            async def _collect_text(_wa_id, text, *args, **kwargs) -> bool:  # type: ignore[no-untyped-def]
+                questions.append(text)
+                return True
+
+            async def _collect_spec(spec, _wa_id) -> None:  # type: ignore[no-untyped-def]
+                from channel.replies import TEAM_PHOTO_BUTTONS
+
+                kind = TEAM_PHOTO if spec.buttons == TEAM_PHOTO_BUTTONS else SETUP_OFFER
+                offers.append(Offer(kind, spec=spec))
+
+            # Worker promotion follow-up. This belongs *here*, not in
+            # inbound_journey: a confirmation reply is resolved by the fast
+            # path above and returns before the journey ever runs, so a hook
+            # placed there never fires for the one event it exists to follow.
             try:
                 promotion_offered = await _maybe_trigger_worker_promotion(
                     handled,
@@ -923,27 +1057,25 @@ def build_message_handlers(
                     workforce_query,
                     ctx,
                     wa_id,
-                    sender.send_text,
+                    _collect_text,
                 )
             except Exception:  # noqa: BLE001 — promotion never disturbs saved attendance
                 _log.exception("worker_promotion.trigger_failed user=%s", ctx.user_id)
                 promotion_offered = False
+            if questions:
+                offers.append(Offer(QUESTION, text="\n\n".join(questions)))
             # Team photo. The report id is parked here, on confirmation,
-            # whatever happens next -- the deferred branch below pops it after
-            # the promotion answer, and has no other way to learn which day
-            # the photo belongs to. An earlier version parked it only inside
-            # _offer_team_photo, so a report *with* new workers deferred the
-            # offer and then looked for an id nobody had written: the prompt
-            # never arrived for exactly the reports most likely to want one.
+            # whatever happens next -- the deferred branch pops it after the
+            # promotion answer, and has no other way to learn which day the
+            # photo belongs to.
             report_id = _recorded_attendance_report_id(handled)
             if report_id:
                 await _park_team_photo_report(
                     team_photo_hint_store, ctx.user_id, report_id
                 )
-            # Sent now only when nothing is being promoted and no multi-part
+            # Offered now only when nothing is being promoted and no multi-part
             # note is still running; otherwise it waits (for that answer, or
-            # for the note's last part), so the supervisor faces one question
-            # at a time rather than two prompts at once.
+            # for the note's last part).
             photo_held_for_plan = False
             if report_id:
                 try:
@@ -958,19 +1090,35 @@ def build_message_handlers(
                 await _hold_team_photo_for_plan(team_photo_hint_store, ctx.user_id, report_id)
             elif report_id and not promotion_offered:
                 await _offer_team_photo(
-                    report_id, ctx, wa_id, team_photo_hint_store, _send_spec
+                    report_id, ctx, wa_id, team_photo_hint_store, _collect_spec
                 )
-            # Chained project/site setup offer: independent of the two
-            # attendance-only follow-ups above (mutually exclusive triggers
-            # -- this only fires for CREATE_PROJECT/CREATE_SITE, those only
-            # for RECORD_LABOUR_ATTENDANCE), so it always runs regardless of
-            # what happened above. See _offer_project_setup's docstring.
+            # Chained project/site setup offer: only fires for CREATE_PROJECT/
+            # CREATE_SITE, mutually exclusive with the attendance offers.
             try:
                 await _offer_project_setup(
-                    handled, project_setup_offer_store, ctx, wa_id, _send_spec
+                    handled, project_setup_offer_store, ctx, wa_id, _collect_spec
                 )
             except Exception:  # noqa: BLE001 — offer never disturbs the saved project/site
                 _log.exception("project_setup.offer_failed user=%s", ctx.user_id)
+            return _Gathered(offers, promotion_offered)
+
+        async def _deliver_followups(handled, *, audit: bool = True) -> None:  # type: ignore[no-untyped-def]
+            """What follows a saved/answered confirmation once its reply is
+            out: the plan advance, the held team-photo question, the invite,
+            and (``audit``) the audit rows. The offers themselves went out
+            inside the reply (`_gather_offers`)."""
+            from runtime.inbound_journey import _offer_team_photo
+            from runtime.plan_executor import advance_plan, plan_has_more_to_do
+
+            gathered = _gathered.pop(id(handled), None)
+            if gathered is None:
+                # Not composed into a reply (nothing sent it yet): send what
+                # was gathered as its own messages, as before request [45].
+                gathered = await _gather_offers(handled)
+                for offer in gathered.offers:
+                    spec = offer.spec or ReplySpec(text=offer.text or "")
+                    await _send_spec(spec, wa_id)
+            promotion_offered = gathered.promotion_offered
             # Plan advance (docs/execution/COMPOSITE_REQUEST_PLAN_LAYER.md
             # §4.2/§7.1): after ANY confirmed/rejected workflow, check
             # whether it was a step in a Plan waiting on this exact
@@ -980,6 +1128,7 @@ def build_message_handlers(
             # call, generically, rather than one hand-written advance per
             # chain. A cheap no-op (one Redis read) for the overwhelmingly
             # common confirmation with no plan waiting on it at all.
+            pending_plan_reply = None
             try:
                 plan_reply = await advance_plan(
                     handled,
@@ -1001,18 +1150,19 @@ def build_message_handlers(
                     # start_member_create_plan had. The closing summary is
                     # plain text either way (format_plan_summary), which
                     # ReplySpec/send_reply_spec already handle correctly.
-                    await send_reply_spec(
-                        plan_reply,
-                        wa_id,
-                        send_text=sender.send_text,
-                        send_list=sender.send_list,
-                        send_button=sender.send_button,
-                    )
+                    # Sent below, once the held team-photo question is known:
+                    # the closing summary carries it as buttons (request [45]).
+                    pending_plan_reply = plan_reply
             except Exception:  # noqa: BLE001 — the confirmed/rejected step's own
                 # outcome was already recorded either way.
                 _log.exception("plan.advance_failed user=%s", ctx.user_id)
             # The note is finished (or was never a note): now the optional
             # team-photo question that was held back while it ran.
+            held_offers: list[Offer] = []
+
+            async def _hold_collect(spec, _wa_id) -> None:  # type: ignore[no-untyped-def]
+                held_offers.append(Offer(TEAM_PHOTO, spec=spec))
+
             try:
                 if not promotion_offered and not await plan_has_more_to_do(
                     plan_store, user_id=ctx.user_id
@@ -1020,10 +1170,21 @@ def build_message_handlers(
                     held_report = await team_photo_hint_store.pop_held(user_id=ctx.user_id)
                     if held_report:
                         await _offer_team_photo(
-                            held_report, ctx, wa_id, team_photo_hint_store, _send_spec
+                            held_report, ctx, wa_id, team_photo_hint_store, _hold_collect
                         )
             except Exception:  # noqa: BLE001 -- the offer is optional
                 _log.exception("team_photo.held_offer_failed user=%s", ctx.user_id)
+            try:
+                if pending_plan_reply is not None:
+                    spec = pending_plan_reply
+                    if held_offers and not (spec.buttons or spec.list_rows):
+                        spec = compose(spec.text, held_offers, saved=True)
+                        held_offers = []
+                    await _send_composed(wa_id, ctx.user_id, spec)
+                for offer in held_offers:
+                    await _send_spec(offer.spec, wa_id)
+            except Exception:  # noqa: BLE001
+                _log.exception("plan.reply_failed user=%s", ctx.user_id)
             # SS-13: the person whose contact was shared is now on the
             # project; hand the owner an invite to forward them. After the
             # plan summary, so the message to forward is the last one.
@@ -2241,11 +2402,40 @@ def build_message_handlers(
                     organization_id=str(ctx.organization_id), user_id=ctx.user_id
                 )
 
+            async def _save_now():  # type: ignore[no-untyped-def]
+                saved = await interaction_handler.save_now(ctx.user_id, actor=ctx)
+                if saved is not None and saved.saved_draft:
+                    _saved_messages.add(message.correlation_id)
+                    await _acknowledge(message, message.sender.wa_id)
+                return saved
+
+            async def _send_agent_reply(reply, target_wa_id, gateway) -> None:  # type: ignore[no-untyped-def]
+                """The agent's one reply, with the offers for what it saved
+                folded in (buttons for the photo / undo) instead of sent as
+                further messages."""
+                handled_list = list(getattr(gateway, "handled", []))
+                if not handled_list or reply.buttons or reply.list_rows:
+                    await _send_spec(reply, target_wa_id)
+                    return
+                offers: list[Offer] = []
+                for handled in handled_list:
+                    try:
+                        gathered = await _gather_offers(handled)
+                    except Exception:  # noqa: BLE001 -- the offers are optional
+                        _log.exception("offers.gather_failed user=%s", ctx.user_id)
+                        continue
+                    _gathered[id(handled)] = gathered
+                    offers.extend(gathered.offers)
+                saved = any(h.saved_draft for h in handled_list)
+                await _send_composed(
+                    target_wa_id, ctx.user_id, compose(reply.text, offers, saved=saved)
+                )
+
             def _gateway(msg, language):  # type: ignore[no-untyped-def]
                 return JourneyGateway(
                     message=msg,
                     process=_process,
-                    save_now=lambda: interaction_handler.save_now(ctx.user_id, actor=ctx),
+                    save_now=_save_now,
                     undo=_undo,
                     followups=lambda handled: _deliver_followups(handled, audit=False),
                     held_prompt=lambda journey: render_workflow_run_reply_spec(journey.workflow_run),
@@ -2256,6 +2446,7 @@ def build_message_handlers(
                 runner=_agent_runner,
                 make_gateway=_gateway,
                 send_spec=_send_spec,
+                send_agent_reply=_send_agent_reply,
                 transcribe=pipeline.transcribe_voice,
                 message_logger=message_logger,
                 memory_loader=memory_loader,

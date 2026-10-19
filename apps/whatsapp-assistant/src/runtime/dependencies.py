@@ -698,6 +698,12 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
 
     team_photo_hint_store = TeamPhotoHintStore(redis_client)
 
+    # The choices on the last reply, so a typed "undo" / "photo" / number
+    # works like the tap (request [45]).
+    from interactions.offered_choices import OfferedChoicesStore
+
+    offered_choices_store = OfferedChoicesStore(redis_client)
+
     # Chained project/site setup offer: remembers which project a tap on
     # "Add a Site now" / "Add a Teammate now" is about, between the offer
     # message and the button tap. See interactions/project_setup_offer.py.
@@ -974,6 +980,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         category_hint_store=category_hint_store,
         completion_photo_hint_store=completion_photo_hint_store,
         team_photo_hint_store=team_photo_hint_store,
+        offered_choices_store=offered_choices_store,
         project_setup_offer_store=project_setup_offer_store,
         memory_loader=memory_loader,
         memory_coordinator=memory_coordinator,

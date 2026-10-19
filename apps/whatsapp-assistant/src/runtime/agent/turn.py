@@ -44,6 +44,9 @@ class AgentTurnDeps:
     memory_coordinator: Any | None = None
     user_language_store: Any | None = None
     reply_composer: Any | None = None
+    #: ``(reply, wa_id, gateway)``: sends the reply with the saved items' offers
+    #: (team photo, undo) folded in; None sends the reply alone.
+    send_agent_reply: Callable[[ReplySpec, str, Any], Awaitable[None]] | None = None
     now: Callable[[], Any] = default_now
 
 
@@ -171,7 +174,10 @@ async def run_agent_turn(
         return result
 
     reply = result.reply
-    await deps.send_spec(reply, wa_id)
+    if deps.send_agent_reply is not None and result.toolbox.parked is None:
+        await deps.send_agent_reply(reply, wa_id, gateway)
+    else:
+        await deps.send_spec(reply, wa_id)
     await _audit(message, gateway, reply, deps)
     if deps.memory_coordinator is not None:
         await _safe(
