@@ -1,0 +1,36 @@
+{
+  "id": "material-receipt-keeps-supplier",
+  "status": "passing",
+  "source": "request [37]: 19 Oct live test (bot ...6072, trial company), paraphrased onto the seed company",
+  "description": "'Received 40 bags cement from Sharma Traders': the supplier (even under another key name) reaches the receipt instead of showing a dash.",
+  "sender": "engineer",
+  "message": {
+    "text": "Received 40 bags cement from Sharma Traders"
+  },
+  "understanding": {
+    "semantic_type": "material_update",
+    "fields": {
+      "material_name": "cement",
+      "quantity": 40,
+      "unit": "bags",
+      "direction": "received",
+      "supplier_name": "Sharma Traders"
+    },
+    "field_confidences": {
+      "material_name": 0.95,
+      "quantity": 0.97,
+      "unit": 0.9
+    }
+  },
+  "expect": {
+    "event_type": "MaterialReceiptRequested",
+    "workflow_key": "material.receipt",
+    "reply_contains": [
+      "Sharma Traders"
+    ],
+    "reply_not_contains": [
+      "supplier_name",
+      "material_name"
+    ]
+  }
+}

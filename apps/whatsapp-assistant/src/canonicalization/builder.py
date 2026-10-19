@@ -98,6 +98,15 @@ def _normalize_material_fields(fields: dict) -> dict:
                 out["direction"] = "used"
                 break
 
+    # The extraction prompts ask for `supplier`, but a model can phrase the key
+    # its own way; the receipt command only reads `supplier`, so an alias left
+    # as-is silently saved "Received 40 bags cement from Sharma Traders" with
+    # no supplier.
+    for supplier_alias in ("supplier_name", "vendor", "vendor_name", "from", "received_from"):
+        alias_value = out.pop(supplier_alias, None)
+        if not str(out.get("supplier") or "").strip() and str(alias_value or "").strip():
+            out["supplier"] = str(alias_value).strip()
+
     unit = out.get("unit")
     if unit:
         # Spelling normalization (bag/bags/sack -> one canonical unit) now
@@ -106,6 +115,36 @@ def _normalize_material_fields(fields: dict) -> dict:
         out["unit"] = str(unit).strip()
 
     return out
+
+
+def _ensure_site_update_narrative(fields: dict, understanding: UnderstandingResult) -> dict:
+    """A site update always carries the sender's own words as its narrative.
+
+    The extraction prompt asks for `narrative` ("the report in the sender's own
+    words"), but a model can return only work_type/location -- most often for
+    one part of a multi-part message. The backend rejects an activity with
+    neither narrative nor quantity ("activity must have a narrative or at
+    least one quantity"), so "Plastering done on 2nd floor east side" was lost
+    after the sender had confirmed it. The message text is what the sender
+    said; use it rather than dropping the work.
+    """
+    if str(fields.get("narrative") or "").strip():
+        return fields
+    if len(understanding.intents) > 1:
+        # The message text covers every intent, so it is not this one's own
+        # words; describe it from what was extracted instead.
+        bits = [str(fields.get(k)).strip() for k in ("work_type", "location") if fields.get(k)]
+        text = " - ".join(bits)
+    else:
+        text = (
+            understanding.translated_text
+            or understanding.normalized_text
+            or understanding.transcript
+            or ""
+        ).strip()
+    if not text:
+        return fields
+    return {**fields, "narrative": text}
 
 
 _LABOUR_NAME_ALIASES = ("name", "worker_name", "worker")
@@ -395,6 +434,9 @@ def _build_event_from_intent(
         # the one-line backport STA-166 asks for (STA-161's docstring on
         # resolve_occurred_date was written expecting exactly this).
         fields = resolve_occurred_date(fields, timezone_name=context.timezone)
+
+    if semantic_type is SemanticType.GENERAL_SITE_UPDATE:
+        fields = _ensure_site_update_narrative(fields, understanding)
 
     if semantic_type is SemanticType.MATERIAL_UPDATE:
         fields = _normalize_material_fields(fields)

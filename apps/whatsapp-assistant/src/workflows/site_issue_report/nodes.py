@@ -17,6 +17,7 @@ from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
 from mesiri_contracts.common.ids import new_id
 
+from ..readable import field_lines
 from ..state import WorkflowGraphState
 
 # occurred_date/occurred_date_source are rendered by _date_line instead of as
@@ -65,10 +66,7 @@ def request_confirmation(state: WorkflowGraphState) -> dict:
     date_line = _date_line(draft.fields)
     if date_line:
         lines.append(date_line)
-    for key, value in draft.fields.items():
-        if key in _DISPLAY_HIDDEN_FIELD_KEYS:
-            continue
-        lines.append(f"   • {key}: {value}")
+    lines.extend(field_lines(draft.fields, skip=_DISPLAY_HIDDEN_FIELD_KEYS))
     lines.append("")
     lines.append("Reply YES to confirm or NO to cancel.")
     return {"pending_prompt": "\n".join(lines)}

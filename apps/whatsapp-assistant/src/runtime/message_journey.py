@@ -39,6 +39,7 @@ from mesiri_ai.undo_classifier import UNDO_SEMANTIC_HINT, is_undo_trigger
 from mesiri_contracts.assistant.enums import InputModality
 from runtime import forward_batch
 from runtime.account_admin_journey import try_handle_account_admin_command
+from runtime.ai_outage import AIUnavailableError, retry_attempt
 from runtime.inbound_journey import (
     process_inbound_message,
     resume_pending_decomposition_with_material,
@@ -217,6 +218,10 @@ def build_message_handlers(
         """
         try:
             await _run_journey(message, raw_payload, retry_of_id)
+        except AIUnavailableError:
+            # Already told the sender it is queued (runtime/ai_outage.py); the
+            # re-raise is what makes the ARQ worker retry the message.
+            raise
         except Exception:
             _log.exception(
                 "inbound.unhandled correlation_id=%s message_id=%s",
@@ -390,9 +395,12 @@ def build_message_handlers(
         # throughout this module. In the rare event of a process crash within
         # ~50ms, this one audit row is lost; the message itself is not lost
         # because WhatsApp retries unacknowledged webhooks.
+        # A later ARQ attempt (runtime/ai_outage.py) is a new run of the same
+        # message: its own log row, like an admin retry.
+        later_attempt = (retry_attempt.get() or 1) > 1
         dedup_key = (
             message.message_id
-            if retry_of_id is None
+            if retry_of_id is None and not later_attempt
             else f"{message.message_id}:retry:{message.correlation_id}"
         )
         asyncio.ensure_future(

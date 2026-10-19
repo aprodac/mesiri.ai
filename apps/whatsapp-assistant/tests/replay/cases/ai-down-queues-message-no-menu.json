@@ -1,0 +1,23 @@
+{
+  "id": "ai-down-queues-message-no-menu",
+  "status": "passing",
+  "source": "request [37]: 19 Oct live test (bot ...6072, trial company), paraphrased onto the seed company",
+  "description": "Every AI provider failing (unpaid account) tells the sender it is queued and retries the message -- never the greeting menu.",
+  "sender": "engineer",
+  "message": {
+    "text": "Plastering done on 2nd floor east side"
+  },
+  "ai_down": true,
+  "retry_attempt": 1,
+  "expect": {
+    "raises": "AIUnavailableError",
+    "reply_kind": "text",
+    "reply_contains": [
+      "few minutes"
+    ],
+    "reply_not_contains": [
+      "reporting today",
+      "Choose one"
+    ]
+  }
+}

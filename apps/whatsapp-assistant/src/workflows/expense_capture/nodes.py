@@ -55,6 +55,7 @@ from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
 from mesiri_contracts.common.ids import new_id
 
+from ..readable import field_lines
 from ..slots import SlotCandidate, match_slot_answer, resolve_single_choice_slot, slot_options
 from ..state import WorkflowGraphState
 
@@ -120,7 +121,13 @@ def resolve_account(state: WorkflowGraphState) -> dict:
         slot_name=_ACCOUNT_SLOT_NAME, prompt_title=_ACCOUNT_PROMPT_TITLE, candidates=candidates
     )
     if resolution.resolved_value is not None:
-        return {"collected_fields": _apply_account_choice(resolution.resolved_value, fields)}
+        resolved = _apply_account_choice(resolution.resolved_value, fields)
+        if not raw_candidates:
+            # No company account exists, so own pocket is the only place this
+            # can be recorded -- not a choice the sender made. Saying so in the
+            # confirmation beats silently showing "own pocket".
+            resolved["own_pocket_assumed"] = True
+        return {"collected_fields": resolved}
     return {
         "collected_fields": fields,
         "awaiting_slot": resolution.awaiting_slot,
@@ -371,10 +378,16 @@ def request_confirmation(state: WorkflowGraphState) -> dict:
     date_line = _date_line(draft.fields)
     if date_line:
         lines.append(date_line)
-    for key, value in draft.fields.items():
-        if key in _DISPLAY_HIDDEN_FIELD_KEYS:
-            continue
-        lines.append(f"   • {key}: {value}")
+    shown = {k: v for k, v in draft.fields.items() if k not in _DISPLAY_HIDDEN_FIELD_KEYS}
+    own_pocket = shown.pop("paid_from_own_pocket", False)
+    assumed = shown.pop("own_pocket_assumed", False)
+    lines.extend(field_lines(shown))
+    if own_pocket:
+        lines.append(
+            "   • Paid: own pocket (no company account set up yet)"
+            if assumed
+            else "   • Paid: own pocket"
+        )
     if draft.fields.get("media_object_key"):
         lines.append("   • 📎 Receipt attached")
     lines.append("")

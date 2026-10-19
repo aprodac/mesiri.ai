@@ -14,8 +14,15 @@ from __future__ import annotations
 import logging
 
 import httpx
+from arq import Retry
 
 from mesiri.bootstrap.settings import get_settings as get_backend_settings
+from runtime.ai_outage import (
+    MAX_ATTEMPTS,
+    RETRY_DEFER_STEP_SECONDS,
+    AIUnavailableError,
+    retry_attempt,
+)
 from runtime.dependencies import Settings, build_container
 from runtime.queue import (
     HEALTH_CHECK_INTERVAL_SECONDS,
@@ -75,7 +82,19 @@ async def process_claimed_message_job(ctx: dict, envelope: dict) -> None:
     context = context_from_envelope(envelope)
     message_id = str(context.message.get("id") or "unknown")
     logger.info("whatsapp.ingress_job_started message_id=%s", message_id)
-    result = await container.receiver.process_claimed_message(context)
+    attempt = int(ctx.get("job_try") or 1)
+    token = retry_attempt.set(attempt)
+    try:
+        result = await container.receiver.process_claimed_message(context)
+    except AIUnavailableError:
+        # Every AI provider failed and the sender has been told it is queued
+        # (runtime/ai_outage.py). ARQ only retries a job that raises Retry --
+        # a plain exception just marks it failed -- so ask for it explicitly,
+        # a little later each time.
+        logger.warning("whatsapp.ingress_job_deferred message_id=%s try=%s", message_id, attempt)
+        raise Retry(defer=RETRY_DEFER_STEP_SECONDS * attempt) from None
+    finally:
+        retry_attempt.reset(token)
     if result is None:
         # process_claimed_message (receiver.py's _process_message_locked)
         # deliberately swallows its own exceptions and returns None on
@@ -118,7 +137,7 @@ class WorkerSettings:
     # for repeatedly reprocessing a message that fails deterministically.
     # 3 keeps a bad message from hammering downstream providers forever
     # while still surviving one or two transient failures.
-    max_tries = 3
+    max_tries = MAX_ATTEMPTS
     # The full journey (STT/vision -> extraction -> DB -> reply) has been
     # observed taking several seconds on media messages; this bounds a
     # stuck job well above that without letting one hang indefinitely.

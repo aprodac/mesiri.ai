@@ -1,0 +1,31 @@
+{
+  "id": "work-done-without-narrative-keeps-sender-words",
+  "status": "passing",
+  "source": "request [37]: 19 Oct live test (bot ...6072, trial company), paraphrased onto the seed company",
+  "description": "'Plastering done on 2nd floor east side': the AI returned only work type and location; the sender's own words become the narrative so the work is not lost.",
+  "sender": "engineer",
+  "message": {
+    "text": "Plastering done on 2nd floor east side"
+  },
+  "understanding": {
+    "semantic_type": "general_site_update",
+    "fields": {
+      "work_type": "plastering",
+      "location": "2nd floor east side"
+    },
+    "field_confidences": {
+      "work_type": 0.95
+    }
+  },
+  "expect": {
+    "event_type": "GeneralSiteUpdateRequested",
+    "workflow_key": "site.update",
+    "reply_contains": [
+      "Plastering done on 2nd floor east side"
+    ],
+    "reply_not_contains": [
+      "narrative",
+      "work_type"
+    ]
+  }
+}

@@ -340,13 +340,14 @@ def test_confirmation_shows_location_name_but_not_raw_location():
     no `location_name` seeded upstream in V1 (work-package/location
     resolution isn't wired yet). The hidden-field list only hides
     `location_name`, not `location` itself, so today the raw value falls
-    through the generic key:value loop and is shown to the user even though
+    through the generic field loop and is shown to the user even though
     nothing downstream persists it. Out of scope for this change -- tracked
-    separately (module audit finding B)."""
+    separately (module audit finding B). Shown as a label, never the raw key."""
     state = _base_state({"location": "Block A", "narrative": "Started blockwork"})
     state.update(build_draft(state))
     prompt = request_confirmation(state)["pending_prompt"]
-    assert "location: Block A" in prompt
+    assert "• Location: Block A" in prompt
+    assert "location:" not in prompt.replace("• Location:", "")
 
 
 def test_confirmation_hides_location_name_when_seeded():

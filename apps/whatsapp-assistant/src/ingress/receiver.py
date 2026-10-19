@@ -17,6 +17,7 @@ from ingress.media_ingestion import DownloadedMedia, MediaDownloader
 from ingress.normalization import MessageNormalizer
 from mesiri_contracts.assistant import NormalizedMessage
 from mesiri_contracts.common.storage import ObjectStoragePort
+from runtime.ai_outage import AIUnavailableError
 from runtime.logging_ports import TraceLogger
 from runtime.noop_loggers import NoopTraceLogger
 
@@ -392,6 +393,10 @@ class WhatsAppReceiver:
             if self._on_normalized is not None:
                 await self._on_normalized(normalized, self._envelope(context), retry_of_id)
             return normalized
+        except AIUnavailableError:
+            # Not a failure to record: the sender was told it is queued, and
+            # worker.py turns this into an ARQ retry (runtime/ai_outage.py).
+            raise
         except Exception as exc:
             logger.exception("Failed to process WhatsApp message %s", message_id)
             # This is the last line of defence: process_inbound_message already

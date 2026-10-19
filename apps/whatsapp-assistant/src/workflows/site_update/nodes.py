@@ -40,6 +40,7 @@ from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
 from mesiri_contracts.common.ids import new_id
 
+from ..readable import field_lines
 from ..slots import SlotCandidate, match_slot_answer, slot_options
 from ..state import WorkflowGraphState
 from .matching import ActivityCandidate, MatchOutcome
@@ -394,10 +395,7 @@ def _request_creation_confirmation(draft: DraftActionV2) -> dict:
                 if line:
                     out.append(line)
 
-    for key, value in fields.items():
-        if key in _CREATION_DISPLAY_HIDDEN_FIELD_KEYS:
-            continue
-        out.append(f"   • {key}: {value}")
+    out.extend(field_lines(fields, skip=_CREATION_DISPLAY_HIDDEN_FIELD_KEYS))
 
     out.append("")
     out.append("Reply YES to confirm or NO to cancel.")
@@ -454,10 +452,7 @@ def _request_continuation_confirmation(draft: DraftActionV2) -> dict:
         out.append("")
         out.append(f"   • {quantity} {unit}")
 
-    for key, value in fields.items():
-        if key in _CONTINUATION_DISPLAY_HIDDEN_FIELD_KEYS:
-            continue
-        out.append(f"   • {key}: {value}")
+    out.extend(field_lines(fields, skip=_CONTINUATION_DISPLAY_HIDDEN_FIELD_KEYS))
 
     out.append("")
     out.append("Reply YES to confirm or NO to cancel.")

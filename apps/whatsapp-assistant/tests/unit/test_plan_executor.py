@@ -261,10 +261,10 @@ def test_summarize_step_outcome_matches_workflows_batch_wording_exactly():
         _summarize_step_outcome(
             confirmed,
             ExecutionResult(
-                status=ExecutionStatus.REJECTED, idempotency_key="k", rejection_reasons=["a", "b"]
+                status=ExecutionStatus.REJECTED, idempotency_key="k", rejection_reasons=["unit is required", "a b c"]
             ),
         )
-        == "Couldn't record: a; b"
+        == "Which unit is that in — bags, kg, sqm, nos?"
     )
     assert (
         _summarize_step_outcome(
@@ -529,7 +529,9 @@ async def test_a_domain_rejection_reason_is_named_in_the_summary_line():
     reply = await advance_plan(handled, plan_store=store, workflow_runtime=runtime, actor=_Actor())
 
     assert reply is not None
-    assert "Couldn't record: a project with this name already exists" in reply.text
+    assert "That already exists, so I didn't add it again." in reply.text
+    assert "a project with this name already exists" not in reply.text
+    assert "New project" in reply.text  # named in plain words, not the workflow key
 
 
 async def test_the_last_step_completing_clears_the_plan_and_returns_a_summary():

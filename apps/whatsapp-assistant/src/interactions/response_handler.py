@@ -8,6 +8,7 @@ in the callers.
 
 from __future__ import annotations
 
+from channel.friendly_errors import friendly_rejection
 from mesiri_contracts.application.results.execution_result import ExecutionResult, ExecutionStatus
 from workflows import (
     WorkflowResumeResult,
@@ -52,8 +53,7 @@ def render_execution_reply(result: ExecutionResult) -> str:
             return f"✅ Recorded. Thank you.\n\n{result.conflict_note}"
         return "✅ Recorded. Thank you."
     if result.status is ExecutionStatus.REJECTED:
-        reasons = "; ".join(result.rejection_reasons)
-        return f"⚠️ Couldn't record this: {reasons}"
+        return f"⚠️ Couldn't record this. {friendly_rejection(result.rejection_reasons, where='reply')}"
     # FAILED
     return "⚠️ Something went wrong — we'll retry automatically."
 

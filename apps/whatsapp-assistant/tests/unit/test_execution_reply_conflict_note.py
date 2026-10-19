@@ -38,8 +38,9 @@ def test_already_executed_with_conflict_note_appends_it_too():
 
 def test_rejected_ignores_conflict_note_field_entirely():
     result = ExecutionResult(
-        status=ExecutionStatus.REJECTED, idempotency_key="k1", rejection_reasons=["bad quantity"]
+        status=ExecutionStatus.REJECTED, idempotency_key="k1", rejection_reasons=["quantity must be positive"]
     )
     reply = render_execution_reply(result)
     assert "Note:" not in reply
-    assert "bad quantity" in reply
+    assert "quantity must be positive" not in reply  # raw reason stays in the log
+    assert "How much" in reply

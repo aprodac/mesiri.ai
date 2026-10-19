@@ -64,6 +64,7 @@ from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
 from mesiri_contracts.common.ids import new_id
 
+from ..readable import field_lines
 from ..slots import (
     SlotCandidate,
     match_slot_answer,
@@ -709,10 +710,7 @@ def request_confirmation(state: WorkflowGraphState) -> dict:
     if date_line:
         out.append(date_line)
 
-    for key, value in fields.items():
-        if key in _DISPLAY_HIDDEN_FIELD_KEYS:
-            continue
-        out.append(f"   • {key}: {value}")
+    out.extend(field_lines(fields, skip=_DISPLAY_HIDDEN_FIELD_KEYS))
 
     if lines_data:
         out.append("")

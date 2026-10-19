@@ -121,19 +121,18 @@ def test_describe_site_update():
 
 
 def test_describe_falls_back_to_registry_title_for_an_unconnected_workflow_key():
-    """A workflow this layer has no bespoke phrasing for (e.g. EXPENSE_SUBMIT,
+    """A workflow this layer has no bespoke phrasing for (e.g. EQUIPMENT_USAGE,
     reachable in principle via a decomposed segment even though today's
     entity-linking rule never connects it to anything) still gets an honest
     line, not a crash."""
     step = PlanStep(
         step_id="s1",
-        workflow_key=WorkflowKey.EXPENSE_SUBMIT,
-        event_type=CanonicalEventType.EXPENSE_REQUESTED,
-        fields={"amount": 1500},
+        workflow_key=WorkflowKey.EQUIPMENT_USAGE,
+        event_type=CanonicalEventType.EQUIPMENT_USAGE_REQUESTED,
+        fields={"equipment_name": "JCB"},
     )
     text = describe_step(step, _plan(step))
-    assert "Record Expense" in text
-    assert "1500" in text
+    assert "JCB" in text
 
 
 def test_render_plan_preview_full_paraclette_example():

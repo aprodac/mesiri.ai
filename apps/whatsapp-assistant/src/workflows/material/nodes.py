@@ -15,6 +15,7 @@ from mesiri_contracts.assistant.planner_decision import WorkflowKey
 from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
 from mesiri_contracts.common.ids import new_id
 
+from ..readable import field_lines
 from ..state import WorkflowGraphState
 
 _ACTION_TYPE_BY_WORKFLOW_KEY: dict[WorkflowKey, DraftActionType] = {
@@ -102,10 +103,17 @@ def request_confirmation(state: WorkflowGraphState) -> dict:
     date_line = _date_line(draft.fields)
     if date_line:
         lines.append(date_line)
-    for key, value in draft.fields.items():
-        if key in _DISPLAY_HIDDEN_FIELD_KEYS:
-            continue
-        lines.append(f"   • {key}: {value}")
+    shown = {
+        key: value
+        for key, value in draft.fields.items()
+        if key not in _DISPLAY_HIDDEN_FIELD_KEYS and key != "direction"
+    }
+    quantity, unit = shown.get("quantity"), shown.pop("unit", None)
+    if quantity is not None and unit:
+        if isinstance(quantity, float) and quantity == int(quantity):
+            quantity = int(quantity)
+        shown["quantity"] = f"{quantity} {unit}"
+    lines.extend(field_lines(shown))
     warning = _low_stock_warning(state, draft)
     if warning:
         lines.append("")

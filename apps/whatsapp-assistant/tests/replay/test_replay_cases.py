@@ -36,11 +36,13 @@ from interactions.category_hint import CategoryHintStore
 from interactions.handler import InteractionHandler
 from interactions.pending_report import PendingReportStore
 from mesiri.infrastructure.objectstorage.fake import FakeObjectStorage
+from mesiri_ai.core.errors import map_provider_error
 from mesiri_ai.fakes import FakeExtractionProvider, FakeVisionProvider, FakeVoiceExtractionProvider
 from mesiri_ai.models import ExtractionResult
 from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage, SenderInfo
 from planner import Planner
+from runtime.ai_outage import AIUnavailableError, retry_attempt
 from runtime.inbound_journey import process_inbound_message
 from runtime.noop_loggers import RecordingMessageLogger, RecordingTraceLogger
 from understanding.pipeline import UnderstandingPipeline
@@ -65,6 +67,9 @@ _CASE_KEYS = {
     "sender",
     "message",
     "understanding",
+    "ai_down",
+    "retry_attempt",
+    "user_language",
     "expect",
 }
 _EXPECT_KEYS = {
@@ -76,6 +81,7 @@ _EXPECT_KEYS = {
     "reply_not_contains",
     "reply_max_chars",
     "options_include",
+    "raises",
 }
 
 
@@ -108,6 +114,7 @@ class Observed:
     decision: str | None = None
     workflow_key: str | None = None
     replies: list[dict[str, Any]] = field(default_factory=list)
+    raised: str | None = None
 
     @property
     def reply(self) -> dict[str, Any] | None:
@@ -116,7 +123,12 @@ class Observed:
 
 async def run_case(case: dict[str, Any]) -> Observed:
     """Sends the case's one message through the real pipeline; returns what happened."""
-    understanding = ExtractionResult(model="replay", latency_ms=0.0, **case["understanding"])
+    ai_down = bool(case.get("ai_down"))
+    understanding = (
+        None
+        if ai_down
+        else ExtractionResult(model="replay", latency_ms=0.0, **case["understanding"])
+    )
     message = case["message"]
     modality = InputModality(message.get("modality", "text"))
     sender = SENDERS[case.get("sender", "engineer")]
@@ -136,7 +148,62 @@ async def run_case(case: dict[str, Any]) -> Observed:
 
     runtime = WorkflowRuntime(registry=WorkflowRegistry(), repo=FakeWorkflowInstanceRepository())
     redis = _MemoryRedis()
-    result = await process_inbound_message(
+    extraction = _DownProvider() if ai_down else FakeExtractionProvider(understanding)
+    voice_extraction = _DownProvider() if ai_down else FakeVoiceExtractionProvider(understanding)
+    attempt_token = retry_attempt.set(case.get("retry_attempt"))
+    try:
+        result = await _run_journey(case, message, modality, sender, runtime, redis, extraction,
+                                    voice_extraction, send_text, send_list, send_button)
+    except AIUnavailableError:
+        observed.raised = "AIUnavailableError"
+        return observed
+    finally:
+        retry_attempt.reset(attempt_token)
+    if result.canonical_event is not None:
+        observed.event_type = result.canonical_event.event_type.value
+    if result.planner_decision is not None:
+        observed.decision = result.planner_decision.decision_type.value
+        key = result.planner_decision.workflow_key
+        observed.workflow_key = key.value if key is not None else None
+    return observed
+
+
+class _TagComposer:
+    """Stands in for ReplyComposer: shows which language a reply was sent for."""
+
+    async def compose(self, reply, *, language, user_message=None, correlation_id=""):  # noqa: ANN001
+        return f"[{language}] {reply}" if language else reply
+
+
+class _FixedLanguage:
+    def __init__(self, language):  # noqa: ANN001
+        self._language = language
+
+    async def get(self, *, user_id):  # noqa: ANN001
+        return self._language
+
+    async def remember(self, **kwargs):  # noqa: ANN003
+        return None
+
+
+class _DownProvider:
+    """Every call fails the way an unpaid DeepSeek account did on 19 Oct (HTTP 402)."""
+
+    provider = "deepseek"
+
+    async def extract(self, *args, **kwargs):  # noqa: ANN002, ANN003
+        raise map_provider_error("deepseek", _Http402())
+
+    understand_voice = extract
+
+
+class _Http402(Exception):
+    status_code = 402
+
+
+async def _run_journey(case, message, modality, sender, runtime, redis, extraction,  # noqa: ANN001
+                       voice_extraction, send_text, send_list, send_button):
+    return await process_inbound_message(
         NormalizedMessage(
             message_id=f"wamid.replay.{case['id']}",
             correlation_id=f"cor_replay_{case['id']}",
@@ -147,9 +214,9 @@ async def run_case(case: dict[str, Any]) -> Observed:
         ),
         sender,
         pipeline=UnderstandingPipeline(
-            voice_extraction=FakeVoiceExtractionProvider(understanding),
+            voice_extraction=voice_extraction,
             vision=FakeVisionProvider(None),
-            extraction=FakeExtractionProvider(understanding),
+            extraction=extraction,
             object_storage=FakeObjectStorage(),
         ),
         context_resolver=ContextResolver(seed.build_dependencies()),
@@ -163,14 +230,11 @@ async def run_case(case: dict[str, Any]) -> Observed:
         trace_logger=RecordingTraceLogger(),
         pending_report_store=PendingReportStore(redis),
         category_hint_store=CategoryHintStore(redis),
+        reply_composer=_TagComposer() if case.get("user_language") else None,
+        user_language_store=(
+            _FixedLanguage(case["user_language"]) if case.get("user_language") else None
+        ),
     )
-    if result.canonical_event is not None:
-        observed.event_type = result.canonical_event.event_type.value
-    if result.planner_decision is not None:
-        observed.decision = result.planner_decision.decision_type.value
-        key = result.planner_decision.workflow_key
-        observed.workflow_key = key.value if key is not None else None
-    return observed
 
 
 def check(expect: dict[str, Any], observed: Observed) -> list[str]:
@@ -180,8 +244,13 @@ def check(expect: dict[str, Any], observed: Observed) -> list[str]:
         if key in expect and expect[key] != getattr(observed, key):
             problems.append(f"{key}: expected {expect[key]!r}, got {getattr(observed, key)!r}")
 
+    if "raises" in expect and expect["raises"] != observed.raised:
+        problems.append(f"raises: expected {expect['raises']!r}, got {observed.raised!r}")
+    if "raises" not in expect and observed.raised:
+        problems.append(f"unexpected {observed.raised}")
+
     reply = observed.reply
-    reply_keys = _EXPECT_KEYS - {"event_type", "decision", "workflow_key"}
+    reply_keys = _EXPECT_KEYS - {"event_type", "decision", "workflow_key", "raises"}
     if reply is None:
         if reply_keys & expect.keys():
             problems.append("no reply was sent")

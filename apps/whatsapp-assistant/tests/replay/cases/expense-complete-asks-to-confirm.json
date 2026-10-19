@@ -16,6 +16,6 @@
     "workflow_key": "expense.submit",
     "reply_kind": "buttons",
     "options_include": ["Yes", "No"],
-    "reply_contains": ["1500"]
+    "reply_contains": ["₹1,500"]
   }
 }

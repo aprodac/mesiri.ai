@@ -1,0 +1,21 @@
+{
+  "id": "ai-down-last-try-says-nothing-saved",
+  "status": "passing",
+  "source": "request [37]: 19 Oct live test (bot ...6072, trial company), paraphrased onto the seed company",
+  "description": "After the last retry the sender is told plainly it was not saved.",
+  "sender": "engineer",
+  "message": {
+    "text": "Plastering done on 2nd floor east side"
+  },
+  "ai_down": true,
+  "retry_attempt": 3,
+  "expect": {
+    "reply_contains": [
+      "nothing was saved",
+      "send it again"
+    ],
+    "reply_not_contains": [
+      "reporting today"
+    ]
+  }
+}

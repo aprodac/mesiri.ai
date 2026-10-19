@@ -880,6 +880,11 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     from runtime.team_notify import TeamNotifier
 
     team_notifier = TeamNotifier()
+
+    # AI provider failures: one alert per hour (runtime/ai_failure_alert.py).
+    from runtime.ai_failure_alert import install_ai_failure_alerts
+
+    install_ai_failure_alerts(team_notifier)
     setup_questions = SetupQuestions(
         db=material_db,
         redis=redis_client,

@@ -39,6 +39,12 @@ from planning.plan import PlanOrigin
 from planning.plan_store import PlanStore
 from runtime.activity_query import ActivityQueryService
 from runtime.activity_search_service import ActivitySearchService
+from runtime.ai_outage import (
+    AIUnavailableError,
+    is_ai_outage,
+    reply_for_attempt,
+    retry_attempt,
+)
 from runtime.capability_help import CapabilityHelpService
 from runtime.dpr_request_query import DprRequestQueryService
 from runtime.duplicate_expense_query import DuplicateExpenseQueryService
@@ -387,6 +393,44 @@ async def process_inbound_message(
         )
         await _safe(mlog.mark_failed(correlation_id=correlation_id, error_code=type(exc).__name__))
         raise
+
+    # --- AI outage: not "I didn't understand" ---
+    # Every provider call failed (an unpaid or revoked key, a provider down).
+    # Falling through would route the UNUSABLE understanding to the greeting
+    # menu, which reads as Mesiri not understanding what was just said. Say it
+    # is queued and raise, so worker.py retries the same message later (see
+    # runtime/ai_outage.py). Nothing has been written at this point.
+    if is_ai_outage(understanding):
+        attempt = retry_attempt.get()
+        outage_text, will_retry = reply_for_attempt(attempt)
+        _log.warning(
+            "ai.outage correlation_id=%s attempt=%s will_retry=%s",
+            correlation_id,
+            attempt,
+            will_retry,
+        )
+        if outage_text:
+            if reply_composer is not None:
+                language = reply_language
+                if language is None and user_language_store is not None:
+                    language = await user_language_store.get(user_id=actor_user_id)
+                outage_text = await reply_composer.compose(
+                    outage_text, language=language, correlation_id=correlation_id
+                )
+            await send_text(message.sender.wa_id, outage_text)
+            await _safe(mlog.log_reply(correlation_id=correlation_id, reply=outage_text))
+        if will_retry:
+            await _safe(mlog.mark_failed(correlation_id=correlation_id, error_code="AI_UNAVAILABLE"))
+            raise AIUnavailableError(f"every AI provider failed for {correlation_id}")
+        await _safe(mlog.mark_completed(correlation_id=correlation_id))
+        return JourneyResult(
+            understanding=understanding,
+            resolved_context=None,
+            canonical_event=None,
+            planner_decision=None,
+            workflow_run=None,
+            workflow_resume=None,
+        )
 
     # --- Deterministic identity-lookup fast path (voice + defense-in-depth
     # for text) --- Text is normally already caught by interactions/handler.py's

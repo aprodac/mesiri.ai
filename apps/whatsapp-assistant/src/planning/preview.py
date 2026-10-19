@@ -89,6 +89,19 @@ def describe_step(step: PlanStep, plan: Plan) -> str:
         at_site = f" at {scope['site_id']}" if scope.get("site_id") else ""
         return f'Log activity "{narrative}"{at_site}'
 
+    if step.workflow_key is WorkflowKey.MATERIAL_RECEIPT and fields.get("material_name"):
+        amount = " ".join(str(fields[k]) for k in ("quantity", "unit") if fields.get(k))
+        what = f"{amount} {fields['material_name']}".strip()
+        sender = f" from {fields['supplier']}" if fields.get("supplier") else ""
+        return f"Record {what} received{sender}"
+
+    if step.workflow_key is WorkflowKey.EXPENSE_SUBMIT and fields.get("amount") is not None:
+        from workflows.readable import money  # lazy, same reason as get_definition below
+
+        paid = money(fields["amount"], fields.get("currency"))
+        for_what = f" for {fields['vendor']}" if fields.get("vendor") else ""
+        return f"Record an expense of {paid}{for_what}"
+
     # Generic fallback -- honest rather than a guess at natural language
     # for a workflow key this layer's linking rule doesn't specifically
     # connect today (see workflows/registry.py's own title/one_liner,

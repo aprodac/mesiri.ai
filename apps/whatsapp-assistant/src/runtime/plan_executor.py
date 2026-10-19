@@ -48,6 +48,7 @@ never a blanket "all done" that papers over a partial failure).
 from __future__ import annotations
 
 from backend.ports import ActorIdentity
+from channel.friendly_errors import friendly_rejection
 from channel.replies import ReplySpec
 from interactions.handler import InteractionHandled
 from mesiri_contracts.application.results.execution_result import ExecutionResult, ExecutionStatus
@@ -61,6 +62,7 @@ from planning.plan_store import PlanStore
 from runtime.inbound_journey._shared import _log
 from runtime.inbound_journey.reply import _safe, render_workflow_run_reply_spec
 from workflows import WorkflowResumeResult, WorkflowResumeStatus, WorkflowRuntime
+from workflows.readable import workflow_name
 
 #: Execution outcomes that mean the step's write actually landed.
 #: ALREADY_EXECUTED counts: an idempotent replay wrote nothing new but the
@@ -129,8 +131,7 @@ def _summarize_step_outcome(
             return f"Recorded. {execution_result.conflict_note}"
         return "Recorded."
     if execution_result.status is ExecutionStatus.REJECTED:
-        reasons = "; ".join(execution_result.rejection_reasons)
-        return f"Couldn't record: {reasons}"
+        return friendly_rejection(execution_result.rejection_reasons, where="plan_step")
     return "Something went wrong — please resend this part."
 
 
@@ -143,7 +144,7 @@ def _outcome_line(step: PlanStep, index: int) -> str:
     never got that far -- CANCELLED (never attempted, ADR-C4) or a bind/start
     failure inside ``_start_next_runnable``, neither of which has an
     execution result to describe."""
-    label = step.workflow_key.value
+    label = workflow_name(step.workflow_key.value)
     if step.outcome_detail is not None:
         return f"{index}. {label}: {step.outcome_detail}"
     if step.status is StepStatus.DONE:
