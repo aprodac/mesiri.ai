@@ -91,6 +91,22 @@ def _resolve_project_ids(
     return None, False
 
 
+def _site_filter(
+    auth_context: AuthorizationContext, project_ids: set[uuid.UUID] | None
+) -> tuple[set[uuid.UUID], set[uuid.UUID]]:
+    """BE-42: the projects (of those listed) where this user sees only some
+    sites, and the sites they do see. Same rule as _site_denied, for lists."""
+    candidates = project_ids if project_ids is not None else set(auth_context.site_scopes)
+    restricted: set[uuid.UUID] = set()
+    allowed: set[uuid.UUID] = set()
+    for pid in candidates:
+        scope = auth_context.site_scope_for_project(pid)
+        if not scope.grants_all_sites:
+            restricted.add(pid)
+            allowed |= scope.site_ids
+    return restricted, allowed
+
+
 @router.get("/daily-reports")
 async def list_daily_reports(
     project_id: uuid.UUID | None = None,
@@ -111,11 +127,14 @@ async def list_daily_reports(
     if denied:
         return {"items": [], "total": 0}
 
+    restricted, allowed = _site_filter(auth_context, project_ids)
     repo = PostgresDprRepository(conn)
     items, total = await repo.list_reports(
         organization_id=auth_context.organization_id,
         project_ids=project_ids,
         site_id=site_id,
+        restricted_project_ids=restricted,
+        allowed_site_ids=allowed,
         status=status,
         date_from=date_from,
         date_to=date_to,
@@ -158,6 +177,16 @@ async def list_site_days(
     drafts = await PostgresFactReviewRepository(conn).draft_counts_by_site(
         organization_id=auth_context.organization_id, report_date=report_date
     )
+    # BE-42: a member limited to some sites sees only those sites' days.
+    restricted, allowed = _site_filter(auth_context, project_ids)
+    if restricted:
+        restricted_s = {str(p) for p in restricted}
+        allowed_s = {str(a) for a in allowed}
+        items = [
+            i
+            for i in items
+            if str(i["project_id"]) not in restricted_s or str(i["site_id"]) in allowed_s
+        ]
     for item in items:
         item["drafts"] = drafts.get(item["site_id"], 0)
     return {"date": report_date.isoformat(), "items": items, "projects": projects}

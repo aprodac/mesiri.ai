@@ -59,6 +59,8 @@ class PostgresDprRepository:
         limit: int,
         offset: int,
         level: str | None = None,
+        restricted_project_ids: set[uuid.UUID] | None = None,
+        allowed_site_ids: set[uuid.UUID] | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         """The Daily Reports history (WEB-06): one row per report, newest day
         first, with the figures from its current version -- what the PDF
@@ -77,6 +79,15 @@ class PostgresDprRepository:
         if site_id is not None:
             where.append("dr.site_id = :site_id")
             params["site_id"] = site_id
+        if restricted_project_ids:
+            # BE-42: in projects where the user sees only some sites, a site
+            # report shows only for those sites; project reports still show.
+            where.append(
+                "(dr.site_id IS NULL OR NOT (dr.project_id = ANY(:restricted_project_ids))"
+                " OR dr.site_id = ANY(:allowed_site_ids))"
+            )
+            params["restricted_project_ids"] = list(restricted_project_ids)
+            params["allowed_site_ids"] = list(allowed_site_ids or ())
         if date_from is not None:
             where.append("dr.report_date >= :date_from")
             params["date_from"] = date_from
