@@ -96,6 +96,7 @@ async def list_daily_reports(
     project_id: uuid.UUID | None = None,
     site_id: uuid.UUID | None = None,
     status: str | None = None,
+    level: str | None = Query(default=None, pattern="^(site|project)$"),
     category: str | None = None,
     date_from: datetime.date | None = None,
     date_to: datetime.date | None = None,
@@ -104,6 +105,8 @@ async def list_daily_reports(
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
+    """The Daily Reports history (WEB-06): site and project DPRs, newest day
+    first, each with the figures from its current version."""
     project_ids, denied = _resolve_project_ids(auth_context, project_id)
     if denied:
         return {"items": [], "total": 0}
@@ -118,6 +121,7 @@ async def list_daily_reports(
         date_to=date_to,
         limit=limit,
         offset=offset,
+        level=level,
     )
     return {"items": items, "total": total}
 

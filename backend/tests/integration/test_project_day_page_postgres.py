@@ -209,3 +209,60 @@ async def test_a_member_without_the_project_gets_not_found(conn) -> None:
             uuid.uuid4(), report_date=DAY, auth_context=_auth(created), conn=conn
         )
     assert missing.value.status_code == 404
+
+
+# --- WEB-06: the Daily Reports history -------------------------------------
+
+
+async def test_history_lists_each_report_once_with_its_figures(conn) -> None:
+    created, _ = await _project(conn, "9876500054")
+    # A second user in the company: the old query listed every report once
+    # per user.
+    await conn.execute(
+        text(
+            "INSERT INTO users (id, organization_id, email, hashed_password, full_name, role,"
+            " status, created_at) VALUES (gen_random_uuid(), :org, :email, 'x', 'Ravi',"
+            " 'SITE_ENGINEER', 'active', now())"
+        ),
+        {"org": created.organization_id, "email": f"{uuid.uuid4()}@example.test"},
+    )
+
+    history = await dpr_router.list_daily_reports(
+        project_id=created.project_id,
+        site_id=None,
+        status=None,
+        level=None,
+        category=None,
+        date_from=DAY,
+        date_to=DAY,
+        limit=50,
+        offset=0,
+        auth_context=_auth(created),
+        conn=conn,
+    )
+
+    rows = {(r["level"], r["site_name"]): r for r in history["items"]}
+    assert history["total"] == len(history["items"]) == 3  # project + 2 sites
+    block_a = rows[("site", "Block A")]
+    assert block_a["workflow_status"] == "approved"
+    assert (block_a["workers"], block_a["work_items"]) == (8, 1)
+    assert block_a["approved_by"] == "Suresh"
+    assert block_a["approved_at"] is not None
+    # Block B logged labour only: no version yet, so no figures to show.
+    assert rows[("site", "Block B")]["version_no"] is None
+    assert rows[("project", None)]["total_sites"] == 2
+
+    sites_only = await dpr_router.list_daily_reports(
+        project_id=created.project_id,
+        site_id=None,
+        status="approved",
+        level="site",
+        category=None,
+        date_from=None,
+        date_to=None,
+        limit=50,
+        offset=0,
+        auth_context=_auth(created),
+        conn=conn,
+    )
+    assert [(r["level"], r["site_name"]) for r in sites_only["items"]] == [("site", "Block A")]

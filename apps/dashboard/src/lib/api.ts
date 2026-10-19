@@ -1657,116 +1657,6 @@ export async function fetchActivityCorrectionsApi(
   return res.data
 }
 
-// ─── Daily Progress Reports (DPR) API ──────────────────────────────────────────
-
-export interface DailyReportSummary {
-  id: string
-  dpr_number: string
-  report_date: string
-  project_id?: string
-  project_name: string
-  site_id?: string
-  site_name: string
-  prepared_by_name: string
-  prepared_by_role?: string
-  weather: 'sunny' | 'rainy' | 'cloudy' | 'extreme_heat' | 'windy' | 'not_set'
-  temperature_celsius?: number | null
-  shift: 'day' | 'night' | 'full_day'
-  workflow_status: 'draft' | 'needs_details' | 'ready' | 'in_review' | 'approved' | 'published' | 'not_reported'
-  activities_count: number
-  labour_count: number
-  issues_count: number
-  narrative_summary?: string
-  created_at: string
-}
-
-export interface DailyReportWorkItem {
-  id: string
-  work_package: string
-  activity_name: string
-  location?: string
-  contractor?: string
-  quantity_planned?: number
-  quantity_executed: number
-  unit: string
-  percent_complete?: number
-  status: 'on_track' | 'delayed' | 'completed' | 'blocked'
-}
-
-export interface DailyReportLabourItem {
-  trade_category: string
-  subcontractor?: string
-  headcount: number
-  hours_worked: number
-  daily_cost_inr?: number
-}
-
-export interface DailyReportEquipmentItem {
-  equipment_name: string
-  category: string
-  hours_operated: number
-  idle_hours: number
-  fuel_litres_consumed?: number
-}
-
-export interface DailyReportIssue {
-  id: string
-  title: string
-  severity: 'low' | 'medium' | 'high' | 'critical'
-  category: 'material_shortage' | 'weather_delay' | 'equipment_failure' | 'design_clarification' | 'manpower'
-  narrative: string
-  is_resolved: boolean
-}
-
-export interface DailyReportAttachment {
-  id: string
-  url?: string
-  caption?: string
-  ai_analysis?: string
-  uploaded_at: string
-}
-
-export interface DailyReportDetailResponse extends DailyReportSummary {
-  general_notes?: string
-  work_items: DailyReportWorkItem[]
-  labour_items: DailyReportLabourItem[]
-  equipment_items: DailyReportEquipmentItem[]
-  issues: DailyReportIssue[]
-  attachments: DailyReportAttachment[]
-  reviewer_name?: string
-  reviewed_at?: string
-  approval_notes?: string
-}
-
-export interface DailyReportsListResponse {
-  items: DailyReportSummary[]
-  total: number
-}
-
-export async function fetchDailyReportsApi(params?: {
-  project_id?: string
-  site_id?: string
-  status?: string
-  category?: string
-  date_from?: string
-  date_to?: string
-  limit?: number
-  offset?: number
-}): Promise<DailyReportsListResponse> {
-  try {
-    const res = await api.get<DailyReportsListResponse>('/dpr/daily-reports', { params })
-    return res.data
-  } catch {
-    // Return empty fallback if backend API endpoint is not yet live
-    return { items: [], total: 0 }
-  }
-}
-
-export async function fetchDailyReportDetailApi(reportId: string): Promise<DailyReportDetailResponse> {
-  const res = await api.get<DailyReportDetailResponse>(`/dpr/daily-reports/${reportId}`)
-  return res.data
-}
-
 // ─── The site's working day (BE-08 / BE-14 / BE-16, Today page WEB-03) ───────
 
 export type SiteDayStatus =
@@ -1844,24 +1734,8 @@ export async function sendProjectDprNowApi(projectId: string): Promise<void> {
   await api.post(`/dpr/projects/${projectId}/send`)
 }
 
-export async function submitDailyReportForReviewApi(reportId: string): Promise<void> {
-  await api.post(`/dpr/daily-reports/${reportId}/submit-for-review`)
-}
-
 export async function approveDailyReportApi(reportId: string, notes?: string): Promise<void> {
   await api.post(`/dpr/daily-reports/${reportId}/approve`, { notes })
-}
-
-export async function publishDailyReportApi(reportId: string): Promise<void> {
-  await api.post(`/dpr/daily-reports/${reportId}/publish`)
-}
-
-/** Corrects an already approved/published report: re-assembles the payload
- * from what's actually recorded now and inserts it as a new version
- * superseding the current one, resetting status back to draft so the
- * correction goes through submit-for-review/approve/publish again. */
-export async function reviseDailyReportApi(reportId: string, revisionReason: string): Promise<void> {
-  await api.post(`/dpr/daily-reports/${reportId}/revise`, { revision_reason: revisionReason })
 }
 
 /** Fetches the DPR PDF as a Blob -- GET /dpr/daily-reports/{id}/pdf serves
@@ -1945,6 +1819,48 @@ export interface SiteDayDetail {
 
 export async function fetchSiteDayApi(siteId: string, date: string): Promise<SiteDayDetail> {
   const res = await api.get<SiteDayDetail>(`/dpr/site-days/${siteId}`, { params: { date } })
+  return res.data
+}
+
+// ─── The Daily Reports history (WEB-06) ─────────────────────────────────────
+
+/** One site or project DPR, with the figures from its current version. */
+export interface DprHistoryItem {
+  id: string
+  dpr_number: string
+  report_date: string
+  level: 'site' | 'project'
+  project_id: string
+  project_name: string
+  site_id: string | null
+  site_name: string | null
+  workflow_status: SiteDayStatus
+  weather: string | null
+  work_items: number
+  workers: number
+  labour_cost: string
+  open_issues: number
+  photos: number
+  /** Project DPRs only: confirmed sites in it, of all active sites. */
+  reported_sites: number | null
+  total_sites: number | null
+  /** Null when the day has no version yet (nothing to show or print). */
+  version_no: number | null
+  approved_at: string | null
+  approved_by: string | null
+  created_at: string
+}
+
+export async function fetchDprHistoryApi(params: {
+  project_id?: string
+  level?: 'site' | 'project'
+  status?: string
+  date_from?: string
+  date_to?: string
+  limit?: number
+  offset?: number
+}): Promise<{ items: DprHistoryItem[]; total: number }> {
+  const res = await api.get<{ items: DprHistoryItem[]; total: number }>('/dpr/daily-reports', { params })
   return res.data
 }
 
@@ -2036,25 +1952,6 @@ export async function confirmFactApi(factType: FactType, factId: string): Promis
 /** Remove one draft (BE-09): withdrawn through its own module's undo. */
 export async function rejectFactApi(factType: FactType, factId: string, reason: string): Promise<void> {
   await api.post(`/dpr/facts/${factType}/${factId}/reject`, { reason })
-}
-
-export interface CreateDailyReportPayload {
-  report_date: string
-  project_id?: string
-  site_id?: string
-  weather: string
-  temperature_celsius?: number
-  shift: string
-  narrative_summary?: string
-  work_items?: DailyReportWorkItem[]
-  labour_items?: DailyReportLabourItem[]
-  equipment_items?: DailyReportEquipmentItem[]
-  issues?: DailyReportIssue[]
-}
-
-export async function createDailyReportApi(payload: CreateDailyReportPayload): Promise<DailyReportSummary> {
-  const res = await api.post<DailyReportSummary>('/dpr/daily-reports', payload)
-  return res.data
 }
 
 // ---------------------------------------------------------------------------

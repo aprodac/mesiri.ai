@@ -58,7 +58,16 @@ class PostgresDprRepository:
         date_to: datetime.date | None,
         limit: int,
         offset: int,
+        level: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
+        """The Daily Reports history (WEB-06): one row per report, newest day
+        first, with the figures from its current version -- what the PDF
+        says, not a live recount. A day with no version yet (nothing logged,
+        or before the cutoff) has zero figures and no version.
+
+        Who approved is the current version's approver. Before WEB-06 this
+        joined every user of the company onto each report, so a report was
+        listed once per user, and every count was a hard-coded 0."""
         where = ["dr.organization_id = :organization_id"]
         params: dict[str, Any] = {"organization_id": organization_id, "limit": limit, "offset": offset}
 
@@ -75,8 +84,11 @@ class PostgresDprRepository:
             where.append("dr.report_date <= :date_to")
             params["date_to"] = date_to
         if status is not None:
-            where.append("dr.status = :status")
+            where.append("dr.status::text = :status")
             params["status"] = status.upper()
+        if level is not None:
+            where.append("dr.level::text = :level")
+            params["level"] = level.upper()
 
         where_clause = " AND ".join(where)
 
@@ -92,30 +104,43 @@ class PostgresDprRepository:
                 dr.id,
                 COALESCE(dr.code, concat('DPR-', to_char(dr.report_date, 'YYYYMMDD'), '-', SUBSTRING(dr.id::text, 1, 4))) AS dpr_number,
                 dr.report_date::text AS report_date,
+                LOWER(dr.level::text) AS level,
+                dr.project_id,
                 p.name AS project_name,
-                COALESCE(s.name, 'Project-wide') AS site_name,
-                COALESCE(u.name, 'Site Lead') AS prepared_by_name,
-                'Site Engineer' AS prepared_by_role,
+                dr.site_id,
+                s.name AS site_name,
                 LOWER(dr.status::text) AS workflow_status,
-                COALESCE(dr.weather, 'not_set') AS weather,
-                NULL::int AS temperature_celsius,
-                'day' AS shift,
-                0 AS activities_count,
-                0 AS labour_count,
-                0 AS issues_count,
-                '' AS narrative_summary,
+                COALESCE(v.payload->'conditions'->>'weather', dr.weather) AS weather,
+                COALESCE((v.payload->>'activity_count')::int, 0) AS work_items,
+                COALESCE((v.payload->'labour'->>'headcount')::int, 0) AS workers,
+                COALESCE((v.payload->'labour'->>'total_cost')::numeric, 0)::text AS labour_cost,
+                COALESCE((v.payload->>'open_issue_count')::int, 0) AS open_issues,
+                COALESCE((v.payload->>'evidence_count')::int, 0) AS photos,
+                (v.payload->>'reported_site_count')::int AS reported_sites,
+                (v.payload->>'total_site_count')::int AS total_sites,
+                v.version_no,
+                v.approved_at,
+                u.full_name AS approved_by,
                 dr.created_at::text AS created_at
             FROM daily_reports dr
             JOIN projects p ON dr.project_id = p.id
             LEFT JOIN sites s ON dr.site_id = s.id
-            LEFT JOIN users u ON p.organization_id = u.organization_id
+            LEFT JOIN daily_report_versions v ON v.id = dr.current_version_id
+            LEFT JOIN users u ON u.id = v.approved_by_user_id
             WHERE {where_clause}
-            ORDER BY dr.report_date DESC, dr.created_at DESC
+            ORDER BY dr.report_date DESC, p.name, dr.level DESC, s.name
             LIMIT :limit OFFSET :offset
         """
 
         rows = (await self._conn.execute(text(query), params)).mappings().all()
-        return [dict(r) for r in rows], total
+        items = []
+        for row in rows:
+            item = dict(row)
+            item["project_id"] = str(item["project_id"])
+            item["site_id"] = str(item["site_id"]) if item["site_id"] else None
+            item["approved_at"] = item["approved_at"].isoformat() if item["approved_at"] else None
+            items.append(item)
+        return items, total
 
     async def get_report(
         self, organization_id: uuid.UUID, report_id: uuid.UUID
