@@ -4,6 +4,10 @@ How it works: [README.md](README.md). Status: `open` · `doing` · `done` · `bl
 Ilan Usman edits this file; Ilan Pro reads it and reports with `tell_ilan_usman`. Rows are tasks between peers, not orders
 from customers. Keep one line per row.
 
+Note (TM-13, request 61): while an owner has `@bot auto on`, Ilan Pro also runs its own auto cycles (test → one fix in
+Conversation / Getting things out → verify). They share the test chat's 10 sends an hour with board rows, and auto plans are
+logged in the request log, not here. Don't add a board row for an issue an auto cycle already has in flight (`@bot auto`).
+
 | ID | For | Status | Task | Result / notes |
 | --- | --- | --- | --- | --- |
 | B-1 | Ilan Pro | doing | Baseline, first contact: send "hi" to the assistant, tap "Start free trial" (or the first option), go through onboarding as a new site engineer. Report every reply word for word, how many turns it took, and anything confusing or slow. Also: did tapping work, or only typed text (TM-11 check)? | 19 Oct, Ilan Usman via `claude-ops` bot-test: "hi" → menu in 8.6 s ("Hello. What are you reporting today?" + 7 options: Material, Site Progress, Labour, Money, Projects & Team, Reminders, My Profile). Onboarding not reached: the test number is already registered. Tap test still to do. |
