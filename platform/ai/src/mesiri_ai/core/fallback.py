@@ -15,9 +15,10 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
-from mesiri_contracts.common.errors import MesiriError
+from mesiri_contracts.common.errors import ErrorCode, MesiriError
 
 from .errors import map_provider_error
+from .failures import ProviderFailure, report_failure
 
 T = TypeVar("T")
 
@@ -50,6 +51,18 @@ async def call_with_resilience(
             err = map_provider_error(provider, exc, correlation_id=correlation_id)
             last_error = err
             if not err.retryable or attempt == attempts - 1:
+                # A malformed answer is the model's, not an outage: it must
+                # not count toward "the AI account is down".
+                if err.error_code != ErrorCode.PROVIDER_MALFORMED_OUTPUT.value:
+                    report_failure(
+                        ProviderFailure(
+                            provider=provider,
+                            operation=operation,
+                            error_code=err.error_code,
+                            status_code=err.details.get("status_code"),
+                            correlation_id=correlation_id,
+                        )
+                    )
                 raise err from exc
             await asyncio.sleep(backoff_seconds * (attempt + 1))
 

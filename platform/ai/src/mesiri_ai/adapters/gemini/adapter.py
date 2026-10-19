@@ -143,8 +143,10 @@ _EXTRACTION_PROMPT = (
     "inclusive; a quote/invoice listing \"subtotal + tax = total\" separately means "
     "amount is the subtotal, exclusive) and omit entirely if genuinely unclear.\n"
     "- equipment_usage: equipment_name, duration_hours, operator, activity, project_name\n"
-    "- material_update: material_name, quantity, unit, direction, work_item, project_name, "
-    "occurred_on. "
+    "- material_update: material_name, quantity, unit, direction, work_item, supplier, "
+    "project_name, occurred_on. "
+    'supplier is who the material came from when the sender says so ("40 bags cement from '
+    'Sharma Traders" -> "Sharma Traders"); omit it otherwise. '
     'direction MUST be exactly "received" or "used" -- never any other word. '
     'Use "received" when material arrived, was delivered, or was brought to site '
     '(e.g. "50 bags of cement arrived", "cement delivered today"). '

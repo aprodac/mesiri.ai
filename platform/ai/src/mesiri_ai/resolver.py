@@ -138,6 +138,28 @@ class DynamicAIProviderResolver:
             self._provider_cache[key] = _build_sarvam_provider(config, self._settings)
         return self._provider_cache[key]
 
+    def _fallback_for(self, config: dict, route: dict) -> tuple[str | None, str]:
+        """The provider to retry on when the routed one fails.
+
+        An explicit fallback on the route wins. Otherwise, for the text
+        capabilities both providers implement (extraction, decomposition,
+        translation), the *other* text provider is the fallback whenever it
+        has a key -- so one dead account (the 19 Oct DeepSeek key that was
+        never recharged) degrades to the other provider instead of failing
+        every message.
+        """
+        if route.get("fallback_provider_id"):
+            return route["fallback_provider_id"], route.get("fallback_model") or ""
+        secrets = config.get("secrets", {})
+        has_gemini = bool(secrets.get("gemini", {}).get("api_key"))
+        has_deepseek = bool(secrets.get("deepseek", {}).get("api_key"))
+        provider_id = route.get("provider_id")
+        if provider_id == "deepseek" and has_gemini:
+            return "gemini", self._settings.gemini.model
+        if provider_id == "gemini" and has_deepseek:
+            return "deepseek", self._settings.deepseek.model
+        return None, ""
+
     async def _resolve_config(self) -> dict[str, Any]:
         """Resolve active routing and credentials from Redis -> DB -> Env."""
         cache_key = "mesiri:ai:config"
@@ -360,8 +382,7 @@ class DynamicAIProviderResolver:
         route = config["routing"].get("extraction", {"provider_id": "fake", "model": ""})
         provider_id = route["provider_id"]
         model = route["model"]
-        fallback_id = route.get("fallback_provider_id")
-        fallback_model = route.get("fallback_model") or ""
+        fallback_id, fallback_model = self._fallback_for(config, route)
 
         async def _call_extract(pid: str, mdl: str) -> ExtractionResult:
             if pid == "gemini":
@@ -416,8 +437,7 @@ class DynamicAIProviderResolver:
         route = config["routing"].get("extraction", {"provider_id": "fake", "model": ""})
         provider_id = route["provider_id"]
         model = route["model"]
-        fallback_id = route.get("fallback_provider_id")
-        fallback_model = route.get("fallback_model") or ""
+        fallback_id, fallback_model = self._fallback_for(config, route)
 
         async def _call_decompose(pid: str, mdl: str) -> DecompositionResult:
             if pid == "gemini":
@@ -526,8 +546,7 @@ class DynamicAIProviderResolver:
         route = config["routing"].get("translation", {"provider_id": "fake", "model": ""})
         provider_id = route["provider_id"]
         model = route["model"]
-        fallback_id = route.get("fallback_provider_id")
-        fallback_model = route.get("fallback_model") or ""
+        fallback_id, fallback_model = self._fallback_for(config, route)
 
         async def _call_translate(pid: str, mdl: str) -> TranslationResult:
             if pid == "gemini":

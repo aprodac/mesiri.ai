@@ -19,6 +19,29 @@ def _is_timeout(exc: BaseException) -> bool:
     return "timeout" in type(exc).__name__.lower()
 
 
+#: HTTP statuses that mean the provider will keep refusing until a person
+#: fixes the account (bad/revoked key, no credit, no access). Retrying the
+#: same provider only burns the retry budget; the caller moves to the other
+#: provider instead and the team is told (core/failures.py).
+AUTH_OR_QUOTA_STATUSES = frozenset({401, 402, 403})
+AUTH_OR_QUOTA_ERROR_CODE = "PROVIDER_AUTH_OR_QUOTA"
+
+
+def provider_status_code(exc: BaseException) -> int | None:
+    """The HTTP status a provider SDK exception carries, whichever shape it
+    uses: httpx (`response.status_code`), requests-style (`status_code`),
+    google-genai (`code`)."""
+    candidates = (
+        getattr(getattr(exc, "response", None), "status_code", None),
+        getattr(exc, "status_code", None),
+        getattr(exc, "code", None),
+    )
+    for value in candidates:
+        if isinstance(value, int) and not isinstance(value, bool) and 100 <= value <= 599:
+            return value
+    return None
+
+
 def map_provider_error(
     provider: str,
     exc: BaseException,
@@ -37,6 +60,20 @@ def map_provider_error(
             correlation_id=correlation_id,
             details={"provider": provider},
         )
+    status = provider_status_code(exc)
+    if status in AUTH_OR_QUOTA_STATUSES:
+        return MesiriError(
+            error_code=AUTH_OR_QUOTA_ERROR_CODE,
+            category=ErrorCategory.PROVIDER,
+            retryable=False,
+            user_safe_message="The AI service is temporarily unavailable.",
+            internal_message=f"{provider} refused the request (HTTP {status}): {type(exc).__name__}",
+            correlation_id=correlation_id,
+            details={"provider": provider, "status_code": status},
+        )
+    details: dict = {"provider": provider}
+    if status is not None:
+        details["status_code"] = status
     return MesiriError(
         error_code=ErrorCode.PROVIDER_ERROR.value,
         category=ErrorCategory.PROVIDER,
@@ -44,7 +81,7 @@ def map_provider_error(
         user_safe_message="The AI service is temporarily unavailable.",
         internal_message=f"{provider} error: {type(exc).__name__}: {exc}",
         correlation_id=correlation_id,
-        details={"provider": provider},
+        details=details,
     )
 
 
