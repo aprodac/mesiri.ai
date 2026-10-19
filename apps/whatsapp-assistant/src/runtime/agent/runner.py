@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -75,8 +76,9 @@ class AgentRunner:
         gateway: WorkflowGateway,
         scope: ScopeLookup,
         correlation_id: str | None = None,
+        lap: Callable[[str], None] | None = None,
     ) -> AgentResult:
-        toolbox = AgentToolbox(gateway=gateway, scope=scope, user_text=user_text)
+        toolbox = AgentToolbox(gateway=gateway, scope=scope, user_text=user_text, lap=lap)
         messages = [ChatMessage(role=r, text=t) for r, t in build_messages(ctx, user_text)]
         try:
             run = await self._provider.run_tools(

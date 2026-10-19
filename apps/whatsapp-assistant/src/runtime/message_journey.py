@@ -2620,7 +2620,9 @@ def build_message_handlers(
                 memory_coordinator=memory_coordinator,
                 user_language_store=user_language_store,
                 reply_composer=reply_composer,
+                lap=timer.lap,
             )
+            timer.lap("agent_setup")
             result = await run_agent_turn(message, ctx, deps, menu_hint=hint)
             timer.lap("agent_turn")
             if result is not None and result.toolbox.parked is not None:

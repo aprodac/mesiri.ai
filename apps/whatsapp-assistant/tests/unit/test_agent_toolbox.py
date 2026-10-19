@@ -159,3 +159,12 @@ async def test_a_save_in_flight_when_the_loop_is_cut_off_still_finishes():
         pass
     await box.settle()
     assert [i.text for i in box.saved] == ["Labour recorded"]
+
+
+async def test_laps_split_the_models_time_from_the_tools():
+    """B-7: before a call is the model's time, inside it the tool's."""
+    laps: list[str] = []
+    box, _ = _box(StepResult("saved", text="ok"))
+    box.lap = laps.append
+    await box.handle("save_labour", {"workers": WORKERS})
+    assert laps == ["agent_model", "agent_tools"]

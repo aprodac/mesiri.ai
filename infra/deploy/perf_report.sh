@@ -44,6 +44,14 @@ SELECT stage, provider, operation, model, count(*) AS n, count(*) FILTER (WHERE 
 FROM provider_executions WHERE created_at > ${SINCE} AND stage <> 'metered'
 GROUP BY stage, provider, operation, model ORDER BY avg DESC NULLS LAST LIMIT 25;"
 
+# The agent's own model rounds are only recorded as usage rows (stage 'metered').
+q "Agent model rounds, run_tools (ms; one row per round)" "
+SELECT model, count(*) AS rounds, count(DISTINCT correlation_id) AS messages,
+       round(avg(latency_ms)) AS avg, round(percentile_cont(0.5) WITHIN GROUP (ORDER BY latency_ms)) AS p50,
+       round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms)) AS p95, max(latency_ms) AS max
+FROM provider_executions WHERE created_at > ${SINCE} AND operation = 'run_tools'
+GROUP BY model;"
+
 q "Slowest 8 messages: stages in order (ms)" "
 WITH slow AS (
   SELECT correlation_id, message_type, received_at,
@@ -54,5 +62,15 @@ SELECT s.wall_s, s.message_type, to_char(s.received_at AT TIME ZONE 'Asia/Kolkat
        (SELECT string_agg(t.stage || ' ' || t.duration_ms, ' > ' ORDER BY t.created_at)
           FROM journey_traces t WHERE t.correlation_id = s.correlation_id) AS stages,
        (SELECT string_agg(p.operation || ' ' || p.latency_ms, ' > ' ORDER BY p.created_at)
-          FROM provider_executions p WHERE p.correlation_id = s.correlation_id AND p.stage <> 'metered') AS ai_calls
+          FROM provider_executions p WHERE p.correlation_id = s.correlation_id
+           AND (p.stage <> 'metered' OR p.operation = 'run_tools')) AS ai_calls
 FROM slow s ORDER BY s.wall_s DESC;"
+
+q "Slowest 8 messages: where the time inside the journey went (step laps, ms)" "
+SELECT t.duration_ms AS total, to_char(t.created_at AT TIME ZONE 'Asia/Kolkata', 'HH24:MI') AS at_ist,
+       (SELECT string_agg(k || ' ' || round(v::numeric), ' > ' ORDER BY v::numeric DESC)
+          FROM jsonb_each_text(t.stage_payload::jsonb) AS e(k, v)
+         WHERE v ~ '^[0-9.]+$' AND v::numeric >= 100) AS laps_over_100ms
+FROM journey_traces t
+WHERE t.stage = 'prepipeline' AND t.created_at > ${SINCE}
+ORDER BY t.duration_ms DESC LIMIT 8;"

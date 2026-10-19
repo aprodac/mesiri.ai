@@ -51,6 +51,9 @@ class AgentTurnDeps:
     #: saved and returns the reply carrying it as ``header_image``.
     attach_receipt: Callable[[ReplySpec, Any], Awaitable[ReplySpec]] | None = None
     now: Callable[[], Any] = default_now
+    #: B-7: the journey's lap stopwatch (runtime/step_timing.py), so the
+    #: prepipeline trace says where an agent turn's time went.
+    lap: Callable[[str], None] | None = None
 
 
 def _scope_of(actor: ActorIdentity) -> ScopeLookup:
@@ -186,13 +189,16 @@ async def run_agent_turn(
             _log.warning("agent.memory_load_failed user=%s", actor.user_id)
 
     gateway = deps.make_gateway(message, language)
+    _lap(deps, "agent_context")
     result = await deps.runner.run(
         ctx=_context_of(actor, deps, pack, language, menu_hint, script),
         user_text=user_text,
         gateway=gateway,
         scope=_scope_of(actor),
         correlation_id=correlation_id,
+        **({"lap": deps.lap} if deps.lap is not None else {}),
     )
+    _lap(deps, "agent_model")
     if result.outcome == "outage" or result.reply is None:
         await _outage(message, language, deps, result.error or RuntimeError("no reply"), actor.user_id)
         return result
@@ -203,10 +209,12 @@ async def run_agent_turn(
             reply = await deps.attach_receipt(reply, gateway)
         except Exception:  # noqa: BLE001 — the reply goes out without the card
             _log.exception("agent.receipt_attach_failed")
+    _lap(deps, "agent_receipt")
     if deps.send_agent_reply is not None and result.toolbox.parked is None:
         await deps.send_agent_reply(reply, wa_id, gateway)
     else:
         await deps.send_spec(reply, wa_id)
+    _lap(deps, "agent_send")
     await _audit(message, gateway, reply, deps)
     if deps.memory_coordinator is not None:
         await _safe(
@@ -219,9 +227,16 @@ async def run_agent_turn(
         )
     # Follow-ups (worker promotion, team-photo offer...) only when nothing else
     # is waiting on the sender: they are questions too.
+    _lap(deps, "agent_audit")
     if result.toolbox.parked is None:
         await gateway.finish()
+        _lap(deps, "agent_followups")
     return result
+
+
+def _lap(deps: AgentTurnDeps, name: str) -> None:
+    if deps.lap is not None:
+        deps.lap(name)
 
 
 async def _audit(

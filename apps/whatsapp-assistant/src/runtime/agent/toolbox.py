@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -91,6 +92,9 @@ class AgentToolbox:
     held: list[str] = field(default_factory=list)
     attempted_writes: int = 0
     calls: int = 0
+    #: B-7: the journey's lap stopwatch; time before a tool call is the
+    #: model's ("agent_model"), time in it is the tool's ("agent_tools").
+    lap: Callable[[str], None] | None = None
     _seen: set[str] = field(default_factory=set)
     _inflight: set[asyncio.Task[Any]] = field(default_factory=set)
 
@@ -98,10 +102,16 @@ class AgentToolbox:
         """The provider's tool handler. Shielded: if the run's deadline cancels
         the model loop while a save is in flight, the save still finishes and
         is recorded here, so the reply never forgets (or repeats) it."""
+        if self.lap is not None:
+            self.lap("agent_model")
         task = asyncio.ensure_future(self._dispatch(name, args))
         self._inflight.add(task)
         task.add_done_callback(self._inflight.discard)
-        return await asyncio.shield(task)
+        try:
+            return await asyncio.shield(task)
+        finally:
+            if self.lap is not None:
+                self.lap("agent_tools")
 
     async def settle(self, timeout: float = 5.0) -> None:
         """Wait for tool calls still running after the model loop was cut off."""
