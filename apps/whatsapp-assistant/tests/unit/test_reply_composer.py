@@ -606,7 +606,7 @@ async def test_a_multi_part_note_gets_one_combined_receipt(monkeypatch):
         def __init__(self, provider):
             pass
 
-        async def run(self, *, ctx, user_text, gateway, scope, correlation_id, lap=None):
+        async def run(self, *, ctx, user_text, gateway, scope, correlation_id, lap=None, after_tool=None):
             gateway.handled.extend(parts)
             return AgentResult(
                 outcome="ok", reply=ReplySpec(text=SAVED), toolbox=SimpleNamespace(parked=None)
@@ -635,7 +635,7 @@ async def test_a_single_saved_part_keeps_its_own_receipt(monkeypatch):
         def __init__(self, provider):
             pass
 
-        async def run(self, *, ctx, user_text, gateway, scope, correlation_id, lap=None):
+        async def run(self, *, ctx, user_text, gateway, scope, correlation_id, lap=None, after_tool=None):
             gateway.handled.append(_with_receipt(_saved_attendance(), _png))
             return AgentResult(
                 outcome="ok", reply=ReplySpec(text=SAVED), toolbox=SimpleNamespace(parked=None)
@@ -650,6 +650,76 @@ async def test_a_single_saved_part_keeps_its_own_receipt(monkeypatch):
 
     assert deps["sender"].send_button.await_args.kwargs["header_image"] == PNG
     deps["interaction_handler"].build_combined_receipt.assert_not_awaited()
+
+
+async def test_the_card_is_made_and_uploaded_while_the_model_writes_the_reply(monkeypatch):
+    """B-7: started after the last tool call, not after the final model round."""
+    import asyncio
+
+    from runtime.agent.runner import AgentResult
+
+    order: list[str] = []
+
+    async def _card():
+        order.append("card")
+        return PNG
+
+    class _Runner:
+        def __init__(self, provider):
+            pass
+
+        async def run(self, *, ctx, user_text, gateway, scope, correlation_id, lap=None, after_tool=None):
+            gateway.handled.append(_with_receipt(_saved_attendance(), _card))
+            after_tool()
+            await asyncio.sleep(0.2)  # the final model round
+            order.append("model")
+            return AgentResult(
+                outcome="ok", reply=ReplySpec(text=SAVED), toolbox=SimpleNamespace(parked=None)
+            )
+
+    monkeypatch.setattr("runtime.agent.runner.AgentRunner", _Runner)
+    on_normalized, deps, _, _ = _build(monkeypatch, agent_provider=object())
+    deps["org_settings_query"].get.return_value = "agent"
+
+    await on_normalized(_message(), {})
+
+    assert order == ["card", "model"]
+    deps["sender"].prepare_image.assert_awaited_once_with(PNG)
+    assert deps["sender"].send_button.await_args.kwargs["header_image"] == PNG
+
+
+async def test_a_save_after_the_card_started_gets_the_combined_card(monkeypatch):
+    import asyncio
+
+    from runtime.agent.runner import AgentResult
+
+    first = _with_receipt(_saved_attendance(), _png)
+    second = _with_receipt(_saved_attendance(), _png)
+
+    class _Runner:
+        def __init__(self, provider):
+            pass
+
+        async def run(self, *, ctx, user_text, gateway, scope, correlation_id, lap=None, after_tool=None):
+            gateway.handled.append(first)
+            after_tool()
+            await asyncio.sleep(0.1)  # the single card starts
+            gateway.handled.append(second)  # a second tool round saved more
+            after_tool()
+            await asyncio.sleep(0.1)
+            return AgentResult(
+                outcome="ok", reply=ReplySpec(text=SAVED), toolbox=SimpleNamespace(parked=None)
+            )
+
+    monkeypatch.setattr("runtime.agent.runner.AgentRunner", _Runner)
+    on_normalized, deps, _, _ = _build(monkeypatch, agent_provider=object())
+    deps["org_settings_query"].get.return_value = "agent"
+    deps["interaction_handler"].build_combined_receipt = AsyncMock(return_value=b"combined")
+
+    await on_normalized(_message(), {})
+
+    assert deps["interaction_handler"].build_combined_receipt.await_args.args[0] == [first, second]
+    assert deps["sender"].send_button.await_args.kwargs["header_image"] == b"combined"
 
 
 # -- dispatch and sender -----------------------------------------------------------

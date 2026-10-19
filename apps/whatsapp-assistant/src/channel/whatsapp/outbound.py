@@ -8,6 +8,8 @@ simple text acknowledgement.
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import logging
 import time
 
@@ -47,6 +49,8 @@ class WhatsAppSender:
         self._phone_number_id = phone_number_id
         self._api_version = api_version
         self._graph_base_url = graph_base_url.rstrip("/")
+        #: B-7: uploads started ahead of the send (prepare_image), by content.
+        self._prepared: dict[str, asyncio.Future[str | None]] = {}
 
     @property
     def enabled(self) -> bool:
@@ -366,7 +370,42 @@ class WhatsAppSender:
             logger.info("whatsapp.template_sent name=%s wamid=%s", name, message_id)
         return message_id is not None
 
+    async def prepare_image(self, data: bytes) -> None:
+        """Upload a PNG now so a later send_button / send_image of the same
+        bytes needs no upload (B-7: the receipt card is uploaded while the
+        reply is still being written). Never raises."""
+        try:
+            await self._upload_media(data, mime_type="image/png", filename="receipt.png")
+        except Exception:  # noqa: BLE001 -- the send uploads it again
+            logger.warning("whatsapp.prepare_image_failed", exc_info=True)
+
     async def _upload_media(self, data: bytes, *, mime_type: str, filename: str) -> str | None:
+        """Upload once per content: a second call with the same bytes (the
+        send after prepare_image) waits for, or reuses, the first upload's
+        media id. A failed upload is not kept, so the send tries again."""
+        key = hashlib.sha256(data).hexdigest()
+        pending = self._prepared.get(key)
+        if pending is not None:
+            media_id = await asyncio.shield(pending)
+            if media_id is not None:
+                self._prepared.pop(key, None)
+                return media_id
+        future: asyncio.Future[str | None] = asyncio.get_running_loop().create_future()
+        self._prepared[key] = future
+        while len(self._prepared) > 16:  # bounded: one entry per reply in flight
+            self._prepared.pop(next(iter(self._prepared)))
+        try:
+            media_id = await self._upload_media_once(data, mime_type=mime_type, filename=filename)
+        except BaseException:
+            self._prepared.pop(key, None)
+            future.set_result(None)
+            raise
+        future.set_result(media_id)
+        if media_id is None:
+            self._prepared.pop(key, None)
+        return media_id
+
+    async def _upload_media_once(self, data: bytes, *, mime_type: str, filename: str) -> str | None:
         url = f"{self._graph_base_url}/{self._api_version}/{self._phone_number_id}/media"
         try:
             resp = await self._client.post(

@@ -95,6 +95,9 @@ class AgentToolbox:
     #: B-7: the journey's lap stopwatch; time before a tool call is the
     #: model's ("agent_model"), time in it is the tool's ("agent_tools").
     lap: Callable[[str], None] | None = None
+    #: B-7: called after every tool call, so the receipt card can be made
+    #: while the model writes the reply.
+    after_tool: Callable[[], None] | None = None
     _seen: set[str] = field(default_factory=set)
     _inflight: set[asyncio.Task[Any]] = field(default_factory=set)
 
@@ -112,6 +115,11 @@ class AgentToolbox:
         finally:
             if self.lap is not None:
                 self.lap("agent_tools")
+            if self.after_tool is not None:
+                try:
+                    self.after_tool()
+                except Exception:  # noqa: BLE001 -- a speed-up, never a failure
+                    _log.warning("agent.after_tool_failed", exc_info=True)
 
     async def settle(self, timeout: float = 5.0) -> None:
         """Wait for tool calls still running after the model loop was cut off."""

@@ -2553,19 +2553,63 @@ def build_message_handlers(
                     await _acknowledge(message, message.sender.wa_id)
                 return saved
 
-            async def _attach_receipt(reply, gateway):  # type: ignore[no-untyped-def]
+            async def _receipt_for(handled_list):  # type: ignore[no-untyped-def]
                 """One card per reply: a single saved record gets its own
                 card, a multi-part note gets one combined card with a row per
-                record (the reply text lists them all too)."""
-                handled_list = list(getattr(gateway, "handled", []))
-                rendering = [h for h in handled_list if getattr(h, "receipt_coro", None) is not None]
+                record (the reply text lists them all too). A record whose own
+                card was already started early still counts as one."""
+                rendering = [
+                    h
+                    for h in handled_list
+                    if getattr(h, "receipt_coro", None) is not None or id(h) in early["single"]
+                ]
                 if len(rendering) > 1:
                     for handled in rendering:  # the combined card replaces them
-                        handled.receipt_coro.close()
-                        handled.receipt_coro = None
-                    image = await _combined_receipt_image(handled_list)
-                else:
-                    image = await _receipt_image(rendering[0]) if rendering else None
+                        if handled.receipt_coro is not None:
+                            handled.receipt_coro.close()
+                            handled.receipt_coro = None
+                    return await _combined_receipt_image(handled_list)
+                if rendering and rendering[0].receipt_coro is not None:
+                    early["single"].add(id(rendering[0]))
+                    return await _receipt_image(rendering[0])
+                return None
+
+            # B-7: the card is made (and uploaded) while the model writes the
+            # reply, not after it: started shortly after the last tool call,
+            # started again if a later call saved more. A stale card is
+            # discarded, never cancelled (a cancelled render would keep its
+            # browser page).
+            early: dict[str, Any] = {
+                "gateway": None, "n": 0, "task": None, "timer": None, "single": set(),
+            }
+
+            async def _card_ready(handled_list):  # type: ignore[no-untyped-def]
+                image = await _receipt_for(handled_list)
+                prepare = getattr(sender, "prepare_image", None)
+                if image and prepare is not None:
+                    await prepare(image)
+                return image
+
+            def _start_card() -> None:
+                gateway = early["gateway"]
+                count = len(getattr(gateway, "handled", []) or [])
+                if not count or count == early["n"]:
+                    return
+                early["n"] = count
+                early["task"] = asyncio.ensure_future(_card_ready(list(gateway.handled)))
+
+            def _after_tool() -> None:
+                if early["timer"] is not None:
+                    early["timer"].cancel()
+                early["timer"] = asyncio.get_running_loop().call_later(0.05, _start_card)
+
+            async def _attach_receipt(reply, gateway):  # type: ignore[no-untyped-def]
+                if early["timer"] is not None:
+                    early["timer"].cancel()
+                early["gateway"] = gateway
+                _start_card()  # no-op when the card for these saves is under way
+                task = early["task"]
+                image = await task if task is not None else None
                 return dataclasses.replace(reply, header_image=image) if image else reply
 
             async def _send_agent_reply(reply, target_wa_id, gateway) -> None:  # type: ignore[no-untyped-def]
@@ -2597,7 +2641,7 @@ def build_message_handlers(
                 )
 
             def _gateway(msg, language):  # type: ignore[no-untyped-def]
-                return JourneyGateway(
+                early["gateway"] = JourneyGateway(
                     message=msg,
                     process=_process,
                     save_now=_save_now,
@@ -2606,6 +2650,7 @@ def build_message_handlers(
                     held_prompt=lambda journey: render_workflow_run_reply_spec(journey.workflow_run),
                     language=language,
                 )
+                return early["gateway"]
 
             deps = AgentTurnDeps(
                 runner=_agent_runner,
@@ -2620,6 +2665,7 @@ def build_message_handlers(
                 user_language_store=user_language_store,
                 reply_composer=reply_composer,
                 lap=timer.lap,
+                after_tool=_after_tool,
             )
             timer.lap("agent_setup")
             result = await run_agent_turn(message, ctx, deps, menu_hint=hint)

@@ -77,8 +77,11 @@ class AgentRunner:
         scope: ScopeLookup,
         correlation_id: str | None = None,
         lap: Callable[[str], None] | None = None,
+        after_tool: Callable[[], None] | None = None,
     ) -> AgentResult:
-        toolbox = AgentToolbox(gateway=gateway, scope=scope, user_text=user_text, lap=lap)
+        toolbox = AgentToolbox(
+            gateway=gateway, scope=scope, user_text=user_text, lap=lap, after_tool=after_tool
+        )
         messages = [ChatMessage(role=r, text=t) for r, t in build_messages(ctx, user_text)]
         try:
             run = await self._provider.run_tools(

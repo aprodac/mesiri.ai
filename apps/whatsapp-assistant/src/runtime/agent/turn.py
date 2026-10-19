@@ -54,6 +54,8 @@ class AgentTurnDeps:
     #: B-7: the journey's lap stopwatch (runtime/step_timing.py), so the
     #: prepipeline trace says where an agent turn's time went.
     lap: Callable[[str], None] | None = None
+    #: B-7: run after each tool call (the receipt card starts early).
+    after_tool: Callable[[], None] | None = None
 
 
 def _scope_of(actor: ActorIdentity) -> ScopeLookup:
@@ -176,6 +178,7 @@ async def run_agent_turn(
         scope=_scope_of(actor),
         correlation_id=correlation_id,
         **({"lap": deps.lap} if deps.lap is not None else {}),
+        **({"after_tool": deps.after_tool} if deps.after_tool is not None else {}),
     )
     _lap(deps, "agent_model")
     if result.outcome == "outage" or result.reply is None:

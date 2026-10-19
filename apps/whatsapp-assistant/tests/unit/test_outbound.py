@@ -308,3 +308,26 @@ async def test_receipt_is_sent_as_an_interactive_message_with_an_image_header(ca
     assert payload["type"] == "interactive"
     assert payload["interactive"]["header"] == {"type": "image", "image": {"id": "MEDIA-42"}}
     assert "receipt.sent as=header media_id=MEDIA-42" in caplog.text
+
+
+async def test_a_prepared_image_is_not_uploaded_again_by_the_send():
+    """B-7: prepare_image uploads ahead; the send reuses the media id."""
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        if request.url.path.endswith("/media"):
+            return httpx.Response(200, json={"id": "MEDIA1"})
+        return httpx.Response(200, json={"messages": [{"id": "wamid.1"}]})
+
+    sender = WhatsAppSender(
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        access_token="t",
+        phone_number_id="P",
+    )
+    await sender.prepare_image(b"png-bytes")
+    sent = await sender.send_button(
+        "91", body="Saved", buttons=[ListRow(id="u", title="Undo")], header_image=b"png-bytes"
+    )
+    assert sent is True
+    assert sum(p.endswith("/media") for p in calls) == 1
