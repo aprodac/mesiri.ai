@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from channel.replies import ReplySpec
+from interactions.saved_summary import QUESTION_PREFIX, render_saved
 from mesiri_ai.models import ChatMessage, ToolRunResult
 from mesiri_ai.ports.tool_calling import ToolCallingProvider
 
@@ -109,6 +110,15 @@ class AgentRunner:
 
     def _compose(self, run: ToolRunResult, toolbox: AgentToolbox) -> ReplySpec:
         text = saved_list(_unique_paragraphs((run.text or "").strip()))
+        block = _saved_block(toolbox)
+        if block:
+            # The "Saved:" list is the system's, built from what was saved
+            # (request 57, B3): the model's own list echoed the sender's raw
+            # words ("6 mason, 10 helper vannu"). What it adds is the rest.
+            rest = _without_echoed_questions(_without_saved_block(text), toolbox)
+            if not rest and run.stop_reason == "max_steps":
+                rest = CHECK_LINE
+            text = f"{block}\n\n{rest}".strip() if rest else block
         if not text:
             return self._fallback(toolbox, partial=run.stop_reason == "max_steps")
         if toolbox.saved and "undo" not in text.casefold():
@@ -129,7 +139,8 @@ class AgentRunner:
     def _fallback(self, toolbox: AgentToolbox, *, partial: bool) -> ReplySpec:
         """The reply when the model gave no usable text: the pipeline's own
         words for what it did."""
-        parts = [item.text for item in toolbox.saved]
+        block = _saved_block(toolbox)
+        parts = [block] if block else [item.text for item in toolbox.saved]
         parts.extend(toolbox.answers)
         parked = toolbox.parked
         if parked is not None:
@@ -147,6 +158,62 @@ class AgentRunner:
             list_rows=parked.list_rows,
             buttons=parked.buttons,
         )
+
+
+def _saved_block(toolbox: AgentToolbox) -> str:
+    """The deterministic "Saved:" block, when every saved item has a summary
+    (else the model's own wording stands, as before)."""
+    if not toolbox.saved or not all(item.summary for item in toolbox.saved):
+        return ""
+    return render_saved([item.summary for item in toolbox.saved if item.summary])
+
+
+def _normalized(text: str) -> str:
+    return " ".join(re.sub(r"[^\w\s]", " ", text, flags=re.UNICODE).split()).casefold()
+
+
+def _without_echoed_questions(text: str, toolbox: AgentToolbox) -> str:
+    """A question saved for the engineer is in the "Saved:" list; the model
+    repeating it back, or any other line that only plays back the sender's own
+    words, adds nothing (request 57, B2/B3)."""
+    asked = {
+        _normalized(item.summary[len(QUESTION_PREFIX):])
+        for item in toolbox.saved
+        if item.summary and item.summary.startswith(QUESTION_PREFIX)
+    }
+    spoken = _normalized(toolbox.user_text)
+    if not text:
+        return text
+    kept = []
+    for line in text.split("\n"):
+        norm = _normalized(line)
+        # The sender's own words played back ("6 mason, 10 helper vannu") say
+        # nothing the "Saved:" list does not, whatever else the line is.
+        echo = len(norm.split()) >= 3 and norm in spoken
+        if norm in asked or echo:
+            continue
+        kept.append(line)
+    return "\n".join(kept).strip("\n").strip()
+
+
+_SAVED_HEAD = re.compile(r"^\s*✅")
+_BULLET = re.compile(r"^\s*[•\-\*]\s")
+
+
+def _without_saved_block(text: str) -> str:
+    """The model's text minus any "✅ Saved:" header (with an inline item) and
+    the bullets under it, whatever language the model wrote it in."""
+    kept: list[str] = []
+    dropping = False
+    for line in text.split("\n"):
+        if _SAVED_HEAD.match(line):
+            dropping = True
+            continue
+        if dropping and _BULLET.match(line):
+            continue
+        dropping = False
+        kept.append(line)
+    return "\n".join(kept).strip("\n").strip()
 
 
 _SAVED_LINE = re.compile(r"^\s*(?:✅\s*)?(?:recorded|saved)\s*:?\s+(?P<what>\S.*)$", re.IGNORECASE)

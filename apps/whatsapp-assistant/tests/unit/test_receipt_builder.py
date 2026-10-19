@@ -112,3 +112,39 @@ async def test_builder_stamps_the_receipt_in_the_actor_timezone(monkeypatch):
     actor = SimpleNamespace(full_name="M", projects=[], sites=[], timezone="Asia/Kolkata")
     await RecordReceiptBuilder(renderer).build(*_saved(*MATERIAL, "aaaa-1"), actor)
     assert "6:05 PM" in renderer.html[0]
+
+
+ACTIVITY_40 = (
+    DraftActionType.CREATE_ACTIVITY,
+    {"work_type": "plastering", "location": "2nd floor", "progress_percent": 40},
+)
+
+
+async def test_the_work_row_is_in_the_senders_script_when_a_localizer_is_wired():
+    """Request 57, B4: card text in the worker's script; amounts and names stay."""
+    renderer = _Renderer()
+    seen = []
+
+    async def localize(texts, actor):
+        seen.extend(texts)
+        return {t: "പ്ലാസ്റ്ററിംഗ് · രണ്ടാം നില · 40%" for t in texts}
+
+    await RecordReceiptBuilder(renderer, localize=localize).build(
+        *_saved(*ACTIVITY_40, "aaaa-1"), ACTOR
+    )
+    assert "Plastering · 2nd floor · 40%" in seen
+    assert "പ്ലാസ്റ്ററിംഗ് · രണ്ടാം നില · 40%" in renderer.html[0]
+    assert "Riverside Tower" in renderer.html[0]
+
+
+async def test_a_failing_localizer_leaves_the_card_in_english():
+    renderer = _Renderer()
+
+    async def boom(texts, actor):
+        raise RuntimeError("model down")
+
+    png = await RecordReceiptBuilder(renderer, localize=boom).build(
+        *_saved(*ACTIVITY_40, "aaaa-1"), ACTOR
+    )
+    assert png == b"png"
+    assert "Plastering · 2nd floor · 40%" in renderer.html[0]

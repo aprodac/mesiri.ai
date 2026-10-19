@@ -78,6 +78,7 @@ from __future__ import annotations
 
 from backend.ports import ActorIdentity
 from canonicalization import build_canonical_event
+from canonicalization.question_note import question_note_candidate
 from channel.replies import (
     ReplySpec,
     render_material_create_declined_reply,
@@ -374,10 +375,25 @@ async def _process_remaining_segments(
                 expense_categories=expense_categories,
             )
             event = build_canonical_event(segment_understanding, resolved)
+            if event.event_type is CanonicalEventType.GENERAL_QUESTION_ASKED and segment_text.strip():
+                # A question inside a site note (request 57, B2): not echoed
+                # and dropped -- noted for the engineer, as a step the sender
+                # sees in the preview like any other part of the note.
+                note = question_note_candidate(segment_text)
+                event = build_canonical_event(
+                    segment_understanding.model_copy(
+                        update={
+                            "semantic_type": note.semantic_type,
+                            "candidates": [note],
+                            "intents": [note],
+                        }
+                    ),
+                    resolved,
+                )
             _inherit_resolved_scope(event, resolved, actor)
             if WORKFLOW_KEY_BY_EVENT.get(event.event_type) is None:
-                # A question or small talk inside a site note: no workflow
-                # will run it, but the reply says it was seen.
+                # Small talk inside a site note: no workflow will run it, but
+                # the reply says it was seen.
                 event.fields["source_text"] = segment_text
         except Exception:  # noqa: BLE001 -- one bad segment must not sink the
             # rest -- same degrade try_start_decomposed_plan's docstring

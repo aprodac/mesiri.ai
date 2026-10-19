@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from canonicalization.question_note import question_note_candidate
 from mesiri_ai.models import ToolSpec
 from mesiri_contracts.assistant.candidates import Candidate
 from mesiri_contracts.assistant.enums import SemanticType
@@ -25,6 +26,7 @@ REPORT_ISSUE = "report_issue"
 TRANSFER_MONEY = "transfer_money"
 UNDO_LAST = "undo_last"
 ASK_USER = "ask_user"
+NOTE_FOR_ENGINEER = "note_for_engineer"
 QUERY_LABOUR = "query_labour"
 QUERY_MATERIALS = "query_materials"
 QUERY_WORK_LOG = "query_work_log"
@@ -42,6 +44,7 @@ WRITE_TOOLS = frozenset(
         SAVE_MATERIAL_USAGE,
         SAVE_EXPENSE,
         REPORT_ISSUE,
+        NOTE_FOR_ENGINEER,
         TRANSFER_MONEY,
         UNDO_LAST,
     }
@@ -146,6 +149,14 @@ def tool_specs() -> list[ToolSpec]:
                         ),
                     },
                     "location": {"type": "string", "description": "Place on site, if stated."},
+                    "progress_percent": {
+                        "type": "number",
+                        "description": (
+                            "How much of this work is done, when the message gives a "
+                            "percentage ('40% aayi', '40 percent done' -> 40). Omit otherwise. "
+                            "A percentage below 100 is never update_kind 'completed'."
+                        ),
+                    },
                     "update_kind": {
                         "type": "string",
                         "enum": ["started", "progress", "paused", "resumed", "completed"],
@@ -235,6 +246,26 @@ def tool_specs() -> list[ToolSpec]:
                     "site": _SITE,
                 },
                 ["issue_type", "narrative"],
+            ),
+        ),
+        ToolSpec(
+            name=NOTE_FOR_ENGINEER,
+            description=(
+                "Save a QUESTION the user asked (e.g. 'can we pour the slab tomorrow?') for "
+                "their engineer, when none of the query tools can answer it from the company's "
+                "records. Never for a problem or delay (report_issue) and never for work done."
+            ),
+            parameters=_obj(
+                {
+                    "question": {
+                        "type": "string",
+                        "description": "The question, in the user's own words.",
+                    },
+                    "date": _DATE,
+                    "project": _PROJECT,
+                    "site": _SITE,
+                },
+                ["question"],
             ),
         ),
         ToolSpec(
@@ -339,8 +370,11 @@ def tool_specs() -> list[ToolSpec]:
         ),
         ToolSpec(
             name=REQUEST_DPR,
-            description="Send the user today's Daily Progress Report as a document.",
-            parameters=_obj({"project": _PROJECT, "site": _SITE}),
+            description=(
+                "Send the user a Daily Progress Report as a document: today's, or another "
+                "day's when they name one ('yesterday's report', 'report for 12 Oct')."
+            ),
+            parameters=_obj({"date": _DATE, "project": _PROJECT, "site": _SITE}),
         ),
     ]
 
@@ -412,6 +446,7 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             "quantities": args.get("quantities"),
             "location": args.get("location"),
             "update_kind": args.get("update_kind"),
+            "progress_percent": args.get("progress_percent"),
             "occurred_on": date,
             **sc,
         }
@@ -450,6 +485,13 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             **sc,
         }
         return Candidate(semantic_type=SemanticType.SITE_ISSUE, fields=_clean(fields))
+    if name == NOTE_FOR_ENGINEER:
+        question = str(args.get("question") or "").strip()
+        if not question:
+            return None
+        note = question_note_candidate(question)
+        fields = {**note.fields, "occurred_on": date, **sc}
+        return Candidate(semantic_type=SemanticType.SITE_ISSUE, fields=_clean(fields))
     if name == TRANSFER_MONEY:
         fields = {
             "amount": args.get("amount"),
@@ -480,7 +522,10 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
         }
         return Candidate(semantic_type=SemanticType.FINANCE_QUERY, fields=_clean(fields))
     if name == REQUEST_DPR:
-        return Candidate(semantic_type=SemanticType.DPR_REQUEST, fields=_clean(dict(sc)))
+        return Candidate(
+            semantic_type=SemanticType.DPR_REQUEST,
+            fields=_clean({"report_date": date, **sc}),
+        )
     if name == UNDO_LAST:
         what = str(args.get("what") or "latest_update")
         if what == "latest_update":

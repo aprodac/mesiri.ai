@@ -51,6 +51,7 @@ from backend.ports import ActorIdentity
 from channel.friendly_errors import friendly_rejection, is_question_rejection
 from channel.replies import ReplySpec
 from interactions.handler import InteractionHandled
+from interactions.saved_summary import summarise_draft
 from mesiri_contracts.application.results.execution_result import ExecutionResult, ExecutionStatus
 from mesiri_contracts.assistant.planner_decision import PlannerDecisionType
 from mesiri_contracts.assistant.v2.planner_decision import PlannerDecisionV2
@@ -180,9 +181,12 @@ def _summarize_step_outcome(
     if execution_result is None:
         return "Confirmed."
     if execution_result.status in (ExecutionStatus.SUCCEEDED, ExecutionStatus.ALREADY_EXECUTED):
+        confirmed = getattr(result, "confirmed_action", None)
+        summary = summarise_draft(confirmed.draft_action) if confirmed is not None else None
+        head = f"Recorded ({summary})." if summary else "Recorded."
         if execution_result.conflict_note:
-            return f"Recorded. {execution_result.conflict_note}"
-        return "Recorded."
+            return f"{head} {execution_result.conflict_note}"
+        return head
     if execution_result.status is ExecutionStatus.REJECTED:
         line = friendly_rejection(execution_result.rejection_reasons, where="plan_step")
         if is_question_rejection(execution_result.rejection_reasons):

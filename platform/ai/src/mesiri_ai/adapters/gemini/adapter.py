@@ -213,7 +213,7 @@ _EXTRACTION_PROMPT = (
     '"name_original" -- never translate a name into an English word. Translate '
     "trades into the English trade word.\n"
     "- general_site_update: narrative, work_type, quantities (array), location, "
-    "contractor, project_name, occurred_on, update_kind. "
+    "contractor, project_name, occurred_on, update_kind, progress_percent. "
     "narrative is the report in the sender's own words. work_type is the single "
     'primary kind of work if one is clear (e.g. "plastering", "concreting", '
     '"blockwork") -- omit if the message describes several unrelated things or '
@@ -237,6 +237,11 @@ _EXTRACTION_PROMPT = (
     'total). Use "completed" only when the message says the work is now fully '
     'finished (e.g. "finished plastering", "plastering done"). Use "paused" for '
     'a stoppage without finishing (e.g. "stopped for rain", "paused for lunch"). '
+    'progress_percent is the plain number (40, not "40%") when the message says '
+    'how much of the work is done ("plastering 2nd floor 40% aayi", "40 percent '
+    'done"); omit it otherwise. A percentage below 100 is "progress", NEVER '
+    '"completed" -- "aayi"/"ho gaya" after a percentage means "has reached", '
+    'not "finished", and the narrative must keep that number. '
     'Use "resumed" for explicitly restarting paused work. Omit update_kind '
     "entirely -- never guess -- when the message could equally be new work or a "
     "continuation; a plain quantity update with no other context "
@@ -332,9 +337,12 @@ _EXTRACTION_PROMPT = (
     'general_site_update (recording work); "what did I log today?" is an activity_query '
     "(asking). Getting this backwards would try to record a report instead of answering "
     "a question.\n"
-    "- dpr_request: (no fields). Use this type ONLY when the user explicitly asks to be "
-    'SENT today\'s Daily Progress Report / DPR as a document (e.g. "send me today\'s DPR", '
-    '"share today\'s report", "send the daily report"). Distinct from activity_query, which '
+    "- dpr_request: report_date. Use this type ONLY when the user explicitly asks to be "
+    'SENT a Daily Progress Report / DPR as a document (e.g. "send me today\'s DPR", '
+    '"share today\'s report", "send the daily report", "send yesterday\'s report", "report for 12 Oct"). '
+    'report_date is ONLY the day they name: "yesterday", "day before yesterday" or an ISO date '
+    "YYYY-MM-DD (the year is this year unless stated); omit it for today and never guess. "
+    'Distinct from activity_query, which '
     'asks a QUESTION about the log ("what did I log today?") and gets a text answer -- '
     "dpr_request wants the actual generated PDF document sent to them. Never use this for a "
     "vague \"how's the site doing\" question -- that is activity_query or general_question.\n"

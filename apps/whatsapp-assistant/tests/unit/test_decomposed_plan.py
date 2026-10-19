@@ -742,15 +742,17 @@ _PROJECT = ExtractionResult(semantic_type="project_create", fields={"name": "Sta
 _QUESTION = ExtractionResult(semantic_type="general_question", fields={}, provider="fake")
 
 
-async def test_a_question_inside_a_site_note_is_acknowledged_in_the_same_reply():
+async def test_a_question_inside_a_site_note_is_noted_for_the_engineer_in_the_same_reply():
+    """Request 57, B2: not echoed back and dropped -- a step of the plan that
+    says what happens to it."""
     reply = await _preview_for(
         ["create a project called Starship", "can we pour concrete tomorrow?"],
         [_PROJECT, _QUESTION],
     )
     assert reply is not None
     assert "Starship" in reply.text
-    assert 'Your question "can we pour concrete tomorrow?"' in reply.text
-    assert "engineer" in reply.text
+    assert "Note your question for your engineer: “can we pour concrete tomorrow?”" in reply.text
+    assert "Report an Issue: OTHER" not in reply.text
     assert reply.buttons  # still the one Yes/No preview, no second message
 
 

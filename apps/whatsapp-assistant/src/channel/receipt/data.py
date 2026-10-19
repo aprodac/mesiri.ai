@@ -189,6 +189,23 @@ def _labour_people(headcount: int, named: int) -> str:
     return f"{named} named, {headcount - named} by headcount"
 
 
+def _progress_percent(fields: dict) -> str:
+    """"40%" when the record states how much is done, else ""."""
+    raw = _present(fields.get("progress_percent"))
+    if not raw:
+        return ""
+    try:
+        pct = float(raw.rstrip("%"))
+    except ValueError:
+        return ""
+    return f"{int(pct)}%" if pct.is_integer() else f"{pct:g}%"
+
+
+def _work_line(work_type: str, fields: dict, pct: str) -> str:
+    """"Plastering · 2nd floor · 40%": what was done, where, how far."""
+    return " · ".join(p for p in (work_type, _present(fields.get("location")), pct) if p)
+
+
 def _present(value: Any) -> str:
     text = str(value).strip() if value is not None else ""
     return "" if text in ("—", "-", "None") else text
@@ -401,32 +418,55 @@ def build_receipt_data(
         work_type = str(fields.get("work_type") or "Activity").replace("_", " ").title()
         kind = ReceiptKind.WORK
         category = "Site activity"
+        pct = _progress_percent(fields)
         if _present(fields.get("quantity")):
             hero_number, hero_unit = str(fields["quantity"]).strip(), str(fields.get("unit") or "").strip()
+        elif pct:
+            hero_number, hero_unit = pct.rstrip("%"), "% done"
         else:
             hero_title = work_type
-        rows = _rows(
-            kind,
-            ("Work", work_type if hero_number else ""),
-            ("Details", fields.get("narrative")),
-            ("Contractor", fields.get("contractor")),
-        )
+        if pct:
+            # What was reported, from the saved data -- the percentage is the
+            # point of the message, so it is never left to the free-text note.
+            rows = _rows(
+                kind,
+                ("Work", _work_line(work_type, fields, pct)),
+                ("Contractor", fields.get("contractor")),
+            )
+            summary_text = _work_line(work_type, fields, "")
+            summary_value = pct
+        else:
+            rows = _rows(
+                kind,
+                ("Work", work_type if hero_number else ""),
+                ("Details", fields.get("narrative")),
+                ("Contractor", fields.get("contractor")),
+            )
+            summary_text = work_type
+            summary_value = _fmt_quantity(fields) if hero_number else ""
         id_prefix = "AL"
-        summary_text = work_type
-        summary_value = _fmt_quantity(fields) if hero_number else ""
     elif draft.action_type is DraftActionType.ADD_PROGRESS_UPDATE:
         update_kind = str(fields.get("update_kind") or "PROGRESS").replace("_", " ").title()
         kind = ReceiptKind.WORK
         category = "Progress update"
-        hero_title = update_kind
-        rows = _rows(
-            kind,
-            ("Activity", fields.get("activity_summary")),
-            ("Details", fields.get("narrative")),
-        )
+        pct = _progress_percent(fields)
+        if pct:
+            hero_number, hero_unit = pct.rstrip("%"), "% done"
+            rows = _rows(
+                kind,
+                ("Activity", fields.get("activity_summary")),
+                ("Progress", pct),
+            )
+        else:
+            hero_title = update_kind
+            rows = _rows(
+                kind,
+                ("Activity", fields.get("activity_summary")),
+                ("Details", fields.get("narrative")),
+            )
         id_prefix = "PU"
         summary_text = str(fields.get("activity_summary") or "Progress update")
-        summary_value = update_kind
+        summary_value = pct or update_kind
     elif draft.action_type is DraftActionType.CORRECT_ACTIVITY_QUANTITY:
         # ADR-D14: old_quantity/old_unit are seeded straight from a real DB
         # read (runtime/inbound_journey/seeding.py), never an unresolved AI
@@ -527,7 +567,12 @@ def build_receipt_data(
         status, footer = STATUS_SAVED, ""
 
     record_id = f"{id_prefix}-{confirmed_at:%d%m%y}-{record_row_id.replace('-', '')[:4].upper()}"
-    place = " · ".join(p for p in (site_name, project_name) if p)
+    # A project and its only site often share a name ("Green Villa, Kakkanad"):
+    # say it once.
+    names = [site_name, project_name]
+    if site_name and project_name and site_name.strip().casefold() == project_name.strip().casefold():
+        names = [site_name]
+    place = " · ".join(p for p in names if p)
     when = f"{confirmed_at:%d %b %Y} · {confirmed_at:%I:%M %p}".replace(" 0", " ")
     meta = " · ".join(p for p in (when, reporter) if p)
 
@@ -593,4 +638,31 @@ def combine_receipts(parts: list[ReceiptData]) -> ReceiptData:
         hero_unit="parts",
         rows=rows,
         more=more,
+    )
+
+
+def card_texts(data: ReceiptData) -> list[str]:
+    """The free-text pieces of a card a worker reads in their own words: the
+    text of its WORK rows and of its summary row. Names, amounts, ids, labels
+    and the date stay as they are."""
+    texts = [r.text for r in data.rows if r.kind is ReceiptKind.WORK and r.text]
+    if data.summary is not None and data.summary.kind is ReceiptKind.WORK and data.summary.text:
+        texts.append(data.summary.text)
+    return texts
+
+
+def with_card_texts(data: ReceiptData, translated: dict[str, str]) -> ReceiptData:
+    """``data`` with the pieces from ``card_texts`` replaced by their
+    translations (a missing key keeps the English text)."""
+    from dataclasses import replace
+
+    def row(r: ReceiptRow) -> ReceiptRow:
+        if r.kind is ReceiptKind.WORK and r.text in translated:
+            return replace(r, text=translated[r.text])
+        return r
+
+    return replace(
+        data,
+        rows=[row(r) for r in data.rows],
+        summary=row(data.summary) if data.summary is not None else None,
     )

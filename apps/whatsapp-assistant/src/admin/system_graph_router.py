@@ -626,11 +626,6 @@ def _hardcoded_replies() -> list[HardcodedReplyInfo]:
             source="interactions/response_handler.py:render_execution_reply()",
             trigger="The dispatcher caught an unhandled exception during the domain write (mesiri.application.materials.dispatcher).",
             template=render_execution_reply(_execution(ExecutionStatus.FAILED)),
-            flag=(
-                'Claims the write "will retry automatically" — no retry job or queue exists '
-                "anywhere in the codebase for a FAILED execution today; the workflow is left at "
-                "CONFIRMED (recoverable) but nothing currently retries it."
-            ),
         ),
     ]
     return entries

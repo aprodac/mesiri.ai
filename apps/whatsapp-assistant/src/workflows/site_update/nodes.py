@@ -308,6 +308,7 @@ _CREATION_DISPLAY_HIDDEN_FIELD_KEYS = frozenset(
         "work_type",
         "contractor",
         "narrative",
+        "progress_percent",
     }
 )
 
@@ -380,6 +381,8 @@ def _request_creation_confirmation(draft: DraftActionV2) -> dict:
     contractor = fields.get("contractor")
     if contractor:
         out.append(f"   • Contractor: {contractor}")
+    if fields.get("progress_percent") is not None:
+        out.append(f"   • Progress: {fields['progress_percent']}%")
 
     narrative = fields.get("narrative")
     if narrative:
@@ -422,6 +425,7 @@ _CONTINUATION_DISPLAY_HIDDEN_FIELD_KEYS = frozenset(
         "unit_id",
         "narrative",
         "activity_summary",
+        "progress_percent",
         "occurred_at",
         "occurred_date_source",
         "source",
@@ -451,6 +455,8 @@ def _request_continuation_confirmation(draft: DraftActionV2) -> dict:
     if quantity is not None and unit:
         out.append("")
         out.append(f"   • {quantity} {unit}")
+    if fields.get("progress_percent") is not None:
+        out.append(f"   • Progress: {fields['progress_percent']}%")
 
     out.extend(field_lines(fields, skip=_CONTINUATION_DISPLAY_HIDDEN_FIELD_KEYS))
 

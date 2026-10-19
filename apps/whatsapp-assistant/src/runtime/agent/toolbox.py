@@ -40,7 +40,9 @@ MAX_LIST_ROWS = 10
 _TITLE_MAX = 24  # WhatsApp button/row title limit
 
 
-_RECORDED = re.compile(r"^\W*recorded\.?(\s+thank you\.?)?\s*$", re.IGNORECASE)
+_RECORDED = re.compile(
+    r"^\W*(?:recorded\.?(?:\s+thank you\.?)?|saved\s*:.*)\s*$", re.IGNORECASE | re.DOTALL
+)
 
 
 def _without_recorded(text: str) -> str:
@@ -71,6 +73,9 @@ def question_reply(question: str, options: list[str]) -> ReplySpec:
 class SavedItem:
     tool: str
     text: str
+    #: What was saved in a few words, from the saved data; the reply's
+    #: "Saved:" list is built from these, never from the user's own words.
+    summary: str | None = None
 
 
 @dataclass(slots=True)
@@ -188,8 +193,10 @@ class AgentToolbox:
 
     def _outcome(self, name: str, step: StepResult) -> ToolOutcome:
         if step.status == "saved":
-            self.saved.append(SavedItem(name, step.text))
+            self.saved.append(SavedItem(name, step.text, step.summary))
             content: dict[str, Any] = {"status": "saved"}
+            if step.summary:
+                content["saved_as"] = step.summary
             # B-9: not the pipeline's "✅ Recorded. Thank you." -- the model
             # copied it onto every line ("Recorded 12 masons present today.")
             # or sent it alone, without saying what was saved.

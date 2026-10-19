@@ -317,7 +317,9 @@ class InteractionHandler:
                 execution_result.status.value,
                 result.workflow_instance_id,
             )
-            reply_text = render_execution_reply(execution_result)
+            reply_text = render_execution_reply(
+                execution_result, result.confirmed_action.draft_action
+            )
             # Both the M19 memory hook and the #25 completion-photo follow-up
             # need "which activity did this touch" -- computed once here,
             # independent of either being wired, so neither accidentally

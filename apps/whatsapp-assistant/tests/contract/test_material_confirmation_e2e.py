@@ -93,7 +93,7 @@ async def test_confirm_reply_executes_domain_write_and_replies_recorded():
     assert handled is not None
     assert handled.execution_result is not None
     assert handled.execution_result.status is ExecutionStatus.SUCCEEDED
-    assert handled.reply_text == "✅ Recorded. Thank you."
+    assert handled.reply_text == "✅ Saved: Cement in: 20 bags"
 
     assert len(material_repo.material_rows) == 1
     assert material_repo.material_rows[0]["table"] == "material_receipts"

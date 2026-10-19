@@ -112,7 +112,7 @@ async def test_confirm_reply_executes_domain_write_and_replies_recorded():
     assert handled is not None
     assert handled.execution_result is not None
     assert handled.execution_result.status is ExecutionStatus.SUCCEEDED
-    assert handled.reply_text == "✅ Recorded. Thank you."
+    assert handled.reply_text == "✅ Saved: Expense ₹250 (Materials)"
 
     # Persists exactly once, with the right organization/project/site/amount/
     # source -- category_id comes from the resolver (category_text -> id).
@@ -168,7 +168,7 @@ async def test_confirm_with_no_category_field_still_succeeds():
     handled = await interaction_handler.handle_fast_path(USR, _message("yes"))
 
     assert handled.execution_result.status is ExecutionStatus.SUCCEEDED
-    assert handled.reply_text == "✅ Recorded. Thank you."
+    assert handled.reply_text == "✅ Saved: Expense ₹250"
     assert len(expense_repo.expense_rows) == 1
     persisted = expense_repo.expense_rows[0]["command"]
     assert persisted.category_id is not None

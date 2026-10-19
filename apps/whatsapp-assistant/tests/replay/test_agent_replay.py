@@ -256,19 +256,35 @@ async def test_a_four_part_note_is_four_saves_one_reply_and_no_site_question(wor
     assert provider.calls == 1  # one model run; the reply is one message
     assert result.reply.text.endswith("Wrong? Reply UNDO.")
     assert "which site" not in result.reply.text.lower()
+    # One "Saved:" list from the saved data, one bullet per record.
+    lines = result.reply.text.split("\n")
+    assert lines[0] == "✅ Saved:"
+    assert lines[1] == "• 15 workers (3 mason, 12 helper)"
+    assert "• Plastering, second floor: 180 sqm" in lines
+    assert "• Cement in: 50 bags" in lines
+    assert any(line.startswith("• Issue (weather)") for line in lines)
 
 
-async def test_a_malayalam_note_gets_the_models_malayalam_reply_not_canned_english(world):
+async def test_a_malayalam_note_gets_the_saved_list_then_the_models_own_words(world):
+    from channel.replies import ReplySpec
+    from runtime.reply_language import localize_reply_spec
+
     provider = FakeToolCallingProvider(
         [
             [("save_labour", {"workers": [{"trade": "mason", "headcount": 3}]})],
-            "✅ 3 മേസൺമാരുടെ ഹാജർ സേവ് ചെയ്തു.",
+            "✅ 3 മേസൺമാരുടെ ഹാജർ സേവ് ചെയ്തു.\nനാളെ കാണാം.",
         ]
     )
     result = await world.say(provider, "ഇന്ന് 3 മേസൺ പണിക്ക് വന്നു")
-    assert "മേസൺ" in result.reply.text
+    # The "Saved:" list is written from the saved data, not copied from the model.
+    assert result.reply.text.startswith("✅ Saved: 3 workers (3 mason)")
+    assert "നാളെ കാണാം." in result.reply.text
+    assert "സേവ് ചെയ്തു" not in result.reply.text  # the model's own saved line is dropped
     # The canned workflow wording ("Labour recorded", "draft", ...) never reaches the user.
     assert "draft" not in result.reply.text.lower()
+    # A Malayalam sender gets the label words in Malayalam; numbers and trade stay.
+    sent = localize_reply_spec(ReplySpec(text=result.reply.text), "Malayalam", "native").text
+    assert sent.startswith("✅ സേവ് ചെയ്തു: 3 തൊഴിലാളികൾ (3 mason)")
     # And the model was told the user's own words, untranslated.
     assert provider.last_messages[-1].text.endswith("ഇന്ന് 3 മേസൺ പണിക്ക് വന്നു")
 
@@ -423,3 +439,25 @@ async def test_one_expense_is_one_question_then_one_saved_reply(world):
     again = await world.handler.handle_fast_path(world.actor.user_id, world.message("Yes"))
     assert again is None
     assert len(world.dispatcher.dispatched) == 1  # a second Yes saves nothing more
+
+
+async def test_a_question_in_a_note_is_noted_for_the_engineer_and_the_reply_says_so(world):
+    """Request 57, B2/B3: the question is saved (not just echoed), and the saved
+    list is built from what was saved, not from the worker's raw words."""
+    provider = FakeToolCallingProvider(
+        [
+            [
+                ("save_labour", {"workers": [{"trade": "mason", "headcount": 6}, {"trade": "helper", "headcount": 10}]}),
+                ("note_for_engineer", {"question": "Nale slab concrete cheyyan pattumo?"}),
+            ],
+            "Nale slab concrete cheyyan pattumo?",  # the model only echoes it
+        ]
+    )
+    result = await world.say(provider, "6 mason, 10 helper vannu. Nale slab concrete cheyyan pattumo?")
+    assert len(result.toolbox.saved) == 2
+    lines = result.reply.text.split("\n")
+    assert lines[0] == "✅ Saved:"
+    assert lines[1] == "• 16 workers (6 mason, 10 helper)"
+    assert lines[2] == "• Question for your engineer: Nale slab concrete cheyyan pattumo?"
+    assert "vannu" not in result.reply.text
+    assert result.reply.text.count("Nale slab concrete cheyyan pattumo?") == 1

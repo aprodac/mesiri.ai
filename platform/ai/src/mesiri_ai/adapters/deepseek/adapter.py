@@ -148,7 +148,7 @@ _EXTRACTION_PROMPT = (
     "word, and never leave the name in the original script. Translate trades "
     "into the English trade word.\n"
     "- general_site_update: narrative, work_type, quantities (array), location, "
-    "contractor, project_name, occurred_on, update_kind. "
+    "contractor, project_name, occurred_on, update_kind, progress_percent. "
     "narrative is the report in the sender's own words. work_type is the single "
     'primary kind of work if clear (e.g. "plastering", "concreting") -- omit if '
     "unclear or multiple. quantities is an array of measured amounts, each "
@@ -159,8 +159,13 @@ _EXTRACTION_PROMPT = (
     '"progress", "paused", "resumed", "completed", or omitted when unclear -- '
     '"started" only for explicitly new work, "completed" only when explicitly '
     'finished, "progress" for a further update to work already underway '
-    '(including a bare quantity with no other context, e.g. "180 sqm"). Never '
-    "for problems/delays/blockers (those are site_issue).\n"
+    '(including a bare quantity with no other context, e.g. "180 sqm"). '
+    'progress_percent is the plain number (40, not "40%") when the message says '
+    'how much is done; a percentage below 100 is "progress", never "completed". '
+    "This type is never for problems/delays/blockers (those are site_issue).\n"
+    "- dpr_request: report_date. The user asks to be SENT a Daily Progress Report as a "
+    'document. report_date is ONLY the day they name ("yesterday", "day before '
+    'yesterday" or an ISO date YYYY-MM-DD); omit it for today, never guess.\n'
     "- activity_correction: new_quantity, unit, work_type. ONLY when the "
     'sender is correcting a number already reported this conversation -- '
     'explicit correction language: "make that X", "actually it was X", '

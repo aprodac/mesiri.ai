@@ -18,7 +18,12 @@ from backend.ports import ActorIdentity
 from channel.replies import ReplySpec
 from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage
-from runtime.ai_outage import AIUnavailableError, reply_for_attempt, retry_attempt
+from runtime.ai_outage import (
+    QUICK_RETRY_PAUSE_SECONDS,
+    AIUnavailableError,
+    reply_for_attempt,
+    retry_attempt,
+)
 
 from .prompt import AgentContext, Turn
 from .runner import AgentResult, AgentRunner, default_now
@@ -202,6 +207,21 @@ async def run_agent_turn(
         **({"after_tool": deps.after_tool} if deps.after_tool is not None else {}),
     )
     _lap(deps, "agent_model")
+    if result.outcome == "outage":
+        # One quick second try before telling the sender anything (request 57,
+        # A5). An "outage" outcome means no record was attempted, so running
+        # the message again cannot double-write.
+        await asyncio.sleep(QUICK_RETRY_PAUSE_SECONDS)
+        result = await deps.runner.run(
+            ctx=_context_of(actor, deps, pack, language, menu_hint, script),
+            user_text=user_text,
+            gateway=gateway,
+            scope=_scope_of(actor),
+            correlation_id=correlation_id,
+            **({"lap": deps.lap} if deps.lap is not None else {}),
+            **({"after_tool": deps.after_tool} if deps.after_tool is not None else {}),
+        )
+        _lap(deps, "agent_model_retry")
     if result.outcome == "outage" or result.reply is None:
         await _outage(message, language, deps, result.error or RuntimeError("no reply"), actor.user_id)
         return result

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from canonicalization.question_note import QUESTION_PREFIX
 from mesiri_contracts.assistant.planner_decision import WorkflowKey
 
 from .plan import Plan, PlanStep, StepRef
@@ -88,6 +89,15 @@ def describe_step(step: PlanStep, plan: Plan) -> str:
         narrative = fields.get("narrative", "an update")
         at_site = f" at {scope['site_id']}" if scope.get("site_id") else ""
         return f'Log activity "{narrative}"{at_site}'
+
+    if step.workflow_key is WorkflowKey.SITE_ISSUE_REPORT and fields.get("narrative"):
+        narrative = str(fields["narrative"])
+        if narrative.startswith(QUESTION_PREFIX):
+            # A question noted for the engineer (canonicalization/question_note.py):
+            # say what will happen to it, not "Report an Issue: OTHER".
+            return f"Note your question for your engineer: “{narrative[len(QUESTION_PREFIX):]}”"
+        issue = str(fields.get("issue_type") or "").replace("_", " ").lower()
+        return f"Report an issue{f' ({issue})' if issue else ''}: {narrative}"
 
     if step.workflow_key is WorkflowKey.MATERIAL_RECEIPT and fields.get("material_name"):
         amount = " ".join(str(fields[k]) for k in ("quantity", "unit") if fields.get(k))
