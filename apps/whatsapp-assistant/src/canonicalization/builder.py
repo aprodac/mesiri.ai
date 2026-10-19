@@ -128,7 +128,13 @@ def _ensure_site_update_narrative(fields: dict, understanding: UnderstandingResu
     after the sender had confirmed it. The message text is what the sender
     said; use it rather than dropping the work.
     """
-    if str(fields.get("narrative") or "").strip():
+    narrative = str(fields.get("narrative") or "").strip()
+    if narrative:
+        # Where the work was done has no column of its own (location_id is a
+        # registered location, not free text), so it lives in the words.
+        location = str(fields.get("location") or "").strip()
+        if location and location.casefold() not in narrative.casefold():
+            return {**fields, "narrative": f"{narrative} ({location})"}
         return fields
     if len(understanding.intents) > 1:
         # The message text covers every intent, so it is not this one's own

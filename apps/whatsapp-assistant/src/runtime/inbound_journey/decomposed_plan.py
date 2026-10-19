@@ -272,6 +272,39 @@ async def _create_material_for_segment(
     return render_material_created_reply(created["name"], unit_display)
 
 
+def _inherit_resolved_scope(
+    event: CanonicalEventV2, resolved: ResolvedContextV2, actor: ActorIdentity | None
+) -> None:
+    """Every part of one message is about the same project and site, so a
+    part never asks for them again (request [38]: "Plastering done on 2nd
+    floor" inside a four-part note was rejected with "Which site is this
+    for?" when the company has one site and the message names it).
+
+    Fills a part's missing project/site from the message's resolved context,
+    then from the sender's own access: a lone project, and a lone site under
+    it (or a lone site overall when no project is known). With more than one
+    site nothing is guessed -- _resolve_project_and_site has already asked.
+    Mutates ``event`` in place, like the single-message gates do."""
+    if event.project_id is None and resolved.project_id is not None:
+        event.project_id = resolved.project_id
+    if event.site_id is None and resolved.site_id is not None:
+        event.site_id = resolved.site_id
+    if actor is None:
+        return
+    if event.project_id is None and len(actor.projects) == 1:
+        event.project_id = actor.projects[0].id
+    if event.site_id is None:
+        sites = [
+            s
+            for s in actor.sites
+            if event.project_id is None or s.project_id == event.project_id
+        ]
+        if len(sites) == 1:
+            event.site_id = sites[0].id
+            if event.project_id is None:
+                event.project_id = sites[0].project_id
+
+
 async def _process_remaining_segments(
     *,
     segment_texts: tuple[str, ...],
@@ -304,6 +337,7 @@ async def _process_remaining_segments(
                 expense_categories=expense_categories,
             )
             event = build_canonical_event(segment_understanding, resolved)
+            _inherit_resolved_scope(event, resolved, actor)
         except Exception:  # noqa: BLE001 -- one bad segment must not sink the
             # rest -- same degrade try_start_decomposed_plan's docstring
             # already documents for this exact loop.

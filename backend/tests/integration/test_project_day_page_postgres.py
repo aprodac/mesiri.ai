@@ -266,3 +266,44 @@ async def test_history_lists_each_report_once_with_its_figures(conn) -> None:
         conn=conn,
     )
     assert [(r["level"], r["site_name"]) for r in sites_only["items"]] == [("site", "Block A")]
+
+
+# --- BE-41: a site that sent only labour ------------------------------------
+
+
+async def test_a_labour_only_site_confirmed_is_in_the_project_dpr(conn) -> None:
+    """Block B sent only labour, so the cutoff built it no version. Confirming
+    it must freeze one, or the project DPR shows it "Not reported" and leaves
+    its 3 workers out."""
+    created, sites = await _project(conn, "9876500055")
+    repo = PostgresDprRepository(conn)
+    block_b = await repo.find_site_report(
+        organization_id=created.organization_id,
+        project_id=created.project_id,
+        site_id=sites["Block B"],
+        report_date=DAY,
+    )
+    before = (
+        await conn.execute(
+            text("SELECT current_version_id FROM daily_reports WHERE id = :id"),
+            {"id": block_b["id"]},
+        )
+    ).scalar_one()
+    assert before is None
+
+    assert await repo.approve_report(
+        created.organization_id, created.owner_user_id, block_b["id"], None
+    )
+
+    day = await dpr_router.get_project_day(
+        created.project_id, report_date=DAY, auth_context=_auth(created), conn=conn
+    )
+    by_site = {s["site_name"]: s for s in day["report"]["sites"]}
+    assert by_site["Block B"]["reported"] is True
+    assert by_site["Block B"]["headcount"] == 3
+    assert day["report"]["labour"]["headcount"] == 8 + 3
+    versions = await repo.list_versions(
+        organization_id=created.organization_id, report_id=block_b["id"]
+    )
+    assert [(v["version_no"], v["is_current"]) for v in versions] == [(1, True)]
+    assert versions[0]["approved_by"] == "Suresh"

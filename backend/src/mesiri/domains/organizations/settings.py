@@ -42,6 +42,9 @@ SETUP_PROGRESS = "setup_progress"
 BRANDING_REQUESTS = "branding_requests"
 # "Continue after the trial" requests (SS-08); rules in trial_notices.py.
 CONTINUE_REQUESTS = "continue_requests"
+# Joining a company by code (SS-05); rules in domains/organizations/team_join.py.
+JOIN_CODE = "join_code"
+JOIN_REQUESTS = "join_requests"
 # How WhatsApp updates are saved (WA-01). "save_first": saved straight away as
 # a draft the engineer confirms with the evening DPR (decided 13 Oct 2026, on
 # for every company). "confirm_first": the old "Confirm? YES/NO" before
@@ -208,6 +211,22 @@ _SPECS: dict[str, SettingSpec] = {
             "the Mesiri team to set up. Handled from the control panel."
         ),
     ),
+    JOIN_CODE: SettingSpec(
+        key=JOIN_CODE,
+        default=None,
+        description=(
+            "The code people send on WhatsApp (JOIN ACME-4821) to ask to join this "
+            "company. Shown to admins and project managers on WhatsApp ('join code')."
+        ),
+    ),
+    JOIN_REQUESTS: SettingSpec(
+        key=JOIN_REQUESTS,
+        default=[],
+        description=(
+            "People who asked to join with the company's code, waiting for an admin "
+            "to approve or reject them on WhatsApp."
+        ),
+    ),
     CONTINUE_REQUESTS: SettingSpec(
         key=CONTINUE_REQUESTS,
         default=[],
@@ -222,7 +241,7 @@ _SPECS: dict[str, SettingSpec] = {
 # upload), or written only by the assistant (SS-14). The generic settings API
 # refuses them: a hand-written logo key could point at another company's file.
 DEDICATED_ENDPOINT_KEYS: frozenset[str] = frozenset(
-    {BRANDING, SETUP_PROGRESS, BRANDING_REQUESTS, CONTINUE_REQUESTS}
+    {BRANDING, SETUP_PROGRESS, BRANDING_REQUESTS, CONTINUE_REQUESTS, JOIN_CODE, JOIN_REQUESTS}
 )
 
 

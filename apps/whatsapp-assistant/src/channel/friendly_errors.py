@@ -33,6 +33,21 @@ _RULES: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
+#: Rules whose line is a question for the sender, not a statement about a
+#: failure. A reply made only of these must not open with "Couldn't record
+#: this" -- it is asking, not apologising.
+_QUESTION_RULES = frozenset(text for _, text in _RULES if text.rstrip().endswith("?") or "?" in text)
+
+
+def is_question_rejection(reasons: list[str] | tuple[str, ...]) -> bool:
+    """True when every reason maps to a friendly line that asks something."""
+    lines = [
+        next((text for pattern, text in _RULES if pattern.search(reason.lower())), None)
+        for reason in reasons
+    ]
+    return bool(lines) and all(line in _QUESTION_RULES for line in lines)
+
+
 def friendly_rejection(reasons: list[str] | tuple[str, ...], *, where: str = "") -> str:
     """One friendly line for a rejected record. ``where`` only labels the log."""
     _log.warning("record.rejected where=%s reasons=%s", where, "; ".join(reasons))

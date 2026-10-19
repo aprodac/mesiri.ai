@@ -211,3 +211,63 @@ class ReplyComposer:
             logger.warning("reply_language.too_long original=%d composed=%d", len(original), len(text))
             return None
         return text
+
+
+#: Fixed confirmations and receipts in the languages we have wording for
+#: (request [38]). Plain text swaps -- no AI call, and numbers, names and
+#: amounts around them are never touched. Keyed by the lower-cased language
+#: name or code the understanding step reports.
+_FIXED_REPLIES: dict[str, dict[str, str]] = {
+    "malayalam": {
+        "✅ Recorded. Thank you.": "✅ രേഖപ്പെടുത്തി. നന്ദി.",
+        "Saved as a draft. You'll confirm it with tonight's report. Reply UNDO if it's wrong.": (
+            "ഡ്രാഫ്റ്റായി സേവ് ചെയ്തു. ഇന്ന് രാത്രിയിലെ റിപ്പോർട്ടിനൊപ്പം സ്ഥിരീകരിക്കാം. "
+            "തെറ്റാണെങ്കിൽ UNDO എന്ന് മറുപടി നൽകൂ."
+        ),
+        "❌ Discarded. Nothing was recorded.": "❌ ഒഴിവാക്കി. ഒന്നും രേഖപ്പെടുത്തിയിട്ടില്ല.",
+        "Cancelled. Nothing was recorded.": "റദ്ദാക്കി. ഒന്നും രേഖപ്പെടുത്തിയിട്ടില്ല.",
+        "That request was already handled.": "ഇത് നേരത്തെ തന്നെ കൈകാര്യം ചെയ്തു.",
+        "⚠️ Something went wrong — we'll retry automatically.": (
+            "⚠️ എന്തോ പിശക് സംഭവിച്ചു — ഞങ്ങൾ വീണ്ടും ശ്രമിക്കും."
+        ),
+        "Not saved yet.": "ഇതുവരെ സേവ് ചെയ്തിട്ടില്ല.",
+        "I'll ask about this one after the rest.": "ഇതിനെക്കുറിച്ച് ബാക്കി കഴിഞ്ഞ് ചോദിക്കാം.",
+        "Which site is this for?": "ഏത് സൈറ്റിനാണ് ഇത്?",
+        "Which project is this for?": "ഏത് പ്രോജക്റ്റിനാണ് ഇത്?",
+    },
+    "hindi": {
+        "✅ Recorded. Thank you.": "✅ दर्ज हो गया। धन्यवाद।",
+        "Saved as a draft. You'll confirm it with tonight's report. Reply UNDO if it's wrong.": (
+            "ड्राफ्ट के रूप में सेव किया। आज रात की रिपोर्ट के साथ इसे कन्फर्म करें। "
+            "गलत हो तो UNDO लिखें।"
+        ),
+        "❌ Discarded. Nothing was recorded.": "❌ रद्द किया। कुछ भी दर्ज नहीं हुआ।",
+        "Cancelled. Nothing was recorded.": "रद्द किया। कुछ भी दर्ज नहीं हुआ।",
+        "⚠️ Something went wrong — we'll retry automatically.": (
+            "⚠️ कुछ गड़बड़ हुई — हम अपने आप दोबारा कोशिश करेंगे।"
+        ),
+        "Not saved yet.": "अभी सेव नहीं हुआ।",
+        "I'll ask about this one after the rest.": "इसके बारे में बाकी के बाद पूछूँगा।",
+        "Which site is this for?": "यह किस साइट के लिए है?",
+        "Which project is this for?": "यह किस प्रोजेक्ट के लिए है?",
+    },
+}
+_FIXED_ALIASES = {"ml": "malayalam", "hi": "hindi"}
+
+
+def localize_fixed_reply(text: str, language: str | None) -> str:
+    """``text`` with its fixed confirmation sentences in the sender's language.
+
+    Only known sentences are swapped (longest first), so a receipt keeps its
+    exact quantities, names and amounts; text with none of them, or a
+    language without wording yet, comes back unchanged."""
+    normalized = normalize_language(language)
+    if not normalized or not text:
+        return text
+    key = normalized.lower()
+    table = _FIXED_REPLIES.get(_FIXED_ALIASES.get(key, key))
+    if not table:
+        return text
+    for english in sorted(table, key=len, reverse=True):
+        text = text.replace(english, table[english])
+    return text

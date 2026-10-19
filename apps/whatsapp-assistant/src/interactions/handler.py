@@ -770,6 +770,16 @@ class InteractionHandler:
                     )
                 continue
 
+            if segment.intent == InteractionIntent.CONFIRM and (
+                classify_reply(segment.segment_text) is not InteractionIntent.CONFIRM
+            ):
+                # The model read a YES into words that are not one ("Green
+                # Villa", answering a different question, recorded a pending
+                # expense -- request [38]). Only a plain yes confirms; anything
+                # else is a fresh message.
+                unrelated_segments.append(segment.segment_text)
+                continue
+
             # CONFIRM, REJECT, CANCEL
             decision = decide(segment.intent)
             if decision.route is InteractionRoute.NEW_JOURNEY:

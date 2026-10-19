@@ -4,7 +4,8 @@
     "yes", "y", "yeah", "yep", "yup", "ok", "okay", "confirm", "confirmed",
     "correct", "right", "sure", "done", "good", "👍", "✅",
     "ശരി", "അതെ", "ഉവ്വ്",
-    "sari", "athe"
+    "sari", "athe",
+    "go ahead", "proceed", "save it"
   ],
   "reject": [
     "no", "n", "nope", "wrong", "incorrect", "not right", "❌", "👎",

@@ -69,6 +69,31 @@ class TeamPhotoHintStore:
         await self._redis.set_json(key, {}, ttl_seconds=1)
         return str(raw["report_id"])
 
+    @staticmethod
+    def _held_key(user_id: str) -> str:
+        return f"user:{user_id}:team_photo_held"
+
+    async def hold(
+        self, *, user_id: str, report_id: str, ttl_seconds: int = _DEFAULT_TTL_SECONDS
+    ) -> None:
+        """Keep the offer back while a multi-part note is still running (it
+        is asked once the note finishes -- see pop_held). Separate from the
+        live hint so a photo sent meanwhile is not claimed by an offer that
+        was never made; the hint written at confirmation is cleared here."""
+        await self.clear(user_id=user_id)
+        await self._redis.set_json(
+            self._held_key(user_id), {"report_id": report_id}, ttl_seconds=ttl_seconds
+        )
+
+    async def pop_held(self, *, user_id: str) -> str | None:
+        """The held report id, cleared in the same call; None if nothing is held."""
+        key = self._held_key(user_id)
+        raw = await self._redis.get_json(key)
+        if not raw or not raw.get("report_id"):
+            return None
+        await self._redis.set_json(key, {}, ttl_seconds=1)
+        return str(raw["report_id"])
+
     async def clear(self, *, user_id: str) -> None:
         """Drop the hint without acting on it -- used when the supervisor
         taps Skip, so a photo they send later for some other purpose is not

@@ -305,7 +305,7 @@ class PostgresDprRepository:
             await self._conn.execute(
                 text(
                     "SELECT project_id, site_id, report_date, level::text AS level, "
-                    "status::text AS status FROM daily_reports "
+                    "status::text AS status, current_version_id FROM daily_reports "
                     "WHERE organization_id = :org_id AND id = :id"
                 ),
                 {"org_id": organization_id, "id": report_id},
@@ -340,7 +340,12 @@ class PostgresDprRepository:
             report_id=report_id,
             actor_user_id=user_id,
         )
-        if confirmed:
+        # BE-41: a day with no version yet is built now, too. The cutoff only
+        # builds versions for sites with work items or issues, so a site that
+        # sent only labour or materials (or "no work today") was confirmed
+        # with nothing frozen: the project DPR showed it "Not reported" and
+        # left its workers out.
+        if confirmed or scope["current_version_id"] is None:
             payload = await self.assemble_site_report_payload(
                 organization_id=organization_id,
                 project_id=scope["project_id"],

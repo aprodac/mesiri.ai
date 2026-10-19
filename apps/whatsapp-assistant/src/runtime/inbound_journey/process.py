@@ -205,6 +205,60 @@ async def _plan_and_run(
     return _render_reply(workflow_run, None, decision, None)
 
 
+#: Questions that are answered on the spot and write nothing, so a message
+#: asking two of them can be answered in one reply.
+_READ_ONLY_QUERY_EVENTS = frozenset(
+    {
+        CanonicalEventType.LABOUR_QUERY_ASKED,
+        CanonicalEventType.INVENTORY_QUERY_ASKED,
+        CanonicalEventType.ACTIVITY_QUERY_ASKED,
+        CanonicalEventType.EXPENSE_QUERY_ASKED,
+        CanonicalEventType.ACCOUNT_BALANCE_QUERY_ASKED,
+        CanonicalEventType.PROJECT_DETAIL_QUERY_ASKED,
+    }
+)
+
+
+async def _with_extra_query_answers(
+    workflow_run: WorkflowRunResult,
+    extra_segments: list[CanonicalEventV2],
+    *,
+    planner: Planner,
+    workflow_runtime: WorkflowRuntime,
+    inventory_query: MaterialInventoryQueryService | None,
+) -> WorkflowRunResult:
+    """"How many workers came today and how much cement did we get?" -- the
+    first question was answered and the second dropped (request [38]). Answer
+    every further read-only question in the same reply. Anything that writes,
+    or needs a confirmation, is left alone: it would take the single active
+    slot from a question that has already been answered. Never raises; a
+    question that cannot be answered is simply left out."""
+    answers: list[str] = []
+    for segment in extra_segments:
+        if (
+            segment.event_type not in _READ_ONLY_QUERY_EVENTS
+            or segment.completeness is not _IntentCompleteness.ACTIONABLE
+        ):
+            continue
+        try:
+            await _inject_inventory_context(segment, inventory_query)
+            decision = planner.decide(segment)
+            if decision.decision_type is not PlannerDecisionType.START_WORKFLOW:
+                continue
+            run = await workflow_runtime.start(decision, segment)
+        except Exception:  # noqa: BLE001 -- the first answer is already good
+            _log.warning("query.extra_answer_failed event=%s", segment.event_type, exc_info=True)
+            continue
+        if run.status is WorkflowRunStatus.COMPLETED and run.pending_prompt:
+            answers.append(run.pending_prompt)
+    if not answers:
+        return workflow_run
+    return dataclasses.replace(
+        workflow_run,
+        pending_prompt="\n\n".join([workflow_run.pending_prompt or "", *answers]).strip(),
+    )
+
+
 async def process_inbound_message(
     message: NormalizedMessage,
     actor_user_id: str,
@@ -1102,6 +1156,18 @@ async def process_inbound_message(
                         )
 
                     workflow_run = await workflow_runtime.start(planner_decision, canonical_event)
+
+                    if (
+                        workflow_run.status is WorkflowRunStatus.COMPLETED
+                        and extra_segments
+                    ):
+                        workflow_run = await _with_extra_query_answers(
+                            workflow_run,
+                            extra_segments,
+                            planner=planner,
+                            workflow_runtime=workflow_runtime,
+                            inventory_query=inventory_query,
+                        )
 
                     # #1 Multi-Activity / #13 Cross-Module Trigger: the
                     # primary segment started normally above -- the
