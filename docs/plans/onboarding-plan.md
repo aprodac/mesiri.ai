@@ -208,7 +208,7 @@ trials only), days data is kept after a trial expires, and the self-serve signup
   setting fails closed.
 - **The conversation:**
   1. Welcome with buttons: **Start free trial** / **I'm in a company**.
-  2. "I'm in a company": ask your admin to add this number (join codes are SS-05).
+  2. "I'm in a company": ask your admin for the join code and send *JOIN ACME-4821* (SS-05), or ask them to add this number.
   3. "Start free trial": company name, then site name. The owner's name comes from
      their WhatsApp profile and is asked only when the profile has none.
   4. The company is created as a trial, source `whatsapp`, with the first site's
@@ -218,6 +218,29 @@ trials only), days data is kept after a trial expires, and the self-serve signup
   it". If the number is already taken, the reply says it's already set up.
 - **Before switching it on in production:** guardrails (SS-09). The switch is in the control panel's
   Settings → Trials & signup (SS-10).
+
+## Team joins by code (SS-05, built 19 Oct)
+
+- **Code:** `runtime/join_journey.py` (WhatsApp), `application/organizations/team_join.py`
+  (store), `domains/organizations/team_join.py` (rules). Stored in `organization_settings`
+  (`join_code`, `join_requests`); the settings API refuses both keys. No migration.
+- **Sharing:** an admin or project manager sends *join code*. They get a message to
+  forward: the code and a wa.me link that opens a chat with *JOIN ACME-4821* already
+  typed. *new join code* replaces it, and the old one stops working at once.
+- **Asking:** someone not on Mesiri sends the code. Their name comes from their WhatsApp
+  profile, or is asked. Every active admin of the company gets "X wants to join"
+  [Approve] [Reject]. This runs before signup, so it works with self-serve signup off.
+- **Deciding (admins only):** Approve goes on through the SS-13 contact-share steps
+  (project, then CREATE_USER and ADD_PROJECT_MEMBER with their confirmations), so
+  nothing new writes users. Once they're on the project, the person is told directly.
+  Reject tells them they weren't approved.
+- **Guardrails:** a code adds nobody without an admin's Approve. A number gets 5 wrong
+  codes a day. Asking again while a request is open sends no second alert. A company
+  holds at most 20 open requests. Requests expire after 7 days. An ended trial or a
+  suspended company takes no one. A number already on Mesiri never reaches this, and one
+  in another company is refused by the SS-13 steps (BE-04).
+- **Gap:** the admin alert is a free-form message, so WhatsApp only delivers it within
+  24 h of the admin's last message. The "join request" template is SS-12.
 
 ## Team by shared contact (SS-13, built 15 Oct)
 

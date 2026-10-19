@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Protocol
 
 import sqlalchemy as sa
@@ -73,6 +74,12 @@ INVITE = (
     "Hi {first}, {company} uses Mesiri for daily site reports on WhatsApp. "
     "Tap this link and send *Hi* to start: https://wa.me/{number}?text=Hi"
 )
+ADDED_JOINER = "✅ *{name}* can now report on *{project}*. I've told them they're in."
+JOINED = (
+    "✅ You're in, {first}! *{company}* added you to *{project}* on Mesiri.\n\n"
+    "Send today's work here, the way you'd tell your office, e.g. *10 masons, plastering "
+    "3rd floor*. Text, voice notes and photos all work."
+)
 INVITE_NO_LINK = (
     "Hi {first}, {company} uses Mesiri for daily site reports on WhatsApp. "
     "Save this number and send *Hi* to it to start."
@@ -114,11 +121,14 @@ class ContactShareJourney:
         db: PostgresDatabase,
         plan_store: PlanStore,
         workflow_runtime: WorkflowRuntime,
+        send_text: Callable[[str, str], Awaitable[Any]] | None = None,
     ) -> None:
         self._redis = redis
         self._db = db
         self._plan_store = plan_store
         self._runtime = workflow_runtime
+        # SS-05: tells someone who asked to join that they're in.
+        self._send_text = send_text
 
     # -- entry points ---------------------------------------------------------
 
@@ -143,6 +153,30 @@ class ContactShareJourney:
             "business_number": _digits((message.metadata or {}).get("display_phone_number")),
             "note": note,
         }
+        return await self._begin(actor, pending)
+
+    async def start_join(
+        self, actor: ActorIdentity, *, name: str, phone: str, business_number: str
+    ) -> ReplySpec:
+        """SS-05: an admin approved someone who asked to join with the
+        company's code. The same steps as sharing their contact; once they're
+        on the project they are told directly (they messaged Mesiri moments
+        ago, so WhatsApp lets us), instead of the owner forwarding an invite."""
+        return await self._begin(
+            actor,
+            {
+                "name": name,
+                "phone": phone,
+                "business_number": business_number,
+                "note": "",
+                "join_phone": phone,
+            },
+        )
+
+    async def _begin(self, actor: ActorIdentity, pending: dict) -> ReplySpec:
+        """Pick the project (a list when there are several), then start."""
+        name = pending.get("name") or ""
+        note = pending.get("note") or ""
         projects = list(actor.projects or [])
         if not projects:
             return ReplySpec(text=NO_PROJECT)
@@ -191,6 +225,17 @@ class ContactShareJourney:
         name = str(member_name or invite.get("name") or "")
         first = _first_name(name)
         company = actor.org_name or "Your company"
+        project = invite.get("project_name") or "the project"
+        join_phone = invite.get("join_phone")
+        if join_phone and self._send_text is not None:
+            # SS-05: they asked to join, so tell them directly.
+            try:
+                await self._send_text(
+                    str(join_phone), JOINED.format(first=first, company=company, project=project)
+                )
+                return [ADDED_JOINER.format(name=name, project=project)]
+            except Exception:  # noqa: BLE001 -- fall back to the invite to forward
+                _log.warning("contact_share.joiner_not_told user=%s", actor.user_id)
         number = invite.get("business_number")
         invite_text = (
             INVITE.format(first=first, company=company, number=number)
@@ -219,6 +264,7 @@ class ContactShareJourney:
                 "name": name,
                 "project_name": project_name,
                 "business_number": pending.get("business_number"),
+                "join_phone": pending.get("join_phone"),
             },
             ttl_seconds=_INVITE_TTL_SECONDS,
         )

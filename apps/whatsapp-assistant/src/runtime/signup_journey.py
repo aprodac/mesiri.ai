@@ -15,8 +15,8 @@ step (application/organizations/create_company.py) with `start_as="trial"`,
 `signup_source="whatsapp"` and the first site's automatic DPR on, then
 projected so the owner's next message goes down the normal path.
 
-"I'm in a company" can only point the person at their admin for now; join
-codes with owner approval are SS-05.
+"I'm in a company" points the person at their admin's join code (SS-05,
+runtime/join_journey.py), or at being added by number.
 """
 
 from __future__ import annotations
@@ -69,8 +69,8 @@ ASK_SITE = (
 )
 ASK_OWNER_NAME = "And your name?"
 IN_COMPANY_MESSAGE = (
-    "Ask your company's Mesiri admin to add your number *+{wa_id}*. "
-    "Once they have, just message here again."
+    "Ask your company's Mesiri admin for their *join code*, then send it here, e.g. "
+    "*JOIN ACME-4821*. Or ask them to add your number *+{wa_id}*."
 )
 TYPE_IT_MESSAGE = "Please type the answer as a message. {question}"
 TOO_LONG_MESSAGE = "That's a bit long. Please keep it under {limit} characters. {question}"

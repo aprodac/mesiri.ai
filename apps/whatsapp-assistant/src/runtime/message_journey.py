@@ -182,6 +182,7 @@ def build_message_handlers(
     opt_in_journey: Any = None,
     forward_batcher: Any = None,
     contact_share: ContactShareJourney | None = None,
+    join_journey: Any = None,
     setup_questions: SetupQuestions | None = None,
     site_day_review: SiteDayReview | None = None,
     trial_journey: TrialJourney | None = None,
@@ -426,6 +427,17 @@ def build_message_handlers(
 
         if ctx is None:
             _log.info("context.sender_unregistered wa_id=%s", wa_id)
+            # SS-05: "JOIN ACME-4821" asks a company's admins to let them in.
+            # Before signup: works whether or not self-serve signup is on.
+            try:
+                reply = await join_journey.handle_unregistered(message) if join_journey else None
+            except Exception:  # noqa: BLE001 -- fall through to the usual reply
+                _log.exception("team_join.unregistered_failed wa_id=%s", wa_id)
+                reply = None
+            if reply is not None:
+                await message_logger.log_reply(correlation_id=message.correlation_id, reply=reply)
+                await message_logger.mark_completed(correlation_id=message.correlation_id)
+                return
             # WA-09: an outside DPR contact answering the opt-in invite.
             reply = await opt_in_journey.handle(message) if opt_in_journey else None
             if reply is not None:
@@ -657,6 +669,30 @@ def build_message_handlers(
                 await _send_spec(continue_reply, wa_id)
                 await message_logger.log_reply(
                     correlation_id=message.correlation_id, reply=continue_reply.text
+                )
+                await message_logger.mark_completed(correlation_id=message.correlation_id)
+                return
+
+        if join_journey is not None:
+            # SS-05: an admin's Approve / Reject on a join request, or an
+            # admin / PM asking for the join code to share.
+            try:
+                join_reply = await join_journey.handle_tap(message, ctx)
+                if join_reply is None:
+                    join_reply = await join_journey.handle_code_request(message, ctx)
+            except Exception:  # noqa: BLE001 — a tap must always get some reply
+                _log.exception("team_join.registered_failed user=%s", ctx.user_id)
+                join_reply = ReplySpec(text="Sorry, that didn't work — please try again.")
+            if join_reply is not None:
+                await send_reply_spec(
+                    join_reply,
+                    wa_id,
+                    send_text=sender.send_text,
+                    send_list=sender.send_list,
+                    send_button=sender.send_button,
+                )
+                await message_logger.log_reply(
+                    correlation_id=message.correlation_id, reply=join_reply.text
                 )
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
                 return

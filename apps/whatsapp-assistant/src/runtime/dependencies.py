@@ -871,6 +871,15 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         db=material_db,
         plan_store=plan_store,
         workflow_runtime=workflow_runtime,
+        send_text=sender.send_text,
+    )
+
+    # SS-05: "JOIN ACME-4821" from a new number asks the company's admins;
+    # Approve goes on through the contact-share steps above.
+    from runtime.join_journey import JoinJourney
+
+    join_journey = JoinJourney(
+        sender=sender, db=material_db, redis=redis_client, contact_share=contact_share
     )
 
     # SS-14: one setup question a day for a new company's owner; letterhead
@@ -968,6 +977,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         opt_in_journey=opt_in_journey,
         forward_batcher=forward_batcher,
         contact_share=contact_share,
+        join_journey=join_journey,
         setup_questions=setup_questions,
         site_day_review=site_day_review,
         trial_journey=trial_journey,
