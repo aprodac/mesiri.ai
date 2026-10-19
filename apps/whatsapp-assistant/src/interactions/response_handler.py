@@ -9,6 +9,7 @@ in the callers.
 from __future__ import annotations
 
 from channel.friendly_errors import friendly_rejection, is_question_rejection
+from interactions.saved_summary import SAVED_HEADER, summarise_draft
 from mesiri_contracts.application.results.execution_result import ExecutionResult, ExecutionStatus
 from workflows import (
     WorkflowResumeResult,
@@ -39,9 +40,19 @@ def render_resume_reply(result: WorkflowResumeResult) -> str:
     return "That request was already handled."
 
 
-def render_execution_reply(result: ExecutionResult) -> str:
+def saved_line(draft: object | None) -> str:
+    """"✅ Saved: 16 workers (6 mason, 10 helper)" from the saved data, or the
+    generic "✅ Recorded. Thank you." when the record has no summary."""
+    summary = summarise_draft(draft) if draft is not None else None
+    return f"{SAVED_HEADER} {summary}" if summary else "✅ Recorded. Thank you."
+
+
+def render_execution_reply(result: ExecutionResult, draft: object | None = None) -> str:
     """Reply after M8 execution actually runs — reflects the real domain outcome,
-    not just "the user confirmed" (fixes the M7 always-optimistic reply bug)."""
+    not just "the user confirmed" (fixes the M7 always-optimistic reply bug).
+
+    ``draft`` is what was saved: with it the reply says WHAT was saved, from
+    that data, instead of only thanking the sender."""
     if result.status in (ExecutionStatus.SUCCEEDED, ExecutionStatus.ALREADY_EXECUTED):
         # Conflict Resolution (#12): the write still succeeded -- this is
         # never a rejection -- but one narrower part of it (a concurrent
@@ -49,9 +60,10 @@ def render_execution_reply(result: ExecutionResult) -> str:
         # overwriting what someone else already applied. Surfaced, not
         # swallowed: a user who thinks they just paused an activity that was
         # actually already completed by a colleague needs to know that.
+        saved = saved_line(draft)
         if result.conflict_note:
-            return f"✅ Recorded. Thank you.\n\n{result.conflict_note}"
-        return "✅ Recorded. Thank you."
+            return f"{saved}\n\n{result.conflict_note}"
+        return saved
     if result.status is ExecutionStatus.REJECTED:
         question = friendly_rejection(result.rejection_reasons, where="reply")
         if is_question_rejection(result.rejection_reasons):

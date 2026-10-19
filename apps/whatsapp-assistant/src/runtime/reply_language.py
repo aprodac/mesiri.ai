@@ -305,6 +305,57 @@ _FIXED_REPLIES: dict[str, dict[str, str]] = {
 _FIXED_ALIASES = {"ml": "malayalam", "hi": "hindi"}
 
 
+#: Label words of the "✅ Saved: ..." lines (interactions/saved_summary.py).
+#: Only these words are swapped, and only on the lines that start with the
+#: saved header or a bullet under it; numbers, names, trades and units stay.
+_SAVED_WORDS: dict[str, dict[str, str]] = {
+    "malayalam": {
+        "✅ Saved:": "✅ സേവ് ചെയ്തു:",
+        "Question for your engineer:": "എൻജിനീയർക്കുള്ള ചോദ്യം:",
+        " workers": " തൊഴിലാളികൾ",
+        " worker": " തൊഴിലാളി",
+        "Expense ₹": "ചെലവ് ₹",
+        "Issue (": "പ്രശ്നം (",
+        " in:": " വന്നു:",
+        " used:": " ഉപയോഗിച്ചു:",
+    },
+    "hindi": {
+        "✅ Saved:": "✅ सेव हो गया:",
+        "Question for your engineer:": "इंजीनियर के लिए सवाल:",
+        " workers": " मज़दूर",
+        " worker": " मज़दूर",
+        "Expense ₹": "खर्च ₹",
+        "Issue (": "समस्या (",
+        " in:": " आया:",
+        " used:": " इस्तेमाल हुआ:",
+    },
+}
+
+
+def localize_saved_lines(text: str, language: str | None, script: str | None = None) -> str:
+    """The label words of the saved lines in the sender's language; English
+    letters and unknown languages keep the English text."""
+    normalized = normalize_language(language)
+    if not normalized or not text or normalize_script(script) == "latin":
+        return text
+    table = _SAVED_WORDS.get(_FIXED_ALIASES.get(normalized.lower(), normalized.lower()))
+    if not table:
+        return text
+    out: list[str] = []
+    in_block = False
+    for line in text.split("\n"):
+        stripped = line.lstrip()
+        if stripped.startswith("✅ Saved:"):
+            in_block = True
+        elif in_block and not stripped.startswith("•"):
+            in_block = False
+        if in_block:
+            for english in sorted(table, key=len, reverse=True):
+                line = line.replace(english, table[english])
+        out.append(line)
+    return "\n".join(out)
+
+
 def localize_fixed_reply(text: str, language: str | None, script: str | None = None) -> str:
     """``text`` with its fixed confirmation sentences in the sender's language.
 
@@ -490,7 +541,10 @@ def localize_reply_spec(spec, language: str | None, script: str | None = None): 
 
     return replace(
         spec,
-        text=localize_promotion_reply(localize_fixed_reply(spec.text, language), language),
+        text=localize_saved_lines(
+            localize_promotion_reply(localize_fixed_reply(spec.text, language), language),
+            language,
+        ),
         buttons=tuple(_row(r) for r in spec.buttons) if spec.buttons else spec.buttons,
         list_rows=tuple(_row(r) for r in spec.list_rows) if spec.list_rows else spec.list_rows,
     )

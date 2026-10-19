@@ -36,6 +36,9 @@ class StepResult:
     text: str = ""
     reply: ReplySpec | None = None
     workflow_key: str | None = None
+    #: ``saved`` only: what was saved in a few words, from the saved data
+    #: ("16 workers (6 mason, 10 helper)").
+    summary: str | None = None
     #: Replies the pipeline produced beyond ``reply`` (documents are sent by the
     #: pipeline itself and are not captured).
     extra: list[ReplySpec] = field(default_factory=list)

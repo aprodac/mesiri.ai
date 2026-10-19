@@ -256,19 +256,35 @@ async def test_a_four_part_note_is_four_saves_one_reply_and_no_site_question(wor
     assert provider.calls == 1  # one model run; the reply is one message
     assert result.reply.text.endswith("Wrong? Reply UNDO.")
     assert "which site" not in result.reply.text.lower()
+    # One "Saved:" list from the saved data, one bullet per record.
+    lines = result.reply.text.split("\n")
+    assert lines[0] == "✅ Saved:"
+    assert lines[1] == "• 15 workers (3 mason, 12 helper)"
+    assert "• Plastering, second floor: 180 sqm" in lines
+    assert "• Cement in: 50 bags" in lines
+    assert any(line.startswith("• Issue (weather)") for line in lines)
 
 
-async def test_a_malayalam_note_gets_the_models_malayalam_reply_not_canned_english(world):
+async def test_a_malayalam_note_gets_the_saved_list_then_the_models_own_words(world):
+    from channel.replies import ReplySpec
+    from runtime.reply_language import localize_reply_spec
+
     provider = FakeToolCallingProvider(
         [
             [("save_labour", {"workers": [{"trade": "mason", "headcount": 3}]})],
-            "✅ 3 മേസൺമാരുടെ ഹാജർ സേവ് ചെയ്തു.",
+            "✅ 3 മേസൺമാരുടെ ഹാജർ സേവ് ചെയ്തു.\nനാളെ കാണാം.",
         ]
     )
     result = await world.say(provider, "ഇന്ന് 3 മേസൺ പണിക്ക് വന്നു")
-    assert "മേസൺ" in result.reply.text
+    # The "Saved:" list is written from the saved data, not copied from the model.
+    assert result.reply.text.startswith("✅ Saved: 3 workers (3 mason)")
+    assert "നാളെ കാണാം." in result.reply.text
+    assert "സേവ് ചെയ്തു" not in result.reply.text  # the model's own saved line is dropped
     # The canned workflow wording ("Labour recorded", "draft", ...) never reaches the user.
     assert "draft" not in result.reply.text.lower()
+    # A Malayalam sender gets the label words in Malayalam; numbers and trade stay.
+    sent = localize_reply_spec(ReplySpec(text=result.reply.text), "Malayalam", "native").text
+    assert sent.startswith("✅ സേവ് ചെയ്തു: 3 തൊഴിലാളികൾ (3 mason)")
     # And the model was told the user's own words, untranslated.
     assert provider.last_messages[-1].text.endswith("ഇന്ന് 3 മേസൺ പണിക്ക് വന്നു")
 

@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from channel.replies import ListRow, ReplySpec
+from interactions.saved_summary import summarise_draft
 from mesiri_contracts.assistant.candidates import Candidate
 from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage
@@ -32,6 +33,16 @@ def _without_menu(text: str) -> str:
     if "isn't switched on for your company" in text:
         return text.split("\n\n", 1)[0]
     return text
+
+
+def _saved_summary(handled: Any) -> str | None:
+    """What the confirmed record says, from its own data. Never raises."""
+    try:
+        confirmed = getattr(handled.result, "confirmed_action", None)
+        return summarise_draft(confirmed.draft_action) if confirmed is not None else None
+    except Exception:  # noqa: BLE001 -- the summary is wording only
+        _log.warning("agent.saved_summary_failed", exc_info=True)
+        return None
 
 
 @dataclass(slots=True)
@@ -111,7 +122,12 @@ class JourneyGateway:
             saved = await self.save_now()
             if saved is not None:
                 self.handled.append(saved)
-                return StepResult("saved", text=saved.reply_text, workflow_key=key)
+                return StepResult(
+                    "saved",
+                    text=saved.reply_text,
+                    workflow_key=key,
+                    summary=_saved_summary(saved),
+                )
             # Confirm-first (expenses, transfers) or the save failed: the
             # prompt the sender must answer.
             prompt = sink.last or self.held_prompt(journey)
