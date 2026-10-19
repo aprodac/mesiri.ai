@@ -1,0 +1,81 @@
+name: Claude ops
+
+# On-demand jobs that let a Claude Code cloud session (Ilan Usman, TM-12) reach the VPS and the WhatsApp bot
+# without holding any secret itself: the secrets stay in GitHub, the session starts this workflow and reads
+# its log. Owner-approved 19 Oct ("use the env from the Git actions").
+#
+#   vps-check         infra/deploy/vps_check.sh over SSH (read-only; INF-01, BE-30, BE-31, INF-09)
+#   bot-status        is the bot linked and receiving
+#   bot-chats         chats with their labels (names only)
+#   bot-test          send `text` to the Mesiri assistant's assistant-test chat and print its replies
+#                     (text "choose:<n or title>" taps an option of its latest menu)
+#   bot-recent-test   the assistant-test chat, last `hours`
+#   bot-recent-team   the team group(s), last `hours` (Ilan Pro's posts and the team's)
+#   bot-items         open requests in the request log
+#   bot-label-test    label chat `text` (a jid) as assistant-test for mesiri
+#
+# Never prints secrets; long digit runs (phone numbers) are cut to their last 4 digits. Customer groups are
+# not readable through this workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: What to run
+        required: true
+        type: choice
+        options: [vps-check, bot-status, bot-chats, bot-test, bot-recent-test, bot-recent-team, bot-items, bot-label-test]
+      text:
+        description: "bot-test: the message (or choose:<n|title>); bot-label-test: the chat jid"
+        required: false
+        default: ""
+      hours:
+        description: "bot-recent-*: how many hours back"
+        required: false
+        default: "24"
+
+concurrency:
+  group: claude-ops-${{ inputs.task }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        if: inputs.task == 'vps-check'
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" | tr -d '\r' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Run
+        env:
+          TASK: ${{ inputs.task }}
+          TEXT: ${{ inputs.text }}
+          HOURS: ${{ inputs.hours }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          TEAMMATE_TOKEN: ${{ secrets.TEAMMATE_API_TOKEN }}
+          TEAMMATE_PROJECT: mesiri
+        run: |
+          set -o pipefail
+          mask() { sed -E 's/[0-9]{6,}([0-9]{4})/…\1/g'; }
+          inbox() { python3 teammate/inbox.py "$@"; }
+          case "$TASK" in
+            vps-check)
+              ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" 'bash -s' < infra/deploy/vps_check.sh 2>&1 | mask ;;
+            bot-status) inbox status ;;
+            bot-chats) inbox chats | mask ;;
+            bot-test)
+              if [[ "$TEXT" == choose:* ]]; then inbox test --choose "${TEXT#choose:}"; else inbox test "$TEXT"; fi | mask ;;
+            bot-recent-test) inbox recent --role assistant-test --hours "$HOURS" --limit 200 | mask ;;
+            bot-recent-team) inbox recent --role team --hours "$HOURS" --limit 200 | mask ;;
+            bot-items) inbox items --status open ;;
+            bot-label-test) inbox label "$TEXT" assistant-test --project mesiri ;;
+          esac
