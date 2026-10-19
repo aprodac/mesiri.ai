@@ -107,6 +107,23 @@ def test_when_the_photo_was_already_asked_today_only_undo_remains():
     assert [b.id for b in spec.buttons] == [UNDO_ROW.id]
 
 
+def test_the_undo_button_replaces_the_typed_undo_hint():
+    # B-6 (live test 19 Oct): "Wrong? Reply UNDO." sat right above the Undo button.
+    main = "✅ Saved: 12 masons, 5 bags cement.\n\nWrong? Reply UNDO."
+    spec = compose(main, [], saved=True)
+    assert spec.text == "✅ Saved: 12 masons, 5 bags cement."
+    assert [b.id for b in spec.buttons] == [UNDO_ROW.id]
+    malayalam = "✅ സേവ് ചെയ്തു.\nതെറ്റാണോ? UNDO എന്ന് മറുപടി നൽകൂ."
+    assert compose(malayalam, [PHOTO], saved=True).text.startswith("✅ സേവ് ചെയ്തു.\n\n📷")
+
+
+def test_without_the_undo_button_the_hint_stays():
+    main = "✅ Saved.\n\nWrong? Reply UNDO."
+    question = Offer(QUESTION, text="Make them permanent?")
+    assert "Reply UNDO" in compose(main, [question], saved=True).text
+    assert compose("Logged UNDO count", [], saved=False).text == "Logged UNDO count"
+
+
 def test_a_reply_that_saved_nothing_has_no_undo():
     assert compose("Hello!", [], saved=False) == ReplySpec(text="Hello!")
 

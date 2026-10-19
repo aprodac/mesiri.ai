@@ -121,7 +121,18 @@ def compose(main: str, offers: list[Offer], *, saved: bool = False) -> ReplySpec
             options = _options_of(winner.spec)
     if saved and (winner is None or winner.kind == TEAM_PHOTO):
         options = [*options, UNDO_ROW]
+        # The button says it; typed "undo" still works (TYPED_ALIASES).
+        body = _without_undo_hint(body) or body
     return pick_form(body, options)
+
+
+#: The agent's typed-undo hint ("Wrong? Reply UNDO.", or its translation, which keeps the word UNDO).
+_UNDO_HINT = re.compile(r"^[^\n]{0,80}\bUNDO\b[^\n]{0,40}$", re.MULTILINE)
+
+
+def _without_undo_hint(text: str) -> str:
+    """``text`` minus the typed-undo hint line, for when the Undo button says it (B-6)."""
+    return re.sub(r"\n{3,}", "\n\n", _UNDO_HINT.sub("", text)).strip()
 
 
 def normalise(text: str) -> str:
