@@ -225,3 +225,21 @@ def test_extraction_result_keeps_only_a_known_script():
     assert ExtractionResult(detected_script=" Latin ").detected_script == "latin"
     assert ExtractionResult(detected_script="klingon").detected_script is None
     assert ExtractionResult().detected_script is None
+
+
+def test_the_agent_is_told_to_answer_manglish_in_english_letters():
+    from datetime import datetime
+
+    from runtime.agent.prompt import SYSTEM_PROMPT, AgentContext, render_context
+
+    assert "English letters" in SYSTEM_PROMPT and "Manglish" in SYSTEM_PROMPT
+    ctx = AgentContext(
+        user_name="Ravi", role="SITE_ENGINEER", company="Acme", now=datetime(2026, 10, 19, 9, 0),
+        last_language="Malayalam", last_script="latin",
+    )
+    assert "English letters" in render_context(ctx)
+    native = AgentContext(
+        user_name="Ravi", role="SITE_ENGINEER", company="Acme", now=datetime(2026, 10, 19, 9, 0),
+        last_language="Malayalam", last_script="native",
+    )
+    assert "English letters" not in render_context(native)

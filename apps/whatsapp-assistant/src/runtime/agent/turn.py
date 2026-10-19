@@ -63,6 +63,7 @@ def _scope_of(actor: ActorIdentity) -> ScopeLookup:
 def _context_of(
     actor: ActorIdentity, deps: AgentTurnDeps, pack: Any | None, language: str | None,
     menu_hint: str | None,
+    script: str | None = None,
 ) -> AgentContext:
     project_names = {p.id: p.name for p in actor.projects}
     return AgentContext(
@@ -76,6 +77,7 @@ def _context_of(
             Turn(t.user_text, t.assistant_reply) for t in (getattr(pack, "recent_turns", ()) or ())
         ),
         last_language=language,
+        last_script=script,
         has_pending_confirmation=bool(getattr(pack, "has_pending_confirmation", False)),
         menu_hint=menu_hint,
     )
@@ -165,11 +167,14 @@ async def run_agent_turn(
                 )
             )
 
-    if language is None and deps.user_language_store is not None:
+    script: str | None = None
+    if deps.user_language_store is not None:
         try:
-            language = await deps.user_language_store.get(user_id=actor.user_id)
+            stored_language, script = await deps.user_language_store.get_profile(user_id=actor.user_id)
+            if language is None:
+                language = stored_language
         except Exception:  # noqa: BLE001
-            language = None
+            script = None
 
     pack = None
     if deps.memory_loader is not None and actor.organization_id:
@@ -182,7 +187,7 @@ async def run_agent_turn(
 
     gateway = deps.make_gateway(message, language)
     result = await deps.runner.run(
-        ctx=_context_of(actor, deps, pack, language, menu_hint),
+        ctx=_context_of(actor, deps, pack, language, menu_hint, script),
         user_text=user_text,
         gateway=gateway,
         scope=_scope_of(actor),
