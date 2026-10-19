@@ -67,8 +67,12 @@ mkdir -p /var/lib/mesiri-staging/media
 
 echo "→ Fresh copy of production's data"
 systemctl stop mesiri-staging 2>/dev/null || true
-DB_USER="$(env_val MESIRI_POSTGRES__USER "${PROD}/.env")"; DB_USER="${DB_USER:-postgres}"
-DB_PASS="$(env_val MESIRI_POSTGRES__PASSWORD "${PROD}/.env")"
+# The owner login (BE-03 keeps it as MESIRI_MIGRATION_POSTGRES__* once the app
+# uses mesiri_app, which may not create databases or read past row-level security).
+DB_USER="$(env_val MESIRI_MIGRATION_POSTGRES__USER "${PROD}/.env")"
+DB_USER="${DB_USER:-$(env_val MESIRI_POSTGRES__USER "${PROD}/.env")}"; DB_USER="${DB_USER:-postgres}"
+DB_PASS="$(env_val MESIRI_MIGRATION_POSTGRES__PASSWORD "${PROD}/.env")"
+DB_PASS="${DB_PASS:-$(env_val MESIRI_POSTGRES__PASSWORD "${PROD}/.env")}"
 PROD_DB="$(env_val MESIRI_POSTGRES__DB "${PROD}/.env")"; PROD_DB="${PROD_DB:-mesiri}"
 PG="$(docker ps --filter "publish=$(env_val MESIRI_POSTGRES__PORT "${PROD}/.env" | tr -dc 0-9)" --format '{{.Names}}' | head -1)"
 [ -n "${PG}" ] || { echo "✗ no Postgres container found"; exit 1; }

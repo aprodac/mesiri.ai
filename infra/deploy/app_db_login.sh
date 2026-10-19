@@ -28,7 +28,25 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 
 HOST="$(env_val MESIRI_POSTGRES__HOST)"; HOST="${HOST:-localhost}"
 PORT="$(env_val MESIRI_POSTGRES__PORT)"; PORT="${PORT:-5432}"
-DB="$(env_val MESIRI_POSTGRES__DATABASE)"; DB="${DB:-mesiri}"
+DB="$(env_val MESIRI_POSTGRES__DB)"; DB="${DB:-$(env_val MESIRI_POSTGRES__DATABASE)}"; DB="${DB:-mesiri}"
+# Postgres runs in Docker on this VPS (INF-11), and the host may have no psql:
+# then psql runs inside the container that publishes the port.
+PG_CONTAINER=""
+if ! command -v psql >/dev/null 2>&1; then
+  PG_CONTAINER="$(docker ps --filter "publish=${PORT}" --format '{{.Names}}' 2>/dev/null | head -1 || true)"
+  [ -n "${PG_CONTAINER}" ] || die "no psql on the host and no container publishing port ${PORT}"
+fi
+# pg_psql PASSWORD USER ARGS...: psql on the host, or inside the container
+# (connecting over TCP there too, so the password is really checked).
+pg_psql() {
+  local password="$1" user="$2"; shift 2
+  if [ -n "${PG_CONTAINER}" ]; then
+    docker exec -i -e PGPASSWORD="${password}" "${PG_CONTAINER}" \
+      psql -h 127.0.0.1 -p 5432 -U "${user}" -d "${DB}" "$@"
+  else
+    PGPASSWORD="${password}" psql -h "${HOST}" -p "${PORT}" -U "${user}" -d "${DB}" "$@"
+  fi
+}
 APP_PORT="$(env_val MESIRI_APP_PORT)"; APP_PORT="${APP_PORT:-8000}"
 
 # The owner login: the migration login once switched, else the current one.
@@ -36,8 +54,7 @@ owner_user() { local u; u="$(env_val MESIRI_MIGRATION_POSTGRES__USER)"; echo "${
 owner_pass() { local p; p="$(env_val MESIRI_MIGRATION_POSTGRES__PASSWORD)"; echo "${p:-$(env_val MESIRI_POSTGRES__PASSWORD)}"; }
 
 owner_psql() {
-  PGPASSWORD="$(owner_pass)" psql -h "${HOST}" -p "${PORT}" -U "$(owner_user)" -d "${DB}" \
-    -v ON_ERROR_STOP=1 -X -q "$@"
+  pg_psql "$(owner_pass)" "$(owner_user)" -v ON_ERROR_STOP=1 -X -q "$@"
 }
 
 health() {
@@ -101,7 +118,7 @@ SELECT format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT EXECU
 SQL
     owner_psql -v app_role="${APP_ROLE}" -v owner="${owner}" -v db="${DB}"
   # The new login really connects and is not exempt from the policies.
-  PGPASSWORD="${password}" psql -h "${HOST}" -p "${PORT}" -U "${APP_ROLE}" -d "${DB}" -X -At \
+  pg_psql "${password}" "${APP_ROLE}" -X -At \
     -c "SELECT CASE WHEN rolsuper OR rolbypassrls THEN 'exempt' ELSE 'ok' END FROM pg_roles WHERE rolname = current_user" \
     | grep -qx ok || die "${APP_ROLE} can't connect or is exempt from row-level security"
   echo "${APP_ROLE} ready (owner: ${owner})."

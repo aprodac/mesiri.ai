@@ -34,7 +34,10 @@ env_val() { grep -E "^$1=" "${ENV_FILE}" 2>/dev/null | tail -1 | cut -d= -f2- | 
 DB_NAME="$(env_val MESIRI_POSTGRES__DB)"
 DB_NAME="${DB_NAME:-$(env_val MESIRI_POSTGRES__DATABASE)}"
 DB_NAME="${DB_NAME:-mesiri}"
-DB_USER="$(env_val MESIRI_POSTGRES__USER)"
+# The owner login (BE-03: once the app logs in as mesiri_app, the owner is kept
+# as MESIRI_MIGRATION_POSTGRES__*), so the dump is never filtered by row-level security.
+DB_USER="$(env_val MESIRI_MIGRATION_POSTGRES__USER)"; DB_USER="${DB_USER:-$(env_val MESIRI_POSTGRES__USER)}"
+DB_PASS="$(env_val MESIRI_MIGRATION_POSTGRES__PASSWORD)"; DB_PASS="${DB_PASS:-$(env_val MESIRI_POSTGRES__PASSWORD)}"
 DB_PORT="$(env_val MESIRI_POSTGRES__PORT)"
 PG_CONTAINER="$(docker ps --filter "publish=${DB_PORT:-5432}" --format '{{.Names}}' 2>/dev/null | head -1 || true)"
 
@@ -48,7 +51,7 @@ echo "→ Backing up database '${DB_NAME}' (${PG_CONTAINER:-host postgres}) to $
 # Write to a temp name and rename only on success, so a half-written dump is
 # never mistaken for a good restore point.
 if [ -n "${PG_CONTAINER}" ]; then
-  docker exec -e PGPASSWORD="$(env_val MESIRI_POSTGRES__PASSWORD)" "${PG_CONTAINER}" \
+  docker exec -e PGPASSWORD="${DB_PASS}" "${PG_CONTAINER}" \
     pg_dump --format=custom --no-owner -U "${DB_USER:-postgres}" "${DB_NAME}" > "${OUT}.partial"
 else
   sudo -u postgres pg_dump --format=custom --no-owner "${DB_NAME}" > "${OUT}.partial"
