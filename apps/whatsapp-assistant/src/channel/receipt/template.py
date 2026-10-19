@@ -1,203 +1,178 @@
-"""HTML/CSS re-implementation of the user-supplied RecordCard React design.
+"""The receipt card -- one Swiss-minimal stylesheet and one template.
 
-Two visual treatments driven by ``data.template_variant`` -- data.py decides
-what goes in each field and which variant applies, this file only decides how
-the card looks:
+A white 620 px card, square corners, no shadows. Colour carries the record
+type (work green, labour blue, material amber, issue red, expense purple) and
+so does a shape (■ ● ▲ ▼ ◆ ▬), so the card still reads without colour.
+data.py decides what goes on the card; this file only decides how it looks.
 
-- ``"record"`` (default): the original card -- brand top-left, green "Saved"
-  pill top-right. Every money/material/labour/site-issue/account/project/site
-  type uses this, each with its own ``accent``/``badge_icon`` (data.py) so
-  categories are distinguishable by color+icon without a different layout.
-- ``"activity"``: site activity create/progress/correction/undo. Same base
-  card, but the header leads with the category's badge icon in a colored
-  circle (a "site log entry", not a transaction receipt) instead of the brand
-  wordmark, a correction renders its old->new change as a struck-through diff
-  chip (``data.correction``) instead of a plain field, and an undo renders a
-  muted card with a red "UNDONE" ribbon in place of the green "Saved" pill.
-
-Icons are simplified stroke-based SVGs (not a lucide-react port) since
-fidelity of the receipt's *data* matters far more than pixel-identical icon
-glyphs for a WhatsApp image; swap in real lucide SVG paths later if that gap
-ever matters.
+Fonts are embedded (Inter, plus Noto Sans Malayalam / Devanagari for the
+scripts people write notes in): the page runs with no network at all (see
+channel/locked_page.py), so nothing may be fetched. All three are SIL OFL;
+the licence is in fonts/OFL.txt.
 """
 
 from __future__ import annotations
 
+import base64
+from functools import lru_cache
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .data import ReceiptData
+from .data import KIND_STYLE, ReceiptData, ReceiptKind
 
 if TYPE_CHECKING:
     from jinja2 import Template
 
-_INK = "#1D1D1F"
-_SUB = "#86868B"
-_LINE = "#E8E8ED"
-_WHATSAPP = "#25D366"
+_FONT_DIR = Path(__file__).parent / "fonts"
 
-# Simplified stroke-based icon glyphs, 24x24 viewBox, stroke=currentColor.
-_ICONS: dict[str, str] = {
-    "building": '<rect x="4" y="3" width="16" height="18" rx="1"/><line x1="8" y1="7" x2="8" y2="7"/><line x1="12" y1="7" x2="12" y2="7"/><line x1="16" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="8" y2="11"/><line x1="12" y1="11" x2="12" y2="11"/><line x1="16" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="8" y2="15"/><line x1="16" y1="15" x2="16" y2="15"/><path d="M10 21v-4h4v4"/>',
-    "pin": '<path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/>',
-    "layers": '<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>',
-    "store": '<path d="M4 8l1-4h14l1 4"/><path d="M4 8a2 2 0 0 0 4 0 2 2 0 0 0 4 0 2 2 0 0 0 4 0 2 2 0 0 0 4 0"/><path d="M5 8v11h14V8"/><path d="M9 19v-6h6v6"/>',
-    "user": '<circle cx="12" cy="8" r="3.6"/><path d="M5 20c0-4 3-6.5 7-6.5s7 2.5 7 6.5"/>',
-    # A crowd, distinct from "user" (one person, used for "Reported by") --
-    # labour attendance needs both on the same card and they must not look
-    # like the same field.
-    "users": '<circle cx="9" cy="8" r="3.2"/><path d="M2.5 19.5c0-3.6 2.9-5.8 6.5-5.8s6.5 2.2 6.5 5.8"/><path d="M16.5 5.2a3.2 3.2 0 0 1 0 6.1"/><path d="M18 13.9c2.1.5 3.5 2.2 3.5 4.4"/>',
-    "whatsapp": '<path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.7-1.2A9 9 0 1 0 12 3z"/><path d="M8.5 8.7c.2-.6.5-.6.8-.6h.6c.2 0 .4 0 .6.5s.7 1.7.7 1.8-.1.3-.2.5-.3.4-.5.6-.3.4-.1.7c.2.3.9 1.4 1.9 2.2 1.3 1.1 2.2 1.3 2.5 1.5.3.1.5.1.7-.1s.8-.9 1-1.2.4-.2.7-.1 1.7.8 2 .9.5.2.5.4c0 .2 0 1-.4 1.4-.4.5-1.8 1.3-3.2.7-1.8-.7-4.2-2.3-5.9-4.9-.6-1-.3-1.5.1-1.9z"/>',
-    "hammer": '<path d="M14.5 3.5l6 6-3 3-6-6 3-3z"/><path d="M13 9L4 18l2 2 9-9"/><path d="M3 21l3-3"/>',
-    "check": '<path d="M4 12l6 6L20 6"/>',
-    "calendar": '<rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/>',
-    "clock": '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
-    "hash": '<line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="9" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="15" y2="20"/>',
-    "barchart": '<line x1="6" y1="20" x2="6" y2="13"/><line x1="12" y1="20" x2="12" y2="8"/><line x1="18" y1="20" x2="18" y2="4"/>',
-    # Reversal/undo badge -- a counter-clockwise arrow, distinct from "check"
-    # so an undone record never looks like a freshly-saved one at a glance.
-    "undo": '<path d="M3 11a8 8 0 1 1 2.6 6.2"/><path d="M3 4v7h7"/>',
+_INK = "#111111"
+_SUB = "#6B7280"
+_LINE = "#E5E7EB"
+
+_SHAPES = {
+    "square": '<rect x="1" y="1" width="12" height="12"/>',
+    "circle": '<circle cx="7" cy="7" r="6.2"/>',
+    "up": '<polygon points="7,0.8 13.4,12.6 0.6,12.6"/>',
+    "down": '<polygon points="0.6,1.4 13.4,1.4 7,13.2"/>',
+    "diamond": '<polygon points="7,0 14,7 7,14 0,7"/>',
+    "bar": '<rect x="0" y="4" width="14" height="6"/>',
+    "ring": '<circle cx="7" cy="7" r="5.2" fill="none" stroke-width="2"/>',
 }
 
 
-def _icon_svg(name: str, *, size: int = 14, color: str = _INK) -> str:
-    path = _ICONS.get(name, "")
+@lru_cache(maxsize=1)
+def _font_css() -> str:
+    """@font-face rules with the fonts inlined as data URIs (cached: read once)."""
+
+    def face(family: str, file: str, weight: str, unicode_range: str = "") -> str:
+        data = base64.b64encode((_FONT_DIR / file).read_bytes()).decode("ascii")
+        rng = f"unicode-range: {unicode_range};" if unicode_range else ""
+        return (
+            f'@font-face {{ font-family: "{family}"; font-weight: {weight}; font-style: normal; '
+            f'src: url(data:font/woff2;base64,{data}) format("woff2"); {rng} }}\n'
+        )
+
     return (
-        f'<svg width="{size}" height="{size}" viewBox="0 0 24 24" fill="none" '
-        f'stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{path}</svg>'
+        face("Inter", "Inter.woff2", "100 900")
+        + face("Noto Sans Malayalam", "NotoSansMalayalam.woff2", "400 700", "U+0D00-0D7F")
+        + face("Noto Sans Devanagari", "NotoSansDevanagari.woff2", "400 700", "U+0900-097F")
     )
 
 
-_CARD_TEMPLATE_SRC = (
-    """
-<!doctype html>
-<html><head><meta charset="utf-8"><style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #EEEEF0; padding: 16px; font-family: -apple-system, BlinkMacSystemFont,
-    "SF Pro Display", "SF Pro Text", Inter, system-ui, sans-serif; }
-  .card { max-width: 620px; margin: 0 auto; background: #FFFFFF; border-radius: 18px;
-    padding: 16px 22px; box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.05);
-    border: 1px solid {{ line }}; }
-  .card.activity { border-left: 4px solid {{ accent }}; }
-  .card.undone { background: #F4F4F5; }
-  .header { display: flex; align-items: center; justify-content: space-between; }
-  .brand { display: flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 700;
-    letter-spacing: 0.12em; color: {{ ink }}; }
-  .saved-pill { display: flex; align-items: center; gap: 6px; border-radius: 999px;
-    background: #EAF8EE; color: {{ accent }}; font-size: 11.5px; font-weight: 600;
-    padding: 5px 12px 5px 8px; }
-  .saved-dot { width: 14px; height: 14px; border-radius: 50%; background: {{ accent }};
-    display: flex; align-items: center; justify-content: center; }
-  .ribbon-undone { display: flex; align-items: center; gap: 6px; border-radius: 999px;
-    background: {{ accent }}; color: #fff; font-size: 11.5px; font-weight: 700;
-    letter-spacing: 0.04em; padding: 5px 12px; }
-  .headline { display: flex; margin-top: 12px; gap: 16px; }
-  .headline-main { flex: 1; }
-  .headline-category-row { display: flex; align-items: center; gap: 6px; }
-  .badge-circle { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px;
-    border-radius: 50%; background: {{ accent }}22; flex-shrink: 0; }
-  .headline-category { font-size: 12px; font-weight: 600; letter-spacing: 0.05em; color: {{ accent }}; }
-  .headline-value { margin-top: 3px; font-size: 36px; font-weight: 700; line-height: 1;
-    letter-spacing: -0.03em; color: {{ ink }}; }
-  .headline-subtitle { margin-top: 4px; font-size: 14px; color: {{ sub }}; }
-  .location { width: 240px; flex-shrink: 0; }
-  .info-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; font-size: 14.5px;
-    color: {{ ink }}; border-bottom: 1px solid {{ line }}; }
-  .info-row.last { border-bottom: none; }
-  .datetime { display: flex; align-items: center; gap: 10px; padding-top: 6px; font-size: 14.5px;
-    color: {{ ink }}; }
-  .datetime span { display: flex; align-items: center; gap: 7px; }
-  .hr { height: 1px; background: {{ line }}; margin-top: 12px; }
-  .section { display: grid; column-gap: 32px; row-gap: 10px; padding: 10px 0; }
-  .section-col { display: flex; align-items: flex-start; gap: 8px; }
-  .section-col.bordered { border-left: 1px solid {{ line }}; padding-left: 20px; }
-  .field-label { font-size: 11px; font-weight: 600; text-transform: uppercase;
-    letter-spacing: 0.04em; color: {{ sub }}; }
-  .field-value { margin-top: 2px; font-size: 14.5px; color: {{ ink }}; }
-  .diff-chip { display: flex; align-items: center; gap: 8px; }
-  .diff-old { text-decoration: line-through; color: {{ sub }}; }
-  .diff-arrow { color: {{ sub }}; }
-  .diff-new { font-weight: 700; color: {{ ink }}; }
-  .footer { display: flex; align-items: center; justify-content: space-between; padding-top: 10px; }
-  .footer-logo { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700;
-    letter-spacing: 0.03em; color: {{ sub }}; }
-</style></head>
-<body>
-  <div class="card{{ ' activity' if data.template_variant == 'activity' else '' }}{{ ' undone' if data.category == 'Undo' else '' }}">
-    <div class="header">
-      <div class="brand">{{ icon_barchart }}{{ data.brand }}</div>
-      {% if data.category == 'Undo' %}
-      <div class="ribbon-undone">{{ icon_undo }}UNDONE</div>
-      {% else %}
-      <div class="saved-pill"><span class="saved-dot">{{ icon_check }}</span>Saved</div>
-      {% endif %}
-    </div>
-
-    <div class="headline">
-      <div class="headline-main">
-        <div class="headline-category-row">
-          <span class="badge-circle">{{ icon_badge }}</span>
-          <div class="headline-category">{{ data.category.upper() }}</div>
-        </div>
-        <div class="headline-value">{{ data.value }}</div>
-        <div class="headline-subtitle">{{ data.subtitle }}</div>
-      </div>
-      <div class="location">
-        {% for row in data.location %}
-        <div class="info-row{{ ' last' if loop.last else '' }}">{{ icon(row.icon) }}<span>{{ row.text }}</span></div>
-        {% endfor %}
-        <div class="datetime">
-          <span>{{ icon_calendar }}{{ data.date }}</span>
-          <span>{{ icon_clock }}{{ data.time }}</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="hr"></div>
-
-    {% if data.correction %}
-    <div class="section" style="grid-template-columns: 1fr;">
-      <div class="section-col">
-        {{ icon('hammer') }}
-        <div>
-          <div class="field-label">Quantity</div>
-          <div class="field-value diff-chip">
-            <span class="diff-old">{{ data.correction.old_value }}</span>
-            <span class="diff-arrow">&rarr;</span>
-            <span class="diff-new">{{ data.correction.new_value }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="hr"></div>
-    {% endif %}
-
-    {% for section in data.sections %}
-    <div class="section" style="grid-template-columns: repeat({{ section|length }}, 1fr);">
-      {% for f in section %}
-      <div class="section-col{{ ' bordered' if not loop.first else '' }}">
-        {{ icon(f.icon) }}
-        <div>
-          <div class="field-label">{{ f.label }}</div>
-          <div class="field-value">{{ f.value }}</div>
-        </div>
-      </div>
-      {% endfor %}
-    </div>
-    <div class="hr"></div>
-    {% endfor %}
-
-    <div class="footer">
-      <div class="section-col">{{ icon_hash }}<div><div class="field-label">{{ data.id_label }}</div>
-        <div class="field-value" style="font-weight:600;">{{ data.record_id }}</div></div></div>
-      <div class="section-col">{{ icon_clock }}<div><div class="field-label">Saved at</div>
-        <div class="field-value">{{ data.saved_at }}</div></div></div>
-      <div class="footer-logo">{{ icon_barchart_accent }}{{ data.logo_text }}</div>
-    </div>
-  </div>
-</body></html>
+_STYLE = """
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #FFFFFF; }
+body { width: 620px; font-family: "Inter", "Noto Sans Malayalam", "Noto Sans Devanagari",
+  "Noto Sans", sans-serif; color: {{ ink }}; font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased; }
+.card { width: 620px; background: #FFFFFF; padding: 28px 32px 22px; }
+.top { display: flex; align-items: center; justify-content: space-between; }
+.brand { font-size: 15px; font-weight: 800; letter-spacing: 0.2em; }
+.tag { display: flex; align-items: center; gap: 7px; background: {{ colour }}; color: #FFFFFF;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 7px 12px; }
+.hero { margin-top: 26px; }
+.cat { display: flex; align-items: center; gap: 9px; color: {{ colour }}; font-size: 13px;
+  font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+.hero-main { display: flex; align-items: baseline; gap: 12px; margin-top: 10px; }
+.num { font-size: 72px; font-weight: 700; line-height: 1; letter-spacing: -0.03em;
+  color: {{ colour }}; }
+.unit { font-size: 24px; font-weight: 600; color: {{ sub }}; }
+.title { font-size: 30px; font-weight: 700; line-height: 1.15; letter-spacing: -0.01em;
+  color: {{ colour }}; overflow-wrap: anywhere; }
+.hero-status { margin-left: auto; font-size: 13px; font-weight: 700; letter-spacing: 0.12em;
+  text-transform: uppercase; color: {{ colour }}; white-space: nowrap; }
+.site { margin-top: 14px; font-size: 19px; font-weight: 600; line-height: 1.3;
+  overflow-wrap: anywhere; }
+.meta { margin-top: 4px; font-size: 14px; color: {{ sub }}; overflow-wrap: anywhere; }
+.rule { height: 2px; background: #000000; margin-top: 18px; }
+.row { display: grid; grid-template-columns: 22px 112px 1fr auto; column-gap: 10px;
+  align-items: start; padding: 13px 0; border-bottom: 1px solid {{ line }}; }
+.row .mk { padding-top: 4px; }
+.row .rt { padding-top: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: {{ sub }}; }
+.row .tx { font-size: 17px; line-height: 1.35; overflow-wrap: anywhere; min-width: 0; }
+.row .vl { font-size: 17px; font-weight: 700; text-align: right; line-height: 1.35;
+  white-space: nowrap; }
+.row .vl.em { text-transform: uppercase; font-size: 14px; letter-spacing: 0.08em;
+  padding-top: 2px; }
+.row.trade { grid-template-columns: 22px 150px 1fr 44px; align-items: center; }
+.row.trade .rt { padding-top: 0; font-size: 15px; letter-spacing: 0; text-transform: none;
+  font-weight: 500; color: {{ ink }}; overflow-wrap: anywhere; }
+.row.trade .mk { padding-top: 0; }
+.bar { height: 14px; background: #EFF4FF; }
+.bar i { display: block; height: 14px; background: {{ labour }}; }
+.row.trade .vl { font-size: 18px; }
+.old { color: #9CA3AF; text-decoration: line-through; font-weight: 500; }
+.arrow { color: {{ sub }}; margin: 0 8px; }
+.new { font-weight: 700; }
+.more { padding: 13px 0 4px 32px; font-size: 14px; font-weight: 600; color: {{ sub }}; }
+.foot { display: flex; justify-content: space-between; gap: 16px; margin-top: 16px;
+  font-size: 12px; color: {{ sub }}; }
+.foot .id { font-weight: 600; letter-spacing: 0.04em; }
+.foot .note { text-align: right; }
 """
-)
 
+_BODY = """
+<div class="card">
+  <div class="top">
+    <div class="brand">MESIRI</div>
+    <div class="tag">{% if not undone %}{{ check }}{% endif %}{{ data.status }}</div>
+  </div>
+
+  <div class="hero">
+    <div class="cat">{{ marker(data.kind, 13) }}<span>{{ data.category }}</span></div>
+    <div class="hero-main">
+      {% if data.hero_number %}
+        <span class="num">{{ data.hero_number }}</span>
+        {% if data.hero_unit %}<span class="unit">{{ data.hero_unit }}</span>{% endif %}
+      {% elif data.hero_title %}
+        <span class="title">{{ data.hero_title }}</span>
+      {% endif %}
+      {% if data.hero_status %}<span class="hero-status">{{ data.hero_status }}</span>{% endif %}
+    </div>
+    <div class="site">{{ data.site_line }}</div>
+    <div class="meta">{{ data.meta_line }}</div>
+  </div>
+  <div class="rule"></div>
+
+  {% if data.correction %}
+  <div class="row">
+    <div class="mk">{{ marker(data.kind, 14) }}</div>
+    <div class="rt">Quantity</div>
+    <div class="tx"><span class="old">{{ data.correction.old_value }}</span><span class="arrow">&rarr;</span><span class="new">{{ data.correction.new_value }}</span></div>
+    <div></div>
+  </div>
+  {% endif %}
+
+  {% for t in data.trades %}
+  <div class="row trade">
+    <div class="mk">{{ marker(data.kind, 14) }}</div>
+    <div class="rt">{{ t.name }}</div>
+    <div class="bar"><i style="width: {{ bar_pct(t.count) }}%"></i></div>
+    <div class="vl">{{ t.count }}</div>
+  </div>
+  {% endfor %}
+
+  {% for r in data.rows %}
+  <div class="row">
+    <div class="mk">{{ marker(r.kind, 14) }}</div>
+    <div class="rt">{{ r.tag }}</div>
+    <div class="tx">{{ r.text }}</div>
+    <div class="vl{{ ' em' if r.emphasis else '' }}"{% if r.emphasis %} style="color: {{ colour_of(r.kind) }}"{% endif %}>{{ r.value }}</div>
+  </div>
+  {% endfor %}
+
+  {% if data.more %}
+  <div class="more">+{{ data.more }} more &mdash; all saved</div>
+  {% endif %}
+
+  <div class="foot">
+    <div class="id">{{ data.record_id }}</div>
+    <div class="note">{{ data.footer_note }}</div>
+  </div>
+</div>
+"""
 
 _card_template: Template | None = None
 
@@ -213,34 +188,45 @@ def render_html(data: ReceiptData) -> str:
         from jinja2 import Template
 
         # BE-36: every value is escaped (receipt text comes from WhatsApp
-        # messages); only the built-in SVG icons below are trusted markup.
-        _card_template = Template(_CARD_TEMPLATE_SRC, autoescape=True)
+        # messages); only the built-in SVG markers and fonts are trusted markup.
+        _card_template = Template(
+            "<!doctype html><html><head><meta charset=\"utf-8\"><style>{{ fonts }}"
+            + _STYLE
+            + "</style></head><body>"
+            + _BODY
+            + "</body></html>",
+            autoescape=True,
+        )
 
     from markupsafe import Markup
 
-    def icon(name: str) -> Markup:
-        # WhatsApp keeps its brand green, matching the original design --
-        # every other icon uses the standard ink color.
-        color = _WHATSAPP if name == "whatsapp" else _INK
-        return Markup(_icon_svg(name, color=color))
+    def marker(kind: ReceiptKind, size: int) -> Markup:
+        style = KIND_STYLE[kind]
+        return Markup(
+            f'<svg width="{size}" height="{size}" viewBox="0 0 14 14" fill="{style.colour}" '
+            f'stroke="{style.colour}" stroke-width="0">{_SHAPES[style.shape]}</svg>'
+        )
 
+    peak = max((t.count for t in data.trades), default=0)
+
+    def bar_pct(count: int) -> int:
+        return max(4, round(100 * count / peak)) if peak > 0 and count > 0 else 0
+
+    check = Markup(
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" '
+        'stroke-width="4" stroke-linecap="square"><path d="M4 12l6 6L20 6"/></svg>'
+    )
     return _card_template.render(
         data=data,
+        fonts=Markup(_font_css()),
         ink=_INK,
         sub=_SUB,
         line=_LINE,
-        accent=data.accent,
-        icon=icon,
-        icon_barchart=Markup(_icon_svg("barchart", size=16)),
-        icon_barchart_accent=Markup(_icon_svg("barchart", size=13, color=data.accent)),
-        icon_check=Markup(
-            f'<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">{_ICONS["check"]}</svg>'
-        ),
-        icon_undo=Markup(
-            f'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">{_ICONS["undo"]}</svg>'
-        ),
-        icon_badge=Markup(_icon_svg(data.badge_icon, size=12, color=data.accent)),
-        icon_calendar=Markup(_icon_svg("calendar")),
-        icon_clock=Markup(_icon_svg("clock")),
-        icon_hash=Markup(_icon_svg("hash")),
+        colour=KIND_STYLE[data.kind].colour,
+        labour=KIND_STYLE[ReceiptKind.LABOUR].colour,
+        colour_of=lambda kind: KIND_STYLE[kind].colour,
+        undone=data.kind is ReceiptKind.UNDONE,
+        marker=marker,
+        bar_pct=bar_pct,
+        check=check,
     )

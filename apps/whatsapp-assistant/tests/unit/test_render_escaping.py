@@ -9,8 +9,9 @@ from channel.locked_page import new_locked_page
 from channel.receipt.data import (
     ReceiptCorrection,
     ReceiptData,
-    ReceiptField,
-    ReceiptLocationRow,
+    ReceiptKind,
+    ReceiptRow,
+    ReceiptTrade,
 )
 
 jinja2 = pytest.importorskip("jinja2")
@@ -104,29 +105,29 @@ def test_dpr_ordinary_text_is_unchanged() -> None:
 
 def _receipt(**overrides) -> ReceiptData:
     fields = {
-        "brand": "Mesiri",
-        "category": "Material",
-        "value": EVIL,
-        "subtitle": EVIL,
-        "location": [ReceiptLocationRow(icon="building", text=EVIL)],
-        "date": "15 Oct",
-        "time": "10:30",
-        "sections": [[ReceiptField(icon="hash", label=EVIL, value=EVIL)]],
-        "id_label": "ID",
+        "kind": ReceiptKind.WORK,
+        "category": EVIL,
+        "status": EVIL,
+        "site_line": EVIL,
+        "meta_line": EVIL,
         "record_id": EVIL,
-        "saved_at": "10:30",
-        "logo_text": "M",
+        "footer_note": EVIL,
+        "hero_number": EVIL,
+        "hero_unit": EVIL,
+        "hero_title": EVIL,
+        "hero_status": EVIL,
+        "rows": [ReceiptRow(ReceiptKind.WORK, EVIL, EVIL, EVIL)],
+        "trades": [ReceiptTrade(EVIL, 3)],
         "correction": ReceiptCorrection(old_value=EVIL, new_value=EVIL),
-        "template_variant": "activity",
     }
     fields.update(overrides)
     return ReceiptData(**fields)
 
 
-def test_receipt_escapes_values_and_keeps_icons() -> None:
+def test_receipt_escapes_values_and_keeps_markers() -> None:
     html = render_receipt(_receipt())
     _assert_inert(html)
-    # The built-in icons are still real SVG, not escaped text.
+    # The built-in shape markers are still real SVG, not escaped text.
     assert "<svg" in html and "&lt;svg" not in html
 
 

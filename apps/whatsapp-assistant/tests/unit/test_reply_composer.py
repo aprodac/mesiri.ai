@@ -596,17 +596,17 @@ async def test_a_slow_render_never_blocks_the_reply(monkeypatch, caplog):
     assert any("receipt.render_failed" in r.getMessage() for r in caplog.records)
 
 
-async def test_the_agents_reply_carries_the_receipt_of_the_main_part(monkeypatch):
+async def test_a_multi_part_note_gets_one_combined_receipt(monkeypatch):
     from runtime.agent.runner import AgentResult
+
+    parts = [_with_receipt(_saved_attendance(), _png), _with_receipt(_saved_attendance(), _png)]
 
     class _Runner:
         def __init__(self, provider):
             pass
 
         async def run(self, *, ctx, user_text, gateway, scope, correlation_id):
-            gateway.handled.extend(
-                [_with_receipt(_saved_attendance(), _png), _with_receipt(_saved_attendance(), _png)]
-            )
+            gateway.handled.extend(parts)
             return AgentResult(
                 outcome="ok", reply=ReplySpec(text=SAVED), toolbox=SimpleNamespace(parked=None)
             )
@@ -614,13 +614,41 @@ async def test_the_agents_reply_carries_the_receipt_of_the_main_part(monkeypatch
     monkeypatch.setattr("runtime.agent.runner.AgentRunner", _Runner)
     on_normalized, deps, _, _ = _build(monkeypatch, agent_provider=object())
     deps["org_settings_query"].get.return_value = "agent"
+    deps["interaction_handler"].build_combined_receipt = AsyncMock(return_value=PNG)
 
     await on_normalized(_message(), {})
 
     sender = deps["sender"]
     assert len(_sends(deps)) == 1
+    deps["interaction_handler"].build_combined_receipt.assert_awaited_once()
+    assert deps["interaction_handler"].build_combined_receipt.await_args.args[0] == parts
     assert sender.send_button.await_args.kwargs["header_image"] == PNG
     sender.send_image.assert_not_awaited()
+    assert all(p.receipt_coro is None for p in parts)  # the per-part renders were dropped
+
+
+async def test_a_single_saved_part_keeps_its_own_receipt(monkeypatch):
+    from runtime.agent.runner import AgentResult
+
+    class _Runner:
+        def __init__(self, provider):
+            pass
+
+        async def run(self, *, ctx, user_text, gateway, scope, correlation_id):
+            gateway.handled.append(_with_receipt(_saved_attendance(), _png))
+            return AgentResult(
+                outcome="ok", reply=ReplySpec(text=SAVED), toolbox=SimpleNamespace(parked=None)
+            )
+
+    monkeypatch.setattr("runtime.agent.runner.AgentRunner", _Runner)
+    on_normalized, deps, _, _ = _build(monkeypatch, agent_provider=object())
+    deps["org_settings_query"].get.return_value = "agent"
+    deps["interaction_handler"].build_combined_receipt = AsyncMock(return_value=b"combined")
+
+    await on_normalized(_message(), {})
+
+    assert deps["sender"].send_button.await_args.kwargs["header_image"] == PNG
+    deps["interaction_handler"].build_combined_receipt.assert_not_awaited()
 
 
 # -- dispatch and sender -----------------------------------------------------------

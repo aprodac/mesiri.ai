@@ -249,6 +249,20 @@ class InteractionHandler:
             ),
         )
 
+    async def build_combined_receipt(self, handled_list: list, actor: ActorIdentity | None) -> bytes | None:
+        """One receipt card for everything a multi-part note saved (a row per
+        record). None when no builder is wired or nothing was saved; never
+        raises (the builder degrades to None)."""
+        build_combined = getattr(self._receipt_builder, "build_combined", None)
+        if build_combined is None:
+            return None
+        saved = [
+            (h.result.confirmed_action, h.execution_result)
+            for h in handled_list
+            if getattr(h.result, "confirmed_action", None) is not None and h.execution_result is not None
+        ]
+        return await build_combined(saved, actor) if saved else None
+
     async def undo_latest_draft(self, *, organization_id: str | None, user_id: str | None) -> str | None:
         """"UNDO" for a save-first draft: the reply, or None when there is no
         recent draft of the sender's to undo (the old undo handling runs)."""

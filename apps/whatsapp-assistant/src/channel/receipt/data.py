@@ -1,44 +1,108 @@
 """Maps a confirmed record into the receipt-card data shape.
 
-Pure, no I/O -- one function per DraftActionType, all producing the same
-generic shape (brand/category/value/subtitle/location/dateTime/sections/
-footer), plus a per-category `accent`/`badge_icon` and a `template_variant`
-that template.py uses to pick between the record-card layout (money/material/
-labour/etc.) and the activity-card layout (site activity create/progress/
-correction/undo) -- see the Module Placement Log entry in AGENTS.md.
+Pure, no I/O -- one branch per DraftActionType, all producing the same
+generic shape: a hero (a number and unit, or a title when the record has no
+number), a site/date line, and rows. template.py decides how it looks; this
+file decides what goes on it.
 
-Field labels/icons here are display concerns, not business logic -- adding a
-new DraftActionType means adding a case here, never touching the domain
-layer or the template.
+Every record has a ``ReceiptKind`` -- the colour *and* shape it is drawn with
+(work ■ green, labour ● blue, material in ▲ / used ▼ amber, issue ◆ red,
+expense ▬ purple), so a card is recognisable at a glance and still readable
+without colour. Several records of one message are folded into one card by
+``combine_receipts`` (one row each).
+
+Field labels are display concerns, not business logic -- adding a new
+DraftActionType means adding a case here, never touching the domain layer or
+the template.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from typing import Any
 
 from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
 
+#: Rows shown at full size; a card with more shows MAX_ROWS - 1 and "+N more".
+MAX_ROWS = 10
+#: Label/value rows on a single-record card.
+MAX_DETAIL_ROWS = 6
+
+STATUS_SAVED = "SAVED"
+STATUS_DRAFT = "SAVED · DRAFT"
+STATUS_UNDONE = "UNDONE"
+STATUS_LATE = "LATE ENTRY"
+
+FOOTER_DRAFT = "Confirm with tonight's report"
+FOOTER_UNDONE = "Not in tonight's report"
+FOOTER_LATE = "Late entry: shows in your next report"
+
+
+class ReceiptKind(str, Enum):  # noqa: UP042 -- matches the rest of the codebase
+    WORK = "work"
+    LABOUR = "labour"
+    MATERIAL_IN = "material_in"
+    MATERIAL_USED = "material_used"
+    ISSUE = "issue"
+    EXPENSE = "expense"
+    UNDONE = "undone"
+    #: Setup/admin records (account, project, site, member) and anything uncased.
+    RECORD = "record"
+
 
 @dataclass(frozen=True, slots=True)
-class ReceiptField:
-    icon: str  # key into template.py's _ICONS
-    label: str
-    value: str
+class KindStyle:
+    colour: str
+    shape: str  # square | circle | up | down | diamond | bar | ring
+
+
+KIND_STYLE: dict[ReceiptKind, KindStyle] = {
+    ReceiptKind.WORK: KindStyle("#0A8F4C", "square"),
+    ReceiptKind.LABOUR: KindStyle("#2563EB", "circle"),
+    ReceiptKind.MATERIAL_IN: KindStyle("#D97706", "up"),
+    ReceiptKind.MATERIAL_USED: KindStyle("#D97706", "down"),
+    ReceiptKind.ISSUE: KindStyle("#DC2626", "diamond"),
+    ReceiptKind.EXPENSE: KindStyle("#7C3AED", "bar"),
+    ReceiptKind.UNDONE: KindStyle("#6B7280", "ring"),
+    ReceiptKind.RECORD: KindStyle("#1D1D1F", "ring"),
+}
+
+#: Short uppercase tag shown on a row of a multi-part card.
+KIND_TAG: dict[ReceiptKind, str] = {
+    ReceiptKind.WORK: "WORK",
+    ReceiptKind.LABOUR: "LABOUR",
+    ReceiptKind.MATERIAL_IN: "MATERIAL IN",
+    ReceiptKind.MATERIAL_USED: "MATERIAL USED",
+    ReceiptKind.ISSUE: "ISSUE",
+    ReceiptKind.EXPENSE: "EXPENSE",
+    ReceiptKind.UNDONE: "UNDONE",
+    ReceiptKind.RECORD: "RECORD",
+}
 
 
 @dataclass(frozen=True, slots=True)
-class ReceiptLocationRow:
-    icon: str
+class ReceiptRow:
+    """One line of the card: marker | TAG | text | right-aligned value."""
+
+    kind: ReceiptKind
+    tag: str
     text: str
+    value: str = ""
+    emphasis: bool = False  # value in the record's colour
+
+
+@dataclass(frozen=True, slots=True)
+class ReceiptTrade:
+    name: str
+    count: int
 
 
 @dataclass(frozen=True, slots=True)
 class ReceiptCorrection:
-    """Old -> new value for a quantity edit -- rendered as a diff chip by the
-    activity template, not squeezed into a single pre-joined section field."""
+    """Old -> new value for a quantity edit: old struck through in grey."""
 
     old_value: str
     new_value: str
@@ -46,22 +110,24 @@ class ReceiptCorrection:
 
 @dataclass(frozen=True, slots=True)
 class ReceiptData:
-    brand: str
+    kind: ReceiptKind
     category: str
-    value: str
-    subtitle: str
-    location: list[ReceiptLocationRow]
-    date: str
-    time: str
-    sections: list[list[ReceiptField]]
-    id_label: str
+    status: str
+    site_line: str
+    meta_line: str
     record_id: str
-    saved_at: str
-    logo_text: str
-    accent: str = "#0A8F4C"
-    badge_icon: str = "layers"
-    template_variant: str = "record"
+    footer_note: str
+    # Hero: a number (+ unit), or -- for a record with no number -- a title.
+    hero_number: str = ""
+    hero_unit: str = ""
+    hero_title: str = ""
+    hero_status: str = ""  # e.g. "Open", drawn in the record's colour
+    rows: list[ReceiptRow] = field(default_factory=list)
+    more: int = 0  # rows/trades saved but not drawn
+    trades: list[ReceiptTrade] = field(default_factory=list)
     correction: ReceiptCorrection | None = None
+    #: This record as one line of a combined card (see combine_receipts).
+    summary: ReceiptRow | None = None
 
 
 def _project_name(project_id: str | None, projects: list[Any]) -> str | None:
@@ -82,19 +148,19 @@ def _fmt_quantity(fields: dict) -> str:
     return f"{quantity} {unit}".strip()
 
 
-def _labour_summary(fields: dict) -> tuple[int, str, int]:
-    """Total people, a readable trade list, and how many were named.
+def _labour_trades(fields: dict) -> tuple[list[ReceiptTrade], int, int]:
+    """Per-trade headcount, the total, and how many people were named.
 
     Attendance is the one record type whose value is a *list*, not a single
     quantity, so the receipt has to summarise rather than echo a field. Trades
-    are de-duplicated but kept in the order reported, so the card reads the way
-    the supervisor wrote it.
+    are merged but kept in the order reported, so the card reads the way the
+    supervisor wrote it.
     """
     raw = fields.get("lines")
     lines = [line for line in raw if isinstance(line, dict)] if isinstance(raw, list) else []
+    counts: dict[str, int] = {}
     headcount = 0
     named = 0
-    trades: list[str] = []
     for line in lines:
         try:
             count = int(line.get("headcount", 1))
@@ -103,10 +169,9 @@ def _labour_summary(fields: dict) -> tuple[int, str, int]:
         headcount += count
         if str(line.get("worker_name") or "").strip():
             named += 1
-        trade = str(line.get("trade") or "").strip().replace("_", " ")
-        if trade and trade not in trades:
-            trades.append(trade)
-    return headcount, ", ".join(t.title() for t in trades), named
+        trade = str(line.get("trade") or "").strip().replace("_", " ").title() or "Workers"
+        counts[trade] = counts.get(trade, 0) + count
+    return [ReceiptTrade(name, count) for name, count in counts.items()], headcount, named
 
 
 def _labour_people(headcount: int, named: int) -> str:
@@ -114,12 +179,39 @@ def _labour_people(headcount: int, named: int) -> str:
     the distinction principle P10 exists to preserve, so it belongs on the
     record the user keeps."""
     if not headcount:
-        return "—"
+        return ""
     if named == 0:
-        return f"{headcount} (by headcount)"
+        return f"{headcount} by headcount"
     if named == headcount:
         return f"{headcount} named"
-    return f"{headcount} ({named} named, {headcount - named} by headcount)"
+    return f"{named} named, {headcount - named} by headcount"
+
+
+def _present(value: Any) -> str:
+    text = str(value).strip() if value is not None else ""
+    return "" if text in ("—", "-", "None") else text
+
+
+def _rows(kind: ReceiptKind, *pairs: tuple[str, Any]) -> list[ReceiptRow]:
+    """Label/value rows for a single-record card; empty values are dropped."""
+    out = [ReceiptRow(kind, label, _present(value)) for label, value in pairs if _present(value)]
+    return out[:MAX_DETAIL_ROWS]
+
+
+_DRAFT_TYPES = frozenset(
+    {
+        DraftActionType.CREATE_ACTIVITY,
+        DraftActionType.ADD_PROGRESS_UPDATE,
+        DraftActionType.RECORD_LABOUR_ATTENDANCE,
+        DraftActionType.RECORD_MATERIAL_RECEIPT,
+        DraftActionType.RECORD_MATERIAL_USAGE,
+        DraftActionType.RECORD_SITE_ISSUE,
+    }
+)
+
+
+def _status_word(close_action: str) -> str:
+    return {"resolve": "Resolved", "close": "Closed"}.get(close_action, close_action.title())
 
 
 def build_receipt_data(
@@ -130,471 +222,360 @@ def build_receipt_data(
     projects: list[Any],
     sites: list[Any],
     confirmed_at: datetime,
+    late_entry: bool = False,
 ) -> ReceiptData:
     """Build the generic receipt shape for a confirmed DraftAction.
 
     ``record_row_id`` comes from ExecutionResult, not the draft -- it is the
-    real persisted row id, so the receipt's "Record id" points at a row that
+    real persisted row id, so the receipt's record id points at a row that
     actually exists. Named for materials on the contract
     (``ExecutionResult.material_row_id``) because materials came first; it
-    now carries the expense, transfer, petty-cash and labour ids too, so the
-    parameter is spelled for what it is rather than inheriting a name that
-    stopped being true several record types ago.
+    now carries the expense, transfer, petty-cash and labour ids too.
     """
     fields = draft.fields
     material_name = str(fields.get("material_name", "")).strip() or "Material"
-    project_name = _project_name(draft.project_id, projects) or "—"
-    site_name = _site_name(draft.site_id, sites) or "—"
-    reporter = reporter_name or "—"
+    project_name = _project_name(draft.project_id, projects)
+    site_name = _site_name(draft.site_id, sites)
+    reporter = reporter_name or ""
 
-    location = [
-        ReceiptLocationRow("building", project_name),
-        ReceiptLocationRow("pin", site_name),
-    ]
-
-    # Defaults for the record-card fields every branch below overrides with
-    # its own category color/icon; only the activity family (create/progress/
-    # correction/undo) switches template_variant and sets `correction`.
-    template_variant = "record"
+    # Defaults every branch below overrides as needed.
+    kind = ReceiptKind.RECORD
+    hero_number = hero_unit = hero_title = hero_status = ""
+    rows: list[ReceiptRow] = []
+    trades: list[ReceiptTrade] = []
     correction: ReceiptCorrection | None = None
+    summary_tag = summary_text = summary_value = ""
 
     if draft.action_type is DraftActionType.RECORD_EXPENSE:
         expense_category = str(fields.get("category", "")).strip() or "Uncategorized"
+        kind = ReceiptKind.EXPENSE
         category = "Expense"
-        value = str(fields.get("amount", "")).strip() or "0"
-        subtitle = f"{expense_category.title()} expense recorded"
-        sections = [
-            [
-                ReceiptField("layers", "Category", expense_category.title()),
-                ReceiptField("store", "Description", str(fields.get("description") or "—")),
-            ],
-            [
-                ReceiptField("user", "Reported by", reporter),
-                ReceiptField("whatsapp", "Source", "WhatsApp"),
-            ],
-        ]
+        hero_number = f"₹{str(fields.get('amount', '')).strip() or '0'}"
+        rows = _rows(kind, ("Category", expense_category.title()), ("Description", fields.get("description")))
         id_prefix = "EX"
-        accent, badge_icon = "#B45309", "store"
+        summary_text = str(fields.get("description") or expense_category.title())
+        summary_value = hero_number
     elif draft.action_type is DraftActionType.RECORD_MATERIAL_RECEIPT:
-        category = "Material receipt"
-        value = _fmt_quantity(fields)
-        subtitle = f"{material_name.title()} received"
-        sections = [
-            [
-                ReceiptField("layers", "Material", material_name.title()),
-                ReceiptField("store", "Supplier", str(fields.get("supplier") or "—")),
-            ],
-            [
-                ReceiptField("user", "Reported by", reporter),
-                ReceiptField("whatsapp", "Source", "WhatsApp"),
-            ],
-        ]
+        kind = ReceiptKind.MATERIAL_IN
+        category = "Material received"
+        hero_number, hero_unit = str(fields.get("quantity", "")).strip(), str(fields.get("unit", "")).strip()
+        rows = _rows(kind, ("Material", material_name.title()), ("Supplier", fields.get("supplier")))
         id_prefix = "MR"
-        accent, badge_icon = "#0A8F4C", "layers"
+        summary_text, summary_value = material_name.title(), _fmt_quantity(fields)
+    elif draft.action_type is DraftActionType.RECORD_MATERIAL_USAGE:
+        kind = ReceiptKind.MATERIAL_USED
+        category = "Material used"
+        hero_number, hero_unit = str(fields.get("quantity", "")).strip(), str(fields.get("unit", "")).strip()
+        rows = _rows(kind, ("Material", material_name.title()), ("Used for", fields.get("work_item")))
+        id_prefix = "MU"
+        summary_text, summary_value = material_name.title(), _fmt_quantity(fields)
     elif draft.action_type is DraftActionType.RECORD_LABOUR_ATTENDANCE:
-        headcount, trades, named = _labour_summary(fields)
+        trades, headcount, named = _labour_trades(fields)
+        kind = ReceiptKind.LABOUR
         category = "Labour attendance"
-        value = str(headcount)
-        subtitle = f"{headcount} worker{'s' if headcount != 1 else ''} recorded"
-        sections = [
-            [
-                ReceiptField("users", "Workers", _labour_people(headcount, named)),
-                ReceiptField("layers", "Trades", trades or "—"),
-            ],
-            [
-                ReceiptField("user", "Reported by", reporter),
-                ReceiptField("whatsapp", "Source", "WhatsApp"),
-            ],
-        ]
+        hero_number = str(headcount)
+        hero_unit = "worker" if headcount == 1 else "workers"
+        rows = _rows(kind, ("People", _labour_people(headcount, named) if named else ""))
         id_prefix = "LA"
-        accent, badge_icon = "#7C3AED", "users"
+        summary_text = ", ".join(t.name for t in trades[:3]) + (" …" if len(trades) > 3 else "")
+        summary_value = f"{headcount} {hero_unit}"
     elif draft.action_type is DraftActionType.TRANSFER_MONEY:
         # Petty cash issue/return (Finance Slice 5) emits this same
         # DraftActionType as a plain transfer -- `direction` (only ever set
-        # by petty cash's build_draft) is the one field that tells them
-        # apart. from_account_name/to_account_name/other_account_name/
-        # recipient_account_name are all real resolved names, not ids --
-        # see transfer/petty_cash nodes.py's build_draft docstrings.
+        # by petty cash's build_draft) is the one field that tells them apart.
+        kind = ReceiptKind.EXPENSE
         direction = str(fields.get("direction", "")).strip().lower()
-        value = str(fields.get("amount", "")).strip() or "0"
+        hero_number = f"₹{str(fields.get('amount', '')).strip() or '0'}"
         if direction in ("issue", "return"):
             category = "Petty cash"
-            recipient = str(fields.get("recipient_account_name") or "—")
-            other_name = str(fields.get("other_account_name") or "—")
+            recipient = str(fields.get("recipient_account_name") or "")
+            other_name = str(fields.get("other_account_name") or "")
             if direction == "return":
-                subtitle = f"Returned by {recipient}"
-                sections = [
-                    [
-                        ReceiptField("user", "Returned by", recipient),
-                        ReceiptField("building", "Into", other_name),
-                    ]
-                ]
+                rows = _rows(kind, ("Returned by", recipient), ("Into", other_name))
+                summary_text = f"Returned by {recipient}" if recipient else "Petty cash returned"
             else:
-                subtitle = f"Issued to {recipient}"
-                sections = [
-                    [
-                        ReceiptField("user", "Issued to", recipient),
-                        ReceiptField("building", "From", other_name),
-                    ]
-                ]
+                rows = _rows(kind, ("Issued to", recipient), ("From", other_name))
+                summary_text = f"Issued to {recipient}" if recipient else "Petty cash issued"
             id_prefix = "PC"
         else:
             category = "Transfer"
-            from_name = str(fields.get("from_account_name") or "—")
-            to_name = str(fields.get("to_account_name") or "—")
-            subtitle = f"{from_name} → {to_name}"
-            sections = [
-                [
-                    ReceiptField("building", "From", from_name),
-                    ReceiptField("building", "To", to_name),
-                ]
-            ]
+            from_name = str(fields.get("from_account_name") or "")
+            to_name = str(fields.get("to_account_name") or "")
+            rows = _rows(kind, ("From", from_name), ("To", to_name))
+            summary_text = f"{from_name} → {to_name}" if from_name and to_name else "Transfer"
             id_prefix = "TR"
-        accent, badge_icon = "#0891B2", "building"
-        sections.append(
-            [
-                ReceiptField("user", "Reported by", reporter),
-                ReceiptField("whatsapp", "Source", "WhatsApp"),
-            ]
-        )
+        summary_value = hero_number
     elif draft.action_type is DraftActionType.REVERSE_TRANSACTION:
         # target_kind/reversal_* are seeded from a real DB read
         # (runtime/reversal_query.py), never an AI hint -- see
         # reverse/nodes.py's build_draft docstring.
+        kind = ReceiptKind.UNDONE
         target_kind = str(fields.get("target_kind", "")).strip().lower()
-        category = "Reversal"
-        value = str(fields.get("reversal_amount", "")).strip() or "0"
+        category = "Undo" if target_kind in ("activity", "attendance") else "Reversal"
+        amount = str(fields.get("reversal_amount", "")).strip() or "0"
         if target_kind == "activity":
             # ADR-D15: no monetary value to headline -- "Undone" in place of
             # an amount, matching this being a retraction, not a transaction.
-            # Renders through the activity template's muted "undone" ribbon
-            # treatment (template.py), not the record card's green "Saved" pill.
-            category = "Undo"
-            value = "Undone"
-            summary = str(fields.get("reversal_activity_summary") or "Site activity")
-            occurred_date = str(fields.get("reversal_occurred_date") or "—")
-            subtitle = "Activity removed"
-            sections = [
-                [
-                    ReceiptField("store", "Activity", summary),
-                    ReceiptField("calendar", "Date", occurred_date),
-                ]
-            ]
-            template_variant = "activity"
+            hero_title = "Undone"
+            rows = _rows(
+                kind,
+                ("Activity", fields.get("reversal_activity_summary") or "Site activity"),
+                ("Date", fields.get("reversal_occurred_date")),
+            )
         elif target_kind == "attendance":
             # Headlined as a withdrawal, not an amount: the cost is context
             # for what stopped counting, not a transaction that happened.
-            category = "Undo"
-            value = "Withdrawn"
-            site = str(fields.get("reversal_attendance_site") or "—")
-            subtitle = "Attendance report withdrawn"
-            sections = [
-                [
-                    ReceiptField("building", "Site", site),
-                    ReceiptField("calendar", "Day", str(fields.get("reversal_occurred_date") or "—")),
-                ],
-                [
-                    ReceiptField("user", "Workers", str(fields.get("reversal_attendance_headcount") or "—")),
-                    ReceiptField("store", "Cost removed", f"₹{fields.get('reversal_amount') or '0'}"),
-                ],
-            ]
-            template_variant = "activity"
+            hero_title = "Withdrawn"
+            rows = _rows(
+                kind,
+                ("Site", fields.get("reversal_attendance_site")),
+                ("Day", fields.get("reversal_occurred_date")),
+                ("Workers", fields.get("reversal_attendance_headcount")),
+                ("Cost removed", f"₹{amount}"),
+            )
         elif target_kind == "petty_cash":
             # Named for the person, not the account pair -- same reasoning
             # as reverse/nodes.py's petty cash confirmation branch.
-            holder = str(fields.get("reversal_petty_cash_holder") or "—")
+            hero_number = f"₹{amount}"
             direction = str(fields.get("reversal_petty_cash_direction", "")).strip().lower()
-            subtitle = "Petty cash reversed"
-            sections = [
-                [
-                    ReceiptField("user", "Returned by" if direction == "return" else "Issued to", holder),
-                    ReceiptField(
-                        "building",
-                        "Account",
-                        str(
-                            fields.get("reversal_from_account_name")
-                            if direction == "return"
-                            else fields.get("reversal_to_account_name")
-                        )
-                        or "—",
-                    ),
-                ]
-            ]
+            account = (
+                fields.get("reversal_from_account_name")
+                if direction == "return"
+                else fields.get("reversal_to_account_name")
+            )
+            rows = _rows(
+                kind,
+                ("Returned by" if direction == "return" else "Issued to", fields.get("reversal_petty_cash_holder")),
+                ("Account", account),
+            )
         elif target_kind == "transfer":
-            from_name = str(fields.get("reversal_from_account_name") or "—")
-            to_name = str(fields.get("reversal_to_account_name") or "—")
-            subtitle = "Transfer reversed"
-            sections = [
-                [
-                    ReceiptField("building", "From", from_name),
-                    ReceiptField("building", "To", to_name),
-                ]
-            ]
+            hero_number = f"₹{amount}"
+            rows = _rows(
+                kind,
+                ("From", fields.get("reversal_from_account_name")),
+                ("To", fields.get("reversal_to_account_name")),
+            )
         else:
-            description = str(fields.get("reversal_description") or "—")
-            occurred_date = str(fields.get("reversal_occurred_date") or "—")
-            subtitle = "Expense reversed"
-            sections = [
-                [
-                    ReceiptField("store", "Description", description),
-                    ReceiptField("calendar", "Original date", occurred_date),
-                ]
-            ]
-        sections.append(
-            [
-                ReceiptField("user", "Reported by", reporter),
-                ReceiptField("whatsapp", "Source", "WhatsApp"),
-            ]
-        )
+            hero_number = f"₹{amount}"
+            rows = _rows(
+                kind,
+                ("Description", fields.get("reversal_description")),
+                ("Original date", fields.get("reversal_occurred_date")),
+            )
         id_prefix = "RV"
-        accent, badge_icon = "#DC2626", "undo"
+        summary_text = (
+            {"activity": "Activity removed", "attendance": "Attendance withdrawn"}.get(target_kind)
+            or f"{target_kind.replace('_', ' ').title() or 'Expense'} reversed"
+        )
+        summary_value = hero_number or hero_title
     elif draft.action_type is DraftActionType.MANAGE_MONEY_ACCOUNT:
         action = str(fields.get("action", "")).strip().lower()
         category = "Account"
         if action == "create":
-            value = "Created"
-            subtitle = f"New account: {fields.get('name', '—')}"
-            sections = [[ReceiptField("building", "Account", str(fields.get("name") or "—"))]]
+            hero_title = "Created"
+            rows = _rows(kind, ("Account", fields.get("name")))
         elif action == "rename":
-            value = "Renamed"
-            subtitle = f"{fields.get('target_name', '—')} → {fields.get('new_name', '—')}"
-            sections = [
-                [
-                    ReceiptField("building", "From", str(fields.get("target_name") or "—")),
-                    ReceiptField("building", "To", str(fields.get("new_name") or "—")),
-                ]
-            ]
+            hero_title = "Renamed"
+            rows = _rows(kind, ("From", fields.get("target_name")), ("To", fields.get("new_name")))
         else:
-            value = "Deactivated"
-            subtitle = str(fields.get("target_name") or "—")
-            sections = [[ReceiptField("building", "Account", str(fields.get("target_name") or "—"))]]
-        sections.append(
-            [
-                ReceiptField("user", "Reported by", reporter),
-                ReceiptField("whatsapp", "Source", "WhatsApp"),
-            ]
-        )
+            hero_title = "Deactivated"
+            rows = _rows(kind, ("Account", fields.get("target_name")))
         id_prefix = "AC"
-        accent, badge_icon = "#475569", "building"
-    elif draft.action_type is DraftActionType.RECORD_MATERIAL_USAGE:
-        category = "Material usage"
-        value = _fmt_quantity(fields)
-        subtitle = f"{material_name.title()} used"
-        sections = [
-            [
-                ReceiptField("layers", "Material", material_name.title()),
-                ReceiptField("hammer", "Used for", str(fields.get("work_item") or "—")),
-            ],
-            [
-                ReceiptField("user", "Reported by", reporter),
-                ReceiptField("whatsapp", "Source", "WhatsApp"),
-            ],
-        ]
-        id_prefix = "MU"
-        accent, badge_icon = "#2563EB", "layers"
+        summary_text = f"Account {hero_title.lower()}"
     elif draft.action_type is DraftActionType.CREATE_ACTIVITY:
-        work_type = str(fields.get("work_type") or "Activity")
-        category = "Site Activity"
-        value = work_type.title()
-        subtitle = str(fields.get("narrative") or f"{work_type.title()} logged")
-        sections = [
-            [
-                ReceiptField("hammer", "Work", work_type.title()),
-                ReceiptField("store", "Contractor", str(fields.get("contractor") or "—")),
-            ],
-            [
-                ReceiptField("user", "Reported by", reporter),
-                ReceiptField("whatsapp", "Source", "WhatsApp"),
-            ],
-        ]
+        work_type = str(fields.get("work_type") or "Activity").replace("_", " ").title()
+        kind = ReceiptKind.WORK
+        category = "Site activity"
+        if _present(fields.get("quantity")):
+            hero_number, hero_unit = str(fields["quantity"]).strip(), str(fields.get("unit") or "").strip()
+        else:
+            hero_title = work_type
+        rows = _rows(
+            kind,
+            ("Work", work_type if hero_number else ""),
+            ("Details", fields.get("narrative")),
+            ("Contractor", fields.get("contractor")),
+        )
         id_prefix = "AL"
-        accent, badge_icon = "#4F46E5", "hammer"
-        template_variant = "activity"
+        summary_text = work_type
+        summary_value = _fmt_quantity(fields) if hero_number else ""
     elif draft.action_type is DraftActionType.ADD_PROGRESS_UPDATE:
-        update_kind = str(fields.get("update_kind") or "PROGRESS").replace("_", " ")
-        category = "Progress Update"
-        value = update_kind.title()
-        subtitle = str(fields.get("narrative") or f"{update_kind.title()} update")
-        sections = [
-            [
-                ReceiptField("layers", "Activity", str(fields.get("activity_summary") or "—")),
-                ReceiptField("hammer", "Update", update_kind.title()),
-            ],
-            [
-                ReceiptField("user", "Reported by", reporter),
-                ReceiptField("whatsapp", "Source", "WhatsApp"),
-            ],
-        ]
+        update_kind = str(fields.get("update_kind") or "PROGRESS").replace("_", " ").title()
+        kind = ReceiptKind.WORK
+        category = "Progress update"
+        hero_title = update_kind
+        rows = _rows(
+            kind,
+            ("Activity", fields.get("activity_summary")),
+            ("Details", fields.get("narrative")),
+        )
         id_prefix = "PU"
-        accent, badge_icon = "#4F46E5", "hammer"
-        template_variant = "activity"
+        summary_text = str(fields.get("activity_summary") or "Progress update")
+        summary_value = update_kind
     elif draft.action_type is DraftActionType.CORRECT_ACTIVITY_QUANTITY:
         # ADR-D14: old_quantity/old_unit are seeded straight from a real DB
-        # read (runtime/inbound_journey.py's _seed_correction_target), never
-        # an unresolved AI hint -- same reasoning reverse/nodes.py's
-        # reversal_* fields document for keeping them in draft.fields.
-        old_quantity = fields.get("old_quantity")
+        # read (runtime/inbound_journey/seeding.py), never an unresolved AI
+        # hint -- same reasoning reverse/nodes.py's reversal_* fields document.
         old_unit = str(fields.get("old_unit") or "")
-        new_quantity = fields.get("new_quantity")
         new_unit = str(fields.get("unit") or old_unit)
+        kind = ReceiptKind.WORK
         category = "Correction"
-        value = f"{new_quantity} {new_unit}".strip()
-        subtitle = "Quantity corrected"
-        # No "Quantity" field here -- the activity template renders the
-        # old->new change as a struck-through diff chip (data.correction
-        # below), so repeating it as a plain field would show it twice.
-        sections = [
-            [
-                ReceiptField("layers", "Activity", str(fields.get("correction_activity_summary") or "—")),
-            ],
-            [
-                ReceiptField("user", "Reported by", reporter),
-                ReceiptField("whatsapp", "Source", "WhatsApp"),
-            ],
-        ]
-        id_prefix = "QC"
-        accent, badge_icon = "#B45309", "hammer"
-        template_variant = "activity"
+        hero_number, hero_unit = str(fields.get("new_quantity", "")).strip(), new_unit
+        rows = _rows(kind, ("Activity", fields.get("correction_activity_summary")))
         correction = ReceiptCorrection(
-            old_value=f"{old_quantity} {old_unit}".strip(),
-            new_value=f"{new_quantity} {new_unit}".strip(),
+            old_value=f"{fields.get('old_quantity')} {old_unit}".strip(),
+            new_value=f"{fields.get('new_quantity')} {new_unit}".strip(),
         )
+        id_prefix = "QC"
+        summary_text = str(fields.get("correction_activity_summary") or "Quantity corrected")
+        summary_value = correction.new_value
     elif draft.action_type is DraftActionType.RECORD_SITE_ISSUE:
-        issue_type = str(fields.get("issue_type") or "Issue").replace("_", " ")
-        category = "Site Issue"
-        value = str(fields.get("severity") or "—").title()
-        subtitle = str(fields.get("narrative") or f"{issue_type.title()} reported")
-        sections = [
-            [
-                ReceiptField("layers", "Type", issue_type.title()),
-                ReceiptField("hammer", "Severity", str(fields.get("severity") or "—").title()),
-            ],
-            [
-                ReceiptField("user", "Reported by", reporter),
-                ReceiptField("whatsapp", "Source", "WhatsApp"),
-            ],
-        ]
+        issue_type = str(fields.get("issue_type") or "Issue").replace("_", " ").title()
+        kind = ReceiptKind.ISSUE
+        category = "Site issue"
+        hero_title = issue_type
+        hero_status = "Open"
+        rows = _rows(
+            kind,
+            ("Severity", str(fields.get("severity") or "").title()),
+            ("Details", fields.get("narrative")),
+        )
         id_prefix = "SI"
-        accent, badge_icon = "#EA580C", "hammer"
+        summary_text = str(fields.get("narrative") or issue_type)
+        summary_value = "Open"
     elif draft.action_type is DraftActionType.CLOSE_SITE_ISSUE:
-        action = str(fields.get("action") or "").replace("_", " ")
-        issue_type = str(fields.get("site_issue_type") or "Issue").replace("_", " ")
-        category = "Site Issue"
-        value = action.title() or "Updated"
-        subtitle = str(fields.get("site_issue_narrative") or issue_type.title())
-        sections = [
-            [
-                ReceiptField("layers", "Type", issue_type.title()),
-                ReceiptField("store", "Notes", str(fields.get("resolution_notes") or "—")),
-            ],
-            [
-                ReceiptField("user", "Reported by", reporter),
-                ReceiptField("whatsapp", "Source", "WhatsApp"),
-            ],
-        ]
+        issue_type = str(fields.get("site_issue_type") or "Issue").replace("_", " ").title()
+        kind = ReceiptKind.ISSUE
+        category = "Site issue"
+        hero_title = issue_type
+        hero_status = _status_word(str(fields.get("action") or "").replace("_", " ")) or "Updated"
+        rows = _rows(
+            kind,
+            ("Details", fields.get("site_issue_narrative")),
+            ("Notes", fields.get("resolution_notes")),
+        )
         id_prefix = "SC"
-        accent, badge_icon = "#EA580C", "hammer"
+        summary_text = str(fields.get("site_issue_narrative") or issue_type)
+        summary_value = hero_status
     elif draft.action_type is DraftActionType.CREATE_PROJECT:
-        category = "Project"
-        value = "Created"
-        subtitle = f"New project: {fields.get('name', '—')}"
-        sections = [
-            [
-                ReceiptField("building", "Project", str(fields.get("name") or "—")),
-                ReceiptField("pin", "Location", str(fields.get("location") or "—")),
-            ],
-            [
-                ReceiptField("user", "Reported by", reporter),
-                ReceiptField("whatsapp", "Source", "WhatsApp"),
-            ],
-        ]
+        category, hero_title = "Project", "Created"
+        rows = _rows(kind, ("Project", fields.get("name")), ("Location", fields.get("location")))
         id_prefix = "PJ"
-        accent, badge_icon = "#4F46E5", "building"
+        summary_text = f"Project {fields.get('name') or ''}".strip()
     elif draft.action_type is DraftActionType.CREATE_SITE:
-        category = "Site"
-        value = "Created"
-        subtitle = f"New site: {fields.get('name', '—')}"
-        sections = [
-            [
-                ReceiptField("building", "Site", str(fields.get("name") or "—")),
-                ReceiptField("pin", "Location", str(fields.get("location") or "—")),
-            ],
-            [
-                ReceiptField("user", "Reported by", reporter),
-                ReceiptField("whatsapp", "Source", "WhatsApp"),
-            ],
-        ]
+        category, hero_title = "Site", "Created"
+        rows = _rows(kind, ("Site", fields.get("name")), ("Location", fields.get("location")))
         id_prefix = "ST"
-        accent, badge_icon = "#4F46E5", "building"
+        summary_text = f"Site {fields.get('name') or ''}".strip()
     elif draft.action_type is DraftActionType.ADD_PROJECT_MEMBER:
-        category = "Project Member"
-        value = "Added"
-        subtitle = f"{fields.get('member_name', '—')} added to the project"
-        sections = [
-            [
-                ReceiptField("user", "Member", str(fields.get("member_name") or "—")),
-                ReceiptField("layers", "Role", str(fields.get("role") or "—").replace("_", " ").title()),
-            ],
-            [
-                ReceiptField("user", "Added by", reporter),
-                ReceiptField("whatsapp", "Source", "WhatsApp"),
-            ],
-        ]
+        category, hero_title = "Project member", "Added"
+        rows = _rows(
+            kind,
+            ("Member", fields.get("member_name")),
+            ("Role", str(fields.get("role") or "").replace("_", " ").title()),
+        )
         id_prefix = "PM"
-        accent, badge_icon = "#4F46E5", "user"
+        summary_text = str(fields.get("member_name") or "Project member")
     elif draft.action_type is DraftActionType.CREATE_USER:
-        category = "New User"
-        value = "Created"
-        subtitle = f"New user: {fields.get('full_name', '—')}"
-        sections = [
-            [
-                ReceiptField("user", "Name", str(fields.get("full_name") or "—")),
-                ReceiptField("whatsapp", "Number", str(fields.get("whatsapp_number") or "—")),
-                ReceiptField("layers", "Role", str(fields.get("role") or "—").replace("_", " ").title()),
-            ],
-            [
-                ReceiptField("user", "Added by", reporter),
-                ReceiptField("whatsapp", "Source", "WhatsApp"),
-            ],
-        ]
+        category, hero_title = "New user", "Created"
+        rows = _rows(
+            kind,
+            ("Name", fields.get("full_name")),
+            ("Number", fields.get("whatsapp_number")),
+            ("Role", str(fields.get("role") or "").replace("_", " ").title()),
+        )
         id_prefix = "US"
-        accent, badge_icon = "#4F46E5", "user"
+        summary_text = str(fields.get("full_name") or "New user")
     else:
         # Defensive only -- every DraftActionType above is expected to have
         # an explicit case. A genuinely new, uncased type renders a generic
         # "Record" card rather than silently mislabeling itself as whatever
-        # branch happened to be last (the bug this replaced: every new
-        # DraftActionType added without a case here rendered as "Material
-        # usage" with a bogus quantity line).
-        category = "Record"
-        value = "Confirmed"
-        subtitle = "Record confirmed"
-        sections = [
-            [
-                ReceiptField("user", "Reported by", reporter),
-                ReceiptField("whatsapp", "Source", "WhatsApp"),
-            ]
-        ]
+        # branch happened to be last.
+        category, hero_title = "Record", "Confirmed"
         id_prefix = "RC"
-        accent, badge_icon = "#0A8F4C", "layers"
+        summary_text = "Record confirmed"
+
+    # More than MAX_ROWS trades: draw the first MAX_ROWS - 1, count the rest.
+    more = 0
+    if len(trades) > MAX_ROWS:
+        more = len(trades) - (MAX_ROWS - 1)
+        trades = trades[: MAX_ROWS - 1]
+
+    undone = kind is ReceiptKind.UNDONE
+    if undone:
+        status, footer = STATUS_UNDONE, FOOTER_UNDONE
+    elif late_entry:
+        status, footer = STATUS_LATE, FOOTER_LATE
+    elif draft.action_type in _DRAFT_TYPES:
+        status, footer = STATUS_DRAFT, FOOTER_DRAFT
+    else:
+        status, footer = STATUS_SAVED, ""
 
     record_id = f"{id_prefix}-{confirmed_at:%d%m%y}-{record_row_id.replace('-', '')[:4].upper()}"
+    place = " · ".join(p for p in (site_name, project_name) if p)
+    when = f"{confirmed_at:%d %b %Y} · {confirmed_at:%I:%M %p}".replace(" 0", " ")
+    meta = " · ".join(p for p in (when, reporter) if p)
 
     return ReceiptData(
-        brand="MESIRI",
+        kind=kind,
         category=category,
-        value=value,
-        subtitle=subtitle,
-        location=location,
-        date=f"{confirmed_at:%d %b %Y}",
-        time=f"{confirmed_at:%I:%M %p}",
-        sections=sections,
-        id_label="Record id",
+        status=status,
+        site_line=place or "—",
+        meta_line=meta,
         record_id=record_id,
-        saved_at=f"{confirmed_at:%d %b %Y · %I:%M %p}",
-        logo_text="MESIRI AI",
-        accent=accent,
-        badge_icon=badge_icon,
-        template_variant=template_variant,
+        footer_note=footer,
+        hero_number=hero_number,
+        hero_unit=hero_unit,
+        hero_title=hero_title,
+        hero_status=hero_status,
+        rows=rows,
+        more=more,
+        trades=trades,
         correction=correction,
+        summary=ReceiptRow(
+            kind,
+            summary_tag or KIND_TAG[kind],
+            summary_text,
+            summary_value,
+            emphasis=kind is ReceiptKind.ISSUE,
+        ),
+    )
+
+
+def combine_receipts(parts: list[ReceiptData]) -> ReceiptData:
+    """One card for a multi-part note: a row per saved record.
+
+    The first part supplies the site, date and reporter (parts of one
+    message share them). More than MAX_ROWS rows shows MAX_ROWS - 1 and "+N
+    more" -- all of them are still saved and listed in the reply text.
+    """
+    if not parts:
+        raise ValueError("combine_receipts needs at least one receipt")
+    if len(parts) == 1:
+        return parts[0]
+    first = parts[0]
+    rows = [p.summary for p in parts if p.summary is not None]
+    more = 0
+    if len(rows) > MAX_ROWS:
+        more = len(rows) - (MAX_ROWS - 1)
+        rows = rows[: MAX_ROWS - 1]
+    all_undone = all(p.kind is ReceiptKind.UNDONE for p in parts)
+    draft = any(p.status == STATUS_DRAFT for p in parts)
+    late = any(p.status == STATUS_LATE for p in parts)
+    if all_undone:
+        status = STATUS_UNDONE
+    else:
+        status = f"{len(parts)} {STATUS_LATE if late else (STATUS_DRAFT if draft else STATUS_SAVED)}"
+    return ReceiptData(
+        kind=ReceiptKind.RECORD,
+        category="Site update",
+        status=status,
+        site_line=first.site_line,
+        meta_line=first.meta_line,
+        record_id=f"{first.record_id} +{len(parts) - 1}",
+        footer_note=first.footer_note,
+        hero_number=str(len(parts)),
+        hero_unit="parts",
+        rows=rows,
+        more=more,
     )

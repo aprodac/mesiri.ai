@@ -754,6 +754,20 @@ def build_message_handlers(
                 _log.exception("receipt.render_failed user=%s", ctx.user_id)
             return None
 
+        async def _combined_receipt_image(handled_list) -> bytes | None:  # type: ignore[no-untyped-def]
+            """The one card for a multi-part note; same bound and same
+            never-raises contract as _receipt_image."""
+            try:
+                return await asyncio.wait_for(
+                    interaction_handler.build_combined_receipt(handled_list, ctx),
+                    timeout=RECEIPT_TIMEOUT_S,
+                )
+            except TimeoutError:
+                _log.error("receipt.render_failed reason=timeout user=%s", ctx.user_id)
+            except Exception:  # noqa: BLE001 -- the reply goes out without it
+                _log.exception("receipt.render_failed user=%s", ctx.user_id)
+            return None
+
         async def _park_team_photo_report(store, user_id: str, report_id: str) -> None:
             """Remember which report a team photo would belong to.
 
@@ -2433,16 +2447,18 @@ def build_message_handlers(
                 return saved
 
             async def _attach_receipt(reply, gateway):  # type: ignore[no-untyped-def]
-                """One card per reply: the receipt of the first saved part (the
-                main one) rides in the reply; the reply text already lists
-                the other parts."""
-                image = None
-                for handled in getattr(gateway, "handled", []):
-                    if image is None:
-                        image = await _receipt_image(handled)
-                    elif getattr(handled, "receipt_coro", None) is not None:
-                        handled.receipt_coro.close()  # not rendered: one card per reply
+                """One card per reply: a single saved record gets its own
+                card, a multi-part note gets one combined card with a row per
+                record (the reply text lists them all too)."""
+                handled_list = list(getattr(gateway, "handled", []))
+                rendering = [h for h in handled_list if getattr(h, "receipt_coro", None) is not None]
+                if len(rendering) > 1:
+                    for handled in rendering:  # the combined card replaces them
+                        handled.receipt_coro.close()
                         handled.receipt_coro = None
+                    image = await _combined_receipt_image(handled_list)
+                else:
+                    image = await _receipt_image(rendering[0]) if rendering else None
                 return dataclasses.replace(reply, header_image=image) if image else reply
 
             async def _send_agent_reply(reply, target_wa_id, gateway) -> None:  # type: ignore[no-untyped-def]

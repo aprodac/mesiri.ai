@@ -29,6 +29,10 @@ logger = logging.getLogger(__name__)
 _CARD_SELECTOR = ".card"
 _PRE_WARMED_PAGES = 2
 _PAGE_VIEWPORT = {"width": 680, "height": 800}
+# 2x so the 620 px card stays sharp when WhatsApp scales it on a phone. A flat
+# card is a ~100-200 KB PNG even at 2x; WhatsApp's header-image limit is 5 MB.
+_PAGE_SCALE = 2
+_MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 
 class ReceiptRenderer:
@@ -76,7 +80,9 @@ class ReceiptRenderer:
                 browser = await self._ensure_browser()
                 pool: asyncio.Queue[Any] = asyncio.Queue(maxsize=_PRE_WARMED_PAGES)
                 for _ in range(_PRE_WARMED_PAGES):
-                    page = await new_locked_page(browser, viewport=_PAGE_VIEWPORT)
+                    page = await new_locked_page(
+                        browser, viewport=_PAGE_VIEWPORT, device_scale_factor=_PAGE_SCALE
+                    )
                     await pool.put(page)
                 self._page_pool = pool
         return self._page_pool
@@ -97,7 +103,9 @@ class ReceiptRenderer:
                 pass
             try:
                 browser = await self._ensure_browser()
-                fresh = await new_locked_page(browser, viewport=_PAGE_VIEWPORT)
+                fresh = await new_locked_page(
+                    browser, viewport=_PAGE_VIEWPORT, device_scale_factor=_PAGE_SCALE
+                )
                 await pool.put(fresh)
             except Exception:  # noqa: BLE001
                 pass  # pool shrinks by 1; next render will still work
@@ -122,6 +130,11 @@ class ReceiptRenderer:
             await page.set_content(html, wait_until="domcontentloaded")
             card = page.locator(_CARD_SELECTOR)
             result = await card.screenshot(type="png")
+            if len(result) > _MAX_IMAGE_BYTES:
+                # Cannot happen for a card of up to 10 rows; if a future design
+                # makes it happen, fail loudly (no image) rather than send an
+                # image WhatsApp rejects.
+                raise ValueError(f"receipt image too large: {len(result)} bytes")
             await self._release_page(page, healthy=True)
             logger.info(
                 "receipt.rendered acquire_ms=%s render_ms=%s bytes=%s",

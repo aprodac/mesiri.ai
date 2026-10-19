@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from typing import Any
 
 from mesiri_contracts.application.results.execution_result import ExecutionResult, ExecutionStatus
 from mesiri_contracts.assistant.v2.confirmed_action import ConfirmedActionV2
 
-from .data import build_receipt_data
+from .data import ReceiptData, build_receipt_data, combine_receipts
 from .render import ReceiptRenderer
 from .template import render_html
 
@@ -35,25 +36,45 @@ class RecordReceiptBuilder:
         self._renderer = renderer
 
     async def build(self, confirmed: ConfirmedActionV2, execution: ExecutionResult, actor) -> bytes | None:
-        if execution.status not in (ExecutionStatus.SUCCEEDED, ExecutionStatus.ALREADY_EXECUTED):
-            return None
-        if execution.material_row_id is None:
+        return await self.build_combined([(confirmed, execution)], actor)
+
+    async def build_combined(
+        self, saved: list[tuple[ConfirmedActionV2, ExecutionResult]], actor
+    ) -> bytes | None:
+        """One card for one or several records saved from the same message:
+        a single record gets its full card, several get a row each."""
+        parts: list[ReceiptData] = []
+        now = datetime.now(UTC)
+        for confirmed, execution in saved:
+            if execution.status not in (ExecutionStatus.SUCCEEDED, ExecutionStatus.ALREADY_EXECUTED):
+                continue
+            if execution.material_row_id is None:
+                continue
+            try:
+                parts.append(self._data(confirmed, execution, actor, now))
+            except Exception:
+                logger.exception(
+                    "receipt.render_failed correlation_id=%s workflow_instance_id=%s",
+                    confirmed.correlation_id,
+                    confirmed.workflow_instance_id,
+                )
+        if not parts:
             return None
         try:
-            data = build_receipt_data(
-                confirmed.draft_action,
-                record_row_id=execution.material_row_id,
-                reporter_name=actor.full_name if actor else None,
-                projects=actor.projects if actor else [],
-                sites=actor.sites if actor else [],
-                confirmed_at=datetime.now(UTC),
-            )
-            html = render_html(data)
-            return await self._renderer.render_png(html)
+            return await self._renderer.render_png(render_html(combine_receipts(parts)))
         except Exception:
-            logger.exception(
-                "receipt.render_failed correlation_id=%s workflow_instance_id=%s",
-                confirmed.correlation_id,
-                confirmed.workflow_instance_id,
-            )
+            logger.exception("receipt.render_failed parts=%s", len(parts))
             return None
+
+    @staticmethod
+    def _data(
+        confirmed: ConfirmedActionV2, execution: ExecutionResult, actor: Any, now: datetime
+    ) -> ReceiptData:
+        return build_receipt_data(
+            confirmed.draft_action,
+            record_row_id=execution.material_row_id,
+            reporter_name=actor.full_name if actor else None,
+            projects=actor.projects if actor else [],
+            sites=actor.sites if actor else [],
+            confirmed_at=now,
+        )

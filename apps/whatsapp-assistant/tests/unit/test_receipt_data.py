@@ -2,397 +2,283 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import UTC, datetime
+import pytest
+from tests.unit.receipt_samples import (
+    ACTIVITY,
+    ACTIVITY_QTY,
+    CORRECTION,
+    EXPENSE,
+    FIVE_TRADES,
+    ISSUE,
+    MATERIAL_IN,
+    MATERIAL_USED,
+    SEVEN_TRADES,
+    UNDO,
+    labour,
+    multi,
+    part_rows,
+    receipt,
+)
 
-from channel.receipt.data import build_receipt_data
+from channel.receipt.data import (
+    KIND_STYLE,
+    MAX_ROWS,
+    ReceiptKind,
+    combine_receipts,
+)
 from mesiri_contracts.assistant.draft_action import DraftActionType
-from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
-
-ORG = "11111111-1111-4111-8111-111111111111"
-USR = "22222222-2222-4222-8222-222222222222"
-PRJ = "33333333-3333-4333-8333-333333333333"
-SITE = "44444444-4444-4444-8444-444444444444"
 
 
-@dataclass(frozen=True, slots=True)
-class _Named:
-    id: str
-    name: str
+def _rows(data) -> dict[str, str]:
+    return {r.tag: r.text for r in data.rows}
 
 
-def _draft(action_type: DraftActionType, fields: dict) -> DraftActionV2:
-    return DraftActionV2(
-        draft_id="draft_1",
-        correlation_id="cor_1",
-        workflow_instance_id="wf_1",
-        action_type=action_type,
-        organization_id=ORG,
-        user_id=USR,
-        project_id=PRJ,
-        site_id=SITE,
-        fields=fields,
-    )
+def test_each_type_has_its_own_colour_and_shape():
+    """The shape carries the meaning too (colour-blind safe), so no two
+    record types may share a shape -- except material in/out, which differ
+    by direction (▲ in, ▼ used) and share the amber colour."""
+    shapes = [s.shape for k, s in KIND_STYLE.items() if k is not ReceiptKind.RECORD]
+    assert len(shapes) == len(set(shapes))
+    assert KIND_STYLE[ReceiptKind.WORK].colour == "#0A8F4C"
+    assert KIND_STYLE[ReceiptKind.LABOUR].colour == "#2563EB"
+    assert KIND_STYLE[ReceiptKind.MATERIAL_IN].colour == KIND_STYLE[ReceiptKind.MATERIAL_USED].colour == "#D97706"
+    assert KIND_STYLE[ReceiptKind.ISSUE].colour == "#DC2626"
+    assert KIND_STYLE[ReceiptKind.EXPENSE].colour == "#7C3AED"
 
 
-def test_receipt_reflects_material_usage():
-    draft = _draft(
-        DraftActionType.RECORD_MATERIAL_USAGE,
-        {"material_name": "cement", "quantity": 18, "unit": "bags", "work_item": "Slab casting"},
-    )
-    data = build_receipt_data(
-        draft,
-        record_row_id="abcd1234-0000",
-        reporter_name="Mohammed",
-        projects=[_Named(PRJ, "Riverside Tower")],
-        sites=[_Named(SITE, "Site B")],
-        confirmed_at=datetime(2026, 7, 12, 10, 57, tzinfo=UTC),
-    )
-    assert data.category == "Material usage"
-    assert data.value == "18 bags"
-    assert data.location[0].text == "Riverside Tower"
-    assert data.location[1].text == "Site B"
-    assert data.record_id.startswith("MU-120726-")
-    # work_item shows up as "Used for" in a section, not silently dropped
-    assert any(f.label == "Used for" and f.value == "Slab casting" for s in data.sections for f in s)
+def test_material_in_and_used_differ_by_direction():
+    got, used = receipt(*MATERIAL_IN), receipt(*MATERIAL_USED)
+    assert (got.kind, used.kind) == (ReceiptKind.MATERIAL_IN, ReceiptKind.MATERIAL_USED)
+    assert (got.hero_number, got.hero_unit) == ("50", "bags")
+    assert _rows(got) == {"Material": "Cement", "Supplier": "UltraTech"}
+    assert _rows(used) == {"Material": "Cement", "Used for": "Slab casting"}
+    assert got.record_id.startswith("MR-191026-") and used.record_id.startswith("MU-191026-")
 
 
-def test_receipt_reflects_material_receipt():
-    draft = _draft(
-        DraftActionType.RECORD_MATERIAL_RECEIPT,
-        {"material_name": "cement", "quantity": 50, "unit": "bags", "supplier": "UltraTech"},
-    )
-    data = build_receipt_data(
-        draft,
-        record_row_id="ef567890-0000",
-        reporter_name="Priya",
-        projects=[_Named(PRJ, "Riverside Tower")],
-        sites=[_Named(SITE, "Site B")],
-        confirmed_at=datetime(2026, 7, 12, 9, 0, tzinfo=UTC),
-    )
-    assert data.category == "Material receipt"
-    assert data.record_id.startswith("MR-120726-")
-    assert any(f.label == "Supplier" and f.value == "UltraTech" for s in data.sections for f in s)
+def test_header_and_footer_follow_the_record():
+    data = receipt(*MATERIAL_IN)
+    assert data.status == "SAVED · DRAFT"
+    assert data.footer_note == "Confirm with tonight's report"
+    assert data.site_line == "Block A · Riverside Tower"
+    assert data.meta_line == "19 Oct 2026 · 10:57 AM · Mohammed"
+    assert receipt(*MATERIAL_IN, late_entry=True).status == "LATE ENTRY"
 
 
-def test_receipt_degrades_gracefully_with_missing_optional_data():
-    """Missing reporter/project/site/supplier must never raise -- show a
-    plain dash instead, since a receipt with a KeyError is worse than one
-    with a placeholder."""
-    draft = _draft(
+def test_missing_reporter_and_supplier_degrade_to_nothing_not_a_crash():
+    """A receipt with a KeyError is worse than one with a missing line."""
+    data = receipt(
         DraftActionType.RECORD_MATERIAL_RECEIPT,
         {"material_name": "sand", "quantity": 5, "unit": "tons"},
+        reporter=None,
     )
-    data = build_receipt_data(
-        draft,
-        record_row_id="ghij0000-0000",
-        reporter_name=None,
-        projects=[],
-        sites=[],
-        confirmed_at=datetime(2026, 7, 12, 9, 0, tzinfo=UTC),
-    )
-    assert data.location[0].text == "—"
-    assert data.location[1].text == "—"
-    assert any(f.label == "Reported by" and f.value == "—" for s in data.sections for f in s)
+    assert data.meta_line == "19 Oct 2026 · 10:57 AM"
+    assert _rows(data) == {"Material": "Sand"}  # no Supplier row rather than a dash
 
 
-def test_two_record_types_share_identical_shape():
-    """The whole point: one template, never a different layout per type --
-    both action types must produce the same section/field structure."""
-    receipt = _draft(
-        DraftActionType.RECORD_MATERIAL_RECEIPT,
-        {"material_name": "cement", "quantity": 50, "unit": "bags"},
-    )
-    usage = _draft(
-        DraftActionType.RECORD_MATERIAL_USAGE,
-        {"material_name": "cement", "quantity": 20, "unit": "bags"},
-    )
-    common = {
-        "record_row_id": "xxxx-0000",
-        "reporter_name": "Mohammed",
-        "projects": [_Named(PRJ, "Riverside Tower")],
-        "sites": [_Named(SITE, "Site B")],
-        "confirmed_at": datetime(2026, 7, 12, 9, 0, tzinfo=UTC),
-    }
-    receipt_data = build_receipt_data(receipt, **common)
-    usage_data = build_receipt_data(usage, **common)
-    assert len(receipt_data.sections) == len(usage_data.sections)
-    assert [len(s) for s in receipt_data.sections] == [len(s) for s in usage_data.sections]
+def test_expense_hero_is_the_amount():
+    data = receipt(*EXPENSE)
+    assert data.kind is ReceiptKind.EXPENSE
+    assert data.hero_number == "₹4500"
+    assert _rows(data) == {"Category": "Transport", "Description": "Tipper hire for debris"}
 
 
-def _labour_receipt(lines: list[dict]):
-    return build_receipt_data(
-        _draft(DraftActionType.RECORD_LABOUR_ATTENDANCE, {"lines": lines}),
-        record_row_id="stub-9999abcd",
-        reporter_name="Mohammed",
-        projects=[_Named(PRJ, "Riverside Tower")],
-        sites=[_Named(SITE, "Site B")],
-        confirmed_at=datetime(2026, 7, 26, 10, 57, tzinfo=UTC),
-    )
+def test_issue_without_a_number_leads_with_its_title_and_shows_open():
+    data = receipt(*ISSUE)
+    assert data.kind is ReceiptKind.ISSUE
+    assert data.hero_number == ""
+    assert data.hero_title == "Material Shortage"
+    assert data.hero_status == "Open"
+    assert _rows(data)["Severity"] == "High"
 
 
-def test_labour_receipt_is_not_labelled_material():
-    """The bug this fixes: attendance fell through to the `else` branch and
-    every confirmed attendance came back to the user as a *Material usage*
-    receipt with an MU- record id. The user is told what they recorded, so
-    getting this wrong is not cosmetic."""
-    data = _labour_receipt([{"worker_name": "Ravi", "trade": "mason", "headcount": 1}])
-    assert data.category == "Labour attendance"
-    assert "Material" not in data.category
-    assert "Material" not in data.subtitle
-    assert data.record_id.startswith("LA-")
+def test_activity_with_and_without_a_quantity():
+    plain = receipt(*ACTIVITY)
+    assert plain.hero_number == "" and plain.hero_title == "Plastering"
+    sized = receipt(*ACTIVITY_QTY)
+    assert (sized.hero_number, sized.hero_unit) == ("120", "sqm")
+    assert sized.kind is ReceiptKind.WORK
 
 
-def test_labour_receipt_totals_people_across_named_and_group_lines():
-    data = _labour_receipt(
-        [
-            {"worker_name": "Ravi", "trade": "mason", "headcount": 1},
-            {"worker_name": "Arun", "trade": "painter", "headcount": 1},
-            {"worker_name": None, "trade": "helper", "headcount": 12},
-        ]
-    )
-    assert data.value == "14"
-    assert data.subtitle == "14 workers recorded"
+def test_correction_keeps_old_and_new():
+    data = receipt(*CORRECTION)
+    assert data.correction.old_value == "120 sqm"
+    assert data.correction.new_value == "150 sqm"
+    assert data.hero_number == "150"
 
 
-def test_labour_receipt_shows_how_the_headcount_breaks_down():
-    """P10's distinction -- who was named versus who was only counted --
-    belongs on the record the user keeps."""
-    data = _labour_receipt(
-        [
-            {"worker_name": "Ravi", "trade": "mason", "headcount": 1},
-            {"worker_name": None, "trade": "helper", "headcount": 12},
-        ]
-    )
-    workers_field = data.sections[0][0]
-    assert workers_field.label == "Workers"
-    assert workers_field.value == "13 (1 named, 12 by headcount)"
+def test_undo_is_grey_and_says_undone():
+    data = receipt(*UNDO)
+    assert data.kind is ReceiptKind.UNDONE
+    assert data.status == "UNDONE"
+    assert data.hero_title == "Undone"
+    assert data.footer_note == "Not in tonight's report"
 
 
-def test_labour_receipt_wording_for_all_named_and_all_counted():
-    all_named = _labour_receipt([{"worker_name": "Ravi", "trade": "mason", "headcount": 1}])
-    assert all_named.sections[0][0].value == "1 named"
-    all_counted = _labour_receipt([{"worker_name": None, "trade": "helper", "headcount": 9}])
-    assert all_counted.sections[0][0].value == "9 (by headcount)"
+@pytest.mark.parametrize("trades", [FIVE_TRADES, SEVEN_TRADES, [("mason", 4)]])
+def test_labour_has_one_row_per_trade_with_counts(trades):
+    data = labour(trades)
+    assert data.kind is ReceiptKind.LABOUR
+    assert [(t.name, t.count) for t in data.trades] == [
+        (name.replace("_", " ").title(), n) for name, n in trades
+    ]
+    assert data.hero_number == str(sum(n for _, n in trades))
+    assert data.more == 0
 
 
-def test_labour_receipt_lists_trades_without_duplicates():
-    data = _labour_receipt(
-        [
-            {"worker_name": "Ravi", "trade": "mason", "headcount": 1},
-            {"worker_name": "Suresh", "trade": "mason", "headcount": 1},
-            {"worker_name": None, "trade": "bar_bender", "headcount": 4},
-        ]
-    )
-    assert data.sections[0][1].value == "Mason, Bar Bender"
+def test_labour_merges_a_repeated_trade_and_keeps_report_order():
+    data = labour([("mason", 2), ("helper", 5), ("mason", 3)])
+    assert [(t.name, t.count) for t in data.trades] == [("Mason", 5), ("Helper", 5)]
 
 
-def test_labour_receipt_survives_an_empty_attendance():
-    data = _labour_receipt([])
-    assert data.category == "Labour attendance"
-    assert data.sections[0][0].value == "—"
+def test_labour_with_more_than_ten_trades_shows_nine_and_counts_the_rest():
+    data = labour([(f"trade{i}", 1) for i in range(13)])
+    assert len(data.trades) == MAX_ROWS - 1
+    assert data.more == 13 - (MAX_ROWS - 1)
+    assert data.hero_number == "13"  # the total still counts everyone
 
 
-def test_labour_receipt_singular_worker_reads_naturally():
-    data = _labour_receipt([{"worker_name": "Ravi", "trade": "mason", "headcount": 1}])
-    assert data.subtitle == "1 worker recorded"
-
-
-def _finance_receipt(action_type: DraftActionType, fields: dict):
-    return build_receipt_data(
-        _draft(action_type, fields),
-        record_row_id="stub-9999abcd",
-        reporter_name="Mohammed",
-        projects=[],
-        sites=[],
-        confirmed_at=datetime(2026, 7, 26, 10, 57, tzinfo=UTC),
-    )
-
-
-def test_transfer_receipt_is_not_labelled_material():
-    """Same bug class as labour: before these branches existed, a confirmed
-    transfer/petty-cash/reversal/account-admin action fell through to the
-    `else` branch and came back as a bogus "Material usage" receipt with an
-    MU- record id and a "Used for" field that made no sense for money."""
-    data = _finance_receipt(
-        DraftActionType.TRANSFER_MONEY,
+def test_labour_shows_named_versus_counted_people():
+    """P10's distinction belongs on the record the user keeps."""
+    data = receipt(
+        DraftActionType.RECORD_LABOUR_ATTENDANCE,
         {
-            "amount": "5000",
-            "from_account_id": "acc-a",
-            "from_account_name": "Company Bank",
-            "to_account_id": "acc-b",
-            "to_account_name": "Site Cash",
+            "lines": [
+                {"worker_name": "Ravi", "trade": "mason", "headcount": 1},
+                {"worker_name": None, "trade": "helper", "headcount": 12},
+            ]
         },
+    )
+    assert data.hero_number == "13"
+    assert _rows(data)["People"] == "1 named, 12 by headcount"
+
+
+def test_labour_survives_an_empty_attendance():
+    data = labour([])
+    assert data.hero_number == "0" and data.trades == []
+
+
+def test_labour_singular_worker_reads_naturally():
+    assert labour([("mason", 1)]).hero_unit == "worker"
+
+
+# -- several parts, one card ----------------------------------------------------
+
+
+@pytest.mark.parametrize(("parts", "shown", "more"), [(3, 3, 0), (6, 6, 0), (10, 10, 0), (12, 9, 3)])
+def test_multi_part_card_rows_and_plus_n_more(parts, shown, more):
+    data = multi(parts)
+    assert data.hero_number == str(parts)
+    assert len(data.rows) == shown
+    assert data.more == more
+    assert data.status == f"{parts} SAVED · DRAFT"
+
+
+def test_multi_part_rows_carry_each_records_kind_and_value():
+    data = multi(6)
+    assert [r.kind for r in data.rows] == [
+        ReceiptKind.LABOUR,
+        ReceiptKind.MATERIAL_IN,
+        ReceiptKind.MATERIAL_USED,
+        ReceiptKind.WORK,
+        ReceiptKind.ISSUE,
+        ReceiptKind.EXPENSE,
+    ]
+    assert data.rows[0].value == "27 workers"
+    assert data.rows[1].value == "50 bags"
+    assert data.rows[4].value == "Open"
+    assert data.rows[5].value == "₹4500"
+    assert data.record_id.endswith("+5")
+
+
+def test_one_part_is_just_that_receipt():
+    only = part_rows(1)[0]
+    assert combine_receipts([only]) is only
+
+
+def test_combining_nothing_is_an_error():
+    with pytest.raises(ValueError):
+        combine_receipts([])
+
+
+# -- finance / admin types: never mislabelled as material -------------------------
+
+
+def _finance(action_type: DraftActionType, fields: dict):
+    return receipt(action_type, fields, project="", site="")
+
+
+def test_transfer_receipt_is_money_not_material():
+    data = _finance(
+        DraftActionType.TRANSFER_MONEY,
+        {"amount": "5000", "from_account_name": "Company Bank", "to_account_name": "Site Cash"},
     )
     assert data.category == "Transfer"
-    assert "Material" not in data.category
-    assert data.value == "5000"
-    assert data.subtitle == "Company Bank → Site Cash"
+    assert data.kind is ReceiptKind.EXPENSE
+    assert data.hero_number == "₹5000"
     assert data.record_id.startswith("TR-")
-    assert any(f.label == "From" and f.value == "Company Bank" for s in data.sections for f in s)
-    assert any(f.label == "To" and f.value == "Site Cash" for s in data.sections for f in s)
+    assert _rows(data) == {"From": "Company Bank", "To": "Site Cash"}
 
 
-def test_petty_cash_issue_receipt_shows_recipient_not_transfer_wording():
-    data = _finance_receipt(
+def test_petty_cash_issue_and_return():
+    issue = _finance(
         DraftActionType.TRANSFER_MONEY,
-        {
-            "amount": "1000",
-            "direction": "issue",
-            "recipient_account_name": "Alan — Petty Cash",
-            "other_account_name": "Site Cash",
-        },
+        {"amount": "1000", "direction": "issue", "recipient_account_name": "Alan", "other_account_name": "Site Cash"},
     )
-    assert data.category == "Petty cash"
-    assert data.subtitle == "Issued to Alan — Petty Cash"
-    assert data.record_id.startswith("PC-")
-    assert any(f.label == "Issued to" and f.value == "Alan — Petty Cash" for s in data.sections for f in s)
-    assert any(f.label == "From" and f.value == "Site Cash" for s in data.sections for f in s)
-
-
-def test_petty_cash_return_receipt_shows_return_wording():
-    data = _finance_receipt(
+    assert issue.category == "Petty cash" and issue.record_id.startswith("PC-")
+    assert _rows(issue) == {"Issued to": "Alan", "From": "Site Cash"}
+    back = _finance(
         DraftActionType.TRANSFER_MONEY,
-        {
-            "amount": "300",
-            "direction": "return",
-            "recipient_account_name": "Alan — Petty Cash",
-            "other_account_name": "Site Cash",
-        },
+        {"amount": "300", "direction": "return", "recipient_account_name": "Alan", "other_account_name": "Site Cash"},
     )
-    assert data.subtitle == "Returned by Alan — Petty Cash"
-    assert any(f.label == "Returned by" for s in data.sections for f in s)
-    assert any(f.label == "Into" and f.value == "Site Cash" for s in data.sections for f in s)
+    assert _rows(back) == {"Returned by": "Alan", "Into": "Site Cash"}
 
 
-def test_reversal_of_expense_receipt():
-    data = _finance_receipt(
+def test_reversals_are_grey_undone_cards():
+    expense = _finance(
         DraftActionType.REVERSE_TRANSACTION,
-        {
-            "target_kind": "expense",
-            "expense_id": "exp-1",
-            "reversal_amount": "700.00",
-            "reversal_description": "diesel refill",
-            "reversal_occurred_date": "2026-07-25",
-        },
+        {"target_kind": "expense", "reversal_amount": "700.00", "reversal_description": "diesel refill"},
     )
-    assert data.category == "Reversal"
-    assert data.value == "700.00"
-    assert data.subtitle == "Expense reversed"
-    assert data.record_id.startswith("RV-")
-    assert any(f.label == "Description" and f.value == "diesel refill" for s in data.sections for f in s)
-
-
-def test_reversal_of_transfer_receipt():
-    data = _finance_receipt(
+    assert expense.kind is ReceiptKind.UNDONE and expense.status == "UNDONE"
+    assert expense.hero_number == "₹700.00" and expense.record_id.startswith("RV-")
+    assert _rows(expense)["Description"] == "diesel refill"
+    attendance = _finance(
         DraftActionType.REVERSE_TRANSACTION,
-        {
-            "target_kind": "transfer",
-            "money_transaction_id": "tx-1",
-            "reversal_amount": "5000.00",
-            "reversal_from_account_name": "Company Bank",
-            "reversal_to_account_name": "Site Cash",
-        },
+        {"target_kind": "attendance", "reversal_amount": "1200", "reversal_attendance_headcount": 9},
     )
-    assert data.subtitle == "Transfer reversed"
-    assert any(f.label == "From" and f.value == "Company Bank" for s in data.sections for f in s)
-    assert any(f.label == "To" and f.value == "Site Cash" for s in data.sections for f in s)
+    assert attendance.hero_title == "Withdrawn"
+    assert _rows(attendance)["Cost removed"] == "₹1200"
 
 
-def test_account_create_receipt():
-    data = _finance_receipt(
-        DraftActionType.MANAGE_MONEY_ACCOUNT, {"action": "create", "name": "Petrol Card"}
-    )
-    assert data.category == "Account"
-    assert data.value == "Created"
-    assert data.subtitle == "New account: Petrol Card"
-    assert data.record_id.startswith("AC-")
+@pytest.mark.parametrize(
+    ("action_type", "fields", "category", "title", "prefix"),
+    [
+        (DraftActionType.MANAGE_MONEY_ACCOUNT, {"action": "create", "name": "Petrol Card"}, "Account", "Created", "AC-"),
+        (DraftActionType.MANAGE_MONEY_ACCOUNT, {"action": "rename", "target_name": "A", "new_name": "B"}, "Account", "Renamed", "AC-"),
+        (DraftActionType.MANAGE_MONEY_ACCOUNT, {"action": "deactivate", "target_name": "A"}, "Account", "Deactivated", "AC-"),
+        (DraftActionType.CREATE_PROJECT, {"name": "Skyline Towers", "location": "Kochi"}, "Project", "Created", "PJ-"),
+        (DraftActionType.CREATE_SITE, {"name": "Block A", "location": "North Yard"}, "Site", "Created", "ST-"),
+        (DraftActionType.ADD_PROJECT_MEMBER, {"member_name": "Asha", "role": "site_engineer"}, "Project member", "Added", "PM-"),
+        (DraftActionType.CREATE_USER, {"full_name": "Asha", "role": "supervisor"}, "New user", "Created", "US-"),
+    ],
+)
+def test_setup_records_are_plain_saved_cards(action_type, fields, category, title, prefix):
+    data = _finance(action_type, fields)
+    assert (data.category, data.hero_title) == (category, title)
+    assert data.record_id.startswith(prefix)
+    assert data.status == "SAVED" and data.footer_note == ""
+    assert "Material" not in data.category
 
 
-def test_account_rename_receipt():
-    data = _finance_receipt(
-        DraftActionType.MANAGE_MONEY_ACCOUNT,
-        {"action": "rename", "target_name": "Petrol Card", "new_name": "Fuel Card"},
-    )
-    assert data.value == "Renamed"
-    assert data.subtitle == "Petrol Card → Fuel Card"
-
-
-def test_account_deactivate_receipt():
-    data = _finance_receipt(
-        DraftActionType.MANAGE_MONEY_ACCOUNT, {"action": "deactivate", "target_name": "Petrol Card"}
-    )
-    assert data.value == "Deactivated"
-    assert data.subtitle == "Petrol Card"
-
-
-def test_create_activity_receipt_is_not_labelled_material_usage():
-    """Same bug class as labour/transfer/reversal/account-admin above: before
-    this branch existed, a confirmed activity fell through to the `else`
-    branch and came back as a bogus "Material usage" receipt."""
-    data = _finance_receipt(
-        DraftActionType.CREATE_ACTIVITY,
-        {"work_type": "plastering", "narrative": "Third floor plastering done", "contractor": "ABC Co"},
-    )
-    assert data.category == "Site Activity"
-    assert data.category != "Material usage"
-    assert data.subtitle == "Third floor plastering done"
-    assert data.record_id.startswith("AL-")
-
-
-def test_add_progress_update_receipt_is_not_labelled_material_usage():
-    data = _finance_receipt(
+def test_progress_update_and_close_issue():
+    progress = receipt(
         DraftActionType.ADD_PROGRESS_UPDATE,
         {"update_kind": "COMPLETED", "narrative": "Finished the pour", "activity_summary": "Slab casting"},
     )
-    assert data.category == "Progress Update"
-    assert data.category != "Material usage"
-    assert data.subtitle == "Finished the pour"
-    assert data.record_id.startswith("PU-")
-
-
-def test_record_site_issue_receipt_is_not_labelled_material_usage():
-    data = _finance_receipt(
-        DraftActionType.RECORD_SITE_ISSUE,
-        {"issue_type": "MATERIAL_SHORTAGE", "severity": "HIGH", "narrative": "Out of cement"},
-    )
-    assert data.category == "Site Issue"
-    assert data.category != "Material usage"
-    assert data.value == "High"
-    assert data.subtitle == "Out of cement"
-    assert data.record_id.startswith("SI-")
-
-
-def test_close_site_issue_receipt_is_not_labelled_material_usage():
-    data = _finance_receipt(
+    assert progress.category == "Progress update" and progress.hero_title == "Completed"
+    assert _rows(progress) == {"Activity": "Slab casting", "Details": "Finished the pour"}
+    closed = receipt(
         DraftActionType.CLOSE_SITE_ISSUE,
         {"action": "resolve", "site_issue_type": "MATERIAL_SHORTAGE", "resolution_notes": "Cement delivered"},
     )
-    assert data.category == "Site Issue"
-    assert data.category != "Material usage"
-    assert data.value == "Resolve"
-    assert data.record_id.startswith("SC-")
-
-
-def test_create_project_receipt_is_not_labelled_material_usage():
-    data = _finance_receipt(
-        DraftActionType.CREATE_PROJECT,
-        {"name": "Skyline Towers", "location": "Kochi"},
-    )
-    assert data.category == "Project"
-    assert data.category != "Material usage"
-    assert data.value == "Created"
-    assert data.subtitle == "New project: Skyline Towers"
-    assert data.record_id.startswith("PJ-")
-
-
-def test_create_site_receipt_is_not_labelled_material_usage():
-    data = _finance_receipt(
-        DraftActionType.CREATE_SITE,
-        {"name": "Block A", "location": "North Yard"},
-    )
-    assert data.category == "Site"
-    assert data.category != "Material usage"
-    assert data.value == "Created"
-    assert data.subtitle == "New site: Block A"
-    assert data.record_id.startswith("ST-")
+    assert closed.kind is ReceiptKind.ISSUE and closed.hero_status == "Resolved"
+    assert closed.record_id.startswith("SC-")
