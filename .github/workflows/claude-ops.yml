@@ -77,7 +77,9 @@ jobs:
               ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" 'bash -s -- manual' < infra/deploy/backup_db.sh 2>&1
               ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" 'ls -la /var/backups/mesiri' ;;
             vps-staging)
-              ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" 'bash -s' < infra/deploy/staging_deploy.sh 2>&1 | mask ;;
+              # Run from a file, not stdin: the script's own commands must not be able to read it.
+              scp -i ~/.ssh/deploy_key infra/deploy/staging_deploy.sh "${VPS_USER}@${VPS_HOST}:/tmp/staging_deploy.sh"
+              ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" 'bash /tmp/staging_deploy.sh' 2>&1 | mask ;;
             vps-smoke)
               ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
                 'P=$(grep -E "^MESIRI_APP_PORT=" /opt/mesiri/.env | tail -1 | cut -d= -f2 | tr -dc 0-9); bash -s -- "$(git -C /opt/mesiri rev-parse --short HEAD)" "http://127.0.0.1:${P:-8000}"' \

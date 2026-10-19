@@ -72,11 +72,14 @@ DB_PASS="$(env_val MESIRI_POSTGRES__PASSWORD "${PROD}/.env")"
 PROD_DB="$(env_val MESIRI_POSTGRES__DB "${PROD}/.env")"; PROD_DB="${PROD_DB:-mesiri}"
 PG="$(docker ps --filter "publish=$(env_val MESIRI_POSTGRES__PORT "${PROD}/.env" | tr -dc 0-9)" --format '{{.Names}}' | head -1)"
 [ -n "${PG}" ] || { echo "✗ no Postgres container found"; exit 1; }
-pg() { docker exec -i -e PGPASSWORD="${DB_PASS}" "${PG}" "$@"; }
+# Only the restore reads stdin (-i); the rest get /dev/null, so nothing can swallow
+# this script when it is piped to bash.
+pg() { docker exec -e PGPASSWORD="${DB_PASS}" "${PG}" "$@" < /dev/null; }
+pg_in() { docker exec -i -e PGPASSWORD="${DB_PASS}" "${PG}" "$@"; }
 pg dropdb --if-exists -U "${DB_USER}" "${STG_DB}"
 pg createdb -U "${DB_USER}" "${STG_DB}"
 pg pg_dump --format=custom --no-owner -U "${DB_USER}" "${PROD_DB}" \
-  | pg pg_restore --no-owner --exit-on-error -U "${DB_USER}" -d "${STG_DB}"
+  | pg_in pg_restore --no-owner --exit-on-error -U "${DB_USER}" -d "${STG_DB}"
 echo "  copied ${PROD_DB} → ${STG_DB}"
 
 echo "→ Migrations on the copy"
