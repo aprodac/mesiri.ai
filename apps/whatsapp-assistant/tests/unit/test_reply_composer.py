@@ -376,7 +376,7 @@ async def test_the_promotion_question_comes_in_the_same_message_and_beats_the_ph
     on_normalized, deps, _, _ = _build(monkeypatch)
     deps["interaction_handler"].handle_fast_path.return_value = _saved_attendance()
 
-    async def promote(handled, runtime, query, actor, wa_id, send_text):
+    async def promote(handled, runtime, query, actor, wa_id, send_text, send_spec_fn=None):
         await send_text(wa_id, "Add Suresh and Mahesh to your workers?")
         return True
 

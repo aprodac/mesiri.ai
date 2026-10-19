@@ -107,8 +107,12 @@ def compose(main: str, offers: list[Offer], *, saved: bool = False) -> ReplySpec
 
     if winner is not None and winner.kind == QUESTION:
         # The record needs an answer: it is the one thing on screen.
-        questions = [o.text for o in candidates if o.kind == QUESTION and o.text]
-        return ReplySpec(text="\n\n".join([main, *questions]))
+        asked = [o for o in candidates if o.kind == QUESTION]
+        questions = [q for o in asked if (q := o.text or (o.spec.text if o.spec else None))]
+        body = "\n\n".join([main, *questions])
+        # A question that brings its own buttons (worker promotion) keeps them.
+        options = next((_options_of(o.spec) for o in asked if o.spec is not None), [])
+        return pick_form(body, options) if options else ReplySpec(text=body)
 
     options: list[ListRow] = []
     body = main

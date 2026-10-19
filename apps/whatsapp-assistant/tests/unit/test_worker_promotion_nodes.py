@@ -76,21 +76,54 @@ def test_offer_lists_every_named_worker_with_trade():
 
     prompt = result["pending_prompt"]
     assert result["awaiting_slot"] == PROMOTION_SLOT
-    assert "Attendance recorded successfully." in prompt
-    assert "• Ajith – Mason" in prompt
-    assert "• Niyas – Helper" in prompt
-    assert "• Rahul – Painter" in prompt
+    assert prompt.startswith("Quick check so your worker list stays clean 👇")
+    assert "*Ajith*, *Niyas* and *Rahul* are new names" in prompt
+    assert [o["label"] for o in result["awaiting_slot_options"]] == [
+        "Add all",
+        "Choose",
+        "Not now",
+    ]
 
 
-def test_offer_asks_for_names_not_numbers():
-    """Numbers are unreadable on a phone once a report has a dozen workers,
-    and easy to mis-key. The example is built from the real names on screen."""
-    result = offer_and_promote(_base_state({"promotable_workers": [AJITH, RAHUL]}))
-    prompt = result["pending_prompt"]
+def test_offer_for_two_says_both_and_for_one_just_add():
+    two = offer_and_promote(_base_state({"promotable_workers": [AJITH, RAHUL]}))
+    one = offer_and_promote(_base_state({"promotable_workers": [AJITH]}))
 
-    assert "the names (e.g. Ajith, Rahul)" in prompt
-    assert "1." not in prompt
-    assert "2." not in prompt
+    assert two["awaiting_slot_options"][0]["label"] == "Add both"
+    assert [o["label"] for o in one["awaiting_slot_options"]] == ["Add", "Not now"]
+    assert "*Ajith* is a new name" in one["pending_prompt"]
+
+
+def test_choose_asks_for_names_built_from_the_real_ones():
+    """"Choose" shows how to answer with the names actually on screen -- no
+    numbers, which are easy to mis-key once a report has a dozen workers."""
+    result = _answer([AJITH, RAHUL], "Choose")
+
+    assert result["awaiting_slot"] == PROMOTION_SLOT
+    assert "e.g. Ajith, Rahul" in result["pending_prompt"]
+    picked = offer_and_promote(
+        _base_state(
+            {**result["collected_fields"], "_slot_answer_text": "Rahul"},
+            awaiting_slot=PROMOTION_SLOT,
+        )
+    )
+    assert _names(picked) == ["Rahul"]
+
+
+@pytest.mark.parametrize("tap", ["promo_all", "Add both", "add", "Add all", "yes"])
+def test_the_add_button_adds_everyone_however_it_arrives(tap):
+    assert _names(_answer([AJITH, RAHUL], tap)) == ["Ajith", "Rahul"]
+
+
+@pytest.mark.parametrize("tap", ["promo_none", "Not now", "nobody", "skip"])
+def test_the_not_now_button_adds_nobody(tap):
+    result = _answer([AJITH, RAHUL], tap)
+    assert _queued(result) == []
+    assert result["awaiting_slot"] is None
+
+
+def test_add_with_a_name_adds_only_that_worker():
+    assert _names(_answer([AJITH, RAHUL], "add Ajith")) == ["Ajith"]
 
 
 def test_offer_never_carries_a_draft_action():
@@ -237,7 +270,9 @@ def test_a_reply_naming_nobody_recognisable_re_asks():
 
     assert _queued(result) == []
     assert result["awaiting_slot"] == PROMOTION_SLOT
-    assert "didn't catch that" in result["pending_prompt"]
+    assert result["pending_prompt"].startswith("No worries.")
+    assert "*Ajith*" in result["pending_prompt"]
+    assert result["awaiting_slot_options"], "the re-ask carries the buttons again"
 
 
 def test_the_queued_workers_are_plain_json_safe_data():
@@ -269,6 +304,7 @@ REGISTER = [
         "name": "Ajith Kumar",
         "trade": "mason",
         "contractor": None,
+        "since": "2026-10-02",
     }
 ]
 
@@ -280,8 +316,16 @@ def test_a_likely_existing_worker_is_not_created_without_asking():
 
     assert _queued(result) == []
     assert result["awaiting_slot"] == DUPLICATE_SLOT
-    assert "similar workers already in your register" in result["pending_prompt"]
-    assert "Ajith Kumar" in result["pending_prompt"]
+    prompt = result["pending_prompt"]
+    assert prompt.startswith("Quick check so your worker list stays clean 👇")
+    assert "*Ajith* looks like *Ajith Kumar* who's already in your list" in prompt
+    assert "(mason, since 2 Oct)" in prompt
+    assert prompt.endswith("Is it the same person?")
+    assert [o["label"] for o in result["awaiting_slot_options"]] == [
+        "Same person",
+        "New person",
+        "Skip",
+    ]
 
 
 def test_confirming_a_look_alike_is_a_different_person_creates_them():
@@ -289,7 +333,7 @@ def test_confirming_a_look_alike_is_a_different_person_creates_them():
 
     resumed = offer_and_promote(
         _base_state(
-            {**asked["collected_fields"], "_slot_answer_text": "Ajith"},
+            {**asked["collected_fields"], "_slot_answer_text": "dup_new"},
             awaiting_slot=DUPLICATE_SLOT,
         )
     )
@@ -302,18 +346,72 @@ def test_confirming_a_look_alike_is_a_different_person_creates_them():
     assert resumed["awaiting_slot"] is None
 
 
-def test_saying_none_to_the_duplicate_question_creates_nobody():
-    asked = _answer([AJITH], "Ajith", _register=REGISTER)
-
-    resumed = offer_and_promote(
+def _dup_reply(asked: dict, text: str) -> dict:
+    return offer_and_promote(
         _base_state(
-            {**asked["collected_fields"], "_slot_answer_text": "none"},
+            {**asked["collected_fields"], "_slot_answer_text": text},
             awaiting_slot=DUPLICATE_SLOT,
         )
     )
 
+
+@pytest.mark.parametrize("text", ["none", "Skip", "dup_skip", "nobody", "cancel", "3"])
+def test_skipping_the_duplicate_question_creates_nobody(text):
+    asked = _answer([AJITH], "Ajith", _register=REGISTER)
+
+    resumed = _dup_reply(asked, text)
+
     assert _queued(resumed) == []
     assert resumed["awaiting_slot"] is None
+    assert "I'll keep *Ajith* as a separate name for now" in resumed["pending_prompt"]
+    assert "Worker Register" in resumed["pending_prompt"]
+
+
+@pytest.mark.parametrize("text", ["same", "Same person", "yes same", "dup_same", "yes", "1"])
+def test_same_person_adds_nobody_and_says_so(text):
+    asked = _answer([AJITH], "Ajith", _register=REGISTER)
+
+    resumed = _dup_reply(asked, text)
+
+    assert _queued(resumed) == []
+    assert resumed["awaiting_slot"] is None
+    assert "already in your list as *Ajith Kumar*" in resumed["pending_prompt"]
+
+
+@pytest.mark.parametrize("text", ["new", "New person", "different", "no", "dup_new", "2"])
+def test_new_person_is_added(text):
+    asked = _answer([AJITH], "Ajith", _register=REGISTER)
+
+    assert _names(_dup_reply(asked, text)) == ["Ajith"]
+
+
+def test_an_unclear_reply_re_asks_the_same_look_alike_with_the_buttons():
+    asked = _answer([AJITH], "Ajith", _register=REGISTER)
+
+    again = _dup_reply(asked, "hmm maybe")
+
+    assert again["awaiting_slot"] == DUPLICATE_SLOT
+    assert again["pending_prompt"].startswith("No worries. Just tap one:")
+    assert "*Ajith*" in again["pending_prompt"] and "*Ajith Kumar*" in again["pending_prompt"]
+    assert len(again["awaiting_slot_options"]) == 3
+
+
+def test_look_alikes_are_asked_one_at_a_time_and_at_most_three():
+    register = [
+        {"worker_id": f"w{i}", "name": f"{n} Kumar", "trade": "mason", "contractor": None}
+        for i, n in enumerate(["Ajith", "Niyas", "Rahul", "Sabu"])
+    ]
+    four = [
+        {"name": n, "trade": "mason"} for n in ["Ajith", "Niyas", "Rahul", "Sabu"]
+    ]
+    asked = _answer(four, "all", _register=register)
+    for _ in range(3):
+        assert asked["awaiting_slot"] == DUPLICATE_SLOT
+        asked = _dup_reply(asked, "new")
+
+    assert asked["awaiting_slot"] is None
+    assert _names(asked) == ["Ajith", "Niyas", "Rahul"]
+    assert "*Sabu*" in asked["pending_prompt"], "the fourth stays temporary, and is said so"
 
 
 def test_a_mixed_batch_ends_with_one_write_and_one_summary():
@@ -328,7 +426,7 @@ def test_a_mixed_batch_ends_with_one_write_and_one_summary():
 
     resumed = offer_and_promote(
         _base_state(
-            {**asked["collected_fields"], "_slot_answer_text": "Ajith"},
+            {**asked["collected_fields"], "_slot_answer_text": "New person"},
             awaiting_slot=DUPLICATE_SLOT,
         )
     )

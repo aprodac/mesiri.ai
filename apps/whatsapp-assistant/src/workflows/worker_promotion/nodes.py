@@ -42,6 +42,7 @@ arrived.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from mesiri.domains.workforce.matching import (
@@ -51,7 +52,9 @@ from mesiri.domains.workforce.matching import (
 )
 from mesiri.domains.workforce.workers import normalize_name
 
+from ..slots import SlotCandidate, slot_options
 from ..state import WorkflowGraphState
+from . import wording
 
 #: Slot holding "which of these workers should I add?".
 PROMOTION_SLOT = "promotion_choice"
@@ -79,7 +82,24 @@ _NONE_WORDS = frozenset(
         "nobody", "nothing", "dont", "don't",
     }
 )
-_ALL_WORDS = frozenset({"all", "everyone", "everybody", "yes", "yeah", "yep", "ok", "okay"})
+_ALL_WORDS = frozenset(
+    {"all", "both", "everyone", "everybody", "yes", "yeah", "yep", "ok", "okay"}
+)
+#: Typed or tapped, "Choose": let me pick which of them to add.
+_CHOOSE_WORDS = frozenset({"choose", "select", "pick", "some", "few"})
+_ADD_VERBS = frozenset({"add", "save", "register", "keep", "make", "mark", "put"})
+#: "Is it the same person?" -- the three answers, tapped (ids) or typed.
+_SAME_WORDS = frozenset({"same", "yes", "yeah", "yep", "ok", "okay", "already", "sure"})
+_NEW_WORDS = frozenset({"new", "different", "another", "separate", "no", "nope", "nah"})
+_SKIP_WORDS = frozenset(
+    {"skip", "none", "nobody", "cancel", "later", "nothing", "not", "dont", "don't", "unsure"}
+)
+#: Most look-alikes asked about in one go; the rest stay temporary. Three
+#: questions is already a lot to put to someone on a site.
+_MAX_DUPLICATE_QUESTIONS = 3
+#: A reply longer than this that is not made of answer words and listed names
+#: is a sentence about something else, not an answer.
+_MAX_SHORT_REPLY_WORDS = 3
 
 #: Words that carry no selection meaning here -- the reply is *already* an
 #: answer to "which of these should I add?", so the verb around it is noise.
@@ -130,24 +150,39 @@ def _example_names(workers: list[dict[str, Any]]) -> str:
     return ", ".join(names[:2]) if len(names) > 1 else names[0]
 
 
+def _names_of(workers: list[dict[str, Any]]) -> list[str]:
+    return [str(w["name"]) for w in workers]
+
+
 def _build_offer_message(workers: list[dict[str, Any]]) -> str:
-    lines = [
-        "Attendance recorded successfully.",
-        "",
-        "Would you like to add any of these workers to your permanent Worker Register?",
-        "",
-    ]
-    lines.extend(f"• {_describe(w)}" for w in workers)
-    lines.extend(
+    template = wording.OFFER_ONE if len(workers) == 1 else wording.OFFER_MANY
+    question = template.format(names=wording.join_names(_names_of(workers)))
+    return f"{wording.INTRO}\n\n{question}"
+
+
+def _offer_options(workers: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """The buttons under the offer: add them / pick some / not now."""
+    if len(workers) == 1:
+        add = SlotCandidate(wording.ID_ADD_ALL, wording.TITLE_ADD_ONE)
+        options = [add, SlotCandidate(wording.ID_NOT_NOW, wording.TITLE_NOT_NOW)]
+    else:
+        title = wording.TITLE_ADD_BOTH if len(workers) == 2 else wording.TITLE_ADD_ALL
+        options = [
+            SlotCandidate(wording.ID_ADD_ALL, title),
+            SlotCandidate(wording.ID_CHOOSE, wording.TITLE_CHOOSE),
+            SlotCandidate(wording.ID_NOT_NOW, wording.TITLE_NOT_NOW),
+        ]
+    return slot_options(options)
+
+
+def _duplicate_options() -> list[dict[str, str]]:
+    return slot_options(
         [
-            "",
-            "Reply with:",
-            "• all",
-            "• none",
-            f"• or the names (e.g. {_example_names(workers)})",
+            SlotCandidate(wording.ID_SAME, wording.TITLE_SAME),
+            SlotCandidate(wording.ID_NEW, wording.TITLE_NEW),
+            SlotCandidate(wording.ID_SKIP, wording.TITLE_SKIP),
         ]
     )
-    return "\n".join(lines)
 
 
 def _select_by_name(text: str, workers: list[dict[str, Any]]) -> list[int] | None:
@@ -169,6 +204,15 @@ def _select_by_name(text: str, workers: list[dict[str, Any]]) -> list[int] | Non
     if reply_tokens & _EXCLUSION_WORDS:
         return None
 
+    # A sentence that merely mentions a listed name ("I have work on Anil's
+    # site") is not a pick: any long reply with words that are neither names
+    # nor answers is left to be re-asked or closed, never read as "add Anil".
+    answer_words = _ALL_WORDS | _NONE_WORDS | _CHOOSE_WORDS | _FILLER_WORDS | _ADD_VERBS
+    known = {tok for w in workers for tok in normalize_name(str(w["name"])).split()}
+    strangers = reply_tokens - answer_words - known - {"also", "only", "just", "plus"}
+    if strangers and len(normalized_reply.split()) > _MAX_SHORT_REPLY_WORDS:
+        return None
+
     # "all" / "none", however they are phrased. Read from the words that are
     # left once the filler verbs are removed, rather than by matching the whole
     # reply against a fixed list of phrasings -- that list can never be
@@ -181,6 +225,11 @@ def _select_by_name(text: str, workers: list[dict[str, Any]]) -> list[int] | Non
         token for worker in workers for token in normalize_name(str(worker["name"])).split()
     }
     meaningful -= listed
+    # A bare "add" / "save it" (the "Add" button, typed) names nobody, so it
+    # means everyone offered -- but "add Anil" has a listed name in it and
+    # must not.
+    if not meaningful and not (reply_tokens & listed) and reply_tokens & _ADD_VERBS:
+        return list(range(len(workers)))
     if meaningful and meaningful <= _ALL_WORDS:
         return list(range(len(workers)))
     if meaningful and meaningful <= _NONE_WORDS:
@@ -218,6 +267,33 @@ def _select_by_name(text: str, workers: list[dict[str, Any]]) -> list[int] | Non
     return sorted(chosen) or None
 
 
+def _wants_to_choose(text: str, workers: list[dict[str, Any]]) -> bool:
+    """"Choose" (the button, or typed): show the names, let me pick."""
+    tokens = set(normalize_name(text).split())
+    listed = {tok for w in workers for tok in normalize_name(str(w["name"])).split()}
+    meaningful = (tokens - _FILLER_WORDS) - listed
+    return bool(meaningful) and meaningful <= _CHOOSE_WORDS
+
+
+def _parse_same_new_skip(text: str) -> str | None:
+    """"same" / "new" / "skip" from a tap or a typed reply; None when it is
+    none of the three. "Skip" outranks the others, so "not sure" and "no,
+    skip it" never create a worker."""
+    reply = normalize_name(text)
+    if reply in ("1", "2", "3"):  # the buttons' order, typed as a number
+        return {"1": "same", "2": "new", "3": "skip"}[reply]
+    tokens = set(reply.split())
+    if len(reply.split()) > _MAX_SHORT_REPLY_WORDS:
+        return None  # "I have a work on new site" is not "new person"
+    if tokens & _SKIP_WORDS:
+        return "skip"
+    if tokens & _NEW_WORDS:
+        return "new"
+    if tokens & _SAME_WORDS:
+        return "same"
+    return None
+
+
 def _as_candidates(register: list[Any]) -> list[WorkerCandidate]:
     out: list[WorkerCandidate] = []
     for row in register:
@@ -234,8 +310,17 @@ def _as_candidates(register: list[Any]) -> list[WorkerCandidate]:
     return out
 
 
-def _likely_existing(worker: dict[str, Any], register: list[WorkerCandidate]) -> str | None:
-    """The name of an existing register entry this worker probably already is.
+def _register_since(fields: dict[str, Any], worker_id: str) -> Any:
+    for row in fields.get("_register") or []:
+        if isinstance(row, dict) and str(row.get("worker_id")) == worker_id:
+            return row.get("since")
+    return None
+
+
+def _likely_existing(
+    worker: dict[str, Any], register: list[WorkerCandidate]
+) -> WorkerCandidate | None:
+    """The existing register entry this worker probably already is.
 
     Scores with the shared domain scorer on name + trade + contractor, against
     _DUPLICATE_SUSPICION rather than match_worker's attendance-tuned bands.
@@ -251,36 +336,42 @@ def _likely_existing(worker: dict[str, Any], register: list[WorkerCandidate]) ->
         contractor=worker.get("contractor"),
     )
     best = max(
-        (score_candidate(reported, c) for c in register),
-        key=lambda s: s.confidence,
+        ((score_candidate(reported, c), c) for c in register),
+        key=lambda pair: pair[0].confidence,
         default=None,
     )
-    if best is None or best.confidence < _DUPLICATE_SUSPICION:
+    if best is None or best[0].confidence < _DUPLICATE_SUSPICION:
         return None
-    return best.name
+    return best[1]
 
 
-def _build_duplicate_message(held: list[dict[str, Any]]) -> str:
-    def _line(worker: dict[str, Any]) -> str:
-        # Parenthesised trade here rather than the offer list's "Name – Trade":
-        # this line already carries a dash before "similar to", and two dashes
-        # in one line read as a single run-on.
-        trade = _pretty_trade(worker.get("trade"))
-        who = f"{worker['name']} ({trade})" if trade else str(worker["name"])
-        return f"• {who} — similar to {worker['_similar_to']}"
+def _since(iso: Any) -> str | None:
+    """"2 Oct" from an ISO date, None when there is none."""
+    try:
+        day = date.fromisoformat(str(iso)[:10])
+    except ValueError:
+        return None
+    return f"{day.day} {day.strftime('%b')}"
 
-    lines = ["I found similar workers already in your register:", ""]
-    lines.extend(_line(w) for w in held)
-    lines.extend(
-        [
-            "",
-            "Are any of these actually different people?",
-            "",
-            "Reply with their names to add them as new workers, or none if they "
-            "are already registered.",
-        ]
-    )
-    return "\n".join(lines)
+
+def _detail(held: dict[str, Any]) -> str:
+    """" (mason, since 2 Oct)" -- what the sender knows the register entry by."""
+    parts = [p for p in (_pretty_trade(held.get("_similar_trade")).lower(), _since(held.get("_similar_since"))) if p]
+    if not parts:
+        return ""
+    if len(parts) == 2:
+        return f" ({parts[0]}, since {parts[1]})"
+    return f" ({parts[0]})" if held.get("_similar_trade") else f" (since {parts[0]})"
+
+
+def _duplicate_question(held: list[dict[str, Any]], index: int, *, retry: bool = False) -> str:
+    w = held[index]
+    new, old = wording.bold(w["name"]), wording.bold(w["_similar_to"])
+    if retry:
+        return wording.RETRY_LOOKS_LIKE.format(new=new, old=old)
+    template = wording.LOOKS_LIKE if index == 0 else wording.LOOKS_LIKE_NEXT
+    question = template.format(new=new, old=old, detail=_detail(w))
+    return f"{wording.INTRO}\n\n{question}" if index == 0 else question
 
 
 #: Key under which the node hands the caller the workers it decided to add.
@@ -317,19 +408,67 @@ def _closing_message(queued: list[str]) -> str:
     # marked temporary, and promotion flips that same row to permanent rather
     # than creating a second one (see labour_execution._ensure_worker_identities).
     if not queued:
-        return (
-            "No problem — they stay as temporary workers. You can make them "
-            "permanent any time from the Worker Register on the dashboard."
+        return wording.NONE_ADDED
+    return wording.MADE_PERMANENT.format(names=", ".join(queued))
+
+
+def _duplicates_closing(
+    queued: list[str], same: list[dict[str, Any]], kept: list[dict[str, Any]]
+) -> str:
+    """One summary for the whole look-alike round: who was added, who was
+    already there, who is left as a separate temporary name."""
+    lines: list[str] = []
+    if queued:
+        lines.append(wording.MADE_PERMANENT.format(names=", ".join(queued)))
+    for w in same:
+        lines.append(
+            wording.SAME_NOT_ADDED.format(
+                new=wording.bold(w["name"]), old=wording.bold(w["_similar_to"])
+            )
         )
-    return f"✅ Made permanent in your Worker Register: {', '.join(queued)}"
+    if kept:
+        lines.append(wording.KEPT_SEPARATE.format(names=wording.join_names(_names_of(kept))))
+    return "\n".join(lines) if lines else wording.NONE_ADDED
 
 
-def _ask(prompt: str, slot: str, fields: dict[str, Any]) -> dict:
-    return {"collected_fields": fields, "awaiting_slot": slot, "pending_prompt": prompt}
+def _ask(
+    prompt: str, slot: str, fields: dict[str, Any], options: list[dict[str, str]] | None = None
+) -> dict:
+    out = {"collected_fields": fields, "awaiting_slot": slot, "pending_prompt": prompt}
+    if options:
+        out["awaiting_slot_options"] = options
+    return out
 
 
 def _done(prompt: str, fields: dict[str, Any]) -> dict:
-    return {"collected_fields": fields, "awaiting_slot": None, "pending_prompt": prompt}
+    return {
+        "collected_fields": fields,
+        "awaiting_slot": None,
+        "awaiting_slot_options": None,
+        "pending_prompt": prompt,
+    }
+
+
+def _ask_next_duplicate(fields: dict[str, Any]) -> dict | None:
+    """The question for the next look-alike, or None when none is left."""
+    held: list[dict[str, Any]] = list(fields.get("_held_for_duplicate_check") or [])
+    index = int(fields.get("_dup_index") or 0)
+    if index >= min(len(held), _MAX_DUPLICATE_QUESTIONS):
+        return None
+    return _ask(_duplicate_question(held, index), DUPLICATE_SLOT, fields, _duplicate_options())
+
+
+def _finish_duplicates(fields: dict[str, Any]) -> dict:
+    """Everyone asked about has been decided (or the sender skipped the rest):
+    add those confirmed as new, leave every other look-alike as it is."""
+    held: list[dict[str, Any]] = list(fields.get("_held_for_duplicate_check") or [])
+    confirmed_new = list(fields.get("_confirmed_new") or [])
+    same = list(fields.get("_confirmed_same") or [])
+    decided = {w["name"] for w in confirmed_new} | {w["name"] for w in same}
+    kept = [w for w in held if w["name"] not in decided]
+    already = list(fields.get("_cleared_so_far") or [])
+    queued = _queue_for_creation(already + confirmed_new, fields)
+    return _done(_duplicates_closing(queued, same, kept), fields)
 
 
 # --- Node --------------------------------------------------------------------
@@ -347,59 +486,98 @@ def offer_and_promote(state: WorkflowGraphState) -> dict:
         return {"collected_fields": fields, "awaiting_slot": None, "pending_prompt": None}
 
     answer = fields.pop("_slot_answer_text", None)
+    if isinstance(answer, str):
+        # A tapped button arrives as its id; typed words fall through as they are.
+        answer = wording.ID_ANSWERS.get(answer.strip(), answer)
     awaiting = state.get("awaiting_slot")
     register = _as_candidates(fields.get("_register") or [])
 
-    # --- Pass 3: which of the look-alikes are genuinely new people? ----------
+    # --- Pass 3: is each look-alike the same person, or a new one? -----------
     if awaiting == DUPLICATE_SLOT and answer is not None:
         held: list[dict[str, Any]] = list(fields.get("_held_for_duplicate_check") or [])
-        selection = _select_by_name(answer, held)
-        if selection is None:
+        index = int(fields.get("_dup_index") or 0)
+        choice = _parse_same_new_skip(answer)
+        if choice is None or index >= len(held):
+            if index >= len(held):
+                return _finish_duplicates(fields)
             return _ask(
-                "Sorry, I didn't catch that.\nReply with the names of anyone who is "
-                "a different person, or none.",
+                _duplicate_question(held, index, retry=True),
                 DUPLICATE_SLOT,
                 fields,
+                _duplicate_options(),
             )
-
-        # Anyone confirmed as a different person joins those already cleared,
-        # so the run ends with one summary covering both halves.
-        already = list(fields.get("_cleared_so_far") or [])
-        queued = _queue_for_creation(already + [held[i] for i in selection], fields)
-        return _done(_closing_message(queued), fields)
+        if choice == "skip":
+            # "I'm not sure": nobody else is asked about, nobody is added from
+            # this round (those already cleared still are).
+            return _finish_duplicates(fields)
+        key = "_confirmed_new" if choice == "new" else "_confirmed_same"
+        fields[key] = list(fields.get(key) or []) + [held[index]]
+        fields["_dup_index"] = index + 1
+        return _ask_next_duplicate(fields) or _finish_duplicates(fields)
 
     # --- Pass 2: resolve the chosen names, then screen for duplicates --------
     if awaiting == PROMOTION_SLOT and answer is not None:
-        selection = _select_by_name(answer, workers)
-        if selection is None:
+        if not fields.get("_choosing") and _wants_to_choose(answer, workers):
+            fields["_choosing"] = True
+            example = _example_names(workers)
             return _ask(
-                "Sorry, I didn't catch that.\nReply with all, none, or the names of "
-                "the workers to add.",
+                wording.CHOOSE.format(example=example),
                 PROMOTION_SLOT,
                 fields,
+                slot_options(
+                    [
+                        SlotCandidate(wording.ID_ADD_ALL, wording.TITLE_ADD_ALL),
+                        SlotCandidate(wording.ID_NOT_NOW, wording.TITLE_NOT_NOW),
+                    ]
+                ),
             )
+        selection = _select_by_name(answer, workers)
+        if selection is None:
+            if fields.get("_choosing"):
+                prompt = wording.RETRY_CHOOSE.format(example=_example_names(workers))
+                options = slot_options(
+                    [
+                        SlotCandidate(wording.ID_ADD_ALL, wording.TITLE_ADD_ALL),
+                        SlotCandidate(wording.ID_NOT_NOW, wording.TITLE_NOT_NOW),
+                    ]
+                )
+            else:
+                prompt = wording.RETRY_OFFER.format(
+                    names=wording.join_names(_names_of(workers))
+                )
+                options = _offer_options(workers)
+            return _ask(prompt, PROMOTION_SLOT, fields, options)
         if not selection:
             return _done(_closing_message([]), fields)
 
         clear: list[dict[str, Any]] = []
-        held: list[dict[str, Any]] = []
+        held = []
         for i in selection:
             worker = workers[i]
             similar = _likely_existing(worker, register)
             if similar:
-                held.append({**worker, "_similar_to": similar})
+                held.append(
+                    {
+                        **worker,
+                        "_similar_to": similar.name,
+                        "_similar_trade": similar.trade,
+                        "_similar_since": _register_since(fields, similar.worker_id),
+                    }
+                )
             else:
                 clear.append(worker)
 
         if held:
             fields["_held_for_duplicate_check"] = held
+            fields["_dup_index"] = 0
             # Carried so the run ends with one closing summary covering both
             # halves, rather than two partial ones.
             fields["_cleared_so_far"] = clear
-            return _ask(_build_duplicate_message(held), DUPLICATE_SLOT, fields)
+            fields.pop("_choosing", None)
+            return _ask_next_duplicate(fields) or _finish_duplicates(fields)
 
         queued = _queue_for_creation(clear, fields)
         return _done(_closing_message(queued), fields)
 
     # --- Pass 1: the offer ---------------------------------------------------
-    return _ask(_build_offer_message(workers), PROMOTION_SLOT, fields)
+    return _ask(_build_offer_message(workers), PROMOTION_SLOT, fields, _offer_options(workers))
