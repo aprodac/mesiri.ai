@@ -242,3 +242,161 @@ class PostgresUsageCostRepository:
             whatsapp_messages=int(row["whatsapp_messages"]),
             whatsapp_cost_inr=Decimal(row["whatsapp_cost_inr"]),
         )
+
+    # --- The control panel's costs view (SA-05) ------------------------------
+    #
+    # Plain dicts, shaped for the API: these are listings, not the summary the
+    # trial caps compute with. Days are Indian calendar days (every customer
+    # is in India), so a day's costs match the day the company worked. A row
+    # with no price (an unknown model or category, stored with cost NULL, not
+    # as free) is counted in `unpriced` so a total is never silently short.
+
+    _TOTALS = (
+        "count(*) FILTER (WHERE pe.provider <> :wa) AS ai_calls, "
+        "COALESCE(sum(pe.cost_inr) FILTER (WHERE pe.provider <> :wa), 0) AS ai_cost_inr, "
+        "count(*) FILTER (WHERE pe.provider = :wa) AS whatsapp_messages, "
+        "COALESCE(sum(pe.cost_inr) FILTER (WHERE pe.provider = :wa), 0) AS whatsapp_cost_inr, "
+        "COALESCE(sum(pe.cost_inr), 0) AS total_cost_inr, "
+        "count(*) FILTER (WHERE pe.cost_inr IS NULL) AS unpriced "
+    )
+    _RANGE = (
+        "pe.metered AND pe.created_at >= :since "
+        "AND (CAST(:until AS timestamptz) IS NULL OR pe.created_at < :until) "
+        "AND (CAST(:org AS uuid) IS NULL OR " + _ORG + " = CAST(:org AS uuid)) "
+    )
+
+    async def cost_totals(
+        self, *, since: dt.datetime, until: dt.datetime | None, organization_id: uuid.UUID | None
+    ) -> dict[str, object]:
+        """AI and WhatsApp counts and cost (INR) in [since, until), for one
+        company or all of them."""
+        row = (
+            await self._conn.execute(
+                sa.text(f"SELECT {self._TOTALS} FROM provider_executions pe WHERE {self._RANGE}"),
+                {"wa": WHATSAPP, "since": since, "until": until, "org": organization_id},
+            )
+        ).mappings().one()
+        return dict(row)
+
+    async def costs_by_day(
+        self, *, since: dt.datetime, until: dt.datetime | None, organization_id: uuid.UUID | None
+    ) -> list[dict[str, object]]:
+        """The same totals per Indian calendar day, newest first."""
+        rows = (
+            await self._conn.execute(
+                sa.text(
+                    "SELECT (pe.created_at AT TIME ZONE 'Asia/Kolkata')::date AS day, "
+                    f"{self._TOTALS} FROM provider_executions pe WHERE {self._RANGE}"
+                    "GROUP BY 1 ORDER BY 1 DESC"
+                ),
+                {"wa": WHATSAPP, "since": since, "until": until, "org": organization_id},
+            )
+        ).mappings().all()
+        return [dict(r) for r in rows]
+
+    async def costs_by_company(
+        self, *, since: dt.datetime, until: dt.datetime | None
+    ) -> list[dict[str, object]]:
+        """The same totals per company, most expensive first. Rows with no
+        company (a signup before its company exists) are one row with
+        `organization_id` None; a deleted company keeps its costs with no
+        name (the column has no foreign key on purpose)."""
+        rows = (
+            await self._conn.execute(
+                sa.text(
+                    f"SELECT c.org AS organization_id, o.name AS organization_name, {self._TOTALS}"
+                    f"FROM provider_executions pe CROSS JOIN LATERAL (SELECT {_ORG} AS org) c "
+                    "LEFT JOIN organizations o ON o.id = c.org "
+                    f"WHERE {self._RANGE}"
+                    "GROUP BY c.org, o.name ORDER BY total_cost_inr DESC, ai_calls DESC"
+                ),
+                {"wa": WHATSAPP, "since": since, "until": until, "org": None},
+            )
+        ).mappings().all()
+        return [dict(r) for r in rows]
+
+    async def costs_by_inbound_message(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        since: dt.datetime,
+        until: dt.datetime | None,
+        limit: int = 200,
+    ) -> list[dict[str, object]]:
+        """What handling each message the company sent cost: the AI calls
+        made for it (by correlation id), newest first. Messages that cost
+        nothing are left out."""
+        rows = (
+            await self._conn.execute(
+                sa.text(
+                    "SELECT pe.correlation_id, min(im.received_at) AS received_at, "
+                    "min(im.sender_wa_id) AS sender, min(im.message_type) AS message_type, "
+                    "min(left(im.body_text, 200)) AS text, "
+                    "count(*) AS ai_calls, COALESCE(sum(pe.input_tokens), 0) AS input_tokens, "
+                    "COALESCE(sum(pe.output_tokens), 0) AS output_tokens, "
+                    "COALESCE(sum(pe.cost_inr), 0) AS ai_cost_inr, "
+                    "count(*) FILTER (WHERE pe.cost_inr IS NULL) AS unpriced "
+                    "FROM provider_executions pe "
+                    "LEFT JOIN inbound_messages im ON im.correlation_id = pe.correlation_id "
+                    f"WHERE {self._RANGE} AND pe.provider <> :wa AND pe.correlation_id IS NOT NULL "
+                    "GROUP BY pe.correlation_id ORDER BY max(pe.created_at) DESC LIMIT :limit"
+                ),
+                {
+                    "wa": WHATSAPP,
+                    "since": since,
+                    "until": until,
+                    "org": organization_id,
+                    "limit": limit,
+                },
+            )
+        ).mappings().all()
+        return [dict(r) for r in rows]
+
+    async def whatsapp_messages_sent(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        since: dt.datetime,
+        until: dt.datetime | None,
+        limit: int = 200,
+    ) -> list[dict[str, object]]:
+        """Each WhatsApp message sent to the company's people, newest first:
+        category, whether Meta billed it, and the cost."""
+        rows = (
+            await self._conn.execute(
+                sa.text(
+                    "SELECT pe.created_at AS sent_at, pe.recipient, pe.operation, pe.category, "
+                    "pe.billable, pe.cost_inr "
+                    f"FROM provider_executions pe WHERE {self._RANGE} AND pe.provider = :wa "
+                    "ORDER BY pe.created_at DESC LIMIT :limit"
+                ),
+                {
+                    "wa": WHATSAPP,
+                    "since": since,
+                    "until": until,
+                    "org": organization_id,
+                    "limit": limit,
+                },
+            )
+        ).mappings().all()
+        return [dict(r) for r in rows]
+
+    async def trial_costs(self, organization_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
+        """What each company cost while it was on trial (SS-11): from its
+        trial start until it converted, or until now if it never did."""
+        if not organization_ids:
+            return {}
+        rows = (
+            await self._conn.execute(
+                sa.text(
+                    f"SELECT o.id AS organization_id, {self._TOTALS}"
+                    "FROM organizations o JOIN provider_executions pe "
+                    f"  ON pe.metered AND {_ORG} = o.id "
+                    "  AND pe.created_at >= o.trial_started_at "
+                    "  AND (o.converted_at IS NULL OR pe.created_at < o.converted_at) "
+                    "WHERE o.id = ANY(:ids) GROUP BY o.id"
+                ),
+                {"wa": WHATSAPP, "ids": list(organization_ids)},
+            )
+        ).mappings().all()
+        return {row["organization_id"]: dict(row) for row in rows}

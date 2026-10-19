@@ -218,3 +218,49 @@ def test_a_company_admin_cannot_use_any_of_it(world):
     ):
         resp = getattr(world.client, method)(path, headers=world.company_admin)
         assert resp.status_code == 403, path
+
+
+def test_company_name_and_contact_are_edited_and_audited(world):
+    """SA-03: rename the company and set its primary contact; only real
+    changes are audited, with their before and after."""
+    resp = world.client.patch(
+        f"/admin/organizations/{world.org}/details",
+        json={"name": "  Skyline   Builders Pvt Ltd ", "primary_contact": "Suresh 98765 43210"},
+        headers=world.admin,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["name"] == "Skyline Builders Pvt Ltd"
+    assert resp.json()["primary_contact"] == "Suresh 98765 43210"
+
+    # Same values again: nothing changes, nothing is audited.
+    again = world.client.patch(
+        f"/admin/organizations/{world.org}/details",
+        json={"name": "Skyline Builders Pvt Ltd"},
+        headers=world.admin,
+    )
+    assert again.status_code == 200
+    assert _audit(world) == ["Company details updated: name, primary_contact"]
+    with world.engine.begin() as c:
+        details = c.execute(
+            text("SELECT details FROM admin_audit_log WHERE organization_id = :o"), {"o": world.org}
+        ).scalar_one()
+    assert details["changes"]["name"] == {
+        "before": "Skyline Builders",
+        "after": "Skyline Builders Pvt Ltd",
+    }
+
+
+def test_company_details_refuse_an_empty_name_and_strangers(world):
+    empty = world.client.patch(
+        f"/admin/organizations/{world.org}/details", json={"name": "   "}, headers=world.admin
+    )
+    missing = world.client.patch(
+        f"/admin/organizations/{uuid.uuid4()}/details", json={"name": "X"}, headers=world.admin
+    )
+    company_admin = world.client.patch(
+        f"/admin/organizations/{world.org}/details",
+        json={"name": "Hijacked"},
+        headers=world.company_admin,
+    )
+    assert (empty.status_code, missing.status_code, company_admin.status_code) == (422, 404, 403)
+    assert _audit(world) == []

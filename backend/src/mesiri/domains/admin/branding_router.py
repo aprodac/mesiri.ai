@@ -1,4 +1,5 @@
-"""Branding requests and a company's letterhead, for the control panel (SA-09).
+"""Branding requests and a company's letterhead and details, for the control
+panel (SA-09, SA-03).
 
 The owner sends letterhead / visiting card / logo photos on WhatsApp (SS-14);
 the Mesiri team sees them here next to the letterhead form, fills it in,
@@ -196,6 +197,63 @@ async def update_company_branding(
             {"after": {**changes, **contact}},
         )
     return await _company_branding(conn, storage, org_id)
+
+
+class CompanyDetailsResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    primary_contact: str | None = None
+
+
+async def _details(conn: AsyncConnection, org_id: uuid.UUID) -> CompanyDetailsResponse:
+    row = (
+        await conn.execute(
+            sa.text("SELECT id, name, primary_contact FROM organizations WHERE id = :id"),
+            {"id": org_id},
+        )
+    ).mappings().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    return CompanyDetailsResponse(**row)
+
+
+@router.get("/organizations/{org_id}/details", response_model=CompanyDetailsResponse)
+async def get_company_details(
+    org_id: uuid.UUID,
+    conn: AsyncConnection = Depends(get_db_conn),
+    _admin: dict = Depends(require_platform_admin),
+):
+    """The company's name and primary contact, for the edit form (SA-03)."""
+    return await _details(conn, org_id)
+
+
+@router.patch("/organizations/{org_id}/details", response_model=CompanyDetailsResponse)
+async def update_company_details(
+    org_id: uuid.UUID,
+    body: dict,
+    conn: AsyncConnection = Depends(get_db_conn),
+    _admin: dict = Depends(require_platform_admin),
+):
+    """Rename the company or change its primary contact (SA-03). Fields left
+    out stay as they are; the change is recorded in the audit log with its
+    before and after."""
+    try:
+        changes = branding_admin.validate_details(body)
+        changed = await branding_admin.update_details(conn, org_id, changes)
+    except branding_admin.BrandingAdminError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    if changed:
+        await record_admin_action(
+            conn,
+            actor=actor_from_admin(_admin),
+            action=audit.COMPANY_UPDATED,
+            organization_id=org_id,
+            target_type="organization",
+            target_id=org_id,
+            summary=f"Company details updated: {', '.join(sorted(changed))}",
+            details={"changes": changed},
+        )
+    return await _details(conn, org_id)
 
 
 @router.put("/organizations/{org_id}/branding/logo", response_model=CompanyBrandingResponse)
