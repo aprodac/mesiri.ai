@@ -413,6 +413,10 @@ export default function OrganizationDetail() {
             <div style={{ fontSize: '12px', color: 'var(--neutral-500)' }}>Users</div>
             <div style={{ fontSize: '13px' }}>{users.length}</div>
           </div>
+          <div>
+            <div style={{ fontSize: '12px', color: 'var(--neutral-500)' }}>WhatsApp messages</div>
+            <Link to={`/logs?org=${org.id}`} style={{ fontSize: '13px' }}>View messages →</Link>
+          </div>
         </div>
       </div>
 

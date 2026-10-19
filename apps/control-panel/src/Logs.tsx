@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { RefreshCw, ChevronDown, ChevronRight, Check, RotateCcw, Code, Cpu, Link2, Copy } from 'lucide-react';
 import { api } from './api';
 
@@ -21,7 +22,71 @@ interface InboundMessageSummary {
   workflow_instance_id: string | null;
   workflow_key: string | null;
   workflow_phase: string | null;
+  // BE-26 / SA-04: whose message, which company, how many records it created.
+  organization_id?: string | null;
+  organization_name?: string | null;
+  sender_user_id?: string | null;
+  sender_name?: string | null;
+  created_count?: number;
 }
+
+interface CreatedRecord {
+  event_type: string;
+  aggregate_type: string;
+  aggregate_id: string;
+  correlation_id: string | null;
+  created_at: string;
+}
+
+interface CompanyOption {
+  id: string;
+  name: string;
+}
+
+// "LabourAttendanceRecorded" -> "Labour attendance recorded"
+function humanEvent(eventType: string): string {
+  const words = eventType.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+// SA-04: what a message created or changed, from its domain events (BE-26).
+const CreatedPanel = ({ correlationId }: { correlationId: string }) => {
+  const [records, setRecords] = useState<CreatedRecord[] | null>(null);
+
+  useEffect(() => {
+    api
+      .get<CreatedRecord[]>(`/admin/logs/messages/${correlationId}/created`)
+      .then((res) => setRecords(res.data))
+      .catch(() => setRecords([]));
+  }, [correlationId]);
+
+  return (
+    <div style={{ backgroundColor: '#ffffff', borderRadius: 'var(--radius-sm)', border: '1px solid var(--neutral-200)', padding: 'var(--space-4)' }}>
+      <div style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--neutral-500)', marginBottom: 'var(--space-3)' }}>
+        What it created
+      </div>
+      {records === null ? (
+        <div style={{ fontSize: '12px', color: 'var(--neutral-400)' }}>Loading…</div>
+      ) : records.length === 0 ? (
+        <div style={{ fontSize: '12px', color: 'var(--neutral-400)' }}>Nothing saved from this message.</div>
+      ) : (
+        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {records.map((r, i) => (
+            <li key={`${r.aggregate_id}-${i}`} style={{ fontSize: '12px', color: 'var(--neutral-800)' }}>
+              {humanEvent(r.event_type)}
+              <span style={{ color: 'var(--neutral-400)', fontFamily: 'monospace', marginLeft: '6px' }}>
+                {r.aggregate_type} · {r.aggregate_id.slice(0, 8)}
+              </span>
+              {r.correlation_id && r.correlation_id !== correlationId && (
+                <span style={{ color: 'var(--neutral-400)', marginLeft: '6px' }}>(from a follow-up answer)</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
 
 interface InboundMessageList {
   items: InboundMessageSummary[];
@@ -839,7 +904,8 @@ const LogDetailPanel = ({
 
       {/* Right column - Execution & Actions */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-        
+        <CreatedPanel correlationId={message.correlation_id} />
+
         {/* Actions & Triage */}
         <div style={{ backgroundColor: '#ffffff', borderRadius: 'var(--radius-sm)', border: '1px solid var(--neutral-200)', padding: 'var(--space-4)' }}>
           <div style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--neutral-500)', marginBottom: 'var(--space-3)' }}>
@@ -1108,6 +1174,18 @@ export default function Logs() {
   const [waIdFilter, setWaIdFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [providerFilter, setProviderFilter] = useState('');
+  // SA-04: per company (?org=<id>, so a company page can link here) and per user (?user=<id>).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const companyFilter = searchParams.get('org') || '';
+  const userFilter = searchParams.get('user') || '';
+  const [companies, setCompanies] = useState<CompanyOption[]>([]);
+  const setCompanyFilter = (id: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (id) next.set('org', id);
+    else next.delete('org');
+    next.delete('user');
+    setSearchParams(next);
+  };
   const [live, setLive] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const messagesRef = useRef<InboundMessageSummary[]>([]);
@@ -1135,16 +1213,25 @@ export default function Logs() {
           wa_id: waIdFilter || undefined,
           status: statusFilter || undefined,
           provider: providerFilter || undefined,
+          organization_id: companyFilter || undefined,
+          user_id: userFilter || undefined,
           limit: 50,
         },
       })
       .then((res) => setMessages(res.data.items || []))
       .finally(() => setLoading(false));
-  }, [waIdFilter, statusFilter, providerFilter]);
+  }, [waIdFilter, statusFilter, providerFilter, companyFilter, userFilter]);
 
   useEffect(() => {
     loadHistory();
   }, [loadHistory]);
+
+  useEffect(() => {
+    api
+      .get<CompanyOption[]>('/admin/organizations')
+      .then((res) => setCompanies(res.data.map((c) => ({ id: c.id, name: c.name }))))
+      .catch(() => setCompanies([]));
+  }, []);
 
   // Live polling: cursor-based on the newest row currently held, not OFFSET —
   // immune to new inserts shifting a page window, and dedupes by id.
@@ -1158,6 +1245,8 @@ export default function Logs() {
             wa_id: waIdFilter || undefined,
             status: statusFilter || undefined,
             provider: providerFilter || undefined,
+            organization_id: companyFilter || undefined,
+            user_id: userFilter || undefined,
             limit: 50,
           },
         })
@@ -1171,7 +1260,7 @@ export default function Logs() {
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [live, waIdFilter, statusFilter, providerFilter]);
+  }, [live, waIdFilter, statusFilter, providerFilter, companyFilter, userFilter]);
 
   return (
     <div className="animate-fade-in" style={{ maxWidth: '1200px' }}>
@@ -1185,7 +1274,7 @@ export default function Logs() {
         </button>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px 180px auto', gap: 'var(--space-4)', marginBottom: 'var(--space-6)', backgroundColor: '#ffffff', border: '1px solid var(--neutral-200)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-4)', alignItems: 'flex-start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 200px 160px 160px auto', gap: 'var(--space-4)', marginBottom: 'var(--space-6)', backgroundColor: '#ffffff', border: '1px solid var(--neutral-200)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-4)', alignItems: 'flex-start' }}>
         
         {/* WhatsApp number filter */}
         <div className="form-group" style={{ marginBottom: 0 }}>
@@ -1223,6 +1312,28 @@ export default function Logs() {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Company filter (SA-04) */}
+        <div className="form-group" style={{ marginBottom: 0 }}>
+          <label style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--neutral-500)', display: 'block', marginBottom: '6px' }}>Company</label>
+          <select
+            className="form-input"
+            value={companyFilter}
+            onChange={(e) => setCompanyFilter(e.target.value)}
+            style={{ width: '100%', height: '36px' }}
+          >
+            <option value="">All Companies</option>
+            {companies.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          {userFilter && (
+            <button type="button" className="badge badge-info" style={{ border: 'none', cursor: 'pointer', fontSize: '10px', padding: '2px 8px', marginTop: 'var(--space-2)' }}
+              onClick={() => { const next = new URLSearchParams(searchParams); next.delete('user'); setSearchParams(next); }}>
+              One user only ✕
+            </button>
+          )}
         </div>
 
         {/* Status filter */}
@@ -1323,7 +1434,10 @@ export default function Logs() {
                   <tr>
                     <td colSpan={8} style={{ padding: '10px 12px', backgroundColor: 'var(--neutral-50)', borderTop: '1px solid var(--neutral-200)', borderBottom: '1px solid var(--neutral-200)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: '11px', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        <span>{session.sender_wa_id}</span>
+                        <span>{session.messages[0].sender_name || session.sender_wa_id}</span>
+                        {session.messages[0].organization_name && (
+                          <span style={{ fontWeight: 400, textTransform: 'none' }}>· {session.messages[0].organization_name}</span>
+                        )}
                         <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--neutral-400)' }}>
                           {session.messages.length} message{session.messages.length === 1 ? '' : 's'} · {formatRelativeTime(session.messages[session.messages.length - 1].received_at)} – {formatRelativeTime(session.messages[0].received_at)}
                         </span>
@@ -1347,7 +1461,17 @@ export default function Logs() {
                                 {new Date(m.received_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </div>
                             </td>
-                            <td>{m.sender_wa_id}</td>
+                            <td>
+                              {m.sender_name || m.sender_wa_id}
+                              {m.sender_name && (
+                                <div style={{ fontSize: '11px', color: 'var(--neutral-400)', marginTop: '2px' }}>{m.sender_wa_id}</div>
+                              )}
+                              {!!m.created_count && (
+                                <div style={{ fontSize: '11px', color: 'var(--success, #15803d)', marginTop: '2px' }}>
+                                  {m.created_count} saved
+                                </div>
+                              )}
+                            </td>
                             <td>
                               {m.message_type}
                               {m.message_type === 'audio' && ' 🗣'}
