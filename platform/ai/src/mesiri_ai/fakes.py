@@ -212,3 +212,78 @@ class FakeTranslationProvider:
             model="fake",
             latency_ms=10.0,
         )
+
+
+class FakeToolCallingProvider:
+    """Scripted stand-in for a tool-calling model.
+
+    ``script`` is a list of steps, one per model turn: a step is either a list
+    of ``(tool_name, arguments)`` calls, or a string (the final answer). Calls
+    go through the real handler, so adapters are exercised exactly as with a
+    live model; only the model's choices are fixed. A callable step receives
+    the results so far and returns a step (for answers built from tool output).
+    """
+
+    provider = "fake"
+
+    def __init__(
+        self,
+        script: list,
+        *,
+        error: BaseException | None = None,
+        delay_seconds: float = 0.0,
+    ) -> None:
+        self._script = list(script)
+        self._error = error
+        self._delay = delay_seconds
+        self.calls = 0
+        self.last_system_prompt: str | None = None
+        self.last_messages: list = []
+
+    async def run_tools(
+        self,
+        system_prompt,
+        messages,
+        tools,
+        handler,
+        *,
+        max_steps: int = 3,
+        timeout_seconds: float | None = None,
+        correlation_id: str | None = None,
+    ):
+        from .models import ToolCallRecord, ToolOutcome, ToolRunResult
+
+        self.calls += 1
+        self.last_system_prompt = system_prompt
+        self.last_messages = list(messages)
+        if self._delay:
+            await asyncio.sleep(self._delay)
+        if self._error is not None:
+            raise self._error
+        known = {t.name for t in tools}
+        records: list[ToolCallRecord] = []
+        steps = 0
+        for scripted in self._script:
+            step = scripted(records) if callable(scripted) else scripted
+            if isinstance(step, str):
+                return ToolRunResult(
+                    text=step, calls=records, steps=steps, stop_reason="answered", model="fake"
+                )
+            if steps >= max_steps:
+                return ToolRunResult(
+                    calls=records, steps=steps, stop_reason="max_steps", model="fake"
+                )
+            steps += 1
+            stop = False
+            for name, arguments in step:
+                if name not in known:
+                    outcome = ToolOutcome(content={"error": f"unknown tool {name}"})
+                else:
+                    outcome = await handler(name, dict(arguments))
+                records.append(ToolCallRecord(name=name, arguments=dict(arguments), outcome=outcome))
+                stop = stop or outcome.stop
+            if stop:
+                return ToolRunResult(
+                    calls=records, steps=steps, stop_reason="stopped_by_tool", model="fake"
+                )
+        return ToolRunResult(calls=records, steps=steps, stop_reason="max_steps", model="fake")

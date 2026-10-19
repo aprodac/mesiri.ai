@@ -260,3 +260,62 @@ class DecompositionResult(BaseModel):
         self.is_multi_intent = confirmed
         self.segments = segments if confirmed else []
         return self
+
+
+# ---------------------------------------------------------------------------
+# Tool calling (request [40]): a model that decides which of the caller's
+# tools to run, and writes the final reply from what they returned.
+# ---------------------------------------------------------------------------
+
+
+class ToolSpec(BaseModel):
+    """One tool the model may call: a name, what it is for, and its arguments
+    as a JSON schema (provider-neutral; the adapter converts)."""
+
+    name: str
+    description: str
+    parameters: dict[str, Any] = Field(default_factory=lambda: {"type": "object", "properties": {}})
+
+
+class ChatMessage(BaseModel):
+    """One earlier turn handed to the model. ``role`` is ``user`` or ``model``."""
+
+    role: str
+    text: str
+
+
+class ToolOutcome(BaseModel):
+    """What the caller's handler returns for one tool call.
+
+    ``content`` goes back to the model verbatim. ``stop`` ends the run after
+    this round of calls without asking the model again (a tool that parked the
+    conversation on a question the user must answer first).
+    """
+
+    content: dict[str, Any] = Field(default_factory=dict)
+    stop: bool = False
+
+
+class ToolCallRecord(BaseModel):
+    """One tool call the model made and what came back (for tracing/tests)."""
+
+    name: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    outcome: ToolOutcome = Field(default_factory=ToolOutcome)
+    error: str | None = None
+
+
+class ToolRunResult(BaseModel):
+    """The end of a tool-calling run.
+
+    ``text`` is the model's final message (empty when the run stopped on a
+    parked question or ran out of steps). ``stop_reason`` is one of
+    ``answered`` | ``stopped_by_tool`` | ``max_steps``.
+    """
+
+    text: str = ""
+    calls: list[ToolCallRecord] = Field(default_factory=list)
+    steps: int = 0
+    stop_reason: str = "answered"
+    model: str | None = None
+    latency_ms: float | None = None

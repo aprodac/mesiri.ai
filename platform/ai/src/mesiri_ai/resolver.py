@@ -495,6 +495,70 @@ class DynamicAIProviderResolver:
             system_prompt, user_prompt, correlation_id=correlation_id
         )
 
+    async def run_tools(
+        self,
+        system_prompt: str,
+        messages: Any,
+        tools: Any,
+        handler: Any,
+        *,
+        max_steps: int = 3,
+        timeout_seconds: float | None = None,
+        correlation_id: str | None = None,
+    ) -> Any:
+        """Tool-calling for the WhatsApp assistant agent (request [40]).
+
+        Routed by the ``agent`` capability: standard is Gemini Flash (the
+        environment's Gemini model), a premium tier is just another model on
+        that route. Only Gemini implements tool calling today, so a route that
+        names another provider raises a configuration error the caller treats
+        like any other failure. A route with a fallback *model* on the same
+        provider retries once on it when the first fails."""
+        config = await self._resolve_config()
+        route = config["routing"].get("agent") or {}
+        gemini_key = config["secrets"].get("gemini", {}).get("api_key")
+        provider_id = route.get("provider_id") or "gemini"
+        if provider_id != "gemini" or not gemini_key:
+            raise MesiriError.configuration(
+                "No tool-calling provider configured (the agent needs Gemini)",
+                code="CONFIG_MISSING",
+            )
+        model = route.get("model") or self._settings.gemini.model
+        fallback_model = route.get("fallback_model") if route.get(
+            "fallback_provider_id"
+        ) in (None, "", "gemini") else None
+
+        tools_ran = 0
+
+        async def _counted(name: str, arguments: dict) -> Any:
+            nonlocal tools_ran
+            tools_ran += 1
+            return await handler(name, arguments)
+
+        async def _call(mdl: str) -> Any:
+            provider = self._cached_gemini_provider(config, mdl)
+            return await provider.run_tools(
+                system_prompt,
+                messages,
+                tools,
+                _counted,
+                max_steps=max_steps,
+                timeout_seconds=timeout_seconds,
+                correlation_id=correlation_id,
+            )
+
+        try:
+            return await _call(model)
+        except MesiriError:
+            # Never re-run after a tool ran: the tools write, and a second
+            # model would repeat them.
+            if fallback_model and fallback_model != model and not tools_ran:
+                logger.warning(
+                    "agent model %r failed, trying fallback model %r", model, fallback_model
+                )
+                return await _call(fallback_model)
+            raise
+
     async def analyze_image(
         self,
         image: bytes,

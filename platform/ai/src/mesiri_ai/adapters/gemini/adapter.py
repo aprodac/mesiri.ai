@@ -12,17 +12,25 @@ use the fake provider.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import time
+from collections.abc import Sequence
 from typing import Any
 
 from ... import usage
 from ...core.errors import malformed_output
 from ...core.fallback import call_with_resilience
 from ...models import (
+    ChatMessage,
     DecompositionResult,
     ExtractionResult,
     SpeechResult,
+    ToolCallRecord,
+    ToolOutcome,
+    ToolRunResult,
+    ToolSpec,
     TranslationResult,
     VisionResult,
     parse_extracted_intents,
@@ -929,6 +937,152 @@ class GeminiProvider:
         return (
             raw_text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         )
+
+    async def run_tools(
+        self,
+        system_prompt: str,
+        messages: Sequence[ChatMessage],
+        tools: Sequence[ToolSpec],
+        handler: Any,
+        *,
+        max_steps: int = 3,
+        timeout_seconds: float | None = None,
+        correlation_id: str | None = None,
+    ) -> ToolRunResult:
+        """Native Gemini function calling, one round per model turn.
+
+        Automatic function calling is turned off: the caller's handler runs
+        each tool (so org scoping, validation and the step limit stay the
+        caller's), and the model's own turn -- thought signatures included --
+        is sent back unchanged with the results.
+        """
+        from google.genai import types  # lazy
+
+        client = self._get_client()
+        declarations = [
+            types.FunctionDeclaration(
+                name=t.name, description=t.description, parameters_json_schema=t.parameters
+            )
+            for t in tools
+        ]
+        config = types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            tools=[types.Tool(function_declarations=declarations)] if declarations else None,
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+            # Routing a note to tools does not need long reasoning; it is the
+            # difference between ~1s and ~4s a round. The Pro models cannot
+            # switch thinking off (the API rejects a zero budget), so a
+            # premium route leaves it at the model's default.
+            thinking_config=(
+                None if "pro" in self._settings.model.lower()
+                else types.ThinkingConfig(thinking_budget=0)
+            ),
+        )
+        contents: list[Any] = [
+            types.Content(role=m.role, parts=[types.Part(text=m.text)]) for m in messages
+        ]
+        records: list[ToolCallRecord] = []
+        started = time.perf_counter()
+
+        async def _loop() -> ToolRunResult:
+            steps = 0
+            while True:
+                # The round after the last allowed tool round gets no tools,
+                # so the model has to answer from what it has.
+                round_config = config if steps < max_steps else config.model_copy(
+                    update={"tools": None}
+                )
+
+                async def _raw(cfg: Any = round_config) -> Any:
+                    return await client.aio.models.generate_content(
+                        model=self._settings.model, contents=contents, config=cfg
+                    )
+
+                resp, latency_ms = await call_with_resilience(
+                    _raw,
+                    provider=self.provider,
+                    operation="run_tools",
+                    timeout_seconds=self._settings.timeout_seconds,
+                    max_retries=0,
+                    correlation_id=correlation_id,
+                )
+                usage.report(
+                    usage.ProviderUsage(
+                        provider=self.provider,
+                        operation="run_tools",
+                        model=self._settings.model,
+                        correlation_id=correlation_id,
+                        latency_ms=latency_ms,
+                        **usage.gemini_usage(resp),
+                    )
+                )
+                calls = list(getattr(resp, "function_calls", None) or [])
+                if not calls or steps >= max_steps:
+                    return ToolRunResult(
+                        text=(getattr(resp, "text", None) or "").strip() if not calls else "",
+                        calls=records,
+                        steps=steps,
+                        stop_reason="answered" if not calls else "max_steps",
+                        model=self._settings.model,
+                    )
+                steps += 1
+                candidates = getattr(resp, "candidates", None) or []
+                if candidates and getattr(candidates[0], "content", None) is not None:
+                    contents.append(candidates[0].content)
+                response_parts: list[Any] = []
+                stop = False
+                for call in calls:
+                    name = getattr(call, "name", "") or ""
+                    arguments = dict(getattr(call, "args", None) or {})
+                    try:
+                        outcome = await handler(name, arguments)
+                        error = None
+                    except Exception as exc:  # noqa: BLE001 — told to the model, kept in the trace
+                        _log.exception("gemini.tool_failed tool=%s", name)
+                        outcome = ToolOutcome(content={"error": "the tool failed"})
+                        error = f"{type(exc).__name__}: {exc}"
+                    records.append(
+                        ToolCallRecord(
+                            name=name, arguments=arguments, outcome=outcome, error=error
+                        )
+                    )
+                    stop = stop or outcome.stop
+                    response_parts.append(
+                        types.Part.from_function_response(name=name, response=outcome.content)
+                    )
+                if stop:
+                    return ToolRunResult(
+                        calls=records,
+                        steps=steps,
+                        stop_reason="stopped_by_tool",
+                        model=self._settings.model,
+                    )
+                contents.append(types.Content(role="user", parts=response_parts))
+
+        try:
+            if timeout_seconds is not None:
+                result = await asyncio.wait_for(_loop(), timeout=timeout_seconds)
+            else:
+                result = await _loop()
+        except TimeoutError as exc:
+            # The overall deadline, not one call's (call_with_resilience maps
+            # those itself). Reported like any other provider failure.
+            from ...core.errors import map_provider_error
+            from ...core.failures import ProviderFailure, report_failure
+
+            err = map_provider_error(self.provider, exc, correlation_id=correlation_id)
+            report_failure(
+                ProviderFailure(
+                    provider=self.provider,
+                    operation="run_tools",
+                    error_code=err.error_code,
+                    status_code=None,
+                    correlation_id=correlation_id,
+                )
+            )
+            raise err from exc
+        result.latency_ms = round((time.perf_counter() - started) * 1000, 2)
+        return result
 
     async def translate_to_english(
         self, text: str, *, correlation_id: str | None = None
