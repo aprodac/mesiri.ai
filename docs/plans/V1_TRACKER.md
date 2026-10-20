@@ -321,3 +321,4 @@ Claude Code as a team member: listens to the team and customer WhatsApp groups, 
 | 2026-10-19 | WA-25 human, explained questions + no slot question can trap a sender (request 51) | `110952e`, `3ef7e85` |
 | 2026-10-19 | WA-27 assistant top 3: reply in the typed script, questions/unreadable parts named, today's-report lookup scope | `6ade2d4`, `a4edebf`, `7fac8aa`, `be86f46`, `8697b54` |
 | 2026-10-19 | WA-28 conversation quality: report lookup fix, percentages, saved lists from data, questions noted, reports for any day, no silent failures, scorecard | `09387da`, `d5ceed1`, `40a4012`, `a9b62a8`, `1cc421a`, `8652647`, `093216a`, `e27d35f` |
+| 2026-10-20 | WA-29 WA: one reply per site update (no stray query summary) (request 63) | `909c909` |
