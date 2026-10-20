@@ -1,5 +1,8 @@
 # Conversation scorecard — the WhatsApp assistant
 
+> **Current focus (Ilan, 20 Oct): general conversation outside the main workflows. Auto cycles test these batches in order and pick the worst reply to fix.**
+> Jump to [General conversation (auto-loop focus)](#general-conversation-auto-loop-focus). The 25 work-record messages below stay as the regression card.
+
 A fixed set of 25 messages a site engineer really sends, scored **0–2** each, so
 "how good is the assistant" is a number we can compare before and after a change
 (request 57, A1). Run it by hand on the live number after a deploy (about 10
@@ -62,3 +65,39 @@ site share a name). Work row `Plastering · 2nd floor · 40%`. Checked offline i
 |---|---|---|---|
 | 2026-10-19 | `5a0bb2e` (before request 57) | ≈ 33 | Ilan's live test: report error, question echoed, raw words in bullets, "finished" at 40%, name twice. |
 | _after deploy_ | _fill in_ | | |
+
+---
+
+## General conversation (auto-loop focus)
+
+Messages that don't fall into a main workflow. Goal: Mesiri never feels like a bot, and every kind of message gets a clean, natural reply.
+
+### Scoring per reply (0 / 1 / 2 on each)
+
+1. Answers what was actually said (not a canned menu).
+2. Natural, human tone, not repeated word-for-word.
+3. Worker's language and script.
+4. One message.
+5. Leads back to site work gently, without forcing a menu.
+
+**2** = a good human would say that · **1** = OK but robotic or generic · **0** = ignored, wrong or canned.
+
+Scope note for the loop: replies to these come from capability help / direct replies (`channel/replies.py`, `runtime/capability_help.py`, `runtime/reply_language.py`). Request [65] reworked that path (WA-31, `dcf4aef`); the first cycle after it deploys re-tests batch B.
+
+### Batches (5 messages each, fits the 6-send budget per cycle)
+
+| Batch | Kind | Messages | Expected kind of reply |
+|---|---|---|---|
+| A | Greetings / small talk | `yo` · `good morning` · `hi bro` · `thanks` · `ok 👍` | Short, warm, matches the tone; no menu. `thanks`/`ok 👍` get a brief close, not a new question. |
+| B | About the bot | `what can you do?` · `are you hardcoded` · `are you a real person?` · `who made you?` · `you sound like a bot` | Honest (an AI assistant, not a person), answers the question asked, one or two lines, points to site updates and reports. |
+| C | Mood / complaints | `this is useless` · `I'm tired today` · `rain today, no work` · `boss is angry` · `why so slow` | Acknowledges the feeling first; for rain, offers to note the delay; no lecture, no menu. |
+| D | Malayalam / Manglish | `enthokke und vishesham?` · `ningal aara?` · `nanni` · `innu pani illa` · `എന്താ ചെയ്യാൻ പറ്റുക?` | Reply in the worker's language and script (Manglish → Manglish letters, Malayalam script → Malayalam). |
+| E | Off-topic / vague | `what's the weather tomorrow?` · `tell me a joke` · `?` · `hmm` · `send me money` | Honest about what it can't do, light touch (a short joke is fine), asks what they need for `?`/`hmm`; never plays along with money. |
+| F | Half-work questions | `how do I add a new worker?` · `can you remind me tomorrow?` · `who is my engineer?` · `can I send photos?` · `what did you save?` | A direct, true answer from what the assistant really does; a real answer for `what did you save?`. |
+
+### Runs
+
+The loop appends one row per cycle: date, batch, score per message (0–10 each, or the 0/1/2 total per criterion), issue picked.
+
+| Date | Batch | Score per message | Issue picked |
+|---|---|---|---|
