@@ -82,7 +82,7 @@ Messages that don't fall into a main workflow. Goal: Mesiri never feels like a b
 
 **2** = a good human would say that · **1** = OK but robotic or generic · **0** = ignored, wrong or canned.
 
-Scope note for the loop: replies to these come from capability help / direct replies (`channel/replies.py`, `runtime/capability_help.py`, `runtime/reply_language.py`). Request [65] reworked that path (WA-31, `dcf4aef`); the first cycle after it deploys re-tests batch B.
+Scope note for the loop: replies to these come from capability help / direct replies (`channel/replies.py`, `runtime/capability_help.py`, `runtime/reply_language.py`). Request [65] reworked that path (WA-31, `dcf4aef`); the first cycle after it deploys re-tests batch B. Request [68] (WA-32) added the Mesiri voice, guardrail and fixed "what can you do" for the agent path (`runtime/persona.py`); the 30 messages are also in `apps/whatsapp-assistant/tests/conversation/general_messages.yaml`.
 
 ### Batches (5 messages each, fits the 6-send budget per cycle)
 
