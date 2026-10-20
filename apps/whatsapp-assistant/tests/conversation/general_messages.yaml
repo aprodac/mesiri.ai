@@ -1,0 +1,35 @@
+# The 30 general-conversation messages of docs/qa/CONVERSATION_SCORECARD.md (request [68]).
+# One JSON object per line (valid YAML flow mapping, parsed without a YAML dependency).
+# lang = the letters the reply must use: en | manglish (Latin letters) | ml (Malayalam script).
+# Every reply: <= max_chars, no provider/model name, no 'how can I help', no menu, one message.
+
+- {"id": 1, "batch": "A", "message": "yo", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 2, "batch": "A", "message": "good morning", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 3, "batch": "A", "message": "hi bro", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 4, "batch": "A", "message": "thanks", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 5, "batch": "A", "message": "ok 👍", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 6, "batch": "B", "message": "what can you do?", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 7, "batch": "B", "message": "are you hardcoded", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 8, "batch": "B", "message": "are you a real person?", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 9, "batch": "B", "message": "who made you?", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 10, "batch": "B", "message": "you sound like a bot", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 11, "batch": "C", "message": "this is useless", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 12, "batch": "C", "message": "I'm tired today", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 13, "batch": "C", "message": "rain today, no work", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 14, "batch": "C", "message": "boss is angry", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 15, "batch": "C", "message": "why so slow", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 16, "batch": "D", "message": "enthokke und vishesham?", "lang": "manglish", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 17, "batch": "D", "message": "ningal aara?", "lang": "manglish", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 18, "batch": "D", "message": "nanni", "lang": "manglish", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 19, "batch": "D", "message": "innu pani illa", "lang": "manglish", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 20, "batch": "D", "message": "എന്താ ചെയ്യാൻ പറ്റുക?", "lang": "ml", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 21, "batch": "E", "message": "what's the weather tomorrow?", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 22, "batch": "E", "message": "tell me a joke", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 23, "batch": "E", "message": "?", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 24, "batch": "E", "message": "hmm", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 25, "batch": "E", "message": "send me money", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 26, "batch": "F", "message": "how do I add a new worker?", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 27, "batch": "F", "message": "can you remind me tomorrow?", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 28, "batch": "F", "message": "who is my engineer?", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 29, "batch": "F", "message": "can I send photos?", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+- {"id": 30, "batch": "F", "message": "what did you save?", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
