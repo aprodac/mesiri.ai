@@ -1079,7 +1079,7 @@ def build_message_handlers(
             await message_logger.mark_completed(correlation_id=message.correlation_id)
             return
 
-        async def _deliver_handled(handled) -> None:  # type: ignore[no-untyped-def]
+        async def _deliver_handled(handled, *, fold_plan_reply: bool = False) -> None:  # type: ignore[no-untyped-def]
             """Everything that follows a saved/answered confirmation: the
             reply, the receipt image, the worker-promotion / team-photo /
             project-setup offers, the plan advance and the audit rows. Shared
@@ -1115,6 +1115,20 @@ def build_message_handlers(
                 _log.exception("offers.gather_failed user=%s", ctx.user_id)
                 gathered = _Gathered()
             _gathered[id(handled)] = gathered
+            if fold_plan_reply:
+                # Save-first: a read-only answer the same message also asked
+                # for rides in this one reply instead of a second message.
+                # Anything with buttons (a step needing Yes/No) still goes on
+                # its own, from _deliver_followups.
+                try:
+                    early = await _advance_plan_for(handled)
+                except Exception:  # noqa: BLE001 -- advanced later, as before
+                    _log.exception("plan.advance_failed user=%s", ctx.user_id)
+                else:
+                    _advanced[id(handled)] = early
+                    if early is not None and not (early.buttons or early.list_rows) and early.text:
+                        reply_text = f"{reply_text}\n\n{early.text}".strip()
+                        _advanced[id(handled)] = None
             # The receipt card is rendered first (bounded) and sent inside
             # this one reply -- as the header of its button message.
             receipt_image = await _receipt_image(handled)
@@ -1244,13 +1258,27 @@ def build_message_handlers(
                 _log.exception("project_setup.offer_failed user=%s", ctx.user_id)
             return _Gathered(offers, promotion_offered)
 
+        # id(handled) -> the plan advance already run while composing its
+        # reply (None when it was folded into that reply).
+        _advanced: dict[int, Any] = {}
+
+        async def _advance_plan_for(handled):  # type: ignore[no-untyped-def]
+            from runtime.plan_executor import advance_plan
+
+            return await advance_plan(
+                handled,
+                plan_store=plan_store,
+                workflow_runtime=workflow_runtime,
+                actor=ctx,
+            )
+
         async def _deliver_followups(handled, *, audit: bool = True) -> None:  # type: ignore[no-untyped-def]
             """What follows a saved/answered confirmation once its reply is
             out: the plan advance, the held team-photo question, the invite,
             and (``audit``) the audit rows. The offers themselves went out
             inside the reply (`_gather_offers`)."""
             from runtime.inbound_journey import _offer_team_photo
-            from runtime.plan_executor import advance_plan, plan_has_more_to_do
+            from runtime.plan_executor import plan_has_more_to_do
 
             gathered = _gathered.pop(id(handled), None)
             if gathered is None:
@@ -1272,12 +1300,10 @@ def build_message_handlers(
             # common confirmation with no plan waiting on it at all.
             pending_plan_reply = None
             try:
-                plan_reply = await advance_plan(
-                    handled,
-                    plan_store=plan_store,
-                    workflow_runtime=workflow_runtime,
-                    actor=ctx,
-                )
+                if id(handled) in _advanced:
+                    plan_reply = _advanced.pop(id(handled))
+                else:
+                    plan_reply = await _advance_plan_for(handled)
                 if plan_reply is not None and await _save_first_now():
                     # WA-01: the plan's next step was a capture draft --
                     # saved and answered already; its "Confirm?" prompt
@@ -1391,7 +1417,7 @@ def build_message_handlers(
                 return False
             if saved is None:
                 return False
-            await _deliver_handled(saved)
+            await _deliver_handled(saved, fold_plan_reply=True)
             return True
 
         async def _save_first_after_journey(journey) -> None:  # type: ignore[no-untyped-def]

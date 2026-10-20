@@ -1,0 +1,8 @@
+{
+  "_note": "Words that show a worker actually asked something. A query segment the splitter adds to a plain site update is dropped unless the message has '?' or one of these (matched as whole words, lower-case).",
+  "words": [
+    "how many", "how much", "ethra", "etra", "entha", "enthu", "enthaanu",
+    "stock", "summary", "report", "dpr", "total", "balance", "kitti", "undo",
+    "what", "which", "show", "status", "kanikku", "parayu"
+  ]
+}

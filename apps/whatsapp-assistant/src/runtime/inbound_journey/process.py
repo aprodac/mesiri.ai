@@ -13,6 +13,7 @@ from typing import Any
 
 from backend.ports import ActorIdentity
 from canonicalization import build_canonical_events, log_canonical_event
+from canonicalization.question_signal import drop_unasked_queries
 from channel.replies import ListRow, ReplySpec
 from context.resolver import ContextResolver
 from context.runtime import log_resolved_context
@@ -668,6 +669,9 @@ async def process_inbound_message(
                 # layer that sees Meta's raw `context` object.
                 forwarded=bool(message.metadata.get("forwarded")),
                 frequently_forwarded=bool(message.metadata.get("frequently_forwarded")),
+            )
+            canonical_events = drop_unasked_queries(
+                canonical_events, understanding.translated_text or understanding.normalized_text
             )
             canonical_event = canonical_events[0]
             extra_segments = canonical_events[1:]

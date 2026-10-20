@@ -56,7 +56,7 @@ def test_save_first_gets_the_same_follow_ups_as_a_typed_yes():
     block = _block_after(
         _dependencies_source(), "async def _save_first_now(", "async def _save_first_after_journey("
     )
-    assert "await _deliver_handled(saved)" in block
+    assert "await _deliver_handled(saved, fold_plan_reply=True)" in block
 
 
 def test_the_confirmation_fast_path_triggers_the_promotion_offer():
