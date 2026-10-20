@@ -119,12 +119,13 @@ asyncio_mode = "auto"
 # Import roots are provided explicitly via `pythonpath` above.
 # Integration (docker) and provider (paid API) tests are opt-in. Run them with
 # `pytest -m integration` / `-m provider`, which overrides this default marker.
-addopts = "-ra -m 'not integration and not provider' --import-mode=importlib"
+addopts = "-ra -m 'not integration and not provider and not live' --import-mode=importlib"
 markers = [
     "integration: requires live Postgres/Redis/object-storage (docker). Skipped by default.",
     "provider: requires real AI provider credentials. Skipped by default.",
     "scenario: milestone gate scenario.",
     "golden: milestone golden-path proof.",
+    "live: runs the real model (conversation eval set, request [68]). Not in CI; use -m live.",
 ]
 filterwarnings = ["ignore::DeprecationWarning"]
 

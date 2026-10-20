@@ -189,7 +189,9 @@ async def test_a_provider_blip_is_retried_at_once_and_the_sender_hears_nothing_a
     assert flaky.calls == 2
 
 
-@pytest.mark.parametrize(("provider", "asked"), [(ASK, False), (FakeToolCallingProvider(["Hello!"]), True)])
+# Request [68]: a reply that saved nothing (a question or small talk) is one message;
+# the daily setup question waits for a save, so neither case asks here.
+@pytest.mark.parametrize(("provider", "asked"), [(ASK, False), (FakeToolCallingProvider(["Hello!"]), False)])
 async def test_the_daily_setup_question_never_piles_on_an_open_question(monkeypatch, provider, asked):
     setup = MagicMock()
     setup.after_reply = AsyncMock()

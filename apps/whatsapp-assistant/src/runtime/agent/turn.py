@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from backend.ports import ActorIdentity
@@ -24,6 +24,7 @@ from runtime.ai_outage import (
     reply_for_attempt,
     retry_attempt,
 )
+from runtime.persona import guard, is_what_can_you_do, what_can_you_do
 
 from .prompt import AgentContext, Turn
 from .runner import AgentResult, AgentRunner, default_now
@@ -61,6 +62,14 @@ class AgentTurnDeps:
     lap: Callable[[str], None] | None = None
     #: B-7: run after each tool call (the receipt card starts early).
     after_tool: Callable[[], None] | None = None
+    #: [68]: ``(actor) -> "Today so far: ..." | None``, read-only context for the
+    #: reply writer (runtime/today_context.py); None leaves it out.
+    today_line: Callable[[ActorIdentity], Awaitable[str | None]] | None = None
+    #: [68]: called when the reply saved nothing (a question or small talk), so
+    #: the journey holds setup nudges ("add another site?") for after a save.
+    on_conversational: Callable[[], None] | None = None
+    #: [68]: journey traces; guardrail hits are logged as stage "persona_guard".
+    trace_logger: Any | None = None
 
 
 def _scope_of(actor: ActorIdentity) -> ScopeLookup:
@@ -186,6 +195,25 @@ async def run_agent_turn(
         except Exception:  # noqa: BLE001
             script = None
 
+    if is_what_can_you_do(user_text):
+        # [68]: the commonest question has a fixed 3-line answer, no model needed.
+        reply = ReplySpec(text=what_can_you_do(language, script, user_text))
+        await deps.send_spec(reply, wa_id)
+        if deps.on_conversational is not None:
+            deps.on_conversational()
+        await _safe(deps.message_logger.log_reply(correlation_id=correlation_id, reply=reply.text))
+        await _safe(deps.message_logger.mark_completed(correlation_id=correlation_id))
+        if deps.memory_coordinator is not None:
+            await _safe(
+                deps.memory_coordinator.record_turn(
+                    user_id=actor.user_id,
+                    user_text=user_text,
+                    assistant_reply=reply.text,
+                    correlation_id=correlation_id,
+                )
+            )
+        return None
+
     pack = None
     if deps.memory_loader is not None and actor.organization_id:
         try:
@@ -196,9 +224,15 @@ async def run_agent_turn(
             _log.warning("agent.memory_load_failed user=%s", actor.user_id)
 
     gateway = deps.make_gateway(message, language)
+    context = _context_of(actor, deps, pack, language, menu_hint, script)
+    if deps.today_line is not None:
+        try:
+            context = replace(context, today_line=await deps.today_line(actor))
+        except Exception:  # noqa: BLE001 — context is a nicety
+            pass
     _lap(deps, "agent_context")
     result = await deps.runner.run(
-        ctx=_context_of(actor, deps, pack, language, menu_hint, script),
+        ctx=context,
         user_text=user_text,
         gateway=gateway,
         scope=_scope_of(actor),
@@ -227,6 +261,10 @@ async def run_agent_turn(
         return result
 
     reply = result.reply
+    if _is_conversational(result):
+        reply = await _guarded(reply, result, deps, message, user_text, context, gateway, actor, language, script)
+        if deps.on_conversational is not None:
+            deps.on_conversational()
     if deps.attach_receipt is not None:
         try:
             reply = await deps.attach_receipt(reply, gateway)
@@ -255,6 +293,78 @@ async def run_agent_turn(
         await gateway.finish()
         _lap(deps, "agent_followups")
     return result
+
+
+def _is_conversational(result: AgentResult) -> bool:
+    """The reply is the model's own words only: nothing saved or attempted, no
+    parked question, and no tool answered anything (a query's answer is data)."""
+    box = result.toolbox
+    return (
+        result.outcome == "ok"
+        and result.reply is not None
+        and hasattr(box, "saved")
+        and not box.saved
+        and "✅ Saved:" not in result.reply.text
+        and not getattr(box, "attempted_writes", 0)
+        and getattr(box, "parked", None) is None
+        and not getattr(box, "answers", None)
+        and not getattr(box, "notes", None)
+    )
+
+
+async def _guarded(
+    reply: ReplySpec,
+    result: AgentResult,
+    deps: AgentTurnDeps,
+    message: NormalizedMessage,
+    user_text: str,
+    context: AgentContext,
+    gateway: Any,
+    actor: ActorIdentity,
+    language: str | None,
+    script: str | None,
+) -> ReplySpec:
+    """[68] The deterministic voice check on a conversational reply: regenerate
+    once with the broken rules named, else the localized fixed line."""
+
+    async def _again(rules: list[str]) -> str | None:
+        retry_ctx = replace(
+            context,
+            notes=[
+                *context.notes,
+                "Your previous reply broke these voice rules: "
+                + ", ".join(rules)
+                + ". Rewrite it: 1-2 short lines, name no company or model, no menu, no "
+                "'how can I help'.",
+            ],
+        )
+        again = await deps.runner.run(
+            ctx=retry_ctx,
+            user_text=user_text,
+            gateway=gateway,
+            scope=_scope_of(actor),
+            correlation_id=message.correlation_id,
+        )
+        return again.reply.text if again.outcome == "ok" and again.reply is not None else None
+
+    guarded = await guard(
+        reply.text,
+        user_text=user_text,
+        regenerate=_again,
+        language=language,
+        script=script,
+    )
+    if guarded.hits and deps.trace_logger is not None:
+        await _safe(
+            deps.trace_logger.log_stage(
+                correlation_id=message.correlation_id,
+                stage="persona_guard",
+                stage_payload={"hits": [list(h) for h in guarded.hits], "fell_back": guarded.fell_back},
+                duration_ms=None,
+                succeeded=not guarded.fell_back,
+            )
+        )
+    return reply if not guarded.hits else ReplySpec(text=guarded.text)
 
 
 def _lap(deps: AgentTurnDeps, name: str) -> None:

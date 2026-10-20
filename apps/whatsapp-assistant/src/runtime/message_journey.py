@@ -313,6 +313,7 @@ def build_message_handlers(
     # Request [45]: messages (by correlation id) that saved data, and the ones
     # already given the instant check-mark reaction.
     _saved_messages: set[str] = set()
+    _conversational: set[str] = set()
     _acknowledged: set[str] = set()
 
     async def _run_journey(message, raw_payload, retry_of_id=None) -> None:  # type: ignore[no-untyped-def]
@@ -364,6 +365,8 @@ def build_message_handlers(
                 and message.correlation_id not in _agent_parked
                 # Never after a reply that saved data: it waits for a light message.
                 and message.correlation_id not in _saved_messages
+                # [68]: nor after a question or small-talk reply: one message.
+                and message.correlation_id not in _conversational
             ):
                 try:
                     # Not in the middle of a multi-part note: the letterhead
@@ -386,6 +389,7 @@ def build_message_handlers(
         finally:
             _resolved_actors.pop(message.correlation_id, None)
             _saved_messages.discard(message.correlation_id)
+            _conversational.discard(message.correlation_id)
             _acknowledged.discard(message.correlation_id)
             _agent_parked.discard(message.correlation_id)
             # Emitted in `finally` so every path is covered by one write --
@@ -2519,6 +2523,7 @@ def build_message_handlers(
             from runtime.agent.journey_gateway import JourneyGateway
             from runtime.agent.turn import AgentTurnDeps, run_agent_turn
             from runtime.inbound_journey import render_workflow_run_reply_spec
+            from runtime.today_context import build_today_line
 
             hint = category_hint.semantic_hint if category_hint else None
             direction = category_hint.direction if category_hint else None
@@ -2693,6 +2698,11 @@ def build_message_handlers(
                 reply_composer=reply_composer,
                 lap=timer.lap,
                 after_tool=_after_tool,
+                today_line=lambda actor: build_today_line(
+                    activity_search_service, actor, timezone_name=getattr(actor, "timezone", None)
+                ),
+                on_conversational=lambda: _conversational.add(message.correlation_id),
+                trace_logger=trace_logger,
             )
             timer.lap("agent_setup")
             result = await run_agent_turn(message, ctx, deps, menu_hint=hint)

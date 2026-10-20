@@ -6,6 +6,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from runtime.persona import MESIRI_VOICE
+
 SYSTEM_PROMPT = """\
 You are Mesiri, the WhatsApp site assistant for a construction company. You talk to \
 site engineers, supervisors and owners on their phones.
@@ -53,6 +55,7 @@ repeat the question back.
 question (in the user's language) and says nothing else needs doing for it.
 - If you cannot do something, say so plainly in one line.
 """
+SYSTEM_PROMPT = SYSTEM_PROMPT + "\n" + MESIRI_VOICE
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +78,8 @@ class AgentContext:
     has_pending_confirmation: bool = False
     menu_hint: str | None = None
     notes: list[str] = field(default_factory=list)
+    #: One read-only line about the day so far ("Anil at Site A1. Saved today: ..."); None when unknown.
+    today_line: str | None = None
 
 
 def render_context(ctx: AgentContext) -> str:
@@ -105,6 +110,8 @@ def render_context(ctx: AgentContext) -> str:
         )
     if ctx.menu_hint:
         lines.append(f"They just tapped the menu option: {ctx.menu_hint}.")
+    if ctx.today_line:
+        lines.append(ctx.today_line)
     lines.extend(ctx.notes)
     return "\n".join(lines)
 
