@@ -124,3 +124,24 @@ async def test_an_unknown_role_still_sees_the_open_workflows():
     provider = FakeJsonGeneration(json.dumps({"keys": ["material.receipt"]}))
     service = CapabilityHelpService(provider)
     assert await service.match("q", role="SOMETHING_NEW") == (WorkflowKey.MATERIAL_RECEIPT,)
+
+
+async def test_kind_is_returned_and_smalltalk_is_recognised():
+    provider = FakeJsonGeneration('{"keys": [], "kind": "smalltalk"}')
+    answer = await CapabilityHelpService(provider).answer("are you hardcoded")
+    assert answer.kind == "smalltalk" and answer.keys == ()
+
+
+@pytest.mark.parametrize(
+    "reply",
+    ['{"keys": []}', '{"keys": [], "kind": "weird"}', '{"keys": [], "kind": 3}', "not json", "[]"],
+)
+async def test_a_missing_or_bad_kind_falls_back_to_capability(reply: str):
+    answer = await CapabilityHelpService(FakeJsonGeneration(reply)).answer("what can you do")
+    assert answer.kind == "capability"
+
+
+async def test_a_provider_failure_is_a_capability_answer():
+    provider = FakeJsonGeneration(raises=RuntimeError("down"))
+    answer = await CapabilityHelpService(provider).answer("hi")
+    assert answer.kind == "capability" and answer.keys == ()

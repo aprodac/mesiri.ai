@@ -956,12 +956,14 @@ async def process_inbound_message(
                 and planner_decision.reason is CanonicalEventType.GENERAL_QUESTION_ASKED
             ):
                 question = understanding.translated_text or understanding.normalized_text
-                matches = await capability_help.match(
+                answered = await capability_help.answer(
                     question,
                     role=actor.role if actor is not None else None,
                     correlation_id=correlation_id,
                 )
-                planner_decision.metadata["capability_matches"] = [k.value for k in matches]
+                planner_decision.metadata["capability_matches"] = [k.value for k in answered.keys]
+                planner_decision.metadata["capability_kind"] = answered.kind
+                planner_decision.metadata["capability_question"] = question
                 if actor is not None and actor.role:
                     planner_decision.metadata["actor_role"] = actor.role
 

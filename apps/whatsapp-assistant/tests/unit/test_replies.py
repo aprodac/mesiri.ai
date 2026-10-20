@@ -362,3 +362,52 @@ def test_member_not_found_reply_is_distinct_from_the_create_offer():
     text = render_member_not_found_reply("Hysam")
     assert "Hysam" in text
     assert "admin" in text.lower()
+
+
+# --- Overview vs smalltalk (request [65]) ---------------------------------------
+
+
+def test_the_overview_says_tell_ask_and_get_reports_and_keeps_the_menu():
+    reply = render_capability_answer([])
+    assert "send me what happened" in reply.text
+    assert "how many workers today?" in reply.text
+    assert "today's summary" in reply.text
+    assert "voice note" in reply.text
+    assert reply.list_rows == CATEGORY_ROWS
+
+
+_SMALLTALK = ("are you hardcoded", "you sound like a bot", "what are your features?", "lol", "")
+
+
+def test_smalltalk_is_one_short_line_with_no_menu():
+    for text in _SMALLTALK:
+        reply = render_capability_answer([], kind="smalltalk", question=text)
+        assert not reply.list_rows and not reply.buttons
+        assert "\n" not in reply.text
+
+
+def test_smalltalk_is_deterministic_per_text_and_varies_across_texts():
+    first = render_capability_answer(None, kind="smalltalk", question="are you hardcoded")
+    again = render_capability_answer(None, kind="smalltalk", question=" Are you hardcoded ")
+    assert first.text == again.text
+    seen = {
+        render_capability_answer(None, kind="smalltalk", question=f"msg {i}").text
+        for i in range(40)
+    }
+    assert len(seen) >= 3
+
+
+def test_an_unknown_kind_is_answered_as_a_capability_question():
+    for kind in (None, "capability", "garbage", 5):
+        reply = render_capability_answer([], kind=kind, question="what can you do")
+        assert reply.list_rows == CATEGORY_ROWS
+
+
+def test_every_new_text_has_malayalam_and_hindi_wording():
+    from channel import replies
+    from runtime.reply_language import localize_fixed_reply
+
+    texts = [replies._OVERVIEW_INTRO, replies._OVERVIEW_OUTRO, *replies._SMALLTALK_REPLIES]
+    for lang in ("malayalam", "hindi"):
+        for text in texts:
+            assert localize_fixed_reply(text, lang, "native") != text

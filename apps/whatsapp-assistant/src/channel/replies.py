@@ -932,6 +932,8 @@ def render_direct_reply(
             decision.metadata.get("capability_matches"),
             role=decision.metadata.get("actor_role"),
             timezone=timezone,
+            kind=decision.metadata.get("capability_kind"),
+            question=decision.metadata.get("capability_question"),
         )
     # UNRECOGNIZED — greetings land here (when they slip past the
     # deterministic fast path, e.g. text/handle_greeting_trigger didn't cover
@@ -944,6 +946,8 @@ def render_capability_answer(
     *,
     role: str | None = None,
     timezone: str | None = None,
+    kind: object = None,
+    question: object = None,
 ) -> ReplySpec:
     """Answer a "how do I ...?" question with the capabilities that match it.
 
@@ -962,6 +966,11 @@ def render_capability_answer(
     """
     from mesiri_contracts.assistant.planner_decision import WorkflowKey
     from workflows.registry import get_definition
+
+    if kind == "smalltalk":
+        # Meta talk / chit-chat / a complaint about the bot: one short line,
+        # no menu. Any other kind (None, garbage) is a capability question.
+        return ReplySpec(text=_pick_smalltalk(question))
 
     definitions = []
     if isinstance(matched_keys, (list, tuple)):
@@ -999,6 +1008,32 @@ def render_capability_answer(
     )
 
 
+_OVERVIEW_INTRO = "Here's what I can do:"
+_OVERVIEW_TELL = (
+    "1. Just send me what happened on site, e.g. “6 masons and 4 helpers, slab work on floor 3 done”"
+)
+_OVERVIEW_ASK = "2. Ask me, e.g. “how many workers today?” or “cement stock?”"
+_OVERVIEW_GET = "3. Get reports, e.g. “today's summary” or “send yesterday's report”"
+_OVERVIEW_OUTRO = "Type it or send a voice note. Or pick what you're reporting:"
+
+#: Variants for smalltalk; picked by a stable hash of the message so the same
+#: text always gets the same line but different messages don't all get one.
+_SMALLTALK_REPLIES = (
+    "I'm Mesiri's site assistant. I'm best at site work. Try “how many workers today?” or tell me today's update.",
+    "Fair point! I'm built for site work. Tell me what happened today, or ask me something like “cement stock?”.",
+    "I'll keep it simple: send me today's site update, or ask “send yesterday's report”. I'm happy to help with that.",
+    "Sorry if that sounded stiff. I'm a site assistant: tell me what got done today, or ask “today's summary”.",
+)
+
+
+def _pick_smalltalk(question: object) -> str:
+    import hashlib
+
+    text = question.strip().lower() if isinstance(question, str) else ""
+    digest = hashlib.sha256(text.encode("utf-8")).digest()
+    return _SMALLTALK_REPLIES[digest[0] % len(_SMALLTALK_REPLIES)]
+
+
 def _render_capability_overview(role: str | None) -> ReplySpec:
     """The answer to "what can you do?" -- an actual answer, then the menu.
 
@@ -1014,9 +1049,11 @@ def _render_capability_overview(role: str | None) -> ReplySpec:
     # company's switched-on modules (WA-07).
     return ReplySpec(
         text=(
-            "I'm here to help. Just send me what happened on site today, for example:\n"
-            "“6 masons and 4 helpers, slab work on floor 3 done”\n\n"
-            "You can type it or send a voice note. Or pick what you're reporting:"
+            f"{_OVERVIEW_INTRO}\n"
+            f"{_OVERVIEW_TELL}\n"
+            f"{_OVERVIEW_ASK}\n"
+            f"{_OVERVIEW_GET}\n\n"
+            f"{_OVERVIEW_OUTRO}"
         ),
         list_button_label="Choose one",
         list_rows=tuple(

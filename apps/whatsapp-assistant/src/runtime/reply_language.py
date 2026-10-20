@@ -269,6 +269,25 @@ class ReplyComposer:
 #: name or code the understanding step reports.
 _FIXED_REPLIES: dict[str, dict[str, str]] = {
     "malayalam": {
+        "Here's what I can do:": "എനിക്ക് ചെയ്യാവുന്നത്:",
+        "1. Just send me what happened on site, e.g.": "1. സൈറ്റിൽ എന്ത് നടന്നു എന്ന് അയയ്ക്കൂ, ഉദാ.",
+        "2. Ask me, e.g.": "2. എന്നോട് ചോദിക്കൂ, ഉദാ.",
+        "3. Get reports, e.g.": "3. റിപ്പോർട്ട് വാങ്ങൂ, ഉദാ.",
+        "Type it or send a voice note. Or pick what you're reporting:": (
+            "ടൈപ്പ് ചെയ്യാം, അല്ലെങ്കിൽ വോയ്‌സ് നോട്ട് അയയ്ക്കാം. അല്ലെങ്കിൽ എന്താണെന്ന് തിരഞ്ഞെടുക്കൂ:"
+        ),
+        "I'm Mesiri's site assistant. I'm best at site work. Try": (
+            "ഞാൻ മെസിരിയുടെ സൈറ്റ് അസിസ്റ്റന്റാണ്. സൈറ്റ് ജോലിയിലാണ് ഞാൻ മികച്ചത്. ഇത് പരീക്ഷിക്കൂ:"
+        ),
+        "Fair point! I'm built for site work. Tell me what happened today, or ask me something like": (
+            "ശരിയാണ്! ഞാൻ സൈറ്റ് ജോലിക്കായി ഉണ്ടാക്കിയതാണ്. ഇന്ന് എന്ത് നടന്നു എന്ന് പറയൂ, അല്ലെങ്കിൽ ഇങ്ങനെ ചോദിക്കൂ:"
+        ),
+        "I'll keep it simple: send me today's site update, or ask": (
+            "ലളിതമായി പറയാം: ഇന്നത്തെ സൈറ്റ് അപ്ഡേറ്റ് അയയ്ക്കൂ, അല്ലെങ്കിൽ ചോദിക്കൂ:"
+        ),
+        "Sorry if that sounded stiff. I'm a site assistant: tell me what got done today, or ask": (
+            "ക്ഷമിക്കണം. ഞാൻ ഒരു സൈറ്റ് അസിസ്റ്റന്റാണ്: ഇന്ന് എന്ത് ചെയ്തു എന്ന് പറയൂ, അല്ലെങ്കിൽ ചോദിക്കൂ:"
+        ),
         "✅ Recorded. Thank you.": "✅ രേഖപ്പെടുത്തി. നന്ദി.",
         "Saved as a draft. You'll confirm it with tonight's report. Reply UNDO if it's wrong.": (
             "ഡ്രാഫ്റ്റായി സേവ് ചെയ്തു. ഇന്ന് രാത്രിയിലെ റിപ്പോർട്ടിനൊപ്പം സ്ഥിരീകരിക്കാം. "
@@ -286,6 +305,25 @@ _FIXED_REPLIES: dict[str, dict[str, str]] = {
         "Which project is this for?": "ഏത് പ്രോജക്റ്റിനാണ് ഇത്?",
     },
     "hindi": {
+        "Here's what I can do:": "मैं यह कर सकता हूँ:",
+        "1. Just send me what happened on site, e.g.": "1. साइट पर क्या हुआ मुझे भेजें, जैसे",
+        "2. Ask me, e.g.": "2. मुझसे पूछें, जैसे",
+        "3. Get reports, e.g.": "3. रिपोर्ट पाएँ, जैसे",
+        "Type it or send a voice note. Or pick what you're reporting:": (
+            "लिखकर या वॉइस नोट भेजें। या चुनें कि क्या बता रहे हैं:"
+        ),
+        "I'm Mesiri's site assistant. I'm best at site work. Try": (
+            "मैं Mesiri का साइट असिस्टेंट हूँ। साइट के काम में मैं सबसे अच्छा हूँ। आज़माएँ:"
+        ),
+        "Fair point! I'm built for site work. Tell me what happened today, or ask me something like": (
+            "सही बात! मैं साइट के काम के लिए बना हूँ। आज क्या हुआ बताएँ, या ऐसे पूछें:"
+        ),
+        "I'll keep it simple: send me today's site update, or ask": (
+            "सीधी बात: आज का साइट अपडेट भेजें, या पूछें:"
+        ),
+        "Sorry if that sounded stiff. I'm a site assistant: tell me what got done today, or ask": (
+            "माफ़ कीजिए। मैं साइट असिस्टेंट हूँ: आज क्या काम हुआ बताएँ, या पूछें:"
+        ),
         "✅ Recorded. Thank you.": "✅ दर्ज हो गया। धन्यवाद।",
         "Saved as a draft. You'll confirm it with tonight's report. Reply UNDO if it's wrong.": (
             "ड्राफ्ट के रूप में सेव किया। आज रात की रिपोर्ट के साथ इसे कन्फर्म करें। "

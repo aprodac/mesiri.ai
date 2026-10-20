@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from dataclasses import dataclass
 
 from mesiri_ai.ports.generation import JsonGenerationProvider
 from mesiri_contracts.assistant.planner_decision import WorkflowKey
@@ -39,6 +40,19 @@ logger = logging.getLogger(__name__)
 # menu the user could already have opened by sending "menu", and offering
 # ten "matches" is a way of saying nothing matched.
 _MAX_MATCHES = 3
+
+#: "capability" = asks what the bot can do / how to do something; "smalltalk" =
+#: meta talk, chit-chat or a complaint about the bot. Anything else (including a
+#: bad parse) is "capability", which is what every question got before.
+KIND_CAPABILITY = "capability"
+KIND_SMALLTALK = "smalltalk"
+
+
+@dataclass(frozen=True)
+class CapabilityAnswer:
+    keys: tuple[WorkflowKey, ...] = ()
+    kind: str = KIND_CAPABILITY
+
 
 _SYSTEM_PROMPT = """You match a construction site worker's question to the assistant's capabilities.
 
@@ -53,8 +67,10 @@ RULES:
 4. A broad question ("what can you do?", "help") returns [] -- that is answered with the full menu, not a guess at three capabilities.
 5. Judge by meaning, not shared words. Users write in Indian English, transliterated Hindi/Malayalam, and mixed script, and voice notes arrive already translated but often clumsily.
 
+6. Also classify the message as "kind": "capability" if the user asks what the assistant can do or how to do something; "smalltalk" if it is meta talk about the assistant ("are you hardcoded", "you sound like a bot"), chit-chat, or a complaint about the assistant. When unsure, use "capability".
+
 Output JSON only, in this exact shape:
-{{"keys": ["capability.key", "another.key"]}}
+{{"keys": ["capability.key", "another.key"], "kind": "capability"}}
 """
 
 
@@ -94,6 +110,16 @@ class CapabilityHelpService:
         role: str | None = None,
         correlation_id: str = "",
     ) -> tuple[WorkflowKey, ...]:
+        """Just the matched workflows; see :meth:`answer`."""
+        return (await self.answer(question, role=role, correlation_id=correlation_id)).keys
+
+    async def answer(
+        self,
+        question: str,
+        *,
+        role: str | None = None,
+        correlation_id: str = "",
+    ) -> CapabilityAnswer:
         """Workflows that answer ``question``, best first, possibly empty.
 
         Never raises. Help is the surface a confused user reaches for, so a
@@ -104,7 +130,7 @@ class CapabilityHelpService:
         """
         catalogue = _catalogue(role)
         if not catalogue:
-            return ()
+            return CapabilityAnswer()
 
         t0 = time.perf_counter()
         try:
@@ -121,11 +147,21 @@ class CapabilityHelpService:
             logger.warning(
                 "capability_help.match_failed correlation_id=%s", correlation_id, exc_info=True
             )
-            return ()
+            return CapabilityAnswer()
 
         matches = self._parse(raw, role)
         await self._log(correlation_id, t0, succeeded=True, matched=len(matches))
-        return matches
+        return CapabilityAnswer(matches, self._parse_kind(raw))
+
+    @staticmethod
+    def _parse_kind(raw: str) -> str:
+        """"smalltalk" only when the completion says so plainly; a missing
+        field or a bad parse is "capability", the behaviour before kinds."""
+        try:
+            kind = json.loads(raw).get("kind")
+        except (json.JSONDecodeError, AttributeError, TypeError):
+            return KIND_CAPABILITY
+        return KIND_SMALLTALK if kind == KIND_SMALLTALK else KIND_CAPABILITY
 
     def _parse(self, raw: str, role: str | None) -> tuple[WorkflowKey, ...]:
         """Turn the completion into keys, dropping anything unrecognized.
