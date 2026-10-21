@@ -42,42 +42,45 @@ async def _columns(engine, table: str) -> set[str]:
     return {r[0] for r in rows}
 
 
-async def test_0210_rbac_has_created_at(engine) -> None:
-    """G1: RBAC junction tables gain created_at."""
-    if await _db_rev(engine) < "0210":
+# G1-G3 touched the WhatsApp assistant's copy of identity. BE-01 step 3
+# (migration 0482) dropped that copy, so from 0482 on the check is that the
+# tables are gone (an empty column set), not that they have the 0210 columns.
+_G1_RBAC = (
+    "roles",
+    "permissions",
+    "role_permissions",
+    "membership_roles",
+    "project_memberships",
+    "site_memberships",
+)
+_G3_CONTEXT = ("context_organizations", "context_users", "context_projects", "context_sites")
+
+
+async def _check_audit_column(engine, tables: tuple[str, ...], column: str) -> None:
+    revision = await _db_rev(engine)
+    if revision < "0210":
         pytest.skip("database below 0210")
-    for table in (
-        "roles",
-        "permissions",
-        "role_permissions",
-        "membership_roles",
-        "project_memberships",
-        "site_memberships",
-    ):
+    for table in tables:
         cols = await _columns(engine, table)
-        assert "created_at" in cols, f"{table} missing created_at"
+        if revision >= "0482":
+            assert cols == set(), f"{table} should be gone since 0482"
+        else:
+            assert column in cols, f"{table} missing {column}"
+
+
+async def test_0210_rbac_has_created_at(engine) -> None:
+    """G1: RBAC junction tables gain created_at (dropped again by 0482)."""
+    await _check_audit_column(engine, _G1_RBAC, "created_at")
 
 
 async def test_0210_external_identities_has_created_at(engine) -> None:
-    """G2: external_identities gains created_at."""
-    if await _db_rev(engine) < "0210":
-        pytest.skip("database below 0210")
-    cols = await _columns(engine, "external_identities")
-    assert "created_at" in cols
+    """G2: external_identities gains created_at (dropped again by 0482)."""
+    await _check_audit_column(engine, ("external_identities",), "created_at")
 
 
 async def test_0210_context_tables_have_updated_at(engine) -> None:
-    """G3: context_* tables gain updated_at."""
-    if await _db_rev(engine) < "0210":
-        pytest.skip("database below 0210")
-    for table in (
-        "context_organizations",
-        "context_users",
-        "context_projects",
-        "context_sites",
-    ):
-        cols = await _columns(engine, table)
-        assert "updated_at" in cols, f"{table} missing updated_at"
+    """G3: context_* tables gain updated_at (dropped again by 0482)."""
+    await _check_audit_column(engine, _G3_CONTEXT, "updated_at")
 
 
 async def test_0210_inbound_messages_table_exists(engine) -> None:
