@@ -44,6 +44,9 @@ from runtime.material_units import ask_amount_text, fit_stock_unit
 _log = logging.getLogger("mesiri.agent")
 
 _MODULE = "materials"
+#: How long a saved entry's project/site is remembered (the context layer's
+#: own default for a chosen active context).
+ACTIVE_SCOPE_TTL_SECONDS = 12 * 60 * 60
 _BY_DIRECTION = {
     "received": (CanonicalEventType.MATERIAL_RECEIPT_REQUESTED, WorkflowKey.MATERIAL_RECEIPT),
     "used": (CanonicalEventType.MATERIAL_USAGE_REQUESTED, WorkflowKey.MATERIAL_USAGE),
@@ -56,6 +59,9 @@ class Ready:
 
     decision: PlannerDecisionV2
     event: CanonicalEventV2
+    #: (organization, user, project, site) in the context layer's ids: what
+    #: to remember as the sender's active project/site once it is saved.
+    scope: tuple[str, str, str | None, str | None] | None = None
 
 
 @dataclass(slots=True)
@@ -78,6 +84,8 @@ class MaterialEntry:
     inventory_query: Any | None
     org_settings_query: Any | None
     actor: Any
+    #: The sender's active project/site (``ContextResolver`` reads it).
+    active_context: Any | None = None
 
     async def prepare(self, message: Any, understanding: Any, candidate: Any) -> Ready | Say | None:
         """The workflow to start, a line to say, or None (use the classic route)."""
@@ -114,6 +122,7 @@ class MaterialEntry:
             if len(sites) > 1:
                 return _choose("Which site is this for?", [s.name for s in sites], "site")
             site_id = sites[0].id if sites else None
+        context_site = ctx.context_site_id or (str(site_id) if site_id is not None else None)
 
         found = await self._material(organization_id, str(fields["material_name"]), fields, ctx, message)
         if not isinstance(found, dict):
@@ -168,7 +177,29 @@ class MaterialEntry:
             project_id=event.project_id,
             site_id=event.site_id,
         )
-        return Ready(decision=decision, event=event)
+        return Ready(
+            decision=decision,
+            event=event,
+            scope=(ctx.context_organization_id, ctx.context_user_id, ctx.context_project_id, context_site),
+        )
+
+    async def remember(self, ready: Ready, *, correlation_id: str | None = None) -> None:
+        """After a save: this project/site is where the sender is working, so
+        the next message is not asked again (Ilan, 21 Oct). The slot is
+        re-checked against their access whenever it is read. Never raises."""
+        if self.active_context is None or ready.scope is None or ready.scope[2] is None:
+            return
+        organization_id, user_id, project_id, site_id = ready.scope
+        try:
+            await self.active_context.set_active_context(
+                organization_id=organization_id,
+                user_id=user_id,
+                project_id=project_id,
+                site_id=site_id,
+                ttl_seconds=ACTIVE_SCOPE_TTL_SECONDS,
+            )
+        except Exception:  # noqa: BLE001 -- a missed hint only costs one question
+            _log.warning("material_entry.remember_failed correlation_id=%s", correlation_id, exc_info=True)
 
     async def _module_on(self, organization_id: str) -> bool:
         if self.org_settings_query is None:

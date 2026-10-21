@@ -171,7 +171,10 @@ class JourneyGateway:
         run = await self.start_workflow(prepared.decision, prepared.event)
         _log.info("agent.material_direct correlation_id=%s route=direct", message.correlation_id)
         journey = SimpleNamespace(workflow_run=run, planner_decision=prepared.decision)
-        return await self._after_run(journey, candidate, CaptureSink())
+        step = await self._after_run(journey, candidate, CaptureSink())
+        if step.status in ("saved", "needs_confirmation"):
+            await self.material_entry.remember(prepared, correlation_id=message.correlation_id)
+        return step
 
     async def _after_run(self, journey: Any, candidate: Candidate, sink: CaptureSink) -> StepResult:
         run = journey.workflow_run

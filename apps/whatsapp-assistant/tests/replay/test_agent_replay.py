@@ -155,7 +155,10 @@ class World:
             held_prompt=lambda journey: render_workflow_run_reply_spec(journey.workflow_run),
             language=None,
             material_entry=(
-                MaterialEntry(ContextResolver(self.deps), self.catalog, None, None, self.actor)
+                MaterialEntry(
+                    ContextResolver(self.deps), self.catalog, None, None, self.actor,
+                    active_context=self.deps.active_context,
+                )
                 if self.catalog is not None
                 else None
             ),

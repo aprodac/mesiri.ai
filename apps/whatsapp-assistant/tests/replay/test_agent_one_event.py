@@ -95,3 +95,15 @@ async def test_the_options_are_buttons_even_when_the_model_asks_in_plain_text():
     rows = result.reply.list_rows or result.reply.buttons
     assert rows and "cement" in [r.title for r in rows]
     assert result.reply.text.endswith("Which one was it?")
+
+
+async def test_a_chosen_site_is_remembered_so_the_next_message_is_not_asked():
+    """Ilan, 21 Oct: once they said which site, later messages in the chat
+    are not asked again (the active project/site slot, 12 h)."""
+    world = await _make_world(site_keys=(seed.SITE_A1, seed.SITE_A2))  # two sites, nothing remembered
+    first = ("save_material_receipt", {"material": "cement", "quantity": 50, "unit": "bags", "site": "Site A2"})
+    await world.say(FakeToolCallingProvider([[first], "50 bag cement vannu."]), "Site A2-il 50 bag cement vannu")
+    second = ("save_material_usage", {"material": "cement", "quantity": 10, "unit": "bags"})
+    result = await world.say(FakeToolCallingProvider([[second], "10 bag use cheythu."]), "10 bag cement use cheythu")
+    assert [r.draft_action.site_id for r in world.dispatcher.dispatched] == [world.site_ids[seed.SITE_A2]] * 2
+    assert result.toolbox.parked is None  # no "which site?"

@@ -2731,6 +2731,7 @@ def build_message_handlers(
                             inventory_query=inventory_query,
                             org_settings_query=org_settings_query,
                             actor=ctx,
+                            active_context=getattr(context_resolver, "active_context", None),
                         )
                         if catalog_query is not None
                         else None

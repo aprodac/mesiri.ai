@@ -70,6 +70,12 @@ class ContextResolver:
     def __init__(self, deps: ContextDependencies) -> None:
         self._d = deps
 
+    @property
+    def active_context(self) -> ActiveContextStore:
+        """The sender's active project/site slot this resolver reads (the
+        agent writes it after a save, so the next message is not asked)."""
+        return self._d.active_context
+
     async def resolve(
         self, message: NormalizedMessage, understanding: UnderstandingResult
     ) -> Result[ResolvedContextV2]:
