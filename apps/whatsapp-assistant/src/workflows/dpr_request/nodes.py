@@ -31,6 +31,11 @@ _STATUS_TEXT = {
         "No DPR has been generated for today yet. Log an activity first, "
         "or check back once today's report has run."
     ),
+    # WA-40: asked during the day, before the evening cutoff builds it.
+    "preview": (
+        "Today's report is made this evening. So far today{site_at}:\n{preview}\n"
+        "This is a draft: not final, and not sent to anyone."
+    ),
     "bad_date": (
         "Which day's report do you want? Say \"yesterday\" or a date like 12 Oct 2026."
     ),
@@ -72,5 +77,7 @@ def generate_dpr_request_reply(state: WorkflowGraphState) -> dict:
             unconfirmed_note="" if confirmed else " Not confirmed yet.",
             site_prefix=f"{site_name}: " if site_name else "",
             updates=_updates(int(fields.get("dpr_update_count") or 0)),
+            site_at=f" at {site_name}" if site_name else "",
+            preview=fields.get("dpr_preview") or "",
         )
     }

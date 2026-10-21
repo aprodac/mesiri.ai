@@ -253,7 +253,7 @@ def _count(n: int, one: str, many: str) -> str:
     return f"{n} {one if n == 1 else many}"
 
 
-def _day_lines(payload: dict[str, Any]) -> list[str]:
+def day_lines(payload: dict[str, Any]) -> list[str]:
     """What the day holds, one short line per section."""
     if (payload.get("conditions") or {}).get("site_working") == "none":
         return ["• Site closed today, no work"]
@@ -285,7 +285,7 @@ def confirm_message(
     site = f"*{site_name}*" + (
         f" ({project_name})" if site_label(site_name, project_name) != site_name else ""
     )
-    lines = [f"📋 {site}: today's report is ready.", *_day_lines(payload)]
+    lines = [f"📋 {site}: today's report is ready.", *day_lines(payload)]
     stock = int(payload.get("stock_flags") or 0)
     if stock:
         lines.append(

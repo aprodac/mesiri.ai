@@ -233,3 +233,35 @@ async def test_a_send_the_sender_reports_as_false_is_told_not_dropped(caplog):
         and "correlation_id=cor_dpr_1" in r.getMessage()
         for r in caplog.records
     )
+
+
+# -- WA-40: asked during the day, before the evening cutoff builds it ------------
+
+
+class _PreviewQuery(_Query):
+    def __init__(self, lines: list[str]) -> None:
+        super().__init__({"status": "not_generated", "object_key": None, "code": None})
+        self.lines = lines
+        self.asked: dict[str, Any] = {}
+
+    async def preview_lines(self, **kwargs: Any) -> list[str]:
+        self.asked = kwargs
+        return self.lines
+
+
+async def test_during_the_day_the_sender_gets_the_day_so_far_marked_as_a_draft():
+    query = _PreviewQuery(["• Work: 3 items", "• Labour: 16 workers", "• Materials: 2 entries"])
+    docs = _Documents()
+    _, sink = await _ask(query, documents=docs, storage=await _stored())
+    assert sink.replies[0].text == (
+        "Today's report is made this evening. So far today at Kakkanad:\n"
+        "• Work: 3 items\n• Labour: 16 workers\n• Materials: 2 entries\n"
+        "This is a draft: not final, and not sent to anyone."
+    )
+    assert query.asked["site_id"] == SITE
+    assert docs.sent == []  # nothing sent: no report exists yet
+
+
+async def test_a_day_with_nothing_recorded_yet_still_says_so_plainly():
+    _, sink = await _ask(_PreviewQuery([]), documents=_Documents(), storage=await _stored())
+    assert sink.replies[0].text.startswith("No DPR has been generated for today yet.")

@@ -92,6 +92,32 @@ class DprRequestQueryService:
         return {"status": status, "object_key": None, **found}
 
 
+    async def preview_lines(
+        self,
+        *,
+        organization_id: str,
+        project_id: str,
+        site_id: str,
+        report_date: datetime.date,
+    ) -> list[str]:
+        """WA-40: before the evening cutoff builds the day's report, what the
+        site's day holds so far, one short line per section -- from the same
+        assembly the report itself is built from (dpr.assemble_site_day) and
+        worded as the evening review words it. Read-only: nothing is stored or
+        sent. Empty when nothing is recorded yet."""
+        from mesiri.infrastructure.postgres.repositories.dpr import PostgresDprRepository
+        from runtime.site_day_review import day_lines
+
+        async with self._db.transaction() as conn:
+            payload, _ = await PostgresDprRepository(conn).assemble_site_day(
+                organization_id=uuid.UUID(organization_id),
+                project_id=uuid.UUID(project_id),
+                site_id=uuid.UUID(site_id),
+                report_date=report_date,
+            )
+        return day_lines(payload)
+
+
 #: Mirrors the `daily_report_level` Postgres enum (migration 0440). The bare
 #: sa.column("level") is untyped, so `level == "SITE"` binds as VARCHAR and
 #: Postgres has no `daily_report_level = varchar` operator: every real lookup
