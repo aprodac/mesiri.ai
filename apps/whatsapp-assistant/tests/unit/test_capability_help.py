@@ -224,6 +224,21 @@ async def test_smalltalk_regenerates_a_reply_equal_to_a_recent_one():
     assert out.text == "Something new." and out.source == "ai_retry" and out.rules == ("repeat",)
 
 
+async def test_a_manglish_greeting_goes_to_the_model_not_a_fixed_line():
+    provider = ScriptedJson(_reply("Sughamaanu bro! Ningalkko?"))
+    out = await CapabilityHelpService(provider).smalltalk("enthokke und vishesham?", language="Malayalam", script="latin")
+    assert out.text == "Sughamaanu bro! Ningalkko?" and out.source == "ai" and len(provider.user_prompts) == 1
+
+
+async def test_a_stock_phrase_reply_is_regenerated_once():
+    provider = ScriptedJson(
+        _reply("I can't tell jokes, sorry! Is there anything I can help you with?"),
+        _reply("Why did the mason bring a ladder? To reach the next level 😄"),
+    )
+    out = await CapabilityHelpService(provider).smalltalk("tell me a joke")
+    assert out.source == "ai_retry" and out.rules == ("stock_phrase",) and "ladder" in out.text
+
+
 async def test_smalltalk_falls_back_after_two_rejected_replies():
     out = await CapabilityHelpService(ScriptedJson(_reply("x" * 600))).smalltalk("hmm")
     assert out.source == "fallback" and "too_long" in out.rules

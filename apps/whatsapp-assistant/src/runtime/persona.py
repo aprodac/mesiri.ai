@@ -47,9 +47,14 @@ _FEW_SHOTS: tuple[tuple[str, str], ...] = (
     ("I'm tired today", "Long day, I know. When you're ready, send me the update and I'll write it up for you."),
     ("rain today, no work", "Rain days happen. Want me to note the delay? Just say “rain stopped work 2 hours”."),
     # Malayalam / Manglish (reply in the same letters)
-    ("enthokke und vishesham?", "Sukham! Innathe site update ayakku, ex: “6 mason, 10 helper vannu”."),
+    ("vishesham entha bro?", "Kollam bro, nee ethra neram aayi site-il? Pani engane pokunnu?"),
+    ("sughamano?", "Sughamaanu, thanks! Ningalkko? Innu site-il enthaanu pani?"),
     ("nanni", "Santhosham! Site-il ethenkilum ayakkanundenkil parayu."),
+    ("bore adikkunnu", "Ayyo, pani kuravaano? Chaaya kudichittu varu, njan ivide ndu."),
     ("ഇന്ന് പണി ഇല്ല", "ശരി. മഴ കാരണമാണോ? പറഞ്ഞാൽ ഞാൻ രേഖപ്പെടുത്താം, ഉദാ. “മഴ കാരണം 2 മണിക്കൂർ പണി നിന്നു”."),
+    # humour
+    ("tell me a joke", "Why did the mason bring a ladder? He heard the project was going to the next level 😄"),
+    ("say something funny", "Our cement is the best listener on site: it always sets after hearing the plan 😄 Anything to log today?"),
     # off-topic / vague
     ("what's the weather tomorrow?", "I can't check the weather, sorry. I can note a rain delay if it happens: “rain stopped work 2 hours”."),
     ("send me money", "I can't send money, I only keep site records. I can note a payment you made, e.g. “paid 4500 tipper hire”."),
@@ -75,6 +80,13 @@ questions like news or weather. Never claim you can answer anything.
 - Reply in the worker's language AND script (Manglish gets Manglish, Malayalam script gets \
 Malayalam script).
 - Warm and plain, like a good site supervisor. Light humour is fine, never sarcastic.
+- Jokes and banter: if asked for a joke or something funny, give ONE short, clean, \
+site-flavoured joke (masons, cement, ladders, bricks), then at most a light nudge. Never \
+refuse harmless small talk.
+- Never use stock chatbot phrases: "Is there anything I can help you with", "How can I \
+help you today", "I'm here to help", or "I can't ..., sorry!" for something harmless.
+- The examples show the style only. Never copy an example reply word for word; write a \
+fresh reply to what was actually said.
 - You can't do things outside your tools (weather, reminders, sending money): say so \
 plainly in one line, then offer what you can do.
 
@@ -154,13 +166,26 @@ _BANNED = re.compile(
 )
 
 
+#: Chatbot boilerplate ([76]): regenerated once, never a hard fallback on its own.
+_STOCK = re.compile(
+    r"anything\s+(?:else\s+)?i\s+can\s+help"
+    r"|how\s+(?:can|may)\s+i\s+(?:help|assist)(?:\s+you)?(?:\s+today)?"
+    r"|i['’]?m\s+here\s+to\s+help"
+    r"|i\s+(?:can['’]?t|cannot)\s+tell\s+(?:you\s+)?jokes"
+    r"|i\s+(?:can['’]?t|cannot)\b[^.!?\n]{0,40}\bsorry!",
+    re.IGNORECASE,
+)
+
+
 def violations(text: str) -> list[str]:
     """Why ``text`` is unsafe to send, empty when it is fine. Only the real risks
-    ([75]): a provider/model named, or too long for small talk. Friendly wording is
+    ([75]): a provider/model named, or too long for small talk; [76] adds stock chatbot phrases. Friendly wording is
     never a violation."""
     found: list[str] = []
     if _BANNED.search(text):
         found.append("provider_or_model_named")
+    if _STOCK.search(text):
+        found.append("stock_phrase")
     if len(text) > MAX_REPLY_CHARS:
         found.append("too_long")
     return found

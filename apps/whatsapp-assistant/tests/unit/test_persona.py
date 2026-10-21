@@ -37,7 +37,6 @@ def test_each_banned_shape_is_rejected(text):
     "text",
     [
         "Fair enough! Ask me anything about the site anytime.",
-        "How can I help you today?",
         "Sure:\n1. Tell me\n2. Ask me\n3. Get reports",
         "x" * 500,
     ],
@@ -214,3 +213,28 @@ async def test_source_is_ai_then_fallback():
     ok = await persona.guard("Fine.", user_text="hi", regenerate=regen)
     bad = await persona.guard("Gemini", user_text="hi", regenerate=regen)
     assert (ok.source, bad.source) == ("ai", "fallback")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "How can I help you today?",
+        "Is there anything I can help you with from the site today?",
+        "I'm here to help with your site records.",
+        "I can't tell jokes, sorry!",
+        "I can't do that one, sorry! Try something else.",
+    ],
+)
+def test_stock_chatbot_phrases_are_regenerated(text):
+    assert persona.violations(text) == ["stock_phrase"]
+
+
+def test_the_voice_allows_a_joke_and_bans_the_stock_phrases():
+    voice = persona.MESIRI_VOICE
+    assert "ONE short, clean" in voice and "Never refuse harmless small talk" in voice
+    assert "Is there anything I can help you with" in voice
+    assert "tell me a joke ->" in voice and "bore adikkunnu ->" in voice
+
+
+def test_a_manglish_greeting_few_shot_is_not_the_20_oct_line():
+    assert "Sukham! Innathe site update" not in persona.MESIRI_VOICE

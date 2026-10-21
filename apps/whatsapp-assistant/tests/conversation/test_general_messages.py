@@ -26,9 +26,9 @@ CASES = load_cases()
 MAL = re.compile(r"[ഀ-ൿ]")
 
 
-def test_the_eval_set_has_the_30_scorecard_messages():
-    assert len(CASES) == 30
-    assert {c["batch"] for c in CASES} == set("ABCDEF")
+def test_the_eval_set_has_the_scorecard_messages():
+    assert len(CASES) == 34
+    assert {c["batch"] for c in CASES} == set("ABCDEFG")
 
 
 def _toolbox():

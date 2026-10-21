@@ -33,3 +33,8 @@
 - {"id": 28, "batch": "F", "message": "who is my engineer?", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
 - {"id": 29, "batch": "F", "message": "can I send photos?", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
 - {"id": 30, "batch": "F", "message": "what did you save?", "lang": "en", "max_chars": 400, "no_menu": true, "no_banned": true}
+# [76] small talk that used to get a fixed line or a chatbot refusal: same script, no stock phrase, under 300 chars.
+- {"id": 31, "batch": "G", "message": "enthokke und vishesham?", "lang": "manglish", "max_chars": 300, "no_menu": true, "no_banned": true}
+- {"id": 32, "batch": "G", "message": "sughamano?", "lang": "manglish", "max_chars": 300, "no_menu": true, "no_banned": true}
+- {"id": 33, "batch": "G", "message": "tell me a joke", "lang": "en", "max_chars": 300, "no_menu": true, "no_banned": true}
+- {"id": 34, "batch": "G", "message": "bore adikkunnu", "lang": "manglish", "max_chars": 300, "no_menu": true, "no_banned": true}
