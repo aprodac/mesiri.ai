@@ -136,3 +136,57 @@ def test_missing_receipts_flag_false_uses_the_regular_reply():
     }
     result = generate_expense_query_reply(state)
     assert "Total:" in result["pending_prompt"]
+
+
+# -- SEC-01: the same rule as the dashboard (mesiri.authorization.roles) --------
+
+
+def test_someone_who_may_not_read_expenses_is_told_so_and_shown_nothing():
+    from workflows.expense_query.nodes import EXPENSES_NOT_FOR_YOU
+
+    state: WorkflowGraphState = {"collected_fields": {"expense_denied": True}}
+    assert generate_expense_query_reply(state) == {"pending_prompt": EXPENSES_NOT_FOR_YOU}
+
+
+async def _seed(role: str, projects: list[str], expenses: list):
+    import uuid
+    from types import SimpleNamespace
+
+    from mesiri_contracts.assistant.planner_decision import WorkflowKey
+    from runtime.inbound_journey.seeding import _seed_finance_query_context
+
+    class _Service:
+        async def list_expenses(self, **kwargs):
+            return expenses
+
+    actor = SimpleNamespace(
+        organization_id=str(uuid.uuid4()),
+        user_id="u1",
+        role=role,
+        projects=[SimpleNamespace(id=p) for p in projects],
+    )
+    event = SimpleNamespace(fields={}, project_id=None, site_id=None)
+    decision = SimpleNamespace(workflow_key=WorkflowKey.EXPENSE_QUERY)
+    await _seed_finance_query_context(event, decision, None, _Service(), actor)
+    return event.fields
+
+
+def _expense(project_id: str, amount: str):
+    import datetime
+    from decimal import Decimal
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        project_id=project_id, amount=Decimal(amount), description=None, occurred_date=datetime.date(2026, 10, 21)
+    )
+
+
+async def test_on_whatsapp_a_site_engineer_gets_no_expense_figures():
+    fields = await _seed("SITE_ENGINEER", ["p1"], [_expense("p1", "1500")])
+    assert fields == {"expense_denied": True}
+
+
+async def test_on_whatsapp_a_project_manager_sees_only_their_own_projects():
+    fields = await _seed("PROJECT_MANAGER", ["p1"], [_expense("p1", "1500"), _expense("p2", "900")])
+    assert fields["expense_results"]["count"] == 1
+    assert fields["expense_results"]["total"] == "1500"

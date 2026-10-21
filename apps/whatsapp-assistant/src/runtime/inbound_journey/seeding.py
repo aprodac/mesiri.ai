@@ -1366,7 +1366,11 @@ async def _seed_project_detail_query(
 
     # Financial visibility: withheld entirely for SITE_ENGINEER -- a read,
     # not a write, so the reply is never refused, only the money line.
-    if expense_query_service is not None and str(actor.role or "").strip().upper() != "SITE_ENGINEER":
+    from mesiri.authorization.roles import may_view_expenses
+
+    # SEC-01: the money line follows the expense rule (it hid it from site
+    # engineers only; a supervisor saw it).
+    if expense_query_service is not None and may_view_expenses(actor.role):
         start_date, end_date, date_range_label = resolve_date_range(None)
         expenses = await expense_query_service.list_expenses(
             organization_id=actor.organization_id,
@@ -2242,6 +2246,20 @@ async def _seed_correction_target(
         event.fields["correction_activity_summary"] = " — ".join(summary_bits)
 
 
+def _within_own_projects(expenses: list[Any], actor: ActorIdentity) -> list[Any]:
+    """SEC-01: only the expenses of the sender's own projects. A company-wide
+    expense (no project) only for someone who reaches every project."""
+    from mesiri.authorization.roles import role_is_org_wide
+
+    own = {str(project.id) for project in actor.projects or []}
+    org_wide = role_is_org_wide(actor.role)
+    return [
+        expense
+        for expense in expenses
+        if (str(expense.project_id) in own if expense.project_id is not None else org_wide)
+    ]
+
+
 async def _seed_finance_query_context(
     event: CanonicalEventV2,
     decision: PlannerDecisionV2,
@@ -2278,6 +2296,12 @@ async def _seed_finance_query_context(
     if decision.workflow_key is WorkflowKey.EXPENSE_QUERY:
         if expense_query_service is None:
             return
+        from mesiri.authorization.roles import may_view_expenses
+
+        if not may_view_expenses(actor.role):
+            # SEC-01: the same rule as the dashboard's expense pages.
+            event.fields["expense_denied"] = True
+            return
         category_name = event.fields.get("category_name")
         missing_receipts_only = bool(event.fields.get("missing_receipts"))
         start_date, end_date, date_range_label = resolve_date_range(event.fields.get("date_range"))
@@ -2290,6 +2314,7 @@ async def _seed_finance_query_context(
             category_name=category_name,
             missing_receipts_only=missing_receipts_only,
         )
+        expenses = _within_own_projects(expenses, actor)
         event.fields["expense_results"] = {
             "total": str(ExpenseQueryService.total(expenses)),
             "count": len(expenses),

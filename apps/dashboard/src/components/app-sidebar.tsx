@@ -58,12 +58,18 @@ import type { ScopeKind } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
 import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
 
+// Mirrors backend mesiri/authorization/roles.py EXPENSE_VIEW_ROLES (SEC-01);
+// the API refuses everyone else, this only keeps the link out of their way.
+const EXPENSE_VIEW_ROLES = ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'FINANCE', 'PROJECT_MANAGER'] as const
+
 type NavItem = {
   title: string
   url: string
   icon: React.ComponentType<{ className?: string }>
   requiredScope?: ScopeKind
   requiredRole?: string
+  // Shown only to these roles (SEC-01: who may read expenses).
+  allowedRoles?: readonly string[]
   // Switched-off modules are hidden (WEB-02); see lib/modules.tsx.
   module?: ModuleKey
 }
@@ -98,7 +104,7 @@ const FINANCE_CATEGORY: NavCategory = {
   icon: Landmark,
   items: [
     { title: 'Overview', url: '/finance/overview', icon: PieChart },
-    { title: 'Expenses', url: '/finance/expenses', icon: DollarSign },
+    { title: 'Expenses', url: '/finance/expenses', icon: DollarSign, allowedRoles: EXPENSE_VIEW_ROLES },
     { title: 'Accounts', url: '/finance/accounts', icon: Landmark },
     { title: 'WhatsApp Automations', url: '/finance/whatsapp', icon: Bot },
     { title: 'Transactions', url: '/finance/transactions', icon: ArrowLeftRight },
@@ -399,7 +405,11 @@ export function AppSidebar() {
     isModuleEnabled(category.module)
   ).map((category) => ({
     ...category,
-    items: category.items.filter((item) => isModuleEnabled(item.module)),
+    items: category.items.filter(
+      (item) =>
+        isModuleEnabled(item.module) &&
+        (!item.allowedRoles || item.allowedRoles.includes((me?.role || '').toUpperCase()))
+    ),
   }))
 
   const isMoreActive =

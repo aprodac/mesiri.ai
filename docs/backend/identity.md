@@ -16,6 +16,7 @@ watchdog) is gone (migration `0482`).
 | Is the company usable? | `organizations.status` + `trial_ends_at` (`domains/organizations/lifecycle.is_operational`) |
 | Which projects? | Org-wide users (role or `access_policy`, `mesiri.authorization.roles.is_org_wide`): every on-track project; others: their `project_members` rows |
 | Which sites? | Org-wide users: every site. Others, per project: every site when their membership is "all sites", otherwise only their `site_members` sites (BE-34; same rule as the dashboard and the report-recording path) |
+| Who sees expenses? | Owner/admin, finance and project managers, each within the projects they reach; everyone else gets none (they can still record one). One rule, `mesiri.authorization.roles.may_view_expenses`, for the dashboard API and WhatsApp (SEC-01, Ilan 21 Oct 2026) |
 | Reply / open workflow scope | `inbound_messages`, `workflow_instances` |
 
 Context IDs stay `ctx_user_<uuid>`, `ctx_org_<uuid>`, `ctx_proj_<uuid>`,

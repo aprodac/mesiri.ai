@@ -9,6 +9,12 @@ from __future__ import annotations
 
 from ..state import WorkflowGraphState
 
+#: SEC-01: the reply to someone whose role does not see the company's expenses.
+EXPENSES_NOT_FOR_YOU = (
+    "Expense totals are only for the owner, finance and project managers. "
+    "You can still send me an expense to record."
+)
+
 
 def _fmt_amount(value: str) -> str:
     number = float(value)
@@ -50,6 +56,9 @@ def generate_expense_query_reply(state: WorkflowGraphState) -> dict:
     count = results.get("count", 0)
     items: list[dict] = results.get("items") or []
 
+    if fields.get("expense_denied"):
+        # SEC-01: who may read expenses (mesiri.authorization.roles).
+        return {"pending_prompt": EXPENSES_NOT_FOR_YOU}
     if fields.get("missing_receipts"):
         return _generate_missing_receipts_reply(fields, results)
 

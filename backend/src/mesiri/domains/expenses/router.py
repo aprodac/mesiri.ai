@@ -37,6 +37,7 @@ from mesiri.application.finance.reverse_handler import ReverseTransactionHandler
 from mesiri.application.finance.reverse_resolution import PostgresReverseTargetResolver
 from mesiri.application.vendors.resolution import PostgresVendorResolver
 from mesiri.authorization.context import AuthorizationContext
+from mesiri.authorization.roles import may_view_expenses
 from mesiri.domains.expenses.responses import ExpenseResponse, RecordExpenseResponse
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.media import assert_downloadable_url
@@ -63,6 +64,22 @@ router = APIRouter(
     tags=["expenses"],
     dependencies=[Depends(require_module("finance"))],
 )
+
+def _expense_view_scope(auth_context: AuthorizationContext) -> set[uuid.UUID] | None:
+    """SEC-01: the projects whose expenses this person may read -- None for
+    every project in the org. A role that may not read expenses at all gets a
+    403 (it can still record one: POST "" and the category list stay open)."""
+    if not may_view_expenses(auth_context.role):
+        raise HTTPException(status_code=403, detail="Not authorized to view expenses")
+    if auth_context.project_scope.grants_all_org_projects:
+        return None
+    return set(auth_context.project_scope.project_ids)
+
+
+def _in_scope(project_id: uuid.UUID | None, scope: set[uuid.UUID] | None) -> bool:
+    """An expense with no project is company-wide: only an all-projects scope sees it."""
+    return scope is None or (project_id is not None and project_id in scope)
+
 
 # Presigned URLs are short-lived by design (they must be re-fetched, never
 # cached across sessions) -- 10 minutes is long enough to load a lightbox or
@@ -229,14 +246,17 @@ async def list_expense_categories(
         auth_context.organization_id, created_by=auth_context.user_id
     )
     metrics = await cat_repo.list_with_metrics(auth_context.organization_id)
+    # SEC-01: the names stay (recording an expense needs them); the spending
+    # per category is only for those who may read expenses.
+    sees_money = may_view_expenses(auth_context.role)
     return [
         CategoryResponse(
             id=m["category"].id,
             name=m["category"].name,
             code=m["category"].code,
             status=m["category"].status,
-            expense_count=m["expense_count"],
-            total_amount_spent=m["total_amount"],
+            expense_count=m["expense_count"] if sees_money else 0,
+            total_amount_spent=m["total_amount"] if sees_money else Decimal("0"),
         )
         for m in metrics
     ]
@@ -308,6 +328,7 @@ async def list_expenses(
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
+    scope = _expense_view_scope(auth_context)
     repo = PostgresExpenseRepository(conn)
     cat_repo = PostgresExpenseCategoryRepository(conn)
 
@@ -317,6 +338,7 @@ async def list_expenses(
         site_id=site_id,
         category_id=category_id,
     )
+    items = [item for item in items if _in_scope(item.project_id, scope)]
 
     # Build a category name lookup in one pass (avoids N queries)
     cat_ids = {item.category_id for item in items if item.category_id}
@@ -365,6 +387,7 @@ async def list_all_attachments(
     """Every receipt across the org, newest first -- the "see all receipts
     together" gallery view. Declared before `/{expense_id}` so "attachments"
     is never matched as an expense id."""
+    scope = _expense_view_scope(auth_context)
     attachment_repo = PostgresExpenseAttachmentRepository(conn)
     rows = await attachment_repo.list_for_organization(
         auth_context.organization_id,
@@ -375,6 +398,8 @@ async def list_all_attachments(
         limit=limit,
         offset=offset,
     )
+
+    rows = [row for row in rows if _in_scope(row.project_id, scope)]
 
     # Batch-resolve category/vendor names in one pass each, same convention
     # list_expenses already uses below -- avoids N queries per row.
@@ -420,9 +445,10 @@ async def get_expense(
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
+    scope = _expense_view_scope(auth_context)
     repo = PostgresExpenseRepository(conn)
     expense = await repo.get_by_id(auth_context.organization_id, expense_id)
-    if expense is None:
+    if expense is None or not _in_scope(expense.project_id, scope):
         raise HTTPException(status_code=404, detail="Expense not found")
 
     cat_name = None
@@ -549,9 +575,10 @@ async def list_expense_attachments(
 ):
     """Receipt(s) attached to one expense -- what the Expenses page's
     per-row lightbox needs."""
+    scope = _expense_view_scope(auth_context)
     repo = PostgresExpenseRepository(conn)
     expense = await repo.get_by_id(auth_context.organization_id, expense_id)
-    if expense is None:
+    if expense is None or not _in_scope(expense.project_id, scope):
         raise HTTPException(status_code=404, detail="Expense not found")
 
     attachment_repo = PostgresExpenseAttachmentRepository(conn)

@@ -64,3 +64,19 @@ def is_org_wide(role: str | None, access_policy: Any = None) -> bool:
     call this rather than re-deriving it.
     """
     return role_is_org_wide(role) or policy_is_org_wide(access_policy)
+
+
+# Who may read the company's expenses (SEC-01, decided by Ilan 21 Oct 2026):
+# the owner/admin, finance and project managers -- each only within the
+# projects they can reach (ProjectAccessScope on the dashboard, the sender's
+# own projects on WhatsApp). Everyone else (a site engineer, a supervisor)
+# records expenses but does not see the company's spending. One rule for the
+# dashboard API and the WhatsApp assistant: both import it from here.
+EXPENSE_VIEW_ROLES: frozenset[str] = frozenset(
+    {"ADMIN", "OWNER", "SUPER_ADMIN", "FINANCE", "PROJECT_MANAGER"}
+)
+
+
+def may_view_expenses(role: str | None) -> bool:
+    """True if `role` may read expenses (within the projects it can reach)."""
+    return str(role or "").strip().upper() in EXPENSE_VIEW_ROLES
