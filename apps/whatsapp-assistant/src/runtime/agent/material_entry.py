@@ -64,6 +64,11 @@ class Say:
 
     status: str
     text: str
+    #: "choose" only: the question and its options, shown as buttons by the
+    #: code whatever the model writes (round 3c, 21 Oct: it asked in plain
+    #: text and the options never appeared).
+    question: str | None = None
+    options: tuple[str, ...] = ()
 
 
 @dataclass(slots=True)
@@ -103,11 +108,11 @@ class MaterialEntry:
             names = [p.name for p in getattr(self.actor, "projects", None) or []]
             if not names:
                 return Say("info", "Not saved: you are not on any project yet. Your admin can add you.")
-            return Say("choose", _ask("Which project is this for?", names, "project"))
+            return _choose("Which project is this for?", names, "project")
         if site_id is None:
             sites = [s for s in getattr(self.actor, "sites", None) or [] if s.project_id == project_id]
             if len(sites) > 1:
-                return Say("choose", _ask("Which site is this for?", [s.name for s in sites], "site"))
+                return _choose("Which site is this for?", [s.name for s in sites], "site")
             site_id = sites[0].id if sites else None
 
         found = await self._material(organization_id, str(fields["material_name"]), fields, ctx, message)
@@ -195,7 +200,7 @@ class MaterialEntry:
             return material
         if isinstance(outcome, Ambiguous):
             names = [c.display_name for c in outcome.candidates]
-            return Say("choose", _ask(f'Which material is "{name}"?', names, "material"))
+            return _choose(f'Which material is "{name}"?', names, "material")
 
         may_create = await self._may_create(organization_id)
         if may_create and fields.get("new_material"):
@@ -204,8 +209,10 @@ class MaterialEntry:
             return Say(
                 "choose",
                 f'Not saved yet: "{name}" is not in the company\'s material list. Ask whether to add it '
-                "as a new material (options: Yes, No). If yes, call this tool again with new_material "
-                "true; if no, ask which listed material they meant.",
+                "as a new material. If yes, call this tool again with new_material true; if no, ask "
+                "which listed material they meant.",
+                question=f'"{name}" isn\'t in your material list yet. Add it as a new material?',
+                options=("Yes, add it", "No"),
             )
         try:
             listed = await self.catalog_query.list_active_materials(organization_id=organization_id)
@@ -213,10 +220,11 @@ class MaterialEntry:
             listed = []
         if not listed:
             return Say("info", f'Not saved: "{name}" is not in the material list, and the list is empty. An admin adds materials on the dashboard.')
-        return Say(
-            "choose",
-            _ask(f'"{name}" is not in the material list. Which one did they mean?', [m["name"] for m in listed], "material")
-            + " A new material is added by an admin on the dashboard.",
+        return _choose(
+            f'"{name}" isn\'t in the material list. Which one is it?',
+            [m["name"] for m in listed],
+            "material",
+            note=" A new material is added by an admin on the dashboard.",
         )
 
     async def _may_create(self, organization_id: str) -> bool:
@@ -242,8 +250,10 @@ class MaterialEntry:
         if unit is None:
             return Say(
                 "choose",
-                f'Not saved yet: which unit is "{name}" counted in (bags, kg, nos, cum, litres ...)? '
-                "Ask, then call this tool again with new_material true and that unit.",
+                f'Not saved yet: which unit is "{name}" counted in? Ask, then call this tool again with '
+                "new_material true and that unit.",
+                question=f'Which unit is "{name}" counted in?',
+                options=("Bags", "Kg", "Nos", "Cum", "Litres"),
             )
         created = await self.catalog_query.create_material(
             organization_id=organization_id, name=name, unit_id=str(unit["id"]), created_by=str(getattr(self.actor, "user_id", None) or ctx.user_id)
@@ -272,12 +282,16 @@ class MaterialEntry:
         return levels[0]["current_stock"] if levels else None
 
 
-def _ask(question: str, options: list[str], arg: str) -> str:
-    """What the model is told when the sender must choose (ARCH-04)."""
-    shown = ", ".join(options[:10])
-    return (
-        f"Not saved yet. {question} Options: {shown}. Ask the user with ask_user and these "
-        f"options, then call this tool again with that exact {arg}."
+def _choose(question: str, options: list[str], arg: str, *, note: str = "") -> Say:
+    """The sender must choose (ARCH-04): the model is told, and the options
+    go out as buttons under its question."""
+    shown = list(options)[:10]
+    return Say(
+        "choose",
+        f"Not saved yet. {question} Options: {', '.join(shown)}. The options are shown as buttons; "
+        f"when they answer, call this tool again with that exact {arg}.{note}",
+        question=question,
+        options=tuple(shown),
     )
 
 

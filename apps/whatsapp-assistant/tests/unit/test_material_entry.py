@@ -171,7 +171,8 @@ async def test_a_switched_off_module_says_so():
 async def test_a_name_with_several_matches_is_a_question_with_the_options():
     said = await _prepare(_entry(catalog=_Catalog([{**CEMENT, "name": "Cement Paint"}, {**CEMENT, "id": "c2", "name": "Cement PPC"}])))
     assert isinstance(said, Say) and said.status == "choose"
-    assert "Options: Cement Paint, Cement PPC" in said.text and "ask_user" in said.text
+    assert "Options: Cement Paint, Cement PPC" in said.text
+    assert said.options == ("Cement Paint", "Cement PPC")  # shown as buttons by the code
 
 
 async def test_an_unknown_name_lists_the_catalogue_when_they_may_not_add_one():
@@ -186,6 +187,7 @@ async def test_an_unknown_name_asks_to_add_it_when_they_may():
     said = await _prepare(entry, material_name="Fevicol", unit="bags")
     assert said.status == "choose" and "add it as a new material" in said.text
     assert said.text.count("new_material") == 1
+    assert said.options == ("Yes, add it", "No")
 
 
 async def test_after_a_yes_the_new_material_is_added_and_saved():

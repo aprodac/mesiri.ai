@@ -84,3 +84,14 @@ async def test_a_name_that_is_not_in_the_catalogue_is_asked_not_picked():
     assert world.dispatcher.dispatched == []
     [record] = result.run.calls
     assert record.outcome.content["status"] == "choose"
+
+
+async def test_the_options_are_buttons_even_when_the_model_asks_in_plain_text():
+    """Round 3c (21 Oct): the model wrote "Which project is this for?" in its
+    own words and no options appeared. The code attaches them."""
+    world = await _make_world(site_keys=(seed.SITE_A1,))
+    call = ("save_material_receipt", {"material": "fevicol", "quantity": 2, "unit": "tins"})
+    result = await world.say(FakeToolCallingProvider([[call], "Which one was it?"]), "2 tin fevicol vannu")
+    rows = result.reply.list_rows or result.reply.buttons
+    assert rows and "cement" in [r.title for r in rows]
+    assert result.reply.text.endswith("Which one was it?")

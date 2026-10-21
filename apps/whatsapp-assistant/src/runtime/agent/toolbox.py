@@ -271,6 +271,23 @@ class AgentToolbox:
                     "instruction": "Your final message must end with this question.",
                 }
             )
+        if step.status == "choose" and step.reply is not None:
+            # ARCH-04: the sender must pick (material, project, site, add it?).
+            # The options go out as buttons whatever the model writes; its
+            # own ask_user, if it also calls one, is the one question.
+            if self.parked is None:
+                self.parked = step.reply
+                self.parked_by = "ask"
+            return ToolOutcome(
+                content={
+                    "status": "choose",
+                    "message": step.text,
+                    "instruction": (
+                        "Nothing was saved. End your message with this question; its options are "
+                        f"shown as buttons: {step.reply.text}"
+                    ),
+                }
+            )
         if step.status == "answer":
             self.answers.append(step.text)
             return ToolOutcome(content={"status": "answer", "text": step.text})

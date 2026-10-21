@@ -164,7 +164,10 @@ class JourneyGateway:
             _log.info("agent.material_direct correlation_id=%s route=classic", message.correlation_id)
             return None
         if isinstance(prepared, Say):
-            return StepResult(prepared.status, text=prepared.text)
+            from .toolbox import question_reply
+
+            reply = question_reply(prepared.question, list(prepared.options)) if prepared.question else None
+            return StepResult(prepared.status, text=prepared.text, reply=reply)
         run = await self.start_workflow(prepared.decision, prepared.event)
         _log.info("agent.material_direct correlation_id=%s route=direct", message.correlation_id)
         journey = SimpleNamespace(workflow_run=run, planner_decision=prepared.decision)
