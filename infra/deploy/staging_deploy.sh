@@ -50,9 +50,12 @@ done
 echo "→ Settings (production's, made safe)"
 REDIS_DB="$(env_val MESIRI_REDIS__DB "${PROD}/.env")"
 {
-  grep -vE '^(MESIRI_POSTGRES__DB|MESIRI_APP_PORT|MESIRI_REDIS__DB|MESIRI_AUTOMATIONS__ENABLED|MESIRI_OBJECT_STORAGE__LOCAL_ROOT|MESIRI_OBJECT_STORAGE__PUBLIC_BASE_URL|WHATSAPP_ACCESS_TOKEN|WHATSAPP_GRAPH_BASE_URL)=' "${PROD}/.env"
+  grep -vE '^(MESIRI_POSTGRES__DB|MESIRI_POSTGRES__DATABASE|MESIRI_APP_PORT|MESIRI_REDIS__DB|MESIRI_AUTOMATIONS__ENABLED|MESIRI_OBJECT_STORAGE__LOCAL_ROOT|MESIRI_OBJECT_STORAGE__PUBLIC_BASE_URL|WHATSAPP_ACCESS_TOKEN|WHATSAPP_GRAPH_BASE_URL)=' "${PROD}/.env"
   echo "# ── staging overrides (infra/deploy/staging_deploy.sh) ──"
+  # The app reads MESIRI_POSTGRES__DATABASE (PostgresSettings.database); __DB
+  # alone was ignored, so staging migrated and ran on production's database.
   echo "MESIRI_POSTGRES__DB=${STG_DB}"
+  echo "MESIRI_POSTGRES__DATABASE=${STG_DB}"
   echo "MESIRI_APP_PORT=${PORT}"
   echo "MESIRI_REDIS__DB=$(( ${REDIS_DB:-0} + 1 ))"
   echo "MESIRI_AUTOMATIONS__ENABLED=false"
@@ -88,6 +91,12 @@ echo "  copied ${PROD_DB} → ${STG_DB}"
 
 echo "→ Migrations on the copy"
 cd "${STG}"
+# Never migrate anything but the copy: stop if the settings resolve elsewhere.
+RESOLVED_DB="$("${STG}/.venv/bin/python" -c 'from mesiri.bootstrap.settings import get_settings; print(get_settings().postgres.database)')"
+if [ "${RESOLVED_DB}" != "${STG_DB}" ]; then
+  echo "✗ staging settings point at database '${RESOLVED_DB}', not ${STG_DB}; stopping" >&2
+  exit 1
+fi
 MIG_USER="$(env_val MESIRI_MIGRATION_POSTGRES__USER .env)"
 MIG_PASS="$(env_val MESIRI_MIGRATION_POSTGRES__PASSWORD .env)"
 if [ -n "${MIG_USER}" ]; then
