@@ -45,7 +45,7 @@ async def test_one_record_gets_its_own_card():
     renderer = _Renderer()
     png = await RecordReceiptBuilder(renderer).build(*_saved(*MATERIAL, "aaaa-1"), ACTOR)
     assert png == b"png"
-    assert "50" in renderer.html[0] and "SAVED · DRAFT" in renderer.html[0]
+    assert "50" in renderer.html[0] and "TO SAVE" in renderer.html[0]
     assert "SITE UPDATE" not in renderer.html[0].upper()
 
 
@@ -56,7 +56,7 @@ async def test_several_records_get_one_combined_card():
     )
     assert png == b"png"
     assert len(renderer.html) == 1
-    assert "2 SAVED · DRAFT" in renderer.html[0]
+    assert "2 TO SAVE" in renderer.html[0]
     assert "Pipe burst" in renderer.html[0] and "50 bags" in renderer.html[0]
 
 
@@ -93,7 +93,7 @@ async def test_the_handler_combines_what_a_multi_part_note_saved():
     handled.append(SimpleNamespace(result=SimpleNamespace(confirmed_action=None), execution_result=None))
 
     assert await handler.build_combined_receipt(handled, ACTOR) == b"png"
-    assert "2 SAVED · DRAFT" in renderer.html[0]
+    assert "2 TO SAVE" in renderer.html[0]
     assert await InteractionHandler(workflow_runtime=None).build_combined_receipt(handled, ACTOR) is None
 
 

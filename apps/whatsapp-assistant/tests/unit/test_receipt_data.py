@@ -58,8 +58,8 @@ def test_material_in_and_used_differ_by_direction():
 
 def test_header_and_footer_follow_the_record():
     data = receipt(*MATERIAL_IN)
-    assert data.status == "SAVED · DRAFT"
-    assert data.footer_note == "Confirm with tonight's report"
+    assert data.status == "TO SAVE"
+    assert data.footer_note == "Tap Save to keep it"
     assert data.site_line == "Block A · Riverside Tower"
     assert data.meta_line == "19 Oct 2026 · 4:27 PM · Mohammed"
     assert receipt(*MATERIAL_IN, late_entry=True).status == "LATE ENTRY"
@@ -171,7 +171,7 @@ def test_multi_part_card_rows_and_plus_n_more(parts, shown, more):
     assert data.hero_number == str(parts)
     assert len(data.rows) == shown
     assert data.more == more
-    assert data.status == f"{parts} SAVED · DRAFT"
+    assert data.status == f"{parts} TO SAVE"
 
 
 def test_multi_part_rows_carry_each_records_kind_and_value():
@@ -332,3 +332,21 @@ def test_trade_label_is_readable_and_receipt_rows_use_it():
     assert trade_label("Mason") == "Mason"
     assert trade_label(None) == ""
     assert [t.name for t in labour([("steel_bender", 5)]).trades] == ["Steel bender"]
+
+
+def test_a_whole_quantity_reads_without_point_zero():
+    """22 Oct: the card said "50.0 bags"."""
+    data = receipt(DraftActionType.RECORD_MATERIAL_RECEIPT, {"material_name": "cement", "quantity": 50.0, "unit": "bags"})
+    assert (data.hero_number, data.summary.value) == ("50", "50 bags")
+    half = receipt(DraftActionType.RECORD_MATERIAL_USAGE, {"material_name": "sand", "quantity": 2.5, "unit": "m3"})
+    assert half.hero_number == "2.5"
+
+
+@pytest.mark.parametrize("zone", [None, "", "UTC", "Etc/UTC"])
+def test_a_default_utc_company_reads_india_time(zone):
+    """22 Oct: organizations.timezone defaults to "UTC", so a 2:45 AM IST
+    entry showed 9:15 PM the day before."""
+    from datetime import UTC, datetime
+
+    data = _stamped(datetime(2026, 10, 21, 21, 15, tzinfo=UTC), zone)
+    assert data.meta_line.startswith("22 Oct 2026 · 2:45 AM")

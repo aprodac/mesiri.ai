@@ -18,6 +18,7 @@ the template.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, tzinfo
 from enum import Enum
@@ -34,11 +35,13 @@ MAX_ROWS = 10
 MAX_DETAIL_ROWS = 6
 
 STATUS_SAVED = "SAVED"
-STATUS_DRAFT = "SAVED · DRAFT"
+#: A save-first draft: the card goes out with the Save button, before the
+#: tap (22 Oct: "SAVED · DRAFT" read as already saved).
+STATUS_DRAFT = "TO SAVE"
 STATUS_UNDONE = "UNDONE"
 STATUS_LATE = "LATE ENTRY"
 
-FOOTER_DRAFT = "Confirm with tonight's report"
+FOOTER_DRAFT = "Tap Save to keep it"
 FOOTER_UNDONE = "Not in tonight's report"
 FOOTER_LATE = "Late entry: shows in your next report"
 
@@ -144,8 +147,18 @@ def _site_name(site_id: str | None, sites: list[Any]) -> str | None:
     return next((s.name for s in sites if s.id == site_id), None)
 
 
+def _number(value: Any) -> str:
+    """A quantity as a worker writes it: 50, not 50.0 (22 Oct)."""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    text = str(value if value is not None else "").strip()
+    if re.fullmatch(r"-?\d+\.0+", text):
+        return text.split(".")[0]
+    return text
+
+
 def _fmt_quantity(fields: dict) -> str:
-    quantity = fields.get("quantity", "")
+    quantity = _number(fields.get("quantity", ""))
     unit = fields.get("unit", "")
     return f"{quantity} {unit}".strip()
 
@@ -233,9 +246,17 @@ def _status_word(close_action: str) -> str:
     return {"resolve": "Resolved", "close": "Closed"}.get(close_action, close_action.title())
 
 
+_UNSET_ZONES = frozenset({"UTC", "ETC/UTC", "GMT", "Z"})
+
+
 def company_zone(name: str | None) -> tzinfo:
     """The company's timezone (organizations.timezone), India by default and
     on any unknown name -- the same fallback as runtime/setup_questions.py."""
+    if (name or "").strip().upper() in _UNSET_ZONES:
+        # organizations.timezone defaults to "UTC" (migration 0280): nobody
+        # chose it, so it is India like a blank one (22 Oct: a 2:45 AM entry
+        # showed 9:15 PM the day before).
+        name = None
     try:
         return ZoneInfo(name or "Asia/Kolkata")
     except Exception:  # noqa: BLE001
@@ -290,14 +311,14 @@ def build_receipt_data(
     elif draft.action_type is DraftActionType.RECORD_MATERIAL_RECEIPT:
         kind = ReceiptKind.MATERIAL_IN
         category = "Material received"
-        hero_number, hero_unit = str(fields.get("quantity", "")).strip(), str(fields.get("unit", "")).strip()
+        hero_number, hero_unit = _number(fields.get("quantity", "")), str(fields.get("unit", "")).strip()
         rows = _rows(kind, ("Material", material_name.title()), ("Supplier", fields.get("supplier")))
         id_prefix = "MR"
         summary_text, summary_value = material_name.title(), _fmt_quantity(fields)
     elif draft.action_type is DraftActionType.RECORD_MATERIAL_USAGE:
         kind = ReceiptKind.MATERIAL_USED
         category = "Material used"
-        hero_number, hero_unit = str(fields.get("quantity", "")).strip(), str(fields.get("unit", "")).strip()
+        hero_number, hero_unit = _number(fields.get("quantity", "")), str(fields.get("unit", "")).strip()
         rows = _rows(kind, ("Material", material_name.title()), ("Used for", fields.get("work_item")))
         id_prefix = "MU"
         summary_text, summary_value = material_name.title(), _fmt_quantity(fields)
@@ -420,7 +441,7 @@ def build_receipt_data(
         category = "Site activity"
         pct = _progress_percent(fields)
         if _present(fields.get("quantity")):
-            hero_number, hero_unit = str(fields["quantity"]).strip(), str(fields.get("unit") or "").strip()
+            hero_number, hero_unit = _number(fields["quantity"]), str(fields.get("unit") or "").strip()
         elif pct:
             hero_number, hero_unit = pct.rstrip("%"), "% done"
         else:
@@ -475,7 +496,7 @@ def build_receipt_data(
         new_unit = str(fields.get("unit") or old_unit)
         kind = ReceiptKind.WORK
         category = "Correction"
-        hero_number, hero_unit = str(fields.get("new_quantity", "")).strip(), new_unit
+        hero_number, hero_unit = _number(fields.get("new_quantity", "")), new_unit
         rows = _rows(kind, ("Activity", fields.get("correction_activity_summary")))
         correction = ReceiptCorrection(
             old_value=f"{fields.get('old_quantity')} {old_unit}".strip(),

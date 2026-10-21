@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from canonicalization.occurred_date import resolve_occurred_date
+from channel.receipt.data import company_zone
 from mesiri_contracts.assistant.canonical_event import CanonicalEventType, IntentCompleteness
 from mesiri_contracts.assistant.planner_decision import (
     PlannerDecisionType,
@@ -182,7 +183,9 @@ class MaterialEntry:
 
         for key in ("project_id", "site_id", "project_name", "site_name"):
             fields.pop(key, None)
-        fields = resolve_occurred_date(fields, timezone_name=ctx.timezone)
+        # The card's rule: a blank or default "UTC" zone is India, so a 2:45 AM
+        # entry lands on today, not yesterday (22 Oct).
+        fields = resolve_occurred_date(fields, timezone_name=str(company_zone(ctx.timezone)))
         if direction == "used":
             stock = await self._stock(organization_id, project_id, site_id, fields["material_id"], message)
             if stock is not None:
