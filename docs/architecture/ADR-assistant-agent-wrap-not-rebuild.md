@@ -75,3 +75,132 @@ message run once. Writes make retry dangerous, so:
   through the query tools; the conversation memory (last 6 turns, pending flags) is included.
 - Voice costs one speech call before the agent runs; the <4 s latency target is for text.
 - Roll back: set `assistant_mode` to `off` for the company (instant), or revert the commit.
+
+---
+
+# Direction: one AI with a base prompt + tools (prompt + tools)
+
+**Status:** Accepted direction, Ilan 20 Oct 2026; pilot pending.
+**Builds on:** the decision above ([40]), not a parallel path. Line counts below were measured on
+`main` on 21 Oct 2026 (`wc -l` over `apps/whatsapp-assistant/src`); the bot's earlier figures
+came from a 19 Oct copy.
+
+## 1. Decision
+
+Move the WhatsApp assistant's conversation layer (understanding, deciding, reply writing) from a
+fixed pipeline to ONE AI with a base prompt plus tools. The existing save/query code stays and
+becomes the tools. The agent loop from [40] (`runtime/agent/`, `assistant_mode = agent`) is the
+starting point: the work is to widen what it handles and then retire the classic path behind it.
+
+## 2. Why
+
+Today's path is classify -> canonicalize -> planner -> workflow graph -> reply templates.
+
+- Each step drops meaning. "Nale slab concrete cheyyan pattumo?" (can we pour the slab
+  tomorrow?) becomes "a note for the engineer".
+- None of the steps sees today's data, so a double labour save is not noticed.
+- Replies are fixed English templates, so the worker's language is lost.
+- Every new case needs code + tests + a deploy.
+
+Most of requests [33]-[67] were conversation bugs of this kind.
+
+## 3. Target design
+
+a. **Context** passed to the model: user, company, sites, today's saves, stock, last 6 turns,
+   language. (Gap today: [40] loads the last 6 turns and pending flags; today's saves and stock
+   are read through query tools, not preloaded.)
+b. **One AI call** with the Mesiri voice prompt (`runtime/persona.py`, [68]/[75]/[76]).
+c. **Tools** = the existing validated save/query code, scoped by organisation server-side:
+   `save_labour` (with duplicate check), `save_material`, `save_work_done`, `save_expense`,
+   `report_issue`, `undo_last`, `ask_user`, `query_*`, `request_dpr`.
+d. **One reply**: the AI writes it from the tool results, in the worker's language.
+
+Fast paths stay: button taps, YES/NO, UNDO, menu, signup.
+
+## 4. Flow, now vs after
+
+Example message: "Today 6 mason, 10 helper came. Used 20 bags cement."
+
+```mermaid
+flowchart TB
+  subgraph NOW["Now: fixed pipeline"]
+    direction TB
+    A1["WhatsApp message"] --> A2["Classify"]
+    A2 --> A3["Canonicalize"]
+    A3 --> A4["Planner"]
+    A4 --> A5["Workflow graph<br/>labour + material"]
+    A5 --> A6["Fixed reply templates<br/>(English)"]
+  end
+  subgraph AFTER["After: prompt + tools"]
+    direction TB
+    B1["WhatsApp message"] --> B2["Context<br/>user, company, sites,<br/>today's saves, stock, last 6 turns"]
+    B2 --> B3["One AI call<br/>Mesiri prompt"]
+    B3 --> B4["Tool: save_labour<br/>6 mason, 10 helper"]
+    B3 --> B5["Tool: save_material<br/>20 bags cement"]
+    B4 --> B6["Existing validated<br/>save code"]
+    B5 --> B6
+    B6 --> B7["AI writes ONE reply<br/>in the worker's language"]
+  end
+```
+
+## 5. The five rules
+
+1. **The AI decides, the code saves.** Numbers never come from the AI: quantities are taken from
+   the worker's message, validated by the existing save code.
+2. **Evals before deleting.** A golden set including the exact expected records; a workflow moves
+   only when it scores >= today's path.
+3. **Switch per company.** TEST company -> one customer -> all; the old path stays as fallback.
+4. **AI down -> keep the message as a note and process it later.** Never lose data (the outage
+   path from WA-18 / [37] already does this for the agent; keep it).
+5. **One path.** No new features in the old graph code, only urgent fixes.
+
+## 6. What goes, what stays (estimate; measured 21 Oct)
+
+`apps/whatsapp-assistant/src` is 57,992 lines of Python (tests: 47,114). The conversation plumbing:
+
+| Area | Lines |
+|---|---:|
+| `runtime/inbound_journey/` | 7,178 |
+| `runtime/message_journey.py` | 2,777 |
+| `interactions/` | 2,714 |
+| `workflows/` (graphs + nodes; includes the save calls that stay) | 8,356 |
+| `canonicalization/` + `planner/` + `planning/` + `understanding/` | 3,505 |
+| `channel/replies.py`, `runtime/reply_language.py`, `runtime/setup_questions.py` | 2,169 |
+
+That is roughly 26k lines touching the conversation, about 20k of it pure plumbing once the save
+calls inside `workflows/` are subtracted. A realistic deletion is 12-15k lines (about 21-26% of
+the 58k) plus the matching tests. (The bot's 19 Oct estimate was 25-30% of ~51k; the tree has
+grown since.)
+
+**Stays:** save code, DPR/receipt PDFs, ingress, admin, auth, query services.
+
+## 7. Costs and risks
+
+- 1-2 AI calls per message: cost and latency, to be measured (BE-25 cost rows already record
+  agent calls).
+- Prompts break quietly: hence the evals (rule 2).
+- Tool-calling reliability (wrong tool, missing arguments).
+- Labour/Attendance tools call the existing workflows unchanged (Module Isolation): the agent
+  adds no behaviour change there.
+
+## 8. Materials pilot
+
+- **Scope:** material receipt, usage and stock query through the agent, TEST company only.
+- **Pass criteria:** 100% save accuracy on the golden set; reply quality >= today on the
+  scorecard (`docs/qa/CONVERSATION_SCORECARD.md`); p50 reply time of a few seconds (measure and
+  record the number here); before/after line counts recorded here.
+- **Then:** roll out workflow by workflow over about 2 weeks.
+
+## 9. Open questions
+
+- Model tier: Flash or Pro.
+- Per-message cost ceiling.
+- When real companies switch (the owner decides).
+- Home of the eval set: `apps/whatsapp-assistant/tests/conversation/` (already holds
+  `general_messages.yaml` and `general_sequences.yaml`).
+
+## 10. References
+
+[40] (this ADR, above) - [68], [75], [76] (Mesiri voice, memory, polish) -
+[docs/execution/VOICE_ASSISTANT_PLAN.md](../execution/VOICE_ASSISTANT_PLAN.md) -
+[runtime-flow.md](runtime-flow.md) - [docs/qa/CONVERSATION_SCORECARD.md](../qa/CONVERSATION_SCORECARD.md) ([66]).
