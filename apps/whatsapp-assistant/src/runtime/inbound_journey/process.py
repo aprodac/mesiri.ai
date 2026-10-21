@@ -1133,7 +1133,9 @@ async def process_inbound_message(
                     if not workflow_registry.module_is_enabled(required_module):
                         from channel.replies import render_module_disabled_reply
 
-                        disabled_reply = render_module_disabled_reply(str(required_module))
+                        disabled_reply = render_module_disabled_reply(
+                            str(required_module), getattr(actor, "role", None)
+                        )
                         await send_text(message.sender.wa_id, disabled_reply)
                         await _safe(
                             mlog.log_reply(correlation_id=correlation_id, reply=disabled_reply)

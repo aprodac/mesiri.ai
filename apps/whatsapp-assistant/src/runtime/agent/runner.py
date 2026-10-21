@@ -234,7 +234,7 @@ def unbacked_numbers(reply: str, sources: list[str]) -> set[str]:
 #: "It is saved / recorded" in the languages the sites write in. Before the
 #: Save tap nothing is kept, so a sentence saying so is not true (WA-37).
 _SAVED_CLAIM = re.compile(
-    r"(?<!not )\b(?:saved|recorded|logged|noted down)\b"
+    r"(?<!not )\b(?:saved|recorded|logged|noted)\b"
     r"|\b(?:save|record|rekhappeduthi|note)\s*(?:cheythu|cheythittund|aakki)"
     r"|സേവ്\s*ചെയ്തു|സേവ്\s*ചെയ്തിട്ടുണ്ട്|രേഖപ്പെടുത്തി|സേവ്\s*ആയി"
     r"|सेव\s*(?:कर\s*)?(?:दिया|किया|हो\s*गया)|दर्ज\s*(?:कर\s*)?(?:दिया|किया|हो\s*गया)",
@@ -243,9 +243,33 @@ _SAVED_CLAIM = re.compile(
 _SENTENCE = re.compile(r"[^.!?।\n]*(?:[.!?।]+|\n|$)")
 
 
+_CLAUSE = re.compile(r"[^,;]*(?:[,;]\s*|$)")
+
+
+def _without_claim(sentence: str) -> str:
+    """The sentence without its claiming part: "50 bag cement vannu, save
+    cheythu." keeps "50 bag cement vannu." (round 3, 21 Oct: dropping the
+    whole sentence left the reply with no words of the model's at all)."""
+    if not _SAVED_CLAIM.search(sentence):
+        return sentence
+    # Only what comes before the claim: after it is the claimed list itself
+    # ("Saved: 15 workers, 180 sqm plastering, ...").
+    kept: list[str] = []
+    for clause in (c for c in _CLAUSE.findall(sentence) if c):
+        if _SAVED_CLAIM.search(clause):
+            break
+        kept.append(clause)
+    body = "".join(kept).rstrip().rstrip(",;").rstrip()
+    if not body:
+        return ""
+    end = re.search(r"[.!?।]+\s*$|\n$", sentence)
+    return body + (end.group(0) if end else "")
+
+
 def without_saved_claims(text: str) -> str:
-    """``text`` without the sentences that say an entry is already saved."""
-    kept = [part for part in _SENTENCE.findall(text) if part and not _SAVED_CLAIM.search(part)]
+    """``text`` without what says an entry is already saved: the claiming
+    clause, or the whole sentence when it is nothing else."""
+    kept = [_without_claim(part) for part in _SENTENCE.findall(text) if part]
     return re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
 
 

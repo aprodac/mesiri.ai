@@ -264,7 +264,16 @@ def day_lines(payload: dict[str, Any]) -> list[str]:
     if headcount:
         lines.append(f"• Labour: {_count(int(headcount), 'worker', 'workers')}")
     if payload.get("materials"):
-        lines.append(f"• Materials: {_count(len(payload['materials']), 'entry', 'entries')}")
+        # The names, not a count: "2 entries" read as two saves when it was
+        # two materials (round 3, 21 Oct).
+        names = [
+            str(m.get("material_name") or m.get("name") or "").strip() for m in payload["materials"]
+        ]
+        names = list(dict.fromkeys(n for n in names if n))
+        shown = ", ".join(names[:4]) + (f" and {len(names) - 4} more" if len(names) > 4 else "")
+        if not shown:
+            shown = _count(len(payload["materials"]), "entry", "entries")
+        lines.append(f"• Materials: {shown}")
     if payload.get("open_issue_count"):
         lines.append(f"• Issues: {payload['open_issue_count']} open")
     if payload.get("evidence_count"):

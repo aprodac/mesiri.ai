@@ -381,7 +381,7 @@ def test_confirm_message_for_a_clean_day():
         "📋 *Block A* (Green Towers): today's report is ready.",
         "• Work: 3 items",
         "• Labour: 17 workers",
-        "• Materials: 2 entries",
+        "• Materials: cement, sand",
         "• Issues: 1 open",
         "• Photos: 1",
     ]

@@ -303,7 +303,7 @@ async def test_another_language_still_gets_the_models_reply():
     [
         ("ഇന്ന് മഴ കാരണം പണി കുറവാണെന്ന് രേഖപ്പെടുത്തിയിട്ടുണ്ട്. സേവ് ടാപ്പ് ചെയ്യുക.", "സേവ് ടാപ്പ് ചെയ്യുക."),
         ("Labour save cheythu. Check and tap Save.", "Check and tap Save."),
-        ("Got it, 3 masons recorded. Tap Save to keep it.", "Tap Save to keep it."),
+        ("Got it, 3 masons recorded. Tap Save to keep it.", "Got it. Tap Save to keep it."),
         ("This part was not saved: unit missing.", "This part was not saved: unit missing."),
         ("Sheri, 100 bag cement vannu. Check cheythu Save tap cheyyu.", "Sheri, 100 bag cement vannu. Check cheythu Save tap cheyyu."),
     ],

@@ -279,6 +279,17 @@ old pipeline still split tool calls and answered with its own plan summary. Chan
 - A shortage message ("10 bag balance und, kooduthal venam") is a material-shortage issue,
   with both figures when the stock disagrees.
 
+**Round 3 (WA-43, BE-45, 21 Oct evening;
+[docs/qa/runs/2026-10-21-round-3](../qa/runs/2026-10-21-round-3/README.md)):** 12 of 15 passed;
+the role tests could not run (the bot's number is an admin).
+
+- The saved-claim check drops only the claiming clause, so "… vannu, save cheythu." keeps
+  "… vannu." (a whole-sentence drop had left one Save card with no AI words).
+- Manglish is recognised in code from everyday words and stated to the model ("reply in
+  Manglish"); "English letters" alone got English answers.
+- Stock received/used net out corrections (a Cancel posts the opposite movement), so
+  received − used = stock.
+
 ## 11. References
 
 [40] (this ADR, above) - [68], [75], [76] (Mesiri voice, memory, polish) -

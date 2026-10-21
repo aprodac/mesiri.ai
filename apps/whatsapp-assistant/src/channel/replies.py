@@ -1167,17 +1167,24 @@ def is_module_disabled_reply(text: str) -> bool:
     return MODULE_DISABLED_MARKER in text
 
 
-def render_module_disabled_reply(module: str) -> str:
+#: Roles that run the company: there is no admin above them to ask. Modules
+#: are switched on by the Mesiri team (control panel), not on the dashboard.
+_COMPANY_ADMIN_ROLES = frozenset({"ADMIN", "OWNER", "SUPER_ADMIN"})
+
+
+def render_module_disabled_reply(module: str, role: str | None = None) -> str:
     """A request for a module the company hasn't switched on (WA-07).
 
     One short line, no menu (request [59]): it says plainly that the module is
-    off for the company -- not that the user typed something wrong.
+    off for the company -- not that the user typed something wrong. An admin
+    is not told to ask their admin (round 3, 21 Oct).
     """
     name, pronoun = _MODULE_USER_NAMES.get(module, (module.capitalize(), "it"))
     verb = "aren't" if pronoun == "them" else "isn't"
+    who = "the Mesiri team" if str(role or "").strip().upper() in _COMPANY_ADMIN_ROLES else "your admin"
     return (
         f"{name} {verb} {MODULE_DISABLED_MARKER} yet, so I didn't record this. "
-        f"Ask your admin to turn {pronoun} on."
+        f"Ask {who} to turn {pronoun} on."
     )
 
 

@@ -155,11 +155,36 @@ def letters_of(text: str) -> str | None:
     return None
 
 
+#: Everyday Malayalam words as sites type them in English letters. One is
+#: enough to call a message Manglish: told only "English letters", the model
+#: answered "nale slab-inu cement mathiyo?" in English (round 3, 21 Oct).
+_MANGLISH_WORDS = frozenset(
+    """vannu vannilla vannittund cheythu cheyyamo cheyyanam cheyyu cheythilla und undo undu
+    illa illallo venam venda vendi ethra ethi eththi eththiyilla aayi aayilla aano alle nale
+    naale innu innale ippo ini kooduthal kurav kuravu kuravanu mathi mathiyo mathiyakum chodikku
+    chodichu paranju parayu kodukku kodukkanam ninnu nokki nokku sheri shari enthu entha evide
+    pani panikkar theernnu kazhinju kittiyilla kitti tharam thannu ponam varum vaa poyi""".split()
+)
+_MANGLISH_SUFFIX = re.compile(r"[a-z]-(?:inu|il|ilekku|nte|ude|kku|um)\b")
+
+
+def is_manglish(text: str) -> bool:
+    """True for Malayalam typed in English letters ("50 bag cement vannu")."""
+    lowered = (text or "").lower()
+    words = set(re.findall(r"[a-z]+", lowered))
+    return bool(words & _MANGLISH_WORDS) or bool(_MANGLISH_SUFFIX.search(lowered))
+
+
 def reply_letters_rule(user_text: str) -> str | None:
     """WA-37: the letters THIS message is in, said as a fact rather than left
     to the model -- told the sender's earlier language, it answered English
     and Manglish in Malayalam script (21 Oct live test, round 2)."""
     letters = letters_of(user_text)
+    if letters == "latin" and is_manglish(user_text):
+        return (
+            "This message is Manglish (Malayalam typed in English letters): reply in Manglish, "
+            "in English letters, the way a site supervisor texts. Not English, and no Malayalam script."
+        )
     if letters == "latin":
         return (
             "This message is written in English letters: reply in English letters only "

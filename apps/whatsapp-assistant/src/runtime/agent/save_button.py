@@ -47,6 +47,18 @@ CANCELLED_DONE = "❌ Cancelled. Nothing from that message was kept. Send it aga
 ALREADY_DONE = "That one is already done."
 EXPIRED = "That message has expired."
 REFUSED = "Couldn't {what} {n} of them: {why}."
+#: A tap on one entry that can't be settled, said as a sentence (round 3,
+#: 21 Oct: "Couldn't cancel 1 of them: it was already saved; fix it on the
+#: dashboard." read as an error). Keyed by settle_drafts' reasons.
+REFUSED_ONE = {
+    "it was already saved; fix it on the dashboard": (
+        "That one is already saved, so it can't be cancelled here. To change it, edit it on the dashboard."
+    ),
+    "it was already cancelled; send it again": (
+        "That one was already cancelled. Send it again if you want to save it."
+    ),
+    "not your entry": "That's not your entry: only the person who sent it can save or cancel it.",
+}
 
 #: One letter per review fact type, to keep the tap id short.
 _CODES: dict[str, str] = {
@@ -153,7 +165,9 @@ def tap_reply(action: str, settled: Any) -> str:
         lines.append(SAVED_DONE if action == SAVE else CANCELLED_DONE)
     elif not settled.refused:
         lines.append(ALREADY_DONE)
-    if settled.refused:
+    if settled.refused and not settled.done and len(settled.refused) == 1 and settled.refused[0] in REFUSED_ONE:
+        lines = [REFUSED_ONE[settled.refused[0]]]
+    elif settled.refused:
         lines.append(
             REFUSED.format(
                 what="save" if action == SAVE else "cancel",
