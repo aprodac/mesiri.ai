@@ -133,6 +133,7 @@ async def _run_material_unit_gates(
     actor_user_id: str,
     actor_role: str | None = None,
     org_settings_query: OrganizationSettingsQueryService | None = None,
+    ask_amount: bool = False,
 ) -> ReplySpec | None:
     """Resolve material_id/unit_id against materials_catalog/units_of_measure
     before the report can proceed to the project gate or planner.
@@ -273,6 +274,20 @@ async def _run_material_unit_gates(
     except Exception:
         _log.exception("unit_gate.lookup_failed correlation_id=%s", canonical_event.correlation_id)
         return None
+    if ask_amount:
+        unit_display = stock_unit["display_name"] if stock_unit else "its stock unit"
+        # WA-39, under the agent: "40 bags sand" against sand counted in m³.
+        # Yes ("record this as m³?") would save 40 m³ and No dropped the
+        # entry, so nothing is held: the model is told the fact and asks for
+        # the amount in the stock unit; the answer comes back as a new save.
+        qty = canonical_event.fields.get("quantity")
+        said = " ".join(p for p in (str(qty) if qty is not None else "", str(unit_text)) if p)
+        return ReplySpec(
+            text=(
+                f"Not saved yet: {material['name']} is counted in {unit_display} here, so "
+                f"{said} can't be saved as it is. How much is that in {unit_display}?"
+            )
+        )
     await pending_report_store.set_pending(user_id=actor_user_id, event=canonical_event)
     return render_unit_mismatch_reply(
         material_name=material["name"],

@@ -863,6 +863,9 @@ async def process_inbound_message(
                 actor_user_id=actor_user_id,
                 actor_role=actor.role if actor is not None else None,
                 org_settings_query=org_settings_query,
+                # WA-39: under the agent a unit mismatch asks for the amount
+                # instead of holding a Yes/No that saved or dropped wrongly.
+                ask_amount=getattr(pipeline, "one_event_per_call", False),
             )
 
         # --- Project-selection gate ---

@@ -370,3 +370,33 @@ async def test_material_picker_tap_is_tagged_with_the_originating_report_correla
         "the tap message must be tagged with the origin report's correlation_id, "
         f"got {mlog.interaction_groups!r}"
     )
+
+
+async def test_under_the_agent_a_unit_mismatch_asks_for_the_amount_and_holds_nothing():
+    """WA-39 (live test, 21 Oct): "Received 40 bags sand" against sand counted
+    in m³. Yes would have saved 40 m³; No dropped the entry. Under the agent
+    the gate says the fact and asks for the amount in the stock unit; nothing
+    is held, so the answer comes back as a new save through the model."""
+    stock_unit_id = str(uuid.uuid4())
+    catalog = _FakeCatalogQuery(
+        find_materials_result=[
+            {"id": str(uuid.uuid4()), "name": "Sand", "is_active": True, "default_unit_id": stock_unit_id}
+        ],
+        resolve_unit_result={"id": str(uuid.uuid4()), "code": "bags"},
+        get_unit_result={"id": stock_unit_id, "code": "cum", "display_name": "m³"},
+    )
+    store = _pending_store()
+    event = _event(material_name="Sand", unit="bags")
+    event.fields["quantity"] = 40
+
+    reply = await _run_material_unit_gates(
+        event, catalog_query=catalog, pending_report_store=store, actor_user_id=USR, ask_amount=True
+    )
+
+    assert reply.buttons is None and reply.list_rows is None
+    assert reply.text == (
+        "Not saved yet: Sand is counted in m³ here, so 40 bags can't be saved as it is. "
+        "How much is that in m³?"
+    )
+    assert await store.pop_pending(user_id=USR) is None
+    assert "unit_id" not in event.fields  # never recorded in the wrong unit
