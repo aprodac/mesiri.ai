@@ -46,8 +46,15 @@ class _Context:
         )
         self.ok = ok
 
+    #: Refuse a named project, as the context layer does for one that is not
+    #: "on_track" or that the sender reaches only through a site.
+    refuse_named: bool = False
+
     async def resolve(self, message: Any, understanding: Any) -> Result:
-        return Result.ok(self.ctx) if self.ok else Result.err(ValueError("no context"))
+        named = "project_id" in understanding.candidates[0].fields
+        if not self.ok or (self.refuse_named and named):
+            return Result.err(ValueError("no context"))
+        return Result.ok(self.ctx)
 
 
 class _Catalog:
@@ -124,8 +131,19 @@ def _candidate(**fields: Any) -> Candidate:
 MESSAGE = SimpleNamespace(correlation_id="cor_1", message_id="wamid.1")
 
 
+class _Understanding:
+    """Stands in for the preset UnderstandingResult: carries the candidate."""
+
+    def __init__(self, candidate: Candidate) -> None:
+        self.candidates = [candidate]
+
+    def model_copy(self, *, update: dict) -> _Understanding:
+        return _Understanding(update["candidates"][0])
+
+
 async def _prepare(entry: MaterialEntry, **fields: Any):
-    return await entry.prepare(MESSAGE, None, _candidate(**fields))
+    candidate = _candidate(**fields)
+    return await entry.prepare(MESSAGE, _Understanding(candidate), candidate)
 
 
 async def test_a_known_material_in_its_stock_unit_is_ready_to_save():
@@ -241,3 +259,40 @@ async def test_a_failed_context_asks_for_the_project_with_buttons():
 async def test_a_project_with_one_site_gets_that_site():
     ready = await _prepare(_entry(context=_Context(site_id=None), actor=_actor(SITE)))
     assert str(ready.event.site_id) == SITE
+
+
+async def test_a_project_picked_from_their_own_list_is_used_when_the_context_layer_refuses_it():
+    """Live 22 Oct 00:50: picking "Hospital Project" asked "Which project?"
+    again, every time -- the context layer refused the named project."""
+    context = _Context(project_id=None, site_id=None)
+    context.refuse_named = True
+    actor = _actor()
+    actor.projects = [SimpleNamespace(id=PRJ, name="Hospital Project")]
+    actor.sites = [SimpleNamespace(id=SITE, name="Tower A", project_id=PRJ)]
+    ready = await _prepare(_entry(context=context, actor=actor), project_id=PRJ)
+    assert isinstance(ready, Ready)
+    assert (str(ready.event.project_id), str(ready.event.site_id)) == (PRJ, SITE)
+    assert ready.scope[2:] == (PRJ, SITE)  # remembered for the next message
+
+
+async def test_a_project_not_in_their_own_list_is_never_used():
+    context = _Context(project_id=None, site_id=None)
+    context.refuse_named = True
+    actor = _actor()
+    actor.projects = [SimpleNamespace(id="other", name="Other")]
+    said = await _prepare(_entry(context=context, actor=actor), project_id=PRJ)
+    assert isinstance(said, Say) and said.status == "choose"
+
+
+async def test_the_remembered_project_answers_when_nothing_is_named():
+    class _Slot:
+        async def get_active_context(self, **kwargs):
+            return SimpleNamespace(project_id=PRJ, site_id=SITE)
+
+    actor = _actor()
+    actor.projects = [SimpleNamespace(id=PRJ, name="Hospital Project")]
+    actor.sites = [SimpleNamespace(id=SITE, name="Tower A", project_id=PRJ)]
+    entry = _entry(context=_Context(project_id=None, site_id=None), actor=actor)
+    entry.active_context = _Slot()
+    ready = await _prepare(entry)
+    assert (str(ready.event.project_id), str(ready.event.site_id)) == (PRJ, SITE)

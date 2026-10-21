@@ -173,6 +173,7 @@ class AgentRunner:
         if _entries(toolbox):
             # Before the Save tap nothing is kept (WA-37).
             text = without_saved_claims(text)
+        text = without_tool_talk(text)
         text = saved_list(_unique_paragraphs(text))
         block = _saved_block(toolbox)
         if block:
@@ -313,6 +314,22 @@ def _without_claim(sentence: str) -> str:
         return ""
     end = re.search(r"[.!?।]+\s*$|\n$", sentence)
     return body + (end.group(0) if end else "")
+
+
+#: What the model is told about tools and buttons, never words for a site
+#: (live 22 Oct: "Options: ... The options are shown as buttons; when they
+#: answer, call this tool again with that exact project." went out).
+_TOOL_TALK = re.compile(
+    r"\b(?:this|the|a|save|that) tool\b|new_material|ask_user|\[options:|shown as buttons|^\s*options\s*:"
+    r"|\bcall (?:this|the|a) |nothing was saved",
+    re.IGNORECASE,
+)
+
+
+def without_tool_talk(text: str) -> str:
+    """``text`` without the sentences that repeat the system's notes to the model."""
+    kept = [part for part in _SENTENCE.findall(text) if part and not _TOOL_TALK.search(part)]
+    return re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
 
 
 def _card_details(card: str) -> str:

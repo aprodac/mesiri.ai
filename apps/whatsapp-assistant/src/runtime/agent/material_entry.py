@@ -44,6 +44,7 @@ from runtime.material_units import ask_amount_text, fit_stock_unit
 _log = logging.getLogger("mesiri.agent")
 
 _MODULE = "materials"
+_SCOPE_KEYS = ("project_id", "site_id", "project_name", "site_name")
 #: How long a saved entry's project/site is remembered (the context layer's
 #: own default for a chosen active context).
 ACTIVE_SCOPE_TTL_SECONDS = 12 * 60 * 60
@@ -99,11 +100,25 @@ class MaterialEntry:
             return Say("error", "Not saved: the material and a quantity above zero are needed.")
         fields["quantity"] = quantity
 
+        picked_project = fields.get("project_id")
+        picked_site = fields.get("site_id")
         result = await self.context_resolver.resolve(message, understanding)
+        retried = False
+        if not result.is_ok and (picked_project or picked_site):
+            retried = True
+            # The context layer authorises a named project by a narrower rule
+            # than the sender's own list (only "on_track" projects, members
+            # only), so a project picked from that list could fail and loop
+            # (live 22 Oct 00:50). Resolve who/which company without it; the
+            # pick is applied below from their own list, as the classic
+            # project picker always did.
+            bare = candidate.model_copy(
+                update={"fields": {k: v for k, v in candidate.fields.items() if k not in _SCOPE_KEYS}}
+            )
+            result = await self.context_resolver.resolve(
+                message, understanding.model_copy(update={"candidates": [bare], "intents": [bare]})
+            )
         if not result.is_ok:
-            # Live 22 Oct 00:06: the classic route then answered "Sorry, I
-            # couldn't make out that message" to a plain "Yes". Ask for the
-            # project with its buttons instead, and log why.
             error = getattr(result, "error", None)
             _log.warning(
                 "material_entry.context_failed correlation_id=%s code=%s",
@@ -122,19 +137,30 @@ class MaterialEntry:
 
             return Say("info", render_module_disabled_reply(_MODULE, getattr(self.actor, "role", None)))
 
-        project_id = ctx.project_id
-        site_id = ctx.site_id
+        # Only when the context layer refused the pick does their own list
+        # decide it; otherwise its resolved ids stand, as before.
+        project_id, site_id = await self._scope(
+            ctx, picked_project if retried else None, picked_site if retried else None
+        )
         if project_id is None:
             names = [p.name for p in getattr(self.actor, "projects", None) or []]
             if not names:
                 return Say("info", "Not saved: you are not on any project yet. Your admin can add you.")
             return _choose("Which project is this for?", names, "project")
         if site_id is None:
-            sites = [s for s in getattr(self.actor, "sites", None) or [] if s.project_id == project_id]
+            sites = [s for s in getattr(self.actor, "sites", None) or [] if str(s.project_id) == str(project_id)]
             if len(sites) > 1:
                 return _choose("Which site is this for?", [s.name for s in sites], "site")
             site_id = sites[0].id if sites else None
-        context_site = ctx.context_site_id or (str(site_id) if site_id is not None else None)
+        if project_id == ctx.project_id and ctx.context_project_id is not None:
+            # The context layer's own ids for what it resolved (they can
+            # differ from the canonical ones); a pick or a remembered slot is
+            # already in the sender's own (context-layer) ids.
+            context_project = ctx.context_project_id
+            context_site = ctx.context_site_id or (str(site_id) if site_id is not None else None)
+        else:
+            context_project = str(project_id)
+            context_site = str(site_id) if site_id is not None else None
 
         found = await self._material(organization_id, str(fields["material_name"]), fields, ctx, message)
         if not isinstance(found, dict):
@@ -192,8 +218,42 @@ class MaterialEntry:
         return Ready(
             decision=decision,
             event=event,
-            scope=(ctx.context_organization_id, ctx.context_user_id, ctx.context_project_id, context_site),
+            scope=(ctx.context_organization_id, ctx.context_user_id, context_project, context_site),
         )
+
+    async def _scope(self, ctx: Any, picked_project: Any, picked_site: Any) -> tuple[Any, Any]:
+        """(project, site) for the entry. What they picked or named, when it
+        is in their own list; else what the context layer resolved; else the
+        project/site they last saved to (remembered for the chat). Every id
+        comes from the sender's own projects/sites (ActorIdentity), the same
+        list the classic pickers offered and applied."""
+        own_projects = {str(p.id) for p in getattr(self.actor, "projects", None) or [] if getattr(p, "id", None)}
+        own_sites = {
+            str(s.id): str(s.project_id) for s in getattr(self.actor, "sites", None) or [] if getattr(s, "id", None)
+        }
+        if picked_site is not None and str(picked_site) in own_sites:
+            return own_sites[str(picked_site)], picked_site
+        if picked_project is not None and str(picked_project) in own_projects:
+            site = ctx.site_id if ctx.site_id is not None and own_sites.get(str(ctx.site_id)) == str(picked_project) else None
+            return picked_project, site
+        if ctx.project_id is not None:
+            return ctx.project_id, ctx.site_id
+        remembered = await self._remembered(ctx)
+        if remembered is not None and str(remembered.project_id) in own_projects:
+            site = remembered.site_id if own_sites.get(str(remembered.site_id)) == str(remembered.project_id) else None
+            return remembered.project_id, site
+        return None, None
+
+    async def _remembered(self, ctx: Any) -> Any:
+        if self.active_context is None:
+            return None
+        try:
+            return await self.active_context.get_active_context(
+                organization_id=ctx.context_organization_id, user_id=ctx.context_user_id
+            )
+        except Exception:  # noqa: BLE001 -- a missed hint only costs one question
+            _log.warning("material_entry.remembered_failed", exc_info=True)
+            return None
 
     async def remember(self, ready: Ready, *, correlation_id: str | None = None) -> None:
         """After a save: this project/site is where the sender is working, so

@@ -65,3 +65,15 @@ def test_an_admin_is_not_told_to_ask_their_admin():
 def test_the_day_so_far_names_the_materials():
     payload = {"materials": [{"material_name": "Cement"}, {"material_name": "M sand"}]}
     assert day_lines(payload) == ["• Materials: Cement, M sand"]
+
+
+def test_the_systems_notes_to_the_model_never_reach_the_site():
+    from runtime.agent.runner import without_tool_talk
+
+    leaked = (
+        "Nothing was saved. Which project is this for? Options: Hospital Project, Mithilash. "
+        "The options are shown as buttons; when they answer, call this tool again with that exact "
+        "project. [options: Hospital Project / Mithilash]"
+    )
+    assert without_tool_talk(leaked) == "Which project is this for?"
+    assert without_tool_talk("JCB tools stolen from site.") == "JCB tools stolen from site."
