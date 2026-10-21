@@ -334,3 +334,4 @@ Claude Code as a team member: listens to the team and customer WhatsApp groups, 
 | 2026-10-20 | WA-29 WA: one reply per site update (no stray query summary) (request 63) | `909c909` |
 | 2026-10-20 | WA-31 WA: real 'what can you do' overview + short smalltalk replies, no canned menu for chit-chat (request 65) | `dcf4aef` |
 | 2026-10-20 | QA-01 general-conversation scorecard for the auto loop (request 66) | `20e2c48` |
+| 2026-10-21 | TM bot upgrade: test_assistant limit 10 -> 120/h (request 78) | `4a30c28` |
