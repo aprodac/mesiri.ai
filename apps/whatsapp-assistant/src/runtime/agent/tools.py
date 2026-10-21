@@ -332,7 +332,11 @@ def tool_specs() -> list[ToolSpec]:
         ),
         ToolSpec(
             name=QUERY_MATERIALS,
-            description="Answer how much of a material is in stock (all materials if none named).",
+            description=(
+                "How much of a material is in stock now, with all-time received and used "
+                "totals (all materials if none named). It has NO per-day figures: asked how "
+                "much was used or received on one day, say you can only see the totals so far."
+            ),
             parameters=_obj({"material": {"type": "string"}, "project": _PROJECT, "site": _SITE}),
         ),
         ToolSpec(

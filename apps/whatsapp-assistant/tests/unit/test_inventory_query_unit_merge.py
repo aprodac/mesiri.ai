@@ -121,3 +121,20 @@ async def test_different_materials_stay_on_separate_lines(monkeypatch):
     assert len(levels) == 2
     stock_by_name = {lvl["material_name"]: lvl["current_stock"] for lvl in levels}
     assert stock_by_name == {"Cement": 80.0, "Sand": 10.0}
+
+
+@pytest.mark.anyio
+async def test_the_same_material_in_two_units_is_never_added_together(monkeypatch):
+    """WA-42 (live test, 21 Oct): "427 bags used" against a stock card of 237
+    -- cement movements in kg were added into the bags total and labelled
+    "bags". Each unit keeps its own line; sites are still summed per unit."""
+    rows = [
+        _row(CEMENT_ID, "Cement", "bag", "575", "237", "338"),
+        _row(CEMENT_ID, "Cement", "kg", "0", "190", "-190"),
+        _row(CEMENT_ID, "Cement", "bag", "10", "0", "10"),  # another site, same unit
+    ]
+
+    levels = await _query(rows, monkeypatch=monkeypatch)
+
+    by_unit = {lvl["unit"]: (lvl["received"], lvl["used"], lvl["current_stock"]) for lvl in levels}
+    assert by_unit == {"bag": (585.0, 237.0, 348.0), "kg": (0.0, 190.0, -190.0)}

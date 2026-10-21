@@ -56,12 +56,15 @@ class MaterialInventoryQueryService:
         # -- when the query spans more than one site/project (site_id is None,
         # e.g. the site-selection gate's "All Sites Combined" choice, or an
         # org-wide query), the same material_id legitimately produces one row
-        # per site. Re-aggregate by material_id here so the reply shows one
+        # per site. Re-aggregate by material (and unit) here so the reply shows one
         # line per material with a combined total, instead of a separate
         # "Cement" line per site the caller never asked to see broken out.
-        totals: dict[str, dict[str, Any]] = {}
+        totals: dict[tuple[str, str], dict[str, Any]] = {}
         for row in rows:
-            key = str(row["material_id"])
+            # Per material AND unit (WA-42): get_stock_levels keeps each unit
+            # apart, and adding kg into a total labelled "bag" made "427 bags
+            # used" out of two different units (21 Oct live test).
+            key = (str(row["material_id"]), str(row["unit"]))
             entry = totals.setdefault(
                 key,
                 {"material_name": row["material_name"], "unit": row["unit"], "received": 0.0, "used": 0.0, "current_stock": 0.0},
