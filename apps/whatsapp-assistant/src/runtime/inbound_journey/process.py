@@ -47,7 +47,7 @@ from runtime.ai_outage import (
     reply_for_attempt,
     retry_attempt,
 )
-from runtime.capability_help import CapabilityHelpService
+from runtime.capability_help import KIND_SMALLTALK, CapabilityHelpService
 from runtime.dpr_request_query import DprRequestQueryService
 from runtime.duplicate_expense_query import DuplicateExpenseQueryService
 from runtime.entity_resolution.member_resolution import MemberNameResolutionService
@@ -966,6 +966,25 @@ async def process_inbound_message(
                 planner_decision.metadata["capability_question"] = question
                 if actor is not None and actor.role:
                     planner_decision.metadata["actor_role"] = actor.role
+                if answered.kind == KIND_SMALLTALK:
+                    # [75] small talk is answered by the model with the last turns as
+                    # memory; the fixed lines are only its failure floor.
+                    turns: tuple[tuple[str, str], ...] = ()
+                    if memory_pack_task is not None:
+                        try:
+                            pack = await memory_pack_task
+                            turns = tuple((t.user_text, t.assistant_reply) for t in pack.recent_turns)
+                        except Exception:  # noqa: BLE001 -- memory is a hint
+                            turns = ()
+                    chat = await capability_help.smalltalk(
+                        question,
+                        turns=turns,
+                        language=reply_language,
+                        script=reply_script,
+                        correlation_id=correlation_id,
+                    )
+                    planner_decision.metadata["smalltalk_reply"] = chat.text
+                    planner_decision.metadata["smalltalk_source"] = chat.source
 
             if planner_decision.decision_type is PlannerDecisionType.START_WORKFLOW:
                 # --- Workflow stage ---
@@ -1398,6 +1417,8 @@ async def process_inbound_message(
         and workflow_resume is None
         and planner_decision is not None
         and planner_decision.decision_type is PlannerDecisionType.DIRECT_REPLY
+        # [75] the small-talk reply is already written in the sender's language.
+        and "smalltalk_reply" not in planner_decision.metadata
     ):
         language = reply_language
         if language is None and user_language_store is not None:

@@ -20,13 +20,16 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 
 from runtime.reply_language import normalize_language, normalize_script
 
 #: A reply longer than this is not small talk.
-MAX_REPLY_CHARS = 400
+MAX_REPLY_CHARS = 500
+
+#: How many of the assistant's own earlier replies a new one must not repeat ([75]).
+REPEAT_WINDOW = 5
 
 _FEW_SHOTS: tuple[tuple[str, str], ...] = (
     # greetings
@@ -35,7 +38,9 @@ _FEW_SHOTS: tuple[tuple[str, str], ...] = (
     ("thanks", "Anytime! 👍"),
     # about the bot
     ("are you a real person?", "No, I'm Mesiri's site assistant, an AI. I keep your site records, so try “cement stock?”."),
-    ("are you hardcoded", "Not hardcoded, I read what you write. Try me: “how many workers today?”."),
+    ("are you hardcoded", "No, I read what you write and answer it. I'm focused on your site records, so try “how many workers today?”."),
+    ("u can answer anything or only about our company?", "Only your company's site work: workers, progress, materials, expenses and reports. I don't do general questions like news or weather."),
+    ("no I just asked I am curious to know", "Fair enough! Ask me anything about the site anytime."),
     ("you sound like a bot", "Fair! I'm an AI site assistant, but I do keep your records tidy. Tell me today's work and see."),
     # mood / complaints
     ("this is useless", "Sorry about that. Tell me what you were trying to do and I'll try again, e.g. “6 masons today”."),
@@ -58,9 +63,15 @@ How you sound (Mesiri voice)
 or model is behind you: no Google, Gemini, OpenAI, GPT, "language model", "trained by". \
 If asked, you are "Mesiri's site assistant".
 - Small talk gets 1-2 short lines. One message only.
-- Answer what was actually said first, then ONE gentle nudge back to site work with ONE \
-concrete example the worker can copy. Never "How can I help you today?". No menu or list \
-of features for small talk.
+- Answer what was actually said, honestly and directly, FIRST. A nudge back to site work \
+is optional, at most one short line, and never on every reply: if your previous reply \
+already had a nudge or an example to copy, leave it out this time.
+- Use the recent conversation: a short follow-up ("I'm just curious", "why?", "ok") is \
+about your last reply, so answer it as a follow-up, not as a new topic.
+- Never repeat a sentence you already sent in your last 5 replies. Vary your wording.
+- Scope: you help with the company's site work: workers, progress, materials, expenses, \
+reports. If asked what you can answer, say exactly that, and that you don't do general \
+questions like news or weather. Never claim you can answer anything.
 - Reply in the worker's language AND script (Manglish gets Manglish, Malayalam script gets \
 Malayalam script).
 - Warm and plain, like a good site supervisor. Light humour is fine, never sarcastic.
@@ -141,22 +152,28 @@ _BANNED = re.compile(
     r"|language\s+model|trained\s+by|large\s+language",
     re.IGNORECASE,
 )
-_HOW_CAN_I_HELP = re.compile(r"how\s+can\s+i\s+(?:help|assist)(?:\s+you)?(?:\s+today)?", re.IGNORECASE)
-_MENU = re.compile(r"(?:^|\n)\s*(?:\d+[.)]|[-•*])\s+\S.*(?:\n\s*(?:\d+[.)]|[-•*])\s+\S){1,}|\[options:", re.IGNORECASE)
 
 
 def violations(text: str) -> list[str]:
-    """Why ``text`` breaks the Mesiri voice, empty when it is fine."""
+    """Why ``text`` is unsafe to send, empty when it is fine. Only the real risks
+    ([75]): a provider/model named, or too long for small talk. Friendly wording is
+    never a violation."""
     found: list[str] = []
     if _BANNED.search(text):
         found.append("provider_or_model_named")
-    if _HOW_CAN_I_HELP.search(text):
-        found.append("how_can_i_help")
     if len(text) > MAX_REPLY_CHARS:
         found.append("too_long")
-    if _MENU.search(text):
-        found.append("menu")
     return found
+
+
+def _norm(text: str) -> str:
+    return re.sub(r"\W+", " ", text).strip().lower()
+
+
+def is_repeat(text: str, previous_replies: Sequence[str]) -> bool:
+    """``text`` equals one of the assistant's last ``REPEAT_WINDOW`` replies."""
+    mine = _norm(text)
+    return bool(mine) and any(_norm(p) == mine for p in list(previous_replies)[-REPEAT_WINDOW:])
 
 
 _FALLBACKS: dict[str, tuple[str, ...]] = {
@@ -196,6 +213,13 @@ class Guarded:
     hits: tuple[tuple[str, ...], ...] = ()
     fell_back: bool = False
 
+    @property
+    def source(self) -> str:
+        """"ai" (first reply sent), "ai_retry" (regenerated once) or "fallback" (fixed line)."""
+        if self.fell_back:
+            return "fallback"
+        return "ai_retry" if self.hits else "ai"
+
 
 async def guard(
     first_reply: str,
@@ -204,11 +228,16 @@ async def guard(
     regenerate: Callable[[list[str]], Awaitable[str | None]],
     language: object = None,
     script: object = None,
+    previous_replies: Sequence[str] = (),
 ) -> Guarded:
-    """Check ``first_reply``; on a violation regenerate once (``regenerate`` is
-    given the violation names and returns new text or None), then fall back to
-    the localized fixed line."""
+    """Check ``first_reply``; on a violation (or a repeat of one of the last
+    ``REPEAT_WINDOW`` replies) regenerate once (``regenerate`` is given the rule
+    names and returns new text or None), then fall back to the localized fixed
+    line. A retry that is only a repeat is still sent: it is the model's own
+    answer, which beats a fixed line."""
     bad = violations(first_reply)
+    if not bad and is_repeat(first_reply, previous_replies):
+        bad = ["repeat"]
     if not bad:
         return Guarded(first_reply)
     hits = [tuple(bad)]

@@ -145,3 +145,90 @@ async def test_a_provider_failure_is_a_capability_answer():
     provider = FakeJsonGeneration(raises=RuntimeError("down"))
     answer = await CapabilityHelpService(provider).answer("hi")
     assert answer.kind == "capability" and answer.keys == ()
+
+
+# --- small talk answered by the model, with memory (request [75]) ---------------------
+
+
+class ScriptedJson:
+    """Replays completions in order (the last one repeats) and records every prompt."""
+
+    def __init__(self, *replies: str, raises: Exception | None = None) -> None:
+        self._replies = list(replies)
+        self._raises = raises
+        self.user_prompts: list[str] = []
+
+    async def generate_json(self, system_prompt, user_prompt, *, correlation_id=None):
+        self.user_prompts.append(user_prompt)
+        if self._raises is not None:
+            raise self._raises
+        return self._replies.pop(0) if len(self._replies) > 1 else self._replies[0]
+
+
+class Traces:
+    def __init__(self) -> None:
+        self.rows: list[dict] = []
+
+    async def log_stage(self, **kw):
+        self.rows.append(kw)
+
+
+def _reply(text: str) -> str:
+    return json.dumps({"reply": text})
+
+
+async def test_smalltalk_calls_the_model_and_sends_its_text():
+    provider = ScriptedJson(_reply("No, I read what you write."))
+    traces = Traces()
+    out = await CapabilityHelpService(provider, trace_logger=traces).smalltalk(
+        "are you hardcoded", correlation_id="c1"
+    )
+    assert out.text == "No, I read what you write." and out.source == "ai" and out.rules == ()
+    assert len(provider.user_prompts) == 1
+    assert traces.rows[0]["stage"] == "smalltalk_reply"
+    assert traces.rows[0]["stage_payload"]["reply_source"] == "ai"
+
+
+async def test_smalltalk_sees_the_recent_turns_so_a_follow_up_is_understood():
+    provider = ScriptedJson(_reply("Fair enough!"))
+    turns = [("u can answer anything?", "Only your company's site work.")]
+    await CapabilityHelpService(provider).smalltalk("no I am just curious", turns=turns)
+    assert "u can answer anything?" in provider.user_prompts[0]
+    assert "Only your company's site work." in provider.user_prompts[0]
+
+
+async def test_smalltalk_falls_back_only_when_the_model_fails():
+    traces = Traces()
+    out = await CapabilityHelpService(ScriptedJson(raises=RuntimeError("boom")), trace_logger=traces).smalltalk("hi")
+    assert out.source == "fallback" and out.rules == ("ai_error",) and out.text
+    assert traces.rows[0]["stage_payload"]["reply_source"] == "fallback"
+    assert traces.rows[0]["succeeded"] is False
+
+
+async def test_smalltalk_rejects_a_provider_name_regenerates_once_and_marks_ai_retry():
+    provider = ScriptedJson(_reply("I'm Gemini."), _reply("I'm Mesiri's site assistant."))
+    out = await CapabilityHelpService(provider).smalltalk("who made you?")
+    assert out.text == "I'm Mesiri's site assistant." and out.source == "ai_retry"
+    assert out.rules == ("provider_or_model_named",)
+    assert "provider_or_model_named" in provider.user_prompts[1]
+
+
+async def test_smalltalk_does_not_reject_a_friendly_reply():
+    out = await CapabilityHelpService(ScriptedJson(_reply("Fair enough! Ask me anything about the site."))).smalltalk("hmm")
+    assert out.source == "ai"
+
+
+async def test_smalltalk_regenerates_a_reply_equal_to_a_recent_one():
+    provider = ScriptedJson(_reply("Same line."), _reply("Something new."))
+    out = await CapabilityHelpService(provider).smalltalk("hmm", turns=[("x", "Same line.")])
+    assert out.text == "Something new." and out.source == "ai_retry" and out.rules == ("repeat",)
+
+
+async def test_smalltalk_falls_back_after_two_rejected_replies():
+    out = await CapabilityHelpService(ScriptedJson(_reply("x" * 600))).smalltalk("hmm")
+    assert out.source == "fallback" and "too_long" in out.rules
+
+
+async def test_smalltalk_unparseable_completion_is_an_ai_error_fallback():
+    out = await CapabilityHelpService(ScriptedJson("not json")).smalltalk("hmm")
+    assert out.source == "fallback"

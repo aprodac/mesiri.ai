@@ -24,15 +24,23 @@ injected for WHO_AM_I.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from mesiri_ai.ports.generation import JsonGenerationProvider
 from mesiri_contracts.assistant.planner_decision import WorkflowKey
 from runtime.logging_ports import TraceLogger
 from runtime.noop_loggers import NoopTraceLogger
+from runtime.persona import MESIRI_VOICE, fallback_line, guard
+
+#: Small talk is a few lines; a model that has not answered by now is an outage.
+_SMALLTALK_TIMEOUT_SECONDS = 15.0
+#: Turns of the conversation shown to the small-talk writer ([75]).
+_SMALLTALK_TURNS = 6
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +61,22 @@ class CapabilityAnswer:
     keys: tuple[WorkflowKey, ...] = ()
     kind: str = KIND_CAPABILITY
 
+
+@dataclass(frozen=True)
+class SmallTalkReply:
+    text: str
+    #: "ai" | "ai_retry" | "fallback" (request [75]: so "hardcoded" replies show in the logs)
+    source: str
+    #: Guardrail rules that fired, in order ("ai_error" when the model call failed).
+    rules: tuple[str, ...] = ()
+
+
+_SMALLTALK_SYSTEM = (
+    "You write Mesiri's reply to a construction site worker's chit-chat, a question about "
+    "the assistant, or a complaint. Write a fresh answer to what they actually said.\n\n"
+    + MESIRI_VOICE
+    + '\n\nOutput JSON only: {"reply": "<the message to send>"}'
+)
 
 _SYSTEM_PROMPT = """You match a construction site worker's question to the assistant's capabilities.
 
@@ -152,6 +176,77 @@ class CapabilityHelpService:
         matches = self._parse(raw, role)
         await self._log(correlation_id, t0, succeeded=True, matched=len(matches))
         return CapabilityAnswer(matches, self._parse_kind(raw))
+
+    async def smalltalk(
+        self,
+        question: str,
+        *,
+        turns: Sequence[tuple[str, str]] = (),
+        language: object = None,
+        script: object = None,
+        correlation_id: str = "",
+    ) -> SmallTalkReply:
+        """The AI's answer to small talk, with the last turns as memory ([75]).
+
+        ``turns`` is ``(worker text, assistant reply)``, oldest first. The fixed
+        line is used only when the model fails or keeps breaking the guardrail,
+        never as the normal path. Never raises.
+        """
+        recent = list(turns)[-_SMALLTALK_TURNS:]
+        previous = [reply for _, reply in recent if reply]
+        t0 = time.perf_counter()
+        error: Exception | None = None
+
+        async def _ask(avoid: list[str]) -> str | None:
+            nonlocal error
+            payload: dict[str, object] = {
+                "RECENT_CONVERSATION": [{"worker": u, "you": a} for u, a in recent],
+                "MESSAGE": question,
+            }
+            if avoid:
+                payload["YOUR_LAST_REPLY_WAS_REJECTED_FOR"] = avoid
+            try:
+                raw = await asyncio.wait_for(
+                    self._json.generate_json(
+                        system_prompt=_SMALLTALK_SYSTEM,
+                        user_prompt=json.dumps(payload, ensure_ascii=False),
+                        correlation_id=correlation_id or None,
+                    ),
+                    timeout=_SMALLTALK_TIMEOUT_SECONDS,
+                )
+                reply = json.loads(raw).get("reply")
+            except Exception as exc:  # noqa: BLE001 -- the fixed line is the floor
+                error = exc
+                return None
+            return reply.strip() if isinstance(reply, str) and reply.strip() else None
+
+        first = await _ask([])
+        if first is None:
+            result = SmallTalkReply(fallback_line(question, language, script), "fallback", ("ai_error",))
+        else:
+            guarded = await guard(
+                first,
+                user_text=question,
+                regenerate=lambda rules: _ask(rules),
+                language=language,
+                script=script,
+                previous_replies=previous,
+            )
+            rules = tuple(r for hit in guarded.hits for r in hit)
+            result = SmallTalkReply(guarded.text, guarded.source, rules)
+        try:
+            await self._trace_logger.log_stage(
+                correlation_id=correlation_id,
+                stage="smalltalk_reply",
+                stage_payload={"reply_source": result.source, "guardrail_rules": list(result.rules)},
+                duration_ms=int((time.perf_counter() - t0) * 1000),
+                succeeded=result.source != "fallback",
+                error_code=type(error).__name__ if error else None,
+                error_message=str(error) if error else None,
+            )
+        except Exception:  # noqa: BLE001 -- tracing must never break a reply
+            logger.debug("capability_help.smalltalk_trace_failed", exc_info=True)
+        return result
 
     @staticmethod
     def _parse_kind(raw: str) -> str:

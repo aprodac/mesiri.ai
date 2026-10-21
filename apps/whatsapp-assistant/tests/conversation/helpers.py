@@ -15,3 +15,14 @@ def load_cases() -> list[dict]:
         if line.startswith("- {"):
             cases.append(json.loads(line[2:]))
     return cases
+
+
+SEQUENCES_PATH = Path(__file__).with_name("general_sequences.yaml")
+
+
+def load_sequences() -> list[dict]:
+    return [
+        json.loads(line.strip()[2:])
+        for line in SEQUENCES_PATH.read_text(encoding="utf-8").splitlines()
+        if line.strip().startswith("- {")
+    ]

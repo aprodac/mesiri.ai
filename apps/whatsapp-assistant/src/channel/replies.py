@@ -934,6 +934,7 @@ def render_direct_reply(
             timezone=timezone,
             kind=decision.metadata.get("capability_kind"),
             question=decision.metadata.get("capability_question"),
+            smalltalk_reply=decision.metadata.get("smalltalk_reply"),
         )
     # UNRECOGNIZED — greetings land here (when they slip past the
     # deterministic fast path, e.g. text/handle_greeting_trigger didn't cover
@@ -948,6 +949,7 @@ def render_capability_answer(
     timezone: str | None = None,
     kind: object = None,
     question: object = None,
+    smalltalk_reply: object = None,
 ) -> ReplySpec:
     """Answer a "how do I ...?" question with the capabilities that match it.
 
@@ -970,6 +972,10 @@ def render_capability_answer(
     if kind == "smalltalk":
         # Meta talk / chit-chat / a complaint about the bot: one short line,
         # no menu. Any other kind (None, garbage) is a capability question.
+        # [75] the model's own answer (runtime/capability_help.py) is the normal
+        # path; the fixed variants only apply when it was never asked.
+        if isinstance(smalltalk_reply, str) and smalltalk_reply.strip():
+            return ReplySpec(text=smalltalk_reply)
         return ReplySpec(text=_pick_smalltalk(question))
 
     definitions = []

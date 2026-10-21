@@ -411,3 +411,9 @@ def test_every_new_text_has_malayalam_and_hindi_wording():
     for lang in ("malayalam", "hindi"):
         for text in texts:
             assert localize_fixed_reply(text, lang, "native") != text
+
+
+def test_smalltalk_uses_the_model_reply_when_there_is_one_and_the_fixed_line_otherwise():
+    spoken = render_capability_answer([], kind="smalltalk", question="hmm", smalltalk_reply="No, I read what you write.")
+    assert spoken.text == "No, I read what you write."
+    assert render_capability_answer([], kind="smalltalk", question="hmm").text

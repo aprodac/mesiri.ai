@@ -26,13 +26,24 @@ from runtime.today_context import build_today_line, render_line
         "I run on GPT-4.",
         "I'm a language model.",
         "I was trained by a big company.",
-        "How can I help you today?",
-        "x" * 401,
-        "Sure:\n1. Tell me\n2. Ask me\n3. Get reports",
+        "x" * 501,
     ],
 )
 def test_each_banned_shape_is_rejected(text):
     assert persona.violations(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Fair enough! Ask me anything about the site anytime.",
+        "How can I help you today?",
+        "Sure:\n1. Tell me\n2. Ask me\n3. Get reports",
+        "x" * 500,
+    ],
+)
+def test_ordinary_friendly_replies_are_not_rejected(text):
+    assert persona.violations(text) == []
 
 
 def test_a_plain_reply_passes():
@@ -53,7 +64,7 @@ async def test_a_bad_reply_is_regenerated_once_then_accepted():
 
 async def test_a_second_bad_reply_falls_back_to_the_fixed_line():
     async def regen(rules):
-        return "How can I help you today?"
+        return "I am a language model."
 
     out = await persona.guard("Gemini here", user_text="hi", regenerate=regen)
     assert out.fell_back and persona.violations(out.text) == []
@@ -79,7 +90,7 @@ def test_what_can_you_do_in_english_manglish_and_malayalam():
     manglish = persona.what_can_you_do("Malayalam", "latin")
     ml = persona.what_can_you_do("Malayalam", "native")
     for text in (en, manglish, ml):
-        assert len(text.splitlines()) == 4 and set(persona.violations(text)) <= {"menu"}  # it IS the 3-point answer
+        assert len(text.splitlines()) == 4 and persona.violations(text) == []
     assert "Tell me" in en and "Njan" in manglish
     assert "സൈറ്റ്" in ml and ml != manglish
     # the message itself can be in Malayalam script even when no language is stored
@@ -170,3 +181,36 @@ async def test_a_small_talk_reply_holds_setup_nudges():
 
 async def test_a_reply_that_saved_something_does_not_mark_conversational():
     assert await _turn(_toolbox(saved=[object()])) == []
+
+
+def test_repeat_check_compares_the_last_five_replies_ignoring_case_and_punctuation():
+    prev = ["a", "b", "Fair enough! Ask me anything.", "c", "d"]
+    assert persona.is_repeat("fair enough ask me anything", prev)
+    assert not persona.is_repeat("Something new", prev)
+    assert not persona.is_repeat("a", ["a", "1", "2", "3", "4", "5"])  # older than the window
+
+
+async def test_a_repeated_reply_is_regenerated_and_traced_as_ai_retry():
+    async def regen(rules):
+        assert rules == ["repeat"]
+        return "A different answer."
+
+    out = await persona.guard("Same line.", user_text="hi", regenerate=regen, previous_replies=["Same line."])
+    assert out.text == "A different answer." and out.source == "ai_retry"
+
+
+async def test_a_retry_that_only_repeats_is_still_sent_not_replaced_by_a_fixed_line():
+    async def regen(rules):
+        return "Same line."
+
+    out = await persona.guard("Same line.", user_text="hi", regenerate=regen, previous_replies=["Same line."])
+    assert out.text == "Same line." and not out.fell_back
+
+
+async def test_source_is_ai_then_fallback():
+    async def regen(rules):
+        return "Gemini again"
+
+    ok = await persona.guard("Fine.", user_text="hi", regenerate=regen)
+    bad = await persona.guard("Gemini", user_text="hi", regenerate=regen)
+    assert (ok.source, bad.source) == ("ai", "fallback")

@@ -332,10 +332,10 @@ async def _guarded(
             context,
             notes=[
                 *context.notes,
-                "Your previous reply broke these voice rules: "
+                "Your previous reply was rejected for: "
                 + ", ".join(rules)
-                + ". Rewrite it: 1-2 short lines, name no company or model, no menu, no "
-                "'how can I help'.",
+                + ". Rewrite it: 1-2 short lines, name no company or model, and do not "
+                "repeat any of your earlier replies.",
             ],
         )
         again = await deps.runner.run(
@@ -353,13 +353,18 @@ async def _guarded(
         regenerate=_again,
         language=language,
         script=script,
+        previous_replies=[t.assistant_reply for t in context.turns],
     )
-    if guarded.hits and deps.trace_logger is not None:
+    if deps.trace_logger is not None:
         await _safe(
             deps.trace_logger.log_stage(
                 correlation_id=message.correlation_id,
                 stage="persona_guard",
-                stage_payload={"hits": [list(h) for h in guarded.hits], "fell_back": guarded.fell_back},
+                stage_payload={
+                    "reply_source": guarded.source,
+                    "hits": [list(h) for h in guarded.hits],
+                    "fell_back": guarded.fell_back,
+                },
                 duration_ms=None,
                 succeeded=not guarded.fell_back,
             )

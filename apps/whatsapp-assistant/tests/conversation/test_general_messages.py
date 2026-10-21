@@ -150,3 +150,65 @@ async def test_live_model_scores(case):
     score = 2 if not bad else 0
     print(f"SCORE {score}/2 | {case['message']!r} -> {text!r} {bad}")
     assert score == 2
+
+
+# --- multi-turn: the model sees the last turns, no reply repeats (request [75]) ---------
+
+from tests.conversation.helpers import load_sequences  # noqa: E402
+
+from runtime.capability_help import CapabilityHelpService  # noqa: E402
+
+
+class _ConversationalModel:
+    """Stands in for the model: answers by what the prompt shows, once with a
+    deliberately repeated line to prove the repeat check regenerates."""
+
+    def __init__(self) -> None:
+        self.prompts: list[dict] = []
+        self.sent_repeat = False
+
+    async def generate_json(self, system_prompt, user_prompt, *, correlation_id=None):
+        import json
+
+        payload = json.loads(user_prompt)
+        self.prompts.append(payload)
+        said = payload["MESSAGE"].lower()
+        previous = [t["you"] for t in payload["RECENT_CONVERSATION"]]
+        if "hardcoded" in said:
+            text = "No, I read what you write and answer it. I'm focused on your site records."
+        elif "anything" in said:
+            text = ("Only your company's site work: workers, progress, materials, expenses and "
+                    "reports. I don't do general questions like news or weather.")
+        elif previous and "curious" in said:
+            if not self.sent_repeat:
+                self.sent_repeat = True
+                text = previous[-1]  # a repeat: must be regenerated
+            else:
+                text = "Fair enough, curious is good! Ask me anything about the site anytime."
+        else:
+            text = "Fair enough!"
+        import json as _json
+
+        return _json.dumps({"reply": text})
+
+
+@pytest.mark.parametrize("seq", load_sequences(), ids=[s["id"] for s in load_sequences()])
+async def test_a_multi_turn_conversation_gets_distinct_relevant_replies(seq):
+    model = _ConversationalModel()
+    service = CapabilityHelpService(model)
+    turns: list[tuple[str, str]] = []
+    replies: list[str] = []
+    for step in seq["steps"]:
+        out = await service.smalltalk(step["message"], turns=turns)
+        assert out.source in {"ai", "ai_retry"}  # never the fixed floor
+        assert violations(out.text) == []
+        low = out.text.lower()
+        assert any(w in low for w in step["any_of"]), (step["message"], out.text)
+        if "also_any_of" in step:
+            assert any(w in low for w in step["also_any_of"]), (step["message"], out.text)
+        turns.append((step["message"], out.text))
+        replies.append(out.text)
+    assert len(set(replies)) == len(replies)
+    assert model.sent_repeat  # the repeat check fired on the follow-up
+    # the follow-up was written with the scope answer in view
+    assert "only your company" in str(model.prompts[-1]["RECENT_CONVERSATION"]).lower()

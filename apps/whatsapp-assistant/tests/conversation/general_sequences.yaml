@@ -1,0 +1,5 @@
+# Multi-turn cases for general messages (request [75]). One JSON object per line.
+# Ilan's 21 Oct screenshots #1926/#1927: the three messages used to get fixed, repeated lines.
+# expect_all = every reply must differ from the others; each step lists words (any of) the reply must contain.
+
+- {"id": "ilan-21oct", "steps": [{"message": "are you hardcoded", "any_of": ["read", "answer"]}, {"message": "u can answer anything or only about our company?", "any_of": ["site work", "company"], "also_any_of": ["don't", "only", "not"]}, {"message": "no I just asked I am curious to know", "any_of": ["curious", "fair enough", "of course", "ask"]}]}
