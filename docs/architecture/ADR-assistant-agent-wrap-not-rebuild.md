@@ -290,6 +290,36 @@ the role tests could not run (the bot's number is an admin).
 - Stock received/used net out corrections (a Cancel posts the opposite movement), so
   received − used = stock.
 
+## 10b. Official: retire the old pipeline (Ilan, 21 Oct 2026)
+
+Three live rounds on 21 Oct showed the agent is better in conversation, and that running it
+*on top of* the old pipeline is now the main source of bugs (the old splitter making a second
+entry, its "Which site?" and summaries leaking, a lookup counted as a save, its buttons saving
+without the Save card). The wrap was the bridge; it is not the end state. Decided:
+
+- **The agent is the assistant.** The classic pipeline (classify -> canonicalize -> decompose ->
+  planner -> workflow graph -> reply templates) gets no new features (rule 5) and is removed
+  area by area.
+- **Tools call the services directly.** A tool resolves its scope (`ScopeLookup`), resolves names
+  against the company's records (catalog, sites, workers), applies the gates as plain checks
+  (unit conversion, duplicate, closed day, permissions), builds the `DraftActionV2` and hands it
+  to save-first. No `process_inbound_message`, no planner, no graph, no captured replies. This
+  replaces the "tools run through `process_inbound_message`" bullet of [40] above.
+- **Unchanged:** the Save rule (section 10), the number check, server-side org scoping, the
+  save code and its validation, DPR/receipts, fast paths (taps, UNDO).
+- **Order and gates** (tracker `ARCH-*`): each area moves only when its golden set passes on
+  the real model; Labour moves only with Alan's approval (Module Isolation); real companies
+  switch one at a time when the owner decides (rule 3).
+
+| Step | What | Gate |
+|---|---|---|
+| ARCH-01 | Material receipt/usage tools call a material entry service directly | materials golden set green in CI, unchanged |
+| ARCH-02 | Golden sets for work done, site issues, expenses; then their tools go direct | each set green, live run recorded |
+| ARCH-03 | Labour tool direct | Alan's approval; labour golden set |
+| ARCH-04 | Agent-mode taps: the old gate buttons replaced by `ask_user` answers, so nothing saves past the Save card | replay tests |
+| ARCH-05 | First real company on the agent, then all | owner decides; live golden runs >= 100% on materials |
+| ARCH-06 | Delete the classic path per area (understanding, planner, decomposition, graphs, templates); record line counts | area switched everywhere for 1 week with no regressions |
+
 ## 11. References
 
 [40] (this ADR, above) - [68], [75], [76] (Mesiri voice, memory, polish) -

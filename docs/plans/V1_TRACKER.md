@@ -182,6 +182,17 @@
 | SEC-01 | **Who may see expenses (dashboard + WhatsApp)** | S | Must | — | done | Claude (session 21 Oct; rule by Ilan) | Found 21 Oct: no view rule exists anywhere: `GET /expenses` and the WhatsApp expense question show every company expense to any logged-in role (only the finance-module switch is checked; only voiding checks a role). Fix = one backend rule used by both. **Done:** `may_view_expenses` in `authorization/roles.py`: ADMIN/OWNER/FINANCE/PROJECT_MANAGER, within their project scope; others 403 (recording still works; category list without totals). Dashboard API (list, gallery, one, its attachments), WhatsApp expense question and the project summary's money line; sidebar hides Expenses for others. Tests: unit + real-Postgres. |
 | BE-44 | **Deleting a company fails on `budget_allocations`** (found 21 Oct) | S | Should | — | todo | — | `apps/whatsapp-assistant/tests/integration/test_admin_delete_organization.py::test_delete_organization_clears_finance_refactor_tables` fails on main: `budget_allocations_category_id_fkey` blocks deleting the company's expense categories. Not in CI (the assistant integration tests are not run there). |
 
+## ARCH — Retire the old assistant pipeline (ADR section 10b, decided by Ilan 21 Oct)
+
+| ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| ARCH-01 | Material receipt/usage tools call a material entry service directly (no `process_inbound_message`, planner or graph) | M | Must | — | in progress | Claude (session 21 Oct) | Gate: `materials_golden.yaml` green in CI unchanged; Test Builders only. |
+| ARCH-02 | Golden sets for work done, site issues, expenses; then their tools go direct | L | Must | ARCH-01 | todo | | Each set green in CI and on the live model before its tool moves. |
+| ARCH-03 | Labour tool direct | M | Must | ARCH-02 | blocked | | Needs Alan's approval (Module Isolation: Labour/Attendance). Labour golden set first. |
+| ARCH-04 | Agent-mode taps: old gate buttons replaced by `ask_user` answers, so nothing saves past the Save card | M | Must | ARCH-01 | todo | | |
+| ARCH-05 | First real company on the agent, then all | S | Must | ARCH-01, ARCH-02 | blocked | | Owner decides which company and when. Needs the live golden run (GEMINI_API_KEY). |
+| ARCH-06 | Delete the classic path per area (understanding, planner, decomposition, graphs, templates); record line counts | L | Should | ARCH-05 | todo | | After an area runs on the agent everywhere for a week with no regressions. |
+
 ## WEB — Web dashboard
 
 | ID | Item | Size | Priority | Depends on | Status | Owner | Notes |
