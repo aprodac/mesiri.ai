@@ -1,0 +1,33 @@
+# Work done, site issues and expenses golden set (ARCH-02; ADR section 10b).
+# One JSON object per line (valid YAML flow mapping, parsed without a YAML dependency).
+#
+#   message  what the site sends
+#   calls    the tool calls a good model makes (CI scripts these, so the save code is checked)
+#   expect   the exact records saved, nothing more:
+#              action  create_activity | record_site_issue | record_expense
+#              fields  {name: text} -- the saved value contains the text (lower-case);
+#                      a number must be equal
+#   confirm  true: an expense waits on Yes/No (confirm-first): nothing is saved yet,
+#            the reply ends with the confirmation
+#   ask      true: nothing is saved and the reply is ONE question
+#
+# The live run (pytest -m live) sends `message` to the real model instead of `calls`.
+
+- {"id": 1, "lang": "en", "message": "180 sqm plastering done on 2nd floor", "calls": [["save_work_done", {"narrative": "180 sqm plastering done on 2nd floor", "work_type": "plastering", "location": "2nd floor", "quantities": [{"work_type": "plastering", "quantity": 180, "unit": "sqm"}], "update_kind": "progress"}]], "expect": [{"action": "create_activity", "fields": {"work_type": "plaster", "location": "2nd"}}]}
+- {"id": 2, "lang": "manglish", "message": "innu second floor plastering 180 sqm theernnu", "calls": [["save_work_done", {"narrative": "second floor plastering 180 sqm theernnu", "work_type": "plastering", "location": "second floor", "quantities": [{"work_type": "plastering", "quantity": 180, "unit": "sqm"}], "update_kind": "completed"}]], "expect": [{"action": "create_activity", "fields": {"work_type": "plaster", "update_kind": "completed"}}]}
+- {"id": 3, "lang": "manglish", "message": "slab concreting 40% aayi", "calls": [["save_work_done", {"narrative": "slab concreting 40% aayi", "work_type": "concreting", "progress_percent": 40, "update_kind": "progress"}]], "expect": [{"action": "create_activity", "fields": {"work_type": "concret", "progress_percent": 40}}]}
+- {"id": 4, "lang": "en", "message": "started brickwork on ground floor", "calls": [["save_work_done", {"narrative": "started brickwork on ground floor", "work_type": "brickwork", "location": "ground floor", "update_kind": "started"}]], "expect": [{"action": "create_activity", "fields": {"work_type": "brick", "update_kind": "started"}}]}
+- {"id": 5, "lang": "ml", "message": "ഒന്നാം നിലയിൽ തേപ്പ് പണി തുടങ്ങി", "calls": [["save_work_done", {"narrative": "ഒന്നാം നിലയിൽ തേപ്പ് പണി തുടങ്ങി", "work_type": "plastering", "location": "first floor", "update_kind": "started"}]], "expect": [{"action": "create_activity", "fields": {"work_type": "plaster"}}]}
+- {"id": 6, "lang": "hindi", "message": "aaj 50 meter wiring ho gaya", "calls": [["save_work_done", {"narrative": "aaj 50 meter wiring ho gaya", "work_type": "electrical wiring", "quantities": [{"work_type": "electrical wiring", "quantity": 50, "unit": "m"}], "update_kind": "progress"}]], "expect": [{"action": "create_activity", "fields": {"work_type": "wiring"}}]}
+- {"id": 7, "lang": "en", "message": "rain stopped work for 2 hours", "calls": [["report_issue", {"issue_type": "WEATHER", "narrative": "rain stopped work for 2 hours", "delay_duration_minutes": 120}]], "expect": [{"action": "record_site_issue", "fields": {"issue_type": "weather", "delay_duration_minutes": 120}}]}
+- {"id": 8, "lang": "manglish", "message": "JCB breakdown aayi, pani nirthi", "calls": [["report_issue", {"issue_type": "EQUIPMENT_BREAKDOWN", "narrative": "JCB breakdown aayi, pani nirthi", "severity": "HIGH"}]], "expect": [{"action": "record_site_issue", "fields": {"issue_type": "equipment_breakdown"}}]}
+- {"id": 9, "lang": "en", "message": "only 4 masons came, short of labour", "calls": [["report_issue", {"issue_type": "LABOUR_SHORTAGE", "narrative": "only 4 masons came, short of labour"}]], "expect": [{"action": "record_site_issue", "fields": {"issue_type": "labour_shortage"}}]}
+- {"id": 10, "lang": "manglish", "message": "drawing ithuvare kittiyilla, column pani nirthi", "calls": [["report_issue", {"issue_type": "DRAWING_PENDING", "narrative": "drawing ithuvare kittiyilla, column pani nirthi"}]], "expect": [{"action": "record_site_issue", "fields": {"issue_type": "drawing_pending"}}]}
+- {"id": 11, "lang": "ml", "message": "ഇന്ന് മഴയാണ്, പണി കുറവാണ്", "calls": [["report_issue", {"issue_type": "WEATHER", "narrative": "മഴ കാരണം പണി കുറവ്"}]], "expect": [{"action": "record_site_issue", "fields": {"issue_type": "weather"}}]}
+- {"id": 12, "lang": "en", "message": "paid 2500 to Ravi for transport", "calls": [["save_expense", {"amount": 2500, "description": "transport", "paid_to": "Ravi", "category": "transport"}]], "expect": [], "confirm": true}
+- {"id": 13, "lang": "manglish", "message": "diesel-inu 1200 rupees koduthu", "calls": [["save_expense", {"amount": 1200, "description": "diesel", "category": "fuel"}]], "expect": [], "confirm": true}
+- {"id": 14, "lang": "hindi", "message": "chai pani ke liye 300 diye", "calls": [["save_expense", {"amount": 300, "description": "tea and water", "category": "food"}]], "expect": [], "confirm": true}
+- {"id": 15, "lang": "en", "message": "paid the electrician", "calls": [["ask_user", {"question": "How much did you pay the electrician?"}]], "expect": [], "ask": true}
+- {"id": 16, "lang": "manglish", "message": "pani nadakkunnu", "calls": [["ask_user", {"question": "Ethu pani aanu nadakkunnath?"}]], "expect": [], "ask": true}
+- {"id": 17, "lang": "en", "message": "180 sqm plastering done, rain stopped work for an hour", "calls": [["save_work_done", {"narrative": "180 sqm plastering done", "work_type": "plastering", "quantities": [{"work_type": "plastering", "quantity": 180, "unit": "sqm"}], "update_kind": "progress"}], ["report_issue", {"issue_type": "WEATHER", "narrative": "rain stopped work for an hour", "delay_duration_minutes": 60}]], "expect": [{"action": "create_activity", "fields": {"work_type": "plaster"}}, {"action": "record_site_issue", "fields": {"issue_type": "weather", "delay_duration_minutes": 60}}]}
+- {"id": 18, "lang": "en", "message": "yesterday 20 m3 slab concreting done", "calls": [["save_work_done", {"narrative": "20 m3 slab concreting done", "work_type": "concreting", "quantities": [{"work_type": "concreting", "quantity": 20, "unit": "m3"}], "update_kind": "completed", "date": "yesterday"}]], "expect": [{"action": "create_activity", "fields": {"work_type": "concret"}}]}
