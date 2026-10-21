@@ -95,6 +95,15 @@ async def test_a_company_switched_to_the_agent_gets_its_reply_not_the_classic_pi
     assert deps["org_settings_query"].get.await_args.kwargs["key"] == "assistant_mode"
 
 
+@pytest.mark.parametrize("mode", [None, ""])
+async def test_a_company_with_no_setting_gets_the_agent(monkeypatch, mode):
+    """Every company runs the agent (Ilan, 21 Oct): no stored value is no
+    longer the classic pipeline."""
+    on_normalized, deps, classic = _build(monkeypatch, mode=mode, provider=ASK)
+    await on_normalized(_message("50 bags cement"), {})
+    classic.assert_not_called()
+
+
 async def test_one_turn_is_recorded_for_the_next_message(monkeypatch):
     on_normalized, deps, _ = _build(monkeypatch, mode="agent", provider=ASK)
     await on_normalized(_message("50 bags cement"), {})
@@ -104,8 +113,8 @@ async def test_one_turn_is_recorded_for_the_next_message(monkeypatch):
     assert "Received / Used" in recorded["assistant_reply"]
 
 
-@pytest.mark.parametrize("mode", ["off", None, "", "AGENT?"])
-async def test_anything_but_agent_stays_on_the_classic_pipeline(monkeypatch, mode):
+@pytest.mark.parametrize("mode", ["off", "OFF"])
+async def test_a_company_switched_off_stays_on_the_classic_pipeline(monkeypatch, mode):
     on_normalized, _, classic = _build(monkeypatch, mode=mode, provider=ASK)
     with pytest.raises(_Reached):
         await on_normalized(_message(), {})

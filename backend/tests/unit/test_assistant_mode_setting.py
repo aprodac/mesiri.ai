@@ -1,4 +1,4 @@
-"""assistant_mode: off by default, agent only when a platform admin says so."""
+"""assistant_mode: the agent for every company; "off" is the per-company fallback."""
 
 from __future__ import annotations
 
@@ -7,15 +7,16 @@ import pytest
 from mesiri.domains.organizations import settings as s
 
 
-def test_default_is_off() -> None:
-    assert s.default_for(s.ASSISTANT_MODE) == "off"
-    assert s.agent_mode(s.default_for(s.ASSISTANT_MODE)) is False
+def test_default_is_the_agent() -> None:
+    assert s.default_for(s.ASSISTANT_MODE) == "agent"
+    assert s.agent_mode(s.default_for(s.ASSISTANT_MODE)) is True
 
 
-def test_only_the_agent_value_turns_it_on() -> None:
-    assert s.agent_mode("agent") is True
-    for stored in ("off", None, "", "Agent ", 1, ["agent"]):
+def test_only_off_keeps_the_classic_pipeline() -> None:
+    for stored in ("off", "OFF", " off "):
         assert s.agent_mode(stored) is False
+    for stored in ("agent", None, "", "Agent ", 1, ["agent"]):
+        assert s.agent_mode(stored) is True
 
 
 def test_validate_normalises_and_rejects() -> None:

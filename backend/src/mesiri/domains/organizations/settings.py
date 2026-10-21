@@ -180,11 +180,12 @@ _SPECS: dict[str, SettingSpec] = {
     ),
     ASSISTANT_MODE: SettingSpec(
         key=ASSISTANT_MODE,
-        default=ASSISTANT_MODE_OFF,
+        default=ASSISTANT_MODE_AGENT,
         description=(
-            "How free-text and voice WhatsApp messages are handled: 'off' (the "
-            "classic pipeline) or 'agent' (a tool-calling assistant that runs the "
-            "same workflows). Changed by the Mesiri team only."
+            "How free-text and voice WhatsApp messages are handled: 'agent' (the AI "
+            "assistant with tools; every company, decided by Ilan 21 Oct 2026) or "
+            "'off' (the classic pipeline, kept only as a per-company fallback while "
+            "it is retired). Changed by the Mesiri team only."
         ),
     ),
     BRANDING: SettingSpec(
@@ -368,9 +369,10 @@ def saves_first(stored: object) -> bool:
 
 
 def agent_mode(stored: object) -> bool:
-    """True only when the company was switched to the agent. Anything
-    unreadable counts as off: the classic pipeline is the safe default."""
-    return stored == ASSISTANT_MODE_AGENT
+    """True unless the company was switched back to the classic pipeline
+    ("off"). Every company runs the agent (ADR section 10b, Ilan 21 Oct 2026);
+    "off" is the fallback while the classic pipeline is retired."""
+    return not (isinstance(stored, str) and stored.strip().lower() == ASSISTANT_MODE_OFF)
 
 
 def role_allowed(role: str | None, allowed: object) -> bool:

@@ -17,5 +17,6 @@ Modules:
 - gateway.py   the port to the existing pipeline + its message_journey wiring
 - preset_pipeline.py  hands a tool's understanding to the existing journey
 
-Switched per company by the `assistant_mode` setting (default off).
+Every company runs it (`assistant_mode` defaults to "agent", Ilan 21 Oct 2026);
+"off" switches one company back to the classic pipeline while it is retired.
 """
