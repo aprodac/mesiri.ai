@@ -2708,6 +2708,20 @@ def build_message_handlers(
                     followups=lambda handled: _deliver_followups(handled, audit=False),
                     held_prompt=lambda journey: render_workflow_run_reply_spec(journey.workflow_run),
                     language=language,
+                    set_conversion=(
+                        (
+                            lambda material, unit, count: catalog_query.set_conversion(
+                                organization_id=str(ctx.organization_id),
+                                role=ctx.role,
+                                user_id=ctx.user_id,
+                                material_name=material,
+                                unit_text=unit,
+                                count=count,
+                            )
+                        )
+                        if catalog_query is not None
+                        else None
+                    ),
                 )
                 return early["gateway"]
 

@@ -58,3 +58,27 @@ async def test_a_save_with_no_execution_is_not_saved():
     handled.execution_result = None
     step = await _gateway(handled).run(SimpleNamespace(), text="rain today")
     assert step.status == "error"
+
+
+async def test_a_unit_conversion_is_set_through_the_wired_service_and_said_back():
+    calls = []
+
+    async def set_conversion(material, unit, count):
+        calls.append((material, unit, count))
+        return "Saved for the company: 28 bags of Sand = 1 m³."
+
+    gateway = _gateway(None)
+    gateway.set_conversion = set_conversion
+    step = await gateway.set_unit_conversion(material="sand", unit="bags", count=28)
+    assert calls == [("sand", "bags", 28)]
+    assert (step.status, step.text) == ("answer", "Saved for the company: 28 bags of Sand = 1 m³.")
+
+
+async def test_a_refused_unit_conversion_is_said_as_it_is():
+    async def set_conversion(material, unit, count):
+        return "Only your admin or a project manager can set that for the company."
+
+    gateway = _gateway(None)
+    gateway.set_conversion = set_conversion
+    step = await gateway.set_unit_conversion(material="sand", unit="bags", count=28)
+    assert step.status == "info"

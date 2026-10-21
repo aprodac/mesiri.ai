@@ -115,9 +115,14 @@ def summarise_draft(draft: DraftActionV2 | Any) -> str | None:
         qty = " ".join(p for p in (_num(fields.get("quantity")), _text(fields.get("unit"))) if p)
         verb = "in" if action is DraftActionType.RECORD_MATERIAL_RECEIPT else "used"
         line = f"{material} {verb}: {qty}" if qty else f"{material} {verb}"
-        # WA-37: who it came from / what it was for, as the sender said it.
-        extra = _text(fields.get("supplier") if verb == "in" else fields.get("work_item"))
-        return f"{line} ({extra})" if extra else line
+        # WA-41: converted into the stock unit -> what they actually said, so
+        # the conversion is checked before Save. WA-37: who it came from /
+        # what it was for, as the sender said it.
+        reported = " ".join(
+            p for p in (_num(fields.get("reported_quantity")), _text(fields.get("reported_unit"))) if p
+        )
+        extras = [e for e in (reported, _text(fields.get("supplier") if verb == "in" else fields.get("work_item"))) if e]
+        return f"{line} ({'; '.join(extras)})" if extras else line
     if action is DraftActionType.RECORD_EXPENSE:
         amount = _num(fields.get("amount"))
         category = _title(fields.get("category"))

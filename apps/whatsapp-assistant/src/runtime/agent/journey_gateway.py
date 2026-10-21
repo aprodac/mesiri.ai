@@ -113,6 +113,8 @@ class JourneyGateway:
     held_prompt: HeldPromptFn
     language: str | None = None
     handled: list[Any] = field(default_factory=list)
+    #: WA-41: ``(material, unit, count) -> line to say``; None when not wired.
+    set_conversion: Callable[[str, str, Any], Awaitable[str]] | None = None
 
     async def run(self, candidate: Candidate, *, text: str) -> StepResult:
         sink = CaptureSink()
@@ -173,6 +175,13 @@ class JourneyGateway:
         if decision is None or decision.decision_type is not PlannerDecisionType.DIRECT_REPLY:
             return StepResult("needs_answer", text=reply.text, reply=reply)
         return StepResult("info", text=_without_menu(reply.text))
+
+    async def set_unit_conversion(self, *, material: str, unit: str, count: Any) -> StepResult:
+        if self.set_conversion is None:
+            return StepResult("info", text="I can't remember unit conversions here yet.")
+        line = await self.set_conversion(material, unit, count)
+        status = "answer" if line.startswith("Saved for the company") else "info"
+        return StepResult(status, text=line)
 
     async def undo_latest_draft(self) -> StepResult:
         reply = await self.undo()

@@ -54,6 +54,11 @@ class WorkflowGateway(Protocol):
         """Remove the sender's latest saved-as-draft update (the classic UNDO)."""
         ...
 
+    async def set_unit_conversion(self, *, material: str, unit: str, count: float) -> StepResult:
+        """WA-41: remember how many ``unit`` make one stock unit of ``material``,
+        company-wide (admins and project managers only)."""
+        ...
+
     async def finish(self) -> None:
         """After the reply is sent: the follow-ups the classic path runs after
         a save (worker promotion question, team-photo offer, ...)."""

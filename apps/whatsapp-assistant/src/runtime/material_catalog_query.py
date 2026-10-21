@@ -7,7 +7,8 @@ call, without the WhatsApp assistant depending on backend infrastructure
 anywhere outside runtime/.
 
 No fuzzy scoring beyond the repository's ILIKE substring match, no
-auto-create, no unit conversion -- ambiguity/absence is returned as plain
+auto-create (beyond create_material), no unit conversion of its own (WA-41's
+conversions are looked up and set here, applied by the gate) -- ambiguity/absence is returned as plain
 data (0, 1, or many candidates) and the caller (runtime/inbound_journey.py)
 decides whether that means "resolved silently" or "ask the user".
 """
@@ -15,6 +16,7 @@ decides whether that means "resolved silently" or "ask the user".
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -146,3 +148,83 @@ class MaterialCatalogQueryService:
                 sku=None,
                 created_by=uuid.UUID(created_by),
             )
+
+    async def find_conversion(
+        self, *, organization_id: str, material: dict[str, Any], from_unit: dict[str, Any], stock_unit: dict[str, Any]
+    ) -> Decimal | None:
+        """WA-41: how many ``from_unit`` make one stock unit of ``material`` --
+        the company's own answer first, then a fixed one (kg/tons, cft/m³,
+        cement 50 kg/bag). None when nobody has said yet."""
+        from mesiri.domains.materials.unit_conversion import built_in_per_stock_unit
+        from mesiri.infrastructure.postgres.repositories.material_unit_conversions import (
+            PostgresMaterialUnitConversionRepository,
+        )
+
+        async with self._db.transaction() as conn:
+            stored = await PostgresMaterialUnitConversionRepository(conn).get(
+                organization_id=uuid.UUID(organization_id),
+                material_id=uuid.UUID(str(material["id"])),
+                from_unit_id=uuid.UUID(str(from_unit["id"])),
+            )
+        if stored is not None:
+            return stored
+        return built_in_per_stock_unit(
+            str(from_unit.get("code") or ""), str(stock_unit.get("code") or ""), str(material.get("name") or "")
+        )
+
+    async def set_conversion(
+        self,
+        *,
+        organization_id: str,
+        role: str | None,
+        user_id: str | None,
+        material_name: str,
+        unit_text: str,
+        count: Decimal | float | str,
+    ) -> str:
+        """WA-41: "``count`` ``unit_text`` make one stock unit of the material",
+        for the whole company. Only an admin or project manager may (Ilan, 21
+        Oct 2026). Returns the one line to tell them."""
+        from mesiri.authorization.roles import may_set_unit_conversions
+        from mesiri.infrastructure.postgres.repositories.material_unit_conversions import (
+            PostgresMaterialUnitConversionRepository,
+        )
+
+        if not may_set_unit_conversions(role):
+            return "Only your admin or a project manager can set that for the company."
+        try:
+            per_stock_unit = Decimal(str(count))
+        except (InvalidOperation, ValueError):
+            per_stock_unit = Decimal(0)
+        if per_stock_unit <= 0:
+            return "That needs a number above zero."
+        matches = await self.find_materials(organization_id=organization_id, name=material_name)
+        if len(matches) != 1:
+            return f"I couldn't tell which material \"{material_name}\" is; say its exact name."
+        material = matches[0]
+        from_unit = await self.resolve_unit(unit_text)
+        stock_unit = await self.get_unit(str(material["default_unit_id"])) if material.get("default_unit_id") else None
+        if from_unit is None or stock_unit is None:
+            return f"I don't know the unit \"{unit_text}\"."
+        if str(from_unit["id"]) == str(stock_unit["id"]):
+            return f"{material['name']} is already counted in {stock_unit['display_name']}."
+        async with self._db.transaction() as conn:
+            await PostgresMaterialUnitConversionRepository(conn).upsert(
+                organization_id=uuid.UUID(organization_id),
+                material_id=uuid.UUID(str(material["id"])),
+                from_unit_id=uuid.UUID(str(from_unit["id"])),
+                per_stock_unit=per_stock_unit,
+                user_id=_uuid_or_none(user_id),
+            )
+        return (
+            f"Saved for the company: {per_stock_unit.normalize():f} {from_unit['display_name'].lower()} "
+            f"of {material['name']} = 1 {stock_unit['display_name']}."
+        )
+
+
+def _uuid_or_none(value: Any) -> uuid.UUID | None:
+    text = str(value or "").removeprefix("ctx_user_")
+    try:
+        return uuid.UUID(text)
+    except ValueError:
+        return None

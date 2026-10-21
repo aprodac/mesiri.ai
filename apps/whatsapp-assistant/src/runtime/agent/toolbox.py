@@ -24,6 +24,7 @@ from .gateway import StepResult, WorkflowGateway
 from .tools import (
     ASK_USER,
     NOTE_FOR_ENGINEER,
+    SET_UNIT_CONVERSION,
     UNDO_LAST,
     WRITE_TOOLS,
     ScopeLookup,
@@ -220,6 +221,12 @@ class AgentToolbox:
     async def _run(self, name: str, args: dict[str, Any]) -> StepResult:
         if name == UNDO_LAST and str(args.get("what") or "latest_update") == "latest_update":
             return await self.gateway.undo_latest_draft()
+        if name == SET_UNIT_CONVERSION:
+            return await self.gateway.set_unit_conversion(
+                material=str(args.get("material") or ""),
+                unit=str(args.get("unit") or ""),
+                count=args.get("count"),
+            )
         candidate = to_candidate(name, args, self.scope)
         if candidate is None:
             return StepResult(status="error", text=f"unknown tool {name}")

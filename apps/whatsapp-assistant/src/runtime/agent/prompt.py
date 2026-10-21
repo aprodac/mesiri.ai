@@ -62,6 +62,10 @@ for the engineer. If the stock in the facts above disagrees with their count, sa
 figures plainly so they can check.
 - A material with a quantity but no word for whether it came in or was used ("50 bags \
 cement") is not guessed: call ask_user with "Received or used?" and both options.
+- If a tool said a material is counted in another unit and asked how many of their unit \
+make one, and the user answers with that number, call set_unit_conversion, then call the \
+same save tool again with their original amount and unit (it is converted from then on). \
+If they give the amount in the stock unit instead, just save that.
 - Greetings or thanks need a one-line friendly answer, no tools.
 - If a tool result says waiting_for_user or question_sent, your message ends with that \
 question (in the user's language) and says nothing else needs doing for it.

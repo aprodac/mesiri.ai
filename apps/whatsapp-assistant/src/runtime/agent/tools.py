@@ -27,6 +27,7 @@ TRANSFER_MONEY = "transfer_money"
 UNDO_LAST = "undo_last"
 ASK_USER = "ask_user"
 NOTE_FOR_ENGINEER = "note_for_engineer"
+SET_UNIT_CONVERSION = "set_unit_conversion"
 QUERY_LABOUR = "query_labour"
 QUERY_MATERIALS = "query_materials"
 QUERY_WORK_LOG = "query_work_log"
@@ -47,6 +48,7 @@ WRITE_TOOLS = frozenset(
         NOTE_FOR_ENGINEER,
         TRANSFER_MONEY,
         UNDO_LAST,
+        SET_UNIT_CONVERSION,
     }
 )
 
@@ -268,6 +270,23 @@ def tool_specs() -> list[ToolSpec]:
                     "site": _SITE,
                 },
                 ["question"],
+            ),
+        ),
+        ToolSpec(
+            name=SET_UNIT_CONVERSION,
+            description=(
+                "Remember, for the whole company, how many of a unit make one stock unit of a "
+                "material ('28 bags of sand make 1 m³': material 'sand', unit 'bags', count 28). "
+                "Only after a tool said the material is counted in another unit and the user "
+                "gave that number. Then save their entry again with their own amount and unit."
+            ),
+            parameters=_obj(
+                {
+                    "material": {"type": "string"},
+                    "unit": {"type": "string", "description": "The unit they reported in, e.g. bags."},
+                    "count": {"type": "number", "description": "How many of that unit make ONE stock unit."},
+                },
+                ["material", "unit", "count"],
             ),
         ),
         ToolSpec(

@@ -80,3 +80,15 @@ EXPENSE_VIEW_ROLES: frozenset[str] = frozenset(
 def may_view_expenses(role: str | None) -> bool:
     """True if `role` may read expenses (within the projects it can reach)."""
     return str(role or "").strip().upper() in EXPENSE_VIEW_ROLES
+
+
+# Who may set how many of a unit make one stock unit of a material ("28 bags
+# of sand = 1 m³") for the whole company (WA-41, decided by Ilan 21 Oct 2026):
+# it changes every later stock figure for that material, so admins and
+# project managers, not every engineer.
+UNIT_CONVERSION_ROLES: frozenset[str] = frozenset({"ADMIN", "OWNER", "SUPER_ADMIN", "PROJECT_MANAGER"})
+
+
+def may_set_unit_conversions(role: str | None) -> bool:
+    """True if `role` may set a company-wide unit conversion."""
+    return str(role or "").strip().upper() in UNIT_CONVERSION_ROLES

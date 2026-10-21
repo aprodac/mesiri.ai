@@ -25,6 +25,8 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+import pytest
+
 from interactions.pending_report import PendingReportStore
 from mesiri_contracts.assistant.canonical_event import (
     CanonicalEventType,
@@ -394,9 +396,76 @@ async def test_under_the_agent_a_unit_mismatch_asks_for_the_amount_and_holds_not
     )
 
     assert reply.buttons is None and reply.list_rows is None
-    assert reply.text == (
+    assert reply.text.startswith(
         "Not saved yet: Sand is counted in m³ here, so 40 bags can't be saved as it is. "
         "How much is that in m³?"
     )
     assert await store.pop_pending(user_id=USR) is None
     assert "unit_id" not in event.fields  # never recorded in the wrong unit
+
+
+# -- WA-41: a known conversion converts; an unknown one is asked once ----------
+
+
+class _ConvertingCatalog(_FakeCatalogQuery):
+    def __init__(self, per, **kwargs):
+        super().__init__(**kwargs)
+        self.per = per
+
+    async def find_conversion(self, **kwargs):
+        return self.per
+
+
+def _sand_catalog(per):
+    from decimal import Decimal
+
+    stock_unit_id = str(uuid.uuid4())
+    return stock_unit_id, _ConvertingCatalog(
+        Decimal(per) if per is not None else None,
+        find_materials_result=[
+            {"id": str(uuid.uuid4()), "name": "Sand", "is_active": True, "default_unit_id": stock_unit_id}
+        ],
+        resolve_unit_result={"id": str(uuid.uuid4()), "code": "bags", "display_name": "Bags"},
+        get_unit_result={"id": stock_unit_id, "code": "cum", "display_name": "m³"},
+    )
+
+
+@pytest.mark.parametrize("ask_amount", [True, False])  # the agent and the classic path alike
+async def test_a_known_conversion_saves_in_the_stock_unit_and_keeps_what_was_said(ask_amount):
+    stock_unit_id, catalog = _sand_catalog("28")
+    event = _event(material_name="Sand", unit="bags")
+    event.fields["quantity"] = 40
+
+    reply = await _run_material_unit_gates(
+        event, catalog_query=catalog, pending_report_store=_pending_store(), actor_user_id=USR,
+        ask_amount=ask_amount,
+    )
+
+    assert reply is None  # nothing to ask
+    assert event.fields["quantity"] == 1.429
+    assert event.fields["unit"] == "cum" and event.fields["unit_id"] == stock_unit_id
+    assert (event.fields["reported_quantity"], event.fields["reported_unit"]) == (40, "bags")
+
+
+async def test_an_admin_is_asked_once_for_the_conversion_for_the_company():
+    _, catalog = _sand_catalog(None)
+    event = _event(material_name="Sand", unit="bags")
+    event.fields["quantity"] = 40
+    reply = await _run_material_unit_gates(
+        event, catalog_query=catalog, pending_report_store=_pending_store(), actor_user_id=USR,
+        actor_role="PROJECT_MANAGER", ask_amount=True,
+    )
+    assert "How many bags of Sand make 1 m³? I'll remember it for the company" in reply.text
+    assert "set_unit_conversion" not in reply.text  # never a tool name to a person
+
+
+async def test_an_engineer_is_asked_for_the_amount_and_told_who_can_set_it():
+    _, catalog = _sand_catalog(None)
+    event = _event(material_name="Sand", unit="bags")
+    event.fields["quantity"] = 40
+    reply = await _run_material_unit_gates(
+        event, catalog_query=catalog, pending_report_store=_pending_store(), actor_user_id=USR,
+        actor_role="SITE_ENGINEER", ask_amount=True,
+    )
+    assert "How much is that in m³?" in reply.text
+    assert "Your admin or project manager" in reply.text
