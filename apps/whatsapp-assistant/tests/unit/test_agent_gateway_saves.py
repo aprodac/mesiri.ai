@@ -82,3 +82,15 @@ async def test_a_refused_unit_conversion_is_said_as_it_is():
     gateway.set_conversion = set_conversion
     step = await gateway.set_unit_conversion(material="sand", unit="bags", count=28)
     assert step.status == "info"
+
+
+async def test_a_lookup_is_an_answer_not_a_save():
+    """Round 3b: a stock question ended with "Wrong? Reply UNDO." -- its run
+    goes through the save step, but it keeps nothing."""
+    from mesiri_contracts.assistant.enums import SemanticType
+
+    gateway = _gateway(_handled(ExecutionStatus.SUCCEEDED, reply="Cement: 398 bag in stock."))
+    step = await gateway.run(SimpleNamespace(semantic_type=SemanticType.INVENTORY_QUERY), text="cement stock?")
+    assert step.status == "answer"
+    assert step.text == "Cement: 398 bag in stock."
+    assert gateway.handled == []

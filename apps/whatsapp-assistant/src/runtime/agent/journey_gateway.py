@@ -17,7 +17,7 @@ from channel.replies import ListRow, ReplySpec, is_module_disabled_reply
 from interactions.saved_summary import summarise_draft
 from mesiri_contracts.application.results.execution_result import ExecutionStatus
 from mesiri_contracts.assistant.candidates import Candidate
-from mesiri_contracts.assistant.enums import InputModality
+from mesiri_contracts.assistant.enums import InputModality, SemanticType
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage
 from mesiri_contracts.assistant.planner_decision import PlannerDecisionType
 from workflows import WorkflowRunStatus
@@ -26,6 +26,18 @@ from .gateway import StepResult
 from .preset_pipeline import PresetUnderstandingPipeline
 
 _log = logging.getLogger("mesiri.agent")
+
+#: What only reads: its run ends with an answer, not a record.
+_LOOKUPS = frozenset(
+    {
+        SemanticType.ACTIVITY_QUERY,
+        SemanticType.DPR_REQUEST,
+        SemanticType.FINANCE_QUERY,
+        SemanticType.INVENTORY_QUERY,
+        SemanticType.LABOUR_QUERY,
+        SemanticType.PROJECT_DETAIL_QUERY,
+    }
+)
 
 
 def _without_menu(text: str) -> str:
@@ -134,6 +146,11 @@ class JourneyGateway:
                 # day, a validation error). Its reply says why; it is never
                 # "saved", or the model writes "Saved" for nothing.
                 return StepResult("error", text=saved.reply_text, workflow_key=key)
+            if saved is not None and getattr(candidate, "semantic_type", None) in _LOOKUPS:
+                # A lookup ends through the same step as an entry (the answer
+                # is that step's reply), but it keeps nothing: never "saved",
+                # no Undo line, no part of the Save card (round 3b, 21 Oct).
+                return StepResult("answer", text=saved.reply_text, workflow_key=key)
             if saved is not None:
                 self.handled.append(saved)
                 return StepResult(
