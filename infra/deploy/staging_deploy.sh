@@ -92,7 +92,8 @@ echo "  copied ${PROD_DB} → ${STG_DB}"
 echo "→ Migrations on the copy"
 cd "${STG}"
 # Never migrate anything but the copy: stop if the settings resolve elsewhere.
-RESOLVED_DB="$("${STG}/.venv/bin/python" -c 'from mesiri.bootstrap.settings import get_settings; print(get_settings().postgres.database)')"
+# Same path alembic gets (alembic.ini prepend_sys_path) plus the contracts.
+RESOLVED_DB="$(PYTHONPATH="${STG}/backend/src:${STG}/shared/contracts/src" "${STG}/.venv/bin/python" -c 'from mesiri.bootstrap.settings import get_settings; print(get_settings().postgres.database)')"
 if [ "${RESOLVED_DB}" != "${STG_DB}" ]; then
   echo "✗ staging settings point at database '${RESOLVED_DB}', not ${STG_DB}; stopping" >&2
   exit 1
