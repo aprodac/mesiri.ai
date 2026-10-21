@@ -191,6 +191,22 @@ grown since.)
   record the number here); before/after line counts recorded here.
 - **Then:** roll out workflow by workflow over about 2 weeks.
 
+**Built so far (WA-36, 21 Oct):**
+
+- Golden set: `apps/whatsapp-assistant/tests/conversation/materials_golden.yaml`, 19 messages
+  (English, Manglish, Malayalam script, Hindi): receipts, usage, mixed with labour, two
+  materials in one message, unclear ones that must get one question, and stock questions that
+  must save nothing. Each lists the exact records expected.
+- CI checks the save half on every push: the ideal tool calls go through the real journey and
+  must file exactly those records (`test_materials_golden.py`).
+- The live measurement is `pytest -m live tests/conversation/test_materials_golden.py` with
+  `GEMINI_API_KEY` set; it prints each case, the accuracy and the p50 time. **Not run yet**
+  (no key in the build environment). Record the numbers here when it runs.
+- The agent now gets the sender's site stock in its context ("Stock now at <site> (from the
+  records): ..."), read-only, one-site senders only, 300 ms limit, left out on any failure.
+- Still to do: the live run and its numbers; reply quality on the scorecard; before/after line
+  counts; then retire the material graphs.
+
 ## 9. Open questions
 
 - Model tier: Flash or Pro.

@@ -65,6 +65,9 @@ class AgentTurnDeps:
     #: [68]: ``(actor) -> "Today so far: ..." | None``, read-only context for the
     #: reply writer (runtime/today_context.py); None leaves it out.
     today_line: Callable[[ActorIdentity], Awaitable[str | None]] | None = None
+    #: WA-36: ``(actor) -> "Stock now at ...: ..." | None``, read-only context
+    #: (runtime/today_context.py's build_stock_line); None leaves it out.
+    stock_line: Callable[[ActorIdentity], Awaitable[str | None]] | None = None
     #: [68]: called when the reply saved nothing (a question or small talk), so
     #: the journey holds setup nudges ("add another site?") for after a save.
     on_conversational: Callable[[], None] | None = None
@@ -225,11 +228,14 @@ async def run_agent_turn(
 
     gateway = deps.make_gateway(message, language)
     context = _context_of(actor, deps, pack, language, menu_hint, script)
-    if deps.today_line is not None:
-        try:
-            context = replace(context, today_line=await deps.today_line(actor))
-        except Exception:  # noqa: BLE001 — context is a nicety
-            pass
+    # [68] / WA-36: read-only context lines, fetched together; a failure leaves one out.
+    lines = await asyncio.gather(
+        *(
+            _context_line(fetch, actor)
+            for fetch in (deps.today_line, deps.stock_line)
+        )
+    )
+    context = replace(context, today_line=lines[0], stock_line=lines[1])
     _lap(deps, "agent_context")
     result = await deps.runner.run(
         ctx=context,
@@ -293,6 +299,17 @@ async def run_agent_turn(
         await gateway.finish()
         _lap(deps, "agent_followups")
     return result
+
+
+async def _context_line(
+    fetch: Callable[[ActorIdentity], Awaitable[str | None]] | None, actor: ActorIdentity
+) -> str | None:
+    if fetch is None:
+        return None
+    try:
+        return await fetch(actor)
+    except Exception:  # noqa: BLE001 — context is a nicety
+        return None
 
 
 def _is_conversational(result: AgentResult) -> bool:

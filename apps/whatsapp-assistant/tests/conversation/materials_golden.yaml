@@ -1,0 +1,35 @@
+# Materials golden set (WA-36; ADR "Direction", section 8: the materials pilot).
+# One JSON object per line (valid YAML flow mapping, parsed without a YAML dependency).
+#
+#   message  what the site sends
+#   calls    the tool calls a good model makes (CI scripts these, so the save code is checked)
+#   expect   the exact records that must be saved, nothing more:
+#              action    record_material_receipt | record_material_usage | record_labour_attendance
+#              material  accepted names (compared lower-case, letters and digits only)
+#              quantity  exact
+#              unit      accepted units (lower-case, a trailing "s" ignored)
+#              supplier / work_item  must appear in the saved value (lower-case), when given
+#   ask      true: nothing is saved and the reply is ONE question
+#   query    true: nothing is saved and a query tool answers
+#
+# The live run (pytest -m live) sends `message` to the real model instead of `calls`.
+
+- {"id": 1, "lang": "en", "message": "50 bags cement arrived", "calls": [["save_material_receipt", {"material": "cement", "quantity": 50, "unit": "bags"}]], "expect": [{"action": "record_material_receipt", "material": ["cement"], "quantity": 50, "unit": ["bag", "sack"]}]}
+- {"id": 2, "lang": "manglish", "message": "50 bag cement vannu", "calls": [["save_material_receipt", {"material": "cement", "quantity": 50, "unit": "bags"}]], "expect": [{"action": "record_material_receipt", "material": ["cement"], "quantity": 50, "unit": ["bag", "sack"]}]}
+- {"id": 3, "lang": "manglish", "message": "Sharma Traders-il ninnu 100 bag cement vannu", "calls": [["save_material_receipt", {"material": "cement", "quantity": 100, "unit": "bags", "supplier": "Sharma Traders"}]], "expect": [{"action": "record_material_receipt", "material": ["cement"], "quantity": 100, "unit": ["bag", "sack"], "supplier": "sharma"}]}
+- {"id": 4, "lang": "manglish", "message": "2 load M sand eththi", "calls": [["save_material_receipt", {"material": "M sand", "quantity": 2, "unit": "load"}]], "expect": [{"action": "record_material_receipt", "material": ["msand", "manufacturedsand"], "quantity": 2, "unit": ["load", "lorry", "truck"]}]}
+- {"id": 5, "lang": "hindi", "message": "500 kg steel aaya", "calls": [["save_material_receipt", {"material": "steel", "quantity": 500, "unit": "kg"}]], "expect": [{"action": "record_material_receipt", "material": ["steel", "tmtsteel", "rod", "tmtbar"], "quantity": 500, "unit": ["kg", "kilogram"]}]}
+- {"id": 6, "lang": "ml", "message": "ഇന്ന് 40 ചാക്ക് സിമന്റ് വന്നു", "calls": [["save_material_receipt", {"material": "cement", "quantity": 40, "unit": "bags"}]], "expect": [{"action": "record_material_receipt", "material": ["cement"], "quantity": 40, "unit": ["bag", "sack"]}]}
+- {"id": 7, "lang": "en", "message": "received 3000 bricks from Jose", "calls": [["save_material_receipt", {"material": "bricks", "quantity": 3000, "unit": "nos", "supplier": "Jose"}]], "expect": [{"action": "record_material_receipt", "material": ["brick", "bricks"], "quantity": 3000, "unit": ["no", "nos", "number", "piece", "pc", "pcs", "brick"], "supplier": "jose"}]}
+- {"id": 8, "lang": "en", "message": "used 20 bags cement for slab", "calls": [["save_material_usage", {"material": "cement", "quantity": 20, "unit": "bags", "work_item": "slab"}]], "expect": [{"action": "record_material_usage", "material": ["cement"], "quantity": 20, "unit": ["bag", "sack"], "work_item": "slab"}]}
+- {"id": 9, "lang": "manglish", "message": "slab-inu 20 bag cement use cheythu", "calls": [["save_material_usage", {"material": "cement", "quantity": 20, "unit": "bags", "work_item": "slab"}]], "expect": [{"action": "record_material_usage", "material": ["cement"], "quantity": 20, "unit": ["bag", "sack"], "work_item": "slab"}]}
+- {"id": 10, "lang": "en", "message": "1 load sand used for plastering", "calls": [["save_material_usage", {"material": "sand", "quantity": 1, "unit": "load", "work_item": "plastering"}]], "expect": [{"action": "record_material_usage", "material": ["sand", "riversand"], "quantity": 1, "unit": ["load", "lorry", "truck"], "work_item": "plaster"}]}
+- {"id": 11, "lang": "manglish", "message": "innu 1500 brick use aayi", "calls": [["save_material_usage", {"material": "bricks", "quantity": 1500, "unit": "nos"}]], "expect": [{"action": "record_material_usage", "material": ["brick", "bricks"], "quantity": 1500, "unit": ["no", "nos", "number", "piece", "pc", "pcs", "brick"]}]}
+- {"id": 12, "lang": "en", "message": "50 bags cement came, used 20 bags for column", "calls": [["save_material_receipt", {"material": "cement", "quantity": 50, "unit": "bags"}], ["save_material_usage", {"material": "cement", "quantity": 20, "unit": "bags", "work_item": "column"}]], "expect": [{"action": "record_material_receipt", "material": ["cement"], "quantity": 50, "unit": ["bag", "sack"]}, {"action": "record_material_usage", "material": ["cement"], "quantity": 20, "unit": ["bag", "sack"], "work_item": "column"}]}
+- {"id": 13, "lang": "manglish", "message": "Innu 6 mason, 10 helper vannu. 20 bag cement use cheythu.", "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 6}, {"trade": "helper", "headcount": 10}]}], ["save_material_usage", {"material": "cement", "quantity": 20, "unit": "bags"}]], "expect": [{"action": "record_labour_attendance"}, {"action": "record_material_usage", "material": ["cement"], "quantity": 20, "unit": ["bag", "sack"]}]}
+- {"id": 14, "lang": "manglish", "message": "2 load sand um 1 load metal um vannu", "calls": [["save_material_receipt", {"material": "sand", "quantity": 2, "unit": "load"}], ["save_material_receipt", {"material": "metal", "quantity": 1, "unit": "load"}]], "expect": [{"action": "record_material_receipt", "material": ["sand", "riversand", "msand"], "quantity": 2, "unit": ["load", "lorry", "truck"]}, {"action": "record_material_receipt", "material": ["metal", "aggregate", "jelly", "20mmmetal", "20mmaggregate"], "quantity": 1, "unit": ["load", "lorry", "truck"]}]}
+- {"id": 15, "lang": "en", "message": "50 bags cement", "calls": [["ask_user", {"question": "Was that cement received or used?", "options": ["Received", "Used"]}]], "expect": [], "ask": true}
+- {"id": 16, "lang": "manglish", "message": "cement vannu", "calls": [["ask_user", {"question": "Ethra bag cement vannu?"}]], "expect": [], "ask": true}
+- {"id": 17, "lang": "manglish", "message": "cement stock ethra und?", "calls": [["query_materials", {"material": "cement"}]], "expect": [], "query": true}
+- {"id": 18, "lang": "en", "message": "how much sand is left?", "calls": [["query_materials", {"material": "sand"}]], "expect": [], "query": true}
+- {"id": 19, "lang": "en", "message": "is there enough cement for tomorrow's slab?", "calls": [["query_materials", {"material": "cement"}]], "expect": [], "query": true}

@@ -81,6 +81,8 @@ class AgentContext:
     notes: list[str] = field(default_factory=list)
     #: One read-only line about the day so far ("Anil at Site A1. Saved today: ..."); None when unknown.
     today_line: str | None = None
+    #: WA-36: the sender's site stock ("Stock now at Site A1 (from the records): ..."); None when unknown.
+    stock_line: str | None = None
 
 
 def render_context(ctx: AgentContext) -> str:
@@ -113,6 +115,8 @@ def render_context(ctx: AgentContext) -> str:
         lines.append(f"They just tapped the menu option: {ctx.menu_hint}.")
     if ctx.today_line:
         lines.append(ctx.today_line)
+    if ctx.stock_line:
+        lines.append(ctx.stock_line)
     lines.extend(ctx.notes)
     return "\n".join(lines)
 

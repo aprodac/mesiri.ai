@@ -2538,7 +2538,7 @@ def build_message_handlers(
             from runtime.agent.journey_gateway import JourneyGateway
             from runtime.agent.turn import AgentTurnDeps, run_agent_turn
             from runtime.inbound_journey import render_workflow_run_reply_spec
-            from runtime.today_context import build_today_line
+            from runtime.today_context import build_stock_line, build_today_line
 
             hint = category_hint.semantic_hint if category_hint else None
             direction = category_hint.direction if category_hint else None
@@ -2721,6 +2721,7 @@ def build_message_handlers(
                 today_line=lambda actor: build_today_line(
                     activity_search_service, actor, timezone_name=getattr(actor, "timezone", None)
                 ),
+                stock_line=lambda actor: build_stock_line(inventory_query, actor),
                 on_conversational=lambda: _conversational.add(message.correlation_id),
                 trace_logger=trace_logger,
             )
