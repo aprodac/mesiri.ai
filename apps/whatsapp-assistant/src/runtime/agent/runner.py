@@ -211,7 +211,14 @@ class AgentRunner:
         parked = toolbox.parked
         if parked is None:
             return ReplySpec(text=text)
-        if "?" not in text and "？" not in text:
+        if toolbox.parked_confirm:
+            # Confirm-first: the record itself goes under the model's words,
+            # so Yes confirms what they can see (22 Oct: only "Sheri aano?"
+            # and two buttons went out). Its "Reply YES" line is the buttons.
+            details = _card_details(parked.text)
+            if details and details not in text:
+                text = f"{text}\n\n{details}"
+        elif "?" not in text and "？" not in text:
             # The model left the question out: the buttons would hang in the air.
             text = f"{text}\n\n{parked.text}"
         return ReplySpec(
@@ -306,6 +313,16 @@ def _without_claim(sentence: str) -> str:
         return ""
     end = re.search(r"[.!?।]+\s*$|\n$", sentence)
     return body + (end.group(0) if end else "")
+
+
+def _card_details(card: str) -> str:
+    """A confirmation card without its header and its "Reply YES" line."""
+    kept = [
+        line
+        for line in card.splitlines()
+        if not line.strip().startswith("*Confirm") and "reply yes" not in line.casefold()
+    ]
+    return "\n".join(kept).strip()
 
 
 def without_saved_claims(text: str) -> str:

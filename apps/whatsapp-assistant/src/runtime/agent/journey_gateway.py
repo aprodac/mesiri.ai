@@ -13,7 +13,12 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from channel.replies import ListRow, ReplySpec, is_module_disabled_reply
+from channel.replies import (
+    ListRow,
+    ReplySpec,
+    is_module_disabled_reply,
+    render_understanding_failed_reply,
+)
 from interactions.saved_summary import summarise_draft
 from mesiri_contracts.application.results.execution_result import ExecutionStatus
 from mesiri_contracts.assistant.candidates import Candidate
@@ -230,6 +235,11 @@ class JourneyGateway:
             # The module gate sends its reply and ends the journey; it is a
             # statement, not a question to park (request [59]).
             return StepResult("info", text=_without_menu(reply.text))
+        if reply.text == render_understanding_failed_reply():
+            # The pipeline could not place it (context or understanding
+            # failed): that is a failure to say, never a question to park --
+            # it went out alone as the reply to a plain "Yes" (22 Oct).
+            return StepResult("error", text="Not saved: the system could not place this entry.")
         if decision is None or decision.decision_type is not PlannerDecisionType.DIRECT_REPLY:
             return StepResult("needs_answer", text=reply.text, reply=reply)
         return StepResult("info", text=_without_menu(reply.text))

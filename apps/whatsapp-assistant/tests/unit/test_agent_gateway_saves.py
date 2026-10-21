@@ -94,3 +94,19 @@ async def test_a_lookup_is_an_answer_not_a_save():
     assert step.status == "answer"
     assert step.text == "Cement: 398 bag in stock."
     assert gateway.handled == []
+
+
+async def test_the_could_not_make_out_line_is_a_failure_not_a_question():
+    """22 Oct: it was parked as the pipeline's question and went out alone."""
+    from channel.replies import render_understanding_failed_reply
+
+    async def process(message, pipeline, sink):
+        await sink.send_text("wa", render_understanding_failed_reply())
+        return SimpleNamespace(workflow_run=None, planner_decision=None)
+
+    gateway = JourneyGateway(
+        message=SimpleNamespace(model_copy=lambda update: SimpleNamespace()),
+        process=process, save_now=None, undo=None, followups=None, held_prompt=None,
+    )
+    step = await gateway.run(SimpleNamespace(), text="Yes")
+    assert step.status == "error" and step.reply is None

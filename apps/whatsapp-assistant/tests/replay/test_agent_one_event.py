@@ -107,3 +107,21 @@ async def test_a_chosen_site_is_remembered_so_the_next_message_is_not_asked():
     result = await world.say(FakeToolCallingProvider([[second], "10 bag use cheythu."]), "10 bag cement use cheythu")
     assert [r.draft_action.site_id for r in world.dispatcher.dispatched] == [world.site_ids[seed.SITE_A2]] * 2
     assert result.toolbox.parked is None  # no "which site?"
+
+
+async def test_a_confirm_first_company_sees_the_record_with_yes_and_no(monkeypatch):
+    """22 Oct (Hospital Project, confirm-first): Yes must confirm something the
+    sender can see -- the record's lines go under the model's words."""
+    import tests.replay.test_agent_replay as replay
+
+    async def confirm_first(self, **kwargs):  # noqa: ANN001, ANN003
+        return False
+
+    monkeypatch.setattr(replay._SaveFirst, "applies", confirm_first)
+    world = await _make_world(site_keys=(seed.SITE_A1,))
+    call = ("save_material_receipt", {"material": "cement", "quantity": 40, "unit": "bags"})
+    result = await world.say(FakeToolCallingProvider([[call], "40 bag cement vannu. Sheri aano?"]), "40 bag cement vannu")
+    assert [b.title for b in result.reply.buttons] == ["Yes", "No"]
+    assert "Quantity: 40 bags" in result.reply.text and "Material: cement" in result.reply.text
+    assert "Reply YES" not in result.reply.text
+    assert world.dispatcher.dispatched == []  # nothing until Yes

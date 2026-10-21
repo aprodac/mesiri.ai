@@ -101,7 +101,19 @@ class MaterialEntry:
 
         result = await self.context_resolver.resolve(message, understanding)
         if not result.is_ok:
-            return None
+            # Live 22 Oct 00:06: the classic route then answered "Sorry, I
+            # couldn't make out that message" to a plain "Yes". Ask for the
+            # project with its buttons instead, and log why.
+            error = getattr(result, "error", None)
+            _log.warning(
+                "material_entry.context_failed correlation_id=%s code=%s",
+                message.correlation_id,
+                getattr(error, "code", error),
+            )
+            names = [p.name for p in getattr(self.actor, "projects", None) or []]
+            if not names:
+                return Say("error", "Not saved: I couldn't tell which project this is for.")
+            return _choose("Which project is this for?", names, "project")
         ctx = result.unwrap()
         organization_id = str(ctx.organization_id)
 

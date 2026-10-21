@@ -109,6 +109,9 @@ class AgentToolbox:
     #: state per sender). "ask": the model's own question -- the message's other
     #: parts are independent and still get saved.
     parked_by: str | None = None
+    #: The parked question is a record waiting on Yes/No (confirm-first): its
+    #: details are always shown with the buttons, whatever the model wrote.
+    parked_confirm: bool = False
     #: Tool calls not run because a gate was waiting (named for the reply).
     held: list[str] = field(default_factory=list)
     attempted_writes: int = 0
@@ -264,6 +267,7 @@ class AgentToolbox:
                 # is what the stored waiting state expects.
                 self.parked = question
                 self.parked_by = "gate"
+                self.parked_confirm = step.status == "needs_confirmation"
             return ToolOutcome(
                 content={
                     "status": "waiting_for_user",

@@ -229,8 +229,13 @@ async def test_two_sites_is_a_question_with_the_sites():
     assert said.status == "choose" and "Options: Kakkanad, Edappally" in said.text
 
 
-async def test_a_failed_context_takes_the_classic_route():
-    assert await _prepare(_entry(context=_Context(ok=False))) is None
+async def test_a_failed_context_asks_for_the_project_with_buttons():
+    """Live 22 Oct: the classic route answered a plain "Yes" with "Sorry, I
+    couldn't make out that message"."""
+    actor = _actor(SITE)
+    actor.projects = [SimpleNamespace(name="Hospital Project"), SimpleNamespace(name="Mithilash")]
+    said = await _prepare(_entry(context=_Context(ok=False), actor=actor))
+    assert said.status == "choose" and said.options == ("Hospital Project", "Mithilash")
 
 
 async def test_a_project_with_one_site_gets_that_site():
