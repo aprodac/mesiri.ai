@@ -251,11 +251,10 @@ def tool_specs() -> list[ToolSpec]:
         ToolSpec(
             name=NOTE_FOR_ENGINEER,
             description=(
-                "Pass a QUESTION the user asked to their engineer, only when it needs a "
-                "person's decision that neither the facts you were given (stock, today) nor "
-                "the query tools can answer (e.g. 'can we remove the slab props today?'). A "
-                "question about stock or quantities ('enough cement for tomorrow's slab?') is "
-                "answered, never passed on. Never for a problem or delay (report_issue) and "
+                "Pass a question to the user's engineer. ONLY when the user asks for it "
+                "('engineer-inodu chodikku', 'ask the engineer ...'). Any other question you "
+                "answer yourself from the facts or the query tools, or say plainly that the "
+                "records cannot answer it. Never for a problem or delay (report_issue) and "
                 "never for work done."
             ),
             parameters=_obj(

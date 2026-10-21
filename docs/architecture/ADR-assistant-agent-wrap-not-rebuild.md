@@ -264,6 +264,21 @@ old pipeline still split tool calls and answered with its own plan summary. Chan
 - Cost: every entry now takes the model's second round (about 1-2 s more). Measure it with
   the live golden run.
 
+**Round 2 (WA-38, 21 Oct afternoon):**
+
+- **A question goes to the engineer only when the sender asks for that** (Ilan, 21 Oct):
+  "engineer-inodu chodikku", "ask the engineer", or "yes" to the AI's own offer to ask.
+  Enforced in the toolbox; any other question is answered from the records, or the AI says
+  plainly the records can't answer it and offers to ask.
+- **Reply letters follow THIS message**, stated to the model as a fact computed in code;
+  the sender's earlier language only counts for a message with no letters ("👍").
+- **Code checks on the model's words:** sentences claiming an entry is saved/recorded before
+  the Save tap are dropped (English, Manglish, Malayalam, Hindi); a code word ("clientIdb")
+  drops its words; numbers as before.
+- A question passed on gets no receipt card and no "tap Save"; its line is said once.
+- A shortage message ("10 bag balance und, kooduthal venam") is a material-shortage issue,
+  with both figures when the stock disagrees.
+
 ## 11. References
 
 [40] (this ADR, above) - [68], [75], [76] (Mesiri voice, memory, polish) -

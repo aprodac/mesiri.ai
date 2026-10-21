@@ -28,7 +28,7 @@ from mesiri_ai.ports.tool_calling import ToolCallingProvider
 
 from .gateway import WorkflowGateway
 from .prompt import SYSTEM_PROMPT, AgentContext, build_messages
-from .toolbox import AgentToolbox, SavedItem
+from .toolbox import AgentToolbox, SavedItem, asks_for_engineer
 from .tools import ScopeLookup, tool_specs
 
 _log = logging.getLogger("mesiri.agent")
@@ -85,6 +85,7 @@ class AgentRunner:
         toolbox = AgentToolbox(
             gateway=gateway, scope=scope, user_text=user_text, lap=lap, after_tool=after_tool
         )
+        toolbox.engineer_offered = bool(ctx.turns) and asks_for_engineer(ctx.turns[-1].assistant_reply)
         prompt_messages = build_messages(ctx, user_text)
         messages = [ChatMessage(role=r, text=t) for r, t in prompt_messages]
         try:
@@ -126,7 +127,11 @@ class AgentRunner:
         sources: list[str],
         correlation_id: str | None = None,
     ) -> ReplySpec:
-        text = saved_list(_unique_paragraphs((run.text or "").strip()))
+        text = (run.text or "").strip()
+        if _entries(toolbox):
+            # Before the Save tap nothing is kept (WA-37).
+            text = without_saved_claims(text)
+        text = saved_list(_unique_paragraphs(text))
         block = _saved_block(toolbox)
         if block:
             # The model's words come first (WA-37: it talks, it is not a
@@ -134,7 +139,15 @@ class AgentRunner:
             # built from the saved data (request 57, B3), never the model's own
             # list, which echoed the sender's raw words.
             text = _without_echoed_questions(_without_saved_block(text), toolbox)
+        else:
+            text = _without_echoed_questions(text, toolbox, saved_list=False)
         unbacked = unbacked_numbers(text, sources)
+        leaked = _CODE_WORD.findall(text)
+        if leaked:
+            # WA-37: "സ്ല clientIdb-ന്" went out on 21 Oct -- a code word is
+            # never part of a site reply.
+            _log.warning("agent.code_word_guard correlation_id=%s words=%s", correlation_id, leaked)
+            text = ""
         if unbacked:
             # A figure the model made up (or worked out) is never sent: the
             # system's own words stand in for the whole reply.
@@ -191,6 +204,8 @@ class AgentRunner:
 
 
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
+#: A camelCase or snake_case identifier ("clientIdb", "site_id"): code, not words.
+_CODE_WORD = re.compile(r"\b[a-z]+[A-Z][A-Za-z]*\b|\b[a-z]+_[a-z_]+\b")
 #: Words for one thing ("1 more question") need no source.
 _ALWAYS_ALLOWED = frozenset({"0", "1"})
 
@@ -214,6 +229,24 @@ def unbacked_numbers(reply: str, sources: list[str]) -> set[str]:
     for source in sources:
         allowed |= _numbers(source)
     return _numbers(reply) - allowed
+
+
+#: "It is saved / recorded" in the languages the sites write in. Before the
+#: Save tap nothing is kept, so a sentence saying so is not true (WA-37).
+_SAVED_CLAIM = re.compile(
+    r"(?<!not )\b(?:saved|recorded|logged|noted down)\b"
+    r"|\b(?:save|record|rekhappeduthi|note)\s*(?:cheythu|cheythittund|aakki)"
+    r"|സേവ്\s*ചെയ്തു|സേവ്\s*ചെയ്തിട്ടുണ്ട്|രേഖപ്പെടുത്തി|സേവ്\s*ആയി"
+    r"|सेव\s*(?:कर\s*)?(?:दिया|किया|हो\s*गया)|दर्ज\s*(?:कर\s*)?(?:दिया|किया|हो\s*गया)",
+    re.IGNORECASE,
+)
+_SENTENCE = re.compile(r"[^.!?।\n]*(?:[.!?।]+|\n|$)")
+
+
+def without_saved_claims(text: str) -> str:
+    """``text`` without the sentences that say an entry is already saved."""
+    kept = [part for part in _SENTENCE.findall(text) if part and not _SAVED_CLAIM.search(part)]
+    return re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
 
 
 def _entries(toolbox: AgentToolbox) -> list[SavedItem]:
@@ -252,10 +285,11 @@ def _normalized(text: str) -> str:
     return " ".join(re.sub(r"[^\w\s]", " ", text, flags=re.UNICODE).split()).casefold()
 
 
-def _without_echoed_questions(text: str, toolbox: AgentToolbox) -> str:
-    """A question saved for the engineer is in the "Saved:" list; the model
-    repeating it back, or any other line that only plays back the sender's own
-    words, adds nothing (request 57, B2/B3)."""
+def _without_echoed_questions(text: str, toolbox: AgentToolbox, *, saved_list: bool = True) -> str:
+    """A question passed to the engineer has its own line; the model repeating
+    it back (WA-37: the 21 Oct reply said it twice), or, under a "Saved:" list
+    (``saved_list``), any line that only plays back the sender's own words,
+    adds nothing (request 57, B2/B3)."""
     asked = {
         _normalized(item.summary[len(QUESTION_PREFIX):])
         for item in toolbox.saved
@@ -269,8 +303,8 @@ def _without_echoed_questions(text: str, toolbox: AgentToolbox) -> str:
         norm = _normalized(line)
         # The sender's own words played back ("6 mason, 10 helper vannu") say
         # nothing the "Saved:" list does not, whatever else the line is.
-        echo = len(norm.split()) >= 3 and norm in spoken
-        if norm in asked or echo:
+        echo = saved_list and len(norm.split()) >= 3 and norm in spoken
+        if echo or any(question and question in norm for question in asked):
             continue
         kept.append(line)
     return "\n".join(kept).strip("\n").strip()

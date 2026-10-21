@@ -104,7 +104,7 @@ async def test_four_part_note_gets_one_reply_never_the_classic_fallbacks():
     """Finding 1: the 4-part note must end in ONE message built from what was
     saved, not "couldn't make out"."""
     provider = _gemini_provider(
-        [_gemini_four_part_response(), _gemini_text_response("✅ Saved labour, work, cement and the tractor expense.")]
+        [_gemini_four_part_response(), _gemini_text_response("Labour, work, cement and the tractor expense: check and tap Save.")]
     )
     gateway = Gateway(
         {

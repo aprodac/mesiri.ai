@@ -2604,7 +2604,13 @@ def build_message_handlers(
                 """One card per reply: a single saved record gets its own
                 card, a multi-part note gets one combined card with a row per
                 record (the reply text lists them all too). A record whose own
-                card was already started early still counts as one."""
+                card was already started early still counts as one. A question
+                passed to the engineer is no record to show (WA-37)."""
+                for h in handled_list:
+                    if save_button.is_engineer_question(h) and getattr(h, "receipt_coro", None) is not None:
+                        h.receipt_coro.close()  # never started: nothing to wait for
+                        h.receipt_coro = None
+                handled_list = [h for h in handled_list if not save_button.is_engineer_question(h)]
                 rendering = [
                     h
                     for h in handled_list

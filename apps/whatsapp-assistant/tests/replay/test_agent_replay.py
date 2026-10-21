@@ -286,7 +286,7 @@ async def test_a_malayalam_note_gets_the_saved_list_then_the_models_own_words(wo
     sent = localize_reply_spec(ReplySpec(text=result.reply.text), "Malayalam", "native").text
     assert "\n✅ സേവ് ചെയ്തു: 3 തൊഴിലാളികൾ (3 mason)" in sent
     # And the model was told the user's own words, untranslated.
-    assert provider.last_messages[-1].text.endswith("ഇന്ന് 3 മേസൺ പണിക്ക് വന്നു")
+    assert "User message:\nഇന്ന് 3 മേസൺ പണിക്ക് വന്നു" in provider.last_messages[-1].text
 
 
 async def test_and_10_more_continues_the_previous_turn(world):
@@ -453,7 +453,10 @@ async def test_a_question_in_a_note_is_noted_for_the_engineer_and_the_reply_says
             "Nale slab concrete cheyyan pattumo?",  # the model only echoes it
         ]
     )
-    result = await world.say(provider, "6 mason, 10 helper vannu. Nale slab concrete cheyyan pattumo?")
+    # Passed on only because they asked for their engineer (Ilan, 21 Oct).
+    result = await world.say(
+        provider, "6 mason, 10 helper vannu. Engineer-inodu chodikku: nale slab concrete cheyyan pattumo?"
+    )
     assert len(result.toolbox.saved) == 2
     # WA-37: the labour is the one entry to check; the question is passed on,
     # said once on its own line, never listed as saved.

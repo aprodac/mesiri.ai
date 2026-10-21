@@ -23,6 +23,7 @@ from runtime.save_first import DRAFT_NOTE
 from .gateway import StepResult, WorkflowGateway
 from .tools import (
     ASK_USER,
+    NOTE_FOR_ENGINEER,
     UNDO_LAST,
     WRITE_TOOLS,
     ScopeLookup,
@@ -54,6 +55,16 @@ def _without_recorded(text: str) -> str:
     text = (text or "").replace(DRAFT_NOTE, "")
     kept = [p.strip() for p in text.split("\n\n") if p.strip() and not _RECORDED.match(p.strip())]
     return "\n\n".join(kept)
+
+
+#: The sender asking for their engineer, in the languages the sites write in.
+_ENGINEER = re.compile(r"engin|\bengg?\b|എഞ്ചിനീ|എൻജിനീ|ഇഞ്ചിനീ|इंजीनियर|इंजिनियर", re.IGNORECASE)
+
+
+def asks_for_engineer(text: str) -> bool:
+    """Whether the message mentions their engineer ("engineer-inodu chodikku",
+    "ask the engineer"): the only case a question is passed on."""
+    return bool(_ENGINEER.search(text or ""))
 
 
 def _title(option: str) -> str:
@@ -108,6 +119,8 @@ class AgentToolbox:
     #: while the model writes the reply.
     after_tool: Callable[[], None] | None = None
     failed: int = 0
+    #: The last reply offered to ask their engineer, so a bare "yes" asks it.
+    engineer_offered: bool = False
     _seen: set[str] = field(default_factory=set)
     _inflight: set[asyncio.Task[Any]] = field(default_factory=set)
 
@@ -155,6 +168,21 @@ class AgentToolbox:
             )
         if name == ASK_USER:
             return self._ask(args)
+        if name == NOTE_FOR_ENGINEER and not (self.engineer_offered or asks_for_engineer(self.user_text)):
+            # Ilan, 21 Oct: a question goes to the engineer ONLY when the
+            # sender asks for that. The live model passed "is there enough
+            # cement for tomorrow's slab?" on instead of answering it.
+            return ToolOutcome(
+                content={
+                    "status": "not_asked_to_pass_on",
+                    "instruction": (
+                        "They did not ask you to ask their engineer, so answer it yourself: "
+                        "use the facts you were given or the query tools (query_materials for "
+                        "stock). If the records cannot answer it, say so plainly in one line "
+                        "and offer to ask their engineer."
+                    ),
+                }
+            )
         signature = f"{name}:{json.dumps(args, sort_keys=True, default=str)}"
         if signature in self._seen and name in WRITE_TOOLS:
             return ToolOutcome(
@@ -198,6 +226,18 @@ class AgentToolbox:
         return await self.gateway.run(candidate, text=self.user_text)
 
     def _outcome(self, name: str, step: StepResult) -> ToolOutcome:
+        if step.status == "saved" and name == NOTE_FOR_ENGINEER:
+            # Passed on, not an entry: nothing for the sender to check or save.
+            self.saved.append(SavedItem(name, step.text, step.summary))
+            return ToolOutcome(
+                content={
+                    "status": "passed_to_engineer",
+                    "instruction": (
+                        "Say in one short line that you passed it to their engineer. Do not "
+                        "repeat the question and do not ask them to tap Save for it."
+                    ),
+                }
+            )
         if step.status == "saved":
             self.saved.append(SavedItem(name, step.text, step.summary))
             content: dict[str, Any] = {"status": "saved"}

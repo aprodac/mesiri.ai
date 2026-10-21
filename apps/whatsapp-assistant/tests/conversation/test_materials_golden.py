@@ -115,7 +115,7 @@ def wrong_script(case: dict[str, Any], reply: str) -> str | None:
 
 
 def test_the_golden_set_is_well_formed():
-    assert len(CASES) == 22
+    assert len(CASES) == 24
     assert len({c["id"] for c in CASES}) == len(CASES)
     for case in CASES:
         assert case["message"] and (case["calls"] or case.get("chat")), case["id"]

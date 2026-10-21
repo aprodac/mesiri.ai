@@ -3,7 +3,8 @@ and this moment. Pure text building -- the data is fetched by the caller."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import re
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 
 from runtime.persona import MESIRI_VOICE
@@ -52,9 +53,13 @@ English gets English, even if their earlier messages were in another language. O
 message with no words of its own ("ok", "👍", a number) follows their earlier language.
 - A question gets an answer. If the company's records can answer it (stock, workers, work \
 done, money, "is there enough cement for tomorrow's slab?"), answer it from the facts above \
-or the query tools, with the figures. Only when it needs a person's decision that no record \
-can give (a technical or permission call), call note_for_engineer, and say you have passed \
-it to their engineer. Never just repeat the question back.
+or the query tools, with the figures. If they cannot, say so plainly in one line and offer \
+to ask their engineer. Call note_for_engineer ONLY when the user asks you to ask their \
+engineer ("engineer-inodu chodikku"), then say you have passed it on.
+- A worker saying a material is running low or asking for more ("10 bag cement balance und, \
+kooduthal venam") is a material shortage: report_issue with their words, never a question \
+for the engineer. If the stock in the facts above disagrees with their count, say both \
+figures plainly so they can check.
 - A material with a quantity but no word for whether it came in or was used ("50 bags \
 cement") is not guessed: call ask_user with "Received or used?" and both options.
 - Greetings or thanks need a one-line friendly answer, no tools.
@@ -132,9 +137,43 @@ def render_context(ctx: AgentContext) -> str:
     return "\n".join(lines)
 
 
+_NATIVE_SCRIPT = re.compile(r"[\u0900-\u0d7f]")  # Devanagari .. Malayalam
+_LATIN_LETTER = re.compile(r"[A-Za-z]")
+
+
+def letters_of(text: str) -> str | None:
+    """"native" (Malayalam/Hindi/Tamil script), "latin", or None for a message
+    with no letters of its own ("👍", "20")."""
+    if _NATIVE_SCRIPT.search(text or ""):
+        return "native"
+    if _LATIN_LETTER.search(text or ""):
+        return "latin"
+    return None
+
+
+def reply_letters_rule(user_text: str) -> str | None:
+    """WA-37: the letters THIS message is in, said as a fact rather than left
+    to the model -- told the sender's earlier language, it answered English
+    and Manglish in Malayalam script (21 Oct live test, round 2)."""
+    letters = letters_of(user_text)
+    if letters == "latin":
+        return (
+            "This message is written in English letters: reply in English letters only "
+            "(English, or Manglish if they wrote Manglish). No Malayalam, Hindi or Tamil script."
+        )
+    if letters == "native":
+        return "This message is written in its own script: reply in that same script."
+    return None
+
+
 def build_messages(ctx: AgentContext, user_text: str) -> list[tuple[str, str]]:
     """``(role, text)`` pairs: the context, then the last turns oldest first,
     then the new message. Roles are ``user`` and ``model``."""
+    rule = reply_letters_rule(user_text)
+    if rule is not None:
+        # The message decides; their earlier language only matters for one
+        # with no words of its own.
+        ctx = replace(ctx, last_language=None, last_script=None)
     messages: list[tuple[str, str]] = [("user", f"[context]\n{render_context(ctx)}")]
     if ctx.turns:
         messages.append(("model", "Understood."))
@@ -143,7 +182,10 @@ def build_messages(ctx: AgentContext, user_text: str) -> list[tuple[str, str]]:
             messages.append(("user", turn.user_text))
         if turn.assistant_reply:
             messages.append(("model", turn.assistant_reply))
-    messages.append(("user", f"User message:\n{user_text}"))
+    message = f"User message:\n{user_text}"
+    if rule is not None:
+        message = f"{message}\n\n[{rule}]"
+    messages.append(("user", message))
     return _merge_adjacent(messages)
 
 

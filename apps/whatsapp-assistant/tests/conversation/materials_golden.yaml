@@ -38,3 +38,7 @@
 - {"id": 20, "lang": "manglish", "message": "nale slab-inu cement mathiyo?", "calls": [["query_materials", {"material": "cement"}]], "expect": [], "query": true}
 - {"id": 21, "lang": "ml", "message": "ഇന്ന് മഴയാണ്, പണി കുറവാണ്", "calls": [["report_issue", {"issue_type": "WEATHER", "narrative": "മഴ കാരണം പണി കുറവ്"}]], "expect": [{"action": "record_site_issue"}]}
 - {"id": 22, "lang": "en", "message": "thanks bro 👍", "calls": [], "expect": [], "chat": true}
+# Round 2 (21 Oct afternoon): a question is passed on ONLY when they ask for the engineer (Ilan);
+# a shortage is an issue, never a question.
+- {"id": 23, "lang": "manglish", "message": "engineer-inodu chodikku, nale slab concrete cheyyamo?", "calls": [["note_for_engineer", {"question": "nale slab concrete cheyyamo?"}]], "expect": [{"action": "record_site_issue"}]}
+- {"id": 24, "lang": "manglish", "message": "10 bag cement balance und, kooduthal venam", "calls": [["report_issue", {"issue_type": "MATERIAL_SHORTAGE", "narrative": "10 bag cement balance, kooduthal venam"}]], "expect": [{"action": "record_site_issue"}]}

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 from channel.replies import ReplySpec
 from runtime.agent import toolbox as tb
 from runtime.agent.gateway import StepResult
@@ -168,3 +170,41 @@ async def test_laps_split_the_models_time_from_the_tools():
     box.lap = laps.append
     await box.handle("save_labour", {"workers": WORKERS})
     assert laps == ["agent_model", "agent_tools"]
+
+
+# -- Ilan, 21 Oct: a question goes to the engineer only when they ask for it ---
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["nale slab-inu cement mathiyo?", "is there enough cement for tomorrow's slab?", "10 bag balance und"],
+)
+async def test_a_question_they_did_not_ask_to_pass_on_is_answered_not_passed(text):
+    gateway = FakeGateway()
+    box = tb.AgentToolbox(gateway=gateway, scope=ScopeLookup(), user_text=text)
+    out = await box.handle("note_for_engineer", {"question": text})
+    assert out.content["status"] == "not_asked_to_pass_on"
+    assert box.saved == [] and gateway.runs == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "engineer-inodu chodikku: nale slab cheyyamo?",
+        "ask the engineer if we can remove the props",
+        "എഞ്ചിനീയറോട് ചോദിക്കൂ, നാളെ സ്ലാബ് ചെയ്യാമോ?",
+    ],
+)
+async def test_a_question_they_asked_to_pass_on_goes_to_the_engineer(text):
+    gateway = FakeGateway(StepResult("saved", text="noted", summary="Question for your engineer: x"))
+    box = tb.AgentToolbox(gateway=gateway, scope=ScopeLookup(), user_text=text)
+    out = await box.handle("note_for_engineer", {"question": "nale slab cheyyamo?"})
+    assert out.content["status"] == "passed_to_engineer"
+    assert len(gateway.runs) == 1
+
+
+async def test_a_yes_to_the_offer_to_ask_the_engineer_passes_it_on():
+    gateway = FakeGateway(StepResult("saved", text="noted", summary="Question for your engineer: x"))
+    box = tb.AgentToolbox(gateway=gateway, scope=ScopeLookup(), user_text="yes", engineer_offered=True)
+    out = await box.handle("note_for_engineer", {"question": "nale slab cheyyamo?"})
+    assert out.content["status"] == "passed_to_engineer"

@@ -46,33 +46,31 @@ async def _run(provider, *results, ctx=CTX, text="3 masons today"):
 
 
 async def test_a_saved_note_gets_the_models_one_message_with_the_undo_line():
-    provider = FakeToolCallingProvider([[("save_labour", {"workers": WORKERS})], "✅ 3 masons saved."])
+    provider = FakeToolCallingProvider([[("save_labour", {"workers": WORKERS})], "Sheri, 3 masons. Check and tap Save."])
     result = await _run(provider, StepResult("saved", text="Labour recorded"))
     assert result.outcome == "ok"
-    assert result.reply.text == "✅ 3 masons saved.\n\nWrong? Reply UNDO."
+    assert result.reply.text == "Sheri, 3 masons. Check and tap Save.\n\nWrong? Reply UNDO."
     assert provider.calls == 1  # one model run, not one per part
 
 
-async def test_one_recorded_line_per_thing_becomes_one_header_and_bullets():
-    """B-9, the live reply of 19 Oct."""
+async def test_recorded_lines_the_model_wrote_are_dropped_before_save():
+    """B-9's "Recorded 12 masons present today." lines (19 Oct) say it is kept
+    before the Save tap; WA-37 drops them instead of listing them."""
     provider = FakeToolCallingProvider(
         [
-            [("save_labour", {"workers": WORKERS}), ("save_material_usage", {}), ("save_work", {})],
+            [("save_labour", {"workers": WORKERS}), ("save_material_usage", {})],
             "Recorded 12 masons present today.\nRecorded 5 bags of cement used for slab work today."
-            "\nRecorded slab work on 2nd floor today.",
+            "\nCheck it and tap Save.",
         ]
     )
     result = await _run(
         provider,
-        StepResult("saved", text="a"),
-        StepResult("saved", text="b"),
-        StepResult("saved", text="c"),
-        text="12 mason, 5 bag cement slab work, 2nd floor slab done",
+        StepResult("saved", text="a", summary="12 workers (12 mason)"),
+        StepResult("saved", text="b", summary="Cement used: 5 bags (slab)"),
+        text="12 mason, 5 bag cement slab",
     )
-    assert result.reply.text == (
-        "✅ Saved:\n• 12 masons present\n• 5 bags of cement used for slab work\n"
-        "• Slab work on 2nd floor\n\nWrong? Reply UNDO."
-    )
+    assert "Recorded" not in result.reply.text
+    assert result.reply.text.startswith("Check it and tap Save.\n\n✅ Saved:\n• 12 workers (12 mason)")
 
 
 @pytest.mark.parametrize(
@@ -205,7 +203,7 @@ def test_recent_turns_come_before_the_new_message_with_alternating_roles():
     )
     messages = build_messages(ctx, "and 10 more")
     assert [role for role, _ in messages] == ["user", "model", "user", "model", "user"]
-    assert messages[-1][1].endswith("and 10 more")
+    assert messages[-1][1].startswith("User message:\nand 10 more")
 
 
 def test_no_history_means_one_user_message():
@@ -298,3 +296,51 @@ async def test_another_language_still_gets_the_models_reply():
         scope=ScopeLookup(),
     )
     assert result.run.stop_reason == "answered"
+
+
+@pytest.mark.parametrize(
+    ("text", "kept"),
+    [
+        ("ഇന്ന് മഴ കാരണം പണി കുറവാണെന്ന് രേഖപ്പെടുത്തിയിട്ടുണ്ട്. സേവ് ടാപ്പ് ചെയ്യുക.", "സേവ് ടാപ്പ് ചെയ്യുക."),
+        ("Labour save cheythu. Check and tap Save.", "Check and tap Save."),
+        ("Got it, 3 masons recorded. Tap Save to keep it.", "Tap Save to keep it."),
+        ("This part was not saved: unit missing.", "This part was not saved: unit missing."),
+        ("Sheri, 100 bag cement vannu. Check cheythu Save tap cheyyu.", "Sheri, 100 bag cement vannu. Check cheythu Save tap cheyyu."),
+    ],
+)
+def test_a_sentence_saying_it_is_already_saved_is_dropped(text, kept):
+    assert r.without_saved_claims(text) == kept
+
+
+async def test_a_code_word_in_the_reply_is_never_sent():
+    """The 21 Oct reply "സ്ല clientIdb-ന് 20 ബാഗ് സിമന്റ് ഉപയോഗിച്ചു"."""
+    provider = FakeToolCallingProvider(
+        [[("save_material_usage", {"material": "cement", "quantity": 20, "unit": "bags"})],
+         "സ്ല clientIdb-ന് 20 ബാഗ് സിമന്റ് ഉപയോഗിച്ചു"]
+    )
+    result = await _run(
+        provider, StepResult("saved", text="x", summary="Cement used: 20 bags (slab)"), text="slab-inu 20 bag cement use cheythu"
+    )
+    assert "clientIdb" not in result.reply.text
+    assert result.reply.text.startswith("✅ Saved: Cement used: 20 bags (slab)")
+
+
+@pytest.mark.parametrize(
+    ("message", "rule"),
+    [
+        ("3 carpenters today", "English letters"),
+        ("slab-inu 20 bag cement use cheythu", "English letters"),
+        ("ഇന്ന് മഴയാണ്", "its own script"),
+        ("👍", None),
+    ],
+)
+def test_the_reply_letters_follow_this_message_not_the_earlier_ones(message, rule):
+    import dataclasses
+
+    ctx = dataclasses.replace(CTX, last_language="Malayalam", last_script="native")
+    sent = build_messages(ctx, message)
+    if rule is None:
+        assert "Language of their earlier messages: Malayalam" in sent[0][1]
+    else:
+        assert rule in sent[-1][1]
+        assert "earlier messages" not in sent[0][1]

@@ -114,7 +114,9 @@ async def test_scorecard_13_question_in_a_note_is_noted(world):  # noqa: F811
             "Nale slab concrete cheyyan pattumo?",
         ]
     )
-    result = await world.say(provider, "6 mason, 10 helper vannu. Nale slab concrete cheyyan pattumo?")
+    result = await world.say(
+        provider, "6 mason, 10 helper vannu. Engineer-inodu chodikku: nale slab concrete cheyyan pattumo?"
+    )
     # WA-37: passed on, said once, never listed as a saved entry.
     assert "📨 Question for your engineer: Nale slab concrete cheyyan pattumo?" in result.reply.text
     assert result.reply.text.count("Nale slab concrete cheyyan pattumo?") == 1
