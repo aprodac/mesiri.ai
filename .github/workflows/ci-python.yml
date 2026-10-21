@@ -24,7 +24,7 @@ jobs:
       - name: Set up Python
         run: uv venv --python 3.11 --clear
       - name: Install (runtime + dev + infra + providers)
-        run: uv pip install -e ".[dev,infra,providers,reports]"
+        run: uv pip install -e ".[dev,infra,providers,reports,workflow,receipt]"
       - name: Lint
         run: uv run ruff check .
       - name: Test (fakes only — no external services)
@@ -81,7 +81,7 @@ jobs:
           enable-cache: true
       - run: uv venv --python 3.11 --clear
       - name: Install (with infra SDKs)
-        run: uv pip install -e ".[dev,infra,providers,reports]"
+        run: uv pip install -e ".[dev,infra,providers,reports,workflow,receipt]"
       - name: Apply migrations
         run: uv run alembic -c backend/alembic.ini upgrade head
       - name: GET /projects vertical slice tests
