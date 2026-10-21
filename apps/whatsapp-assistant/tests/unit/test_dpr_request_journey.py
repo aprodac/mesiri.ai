@@ -265,3 +265,25 @@ async def test_during_the_day_the_sender_gets_the_day_so_far_marked_as_a_draft()
 async def test_a_day_with_nothing_recorded_yet_still_says_so_plainly():
     _, sink = await _ask(_PreviewQuery([]), documents=_Documents(), storage=await _stored())
     assert sink.replies[0].text.startswith("No DPR has been generated for today yet.")
+
+
+async def test_after_the_cutoff_a_day_waiting_on_the_site_says_what_it_needs():
+    """Round 3b: at 18:08 the day was NEEDS_DETAILS (no work done) and the reply
+    was "being prepared, ask again in a few minutes", which never comes true."""
+    query = _PreviewQuery(["• Labour: 16 workers", "• Materials: Cement, M sand"])
+    query._result = {
+        "status": "pending_confirmation",
+        "object_key": None,
+        "code": "DPR-1",
+        "confirmed": False,
+        "update_count": 0,
+        "missing": ["work_done"],
+    }
+    docs = _Documents()
+    _, sink = await _ask(query, documents=docs, storage=await _stored())
+    assert sink.replies[0].text == (
+        "Today's report at Kakkanad isn't confirmed yet; still needs the work done. So far:\n"
+        "• Labour: 16 workers\n• Materials: Cement, M sand\n"
+        "It goes out once the day is confirmed."
+    )
+    assert docs.sent == []

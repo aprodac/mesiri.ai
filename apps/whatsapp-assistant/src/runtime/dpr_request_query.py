@@ -80,11 +80,16 @@ class DprRequestQueryService:
 
         if row is None:
             return {"status": "not_generated", "object_key": None, "code": None}
-        confirmed = row["report_status"] not in ("DRAFT", "IN_REVIEW")
+        # Signed off only when approved or published: a day still collecting
+        # (NEEDS_DETAILS, READY, 0466) is not "being prepared" -- it waits on
+        # the site (round 3b, 21 Oct: "ask again in a few minutes" for a day
+        # that was missing its work done).
+        confirmed = row["report_status"] in ("APPROVED", "PUBLISHED")
         found = {
             "code": row["code"],
             "confirmed": confirmed,
             "update_count": int(row["update_count"] or 0),
+            "missing": [str(m) for m in (row["missing"] or []) if m],
         }
         if row["rendered_object_key"]:
             return {"status": "ready", "object_key": row["rendered_object_key"], **found}
@@ -154,6 +159,7 @@ def _report_query(
         sa.column("code"),
         sa.column("current_version_id"),
         sa.column("status", status_type),
+        sa.column("missing_sections"),
     )
     daily_report_versions = sa.table(
         "daily_report_versions",
@@ -175,6 +181,7 @@ def _report_query(
             sa.cast(
                 sa.literal_column("daily_report_versions.payload ->> 'activity_count'"), sa.Integer
             ).label("update_count"),
+            sa.literal_column("daily_reports.missing_sections -> 'blocking'").label("missing"),
         )
         .select_from(
             daily_reports.join(

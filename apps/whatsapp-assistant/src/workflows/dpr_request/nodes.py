@@ -36,6 +36,11 @@ _STATUS_TEXT = {
         "Today's report is made this evening. So far today{site_at}:\n{preview}\n"
         "This is a draft: not final, and not sent to anyone."
     ),
+    # After the cutoff, while the day waits on the site (NEEDS_DETAILS/READY).
+    "waiting": (
+        "Today's report{site_at} isn't confirmed yet{missing_line}. So far:\n{preview}\n"
+        "It goes out once the day is confirmed."
+    ),
     "bad_date": (
         "Which day's report do you want? Say \"yesterday\" or a date like 12 Oct 2026."
     ),
@@ -46,6 +51,12 @@ _PAST_NOT_GENERATED = (
     "There is no DPR for {day}: nothing was logged that day, or its report "
     "was never generated."
 )
+
+
+def _missing_line(missing: list) -> str:
+    """ "; still needs the work done" from the day's blocking sections."""
+    names = [str(m).replace("_", " ") for m in missing if m]
+    return f"; still needs the {' and '.join(names)}" if names else ""
 
 
 def _updates(count: int) -> str:
@@ -79,5 +90,6 @@ def generate_dpr_request_reply(state: WorkflowGraphState) -> dict:
             updates=_updates(int(fields.get("dpr_update_count") or 0)),
             site_at=f" at {site_name}" if site_name else "",
             preview=fields.get("dpr_preview") or "",
+            missing_line=_missing_line(fields.get("dpr_missing") or []),
         )
     }

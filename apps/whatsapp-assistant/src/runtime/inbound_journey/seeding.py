@@ -1268,7 +1268,12 @@ async def _seed_dpr_request(
         event.fields["dpr_object_key"] = None
         event.fields["dpr_code"] = None
         return
-    if result["status"] == "not_generated" and report_date == today and project_id and site_id:
+    if (
+        result["status"] in ("not_generated", "pending_confirmation")
+        and report_date == today
+        and project_id
+        and site_id
+    ):
         # WA-40: today's report is only built at the evening cutoff; asked for
         # during the day, the sender gets what the day holds so far, marked
         # as a draft (nothing is stored or sent to the report's recipients).
@@ -1283,8 +1288,12 @@ async def _seed_dpr_request(
             _log.warning("dpr_request.preview_failed correlation_id=%s", event.correlation_id, exc_info=True)
             lines = []
         if lines:
-            result = {**result, "status": "preview"}
+            # Before the cutoff: "made this evening". After it, the day exists
+            # but waits on the site: say so, with what it still needs.
+            waiting = result["status"] == "pending_confirmation"
+            result = {**result, "status": "waiting" if waiting else "preview"}
             event.fields["dpr_preview"] = "\n".join(lines)
+            event.fields["dpr_missing"] = list(result.get("missing") or [])
     event.fields["dpr_status"] = result["status"]
     event.fields["dpr_object_key"] = result["object_key"]
     event.fields["dpr_code"] = result["code"]
