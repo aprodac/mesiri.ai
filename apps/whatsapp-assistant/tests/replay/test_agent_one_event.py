@@ -33,7 +33,7 @@ async def _planned_events(monkeypatch, *, agent: bool) -> list[str]:
         return SimpleNamespace(plan=None)
 
     monkeypatch.setattr(process, "build_plan_from_segments", spy)
-    world = await _make_world(site_keys=(seed.SITE_A1,))
+    world = await _make_world(site_keys=(seed.SITE_A1,), direct=False)  # the classic route's planning
     real = process.process_inbound_message
 
     async def with_plan_store(*args, **kwargs):
@@ -56,3 +56,26 @@ async def test_the_classic_path_still_adds_the_work_step(monkeypatch):
         "MaterialUsageRequested",
         "ActivityContinuationRequested",
     ]
+
+
+async def test_the_direct_route_runs_no_old_journey_and_saves_one_record():
+    """ARCH-01: a known material goes straight to its workflow -- no
+    canonicalizer, planner or second step at all."""
+    world = await _make_world(site_keys=(seed.SITE_A1,))
+    result = await world.say(
+        FakeToolCallingProvider([[USAGE_FOR_SLAB], "20 bag cement slab-inu. Save tap cheyyu."]),
+        "slab-inu 20 bag cement use cheythu",
+    )
+    assert world.journeys == 0
+    assert result.outcome == "ok"
+    [confirmed] = world.dispatcher.dispatched
+    fields = confirmed.draft_action.fields
+    assert (fields["material_name"], fields["quantity"], fields["work_item"]) == ("cement", 20.0, "slab")
+    assert fields["occurred_date_source"] == "inferred_at_confirmation"
+
+
+async def test_a_name_that_is_not_in_the_catalogue_takes_the_classic_route():
+    world = await _make_world(site_keys=(seed.SITE_A1,))
+    call = ("save_material_receipt", {"material": "fevicol", "quantity": 2, "unit": "tins"})
+    await world.say(FakeToolCallingProvider([[call], "Done."]), "2 tin fevicol vannu")
+    assert world.journeys == 1

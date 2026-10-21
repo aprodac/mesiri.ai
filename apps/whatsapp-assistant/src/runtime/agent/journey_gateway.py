@@ -127,15 +127,50 @@ class JourneyGateway:
     handled: list[Any] = field(default_factory=list)
     #: WA-41: ``(material, unit, count) -> line to say``; None when not wired.
     set_conversion: Callable[[str, str, Any], Awaitable[str]] | None = None
+    #: ARCH-01: material receipts/usage straight to the workflow
+    #: (runtime/agent/material_entry.py); None keeps the classic route.
+    material_entry: Any | None = None
+    #: ``WorkflowRuntime.start``, for the direct routes.
+    start_workflow: Callable[[Any, Any], Awaitable[Any]] | None = None
 
     async def run(self, candidate: Candidate, *, text: str) -> StepResult:
         sink = CaptureSink()
         # A text message carrying the user's words: the journey's own checks
         # (duplicates, narrative, logging) read it. Voice was transcribed already.
         message = self.message.model_copy(update={"text": text, "modality": InputModality.TEXT})
+        if (
+            self.material_entry is not None
+            and self.start_workflow is not None
+            and getattr(candidate, "semantic_type", None) is SemanticType.MATERIAL_UPDATE
+        ):
+            direct = await self._material_direct(candidate, message)
+            if direct is not None:
+                return direct
         journey = await self.process(
             message, PresetUnderstandingPipeline(candidate, language=self.language), sink
         )
+        return await self._after_run(journey, candidate, sink)
+
+    async def _material_direct(self, candidate: Candidate, message: Any) -> StepResult | None:
+        """ARCH-01: the tool's arguments as the workflow's event, or None when
+        this call needs one of the classic pickers (material, project, site)."""
+        from types import SimpleNamespace
+
+        from .material_entry import Say
+
+        understanding = await PresetUnderstandingPipeline(candidate, language=self.language).understand(message)
+        prepared = await self.material_entry.prepare(message, understanding, candidate)
+        if prepared is None:
+            _log.info("agent.material_direct correlation_id=%s route=classic", message.correlation_id)
+            return None
+        if isinstance(prepared, Say):
+            return StepResult(prepared.status, text=prepared.text)
+        run = await self.start_workflow(prepared.decision, prepared.event)
+        _log.info("agent.material_direct correlation_id=%s route=direct", message.correlation_id)
+        journey = SimpleNamespace(workflow_run=run, planner_decision=prepared.decision)
+        return await self._after_run(journey, candidate, CaptureSink())
+
+    async def _after_run(self, journey: Any, candidate: Candidate, sink: CaptureSink) -> StepResult:
         run = journey.workflow_run
         key = run.workflow_key.value if run is not None else None
 

@@ -236,114 +236,26 @@ async def _run_material_unit_gates(
                 text="That material is no longer available — please resend your report."
             )
 
-    stock_unit_id = material.get("default_unit_id")
-    if stock_unit_id is None:
-        # No Stock Unit configured on this material yet -- nothing to enforce
-        # against (pre-migration catalog entries, or a not-yet-fully-set-up
-        # material). Let it through rather than blocking every report.
+    from runtime.material_units import ask_amount_text, fit_stock_unit
+
+    fit = await fit_stock_unit(
+        canonical_event.fields,
+        material,
+        catalog_query=catalog_query,
+        organization_id=str(canonical_event.organization_id),
+        correlation_id=canonical_event.correlation_id,
+    )
+    if fit.kind != "mismatch":
         return None
-
-    unit_id = canonical_event.fields.get("unit_id")
-    if unit_id is not None:
-        return None  # already resolved (e.g. a resumed "yes" tap)
-
-    unit_text = canonical_event.fields.get("unit")
-    if not unit_text:
-        # Omitted entirely -- default to the material's Stock Unit and let the
-        # normal confirmation prompt surface it as a field the user can still
-        # reject via "NO", rather than adding another clarifying turn.
-        canonical_event.fields["unit_id"] = str(stock_unit_id)
-        return None
-
-    try:
-        resolved_unit = await catalog_query.resolve_unit(unit_text)
-    except Exception:
-        _log.exception("unit_gate.lookup_failed correlation_id=%s", canonical_event.correlation_id)
-        return None
-
-    if resolved_unit is not None and str(resolved_unit["id"]) == str(stock_unit_id):
-        canonical_event.fields["unit_id"] = str(stock_unit_id)
-        return None
-
-    # Either the reported unit text didn't resolve to anything, or it resolved
-    # to a real-but-different unit -- both are a Stock Unit mismatch. Ask,
-    # scoped to this material's one valid unit only (never a global picker
-    # that would let an incompatible unit through).
-    try:
-        stock_unit = await catalog_query.get_unit(str(stock_unit_id))
-    except Exception:
-        _log.exception("unit_gate.lookup_failed correlation_id=%s", canonical_event.correlation_id)
-        return None
-    qty = canonical_event.fields.get("quantity")
-    if resolved_unit is not None and stock_unit is not None and qty is not None:
-        # WA-41: the company said (or physics says) how many of this unit make
-        # one stock unit: convert, keep what was reported, no question.
-        per_stock_unit = await _unit_conversion(catalog_query, canonical_event, material, resolved_unit, stock_unit)
-        if per_stock_unit is not None:
-            from mesiri.domains.materials.unit_conversion import to_stock_quantity
-
-            canonical_event.fields["reported_quantity"] = qty
-            canonical_event.fields["reported_unit"] = str(unit_text)
-            canonical_event.fields["quantity"] = float(to_stock_quantity(qty, per_stock_unit))
-            canonical_event.fields["unit"] = stock_unit["code"]
-            canonical_event.fields["unit_id"] = str(stock_unit_id)
-            return None
     if ask_amount:
-        unit_display = stock_unit["display_name"] if stock_unit else "its stock unit"
-        # WA-39, under the agent: "40 bags sand" against sand counted in m³.
-        # Yes ("record this as m³?") would save 40 m³ and No dropped the
-        # entry, so nothing is held: the model is told the fact and asks; the
-        # answer comes back as a new save.
-        said = " ".join(p for p in (str(qty) if qty is not None else "", str(unit_text)) if p)
-        head = f"Not saved yet: {material['name']} is counted in {unit_display} here, so {said} can't be saved as it is."
-        from mesiri.authorization.roles import may_set_unit_conversions
-
-        if resolved_unit is not None and may_set_unit_conversions(actor_role):
-            # WA-41: someone who may set it is asked once, for the company.
-            unit_word = resolved_unit.get("display_name") or str(unit_text)
-            return ReplySpec(
-                text=(
-                    f"{head} How many {str(unit_word).lower()} of {material['name']} make 1 "
-                    f"{unit_display}? I'll remember it for the company, "
-                    f"or tell me the amount in {unit_display}."
-                )
-            )
-        return ReplySpec(
-            text=(
-                f"{head} How much is that in {unit_display}? (Your admin or project manager can "
-                f"tell me how many {unit_text} make 1 {unit_display}, so this works next time.)"
-            )
-        )
+        return ReplySpec(text=ask_amount_text(material, canonical_event.fields, fit, role=actor_role))
     await pending_report_store.set_pending(user_id=actor_user_id, event=canonical_event)
+    stock_unit = fit.stock_unit
     return render_unit_mismatch_reply(
         material_name=material["name"],
-        unit_id=str(stock_unit_id),
+        unit_id=str(material["default_unit_id"]),
         unit_display=stock_unit["display_name"] if stock_unit else "the correct unit",
     )
-
-
-async def _unit_conversion(
-    catalog_query: Any,
-    event: CanonicalEventV2,
-    material: dict,
-    from_unit: dict,
-    stock_unit: dict,
-) -> Any:
-    """WA-41: how many ``from_unit`` make one stock unit, or None. Never
-    raises: a failed lookup asks, as before."""
-    find = getattr(catalog_query, "find_conversion", None)
-    if find is None:
-        return None
-    try:
-        return await find(
-            organization_id=str(event.organization_id),
-            material=material,
-            from_unit=from_unit,
-            stock_unit=stock_unit,
-        )
-    except Exception:  # noqa: BLE001
-        _log.exception("unit_gate.conversion_lookup_failed correlation_id=%s", event.correlation_id)
-        return None
 
 
 def _actor_may_create_user(actor_role: str | None) -> bool:

@@ -2536,6 +2536,7 @@ def build_message_handlers(
             the senders swapped for a capture so the model writes the one reply."""
             from runtime.agent import save_button
             from runtime.agent.journey_gateway import JourneyGateway
+            from runtime.agent.material_entry import MaterialEntry
             from runtime.agent.turn import AgentTurnDeps, run_agent_turn
             from runtime.inbound_journey import render_workflow_run_reply_spec
             from runtime.today_context import build_stock_line, build_today_line
@@ -2722,6 +2723,19 @@ def build_message_handlers(
                         if catalog_query is not None
                         else None
                     ),
+                    # ARCH-01: known materials go straight to their workflow.
+                    material_entry=(
+                        MaterialEntry(
+                            context_resolver=context_resolver,
+                            catalog_query=catalog_query,
+                            inventory_query=inventory_query,
+                            org_settings_query=org_settings_query,
+                            actor=ctx,
+                        )
+                        if catalog_query is not None
+                        else None
+                    ),
+                    start_workflow=workflow_runtime.start,
                 )
                 return early["gateway"]
 

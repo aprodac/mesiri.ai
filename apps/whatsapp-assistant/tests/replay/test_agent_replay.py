@@ -33,6 +33,7 @@ from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage, SenderInfo
 from planner import Planner
 from runtime.agent.journey_gateway import JourneyGateway
+from runtime.agent.material_entry import MaterialEntry
 from runtime.agent.prompt import AgentContext, Turn
 from runtime.agent.runner import AgentRunner
 from runtime.agent.tools import ScopeLookup
@@ -77,6 +78,21 @@ class _SaveFirst:
         return None
 
 
+class _Catalog:
+    """ARCH-01: the company's catalogue for the direct material route. An
+    exact (case-insensitive) name is a material; no stock unit is set, so the
+    reported unit is kept as said (the classic replay ran no unit gate either)."""
+
+    NAMES = ("cement", "M sand", "sand", "steel", "bricks", "metal")
+
+    async def find_materials(self, *, organization_id, name):  # noqa: ANN001
+        hit = next((n for n in self.NAMES if n.lower() == str(name).strip().lower()), None)
+        if hit is None:
+            return []
+        return [{"id": f"00000000-0000-4000-8000-{self.NAMES.index(hit):012d}", "name": hit,
+                 "default_unit_id": None, "is_active": True}]
+
+
 @dataclass
 class World:
     runtime: WorkflowRuntime
@@ -89,6 +105,8 @@ class World:
     site_ids: dict[str, str] = field(default_factory=dict)
     deps: Any = None
     last_gateway: Any = None
+    #: ARCH-01: None keeps materials on the classic route.
+    catalog: Any = None
 
     def message(self, text: str) -> NormalizedMessage:
         return NormalizedMessage(
@@ -130,6 +148,12 @@ class World:
             followups=lambda handled: _noop(),
             held_prompt=lambda journey: render_workflow_run_reply_spec(journey.workflow_run),
             language=None,
+            material_entry=(
+                MaterialEntry(ContextResolver(self.deps), self.catalog, None, None, self.actor)
+                if self.catalog is not None
+                else None
+            ),
+            start_workflow=self.runtime.start,
         )
 
     def context(self, turns: tuple[Turn, ...] = (), **kw: Any) -> AgentContext:
@@ -166,7 +190,9 @@ async def _noop() -> None:
     return None
 
 
-async def _make_world(*, site_keys: tuple[str, ...], usual_site: str | None = None) -> World:
+async def _make_world(
+    *, site_keys: tuple[str, ...], usual_site: str | None = None, direct: bool = True
+) -> World:
     """The seed engineer's company, with only ``site_keys`` of Project Alpha's
     sites. ``usual_site`` is the site the system remembers from their last
     message (the active context), as in daily use."""
@@ -210,7 +236,7 @@ async def _make_world(*, site_keys: tuple[str, ...], usual_site: str | None = No
             SiteSummary(id=k, name=names[k], project_id=seed.PROJ_ALPHA) for k in site_keys
         ],
     )
-    world = World(runtime, handler, dispatcher, actor, deps=deps)
+    world = World(runtime, handler, dispatcher, actor, deps=deps, catalog=_Catalog() if direct else None)
     world.site_ids = site_ids
     return world
 

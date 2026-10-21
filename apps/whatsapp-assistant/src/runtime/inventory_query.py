@@ -30,6 +30,7 @@ class MaterialInventoryQueryService:
         project_id: str | None,
         site_id: str | None,
         material_name: str | None,
+        material_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Stock levels for the given scope, optionally filtered to one material
         (substring match). Returns plain JSON-safe dicts: material_name, unit,
@@ -61,6 +62,9 @@ class MaterialInventoryQueryService:
         # "Cement" line per site the caller never asked to see broken out.
         totals: dict[tuple[str, str], dict[str, Any]] = {}
         for row in rows:
+            if material_id is not None and str(row["material_id"]) != str(material_id):
+                # ARCH-01: by id, so "cement" never picks up "Cement Paint".
+                continue
             # Per material AND unit (WA-42): get_stock_levels keeps each unit
             # apart, and adding kg into a total labelled "bag" made "427 bags
             # used" out of two different units (21 Oct live test).
