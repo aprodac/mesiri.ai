@@ -278,6 +278,17 @@ class InteractionHandler:
             organization_id=organization_id, actor_user_id=user_id
         )
 
+    async def settle_drafts(
+        self, *, organization_id: str | None, user_id: str | None, facts: list, keep: bool
+    ) -> Any:
+        """The agent's Save / Cancel tap (WA-35): confirm or reject the drafts
+        its reply showed. None when save-first is not wired."""
+        if self._save_first is None:
+            return None
+        return await self._save_first.settle_drafts(
+            organization_id=organization_id, actor_user_id=user_id, facts=facts, keep=keep
+        )
+
     async def _resume_and_render(
         self, user_id: str, loaded, resume_action, *, log_prefix: str, actor: ActorIdentity | None = None
     ) -> tuple[

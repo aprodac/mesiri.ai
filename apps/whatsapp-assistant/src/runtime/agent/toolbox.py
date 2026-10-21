@@ -18,6 +18,7 @@ from typing import Any
 
 from channel.replies import ListRow, ReplySpec
 from mesiri_ai.models import ToolOutcome
+from runtime.save_first import DRAFT_NOTE
 
 from .gateway import StepResult, WorkflowGateway
 from .tools import (
@@ -46,9 +47,12 @@ _RECORDED = re.compile(
 
 
 def _without_recorded(text: str) -> str:
-    """A saved step's words without the bare "Recorded. Thank you." line:
-    what is left (the draft note, a stock warning) is worth the model knowing."""
-    kept = [p for p in (text or "").split("\n\n") if p.strip() and not _RECORDED.match(p.strip())]
+    """A saved step's words without the bare "Recorded. Thank you." line or
+    the "confirm it with tonight's report" draft note -- the reply's Save
+    button says how it is kept (WA-35); what is left (a stock warning, a late
+    entry) is worth the model knowing."""
+    text = (text or "").replace(DRAFT_NOTE, "")
+    kept = [p.strip() for p in text.split("\n\n") if p.strip() and not _RECORDED.match(p.strip())]
     return "\n\n".join(kept)
 
 

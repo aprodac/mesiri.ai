@@ -205,3 +205,84 @@ async def test_the_daily_setup_question_never_piles_on_an_open_question(monkeypa
     )
     await on_normalized(_message("50 bags cement"), {})
     assert setup.after_reply.await_count == (1 if asked else 0)
+
+
+# WA-35: the agent's records wait on the sender's Save tap.
+
+
+def _saving(monkeypatch, deps):
+    """The pipeline saves one labour draft, as save-first does."""
+    from mesiri_contracts.assistant.draft_action import DraftActionType
+    from workflows import WorkflowRunStatus
+
+    row = uuid.uuid4()
+    run = SimpleNamespace(status=WorkflowRunStatus.STARTED, workflow_key=SimpleNamespace(value="labour_attendance"))
+    monkeypatch.setattr(
+        mj, "process_inbound_message", AsyncMock(return_value=SimpleNamespace(workflow_run=run, planner_decision=None))
+    )
+    handled = SimpleNamespace(
+        saved_draft=True,
+        reply_text="✅ Recorded. Thank you.",
+        receipt_coro=None,
+        execution_result=SimpleNamespace(material_row_id=str(row)),
+        result=SimpleNamespace(
+            workflow_instance_id=None,
+            confirmed_action=SimpleNamespace(
+                draft_action=SimpleNamespace(
+                    action_type=DraftActionType.RECORD_LABOUR_ATTENDANCE,
+                    fields={"lines": [{"trade": "mason", "headcount": 6}]},
+                )
+            ),
+        ),
+        project_id=None,
+        site_id=None,
+    )
+    deps["interaction_handler"].save_now.return_value = handled
+    return row
+
+
+async def test_what_the_agent_saves_goes_out_with_save_and_cancel(monkeypatch):
+    from runtime.agent import save_button
+
+    provider = FakeToolCallingProvider(
+        [[("save_labour", {"workers": [{"trade": "mason", "headcount": 6}]})], ""]
+    )
+    on_normalized, deps, _ = _build(monkeypatch, mode="agent", provider=provider)
+    row = _saving(monkeypatch, deps)
+
+    await on_normalized(_message("6 mason today"), {})
+
+    # The first message is the agent's reply (any later one is a follow-up).
+    sent = deps["sender"].send_button.await_args_list[0].kwargs
+    assert sent["body"].startswith(save_button.TO_SAVE_HEADER)
+    titles = [b.title for b in sent["buttons"]]
+    assert titles[:2] == [save_button.SAVE_TITLE, save_button.CANCEL_TITLE]
+    assert "↩️ Undo" not in titles
+    assert sent["buttons"][0].id == save_button.tap_id(save_button.SAVE, [("labour_report", row)])
+
+
+async def test_a_save_tap_confirms_without_reaching_the_agent_or_the_pipeline(monkeypatch):
+    from runtime.agent import save_button
+    from runtime.save_first import DraftsSettled
+
+    provider = FakeToolCallingProvider([])
+    on_normalized, deps, classic = _build(monkeypatch, mode="agent", provider=provider)
+    deps["interaction_handler"].settle_drafts.return_value = DraftsSettled(done=1)
+    row = uuid.uuid4()
+    tap = _message(save_button.SAVE_TITLE, modality=InputModality.INTERACTIVE).model_copy(
+        update={
+            "metadata": {
+                "interactive_reply_id": save_button.tap_id(save_button.SAVE, [("labour_report", row)]),
+                "interactive_reply_type": "button_reply",
+            }
+        }
+    )
+
+    await on_normalized(tap, {})
+
+    classic.assert_not_called()
+    assert provider.calls == 0
+    kwargs = deps["interaction_handler"].settle_drafts.await_args.kwargs
+    assert kwargs["facts"] == [("labour_report", row)] and kwargs["keep"] is True
+    sent = [c.args[1] for c in deps["sender"].send_text.await_args_list]
+    assert save_button.SAVED_DONE in sent

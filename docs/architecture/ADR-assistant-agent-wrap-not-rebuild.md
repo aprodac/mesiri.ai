@@ -199,7 +199,32 @@ grown since.)
 - Home of the eval set: `apps/whatsapp-assistant/tests/conversation/` (already holds
   `general_messages.yaml` and `general_sequences.yaml`).
 
-## 10. References
+## 10. The save rule (Ilan, 21 Oct 2026)
+
+The AI gets wide freedom to understand, decide and talk. The one hard rule is about data:
+**nothing a worker sends is kept until they tap Save on a confirmation.** Built as WA-35:
+
+- The agent saves through the existing save-first path (WA-01), so every record is a
+  **draft** the moment it is written. Its reply lists those drafts under "📝 To save:"; the
+  list is written by code from the saved data, never by the model.
+- The reply carries **✅ Save** and **❌ Cancel** (in place of Undo). Save confirms exactly
+  the drafts on that card (BE-09 confirm, as the evening "Keep it" does); Cancel rejects
+  them through each module's own undo (BE-09 reject, as "Remove it" / UNDO do). Typing
+  "save" or "cancel" works like the tap.
+- The tap carries the record ids (`agt:<save|cancel>:<type><uuid>...`), so no state is
+  kept between reply and tap. Only the tapper's own drafts, in their own company, and only
+  while still drafts, are settled.
+- A draft nobody taps stays a draft and comes up in the evening review (WA-05): nothing is
+  lost, and nothing unchecked reaches the DPR.
+- Applies to every company on `assistant_mode = agent` (today: Mesiri Test Builders only).
+  The classic path is unchanged (save-first + evening confirmation).
+- **Not covered yet:** a reply whose saves include something the review log does not track
+  (a progress update), more than 7 records, or a reply that ends on a question keeps the
+  old behaviour (Undo / evening review). A team-photo offer that was held back still says
+  "Attendance recorded" when it is sent on its own.
+- Rollback: revert the WA-35 commit, or set the company's `assistant_mode` to `off`.
+
+## 11. References
 
 [40] (this ADR, above) - [68], [75], [76] (Mesiri voice, memory, polish) -
 [docs/execution/VOICE_ASSISTANT_PLAN.md](../execution/VOICE_ASSISTANT_PLAN.md) -

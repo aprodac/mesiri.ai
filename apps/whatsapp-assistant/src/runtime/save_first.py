@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from mesiri_contracts.assistant.draft_action import DraftActionType
@@ -414,6 +415,100 @@ class SaveFirstService:
         except Exception:  # noqa: BLE001 -- fall back to the normal undo handling
             _log.exception("save_first.undo_failed actor=%s", actor_user_id)
             return None
+
+    async def settle_drafts(
+        self,
+        *,
+        organization_id: str | None,
+        actor_user_id: str | None,
+        facts: list[tuple[str, uuid.UUID]],
+        keep: bool,
+    ) -> DraftsSettled:
+        """The agent's Save / Cancel tap (WA-35): confirm (``keep``) or reject
+        the drafts one reply showed. Only the sender's own drafts in their own
+        company, and only those still drafts; each in its own transaction, so
+        one refused item (its day already confirmed) leaves the rest done."""
+        settled = DraftsSettled()
+        org_uuid = canonical_uuid(organization_id)
+        actor_uuid = canonical_uuid(actor_user_id)
+        if org_uuid is None or actor_uuid is None:
+            settled.refused.append("not your entry")
+            return settled
+        from sqlalchemy import text
+
+        from mesiri.application.dpr.fact_review import FactReviewError
+        from mesiri.infrastructure.postgres.repositories.fact_reviews import (
+            PostgresFactReviewRepository,
+        )
+
+        for fact_type, fact_id in facts:
+            try:
+                async with self._db.transaction() as conn:
+                    latest = (
+                        await conn.execute(
+                            text(
+                                """
+                                SELECT state, actor_user_id FROM fact_reviews
+                                WHERE organization_id = :org_id
+                                  AND fact_type = :fact_type AND fact_id = :fact_id
+                                ORDER BY created_at DESC
+                                LIMIT 1
+                                """
+                            ),
+                            {"org_id": org_uuid, "fact_type": fact_type, "fact_id": fact_id},
+                        )
+                    ).mappings().first()
+                    # No review row means the item was never a draft: it counts
+                    # as kept (fact_review.states_for).
+                    state = latest["state"] if latest is not None else "confirmed"
+                    if state != "draft":
+                        if (state == "confirmed") == keep:
+                            settled.already += 1
+                        else:
+                            settled.refused.append(
+                                "it was already saved; fix it on the dashboard"
+                                if keep is False
+                                else "it was already cancelled; send it again"
+                            )
+                        continue
+                    if canonical_uuid(latest["actor_user_id"]) != actor_uuid:
+                        settled.refused.append("not your entry")
+                        continue
+                    reviews = PostgresFactReviewRepository(conn)
+                    if keep:
+                        await reviews.confirm(
+                            organization_id=org_uuid,
+                            fact_type=fact_type,
+                            fact_id=fact_id,
+                            actor_user_id=actor_uuid,
+                        )
+                    else:
+                        await reviews.reject(
+                            organization_id=org_uuid,
+                            fact_type=fact_type,
+                            fact_id=fact_id,
+                            actor_user_id=actor_uuid,
+                            reason="Cancelled on WhatsApp by the sender",
+                        )
+                    settled.done += 1
+            except FactReviewError as exc:
+                settled.refused.append(str(exc))
+            except Exception:  # noqa: BLE001 -- the tap is told; the log keeps the cause
+                _log.exception(
+                    "save_first.settle_failed keep=%s fact_type=%s fact_id=%s", keep, fact_type, fact_id
+                )
+                settled.refused.append("something went wrong")
+        return settled
+
+
+@dataclass(slots=True)
+class DraftsSettled:
+    """What a Save / Cancel tap did: how many drafts it settled, how many were
+    no longer drafts, and why any were refused."""
+
+    done: int = 0
+    already: int = 0
+    refused: list[str] = field(default_factory=list)
 
 
 def _confidence(fields: dict[str, Any]) -> str | None:

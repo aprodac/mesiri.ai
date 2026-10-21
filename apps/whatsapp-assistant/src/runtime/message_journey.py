@@ -1008,6 +1008,20 @@ def build_message_handlers(
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
                 return
 
+        # WA-35: Save / Cancel on the agent's reply keeps or drops its drafts.
+        from runtime.agent import save_button
+
+        try:
+            save_reply = await save_button.handle_tap(message, ctx, interaction_handler)
+        except Exception:  # noqa: BLE001 — a tap must always get some reply
+            _log.exception("save_button.tap_failed user=%s", ctx.user_id)
+            save_reply = ReplySpec(text="Sorry, that didn't work — please try again.")
+        if save_reply is not None:
+            await _send_composed(wa_id, ctx.user_id, save_reply)
+            await message_logger.log_reply(correlation_id=message.correlation_id, reply=save_reply.text)
+            await message_logger.mark_completed(correlation_id=message.correlation_id)
+            return
+
         if contact_share is not None:
             try:
                 contact_reply = await contact_share.handle_project_tap(message, ctx)
@@ -2520,6 +2534,7 @@ def build_message_handlers(
         async def _run_agent(message, ctx, category_hint, timer) -> None:  # type: ignore[no-untyped-def]
             """The agent's turn. The pipeline it drives is the one below, with
             the senders swapped for a capture so the model writes the one reply."""
+            from runtime.agent import save_button
             from runtime.agent.journey_gateway import JourneyGateway
             from runtime.agent.turn import AgentTurnDeps, run_agent_turn
             from runtime.inbound_journey import render_workflow_run_reply_spec
@@ -2665,10 +2680,15 @@ def build_message_handlers(
                     _gathered[id(handled)] = gathered
                     offers.extend(gathered.offers)
                 saved = any(h.saved_draft for h in handled_list)
+                composed = compose(reply.text, offers, saved=saved)
+                # WA-35: drafts wait on the sender's Save tap, not on Undo.
+                facts = save_button.facts_of(handled_list)
+                if facts is not None and any(r.id == UNDO_ROW.id for r in composed.buttons or composed.list_rows or ()):
+                    composed = save_button.with_save_buttons(composed, facts)
                 await _send_composed(
                     target_wa_id,
                     ctx.user_id,
-                    compose(reply.text, offers, saved=saved),
+                    composed,
                     header_image=receipt_image,
                 )
 
