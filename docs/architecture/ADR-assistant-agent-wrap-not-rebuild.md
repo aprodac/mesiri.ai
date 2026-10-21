@@ -318,6 +318,7 @@ without the Save card). The wrap was the bridge; it is not the end state. Decide
 | ARCH-03 | Labour tool direct | Alan's approval; labour golden set |
 | ARCH-04 | Agent-mode taps: the old gate buttons replaced by `ask_user` answers, so nothing saves past the Save card | replay tests |
 | ARCH-05 | First real company on the agent, then all | owner decides; live golden runs >= 100% on materials |
+| ARCH-05 done | **Every company on the agent** (Ilan, 21 Oct, `1132e9f`): `assistant_mode` defaults to "agent"; "off" is the per-company fallback | owner's decision, before the live golden runs |
 | ARCH-06 | Delete the classic path per area (understanding, planner, decomposition, graphs, templates); record line counts | area switched everywhere for 1 week with no regressions |
 
 ## 11. References
