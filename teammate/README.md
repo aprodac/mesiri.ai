@@ -23,7 +23,7 @@ WhatsApp groups ──► listener/ (Node, VPS) ──► inbox.db ──► HTT
 
 | Path | What it is |
 | --- | --- |
-| `listener/` | The service: linked-device connection (Baileys), SQLite inbox, API. It sends only through `POST /send`, only into chats labelled `team` (30 posts an hour), an approved person's own 1-on-1 chat, and the `assistant-test` chat (10 an hour). Never to customers; never reactions, read receipts or "online". |
+| `listener/` | The service: linked-device connection (Baileys), SQLite inbox, API. It sends only through `POST /send`, only into chats labelled `team` (30 posts an hour), an approved person's own 1-on-1 chat, and the `assistant-test` chat (120 an hour). Never to customers; never reactions, read receipts or "online". |
 | `inbox.py` | The command sessions use: `status`, `chats`, `label`, `recent`, `search`, `show`, `media`, `pair`, `post`. Python standard library only. |
 | `chat_image.py` | Draws a WhatsApp-style conversation, or a before/after pair, as a PNG for team updates. Standard library + Chromium. |
 | `deploy/` | systemd unit and the nginx location block. |
@@ -152,7 +152,7 @@ In a project's **team** group, approved people @-mention the linked number:
 - **Testing the Mesiri assistant (plan 15).** A chat labelled `assistant-test` (owner, on the server:
   `inbox.py label <jid> assistant-test --project mesiri`; never automatic) is the bot's test conversation
   with the Mesiri assistant's number. `/send` allows it for text and images, for its own project only,
-  `TEAMMATE_TEST_SENDS_PER_HOUR` (default 10) an hour. Setup: the linked number messages the assistant once,
+  `TEAMMATE_TEST_SENDS_PER_HOUR` (default 120) an hour. Setup: the linked number messages the assistant once,
   then label that chat; register the bot's number as a worker in a **test** company in Mesiri. Undo:
   `inbox.py label <jid> unlabelled`.
   Menus and buttons (list, buttons, interactive, template messages) are stored as kind `interactive`: `text`

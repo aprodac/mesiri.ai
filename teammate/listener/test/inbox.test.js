@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createApi } from "../src/api.js";
+import { createApi, testSendsPerHour } from "../src/api.js";
 import { normalizeMessage } from "../src/normalize.js";
 import { Store, istStarts } from "../src/store.js";
 import { WhatsAppListener, buildChoice } from "../src/whatsapp.js";
@@ -1033,6 +1033,19 @@ test("api (DM): /send reaches only approved people's own chats, for their projec
     assert.equal(sent.length, 1);
   } finally {
     server.close();
+  }
+});
+
+test("api (assistant-test): the default limit is 120 an hour when the env is unset", () => {
+  const saved = process.env.TEAMMATE_TEST_SENDS_PER_HOUR;
+  delete process.env.TEAMMATE_TEST_SENDS_PER_HOUR;
+  try {
+    assert.equal(testSendsPerHour(), 120);
+    process.env.TEAMMATE_TEST_SENDS_PER_HOUR = "7";
+    assert.equal(testSendsPerHour(), 7);
+  } finally {
+    if (saved === undefined) delete process.env.TEAMMATE_TEST_SENDS_PER_HOUR;
+    else process.env.TEAMMATE_TEST_SENDS_PER_HOUR = saved;
   }
 });
 

@@ -118,7 +118,7 @@ export function systemAppend({ project, flow, owner, dm = false, partner = false
     "- Never merge to main or deploy to production unless the latest instruction in the group explicitly says so.",
     "",
     "Testing the Mesiri assistant: test_assistant sends a message (or an image from /tmp) as a worker to the assistant's test",
-    "chat and returns its replies (up to ~90 s; at most 10 sends an hour). It only talks to that test chat, so you may use it in",
+    "chat and returns its replies (up to ~90 s; up to 120 sends an hour). It only talks to that test chat, so you may use it in",
     "a planning turn when asked to try something (\"test today's site update\"). Afterwards, show the conversation: call",
     "preview_html with a WhatsApp-style chat (green bubbles for what you sent, white for the assistant's replies, phone width 390)",
     "and a caption saying what was tested and whether it behaved. When a reply is a menu or buttons, its numbered options are",

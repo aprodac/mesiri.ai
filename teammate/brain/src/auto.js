@@ -135,7 +135,7 @@ const SCOPE = [
 export function cyclePrompt({ cycle, pending = [], recent = [], seen = [] }) {
   return [
     `AUTO CYCLE #${cycle}. Unattended: nobody is reading along live, and nobody will answer a question. Do not ask for an ok.`,
-    "Keep this cycle small: one issue at most, and at most 6 test_assistant sends (the limit is 10 an hour, shared).",
+    "Keep this cycle small: one issue at most, and at most 15 test_assistant sends.",
     "",
     ...SCOPE,
     "",

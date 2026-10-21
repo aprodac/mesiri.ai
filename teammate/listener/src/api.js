@@ -64,7 +64,10 @@ async function readJson(req, maxBytes = 10_000) {
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_TEXT_CHARS = 4000;
 const SEND_PER_HOUR = Number(process.env.TEAMMATE_SEND_PER_HOUR || 30);
-const TEST_SENDS_PER_HOUR = Number(process.env.TEAMMATE_TEST_SENDS_PER_HOUR || 10);
+// 120 an hour is no limit for real testing, but still stops a runaway loop from flooding the
+// assistant's number. Read per request so the env override can be changed without a restart of tests.
+export const DEFAULT_TEST_SENDS_PER_HOUR = 120;
+export const testSendsPerHour = () => Number(process.env.TEAMMATE_TEST_SENDS_PER_HOUR || DEFAULT_TEST_SENDS_PER_HOUR);
 
 /** Resolves body.choose {message_n, option} to the stored option and the message it quotes. */
 function pickOption(store, chat, { message_n, option } = {}) {
@@ -266,7 +269,7 @@ export function createApi({ store, wa, token, ai = null }) {
         }
         if (image && image.length > MAX_IMAGE_BYTES) return send(res, 400, { error: "image is over 5 MB" });
         const hourAgo = Date.now() - 3_600_000;
-        const [log, limit] = isTest ? [testSentAt, TEST_SENDS_PER_HOUR] : [sentAt, SEND_PER_HOUR];
+        const [log, limit] = isTest ? [testSentAt, testSendsPerHour()] : [sentAt, SEND_PER_HOUR];
         while (log.length && log[0] < hourAgo) log.shift();
         if (log.length >= limit) return send(res, 429, { error: `limit of ${limit} ${isTest ? "test messages" : "posts"} per hour reached` });
         try {

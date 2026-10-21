@@ -177,7 +177,7 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
     ),
     tool(
       "test_assistant",
-      "Try the Mesiri assistant the way a worker would: send a text (or an image from /tmp, with optional text as caption) to the project's assistant-test WhatsApp chat, wait up to ~90 s, and get back what it replied. The assistant answers many steps with a menu or buttons: its reply then lists numbered options, and you tap one by calling again with choose (number or exact title) instead of text. Talks only to that test chat. At most 10 sends an hour. Afterwards show the conversation with preview_html.",
+      "Try the Mesiri assistant the way a worker would: send a text (or an image from /tmp, with optional text as caption) to the project's assistant-test WhatsApp chat, wait up to ~90 s, and get back what it replied. The assistant answers many steps with a menu or buttons: its reply then lists numbered options, and you tap one by calling again with choose (number or exact title) instead of text. Talks only to that test chat. Up to 120 sends an hour. Afterwards show the conversation with preview_html.",
       {
         text: z.string().min(1).max(2000).optional().describe("What the worker says (or the image caption)"),
         image_path: z.string().optional().describe("Absolute path under /tmp/ to a .png, .jpg, .jpeg or .webp file to send"),
