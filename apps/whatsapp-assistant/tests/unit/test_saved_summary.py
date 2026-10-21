@@ -59,6 +59,16 @@ def _draft(action: DraftActionType, fields: dict) -> DraftActionV2:
             "Cement used: 5 bags",
         ),
         (
+            DraftActionType.RECORD_MATERIAL_RECEIPT,
+            {"material_name": "cement", "quantity": 100, "unit": "bags", "supplier": "Sharma Traders"},
+            "Cement in: 100 bags (Sharma Traders)",
+        ),
+        (
+            DraftActionType.RECORD_MATERIAL_USAGE,
+            {"material_name": "cement", "quantity": 20, "unit": "bags", "work_item": "slab"},
+            "Cement used: 20 bags (slab)",
+        ),
+        (
             DraftActionType.RECORD_EXPENSE,
             {"amount": "4500", "category": "transport"},
             "Expense ₹4500 (Transport)",

@@ -29,7 +29,7 @@ from dataclasses import replace
 from typing import Any
 
 from channel.replies import ListRow, ReplySpec
-from interactions.saved_summary import SAVED_HEADER
+from interactions.saved_summary import QUESTION_PREFIX, SAVED_HEADER
 from runtime.reply_composer import UNDO_ROW, pick_form
 from runtime.save_first import FACT_TYPE_BY_ACTION
 
@@ -80,11 +80,22 @@ def fact_of(handled: Any) -> tuple[str, uuid.UUID] | None:
     return (fact_type, fact_id) if fact_type is not None else None
 
 
+def is_engineer_question(handled: Any) -> bool:
+    """A question passed to the engineer (note_for_engineer): saved as an open
+    issue so the engineer sees it, but no entry of the sender's to check."""
+    confirmed = getattr(getattr(handled, "result", None), "confirmed_action", None)
+    fields = getattr(getattr(confirmed, "draft_action", None), "fields", None) or {}
+    return str(fields.get("narrative") or "").startswith(QUESTION_PREFIX)
+
+
 def facts_of(handled_list: Iterable[Any]) -> list[tuple[str, uuid.UUID]] | None:
-    """Every record the reply saved, when each is a reviewable draft and they
-    fit one tap; None otherwise (the reply keeps its Undo button)."""
+    """Every entry the reply saved, when each is a reviewable draft and they
+    fit one tap; None otherwise (the reply keeps its Undo button). Questions
+    passed to the engineer are not entries and are left out (WA-37)."""
     facts = []
     for handled in handled_list:
+        if is_engineer_question(handled):
+            continue
         fact = fact_of(handled)
         if fact is None:
             return None
@@ -120,9 +131,12 @@ def with_save_buttons(spec: ReplySpec, facts: list[tuple[str, uuid.UUID]]) -> Re
     """The composed reply with Save / Cancel in place of Undo, and its
     "Saved:" header saying the records still wait on the tap. Any other
     choice it carried (the team-photo offer) stays after them."""
+    # The system's line sits under the model's own words (WA-37), so the
+    # header is the last one in the text, at the start of its line.
+    before, found, after = spec.text.rpartition(SAVED_HEADER)
     text = spec.text
-    if text.startswith(SAVED_HEADER):
-        text = TO_SAVE_HEADER + text[len(SAVED_HEADER) :]
+    if found and (not before or before.endswith("\n")):
+        text = before + TO_SAVE_HEADER + after
     others = [row for row in (spec.buttons or spec.list_rows or ()) if row.id != UNDO_ROW.id]
     rows = [
         ListRow(tap_id(SAVE, facts), SAVE_TITLE),

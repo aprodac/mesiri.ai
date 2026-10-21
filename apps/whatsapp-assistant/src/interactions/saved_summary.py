@@ -114,7 +114,10 @@ def summarise_draft(draft: DraftActionV2 | Any) -> str | None:
         material = _title(fields.get("material_name")) or "Material"
         qty = " ".join(p for p in (_num(fields.get("quantity")), _text(fields.get("unit"))) if p)
         verb = "in" if action is DraftActionType.RECORD_MATERIAL_RECEIPT else "used"
-        return f"{material} {verb}: {qty}" if qty else f"{material} {verb}"
+        line = f"{material} {verb}: {qty}" if qty else f"{material} {verb}"
+        # WA-37: who it came from / what it was for, as the sender said it.
+        extra = _text(fields.get("supplier") if verb == "in" else fields.get("work_item"))
+        return f"{line} ({extra})" if extra else line
     if action is DraftActionType.RECORD_EXPENSE:
         amount = _num(fields.get("amount"))
         category = _title(fields.get("category"))

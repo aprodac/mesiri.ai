@@ -673,6 +673,13 @@ async def process_inbound_message(
             canonical_events = drop_unasked_queries(
                 canonical_events, understanding.translated_text or understanding.normalized_text
             )
+            if getattr(pipeline, "one_event_per_call", False):
+                # WA-37: under the agent each tool call is ONE thing the
+                # model already separated out; a cross-module trigger here
+                # (cement used "for slab" -> a second work-done step) would
+                # become a plan step outside the model, answered later with
+                # the old plan summary ("Here's what I did ... which site?").
+                canonical_events = canonical_events[:1]
             canonical_event = canonical_events[0]
             extra_segments = canonical_events[1:]
 

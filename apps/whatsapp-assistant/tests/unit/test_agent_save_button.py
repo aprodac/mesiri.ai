@@ -45,7 +45,7 @@ def _handled(action=DraftActionType.RECORD_LABOUR_ATTENDANCE, row=LABOUR, draft=
         saved_draft=draft,
         execution_result=SimpleNamespace(material_row_id=str(row)),
         result=SimpleNamespace(
-            confirmed_action=SimpleNamespace(draft_action=SimpleNamespace(action_type=action))
+            confirmed_action=SimpleNamespace(draft_action=SimpleNamespace(action_type=action, fields={}))
         ),
     )
 
@@ -352,3 +352,24 @@ def test_a_typed_save_is_the_tap():
     ]
     assert resolve_choice("save", rows) is rows[0]
     assert resolve_choice("Cancel", rows) is rows[1]
+
+
+# -- WA-37: a question passed to the engineer is no entry to save ---------------
+
+
+def _question(row=CEMENT):
+    handled = _handled(DraftActionType.RECORD_SITE_ISSUE, row)
+    handled.result.confirmed_action.draft_action.fields = {
+        "narrative": "Question for your engineer: can we remove the props today?"
+    }
+    return handled
+
+
+def test_a_question_for_the_engineer_is_left_off_the_card():
+    assert save_button.is_engineer_question(_question())
+    assert not save_button.is_engineer_question(_handled())
+    assert facts_of([_handled(), _question()]) == [("labour_report", LABOUR)]
+
+
+def test_a_reply_that_only_passed_a_question_on_gets_no_save_card():
+    assert facts_of([_question()]) is None

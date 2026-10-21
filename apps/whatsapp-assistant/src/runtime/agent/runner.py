@@ -13,11 +13,13 @@ Failure policy (writes make a retry unsafe):
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 from channel.replies import ReplySpec
 from interactions.saved_summary import QUESTION_PREFIX, render_saved
@@ -26,7 +28,7 @@ from mesiri_ai.ports.tool_calling import ToolCallingProvider
 
 from .gateway import WorkflowGateway
 from .prompt import SYSTEM_PROMPT, AgentContext, build_messages
-from .toolbox import AgentToolbox
+from .toolbox import AgentToolbox, SavedItem
 from .tools import ScopeLookup, tool_specs
 
 _log = logging.getLogger("mesiri.agent")
@@ -83,8 +85,8 @@ class AgentRunner:
         toolbox = AgentToolbox(
             gateway=gateway, scope=scope, user_text=user_text, lap=lap, after_tool=after_tool
         )
-        toolbox.quick_reply = quick_reply_allowed(user_text, ctx.last_language)
-        messages = [ChatMessage(role=r, text=t) for r, t in build_messages(ctx, user_text)]
+        prompt_messages = build_messages(ctx, user_text)
+        messages = [ChatMessage(role=r, text=t) for r, t in prompt_messages]
         try:
             run = await self._provider.run_tools(
                 SYSTEM_PROMPT,
@@ -105,31 +107,51 @@ class AgentRunner:
                 "degraded", self._fallback(toolbox, partial=True), toolbox, error=exc
             )
         await toolbox.settle()
-        return AgentResult("ok", self._compose(run, toolbox), toolbox, run=run)
+        # WA-37: every figure the model writes must come from what it was
+        # given (the message, the facts in its prompt, a tool result) or from
+        # what it handed a tool -- a saved figure is also on the system's own
+        # line under the reply, where the sender checks it before Save.
+        sources = [text for _, text in prompt_messages]
+        for call in run.calls:
+            sources.append(json.dumps(call.arguments, ensure_ascii=False, default=str))
+            sources.append(json.dumps(call.outcome.content, ensure_ascii=False, default=str))
+        return AgentResult("ok", self._compose(run, toolbox, sources, correlation_id), toolbox, run=run)
 
     # -- the one reply -----------------------------------------------------
 
-    def _compose(self, run: ToolRunResult, toolbox: AgentToolbox) -> ReplySpec:
+    def _compose(
+        self,
+        run: ToolRunResult,
+        toolbox: AgentToolbox,
+        sources: list[str],
+        correlation_id: str | None = None,
+    ) -> ReplySpec:
         text = saved_list(_unique_paragraphs((run.text or "").strip()))
         block = _saved_block(toolbox)
         if block:
-            # The "Saved:" list is the system's, built from what was saved
-            # (request 57, B3): the model's own list echoed the sender's raw
-            # words ("6 mason, 10 helper vannu"). What it adds is the rest.
-            rest = _without_echoed_questions(_without_saved_block(text), toolbox)
-            if run.stop_reason == "stopped_by_tool" and not text:
-                # B-7: no second model round was run; what the other calls of
-                # the round brought back is said as the pipeline worded it.
-                extra = [*toolbox.answers, *toolbox.notes]
-                if toolbox.failed:
-                    extra.append(CHECK_LINE)
-                rest = _unique_paragraphs("\n\n".join(extra))
-            if not rest and run.stop_reason == "max_steps":
-                rest = CHECK_LINE
-            text = f"{block}\n\n{rest}".strip() if rest else block
+            # The model's words come first (WA-37: it talks, it is not a
+            # receipt); under them the system's short line of what was saved,
+            # built from the saved data (request 57, B3), never the model's own
+            # list, which echoed the sender's raw words.
+            text = _without_echoed_questions(_without_saved_block(text), toolbox)
+        unbacked = unbacked_numbers(text, sources)
+        if unbacked:
+            # A figure the model made up (or worked out) is never sent: the
+            # system's own words stand in for the whole reply.
+            _log.warning(
+                "agent.number_guard correlation_id=%s numbers=%s", correlation_id, sorted(unbacked)
+            )
+            text = ""
+        if block:
+            if not text and run.stop_reason == "max_steps":
+                text = CHECK_LINE
+            text = f"{text}\n\n{block}" if text else block
+        asked = _questions_line(toolbox)
+        if asked:
+            text = f"{text}\n\n{asked}" if text else asked
         if not text:
             return self._fallback(toolbox, partial=run.stop_reason == "max_steps")
-        if toolbox.saved and "undo" not in text.casefold():
+        if _entries(toolbox) and "undo" not in text.casefold():
             text = f"{text}\n\n{UNDO_LINE}"
         parked = toolbox.parked
         if parked is None:
@@ -168,27 +190,62 @@ class AgentRunner:
         )
 
 
-_ENGLISH = frozenset({"", "en", "english"})
+_NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
+#: Words for one thing ("1 more question") need no source.
+_ALWAYS_ALLOWED = frozenset({"0", "1"})
 
 
-def quick_reply_allowed(user_text: str, last_language: str | None) -> bool:
-    """B-7: whether a message that only saves may skip the model's second
-    round (the reply is then the system's "Saved:" block alone). Only where
-    nothing is left for the model to word: plain-Latin text from someone who
-    writes English, with no question in it."""
-    if str(last_language or "").strip().lower() not in _ENGLISH:
-        return False
-    if "?" in user_text:
-        return False
-    return all(ord(ch) < 0x250 for ch in user_text)
+def _numbers(text: str) -> set[str]:
+    """Every number in ``text``, normalised: "1,500" and "1500.0" are "1500"."""
+    found: set[str] = set()
+    for raw in _NUMBER.findall(text or ""):
+        try:
+            value = Decimal(raw.replace(",", ""))
+        except InvalidOperation:
+            continue
+        found.add(format(value.normalize(), "f"))
+    return found
+
+
+def unbacked_numbers(reply: str, sources: list[str]) -> set[str]:
+    """WA-37: the numbers in the model's ``reply`` that appear in none of
+    ``sources`` (its prompt and its tool results)."""
+    allowed = set(_ALWAYS_ALLOWED)
+    for source in sources:
+        allowed |= _numbers(source)
+    return _numbers(reply) - allowed
+
+
+def _entries(toolbox: AgentToolbox) -> list[SavedItem]:
+    """What was saved as an entry. A question passed to the engineer is not
+    one (WA-37): the model says it was passed on; it is no line to check."""
+    return [
+        item for item in toolbox.saved if not (item.summary or "").startswith(QUESTION_PREFIX)
+    ]
+
+
+#: Marks a question the system passed to the engineer (WA-37): said, not saved.
+QUESTION_MARK = "📨 "
+
+
+def _questions_line(toolbox: AgentToolbox) -> str:
+    """The questions passed to the engineer, one line each, from the saved
+    notes themselves -- so the sender always hears where the question went,
+    whatever the model wrote."""
+    return "\n".join(
+        f"{QUESTION_MARK}{item.summary}"
+        for item in toolbox.saved
+        if (item.summary or "").startswith(QUESTION_PREFIX)
+    )
 
 
 def _saved_block(toolbox: AgentToolbox) -> str:
-    """The deterministic "Saved:" block, when every saved item has a summary
+    """The deterministic "Saved:" block, when every saved entry has a summary
     (else the model's own wording stands, as before)."""
-    if not toolbox.saved or not all(item.summary for item in toolbox.saved):
+    entries = _entries(toolbox)
+    if not entries or not all(item.summary for item in entries):
         return ""
-    return render_saved([item.summary for item in toolbox.saved if item.summary])
+    return render_saved([item.summary for item in entries if item.summary])
 
 
 def _normalized(text: str) -> str:

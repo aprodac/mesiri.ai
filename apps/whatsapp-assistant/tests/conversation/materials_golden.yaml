@@ -33,3 +33,8 @@
 - {"id": 17, "lang": "manglish", "message": "cement stock ethra und?", "calls": [["query_materials", {"material": "cement"}]], "expect": [], "query": true}
 - {"id": 18, "lang": "en", "message": "how much sand is left?", "calls": [["query_materials", {"material": "sand"}]], "expect": [], "query": true}
 - {"id": 19, "lang": "en", "message": "is there enough cement for tomorrow's slab?", "calls": [["query_materials", {"material": "cement"}]], "expect": [], "query": true}
+# Added after the 21 Oct live test (docs/qa/runs/2026-10-21-WA-35-36): the messages that failed there.
+#   chat   true: nothing is saved and no tool is needed
+- {"id": 20, "lang": "manglish", "message": "nale slab-inu cement mathiyo?", "calls": [["query_materials", {"material": "cement"}]], "expect": [], "query": true}
+- {"id": 21, "lang": "ml", "message": "ഇന്ന് മഴയാണ്, പണി കുറവാണ്", "calls": [["report_issue", {"issue_type": "WEATHER", "narrative": "മഴ കാരണം പണി കുറവ്"}]], "expect": [{"action": "record_site_issue"}]}
+- {"id": 22, "lang": "en", "message": "thanks bro 👍", "calls": [], "expect": [], "chat": true}

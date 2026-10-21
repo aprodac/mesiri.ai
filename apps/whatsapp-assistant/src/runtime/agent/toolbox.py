@@ -107,10 +107,6 @@ class AgentToolbox:
     #: B-7: called after every tool call, so the receipt card can be made
     #: while the model writes the reply.
     after_tool: Callable[[], None] | None = None
-    #: B-7: a save whose summary the system built ends the run after its
-    #: round: the reply is the "Saved:" block, with no second model round.
-    #: Set by the runner only where the reply needs no wording of the model's.
-    quick_reply: bool = False
     failed: int = 0
     _seen: set[str] = field(default_factory=set)
     _inflight: set[asyncio.Task[Any]] = field(default_factory=set)
@@ -213,7 +209,7 @@ class AgentToolbox:
             note = _without_recorded(step.text)
             if note:
                 content["note"] = note
-            return ToolOutcome(content=content, stop=self.quick_reply and bool(step.summary))
+            return ToolOutcome(content=content)
         if step.status in ("needs_confirmation", "needs_answer"):
             question = step.reply or ReplySpec(text=step.text)
             if self.parked is None or self.parked_by == "ask":

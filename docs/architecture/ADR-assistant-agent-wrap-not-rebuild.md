@@ -240,6 +240,30 @@ The AI gets wide freedom to understand, decide and talk. The one hard rule is ab
   "Attendance recorded" when it is sent on its own.
 - Rollback: revert the WA-35 commit, or set the company's `assistant_mode` to `off`.
 
+### 10a. The AI writes the reply (WA-37, after the 21 Oct live test)
+
+The live test ([docs/qa/runs/2026-10-21-WA-35-36](../qa/runs/2026-10-21-WA-35-36/REPORT.md))
+showed replies that were still templates: the model was told to stay silent after a save,
+a B-7 speed-up skipped its second round for plain-letter messages (all Manglish), and the
+old pipeline still split tool calls and answered with its own plan summary. Changed:
+
+- **The model writes every reply** (the B-7 skip is gone): what it understood, in the
+  worker's language and letters, then "check and tap Save". Under its words, one short
+  code-built line of what will be saved (kept as backup protection), with Save / Cancel.
+- **Numbers are checked, not trusted.** Every figure in the model's text must appear in the
+  message, its prompt (stock, today), a tool result or a tool argument; otherwise its words
+  are dropped and the system line stands (logged as `agent.number_guard`).
+- **Questions get answers.** Stock and quantity questions are answered from the stock line or
+  the query tools; only a question needing a person's decision is passed to the engineer,
+  shown as "📨 Question for your engineer: ..." and never as an entry to save.
+- **The old pipeline stays quiet under the agent:** one canonical event per tool call (no
+  cross-module second step, no "Here's what I did ... which site?"), and a refused or failed
+  save is reported as not saved, never "Saved".
+- Receipts show the supplier, usage the work it was for; "50 bags cement" is asked
+  received-or-used; an English message gets English.
+- Cost: every entry now takes the model's second round (about 1-2 s more). Measure it with
+  the live golden run.
+
 ## 11. References
 
 [40] (this ADR, above) - [68], [75], [76] (Mesiri voice, memory, polish) -

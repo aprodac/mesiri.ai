@@ -212,6 +212,7 @@ async def test_the_daily_setup_question_never_piles_on_an_open_question(monkeypa
 
 def _saving(monkeypatch, deps):
     """The pipeline saves one labour draft, as save-first does."""
+    from mesiri_contracts.application.results.execution_result import ExecutionStatus
     from mesiri_contracts.assistant.draft_action import DraftActionType
     from workflows import WorkflowRunStatus
 
@@ -224,7 +225,7 @@ def _saving(monkeypatch, deps):
         saved_draft=True,
         reply_text="✅ Recorded. Thank you.",
         receipt_coro=None,
-        execution_result=SimpleNamespace(material_row_id=str(row)),
+        execution_result=SimpleNamespace(material_row_id=str(row), status=ExecutionStatus.SUCCEEDED),
         result=SimpleNamespace(
             workflow_instance_id=None,
             confirmed_action=SimpleNamespace(

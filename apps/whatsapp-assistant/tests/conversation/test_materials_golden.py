@@ -95,15 +95,31 @@ def mismatch(case: dict[str, Any], world: World, result: Any) -> str | None:
         return f"expected one question, got {result.reply.text!r}"
     if case.get("query") and not QUERY_TOOLS.intersection(called):
         return f"expected a query tool, called {called}"
+    if case.get("chat") and called:
+        return f"expected a plain reply, called {called}"
+    return None
+
+
+_NATIVE = re.compile(r"[\u0900-\u0d7f]")  # Devanagari .. Malayalam
+
+
+def wrong_script(case: dict[str, Any], reply: str) -> str | None:
+    """Live only: the reply is in the letters of the message (Malayalam
+    script gets Malayalam script; English and Manglish get English letters)."""
+    native = bool(_NATIVE.search(reply))
+    if case["lang"] == "ml" and not native:
+        return "expected Malayalam script"
+    if case["lang"] in ("en", "manglish") and native:
+        return "expected English letters"
     return None
 
 
 def test_the_golden_set_is_well_formed():
-    assert len(CASES) == 19
+    assert len(CASES) == 22
     assert len({c["id"] for c in CASES}) == len(CASES)
     for case in CASES:
-        assert case["message"] and case["calls"], case["id"]
-        assert bool(case["expect"]) != bool(case.get("ask") or case.get("query")), case["id"]
+        assert case["message"] and (case["calls"] or case.get("chat")), case["id"]
+        assert bool(case["expect"]) != bool(case.get("ask") or case.get("query") or case.get("chat")), case["id"]
     langs = {c["lang"] for c in CASES}
     assert {"en", "manglish", "ml", "hindi"} <= langs
 
@@ -113,7 +129,7 @@ async def test_the_save_code_files_exactly_the_expected_records(case):
     world = await _make_world(site_keys=(seed.SITE_A1,))
     calls = [(name, args) for name, args in case["calls"]]
     question = next((args["question"] for name, args in calls if name == "ask_user"), "")
-    provider = FakeToolCallingProvider([calls, question or "Done."])
+    provider = FakeToolCallingProvider([calls, question or "Done."] if calls else ["Anytime 👍"])
 
     result = await world.say(provider, case["message"])
 
@@ -143,9 +159,24 @@ async def test_live_model_on_the_materials_golden_set():
         result = await world.say(provider, case["message"])
         times.append(time.perf_counter() - started)
         why = mismatch(case, world, result) if result.outcome == "ok" else f"outcome {result.outcome}"
+        why = why or wrong_script(case, result.reply.text if result.reply else "")
         print(f"{'PASS' if why is None else 'FAIL'} #{case['id']} {case['message']!r} ({times[-1]:.1f}s) {why or ''}")
         if why is not None:
             failures.append(case["id"])
     accuracy = 1 - len(failures) / len(CASES)
     print(f"ACCURACY {accuracy:.0%} ({len(CASES) - len(failures)}/{len(CASES)}) p50 {statistics.median(times):.1f}s")
     assert not failures, f"failed cases: {failures}"
+
+
+@pytest.mark.parametrize(
+    ("lang", "reply", "ok"),
+    [
+        ("ml", "ശരി, 40 ചാക്ക് സിമന്റ് വന്നു.", True),
+        ("ml", "Sheri, 40 bag cement vannu.", False),
+        ("manglish", "Sheri, 40 bag cement vannu.", True),
+        ("en", "സന്തോഷം!", False),  # the 21 Oct "thanks bro 👍" reply
+        ("en", "Anytime 👍", True),
+    ],
+)
+def test_the_live_run_checks_the_reply_script(lang, reply, ok):
+    assert (wrong_script({"lang": lang}, reply) is None) is ok

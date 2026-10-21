@@ -16,6 +16,10 @@ from mesiri_contracts.assistant.understanding_result import UnderstandingResult
 
 
 class PresetUnderstandingPipeline:
+    #: WA-37: the journey keeps only the first canonical event: the model
+    #: makes one tool call per thing, so there is nothing left to split.
+    one_event_per_call = True
+
     def __init__(self, candidate: Candidate, *, language: str | None = None) -> None:
         self._candidate = candidate
         self._language = language

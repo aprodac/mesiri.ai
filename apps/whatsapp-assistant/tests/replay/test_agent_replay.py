@@ -261,7 +261,7 @@ async def test_a_four_part_note_is_four_saves_one_reply_and_no_site_question(wor
     assert lines[0] == "✅ Saved:"
     assert lines[1] == "• 15 workers (3 mason, 12 helper)"
     assert "• Plastering, second floor: 180 sqm" in lines
-    assert "• Cement in: 50 bags" in lines
+    assert "• Cement in: 50 bags (Sharma Traders)" in lines  # WA-37: the supplier shows
     assert any(line.startswith("• Issue (weather)") for line in lines)
 
 
@@ -276,15 +276,15 @@ async def test_a_malayalam_note_gets_the_saved_list_then_the_models_own_words(wo
         ]
     )
     result = await world.say(provider, "ഇന്ന് 3 മേസൺ പണിക്ക് വന്നു")
-    # The "Saved:" list is written from the saved data, not copied from the model.
-    assert result.reply.text.startswith("✅ Saved: 3 workers (3 mason)")
-    assert "നാളെ കാണാം." in result.reply.text
+    # WA-37: the model's own words first; under them the "Saved:" line, written
+    # from the saved data, not copied from the model.
+    assert result.reply.text.startswith("നാളെ കാണാം.\n\n✅ Saved: 3 workers (3 mason)")
     assert "സേവ് ചെയ്തു" not in result.reply.text  # the model's own saved line is dropped
     # The canned workflow wording ("Labour recorded", "draft", ...) never reaches the user.
     assert "draft" not in result.reply.text.lower()
     # A Malayalam sender gets the label words in Malayalam; numbers and trade stay.
     sent = localize_reply_spec(ReplySpec(text=result.reply.text), "Malayalam", "native").text
-    assert sent.startswith("✅ സേവ് ചെയ്തു: 3 തൊഴിലാളികൾ (3 mason)")
+    assert "\n✅ സേവ് ചെയ്തു: 3 തൊഴിലാളികൾ (3 mason)" in sent
     # And the model was told the user's own words, untranslated.
     assert provider.last_messages[-1].text.endswith("ഇന്ന് 3 മേസൺ പണിക്ക് വന്നു")
 
@@ -307,12 +307,12 @@ async def test_a_two_part_question_is_two_queries_and_one_answer(world):
     provider = FakeToolCallingProvider(
         [
             [("query_labour", {"date_range": "today"}), ("query_materials", {"material": "cement"})],
-            "Today: 15 workers on site. Cement in stock: 40 bags.",
+            "No attendance yet today, and no cement stock recorded.",
         ]
     )
     result = await world.say(provider, "how many workers today and how much cement is left?")
     assert world.journeys == 2
-    assert result.reply.text.startswith("Today: 15 workers")
+    assert result.reply.text == "No attendance yet today, and no cement stock recorded."
     assert "UNDO" not in result.reply.text  # nothing was saved
     assert world.dispatcher.dispatched == []
 
@@ -455,9 +455,26 @@ async def test_a_question_in_a_note_is_noted_for_the_engineer_and_the_reply_says
     )
     result = await world.say(provider, "6 mason, 10 helper vannu. Nale slab concrete cheyyan pattumo?")
     assert len(result.toolbox.saved) == 2
-    lines = result.reply.text.split("\n")
-    assert lines[0] == "✅ Saved:"
-    assert lines[1] == "• 16 workers (6 mason, 10 helper)"
-    assert lines[2] == "• Question for your engineer: Nale slab concrete cheyyan pattumo?"
+    # WA-37: the labour is the one entry to check; the question is passed on,
+    # said once on its own line, never listed as saved.
+    assert result.reply.text == (
+        "✅ Saved: 16 workers (6 mason, 10 helper)\n\n"
+        "📨 Question for your engineer: Nale slab concrete cheyyan pattumo?\n\n"
+        "Wrong? Reply UNDO."
+    )
     assert "vannu" not in result.reply.text
     assert result.reply.text.count("Nale slab concrete cheyyan pattumo?") == 1
+
+
+async def test_a_figure_the_tools_never_gave_is_not_sent(world):
+    """WA-37: the model said 15 workers and 40 bags; the records hold neither.
+    The tools' own answers go out instead of the made-up figures."""
+    provider = FakeToolCallingProvider(
+        [
+            [("query_labour", {"date_range": "today"}), ("query_materials", {"material": "cement"})],
+            "Today: 15 workers on site. Cement in stock: 40 bags.",
+        ]
+    )
+    result = await world.say(provider, "how many workers today and how much cement is left?")
+    assert "15" not in result.reply.text and "40" not in result.reply.text
+    assert result.reply.text == "\n\n".join(result.toolbox.answers)

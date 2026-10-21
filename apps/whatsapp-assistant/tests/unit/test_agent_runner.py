@@ -63,7 +63,11 @@ async def test_one_recorded_line_per_thing_becomes_one_header_and_bullets():
         ]
     )
     result = await _run(
-        provider, StepResult("saved", text="a"), StepResult("saved", text="b"), StepResult("saved", text="c")
+        provider,
+        StepResult("saved", text="a"),
+        StepResult("saved", text="b"),
+        StepResult("saved", text="c"),
+        text="12 mason, 5 bag cement slab work, 2nd floor slab done",
     )
     assert result.reply.text == (
         "✅ Saved:\n• 12 masons present\n• 5 bags of cement used for slab work\n"
@@ -210,7 +214,7 @@ def test_no_history_means_one_user_message():
 
 @pytest.mark.parametrize(
     "needle",
-    ["this user's own company", "Wrong? Reply UNDO", "ONE short question", "Never invent"],
+    ["this user's own company", "tap Save", "ONE short question", "Never add, subtract or estimate"],
 )
 def test_the_rules_are_in_the_system_prompt(needle):
     from runtime.agent.prompt import SYSTEM_PROMPT
@@ -218,49 +222,69 @@ def test_the_rules_are_in_the_system_prompt(needle):
     assert needle in SYSTEM_PROMPT
 
 
-# -- B-7: a message that only saves needs no second model round ----------------
+# -- WA-37: the model writes every reply ------------------------------------------
 
 
-async def test_a_note_that_only_saves_skips_the_second_model_round():
+async def test_a_note_that_only_saves_still_gets_the_models_words_over_the_saved_line():
     provider = FakeToolCallingProvider(
         [
             [("save_labour", {"workers": WORKERS}), ("save_material_usage", {})],
-            "never asked: the run stopped after the saves",
+            "Sheri, 3 mason and 5 bag cement. Check and tap Save.",
         ]
     )
     result = await _run(
         provider,
         StepResult("saved", text="✅ Recorded. Thank you.", summary="3 masons"),
         StepResult("saved", text="✅ Recorded. Thank you.", summary="5 bags cement used"),
+        text="3 mason, 5 bag cement use cheythu",
     )
-    assert result.run.stop_reason == "stopped_by_tool"
-    assert result.reply.text == "✅ Saved:\n• 3 masons\n• 5 bags cement used\n\nWrong? Reply UNDO."
+    assert provider.calls == 1
+    assert result.run.stop_reason == "answered"  # the second round ran
+    assert result.reply.text == (
+        "Sheri, 3 mason and 5 bag cement. Check and tap Save.\n\n"
+        "✅ Saved:\n• 3 masons\n• 5 bags cement used\n\nWrong? Reply UNDO."
+    )
 
 
-async def test_an_answer_in_the_same_round_is_still_said():
+async def test_an_answer_in_the_same_round_is_said_in_the_models_words():
     provider = FakeToolCallingProvider(
-        [[("save_labour", {"workers": WORKERS}), ("query_labour", {})], "unused"]
+        [[("save_labour", {"workers": WORKERS}), ("query_labour", {})], "12 workers this week, and 3 masons today."]
     )
     result = await _run(
         provider,
         StepResult("saved", text="x", summary="3 masons"),
         StepResult("answer", text="12 workers this week."),
     )
-    assert result.reply.text.startswith("✅ Saved: 3 masons\n\n12 workers this week.")
+    assert result.reply.text.startswith("12 workers this week, and 3 masons today.\n\n✅ Saved: 3 masons")
 
 
 @pytest.mark.parametrize(
-    ("text", "language", "allowed"),
+    ("reply", "unbacked"),
     [
-        ("3 masons today", None, True),
-        ("3 masons today", "english", True),
-        ("Innu 6 mason vannu", "malayalam", False),  # the model words it in Malayalam
-        ("6 മേസൺ വന്നു", None, False),
-        ("3 masons. Can we pour concrete tomorrow?", None, False),  # a question to answer
+        ("Cement 140 bags, used 20.", set()),
+        ("Stock ippo 160 bag aakum.", {"160"}),  # 140 + 20 worked out by the model
+        ("1,500 bricks came.", set()),
+        ("40 bags left.", {"40"}),
+        ("1 more thing.", set()),
     ],
 )
-def test_when_the_second_round_may_be_skipped(text, language, allowed):
-    assert r.quick_reply_allowed(text, language) is allowed
+def test_figures_must_come_from_the_message_or_the_records(reply, unbacked):
+    sources = ["used 20 bags", '{"stock": "Cement 140 bags"}', "1500 bricks"]
+    assert r.unbacked_numbers(reply, sources) == unbacked
+
+
+async def test_a_made_up_figure_drops_the_models_words_but_keeps_the_saved_line():
+    provider = FakeToolCallingProvider(
+        [[("save_material_usage", {"material": "cement", "quantity": 20, "unit": "bags"})],
+         "Done, stock ippo 160 bag."]
+    )
+    result = await _run(
+        provider,
+        StepResult("saved", text="x", summary="Cement used: 20 bags"),
+        text="20 bag cement use cheythu",
+    )
+    assert "160" not in result.reply.text
+    assert result.reply.text.startswith("✅ Saved: Cement used: 20 bags")
 
 
 async def test_another_language_still_gets_the_models_reply():

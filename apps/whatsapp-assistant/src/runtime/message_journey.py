@@ -2679,7 +2679,8 @@ def build_message_handlers(
                         continue
                     _gathered[id(handled)] = gathered
                     offers.extend(gathered.offers)
-                saved = any(h.saved_draft for h in handled_list)
+                # WA-37: a question passed to the engineer is no entry to undo.
+                saved = any(h.saved_draft and not save_button.is_engineer_question(h) for h in handled_list)
                 composed = compose(reply.text, offers, saved=saved)
                 # WA-35: drafts wait on the sender's Save tap, not on Undo.
                 facts = save_button.facts_of(handled_list)
