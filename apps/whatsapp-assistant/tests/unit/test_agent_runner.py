@@ -344,3 +344,69 @@ def test_the_reply_letters_follow_this_message_not_the_earlier_ones(message, rul
     else:
         assert rule in sent[-1][1]
         assert "earlier messages" not in sent[0][1]
+
+
+# -- round 3b: a Manglish message answered in English gets one more try ------
+
+
+class _Runs:
+    """One scripted fake per run_tools call (each fake replays its own script)."""
+
+    def __init__(self, *fakes):
+        self._fakes = list(fakes)
+        self.calls = 0
+        self.tools_seen = []
+
+    async def run_tools(self, system_prompt, messages, tools, handler, **kwargs):
+        self.tools_seen.append(list(tools))
+        fake = self._fakes[self.calls]
+        self.calls += 1
+        return await fake.run_tools(system_prompt, messages, tools, handler, **kwargs)
+
+
+async def test_an_english_reply_to_manglish_is_said_again_in_manglish():
+    provider = _Runs(
+        FakeToolCallingProvider(
+            [[("save_labour", {"workers": WORKERS})], "3 masons came today. Check and tap Save."]
+        ),
+        FakeToolCallingProvider(["Innu 3 mason vannu. Onnu nokki Save tap cheyyu."]),
+    )
+    result = await r.AgentRunner(provider).run(
+        ctx=CTX,
+        user_text="innu 3 mason vannu",
+        gateway=Gateway(StepResult("saved", text="x", summary="3 masons")),
+        scope=ScopeLookup(),
+    )
+    assert result.reply.text.startswith("Innu 3 mason vannu. Onnu nokki Save tap cheyyu.")
+    assert provider.calls == 2
+    assert provider.tools_seen[1] == []  # the second try has no tools
+    assert len(result.toolbox.saved) == 1  # nothing was run or saved again
+
+
+async def test_the_english_reply_stays_when_the_second_try_fails():
+    provider = _Runs(
+        FakeToolCallingProvider(
+            [[("save_labour", {"workers": WORKERS})], "3 masons came today. Check and tap Save."]
+        ),
+        FakeToolCallingProvider([], error=TimeoutError("second try timed out")),
+    )
+    result = await r.AgentRunner(provider).run(
+        ctx=CTX,
+        user_text="innu 3 mason vannu",
+        gateway=Gateway(StepResult("saved", text="x", summary="3 masons")),
+        scope=ScopeLookup(),
+    )
+    assert result.reply.text.startswith("3 masons came today. Check and tap Save.")
+
+
+async def test_an_english_message_gets_no_second_try():
+    provider = FakeToolCallingProvider(
+        [[("save_labour", {"workers": WORKERS})], "3 masons came today. Check and tap Save."]
+    )
+    await r.AgentRunner(provider).run(
+        ctx=CTX,
+        user_text="3 masons came today",
+        gateway=Gateway(StepResult("saved", text="x", summary="3 masons")),
+        scope=ScopeLookup(),
+    )
+    assert provider.calls == 1

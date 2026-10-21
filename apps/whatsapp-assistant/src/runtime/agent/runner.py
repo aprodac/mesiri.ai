@@ -23,11 +23,11 @@ from decimal import Decimal, InvalidOperation
 
 from channel.replies import ReplySpec
 from interactions.saved_summary import QUESTION_PREFIX, render_saved
-from mesiri_ai.models import ChatMessage, ToolRunResult
+from mesiri_ai.models import ChatMessage, ToolOutcome, ToolRunResult
 from mesiri_ai.ports.tool_calling import ToolCallingProvider
 
 from .gateway import WorkflowGateway
-from .prompt import SYSTEM_PROMPT, AgentContext, build_messages
+from .prompt import SYSTEM_PROMPT, AgentContext, build_messages, is_manglish, letters_of
 from .toolbox import AgentToolbox, SavedItem, asks_for_engineer
 from .tools import ScopeLookup, tool_specs
 
@@ -38,6 +38,12 @@ MAX_STEPS = 3
 TIMEOUT_SECONDS = 25.0  # a 4-part note is ~2 model rounds + 4 saves; 12s cut it off (request [43])
 
 UNDO_LINE = "Wrong? Reply UNDO."
+#: The second try for a Manglish reply is short: past this, English goes out.
+MANGLISH_TIMEOUT_SECONDS = 4.0
+
+
+async def _no_tools(name: str, args: dict) -> ToolOutcome:
+    return ToolOutcome(content={"status": "error", "reason": "no tools in this step"})
 CHECK_LINE = (
     "I couldn't finish the rest of your message, so please check what is saved and "
     "send anything missing again."
@@ -108,6 +114,7 @@ class AgentRunner:
                 "degraded", self._fallback(toolbox, partial=True), toolbox, error=exc
             )
         await toolbox.settle()
+        run = await self._in_manglish(run, messages, user_text, correlation_id)
         # WA-37: every figure the model writes must come from what it was
         # given (the message, the facts in its prompt, a tool result) or from
         # what it handed a tool -- a saved figure is also on the system's own
@@ -117,6 +124,41 @@ class AgentRunner:
             sources.append(json.dumps(call.arguments, ensure_ascii=False, default=str))
             sources.append(json.dumps(call.outcome.content, ensure_ascii=False, default=str))
         return AgentResult("ok", self._compose(run, toolbox, sources, correlation_id), toolbox, run=run)
+
+    async def _in_manglish(
+        self,
+        run: ToolRunResult,
+        messages: list[ChatMessage],
+        user_text: str,
+        correlation_id: str | None,
+    ) -> ToolRunResult:
+        """A Manglish message answered in English gets one more try, with no
+        tools: the same reply, in Manglish (round 3b, 21 Oct: told to, the
+        model still answered English one time in three). Anything going wrong
+        keeps the English reply; nothing is run or saved again."""
+        text = (run.text or "").strip()
+        if not text or not is_manglish(user_text) or is_manglish(text) or letters_of(text) != "latin":
+            return run
+        ask = (
+            "Say your last reply again in Manglish (Malayalam in English letters), the way a "
+            "site supervisor texts. Same meaning, same numbers, nothing added. Only the reply."
+        )
+        try:
+            again = await self._provider.run_tools(
+                SYSTEM_PROMPT,
+                [*messages, ChatMessage(role="model", text=text), ChatMessage(role="user", text=ask)],
+                [],
+                _no_tools,
+                max_steps=1,
+                timeout_seconds=MANGLISH_TIMEOUT_SECONDS,
+                correlation_id=correlation_id,
+            )
+        except Exception:  # noqa: BLE001 -- the English reply still goes out
+            _log.warning("agent.manglish_retry_failed correlation_id=%s", correlation_id)
+            return run
+        if not is_manglish(again.text or ""):
+            return run
+        return run.model_copy(update={"text": again.text})
 
     # -- the one reply -----------------------------------------------------
 
