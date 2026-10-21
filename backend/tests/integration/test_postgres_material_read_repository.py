@@ -392,22 +392,25 @@ async def test_stock_levels_arithmetic_and_joins(
         sand_id = await _make_material(conn, test_org, test_user, "Sand", cum_id)
 
         async def _movement(
-            *, movement_type: str, material_id, unit_id, quantity, site_id, occurred_at, source_type
-        ) -> None:
+            *, movement_type: str, material_id, unit_id, quantity, site_id, occurred_at, source_type,
+            reversal_of=None,
+        ) -> uuid.UUID:
+            movement_id = uuid.uuid4()
             await conn.execute(
                 sa.text("""
                 INSERT INTO material_movements (
                     id, organization_id, project_id, site_id, material_id, unit_id,
                     movement_type, quantity, occurred_at, source_type, source_id,
-                    recorded_by_user_id, created_at
+                    recorded_by_user_id, reversal_of_movement_id, created_at
                 ) VALUES (
                     :id, :org_id, :project_id, :site_id, :material_id, :unit_id,
                     :movement_type, :quantity, :occurred_at, :source_type, :source_id,
-                    :user_id, now()
+                    :user_id, :reversal_of, now()
                 )
                 """),
                 {
-                    "id": uuid.uuid4(),
+                    "id": movement_id,
+                    "reversal_of": reversal_of,
                     "org_id": test_org,
                     "project_id": test_project,
                     "site_id": site_id,
@@ -421,6 +424,7 @@ async def test_stock_levels_arithmetic_and_joins(
                     "user_id": test_user,
                 },
             )
+            return movement_id
 
         # Material 1: Cement (has both receipts and usage on test_site)
         # Rec: 100 bags, Used: 40 bags -> Stock: 60 bags
@@ -441,6 +445,28 @@ async def test_stock_levels_arithmetic_and_joins(
             site_id=test_site,
             occurred_at=datetime.datetime(2026, 7, 2),
             source_type="material_usage",
+        )
+
+        # A receipt of 30 bags taken back (a correction posts the opposite
+        # movement): it nets out of "received", it is not 30 bags "used".
+        wrong = await _movement(
+            movement_type="RECEIPT",
+            material_id=cement_id,
+            unit_id=bags_id,
+            quantity=Decimal("30.0"),
+            site_id=test_site,
+            occurred_at=datetime.datetime(2026, 7, 3),
+            source_type="material_receipt",
+        )
+        await _movement(
+            movement_type="ISSUE",
+            material_id=cement_id,
+            unit_id=bags_id,
+            quantity=Decimal("30.0"),
+            site_id=test_site,
+            occurred_at=datetime.datetime(2026, 7, 3),
+            source_type="material_receipt",
+            reversal_of=wrong,
         )
 
         # Material 2: Steel (receipts only, site_id is NULL)

@@ -334,11 +334,35 @@ class PostgresMaterialReadRepository:
             (_material_movements.c.movement_type == "RECEIPT", _material_movements.c.quantity),
             else_=-_material_movements.c.quantity,
         )
+        # A reversal takes back what it corrects: reversing a receipt lowers
+        # "received", it is not material used (and the other way round), so
+        # the totals stay net of corrections and received - used = stock.
+        is_reversal = _material_movements.c.reversal_of_movement_id.is_not(None)
         received = sa.func.sum(
-            sa.case((_material_movements.c.movement_type == "RECEIPT", _material_movements.c.quantity), else_=0)
+            sa.case(
+                (
+                    sa.and_(_material_movements.c.movement_type == "RECEIPT", ~is_reversal),
+                    _material_movements.c.quantity,
+                ),
+                (
+                    sa.and_(_material_movements.c.movement_type == "ISSUE", is_reversal),
+                    -_material_movements.c.quantity,
+                ),
+                else_=0,
+            )
         )
         used = sa.func.sum(
-            sa.case((_material_movements.c.movement_type == "ISSUE", _material_movements.c.quantity), else_=0)
+            sa.case(
+                (
+                    sa.and_(_material_movements.c.movement_type == "ISSUE", ~is_reversal),
+                    _material_movements.c.quantity,
+                ),
+                (
+                    sa.and_(_material_movements.c.movement_type == "RECEIPT", is_reversal),
+                    -_material_movements.c.quantity,
+                ),
+                else_=0,
+            )
         )
         current_stock = sa.func.sum(signed_qty)
 
