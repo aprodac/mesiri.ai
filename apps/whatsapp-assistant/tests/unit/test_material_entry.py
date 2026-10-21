@@ -50,6 +50,7 @@ class _Catalog:
     def __init__(self, materials: list[dict], *, per: float | None = None) -> None:
         self.materials = materials
         self.per = per
+        self.created: list[tuple] = []
 
     async def find_materials(self, *, organization_id: str, name: str) -> list[dict]:
         exact = [m for m in self.materials if m["name"].lower() == name.lower()]
@@ -64,6 +65,13 @@ class _Catalog:
     async def find_conversion(self, **kwargs: Any) -> float | None:
         return self.per
 
+    async def list_active_materials(self, *, organization_id: str) -> list[dict]:
+        return self.materials
+
+    async def create_material(self, *, organization_id: str, name: str, unit_id: str, created_by: str) -> dict:
+        self.created.append((name, unit_id, created_by))
+        return {"id": "77777777-7777-4777-8777-777777777777", "name": name, "default_unit_id": unit_id, "is_active": True}
+
 
 class _Stock:
     def __init__(self) -> None:
@@ -75,15 +83,23 @@ class _Stock:
 
 
 class _Modules:
-    def __init__(self, enabled: list[str]) -> None:
+    """The org settings the entry reads: modules, and who may add materials."""
+
+    def __init__(self, enabled: list[str], *, create_roles: list[str] | None = None) -> None:
         self.enabled = enabled
+        self.create_roles = create_roles or []
 
     async def enabled_modules(self, *, organization_id: str) -> list[str]:
         return self.enabled
 
+    async def get(self, *, organization_id: str, key: str) -> Any:
+        return self.create_roles
+
 
 def _actor(*sites: str, role: str = "SITE_ENGINEER") -> Any:
-    return SimpleNamespace(role=role, sites=[SimpleNamespace(id=s, name=s, project_id=PRJ) for s in sites])
+    return SimpleNamespace(
+        role=role, user_id=USR, projects=[], sites=[SimpleNamespace(id=s, name=s, project_id=PRJ) for s in sites]
+    )
 
 
 def _entry(*, catalog: _Catalog | None = None, context: _Context | None = None, modules=None, actor=None, stock=None):
@@ -152,18 +168,63 @@ async def test_a_switched_off_module_says_so():
     assert isinstance(said, Say) and "switched on" in said.text
 
 
-@pytest.mark.parametrize(
-    "entry",
-    [
-        _entry(catalog=_Catalog([{**CEMENT, "name": "Cement Paint"}])),  # not an exact name: the picker
-        _entry(catalog=_Catalog([])),  # not in the catalogue: pick one / add it
-        _entry(context=_Context(project_id=None, site_id=None)),  # which project?
-        _entry(context=_Context(site_id=None), actor=_actor(SITE, "other-site")),  # which site?
-        _entry(context=_Context(ok=False)),  # no context: the classic route says why
-    ],
-)
-async def test_anything_needing_a_picker_takes_the_classic_route(entry):
-    assert await _prepare(entry) is None
+async def test_a_name_with_several_matches_is_a_question_with_the_options():
+    said = await _prepare(_entry(catalog=_Catalog([{**CEMENT, "name": "Cement Paint"}, {**CEMENT, "id": "c2", "name": "Cement PPC"}])))
+    assert isinstance(said, Say) and said.status == "choose"
+    assert "Options: Cement Paint, Cement PPC" in said.text and "ask_user" in said.text
+
+
+async def test_an_unknown_name_lists_the_catalogue_when_they_may_not_add_one():
+    catalog = _Catalog([SAND])
+    said = await _prepare(_entry(catalog=catalog, modules=_Modules(["materials"], create_roles=[])))
+    assert said.status == "choose"
+    assert "Options: Sand" in said.text and "admin on the dashboard" in said.text
+
+
+async def test_an_unknown_name_asks_to_add_it_when_they_may():
+    entry = _entry(catalog=_Catalog([SAND]), modules=_Modules(["materials"], create_roles=["SITE_ENGINEER"]))
+    said = await _prepare(entry, material_name="Fevicol", unit="bags")
+    assert said.status == "choose" and "add it as a new material" in said.text
+    assert said.text.count("new_material") == 1
+
+
+async def test_after_a_yes_the_new_material_is_added_and_saved():
+    catalog = _Catalog([SAND])
+    entry = _entry(catalog=catalog, modules=_Modules(["materials"], create_roles=["SITE_ENGINEER"]))
+    ready = await _prepare(entry, material_name="Fevicol", unit="bags", new_material=True)
+    assert isinstance(ready, Ready)
+    assert catalog.created == [("Fevicol", "u-bag", USR)]
+    assert "new_material" not in ready.event.fields
+    assert ready.event.fields["material_name"] == "Fevicol"
+
+
+async def test_a_new_material_is_never_added_without_the_right():
+    catalog = _Catalog([SAND])
+    entry = _entry(catalog=catalog, modules=_Modules(["materials"], create_roles=[]))
+    said = await _prepare(entry, material_name="Fevicol", new_material=True)
+    assert said.status == "choose" and catalog.created == []
+
+
+async def test_a_new_material_in_an_unknown_unit_asks_for_the_unit():
+    entry = _entry(catalog=_Catalog([SAND]), modules=_Modules(["materials"], create_roles=["SITE_ENGINEER"]))
+    said = await _prepare(entry, material_name="Fevicol", unit="tins", new_material=True)
+    assert said.status == "choose" and "which unit" in said.text
+
+
+async def test_no_project_is_a_question_with_their_projects():
+    actor = _actor(SITE)
+    actor.projects = [SimpleNamespace(name="Green Villa"), SimpleNamespace(name="Lake View")]
+    said = await _prepare(_entry(context=_Context(project_id=None, site_id=None), actor=actor))
+    assert said.status == "choose" and "Options: Green Villa, Lake View" in said.text
+
+
+async def test_two_sites_is_a_question_with_the_sites():
+    said = await _prepare(_entry(context=_Context(site_id=None), actor=_actor("Kakkanad", "Edappally")))
+    assert said.status == "choose" and "Options: Kakkanad, Edappally" in said.text
+
+
+async def test_a_failed_context_takes_the_classic_route():
+    assert await _prepare(_entry(context=_Context(ok=False))) is None
 
 
 async def test_a_project_with_one_site_gets_that_site():

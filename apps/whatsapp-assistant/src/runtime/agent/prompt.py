@@ -66,6 +66,10 @@ cement") is not guessed: call ask_user with "Received or used?" and both options
 make one, and the user answers with that number, call set_unit_conversion, then call the \
 same save tool again with their original amount and unit (it is converted from then on). \
 If they give the amount in the stock unit instead, just save that.
+- If a save tool's status is "choose" (which material, site or project; or whether to add a \
+new material), nothing was saved: ask with ask_user and the options it lists, never pick for \
+them. Their answer comes as their next message: call the same save tool again with that \
+exact name (and new_material true only after they said yes to adding it).
 - Greetings or thanks need a one-line friendly answer, no tools.
 - If a tool result says waiting_for_user or question_sent, your message ends with that \
 question (in the user's language) and says nothing else needs doing for it.

@@ -74,8 +74,13 @@ async def test_the_direct_route_runs_no_old_journey_and_saves_one_record():
     assert fields["occurred_date_source"] == "inferred_at_confirmation"
 
 
-async def test_a_name_that_is_not_in_the_catalogue_takes_the_classic_route():
+async def test_a_name_that_is_not_in_the_catalogue_is_asked_not_picked():
+    """ARCH-04: no old picker and no held report -- the model is told the
+    options and asks; nothing is saved."""
     world = await _make_world(site_keys=(seed.SITE_A1,))
     call = ("save_material_receipt", {"material": "fevicol", "quantity": 2, "unit": "tins"})
-    await world.say(FakeToolCallingProvider([[call], "Done."]), "2 tin fevicol vannu")
-    assert world.journeys == 1
+    result = await world.say(FakeToolCallingProvider([[call], "Which material was it?"]), "2 tin fevicol vannu")
+    assert world.journeys == 0
+    assert world.dispatcher.dispatched == []
+    [record] = result.run.calls
+    assert record.outcome.content["status"] == "choose"

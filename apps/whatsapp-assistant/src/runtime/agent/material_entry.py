@@ -14,10 +14,12 @@ What is plain code here instead of pipeline stages: the date, the material
 (exact catalogue name only), the stock unit (``runtime/material_units``), the
 module switch, and the stock figure (by material id, not by name).
 
-Anything that needs the old pipeline's picker -- a material that is not an
-exact catalogue name (pick one / add a new one), more than one project or
-site to choose from -- returns ``None`` and the caller runs the classic route
-for that one call, so no behaviour is lost while ARCH-04 replaces those.
+When the sender must choose (which material, project or site, or whether to
+add a new material), the model is told the options and asks with its own
+``ask_user``; the answer comes back as a new call with the exact name
+(ARCH-04: the old picker buttons resumed a held report and saved on the tap,
+past the Save card). Only a failed context or catalogue lookup returns
+``None``, and the caller runs the classic route for that call.
 """
 
 from __future__ import annotations
@@ -98,16 +100,21 @@ class MaterialEntry:
         project_id = ctx.project_id
         site_id = ctx.site_id
         if project_id is None:
-            return None  # the project picker
+            names = [p.name for p in getattr(self.actor, "projects", None) or []]
+            if not names:
+                return Say("info", "Not saved: you are not on any project yet. Your admin can add you.")
+            return Say("choose", _ask("Which project is this for?", names, "project"))
         if site_id is None:
             sites = [s for s in getattr(self.actor, "sites", None) or [] if s.project_id == project_id]
             if len(sites) > 1:
-                return None  # the site picker
+                return Say("choose", _ask("Which site is this for?", [s.name for s in sites], "site"))
             site_id = sites[0].id if sites else None
 
-        material = await self._exact_material(organization_id, str(fields["material_name"]), message)
-        if material is None:
-            return None  # pick one / add a new one
+        found = await self._material(organization_id, str(fields["material_name"]), fields, ctx, message)
+        if not isinstance(found, dict):
+            return found
+        material = found
+        fields.pop("new_material", None)
         fields["material_id"] = str(material["id"])
         fields["material_name"] = material["name"]
 
@@ -167,8 +174,13 @@ class MaterialEntry:
             _log.warning("material_entry.modules_failed", exc_info=True)
             return True
 
-    async def _exact_material(self, organization_id: str, name: str, message: Any) -> dict | None:
-        from workflows.entities import Resolved
+    async def _material(
+        self, organization_id: str, name: str, fields: dict, ctx: Any, message: Any
+    ) -> dict | Say | None:
+        """The catalogue row, a question for the model to ask (ARCH-04: the
+        old picker buttons, as the model's own question), or None when the
+        lookup failed (the classic route answers)."""
+        from workflows.entities import Ambiguous, Resolved
 
         try:
             matches = await self.catalog_query.find_materials(organization_id=organization_id, name=name)
@@ -176,10 +188,70 @@ class MaterialEntry:
             _log.warning("material_entry.lookup_failed correlation_id=%s", message.correlation_id, exc_info=True)
             return None
         outcome = classify_material_matches(name, matches)
-        if not isinstance(outcome, Resolved):
-            return None
-        material = next(m for m in matches if str(m["id"]) == outcome.entity_id)
-        return material if material.get("is_active", True) else None
+        if isinstance(outcome, Resolved):
+            material = next(m for m in matches if str(m["id"]) == outcome.entity_id)
+            if not material.get("is_active", True):
+                return Say("info", f"Not saved: {material['name']} is no longer in use in the material list.")
+            return material
+        if isinstance(outcome, Ambiguous):
+            names = [c.display_name for c in outcome.candidates]
+            return Say("choose", _ask(f'Which material is "{name}"?', names, "material"))
+
+        may_create = await self._may_create(organization_id)
+        if may_create and fields.get("new_material"):
+            return await self._create(organization_id, name, fields, ctx, message)
+        if may_create:
+            return Say(
+                "choose",
+                f'Not saved yet: "{name}" is not in the company\'s material list. Ask whether to add it '
+                "as a new material (options: Yes, No). If yes, call this tool again with new_material "
+                "true; if no, ask which listed material they meant.",
+            )
+        try:
+            listed = await self.catalog_query.list_active_materials(organization_id=organization_id)
+        except Exception:  # noqa: BLE001
+            listed = []
+        if not listed:
+            return Say("info", f'Not saved: "{name}" is not in the material list, and the list is empty. An admin adds materials on the dashboard.')
+        return Say(
+            "choose",
+            _ask(f'"{name}" is not in the material list. Which one did they mean?', [m["name"] for m in listed], "material")
+            + " A new material is added by an admin on the dashboard.",
+        )
+
+    async def _may_create(self, organization_id: str) -> bool:
+        """STA-139's rule: the org's whatsapp_material_create_roles setting."""
+        from types import SimpleNamespace
+
+        from runtime.inbound_journey.seeding import _may_create_material
+
+        try:
+            return await _may_create_material(
+                SimpleNamespace(organization_id=organization_id),
+                actor_role=getattr(self.actor, "role", None),
+                org_settings_query=self.org_settings_query,
+            )
+        except Exception:  # noqa: BLE001 -- unknown rights never grant
+            _log.warning("material_entry.create_rights_failed", exc_info=True)
+            return False
+
+    async def _create(self, organization_id: str, name: str, fields: dict, ctx: Any, message: Any) -> dict | Say:
+        """Add the material (the sender said yes), counted in the unit they used."""
+        unit_text = fields.get("unit")
+        unit = await self.catalog_query.resolve_unit(str(unit_text)) if unit_text else None
+        if unit is None:
+            return Say(
+                "choose",
+                f'Not saved yet: which unit is "{name}" counted in (bags, kg, nos, cum, litres ...)? '
+                "Ask, then call this tool again with new_material true and that unit.",
+            )
+        created = await self.catalog_query.create_material(
+            organization_id=organization_id, name=name, unit_id=str(unit["id"]), created_by=str(getattr(self.actor, "user_id", None) or ctx.user_id)
+        )
+        if created is None:
+            return Say("error", f'Not saved: "{name}" could not be added to the material list.')
+        _log.info("material_entry.material_created correlation_id=%s", message.correlation_id)
+        return created
 
     async def _stock(
         self, organization_id: str, project_id: Any, site_id: Any, material_id: str, message: Any
@@ -198,6 +270,15 @@ class MaterialEntry:
             _log.warning("material_entry.stock_failed correlation_id=%s", message.correlation_id, exc_info=True)
             return None
         return levels[0]["current_stock"] if levels else None
+
+
+def _ask(question: str, options: list[str], arg: str) -> str:
+    """What the model is told when the sender must choose (ARCH-04)."""
+    shown = ", ".join(options[:10])
+    return (
+        f"Not saved yet. {question} Options: {shown}. Ask the user with ask_user and these "
+        f"options, then call this tool again with that exact {arg}."
+    )
 
 
 def _number(value: Any) -> float | None:

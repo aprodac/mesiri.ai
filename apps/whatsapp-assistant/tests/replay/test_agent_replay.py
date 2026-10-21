@@ -89,8 +89,14 @@ class _Catalog:
         hit = next((n for n in self.NAMES if n.lower() == str(name).strip().lower()), None)
         if hit is None:
             return []
-        return [{"id": f"00000000-0000-4000-8000-{self.NAMES.index(hit):012d}", "name": hit,
-                 "default_unit_id": None, "is_active": True}]
+        return [self._row(hit)]
+
+    async def list_active_materials(self, *, organization_id):  # noqa: ANN001
+        return [self._row(n) for n in self.NAMES]
+
+    def _row(self, name):  # noqa: ANN001
+        return {"id": f"00000000-0000-4000-8000-{self.NAMES.index(name):012d}", "name": name,
+                "default_unit_id": None, "is_active": True}
 
 
 @dataclass

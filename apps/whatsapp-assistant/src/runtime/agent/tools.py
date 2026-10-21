@@ -57,6 +57,12 @@ QUERY_TOOLS = frozenset(
     {QUERY_LABOUR, QUERY_MATERIALS, QUERY_WORK_LOG, QUERY_PROJECT, QUERY_EXPENSES, REQUEST_DPR}
 )
 
+#: ARCH-04: set only after the user said yes to adding it to the material list.
+_NEW_MATERIAL = {
+    "type": "boolean",
+    "description": "Only true after the user said yes to adding this as a new material.",
+}
+
 _DATE = {
     "type": "string",
     "description": (
@@ -180,6 +186,7 @@ def tool_specs() -> list[ToolSpec]:
                     "quantity": {"type": "number"},
                     "unit": {"type": "string", "description": "bags, kg, tons, cum, nos ..."},
                     "supplier": {"type": "string", "description": "Only if stated."},
+                    "new_material": _NEW_MATERIAL,
                     "date": _DATE,
                     "project": _PROJECT,
                     "site": _SITE,
@@ -196,6 +203,7 @@ def tool_specs() -> list[ToolSpec]:
                     "quantity": {"type": "number"},
                     "unit": {"type": "string"},
                     "work_item": {"type": "string", "description": "What it was used for."},
+                    "new_material": _NEW_MATERIAL,
                     "date": _DATE,
                     "project": _PROJECT,
                     "site": _SITE,
@@ -486,6 +494,7 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             "supplier": args.get("supplier") if received else None,
             "work_item": None if received else args.get("work_item"),
             "occurred_on": date,
+            "new_material": True if args.get("new_material") is True else None,
             **sc,
         }
         return Candidate(semantic_type=SemanticType.MATERIAL_UPDATE, fields=_clean(fields))
