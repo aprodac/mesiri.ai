@@ -39,6 +39,10 @@ class _Context:
             conversation_id=None,
             permissions=[],
             timezone="Asia/Kolkata",
+            context_organization_id=ORG,
+            context_user_id=USR,
+            context_project_id=project_id,
+            context_site_id=site_id,
         )
         self.ok = ok
 
