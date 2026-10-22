@@ -114,13 +114,50 @@ class DprRequestQueryService:
         from runtime.site_day_review import day_lines
 
         async with self._db.transaction() as conn:
-            payload, _ = await PostgresDprRepository(conn).assemble_site_day(
+            payload, items = await PostgresDprRepository(conn).assemble_site_day(
                 organization_id=uuid.UUID(organization_id),
                 project_id=uuid.UUID(project_id),
                 site_id=uuid.UUID(site_id),
                 report_date=report_date,
             )
-        return day_lines(payload)
+        return day_lines(only_kept(payload, items))
+
+
+def only_kept(payload: dict[str, Any], items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Request 88: the day's payload without what the sender cancelled. A
+    material is listed only while at least one of its entries is still alive
+    (not rejected): a Cancelled steel or cement card is not "Materials:
+    Steel, Cement" (22 Oct). The same holds for work, labour and issues whose
+    entries were all rejected. Reads the review state the assembly already
+    attached to every item; changes only the copy shown."""
+    rejected = "rejected"
+    alive_materials: set[str] = set()
+    gone = {"work": 0, "labour": 0, "issues": 0, "issues_open": 0, "headcount": 0}
+    for item in items:
+        section, dead = item.get("section"), item.get("review") == rejected
+        if section == "materials":
+            if not dead:
+                alive_materials.add(str(item.get("title") or "").strip().casefold())
+        elif dead and section in ("work", "labour", "issues"):
+            gone[section] += 1
+            if section == "issues" and item.get("status") == "OPEN":
+                gone["issues_open"] += 1
+            if section == "labour":
+                words = str(item.get("title") or "").split()
+                gone["headcount"] += int(words[0]) if words and words[0].isdigit() else 0
+    kept = dict(payload)
+    kept["materials"] = [
+        m
+        for m in payload.get("materials") or []
+        if str(m.get("material_name") or m.get("name") or "").strip().casefold() in alive_materials
+    ]
+    kept["activity_count"] = max(int(payload.get("activity_count") or 0) - gone["work"], 0)
+    kept["open_issue_count"] = max(int(payload.get("open_issue_count") or 0) - gone["issues_open"], 0)
+    labour = dict(payload.get("labour") or {})
+    if labour.get("headcount"):
+        labour["headcount"] = max(int(labour["headcount"]) - gone["headcount"], 0)
+    kept["labour"] = labour
+    return kept
 
 
 #: Mirrors the `daily_report_level` Postgres enum (migration 0440). The bare

@@ -75,6 +75,21 @@ def _route(semantic_type: Any, fields: dict[str, Any]) -> tuple[E, K, dict[str, 
     return _ROUTES.get(semantic_type)
 
 
+def _one_name_per_trade(results: Any) -> None:
+    """Request 88: the trades a labour answer lists, each once. Stored trade
+    codes differ in spelling ("mason" and "masons", "bar_bending" and
+    "bar_bender"); the workforce module's own trade mapping says which are the
+    same, so the answer names each trade once. Only what is shown changes."""
+    if not isinstance(results, dict) or not results.get("trades"):
+        return
+    from mesiri.domains.workforce.workers import normalize_trade
+
+    seen: dict[str, str] = {}
+    for trade in results["trades"]:
+        seen.setdefault(normalize_trade(trade) or str(trade), normalize_trade(trade) or str(trade))
+    results["trades"] = list(seen.values())
+
+
 @dataclass(slots=True)
 class QueryEntry(EntryScope):
     context_resolver: Any
@@ -129,8 +144,53 @@ class QueryEntry(EntryScope):
         for key in SCOPE_KEYS:
             fields.pop(key, None)
         ready = self.ready(scoped, message, event_type, workflow_key, fields)
-        await self._seed(ready, message, timezone=str(company_zone(scoped.ctx.timezone)))
+        timezone = str(company_zone(scoped.ctx.timezone))
+        await self._seed(ready, message, timezone=timezone)
+        if workflow_key is K.DPR_REQUEST:
+            draft = await self._past_day_draft(ready, timezone=timezone)
+            if draft is not None:
+                return draft
         return ready
+
+    async def _past_day_draft(self, ready: Ready, *, timezone: str) -> Say | None:
+        """Request 88: one rule for "yesterday's report", however it is
+        worded. A past day with a finished PDF is sent by the workflow (marked
+        "not confirmed yet" when the day is not signed off). A past day with no
+        PDF yet but entries gets what the day holds so far, marked a draft;
+        a day with nothing stays the workflow's "no DPR for that day"."""
+        fields = ready.event.fields
+        if not fields.get("dpr_day") or fields.get("dpr_status") not in ("pending_confirmation", "not_generated"):
+            return None
+        if self.dpr_request_query is None:
+            return None
+        from canonicalization.occurred_date import parse_stated_date, today_for
+        from runtime.inbound_journey.seeding import _dpr_scope
+
+        stated = fields.get("report_date") or fields.get("occurred_on")
+        report_date = parse_stated_date(stated, today=today_for(timezone)) if stated else None
+        project_id, site_id = _dpr_scope(ready.event, self.actor)
+        if report_date is None or not project_id or not site_id:
+            return None
+        try:
+            lines = await self.dpr_request_query.preview_lines(
+                organization_id=self.actor.organization_id,
+                project_id=project_id,
+                site_id=site_id,
+                report_date=report_date,
+            )
+        except Exception:  # noqa: BLE001 -- the workflow's own answer stands
+            _log.warning("query_entry.past_draft_failed", exc_info=True)
+            return None
+        if not lines:
+            return None
+        site = fields.get("dpr_site_name")
+        where = f" at {site}" if site else ""
+        return Say(
+            "answer",
+            f"The report for {fields['dpr_day']}{where} isn't confirmed yet. So far:\n"
+            + "\n".join(lines)
+            + "\nThis is a draft: not final, and not sent to anyone.",
+        )
 
     async def _seed(self, ready: Ready, message: Any, *, timezone: str) -> None:
         """The data the workflow answers from, by the pipeline's own seeds.
@@ -179,6 +239,8 @@ class QueryEntry(EntryScope):
                 await seed
             except Exception:  # noqa: BLE001 -- the workflow answers from what it has
                 _log.warning("query_entry.seed_failed correlation_id=%s key=%s", message.correlation_id, key.value, exc_info=True)
+        if key is K.LABOUR_QUERY:
+            _one_name_per_trade(event.fields.get("labour_results"))
 
     async def deliver(self, ready: Ready, message: Any) -> str | None:
         """After the run: the DPR PDF the answer says is attached, or a
