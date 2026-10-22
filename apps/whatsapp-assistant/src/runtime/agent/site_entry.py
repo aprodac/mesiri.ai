@@ -72,7 +72,14 @@ class SiteEntry(EntryScope):
             if amount is None or amount <= 0:
                 return Say("error", "Not saved: an amount above zero is needed.")
 
-        scoped = await self.settle(message, understanding, candidate, module=module_for_workflow(workflow_key))
+        scoped = await self.settle(
+            message,
+            understanding,
+            candidate,
+            module=module_for_workflow(workflow_key),
+            # Work done is always at a site (the save refuses it without one).
+            site_required=workflow_key is WorkflowKey.SITE_UPDATE,
+        )
         if isinstance(scoped, Say):
             return scoped
 

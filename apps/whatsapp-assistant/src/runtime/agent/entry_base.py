@@ -83,7 +83,7 @@ class EntryScope:
     __slots__ = ()
 
     async def settle(
-        self, message: Any, understanding: Any, candidate: Any, *, module: str | None
+        self, message: Any, understanding: Any, candidate: Any, *, module: str | None, site_required: bool = False
     ) -> Scoped | Say:
         """The sender's context and the project/site for this entry, or what
         to say (a question with buttons, a module that is off, a failure)."""
@@ -138,9 +138,16 @@ class EntryScope:
             sites = [s for s in getattr(self.actor, "sites", None) or [] if str(s.project_id) == str(project_id)]
             if len(sites) > 1:
                 return choose("Which site is this for?", [s.name for s in sites], "site")
-            # None sites: let it through site-less, as the classic site gate
-            # did; the save's own validation says what it still needs.
             site_id = sites[0].id if sites else None
+            if site_id is None and site_required:
+                # Without a site the save refuses it, and the model asked
+                # "which site?" with nothing to pick (live 22 Oct): say why.
+                return Say(
+                    "info",
+                    "Not saved: you have no site to report on in this project yet. Your admin "
+                    "can add the site, or add you to it, on the dashboard.",
+                )
+            # Otherwise let it through site-less, as the classic site gate did.
         if project_id == ctx.project_id and ctx.context_project_id is not None:
             # The context layer's own ids for what it resolved (they can
             # differ from the canonical ones); a pick or a remembered slot is
