@@ -388,3 +388,19 @@ pipeline and are unchanged.
 [40] (this ADR, above) - [68], [75], [76] (Mesiri voice, memory, polish) -
 [docs/execution/VOICE_ASSISTANT_PLAN.md](../execution/VOICE_ASSISTANT_PLAN.md) -
 [runtime-flow.md](runtime-flow.md) - [docs/qa/CONVERSATION_SCORECARD.md](../qa/CONVERSATION_SCORECARD.md) ([66]).
+
+## Addendum (request 88, 22 Oct): the code owns the card, the model only points at it
+
+Live tests showed two ways the model could touch the wrong record: "undo that" removed an unrelated
+draft, and a correction to an open card was refused. Rule since then: **what a tool may act on is
+decided by code and offered to the model; the adapter rejects anything else.**
+
+- The latest card per sender (its entries, the tool and arguments that made each, the record ids) is
+  kept by the code (`runtime/agent/cards.py`, Redis, 6 h) when a reply with Save / Cancel goes out, and
+  moves to "saved" when Save is tapped. The model sees it in its context with short ids.
+- `undo_last` removes the entries of that card (or the ids named from it); several entries ask first.
+- `update_pending_card` changes one item of the card still waiting on Save: the old draft is taken
+  back, the item's own save tool runs again with the merged arguments (all its gates re-run).
+- Checks on the reply's words (sentence ends, Save prompt, done-words, scripts, length) are code in
+  `runtime/agent/reply_text.py` and the runner; the model is asked again once, then the system's
+  sentence goes out.
