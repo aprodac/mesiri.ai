@@ -20,7 +20,7 @@ async def test_work_progress_keeps_floor_and_status(world):  # noqa: F811
                 ("save_work_done", {"narrative": "3rd floor slab concreting finished", "work_type": "slab concreting"}),
                 ("save_work_done", {"narrative": "2nd floor plastering 70%", "work_type": "plastering", "progress_percent": 70}),
             ],
-            "Ok, slab concreting theernnu, plastering 70% aayi. Shariyenkil Save tap cheyyu.",
+            "Got it, 3rd floor slab concreting finished, 2nd floor plastering 70%. Check it and tap Save.",
         ]
     )
     result = await world.say(provider, "3rd floor slab concreting finished, 2nd floor plastering 70%")

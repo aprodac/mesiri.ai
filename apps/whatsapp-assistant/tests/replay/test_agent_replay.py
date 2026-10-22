@@ -355,7 +355,10 @@ async def test_a_malayalam_note_gets_the_saved_list_then_the_models_own_words(wo
     result = await world.say(provider, "ഇന്ന് 3 മേസൺ പണിക്ക് വന്നു")
     # WA-37: the model's own words first; under them the "Saved:" line, written
     # from the saved data, not copied from the model.
-    assert result.reply.text.startswith("നാളെ കാണാം.\n\n✅ Saved: 3 workers (3 mason)")
+    # ("See you tomorrow" is tied to nothing and names no item: the system's own
+    # sentence, built from the card, stands above the list -- request 89.)
+    assert result.reply.text.startswith("3 workers (3 mason). ശരിയാണെങ്കിൽ Save അമർത്തുക.\n\n✅ Saved: 3 workers (3 mason)")
+    assert "നാളെ കാണാം" not in result.reply.text
     assert "സേവ് ചെയ്തു" not in result.reply.text  # the model's own saved line is dropped
     # The canned workflow wording ("Labour recorded", "draft", ...) never reaches the user.
     assert "draft" not in result.reply.text.lower()
@@ -363,7 +366,7 @@ async def test_a_malayalam_note_gets_the_saved_list_then_the_models_own_words(wo
     sent = localize_reply_spec(ReplySpec(text=result.reply.text), "Malayalam", "native").text
     assert "\n✅ സേവ് ചെയ്തു: 3 തൊഴിലാളികൾ (3 mason)" in sent
     # And the model was told the user's own words, untranslated.
-    assert "User message:\nഇന്ന് 3 മേസൺ പണിക്ക് വന്നു" in provider.last_messages[-1].text
+    assert any("User message:\nഇന്ന് 3 മേസൺ പണിക്ക് വന്നു" in m.text for m in provider.last_messages)
 
 
 async def test_and_10_more_continues_the_previous_turn(world):

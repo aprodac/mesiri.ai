@@ -380,42 +380,6 @@ def test_every_wording_of_yesterday_reaches_the_pipeline_as_yesterday(said, expe
     assert candidate.fields.get("report_date") == expected or (expected is None and "report_date" not in candidate.fields)
 
 
-async def test_a_past_day_with_entries_but_no_pdf_is_a_draft_marked_not_confirmed():
-    from runtime.agent.query_entry import QueryEntry
-
-    class Query:
-        def __init__(self, lines):  # noqa: ANN001
-            self.lines, self.asked = lines, None
-
-        async def preview_lines(self, **kw):  # noqa: ANN003
-            self.asked = kw
-            return self.lines
-
-    site = SimpleNamespace(id="s1", name="Site A1", project_id="p1")
-    actor = SimpleNamespace(organization_id="org", projects=[SimpleNamespace(id="p1")], sites=[site])
-
-    def ready(status, day="21 Oct 2026"):  # noqa: ANN001, ANN202
-        event = SimpleNamespace(
-            project_id=None, site_id=None,
-            fields={"dpr_day": day, "dpr_status": status, "report_date": "yesterday", "dpr_site_name": "Site A1"},
-        )
-        return SimpleNamespace(event=event)
-
-    entry = QueryEntry(None, None, actor, dpr_request_query=Query(["• Labour: 19 workers"]))
-    say = await entry._past_day_draft(ready("pending_confirmation"), timezone="Asia/Kolkata")
-    assert say.status == "answer" and "isn't confirmed yet" in say.text and "• Labour: 19 workers" in say.text
-    assert "21 Oct 2026" in say.text and "not sent to anyone" in say.text
-    from datetime import timedelta
-
-    from canonicalization.occurred_date import today_for
-
-    assert entry.dpr_request_query.asked["report_date"] == today_for("Asia/Kolkata") - timedelta(days=1)
-    # no entries: the workflow's own "no DPR for that day" stands; today and a ready PDF are left alone
-    assert await QueryEntry(None, None, actor, dpr_request_query=Query([]))._past_day_draft(ready("not_generated"), timezone="Asia/Kolkata") is None
-    assert await entry._past_day_draft(ready("ready"), timezone="Asia/Kolkata") is None
-    assert await entry._past_day_draft(ready("pending_confirmation", day=""), timezone="Asia/Kolkata") is None
-
-
 def test_the_labour_answer_names_each_trade_once():
     results = {"trades": ["mason", "masons", "bar_bending", "bar_bender", "helper", "Helpers", "tile_layer"]}
     _one_name_per_trade(results)

@@ -46,10 +46,10 @@ async def _run(provider, *results, ctx=CTX, text="3 masons today"):
 
 
 async def test_a_saved_note_gets_the_models_one_message_with_the_undo_line():
-    provider = FakeToolCallingProvider([[("save_labour", {"workers": WORKERS})], "Sheri, 3 masons. Check and tap Save."])
+    provider = FakeToolCallingProvider([[("save_labour", {"workers": WORKERS})], "Got it, 3 masons. Check and tap Save."])
     result = await _run(provider, StepResult("saved", text="Labour recorded"))
     assert result.outcome == "ok"
-    assert result.reply.text == "Sheri, 3 masons. Check and tap Save.\n\nWrong? Reply UNDO."
+    assert result.reply.text == "Got it, 3 masons. Check and tap Save.\n\nWrong? Reply UNDO."
     assert provider.calls == 1  # one model run, not one per part
 
 
@@ -70,7 +70,10 @@ async def test_recorded_lines_the_model_wrote_are_dropped_before_save():
         text="12 mason, 5 bag cement slab",
     )
     assert "Recorded" not in result.reply.text
-    assert result.reply.text.startswith("Check it and tap Save.\n\n✅ Saved:\n• 12 workers (12 mason)")
+    # (the words above the card name every item on it, request 89)
+    assert result.reply.text.startswith(
+        "12 workers (12 mason); Cement used: 5 bags (slab). Please check it and tap Save.\n\n✅ Saved:\n• 12 workers (12 mason)"
+    )
 
 
 @pytest.mark.parametrize(
@@ -124,7 +127,7 @@ async def test_a_question_keeps_its_buttons_and_the_model_wording():
         [[("ask_user", {"question": "Which site?", "options": ["Site A1", "Site A2"]})],
          "ഏത് സൈറ്റ്? Site A1 / Site A2 ?"]
     )
-    result = await _run(provider)
+    result = await _run(provider, text="ഇന്ന് 3 മേസ്തിരി")
     assert [b.title for b in result.reply.buttons] == ["Site A1", "Site A2"]
     assert result.reply.text.startswith("ഏത് സൈറ്റ്")
 
@@ -328,9 +331,9 @@ async def test_a_code_word_in_the_reply_is_never_sent():
 @pytest.mark.parametrize(
     ("message", "rule"),
     [
-        ("3 carpenters today", "English letters"),
-        ("slab-inu 20 bag cement use cheythu", "English letters"),
-        ("ഇന്ന് മഴയാണ്", "its own script"),
+        ("3 carpenters today", "English only"),
+        ("slab-inu 20 bag cement use cheythu", "Manglish"),
+        ("ഇന്ന് മഴയാണ്", "Malayalam script"),
         ("👍", None),
     ],
 )

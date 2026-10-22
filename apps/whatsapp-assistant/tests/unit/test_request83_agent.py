@@ -91,8 +91,8 @@ def test_an_item_without_a_figure_needs_one_of_its_words():
 def test_the_system_sentence_is_in_the_senders_language_and_never_says_saved():
     items = [LABOUR, "Cement used: 25 bags"]
     manglish = r.covering_sentence(items, "innu 5 mason, 8 helper, 2 electrician vannu")
-    assert manglish.startswith("Sheri, 15 workers (5 mason, 8 helper, 2 electrician); Cement used: 25 bags")
-    assert r.covering_sentence(items, "12 masons today").startswith("Got it: ")
+    assert manglish.startswith("15 workers (5 mason, 8 helper, 2 electrician); Cement used: 25 bags. Nokki shariyenkil Save tap cheyyu.")
+    assert r.covering_sentence(items, "12 masons today").endswith("Please check it and tap Save.")
     assert "അമർത്തുക" in r.covering_sentence(items, "ഇന്ന് 12 മേസൺ")
     assert "दबाएँ" in r.covering_sentence(items, "आज 12 मिस्त्री")
     for text in (manglish, r.covering_sentence(items, "hello")):
@@ -160,7 +160,7 @@ async def test_a_second_miss_falls_back_to_the_systems_own_sentence():
     )
     result = await _say(provider, SAID, StepResult("saved", text="x", summary=LABOUR))
     assert provider.retried == 1
-    assert result.reply.text.startswith(f"Sheri, {LABOUR}. Nokki shariyenkil Save tap cheyyu.")
+    assert result.reply.text.startswith(f"{LABOUR}. Nokki shariyenkil Save tap cheyyu.")
 
 
 async def test_a_sentence_that_names_everything_costs_no_second_call():
