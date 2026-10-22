@@ -52,7 +52,6 @@ def _build(monkeypatch, provider, work_site):
         )
 
     monkeypatch.setattr(mj, "resolve_sender", fake_resolve)
-    monkeypatch.setattr(mj, "process_inbound_message", AsyncMock(side_effect=AssertionError("classic")))
     params = inspect.signature(mj.build_message_handlers).parameters
     deps = {n: AsyncMock() for n, p in params.items() if p.default is inspect.Parameter.empty}
     handler = deps["interaction_handler"]

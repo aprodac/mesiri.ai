@@ -254,7 +254,7 @@ async def test_any_save_keeps_its_site_for_the_rest_of_the_day():
 
     gateway = Saving(
         message=_message(),
-        process=None, save_now=None, undo=None, followups=None, held_prompt=None,
+        save_now=None, undo=None, followups=None, held_prompt=None,
         set_today_site=set_today,
     )
     step = await gateway.run(to_candidate("save_labour", {"workers": [{"trade": "mason", "headcount": 3}]}, _scope()), text="3 masons")

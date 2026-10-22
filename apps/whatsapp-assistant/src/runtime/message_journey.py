@@ -40,28 +40,6 @@ from mesiri_contracts.assistant.enums import InputModality
 from runtime import forward_batch
 from runtime.account_admin_journey import try_handle_account_admin_command
 from runtime.ai_outage import AIUnavailableError, retry_attempt
-from runtime.inbound_journey import (
-    process_inbound_message,
-    resume_pending_decomposition_with_material,
-    resume_pending_decomposition_with_material_create,
-    resume_pending_decomposition_with_material_unit_choice,
-    resume_pending_decomposition_with_project,
-    resume_pending_decomposition_with_site,
-    resume_pending_decomposition_with_stock_choice,
-    resume_pending_decomposition_with_unit,
-    resume_pending_plan_confirmation,
-    resume_pending_report_with_audience_candidate,
-    resume_pending_report_with_material,
-    resume_pending_report_with_material_create,
-    resume_pending_report_with_material_unit_choice,
-    resume_pending_report_with_member_candidate,
-    resume_pending_report_with_member_create_offer,
-    resume_pending_report_with_petty_cash_recipient,
-    resume_pending_report_with_project,
-    resume_pending_report_with_site,
-    resume_pending_report_with_stock_choice,
-    resume_pending_report_with_unit,
-)
 from runtime.reply_composer import (
     QUESTION,
     SETUP_OFFER,
@@ -86,44 +64,34 @@ if TYPE_CHECKING:
     from interactions.category_hint import CategoryHintStore
     from interactions.completion_photo_hint import CompletionPhotoHintStore
     from interactions.pending_media import PendingMediaStore
-    from interactions.pending_report import PendingReportStore
     from interactions.project_setup_offer import ProjectSetupOfferStore
     from interactions.team_photo_hint import TeamPhotoHintStore
     from memory.context_loader import ConversationMemoryLoader
     from memory.coordinator import ConversationMemoryCoordinator
     from memory.recent_turns import RecentTurnsStore
-    from mesiri_ai.ports.decomposition import DecompositionProvider
     from mesiri_contracts.common.storage import ObjectStoragePort
-    from planner import Planner
     from planning.plan_store import PlanStore
     from runtime.activity_query import ActivityQueryService
     from runtime.activity_search_service import ActivitySearchService
-    from runtime.capability_help import CapabilityHelpService
     from runtime.contact_share_journey import ContactShareJourney
     from runtime.dependencies import Settings
     from runtime.dpr_request_query import DprRequestQueryService
     from runtime.duplicate_expense_query import DuplicateExpenseQueryService
-    from runtime.entity_resolution.member_resolution import MemberNameResolutionService
-    from runtime.escalation_query import EscalationCreateService
     from runtime.evidence_query import EvidenceAttachService
-    from runtime.expense_category_query import ExpenseCategoryQueryService
     from runtime.expense_query_service import ExpenseQueryService
     from runtime.first_message_query import FirstMessageQueryService
-    from runtime.inbound_journey.pending_decomposition import PendingDecompositionStore
     from runtime.inventory_query import MaterialInventoryQueryService
     from runtime.labour_query_service import LabourQueryService
     from runtime.logging_ports import MessageLogger, TraceLogger
     from runtime.material_catalog_query import MaterialCatalogQueryService
     from runtime.money_account_query import MoneyAccountQueryService
     from runtime.org_settings_query import OrganizationSettingsQueryService
-    from runtime.petty_cash_query import PettyCashRecipientQueryService
     from runtime.project_detail_query import ProjectDetailQueryService
     from runtime.reply_language import ReplyComposer, UserLanguageStore
     from runtime.reversal_query import ReversalTargetQueryService
     from runtime.setup_questions import SetupQuestions
     from runtime.signup_journey import SignupJourney
     from runtime.site_day_review import SiteDayReview
-    from runtime.site_issue_query import SiteIssueTargetQueryService
     from runtime.trial_journey import TrialJourney
     from runtime.vendor_query import VendorQueryService
     from runtime.workforce_query import WorkforceQueryService
@@ -152,7 +120,6 @@ def build_message_handlers(
     actor_reader: ActorReader,
     pipeline: UnderstandingPipeline,
     context_resolver: ContextResolver,
-    planner: Planner,
     workflow_runtime: WorkflowRuntime,
     interaction_handler: InteractionHandler,
     object_storage: ObjectStoragePort,
@@ -161,22 +128,14 @@ def build_message_handlers(
     inventory_query: MaterialInventoryQueryService,
     catalog_query: MaterialCatalogQueryService,
     org_settings_query: OrganizationSettingsQueryService,
-    expense_category_query: ExpenseCategoryQueryService,
     money_account_query: MoneyAccountQueryService,
-    petty_cash_query: PettyCashRecipientQueryService,
     reversal_query: ReversalTargetQueryService,
-    site_issue_query: SiteIssueTargetQueryService,
     duplicate_expense_query: DuplicateExpenseQueryService,
     workforce_query: WorkforceQueryService,
     activity_query: ActivityQueryService,
     evidence_query: EvidenceAttachService,
-    escalation_query: EscalationCreateService,
-    capability_help: CapabilityHelpService,
     first_message_query: FirstMessageQueryService,
-    member_resolver: MemberNameResolutionService,
     plan_store: PlanStore,
-    pending_decomposition_store: PendingDecompositionStore,
-    decomposition: DecompositionProvider | None = None,
     recent_turns_store: RecentTurnsStore,
     labour_query_service: LabourQueryService,
     activity_search_service: ActivitySearchService,
@@ -184,7 +143,6 @@ def build_message_handlers(
     project_detail_query: ProjectDetailQueryService,
     vendor_query: VendorQueryService,
     expense_query_service: ExpenseQueryService,
-    pending_report_store: PendingReportStore,
     pending_media_store: PendingMediaStore,
     category_hint_store: CategoryHintStore,
     completion_photo_hint_store: CompletionPhotoHintStore,
@@ -497,28 +455,6 @@ def build_message_handlers(
         note = _held_notes.pop(wa_id, None)
         return fold_note(spec, note) if note else spec
 
-    def _fold_text(send):  # type: ignore[no-untyped-def]
-        """``send_text`` that carries a waiting let-go line in the same message."""
-
-        async def send_with_note(to, text, *args, **kwargs):  # type: ignore[no-untyped-def]
-            note = _held_notes.pop(to, None)
-            if note:
-                text = fold_note(ReplySpec(text=text), note).text
-            return await send(to, text, *args, **kwargs)
-
-        return send_with_note
-
-    def _fold_body(send):  # type: ignore[no-untyped-def]
-        """``send_list`` / ``send_button`` that carry the waiting line in the body."""
-
-        async def send_with_note(to, *args, **kwargs):  # type: ignore[no-untyped-def]
-            note = _held_notes.pop(to, None)
-            if note and "body" in kwargs:
-                kwargs["body"] = fold_note(ReplySpec(text=kwargs["body"]), note).text
-            return await send(to, *args, **kwargs)
-
-        return send_with_note
-
     _held_users: dict[str, str] = {}
 
     async def _flush_held_note(wa_id: str) -> None:
@@ -567,31 +503,14 @@ def build_message_handlers(
         _held_users[wa_id] = ctx.user_id
         _held_notes[wa_id] = let_go_note(closed.result.collected_fields, closed.reply_text)
 
-    async def _agent_enabled(message, ctx) -> bool:  # type: ignore[no-untyped-def]
-        """Text, voice, photos and documents (ARCH-06), for a company not
-        switched "off". Never raises: any doubt means the classic pipeline."""
-        if message.modality not in (
-            InputModality.TEXT,
-            InputModality.VOICE,
-            InputModality.INTERACTIVE,
-            InputModality.IMAGE,
-            InputModality.DOCUMENT,
-        ):
-            return False
-        if message.modality in (InputModality.TEXT, InputModality.INTERACTIVE) and not (message.text or "").strip():
-            return False
-        try:
-            from mesiri.domains.organizations import settings as settings_spec
-
-            stored = await org_settings_query.get(
-                organization_id=str(ctx.organization_id), key=settings_spec.ASSISTANT_MODE
-            )
-            enabled = settings_spec.agent_mode(stored)
-            _log.info("agent.mode org=%s stored=%r agent=%s", ctx.organization_id, stored, enabled)
-            return enabled
-        except Exception:  # noqa: BLE001
-            _log.exception("agent.mode_lookup_failed org=%s", ctx.organization_id)
-            return False
+    def _agent_reads(message) -> bool:  # type: ignore[no-untyped-def]
+        """Text, voice, photos and documents; a tap or text with no words is
+        not a message for the model."""
+        if message.modality in (InputModality.VOICE, InputModality.IMAGE, InputModality.DOCUMENT):
+            return True
+        return message.modality in (InputModality.TEXT, InputModality.INTERACTIVE) and bool(
+            (message.text or "").strip()
+        )
 
     async def _run_journey_steps(message, raw_payload, retry_of_id, timer) -> None:  # type: ignore[no-untyped-def]
         wa_id = message.sender.wa_id
@@ -610,52 +529,9 @@ def build_message_handlers(
             from runtime.today_context import build_stock_line, build_today_line
 
             hint = category_hint.semantic_hint if category_hint else None
-            direction = category_hint.direction if category_hint else None
-
-            async def _process(msg, preset, sink):  # type: ignore[no-untyped-def]
-                return await process_inbound_message(
-                    msg,
-                    actor_user_id=ctx.user_id,
-                    actor=ctx,
-                    direction_hint=direction,
-                    category_hint_store=category_hint_store,
-                    pipeline=preset,
-                    context_resolver=context_resolver,
-                    planner=planner,
-                    workflow_runtime=workflow_runtime,
-                    interaction_handler=interaction_handler,
-                    send_text=sink.send_text,
-                    send_list=sink.send_list,
-                    send_button=sink.send_button,
-                    send_image=sender.send_image,
-                    send_document=sender.send_document,
-                    object_storage=object_storage,
-                    context_debug=settings.context_debug,
-                    trace_logger=trace_logger,
-                    inventory_query=inventory_query,
-                    catalog_query=catalog_query,
-                    org_settings_query=org_settings_query,
-                    expense_category_query=expense_category_query,
-                    money_account_query=money_account_query,
-                    petty_cash_query=petty_cash_query,
-                    reversal_query=reversal_query,
-                    site_issue_query=site_issue_query,
-                    duplicate_expense_query=duplicate_expense_query,
-                    workforce_query=workforce_query,
-                    activity_query=activity_query,
-                    labour_query_service=labour_query_service,
-                    activity_search_service=activity_search_service,
-                    dpr_request_query=dpr_request_query,
-                    project_detail_query=project_detail_query,
-                    vendor_query=vendor_query,
-                    expense_query_service=expense_query_service,
-                    pending_report_store=pending_report_store,
-                    plan_store=plan_store,
-                    pending_decomposition_store=pending_decomposition_store,
-                    escalation_query=escalation_query,
-                    capability_help=capability_help,
-                    member_resolver=member_resolver,
-                )
+            if hint and category_hint.direction:
+                # The Arrived/Used tap of the material menu (MATERIAL_DIRECTION_BUTTONS).
+                hint = f"{hint} ({category_hint.direction})"
 
             async def _undo() -> str | None:
                 return await interaction_handler.undo_latest_draft(
@@ -801,7 +677,6 @@ def build_message_handlers(
             def _gateway(msg, language):  # type: ignore[no-untyped-def]
                 early["gateway"] = JourneyGateway(
                     message=msg,
-                    process=_process,
                     save_now=_save_now,
                     undo=_undo,
                     followups=lambda handled: _deliver_followups(handled, audit=False),
@@ -1775,31 +1650,6 @@ def build_message_handlers(
             await _deliver_handled(saved, fold_plan_reply=True)
             return True
 
-        async def _save_first_after_journey(journey) -> None:  # type: ignore[no-untyped-def]
-            """After the normal journey: when it started a capture draft
-            (process_inbound_message then sent no "Confirm?"), save it now.
-            Keyed on THIS message having started a draft, so a draft left
-            waiting from an earlier message is never saved by an unrelated
-            one."""
-            run = getattr(journey, "workflow_run", None)
-            if run is None or run.status is not WorkflowRunStatus.STARTED:
-                return
-            if await _save_first_now():
-                return
-            # Not saved after all (a failure, or the company was switched in
-            # between): if the journey held back its "Confirm?" for us, send
-            # it now, so the sender is never left with no reply at all.
-            try:
-                held_back = await interaction_handler.saves_first(
-                    workflow_key=run.workflow_key, organization_id=str(ctx.organization_id)
-                )
-            except Exception:  # noqa: BLE001
-                held_back = False
-            if held_back:
-                from runtime.inbound_journey import render_workflow_run_reply_spec
-
-                await _send_spec(render_workflow_run_reply_spec(run), wa_id)
-
         # M7: if the user has a workflow awaiting confirmation and this message
         # is a confirmation reply, resume it and stop — the AI pipeline (and its
         # token cost) is never touched. A plain "yes" ends here.
@@ -2063,81 +1913,18 @@ def build_message_handlers(
 
             held_message = held_batch[0]
             _fire_processing_ack(wa_id, held_message.modality)
-            if agent_provider is not None and await _agent_enabled(held_message, ctx):
-                # ARCH-06: the agent reads the photo, told what they tapped it is.
-                from interactions.category_hint import CategoryHint
+            # ARCH-06: the agent reads the photo, told what they tapped it is.
+            from interactions.category_hint import CategoryHint
 
-                await _run_agent(
-                    held_message, ctx, CategoryHint(IMAGE_PURPOSE_SEMANTIC_HINT[image_purpose_row_id]), timer
-                )
-                if len(held_batch) > 1:
-                    overflow_reply = render_batch_overflow_reply(
-                        held_count=len(held_batch), remaining_count=len(held_batch) - 1
-                    )
-                    await sender.send_text(wa_id, overflow_reply)
-                    await message_logger.log_reply(correlation_id=message.correlation_id, reply=overflow_reply)
-                await message_logger.mark_completed(correlation_id=message.correlation_id)
-                return
-            held_journey = await process_inbound_message(
-                held_message,
-                actor_user_id=ctx.user_id,
-                actor=ctx,
-                semantic_hint=IMAGE_PURPOSE_SEMANTIC_HINT[image_purpose_row_id],
-                category_hint_store=category_hint_store,
-                pipeline=pipeline,
-                context_resolver=context_resolver,
-                planner=planner,
-                workflow_runtime=workflow_runtime,
-                interaction_handler=interaction_handler,
-                send_text=_fold_text(sender.send_text_capturing_id),
-                send_list=_fold_body(sender.send_list),
-                send_button=_fold_body(sender.send_button),
-                send_image=sender.send_image,
-                send_document=sender.send_document,
-                object_storage=object_storage,
-                context_debug=settings.context_debug,
-                message_logger=message_logger,
-                trace_logger=trace_logger,
-                inventory_query=inventory_query,
-                catalog_query=catalog_query,
-                org_settings_query=org_settings_query,
-                expense_category_query=expense_category_query,
-                money_account_query=money_account_query,
-                petty_cash_query=petty_cash_query,
-                reversal_query=reversal_query,
-                site_issue_query=site_issue_query,
-                duplicate_expense_query=duplicate_expense_query,
-                workforce_query=workforce_query,
-                activity_query=activity_query,
-                labour_query_service=labour_query_service,
-                activity_search_service=activity_search_service,
-                dpr_request_query=dpr_request_query,
-                project_detail_query=project_detail_query,
-                vendor_query=vendor_query,
-                expense_query_service=expense_query_service,
-                pending_report_store=pending_report_store,
-                decomposition=decomposition,
-                plan_store=plan_store,
-                pending_decomposition_store=pending_decomposition_store,
-                memory_loader=memory_loader,
-                memory_coordinator=memory_coordinator,
-                escalation_query=escalation_query,
-                capability_help=capability_help,
-                first_message_query=first_message_query,
-                member_resolver=member_resolver,
-                reply_composer=reply_composer,
-                user_language_store=user_language_store,
+            await _run_agent(
+                held_message, ctx, CategoryHint(IMAGE_PURPOSE_SEMANTIC_HINT[image_purpose_row_id]), timer
             )
-            timer.lap("process_inbound_message_held_media")
-            await _save_first_after_journey(held_journey)
             if len(held_batch) > 1:
                 overflow_reply = render_batch_overflow_reply(
                     held_count=len(held_batch), remaining_count=len(held_batch) - 1
                 )
                 await sender.send_text(wa_id, overflow_reply)
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=overflow_reply
-                )
+                await message_logger.log_reply(correlation_id=message.correlation_id, reply=overflow_reply)
             await message_logger.mark_completed(correlation_id=message.correlation_id)
             return
 
@@ -2199,555 +1986,6 @@ def build_message_handlers(
             )
             await message_logger.mark_completed(correlation_id=message.correlation_id)
             return
-
-        # Phase 6 perf: all of the resume_pending_report_with_* checks below can
-        # only ever return something when the incoming message is a button/list tap
-        # (InputModality.INTERACTIVE). For text and voice messages they always
-        # return None, so we skip them entirely — eliminating up to 8 sequential
-        # DB reads (pending_report_store lookups) from every normal message.
-        if message.modality is InputModality.INTERACTIVE:
-            # A tap on the material picker sent by the material-resolution gate
-            # (runtime/inbound_journey.py, ambiguous/unmatched material name) --
-            # resumes with material_id filled in and re-runs the remaining gates
-            # (unit, then project) rather than assuming those are settled.
-            material_reply = await resume_pending_report_with_material(
-                message,
-                ctx.user_id,
-                pending_report_store=pending_report_store,
-                catalog_query=catalog_query,
-                planner=planner,
-                workflow_runtime=workflow_runtime,
-                actor=ctx,
-                inventory_query=inventory_query,
-                message_logger=message_logger,
-                # Needed by the "None of these" leg to decide whether this
-                # sender may be offered the create option (STA-139's org
-                # setting), same check the gate itself makes.
-                org_settings_query=org_settings_query,
-            )
-            timer.lap("resume_material")
-            if material_reply is not None:
-                await send_reply_spec(
-                    material_reply,
-                    wa_id,
-                    send_text=sender.send_text,
-                    send_list=sender.send_list,
-                    send_button=sender.send_button,
-                )
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=material_reply.text
-                )
-                return
-
-            # A Yes/No tap on the "add this material to the catalog?" offer sent
-            # when a reported name matched nothing and the sender's role is
-            # allowed to create one (STA-139). Checked before the Stock Unit
-            # mismatch resume below -- distinct row-id prefixes, but these two
-            # answer different questions and must stay separately dispatched.
-            material_create_reply = await resume_pending_report_with_material_create(
-                message,
-                ctx.user_id,
-                pending_report_store=pending_report_store,
-                catalog_query=catalog_query,
-                planner=planner,
-                workflow_runtime=workflow_runtime,
-                actor=ctx,
-                inventory_query=inventory_query,
-                message_logger=message_logger,
-            )
-            timer.lap("resume_material_create")
-            if material_create_reply is not None:
-                await send_reply_spec(
-                    material_create_reply,
-                    wa_id,
-                    send_text=sender.send_text,
-                    send_list=sender.send_list,
-                    send_button=sender.send_button,
-                )
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=material_create_reply.text
-                )
-                return
-
-            # A tap on the member-name picker sent by _run_member_name_gate
-            # (ENTITY_RESOLUTION_PLAN.md) when a project-member name hint
-            # matched one or more active users closely but not exactly --
-            # resumes with member_name patched to the tapped user's exact
-            # name, or falls through to the create offer for "Someone else".
-            # A tap on "who should I remind?" -- _run_audience_name_gate's
-            # Ambiguous case. Answering re-enters that gate, so a reminder
-            # naming several unknown people is simply this leg, repeated.
-            aud_reply = await resume_pending_report_with_audience_candidate(
-                message,
-                ctx.user_id,
-                pending_report_store=pending_report_store,
-                member_resolver=member_resolver,
-                planner=planner,
-                workflow_runtime=workflow_runtime,
-                actor=ctx,
-                inventory_query=inventory_query,
-                message_logger=message_logger,
-            )
-            timer.lap("resume_audience_candidate")
-            if aud_reply is not None:
-                await send_reply_spec(
-                    aud_reply,
-                    wa_id,
-                    send_text=sender.send_text,
-                    send_list=sender.send_list,
-                    send_button=sender.send_button,
-                )
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=aud_reply.text
-                )
-                return
-
-            # A tap on "who is this cash for?" -- _run_petty_cash_recipient_
-            # gate's Ambiguous case. Checked before the member picker below:
-            # both resolve a person, and only the row-id prefix distinguishes
-            # which request is being continued.
-            pcr_reply = await resume_pending_report_with_petty_cash_recipient(
-                message,
-                ctx.user_id,
-                pending_report_store=pending_report_store,
-                member_resolver=member_resolver,
-                petty_cash_query=petty_cash_query,
-                planner=planner,
-                workflow_runtime=workflow_runtime,
-                actor=ctx,
-                inventory_query=inventory_query,
-                message_logger=message_logger,
-            )
-            timer.lap("resume_petty_cash_recipient")
-            if pcr_reply is not None:
-                await send_reply_spec(
-                    pcr_reply,
-                    wa_id,
-                    send_text=sender.send_text,
-                    send_list=sender.send_list,
-                    send_button=sender.send_button,
-                )
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=pcr_reply.text
-                )
-                return
-
-            member_candidate_reply = await resume_pending_report_with_member_candidate(
-                message,
-                ctx.user_id,
-                pending_report_store=pending_report_store,
-                member_resolver=member_resolver,
-                planner=planner,
-                workflow_runtime=workflow_runtime,
-                actor=ctx,
-                inventory_query=inventory_query,
-                message_logger=message_logger,
-            )
-            timer.lap("resume_member_candidate")
-            if member_candidate_reply is not None:
-                await send_reply_spec(
-                    member_candidate_reply,
-                    wa_id,
-                    send_text=sender.send_text,
-                    send_list=sender.send_list,
-                    send_button=sender.send_button,
-                )
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=member_candidate_reply.text
-                )
-                return
-
-            # A Yes/No tap on "create this user and continue adding them to
-            # the project?" -- _run_member_name_gate's Missing case. Yes
-            # starts the CREATE_USER -> ADD_PROJECT_MEMBER chain (see
-            # resume.py's start_member_create_plan); its own reply is
-            # CREATE_USER's first question (usually the phone number), not a
-            # finished confirmation -- distinct row-id prefix from every
-            # other resume above, dispatched independently.
-            member_create_reply = await resume_pending_report_with_member_create_offer(
-                message,
-                ctx.user_id,
-                pending_report_store=pending_report_store,
-                plan_store=plan_store,
-                workflow_runtime=workflow_runtime,
-                actor=ctx,
-                message_logger=message_logger,
-                recent_turns=recent_turns_store,
-            )
-            timer.lap("resume_member_create")
-            if member_create_reply is not None:
-                await send_reply_spec(
-                    member_create_reply,
-                    wa_id,
-                    send_text=sender.send_text,
-                    send_list=sender.send_list,
-                    send_button=sender.send_button,
-                )
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=member_create_reply.text
-                )
-                return
-
-            # A Yes/No tap on the whole-plan preview (docs/execution/
-            # COMPOSITE_REQUEST_PLAN_LAYER.md §8) -- decomposed_plan.py's
-            # try_start_decomposed_plan persisted an all-PENDING Plan and sent
-            # this preview; nothing runs until Yes. Distinct row-id pair from
-            # every other resume above, dispatched independently.
-            plan_confirm_reply = await resume_pending_plan_confirmation(
-                message,
-                ctx.user_id,
-                plan_store=plan_store,
-                workflow_runtime=workflow_runtime,
-                message_logger=message_logger,
-            )
-            timer.lap("resume_plan_confirmation")
-            if plan_confirm_reply is not None:
-                await send_reply_spec(
-                    plan_confirm_reply,
-                    wa_id,
-                    send_text=sender.send_text,
-                    send_list=sender.send_list,
-                    send_button=sender.send_button,
-                )
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=plan_confirm_reply.text
-                )
-                return
-
-            # A tap on the unit picker shown when a brand-new material's Stock
-            # Unit couldn't be inferred from the report's own words -- creates
-            # the catalog entry and continues the held report.
-            material_unit_reply = await resume_pending_report_with_material_unit_choice(
-                message,
-                ctx.user_id,
-                pending_report_store=pending_report_store,
-                catalog_query=catalog_query,
-                planner=planner,
-                workflow_runtime=workflow_runtime,
-                actor=ctx,
-                inventory_query=inventory_query,
-                message_logger=message_logger,
-            )
-            timer.lap("resume_material_unit_choice")
-            if material_unit_reply is not None:
-                await send_reply_spec(
-                    material_unit_reply,
-                    wa_id,
-                    send_text=sender.send_text,
-                    send_list=sender.send_list,
-                    send_button=sender.send_button,
-                )
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=material_unit_reply.text
-                )
-                return
-
-            # A Yes/No tap on the Stock Unit mismatch clarification -- resumes
-            # with unit_id filled in (or tells the sender to resend on "No") and
-            # re-runs the project gate before planner/workflow.
-            unit_reply = await resume_pending_report_with_unit(
-                message,
-                ctx.user_id,
-                pending_report_store=pending_report_store,
-                catalog_query=catalog_query,
-                planner=planner,
-                workflow_runtime=workflow_runtime,
-                actor=ctx,
-                inventory_query=inventory_query,
-                message_logger=message_logger,
-            )
-            timer.lap("resume_unit")
-            if unit_reply is not None:
-                await send_reply_spec(
-                    unit_reply,
-                    wa_id,
-                    send_text=sender.send_text,
-                    send_list=sender.send_list,
-                    send_button=sender.send_button,
-                )
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=unit_reply.text
-                )
-                return
-
-            # A tap on one of the three buttons sent by the stock sufficiency
-            # gate (runtime/inbound_journey.py, usage quantity greater than what's
-            # in stock) -- resumes with the report capped/switched-to-arrival/
-            # cancelled per the tap, same principle as the other interactive fast
-            # paths above.
-            stock_reply = await resume_pending_report_with_stock_choice(
-                message,
-                ctx.user_id,
-                pending_report_store=pending_report_store,
-                planner=planner,
-                workflow_runtime=workflow_runtime,
-                inventory_query=inventory_query,
-                message_logger=message_logger,
-            )
-            timer.lap("resume_stock_choice")
-            if stock_reply is not None:
-                await send_reply_spec(
-                    stock_reply,
-                    wa_id,
-                    send_text=sender.send_text,
-                    send_list=sender.send_list,
-                    send_button=sender.send_button,
-                )
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=stock_reply.text
-                )
-                return
-
-            # A tap on the project-picker list sent by the project-selection gate
-            # (runtime/inbound_journey.py, when a report was otherwise complete
-            # but no project could be resolved) -- resumes the held report with
-            # the chosen project_id and runs planner/workflow directly, same
-            # principle as the other interactive fast paths above.
-            project_reply = await resume_pending_report_with_project(
-                message,
-                ctx.user_id,
-                pending_report_store=pending_report_store,
-                planner=planner,
-                workflow_runtime=workflow_runtime,
-                actor=ctx,
-                inventory_query=inventory_query,
-                message_logger=message_logger,
-            )
-            timer.lap("resume_project")
-            if project_reply is not None:
-                await send_reply_spec(
-                    project_reply,
-                    wa_id,
-                    send_text=sender.send_text,
-                    send_list=sender.send_list,
-                    send_button=sender.send_button,
-                )
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=project_reply.text
-                )
-                return
-
-            # A tap on the site-picker list sent by the site-selection gate
-            # (runtime/inbound_journey.py, once project is settled but the
-            # project has more than one site) -- resumes the held report/query
-            # with the chosen site_id (or None for "All Sites Combined") and
-            # runs planner/workflow directly, same principle as the other
-            # interactive fast paths above.
-            site_reply = await resume_pending_report_with_site(
-                message,
-                ctx.user_id,
-                pending_report_store=pending_report_store,
-                planner=planner,
-                workflow_runtime=workflow_runtime,
-                actor=ctx,
-                inventory_query=inventory_query,
-                message_logger=message_logger,
-            )
-            timer.lap("resume_site")
-            if site_reply is not None:
-                await send_reply_spec(
-                    site_reply,
-                    wa_id,
-                    send_text=sender.send_text,
-                    send_list=sender.send_list,
-                    send_button=sender.send_button,
-                )
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=site_reply.text
-                )
-                return
-
-            # A tap on the project/site picker sent by
-            # decomposed_plan.py's _resolve_project_and_site (docs/execution/
-            # COMPOSITE_REQUEST_PLAN_LAYER.md §14) -- the whole-decomposition
-            # equivalent of the two resumes just above, checked after them:
-            # both share the exact same "proj_"/"site_" row-id prefixes, and
-            # a user is only ever in one pending state at a time, so
-            # whichever store (PendingReportStore vs
-            # PendingDecompositionStore) actually holds something answers,
-            # while the other's resume safely no-ops.
-            plan_project_reply = await resume_pending_decomposition_with_project(
-                message,
-                ctx.user_id,
-                pending_decomposition_store=pending_decomposition_store,
-                plan_store=plan_store,
-                pipeline=pipeline,
-                actor=ctx,
-                catalog_query=catalog_query,
-                inventory_query=inventory_query,
-                org_settings_query=org_settings_query,
-            )
-            timer.lap("resume_plan_project")
-            if plan_project_reply is not None:
-                await send_reply_spec(
-                    plan_project_reply,
-                    wa_id,
-                    send_text=sender.send_text,
-                    send_list=sender.send_list,
-                    send_button=sender.send_button,
-                )
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=plan_project_reply.text
-                )
-                return
-
-            plan_site_reply = await resume_pending_decomposition_with_site(
-                message,
-                ctx.user_id,
-                pending_decomposition_store=pending_decomposition_store,
-                plan_store=plan_store,
-                pipeline=pipeline,
-                actor=ctx,
-                catalog_query=catalog_query,
-                inventory_query=inventory_query,
-                org_settings_query=org_settings_query,
-            )
-            timer.lap("resume_plan_site")
-            if plan_site_reply is not None:
-                await send_reply_spec(
-                    plan_site_reply,
-                    wa_id,
-                    send_text=sender.send_text,
-                    send_list=sender.send_list,
-                    send_button=sender.send_button,
-                )
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=plan_site_reply.text
-                )
-                return
-
-            # Phase A5 (docs/execution/UNIFIED_UNDERSTANDING_PIPELINE.md): a
-            # decomposition segment's own material/unit/stock gate, held the
-            # same way the project/site gates above are -- five taps, one
-            # per resume leg, mirroring resume.py's own five single-message
-            # legs for the identical row-id shapes (mat_/matnew_/matunit_/
-            # unit_yes_+unit_no/stock_*). Order does not matter for
-            # correctness (each checks its own row-id prefix/set and no-ops
-            # otherwise), only for which one actually answers a given tap.
-            plan_material_reply = await resume_pending_decomposition_with_material(
-                message,
-                ctx.user_id,
-                pending_decomposition_store=pending_decomposition_store,
-                plan_store=plan_store,
-                pipeline=pipeline,
-                actor=ctx,
-                catalog_query=catalog_query,
-                inventory_query=inventory_query,
-                org_settings_query=org_settings_query,
-            )
-            timer.lap("resume_plan_material")
-            if plan_material_reply is not None:
-                await send_reply_spec(
-                    plan_material_reply,
-                    wa_id,
-                    send_text=sender.send_text,
-                    send_list=sender.send_list,
-                    send_button=sender.send_button,
-                )
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=plan_material_reply.text
-                )
-                return
-
-            plan_material_create_reply = await resume_pending_decomposition_with_material_create(
-                message,
-                ctx.user_id,
-                pending_decomposition_store=pending_decomposition_store,
-                plan_store=plan_store,
-                pipeline=pipeline,
-                actor=ctx,
-                catalog_query=catalog_query,
-                inventory_query=inventory_query,
-                org_settings_query=org_settings_query,
-            )
-            timer.lap("resume_plan_material_create")
-            if plan_material_create_reply is not None:
-                await send_reply_spec(
-                    plan_material_create_reply,
-                    wa_id,
-                    send_text=sender.send_text,
-                    send_list=sender.send_list,
-                    send_button=sender.send_button,
-                )
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=plan_material_create_reply.text
-                )
-                return
-
-            plan_material_unit_reply = await resume_pending_decomposition_with_material_unit_choice(
-                message,
-                ctx.user_id,
-                pending_decomposition_store=pending_decomposition_store,
-                plan_store=plan_store,
-                pipeline=pipeline,
-                actor=ctx,
-                catalog_query=catalog_query,
-                inventory_query=inventory_query,
-                org_settings_query=org_settings_query,
-            )
-            timer.lap("resume_plan_material_unit")
-            if plan_material_unit_reply is not None:
-                await send_reply_spec(
-                    plan_material_unit_reply,
-                    wa_id,
-                    send_text=sender.send_text,
-                    send_list=sender.send_list,
-                    send_button=sender.send_button,
-                )
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=plan_material_unit_reply.text
-                )
-                return
-
-            plan_unit_reply = await resume_pending_decomposition_with_unit(
-                message,
-                ctx.user_id,
-                pending_decomposition_store=pending_decomposition_store,
-                plan_store=plan_store,
-                pipeline=pipeline,
-                actor=ctx,
-                catalog_query=catalog_query,
-                inventory_query=inventory_query,
-                org_settings_query=org_settings_query,
-            )
-            timer.lap("resume_plan_unit")
-            if plan_unit_reply is not None:
-                await send_reply_spec(
-                    plan_unit_reply,
-                    wa_id,
-                    send_text=sender.send_text,
-                    send_list=sender.send_list,
-                    send_button=sender.send_button,
-                )
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=plan_unit_reply.text
-                )
-                return
-
-            plan_stock_reply = await resume_pending_decomposition_with_stock_choice(
-                message,
-                ctx.user_id,
-                pending_decomposition_store=pending_decomposition_store,
-                plan_store=plan_store,
-                pipeline=pipeline,
-                actor=ctx,
-                catalog_query=catalog_query,
-                inventory_query=inventory_query,
-                org_settings_query=org_settings_query,
-            )
-            timer.lap("resume_plan_stock")
-            if plan_stock_reply is not None:
-                await send_reply_spec(
-                    plan_stock_reply,
-                    wa_id,
-                    send_text=sender.send_text,
-                    send_list=sender.send_list,
-                    send_button=sender.send_button,
-                )
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=plan_stock_reply.text
-                )
-                return
 
         # #25 AI Follow-up: if Mesiri just asked "want to attach a
         # completion photo?" (interactions/handler.py, after an Activity is
@@ -2888,11 +2126,10 @@ def build_message_handlers(
                 await message_logger.log_reply(correlation_id=message.correlation_id, reply=undo_reply)
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
                 return
-        # Request [40]: a company switched to the agent has its free-text and
-        # voice messages read by a tool-calling model that runs the very same
-        # workflows. Everything above (taps, YES/NO, UNDO, menu, signup, slot
-        # answers) already had its turn; "off" (the default) falls through.
-        if agent_provider is not None and await _agent_enabled(message, ctx):
+        # Request [40], ARCH-06: text, voice, photos and documents are read by
+        # the tool-calling model, which runs the workflows directly. Everything
+        # above (taps, YES/NO, UNDO, menu, signup, slot answers) had its turn.
+        if agent_provider is not None and _agent_reads(message):
             # WA-45: the day's first message from someone with several sites
             # waits for "Where are you working today?".
             morning = None
@@ -2910,59 +2147,11 @@ def build_message_handlers(
             await _run_agent(message, ctx, category_hint, timer)
             return
 
-        _fire_processing_ack(wa_id, message.modality)
-        journey = await process_inbound_message(
-            message,
-            actor_user_id=ctx.user_id,
-            actor=ctx,
-            semantic_hint=undo_hint or (category_hint.semantic_hint if category_hint else None),
-            direction_hint=category_hint.direction if category_hint else None,
-            category_hint_store=category_hint_store,
-            pipeline=pipeline,
-            context_resolver=context_resolver,
-            planner=planner,
-            workflow_runtime=workflow_runtime,
-            interaction_handler=interaction_handler,
-            send_text=_fold_text(sender.send_text_capturing_id),
-            send_list=_fold_body(sender.send_list),
-            send_button=_fold_body(sender.send_button),
-            send_image=sender.send_image,
-            send_document=sender.send_document,
-            object_storage=object_storage,
-            context_debug=settings.context_debug,
-            message_logger=message_logger,
-            trace_logger=trace_logger,
-            inventory_query=inventory_query,
-            catalog_query=catalog_query,
-            org_settings_query=org_settings_query,
-            expense_category_query=expense_category_query,
-            money_account_query=money_account_query,
-            petty_cash_query=petty_cash_query,
-            reversal_query=reversal_query,
-            site_issue_query=site_issue_query,
-            duplicate_expense_query=duplicate_expense_query,
-            workforce_query=workforce_query,
-            activity_query=activity_query,
-            labour_query_service=labour_query_service,
-            activity_search_service=activity_search_service,
-            dpr_request_query=dpr_request_query,
-            project_detail_query=project_detail_query,
-            vendor_query=vendor_query,
-            expense_query_service=expense_query_service,
-            pending_report_store=pending_report_store,
-            decomposition=decomposition,
-            plan_store=plan_store,
-            pending_decomposition_store=pending_decomposition_store,
-            memory_loader=memory_loader,
-            memory_coordinator=memory_coordinator,
-            escalation_query=escalation_query,
-            capability_help=capability_help,
-            first_message_query=first_message_query,
-            member_resolver=member_resolver,
-            reply_composer=reply_composer,
-            user_language_store=user_language_store,
-        )
-        timer.lap("process_inbound_message")
-        await _save_first_after_journey(journey)
+        # Nothing the agent can read (an empty tap, an unknown kind of message).
+        from runtime.agent.turn import UNREADABLE_REPLY
+
+        await _send_spec(ReplySpec(text=UNREADABLE_REPLY), wa_id)
+        await message_logger.log_reply(correlation_id=message.correlation_id, reply=UNREADABLE_REPLY)
+        await message_logger.mark_completed(correlation_id=message.correlation_id)
 
     return _on_normalized, _mark_read_on_claim

@@ -22,16 +22,13 @@ from backend.ports import ActorIdentity, ProjectSummary, SiteSummary
 from context import seed
 from context.fakes import FakeActiveContextStore
 from context.resolver import ContextResolver
-from interactions.category_hint import CategoryHintStore
 from interactions.handler import InteractionHandler
-from interactions.pending_report import PendingReportStore
 from mesiri_ai.fakes import (
     FakeToolCallingProvider,
 )
 from mesiri_contracts.application.results.execution_result import ExecutionResult, ExecutionStatus
 from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage, SenderInfo
-from planner import Planner
 from runtime.agent.journey_gateway import JourneyGateway
 from runtime.agent.labour_entry import LabourEntry
 from runtime.agent.material_entry import MaterialEntry
@@ -40,14 +37,12 @@ from runtime.agent.query_entry import QueryEntry
 from runtime.agent.runner import AgentRunner
 from runtime.agent.site_entry import SiteEntry
 from runtime.agent.tools import ScopeLookup
-from runtime.inbound_journey import process_inbound_message, render_workflow_run_reply_spec
-from runtime.noop_loggers import RecordingTraceLogger
+from runtime.inbound_journey import render_workflow_run_reply_spec
 from workflows import WorkflowRegistry, WorkflowRuntime
 from workflows.fakes import FakeWorkflowInstanceRepository
 
 pytest.importorskip("langgraph", reason="needs the `workflow` extra (LangGraph)")
 
-from tests.replay.test_replay_cases import _MemoryRedis  # noqa: E402
 
 
 class _Dispatcher:
@@ -104,6 +99,30 @@ class _Catalog:
                 "default_unit_id": None, "is_active": True}
 
 
+class _MemoryRedis:
+    """Just enough of the Redis adapter for the pending-report/category stores."""
+
+    def __init__(self) -> None:
+        self._data: dict[str, Any] = {}
+
+    def namespaced(self, *parts: str) -> str:
+        return ":".join(parts)
+
+    async def set_json(self, key: str, value: Any, *, ttl_seconds: int | None = None) -> None:
+        self._data[key] = value
+
+    async def get_json(self, key: str) -> Any | None:
+        return self._data.get(key)
+
+    async def get_delete_json(self, key: str) -> Any | None:
+        return self._data.pop(key, None)
+
+    async def delete(self, *keys: str) -> None:
+        for key in keys:
+            self._data.pop(key, None)
+
+
+
 @dataclass
 class World:
     runtime: WorkflowRuntime
@@ -132,28 +151,8 @@ class World:
         )
 
     def gateway(self, text: str) -> JourneyGateway:
-        async def process(msg, preset, sink):  # noqa: ANN001
-            self.journeys += 1
-            return await process_inbound_message(
-                msg,
-                self.actor.user_id,
-                actor=self.actor,
-                pipeline=preset,
-                context_resolver=ContextResolver(self.deps),
-                planner=Planner(),
-                workflow_runtime=self.runtime,
-                interaction_handler=self.handler,
-                send_text=sink.send_text,
-                send_list=sink.send_list,
-                send_button=sink.send_button,
-                trace_logger=RecordingTraceLogger(),
-                pending_report_store=PendingReportStore(self.redis),
-                category_hint_store=CategoryHintStore(self.redis),
-            )
-
         return JourneyGateway(
             message=self.message(text),
-            process=process,
             save_now=lambda: self.handler.save_now(self.actor.user_id, actor=self.actor),
             undo=lambda: self.handler.undo_latest_draft(
                 organization_id=self.actor.organization_id, user_id=self.actor.user_id

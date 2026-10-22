@@ -47,7 +47,7 @@ from mesiri_contracts.assistant.planner_decision import (  # noqa: E402
 )
 from mesiri_contracts.assistant.v2.canonical_event import CanonicalEventV2  # noqa: E402
 from planning.plan_store import PlanStore  # noqa: E402
-from runtime.inbound_journey.resume import start_member_create_plan  # noqa: E402
+from runtime.member_create_plan import start_member_create_plan  # noqa: E402
 from runtime.plan_executor import advance_plan  # noqa: E402
 from workflows.add_project_member.graph import build_add_project_member_graph  # noqa: E402
 from workflows.create_user.graph import build_create_user_graph  # noqa: E402

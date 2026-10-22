@@ -46,8 +46,6 @@ def _build(monkeypatch, *, mode, provider):
         )
 
     monkeypatch.setattr(mj, "resolve_sender", fake_resolve)
-    classic = AsyncMock(side_effect=_Reached("classic pipeline"))
-    monkeypatch.setattr(mj, "process_inbound_message", classic)
 
     params = inspect.signature(mj.build_message_handlers).parameters
     deps = {n: AsyncMock() for n, p in params.items() if p.default is inspect.Parameter.empty}
@@ -73,7 +71,7 @@ def _build(monkeypatch, *, mode, provider):
     monkeypatch.setattr(mj, "try_hold_new_image_for_purpose_picker", AsyncMock(return_value=None))
     monkeypatch.setattr(mj.workflow_registry, "set_enabled_modules", MagicMock())
     on_normalized, _ = mj.build_message_handlers(**deps, agent_provider=provider)
-    return on_normalized, deps, classic
+    return on_normalized, deps, None
 
 
 ASK = FakeToolCallingProvider(
@@ -84,15 +82,12 @@ ASK = FakeToolCallingProvider(
 )
 
 
-async def test_a_company_switched_to_the_agent_gets_its_reply_not_the_classic_pipeline(monkeypatch):
+async def test_a_text_message_gets_the_agents_reply(monkeypatch):
     on_normalized, deps, classic = _build(monkeypatch, mode="agent", provider=ASK)
     await on_normalized(_message("50 bags cement"), {})
-    classic.assert_not_called()
     sent = deps["sender"].send_button.await_args
     assert sent.kwargs["body"] == "Received or used?"
     assert [b.title for b in sent.kwargs["buttons"]] == ["Received", "Used"]
-    deps["org_settings_query"].get.assert_awaited()
-    assert deps["org_settings_query"].get.await_args.kwargs["key"] == "assistant_mode"
 
 
 @pytest.mark.parametrize("mode", [None, ""])
@@ -101,7 +96,6 @@ async def test_a_company_with_no_setting_gets_the_agent(monkeypatch, mode):
     longer the classic pipeline."""
     on_normalized, deps, classic = _build(monkeypatch, mode=mode, provider=ASK)
     await on_normalized(_message("50 bags cement"), {})
-    classic.assert_not_called()
 
 
 async def test_one_turn_is_recorded_for_the_next_message(monkeypatch):
@@ -113,27 +107,18 @@ async def test_one_turn_is_recorded_for_the_next_message(monkeypatch):
     assert "Received / Used" in recorded["assistant_reply"]
 
 
-@pytest.mark.parametrize("mode", ["off", "OFF"])
-async def test_a_company_switched_off_stays_on_the_classic_pipeline(monkeypatch, mode):
-    on_normalized, _, classic = _build(monkeypatch, mode=mode, provider=ASK)
-    with pytest.raises(_Reached):
-        await on_normalized(_message(), {})
-    classic.assert_awaited_once()
 
 
-async def test_without_a_provider_the_switch_is_ignored(monkeypatch):
-    on_normalized, _, classic = _build(monkeypatch, mode="agent", provider=None)
-    with pytest.raises(_Reached):
-        await on_normalized(_message(), {})
-    classic.assert_awaited_once()
+
+async def test_without_a_provider_nothing_is_read_and_it_is_said(monkeypatch):
+    from runtime.agent.turn import UNREADABLE_REPLY
+
+    on_normalized, deps, _ = _build(monkeypatch, mode="agent", provider=None)
+    await on_normalized(_message(), {})
+    assert [c.args[1] for c in deps["sender"].send_text.await_args_list] == [UNREADABLE_REPLY]
 
 
-async def test_a_failing_mode_lookup_means_classic(monkeypatch):
-    on_normalized, deps, classic = _build(monkeypatch, mode="agent", provider=ASK)
-    deps["org_settings_query"].get.side_effect = RuntimeError("db down")
-    with pytest.raises(_Reached):
-        await on_normalized(_message(), {})
-    classic.assert_awaited_once()
+
 
 
 def _media(modality, key="media/1.jpg"):
@@ -148,7 +133,6 @@ async def test_a_later_photo_of_a_burst_is_held_not_read_on_its_own(monkeypatch)
     """The picker already asked for the batch: the photo waits for the answer."""
     on_normalized, deps, classic = _build(monkeypatch, mode="agent", provider=ASK)
     await on_normalized(_media(InputModality.IMAGE), {})
-    classic.assert_not_called()
     deps["pipeline"].describe_media.assert_not_awaited()
 
 
@@ -158,7 +142,6 @@ async def test_a_document_is_read_and_goes_to_the_agent(monkeypatch):
     on_normalized, deps, classic = _build(monkeypatch, mode="agent", provider=ASK)
     deps["pipeline"].describe_media.return_value = "Bill from Sharma Traders (amount: 4500)"
     await on_normalized(_media(InputModality.DOCUMENT, "media/bill.pdf"), {})
-    classic.assert_not_called()
     deps["pipeline"].describe_media.assert_awaited_once()
     recorded = deps["memory_coordinator"].record_turn.await_args.kwargs
     assert "Sharma Traders" in recorded["user_text"]
@@ -170,17 +153,17 @@ async def test_the_photo_purpose_tap_runs_the_agent_on_the_held_photo(monkeypatc
     deps["pending_media_store"].pop_batch.return_value = [_media(InputModality.IMAGE)]
     deps["pipeline"].describe_media.return_value = "Diesel bill (amount: 1200)"
     await on_normalized(_message("img_expense", modality=InputModality.INTERACTIVE), {})
-    classic.assert_not_called()
     assert deps["pipeline"].describe_media.await_args.args[1] == "expense"
     recorded = deps["memory_coordinator"].record_turn.await_args.kwargs
     assert "Diesel bill" in recorded["user_text"]
 
 
 async def test_an_empty_tap_text_never_goes_to_the_agent(monkeypatch):
-    on_normalized, _, classic = _build(monkeypatch, mode="agent", provider=ASK)
-    with pytest.raises(_Reached):
-        await on_normalized(_message(text="  ", modality=InputModality.INTERACTIVE), {})
-    classic.assert_awaited_once()
+    from runtime.agent.turn import UNREADABLE_REPLY
+
+    on_normalized, deps, _ = _build(monkeypatch, mode="agent", provider=ASK)
+    await on_normalized(_message(text="  ", modality=InputModality.INTERACTIVE), {})
+    assert [c.args[1] for c in deps["sender"].send_text.await_args_list] == [UNREADABLE_REPLY]
 
 
 async def test_an_ai_outage_before_any_save_is_queued_and_retried(monkeypatch):
@@ -258,15 +241,14 @@ def _saving(monkeypatch, deps):
 
     row = uuid.uuid4()
     run = SimpleNamespace(status=WorkflowRunStatus.STARTED, workflow_key=SimpleNamespace(value="labour_attendance"))
-    monkeypatch.setattr(
-        mj, "process_inbound_message", AsyncMock(return_value=SimpleNamespace(workflow_run=run, planner_decision=None))
-    )
     # What goes out after a save is under test, not the route that made it:
-    # labour goes direct (ARCH-03), which needs a real context, so here it
-    # takes the mocked pipeline.
+    # the entry's workflow run is stood in for.
     from runtime.agent.journey_gateway import JourneyGateway
 
-    monkeypatch.setattr(JourneyGateway, "_entry_for", lambda self, semantic_type: None)
+    async def _run(self, candidate, *, text):  # noqa: ANN001
+        return await self._after_run(SimpleNamespace(workflow_run=run, planner_decision=None), candidate)
+
+    monkeypatch.setattr(JourneyGateway, "_run", _run)
     handled = SimpleNamespace(
         saved_draft=True,
         reply_text="✅ Recorded. Thank you.",
@@ -327,7 +309,6 @@ async def test_a_save_tap_confirms_without_reaching_the_agent_or_the_pipeline(mo
 
     await on_normalized(tap, {})
 
-    classic.assert_not_called()
     assert provider.calls == 0
     kwargs = deps["interaction_handler"].settle_drafts.await_args.kwargs
     assert kwargs["facts"] == [("labour_report", row)] and kwargs["keep"] is True

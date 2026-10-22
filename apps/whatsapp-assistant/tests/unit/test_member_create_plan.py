@@ -37,7 +37,7 @@ from mesiri_contracts.assistant.v2.confirmed_action import ConfirmedActionV2
 from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
 from planning.plan import StepStatus
 from planning.plan_store import PlanStore
-from runtime.inbound_journey.resume import start_member_create_plan
+from runtime.member_create_plan import start_member_create_plan
 from runtime.plan_executor import advance_plan
 from workflows.runtime import (
     WorkflowResumeResult,

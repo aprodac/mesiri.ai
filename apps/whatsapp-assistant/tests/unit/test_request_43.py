@@ -217,31 +217,3 @@ def test_disabled_reply_is_one_line_and_grammatical():
         "Ask your admin to turn them on."
     )
     assert "\n" not in reply
-
-
-async def test_gate_reply_through_the_agent_gateway_is_info_not_a_parked_question():
-    from channel.replies import render_module_disabled_reply
-    from runtime.agent.journey_gateway import JourneyGateway
-
-    line = render_module_disabled_reply("finance")
-
-    async def process(message, pipeline, sink):
-        await sink.send_text("wa", line)
-        return SimpleNamespace(workflow_run=None, planner_decision=SimpleNamespace(decision_type=None))
-
-    gw = JourneyGateway(
-        message=SimpleNamespace(model_copy=lambda update: SimpleNamespace()),
-        process=process, save_now=None, undo=None, followups=None, held_prompt=None,
-    )
-    from mesiri_contracts.assistant.candidates import Candidate  # noqa: F401
-
-    step = await gw.run(SimpleNamespace(), text="Paid 1500 rs to tractor for debris removal")
-    assert step.status == "info"
-    assert step.text == line
-
-
-async def test_two_expense_segments_say_the_disabled_line_once():
-    from runtime.agent.toolbox import AgentToolbox  # noqa: F401
-    from runtime.inbound_journey.decomposed_plan import _disabled_lines
-
-    assert _disabled_lines(["finance", "finance"]).count("switched on") == 1

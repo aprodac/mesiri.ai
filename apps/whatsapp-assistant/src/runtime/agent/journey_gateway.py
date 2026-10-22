@@ -1,5 +1,6 @@
-"""The real `WorkflowGateway`: runs a tool's understanding through the existing
-journey and saves like a "YES" would.
+"""The real `WorkflowGateway`: hands a tool's arguments to its direct entry
+(material, site, labour, query), starts the workflow and saves like a "YES"
+would (ARCH-06: there is no classic route behind it).
 
 Built per message by `runtime.message_journey`, which owns every dependency the
 journey needs; this class only holds the few callables the agent uses, so it
@@ -14,17 +15,14 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from channel.replies import (
-    ListRow,
     ReplySpec,
     is_module_disabled_reply,
-    render_understanding_failed_reply,
 )
 from interactions.saved_summary import summarise_draft
 from mesiri_contracts.application.results.execution_result import ExecutionStatus
 from mesiri_contracts.assistant.candidates import Candidate
 from mesiri_contracts.assistant.enums import InputModality, SemanticType
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage
-from mesiri_contracts.assistant.planner_decision import PlannerDecisionType
 from workflows import WorkflowRunStatus
 
 from .gateway import StepResult
@@ -69,47 +67,6 @@ def _succeeded(handled: Any) -> bool:
     return execution is not None and execution.status is ExecutionStatus.SUCCEEDED
 
 
-@dataclass(slots=True)
-class CaptureSink:
-    """Stands in for the send callbacks: remembers what the journey would have
-    sent, so the agent can fold it into its one reply."""
-
-    replies: list[ReplySpec] = field(default_factory=list)
-
-    async def send_text(self, wa_id: str, body: str, *args: Any, **kwargs: Any) -> None:
-        self.replies.append(ReplySpec(text=body))
-
-    async def send_list(
-        self,
-        wa_id: str,
-        body: str | None = None,
-        button_label: str | None = None,
-        rows: tuple[ListRow, ...] | None = None,
-        **kwargs: Any,
-    ) -> bool:
-        self.replies.append(
-            ReplySpec(text=body or "", list_button_label=button_label, list_rows=tuple(rows or ()))
-        )
-        return True
-
-    async def send_button(
-        self,
-        wa_id: str,
-        body: str | None = None,
-        buttons: tuple[ListRow, ...] | None = None,
-        **kwargs: Any,
-    ) -> bool:
-        self.replies.append(ReplySpec(text=body or "", buttons=tuple(buttons or ())))
-        return True
-
-    @property
-    def last(self) -> ReplySpec | None:
-        return self.replies[-1] if self.replies else None
-
-
-#: ``(message, pipeline, sink) -> JourneyResult``: the existing
-#: process_inbound_message with the sink's senders.
-ProcessFn = Callable[[NormalizedMessage, PresetUnderstandingPipeline, CaptureSink], Awaitable[Any]]
 #: ``() -> InteractionHandled | None``: save the waiting capture draft.
 SaveNowFn = Callable[[], Awaitable[Any]]
 #: ``() -> str | None``: the classic UNDO of the latest saved draft.
@@ -123,7 +80,6 @@ HeldPromptFn = Callable[[Any], ReplySpec]
 @dataclass(slots=True)
 class JourneyGateway:
     message: NormalizedMessage
-    process: ProcessFn
     save_now: SaveNowFn
     undo: UndoFn
     followups: FollowupsFn
@@ -133,10 +89,10 @@ class JourneyGateway:
     #: WA-41: ``(material, unit, count) -> line to say``; None when not wired.
     set_conversion: Callable[[str, str, Any], Awaitable[str]] | None = None
     #: ARCH-01: material receipts/usage straight to the workflow
-    #: (runtime/agent/material_entry.py); None keeps the classic route.
+    #: (runtime/agent/material_entry.py).
     material_entry: Any | None = None
     #: ARCH-02: work done, site issues and expenses straight to the workflow
-    #: (runtime/agent/site_entry.py); None keeps the classic route.
+    #: (runtime/agent/site_entry.py).
     site_entry: Any | None = None
     #: ARCH-03: labour attendance straight to its workflow
     #: (runtime/agent/labour_entry.py; Alan's approval, 22 Oct).
@@ -176,22 +132,22 @@ class JourneyGateway:
         return await self.set_today_site(project_id, site_id)
 
     async def _run(self, candidate: Candidate, *, text: str) -> StepResult:
-        sink = CaptureSink()
-        # A text message carrying the user's words: the journey's own checks
-        # (duplicates, narrative, logging) read it. Voice was transcribed already.
-        message = self.message.model_copy(update={"text": text, "modality": InputModality.TEXT})
+        # A text message carrying the user's words: the workflows' own checks
+        # (duplicates, narrative, logging) read it. Voice was transcribed already;
+        # a photo keeps its modality and media, so the entry attaches it.
+        update: dict[str, Any] = {"text": text}
+        if self.message.modality not in (InputModality.IMAGE, InputModality.DOCUMENT):
+            update["modality"] = InputModality.TEXT
+        message = self.message.model_copy(update=update)
         entry = self._entry_for(getattr(candidate, "semantic_type", None))
-        if entry is not None:
-            direct = await self._direct(entry, candidate, message)
-            if direct is not None:
-                return direct
-        journey = await self.process(
-            message, PresetUnderstandingPipeline(candidate, language=self.language), sink
-        )
-        return await self._after_run(journey, candidate, sink)
+        if entry is None:
+            kind = getattr(getattr(candidate, "semantic_type", None), "value", None)
+            _log.warning("agent.no_entry correlation_id=%s kind=%s", message.correlation_id, kind)
+            return StepResult("error", text="Not saved: that can't be done here yet.")
+        return await self._direct(entry, candidate, message)
 
     def _entry_for(self, semantic_type: Any) -> Any | None:
-        """The direct entry for this kind of record, or None (classic route)."""
+        """The direct entry for this kind of record, or None (not wired)."""
         if self.start_workflow is None:
             return None
         if semantic_type is SemanticType.MATERIAL_UPDATE:
@@ -230,7 +186,7 @@ class JourneyGateway:
         run = await self.start_workflow(prepared.decision, prepared.event)
         _log.info("agent.direct correlation_id=%s kind=%s route=direct", message.correlation_id, kind)
         journey = SimpleNamespace(workflow_run=run, planner_decision=prepared.decision)
-        step = await self._after_run(journey, candidate, CaptureSink())
+        step = await self._after_run(journey, candidate)
         if step.status in ("saved", "needs_confirmation"):
             await entry.remember(prepared, correlation_id=message.correlation_id)
         deliver = getattr(entry, "deliver", None)
@@ -242,7 +198,7 @@ class JourneyGateway:
                 step = replace(step, text=f"{step.text}\n\n{failed}".strip())
         return step
 
-    async def _after_run(self, journey: Any, candidate: Candidate, sink: CaptureSink) -> StepResult:
+    async def _after_run(self, journey: Any, candidate: Candidate) -> StepResult:
         run = journey.workflow_run
         key = run.workflow_key.value if run is not None else None
 
@@ -268,7 +224,7 @@ class JourneyGateway:
                 )
             # Confirm-first (expenses, transfers) or the save failed: the
             # prompt the sender must answer.
-            prompt = sink.last or self.held_prompt(journey)
+            prompt = self.held_prompt(journey)
             return StepResult("needs_confirmation", text=prompt.text, reply=prompt, workflow_key=key)
 
         if run is not None and run.status in (
@@ -288,38 +244,15 @@ class JourneyGateway:
                     ),
                     workflow_key=key,
                 )
-            # The classic rendering when nothing was captured (the direct
-            # routes capture nothing), with its list or buttons.
-            prompt = sink.last or self.held_prompt(journey)
+            # The workflow's question, with its list or buttons.
+            prompt = self.held_prompt(journey)
             return StepResult("needs_answer", text=prompt.text, reply=prompt, workflow_key=key)
 
         if run is not None and run.status is WorkflowRunStatus.COMPLETED:
-            # The direct routes capture nothing: the workflow's own answer.
-            text = "\n\n".join(r.text for r in sink.replies if r.text) or (run.pending_prompt or "")
-            return StepResult("answer", text=text, workflow_key=key)
+            return StepResult("answer", text=run.pending_prompt or "", workflow_key=key)
 
-        if run is not None:  # FAILED / NO_GRAPH
-            text = sink.last.text if sink.last else "Sorry, that didn't go through. Please try again."
-            return StepResult("error", text=text, workflow_key=key)
-
-        # No workflow started: a gate asked (which project / material / unit?),
-        # or the pipeline answered directly (module off, not allowed).
-        decision = journey.planner_decision
-        reply = sink.last
-        if reply is None:
-            return StepResult("error", text="")
-        if is_module_disabled_reply(reply.text):
-            # The module gate sends its reply and ends the journey; it is a
-            # statement, not a question to park (request [59]).
-            return StepResult("info", text=_without_menu(reply.text))
-        if reply.text == render_understanding_failed_reply():
-            # The pipeline could not place it (context or understanding
-            # failed): that is a failure to say, never a question to park --
-            # it went out alone as the reply to a plain "Yes" (22 Oct).
-            return StepResult("error", text="Not saved: the system could not place this entry.")
-        if decision is None or decision.decision_type is not PlannerDecisionType.DIRECT_REPLY:
-            return StepResult("needs_answer", text=reply.text, reply=reply)
-        return StepResult("info", text=_without_menu(reply.text))
+        # FAILED / NO_GRAPH, or nothing started.
+        return StepResult("error", text="Sorry, that didn't go through. Please try again.", workflow_key=key)
 
     async def set_unit_conversion(self, *, material: str, unit: str, count: Any) -> StepResult:
         if self.set_conversion is None:

@@ -1033,12 +1033,9 @@ async def simulate_message(
     _admin: dict = Depends(require_platform_admin),
 ):
     """Run one message exactly as a real inbound WhatsApp message would,
-    capturing replies instead of sending them. Replicates
-    runtime/message_journey.py's _on_normalized order — the identity gate, then
-    each deterministic fast path (confirmation resume, category tap, greeting,
-    whoami, material/unit/stock/project/site gate resumptions), and only then
-    the AI pipeline — so testing interactive buttons or text shows full
-    multi-turn workflow execution."""
+    capturing replies instead of sending them: the production message handler
+    (runtime/message_journey.py) with a capturing sender, so buttons, YES/NO
+    and the agent behave as on WhatsApp, including multi-turn workflows."""
     from context.live_identity import (
         NO_ORG_MESSAGE,
         ORG_SUSPENDED_MESSAGE,
@@ -1049,15 +1046,6 @@ async def simulate_message(
     from mesiri_contracts.assistant.normalized_message import NormalizedMessage, SenderInfo
     from mesiri_contracts.common.ids import new_id
     from runtime.dependencies import get_container
-    from runtime.inbound_journey import (
-        process_inbound_message,
-        resume_pending_report_with_material,
-        resume_pending_report_with_project,
-        resume_pending_report_with_site,
-        resume_pending_report_with_stock_choice,
-        resume_pending_report_with_unit,
-    )
-    from runtime.reply_dispatch import send_reply_spec
 
     try:
         modality = InputModality(body.modality)
@@ -1120,18 +1108,6 @@ async def simulate_message(
             )
         )
 
-    async def _dispatch_reply(spec_or_text: object) -> None:
-        if hasattr(spec_or_text, "text"):
-            await send_reply_spec(
-                spec_or_text,  # type: ignore[arg-type]
-                wa_id,
-                send_text=_capture_text,
-                send_list=_capture_list,
-                send_button=_capture_button,
-            )
-        elif isinstance(spec_or_text, str):
-            await _capture_text(wa_id, spec_or_text)
-
     def _build_response(routed_via: str, result_obj: object | None = None) -> SimulateResponse:
         def _dump(obj) -> dict | None:
             return obj.model_dump(mode="json") if obj is not None else None
@@ -1187,126 +1163,46 @@ async def simulate_message(
         metadata=metadata,
     )
 
-    # --- Deterministic fast paths, in the exact order _on_normalized runs them. ---
-    handled = await container.interaction_handler.handle_fast_path(ctx.user_id, message, actor=ctx)
-    if handled is not None:
-        await _capture_text(wa_id, handled.reply_text)
-        return _build_response("confirmation_fast_path")
+    # ARCH-06: the very handler a real WhatsApp message runs (taps, YES/NO,
+    # menu, the agent), with a sender that captures its replies.
+    if container.simulate_handler is None:
+        raise HTTPException(status_code=503, detail="The simulator is not wired.")
 
-    category_prompt = container.interaction_handler.handle_category_tap(message)
-    if category_prompt is not None:
-        await _dispatch_reply(category_prompt)
-        return _build_response("category_tap")
+    class _CapturingSender:
+        async def send_text(self, _to: str, text: str, *args: object, **kwargs: object) -> bool:
+            await _capture_text(_to, text)
+            return True
 
-    material_direction_prompt = container.interaction_handler.handle_material_direction_tap(message)
-    if material_direction_prompt is not None:
-        await _capture_text(wa_id, material_direction_prompt)
-        return _build_response("material_direction_tap")
+        async def send_text_capturing_id(self, _to: str, text: str) -> str:
+            await _capture_text(_to, text)
+            return new_id("sim")
 
-    greeting_reply = container.interaction_handler.handle_greeting_trigger(message)
-    if greeting_reply is not None:
-        await _dispatch_reply(greeting_reply)
-        return _build_response("greeting_trigger")
+        async def send_list(self, _to: str, *, body: str, button_label: str, rows, **kwargs: object) -> bool:
+            await _capture_list(_to, body, button_label, rows)
+            return True
 
-    whoami_text = container.interaction_handler.handle_whoami_trigger(message, ctx)
-    if whoami_text is not None:
-        await _capture_text(wa_id, whoami_text)
-        return _build_response("whoami_trigger")
+        async def send_button(self, _to: str, *, body: str, buttons, **kwargs: object) -> bool:
+            await _capture_button(_to, body=body, buttons=buttons)
+            return True
 
-    # --- Gate resumptions (material, unit, stock, project, site) ---
-    pending_store = getattr(container, "pending_report_store", None)
-    if pending_store is not None:
-        mat_reply = await resume_pending_report_with_material(
-            message,
-            ctx.user_id,
-            pending_report_store=pending_store,
-            catalog_query=container.catalog_query,
-            planner=container.planner,
-            workflow_runtime=container.workflow_runtime,
-            actor=ctx,
-            inventory_query=container.inventory_query,
-        )
-        if mat_reply is not None:
-            await _dispatch_reply(mat_reply)
-            return _build_response("material_gate_resume")
+        async def send_image(self, _to: str, _data: bytes, *, caption: str | None = None) -> bool:
+            await _capture_text(_to, f"[image]{' ' + caption if caption else ''}")
+            return True
 
-        unit_reply = await resume_pending_report_with_unit(
-            message,
-            ctx.user_id,
-            pending_report_store=pending_store,
-            catalog_query=container.catalog_query,
-            planner=container.planner,
-            workflow_runtime=container.workflow_runtime,
-            actor=ctx,
-            inventory_query=container.inventory_query,
-        )
-        if unit_reply is not None:
-            await _dispatch_reply(unit_reply)
-            return _build_response("unit_gate_resume")
+        async def send_document(self, _to: str, _data: bytes, *, filename: str, **kwargs: object) -> bool:
+            await _capture_text(_to, f"[document: {filename}]")
+            return True
 
-        stock_reply = await resume_pending_report_with_stock_choice(
-            message,
-            ctx.user_id,
-            pending_report_store=pending_store,
-            planner=container.planner,
-            workflow_runtime=container.workflow_runtime,
-            inventory_query=container.inventory_query,
-        )
-        if stock_reply is not None:
-            await _dispatch_reply(stock_reply)
-            return _build_response("stock_gate_resume")
+        def __getattr__(self, _name: str):  # mark_as_read, send_reaction, prepare_image, ...
+            async def _quiet(*args: object, **kwargs: object) -> bool:
+                return True
 
-        proj_reply = await resume_pending_report_with_project(
-            message,
-            ctx.user_id,
-            pending_report_store=pending_store,
-            planner=container.planner,
-            workflow_runtime=container.workflow_runtime,
-            actor=ctx,
-            inventory_query=container.inventory_query,
-        )
-        if proj_reply is not None:
-            await _dispatch_reply(proj_reply)
-            return _build_response("project_gate_resume")
+            return _quiet
 
-        site_reply = await resume_pending_report_with_site(
-            message,
-            ctx.user_id,
-            pending_report_store=pending_store,
-            planner=container.planner,
-            workflow_runtime=container.workflow_runtime,
-            actor=ctx,
-            inventory_query=container.inventory_query,
-        )
-        if site_reply is not None:
-            await _dispatch_reply(site_reply)
-            return _build_response("site_gate_resume")
-
-    # --- Category hint pop & real AI pipeline ---
-    category_hint_store = getattr(container, "category_hint_store", None)
-    category_hint = await category_hint_store.pop_hint(user_id=ctx.user_id) if category_hint_store else None
-
-    result = await process_inbound_message(
-        message,
-        actor_user_id=ctx.user_id,
-        pipeline=container.pipeline,
-        context_resolver=container.context_resolver,
-        planner=container.planner,
-        workflow_runtime=container.workflow_runtime,
-        interaction_handler=container.interaction_handler,
-        send_text=_capture_text,
-        send_list=_capture_list,
-        send_button=_capture_button,
-        context_debug=False,
-        actor=ctx,
-        inventory_query=container.inventory_query,
-        catalog_query=container.catalog_query,
-        expense_category_query=container.expense_category_query,
-        semantic_hint=category_hint.semantic_hint if category_hint else None,
-        direction_hint=category_hint.direction if category_hint else None,
-        pending_report_store=pending_store,
-        category_hint_store=category_hint_store,
-    )
-
-    return _build_response("ai_pipeline", result)
+    handler = container.simulate_handler(_CapturingSender())
+    try:
+        await handler(message, {})
+    except Exception as exc:  # noqa: BLE001 -- an outage is shown, not raised
+        await _capture_text(wa_id, f"[error: {type(exc).__name__}]")
+    return _build_response("message_journey")
 

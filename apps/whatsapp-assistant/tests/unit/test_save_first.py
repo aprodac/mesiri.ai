@@ -390,18 +390,14 @@ def test_the_reply_line_is_the_approved_wording():
     )
 
 
-def test_the_journey_holds_back_confirm_for_save_first_drafts():
-    """process_inbound_message must not send "Confirm?" for a draft that
-    message_journey is about to save -- and message_journey must save after
-    the journey, after a slot answer, and in a plan's next step."""
+def test_the_journey_saves_first_after_a_slot_answer_and_in_a_plans_next_step():
+    """message_journey saves a save-first draft after a slot answer and in a
+    plan's next step (the agent's own saves go through its gateway)."""
     import inspect
 
-    import runtime.inbound_journey.process as process
     import runtime.message_journey as journey
 
-    assert "await interaction_handler.saves_first(" in inspect.getsource(process)
     source = inspect.getsource(journey)
-    assert source.count("await _save_first_after_journey(") == 2
     assert "and await _save_first_now()" in source  # slot answer
     assert "if plan_reply is not None and await _save_first_now():" in source
     assert "interaction_handler.undo_latest_draft(" in source

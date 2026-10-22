@@ -1,6 +1,5 @@
-"""Request [58]: "Send me today's report" through the real journey -- the
-real dpr.request graph, the planner and the agent's preset understanding --
-with only the lookup, storage and WhatsApp sender faked. Pins what the sender
+"""Request [58]: "Send me today's report" through the agent's direct route --
+the query entry (ARCH-06) and the real dpr.request graph -- with only the lookup, storage and WhatsApp sender faked. Pins what the sender
 is told in each state of today's report, and that a failure on the way is
 said in fixed words and logged with the correlation id."""
 
@@ -8,6 +7,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 
 from backend.ports import ActorIdentity, ProjectSummary, SiteSummary
@@ -19,10 +19,9 @@ from mesiri.infrastructure.objectstorage.fake import FakeObjectStorage
 from mesiri_contracts.assistant.candidates import Candidate
 from mesiri_contracts.assistant.enums import InputModality, SemanticType
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage, SenderInfo
-from planner import Planner
-from runtime.agent.journey_gateway import CaptureSink
-from runtime.agent.preset_pipeline import PresetUnderstandingPipeline
-from runtime.inbound_journey import process_inbound_message
+from runtime.agent.journey_gateway import JourneyGateway
+from runtime.agent.query_entry import QueryEntry
+from runtime.inbound_journey import render_workflow_run_reply_spec
 from workflows import WorkflowRegistry, WorkflowRuntime
 from workflows.fakes import FakeWorkflowInstanceRepository
 
@@ -67,7 +66,8 @@ def _actor() -> ActorIdentity:
 
 
 async def _ask(query: Any, *, documents: _Documents, storage: FakeObjectStorage):
-    sink = CaptureSink()
+    """"Send me today's report" as the agent's request_dpr tool runs it: the
+    direct query entry (ARCH-06), the DPR workflow, then the PDF."""
     message = NormalizedMessage(
         message_id="wamid.dpr.1",
         correlation_id="cor_dpr_1",
@@ -78,23 +78,31 @@ async def _ask(query: Any, *, documents: _Documents, storage: FakeObjectStorage)
     )
     runtime = WorkflowRuntime(registry=WorkflowRegistry(), repo=FakeWorkflowInstanceRepository())
     actor = _actor()
-    result = await process_inbound_message(
-        message,
-        actor_user_id=actor.user_id,
-        pipeline=PresetUnderstandingPipeline(Candidate(semantic_type=SemanticType.DPR_REQUEST, fields={})),
-        context_resolver=ContextResolver(seed.build_dependencies()),
-        planner=Planner(),
-        workflow_runtime=runtime,
-        interaction_handler=InteractionHandler(workflow_runtime=runtime),
-        send_text=sink.send_text,
-        send_list=sink.send_list,
-        send_button=sink.send_button,
-        send_document=documents,
-        object_storage=storage,
-        actor=actor,
+    handler = InteractionHandler(workflow_runtime=runtime)
+    entry = QueryEntry(
+        ContextResolver(seed.build_dependencies()),
+        None,
+        actor,
         dpr_request_query=query,
+        object_storage=storage,
+        send_document=documents,
     )
-    return result, sink
+    gateway = JourneyGateway(
+        message=message,
+        save_now=lambda: handler.save_now(actor.user_id, actor=actor),
+        undo=lambda: _none(),
+        followups=lambda handled: _none(),
+        held_prompt=lambda journey: render_workflow_run_reply_spec(journey.workflow_run),
+        query_entry=entry,
+        start_workflow=runtime.start,
+    )
+    step = await gateway.run(Candidate(semantic_type=SemanticType.DPR_REQUEST, fields={}), text=message.text)
+    replies = [SimpleNamespace(text=part) for part in (step.text or "").split("\n\n") if part]
+    return SimpleNamespace(workflow_run=step.workflow_key), SimpleNamespace(replies=replies)
+
+
+async def _none() -> None:
+    return None
 
 
 async def test_ready_report_is_sent_with_a_plain_line():

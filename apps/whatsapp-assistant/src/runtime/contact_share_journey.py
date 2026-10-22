@@ -39,8 +39,8 @@ from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.planner_decision import PlannerDecisionType, WorkflowKey
 from mesiri_contracts.assistant.v2.canonical_event import CanonicalEventV2
 from mesiri_contracts.assistant.v2.planner_decision import PlannerDecisionV2
-from runtime.inbound_journey import start_member_create_plan
 from runtime.inbound_journey.reply import render_workflow_run_reply_spec
+from runtime.member_create_plan import start_member_create_plan
 
 if TYPE_CHECKING:
     from backend.ports import ActorIdentity

@@ -108,7 +108,7 @@ class QueryEntry(EntryScope):
             if amount is None or amount <= 0:
                 return Say("error", "Not saved: an amount above zero is needed.")
         if workflow_key in (K.SITE_CREATE, K.PROJECT_CREATE):
-            from runtime.inbound_journey.process import (
+            from runtime.inbound_journey._shared import (
                 _PROJECT_CREATE_DENIED_REPLY,
                 _PROJECT_CREATE_ROLES,
                 _SITE_CREATE_DENIED_REPLY,
@@ -187,7 +187,7 @@ class QueryEntry(EntryScope):
             return None
         if self.send_document is None or self.object_storage is None:
             return None
-        from runtime.inbound_journey.process import _send_with_one_retry
+        from runtime.inbound_journey._shared import _send_with_one_retry
 
         code = fields.get("dpr_code") or "DPR"
 

@@ -33,6 +33,7 @@ from .tools import ScopeLookup
 _log = logging.getLogger("mesiri.agent")
 
 CANT_HEAR_REPLY = "I couldn't hear that clearly. Could you send it again?"
+UNREADABLE_REPLY = "Sorry, I couldn't make out that message. Please type it or send a voice note."
 CANT_READ_REPLY = "I couldn't read that. Could you send a clearer photo, or type the details?"
 
 

@@ -13,7 +13,6 @@ from backend.ports import ProjectSummary, SiteSummary
 from channel.friendly_errors import friendly_rejection, is_question_rejection
 from interactions.response_handler import render_execution_reply
 from interactions.team_photo_hint import TeamPhotoHintStore
-from mesiri.domains.progress.validation import validate_create_activity
 from mesiri_contracts.application.results.execution_result import ExecutionResult, ExecutionStatus
 from mesiri_contracts.assistant.canonical_event import CanonicalEventType, IntentCompleteness
 from mesiri_contracts.assistant.planner_decision import PlannerDecisionType, WorkflowKey
@@ -21,8 +20,6 @@ from mesiri_contracts.assistant.v2.canonical_event import CanonicalEventV2
 from mesiri_contracts.assistant.v2.resolved_context import ResolvedContextV2
 from planning.plan import Plan, PlanOrigin, PlanStep, StepStatus
 from planning.plan_store import PlanStore
-from runtime.inbound_journey.decomposed_plan import _inherit_resolved_scope
-from runtime.inbound_journey.process import _with_extra_query_answers
 from runtime.plan_executor import plan_defers_rejection, plan_has_more_to_do
 from runtime.reply_language import localize_fixed_reply
 from workflows import (
@@ -95,53 +92,6 @@ def _actor(sites: list[SiteSummary], projects: list[ProjectSummary] | None = Non
 
 
 # 1. One site: never ask --------------------------------------------------
-
-
-def test_a_part_with_no_site_takes_the_only_site():
-    event = _event()
-    _inherit_resolved_scope(event, _context(), _actor([SiteSummary(id=SITE, name="Green Villa, Kakkanad", project_id=PRJ)]))
-    assert (event.project_id, event.site_id) == (PRJ, SITE)
-
-
-def test_a_part_takes_the_messages_resolved_site():
-    event = _event()
-    _inherit_resolved_scope(event, _context(project=PRJ, site=SITE), None)
-    assert (event.project_id, event.site_id) == (PRJ, SITE)
-
-
-def test_with_two_sites_nothing_is_guessed():
-    event = _event(project=PRJ)
-    sites = [SiteSummary(id=SITE, name="A", project_id=PRJ), SiteSummary(id=SITE_2, name="B", project_id=PRJ)]
-    _inherit_resolved_scope(event, _context(project=PRJ), _actor(sites))
-    assert event.site_id is None
-
-
-def test_a_site_filled_this_way_passes_the_backends_site_check():
-    from mesiri.application.progress.mapper import build_create_activity_command
-    from mesiri_contracts.assistant.draft_action import DraftActionType
-    from mesiri_contracts.assistant.v2.confirmed_action import ConfirmedActionV2
-    from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
-
-    event = _event()
-    _inherit_resolved_scope(event, _context(), _actor([SiteSummary(id=SITE, name="G", project_id=PRJ)]))
-    draft = DraftActionV2(
-        draft_id="d",
-        correlation_id="cor",
-        workflow_instance_id="wf",
-        action_type=DraftActionType.CREATE_ACTIVITY,
-        organization_id=ORG,
-        user_id=USR,
-        project_id=event.project_id,
-        site_id=event.site_id,
-        fields=dict(event.fields),
-    )
-    command = build_create_activity_command(
-        ConfirmedActionV2(
-            confirmed_action_id="c", workflow_instance_id="wf", correlation_id="cor",
-            draft_action=draft, confirmed_by_user_id=USR,
-        )
-    )
-    assert validate_create_activity(command) == []
 
 
 # 4. Wording of a question --------------------------------------------------
@@ -325,41 +275,7 @@ def _query(event_type, *, completeness=IntentCompleteness.ACTIONABLE) -> Canonic
 
 
 @pytest.mark.anyio
-async def test_both_parts_of_a_two_part_question_are_answered():
-    first = WorkflowRunResult(
-        status=WorkflowRunStatus.COMPLETED,
-        workflow_key=WorkflowKey.LABOUR_QUERY,
-        correlation_id="c",
-        pending_prompt="Today: 10 masons, 4 helpers.",
-    )
-    out = await _with_extra_query_answers(
-        first,
-        [_query(CanonicalEventType.INVENTORY_QUERY_ASKED)],
-        planner=_Planner(),
-        workflow_runtime=_Runtime({CanonicalEventType.INVENTORY_QUERY_ASKED: "Cement received: 40 bags."}),
-        inventory_query=None,
-    )
-    assert out.pending_prompt == "Today: 10 masons, 4 helpers.\n\nCement received: 40 bags."
-
-
 @pytest.mark.anyio
-async def test_a_writing_part_is_never_started_as_an_extra():
-    first = WorkflowRunResult(
-        status=WorkflowRunStatus.COMPLETED,
-        workflow_key=WorkflowKey.LABOUR_QUERY,
-        correlation_id="c",
-        pending_prompt="Today: 10 masons.",
-    )
-    out = await _with_extra_query_answers(
-        first,
-        [_query(CanonicalEventType.EXPENSE_REQUESTED)],
-        planner=_Planner(),
-        workflow_runtime=_Runtime({}),
-        inventory_query=None,
-    )
-    assert out is first
-
-
 # 7. Where the work was done -------------------------------------------------
 
 

@@ -293,7 +293,6 @@ def _build(monkeypatch, *, redis=None, role="SUPERVISOR", **more):
         )
 
     monkeypatch.setattr(mj, "resolve_sender", fake_resolve)
-    monkeypatch.setattr(mj, "process_inbound_message", AsyncMock(return_value=None))
     params = inspect.signature(mj.build_message_handlers).parameters
     deps = {n: AsyncMock() for n, p in params.items() if p.default is inspect.Parameter.empty}
     handler = deps["interaction_handler"]
@@ -801,13 +800,13 @@ def test_a_let_go_question_is_folded_into_the_new_reply_not_sent_apart():
     assert fold_note(spec, "  ") is spec
 
 
-async def _let_go(monkeypatch, *, reply_via):
+async def _let_go(monkeypatch, *, provider):
     """A message that lets an open promotion question go, then is answered by
-    ``reply_via`` -- returns the sends."""
+    the agent (``provider``; None: nothing can read it) -- returns the sends."""
     from mesiri_contracts.assistant.planner_decision import WorkflowKey
     from workflows.runtime import WorkflowRunResult
 
-    on_normalized, deps, _, _ = _build(monkeypatch)
+    on_normalized, deps, _, _ = _build(monkeypatch, agent_provider=provider)
     closing = WorkflowRunResult.completed(
         workflow_key=WorkflowKey.WORKER_PROMOTION,
         correlation_id="c",
@@ -817,39 +816,30 @@ async def _let_go(monkeypatch, *, reply_via):
     deps["interaction_handler"].handle_slot_answer.return_value = InteractionHandled(
         result=closing, reply_text=NONE_ADDED, closed_question=True
     )
-
-    async def new_reply(*args, **kwargs):
-        await reply_via(kwargs)
-
-    mj.process_inbound_message.side_effect = new_reply
     await on_normalized(_message("Today 5 workers came"), {})
     return deps
 
 
 async def test_letting_a_question_go_adds_no_message_to_the_new_reply(monkeypatch):
-    async def ask_trade(kwargs):
-        await kwargs["send_list"](
-            "919876543210",
-            body="What trade were these 5 workers?",
-            button_label="Choose",
-            rows=(ListRow("steel_bender", "Steel bender"),),
-        )
+    from mesiri_ai.fakes import FakeToolCallingProvider
 
-    deps = await _let_go(monkeypatch, reply_via=ask_trade)
+    ask_trade = FakeToolCallingProvider(
+        [
+            [("ask_user", {"question": "What trade were these 5 workers?", "options": ["Mason", "Helper"]})],
+            "What trade were these 5 workers?",
+        ]
+    )
+    deps = await _let_go(monkeypatch, provider=ask_trade)
 
     sends = _sends(deps)
     assert len(sends) == 1
-    body = deps["sender"].send_list.await_args.kwargs["body"]
+    body = sends[0].kwargs.get("body") or sends[0].args[1]
     assert body.startswith("What trade were these 5 workers?")
     assert "Vinod and Manoj stay as temporary for now." in body
-    assert deps["sender"].send_list.await_args.kwargs["rows"][0].id == "steel_bender"
 
 
 async def test_a_let_go_line_is_never_lost_when_the_new_message_gets_no_reply(monkeypatch):
-    async def silent(kwargs):
-        return None
-
-    deps = await _let_go(monkeypatch, reply_via=silent)
+    deps = await _let_go(monkeypatch, provider=None)
 
     sends = _sends(deps)
     assert len(sends) == 1

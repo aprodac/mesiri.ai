@@ -54,7 +54,7 @@ def test_save_first_gets_the_same_follow_ups_as_a_typed_yes():
     and team-photo offers -- so save-first must deliver through the same
     `_deliver_handled`, not a copy."""
     block = _block_after(
-        _dependencies_source(), "async def _save_first_now(", "async def _save_first_after_journey("
+        _dependencies_source(), "async def _save_first_now(", "# M7: if the user has a workflow awaiting"
     )
     assert "await _deliver_handled(saved, fold_plan_reply=True)" in block
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from interactions.response_handler import FAILED_REPLY, render_execution_reply
 from mesiri_contracts.application.results.execution_result import ExecutionResult, ExecutionStatus
-from runtime.inbound_journey.process import _send_with_one_retry
+from runtime.inbound_journey._shared import _send_with_one_retry
 from runtime.reply_language import localize_fixed_reply
 
 

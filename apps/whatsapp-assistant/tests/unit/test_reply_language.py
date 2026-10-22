@@ -137,19 +137,14 @@ async def test_a_redis_problem_never_breaks_a_reply():
     assert await store.get(user_id="u1") is None
 
 
-def test_only_conversational_replies_are_composed_and_greetings_follow_the_language():
+def test_the_language_is_remembered_and_greetings_follow_it():
     """Workflow prompts, confirmations and receipts carry exact numbers and
     names and must not go through the composer; the instant "hi" answer must
     use the remembered language."""
-    import runtime.inbound_journey.process as process
+    import runtime.agent.turn as turn
     import runtime.message_journey as journey
 
-    source = inspect.getsource(process)
-    block = source[source.index("# WA-11: a conversational reply") : source.index("# WA-01 save first")]
-    assert "planner_decision.decision_type is PlannerDecisionType.DIRECT_REPLY" in block
-    assert "workflow_run is None" in block and "held_reply is None" in block
-    assert "await user_language_store.remember(" in source
-
+    assert "deps.user_language_store.remember(" in inspect.getsource(turn)
     journey_source = inspect.getsource(journey)
     assert "await user_language_store.get_profile(user_id=ctx.user_id)" in journey_source
 

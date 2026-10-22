@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     from interactions import InteractionHandler
     from mesiri.infrastructure.postgres.database import PostgresDatabase
     from mesiri_contracts.common.storage import ObjectStoragePort
-    from planner import Planner
     from runtime.expense_category_query import ExpenseCategoryQueryService
     from runtime.inventory_query import MaterialInventoryQueryService
     from runtime.material_catalog_query import MaterialCatalogQueryService
@@ -75,7 +74,6 @@ class AppContainer:
     # admin/system_graph_router.py) can run process_inbound_message without
     # re-wiring providers; the webhook path uses the same instance.
     pipeline: UnderstandingPipeline
-    planner: Planner
     workflow_runtime: WorkflowRuntime
     interaction_handler: InteractionHandler
     # Identity gate reader (M4). Exposed for the same reason as `pipeline` --
@@ -121,6 +119,9 @@ class AppContainer:
     # handed to the scheduler (runtime/automation_runner.py). None = no
     # summaries, DPRs go out as before.
     dpr_summary_writer: Any = None
+    #: ``(sender) -> on_normalized``: the message handler with another sender
+    #: (the control panel's test message). None in tests that build their own.
+    simulate_handler: Any = None
 
 
 def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppContainer:
@@ -144,7 +145,6 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     from context.runtime import build_context_resolver
     from interactions import build_interaction_handler
     from interactions.category_hint import CategoryHintStore
-    from interactions.pending_report import PendingReportStore
     from mesiri.application.materials.dispatcher import MaterialExecutionDispatcher
     from mesiri.application.materials.handlers import ExecuteConfirmedMaterialActionHandler
     from mesiri.application.materials.resolution import PostgresMaterialResolver
@@ -168,7 +168,6 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     from mesiri.infrastructure.postgres.repositories.material_execution import (
         PostgresMaterialExecutionRepository,
     )
-    from planner import Planner
     from understanding.runtime import build_pipeline
     from workflows import WorkflowRegistry, WorkflowRuntime
 
@@ -249,10 +248,6 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     # Ephemeral category-tap hint (see interactions/category_hint.py) -- same
     # redis_client as the active context store, never authoritative.
     category_hint_store = CategoryHintStore(redis_client)
-    # Holds a report awaiting a project pick (see interactions/pending_report.py
-    # and runtime/inbound_journey.py's project-selection gate) -- same
-    # redis_client, same never-authoritative principle.
-    pending_report_store = PendingReportStore(redis_client)
     # The shared Plan store (ENTITY_RESOLUTION_PLAN.md / COMPOSITE_REQUEST_
     # PLAN_LAYER.md) -- one plan per user, same redis_client, same
     # never-authoritative principle. This layer's only current producer is
@@ -260,15 +255,8 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     # the composite-request plan layer's Phase 4 is a second producer into
     # this same store, not a second store.
     from planning.plan_store import PlanStore
-    from runtime.inbound_journey.pending_decomposition import PendingDecompositionStore
 
     plan_store = PlanStore(redis_client)
-    # docs/execution/COMPOSITE_REQUEST_PLAN_LAYER.md §14: holds the
-    # already-decomposed segment texts while a project/site picker answers
-    # -- see decomposed_plan.py's _resolve_project_and_site. Same
-    # redis_client, same never-authoritative posture as every other store
-    # here.
-    pending_decomposition_store = PendingDecompositionStore(redis_client)
     # A second handle onto the same recent-turns keys build_conversation_
     # memory's own RecentTurnsStore writes (below) -- RecentTurnsStore holds
     # no state of its own beyond the redis client, so two instances against
@@ -302,7 +290,6 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     pipeline = build_pipeline(object_storage, material_db, redis_client)
     context_resolver = build_context_resolver(redis=redis_client)
     from runtime.agent.work_site import WorkSite
-    planner = Planner()  # stateless — safe to construct once and share
     # WorkflowRegistry compiles each graph once and caches it — constructed
     # once here, never per message.
     workflow_registry = WorkflowRegistry()
@@ -625,25 +612,12 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
 
     money_account_query = MoneyAccountQueryService(material_db)
     # Resolves a petty cash recipient's name into their employee-advance
-    # account (auto-created on first issuance), fed into the petty-cash
-    # workflow's "other account" slot (Finance Module Slice 5) -- same
-    # reasoning and same material_db as catalog_query above. See
-    # runtime/petty_cash_query.py.
-    from runtime.petty_cash_query import PettyCashRecipientQueryService
-
-    petty_cash_query = PettyCashRecipientQueryService(material_db)
     # Resolves "the most recent expense/transfer" for the reverse workflow's
     # target (Finance Module Slice 7) -- same reasoning and same material_db
     # as catalog_query above. See runtime/reversal_query.py.
     from runtime.reversal_query import ReversalTargetQueryService
 
     reversal_query = ReversalTargetQueryService(material_db)
-    # Resolves "my last reported issue" for the site_issue_close workflow's
-    # target -- same reasoning and same material_db as reversal_query above.
-    # See runtime/site_issue_query.py.
-    from runtime.site_issue_query import SiteIssueTargetQueryService
-
-    site_issue_query = SiteIssueTargetQueryService(material_db)
     # Flags a likely-duplicate expense before expense_capture's graph runs
     # (Finance Module Slice 8) -- same reasoning and same material_db as
     # catalog_query above. See runtime/duplicate_expense_query.py.
@@ -672,23 +646,11 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     from runtime.evidence_query import EvidenceAttachService
 
     evidence_query = EvidenceAttachService(material_db)
-    # #10 Human Review: creates a durable escalation record the moment #7
-    # Low-Confidence Routing decides ESCALATE (nothing usable extracted at
-    # all). See runtime/escalation_query.py.
-    from runtime.escalation_query import EscalationCreateService
-
-    escalation_query = EscalationCreateService(material_db)
     # Answers "has this number ever messaged us before?", the one thing the
     # long-dead is_first_message flag needed. See first_message_query.py.
     from runtime.first_message_query import FirstMessageQueryService
 
     first_message_query = FirstMessageQueryService(material_db)
-    # Resolves ADD_PROJECT_MEMBER's member_name against the org's real active
-    # users before a draft is ever built (ENTITY_RESOLUTION_PLAN.md ADR-E1).
-    # See runtime/entity_resolution/member_resolution.py.
-    from runtime.entity_resolution.member_resolution import MemberNameResolutionService
-
-    member_resolver = MemberNameResolutionService(material_db)
     # #25 AI Follow-up: remembers which Activity a proactive "want to
     # attach a completion photo?" offer was about, so the next photo skips
     # the normal purpose picker. See interactions/completion_photo_hint.py.
@@ -782,14 +744,6 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
 
     ai_resolver = DynamicAIProviderResolver(material_db, redis_client, _backend_settings)
     interaction_classifier = AdapterInteractionClassifier(ai_resolver, trace_logger=trace_logger)
-    # Matches a "how do I ...?" question against the workflow registry so the
-    # answer lists real capabilities instead of one hardcoded sentence. Same
-    # resolver as above -- generate_json already always routes to Gemini (see
-    # resolver.py), so this needs no new provider config. Only ever consulted
-    # for GENERAL_QUESTION_ASKED, which is a small share of traffic.
-    from runtime.capability_help import CapabilityHelpService
-
-    capability_help = CapabilityHelpService(ai_resolver, trace_logger=trace_logger)
     # WA-11: conversational replies in the sender's language, using the same
     # resolver; the language each sender speaks is remembered in Redis.
     from runtime.reply_language import ReplyComposer, UserLanguageStore
@@ -954,13 +908,11 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
 
     from runtime.message_journey import build_message_handlers
 
-    _on_normalized, _mark_read_on_claim = build_message_handlers(
+    handler_deps: dict[str, Any] = dict(
         settings=settings,
-        sender=sender,
         actor_reader=actor_reader,
         pipeline=pipeline,
         context_resolver=context_resolver,
-        planner=planner,
         workflow_runtime=workflow_runtime,
         interaction_handler=interaction_handler,
         object_storage=object_storage,
@@ -969,38 +921,20 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         inventory_query=inventory_query,
         catalog_query=catalog_query,
         org_settings_query=org_settings_query,
-        expense_category_query=expense_category_query,
         money_account_query=money_account_query,
-        petty_cash_query=petty_cash_query,
         reversal_query=reversal_query,
-        site_issue_query=site_issue_query,
         duplicate_expense_query=duplicate_expense_query,
         workforce_query=workforce_query,
         activity_query=activity_query,
         evidence_query=evidence_query,
-        escalation_query=escalation_query,
-        capability_help=capability_help,
         reply_composer=reply_composer,
         user_language_store=user_language_store,
         first_message_query=first_message_query,
-        member_resolver=member_resolver,
         plan_store=plan_store,
-        # Same resolver already built above for interaction_classifier/
-        # capability_help -- DynamicAIProviderResolver implements decompose()
-        # alongside extract() (bb56705), so this needs no new provider
-        # config. Until this line, decomposition was never actually
-        # constructed anywhere in the container: process_inbound_message's
-        # own `decomposition` parameter defaulted to None at every real call
-        # site, so docs/execution/COMPOSITE_REQUEST_PLAN_LAYER.md §9's whole
-        # decomposition path was unreachable in the running app despite
-        # being fully built and unit-tested -- found auditing the per-
-        # segment project/site gate work, not by design.
-        decomposition=ai_resolver,
         # Request [40]: the same resolver carries tool calling (routed by the
         # "agent" capability). Only used for companies whose assistant_mode is
         # "agent"; everyone else never reaches it.
         agent_provider=ai_resolver,
-        pending_decomposition_store=pending_decomposition_store,
         recent_turns_store=recent_turns_store,
         labour_query_service=labour_query_service,
         activity_search_service=activity_search_service,
@@ -1008,7 +942,6 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         project_detail_query=project_detail_query,
         vendor_query=vendor_query,
         expense_query_service=expense_query_service,
-        pending_report_store=pending_report_store,
         pending_media_store=pending_media_store,
         category_hint_store=category_hint_store,
         completion_photo_hint_store=completion_photo_hint_store,
@@ -1032,6 +965,12 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         # SS-09: pause a trial company that runs past today's usage caps.
         trial_usage_guard=TrialUsageGuard(material_db),
     )
+    _on_normalized, _mark_read_on_claim = build_message_handlers(sender=sender, **handler_deps)
+
+    def simulate_handler(capturing_sender: Any) -> Any:
+        """The control panel's test message (admin/system_graph_router.py):
+        the very same handler, with a sender that captures the replies."""
+        return build_message_handlers(sender=capturing_sender, **handler_deps)[0]
 
     receiver = WhatsAppReceiver(
         deduplication_store=deduplication_store,
@@ -1052,7 +991,6 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         message_enqueuer=message_enqueuer,
         context_resolver=context_resolver,
         pipeline=pipeline,
-        planner=planner,
         actor_reader=actor_reader,
         inventory_query=inventory_query,
         catalog_query=catalog_query,
@@ -1067,6 +1005,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         trace_logger=trace_logger,
         material_db=material_db,
         dpr_summary_writer=dpr_summary_writer,
+        simulate_handler=simulate_handler,
     )
 
 

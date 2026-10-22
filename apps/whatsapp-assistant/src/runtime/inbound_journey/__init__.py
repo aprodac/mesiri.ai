@@ -1,80 +1,19 @@
-"""Post-M3 inbound journey — v2 contracts with canonical UUID scope.
+"""What is left of the classic inbound journey (ARCH-06, 22 Oct 2026).
 
-Optionally logs the raw inbound message and one trace row per pipeline stage
-(MessageLogger / TraceLogger ports). Loggers are best-effort: a logging
-failure is swallowed and never breaks the pipeline.
-
-Split into a package (2026-07-29) purely for file size -- this module used to
-be one 3,300+ line file. This __init__ re-exports the full surface that was
-previously importable from the flat `runtime.inbound_journey` module,
-including the underscore-prefixed "private" helpers several tests and a
-couple of other runtime modules (admin/system_graph_router.py,
-runtime/dependencies.py) import directly, so no import statement anywhere
-else in the repo needs to change.
+The pipeline itself (understanding -> canonicalization -> planner -> graph,
+the gates, the multi-message plans and their picker taps) is gone: every
+message goes to the tool-calling agent, whose entries (runtime/agent/*_entry.py)
+start the workflows directly. Kept here: the seed functions those entries
+call (seeding.py), the reply rendering of a workflow run (reply.py), and a few
+shared helpers (_shared.py).
 """
 
 from __future__ import annotations
 
 from runtime.inbound_journey._shared import _log
-from runtime.inbound_journey.decomposed_plan import (
-    resume_pending_decomposition_with_material,
-    resume_pending_decomposition_with_material_create,
-    resume_pending_decomposition_with_material_unit_choice,
-    resume_pending_decomposition_with_project,
-    resume_pending_decomposition_with_site,
-    resume_pending_decomposition_with_stock_choice,
-    resume_pending_decomposition_with_unit,
-)
-from runtime.inbound_journey.pending_decomposition import (
-    PendingDecomposition,
-    PendingDecompositionStore,
-)
-from runtime.inbound_journey.plan_confirmation import resume_pending_plan_confirmation
-from runtime.inbound_journey.process import (
-    _ACCOUNT_ADMIN_DENIED_REPLY,
-    _ACCOUNT_ADMIN_ROLES,
-    _PROJECT_CREATE_DENIED_REPLY,
-    _PROJECT_CREATE_ROLES,
-    _SITE_CREATE_DENIED_REPLY,
-    _plan_and_run,
-    process_inbound_message,
-)
 from runtime.inbound_journey.reply import (
-    JourneyResult,
-    _complete_resume_leg,
-    _render_reply,
     _safe,
     render_workflow_run_reply_spec,
-)
-from runtime.inbound_journey.resume import (
-    _ADD_MEMBER_STEP_ID,
-    _CREATE_USER_STEP_ID,
-    _MATERIAL_CREATE_NO_ROW_ID,
-    _MATERIAL_CREATE_UNIT_PREFIX,
-    _MATERIAL_CREATE_YES_ROW_ID,
-    _MATERIAL_ROW_PREFIX,
-    _MEMBER_CREATE_NO_ROW_ID,
-    _MEMBER_CREATE_YES_ROW_ID,
-    _PROJECT_ROW_PREFIX,
-    _SITE_ROW_PREFIX,
-    _STOCK_ARRIVAL_ROW_ID,
-    _STOCK_CANCEL_ROW_ID,
-    _STOCK_CAP_ROW_ID,
-    _UNIT_NO_ROW_ID,
-    _UNIT_YES_ROW_PREFIX,
-    _create_material_and_resume,
-    resume_pending_report_with_audience_candidate,
-    resume_pending_report_with_material,
-    resume_pending_report_with_material_create,
-    resume_pending_report_with_material_unit_choice,
-    resume_pending_report_with_member_candidate,
-    resume_pending_report_with_member_create_offer,
-    resume_pending_report_with_petty_cash_recipient,
-    resume_pending_report_with_project,
-    resume_pending_report_with_site,
-    resume_pending_report_with_stock_choice,
-    resume_pending_report_with_unit,
-    start_member_create_plan,
 )
 from runtime.inbound_journey.seeding import (
     _MATERIAL_EVENT_TYPES,
@@ -118,43 +57,22 @@ from runtime.inbound_journey.seeding import (
 )
 
 __all__ = [
-    "JourneyResult",
-    "_ACCOUNT_ADMIN_DENIED_REPLY",
-    "_ACCOUNT_ADMIN_ROLES",
-    "_MATERIAL_CREATE_NO_ROW_ID",
-    "_MATERIAL_CREATE_UNIT_PREFIX",
-    "_MATERIAL_CREATE_YES_ROW_ID",
     "_MATERIAL_EVENT_TYPES",
-    "_MATERIAL_ROW_PREFIX",
-    "_PROJECT_CREATE_DENIED_REPLY",
-    "_PROJECT_CREATE_ROLES",
-    "_PROJECT_ROW_PREFIX",
     "_QUERY_PDF_WORKFLOW_KEYS",
-    "_SITE_CREATE_DENIED_REPLY",
-    "_SITE_ROW_PREFIX",
-    "_STOCK_ARRIVAL_ROW_ID",
-    "_STOCK_CANCEL_ROW_ID",
-    "_STOCK_CAP_ROW_ID",
-    "_UNIT_NO_ROW_ID",
-    "_UNIT_YES_ROW_PREFIX",
     "_WHATSAPP_MATERIAL_CREATE_ROLES",
     "_build_query_pdf",
-    "_complete_resume_leg",
-    "_create_material_and_resume",
     "_create_promoted_workers",
     "_inject_inventory_context",
     "_log",
-    "_maybe_trigger_worker_promotion",
     "_may_create_material",
+    "_maybe_trigger_worker_promotion",
     "_offer_project_setup",
     "_offer_team_photo",
-    "_plan_and_run",
     "_project_setup_offer_target",
     "_promotion_just_finished",
     "_recorded_attendance_report_id",
-    "_render_reply",
-    "_run_material_unit_gates",
     "_run_audience_name_gate",
+    "_run_material_unit_gates",
     "_run_petty_cash_recipient_gate",
     "_run_project_gate",
     "_run_site_gate",
@@ -167,6 +85,7 @@ __all__ = [
     "_seed_correction_target",
     "_seed_dpr_request",
     "_seed_duplicate_check",
+    "_seed_existing_attendance",
     "_seed_finance_query_context",
     "_seed_labour_query",
     "_seed_open_activity",
@@ -176,35 +95,7 @@ __all__ = [
     "_seed_reversal_target",
     "_seed_site_issue_close_target",
     "_seed_vendor_check",
-    "_seed_existing_attendance",
     "_seed_worker_candidates",
-    "process_inbound_message",
-    "PendingDecomposition",
-    "PendingDecompositionStore",
     "render_workflow_run_reply_spec",
-    "resume_pending_decomposition_with_material",
-    "resume_pending_decomposition_with_material_create",
-    "resume_pending_decomposition_with_material_unit_choice",
-    "resume_pending_decomposition_with_project",
-    "resume_pending_decomposition_with_site",
-    "resume_pending_decomposition_with_stock_choice",
-    "resume_pending_decomposition_with_unit",
-    "resume_pending_plan_confirmation",
-    "resume_pending_report_with_material",
-    "resume_pending_report_with_material_create",
-    "resume_pending_report_with_material_unit_choice",
-    "resume_pending_report_with_member_candidate",
-    "resume_pending_report_with_audience_candidate",
-    "resume_pending_report_with_petty_cash_recipient",
-    "resume_pending_report_with_member_create_offer",
-    "resume_pending_report_with_project",
-    "resume_pending_report_with_site",
-    "resume_pending_report_with_stock_choice",
-    "resume_pending_report_with_unit",
-    "start_member_create_plan",
     "start_project_setup_followup",
-    "_CREATE_USER_STEP_ID",
-    "_ADD_MEMBER_STEP_ID",
-    "_MEMBER_CREATE_NO_ROW_ID",
-    "_MEMBER_CREATE_YES_ROW_ID",
 ]
