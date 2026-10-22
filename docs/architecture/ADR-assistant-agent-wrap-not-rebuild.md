@@ -207,8 +207,9 @@ grown since.)
 - CI checks the save half on every push: the ideal tool calls go through the real journey and
   must file exactly those records (`test_materials_golden.py`).
 - The live measurement is `pytest -m live tests/conversation/test_materials_golden.py` with
-  `GEMINI_API_KEY` set; it prints each case, the accuracy and the p50 time. **Not run yet**
-  (no key in the build environment). Record the numbers here when it runs.
+  `GEMINI_API_KEY` set; it prints each case, the accuracy and the p50 time. **First run 22
+  Oct:** 18/24, then 22/24 (p50 1.3 s) after the prompt fixes; per-run table in section 10b.
+  Runs on demand as the claude-ops task `golden-live`.
 - The agent now gets the sender's site stock in its context ("Stock now at <site> (from the
   records): ..."), read-only, one-site senders only, 300 ms limit, left out on any failure.
 - Still to do: the live run and its numbers; reply quality on the scorecard; before/after line
@@ -321,12 +322,31 @@ without the Save card). The wrap was the bridge; it is not the end state. Decide
 | Step | What | Gate |
 |---|---|---|
 | ARCH-01 | Material receipt/usage tools call a material entry service directly | materials golden set green in CI, unchanged |
-| ARCH-02 | Golden sets for work done, site issues, expenses; then their tools go direct | each set green, live run recorded |
+| ARCH-02 | Golden sets for work done, site issues, expenses; then their tools go direct | each set green, live run recorded. **Done 22 Oct:** `runtime/agent/site_entry.py` on the shared `entry_base.py`; live site set 18/18 twice (table below) |
 | ARCH-03 | Labour tool direct | Alan's approval; labour golden set |
 | ARCH-04 | Agent-mode taps: the old gate buttons replaced by `ask_user` answers, so nothing saves past the Save card | replay tests |
 | ARCH-05 | First real company on the agent, then all | owner decides; live golden runs >= 100% on materials |
 | ARCH-05 done | **Every company on the agent** (Ilan, 21 Oct, `1132e9f`): `assistant_mode` defaults to "agent"; "off" is the per-company fallback | owner's decision, before the live golden runs |
 | ARCH-06 | Delete the classic path per area (understanding, planner, decomposition, graphs, templates); record line counts | area switched everywhere for 1 week with no regressions |
+
+
+**Live runs, 22 Oct** (`gemini-2.5-flash`, claude-ops task `golden-live`, GitHub Actions with
+TEAMMATE_GEMINI_API_KEY, approved by Ilan 22 Oct). Accuracy = exact records saved (or the one
+question asked) per case; p50 = reply time.
+
+| Commit | What changed | Site set (18) | Materials set (24) |
+|---|---|---|---|
+| `525e4ce` | baseline: work/issues/expenses on the classic route | 12/18 (67%), p50 1.3 s | not run |
+| `463530e` | ARCH-02 direct routes; work type taken from its quantities | 16/18 (1 Gemini timeout) | 18/24 |
+| `fd2f946` | arrival words mean "received"; units go to the save tool | 17/18 | 22/24 |
+| `779fbf9` | singular/plural material names match; a question is an ask_user call | 17/18 | 22/24 |
+| `d185d63` | units in English; no example numbers in a question | **18/18**, p50 1.5 s | 22/24 |
+| `4ceb228` | the number guard drops only the sentence with a made-up figure | **18/18**, p50 1.3 s | 22/24, p50 1.3 s |
+
+Left on materials (ARCH-01, live since 21 Oct), neither saves anything wrong: "50 bags cement
+arrived" sometimes still gets one "Received or used?" tap (2 of the last 4 runs), and "cement
+vannu" gets the right question as plain text rather than an ask_user call (no buttons, the
+answer still comes back as a new message).
 
 ## 11. References
 
