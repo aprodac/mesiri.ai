@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import os
 import time
 
 import httpx
@@ -30,6 +31,13 @@ _LIST_ROW_DESCRIPTION_MAX_CHARS = 72
 _LIST_MAX_ROWS = 10
 _REPLY_BUTTON_TITLE_MAX_CHARS = 20
 _REPLY_BUTTON_MAX_COUNT = 3
+
+
+def _pin_test_recipients() -> frozenset[str]:
+    """wa_ids (comma-separated env MESIRI_PIN_TEST_RECIPIENTS) whose receipt
+    gets a pin attempt. Unset = feature off."""
+    raw = os.environ.get("MESIRI_PIN_TEST_RECIPIENTS", "")
+    return frozenset(x.strip() for x in raw.split(",") if x.strip())
 
 
 class WhatsAppSender:
@@ -238,7 +246,7 @@ class WhatsAppSender:
             # Greppable proof in the server log that the card went out as the
             # message's header image (and which uploaded media it was).
             logger.info("receipt.sent as=header media_id=%s to=%s", media_id, to_wa_id)
-            if wamid:
+            if wamid and to_wa_id in _pin_test_recipients():
                 await self.pin_message(to_wa_id, wamid)
         return sent
 
@@ -268,7 +276,7 @@ class WhatsAppSender:
         sent = wamid is not None
         if sent:
             logger.info("receipt.sent as=image media_id=%s to=%s", media_id, to_wa_id)
-            if wamid:
+            if wamid and to_wa_id in _pin_test_recipients():
                 await self.pin_message(to_wa_id, wamid)
         return sent
 
@@ -279,8 +287,8 @@ class WhatsAppSender:
 
         Meta documents pinning for groups only, so this is expected to be
         rejected for an individual recipient; the point is to log Meta's real
-        answer (pin_test.* lines). Best effort, never raises. Runs after every
-        receipt while the platform is pre-launch; remove once answered."""
+        answer (pin_test.* lines). Best effort, never raises. Only reached for
+        recipients listed in MESIRI_PIN_TEST_RECIPIENTS."""
         if not self.enabled or not message_id:
             return False
         url = f"{self._graph_base_url}/{self._api_version}/{self._phone_number_id}/messages"
