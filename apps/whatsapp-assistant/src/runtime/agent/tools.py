@@ -38,6 +38,10 @@ REQUEST_DPR = "request_dpr"
 SET_WORK_SITE = "set_work_site"
 CREATE_SITE = "create_site"
 CREATE_PROJECT = "create_project"
+# 22 Oct: back from the classic pipeline.
+ADD_MEMBER = "add_member"
+CORRECT_WORK_QUANTITY = "correct_work_quantity"
+UPDATE_ISSUE = "update_issue"
 
 #: Tools that write a record (or an undo of one). A run that has attempted one
 #: must never be retried from the top.
@@ -55,6 +59,9 @@ WRITE_TOOLS = frozenset(
         SET_UNIT_CONVERSION,
         CREATE_SITE,
         CREATE_PROJECT,
+        ADD_MEMBER,
+        CORRECT_WORK_QUANTITY,
+        UPDATE_ISSUE,
     }
 )
 
@@ -499,6 +506,65 @@ def tool_specs() -> list[ToolSpec]:
             ),
         ),
         ToolSpec(
+            name=ADD_MEMBER,
+            description=(
+                "Add a person to a project's team, only when an admin or project manager asks "
+                "(add / include / put X in the project). The user confirms with Yes."
+            ),
+            parameters=_obj(
+                {
+                    "name": {"type": "string", "description": "The person's name, as they said it."},
+                    "role": {
+                        "type": "string",
+                        "description": "Their role if said: supervisor, site engineer, project manager ...",
+                    },
+                    "phone": {"type": "string", "description": "Their WhatsApp number, only if given."},
+                    "new_person": {
+                        "type": "boolean",
+                        "description": "Only true after the user said yes to adding them as a new person.",
+                    },
+                    "project": _PROJECT,
+                },
+                ["name"],
+            ),
+        ),
+        ToolSpec(
+            name=CORRECT_WORK_QUANTITY,
+            description=(
+                "Change the quantity of the work just logged in this chat, when they say a "
+                "number was wrong ('correction, it was 150 not 180', 'make that 30 sqm'). The "
+                "user confirms with Yes. Not for a new entry."
+            ),
+            parameters=_obj(
+                {
+                    "new_quantity": {"type": "number"},
+                    "unit": {"type": "string", "description": "Only if they restate the unit."},
+                    "reason": {"type": "string", "description": "Only if they say why."},
+                },
+                ["new_quantity"],
+            ),
+        ),
+        ToolSpec(
+            name=UPDATE_ISSUE,
+            description=(
+                "Change a site issue reported earlier: it is fixed / sorted / done "
+                "(resolve), seen and being handled (acknowledge), will not be fixed (wont_fix), "
+                "was reported by mistake (cancel), or is back again (reopen). The user confirms with Yes."
+            ),
+            parameters=_obj(
+                {
+                    "action": {
+                        "type": "string",
+                        "enum": ["resolve", "acknowledge", "wont_fix", "cancel", "reopen"],
+                    },
+                    "notes": {"type": "string", "description": "What was done, only if said."},
+                    "project": _PROJECT,
+                    "site": _SITE,
+                },
+                ["action"],
+            ),
+        ),
+        ToolSpec(
             name=CREATE_PROJECT,
             description=(
                 "Create a NEW project, only when the user asks to create / add / start a new "
@@ -679,6 +745,21 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             **_scope({"project": args.get("project")}, scope),
         }
         return Candidate(semantic_type=SemanticType.SITE_CREATE, fields=_clean(fields))
+    if name == ADD_MEMBER:
+        fields = {
+            "member_name": str(args.get("name") or "").strip(),
+            "role": args.get("role"),
+            "whatsapp_number": args.get("phone"),
+            "new_person": True if args.get("new_person") is True else None,
+            **sc,
+        }
+        return Candidate(semantic_type=SemanticType.ADD_PROJECT_MEMBER, fields=_clean(fields))
+    if name == CORRECT_WORK_QUANTITY:
+        fields = {"new_quantity": args.get("new_quantity"), "unit": args.get("unit"), "reason": args.get("reason")}
+        return Candidate(semantic_type=SemanticType.ACTIVITY_CORRECTION, fields=_clean(fields))
+    if name == UPDATE_ISSUE:
+        fields = {"action": args.get("action"), "resolution_notes": args.get("notes"), **sc}
+        return Candidate(semantic_type=SemanticType.SITE_ISSUE_UPDATE, fields=_clean(fields))
     if name == CREATE_PROJECT:
         fields = {"name": str(args.get("name") or "").strip(), "location": args.get("location")}
         return Candidate(semantic_type=SemanticType.PROJECT_CREATE, fields=_clean(fields))

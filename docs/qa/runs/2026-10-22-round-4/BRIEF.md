@@ -63,7 +63,7 @@ Send a real photo each time; tap the purpose button when asked ("What is this ph
 | # | Send | Expect |
 |---|---|---|
 | 23 | `add Ravi Kumar to Green Villa as supervisor` (a new person) | Asks for his phone number, then confirms creating him and adding him to the project. |
-| 24 | `correction, plastering was 150 sqm not 180` (after test 1) | Changes the last plastering entry to 150 sqm, asks to confirm. |
+| 24 | `plastering 2nd floor, another 40 sqm done` then `correction, that was 30 sqm` | Asks Yes/No to change that 40 sqm to 30 sqm. (A brand-new entry is fixed with Cancel/UNDO instead: the correction changes the last quantity added to ongoing work.) |
 | 25 | `JCB is fixed` (after test 5) | Closes the JCB breakdown issue, asks to confirm. |
 
 ## Report back

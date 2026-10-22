@@ -136,6 +136,8 @@ def build_message_handlers(
     evidence_query: EvidenceAttachService,
     first_message_query: FirstMessageQueryService,
     plan_store: PlanStore,
+    member_resolver: Any | None = None,
+    site_issue_query: Any | None = None,
     recent_turns_store: RecentTurnsStore,
     labour_query_service: LabourQueryService,
     activity_search_service: ActivitySearchService,
@@ -519,6 +521,7 @@ def build_message_handlers(
             """The agent's turn. The pipeline it drives is the one below, with
             the senders swapped for a capture so the model writes the one reply."""
             from runtime.agent import save_button
+            from runtime.agent.change_entry import ChangeEntry
             from runtime.agent.journey_gateway import JourneyGateway
             from runtime.agent.labour_entry import LabourEntry
             from runtime.agent.material_entry import MaterialEntry
@@ -532,6 +535,19 @@ def build_message_handlers(
             if hint and category_hint.direction:
                 # The Arrived/Used tap of the material menu (MATERIAL_DIRECTION_BUTTONS).
                 hint = f"{hint} ({category_hint.direction})"
+
+            async def _create_member(name, event, phone):  # type: ignore[no-untyped-def]
+                from runtime.member_create_plan import start_member_create_plan
+
+                return await start_member_create_plan(
+                    name_hint=name,
+                    original_event=event,
+                    actor=ctx,
+                    plan_store=plan_store,
+                    workflow_runtime=workflow_runtime,
+                    recent_turns=recent_turns_store,
+                    whatsapp_number=phone,
+                )
 
             async def _undo() -> str | None:
                 return await interaction_handler.undo_latest_draft(
@@ -750,6 +766,21 @@ def build_message_handlers(
                             if hasattr(memory_loader, "current_activity_id")
                             else None
                         ),
+                    ),
+                    change_entry=ChangeEntry(
+                        context_resolver=context_resolver,
+                        org_settings_query=org_settings_query,
+                        actor=ctx,
+                        active_context=getattr(context_resolver, "active_context", None),
+                        member_resolver=member_resolver,
+                        activity_query=activity_query,
+                        site_issue_query=site_issue_query,
+                        remembered_activity=(
+                            (lambda: memory_loader.current_activity_id(user_id=ctx.user_id))
+                            if hasattr(memory_loader, "current_activity_id")
+                            else None
+                        ),
+                        create_member=_create_member,
                     ),
                     start_workflow=workflow_runtime.start,
                 )

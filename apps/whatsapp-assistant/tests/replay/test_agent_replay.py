@@ -29,6 +29,7 @@ from mesiri_ai.fakes import (
 from mesiri_contracts.application.results.execution_result import ExecutionResult, ExecutionStatus
 from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage, SenderInfo
+from runtime.agent.change_entry import ChangeEntry
 from runtime.agent.journey_gateway import JourneyGateway
 from runtime.agent.labour_entry import LabourEntry
 from runtime.agent.material_entry import MaterialEntry
@@ -139,6 +140,8 @@ class World:
     catalog: Any = None
     #: ARCH-01/02: the agent's direct routes (False: the classic pipeline).
     direct: bool = True
+    #: The change entry's lookups (member_resolver, activity_query, ...).
+    change: dict = field(default_factory=dict)
 
     def message(self, text: str, modality: InputModality = InputModality.TEXT) -> NormalizedMessage:
         media = None
@@ -188,6 +191,9 @@ class World:
                 SiteEntry(ContextResolver(self.deps), None, self.actor, active_context=self.deps.active_context)
                 if self.direct
                 else None
+            ),
+            change_entry=ChangeEntry(
+                ContextResolver(self.deps), None, self.actor, active_context=self.deps.active_context, **self.change
             ),
             start_workflow=self.runtime.start,
         )

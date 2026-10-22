@@ -99,6 +99,9 @@ class JourneyGateway:
     #: ARCH-06 step 2: lookups, transfers, site/project create, money undo
     #: (runtime/agent/query_entry.py).
     query_entry: Any | None = None
+    #: 22 Oct: add a team member, correct a work quantity, close a site issue
+    #: (runtime/agent/change_entry.py).
+    change_entry: Any | None = None
     #: ``WorkflowRuntime.start``, for the direct routes.
     start_workflow: Callable[[Any, Any], Awaitable[Any]] | None = None
     #: WA-45: ``(project_id, site_id) -> label``: today's site is this one
@@ -161,6 +164,10 @@ class JourneyGateway:
 
         if semantic_type in QUERY_ENTRY_TYPES:
             return self.query_entry
+        from .change_entry import CHANGE_ENTRY_TYPES
+
+        if semantic_type in CHANGE_ENTRY_TYPES:
+            return self.change_entry
         return None
 
     async def _direct(self, entry: Any, candidate: Candidate, message: Any) -> StepResult | None:

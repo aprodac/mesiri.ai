@@ -651,6 +651,16 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     from runtime.first_message_query import FirstMessageQueryService
 
     first_message_query = FirstMessageQueryService(material_db)
+    # "add Ravi to the project": the name against the org's active users before
+    # a draft (ENTITY_RESOLUTION_PLAN.md ADR-E1), for the agent's add_member.
+    from runtime.entity_resolution.member_resolution import MemberNameResolutionService
+
+    member_resolver = MemberNameResolutionService(material_db)
+    # "the JCB is fixed": the latest site issue an action may change, for the
+    # agent's update_issue.
+    from runtime.site_issue_query import SiteIssueTargetQueryService
+
+    site_issue_query = SiteIssueTargetQueryService(material_db)
     # #25 AI Follow-up: remembers which Activity a proactive "want to
     # attach a completion photo?" offer was about, so the next photo skips
     # the normal purpose picker. See interactions/completion_photo_hint.py.
@@ -914,6 +924,8 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         user_language_store=user_language_store,
         first_message_query=first_message_query,
         plan_store=plan_store,
+        member_resolver=member_resolver,
+        site_issue_query=site_issue_query,
         # Request [40]: the same resolver carries tool calling (routed by the
         # "agent" capability); every message goes to it.
         agent_provider=ai_resolver,
