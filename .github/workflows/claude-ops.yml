@@ -22,6 +22,8 @@ name: Claude ops
 #   bot-label-test    label chat `text` (a jid) as assistant-test for mesiri
 #   vps-agent-log     the assistant agent's log lines (agent., entry., site_entry.) for the last `hours`
 #                     (read-only; journalctl -u mesiri; numbers masked)
+#   vps-scope         infra/deploy/scope_report.sh `text` = project name: its sites (status) and members' site
+#                     access (read-only, names and counts only)
 #   golden-live       the agent golden sets on the real model (`pytest -m live`, ARCH-02 gate; `text` = site |
 #                     materials | empty for both). Uses TEAMMATE_GEMINI_API_KEY (approved by Ilan 22 Oct); no VPS.
 #
@@ -35,7 +37,7 @@ on:
         description: What to run
         required: true
         type: choice
-        options: [vps-check, vps-backup-now, vps-staging, vps-app-login, vps-smoke, vps-perf, vps-evening, bot-status, bot-chats, bot-test, bot-recent-test, bot-recent-team, bot-items, bot-label-test, golden-live, vps-agent-log]
+        options: [vps-check, vps-backup-now, vps-staging, vps-app-login, vps-smoke, vps-perf, vps-evening, bot-status, bot-chats, bot-test, bot-recent-test, bot-recent-team, bot-items, bot-label-test, golden-live, vps-agent-log, vps-scope]
       text:
         description: "bot-test: the message (or choose:<n|title>); bot-label-test: the chat jid"
         required: false
@@ -123,6 +125,9 @@ jobs:
               H="$(printf '%s' "$HOURS" | tr -dc 0-9)"
               ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
                 "journalctl -u mesiri --since '${H:-2} hours ago' --no-pager -o short-iso | grep -E 'agent\.|entry\.|site_entry|material_entry|Traceback|Error' | tail -300" 2>&1 | mask ;;
+            vps-scope)
+              ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "bash -s -- '$(printf '%s' "$TEXT" | tr -dc '[:alnum:] _-')'" \
+                < infra/deploy/scope_report.sh 2>&1 | mask ;;
             vps-evening)
               ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "bash -s -- $(printf '%s' "$TEXT" | tr -dc 0-9-)" \
                 < infra/deploy/evening_report.sh 2>&1 | mask ;;
