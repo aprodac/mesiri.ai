@@ -54,6 +54,13 @@ class WorkflowGateway(Protocol):
         """Remove the sender's latest saved-as-draft update (the classic UNDO)."""
         ...
 
+    async def undo_card(self, refs: list[str]) -> StepResult:
+        """Request 88: remove the entries of the sender's latest card (all of
+        them, or the ones ``refs`` name). Only ids the code offered are taken;
+        several entries and no ``refs`` is a pick list. Optional: a gateway
+        without cards falls back to ``undo_latest_draft``."""
+        ...
+
     async def set_unit_conversion(self, *, material: str, unit: str, count: float) -> StepResult:
         """WA-41: remember how many ``unit`` make one stock unit of ``material``,
         company-wide (admins and project managers only)."""

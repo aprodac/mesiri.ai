@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from channel.replies import (
+    ListRow,
     ReplySpec,
     is_module_disabled_reply,
 )
@@ -25,6 +26,7 @@ from mesiri_contracts.assistant.enums import InputModality, SemanticType
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage
 from workflows import WorkflowRunStatus
 
+from .cards import LEGACY, OPEN, Card, CardItem, removed_line
 from .gateway import StepResult
 
 _log = logging.getLogger("mesiri.agent")
@@ -40,6 +42,46 @@ _LOOKUPS = frozenset(
         SemanticType.PROJECT_DETAIL_QUERY,
     }
 )
+
+
+#: A WhatsApp list row: title 24, description 72; ids 200 (so "all of them" is
+#: offered for up to five entries only).
+_ROW_TITLE = 24
+_ROW_DESC = 72
+_ALL_MAX = 5
+
+
+def undo_pick_list(card: Card) -> ReplySpec:
+    """The one question when "undo that" meets a card of several entries: a
+    list of them, each row removing exactly that entry ([46]). The row ids are
+    made by the code from the card, so a tap can only name its entries."""
+    from .save_button import UNDO, tap_id
+
+    def cut(text: str, limit: int) -> str:
+        text = " ".join(text.split())
+        return text if len(text) <= limit else text[: limit - 1] + "…"
+
+    rows = [
+        ListRow(tap_id(UNDO, [i.fact]), cut(i.summary, _ROW_TITLE), cut(f"{i.summary} ({i.day})", _ROW_DESC))
+        for i in card.items
+    ]
+    if len(card.items) <= _ALL_MAX:
+        rows.append(ListRow(tap_id(UNDO, [i.fact for i in card.items]), "All of them", ""))
+    return ReplySpec(text="Which one should I remove?", list_button_label="Choose one", list_rows=tuple(rows[:10]))
+
+
+def undo_step(gone: list[CardItem], undone: Any) -> StepResult:
+    """What an undo did, as a step: the removed entries by name, and why any
+    was refused."""
+    refused = list(getattr(undone, "refused", []) or [])
+    if gone:
+        text = removed_line(gone)
+        if refused:
+            text += f"\nCouldn't remove {len(refused)} more: {refused[0]}."
+        return StepResult("undone", text=text)
+    if refused:
+        return StepResult("error", text=f"Couldn't remove it: {refused[0]}.")
+    return StepResult("info", text="That is already removed. Nothing more to undo.")
 
 
 def _without_menu(text: str) -> str:
@@ -107,12 +149,90 @@ class JourneyGateway:
     #: WA-45: ``(project_id, site_id) -> label``: today's site is this one
     #: (runtime/agent/work_site.py); None when not wired.
     set_today_site: Callable[[str | None, str], Awaitable[str]] | None = None
+    #: Request 88: the sender's latest card (runtime/agent/cards.py), who they
+    #: are, and ``(facts) -> FactsUndone | None``: withdraw exactly those entries.
+    cards: Any | None = None
+    actor: Any | None = None
+    undo_facts: Callable[[list[Any]], Awaitable[Any]] | None = None
+    #: The tool and arguments of the call being run, set by the toolbox.
+    current_call: tuple[str, dict[str, Any]] | None = None
+    #: The entries this turn saved, with the call that made each; and, when an
+    #: open card was changed, the items of that card before and after the new one.
+    card_items: list[CardItem] = field(default_factory=list)
+    carry_before: list[CardItem] = field(default_factory=list)
+    carry_after: list[CardItem] = field(default_factory=list)
 
     async def run(self, candidate: Candidate, *, text: str) -> StepResult:
         step = await self._run(candidate, text=text)
         if step.status == "saved" and self.handled:
             await self._remember_site(self.handled[-1])
+            self._note_card_item(self.handled[-1], step)
         return step
+
+    def _note_card_item(self, handled: Any, step: StepResult) -> None:
+        """Remember which call made this record, for its card."""
+        from .save_button import fact_of
+
+        fact = fact_of(handled)
+        if fact is None or self.current_call is None:
+            return
+        tool, args = self.current_call
+        self.card_items.append(CardItem(tool, dict(args), fact[0], str(fact[1]), step.summary or ""))
+
+    def card_facts(self) -> list[tuple[str, Any]]:
+        """Every entry of the card this turn shows: the items kept from the
+        open card, then what this turn saved."""
+        return [i.fact for i in (*self.carry_before, *self.card_items, *self.carry_after)]
+
+    def carry_card_items(self, before: list[CardItem], after: list[CardItem]) -> None:
+        self.carry_before, self.carry_after = list(before), list(after)
+
+    async def open_card(self) -> Card | None:
+        """The sender's card that still waits on Save / Cancel, or None."""
+        card = await self._latest_card()
+        return card if card is not None and card.state == OPEN else None
+
+    async def _latest_card(self) -> Card | None:
+        if self.cards is None or self.actor is None:
+            return None
+        return await self.cards.get(self.actor)
+
+    async def withdraw_card_item(self, item: CardItem) -> bool:
+        """Take one entry of the open card back (its draft), through its
+        module's own undo. True when it is gone."""
+        if self.undo_facts is None:
+            return False
+        undone = await self.undo_facts([item.fact])
+        return bool(undone is not None and undone.done)
+
+    async def undo_card(self, refs: list[str]) -> StepResult:
+        """Request 88: "undo that" removes the entries of the sender's latest
+        card -- never a record the code did not offer. ``refs`` are the ids the
+        model named; one that is not on the card is refused."""
+        card = await self._latest_card()
+        if self.cards is None or self.undo_facts is None or (card is not None and card.state == LEGACY):
+            # No card to go by (an old reply with only an Undo button).
+            return await self.undo_latest_draft()
+        if card is None or not card.items:
+            return StepResult("info", text="Nothing to undo: there is no entry of theirs from the last few hours on a card.")
+        if refs:
+            items = card.by_ref(refs)
+            if items is None:
+                return StepResult(
+                    "error",
+                    text="Those entries are not on their latest card, so nothing was removed.",
+                )
+        elif len(card.items) > 1:
+            return StepResult("choose", text="Which one should be removed?", reply=undo_pick_list(card))
+        else:
+            items = card.items
+        undone = await self.undo_facts([i.fact for i in items])
+        if undone is None:
+            return await self.undo_latest_draft()
+        gone = [i for i in items if i.fact in set(undone.done)]
+        if gone:
+            await self.cards.drop(self.actor, [i.fact for i in gone])
+        return undo_step(gone, undone)
 
     async def _remember_site(self, handled: Any) -> None:
         """WA-45: a save at a site keeps the sender there for the rest of the

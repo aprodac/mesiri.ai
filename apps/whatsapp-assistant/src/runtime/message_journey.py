@@ -169,6 +169,7 @@ def build_message_handlers(
     agent_provider: Any | None = None,
     offered_choices_store: Any | None = None,
     work_site: Any | None = None,
+    cards: Any | None = None,
 ) -> tuple[Any, Any]:
     """Build the `on_normalized`/`on_message_claimed` callbacks WhatsAppReceiver
     invokes for every inbound message, closing over the already-built services
@@ -583,6 +584,12 @@ def build_message_handlers(
                     organization_id=str(ctx.organization_id), user_id=ctx.user_id
                 )
 
+            async def _undo_facts(facts):  # type: ignore[no-untyped-def]
+                """Request 88: withdraw exactly these entries (a card's own)."""
+                return await interaction_handler.undo_facts(
+                    organization_id=str(ctx.organization_id), user_id=ctx.user_id, facts=facts
+                )
+
             async def _save_now():  # type: ignore[no-untyped-def]
                 saved = await interaction_handler.save_now(ctx.user_id, actor=ctx)
                 if saved is not None and saved.saved_draft:
@@ -649,11 +656,33 @@ def build_message_handlers(
             async def _attach_receipt(reply, gateway):  # type: ignore[no-untyped-def]
                 if early["timer"] is not None:
                     early["timer"].cancel()
+                if getattr(gateway, "carry_before", None) or getattr(gateway, "carry_after", None):
+                    # Request 88: a changed card shows all its items in the text;
+                    # a picture of the one new entry would show only part of it.
+                    return reply
                 early["gateway"] = gateway
                 _start_card()  # no-op when the card for these saves is under way
                 task = early["task"]
                 image = await task if task is not None else None
                 return dataclasses.replace(reply, header_image=image) if image else reply
+
+            async def _remember_card(gateway, *, open_card: bool) -> None:  # type: ignore[no-untyped-def]
+                """Request 88: keep the card this reply shows, so "undo that" and
+                "alla, 8 mason aanu" act on it. A reply without Save buttons
+                (the old Undo button) leaves a marker that replaces any older
+                card, so an id from it can never be used."""
+                if cards is None:
+                    return
+                from runtime.agent.cards import LEGACY, OPEN, new_card
+
+                items = [*gateway.carry_before, *gateway.card_items, *gateway.carry_after]
+                try:
+                    if open_card and items:
+                        await cards.put(ctx, new_card(OPEN, items))
+                    else:
+                        await cards.put(ctx, new_card(LEGACY, []))
+                except Exception:  # noqa: BLE001 -- the card only enables undo and edit
+                    _log.warning("agent.card_remember_failed user=%s", ctx.user_id, exc_info=True)
 
             async def _send_agent_reply(reply, target_wa_id, gateway) -> None:  # type: ignore[no-untyped-def]
                 """The agent's one reply, with the offers for what it saved
@@ -679,9 +708,16 @@ def build_message_handlers(
                 saved = any(h.saved_draft and not save_button.is_engineer_question(h) for h in handled_list)
                 composed = compose(reply.text, offers, saved=saved)
                 # WA-35: drafts wait on the sender's Save tap, not on Undo.
-                facts = save_button.facts_of(handled_list)
+                facts = save_button.facts_of(
+                    handled_list,
+                    before=[i.fact for i in getattr(gateway, "carry_before", ())],
+                    after=[i.fact for i in getattr(gateway, "carry_after", ())],
+                )
                 if facts is not None and any(r.id == UNDO_ROW.id for r in composed.buttons or composed.list_rows or ()):
                     composed = save_button.with_save_buttons(composed, facts)
+                    await _remember_card(gateway, open_card=True)
+                elif saved:
+                    await _remember_card(gateway, open_card=False)
                 await _send_composed(
                     target_wa_id,
                     ctx.user_id,
@@ -719,6 +755,13 @@ def build_message_handlers(
                 )
                 return render_open_work_line(site_label(actor, site_id), rows)
 
+            async def _card_line(actor):  # type: ignore[no-untyped-def]
+                """Request 88: the sender's latest card, with the ids the model
+                may name in undo_last / update_pending_card."""
+                from runtime.agent.cards import context_line
+
+                return context_line(await cards.get(actor))
+
             def _gateway(msg, language):  # type: ignore[no-untyped-def]
                 early["gateway"] = JourneyGateway(
                     message=msg,
@@ -727,6 +770,9 @@ def build_message_handlers(
                     followups=lambda handled: _deliver_followups(handled, audit=False),
                     held_prompt=lambda journey: render_workflow_run_reply_spec(journey.workflow_run),
                     language=language,
+                    cards=cards,
+                    actor=ctx,
+                    undo_facts=_undo_facts,
                     set_today_site=_set_today_site if work_site is not None else None,
                     set_conversion=(
                         (
@@ -836,6 +882,7 @@ def build_message_handlers(
                 stock_line=lambda actor: build_stock_line(inventory_query, actor),
                 work_site_line=_work_site_line if work_site is not None else None,
                 open_work_line=_open_work_line if activity_query is not None else None,
+                card_line=_card_line if cards is not None else None,
                 on_conversational=lambda: _conversational.add(message.correlation_id),
                 trace_logger=trace_logger,
             )
@@ -1303,7 +1350,7 @@ def build_message_handlers(
         from runtime.agent import save_button
 
         try:
-            save_reply = await save_button.handle_tap(message, ctx, interaction_handler)
+            save_reply = await save_button.handle_tap(message, ctx, interaction_handler, cards)
         except Exception:  # noqa: BLE001 — a tap must always get some reply
             _log.exception("save_button.tap_failed user=%s", ctx.user_id)
             save_reply = ReplySpec(text="Sorry, that didn't work — please try again.")

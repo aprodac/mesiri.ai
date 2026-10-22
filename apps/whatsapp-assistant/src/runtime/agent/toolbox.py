@@ -20,6 +20,7 @@ from channel.replies import ListRow, ReplySpec
 from mesiri_ai.models import ToolOutcome
 from runtime.save_first import DRAFT_NOTE
 
+from .cards import CardItem, merge_changes
 from .gateway import StepResult, WorkflowGateway
 from .tools import (
     ASK_USER,
@@ -28,9 +29,11 @@ from .tools import (
     SET_UNIT_CONVERSION,
     SET_WORK_SITE,
     UNDO_LAST,
+    UPDATE_PENDING_CARD,
     WRITE_TOOLS,
     ScopeLookup,
     to_candidate,
+    tool_specs,
 )
 
 _log = logging.getLogger("mesiri.agent")
@@ -70,6 +73,14 @@ def asks_for_engineer(text: str) -> bool:
     return bool(_ENGINEER.search(text or ""))
 
 
+def _tool_fields(tool: str) -> set[str]:
+    """The argument names a save tool takes: what a card change may touch."""
+    for spec in tool_specs():
+        if spec.name == tool:
+            return set((spec.parameters or {}).get("properties", {}))
+    return set()
+
+
 def _title(option: str) -> str:
     option = " ".join(str(option).split())
     return option if len(option) <= _TITLE_MAX else option[: _TITLE_MAX - 1] + "…"
@@ -94,6 +105,10 @@ class SavedItem:
     #: What was saved in a few words, from the saved data; the reply's
     #: "Saved:" list is built from these, never from the user's own words.
     summary: str | None = None
+    #: An item of the open card this turn changed that was not itself changed:
+    #: it stays on the card and its "To save:" line, but the model's sentence
+    #: need not name it.
+    carried: bool = False
 
 
 @dataclass(slots=True)
@@ -130,6 +145,11 @@ class AgentToolbox:
     report_text: str | None = None
     #: The last reply offered to ask their engineer, so a bare "yes" asks it.
     engineer_offered: bool = False
+    #: Request 88: lines the system adds under the model's words, from the
+    #: data ("Removed: 2 painters (today)").
+    system_lines: list[str] = field(default_factory=list)
+    #: Request 88: items of the open card that follow the one being changed.
+    _carry_after: list[SavedItem] = field(default_factory=list)
     _seen: set[str] = field(default_factory=set)
     _inflight: set[asyncio.Task[Any]] = field(default_factory=set)
 
@@ -269,7 +289,9 @@ class AgentToolbox:
 
     async def _run(self, name: str, args: dict[str, Any]) -> StepResult:
         if name == UNDO_LAST and str(args.get("what") or "latest_update") == "latest_update":
-            return await self.gateway.undo_latest_draft()
+            return await self._undo(args)
+        if name == UPDATE_PENDING_CARD:
+            return await self._update_card(args)
         if name == SET_UNIT_CONVERSION:
             return await self.gateway.set_unit_conversion(
                 material=str(args.get("material") or ""),
@@ -279,7 +301,85 @@ class AgentToolbox:
         candidate = to_candidate(name, args, self.scope)
         if candidate is None:
             return StepResult(status="error", text=f"unknown tool {name}")
+        return await self._run_candidate(name, args, candidate)
+
+    async def _run_candidate(self, name: str, args: dict[str, Any], candidate: Any) -> StepResult:
+        """A save through the gateway, noting which tool and arguments made the
+        record so its card can undo or change it later (request 88)."""
+        try:
+            self.gateway.current_call = (name, args)  # type: ignore[attr-defined]
+        except AttributeError:  # a gateway without cards
+            pass
         return await self.gateway.run(candidate, text=self.user_text)
+
+    async def _undo(self, args: dict[str, Any]) -> StepResult:
+        """Request 88: undo the entries of the latest card. The model may only
+        name ids the code listed; the gateway rejects any other."""
+        undo_card = getattr(self.gateway, "undo_card", None)
+        if undo_card is None:
+            return await self.gateway.undo_latest_draft()
+        targets = args.get("targets")
+        refs = [str(t) for t in targets] if isinstance(targets, list) else []
+        return await undo_card(refs)
+
+    async def _update_card(self, args: dict[str, Any]) -> StepResult:
+        """Request 88: change one item of the open card. The old draft is
+        withdrawn and the new one saved through the item's own save tool, so
+        every check of that tool runs again; the card is then shown again."""
+        gateway = self.gateway
+        open_card = getattr(gateway, "open_card", None)
+        card = await open_card() if open_card is not None else None
+        if card is None:
+            return StepResult("info", text="There is no open card of theirs to change. If it is already saved, it can be undone and sent again.")
+        if str(args.get("card_id") or "") != card.id:
+            return StepResult("error", text="That card is not their open card, so nothing was changed.")
+        try:
+            index = int(args.get("item_index"))
+        except (TypeError, ValueError):
+            index = 0
+        if not 1 <= index <= len(card.items):
+            return StepResult("error", text="That item is not on their open card, so nothing was changed.")
+        changes = args.get("changes")
+        item: CardItem = card.items[index - 1]
+        allowed = _tool_fields(item.tool)
+        if not isinstance(changes, dict) or not changes:
+            return StepResult("error", text="No change was given, so nothing was changed.")
+        unknown = sorted(set(changes) - allowed)
+        if unknown:
+            return StepResult("error", text=f"{', '.join(unknown)} cannot be changed on this kind of entry, so nothing was changed.")
+        merged = merge_changes(item.tool, item.args, changes)
+        candidate = to_candidate(item.tool, merged, self.scope)
+        if candidate is None:
+            return StepResult("error", text="That item cannot be changed here.")
+        before, after = card.items[: index - 1], card.items[index:]
+        if not await gateway.withdraw_card_item(item):
+            return StepResult("error", text="Couldn't change it: that entry could not be taken back. Nothing was changed.")
+        step = await self._run_candidate(item.tool, merged, candidate)
+        if step.status == "saved":
+            gateway.carry_card_items(before, after)
+            self.saved.extend(SavedItem(i.tool, i.summary, i.summary, carried=True) for i in before)
+            self._carry_after = [SavedItem(i.tool, i.summary, i.summary, carried=True) for i in after]
+            return step
+        if step.status in ("needs_confirmation", "needs_answer", "choose"):
+            # The tool's own question is now the one the conversation waits on,
+            # with the merged arguments; the other items stay on the card.
+            gateway.carry_card_items(before, after)
+            return step
+        # Refused: put the old entry back, so a failed change loses nothing.
+        restored = await self._run_candidate(item.tool, item.args, to_candidate(item.tool, item.args, self.scope))
+        if restored.status == "saved":
+            gateway.carry_card_items(before, after)
+            self.saved.extend(SavedItem(i.tool, i.summary, i.summary, carried=True) for i in before)
+            self.saved.append(SavedItem(item.tool, restored.text, restored.summary))
+            self._carry_after_flush()
+            return StepResult("error", text=f"{step.text} The card is as it was.".strip())
+        return StepResult(
+            "error", text="The change did not go through and the old entry could not be put back: they need to send it again."
+        )
+
+    def _carry_after_flush(self) -> None:
+        self.saved.extend(self._carry_after)
+        self._carry_after = []
 
     def _outcome(self, name: str, step: StepResult) -> ToolOutcome:
         if step.status == "saved" and name == NOTE_FOR_ENGINEER:
@@ -294,8 +394,20 @@ class AgentToolbox:
                     ),
                 }
             )
+        if step.status == "undone":
+            self.system_lines.append(step.text)
+            return ToolOutcome(
+                content={
+                    "status": "undone",
+                    "instruction": (
+                        "Say in one short line that it is removed. The system puts the exact "
+                        "'Removed: ...' line under your words: do not list what was removed."
+                    ),
+                }
+            )
         if step.status == "saved":
             self.saved.append(SavedItem(name, step.text, step.summary))
+            self._carry_after_flush()
             content: dict[str, Any] = {"status": "saved"}
             if step.summary:
                 content["saved_as"] = step.summary

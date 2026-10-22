@@ -8,6 +8,7 @@ canonicalization, the gates and the workflows read exactly what they always have
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -42,6 +43,8 @@ CREATE_PROJECT = "create_project"
 ADD_MEMBER = "add_member"
 CORRECT_WORK_QUANTITY = "correct_work_quantity"
 UPDATE_ISSUE = "update_issue"
+# Request 88: change one item of the card that is still open.
+UPDATE_PENDING_CARD = "update_pending_card"
 
 #: Tools that write a record (or an undo of one). A run that has attempted one
 #: must never be retried from the top.
@@ -62,6 +65,7 @@ WRITE_TOOLS = frozenset(
         ADD_MEMBER,
         CORRECT_WORK_QUANTITY,
         UPDATE_ISSUE,
+        UPDATE_PENDING_CARD,
     }
 )
 
@@ -379,17 +383,78 @@ def tool_specs() -> list[ToolSpec]:
         ToolSpec(
             name=UNDO_LAST,
             description=(
-                "Undo the user's most recent saved entry ('undo', 'delete that', 'cancel the "
-                "last expense'). Default undoes their latest saved update."
+                "Undo ('undo', 'undo that', 'delete that', 'remove the painters', 'cancel the last "
+                "expense'). By default it removes the entries of the user's latest card, which "
+                "the context lists with an id in brackets. When they mean only some of them, "
+                "pass those ids as targets; never invent an id. With several entries on the card "
+                "and no targets, the user is asked which one."
             ),
             parameters=_obj(
                 {
+                    "targets": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Ids from the context's latest saved card, only when they name some of its entries.",
+                    },
                     "what": {
                         "type": "string",
                         "enum": ["latest_update", "expense", "transfer", "petty_cash"],
-                        "description": "Omit for the latest saved update.",
-                    }
+                        "description": "Omit for the latest card; expense, transfer or petty_cash for a money entry.",
+                    },
                 }
+            ),
+        ),
+        ToolSpec(
+            name=UPDATE_PENDING_CARD,
+            description=(
+                "Change one item of the user's OPEN card (the one with Save / Cancel not tapped "
+                "yet): 'alla, 8 mason aanu', '30 bag alla 20', 'helper 10 aanu'. Pass the card id "
+                "and the item's number from the context, and only the fields that change, "
+                "named as the item's own save tool names them. A card they already saved is not "
+                "changed this way."
+            ),
+            parameters=_obj(
+                {
+                    "card_id": {"type": "string", "description": "The open card's id, from the context."},
+                    "item_index": {"type": "integer", "description": "The item's number on that card, from 1."},
+                    "changes": _obj(
+                        {
+                            "workers": {
+                                "type": "array",
+                                "description": "Only the trade lines that change, e.g. [{trade:'mason',headcount:8}].",
+                                "items": _obj(
+                                    {
+                                        "name": {"type": "string"},
+                                        "trade": {"type": "string"},
+                                        "headcount": {"type": "integer"},
+                                        "daily_wage": {"type": "number"},
+                                        "attendance_status": {
+                                            "type": "string",
+                                            "enum": ["present", "absent", "half_day"],
+                                        },
+                                    }
+                                ),
+                            },
+                            "quantity": {"type": "number"},
+                            "unit": {"type": "string"},
+                            "material": {"type": "string"},
+                            "supplier": {"type": "string"},
+                            "work_item": {"type": "string"},
+                            "narrative": {"type": "string"},
+                            "work_type": {"type": "string"},
+                            "location": {"type": "string"},
+                            "progress_percent": {"type": "number"},
+                            "amount": {"type": "number"},
+                            "description": {"type": "string"},
+                            "vendor": {"type": "string"},
+                            "paid_to": {"type": "string"},
+                            "category": {"type": "string"},
+                            "severity": {"type": "string"},
+                            "date": _DATE,
+                        }
+                    ),
+                },
+                ["card_id", "item_index", "changes"],
             ),
         ),
         ToolSpec(
@@ -642,11 +707,39 @@ def _pdf(args: dict[str, Any]) -> dict[str, str]:
     return {"output_format": "pdf"} if args.get("as_pdf") is True else {}
 
 
+#: The day words a model may pass through unchanged from the user's own
+#: language; the pipeline reads English ones and ISO dates only (request 88:
+#: "innale report ayakku" was refused while "yesterday's report" was sent).
+_DAY_WORDS = {
+    "innale": "yesterday",
+    "innalathe": "yesterday",
+    "innalethe": "yesterday",
+    "ഇന്നലെ": "yesterday",
+    "ഇന്നലത്തെ": "yesterday",
+    "innu": "today",
+    "ഇന്ന്": "today",
+}
+
+
+def day_argument(value: Any) -> Any:
+    """The tool's ``date`` argument with a day word in the sender's language
+    ("innale", "innaleത്തെ") turned into the word the pipeline reads."""
+    text = str(value or "").strip().casefold()
+    if not text:
+        return value
+    if text in _DAY_WORDS:
+        return _DAY_WORDS[text]
+    prefix = re.match(r"[a-z]+", text)
+    if prefix and prefix.group(0) in _DAY_WORDS and prefix.group(0) != text:
+        return _DAY_WORDS[prefix.group(0)]
+    return value
+
+
 def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candidate | None:
     """The understanding a tool call stands for, or None for a tool that is not
     a workflow (ask_user, undo_last)."""
     sc = _scope(args, scope)
-    date = args.get("date")
+    date = day_argument(args.get("date"))
     if name == SAVE_LABOUR:
         fields = {
             "workers": args.get("workers"),

@@ -275,6 +275,15 @@ class InteractionHandler:
             organization_id=organization_id, actor_user_id=user_id
         )
 
+    async def undo_facts(self, *, organization_id: str | None, user_id: str | None, facts: list) -> Any:
+        """Request 88: withdraw exactly these entries (saved or draft) through
+        each module's own undo. None when save-first is not wired."""
+        if self._save_first is None:
+            return None
+        return await self._save_first.undo_facts(
+            organization_id=organization_id, actor_user_id=user_id, facts=facts
+        )
+
     async def settle_drafts(
         self, *, organization_id: str | None, user_id: str | None, facts: list, keep: bool
     ) -> Any:

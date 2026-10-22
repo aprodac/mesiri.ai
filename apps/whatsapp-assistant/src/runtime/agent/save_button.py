@@ -36,6 +36,8 @@ from runtime.save_first import FACT_TYPE_BY_ACTION
 TAP_PREFIX = "agt:"
 SAVE = "save"
 CANCEL = "cancel"
+#: Request 88: a row of the "which one should I remove?" list.
+UNDO = "undo"
 
 SAVE_TITLE = "✅ Save"
 CANCEL_TITLE = "❌ Cancel"
@@ -100,11 +102,18 @@ def is_engineer_question(handled: Any) -> bool:
     return str(fields.get("narrative") or "").startswith(QUESTION_PREFIX)
 
 
-def facts_of(handled_list: Iterable[Any]) -> list[tuple[str, uuid.UUID]] | None:
+def facts_of(
+    handled_list: Iterable[Any],
+    *,
+    before: Iterable[tuple[str, uuid.UUID]] = (),
+    after: Iterable[tuple[str, uuid.UUID]] = (),
+) -> list[tuple[str, uuid.UUID]] | None:
     """Every entry the reply saved, when each is a reviewable draft and they
     fit one tap; None otherwise (the reply keeps its Undo button). Questions
-    passed to the engineer are not entries and are left out (WA-37)."""
-    facts = []
+    passed to the engineer are not entries and are left out (WA-37).
+    ``before`` / ``after``: entries of an open card the reply shows again
+    around the ones it saved (request 88)."""
+    facts = list(before)
     for handled in handled_list:
         if is_engineer_question(handled):
             continue
@@ -112,6 +121,7 @@ def facts_of(handled_list: Iterable[Any]) -> list[tuple[str, uuid.UUID]] | None:
         if fact is None:
             return None
         facts.append(fact)
+    facts.extend(after)
     return facts if 0 < len(facts) <= MAX_ITEMS else None
 
 
@@ -124,7 +134,7 @@ def parse_tap(value: str) -> tuple[str, list[tuple[str, uuid.UUID]]] | None:
     if not value.startswith(TAP_PREFIX):
         return None
     action, _, body = value[len(TAP_PREFIX) :].partition(":")
-    if action not in (SAVE, CANCEL) or not body:
+    if action not in (SAVE, CANCEL, UNDO) or not body:
         return None
     facts = []
     for part in body.split("."):
@@ -178,8 +188,12 @@ def tap_reply(action: str, settled: Any) -> str:
     return "\n".join(lines)
 
 
-async def handle_tap(message: Any, actor: Any, interaction_handler: Any) -> ReplySpec | None:
-    """The reply to a Save / Cancel tap, or None when the message is not one."""
+async def handle_tap(
+    message: Any, actor: Any, interaction_handler: Any, cards: Any | None = None
+) -> ReplySpec | None:
+    """The reply to a Save / Cancel / remove tap, or None when the message is
+    not one. ``cards`` (runtime/agent/cards.py) keeps the sender's latest card
+    in step with the tap: Save marks it saved, Cancel and remove drop it."""
     tap = str((message.metadata or {}).get("interactive_reply_id") or "")
     if not tap.startswith(TAP_PREFIX):
         return None
@@ -187,12 +201,42 @@ async def handle_tap(message: Any, actor: Any, interaction_handler: Any) -> Repl
     if parsed is None:
         return ReplySpec(text=EXPIRED)
     action, facts = parsed
+    org = str(actor.organization_id) if actor.organization_id else None
+    if action == UNDO:
+        return await _undo_tap(actor, interaction_handler, cards, org, facts)
+    card = None
+    if cards is not None:
+        try:
+            card = await cards.get(actor)
+        except Exception:  # noqa: BLE001 -- the card only helps undo and edit
+            card = None
     settled = await interaction_handler.settle_drafts(
-        organization_id=str(actor.organization_id) if actor.organization_id else None,
+        organization_id=org,
         user_id=actor.user_id,
         facts=facts,
         keep=action == SAVE,
     )
     if settled is None:
         return ReplySpec(text=EXPIRED)
+    if cards is not None and card is not None and settled.done:
+        await cards.settle(actor, facts, keep=action == SAVE)
     return ReplySpec(text=tap_reply(action, settled))
+
+
+async def _undo_tap(actor: Any, interaction_handler: Any, cards: Any | None, org: str | None, facts: list) -> ReplySpec:
+    """A row of the remove list: exactly those entries, by their own undo."""
+    from .journey_gateway import undo_step
+
+    undo = getattr(interaction_handler, "undo_facts", None)
+    undone = await undo(organization_id=org, user_id=actor.user_id, facts=facts) if undo else None
+    if undone is None:
+        return ReplySpec(text=EXPIRED)
+    card = await cards.get(actor) if cards is not None else None
+    items = [i for i in (card.items if card else []) if i.fact in set(undone.done)]
+    if cards is not None and undone.done:
+        await cards.drop(actor, list(undone.done))
+    if items:
+        return ReplySpec(text=undo_step(items, undone).text)
+    if undone.done:
+        return ReplySpec(text="Removed.")
+    return ReplySpec(text=undo_step([], undone).text)

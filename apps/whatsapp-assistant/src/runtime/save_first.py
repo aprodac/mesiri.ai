@@ -416,6 +416,92 @@ class SaveFirstService:
             _log.exception("save_first.undo_failed actor=%s", actor_user_id)
             return None
 
+    async def undo_facts(
+        self,
+        *,
+        organization_id: str | None,
+        actor_user_id: str | None,
+        facts: list[tuple[str, uuid.UUID]],
+    ) -> FactsUndone:
+        """Request 88: withdraw exactly these entries (the ones the sender's
+        last card held), saved or still drafts, each through its module's own
+        undo. Only the sender's own, in their own company, and not already
+        withdrawn; each in its own transaction, so one refusal (its day was
+        already confirmed) leaves the rest done. Unlike ``undo_latest_draft``
+        it never picks a record itself."""
+        undone = FactsUndone()
+        org_uuid = canonical_uuid(organization_id)
+        actor_uuid = canonical_uuid(actor_user_id)
+        if org_uuid is None or actor_uuid is None:
+            undone.refused.append("not your entry")
+            return undone
+        from sqlalchemy import text
+
+        from mesiri.application.dpr import fact_review
+        from mesiri.application.dpr.fact_review import FactReviewError
+        from mesiri.infrastructure.postgres.repositories.fact_reviews import (
+            PostgresFactReviewRepository,
+        )
+
+        reason = "Undone on WhatsApp by the sender"
+        for fact_type, fact_id in facts:
+            try:
+                async with self._db.transaction() as conn:
+                    latest = (
+                        await conn.execute(
+                            text(
+                                """
+                                SELECT state, actor_user_id FROM fact_reviews
+                                WHERE organization_id = :org_id
+                                  AND fact_type = :fact_type AND fact_id = :fact_id
+                                ORDER BY created_at DESC
+                                LIMIT 1
+                                """
+                            ),
+                            {"org_id": org_uuid, "fact_type": fact_type, "fact_id": fact_id},
+                        )
+                    ).mappings().first()
+                    # An entry with no review row cannot be tied to the sender.
+                    if latest is None or canonical_uuid(latest["actor_user_id"]) != actor_uuid:
+                        undone.refused.append("not your entry")
+                        continue
+                    state = latest["state"]
+                    if state == fact_review.REJECTED:
+                        undone.already += 1
+                        continue
+                    reviews = PostgresFactReviewRepository(conn)
+                    if state == fact_review.DRAFT:
+                        await reviews.reject(
+                            organization_id=org_uuid,
+                            fact_type=fact_type,
+                            fact_id=fact_id,
+                            actor_user_id=actor_uuid,
+                            reason=reason,
+                        )
+                    else:
+                        # Saved (confirmed): reject() only takes drafts, so the
+                        # same steps it runs, minus that one check.
+                        located = await reviews.locate(org_uuid, fact_type, fact_id)
+                        await reviews._refuse_if_day_frozen(org_uuid, located)  # noqa: SLF001
+                        await reviews._undo(org_uuid, fact_type, fact_id, actor_uuid, reason)  # noqa: SLF001
+                        await reviews._append(  # noqa: SLF001
+                            organization_id=org_uuid,
+                            fact_type=fact_type,
+                            fact_id=fact_id,
+                            located=located,
+                            state=fact_review.REJECTED,
+                            extraction_id=None,
+                            actor_user_id=actor_uuid,
+                            note=reason,
+                        )
+                    undone.done.append((fact_type, fact_id))
+            except FactReviewError as exc:
+                undone.refused.append(str(exc))
+            except Exception:  # noqa: BLE001 -- the sender is told; the log keeps the cause
+                _log.exception("save_first.undo_facts_failed fact_type=%s fact_id=%s", fact_type, fact_id)
+                undone.refused.append("something went wrong")
+        return undone
+
     async def settle_drafts(
         self,
         *,
@@ -499,6 +585,16 @@ class SaveFirstService:
                 )
                 settled.refused.append("something went wrong")
         return settled
+
+
+@dataclass(slots=True)
+class FactsUndone:
+    """What ``undo_facts`` did: the entries withdrawn, how many were already
+    withdrawn, and why any were refused."""
+
+    done: list[tuple[str, uuid.UUID]] = field(default_factory=list)
+    already: int = 0
+    refused: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)

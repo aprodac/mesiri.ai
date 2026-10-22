@@ -79,6 +79,9 @@ class AgentTurnDeps:
     #: activities, so the model can say which one a message continues
     #: (runtime/today_context.py's render_open_work_line); None leaves it out.
     open_work_line: Callable[[ActorIdentity], Awaitable[str | None]] | None = None
+    #: Request 88: ``(actor) -> "Their open card ..." | None``: the latest card,
+    #: with the ids the model may name (runtime/agent/cards.py).
+    card_line: Callable[[ActorIdentity], Awaitable[str | None]] | None = None
     #: [68]: called when the reply saved nothing (a question or small talk), so
     #: the journey holds setup nudges ("add another site?") for after a save.
     on_conversational: Callable[[], None] | None = None
@@ -262,11 +265,18 @@ async def run_agent_turn(
     lines = await asyncio.gather(
         *(
             _context_line(fetch, actor)
-            for fetch in (deps.today_line, deps.stock_line, deps.work_site_line, deps.open_work_line)
+            for fetch in (
+                deps.today_line, deps.stock_line, deps.work_site_line, deps.open_work_line, deps.card_line
+            )
         )
     )
     context = replace(
-        context, today_line=lines[0], stock_line=lines[1], work_site=lines[2], open_work_line=lines[3]
+        context,
+        today_line=lines[0],
+        stock_line=lines[1],
+        work_site=lines[2],
+        open_work_line=lines[3],
+        card_line=lines[4],
     )
     _lap(deps, "agent_context")
     result = await deps.runner.run(
