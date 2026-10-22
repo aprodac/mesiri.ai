@@ -27,8 +27,15 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
+from channel.onboarding_cards import (
+    build_ready_card,
+    build_welcome_card,
+    detect_lang,
+    render_card_png,
+)
 from channel.replies import ListRow
 from interactions.signup_state import SignupState, SignupStateStore
+from mesiri.application.organizations.companies_overview import DEFAULT_SEND_TIME
 from mesiri.application.organizations.create_company import (
     CompanyCreationError,
     CreatedCompany,
@@ -47,6 +54,7 @@ from mesiri.infrastructure.postgres.repositories.platform_settings import (
 from mesiri_contracts.assistant.enums import InputModality
 
 if TYPE_CHECKING:
+    from channel.receipt import ReceiptRenderer
     from channel.whatsapp.outbound import WhatsAppSender
     from mesiri.infrastructure.postgres.database import PostgresDatabase
 
@@ -63,9 +71,10 @@ WELCOME_MESSAGE = (
     "report for you and your client.\n\n"
     "Want to try it free for your company?"
 )
-ASK_COMPANY = "Great! What's your company name?"
+ASK_COMPANY = "*Step 1 of 2*\nGreat! What's your company name?"
 ASK_SITE = (
-    "Which site are you working on now? A name and place is enough, e.g. *Green Villa, Kakkanad*."
+    "*Step 2 of 2*\nWhich site are you working on now? "
+    "A name and place is enough, e.g. *Green Villa, Kakkanad*."
 )
 ASK_OWNER_NAME = "And your name?"
 IN_COMPANY_MESSAGE = (
@@ -87,6 +96,8 @@ DONE_MESSAGE = (
     "photos all work. Your daily report comes this evening."
 )
 
+TRIAL_CAPTION = "Your free trial runs until *{trial_end}*."
+
 _QUESTION = {"company": ASK_COMPANY, "site": ASK_SITE, "owner_name": ASK_OWNER_NAME}
 
 
@@ -97,8 +108,11 @@ class SignupJourney:
         sender: WhatsAppSender,
         store: SignupStateStore,
         db: PostgresDatabase,
+        renderer: ReceiptRenderer | None = None,
         now: Callable[[], dt.datetime] | None = None,
     ) -> None:
+        # The onboarding cards' renderer; without one signup is all text.
+        self._renderer = renderer
         self._sender = sender
         self._store = store
         self._db = db
@@ -198,14 +212,17 @@ class SignupJourney:
         await self._store.set(wa_id, SignupState(stage="welcome"))
         name = _clean_profile_name(profile_name)
         body = WELCOME_MESSAGE.format(name=f" {name}" if name else "")
-        await self._sender.send_button(
-            wa_id,
-            body=body,
-            buttons=[
-                ListRow(id=START_TRIAL_ID, title="Start free trial"),
-                ListRow(id=IN_COMPANY_ID, title="I'm in a company"),
-            ],
-        )
+        buttons = [
+            ListRow(id=START_TRIAL_ID, title="Start free trial"),
+            ListRow(id=IN_COMPANY_ID, title="I'm in a company"),
+        ]
+        # Card 1 rides as the buttons' header image; if it can't be made or
+        # sent, the same message goes out as text and buttons.
+        card = await render_card_png(self._renderer, build_welcome_card("en"))
+        if card is None or not await self._sender.send_button(
+            wa_id, body=body, buttons=buttons, header_image=card
+        ):
+            await self._sender.send_button(wa_id, body=body, buttons=buttons)
         return body
 
     async def _create(self, wa_id: str, state: SignupState, owner_name: str) -> str:
@@ -257,14 +274,23 @@ class SignupJourney:
         _log.info(
             "signup.company_created org=%s owner=%s", created.organization_id, created.owner_user_id
         )
-        return await self._say(
-            wa_id,
-            DONE_MESSAGE.format(
+        trial_end = _format_day(created.trial_ends_at, created.timezone)
+        done = DONE_MESSAGE.format(company=created.name, site=state.site_name, trial_end=trial_end)
+        # Card 2 replaces the plain text; the text is the fallback.
+        card = await render_card_png(
+            self._renderer,
+            build_ready_card(
                 company=created.name,
-                site=state.site_name,
-                trial_end=_format_day(created.trial_ends_at, created.timezone),
+                site_name=state.site_name or "",
+                report_time=_clock_label(DEFAULT_SEND_TIME),
+                lang=detect_lang(state.company_name, state.site_name),
             ),
         )
+        if card is not None and await self._sender.send_image(
+            wa_id, card, caption=TRIAL_CAPTION.format(trial_end=trial_end)
+        ):
+            return done
+        return await self._say(wa_id, done)
 
     async def _say(self, wa_id: str, body: str) -> str:
         await self._sender.send_text(wa_id, body)
@@ -276,6 +302,14 @@ def _clean_profile_name(value: str | None) -> str | None:
     if not name or len(name) > _NAME_MAX or not any(ch.isalpha() for ch in name):
         return None
     return name
+
+
+def _clock_label(hhmm: str) -> str:
+    """"21:00" -> "9 pm"."""
+    hour, _, minute = hhmm.partition(":")
+    h = int(hour)
+    suffix = "am" if h < 12 else "pm"
+    return f"{h % 12 or 12}{'' if minute in ('', '00') else ':' + minute} {suffix}"
 
 
 def _format_day(moment: dt.datetime | None, timezone: str) -> str:

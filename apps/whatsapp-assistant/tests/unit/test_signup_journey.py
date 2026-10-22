@@ -24,13 +24,20 @@ class _Sender:
     def __init__(self) -> None:
         self.texts: list[str] = []
         self.buttons: list[tuple[str, list[str]]] = []
+        self.headers: list = []
+        self.images: list = []
 
     async def send_text(self, to, body):
         self.texts.append(body)
         return True
 
-    async def send_button(self, to, *, body, buttons):
+    async def send_button(self, to, *, body, buttons, header_image=None):
         self.buttons.append((body, [b.id for b in buttons]))
+        self.headers.append(header_image)
+        return True
+
+    async def send_image(self, to, image, *, caption=None):
+        self.images.append((image, caption))
         return True
 
 
@@ -245,3 +252,77 @@ async def test_refused_at_create_creates_nothing(journey) -> None:
     reply = await journey.j.handle(_text("Green Villa, Kakkanad"))
     assert reply == "We're getting a lot of sign-ups right now."
     assert journey.created_with == []
+
+
+class _Renderer:
+    def __init__(self, fail=False):
+        self.fail = fail
+        self.html: list[str] = []
+
+    async def render_png(self, html):
+        if self.fail:
+            raise RuntimeError("no chromium")
+        self.html.append(html)
+        return b"png"
+
+
+def _with_renderer(journey, renderer):
+    journey.j._renderer = renderer
+    return renderer
+
+
+async def test_steps_are_numbered(journey) -> None:
+    assert sj.ASK_COMPANY.startswith("*Step 1 of 2*")
+    assert sj.ASK_SITE.startswith("*Step 2 of 2*")
+
+
+async def test_welcome_card_rides_as_the_buttons_header(journey) -> None:
+    renderer = _with_renderer(journey, _Renderer())
+    await journey.j.handle(_text("Hi"))
+    assert journey.sender.headers == [b"png"]
+    assert journey.sender.buttons[0][1] == [sj.START_TRIAL_ID, sj.IN_COMPANY_ID]
+    assert "Tell me what happened" in renderer.html[0]
+
+
+async def test_site_ready_card_replaces_the_text(journey) -> None:
+    renderer = _with_renderer(journey, _Renderer())
+    await journey.j.handle(_tap(sj.START_TRIAL_ID))
+    await journey.j.handle(_text("Suresh Builders"))
+    await journey.j.handle(_text("Green Villa, Kakkanad"))
+    assert journey.sender.images == [(b"png", "Your free trial runs until *22 Oct*.")]
+    assert journey.sender.texts == [sj.ASK_COMPANY, sj.ASK_SITE]  # no plain done-text
+    assert "Green Villa is live." in renderer.html[0]
+    assert "Suresh Builders" in renderer.html[0] and "9 pm" in renderer.html[0]
+
+
+async def test_malayalam_names_get_the_malayalam_ready_card(journey) -> None:
+    renderer = _with_renderer(journey, _Renderer())
+    await journey.j.handle(_tap(sj.START_TRIAL_ID))
+    await journey.j.handle(_text("സുരേഷ് ബിൽഡേഴ്സ്"))
+    await journey.j.handle(_text("Green Villa"))
+    assert "തയ്യാറായി" in renderer.html[0]
+
+
+async def test_signup_falls_back_to_text_when_the_renderer_raises(journey) -> None:
+    _with_renderer(journey, _Renderer(fail=True))
+    await journey.j.handle(_text("Hi"))
+    assert journey.sender.headers == [None]  # same buttons, no image
+    await journey.j.handle(_tap(sj.START_TRIAL_ID))
+    await journey.j.handle(_text("Suresh Builders"))
+    done = await journey.j.handle(_text("Green Villa, Kakkanad"))
+    assert journey.sender.images == []
+    assert journey.sender.texts[-1] == done and "Suresh Builders" in done and "22 Oct" in done
+    assert len(journey.created_with) == 1  # signup was never blocked
+
+
+async def test_signup_falls_back_to_text_when_the_image_send_fails(journey) -> None:
+    _with_renderer(journey, _Renderer())
+
+    async def refuse(to, image, *, caption=None):
+        return False
+
+    journey.sender.send_image = refuse
+    await journey.j.handle(_tap(sj.START_TRIAL_ID))
+    await journey.j.handle(_text("Acme"))
+    done = await journey.j.handle(_text("Site 1"))
+    assert journey.sender.texts[-1] == done

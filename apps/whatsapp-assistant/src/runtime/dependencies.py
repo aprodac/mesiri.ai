@@ -830,6 +830,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         sender=sender,
         store=SignupStateStore(redis_client),
         db=material_db,
+        renderer=receipt_renderer,
     )
 
     # WA-09: an outside DPR contact's YES / STOP to the opt-in invite.
