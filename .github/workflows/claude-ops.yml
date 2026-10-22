@@ -20,6 +20,8 @@ name: Claude ops
 #   bot-recent-team   the team group(s), last `hours` (Ilan Pro's posts and the team's)
 #   bot-items         open requests in the request log
 #   bot-label-test    label chat `text` (a jid) as assistant-test for mesiri
+#   golden-live       the agent golden sets on the real model (`pytest -m live`, ARCH-02 gate; `text` = site |
+#                     materials | empty for both). Uses TEAMMATE_GEMINI_API_KEY (approved by Ilan 22 Oct); no VPS.
 #
 # Never prints secrets; long digit runs (phone numbers) are cut to their last 4 digits. Customer groups are
 # not readable through this workflow.
@@ -31,7 +33,7 @@ on:
         description: What to run
         required: true
         type: choice
-        options: [vps-check, vps-backup-now, vps-staging, vps-app-login, vps-smoke, vps-perf, vps-evening, bot-status, bot-chats, bot-test, bot-recent-test, bot-recent-team, bot-items, bot-label-test]
+        options: [vps-check, vps-backup-now, vps-staging, vps-app-login, vps-smoke, vps-perf, vps-evening, bot-status, bot-chats, bot-test, bot-recent-test, bot-recent-team, bot-items, bot-label-test, golden-live]
       text:
         description: "bot-test: the message (or choose:<n|title>); bot-label-test: the chat jid"
         required: false
@@ -68,6 +70,18 @@ jobs:
           done
           [ -s ~/.ssh/known_hosts ] || { echo "could not read the server's SSH key"; exit 1; }
 
+      - uses: astral-sh/setup-uv@v5
+        if: inputs.task == 'golden-live'
+        with:
+          python-version: '3.11'
+          enable-cache: true
+
+      - name: Install (golden-live)
+        if: inputs.task == 'golden-live'
+        run: |
+          uv venv --python 3.11 --clear
+          uv pip install -e ".[dev,infra,providers,reports,workflow,receipt]"
+
       - name: Run
         env:
           TASK: ${{ inputs.task }}
@@ -77,6 +91,7 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
           TEAMMATE_TOKEN: ${{ secrets.TEAMMATE_API_TOKEN }}
           TEAMMATE_PROJECT: mesiri
+          GEMINI_API_KEY: ${{ inputs.task == 'golden-live' && secrets.TEAMMATE_GEMINI_API_KEY || '' }}
         run: |
           set -o pipefail
           mask() { sed -E 's/[0-9]{6,}([0-9]{4})/…\1/g'; }
@@ -113,4 +128,17 @@ jobs:
             bot-recent-team) inbox recent --role team --hours "$HOURS" --limit 200 | mask ;;
             bot-items) inbox items --status open ;;
             bot-label-test) inbox label "$TEXT" assistant-test --project mesiri ;;
+            golden-live)
+              T="$GITHUB_WORKSPACE/apps/whatsapp-assistant/tests/conversation"
+              case "$TEXT" in
+                site) FILES="$T/test_site_golden.py" ;;
+                materials) FILES="$T/test_materials_golden.py" ;;
+                "") FILES="$T/test_site_golden.py $T/test_materials_golden.py" ;;
+                *) echo "text must be site, materials or empty"; exit 2 ;;
+              esac
+              W="$GITHUB_WORKSPACE"
+              cd /tmp
+              PYTHONPATH="$W/shared/contracts/src:$W/platform/ai/src:$W/backend/src:$W/apps/whatsapp-assistant/src:$W/apps/whatsapp-assistant" \
+                "$W/.venv/bin/python" -P -m pytest $FILES --rootdir=/tmp -m live -s -q \
+                --import-mode=importlib -o asyncio_mode=auto -p no:cacheprovider 2>&1 | mask ;;
           esac
