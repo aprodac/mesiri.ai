@@ -383,6 +383,17 @@ pipeline and are unchanged.
 - The 13 classic replay cases went with their harness; the agent replay and the two
   golden sets (site 24, materials 24) are the regression net.
 
+### Sentence above the card (request [84], 22 Oct)
+
+The model writes the one sentence above the card from the tool calls it made. Code
+checks it against those same calls (`runtime/agent/sentence.py`): every saved item must be
+spoken of, matched on the tool arguments (trade, headcount, material, quantity, work, floor,
+percent), never on the worker's text. A miss gets one more model try with the reason; a second
+miss is replaced by a short line in the sender's language built from the arguments. Work done
+carries `location`, `update_kind` and `progress_percent`; the card shows them from the saved data
+("Plastering, 2nd floor: 70%", "Slab concreting, 3rd floor (completed)"). A report asked for in a
+message that also saves is the save tools plus `request_dpr` in one turn: one card, one draft line.
+
 ## 11. References
 
 [40] (this ADR, above) - [68], [75], [76] (Mesiri voice, memory, polish) -
