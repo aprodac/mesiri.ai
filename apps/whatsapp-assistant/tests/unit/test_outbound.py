@@ -304,7 +304,8 @@ async def test_receipt_is_sent_as_an_interactive_message_with_an_image_header(ca
         )
 
     assert ok is True
-    payload = json.loads(captured[-1].content)
+    # The last request is the pin experiment; the card is the one before it.
+    payload = json.loads(captured[-2].content)
     assert payload["type"] == "interactive"
     assert payload["interactive"]["header"] == {"type": "image", "image": {"id": "MEDIA-42"}}
     assert "receipt.sent as=header media_id=MEDIA-42" in caplog.text
@@ -334,9 +335,9 @@ async def test_a_prepared_image_is_not_uploaded_again_by_the_send():
 
 
 @pytest.mark.asyncio
-async def test_receipt_image_pin_attempt_only_for_listed_test_recipients(monkeypatch):
-    """EXPERIMENT: pin is tried for MESIRI_PIN_TEST_RECIPIENTS only, and a
-    rejection from Meta never fails the image send."""
+async def test_receipt_image_is_followed_by_a_pin_attempt_that_never_fails_the_send():
+    """EXPERIMENT: a pin is tried after the receipt image; Meta rejecting it
+    (pin is group-only in the docs) must not fail the image send."""
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -353,12 +354,6 @@ async def test_receipt_image_pin_attempt_only_for_listed_test_recipients(monkeyp
         phone_number_id="PHONE_NUMBER_ID",
     )
 
-    monkeypatch.delenv("MESIRI_PIN_TEST_RECIPIENTS", raising=False)
-    assert await sender.send_image("919876543210", b"png") is True
-    assert len(requests) == 2  # upload + image, no pin
-
-    requests.clear()
-    monkeypatch.setenv("MESIRI_PIN_TEST_RECIPIENTS", "919876543210")
     assert await sender.send_image("919876543210", b"png") is True
     pin = json.loads(requests[-1].content)
     assert pin["type"] == "pin"
