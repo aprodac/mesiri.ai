@@ -122,6 +122,81 @@ class DprRequestQueryService:
             )
         return day_lines(only_kept(payload, items))
 
+    async def draft_pdf(
+        self,
+        *,
+        organization_id: str,
+        project_id: str,
+        site_id: str,
+        report_date: datetime.date,
+        object_storage: Any = None,
+        renderer: Any = None,
+    ) -> tuple[list[str], bytes | None]:
+        """Request 89: a past day nobody has confirmed, as a draft PDF. The
+        day's lines (what ``preview_lines`` gives: the same assembly, the same
+        cancelled-entries rule) and the day rendered by the DPR document
+        renderer as it is, its code line reading "Draft · not confirmed yet".
+        Read-only: nothing is stored here. ``([], None)`` when the day holds
+        nothing; ``(lines, None)`` when the PDF could not be made, so the
+        caller can still show the lines."""
+        from channel.dpr_document.data import build_document_data
+        from channel.dpr_document.letterhead import load_letterhead
+        from channel.dpr_document.template import render_html
+        from mesiri.infrastructure.postgres.repositories.dpr import PostgresDprRepository
+        from runtime.site_day_review import day_lines
+
+        org_id, proj_id, site_uuid = uuid.UUID(organization_id), uuid.UUID(project_id), uuid.UUID(site_id)
+        async with self._db.transaction() as conn:
+            repo = PostgresDprRepository(conn)
+            payload, items = await repo.assemble_site_day(
+                organization_id=org_id, project_id=proj_id, site_id=site_uuid, report_date=report_date
+            )
+            kept = only_kept(payload, items)
+            lines = day_lines(kept)
+            if not lines:
+                return [], None
+            letterhead = None
+            try:
+                row = await repo.find_site_report(
+                    organization_id=org_id, project_id=proj_id, site_id=site_uuid, report_date=report_date
+                )
+                if row is not None and object_storage is not None:
+                    letterhead = await load_letterhead(conn, object_storage, row["id"])
+            except Exception:  # noqa: BLE001 -- the draft goes with the plain header
+                letterhead = None
+        try:
+            html = render_html(build_document_data(code=DRAFT_CODE, payload=for_document(kept)), letterhead)
+            return lines, await (renderer or shared_renderer()).render_pdf(html)
+        except Exception:  # noqa: BLE001 -- the lines still answer
+            return lines, None
+
+
+#: The report's code line on a draft: the header and footer of the document.
+DRAFT_CODE = "Draft · not confirmed yet"
+
+_renderer: Any = None
+
+
+def shared_renderer() -> Any:
+    """One DPR PDF renderer (a headless Chromium, started on first use) for the
+    process, as the cron drains keep one for theirs."""
+    global _renderer
+    if _renderer is None:
+        from channel.dpr_document.render import DprPdfRenderer
+
+        _renderer = DprPdfRenderer()
+    return _renderer
+
+
+def for_document(payload: dict[str, Any]) -> dict[str, Any]:
+    """``payload`` (already through ``only_kept``) without the work and issues
+    the sender cancelled, for a document that lists them one by one."""
+    out = dict(payload)
+    for key in ("activities", "issues"):
+        if key in out:
+            out[key] = [row for row in out[key] or [] if row.get("review") != "rejected"]
+    return out
+
 
 def only_kept(payload: dict[str, Any], items: list[dict[str, Any]]) -> dict[str, Any]:
     """Request 88: the day's payload without what the sender cancelled. A

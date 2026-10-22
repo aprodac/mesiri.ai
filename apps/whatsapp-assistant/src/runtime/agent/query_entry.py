@@ -27,6 +27,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
+from canonicalization.occurred_date import parse_stated_date, today_for
 from channel.receipt.data import company_zone
 from mesiri_contracts.assistant.canonical_event import CanonicalEventType as E
 from mesiri_contracts.assistant.enums import SemanticType as T
@@ -153,17 +154,27 @@ class QueryEntry(EntryScope):
         return ready
 
     async def _past_day_draft(self, ready: Ready, *, timezone: str) -> Say | None:
-        """Request 88: one rule for "yesterday's report", however it is
-        worded. A past day with a finished PDF is sent by the workflow (marked
-        "not confirmed yet" when the day is not signed off). A past day with no
-        PDF yet but entries gets what the day holds so far, marked a draft;
-        a day with nothing stays the workflow's "no DPR for that day"."""
+        """Request 89: ONE rule for a past day's report, however it is worded
+        ("yesterday's report", "innale report ayakku"). The day is the project's
+        own (its time zone, ``today_for``), and what it holds is counted from the
+        same saved-entry source the day's summary uses (``preview_lines``: Save
+        tapped, not cancelled), not from the stored version's count (which said
+        "0 updates" for a day with a dozen saves, 22 Oct).
+
+        - the site's finished PDF: the workflow sends it (marked "Not confirmed
+          yet" when the day is not signed off);
+        - else the project's confirmed PDF for that day: sent as that;
+        - else the day has entries: the draft DPR PDF, rendered by the existing
+          DPR renderer, marked "Draft · not confirmed yet", sent like any report
+          (the workflow's "attached" line);
+        - else the workflow says there is no report for that day.
+        A draft that cannot be rendered is shown as text. Returns a ``Say`` only
+        then."""
         fields = ready.event.fields
         if not fields.get("dpr_day") or fields.get("dpr_status") not in ("pending_confirmation", "not_generated"):
             return None
         if self.dpr_request_query is None:
             return None
-        from canonicalization.occurred_date import parse_stated_date, today_for
         from runtime.inbound_journey.seeding import _dpr_scope
 
         stated = fields.get("report_date") or fields.get("occurred_on")
@@ -171,18 +182,38 @@ class QueryEntry(EntryScope):
         project_id, site_id = _dpr_scope(ready.event, self.actor)
         if report_date is None or not project_id or not site_id:
             return None
+        org = self.actor.organization_id
+        if await self._project_pdf(fields, org, project_id, report_date):
+            return None
         try:
-            lines = await self.dpr_request_query.preview_lines(
-                organization_id=self.actor.organization_id,
+            lines, pdf = await self.dpr_request_query.draft_pdf(
+                organization_id=org,
                 project_id=project_id,
                 site_id=site_id,
                 report_date=report_date,
+                object_storage=self.object_storage,
             )
         except Exception:  # noqa: BLE001 -- the workflow's own answer stands
             _log.warning("query_entry.past_draft_failed", exc_info=True)
             return None
         if not lines:
+            # Nothing was saved that day: say so, not "0 updates, not confirmed yet".
+            fields["dpr_status"] = "not_generated"
             return None
+        if pdf is not None and self.object_storage is not None:
+            key = f"dpr/drafts/{site_id}/{report_date.isoformat()}.pdf"
+            try:
+                await self.object_storage.put_object(key, pdf, content_type="application/pdf")
+            except Exception:  # noqa: BLE001 -- shown as text below
+                _log.warning("query_entry.draft_store_failed", exc_info=True)
+            else:
+                fields.update(
+                    dpr_status="ready",
+                    dpr_object_key=key,
+                    dpr_code=f"Draft-{report_date:%Y%m%d}",
+                    dpr_confirmed=False,
+                )
+                return None
         site = fields.get("dpr_site_name")
         where = f" at {site}" if site else ""
         return Say(
@@ -191,6 +222,26 @@ class QueryEntry(EntryScope):
             + "\n".join(lines)
             + "\nThis is a draft: not final, and not sent to anyone.",
         )
+
+    async def _project_pdf(self, fields: dict[str, Any], org: str, project_id: str, report_date: Any) -> bool:
+        """The project's confirmed PDF for the day, when the site has none of its
+        own: it holds the site's entries too. Sets the answer's fields; False
+        when there is none."""
+        try:
+            found = await self.dpr_request_query.find_report(
+                organization_id=org, project_id=project_id, site_id=None, report_date=report_date
+            )
+            if found.get("status") != "ready" or not found.get("confirmed"):
+                return False
+            if self.object_storage is not None:
+                await self.object_storage.head_object(found["object_key"])
+        except Exception:  # noqa: BLE001 -- the day's own draft answers instead
+            _log.warning("query_entry.project_pdf_failed", exc_info=True)
+            return False
+        fields.update(
+            dpr_status="ready", dpr_object_key=found["object_key"], dpr_code=found.get("code"), dpr_confirmed=True
+        )
+        return True
 
     async def _seed(self, ready: Ready, message: Any, *, timezone: str) -> None:
         """The data the workflow answers from, by the pipeline's own seeds.
