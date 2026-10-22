@@ -103,3 +103,13 @@ def test_non_string_ids_are_normalized_to_str():
     assert isinstance(outcome, Resolved)
     assert outcome.entity_id == str(real_uuid)
     assert isinstance(outcome.entity_id, str)
+
+
+def test_singular_and_plural_are_the_same_material_but_a_longer_name_is_not():
+    """Live golden set, 22 Oct: "1500 brick" against "Bricks" asked which
+    material; "cement" must still never become "Cement Paint"."""
+    from runtime.entity_resolution.material_resolution import Resolved
+
+    assert isinstance(classify_material_matches("brick", [_row(CEMENT_ID, "Bricks")]), Resolved)
+    assert isinstance(classify_material_matches("tiles", [_row(CEMENT_ID, "Tile")]), Resolved)
+    assert not isinstance(classify_material_matches("cement", [_row(CEMENT_ID, "Cement Paint")]), Resolved)

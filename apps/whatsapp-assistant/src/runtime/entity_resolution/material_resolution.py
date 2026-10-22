@@ -83,7 +83,7 @@ def classify_material_matches(
     hint = normalize_name(name_hint)
     if hint:
         for row in matches:
-            if normalize_name(str(row["name"])) == hint:
+            if _same_name(normalize_name(str(row["name"])), hint):
                 return Resolved(entity_id=str(row["id"]), display_name=str(row["name"]))
 
     return Ambiguous(
@@ -92,3 +92,10 @@ def classify_material_matches(
             for row in matches
         )
     )
+
+
+def _same_name(name: str, hint: str) -> bool:
+    """Exact, or the same word in singular and plural ("brick" / "Bricks",
+    live golden set 22 Oct). Still never a different material: "cement" is
+    not "Cement Paint"."""
+    return name == hint or name in (hint + "s", hint + "es") or hint in (name + "s", name + "es")
