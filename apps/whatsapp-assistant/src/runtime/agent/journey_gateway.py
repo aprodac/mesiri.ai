@@ -197,8 +197,9 @@ class JourneyGateway:
         return None
 
     async def _direct(self, entry: Any, candidate: Candidate, message: Any) -> StepResult | None:
-        """ARCH-01/02: the tool's arguments as the workflow's event, or None
-        when the entry cannot place it (a failed lookup): the classic route."""
+        """ARCH-01/02: the tool's arguments as the workflow's event. Never the
+        classic route (ARCH-06, Ilan 22 Oct): what the entry cannot place
+        (a failed lookup) is said, not handed to the old pipeline."""
         from types import SimpleNamespace
 
         from .entry_base import Say
@@ -207,8 +208,8 @@ class JourneyGateway:
         prepared = await entry.prepare(message, understanding, candidate)
         kind = getattr(getattr(candidate, "semantic_type", None), "value", None)
         if prepared is None:
-            _log.info("agent.direct correlation_id=%s kind=%s route=classic", message.correlation_id, kind)
-            return None
+            _log.warning("agent.direct correlation_id=%s kind=%s route=unplaced", message.correlation_id, kind)
+            return StepResult("error", text="Not saved: the system could not look this up just now. Send it again.")
         if isinstance(prepared, Say):
             from .toolbox import question_reply
 
