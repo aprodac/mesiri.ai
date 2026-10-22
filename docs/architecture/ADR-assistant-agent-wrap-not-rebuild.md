@@ -404,3 +404,31 @@ decided by code and offered to the model; the adapter rejects anything else.**
 - Checks on the reply's words (sentence ends, Save prompt, done-words, scripts, length) are code in
   `runtime/agent/reply_text.py` and the runner; the model is asked again once, then the system's
   sentence goes out.
+
+## Addendum (request 89, 22 Oct): the language, the past day and the filler are decided in code
+
+The re-test of [88] still showed English answered in Manglish, "0 updates" for a day with a dozen
+saves, and flat or stray lines. Same rule, extended: **what the reply must be (its language, what it
+must name, what it may be about) is decided by code from the message and the tool results; the model
+is told it as a fact and checked.**
+
+- Language: `prompt.reply_language` decides it from the CURRENT message (script; Manglish words and
+  suffixes; plain English words) and the instruction in the prompt says so. `runner.script_problems`
+  checks the reply against it (any Manglish word for English; native script for English letters;
+  English letters for a message in its own script); a mismatch is asked again once, then the offending
+  sentences go and, above a card, the system's own localized sentence stands. A message with no
+  language of its own ("ok", "50 bags") forces nothing.
+- Natural lines: the prompt carries the positive pattern (say it back in their words, one human touch
+  when it fits, check and tap Save) and six examples per language. The coverage and done-word checks
+  stay; their fallback (`covering_sentence`) is built from the card's items ("Crane breakdown, work
+  stopped. Please check it and tap Save."), and a reply left bare after claims are cut ("Okay.") gets
+  it too (`AgentRunner._natural`). `reply_text.without_stray_sentences` drops sentences tied to nothing
+  (no word shared with the message or a tool result, no figure, no Save ask, no human touch) and the
+  known filler class; it never empties a reply.
+- A past day's report (`QueryEntry._past_day_draft`): one path for every wording. The day is the
+  project's (Asia/Kolkata). The site's finished PDF is sent as before; else the project's confirmed PDF
+  for that day; else, when the saved, uncancelled entries of the day exist (the draft summary's own
+  source, `preview_lines`/`only_kept`), the draft DPR PDF is rendered by the existing DPR renderer
+  (`DprRequestQueryService.draft_pdf`, code line "Draft · not confirmed yet") and sent through the
+  workflow's own "attached" path; else "there is no DPR for that day". The stored version's
+  `activity_count` is no longer what decides.
