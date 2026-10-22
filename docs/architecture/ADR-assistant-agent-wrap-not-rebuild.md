@@ -358,6 +358,7 @@ From `0c72b3e` a third set: photos and bills (10 cases, `photo_golden.yaml`), as
 | `0c72b3e` | leftovers 1-5 (old code gone, photo set) | 23/24 (#16 question as plain text) | 24/24 | 6/10 (bill trade names; a PDF saved, the set was too strict) |
 | `cb045f4` | plain material names asked for; a plain-text question waits | **24/24** | **24/24** | 7/10 (trade names) |
 | `54621e6` | a bill's trade name finds the one listed material it names | - | - | **10/10** |
+| `cba73d8` | ARCH-07: add_member, correct_work_quantity, update_issue | **24/24** | 23/24 (#20 "nale slab-inu cement mathiyo?": tried the engineer note, not the stock lookup; passed in the four runs before) | **10/10** |
 
 Left on materials (ARCH-01, live since 21 Oct), neither saves anything wrong: "50 bags cement
 arrived" sometimes still gets one "Received or used?" tap (2 of the last 4 runs), and "cement
