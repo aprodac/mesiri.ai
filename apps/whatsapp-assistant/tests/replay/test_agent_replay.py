@@ -36,6 +36,7 @@ from runtime.agent.journey_gateway import JourneyGateway
 from runtime.agent.labour_entry import LabourEntry
 from runtime.agent.material_entry import MaterialEntry
 from runtime.agent.prompt import AgentContext, Turn
+from runtime.agent.query_entry import QueryEntry
 from runtime.agent.runner import AgentRunner
 from runtime.agent.site_entry import SiteEntry
 from runtime.agent.tools import ScopeLookup
@@ -166,6 +167,11 @@ class World:
                     active_context=self.deps.active_context,
                 )
                 if self.catalog is not None
+                else None
+            ),
+            query_entry=(
+                QueryEntry(ContextResolver(self.deps), None, self.actor, active_context=self.deps.active_context)
+                if self.direct
                 else None
             ),
             labour_entry=(
@@ -362,7 +368,8 @@ async def test_a_two_part_question_is_two_queries_and_one_answer(world):
         ]
     )
     result = await world.say(provider, "how many workers today and how much cement is left?")
-    assert world.journeys == 2
+    assert world.journeys == 0  # ARCH-06 step 2: straight to the lookups
+    assert [c.outcome.content["status"] for c in result.run.calls] == ["answer", "answer"]
     assert result.reply.text == "No attendance yet today, and no cement stock recorded."
     assert "UNDO" not in result.reply.text  # nothing was saved
     assert world.dispatcher.dispatched == []

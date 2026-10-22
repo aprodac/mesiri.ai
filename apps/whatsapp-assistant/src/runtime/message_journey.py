@@ -2563,6 +2563,7 @@ def build_message_handlers(
             from runtime.agent.journey_gateway import JourneyGateway
             from runtime.agent.labour_entry import LabourEntry
             from runtime.agent.material_entry import MaterialEntry
+            from runtime.agent.query_entry import QueryEntry
             from runtime.agent.site_entry import SiteEntry
             from runtime.agent.turn import AgentTurnDeps, run_agent_turn
             from runtime.inbound_journey import render_workflow_run_reply_spec
@@ -2793,6 +2794,23 @@ def build_message_handlers(
                         )
                         if catalog_query is not None
                         else None
+                    ),
+                    # ARCH-06 step 2: lookups, transfers, site/project create, money undo.
+                    query_entry=QueryEntry(
+                        context_resolver=context_resolver,
+                        org_settings_query=org_settings_query,
+                        actor=ctx,
+                        active_context=getattr(context_resolver, "active_context", None),
+                        inventory_query=inventory_query,
+                        labour_query_service=labour_query_service,
+                        activity_search_service=activity_search_service,
+                        dpr_request_query=dpr_request_query,
+                        project_detail_query=project_detail_query,
+                        expense_query_service=expense_query_service,
+                        money_account_query=money_account_query,
+                        reversal_query=reversal_query,
+                        object_storage=object_storage,
+                        send_document=sender.send_document,
                     ),
                     # ARCH-03: labour attendance (Alan's approval, 22 Oct).
                     labour_entry=LabourEntry(

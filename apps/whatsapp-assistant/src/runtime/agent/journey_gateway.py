@@ -141,6 +141,9 @@ class JourneyGateway:
     #: ARCH-03: labour attendance straight to its workflow
     #: (runtime/agent/labour_entry.py; Alan's approval, 22 Oct).
     labour_entry: Any | None = None
+    #: ARCH-06 step 2: lookups, transfers, site/project create, money undo
+    #: (runtime/agent/query_entry.py).
+    query_entry: Any | None = None
     #: ``WorkflowRuntime.start``, for the direct routes.
     start_workflow: Callable[[Any, Any], Awaitable[Any]] | None = None
     #: WA-45: ``(project_id, site_id) -> label``: today's site is this one
@@ -199,6 +202,10 @@ class JourneyGateway:
 
         if semantic_type in SITE_ENTRY_TYPES:
             return self.site_entry
+        from .query_entry import QUERY_ENTRY_TYPES
+
+        if semantic_type in QUERY_ENTRY_TYPES:
+            return self.query_entry
         return None
 
     async def _direct(self, entry: Any, candidate: Candidate, message: Any) -> StepResult | None:
@@ -226,6 +233,13 @@ class JourneyGateway:
         step = await self._after_run(journey, candidate, CaptureSink())
         if step.status in ("saved", "needs_confirmation"):
             await entry.remember(prepared, correlation_id=message.correlation_id)
+        deliver = getattr(entry, "deliver", None)
+        if deliver is not None:
+            failed = await deliver(prepared, message)
+            if failed:
+                from dataclasses import replace
+
+                step = replace(step, text=f"{step.text}\n\n{failed}".strip())
         return step
 
     async def _after_run(self, journey: Any, candidate: Candidate, sink: CaptureSink) -> StepResult:
@@ -280,12 +294,13 @@ class JourneyGateway:
             return StepResult("needs_answer", text=prompt.text, reply=prompt, workflow_key=key)
 
         if run is not None and run.status is WorkflowRunStatus.COMPLETED:
-            return StepResult(
-                "answer", text="\n\n".join(r.text for r in sink.replies if r.text), workflow_key=key
-            )
+            # The direct routes capture nothing: the workflow's own answer.
+            text = "\n\n".join(r.text for r in sink.replies if r.text) or (run.pending_prompt or "")
+            return StepResult("answer", text=text, workflow_key=key)
 
         if run is not None:  # FAILED / NO_GRAPH
-            return StepResult("error", text=sink.last.text if sink.last else "", workflow_key=key)
+            text = sink.last.text if sink.last else "Sorry, that didn't go through. Please try again."
+            return StepResult("error", text=text, workflow_key=key)
 
         # No workflow started: a gate asked (which project / material / unit?),
         # or the pipeline answered directly (module off, not allowed).

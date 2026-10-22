@@ -80,10 +80,26 @@ class EntryScope:
     __slots__ = ()
 
     async def settle(
-        self, message: Any, understanding: Any, candidate: Any, *, module: str | None, site_required: bool = False
+        self,
+        message: Any,
+        understanding: Any,
+        candidate: Any,
+        *,
+        module: str | None,
+        site_required: bool = False,
+        project: str = "required",
+        ask_site: bool = True,
+        lookup: bool = False,
     ) -> Scoped | Say:
         """The sender's context and the project/site for this entry, or what
-        to say (a question with buttons, a module that is off, a failure)."""
+        to say (a question with buttons, a module that is off, a failure).
+
+        ``project``: "required" (asked when unclear), "optional" (none is
+        fine: the whole company where the answer allows it) or "none" (not
+        used: a new project, a transfer). ``ask_site`` False: with several
+        sites, none is picked (a lookup covers the whole project).
+        ``lookup``: the wording is "couldn't look this up", not "not saved"."""
+        no = "Couldn't look this up:" if lookup else "Not saved:"
         picked_project = candidate.fields.get("project_id")
         picked_site = candidate.fields.get("site_id")
         result = await self.context_resolver.resolve(message, understanding)
@@ -112,10 +128,10 @@ class EntryScope:
             )
             if retried:
                 # They already picked; asking again would loop (review, 22 Oct).
-                return Say("error", "Not saved: the system could not place this entry.")
+                return Say("error", f"{no} the system could not place this.")
             names = [p.name for p in getattr(self.actor, "projects", None) or []]
             if not names:
-                return Say("error", "Not saved: I couldn't tell which project this is for.")
+                return Say("error", f"{no} I couldn't tell which project this is for.")
             return choose("Which project is this for?", names, "project")
         ctx = result.unwrap()
         organization_id = str(ctx.organization_id)
@@ -131,10 +147,14 @@ class EntryScope:
         project_id, site_id = await self._scope(
             ctx, picked_project if retried else None, picked_site if retried else None, named=named
         )
+        if project == "none":
+            return Scoped(ctx, organization_id, None, None, None, None)
+        if project_id is None and project == "optional":
+            return Scoped(ctx, organization_id, None, None, None, None)
         if project_id is None:
             names = [p.name for p in getattr(self.actor, "projects", None) or []]
             if not names:
-                return Say("info", "Not saved: you are not on any project yet. Your admin can add you.")
+                return Say("info", f"{no} you are not on any project yet. Your admin can add you.")
             return choose("Which project is this for?", names, "project")
         if site_id is None:
             sites = [s for s in getattr(self.actor, "sites", None) or [] if str(s.project_id) == str(project_id)]
@@ -144,6 +164,8 @@ class EntryScope:
                 # A name two projects share comes as a name, not an id; within
                 # this project it is one site ("Block A" tapped looped, 22 Oct).
                 sites = hit
+            if len(sites) > 1 and not ask_site:
+                sites = []  # the whole project
             if len(sites) > 1:
                 return choose("Which site is this for?", [s.name for s in sites], "site")
             site_id = sites[0].id if sites else None
