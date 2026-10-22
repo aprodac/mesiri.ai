@@ -85,10 +85,10 @@ async def test_the_roster_and_the_days_existing_report_are_seeded():
 
 async def test_an_attendance_register_photo_is_attached_and_recorded_as_a_photo():
     """ARCH-06: an entry read from a photo carries the photo, as the pipeline did."""
+    from types import SimpleNamespace
+
     from mesiri_contracts.assistant.enums import InputModality
     from mesiri_contracts.assistant.normalized_message import MediaReference
-
-    from types import SimpleNamespace
 
     photo = SimpleNamespace(
         **vars(MESSAGE), modality=InputModality.IMAGE, media=MediaReference(object_key="media/register.jpg")
