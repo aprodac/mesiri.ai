@@ -1,4 +1,4 @@
-"""Work done, site issues and expenses golden set (ARCH-02; ADR section 10b).
+"""Work done, site issues, expenses and labour golden set (ARCH-02, ARCH-03; ADR section 10b).
 
 Each area moves off the classic route only when its set is exact. Two runs
 over the same cases, as for materials (``test_materials_golden.py``):
@@ -75,7 +75,7 @@ def mismatch(case: dict[str, Any], world: World, result: Any) -> str | None:
 
 
 def test_the_site_golden_set_is_well_formed():
-    assert len(CASES) == 18
+    assert len(CASES) == 24
     assert len({c["id"] for c in CASES}) == len(CASES)
     for case in CASES:
         assert case["message"] and case["calls"], case["id"]

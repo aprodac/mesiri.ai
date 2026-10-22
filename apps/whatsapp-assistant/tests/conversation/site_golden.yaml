@@ -1,10 +1,10 @@
-# Work done, site issues and expenses golden set (ARCH-02; ADR section 10b).
+# Work done, site issues, expenses and labour golden set (ARCH-02, ARCH-03; ADR section 10b).
 # One JSON object per line (valid YAML flow mapping, parsed without a YAML dependency).
 #
 #   message  what the site sends
 #   calls    the tool calls a good model makes (CI scripts these, so the save code is checked)
 #   expect   the exact records saved, nothing more:
-#              action  create_activity | record_site_issue | record_expense
+#              action  create_activity | record_site_issue | record_expense | record_labour_attendance
 #              fields  {name: text} -- the saved value contains the text (lower-case);
 #                      a number must be equal
 #   confirm  true: an expense waits on Yes/No (confirm-first): nothing is saved yet,
@@ -31,3 +31,9 @@
 - {"id": 16, "lang": "manglish", "message": "pani nadakkunnu", "calls": [["ask_user", {"question": "Ethu pani aanu nadakkunnath?"}]], "expect": [], "ask": true}
 - {"id": 17, "lang": "en", "message": "180 sqm plastering done, rain stopped work for an hour", "calls": [["save_work_done", {"narrative": "180 sqm plastering done", "work_type": "plastering", "quantities": [{"work_type": "plastering", "quantity": 180, "unit": "sqm"}], "update_kind": "progress"}], ["report_issue", {"issue_type": "WEATHER", "narrative": "rain stopped work for an hour", "delay_duration_minutes": 60}]], "expect": [{"action": "create_activity", "fields": {"work_type": "plaster"}}, {"action": "record_site_issue", "fields": {"issue_type": "weather", "delay_duration_minutes": 60}}]}
 - {"id": 18, "lang": "en", "message": "yesterday 20 m3 slab concreting done", "calls": [["save_work_done", {"narrative": "20 m3 slab concreting done", "work_type": "concreting", "quantities": [{"work_type": "concreting", "quantity": 20, "unit": "m3"}], "update_kind": "completed", "date": "yesterday"}]], "expect": [{"action": "create_activity", "fields": {"work_type": "concret"}}]}
+- {"id": 19, "lang": "en", "message": "6 mason 12 helper today", "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 6}, {"trade": "helper", "headcount": 12}]}]], "expect": [{"action": "record_labour_attendance", "fields": {"lines": "'trade': 'mason', 'headcount': 6"}}]}
+- {"id": 20, "lang": "manglish", "message": "innu 4 mason, 8 helper vannu", "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 4}, {"trade": "helper", "headcount": 8}]}]], "expect": [{"action": "record_labour_attendance", "fields": {"lines": "'trade': 'helper', 'headcount': 8"}}]}
+- {"id": 21, "lang": "ml", "message": "ഇന്ന് 5 മേസൺ, 10 ഹെൽപ്പർ ഉണ്ടായിരുന്നു", "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 5}, {"trade": "helper", "headcount": 10}]}]], "expect": [{"action": "record_labour_attendance", "fields": {"lines": "'headcount': 10"}}]}
+- {"id": 22, "lang": "hindi", "message": "aaj 3 mistri aur 7 majdoor aaye", "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 3}, {"trade": "helper", "headcount": 7}]}]], "expect": [{"action": "record_labour_attendance", "fields": {"lines": "'headcount': 7"}}]}
+- {"id": 23, "lang": "en", "message": "Ravi and Suresh came today, both masons", "calls": [["save_labour", {"workers": [{"name": "Ravi", "trade": "mason"}, {"name": "Suresh", "trade": "mason"}]}]], "expect": [{"action": "record_labour_attendance", "fields": {"lines": "suresh"}}]}
+- {"id": 24, "lang": "en", "message": "Sree Builders sent 10 helpers today", "calls": [["save_labour", {"workers": [{"trade": "helper", "headcount": 10}], "contractor": "Sree Builders"}]], "expect": [{"action": "record_labour_attendance", "fields": {"lines": "sree builders"}}]}

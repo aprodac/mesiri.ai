@@ -230,6 +230,12 @@ def _saving(monkeypatch, deps):
     monkeypatch.setattr(
         mj, "process_inbound_message", AsyncMock(return_value=SimpleNamespace(workflow_run=run, planner_decision=None))
     )
+    # What goes out after a save is under test, not the route that made it:
+    # labour goes direct (ARCH-03), which needs a real context, so here it
+    # takes the mocked pipeline.
+    from runtime.agent.journey_gateway import JourneyGateway
+
+    monkeypatch.setattr(JourneyGateway, "_entry_for", lambda self, semantic_type: None)
     handled = SimpleNamespace(
         saved_draft=True,
         reply_text="✅ Recorded. Thank you.",

@@ -138,6 +138,9 @@ class JourneyGateway:
     #: ARCH-02: work done, site issues and expenses straight to the workflow
     #: (runtime/agent/site_entry.py); None keeps the classic route.
     site_entry: Any | None = None
+    #: ARCH-03: labour attendance straight to its workflow
+    #: (runtime/agent/labour_entry.py; Alan's approval, 22 Oct).
+    labour_entry: Any | None = None
     #: ``WorkflowRuntime.start``, for the direct routes.
     start_workflow: Callable[[Any, Any], Awaitable[Any]] | None = None
     #: WA-45: ``(project_id, site_id) -> label``: today's site is this one
@@ -190,6 +193,8 @@ class JourneyGateway:
             return None
         if semantic_type is SemanticType.MATERIAL_UPDATE:
             return self.material_entry
+        if semantic_type is SemanticType.LABOUR_UPDATE:
+            return self.labour_entry
         from .site_entry import SITE_ENTRY_TYPES
 
         if semantic_type in SITE_ENTRY_TYPES:

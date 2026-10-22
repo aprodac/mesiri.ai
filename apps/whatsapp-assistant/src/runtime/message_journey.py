@@ -2561,6 +2561,7 @@ def build_message_handlers(
             the senders swapped for a capture so the model writes the one reply."""
             from runtime.agent import save_button
             from runtime.agent.journey_gateway import JourneyGateway
+            from runtime.agent.labour_entry import LabourEntry
             from runtime.agent.material_entry import MaterialEntry
             from runtime.agent.site_entry import SiteEntry
             from runtime.agent.turn import AgentTurnDeps, run_agent_turn
@@ -2792,6 +2793,14 @@ def build_message_handlers(
                         )
                         if catalog_query is not None
                         else None
+                    ),
+                    # ARCH-03: labour attendance (Alan's approval, 22 Oct).
+                    labour_entry=LabourEntry(
+                        context_resolver=context_resolver,
+                        org_settings_query=org_settings_query,
+                        actor=ctx,
+                        active_context=getattr(context_resolver, "active_context", None),
+                        workforce_query=workforce_query,
                     ),
                     # ARCH-02: work done, site issues and expenses too.
                     site_entry=SiteEntry(

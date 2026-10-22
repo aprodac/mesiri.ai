@@ -33,6 +33,7 @@ from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage, SenderInfo
 from planner import Planner
 from runtime.agent.journey_gateway import JourneyGateway
+from runtime.agent.labour_entry import LabourEntry
 from runtime.agent.material_entry import MaterialEntry
 from runtime.agent.prompt import AgentContext, Turn
 from runtime.agent.runner import AgentRunner
@@ -165,6 +166,11 @@ class World:
                     active_context=self.deps.active_context,
                 )
                 if self.catalog is not None
+                else None
+            ),
+            labour_entry=(
+                LabourEntry(ContextResolver(self.deps), None, self.actor, active_context=self.deps.active_context)
+                if self.direct
                 else None
             ),
             site_entry=(
@@ -545,3 +551,16 @@ async def test_a_new_entry_while_an_expense_waits_is_said_not_saved_without_butt
     assert "earlier entry is still waiting" in call.outcome.content["message"]
     assert not result.reply.buttons
     assert world.dispatcher.dispatched == []
+
+
+async def test_labour_goes_straight_to_its_workflow_not_the_pipeline(world):
+    """ARCH-03 (Alan's approval, 22 Oct): no classic pipeline run for labour."""
+    provider = FakeToolCallingProvider(
+        [[("save_labour", {"workers": [{"trade": "mason", "headcount": 6}, {"trade": "helper", "headcount": 10}]})], "Saved."]
+    )
+    await world.say(provider, "6 mason 10 helper today")
+
+    assert world.journeys == 0
+    (confirmed,) = world.dispatcher.dispatched
+    assert confirmed.draft_action.action_type.value == "record_labour_attendance"
+    assert [(line["trade"], line["headcount"]) for line in confirmed.draft_action.fields["lines"]] == [("mason", 6), ("helper", 10)]
