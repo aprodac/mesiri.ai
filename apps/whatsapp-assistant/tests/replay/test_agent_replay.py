@@ -87,10 +87,12 @@ class _Catalog:
     NAMES = ("cement", "M sand", "sand", "steel", "bricks", "metal")
 
     async def find_materials(self, *, organization_id, name):  # noqa: ANN001
-        hit = next((n for n in self.NAMES if n.lower() == str(name).strip().lower()), None)
-        if hit is None:
-            return []
-        return [self._row(hit)]
+        # As the real lookup: an exact name alone, else the names containing it.
+        said = str(name).strip().lower()
+        hit = next((n for n in self.NAMES if n.lower() == said), None)
+        if hit is not None:
+            return [self._row(hit)]
+        return [self._row(n) for n in self.NAMES if said and said in n.lower()]
 
     async def list_active_materials(self, *, organization_id):  # noqa: ANN001
         return [self._row(n) for n in self.NAMES]

@@ -198,12 +198,15 @@ def tool_specs() -> list[ToolSpec]:
         ),
         ToolSpec(
             name=SAVE_MATERIAL_RECEIPT,
-            description="Save material that arrived / was delivered to site.",
+            description=(
+                "Save material that arrived / was delivered to site (came, arrived, vannu, "
+                "eththi, aaya). Call it with the unit as said; the system checks the unit."
+            ),
             parameters=_obj(
                 {
                     "material": {"type": "string"},
                     "quantity": {"type": "number"},
-                    "unit": {"type": "string", "description": "bags, kg, tons, cum, nos ..."},
+                    "unit": {"type": "string", "description": "As said: bags, kg, tons, cum, nos, load, cft ..."},
                     "supplier": {"type": "string", "description": "Only if stated."},
                     "new_material": _NEW_MATERIAL,
                     "date": _DATE,
@@ -215,7 +218,10 @@ def tool_specs() -> list[ToolSpec]:
         ),
         ToolSpec(
             name=SAVE_MATERIAL_USAGE,
-            description="Save material that was used / consumed on site.",
+            description=(
+                "Save material that was used / consumed on site (used, use cheythu, use aayi, "
+                "laga). Call it with the unit as said; the system checks the unit."
+            ),
             parameters=_obj(
                 {
                     "material": {"type": "string"},
