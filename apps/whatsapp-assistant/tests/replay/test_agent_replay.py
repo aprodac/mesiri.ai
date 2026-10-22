@@ -140,19 +140,25 @@ class World:
     #: ARCH-01/02: the agent's direct routes (False: the classic pipeline).
     direct: bool = True
 
-    def message(self, text: str) -> NormalizedMessage:
+    def message(self, text: str, modality: InputModality = InputModality.TEXT) -> NormalizedMessage:
+        media = None
+        if modality in (InputModality.IMAGE, InputModality.DOCUMENT):
+            from mesiri_contracts.assistant.normalized_message import MediaReference
+
+            media = MediaReference(object_key="media/replay.jpg", mime_type="image/jpeg")
         return NormalizedMessage(
             message_id="wamid.agent.replay",
             correlation_id="cor_agent_replay",
             sender=SenderInfo(wa_id=seed.WA_ENGINEER, profile_name="Replay"),
             timestamp=datetime(2026, 10, 19, 10, 0, tzinfo=UTC),
-            modality=InputModality.TEXT,
+            modality=modality,
             text=text,
+            media=media,
         )
 
-    def gateway(self, text: str) -> JourneyGateway:
+    def gateway(self, text: str, modality: InputModality = InputModality.TEXT) -> JourneyGateway:
         return JourneyGateway(
-            message=self.message(text),
+            message=self.message(text, modality),
             save_now=lambda: self.handler.save_now(self.actor.user_id, actor=self.actor),
             undo=lambda: self.handler.undo_latest_draft(
                 organization_id=self.actor.organization_id, user_id=self.actor.user_id
@@ -204,11 +210,18 @@ class World:
             sites=tuple((s.id, s.name, s.project_id) for s in self.actor.sites),
         )
 
-    async def say(self, provider: FakeToolCallingProvider, text: str, turns=(), menu_hint: str | None = None):
+    async def say(
+        self,
+        provider: FakeToolCallingProvider,
+        text: str,
+        turns=(),
+        menu_hint: str | None = None,
+        modality: InputModality = InputModality.TEXT,
+    ):
         result = await AgentRunner(provider).run(
             ctx=self.context(tuple(turns), menu_hint=menu_hint),
             user_text=text,
-            gateway=(gateway := self.gateway(text)),
+            gateway=(gateway := self.gateway(text, modality)),
             scope=self.scope(),
             correlation_id="cor_agent_replay",
         )

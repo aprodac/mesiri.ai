@@ -31,6 +31,7 @@ from typing import Any
 from canonicalization.occurred_date import resolve_occurred_date
 from channel.receipt.data import company_zone
 from mesiri_contracts.assistant.canonical_event import CanonicalEventType
+from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.planner_decision import WorkflowKey
 from runtime.entity_resolution.material_resolution import classify_material_matches
 from runtime.material_units import ask_amount_text, fit_stock_unit
@@ -140,6 +141,15 @@ class MaterialEntry(EntryScope):
             names = [c.display_name for c in outcome.candidates]
             return choose(f'Which material is "{name}"?', names, "material")
 
+        if getattr(message, "modality", None) in (InputModality.IMAGE, InputModality.DOCUMENT):
+            # A bill's trade name ("Cement OPC 53 grade", "TMT steel bars 12mm",
+            # "Wire cut bricks"): the one listed material it names (live photo
+            # set, 22 Oct: told to give the plain name, the model still passed
+            # the bill's). Only for what was read from a bill; typed words ask.
+            named = await self._named_on_bill(organization_id, name, message)
+            if named is not None:
+                return named
+
         may_create = await self._may_create(organization_id)
         if may_create and fields.get("new_material"):
             return await self._create(organization_id, name, fields, ctx, message)
@@ -164,6 +174,41 @@ class MaterialEntry(EntryScope):
             "material",
             note=" A new material is added by an admin on the dashboard.",
         )
+
+    async def _named_on_bill(self, organization_id: str, name: str, message: Any) -> dict | None:
+        """The listed material a bill line names, by its words and word pairs
+        (singular or plural): the longest exact catalogue name found, when it is
+        the only one that long. None when no listed name, or more than one, is in it."""
+        import re
+
+        from workflows.entities import Resolved
+
+        words = [w for w in re.findall(r"[a-z]+", name.lower()) if len(w) > 1]
+        tries: list[str] = []
+        for size in (2, 1):
+            for i in range(len(words) - size + 1):
+                phrase = " ".join(words[i : i + size])
+                tries.append(phrase)
+                if phrase.endswith("s") and len(phrase) > 3:
+                    tries.append(phrase[:-1])
+        found: dict[str, dict] = {}
+        for phrase in dict.fromkeys(tries):
+            try:
+                rows = await self.catalog_query.find_materials(organization_id=organization_id, name=phrase)
+            except Exception:  # noqa: BLE001 -- the usual question follows
+                _log.warning("material_entry.bill_lookup_failed correlation_id=%s", message.correlation_id, exc_info=True)
+                return None
+            for row in rows:
+                if isinstance(classify_material_matches(phrase, [row]), Resolved) and row.get("is_active", True):
+                    found[str(row["id"])] = row
+        if not found:
+            return None
+        longest = max(len(str(r["name"]).split()) for r in found.values())
+        best = [r for r in found.values() if len(str(r["name"]).split()) == longest]
+        if len(best) != 1:
+            return None
+        _log.info("material_entry.bill_name correlation_id=%s matched=%s", message.correlation_id, best[0]["name"])
+        return best[0]
 
     async def _may_create(self, organization_id: str) -> bool:
         """STA-139's rule: the org's whatsapp_material_create_roles setting."""

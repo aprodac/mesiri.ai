@@ -303,3 +303,32 @@ async def test_a_plural_name_finds_the_singular_material():
     brick = {"id": "88888888-8888-4888-8888-888888888888", "name": "Brick", "default_unit_id": None, "is_active": True}
     ready = await _prepare(_entry(catalog=_Catalog([CEMENT, brick])), material_name="bricks", quantity=1500, unit="nos")
     assert isinstance(ready, Ready) and ready.event.fields["material_name"] == "Brick"
+
+
+async def _from_bill(entry: MaterialEntry, name: str):
+    from mesiri_contracts.assistant.enums import InputModality
+
+    photo = SimpleNamespace(correlation_id="cor_1", message_id="wamid.1", modality=InputModality.IMAGE)
+    candidate = _candidate(material_name=name)
+    return await entry.prepare(photo, _Understanding(candidate), candidate)
+
+
+async def test_a_bills_trade_name_is_the_one_listed_material_it_names():
+    """Live photo set, 22 Oct: "Cement OPC 53 grade" matched nothing and the
+    AI asked "which one?" for a plain cement bill."""
+    cement_paint = {"id": "88888888-8888-4888-8888-888888888888", "name": "Cement Paint", "default_unit_id": "u-bag", "is_active": True}
+    entry = _entry(catalog=_Catalog([CEMENT, SAND, cement_paint]), modules=_Modules(["materials"], create_roles=[]))
+    ready = await _from_bill(entry, "Cement OPC 53 grade")
+    assert ready.event.fields["material_id"] == CEMENT["id"]
+    # The longer listed name wins when the bill names it.
+    ready = await _from_bill(entry, "Asian Cement Paint 20 kg")
+    assert ready.event.fields["material_id"] == cement_paint["id"]
+    # Two different listed materials on one line: asked, never guessed.
+    said = await _from_bill(entry, "Cement and Sand mix")
+    assert said.status == "choose"
+
+
+async def test_a_typed_trade_name_still_asks():
+    entry = _entry(catalog=_Catalog([CEMENT, SAND]), modules=_Modules(["materials"], create_roles=[]))
+    said = await _prepare(entry, material_name="Cement OPC 53 grade")
+    assert said.status == "choose"

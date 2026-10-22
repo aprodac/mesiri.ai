@@ -40,6 +40,12 @@ CASES = [
 ]
 
 
+def _modality(case: dict[str, Any]) -> Any:
+    from mesiri_contracts.assistant.enums import InputModality
+
+    return InputModality.DOCUMENT if case["message"].startswith("(They sent a document") else InputModality.IMAGE
+
+
 def _hit(expected: dict[str, Any], action: str, fields: dict[str, Any]) -> bool:
     if "material" in expected:
         return _matches(expected, action, fields)
@@ -80,7 +86,7 @@ async def test_the_save_code_files_exactly_the_expected_records(case):
     question = next((args["question"] for name, args in case["calls"] if name == "ask_user"), "")
     provider = FakeToolCallingProvider([[tuple(c) for c in case["calls"]], question or "Done."])
 
-    result = await world.say(provider, case["message"], menu_hint=case.get("hint"))
+    result = await world.say(provider, case["message"], menu_hint=case.get("hint"), modality=_modality(case))
 
     assert result.outcome == "ok"
     assert mismatch(case, world, result) is None, mismatch(case, world, result)
@@ -104,7 +110,7 @@ async def test_live_model_on_the_photo_golden_set():
     for case in CASES:
         world = await _make_world(site_keys=(seed.SITE_A1,))
         started = time.perf_counter()
-        result = await world.say(provider, case["message"], menu_hint=case.get("hint"))
+        result = await world.say(provider, case["message"], menu_hint=case.get("hint"), modality=_modality(case))
         times.append(time.perf_counter() - started)
         why = mismatch(case, world, result) if result.outcome == "ok" else f"outcome {result.outcome}"
         print(f"{'PASS' if why is None else 'FAIL'} #{case['id']} {case['message'][:60]!r} ({times[-1]:.1f}s) {why or ''}")
