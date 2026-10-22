@@ -28,7 +28,6 @@ class ContextPack:
     current_activity_id: str | None
     current_date: str | None
     has_pending_confirmation: bool
-    has_pending_report_gate: bool
     has_pending_media: bool
     recent_turns: tuple[ConversationTurn, ...]
 
@@ -41,6 +40,5 @@ class ContextPack:
         future fourth open-loop kind is covered automatically."""
         return (
             self.has_pending_confirmation
-            or self.has_pending_report_gate
             or self.has_pending_media
         )

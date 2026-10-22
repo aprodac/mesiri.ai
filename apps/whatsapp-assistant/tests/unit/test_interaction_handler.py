@@ -3,23 +3,15 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
 
 from backend.ports import ActorIdentity
 from channel.replies import CATEGORY_ROWS
-from interactions.classifier_port import InteractionClassifierPort
 from interactions.handler import InteractionHandler
 from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage, SenderInfo
 from mesiri_contracts.assistant.planner_decision import WorkflowKey
 from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
-from mesiri_contracts.assistant.v2.interaction_spec import (
-    FieldCorrection,
-    InteractionIntent,
-    InteractionSegment,
-    InteractionSpecV2,
-)
 from mesiri_contracts.assistant.v2.workflow_state import WorkflowStateV2
 from mesiri_contracts.context.enums import WorkflowPhase
 from workflows import WorkflowRegistry, WorkflowResumeStatus, WorkflowRunStatus, WorkflowRuntime
@@ -74,30 +66,12 @@ class FakeGraph:
         }
 
 
-class FakeInteractionClassifier(InteractionClassifierPort):
-    def __init__(self):
-        self.next_response: InteractionSpecV2 | None = None
-        self.calls = []
-
-    async def classify(
-        self,
-        original_text: str,
-        translated_text: str | None,
-        draft_fields: dict[str, Any],
-        correlation_id: str,
-    ) -> InteractionSpecV2:
-        self.calls.append((original_text, translated_text, draft_fields, correlation_id))
-        if self.next_response:
-            return self.next_response
-        return InteractionSpecV2(version="v2", correlation_id=correlation_id, segments=[])
 
 
-def _handler(
-    repo: FakeWorkflowInstanceRepository, classifier: InteractionClassifierPort | None = None
-) -> InteractionHandler:
+def _handler(repo: FakeWorkflowInstanceRepository) -> InteractionHandler:
     registry = WorkflowRegistry()
     registry._compiled[WorkflowKey.MATERIAL_RECEIPT] = FakeGraph()
-    return InteractionHandler(WorkflowRuntime(registry=registry, repo=repo), classifier=classifier)
+    return InteractionHandler(WorkflowRuntime(registry=registry, repo=repo))
 
 
 async def test_no_active_workflow_returns_none():
@@ -145,129 +119,12 @@ async def test_duplicate_confirm_is_idempotent():
     assert repo._rows[WF][1] == 1  # exactly one transition applied
 
 
-async def test_slow_path_correction_resumes_with_new_draft():
-    repo = FakeWorkflowInstanceRepository()
-    repo.seed(_awaiting_state(), version=0)
-
-    classifier = FakeInteractionClassifier()
-    spec = InteractionSpecV2(
-        correlation_id="c1",
-        segments=[
-            InteractionSegment(
-                intent=InteractionIntent.CORRECTION,
-                segment_text="make it 60",
-                corrections=[FieldCorrection(field_name="quantity", new_value=60)],
-            )
-        ],
-    )
-    classifier.next_response = spec
-
-    handler = _handler(repo, classifier=classifier)
-
-    handled = await handler.handle_slow_path(USR, _message("make it 60"), "make it 60", None)
-
-    assert handled is not None
-    assert handled.result.status is WorkflowRunStatus.STARTED
-    assert handled.reply_text == "Updated prompt"
-
-    # Check that it updated the state in the repo but stayed AWAITING_CONFIRMATION
-    updated_state = repo._rows[WF][0]
-    assert updated_state.phase is WorkflowPhase.AWAITING_CONFIRMATION
-    assert updated_state.collected_fields["quantity"] == 60
-    assert updated_state.draft_action.fields["quantity"] == 60
 
 
-async def test_slow_path_unrelated_falls_through():
-    repo = FakeWorkflowInstanceRepository()
-    repo.seed(_awaiting_state(), version=0)
-
-    classifier = FakeInteractionClassifier()
-    spec = InteractionSpecV2(
-        correlation_id="c1",
-        segments=[InteractionSegment(intent=InteractionIntent.UNRELATED, segment_text="unrelated")],
-    )
-    classifier.next_response = spec
-
-    handler = _handler(repo, classifier=classifier)
-
-    handled = await handler.handle_slow_path(USR, _message("unrelated"), "unrelated", None)
-
-    assert handled is None
-    assert repo._rows[WF][0].phase is WorkflowPhase.AWAITING_CONFIRMATION
 
 
-async def test_slow_path_concurrent_corrections_rejected():
-    repo = FakeWorkflowInstanceRepository()
-    repo.seed(_awaiting_state(), version=0)
-
-    classifier = FakeInteractionClassifier()
-    spec = InteractionSpecV2(
-        correlation_id="c1",
-        segments=[
-            InteractionSegment(
-                intent=InteractionIntent.CORRECTION,
-                segment_text="make it 60",
-                corrections=[FieldCorrection(field_name="quantity", new_value=60)],
-            )
-        ],
-    )
-    classifier.next_response = spec
-
-    handler = _handler(repo, classifier=classifier)
-
-    # Instead of modifying the repo before calling the handler, we'll
-    # override the transition method to simulate it failing due to OCC.
-    async def failing_transition(*args, **kwargs):
-        return False
-
-    repo.transition = failing_transition
-
-    handled = await handler.handle_slow_path(USR, _message("make it 60"), "make it 60", None)
-
-    assert handled is not None
-    assert handled.result.status is WorkflowRunStatus.FAILED
-    assert handled.reply_text == "Sorry, I couldn't apply that update — please try again."
 
 
-async def test_slow_path_sibling_segments():
-    repo = FakeWorkflowInstanceRepository()
-    repo.seed(_awaiting_state(), version=0)
-
-    classifier = FakeInteractionClassifier()
-    # A single message produces TWO segments: a CORRECTION and an UNRELATED
-    spec = InteractionSpecV2(
-        correlation_id="c1",
-        segments=[
-            InteractionSegment(
-                intent=InteractionIntent.CORRECTION,
-                segment_text="make it 60",
-                corrections=[FieldCorrection(field_name="quantity", new_value=60)],
-            ),
-            InteractionSegment(
-                intent=InteractionIntent.UNRELATED, segment_text="also 5 workers arrived"
-            ),
-        ],
-    )
-    classifier.next_response = spec
-
-    handler = _handler(repo, classifier=classifier)
-
-    handled = await handler.handle_slow_path(
-        USR,
-        _message("make it 60, also 5 workers arrived"),
-        "make it 60, also 5 workers arrived",
-        None,
-    )
-
-    assert handled is not None
-    # 1. The CORRECTION updated the pending workflow
-    assert handled.result.status is WorkflowRunStatus.STARTED
-    # 2. The UNRELATED segment was collected and returned
-    assert handled.unrelated_text == "also 5 workers arrived"
-
-    # Verify the workflow was actually updated
-    updated_state = repo._rows[WF][0]
-    assert updated_state.draft_action.fields["quantity"] == 60
 
 
 def _interactive_message(row_id: str, title: str = "Material") -> NormalizedMessage:
@@ -590,37 +447,5 @@ def test_greeting_trigger_defaults_to_the_returning_user_copy():
     assert "I'm Mesiri" not in spec.text
 
 
-async def test_slow_path_does_not_read_a_site_name_as_yes():
-    """Request [38]: with a site question and an expense Yes/No open together,
-    the reply "Green Villa" was read as the expense confirmation and recorded
-    it. A model-labelled CONFIRM only counts when the words are a yes."""
-    repo = FakeWorkflowInstanceRepository()
-    repo.seed(_awaiting_state(), version=0)
-    classifier = FakeInteractionClassifier()
-    classifier.next_response = InteractionSpecV2(
-        correlation_id="c1",
-        segments=[InteractionSegment(intent=InteractionIntent.CONFIRM, segment_text="Green Villa")],
-    )
-    handler = _handler(repo, classifier=classifier)
-
-    handled = await handler.handle_slow_path(USR, _message("Green Villa"), "Green Villa", None)
-
-    assert handled is None  # a fresh message, not an answer to the open question
-    assert repo._rows[WF][0].phase is WorkflowPhase.AWAITING_CONFIRMATION  # nothing recorded
 
 
-async def test_slow_path_still_confirms_a_real_yes_with_a_correction():
-    repo = FakeWorkflowInstanceRepository()
-    repo.seed(_awaiting_state(), version=0)
-    classifier = FakeInteractionClassifier()
-    classifier.next_response = InteractionSpecV2(
-        correlation_id="c1",
-        segments=[InteractionSegment(intent=InteractionIntent.CONFIRM, segment_text="go ahead")],
-    )
-    handler = _handler(repo, classifier=classifier)
-
-    handled = await handler.handle_slow_path(USR, _message("go ahead"), "go ahead", None)
-
-    assert handled is not None
-    assert handled.unrelated_text is None
-    assert handled.result.status is WorkflowResumeStatus.CONFIRMED

@@ -1017,8 +1017,6 @@ async def reset_simulation_session(
     if loaded is not None:
         await container.workflow_runtime.resume(loaded, ResumeAction.CANCEL)
 
-    if hasattr(container, "pending_report_store") and container.pending_report_store:
-        await container.pending_report_store.pop_pending(user_id=user_id)
 
     if hasattr(container, "category_hint_store") and container.category_hint_store:
         await container.category_hint_store.pop_hint(user_id=user_id)

@@ -1,16 +1,14 @@
 """Composite-request plan layer (docs/execution/COMPOSITE_REQUEST_PLAN_LAYER.md).
 
-Phase 1 only: the shared data structures and ordering logic. No decomposer,
-no wiring into runtime/inbound_journey/process.py yet -- both are gated on
-§4.4 of that doc (the entity-resolution layer's continuation building on
-PlanStore rather than a standalone PendingReportStore generalization) and on
-the decomposer itself (Phase 4), neither of which exist yet.
+The shared plan structures, ordering and binding. Today's one producer is
+runtime/member_create_plan.py (CREATE_USER -> ADD_PROJECT_MEMBER); the
+message decomposer that also built plans went with the classic pipeline
+(ARCH-06).
 """
 
 from __future__ import annotations
 
 from .binding import UnresolvedStepRefError, build_event, resolve_step
-from .decomposition import DecomposedPlanResult, SkippedSegment, build_plan_from_segments
 from .ordering import PlanCycleError, PlanUnresolvedRefError, topological_order
 from .outputs import build_step_outputs
 from .plan import (
@@ -26,17 +24,14 @@ from .plan_store import PlanStore
 
 __all__ = [
     "SCOPE_KEYS",
-    "DecomposedPlanResult",
     "InvalidScopeKeyError",
     "Plan",
     "PlanOrigin",
     "PlanStep",
-    "SkippedSegment",
     "StepRef",
     "StepStatus",
     "UnresolvedStepRefError",
     "build_event",
-    "build_plan_from_segments",
     "build_step_outputs",
     "resolve_step",
     "PlanCycleError",

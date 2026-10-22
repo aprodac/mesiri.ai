@@ -22,6 +22,7 @@ confirm-first, their graph's own questions included).
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -56,6 +57,9 @@ class SiteEntry(EntryScope):
     money_account_query: Any | None = None
     duplicate_expense_query: Any | None = None
     vendor_query: Any | None = None
+    #: ``() -> activity id | None``: the activity this conversation last
+    #: touched (memory's CurrentActivityStore), the classic route's first pick.
+    remembered_activity: Callable[[], Awaitable[str | None]] | None = None
 
     async def prepare(self, message: Any, understanding: Any, candidate: Any) -> Ready | Say | None:
         """The workflow to start, a line to say, or None (use the classic route)."""
@@ -109,8 +113,17 @@ class SiteEntry(EntryScope):
         ready = self.ready(scoped, message, event_type, workflow_key, fields)
         await self._seed(ready, message)
         if continues and workflow_key is WorkflowKey.SITE_UPDATE:
-            _continue(ready.event.fields, continues, message)
+            _continue(ready.event.fields, continues, message, remembered=await self._last_activity(message))
         return ready
+
+    async def _last_activity(self, message: Any) -> str | None:
+        if self.remembered_activity is None:
+            return None
+        try:
+            return await self.remembered_activity()
+        except Exception:  # noqa: BLE001 -- a hint only
+            _log.warning("site_entry.remembered_failed correlation_id=%s", message.correlation_id, exc_info=True)
+            return None
 
     async def _seed(self, ready: Ready, message: Any) -> None:
         """What the pipeline looked up before the graph ran; each seed skips
@@ -140,13 +153,15 @@ class SiteEntry(EntryScope):
                 _log.warning("site_entry.seed_failed correlation_id=%s", message.correlation_id, exc_info=True)
 
 
-def _continue(fields: dict[str, Any], continues: str, message: Any) -> None:
+def _continue(fields: dict[str, Any], continues: str, message: Any, *, remembered: str | None = None) -> None:
     """The model said which open activity this continues (it sees them in its
     context, and the conversation): when that is one of the seeded open
     activities, the update goes to it -- not a second activity for the same
     work, which the classic guess made whenever it was unsure (save-first
     treats an unclear match as new). Anything that matches none of them is
-    left to that guess, as before."""
+    left to that guess, as before -- unless the activity this conversation
+    last touched is one of the open ones: the classic route's first pick, used
+    here only when the model says this continues work."""
     from runtime.today_context import open_work_label
     from workflows.site_update.nodes import _apply_match
 
@@ -157,6 +172,8 @@ def _continue(fields: dict[str, Any], continues: str, message: Any) -> None:
         # A name given loosely ("plastering"): its work type, when only one
         # open activity has it.
         hits = [c for c in candidates if said and said == " ".join(str(c.get("work_type") or "").replace("_", " ").casefold().split())]
+    if len(hits) != 1 and remembered:
+        hits = [c for c in candidates if str(c.get("activity_id")) == str(remembered)]
     if len(hits) != 1:
         _log.info(
             "site_entry.continues_unmatched correlation_id=%s candidates=%s",

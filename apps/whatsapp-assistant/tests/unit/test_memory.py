@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from context.active_context import RedisActiveContextStore
 from interactions.pending_media import PendingMediaStore
-from interactions.pending_report import PendingReportStore
 from memory.context_loader import ConversationMemoryLoader
 from memory.conversation_scope import CurrentActivityStore, CurrentDateStore
 from memory.coordinator import ConversationMemoryCoordinator
@@ -42,7 +41,6 @@ def _loader(redis: FakeRedis, workflow_runtime=None) -> ConversationMemoryLoader
         current_activity=CurrentActivityStore(redis),
         current_date=CurrentDateStore(redis),
         recent_turns=RecentTurnsStore(redis),
-        pending_report=PendingReportStore(redis),
         pending_media=PendingMediaStore(redis),
         workflow_runtime=workflow_runtime or _NoAwaiting(),
     )
@@ -58,7 +56,6 @@ async def test_empty_state_yields_all_none_and_no_pending_flags():
     assert pack.current_activity_id is None
     assert pack.current_date is None
     assert pack.has_pending_confirmation is False
-    assert pack.has_pending_report_gate is False
     assert pack.has_pending_media is False
     assert pack.recent_turns == ()
     assert pack.is_mid_interaction is False
@@ -78,37 +75,6 @@ async def test_loader_composes_active_context_store_not_a_duplicate():
     assert pack.current_site_id == "site-1"
 
 
-async def test_loader_reads_pending_report_and_media_without_consuming_them():
-    from mesiri_contracts.assistant.canonical_event import (
-        CanonicalEventType,
-        IntentCompleteness,
-    )
-    from mesiri_contracts.assistant.v2.canonical_event import CanonicalEventV2
-
-    redis = FakeRedis()
-    await redis.connect()
-    report_store = PendingReportStore(redis)
-    event = CanonicalEventV2(
-        event_id="evt_1",
-        correlation_id="cor_1",
-        source_message_id="msg_1",
-        event_type=CanonicalEventType.MATERIAL_RECEIPT_REQUESTED,
-        completeness=IntentCompleteness.ACTIONABLE,
-        organization_id=ORG,
-        user_id=USR,
-        fields={},
-    )
-    await report_store.set_pending(user_id=USR, event=event)
-
-    pack = await _loader(redis).load(organization_id=ORG, user_id=USR)
-    assert pack.has_pending_report_gate is True
-    assert pack.is_mid_interaction is True
-
-    # Peeking via has_pending() must not have popped it -- pop_pending()
-    # still returns the real event afterwards.
-    popped = await report_store.pop_pending(user_id=USR)
-    assert popped is not None
-    assert popped.correlation_id == "cor_1"
 
 
 async def test_pending_confirmation_flag_reflects_workflow_runtime():

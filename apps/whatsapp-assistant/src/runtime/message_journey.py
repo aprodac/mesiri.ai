@@ -745,6 +745,11 @@ def build_message_handlers(
                         money_account_query=money_account_query,
                         duplicate_expense_query=duplicate_expense_query,
                         vendor_query=vendor_query,
+                        remembered_activity=(
+                            (lambda: memory_loader.current_activity_id(user_id=ctx.user_id))
+                            if hasattr(memory_loader, "current_activity_id")
+                            else None
+                        ),
                     ),
                     start_workflow=workflow_runtime.start,
                 )

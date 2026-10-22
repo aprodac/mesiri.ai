@@ -20,7 +20,6 @@ from typing import Protocol
 
 from context.active_context import RedisActiveContextStore
 from interactions.pending_media import PendingMediaStore
-from interactions.pending_report import PendingReportStore
 
 from .context_pack import ContextPack
 from .conversation_scope import CurrentActivityStore, CurrentDateStore
@@ -58,7 +57,6 @@ class ConversationMemoryLoader:
         current_activity: CurrentActivityStore,
         current_date: CurrentDateStore,
         recent_turns: RecentTurnsStore,
-        pending_report: PendingReportStore,
         pending_media: PendingMediaStore,
         workflow_runtime: _PendingConfirmationCheck,
     ) -> None:
@@ -66,9 +64,12 @@ class ConversationMemoryLoader:
         self._current_activity = current_activity
         self._current_date = current_date
         self._recent_turns = recent_turns
-        self._pending_report = pending_report
         self._pending_media = pending_media
         self._workflow_runtime = workflow_runtime
+
+    async def current_activity_id(self, *, user_id: str) -> str | None:
+        """The activity this conversation last touched (a hint; never raises)."""
+        return await self._safe(self._current_activity.get_current(user_id=user_id), scope="current_activity")
 
     async def load(self, *, organization_id: str, user_id: str) -> ContextPack:
         (
@@ -76,7 +77,6 @@ class ConversationMemoryLoader:
             activity_id,
             current_date,
             turns,
-            pending_report_present,
             pending_media_present,
             awaiting_confirmation,
             awaiting_input,
@@ -90,11 +90,6 @@ class ConversationMemoryLoader:
             self._safe(self._current_activity.get_current(user_id=user_id), scope="current_activity"),
             self._safe(self._current_date.get_current(user_id=user_id), scope="current_date"),
             self._safe(self._recent_turns.recent(user_id=user_id), scope="recent_turns", default=()),
-            self._safe(
-                self._pending_report.has_pending(user_id=user_id),
-                scope="pending_report",
-                default=False,
-            ),
             self._safe(
                 self._pending_media.has_pending(user_id=user_id),
                 scope="pending_media",
@@ -117,7 +112,6 @@ class ConversationMemoryLoader:
             current_date=current_date,
             has_pending_confirmation=awaiting_confirmation is not None
             or awaiting_input is not None,
-            has_pending_report_gate=bool(pending_report_present),
             has_pending_media=bool(pending_media_present),
             recent_turns=turns or (),
         )

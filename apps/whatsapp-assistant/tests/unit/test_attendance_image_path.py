@@ -1,4 +1,4 @@
-"""The image -> vision -> extraction hand-off, for attendance sheets.
+"""The photo -> vision -> agent hand-off, for attendance sheets.
 
 An attendance sheet is the hardest thing this pipeline carries: a receipt has
 about six scalar fields, a roster has fifteen rows of two. The hand-off between
@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
-from mesiri_ai.models import ExtractionResult, VisionResult
+from mesiri_ai.models import VisionResult
 from understanding.pipeline import _render_vision_value
 
 
@@ -33,17 +33,6 @@ class _RecordingVision:
         self.calls += 1
         self.hint = hint
         return self._result
-
-
-class _RecordingExtraction:
-    """Captures the text the pipeline handed to extraction."""
-
-    def __init__(self) -> None:
-        self.source: str | None = None
-
-    async def extract(self, text, *, semantic_hint=None, expense_categories=None, correlation_id=None):
-        self.source = text
-        return ExtractionResult(semantic_type="labour_update", fields={}, missing_fields=[])
 
 
 # --- structure must survive the hand-off ----------------------------------
@@ -84,7 +73,7 @@ def test_nested_dicts_survive_too():
 # --- the purpose tap reaches the vision model -----------------------------
 
 
-async def _run_image(pipeline_module_vision, extraction, *, hint):
+async def _describe(vision, *, hint):
     from unittest.mock import AsyncMock
 
     from mesiri_contracts.assistant.enums import InputModality
@@ -93,17 +82,11 @@ async def _run_image(pipeline_module_vision, extraction, *, hint):
         NormalizedMessage,
         SenderInfo,
     )
-    from mesiri_contracts.assistant.understanding_result import UnderstandingResult
     from understanding.pipeline import UnderstandingPipeline
 
     storage = AsyncMock()
     storage.get_object.return_value = type("Obj", (), {"data": b"fake-bytes"})()
-    pipeline = UnderstandingPipeline(
-        voice_extraction=AsyncMock(),
-        vision=pipeline_module_vision,
-        extraction=extraction,
-        object_storage=storage,
-    )
+    pipeline = UnderstandingPipeline(voice_extraction=AsyncMock(), vision=vision, object_storage=storage)
     message = NormalizedMessage(
         message_id="msg_1",
         correlation_id="cor_1",
@@ -112,13 +95,7 @@ async def _run_image(pipeline_module_vision, extraction, *, hint):
         modality=InputModality.IMAGE,
         media=MediaReference(object_key="media/sheet.jpg", mime_type="image/jpeg"),
     )
-    result = UnderstandingResult(
-        source_message_id="msg_1",
-        correlation_id="cor_1",
-        input_modality=InputModality.IMAGE,
-    )
-    await pipeline._handle_image(message, result, semantic_hint=hint)
-    return result
+    return await pipeline.describe_media(message, hint)
 
 
 async def test_the_attendance_tap_is_passed_to_the_vision_model():
@@ -128,7 +105,7 @@ async def test_the_attendance_tap_is_passed_to_the_vision_model():
     vision = _RecordingVision(
         VisionResult(document_classification="attendance_sheet", description="roster", raw_fields={})
     )
-    await _run_image(vision, _RecordingExtraction(), hint="labour_update")
+    await _describe(vision, hint="labour_update")
     assert vision.hint == "labour_update"
 
 
@@ -136,36 +113,22 @@ async def test_no_hint_is_passed_through_as_none():
     vision = _RecordingVision(
         VisionResult(document_classification="receipt", description="bill", raw_fields={"amount": 250})
     )
-    await _run_image(vision, _RecordingExtraction(), hint=None)
+    await _describe(vision, hint=None)
     assert vision.hint is None
 
 
-async def test_the_worker_list_reaches_extraction_intact():
-    """End of the hand-off: what vision read is what extraction is asked
-    about."""
+async def test_the_worker_list_reaches_the_agent_intact():
+    """The agent reads the vision description with the fields it read: the
+    roster arrives as JSON, names and all."""
+    workers = [{"name": "Ravi", "trade": "mason"}, {"name": "Suresh", "trade": "helper"}]
     vision = _RecordingVision(
-        VisionResult(
-            document_classification="attendance_sheet",
-            description="Handwritten attendance register",
-            raw_fields={"workers": [{"name": "Ravi", "trade": "mason", "headcount": 1}]},
-        )
+        VisionResult(document_classification="attendance_sheet", description="Attendance register", raw_fields={"workers": workers})
     )
-    extraction = _RecordingExtraction()
-    await _run_image(vision, extraction, hint="labour_update")
-    assert extraction.source is not None
-    assert '"name": "Ravi"' in extraction.source
-    assert '"trade": "mason"' in extraction.source
+    shown = await _describe(vision, hint="labour_update")
+    assert shown.startswith("Attendance register (workers: ")
+    assert json.dumps(workers) in shown
 
 
-async def test_a_receipt_read_is_unchanged_by_all_of_this():
-    """Regression guard: the expense path is live in production."""
-    vision = _RecordingVision(
-        VisionResult(
-            document_classification="receipt",
-            description="Hardware store bill",
-            raw_fields={"amount": 250, "vendor": "ABC Suppliers"},
-        )
-    )
-    extraction = _RecordingExtraction()
-    await _run_image(vision, extraction, hint="expense")
-    assert extraction.source == "Hardware store bill (amount: 250; vendor: ABC Suppliers)"
+async def test_an_unreadable_photo_is_none():
+    vision = _RecordingVision(VisionResult(document_classification="unknown", description="", raw_fields={}))
+    assert await _describe(vision, hint=None) is None

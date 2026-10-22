@@ -14,13 +14,8 @@ from __future__ import annotations
 
 import pytest
 
-from canonicalization import build_canonical_event
-from mesiri_contracts.assistant.candidates import LabourUpdateCandidate
-from mesiri_contracts.assistant.canonical_event import CanonicalEventType, IntentCompleteness
-from mesiri_contracts.assistant.confidence import ConfidenceLevel
 from mesiri_contracts.assistant.context_enums import ContextConfidence, ContextSource
-from mesiri_contracts.assistant.enums import InputModality, SemanticType
-from mesiri_contracts.assistant.understanding_result import UnderstandingResult
+from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.v2.resolved_context import ResolvedContextV2
 
 ORG = "11111111-1111-4111-8111-111111111111"
@@ -47,16 +42,16 @@ def _context() -> ResolvedContextV2:
 
 
 def _event(fields: dict, *, modality: InputModality = InputModality.TEXT, media: str | None = None):
-    understanding = UnderstandingResult(
-        source_message_id="msg_1",
-        correlation_id="cor_1",
-        input_modality=modality,
-        semantic_type=SemanticType.LABOUR_UPDATE,
-        candidates=[LabourUpdateCandidate(fields=fields)],
-        overall_confidence=ConfidenceLevel.HIGH,
-        original_content_reference=media,
-    )
-    return build_canonical_event(understanding, _context())
+    """The labour fields as the agent's labour entry builds them (ARCH-06:
+    runtime/agent/labour_entry.py runs this same normaliser)."""
+    from types import SimpleNamespace
+
+    from canonicalization.builder import _normalize_labour_fields
+
+    out = _normalize_labour_fields(dict(fields), input_modality=modality)
+    if media:
+        out["media_object_key"] = media
+    return SimpleNamespace(fields=out)
 
 
 def _lines(fields: dict) -> list[dict]:
@@ -155,16 +150,6 @@ def test_decimal_headcount_is_truncated_not_rejected():
 # --- the older flat shape still works -------------------------------------
 
 
-def test_flat_headcount_and_trade_become_a_single_group_line():
-    """What the extraction prompt asked for until 2026-07-26, and what a
-    provider still falls back to on a terse message. It must stay actionable
-    rather than becoming unrecognized."""
-    event = _event({"headcount": 12, "trade": "helper"})
-    assert event.event_type is CanonicalEventType.LABOUR_ATTENDANCE_REQUESTED
-    assert event.completeness is IntentCompleteness.ACTIONABLE
-    assert event.fields["lines"] == [
-        {"worker_name": None, "trade": "helper", "headcount": 12}
-    ]
 
 
 def test_already_canonical_lines_pass_through():
@@ -210,18 +195,8 @@ def test_a_lines_own_contractor_wins_over_the_report_level_one():
 # --- routing and completeness ---------------------------------------------
 
 
-def test_a_real_attendance_is_actionable_and_routes_to_labour():
-    event = _event({"workers": [{"name": "Ravi", "trade": "mason"}]})
-    assert event.event_type is CanonicalEventType.LABOUR_ATTENDANCE_REQUESTED
-    assert event.completeness is IntentCompleteness.ACTIONABLE
-    assert event.missing_fields == []
 
 
-def test_an_attendance_naming_and_counting_nobody_asks_for_clarification():
-    event = _event({"contractor": "Kumar Team"})
-    assert event.event_type is CanonicalEventType.CLARIFICATION_REQUIRED
-    assert event.completeness is IntentCompleteness.NEEDS_CLARIFICATION
-    assert "lines" in event.missing_fields
 
 
 # --- text, voice and image all land in the same place ---------------------
@@ -239,16 +214,6 @@ def test_voice_and_image_produce_the_same_structure_as_text():
     assert text == voice == image
 
 
-def test_an_attendance_photo_is_carried_for_attachment():
-    """ADR-L3: the sheet photo rides through on the generic media field, the
-    same one receipts use, so it can be attached to the record later."""
-    event = _event(
-        {"workers": [{"trade": "helper", "headcount": 12}]},
-        modality=InputModality.IMAGE,
-        media="media/wamid.1/sheet.jpg",
-    )
-    assert event.fields["media_object_key"] == "media/wamid.1/sheet.jpg"
-    assert event.completeness is IntentCompleteness.ACTIONABLE
 
 
 # --- non-Latin scripts (Malayalam, Hindi, Tamil) --------------------------
@@ -321,25 +286,10 @@ def test_recorded_via_reaches_the_command_mapper():
 # --- dating the report ------------------------------------------------------
 
 
-def test_a_stated_date_reaches_the_event_as_stated():
-    """End of the chain: what the message said survives to the record."""
-    fields = _event({"workers": [{"trade": "mason", "headcount": 4}], "occurred_on": "2026-07-20"}).fields
-    assert fields["occurred_date"] == "2026-07-20"
-    assert fields["occurred_date_source"] == "stated_by_user"
 
 
-def test_a_report_with_no_stated_date_is_marked_as_assumed():
-    fields = _event({"workers": [{"trade": "mason", "headcount": 4}]}).fields
-    assert fields["occurred_date"]
-    assert fields["occurred_date_source"] == "inferred_at_confirmation"
 
 
-def test_every_labour_event_carries_a_date():
-    """So the confirmation can always show one, and the mapper never has to
-    decide what a missing date means."""
-    fields = _event({"headcount": 12, "trade": "helper"}).fields
-    assert "occurred_date" in fields
-    assert "occurred_date_source" in fields
 
 
 # ---------------------------------------------------------------------------

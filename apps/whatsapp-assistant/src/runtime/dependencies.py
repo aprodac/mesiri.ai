@@ -723,27 +723,11 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     from runtime.expense_query_service import ExpenseQueryService
 
     expense_query_service = ExpenseQueryService(material_db)
-    # Slow-path interaction classifier: while a confirmation is pending, a
-    # message that isn't a plain "yes"/"no" (e.g. "40 bags of cement" instead
-    # of the drafted 50) needs an LLM to recognize it as a CORRECTION rather
-    # than a brand-new report. Without this wired, interactions/handler.py's
-    # handle_slow_path() short-circuits to None (classifier is None) and every
-    # such message falls through to the single-active-invariant block, which
-    # just re-shows the stale draft untouched -- this was a real bug, not a
-    # missing feature: the classifier existed but was never constructed here.
-    from interactions.llm_classifier import AdapterInteractionClassifier
     from mesiri_ai.resolver import DynamicAIProviderResolver
 
-    # Built here (rather than at its previous spot, after this classifier)
-    # so llm_classifier's generate_json calls stop being the one path with
-    # zero journey_traces rows -- traced report showed interactive-tap
-    # messages hitting 32s wall-clock with nothing logged anywhere; this was
-    # a hidden 1-2 sequential-LLM-call chain (segmenter, then an extractor
-    # per CORRECTION segment), not DB/API latency as first suspected.
     trace_logger: TraceLogger = PostgresTraceLogger()
 
     ai_resolver = DynamicAIProviderResolver(material_db, redis_client, _backend_settings)
-    interaction_classifier = AdapterInteractionClassifier(ai_resolver, trace_logger=trace_logger)
     # WA-11: conversational replies in the sender's language, using the same
     # resolver; the language each sender speaks is remembered in Redis.
     from runtime.reply_language import ReplyComposer, UserLanguageStore
@@ -792,7 +776,6 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     # synchronously in the same request and the reply reflects the real outcome.
     interaction_handler = build_interaction_handler(
         workflow_runtime,
-        classifier=interaction_classifier,
         dispatcher=execution_dispatcher,
         receipt_builder=record_receipt_builder,
         memory_coordinator=memory_coordinator,

@@ -276,6 +276,23 @@ async def test_a_name_that_fits_several_or_none_is_left_to_the_usual_matching():
         assert len(ready.event.fields["_open_activity_candidates"]) == 2
 
 
+async def test_a_loose_name_goes_to_the_work_this_chat_last_touched():
+    """Two open plastering jobs and "plastering finished": the one this
+    conversation last touched is the classic route's first pick."""
+    entry = _entry(activity_query=_OpenWork())
+    entry.actor.organization_id = ORG
+
+    async def remembered() -> str:
+        return "a1"
+
+    entry.remembered_activity = remembered
+    ready = await _prepare(entry, SemanticType.GENERAL_SITE_UPDATE, narrative="done", continues="plastering")
+    assert ready.event.fields["activity_id"] == "a1"
+    # Without a continues the model may mean new work: the memory is not used.
+    ready = await _prepare(entry, SemanticType.GENERAL_SITE_UPDATE, narrative="started brickwork")
+    assert "activity_id" not in ready.event.fields
+
+
 def test_the_open_work_line_names_each_activity_once():
     from runtime.today_context import render_open_work_line
 

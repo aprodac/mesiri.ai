@@ -47,7 +47,7 @@ from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage
 from mesiri_contracts.assistant.planner_decision import WorkflowKey
-from mesiri_contracts.assistant.v2.interaction_spec import FieldCorrection, InteractionIntent
+from mesiri_contracts.assistant.v2.interaction_spec import FieldCorrection
 from workflows import (
     ResumeAction,
     WorkflowResumeResult,
@@ -61,7 +61,6 @@ from workflows.slots import BUTTON_ID_PREFIXES, is_retry_prompt, looks_unrelated
 from workflows.who_am_i import is_whoami_trigger
 
 from .classifier import classify_reply
-from .classifier_port import InteractionClassifierPort
 from .completion_photo_hint import CompletionPhotoHintStore
 from .name_corrections import keep_reported_names, parse_name_corrections
 from .policy import InteractionRoute, decide
@@ -137,7 +136,6 @@ class InteractionHandler:
     def __init__(
         self,
         workflow_runtime: WorkflowRuntime,
-        classifier: InteractionClassifierPort | None = None,
         dispatcher: ExecutionDispatcher | None = None,
         receipt_builder: ReceiptBuilder | None = None,
         memory_coordinator: ConversationMemoryCoordinator | None = None,
@@ -146,7 +144,6 @@ class InteractionHandler:
         save_first: SaveFirstService | None = None,
     ) -> None:
         self._runtime = workflow_runtime
-        self._classifier = classifier
         self._slot_answer_classifier = slot_answer_classifier
         self._dispatcher = dispatcher
         self._receipt_builder = receipt_builder
@@ -779,135 +776,3 @@ class InteractionHandler:
         if not is_whoami_trigger(message.text):
             return None
         return whoami_reply(actor)
-
-    async def handle_slow_path(
-        self,
-        user_id: str,
-        message: NormalizedMessage,
-        original_text: str,
-        translated_text: str | None,
-        actor: ActorIdentity | None = None,
-    ) -> InteractionHandled | None:
-        if self._classifier is None:
-            return None
-
-        loaded = await self._runtime.get_awaiting_confirmation(user_id)
-        if loaded is None:
-            return None
-
-        try:
-            spec = await self._classifier.classify(
-                original_text,
-                translated_text,
-                loaded.state.draft_action.fields,
-                message.correlation_id,
-            )
-        except Exception:
-            logger.exception(
-                "interaction.slow_path.classifier_failed correlation_id=%s", message.correlation_id
-            )
-            # Create a dummy spec with AMBIGUOUS intent to trigger fallback
-            from mesiri_contracts.assistant.v2.interaction_spec import (
-                InteractionSegment,
-                InteractionSpecV2,
-            )
-
-            spec = InteractionSpecV2(
-                correlation_id=message.correlation_id,
-                segments=[
-                    InteractionSegment(
-                        intent=InteractionIntent.AMBIGUOUS, segment_text=original_text
-                    )
-                ],
-            )
-
-        unrelated_segments: list[str] = []
-        handled_result: WorkflowRunResult | WorkflowResumeResult | None = None
-        execution_result: ExecutionResult | None = None
-        reply_text: str | None = None
-        receipt_coro: Coroutine[Any, Any, bytes | None] | None = None
-        next_segment_reply: ReplySpec | None = None
-
-        for segment in spec.segments:
-            if segment.intent == InteractionIntent.UNRELATED:
-                unrelated_segments.append(segment.segment_text)
-                continue
-
-            if segment.intent == InteractionIntent.AMBIGUOUS:
-                # Explicit fallback: prompt the user to re-state their correction cleanly
-                if handled_result is None:
-                    handled_result = WorkflowRunResult.failed(
-                        workflow_key=loaded.state.workflow_key,
-                        correlation_id=message.correlation_id,
-                    )
-                    reply_text = "I heard you wanted to make a change, but I couldn't quite catch the specific details. Could you repeat just the part you want to correct?"
-                continue
-
-            if segment.intent == InteractionIntent.CORRECTION:
-                if handled_result is None:
-                    run_result = await self._runtime.correct(loaded, segment.corrections)
-                    logger.info(
-                        "interaction.slow_path.corrected user=%s instance=%s",
-                        user_id,
-                        loaded.state.workflow_instance_id,
-                    )
-                    handled_result = run_result
-                    reply_text = render_workflow_run_reply(
-                        run_result, pending_prompt=run_result.pending_prompt
-                    )
-                continue
-
-            if segment.intent == InteractionIntent.CONFIRM and (
-                classify_reply(segment.segment_text) is not InteractionIntent.CONFIRM
-            ):
-                # The model read a YES into words that are not one ("Green
-                # Villa", answering a different question, recorded a pending
-                # expense -- request [38]). Only a plain yes confirms; anything
-                # else is a fresh message.
-                unrelated_segments.append(segment.segment_text)
-                continue
-
-            # CONFIRM, REJECT, CANCEL
-            decision = decide(segment.intent)
-            if decision.route is InteractionRoute.NEW_JOURNEY:
-                # E.g. decide(AMBIGUOUS) -> NEW_JOURNEY, but we handled AMBIGUOUS above.
-                # If something else triggers NEW_JOURNEY, treat it as unrelated.
-                unrelated_segments.append(segment.segment_text)
-                continue
-
-            if handled_result is None:
-                result, reply_text, execution_result, receipt_coro, next_segment_reply = (
-                    await self._resume_and_render(
-                        user_id,
-                        loaded,
-                        decision.resume_action,
-                        log_prefix="interaction.slow_path",
-                        actor=actor,
-                    )
-                )
-                handled_result = result
-            continue
-
-        unrelated_text = " ".join(unrelated_segments) if unrelated_segments else None
-
-        if handled_result is not None and reply_text is not None:
-            return InteractionHandled(
-                result=handled_result,
-                reply_text=reply_text,
-                execution_result=execution_result,
-                unrelated_text=unrelated_text,
-                receipt_coro=receipt_coro,
-                next_segment_reply=next_segment_reply,
-                project_id=str(loaded.state.project_id) if loaded.state.project_id else None,
-                site_id=str(loaded.state.site_id) if loaded.state.site_id else None,
-            )
-
-        # If nothing triggered a workflow change (e.g. only UNRELATED segments),
-        # return None to let inbound_journey run the whole thing as a new journey.
-        if unrelated_segments:
-            logger.info(
-                "interaction.slow_path.only_unrelated user=%s instance=%s",
-                user_id,
-                loaded.state.workflow_instance_id,
-            )
-        return None

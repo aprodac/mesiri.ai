@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 from memory.coordinator import ConversationMemoryCoordinator
 from workflows import WorkflowRuntime
 
-from .classifier_port import InteractionClassifierPort
 from .completion_photo_hint import CompletionPhotoHintStore
 from .handler import InteractionHandler
 from .ports import ExecutionDispatcher, ReceiptBuilder
@@ -24,7 +23,6 @@ if TYPE_CHECKING:
 
 def build_interaction_handler(
     workflow_runtime: WorkflowRuntime,
-    classifier: InteractionClassifierPort | None = None,
     dispatcher: ExecutionDispatcher | None = None,
     receipt_builder: ReceiptBuilder | None = None,
     memory_coordinator: ConversationMemoryCoordinator | None = None,
@@ -49,7 +47,6 @@ def build_interaction_handler(
     advance_plan, not from inside this handler."""
     return InteractionHandler(
         workflow_runtime,
-        classifier=classifier,
         dispatcher=dispatcher,
         receipt_builder=receipt_builder,
         memory_coordinator=memory_coordinator,

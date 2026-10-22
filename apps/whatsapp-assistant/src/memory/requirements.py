@@ -70,15 +70,6 @@ PENDING_CONFIRMATION = MemoryScopeSpec(
         "still a HINT for scope inheritance -- see WORKFLOW_CONTEXT below."
     ),
 )
-PENDING_REPORT_GATE = MemoryScopeSpec(
-    name="pending_report_gate",
-    ttl_seconds=600,
-    authority=MemoryAuthority.HINT,
-    description=(
-        "A report held mid-resolution (material/unit/project/site gate). "
-        "Backed by interactions.pending_report.PendingReportStore."
-    ),
-)
 PENDING_MEDIA = MemoryScopeSpec(
     name="pending_media",
     ttl_seconds=600,

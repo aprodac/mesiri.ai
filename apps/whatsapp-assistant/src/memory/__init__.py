@@ -42,13 +42,11 @@ def build_conversation_memory(
     instance already built for interactions/dependencies wiring.
     """
     from interactions.pending_media import PendingMediaStore
-    from interactions.pending_report import PendingReportStore
 
     active_context = RedisActiveContextStore(redis)
     current_activity = CurrentActivityStore(redis)
     current_date = CurrentDateStore(redis)
     recent_turns = RecentTurnsStore(redis)
-    pending_report = PendingReportStore(redis)
     pending_media = PendingMediaStore(redis)
 
     loader = ConversationMemoryLoader(
@@ -56,7 +54,6 @@ def build_conversation_memory(
         current_activity=current_activity,
         current_date=current_date,
         recent_turns=recent_turns,
-        pending_report=pending_report,
         pending_media=pending_media,
         workflow_runtime=workflow_runtime,
     )
