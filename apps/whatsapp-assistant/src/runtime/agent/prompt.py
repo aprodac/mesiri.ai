@@ -52,6 +52,8 @@ cannot be fetched). Never turn it into a general "I was not able to send". When 
 message also saves entries ("... innathe report ayakku"), call the save tools AND request_dpr, \
 then say nothing about the report: the system adds one "draft so far" line under the entries. \
 Never list the entries twice and never ask for details the entries already hold.
+- "How many workers this week?" is answered from query_labour: give the total and then its \
+Trades line as the tool wrote it (each trade once). Never leave the trades out.
 - You only ever see and change this user's own company. Nothing else exists for you.
 
 How you reply
@@ -65,14 +67,39 @@ so never say it is saved, recorded, noted or done. The system puts a short line 
 will be saved, with Save and Cancel buttons, under your words.
 - Your sentence names EVERY entry you prepared: each trade with its count, each material, \
 each piece of work with its floor and whether it is finished or a percentage. Nothing is left \
-out, nothing is added. How a supervisor texts it back, in Manglish:
-  "innu 5 mason, 8 helper, 2 electrician vannu" -> "Sheri, innu 5 mason, 8 helper, pinne 2 \
-electrician-um vannu. Nokki shariyenkil Save tap cheyyu."
+out, nothing is added.
+- Word it in this order, in the user's language: (1) say it back in THEIR words, with the \
+numbers ("10 bags cement used for columns"); (2) ONE short human touch, only when it fits: a \
+breakdown, rain, an accident, a delay or a shortage gets "Sorry to hear that" / "Ayyo, pani \
+nirthiyo?" / "അയ്യോ"; a routine entry gets none; (3) ask them to check it and tap Save. \
+Never reply with only "Okay" / "Ok" / "Sheri", and never start with a bare "Okay." that says \
+nothing about what they sent.
+- Every sentence of your reply must be about what they said or what a tool returned. No \
+filler: no "Nale nokkam", no "Anything else?", no "Verenthenkilum ariyamo?", no "tell me how \
+much and I will record it", no promises, no thanks, no questions of your own (a question is an \
+ask_user call).
+How a supervisor texts it back (examples of the style, never copy a reply word for word):
+English message -> English reply (never Manglish):
+  "used 10 bags cement for columns" -> "Got it, 10 bags cement used for columns. Please check it and tap Save."
+  "crane breakdown, work stopped since morning" -> "Sorry to hear that. Crane breakdown, work stopped since morning. Check it and tap Save."
+  "5 masons and 8 helpers today" -> "Got it: 5 masons and 8 helpers today. Please check it and tap Save."
+  "3rd floor slab concreting done" -> "Nice, 3rd floor slab concreting is done. Check it and tap Save."
+  "rain since afternoon, work stopped" -> "That's unlucky: rain, work stopped since afternoon. Check it and tap Save."
+  "50 bags cement arrived from Sharma Traders" -> "50 bags cement arrived from Sharma Traders. Check it and tap Save."
+Manglish message -> Manglish reply (English letters):
+  "innu 5 mason, 8 helper, 2 electrician vannu" -> "Sheri, innu 5 mason, 8 helper, pinne 2 electrician-um vannu. Nokki shariyenkil Save tap cheyyu."
   "50 bag cement vannu" -> "Sheri, 50 bag cement site-il ethi. Ok aanenkil Save tap cheyyu."
-  "mixer machine kedayi, pani nirthi" -> "Ayyo, mixer machine kedayi, pani nirthi ennu issue \
-aayi kodukkaam. Shariyenkil Save tap cheyyu."
-  "3rd floor slab concreting theernnu, 2nd floor plastering 70%" -> "Ok, 3rd floor slab \
-concreting theernnu, 2nd floor plastering 70% aayi. Shariyenkil Save tap cheyyu."
+  "mixer machine kedayi, pani nirthi" -> "Ayyo, mixer machine kedayi, pani nirthi ennu issue aayi kodukkaam. Shariyenkil Save tap cheyyu."
+  "3rd floor slab concreting theernnu, 2nd floor plastering 70%" -> "Ok, 3rd floor slab concreting theernnu, 2nd floor plastering 70% aayi. Shariyenkil Save tap cheyyu."
+  "10 bag cement column-inu use cheythu" -> "Sheri, 10 bag cement column-inu use cheythu. Nokki shariyenkil Save tap cheyyu."
+  "mazha kaaranam pani nirthi" -> "Ayyo, mazha kaaranam pani nirthi. Nokki shariyenkil Save tap cheyyu."
+Malayalam script message -> Malayalam script reply:
+  "ഇന്ന് 5 മേസ്തിരി, 8 സഹായി വന്നു" -> "ശരി, ഇന്ന് 5 മേസ്തിരി, 8 സഹായി. ശരിയാണെങ്കിൽ Save അമർത്തുക."
+  "ക്രെയിൻ കേടായി, രാവിലെ മുതൽ പണി നിർത്തി" -> "അയ്യോ, ക്രെയിൻ കേടായി, രാവിലെ മുതൽ പണി നിർത്തി. ശരിയാണെങ്കിൽ Save അമർത്തുക."
+  "50 ബാഗ് സിമന്റ് വന്നു" -> "50 ബാഗ് സിമന്റ് എത്തി. ശരിയാണെങ്കിൽ Save അമർത്തുക."
+  "3-ാം നില സ്ലാബ് കോൺക്രീറ്റിംഗ് കഴിഞ്ഞു" -> "3-ാം നില സ്ലാബ് കോൺക്രീറ്റിംഗ് കഴിഞ്ഞു, നന്നായി. ശരിയാണെങ്കിൽ Save അമർത്തുക."
+  "മഴ കാരണം പണി നിർത്തി" -> "അയ്യോ, മഴ കാരണം പണി നിർത്തി. ശരിയാണെങ്കിൽ Save അമർത്തുക."
+  "10 ബാഗ് സിമന്റ് കോളത്തിന് ഉപയോഗിച്ചു" -> "10 ബാഗ് സിമന്റ് കോളത്തിന് ഉപയോഗിച്ചു. ശരിയാണെങ്കിൽ Save അമർത്തുക."
 Never write "Save cheyyan Save tap cheyyuka" or any sentence that says Save twice. Ask them to \
 tap Save ONLY when you prepared an entry in this message (a question, a stock check or a report \
 has nothing to save). Before they tap Save nothing is written: never say ezhuthiyittund, \
@@ -84,12 +111,12 @@ they answer a question you asked (which project, which material ...), call the s
 again right away with the original entry and their answer.
 - Numbers: use only numbers from the user's message, from tool results or from the facts \
 above, exactly as written. Never add, subtract or estimate a figure yourself.
-- Reply in the language AND the letters of THIS message. Malayalam script gets Malayalam \
-script. Malayalam, Hindi or Tamil typed in English letters ("Manglish": "njan site il ethi, \
-innu slab cheythu") gets that language in English letters, never the native script. \
-English gets English (not Manglish), even if their earlier messages were in another language. \
-Never join English letters and Malayalam letters in one word (no "innaleത്തെ"): one script per reply. Only a \
-message with no words of its own ("ok", "👍", a number) follows their earlier language.
+- The system tells you, in a [bracket] after the user's message, the language to reply in. \
+Follow it exactly: English gets English only (not one Manglish word, whatever the earlier \
+messages were), Manglish gets Manglish in English letters, Malayalam script gets Malayalam \
+script. Never join English letters and Malayalam letters in one word (no "innaleത്തെ"): one \
+script per reply. A message with no words of its own ("ok", "👍", a number) follows their \
+earlier language.
 - A question gets an answer. If the company's records can answer it (stock, workers, work \
 done, money, "is there enough cement for tomorrow's slab?"), answer it from the facts above \
 or the query tools, with the figures. If they cannot, say so plainly in one line and offer \
@@ -240,9 +267,54 @@ _MANGLISH_WORDS = frozenset(
     illa illallo venam venda vendi ethra ethi eththi eththiyilla aayi aayilla aano alle nale
     naale innu innale ippo ini kooduthal kurav kuravu kuravanu mathi mathiyo mathiyakum chodikku
     chodichu paranju parayu kodukku kodukkanam ninnu nokki nokku sheri shari enthu entha evide
-    pani panikkar theernnu kazhinju kittiyilla kitti tharam thannu ponam varum vaa poyi""".split()
+    pani panikkar theernnu kazhinju kittiyilla kitti tharam thannu ponam varum vaa poyi
+    shariyenkil sheriyenkil sariyenkil aanenkil aanengil cheyyuka cheyyoo cheyyane ayakku ayakkam
+    ennu ayyo aanu aayirunnu nirthi nirthiyo kedayi mazha kaaranam pinne njan ente ningal nalla
+    athu ithu avide ivide enkil""".split()
 )
-_MANGLISH_SUFFIX = re.compile(r"[a-z]-(?:inu|il|ilekku|nte|ude|kku|um)\b")
+_MANGLISH_SUFFIX = re.compile(r"[a-z]-(?:inu|il|ilekku|nte|ude|kku|um)\b|[a-z]enkil\b")
+
+#: Little words and everyday site words that mark plain English. A reply
+#: language is only forced to English when the message has some of these and no
+#: Manglish word: "crane breakdown, work stopped since morning" has no "the" or
+#: "is" but is English.
+_ENGLISH_WORDS = frozenset(
+    """the is are was were to of and for how what when please can could need have has do does did will
+    would my me we you your our this that it with from not much many any there in on at by since
+    today yesterday tomorrow morning evening afternoon night week month used use got get came come
+    arrived delivered received stopped stop started finished done completed work worked working
+    workers worker mason masons helper helpers painter painters electrician electricians plumber
+    carpenter bags bag cement steel sand bricks brick slab slabs column columns floor flooring
+    plastering concrete concreting breakdown broke broken crane machine mixer rain raining site
+    report send show check stock left balance low out new old more less again before after
+    cum cft sqm kg tonnes tons loads load trucks truck lorry only just also but or if so""".split()
+)
+
+_MALAYALAM = re.compile(r"[\u0d00-\u0d7f]")
+_DEVANAGARI = re.compile(r"[\u0900-\u097f]")
+
+
+def reply_language(text: str) -> str | None:
+    """The language THIS message wants its reply in, decided in code:
+    "malayalam" / "hindi" / "native" (other script) for a message in its own
+    script, "manglish" for Malayalam in English letters, "english" for plain
+    English, None when the message has no words of its own ("ok", "👍", "20")
+    or cannot be told ("50 bags", "Anil") -- then nothing is forced."""
+    if _MALAYALAM.search(text or ""):
+        return "malayalam"
+    if _DEVANAGARI.search(text or ""):
+        return "hindi"
+    letters = letters_of(text)
+    if letters == "native":
+        return "native"
+    if letters != "latin" or (text or "").startswith("(They sent"):
+        return None
+    if is_manglish(text):
+        return "manglish"
+    words = re.findall(r"[a-z]+", (text or "").lower())
+    if len(words) >= 2 and set(words) & _ENGLISH_WORDS:
+        return "english"
+    return None
 
 
 def is_manglish(text: str) -> bool:
@@ -252,23 +324,35 @@ def is_manglish(text: str) -> bool:
     return bool(words & _MANGLISH_WORDS) or bool(_MANGLISH_SUFFIX.search(lowered))
 
 
+_LANGUAGE_RULES = {
+    "manglish": (
+        "This message is Manglish (Malayalam typed in English letters): reply in Manglish, "
+        "in English letters, the way a site supervisor texts. Not English, and no Malayalam script."
+    ),
+    "english": (
+        "This message is English: reply in English only. Not one Manglish word (no sheri, nokki, "
+        "cheyyu, ayyo, shariyenkil), no Malayalam, Hindi or Tamil script, even if they wrote in "
+        "another language before."
+    ),
+    "malayalam": "This message is in Malayalam script: reply in Malayalam script, one script only.",
+    "hindi": "This message is in Hindi (Devanagari): reply in Hindi in the same script.",
+    "native": "This message is written in its own script: reply in that same script.",
+}
+
+
 def reply_letters_rule(user_text: str) -> str | None:
-    """WA-37: the letters THIS message is in, said as a fact rather than left
-    to the model -- told the sender's earlier language, it answered English
-    and Manglish in Malayalam script (21 Oct live test, round 2)."""
-    letters = letters_of(user_text)
-    if letters == "latin" and is_manglish(user_text):
-        return (
-            "This message is Manglish (Malayalam typed in English letters): reply in Manglish, "
-            "in English letters, the way a site supervisor texts. Not English, and no Malayalam script."
-        )
-    if letters == "latin":
+    """WA-37 / request 89: the language and letters THIS message is in, decided
+    in code and said as a hard instruction rather than left to the model --
+    told only "the sender's language", it answered English with Manglish
+    (22 Oct) and Manglish and English with Malayalam script (21 Oct)."""
+    language = reply_language(user_text)
+    if language is not None:
+        return _LANGUAGE_RULES[language]
+    if letters_of(user_text) == "latin":
         return (
             "This message is written in English letters: reply in English letters only "
             "(English, or Manglish if they wrote Manglish). No Malayalam, Hindi or Tamil script."
         )
-    if letters == "native":
-        return "This message is written in its own script: reply in that same script."
     return None
 
 

@@ -35,14 +35,18 @@ from .prompt import (
     build_messages,
     is_manglish,
     letters_of,
+    reply_language,
+    reply_letters_rule,
 )
 from .reply_text import (
-    is_clearly_manglish,
+    manglish_word_count,
     mixed_script_words,
     sentences,
     trim_at_sentence,
+    without_manglish,
     without_native_script,
     without_save_prompt,
+    without_stray_sentences,
 )
 from .toolbox import AgentToolbox, SavedItem, asks_for_engineer
 from .tools import ScopeLookup, tool_specs
@@ -158,7 +162,7 @@ class AgentRunner:
         model still answered English one time in three). Anything going wrong
         keeps the English reply; nothing is run or saved again."""
         text = (run.text or "").strip()
-        if not text or not is_manglish(user_text) or is_manglish(text) or letters_of(text) != "latin":
+        if not text or reply_language(user_text) != "manglish" or is_manglish(text) or letters_of(text) != "latin":
             return run
         ask = (
             "Say your last reply again in Manglish (Malayalam in English letters), the way a "
@@ -198,8 +202,7 @@ class AgentRunner:
             return run
         ask = (
             "Your last reply was rejected: " + "; ".join(problems) + ". Say it again, same meaning and "
-            "numbers, nothing added, in the language and letters of the user's message only. "
-            "Only the reply."
+            "numbers, nothing added. " + (reply_letters_rule(user_text) or "") + " Only the reply."
         )
         retried = ""
         try:
@@ -220,6 +223,8 @@ class AgentRunner:
         _log.warning("agent.script_fallback correlation_id=%s problems=%s", correlation_id, problems)
         if letters_of(user_text) == "latin" and any("English letters" in p for p in problems):
             return run.model_copy(update={"text": without_native_script(text)})
+        if reply_language(user_text) == "english" and any("Manglish" in p for p in problems):
+            text = without_manglish(text, _MANGLISH_WORDS)
         broken = mixed_script_words(text)
         kept = "".join(p for p in sentences(text) if not any(w in p for w in broken))
         return run.model_copy(update={"text": kept.strip()})
@@ -242,7 +247,7 @@ class AgentRunner:
         if not items or not text or toolbox.parked is not None:
             return run
         missing = uncovered_items(text, items)
-        claims = bool(_DONE_WORD.search(text)) and self._card_attached(toolbox)
+        claims = bool(_SAVED_CLAIM.search(text)) and self._card_attached(toolbox)
         if not missing and not claims:
             return run
         ask = (
@@ -268,7 +273,7 @@ class AgentRunner:
         except Exception:  # noqa: BLE001 -- the system's sentence stands in
             _log.warning("agent.coverage_retry_failed correlation_id=%s", correlation_id)
             retried = ""
-        if retried and not uncovered_items(retried, items) and not _DONE_WORD.search(retried):
+        if retried and not uncovered_items(retried, items) and not _SAVED_CLAIM.search(retried):
             return run.model_copy(update={"text": retried})
         _log.warning(
             "agent.coverage_fallback correlation_id=%s missing=%s claims=%s", correlation_id, len(missing), claims
@@ -289,6 +294,8 @@ class AgentRunner:
             # Before the Save tap nothing is kept (WA-37).
             text = without_saved_claims(text)
         text = without_tool_talk(text)
+        if toolbox.parked is None and (_entries(toolbox) or toolbox.system_lines or toolbox.answers):
+            text = without_stray_sentences(text, _grounds(toolbox))
         text = saved_list(_unique_paragraphs(text))
         block = _saved_block(toolbox)
         if block:
@@ -322,6 +329,8 @@ class AgentRunner:
         if block:
             if not text and run.stop_reason == "max_steps":
                 text = CHECK_LINE
+            elif run.stop_reason != "max_steps" and toolbox.parked is None:
+                text = self._natural(text, toolbox)
             tail.append(block)
             draft = draft_report_line(toolbox.report_text)
             if draft:
@@ -356,6 +365,23 @@ class AgentRunner:
             list_rows=parked.list_rows,
             buttons=parked.buttons,
         )
+
+    def _natural(self, text: str, toolbox: AgentToolbox) -> str:
+        """Request 89: after every strip, the words above a Save card must
+        still say what is on it. A bare "Okay." (what is left when "noted" and
+        the like are cut out of the model's sentence), or a sentence that lost
+        an item, is replaced by the system's own natural sentence built from the
+        card's items in the sender's language, never by a flat "Okay."."""
+        if not text or not self._card_attached(toolbox):
+            return text
+        items = [item.summary for item in _entries(toolbox) if item.summary and not item.carried]
+        if not items:
+            return text
+        bare = len(re.findall(r"[^\W\d_]{2,}", text)) < 3
+        if bare or uncovered_items(text, items):
+            _log.warning("agent.natural_fallback bare=%s", bare)
+            return covering_sentence(items, toolbox.user_text)
+        return text
 
     @staticmethod
     def _card_attached(toolbox: AgentToolbox) -> bool:
@@ -419,25 +445,24 @@ def looks_english(text: str) -> bool:
 
 
 def script_problems(reply: str, user_text: str) -> list[str]:
-    """What is wrong with the letters of ``reply`` for a message ``user_text``:
-    a word in two scripts, native script for a message in English letters, or
-    Manglish for a message in plain English."""
+    """What is wrong with the language and letters of ``reply`` for a message
+    ``user_text`` (request 89: the language is decided from the message in code,
+    ``reply_language``): a word in two scripts, native script for a message in
+    English letters, Manglish for a message in English, English letters for a
+    message in its own script. A message with no language of its own forces
+    nothing."""
     problems = []
     mixed = mixed_script_words(reply)
     if mixed:
         problems.append("it has a word that mixes English and Malayalam letters (" + ", ".join(mixed[:3]) + ")")
-    letters = letters_of(user_text)
-    # A message of a word or two ("ok", "yes") has no language of its own: the
-    # earlier conversation decides, so only a message with words is checked.
-    wordy = (
-        letters == "latin"
-        and len(re.findall(r"[A-Za-z]+", user_text)) >= 3
-        and not user_text.startswith("(They sent")
-    )
-    if wordy and letters_of(reply) == "native":
+    language = reply_language(user_text)
+    letters = letters_of(reply)
+    if language in ("english", "manglish") and letters == "native":
         problems.append("it uses Malayalam/Hindi script but the message is in English letters")
-    elif looks_english(user_text) and is_clearly_manglish(reply, _MANGLISH_WORDS):
+    elif language == "english" and manglish_word_count(reply, _MANGLISH_WORDS):
         problems.append("it is in Manglish but the message is in English")
+    elif language in ("malayalam", "hindi", "native") and letters == "latin" and len(re.findall(r"[A-Za-z]+", reply)) >= 3:
+        problems.append("it is in English letters but the message is in its own script")
     return problems
 
 
@@ -498,15 +523,16 @@ def uncovered_items(sentence: str, summaries: list[str]) -> list[str]:
 #: The system's own sentence above the card when the model's leaves an item
 #: out twice: {items} are the card's lines. Never says it is saved (WA-37).
 _COVERING = {
-    "english": "Got it: {items}. Please check it and tap Save.",
-    "manglish": "Sheri, {items}. Nokki shariyenkil Save tap cheyyu.",
-    "malayalam": "ശരി, {items}. ശരിയാണെങ്കിൽ Save അമർത്തുക.",
-    "hindi": "ठीक है, {items}. सही हो तो Save दबाएँ.",
+    "english": "{items}. Please check it and tap Save.",
+    "manglish": "{items}. Nokki shariyenkil Save tap cheyyu.",
+    "malayalam": "{items}. ശരിയാണെങ്കിൽ Save അമർത്തുക.",
+    "hindi": "{items}. सही हो तो Save दबाएँ.",
 }
 
 
 def covering_sentence(summaries: list[str], user_text: str) -> str:
     items = "; ".join(s.strip() for s in summaries if s)
+    items = items[:1].upper() + items[1:]
     if re.search(r"[ഀ-ൿ]", user_text):
         language = "malayalam"
     elif re.search(r"[ऀ-ॿ]", user_text):
@@ -651,6 +677,14 @@ def without_saved_claims(text: str) -> str:
     clause, or the whole sentence when it is nothing else."""
     kept = [_without_claim(part) for part in sentences(text) if part]
     return re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
+
+
+def _grounds(toolbox: AgentToolbox) -> list[str]:
+    """What a sentence of the reply may be about: the sender's message and what
+    the tools returned or were given."""
+    grounds = [toolbox.user_text, *(i.summary or "" for i in toolbox.saved), *toolbox.answers, *toolbox.notes]
+    grounds.extend(toolbox.system_lines)
+    return grounds
 
 
 def _entries(toolbox: AgentToolbox) -> list[SavedItem]:

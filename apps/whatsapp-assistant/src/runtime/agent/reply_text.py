@@ -162,3 +162,63 @@ def manglish_word_count(text: str, words: frozenset[str]) -> int:
 def is_clearly_manglish(text: str, words: frozenset[str]) -> bool:
     """A reply that is Manglish beyond doubt: two or more of its words are."""
     return manglish_word_count(text, words) >= 2
+
+
+def without_manglish(text: str, words: frozenset[str]) -> str:
+    """``text`` without the sentences that hold a Manglish word; the last
+    resort for a reply that must be plain English (request 89)."""
+    kept = [s for s in sentences(text) if not manglish_word_count(s, words)]
+    return re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
+
+
+# -- sentences that belong to nothing ---------------------------------------------
+
+#: Filler seen on 22 Oct: "Nale nokkam.", "Verenthenkilum ariyamo?", "Ethra steel
+#: venam ennu paranjal record cheyyam.", and the chatbot closers.
+_FILLER = re.compile(
+    r"\bnale\s+nokk\w*|\bvere\s*enthenkilum\b|\bverenthenkilum\b|\bpara[nj]+al\b.*\brecord\b"
+    r"|\banything else\b|\blet me know if\b|\bis there anything\b|\bhow can i help\b|\bhappy to help\b"
+    r"|\bshall i (?:save|record|note)\b|\bsave cheyyamo\b",
+    re.IGNORECASE,
+)
+#: A human touch is allowed without a source: it answers the feeling, not a fact.
+_TOUCH = re.compile(
+    r"\b(?:ayyo|sorry|oh no|unlucky|alas|pity|nice|great|good|well done|got it|right|sheri|sari|ok|okay)\b"
+    r"|അയ്യോ|ക്ഷമിക്കണം|നന്നായി|ശരി|अफ़सोस|ठीक",
+    re.IGNORECASE,
+)
+_CONTENT = re.compile(r"[^\W\d_]{4,}")
+
+
+def _stems(text: str) -> set[str]:
+    return {w[:4] for w in _CONTENT.findall((text or "").casefold())}
+
+
+def without_stray_sentences(text: str, grounds: list[str]) -> str:
+    """``text`` without the sentences tied to nothing (request 89): a sentence
+    stays when it shares a word with ``grounds`` (the sender's message, the
+    tool results and what the tools were given), carries a figure, asks to tap
+    Save, is a short human touch ("Ayyo", "Sorry to hear that"), or has no
+    word of substance. Known filler goes whatever it shares. Never empties a
+    reply: with nothing left, ``text`` stands."""
+    known = _stems(" ".join(grounds))
+    kept = []
+    for sentence in sentences(text):
+        body = sentence.strip()
+        if not body:
+            kept.append(sentence)
+            continue
+        if _FILLER.search(body):
+            continue
+        stems = _stems(body)
+        tied = (
+            not stems
+            or stems & known
+            or re.search(r"\d", body)
+            or asks_to_tap_save(body)
+            or _TOUCH.search(body)
+        )
+        if tied:
+            kept.append(sentence)
+    result = re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
+    return result or text
