@@ -568,15 +568,17 @@ def build_message_handlers(
         _held_notes[wa_id] = let_go_note(closed.result.collected_fields, closed.reply_text)
 
     async def _agent_enabled(message, ctx) -> bool:  # type: ignore[no-untyped-def]
-        """Free text and voice only, and only for a company switched to the
-        agent. Never raises: any doubt means the classic pipeline."""
+        """Text, voice, photos and documents (ARCH-06), for a company not
+        switched "off". Never raises: any doubt means the classic pipeline."""
         if message.modality not in (
             InputModality.TEXT,
             InputModality.VOICE,
             InputModality.INTERACTIVE,
+            InputModality.IMAGE,
+            InputModality.DOCUMENT,
         ):
             return False
-        if message.modality is not InputModality.VOICE and not (message.text or "").strip():
+        if message.modality in (InputModality.TEXT, InputModality.INTERACTIVE) and not (message.text or "").strip():
             return False
         try:
             from mesiri.domains.organizations import settings as settings_spec
@@ -593,6 +595,316 @@ def build_message_handlers(
 
     async def _run_journey_steps(message, raw_payload, retry_of_id, timer) -> None:  # type: ignore[no-untyped-def]
         wa_id = message.sender.wa_id
+
+        async def _run_agent(message, ctx, category_hint, timer) -> None:  # type: ignore[no-untyped-def]
+            """The agent's turn. The pipeline it drives is the one below, with
+            the senders swapped for a capture so the model writes the one reply."""
+            from runtime.agent import save_button
+            from runtime.agent.journey_gateway import JourneyGateway
+            from runtime.agent.labour_entry import LabourEntry
+            from runtime.agent.material_entry import MaterialEntry
+            from runtime.agent.query_entry import QueryEntry
+            from runtime.agent.site_entry import SiteEntry
+            from runtime.agent.turn import AgentTurnDeps, run_agent_turn
+            from runtime.inbound_journey import render_workflow_run_reply_spec
+            from runtime.today_context import build_stock_line, build_today_line
+
+            hint = category_hint.semantic_hint if category_hint else None
+            direction = category_hint.direction if category_hint else None
+
+            async def _process(msg, preset, sink):  # type: ignore[no-untyped-def]
+                return await process_inbound_message(
+                    msg,
+                    actor_user_id=ctx.user_id,
+                    actor=ctx,
+                    direction_hint=direction,
+                    category_hint_store=category_hint_store,
+                    pipeline=preset,
+                    context_resolver=context_resolver,
+                    planner=planner,
+                    workflow_runtime=workflow_runtime,
+                    interaction_handler=interaction_handler,
+                    send_text=sink.send_text,
+                    send_list=sink.send_list,
+                    send_button=sink.send_button,
+                    send_image=sender.send_image,
+                    send_document=sender.send_document,
+                    object_storage=object_storage,
+                    context_debug=settings.context_debug,
+                    trace_logger=trace_logger,
+                    inventory_query=inventory_query,
+                    catalog_query=catalog_query,
+                    org_settings_query=org_settings_query,
+                    expense_category_query=expense_category_query,
+                    money_account_query=money_account_query,
+                    petty_cash_query=petty_cash_query,
+                    reversal_query=reversal_query,
+                    site_issue_query=site_issue_query,
+                    duplicate_expense_query=duplicate_expense_query,
+                    workforce_query=workforce_query,
+                    activity_query=activity_query,
+                    labour_query_service=labour_query_service,
+                    activity_search_service=activity_search_service,
+                    dpr_request_query=dpr_request_query,
+                    project_detail_query=project_detail_query,
+                    vendor_query=vendor_query,
+                    expense_query_service=expense_query_service,
+                    pending_report_store=pending_report_store,
+                    plan_store=plan_store,
+                    pending_decomposition_store=pending_decomposition_store,
+                    escalation_query=escalation_query,
+                    capability_help=capability_help,
+                    member_resolver=member_resolver,
+                )
+
+            async def _undo() -> str | None:
+                return await interaction_handler.undo_latest_draft(
+                    organization_id=str(ctx.organization_id), user_id=ctx.user_id
+                )
+
+            async def _save_now():  # type: ignore[no-untyped-def]
+                saved = await interaction_handler.save_now(ctx.user_id, actor=ctx)
+                if saved is not None and saved.saved_draft:
+                    _saved_messages.add(message.correlation_id)
+                    await _acknowledge(message, message.sender.wa_id)
+                return saved
+
+            async def _receipt_for(handled_list):  # type: ignore[no-untyped-def]
+                """One card per reply: a single saved record gets its own
+                card, a multi-part note gets one combined card with a row per
+                record (the reply text lists them all too). A record whose own
+                card was already started early still counts as one. A question
+                passed to the engineer is no record to show (WA-37)."""
+                for h in handled_list:
+                    if save_button.is_engineer_question(h) and getattr(h, "receipt_coro", None) is not None:
+                        h.receipt_coro.close()  # never started: nothing to wait for
+                        h.receipt_coro = None
+                handled_list = [h for h in handled_list if not save_button.is_engineer_question(h)]
+                rendering = [
+                    h
+                    for h in handled_list
+                    if getattr(h, "receipt_coro", None) is not None or id(h) in early["single"]
+                ]
+                if len(rendering) > 1:
+                    for handled in rendering:  # the combined card replaces them
+                        if handled.receipt_coro is not None:
+                            handled.receipt_coro.close()
+                            handled.receipt_coro = None
+                    return await _combined_receipt_image(handled_list)
+                if rendering and rendering[0].receipt_coro is not None:
+                    early["single"].add(id(rendering[0]))
+                    return await _receipt_image(rendering[0])
+                return None
+
+            # B-7: the card is made (and uploaded) while the model writes the
+            # reply, not after it: started shortly after the last tool call,
+            # started again if a later call saved more. A stale card is
+            # discarded, never cancelled (a cancelled render would keep its
+            # browser page).
+            early: dict[str, Any] = {
+                "gateway": None, "n": 0, "task": None, "timer": None, "single": set(),
+            }
+
+            async def _card_ready(handled_list):  # type: ignore[no-untyped-def]
+                image = await _receipt_for(handled_list)
+                prepare = getattr(sender, "prepare_image", None)
+                if image and prepare is not None:
+                    await prepare(image)
+                return image
+
+            def _start_card() -> None:
+                gateway = early["gateway"]
+                count = len(getattr(gateway, "handled", []) or [])
+                if not count or count == early["n"]:
+                    return
+                early["n"] = count
+                early["task"] = asyncio.ensure_future(_card_ready(list(gateway.handled)))
+
+            def _after_tool() -> None:
+                if early["timer"] is not None:
+                    early["timer"].cancel()
+                early["timer"] = asyncio.get_running_loop().call_later(0.05, _start_card)
+
+            async def _attach_receipt(reply, gateway):  # type: ignore[no-untyped-def]
+                if early["timer"] is not None:
+                    early["timer"].cancel()
+                early["gateway"] = gateway
+                _start_card()  # no-op when the card for these saves is under way
+                task = early["task"]
+                image = await task if task is not None else None
+                return dataclasses.replace(reply, header_image=image) if image else reply
+
+            async def _send_agent_reply(reply, target_wa_id, gateway) -> None:  # type: ignore[no-untyped-def]
+                """The agent's one reply, with the offers for what it saved
+                folded in (buttons for the photo / undo) instead of sent as
+                further messages."""
+                handled_list = list(getattr(gateway, "handled", []))
+                receipt_image = reply.header_image
+                if not handled_list or reply.buttons or reply.list_rows:
+                    await _send_composed(
+                        target_wa_id, ctx.user_id, reply, header_image=receipt_image
+                    )
+                    return
+                offers: list[Offer] = []
+                for handled in handled_list:
+                    try:
+                        gathered = await _gather_offers(handled)
+                    except Exception:  # noqa: BLE001 -- the offers are optional
+                        _log.exception("offers.gather_failed user=%s", ctx.user_id)
+                        continue
+                    _gathered[id(handled)] = gathered
+                    offers.extend(gathered.offers)
+                # WA-37: a question passed to the engineer is no entry to undo.
+                saved = any(h.saved_draft and not save_button.is_engineer_question(h) for h in handled_list)
+                composed = compose(reply.text, offers, saved=saved)
+                # WA-35: drafts wait on the sender's Save tap, not on Undo.
+                facts = save_button.facts_of(handled_list)
+                if facts is not None and any(r.id == UNDO_ROW.id for r in composed.buttons or composed.list_rows or ()):
+                    composed = save_button.with_save_buttons(composed, facts)
+                await _send_composed(
+                    target_wa_id,
+                    ctx.user_id,
+                    composed,
+                    header_image=receipt_image,
+                )
+
+            from runtime.agent.work_site import site_label
+
+            async def _set_today_site(project_id, site_id):  # type: ignore[no-untyped-def]
+                await work_site.set_today(ctx, project_id=project_id, site_id=site_id)
+                return site_label(ctx, site_id) or "that site"
+
+            async def _work_site_line(actor):  # type: ignore[no-untyped-def]
+                today = await work_site.today(actor)
+                return site_label(actor, today[1]) if today else None
+
+            async def _open_work_line(actor):  # type: ignore[no-untyped-def]
+                """The open activities at today's site (or their only site)."""
+                from runtime.today_context import render_open_work_line
+
+                today = await work_site.today(actor) if work_site is not None else None
+                sites = list(getattr(actor, "sites", None) or [])
+                site_id = today[1] if today else (str(sites[0].id) if len(sites) == 1 else None)
+                if site_id is None:
+                    return None
+                rows = await asyncio.wait_for(
+                    activity_query.find_open_activities(
+                        organization_id=str(actor.organization_id),
+                        site_id=str(site_id),
+                        reported_by_user_id=str(actor.user_id),
+                        limit=6,
+                    ),
+                    timeout=0.5,
+                )
+                return render_open_work_line(site_label(actor, site_id), rows)
+
+            def _gateway(msg, language):  # type: ignore[no-untyped-def]
+                early["gateway"] = JourneyGateway(
+                    message=msg,
+                    process=_process,
+                    save_now=_save_now,
+                    undo=_undo,
+                    followups=lambda handled: _deliver_followups(handled, audit=False),
+                    held_prompt=lambda journey: render_workflow_run_reply_spec(journey.workflow_run),
+                    language=language,
+                    set_today_site=_set_today_site if work_site is not None else None,
+                    set_conversion=(
+                        (
+                            lambda material, unit, count: catalog_query.set_conversion(
+                                organization_id=str(ctx.organization_id),
+                                role=ctx.role,
+                                user_id=ctx.user_id,
+                                material_name=material,
+                                unit_text=unit,
+                                count=count,
+                            )
+                        )
+                        if catalog_query is not None
+                        else None
+                    ),
+                    # ARCH-01: known materials go straight to their workflow.
+                    material_entry=(
+                        MaterialEntry(
+                            context_resolver=context_resolver,
+                            catalog_query=catalog_query,
+                            inventory_query=inventory_query,
+                            org_settings_query=org_settings_query,
+                            actor=ctx,
+                            active_context=getattr(context_resolver, "active_context", None),
+                        )
+                        if catalog_query is not None
+                        else None
+                    ),
+                    # ARCH-06 step 2: lookups, transfers, site/project create, money undo.
+                    query_entry=QueryEntry(
+                        context_resolver=context_resolver,
+                        org_settings_query=org_settings_query,
+                        actor=ctx,
+                        active_context=getattr(context_resolver, "active_context", None),
+                        inventory_query=inventory_query,
+                        labour_query_service=labour_query_service,
+                        activity_search_service=activity_search_service,
+                        dpr_request_query=dpr_request_query,
+                        project_detail_query=project_detail_query,
+                        expense_query_service=expense_query_service,
+                        money_account_query=money_account_query,
+                        reversal_query=reversal_query,
+                        object_storage=object_storage,
+                        send_document=sender.send_document,
+                    ),
+                    # ARCH-03: labour attendance (Alan's approval, 22 Oct).
+                    labour_entry=LabourEntry(
+                        context_resolver=context_resolver,
+                        org_settings_query=org_settings_query,
+                        actor=ctx,
+                        active_context=getattr(context_resolver, "active_context", None),
+                        workforce_query=workforce_query,
+                    ),
+                    # ARCH-02: work done, site issues and expenses too.
+                    site_entry=SiteEntry(
+                        context_resolver=context_resolver,
+                        org_settings_query=org_settings_query,
+                        actor=ctx,
+                        active_context=getattr(context_resolver, "active_context", None),
+                        activity_query=activity_query,
+                        money_account_query=money_account_query,
+                        duplicate_expense_query=duplicate_expense_query,
+                        vendor_query=vendor_query,
+                    ),
+                    start_workflow=workflow_runtime.start,
+                )
+                return early["gateway"]
+
+            deps = AgentTurnDeps(
+                runner=_agent_runner,
+                make_gateway=_gateway,
+                send_spec=_send_spec,
+                send_agent_reply=_send_agent_reply,
+                attach_receipt=_attach_receipt,
+                transcribe=pipeline.transcribe_voice,
+                describe=pipeline.describe_media,
+                message_logger=message_logger,
+                memory_loader=memory_loader,
+                memory_coordinator=memory_coordinator,
+                user_language_store=user_language_store,
+                reply_composer=reply_composer,
+                lap=timer.lap,
+                after_tool=_after_tool,
+                today_line=lambda actor: build_today_line(
+                    activity_search_service, actor, timezone_name=getattr(actor, "timezone", None)
+                ),
+                stock_line=lambda actor: build_stock_line(inventory_query, actor),
+                work_site_line=_work_site_line if work_site is not None else None,
+                open_work_line=_open_work_line if activity_query is not None else None,
+                on_conversational=lambda: _conversational.add(message.correlation_id),
+                trace_logger=trace_logger,
+            )
+            timer.lap("agent_setup")
+            result = await run_agent_turn(message, ctx, deps, menu_hint=hint)
+            timer.lap("agent_turn")
+            if result is not None and result.toolbox.parked is not None:
+                _agent_parked.add(message.correlation_id)
+
 
         # M4: resolve the sender before spending on understanding.
         try:
@@ -1751,6 +2063,21 @@ def build_message_handlers(
 
             held_message = held_batch[0]
             _fire_processing_ack(wa_id, held_message.modality)
+            if agent_provider is not None and await _agent_enabled(held_message, ctx):
+                # ARCH-06: the agent reads the photo, told what they tapped it is.
+                from interactions.category_hint import CategoryHint
+
+                await _run_agent(
+                    held_message, ctx, CategoryHint(IMAGE_PURPOSE_SEMANTIC_HINT[image_purpose_row_id]), timer
+                )
+                if len(held_batch) > 1:
+                    overflow_reply = render_batch_overflow_reply(
+                        held_count=len(held_batch), remaining_count=len(held_batch) - 1
+                    )
+                    await sender.send_text(wa_id, overflow_reply)
+                    await message_logger.log_reply(correlation_id=message.correlation_id, reply=overflow_reply)
+                await message_logger.mark_completed(correlation_id=message.correlation_id)
+                return
             held_journey = await process_inbound_message(
                 held_message,
                 actor_user_id=ctx.user_id,
@@ -2526,6 +2853,11 @@ def build_message_handlers(
             )
             await message_logger.mark_completed(correlation_id=message.correlation_id)
             return
+        if message.modality is InputModality.IMAGE:
+            # A later photo of a burst: held with the first, read when they
+            # answer the picker -- never read on its own as well.
+            await message_logger.mark_completed(correlation_id=message.correlation_id)
+            return
 
         category_hint = await category_hint_store.pop_hint(user_id=ctx.user_id)
         timer.lap("pop_category_hint")
@@ -2556,314 +2888,6 @@ def build_message_handlers(
                 await message_logger.log_reply(correlation_id=message.correlation_id, reply=undo_reply)
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
                 return
-        async def _run_agent(message, ctx, category_hint, timer) -> None:  # type: ignore[no-untyped-def]
-            """The agent's turn. The pipeline it drives is the one below, with
-            the senders swapped for a capture so the model writes the one reply."""
-            from runtime.agent import save_button
-            from runtime.agent.journey_gateway import JourneyGateway
-            from runtime.agent.labour_entry import LabourEntry
-            from runtime.agent.material_entry import MaterialEntry
-            from runtime.agent.query_entry import QueryEntry
-            from runtime.agent.site_entry import SiteEntry
-            from runtime.agent.turn import AgentTurnDeps, run_agent_turn
-            from runtime.inbound_journey import render_workflow_run_reply_spec
-            from runtime.today_context import build_stock_line, build_today_line
-
-            hint = category_hint.semantic_hint if category_hint else None
-            direction = category_hint.direction if category_hint else None
-
-            async def _process(msg, preset, sink):  # type: ignore[no-untyped-def]
-                return await process_inbound_message(
-                    msg,
-                    actor_user_id=ctx.user_id,
-                    actor=ctx,
-                    direction_hint=direction,
-                    category_hint_store=category_hint_store,
-                    pipeline=preset,
-                    context_resolver=context_resolver,
-                    planner=planner,
-                    workflow_runtime=workflow_runtime,
-                    interaction_handler=interaction_handler,
-                    send_text=sink.send_text,
-                    send_list=sink.send_list,
-                    send_button=sink.send_button,
-                    send_image=sender.send_image,
-                    send_document=sender.send_document,
-                    object_storage=object_storage,
-                    context_debug=settings.context_debug,
-                    trace_logger=trace_logger,
-                    inventory_query=inventory_query,
-                    catalog_query=catalog_query,
-                    org_settings_query=org_settings_query,
-                    expense_category_query=expense_category_query,
-                    money_account_query=money_account_query,
-                    petty_cash_query=petty_cash_query,
-                    reversal_query=reversal_query,
-                    site_issue_query=site_issue_query,
-                    duplicate_expense_query=duplicate_expense_query,
-                    workforce_query=workforce_query,
-                    activity_query=activity_query,
-                    labour_query_service=labour_query_service,
-                    activity_search_service=activity_search_service,
-                    dpr_request_query=dpr_request_query,
-                    project_detail_query=project_detail_query,
-                    vendor_query=vendor_query,
-                    expense_query_service=expense_query_service,
-                    pending_report_store=pending_report_store,
-                    plan_store=plan_store,
-                    pending_decomposition_store=pending_decomposition_store,
-                    escalation_query=escalation_query,
-                    capability_help=capability_help,
-                    member_resolver=member_resolver,
-                )
-
-            async def _undo() -> str | None:
-                return await interaction_handler.undo_latest_draft(
-                    organization_id=str(ctx.organization_id), user_id=ctx.user_id
-                )
-
-            async def _save_now():  # type: ignore[no-untyped-def]
-                saved = await interaction_handler.save_now(ctx.user_id, actor=ctx)
-                if saved is not None and saved.saved_draft:
-                    _saved_messages.add(message.correlation_id)
-                    await _acknowledge(message, message.sender.wa_id)
-                return saved
-
-            async def _receipt_for(handled_list):  # type: ignore[no-untyped-def]
-                """One card per reply: a single saved record gets its own
-                card, a multi-part note gets one combined card with a row per
-                record (the reply text lists them all too). A record whose own
-                card was already started early still counts as one. A question
-                passed to the engineer is no record to show (WA-37)."""
-                for h in handled_list:
-                    if save_button.is_engineer_question(h) and getattr(h, "receipt_coro", None) is not None:
-                        h.receipt_coro.close()  # never started: nothing to wait for
-                        h.receipt_coro = None
-                handled_list = [h for h in handled_list if not save_button.is_engineer_question(h)]
-                rendering = [
-                    h
-                    for h in handled_list
-                    if getattr(h, "receipt_coro", None) is not None or id(h) in early["single"]
-                ]
-                if len(rendering) > 1:
-                    for handled in rendering:  # the combined card replaces them
-                        if handled.receipt_coro is not None:
-                            handled.receipt_coro.close()
-                            handled.receipt_coro = None
-                    return await _combined_receipt_image(handled_list)
-                if rendering and rendering[0].receipt_coro is not None:
-                    early["single"].add(id(rendering[0]))
-                    return await _receipt_image(rendering[0])
-                return None
-
-            # B-7: the card is made (and uploaded) while the model writes the
-            # reply, not after it: started shortly after the last tool call,
-            # started again if a later call saved more. A stale card is
-            # discarded, never cancelled (a cancelled render would keep its
-            # browser page).
-            early: dict[str, Any] = {
-                "gateway": None, "n": 0, "task": None, "timer": None, "single": set(),
-            }
-
-            async def _card_ready(handled_list):  # type: ignore[no-untyped-def]
-                image = await _receipt_for(handled_list)
-                prepare = getattr(sender, "prepare_image", None)
-                if image and prepare is not None:
-                    await prepare(image)
-                return image
-
-            def _start_card() -> None:
-                gateway = early["gateway"]
-                count = len(getattr(gateway, "handled", []) or [])
-                if not count or count == early["n"]:
-                    return
-                early["n"] = count
-                early["task"] = asyncio.ensure_future(_card_ready(list(gateway.handled)))
-
-            def _after_tool() -> None:
-                if early["timer"] is not None:
-                    early["timer"].cancel()
-                early["timer"] = asyncio.get_running_loop().call_later(0.05, _start_card)
-
-            async def _attach_receipt(reply, gateway):  # type: ignore[no-untyped-def]
-                if early["timer"] is not None:
-                    early["timer"].cancel()
-                early["gateway"] = gateway
-                _start_card()  # no-op when the card for these saves is under way
-                task = early["task"]
-                image = await task if task is not None else None
-                return dataclasses.replace(reply, header_image=image) if image else reply
-
-            async def _send_agent_reply(reply, target_wa_id, gateway) -> None:  # type: ignore[no-untyped-def]
-                """The agent's one reply, with the offers for what it saved
-                folded in (buttons for the photo / undo) instead of sent as
-                further messages."""
-                handled_list = list(getattr(gateway, "handled", []))
-                receipt_image = reply.header_image
-                if not handled_list or reply.buttons or reply.list_rows:
-                    await _send_composed(
-                        target_wa_id, ctx.user_id, reply, header_image=receipt_image
-                    )
-                    return
-                offers: list[Offer] = []
-                for handled in handled_list:
-                    try:
-                        gathered = await _gather_offers(handled)
-                    except Exception:  # noqa: BLE001 -- the offers are optional
-                        _log.exception("offers.gather_failed user=%s", ctx.user_id)
-                        continue
-                    _gathered[id(handled)] = gathered
-                    offers.extend(gathered.offers)
-                # WA-37: a question passed to the engineer is no entry to undo.
-                saved = any(h.saved_draft and not save_button.is_engineer_question(h) for h in handled_list)
-                composed = compose(reply.text, offers, saved=saved)
-                # WA-35: drafts wait on the sender's Save tap, not on Undo.
-                facts = save_button.facts_of(handled_list)
-                if facts is not None and any(r.id == UNDO_ROW.id for r in composed.buttons or composed.list_rows or ()):
-                    composed = save_button.with_save_buttons(composed, facts)
-                await _send_composed(
-                    target_wa_id,
-                    ctx.user_id,
-                    composed,
-                    header_image=receipt_image,
-                )
-
-            from runtime.agent.work_site import site_label
-
-            async def _set_today_site(project_id, site_id):  # type: ignore[no-untyped-def]
-                await work_site.set_today(ctx, project_id=project_id, site_id=site_id)
-                return site_label(ctx, site_id) or "that site"
-
-            async def _work_site_line(actor):  # type: ignore[no-untyped-def]
-                today = await work_site.today(actor)
-                return site_label(actor, today[1]) if today else None
-
-            async def _open_work_line(actor):  # type: ignore[no-untyped-def]
-                """The open activities at today's site (or their only site)."""
-                from runtime.today_context import render_open_work_line
-
-                today = await work_site.today(actor) if work_site is not None else None
-                sites = list(getattr(actor, "sites", None) or [])
-                site_id = today[1] if today else (str(sites[0].id) if len(sites) == 1 else None)
-                if site_id is None:
-                    return None
-                rows = await asyncio.wait_for(
-                    activity_query.find_open_activities(
-                        organization_id=str(actor.organization_id),
-                        site_id=str(site_id),
-                        reported_by_user_id=str(actor.user_id),
-                        limit=6,
-                    ),
-                    timeout=0.5,
-                )
-                return render_open_work_line(site_label(actor, site_id), rows)
-
-            def _gateway(msg, language):  # type: ignore[no-untyped-def]
-                early["gateway"] = JourneyGateway(
-                    message=msg,
-                    process=_process,
-                    save_now=_save_now,
-                    undo=_undo,
-                    followups=lambda handled: _deliver_followups(handled, audit=False),
-                    held_prompt=lambda journey: render_workflow_run_reply_spec(journey.workflow_run),
-                    language=language,
-                    set_today_site=_set_today_site if work_site is not None else None,
-                    set_conversion=(
-                        (
-                            lambda material, unit, count: catalog_query.set_conversion(
-                                organization_id=str(ctx.organization_id),
-                                role=ctx.role,
-                                user_id=ctx.user_id,
-                                material_name=material,
-                                unit_text=unit,
-                                count=count,
-                            )
-                        )
-                        if catalog_query is not None
-                        else None
-                    ),
-                    # ARCH-01: known materials go straight to their workflow.
-                    material_entry=(
-                        MaterialEntry(
-                            context_resolver=context_resolver,
-                            catalog_query=catalog_query,
-                            inventory_query=inventory_query,
-                            org_settings_query=org_settings_query,
-                            actor=ctx,
-                            active_context=getattr(context_resolver, "active_context", None),
-                        )
-                        if catalog_query is not None
-                        else None
-                    ),
-                    # ARCH-06 step 2: lookups, transfers, site/project create, money undo.
-                    query_entry=QueryEntry(
-                        context_resolver=context_resolver,
-                        org_settings_query=org_settings_query,
-                        actor=ctx,
-                        active_context=getattr(context_resolver, "active_context", None),
-                        inventory_query=inventory_query,
-                        labour_query_service=labour_query_service,
-                        activity_search_service=activity_search_service,
-                        dpr_request_query=dpr_request_query,
-                        project_detail_query=project_detail_query,
-                        expense_query_service=expense_query_service,
-                        money_account_query=money_account_query,
-                        reversal_query=reversal_query,
-                        object_storage=object_storage,
-                        send_document=sender.send_document,
-                    ),
-                    # ARCH-03: labour attendance (Alan's approval, 22 Oct).
-                    labour_entry=LabourEntry(
-                        context_resolver=context_resolver,
-                        org_settings_query=org_settings_query,
-                        actor=ctx,
-                        active_context=getattr(context_resolver, "active_context", None),
-                        workforce_query=workforce_query,
-                    ),
-                    # ARCH-02: work done, site issues and expenses too.
-                    site_entry=SiteEntry(
-                        context_resolver=context_resolver,
-                        org_settings_query=org_settings_query,
-                        actor=ctx,
-                        active_context=getattr(context_resolver, "active_context", None),
-                        activity_query=activity_query,
-                        money_account_query=money_account_query,
-                        duplicate_expense_query=duplicate_expense_query,
-                        vendor_query=vendor_query,
-                    ),
-                    start_workflow=workflow_runtime.start,
-                )
-                return early["gateway"]
-
-            deps = AgentTurnDeps(
-                runner=_agent_runner,
-                make_gateway=_gateway,
-                send_spec=_send_spec,
-                send_agent_reply=_send_agent_reply,
-                attach_receipt=_attach_receipt,
-                transcribe=pipeline.transcribe_voice,
-                message_logger=message_logger,
-                memory_loader=memory_loader,
-                memory_coordinator=memory_coordinator,
-                user_language_store=user_language_store,
-                reply_composer=reply_composer,
-                lap=timer.lap,
-                after_tool=_after_tool,
-                today_line=lambda actor: build_today_line(
-                    activity_search_service, actor, timezone_name=getattr(actor, "timezone", None)
-                ),
-                stock_line=lambda actor: build_stock_line(inventory_query, actor),
-                work_site_line=_work_site_line if work_site is not None else None,
-                open_work_line=_open_work_line if activity_query is not None else None,
-                on_conversational=lambda: _conversational.add(message.correlation_id),
-                trace_logger=trace_logger,
-            )
-            timer.lap("agent_setup")
-            result = await run_agent_turn(message, ctx, deps, menu_hint=hint)
-            timer.lap("agent_turn")
-            if result is not None and result.toolbox.parked is not None:
-                _agent_parked.add(message.correlation_id)
-
         # Request [40]: a company switched to the agent has its free-text and
         # voice messages read by a tool-calling model that runs the very same
         # workflows. Everything above (taps, YES/NO, UNDO, menu, signup, slot

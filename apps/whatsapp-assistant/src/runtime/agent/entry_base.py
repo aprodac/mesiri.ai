@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from mesiri_contracts.assistant.canonical_event import CanonicalEventType, IntentCompleteness
+from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.planner_decision import (
     PlannerDecisionType,
     PlannerPriority,
@@ -202,6 +203,11 @@ class EntryScope:
     ) -> Ready:
         """The event and decision the planner would build for it."""
         ctx = scoped.ctx
+        media = getattr(message, "media", None)
+        if media is not None and getattr(message, "modality", None) in (InputModality.IMAGE, InputModality.DOCUMENT):
+            # The photo or bill the entry was read from: saved as its evidence
+            # (an expense attachment, ...), as the pipeline carried it.
+            fields = {**fields, "media_object_key": media.object_key}
         event = CanonicalEventV2(
             event_id=new_id("evt"),
             correlation_id=message.correlation_id,

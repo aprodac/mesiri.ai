@@ -136,13 +136,44 @@ async def test_a_failing_mode_lookup_means_classic(monkeypatch):
     classic.assert_awaited_once()
 
 
-async def test_photos_never_go_to_the_agent(monkeypatch):
+def _media(modality, key="media/1.jpg"):
+    from mesiri_contracts.assistant.normalized_message import MediaReference
+
+    return _message(text=None, modality=modality).model_copy(
+        update={"media": MediaReference(object_key=key, mime_type="image/jpeg")}
+    )
+
+
+async def test_a_later_photo_of_a_burst_is_held_not_read_on_its_own(monkeypatch):
+    """The picker already asked for the batch: the photo waits for the answer."""
     on_normalized, deps, classic = _build(monkeypatch, mode="agent", provider=ASK)
-    image = _message(text=None, modality=InputModality.IMAGE)
-    with pytest.raises(_Reached):
-        await on_normalized(image, {})
-    classic.assert_awaited_once()
-    deps["org_settings_query"].get.assert_not_awaited()
+    await on_normalized(_media(InputModality.IMAGE), {})
+    classic.assert_not_called()
+    deps["pipeline"].describe_media.assert_not_awaited()
+
+
+async def test_a_document_is_read_and_goes_to_the_agent(monkeypatch):
+    """ARCH-06: a PDF bill is described by the vision model and the agent
+    reads what it shows; the classic pipeline is not used."""
+    on_normalized, deps, classic = _build(monkeypatch, mode="agent", provider=ASK)
+    deps["pipeline"].describe_media.return_value = "Bill from Sharma Traders (amount: 4500)"
+    await on_normalized(_media(InputModality.DOCUMENT, "media/bill.pdf"), {})
+    classic.assert_not_called()
+    deps["pipeline"].describe_media.assert_awaited_once()
+    recorded = deps["memory_coordinator"].record_turn.await_args.kwargs
+    assert "Sharma Traders" in recorded["user_text"]
+
+
+async def test_the_photo_purpose_tap_runs_the_agent_on_the_held_photo(monkeypatch):
+    on_normalized, deps, classic = _build(monkeypatch, mode="agent", provider=ASK)
+    deps["interaction_handler"].handle_image_purpose_tap.return_value = "img_expense"
+    deps["pending_media_store"].pop_batch.return_value = [_media(InputModality.IMAGE)]
+    deps["pipeline"].describe_media.return_value = "Diesel bill (amount: 1200)"
+    await on_normalized(_message("img_expense", modality=InputModality.INTERACTIVE), {})
+    classic.assert_not_called()
+    assert deps["pipeline"].describe_media.await_args.args[1] == "expense"
+    recorded = deps["memory_coordinator"].record_turn.await_args.kwargs
+    assert "Diesel bill" in recorded["user_text"]
 
 
 async def test_an_empty_tap_text_never_goes_to_the_agent(monkeypatch):

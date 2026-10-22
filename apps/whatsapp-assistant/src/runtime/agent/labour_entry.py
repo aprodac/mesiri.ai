@@ -64,7 +64,9 @@ class LabourEntry(EntryScope):
             fields["is_forwarded"] = True
             if metadata.get("frequently_forwarded"):
                 fields["is_frequently_forwarded"] = True
-        fields = _normalize_labour_fields(fields, input_modality=InputModality.TEXT)
+        fields = _normalize_labour_fields(
+            fields, input_modality=getattr(message, "modality", None) or InputModality.TEXT
+        )
         if not fields.get("lines"):
             return Say("error", "Not saved: who worked is needed (a name, or a trade and how many).")
         # The company's day: a blank or default "UTC" zone is India (22 Oct).

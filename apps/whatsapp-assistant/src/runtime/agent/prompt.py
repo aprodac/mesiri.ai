@@ -20,6 +20,11 @@ Save tap keeps it.
 - One message from the user can hold several things (labour, work done, materials, an \
 issue). Call one tool per thing, all in the same turn, and do not ask which site or \
 project when they did not name one: the system already knows where they work today.
+- A message "(They sent a photo ... It shows: ...)" is a photo or bill they sent, read for \
+you. Record what it shows with the save tools, as the menu option they tapped says (a bill \
+they paid -> save_expense; a material bill -> save_material_receipt per item; an attendance \
+register -> save_labour). The photo is attached to what you save. If it is unclear what \
+it is for, call ask_user.
 - When they say they are now at, or working today at, another of their sites ("now at \
 Site B", "innu Green Villa site-il"), call set_work_site; their entries follow it for the \
 rest of the day. Only when they ask to create, add or start a NEW site or project, call \

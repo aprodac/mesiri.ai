@@ -71,6 +71,24 @@ _REQUIRED_FIELDS: dict[SemanticType, tuple[str, ...]] = {
 }
 
 
+def _vision_source(vision: Any) -> str | None:
+    """The vision read as text, or None when nothing could be read.
+
+    vision.raw_fields is Gemini's own structured read of the document
+    (amount, vendor, ...) -- description is a *short* prose summary that does
+    not reliably restate every field in words (a receipt description like
+    "Restaurant bill for tea and toast" never mentions the total), so the
+    fields are kept alongside, or a real numeric field like amount is
+    silently lost between the vision call and whatever reads it next."""
+    if (vision.document_classification or "").lower() == "unknown" and not vision.raw_fields:
+        return None
+    source = vision.description or ""
+    if vision.raw_fields:
+        details = "; ".join(f"{key}: {_render_vision_value(value)}" for key, value in vision.raw_fields.items())
+        source = f"{source} ({details})" if source else details
+    return source
+
+
 def _render_vision_value(value: object) -> str:
     """Render one vision field for the text extraction call that follows.
 
@@ -227,6 +245,20 @@ class UnderstandingPipeline:
         )
         return (result.transcript or "", result.translated_text, result.detected_language)
 
+    async def describe_media(self, message: NormalizedMessage, hint: str | None = None) -> str | None:
+        """What a photo or document shows, in words, with the fields read
+        from it (amount, vendor, ...), or None when it cannot be read. The
+        tool-calling agent reads this as the message; same vision call as
+        `_handle_image`."""
+        return _vision_source(await self._analyze(message, hint)) or None
+
+    async def _analyze(self, message: NormalizedMessage, hint: str | None) -> Any:
+        image = await self._read_media(message)
+        mime = message.media.mime_type if message.media else None
+        return await self._vision.analyze_image(
+            image, mime_type=mime, hint=hint, correlation_id=message.correlation_id
+        )
+
     async def _handle_text(
         self,
         message: NormalizedMessage,
@@ -346,11 +378,7 @@ class UnderstandingPipeline:
         semantic_hint: str | None = None,
         expense_categories: list[str] | None = None,
     ) -> None:
-        image = await self._read_media(message)
-        mime = message.media.mime_type if message.media else None
-        vision = await self._vision.analyze_image(
-            image, mime_type=mime, hint=semantic_hint, correlation_id=result.correlation_id
-        )
+        vision = await self._analyze(message, semantic_hint)
         result.document_classification = vision.document_classification
         result.normalized_text = vision.description
         result.provider_executions.append(
@@ -361,26 +389,11 @@ class UnderstandingPipeline:
                 latency_ms=vision.latency_ms,
             )
         )
-        unreadable = (
-            vision.document_classification or ""
-        ).lower() == "unknown" and not vision.raw_fields
-        if unreadable:
+        source = _vision_source(vision)
+        if source is None:
             result.overall_confidence = ConfidenceLevel.UNUSABLE
             result.warnings.append("image not interpretable")
             return
-        # vision.raw_fields is Gemini's own structured read of the document
-        # (amount, vendor, ...) -- description is a *short* prose summary
-        # that does not reliably restate every field in words (a receipt
-        # description like "Restaurant bill for tea and toast" never
-        # mentions the total), so extraction must see raw_fields directly
-        # rather than only description, or a real numeric field like amount
-        # is silently lost between the vision call and the extraction call.
-        source = vision.description or ""
-        if vision.raw_fields:
-            details = "; ".join(
-                f"{key}: {_render_vision_value(value)}" for key, value in vision.raw_fields.items()
-            )
-            source = f"{source} ({details})" if source else details
         extraction = await self._extraction.extract(
             source,
             semantic_hint=semantic_hint,

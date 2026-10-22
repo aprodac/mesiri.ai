@@ -81,3 +81,20 @@ async def test_the_roster_and_the_days_existing_report_are_seeded():
     fields = ready.event.fields
     assert fields["worker_candidates"][0]["name"] == "Ravi"
     assert fields["day_counted_lines"] == [{"trade": "mason", "headcount": 4}]
+
+
+async def test_an_attendance_register_photo_is_attached_and_recorded_as_a_photo():
+    """ARCH-06: an entry read from a photo carries the photo, as the pipeline did."""
+    from mesiri_contracts.assistant.enums import InputModality
+    from mesiri_contracts.assistant.normalized_message import MediaReference
+
+    from types import SimpleNamespace
+
+    photo = SimpleNamespace(
+        **vars(MESSAGE), modality=InputModality.IMAGE, media=MediaReference(object_key="media/register.jpg")
+    )
+    candidate = Candidate(semantic_type=SemanticType.LABOUR_UPDATE, fields={"workers": [{"trade": "mason", "headcount": 6}]})
+    ready = await _entry().prepare(photo, _Understanding(candidate), candidate)
+    assert isinstance(ready, Ready)
+    assert ready.event.fields["media_object_key"] == "media/register.jpg"
+    assert ready.event.fields["recorded_via"] == "whatsapp_image"

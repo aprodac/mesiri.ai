@@ -33,6 +33,7 @@ from .tools import ScopeLookup
 _log = logging.getLogger("mesiri.agent")
 
 CANT_HEAR_REPLY = "I couldn't hear that clearly. Could you send it again?"
+CANT_READ_REPLY = "I couldn't read that. Could you send a clearer photo, or type the details?"
 
 
 @dataclass(slots=True)
@@ -46,6 +47,8 @@ class AgentTurnDeps:
     #: voice -> (transcript, translated, language); None when not wired.
     transcribe: Callable[[NormalizedMessage], Awaitable[tuple[str, str | None, str | None]]] | None
     message_logger: Any
+    #: photo/document -> what it shows, in words (None: unreadable); None when not wired.
+    describe: Callable[[NormalizedMessage, str | None], Awaitable[str | None]] | None = None
     memory_loader: Any | None = None
     memory_coordinator: Any | None = None
     user_language_store: Any | None = None
@@ -195,6 +198,25 @@ async def run_agent_turn(
                     user_id=actor.user_id, detected_language=language, text=user_text
                 )
             )
+
+    if message.modality in (InputModality.IMAGE, InputModality.DOCUMENT):
+        # ARCH-06: a photo or a bill is read by the vision model and the agent
+        # reads what it shows as the message; the entries attach the file.
+        if deps.describe is None:
+            return None
+        try:
+            shown = await deps.describe(message, menu_hint)
+        except Exception as exc:  # noqa: BLE001 — a vision outage is an outage
+            await _outage(message, None, deps, exc)
+            return None
+        if not shown:
+            await deps.send_spec(ReplySpec(text=CANT_READ_REPLY), wa_id)
+            await _safe(deps.message_logger.log_reply(correlation_id=correlation_id, reply=CANT_READ_REPLY))
+            await _safe(deps.message_logger.mark_completed(correlation_id=correlation_id))
+            return None
+        kind = "photo" if message.modality is InputModality.IMAGE else "document"
+        caption = f' with the words "{user_text}"' if user_text else ""
+        user_text = f"(They sent a {kind}{caption}. It shows: {shown})"
 
     script: str | None = None
     if deps.user_language_store is not None:
