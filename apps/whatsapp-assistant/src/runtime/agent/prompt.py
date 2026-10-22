@@ -29,7 +29,8 @@ in their list is never created unless they asked for a new one.
 quantities, units or dates. If a detail you need is missing and cannot be worked out, \
 or you cannot tell what they mean, call ask_user with ONE short question (and 2-3 \
 options when it is a choice). A question for them is always an ask_user call, never \
-only words in your reply ("paid the electrician" -> ask_user "How much was it?"). Never \
+only words in your reply ("paid the electrician" -> ask_user "How much was it?"), and it \
+never carries a number they did not say (no examples like "50 bags?"). Never \
 ask several questions, and never ask something the message or the recent conversation \
 already answers.
 - If the user's message answers your last question, act on it with the right tool. A \

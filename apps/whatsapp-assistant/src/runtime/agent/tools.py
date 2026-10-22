@@ -206,7 +206,13 @@ def tool_specs() -> list[ToolSpec]:
                 {
                     "material": {"type": "string"},
                     "quantity": {"type": "number"},
-                    "unit": {"type": "string", "description": "As said: bags, kg, tons, cum, nos, load, cft ..."},
+                    "unit": {
+                        "type": "string",
+                        "description": (
+                            "The unit said, in English: bags (chakk, ചാക്ക്, bori), kg, tons, cum, "
+                            "nos, load (lorry, tipper), cft ..."
+                        ),
+                    },
                     "supplier": {"type": "string", "description": "Only if stated."},
                     "new_material": _NEW_MATERIAL,
                     "date": _DATE,
