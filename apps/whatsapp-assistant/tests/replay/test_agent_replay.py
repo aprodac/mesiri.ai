@@ -36,6 +36,7 @@ from runtime.agent.journey_gateway import JourneyGateway
 from runtime.agent.material_entry import MaterialEntry
 from runtime.agent.prompt import AgentContext, Turn
 from runtime.agent.runner import AgentRunner
+from runtime.agent.site_entry import SiteEntry
 from runtime.agent.tools import ScopeLookup
 from runtime.inbound_journey import process_inbound_message, render_workflow_run_reply_spec
 from runtime.noop_loggers import RecordingTraceLogger
@@ -113,6 +114,8 @@ class World:
     last_gateway: Any = None
     #: ARCH-01: None keeps materials on the classic route.
     catalog: Any = None
+    #: ARCH-01/02: the agent's direct routes (False: the classic pipeline).
+    direct: bool = True
 
     def message(self, text: str) -> NormalizedMessage:
         return NormalizedMessage(
@@ -160,6 +163,11 @@ class World:
                     active_context=self.deps.active_context,
                 )
                 if self.catalog is not None
+                else None
+            ),
+            site_entry=(
+                SiteEntry(ContextResolver(self.deps), None, self.actor, active_context=self.deps.active_context)
+                if self.direct
                 else None
             ),
             start_workflow=self.runtime.start,
@@ -245,7 +253,7 @@ async def _make_world(
             SiteSummary(id=k, name=names[k], project_id=seed.PROJ_ALPHA) for k in site_keys
         ],
     )
-    world = World(runtime, handler, dispatcher, actor, deps=deps, catalog=_Catalog() if direct else None)
+    world = World(runtime, handler, dispatcher, actor, deps=deps, catalog=_Catalog() if direct else None, direct=direct)
     world.site_ids = site_ids
     return world
 
@@ -462,7 +470,7 @@ async def test_one_expense_is_one_question_then_one_saved_reply(world):
     result = await world.say(provider, "paid 500 for tea and snacks")
 
     assert provider.calls == 1
-    assert world.journeys == 1  # one journey run for one expense
+    assert world.journeys == 0  # ARCH-02: straight to its workflow, no pipeline run
     reply = result.reply
     assert [b.title for b in reply.buttons] == ["Yes", "No"]  # one message, one Yes/No
     assert "Here's what I can help with" not in reply.text  # no menu beside it

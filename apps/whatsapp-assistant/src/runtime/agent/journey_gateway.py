@@ -135,6 +135,9 @@ class JourneyGateway:
     #: ARCH-01: material receipts/usage straight to the workflow
     #: (runtime/agent/material_entry.py); None keeps the classic route.
     material_entry: Any | None = None
+    #: ARCH-02: work done, site issues and expenses straight to the workflow
+    #: (runtime/agent/site_entry.py); None keeps the classic route.
+    site_entry: Any | None = None
     #: ``WorkflowRuntime.start``, for the direct routes.
     start_workflow: Callable[[Any, Any], Awaitable[Any]] | None = None
     #: WA-45: ``(project_id, site_id) -> label``: today's site is this one
@@ -171,12 +174,9 @@ class JourneyGateway:
         # A text message carrying the user's words: the journey's own checks
         # (duplicates, narrative, logging) read it. Voice was transcribed already.
         message = self.message.model_copy(update={"text": text, "modality": InputModality.TEXT})
-        if (
-            self.material_entry is not None
-            and self.start_workflow is not None
-            and getattr(candidate, "semantic_type", None) is SemanticType.MATERIAL_UPDATE
-        ):
-            direct = await self._material_direct(candidate, message)
+        entry = self._entry_for(getattr(candidate, "semantic_type", None))
+        if entry is not None:
+            direct = await self._direct(entry, candidate, message)
             if direct is not None:
                 return direct
         journey = await self.process(
@@ -184,17 +184,30 @@ class JourneyGateway:
         )
         return await self._after_run(journey, candidate, sink)
 
-    async def _material_direct(self, candidate: Candidate, message: Any) -> StepResult | None:
-        """ARCH-01: the tool's arguments as the workflow's event, or None when
-        this call needs one of the classic pickers (material, project, site)."""
+    def _entry_for(self, semantic_type: Any) -> Any | None:
+        """The direct entry for this kind of record, or None (classic route)."""
+        if self.start_workflow is None:
+            return None
+        if semantic_type is SemanticType.MATERIAL_UPDATE:
+            return self.material_entry
+        from .site_entry import SITE_ENTRY_TYPES
+
+        if semantic_type in SITE_ENTRY_TYPES:
+            return self.site_entry
+        return None
+
+    async def _direct(self, entry: Any, candidate: Candidate, message: Any) -> StepResult | None:
+        """ARCH-01/02: the tool's arguments as the workflow's event, or None
+        when the entry cannot place it (a failed lookup): the classic route."""
         from types import SimpleNamespace
 
-        from .material_entry import Say
+        from .entry_base import Say
 
         understanding = await PresetUnderstandingPipeline(candidate, language=self.language).understand(message)
-        prepared = await self.material_entry.prepare(message, understanding, candidate)
+        prepared = await entry.prepare(message, understanding, candidate)
+        kind = getattr(getattr(candidate, "semantic_type", None), "value", None)
         if prepared is None:
-            _log.info("agent.material_direct correlation_id=%s route=classic", message.correlation_id)
+            _log.info("agent.direct correlation_id=%s kind=%s route=classic", message.correlation_id, kind)
             return None
         if isinstance(prepared, Say):
             from .toolbox import question_reply
@@ -202,11 +215,11 @@ class JourneyGateway:
             reply = question_reply(prepared.question, list(prepared.options)) if prepared.question else None
             return StepResult(prepared.status, text=prepared.text, reply=reply)
         run = await self.start_workflow(prepared.decision, prepared.event)
-        _log.info("agent.material_direct correlation_id=%s route=direct", message.correlation_id)
+        _log.info("agent.direct correlation_id=%s kind=%s route=direct", message.correlation_id, kind)
         journey = SimpleNamespace(workflow_run=run, planner_decision=prepared.decision)
         step = await self._after_run(journey, candidate, CaptureSink())
         if step.status in ("saved", "needs_confirmation"):
-            await self.material_entry.remember(prepared, correlation_id=message.correlation_id)
+            await entry.remember(prepared, correlation_id=message.correlation_id)
         return step
 
     async def _after_run(self, journey: Any, candidate: Candidate, sink: CaptureSink) -> StepResult:

@@ -105,7 +105,9 @@ def tool_specs() -> list[ToolSpec]:
             name=SAVE_LABOUR,
             description=(
                 "Save who worked on site (attendance / headcount). One call per message "
-                "covers every trade and named worker mentioned. Never invent a name."
+                "covers every trade and named worker mentioned. Never invent a name. Not for "
+                "a complaint that too few came ('only 4 masons came, short of labour'): that is "
+                "report_issue with LABOUR_SHORTAGE."
             ),
             parameters=_obj(
                 {
@@ -151,7 +153,14 @@ def tool_specs() -> list[ToolSpec]:
                         "type": "string",
                         "description": "The report in the sender's own words.",
                     },
-                    "work_type": {"type": "string", "description": "e.g. plastering, concreting."},
+                    "work_type": {
+                        "type": "string",
+                        "description": (
+                            "The kind of work, in English and short (plastering, concreting, "
+                            "brickwork, wiring), whatever language the message is in "
+                            "(തേപ്പ് / thepp -> plastering)."
+                        ),
+                    },
                     "quantities": {
                         "type": "array",
                         "items": _obj(
@@ -174,7 +183,11 @@ def tool_specs() -> list[ToolSpec]:
                     "update_kind": {
                         "type": "string",
                         "enum": ["started", "progress", "paused", "resumed", "completed"],
-                        "description": "Omit if genuinely unclear.",
+                        "description": (
+                            "'completed' when the work is said to be finished (done, finished, "
+                            "theernnu, kazhinju, ho gaya), unless a percentage below 100 is given; "
+                            "'started' when it began (thudangi, shuru). Omit if genuinely unclear."
+                        ),
                     },
                     "date": _DATE,
                     "project": _PROJECT,

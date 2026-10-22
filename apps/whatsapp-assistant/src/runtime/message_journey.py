@@ -2562,6 +2562,7 @@ def build_message_handlers(
             from runtime.agent import save_button
             from runtime.agent.journey_gateway import JourneyGateway
             from runtime.agent.material_entry import MaterialEntry
+            from runtime.agent.site_entry import SiteEntry
             from runtime.agent.turn import AgentTurnDeps, run_agent_turn
             from runtime.inbound_journey import render_workflow_run_reply_spec
             from runtime.today_context import build_stock_line, build_today_line
@@ -2771,6 +2772,17 @@ def build_message_handlers(
                         )
                         if catalog_query is not None
                         else None
+                    ),
+                    # ARCH-02: work done, site issues and expenses too.
+                    site_entry=SiteEntry(
+                        context_resolver=context_resolver,
+                        org_settings_query=org_settings_query,
+                        actor=ctx,
+                        active_context=getattr(context_resolver, "active_context", None),
+                        activity_query=activity_query,
+                        money_account_query=money_account_query,
+                        duplicate_expense_query=duplicate_expense_query,
+                        vendor_query=vendor_query,
                     ),
                     start_workflow=workflow_runtime.start,
                 )
