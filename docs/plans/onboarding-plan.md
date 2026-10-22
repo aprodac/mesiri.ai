@@ -476,3 +476,31 @@ the per-IP count needs). Refusals are also in the app log (`signup.refused`), fl
 - **Cost of the check:** cached a minute per company.
 - **Fails open:** a broken check never blocks a message.
 - **Paying companies** are never capped. A cap of 0 means no cap.
+
+---
+
+## Onboarding cards (SS-17, request 87)
+
+Three Swiss-minimal images make the first minutes on WhatsApp look like one product. Target: from "Hi" to the first saved update in under 3 minutes, typing only the company and site names.
+
+Code: `apps/whatsapp-assistant/src/channel/onboarding_cards/` (`data.py` view models, pure; `template.py` HTML/CSS, pure; `render.py` language choice and the PNG through `channel/receipt`'s `ReceiptRenderer`, unchanged), `runtime/signup_journey.py` (cards 1 and 2), `runtime/onboarding_progress.py` (card 3).
+
+**Design system (all three):** 4:5, rendered 1080 x 1350, white, black Inter (Noto Sans Malayalam fallback), a 10 px uppercase tracked header `MESIRI · <TYPE>` over a 2 px rule, big left-aligned headline or number, thin grey row rules, green `#1a7f4b` only for done (filled dot), grey outline circle for pending, one black action box at the bottom. No other colours, no icons. English and Malayalam (the Malayalam header is not letter-spaced: tracking breaks Malayalam conjuncts).
+
+| Card | Where | Content |
+|---|---|---|
+| 1 Welcome | `_welcome`: header image of the existing [Start free trial] [I'm in a company] message | "Your site, on WhatsApp" / "Tell me what happened. I keep the records." / Tell "6 mason, 10 helper vannu" · Ask "cement stock ethra?" · Get today's report as a PDF |
+| 2 Site ready | `_create`: replaces the plain done-text; the caption carries the trial end date | green check, "<Site> is live.", "<Company> · <place>" (place = the part of the site name after the comma), Company ✓ · Site ✓ · Daily report at 9 pm On, action box "TRY IT NOW · Send: 6 mason, 10 helper vannu" |
+| 3 Setup progress | `OnboardingProgress` | "N / 6", bar, "<site> · about X min left" (1 min per open step), six steps, action box "NEXT · Send: <first pending step>" |
+
+Signup questions are labelled "Step 1 of 2" (company) and "Step 2 of 2" (site). If a card cannot be rendered or sent, the same message goes out as text (the card is never a reason to stop signup).
+
+**Card 3 steps, all read-only from existing data:** Company & site (always) · First site update (an activity or timeline entry, as SA-02) · Materials list (an active `materials_catalog` row) · Company logo (branding logo uploaded, or the SS-14 branding question answered) · Site engineer (a `project_members` row with role SITE_ENGINEER) · Report time set (changed from default, or the SS-14 question answered: the dashboard checklist's rule). No attendance data is used.
+
+**When card 3 goes out:** (a) right after the company's first saved update; (b) after a later step completes; (c) when the owner types `setup` or `setup status`, any time. (a) and (b) are unprompted: at most one a day, never while a confirmation or setup question is open, only to the ADMIN of a self-serve WhatsApp company in its first 30 days. The day a card goes out SS-14 asks nothing separately (the card's NEXT box is the ask); when the next step is the report time the question's buttons follow the card, because it is answered by a tap. The last card shown is a Redis hint (`user:<id>:onboarding_card`): if lost, the worst case is one extra card. Language: Malayalam card when the owner's remembered language (`reply_language.py`) is Malayalam (script or Manglish); during signup, when the company or site name is in Malayalam script.
+
+Rendered examples (partial progress, EN and ML): [docs/product/onboarding-cards/](../product/onboarding-cards/).
+
+Rollback: `git revert` the commits; signup is the text flow it was. No migration, no new tables.
+
+Not built / known: the first-update, materials, logo and site-engineer NEXT messages are suggestions (`add material: TMT steel 12mm` is not a tested command); Malayalam wording has not been read by a native speaker; the live run below.
