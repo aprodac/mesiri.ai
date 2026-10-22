@@ -206,6 +206,7 @@ def build_message_handlers(
     trial_usage_guard: Any | None = None,
     agent_provider: Any | None = None,
     offered_choices_store: Any | None = None,
+    work_site: Any | None = None,
 ) -> tuple[Any, Any]:
     """Build the `on_normalized`/`on_message_claimed` callbacks WhatsAppReceiver
     invokes for every inbound message, closing over the already-built services
@@ -1008,6 +1009,23 @@ def build_message_handlers(
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
                 return
 
+        # WA-45: the morning "Where are you working today?" tap sets today's
+        # site, then the message that was waiting for it runs.
+        if work_site is not None:
+            try:
+                picked = await work_site.handle_tap(message, ctx)
+            except Exception:  # noqa: BLE001 — a tap must always get some reply
+                _log.exception("work_site.tap_failed user=%s", ctx.user_id)
+                picked = (ReplySpec(text="Sorry, that didn't work — please try again."), None)
+            if picked is not None:
+                confirm, parked = picked
+                await _send_spec(confirm, wa_id)
+                await message_logger.log_reply(correlation_id=message.correlation_id, reply=confirm.text)
+                await message_logger.mark_completed(correlation_id=message.correlation_id)
+                if parked is not None:
+                    await _run_journey_steps(parked, {}, None, timer)
+                return
+
         # WA-35: Save / Cancel on the agent's reply keeps or drops its drafts.
         from runtime.agent import save_button
 
@@ -1274,6 +1292,13 @@ def build_message_handlers(
                 )
             except Exception:  # noqa: BLE001 — offer never disturbs the saved project/site
                 _log.exception("project_setup.offer_failed user=%s", ctx.user_id)
+            if work_site is not None:
+                # WA-45: a site they just created is where they work today.
+                from runtime.agent.work_site import created_site
+
+                new_site = created_site(handled)
+                if new_site is not None:
+                    await work_site.set_today(ctx, project_id=new_site[0], site_id=new_site[1])
             return _Gathered(offers, promotion_offered)
 
         # id(handled) -> the plan advance already run while composing its
@@ -2700,6 +2725,16 @@ def build_message_handlers(
                     header_image=receipt_image,
                 )
 
+            from runtime.agent.work_site import site_label
+
+            async def _set_today_site(project_id, site_id):  # type: ignore[no-untyped-def]
+                await work_site.set_today(ctx, project_id=project_id, site_id=site_id)
+                return site_label(ctx, site_id) or "that site"
+
+            async def _work_site_line(actor):  # type: ignore[no-untyped-def]
+                today = await work_site.today(actor)
+                return site_label(actor, today[1]) if today else None
+
             def _gateway(msg, language):  # type: ignore[no-untyped-def]
                 early["gateway"] = JourneyGateway(
                     message=msg,
@@ -2709,6 +2744,7 @@ def build_message_handlers(
                     followups=lambda handled: _deliver_followups(handled, audit=False),
                     held_prompt=lambda journey: render_workflow_run_reply_spec(journey.workflow_run),
                     language=language,
+                    set_today_site=_set_today_site if work_site is not None else None,
                     set_conversion=(
                         (
                             lambda material, unit, count: catalog_query.set_conversion(
@@ -2758,6 +2794,7 @@ def build_message_handlers(
                     activity_search_service, actor, timezone_name=getattr(actor, "timezone", None)
                 ),
                 stock_line=lambda actor: build_stock_line(inventory_query, actor),
+                work_site_line=_work_site_line if work_site is not None else None,
                 on_conversational=lambda: _conversational.add(message.correlation_id),
                 trace_logger=trace_logger,
             )
@@ -2772,6 +2809,19 @@ def build_message_handlers(
         # workflows. Everything above (taps, YES/NO, UNDO, menu, signup, slot
         # answers) already had its turn; "off" (the default) falls through.
         if agent_provider is not None and await _agent_enabled(message, ctx):
+            # WA-45: the day's first message from someone with several sites
+            # waits for "Where are you working today?".
+            morning = None
+            if work_site is not None and category_hint is None:
+                try:
+                    morning = await work_site.morning_question(message, ctx)
+                except Exception:  # noqa: BLE001 — the question is a nicety
+                    _log.exception("work_site.morning_failed user=%s", ctx.user_id)
+            if morning is not None:
+                await _send_spec(morning, wa_id)
+                await message_logger.log_reply(correlation_id=message.correlation_id, reply=morning.text)
+                await message_logger.mark_completed(correlation_id=message.correlation_id)
+                return
             _fire_processing_ack(wa_id, message.modality)
             await _run_agent(message, ctx, category_hint, timer)
             return

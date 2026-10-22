@@ -25,6 +25,7 @@ from .tools import (
     ASK_USER,
     NOTE_FOR_ENGINEER,
     SET_UNIT_CONVERSION,
+    SET_WORK_SITE,
     UNDO_LAST,
     WRITE_TOOLS,
     ScopeLookup,
@@ -172,6 +173,8 @@ class AgentToolbox:
             )
         if name == ASK_USER:
             return self._ask(args)
+        if name == SET_WORK_SITE:
+            return await self._set_work_site(args)
         if name == NOTE_FOR_ENGINEER and not (self.engineer_offered or asks_for_engineer(self.user_text)):
             # Ilan, 21 Oct: a question goes to the engineer ONLY when the
             # sender asks for that. The live model passed "is there enough
@@ -218,6 +221,45 @@ class AgentToolbox:
             content={
                 "status": "question_sent",
                 "instruction": "Your final message must end with this question.",
+            }
+        )
+
+    async def _set_work_site(self, args: dict[str, Any]) -> ToolOutcome:
+        """WA-45: "now at Site B". One of their sites -> today's site; anything
+        else -> their sites as the one question (never a guess)."""
+        project = str(args.get("project") or "").strip()
+        project_id = self.scope.project_id(project) if project else None
+        site_id = self.scope.site_id(str(args.get("site") or ""), project_id)
+        if site_id is None:
+            names = [name for _sid, name, pid in self.scope.sites if project_id in (None, pid)]
+            if self.parked is None and names:
+                self.parked = question_reply("Which site are you at?", names)
+                self.parked_by = "ask"
+            return ToolOutcome(
+                content={
+                    "status": "choose",
+                    "message": "That is not one of their sites.",
+                    "instruction": (
+                        "Nothing was changed. End your message asking which of their sites they are "
+                        "at (the options are shown as buttons). If it is a new site, they can ask you "
+                        "to create it."
+                    ),
+                }
+            )
+        try:
+            label = await self.gateway.set_work_site(project_id=project_id, site_id=site_id)
+        except Exception:  # noqa: BLE001 -- the model is told; the trace keeps the cause
+            _log.exception("agent.set_work_site_failed")
+            self.failed += 1
+            return ToolOutcome(content={"status": "error", "message": "could not switch the site"})
+        return ToolOutcome(
+            content={
+                "status": "work_site_set",
+                "site": label,
+                "instruction": (
+                    f"Say in one short line that you will use {label} for the rest of today. "
+                    "Nothing needs saving for this."
+                ),
             }
         )
 

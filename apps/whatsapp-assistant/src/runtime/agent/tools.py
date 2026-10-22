@@ -34,6 +34,10 @@ QUERY_WORK_LOG = "query_work_log"
 QUERY_PROJECT = "query_project"
 QUERY_EXPENSES = "query_expenses"
 REQUEST_DPR = "request_dpr"
+# WA-45: where they work today, and new sites/projects.
+SET_WORK_SITE = "set_work_site"
+CREATE_SITE = "create_site"
+CREATE_PROJECT = "create_project"
 
 #: Tools that write a record (or an undo of one). A run that has attempted one
 #: must never be retried from the top.
@@ -49,6 +53,8 @@ WRITE_TOOLS = frozenset(
         TRANSFER_MONEY,
         UNDO_LAST,
         SET_UNIT_CONVERSION,
+        CREATE_SITE,
+        CREATE_PROJECT,
     }
 )
 
@@ -409,6 +415,55 @@ def tool_specs() -> list[ToolSpec]:
             ),
             parameters=_obj({"date": _DATE, "project": _PROJECT, "site": _SITE}),
         ),
+        ToolSpec(
+            name=SET_WORK_SITE,
+            description=(
+                "The user says where they are working now or today ('now at Site B', "
+                "'today Green Villa site', 'innu Site A-il'). Everything after is for that site "
+                "until the day ends. Only for one of their own sites; to make a new one use "
+                "create_site."
+            ),
+            parameters=_obj(
+                {
+                    "site": {"type": "string", "description": "The site name they said."},
+                    "project": _PROJECT,
+                },
+                ["site"],
+            ),
+        ),
+        ToolSpec(
+            name=CREATE_SITE,
+            description=(
+                "Add a NEW site to a project, only when the user asks to create / add / start "
+                "a new site. The user confirms with Yes before it is made."
+            ),
+            parameters=_obj(
+                {
+                    "name": {"type": "string", "description": "The new site's name, as they said it."},
+                    "project": {
+                        "type": "string",
+                        "description": "Project it belongs to, ONLY if the user names one.",
+                    },
+                    "location": {"type": "string", "description": "Only if they say where it is."},
+                },
+                ["name"],
+            ),
+        ),
+        ToolSpec(
+            name=CREATE_PROJECT,
+            description=(
+                "Create a NEW project, only when the user asks to create / add / start a new "
+                "project. The user confirms with Yes before it is made; adding its sites is "
+                "offered after."
+            ),
+            parameters=_obj(
+                {
+                    "name": {"type": "string", "description": "The new project's name, as they said it."},
+                    "location": {"type": "string", "description": "Only if they say where it is."},
+                },
+                ["name"],
+            ),
+        ),
     ]
 
 
@@ -560,6 +615,18 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             semantic_type=SemanticType.DPR_REQUEST,
             fields=_clean({"report_date": date, **sc}),
         )
+    if name == CREATE_SITE:
+        fields = {
+            "name": str(args.get("name") or "").strip(),
+            "location": args.get("location"),
+            # The project it goes under; the new site's own name is never a
+            # site to look up.
+            **_scope({"project": args.get("project")}, scope),
+        }
+        return Candidate(semantic_type=SemanticType.SITE_CREATE, fields=_clean(fields))
+    if name == CREATE_PROJECT:
+        fields = {"name": str(args.get("name") or "").strip(), "location": args.get("location")}
+        return Candidate(semantic_type=SemanticType.PROJECT_CREATE, fields=_clean(fields))
     if name == UNDO_LAST:
         what = str(args.get("what") or "latest_update")
         if what == "latest_update":

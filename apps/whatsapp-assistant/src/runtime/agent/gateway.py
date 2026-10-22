@@ -59,6 +59,11 @@ class WorkflowGateway(Protocol):
         company-wide (admins and project managers only)."""
         ...
 
+    async def set_work_site(self, *, project_id: str | None, site_id: str) -> str:
+        """WA-45: the sender works at ``site_id`` for the rest of today. Returns
+        how to name it to them ("Site B (Project B)")."""
+        ...
+
     async def finish(self) -> None:
         """After the reply is sent: the follow-ups the classic path runs after
         a save (worker promotion question, team-photo offer, ...)."""

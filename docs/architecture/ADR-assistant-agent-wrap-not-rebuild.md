@@ -68,7 +68,14 @@ message run once. Writes make retry dangerous, so:
 - The tools exposed are: save_labour, save_work_done, save_material_receipt/usage,
   save_expense, report_issue, transfer_money (money between accounts — the assistant has no
   material-transfer workflow), undo_last, ask_user, query_labour/materials/work_log/project/
-  expenses, request_dpr.
+  expenses, request_dpr, and (WA-45) set_work_site, create_site, create_project.
+- **Today's site (WA-45, `runtime/agent/work_site.py`).** Where the sender works today is
+  the context resolver's active context, until midnight in the company's time zone: set by
+  the morning "Where are you working today?" (asked on the day's first message of anyone
+  with 2+ sites except admins; that message waits and runs after the tap), by
+  `set_work_site` ("now at Site B"), by every save, and by a newly created site. A site the
+  message names still wins. `create_site` / `create_project` run the existing workflows
+  (admin/PM, Yes/No, setup offers).
 - Receipt images ("cards") are not sent in agent mode yet; the day's records still reach the
   evening DPR.
 - Today's entries and open drafts are not preloaded into the prompt: the model reads them

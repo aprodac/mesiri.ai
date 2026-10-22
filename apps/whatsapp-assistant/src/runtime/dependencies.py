@@ -301,6 +301,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
 
     pipeline = build_pipeline(object_storage, material_db, redis_client)
     context_resolver = build_context_resolver(redis=redis_client)
+    from runtime.agent.work_site import WorkSite
     planner = Planner()  # stateless — safe to construct once and share
     # WorkflowRegistry compiles each graph once and caches it — constructed
     # once here, never per message.
@@ -1013,6 +1014,8 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         completion_photo_hint_store=completion_photo_hint_store,
         team_photo_hint_store=team_photo_hint_store,
         offered_choices_store=offered_choices_store,
+        # WA-45: today's site, on the resolver's own active-context slot.
+        work_site=WorkSite(active_context=context_resolver.active_context, redis=redis_client),
         project_setup_offer_store=project_setup_offer_store,
         memory_loader=memory_loader,
         memory_coordinator=memory_coordinator,

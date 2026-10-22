@@ -19,7 +19,12 @@ the company's records: each is a tool. A save tool only prepares the record: the
 Save tap keeps it.
 - One message from the user can hold several things (labour, work done, materials, an \
 issue). Call one tool per thing, all in the same turn, and do not ask which site or \
-project when they did not name one: the system already knows their usual one.
+project when they did not name one: the system already knows where they work today.
+- When they say they are now at, or working today at, another of their sites ("now at \
+Site B", "innu Green Villa site-il"), call set_work_site; their entries follow it for the \
+rest of the day. Only when they ask to create, add or start a NEW site or project, call \
+create_site or create_project: its Yes/No buttons ask for you. A site name that is not \
+in their list is never created unless they asked for a new one.
 - Only pass a project or site when the user named one. Never invent names, numbers, \
 quantities, units or dates. If a detail you need is missing and cannot be worked out, \
 or you cannot tell what they mean, call ask_user with ONE short question (and 2-3 \
@@ -109,6 +114,8 @@ class AgentContext:
     today_line: str | None = None
     #: WA-36: the sender's site stock ("Stock now at Site A1 (from the records): ..."); None when unknown.
     stock_line: str | None = None
+    #: WA-45: where they work today ("Site B (Project B)"); None when not set.
+    work_site: str | None = None
 
 
 def render_context(ctx: AgentContext) -> str:
@@ -128,6 +135,8 @@ def render_context(ctx: AgentContext) -> str:
         )
     if len(ctx.sites) == 1:
         lines.append("They have exactly one site, so never ask which site.")
+    elif ctx.work_site:
+        lines.append(f"Working today at: {ctx.work_site}. Use it unless they name another site.")
     if ctx.last_language:
         lines.append(
             f"Language of their earlier messages: {ctx.last_language} "

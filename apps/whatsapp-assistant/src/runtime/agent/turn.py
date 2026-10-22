@@ -68,6 +68,9 @@ class AgentTurnDeps:
     #: WA-36: ``(actor) -> "Stock now at ...: ..." | None``, read-only context
     #: (runtime/today_context.py's build_stock_line); None leaves it out.
     stock_line: Callable[[ActorIdentity], Awaitable[str | None]] | None = None
+    #: WA-45: ``(actor) -> "Site B (Project B)" | None``, where they work today
+    #: (runtime/agent/work_site.py); None leaves it out.
+    work_site_line: Callable[[ActorIdentity], Awaitable[str | None]] | None = None
     #: [68]: called when the reply saved nothing (a question or small talk), so
     #: the journey holds setup nudges ("add another site?") for after a save.
     on_conversational: Callable[[], None] | None = None
@@ -232,10 +235,10 @@ async def run_agent_turn(
     lines = await asyncio.gather(
         *(
             _context_line(fetch, actor)
-            for fetch in (deps.today_line, deps.stock_line)
+            for fetch in (deps.today_line, deps.stock_line, deps.work_site_line)
         )
     )
-    context = replace(context, today_line=lines[0], stock_line=lines[1])
+    context = replace(context, today_line=lines[0], stock_line=lines[1], work_site=lines[2])
     _lap(deps, "agent_context")
     result = await deps.runner.run(
         ctx=context,

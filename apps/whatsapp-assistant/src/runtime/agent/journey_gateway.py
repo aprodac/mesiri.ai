@@ -137,8 +137,36 @@ class JourneyGateway:
     material_entry: Any | None = None
     #: ``WorkflowRuntime.start``, for the direct routes.
     start_workflow: Callable[[Any, Any], Awaitable[Any]] | None = None
+    #: WA-45: ``(project_id, site_id) -> label``: today's site is this one
+    #: (runtime/agent/work_site.py); None when not wired.
+    set_today_site: Callable[[str | None, str], Awaitable[str]] | None = None
 
     async def run(self, candidate: Candidate, *, text: str) -> StepResult:
+        step = await self._run(candidate, text=text)
+        if step.status == "saved" and self.handled:
+            await self._remember_site(self.handled[-1])
+        return step
+
+    async def _remember_site(self, handled: Any) -> None:
+        """WA-45: a save at a site keeps the sender there for the rest of the
+        day, whatever module it was. Never raises."""
+        if self.set_today_site is None:
+            return
+        try:
+            confirmed = getattr(handled.result, "confirmed_action", None)
+            draft = confirmed.draft_action if confirmed is not None else None
+            site_id = getattr(draft, "site_id", None)
+            if site_id:
+                await self.set_today_site(getattr(draft, "project_id", None), str(site_id))
+        except Exception:  # noqa: BLE001 -- a missed hint only costs one question
+            _log.warning("agent.remember_site_failed", exc_info=True)
+
+    async def set_work_site(self, *, project_id: str | None, site_id: str) -> str:
+        if self.set_today_site is None:
+            raise RuntimeError("today's site is not wired")
+        return await self.set_today_site(project_id, site_id)
+
+    async def _run(self, candidate: Candidate, *, text: str) -> StepResult:
         sink = CaptureSink()
         # A text message carrying the user's words: the journey's own checks
         # (duplicates, narrative, logging) read it. Voice was transcribed already.
