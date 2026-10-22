@@ -327,7 +327,7 @@ without the Save card). The wrap was the bridge; it is not the end state. Decide
 | ARCH-04 | Agent-mode taps: the old gate buttons replaced by `ask_user` answers, so nothing saves past the Save card | replay tests |
 | ARCH-05 | First real company on the agent, then all | owner decides; live golden runs >= 100% on materials |
 | ARCH-05 done | **Every company on the agent** (Ilan, 21 Oct, `1132e9f`): `assistant_mode` defaults to "agent"; "off" is the per-company fallback | owner's decision, before the live golden runs |
-| ARCH-06 | Delete the classic path per area (understanding, planner, decomposition, graphs, templates); record line counts | ~~area switched everywhere for 1 week~~ Ilan, 22 Oct: now, in steps behind the live runs. Step 1 `dcef4dc` (no classic fallback); step 2 `ac43bee` (lookups, transfers, site/project create, money undo: `runtime/agent/query_entry.py`). Step 3 left: photos/documents (OCR), the photo-purpose taps, `assistant_mode` "off" and the admin simulator still call `process_inbound_message` |
+| ARCH-06 | Delete the classic path per area (understanding, planner, decomposition, graphs, templates); record line counts | ~~area switched everywhere for 1 week~~ Ilan, 22 Oct: now, in steps behind the live runs. **Done 22 Oct.** Step 1 `dcef4dc` (no classic fallback); step 2 `ac43bee` (lookups, transfers, site/project create, money undo: `runtime/agent/query_entry.py`); step 3 `5bf7a72` (photos and bills read by the vision model, then the agent), `275849d` (`process_inbound_message` and everything only it reached deleted: 11.7k lines; the control panel's test message runs the real handler), `34ac2be` (planner, gates, dead seeds: 2.3k lines; lookups as a PDF restored). See "After ARCH-06" below |
 
 
 **Live runs, 22 Oct** (`gemini-2.5-flash`, claude-ops task `golden-live`, GitHub Actions with
@@ -354,6 +354,24 @@ Left on materials (ARCH-01, live since 21 Oct), neither saves anything wrong: "5
 arrived" sometimes still gets one "Received or used?" tap (2 of the last 4 runs), and "cement
 vannu" gets the right question as plain text rather than an ask_user call (no buttons, the
 answer still comes back as a new message).
+
+**After ARCH-06 (22 Oct).** Every message (text, voice, a photo after its purpose tap, a
+document) goes to the agent; its tools start the workflows through the direct entries
+(`runtime/agent/{material,site,labour,query}_entry.py` on `entry_base.py`). What is left
+of `runtime/inbound_journey` is the seed functions the entries call (`seeding.py`), the
+workflow-run reply rendering (`reply.py`) and `_shared.py`. Taps that answer a workflow
+(Yes/No, Save/Cancel, slot answers, evening review, work site) never went through the
+pipeline and are unchanged.
+
+- `assistant_mode` "off" no longer routes anywhere (there is no classic pipeline to fall
+  back to); the stored setting is left as it is (no migration).
+- Not reachable since every company moved to the agent (ARCH-05, 21 Oct), and now gone
+  with the code: the multi-message plan preview (the agent makes one tool call per
+  entry), adding a member by typed name (contact cards still do it), and the WhatsApp
+  starts of activity correction, site-issue close and automation setup. Any of these
+  that is wanted back becomes an agent tool on an entry.
+- The 13 classic replay cases went with their harness; the agent replay and the two
+  golden sets (site 24, materials 24) are the regression net.
 
 ## 11. References
 
