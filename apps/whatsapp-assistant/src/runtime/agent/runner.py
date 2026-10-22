@@ -192,12 +192,14 @@ class AgentRunner:
             _log.warning("agent.code_word_guard correlation_id=%s words=%s", correlation_id, leaked)
             text = ""
         if unbacked:
-            # A figure the model made up (or worked out) is never sent: the
-            # system's own words stand in for the whole reply.
+            # A figure the model made up (or worked out) is never sent. Only
+            # the sentences carrying one go (22 Oct: an example "100 bags?"
+            # took the whole question with it); with none left, the system's
+            # own words stand in for the reply.
             _log.warning(
                 "agent.number_guard correlation_id=%s numbers=%s", correlation_id, sorted(unbacked)
             )
-            text = ""
+            text = without_numbers(text, unbacked)
         if block:
             if not text and run.stop_reason == "max_steps":
                 text = CHECK_LINE
@@ -270,6 +272,14 @@ def _numbers(text: str) -> set[str]:
             continue
         found.add(format(value.normalize(), "f"))
     return found
+
+
+def without_numbers(reply: str, numbers: set[str]) -> str:
+    """``reply`` without the sentences that carry any of ``numbers``; empty
+    when nothing worded is left."""
+    kept = [m.group(0) for m in _SENTENCE.finditer(reply) if m.group(0) and not (_numbers(m.group(0)) & numbers)]
+    text = "".join(kept).strip()
+    return text if re.search(r"[^\W\d_]", text) else ""
 
 
 def unbacked_numbers(reply: str, sources: list[str]) -> set[str]:

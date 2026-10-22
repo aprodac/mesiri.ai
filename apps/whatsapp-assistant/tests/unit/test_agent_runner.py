@@ -410,3 +410,13 @@ async def test_an_english_message_gets_no_second_try():
         scope=ScopeLookup(),
     )
     assert provider.calls == 1
+
+
+def test_only_the_sentence_with_a_made_up_number_is_dropped():
+    """Live golden set, 22 Oct: an example "100 bags?" took the whole
+    question with it, and the sender got "Sorry, I couldn't work that out"."""
+    from runtime.agent.runner import without_numbers
+
+    reply = "Ethra bag cement vannu? 50 bags aano 100 bags aano?"
+    assert without_numbers(reply, {"50", "100"}) == "Ethra bag cement vannu?"
+    assert without_numbers("100 bags.", {"100"}) == ""
