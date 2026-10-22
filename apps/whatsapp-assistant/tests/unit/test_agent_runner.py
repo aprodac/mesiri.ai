@@ -431,3 +431,15 @@ def test_a_made_up_decimal_or_a_leftover_scrap_never_goes_out():
     assert without_numbers("Rs. 4500 total for the week.", {"4500"}) == ""
     kept = without_numbers("Okay, noted the work. It is 12.5 bags. Anything else today?", {"12.5"})
     assert kept == "Okay, noted the work. Anything else today?"
+
+
+async def test_a_question_asked_in_words_alone_still_waits_for_the_answer():
+    """Live golden set, 22 Oct: "pani nadakkunnu" -> "Ethu pani aanu?" with no
+    ask_user call. The conversation still waits on that question."""
+    provider = FakeToolCallingProvider(["Ethu pani aanu nadakkunnath?"])
+    result = await _run(provider, text="pani nadakkunnu")
+    assert result.toolbox.parked is not None and result.toolbox.parked_by == "ask"
+    assert result.reply.text == "Ethu pani aanu nadakkunnath?"
+    # A plain answer with no question parks nothing.
+    result = await _run(FakeToolCallingProvider(["Hi Anil!"]), text="hi")
+    assert result.toolbox.parked is None

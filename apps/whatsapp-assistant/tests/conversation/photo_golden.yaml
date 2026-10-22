@@ -10,6 +10,10 @@
 #   confirm  true: an expense waits on Yes/No (confirm-first)
 #   ask      true: nothing is saved and the reply is ONE question
 #
+# A supplier's invoice sent as a document with no purpose tapped is saved as
+# received (save-first, Undo on the card): live, 22 Oct, the model did so and
+# that is the least work for the site.
+#
 # The live run (pytest -m live) sends `message` and `hint` to the real model.
 
 - {"id": 1, "lang": "en", "hint": "expense", "message": "(They sent a photo. It shows: Fuel bill from Indian Oil petrol pump (amount: 1850; vendor: Indian Oil; item: diesel; date: 22/10/2026))", "calls": [["save_expense", {"amount": 1850, "description": "diesel", "paid_to": "Indian Oil", "category": "fuel"}]], "expect": [], "confirm": true}
@@ -20,5 +24,5 @@
 - {"id": 6, "lang": "en", "hint": "material_invoice", "message": "(They sent a photo. It shows: Bill from Jose Bricks (line_items: [{\"item\": \"Wire cut bricks\", \"quantity\": 3000, \"unit\": \"nos\"}]))", "calls": [["save_material_receipt", {"material": "bricks", "quantity": 3000, "unit": "nos", "supplier": "Jose Bricks"}]], "expect": [{"action": "record_material_receipt", "material": ["bricks", "brick"], "quantity": 3000}]}
 - {"id": 7, "lang": "en", "hint": "labour_update", "message": "(They sent a photo. It shows: Handwritten attendance register for today (workers: [{\"name\": \"Ravi\", \"trade\": \"mason\"}, {\"name\": \"Suresh\", \"trade\": \"mason\"}, {\"name\": \"Anil\", \"trade\": \"helper\"}]))", "calls": [["save_labour", {"workers": [{"name": "Ravi", "trade": "mason"}, {"name": "Suresh", "trade": "mason"}, {"name": "Anil", "trade": "helper"}]}]], "expect": [{"action": "record_labour_attendance", "fields": {"lines": "anil"}}]}
 - {"id": 8, "lang": "en", "hint": "labour_update", "message": "(They sent a photo. It shows: Attendance sheet with counts (mason: 6; helper: 9))", "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 6}, {"trade": "helper", "headcount": 9}]}]], "expect": [{"action": "record_labour_attendance", "fields": {"lines": "'headcount': 9"}}]}
-- {"id": 9, "lang": "en", "message": "(They sent a document. It shows: Invoice PDF from Sharma Traders (line_items: [{\"item\": \"Cement\", \"quantity\": 100, \"unit\": \"bags\"}]))", "calls": [["ask_user", {"question": "Did this cement arrive at the site, or is it a bill you paid?", "options": ["It arrived", "I paid it"]}]], "expect": [], "ask": true}
+- {"id": 9, "lang": "en", "message": "(They sent a document. It shows: Invoice PDF from Sharma Traders (line_items: [{\"item\": \"Cement\", \"quantity\": 100, \"unit\": \"bags\"}]))", "calls": [["save_material_receipt", {"material": "cement", "quantity": 100, "unit": "bags", "supplier": "Sharma Traders"}]], "expect": [{"action": "record_material_receipt", "material": ["cement"], "quantity": 100, "unit": ["bag", "sack"]}]}
 - {"id": 10, "lang": "en", "hint": "expense", "message": "(They sent a photo. It shows: A blurry photo of a paper, amount not readable (vendor: unknown))", "calls": [["ask_user", {"question": "How much was the bill?"}]], "expect": [], "ask": true}

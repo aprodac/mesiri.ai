@@ -86,6 +86,15 @@ _SITE = {
 }
 #: The classic "send it as a PDF" of a lookup (stock, labour, work log, money).
 _AS_PDF = {"type": "boolean", "description": "True only when they ask for it as a PDF or a file."}
+#: A bill names "Cement OPC 53 grade" or "TMT steel bars 12mm": the material is
+#: the plain name (live photo set, 22 Oct: the full trade name matched nothing).
+_MATERIAL = {
+    "type": "string",
+    "description": (
+        "The plain material name, as in the company's materials (cement, steel, bricks, "
+        "M sand); not a bill's trade name, grade or size."
+    ),
+}
 _RANGE = {
     "type": "string",
     "enum": ["today", "this_week", "this_month"],
@@ -214,7 +223,7 @@ def tool_specs() -> list[ToolSpec]:
             ),
             parameters=_obj(
                 {
-                    "material": {"type": "string"},
+                    "material": _MATERIAL,
                     "quantity": {"type": "number"},
                     "unit": {
                         "type": "string",
@@ -240,7 +249,7 @@ def tool_specs() -> list[ToolSpec]:
             ),
             parameters=_obj(
                 {
-                    "material": {"type": "string"},
+                    "material": _MATERIAL,
                     "quantity": {"type": "number"},
                     "unit": {"type": "string"},
                     "work_item": {"type": "string", "description": "What it was used for."},

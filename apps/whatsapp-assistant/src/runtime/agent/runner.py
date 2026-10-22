@@ -115,6 +115,7 @@ class AgentRunner:
             )
         await toolbox.settle()
         run = await self._in_manglish(run, messages, user_text, correlation_id)
+        _park_plain_question(run, toolbox)
         # WA-37: every figure the model writes must come from what it was
         # given (the message, the facts in its prompt, a tool result) or from
         # what it handed a tool -- a saved figure is also on the system's own
@@ -491,3 +492,14 @@ def default_now() -> datetime:
     from zoneinfo import ZoneInfo
 
     return datetime.now(ZoneInfo("Asia/Kolkata"))
+
+
+def _park_plain_question(run: ToolRunResult, toolbox: AgentToolbox) -> None:
+    """The model asked in words alone, with no tool at all ("pani nadakkunnu"
+    -> "Ethu pani?": live golden set, 22 Oct, now and then): the question is
+    still the one the conversation waits on, as if it had called ask_user."""
+    text = (run.text or "").strip()
+    if run.calls or toolbox.parked is not None or not text.endswith(("?", "？")):
+        return
+    toolbox.parked = ReplySpec(text=text)
+    toolbox.parked_by = "ask"
