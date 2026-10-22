@@ -277,9 +277,13 @@ def _numbers(text: str) -> set[str]:
 def without_numbers(reply: str, numbers: set[str]) -> str:
     """``reply`` without the sentences that carry any of ``numbers``; empty
     when nothing worded is left."""
-    kept = [m.group(0) for m in _SENTENCE.finditer(reply) if m.group(0) and not (_numbers(m.group(0)) & numbers)]
+    kept = [m.group(0) for m in _NUMBER_SENTENCE.finditer(reply) if m.group(0) and not (_numbers(m.group(0)) & numbers)]
     text = "".join(kept).strip()
-    return text if re.search(r"[^\W\d_]", text) else ""
+    if _numbers(text) & numbers or len(re.findall(r"[^\W\d_]+", text)) < 3:
+        # A figure split across "sentences" ("12.5"), or only a scrap left
+        # ("Rs."): the system's own words instead (review, 22 Oct).
+        return ""
+    return text
 
 
 def unbacked_numbers(reply: str, sources: list[str]) -> set[str]:
@@ -301,6 +305,9 @@ _SAVED_CLAIM = re.compile(
     re.IGNORECASE,
 )
 _SENTENCE = re.compile(r"[^.!?।\n]*(?:[.!?।]+|\n|$)")
+#: A sentence for the number guard: a "." inside a number ("12.5") or before
+#: a space-less word ("Rs.4500") does not end it.
+_NUMBER_SENTENCE = re.compile(r"(?:[^.!?।\n]|\.(?=\S))*(?:[.!?।]+|\n|$)")
 
 
 _CLAUSE = re.compile(r"[^,;]*(?:[,;]\s*|$)")

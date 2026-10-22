@@ -296,3 +296,10 @@ async def test_the_remembered_project_answers_when_nothing_is_named():
     entry.active_context = _Slot()
     ready = await _prepare(entry)
     assert (str(ready.event.project_id), str(ready.event.site_id)) == (PRJ, SITE)
+
+
+async def test_a_plural_name_finds_the_singular_material():
+    """Review, 22 Oct: "bricks" never found "Brick" by substring."""
+    brick = {"id": "88888888-8888-4888-8888-888888888888", "name": "Brick", "default_unit_id": None, "is_active": True}
+    ready = await _prepare(_entry(catalog=_Catalog([CEMENT, brick])), material_name="bricks", quantity=1500, unit="nos")
+    assert isinstance(ready, Ready) and ready.event.fields["material_name"] == "Brick"

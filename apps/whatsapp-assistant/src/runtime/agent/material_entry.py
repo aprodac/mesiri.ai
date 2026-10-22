@@ -36,7 +36,6 @@ from runtime.entity_resolution.material_resolution import classify_material_matc
 from runtime.material_units import ask_amount_text, fit_stock_unit
 
 from .entry_base import (
-    ACTIVE_SCOPE_TTL_SECONDS,
     SCOPE_KEYS,
     EntryScope,
     Ready,
@@ -45,7 +44,7 @@ from .entry_base import (
     number,
 )
 
-__all__ = ["ACTIVE_SCOPE_TTL_SECONDS", "MaterialEntry", "Ready", "Say"]
+__all__ = ["MaterialEntry", "Ready", "Say"]
 
 _log = logging.getLogger("mesiri.agent")
 
@@ -124,6 +123,10 @@ class MaterialEntry(EntryScope):
 
         try:
             matches = await self.catalog_query.find_materials(organization_id=organization_id, name=name)
+            singular = name.strip()[:-1] if name.strip().lower().endswith("s") else ""
+            if not matches and len(singular) > 2:
+                # "bricks" never finds "Brick" by substring (review, 22 Oct).
+                matches = await self.catalog_query.find_materials(organization_id=organization_id, name=singular)
         except Exception:  # noqa: BLE001 -- the classic route asks or lets it through
             _log.warning("material_entry.lookup_failed correlation_id=%s", message.correlation_id, exc_info=True)
             return None

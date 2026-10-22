@@ -526,3 +526,22 @@ async def test_a_figure_the_tools_never_gave_is_not_sent(world):
     result = await world.say(provider, "how many workers today and how much cement is left?")
     assert "15" not in result.reply.text and "40" not in result.reply.text
     assert result.reply.text == "\n\n".join(result.toolbox.answers)
+
+
+async def test_a_new_entry_while_an_expense_waits_is_said_not_saved_without_buttons(world):
+    """Review, 22 Oct: the blocked run's bare earlier card went out with
+    Yes/No, so a Yes confirmed the old expense and the new entry was lost."""
+    await world.say(
+        FakeToolCallingProvider([[("save_expense", {"amount": 500, "description": "tea"})], "Save it?"]),
+        "paid 500 for tea",
+    )
+    provider = FakeToolCallingProvider(
+        [[("save_work_done", {"narrative": "plastering done", "work_type": "plastering"})], "Not saved yet."]
+    )
+    result = await world.say(provider, "plastering done")
+
+    (call,) = result.run.calls
+    assert call.outcome.content["status"] == "error"
+    assert "earlier entry is still waiting" in call.outcome.content["message"]
+    assert not result.reply.buttons
+    assert world.dispatcher.dispatched == []

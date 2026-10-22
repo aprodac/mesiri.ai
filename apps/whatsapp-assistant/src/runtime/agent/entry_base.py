@@ -34,9 +34,6 @@ from mesiri_contracts.common.ids import new_id
 _log = logging.getLogger("mesiri.agent")
 
 SCOPE_KEYS = ("project_id", "site_id", "project_name", "site_name")
-#: How long a saved entry's project/site is remembered (the context layer's
-#: own default for a chosen active context).
-ACTIVE_SCOPE_TTL_SECONDS = 12 * 60 * 60
 
 
 @dataclass(slots=True)
@@ -108,10 +105,14 @@ class EntryScope:
         if not result.is_ok:
             error = getattr(result, "error", None)
             _log.warning(
-                "entry.context_failed correlation_id=%s code=%s",
+                "entry.context_failed correlation_id=%s code=%s retried=%s",
                 message.correlation_id,
                 getattr(error, "code", error),
+                retried,
             )
+            if retried:
+                # They already picked; asking again would loop (review, 22 Oct).
+                return Say("error", "Not saved: the system could not place this entry.")
             names = [p.name for p in getattr(self.actor, "projects", None) or []]
             if not names:
                 return Say("error", "Not saved: I couldn't tell which project this is for.")
@@ -137,6 +138,12 @@ class EntryScope:
             return choose("Which project is this for?", names, "project")
         if site_id is None:
             sites = [s for s in getattr(self.actor, "sites", None) or [] if str(s.project_id) == str(project_id)]
+            said = " ".join(str(candidate.fields.get("site_name") or "").casefold().split())
+            hit = [s for s in sites if said and " ".join(str(s.name).casefold().split()) == said]
+            if len(hit) == 1:
+                # A name two projects share comes as a name, not an id; within
+                # this project it is one site ("Block A" tapped looped, 22 Oct).
+                sites = hit
             if len(sites) > 1:
                 return choose("Which site is this for?", [s.name for s in sites], "site")
             site_id = sites[0].id if sites else None
@@ -154,7 +161,10 @@ class EntryScope:
             # differ from the canonical ones); a pick or a remembered slot is
             # already in the sender's own (context-layer) ids.
             context_project = ctx.context_project_id
-            context_site = ctx.context_site_id or (str(site_id) if site_id is not None else None)
+            if site_id is not None and str(site_id) != str(ctx.site_id):
+                context_site = str(site_id)  # a pick or today's site, not the resolver's
+            else:
+                context_site = ctx.context_site_id or (str(site_id) if site_id is not None else None)
         else:
             context_project = str(project_id)
             context_site = str(site_id) if site_id is not None else None
@@ -230,11 +240,19 @@ class EntryScope:
             site = ctx.site_id if ctx.site_id is not None and own_sites.get(str(ctx.site_id)) == str(picked_project) else None
             return picked_project, site
         remembered = await self._remembered(ctx)
-        if not named and remembered is not None and own_sites.get(str(remembered.site_id)) == str(remembered.project_id):
+        source = str(getattr(getattr(ctx, "context_source", None), "value", getattr(ctx, "context_source", "")) or "")
+        weak = source in ("", "active_context", "user_default", "unresolved")
+        if (
+            not named
+            and weak
+            and remembered is not None
+            and own_sites.get(str(remembered.site_id)) == str(remembered.project_id)
+        ):
             # Today's site (WA-45) when the message names none, before the
             # context layer's pick: that layer authorises projects by a
             # narrower rule (members only) and fell back to another project
-            # with no site of theirs (live 22 Oct, an admin at Tower A).
+            # with no site of theirs (live 22 Oct, an admin at Tower A). Never
+            # over a reply to a record or an open workflow, which say more.
             if ctx.site_id is not None and str(ctx.context_site_id) == str(remembered.site_id):
                 return ctx.project_id, ctx.site_id  # the same site, in canonical ids
             return remembered.project_id, remembered.site_id
@@ -260,7 +278,8 @@ class EntryScope:
         """After a save: this project/site is where the sender is working, so
         the next message is not asked again (Ilan, 21 Oct). The slot is
         re-checked against their access whenever it is read. Never raises."""
-        if self.active_context is None or ready.scope is None or ready.scope[2] is None:
+        if self.active_context is None or ready.scope is None or ready.scope[3] is None:
+            # Without a site it would wipe today's site (review, 22 Oct).
             return
         organization_id, user_id, project_id, site_id = ready.scope
         try:
@@ -269,7 +288,7 @@ class EntryScope:
                 user_id=user_id,
                 project_id=project_id,
                 site_id=site_id,
-                ttl_seconds=ACTIVE_SCOPE_TTL_SECONDS,
+                ttl_seconds=_until_midnight(getattr(self.actor, "timezone", None)),
             )
         except Exception:  # noqa: BLE001 -- a missed hint only costs one question
             _log.warning("entry.remember_failed correlation_id=%s", correlation_id, exc_info=True)
@@ -282,6 +301,17 @@ class EntryScope:
         except Exception:  # noqa: BLE001 -- the save path's own MODULE_DISABLED check is the backstop
             _log.warning("entry.modules_failed", exc_info=True)
             return True
+
+
+def _until_midnight(timezone: str | None) -> int:
+    """Today's site lasts the company's day (WA-45), not 12 hours past it."""
+    from datetime import UTC, datetime
+
+    from channel.receipt.data import company_zone
+
+    from .work_site import seconds_until_midnight
+
+    return seconds_until_midnight(datetime.now(UTC), str(company_zone(timezone)))
 
 
 def choose(question: str, options: list[str], arg: str, *, note: str = "") -> Say:

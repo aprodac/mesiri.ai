@@ -255,7 +255,22 @@ class JourneyGateway:
             WorkflowRunStatus.AWAITING_INPUT,
             WorkflowRunStatus.BLOCKED_PENDING_CONFIRMATION,
         ):
-            prompt = sink.last or ReplySpec(text=run.pending_prompt or "")
+            if run.status is WorkflowRunStatus.BLOCKED_PENDING_CONFIRMATION:
+                # Nothing of this message was kept: an earlier entry waits for
+                # its Yes/No. Said plainly, with no buttons, so a Yes is never
+                # taken for this one (review, 22 Oct: the bare earlier card
+                # went out and Yes confirmed the old entry instead).
+                return StepResult(
+                    "error",
+                    text=(
+                        "Not saved: an earlier entry is still waiting for Yes or No (its buttons are "
+                        "above). Answer that one first, then send this again."
+                    ),
+                    workflow_key=key,
+                )
+            # The classic rendering when nothing was captured (the direct
+            # routes capture nothing), with its list or buttons.
+            prompt = sink.last or self.held_prompt(journey)
             return StepResult("needs_answer", text=prompt.text, reply=prompt, workflow_key=key)
 
         if run is not None and run.status is WorkflowRunStatus.COMPLETED:

@@ -420,3 +420,14 @@ def test_only_the_sentence_with_a_made_up_number_is_dropped():
     reply = "Ethra bag cement vannu? 50 bags aano 100 bags aano?"
     assert without_numbers(reply, {"50", "100"}) == "Ethra bag cement vannu?"
     assert without_numbers("100 bags.", {"100"}) == ""
+
+
+def test_a_made_up_decimal_or_a_leftover_scrap_never_goes_out():
+    """Review, 22 Oct: "12.5" split at its "." and slipped through; "Rs." was
+    left alone as the whole reply."""
+    from runtime.agent.runner import without_numbers
+
+    assert without_numbers("That comes to 12.5 bags left in stock.", {"12.5"}) == ""
+    assert without_numbers("Rs. 4500 total for the week.", {"4500"}) == ""
+    kept = without_numbers("Okay, noted the work. It is 12.5 bags. Anything else today?", {"12.5"})
+    assert kept == "Okay, noted the work. Anything else today?"

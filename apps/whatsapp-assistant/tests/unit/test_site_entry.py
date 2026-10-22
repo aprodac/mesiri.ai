@@ -175,3 +175,62 @@ async def test_todays_site_wins_over_the_context_layers_other_project():
     # A message that names a project still goes by what it names.
     named = await _prepare(entry, SemanticType.SITE_ISSUE, issue_type="WEATHER", project_name="Other")
     assert isinstance(named, Ready) and str(named.event.project_id) == other
+
+
+# Review of 22 Oct: loopholes in the direct routes.
+
+
+async def test_a_pick_the_context_layer_still_refuses_is_not_asked_again():
+    context = _Context(ok=False)
+    entry = _entry(context=context)
+    entry.actor.projects = [SimpleNamespace(id=PRJ, name="Villa")]
+    first = await _prepare(entry, SemanticType.SITE_ISSUE, issue_type="WEATHER")
+    assert isinstance(first, Say) and first.status == "choose"
+    again = await _prepare(entry, SemanticType.SITE_ISSUE, issue_type="WEATHER", project_id=PRJ)
+    assert isinstance(again, Say) and again.status == "error"  # no second "Which project?"
+
+
+async def test_a_site_name_two_projects_share_is_matched_within_the_project():
+    entry = _entry(context=_Context(site_id=None))
+    entry.actor.sites = [
+        SimpleNamespace(id=SITE, name="Block A", project_id=PRJ),
+        SimpleNamespace(id="55555555-0000-4000-8000-000000000002", name="Block B", project_id=PRJ),
+    ]
+    asked = await _prepare(entry, SemanticType.SITE_ISSUE, issue_type="WEATHER")
+    assert isinstance(asked, Say) and asked.status == "choose"
+    ready = await _prepare(entry, SemanticType.SITE_ISSUE, issue_type="WEATHER", site_name="block a")
+    assert isinstance(ready, Ready) and str(ready.event.site_id) == SITE
+
+
+async def test_a_site_less_entry_never_overwrites_todays_site():
+    class _Store:
+        def __init__(self) -> None:
+            self.writes: list[dict] = []
+
+        async def get_active_context(self, **kwargs: Any) -> Any:
+            return None
+
+        async def set_active_context(self, **kwargs: Any) -> None:
+            self.writes.append(kwargs)
+
+    entry = _entry(context=_Context(site_id=None))
+    entry.actor.sites = []
+    entry.active_context = _Store()
+    ready = await _prepare(entry, SemanticType.EXPENSE, amount=500, description="tea")
+    await entry.remember(ready)
+    assert entry.active_context.writes == []
+    entry.actor.sites = [SimpleNamespace(id=SITE, name="Block A", project_id=PRJ)]
+    ready = await _prepare(entry, SemanticType.EXPENSE, amount=500, description="tea")
+    await entry.remember(ready)
+    (write,) = entry.active_context.writes
+    assert write["site_id"] == SITE and 60 <= write["ttl_seconds"] <= 24 * 3600
+
+
+async def test_todays_site_does_not_override_a_reply_to_another_record():
+    other = "99999999-9999-4999-8999-999999999999"
+    context = _Context(project_id=other, site_id=None)
+    context.ctx.context_source = SimpleNamespace(value="reply_context")
+    entry = _entry(context=context)
+    entry.active_context = _Today(PRJ, SITE)
+    ready = await _prepare(entry, SemanticType.SITE_ISSUE, issue_type="WEATHER")
+    assert str(ready.event.project_id) == other
