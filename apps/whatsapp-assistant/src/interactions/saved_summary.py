@@ -102,12 +102,13 @@ def summarise_draft(draft: DraftActionV2 | Any) -> str | None:
     action = getattr(draft, "action_type", None)
     if action is DraftActionType.RECORD_LABOUR_ATTENDANCE:
         return _labour(fields)
-    if action is DraftActionType.CREATE_ACTIVITY:
-        return _activity(fields)
-    if action is DraftActionType.ADD_PROGRESS_UPDATE:
+    if action in (DraftActionType.CREATE_ACTIVITY, DraftActionType.ADD_PROGRESS_UPDATE):
+        # New work and a continuation read the same: request 83 -- "3rd floor
+        # slab concreting finished" (a new activity) lost its "(completed)".
         line = _activity(fields)
         kind = _title(fields.get("update_kind")).lower()
-        if line and not _text(fields.get("progress_percent")) and kind and kind != "progress":
+        shown = kind != "progress" if action is DraftActionType.ADD_PROGRESS_UPDATE else kind == "completed"
+        if line and not _text(fields.get("progress_percent")) and kind and shown:
             return f"{line} ({kind})"
         return line
     if action in (DraftActionType.RECORD_MATERIAL_RECEIPT, DraftActionType.RECORD_MATERIAL_USAGE):

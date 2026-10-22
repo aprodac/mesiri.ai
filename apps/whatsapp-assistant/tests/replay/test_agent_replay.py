@@ -319,7 +319,7 @@ async def test_a_four_part_note_is_four_saves_one_reply_and_no_site_question(wor
                 ("save_material_receipt", {"material": "cement", "quantity": 50, "unit": "bags", "supplier": "Sharma Traders"}),
                 ("report_issue", {"issue_type": "WEATHER", "narrative": "rain stopped work", "delay_duration_minutes": 120}),
             ],
-            "✅ Saved: 15 workers, 180 sqm plastering, 50 bags cement, rain delay (2 h).",
+            "3 mason, 12 helper, 180 sqm plastering, 50 bags cement, rain delay of 2 hours.",
         ]
     )
     result = await world.say(provider, FOUR_PART_NOTE)
@@ -333,9 +333,11 @@ async def test_a_four_part_note_is_four_saves_one_reply_and_no_site_question(wor
     assert "which site" not in result.reply.text.lower()
     # One "Saved:" list from the saved data, one bullet per record.
     lines = result.reply.text.split("\n")
-    assert lines[0] == "✅ Saved:"
-    assert lines[1] == "• 15 workers (3 mason, 12 helper)"
-    assert "• Plastering, second floor: 180 sqm" in lines
+    assert lines[0].startswith("3 mason, 12 helper, 180 sqm")  # request 83: names every item
+    assert provider.calls == 1  # ...so no second try
+    start = lines.index("✅ Saved:")
+    assert lines[start + 1] == "• 15 workers (3 mason, 12 helper)"
+    assert "• Plastering, second floor: 180 sqm" in lines  # "done" alone is not "finished"
     assert "• Cement in: 50 bags (Sharma Traders)" in lines  # WA-37: the supplier shows
     assert any(line.startswith("• Issue (weather)") for line in lines)
 
@@ -526,7 +528,7 @@ async def test_a_question_in_a_note_is_noted_for_the_engineer_and_the_reply_says
                 ("save_labour", {"workers": [{"trade": "mason", "headcount": 6}, {"trade": "helper", "headcount": 10}]}),
                 ("note_for_engineer", {"question": "Nale slab concrete cheyyan pattumo?"}),
             ],
-            "Nale slab concrete cheyyan pattumo?",  # the model only echoes it
+            "6 mason, 10 helper. Nale slab concrete cheyyan pattumo?",  # names the labour, echoes the question
         ]
     )
     # Passed on only because they asked for their engineer (Ilan, 21 Oct).

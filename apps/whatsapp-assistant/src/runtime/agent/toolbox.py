@@ -24,6 +24,7 @@ from .gateway import StepResult, WorkflowGateway
 from .tools import (
     ASK_USER,
     NOTE_FOR_ENGINEER,
+    REQUEST_DPR,
     SET_UNIT_CONVERSION,
     SET_WORK_SITE,
     UNDO_LAST,
@@ -124,6 +125,9 @@ class AgentToolbox:
     #: while the model writes the reply.
     after_tool: Callable[[], None] | None = None
     failed: int = 0
+    #: Request 83: what request_dpr answered, for the one "draft so far" line a
+    #: message that also saves entries gets under its card.
+    report_text: str | None = None
     #: The last reply offered to ask their engineer, so a bare "yes" asks it.
     engineer_offered: bool = False
     _seen: set[str] = field(default_factory=set)
@@ -331,6 +335,20 @@ class AgentToolbox:
                     "instruction": (
                         "Nothing was saved. End your message with this question; its options are "
                         f"shown as buttons: {step.reply.text}"
+                    ),
+                }
+            )
+        if step.status == "answer" and name == REQUEST_DPR:
+            self.report_text = step.text
+            self.answers.append(step.text)
+            return ToolOutcome(
+                content={
+                    "status": "answer",
+                    "text": step.text,
+                    "instruction": (
+                        "If this same message also saves entries, the system adds one 'Today's draft so "
+                        "far' line under them: do not describe this report, do not list any items, and "
+                        "do not ask for details that are already in the entries."
                     ),
                 }
             )

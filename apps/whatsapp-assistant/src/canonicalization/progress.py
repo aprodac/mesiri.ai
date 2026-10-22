@@ -76,3 +76,81 @@ def apply_progress(fields: dict[str, Any], source_text: str | None = None) -> di
     elif percent_text(pct) not in narrative:
         out["narrative"] = f"{narrative} ({percent_text(pct)})".strip()
     return out
+
+
+_ORDINAL_WORDS = {"ground": "ground", "first": "1st", "second": "2nd", "third": "3rd", "fourth": "4th", "fifth": "5th"}
+_FLOOR = re.compile(
+    r"\b(?P<n>ground|first|second|third|fourth|fifth|\d{1,2}(?:st|nd|rd|th)?)[\s-]*(?:floor|flr)\b"
+    r"|\b(?P<place>basement|terrace|roof|stilt)\b",
+    re.IGNORECASE,
+)
+_COMPLETED = re.compile(
+    r"\b(?:finish(?:ed)?|complet(?:e|ed)|theernnu|theernu|theernath|kazhinju|kazhinhu|poorthiyayi|"
+    r"poorthi\s*aayi|ho\s*gaya|khatam|pura\s*ho\s*gaya)\b|തീർന്നു|കഴിഞ്ഞു|പൂർത്തിയായി|खत्म|पूरा",
+    re.IGNORECASE,
+)
+
+
+def _suffix(n: int) -> str:
+    return "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+
+
+def _floor_name(match: re.Match[str]) -> str:
+    if match.group("place"):
+        return match.group("place").lower()
+    raw = match.group("n").lower()
+    if raw in _ORDINAL_WORDS:
+        raw = _ORDINAL_WORDS[raw]
+    if raw == "ground":
+        return "ground floor"
+    digits = re.match(r"\d+", raw)
+    number = int(digits.group(0)) if digits else 0
+    return f"{number}{_suffix(number)} floor"
+
+
+def settle_place_and_status(fields: dict[str, Any]) -> dict[str, Any]:
+    """The floor and the finished/in-progress status of a work-done entry, kept
+    whatever the model left out (request 83: "3rd floor slab concreting
+    finished" was saved as bare "Slab concreting").
+
+    - A floor said inside the work name or the sender's words and not in
+      ``location`` moves to ``location`` ("3rd floor slab concreting" ->
+      location "3rd floor", work "slab concreting").
+    - ``update_kind`` is "completed" when the words say it is finished, or
+      the percentage is 100; "progress" when a percentage below 100 is given.
+      A kind the model already set stays, except that a percentage below 100
+      is never "completed" (``apply_progress``).
+    - A finished entry's narrative says so, as a percentage entry's does.
+
+    Pure; no I/O. Call after ``apply_progress`` (it has settled the percentage).
+    """
+    out = dict(fields)
+    work = str(out.get("work_type") or "").strip()
+    narrative = str(out.get("narrative") or "").strip()
+    if not str(out.get("location") or "").strip():
+        for source in (work, narrative):
+            match = _FLOOR.search(source)
+            if match:
+                out["location"] = _floor_name(match)
+                break
+    place = str(out.get("location") or "").strip()
+    if work and place:
+        cleaned = " ".join(_FLOOR.sub(" ", work).split())
+        if cleaned and cleaned != work:
+            out["work_type"] = cleaned
+            work = cleaned
+
+    pct = _coerce(out.get("progress_percent"))
+    kind = str(out.get("update_kind") or "").strip().lower()
+    if pct is not None and pct >= 100:
+        kind = "completed"
+    elif pct is not None:
+        kind = "progress"
+    elif not kind and _COMPLETED.search(f"{narrative} {work}"):
+        kind = "completed"
+    if kind:
+        out["update_kind"] = kind
+    if kind == "completed" and pct is None and work:
+        head = ", ".join(p for p in (work[:1].upper() + work[1:], place) if p)
+        out["narrative"] = f"{head} (completed)"
+    return out

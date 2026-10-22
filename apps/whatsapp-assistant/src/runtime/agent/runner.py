@@ -124,6 +124,9 @@ class AgentRunner:
         for call in run.calls:
             sources.append(json.dumps(call.arguments, ensure_ascii=False, default=str))
             sources.append(json.dumps(call.outcome.content, ensure_ascii=False, default=str))
+        if not unbacked_numbers(run.text or "", sources):
+            # (a reply with a made-up figure loses that sentence below anyway)
+            run = await self._covering(run, messages, toolbox, user_text, correlation_id)
         return AgentResult("ok", self._compose(run, toolbox, sources, correlation_id), toolbox, run=run)
 
     async def _in_manglish(
@@ -160,6 +163,48 @@ class AgentRunner:
         if not is_manglish(again.text or ""):
             return run
         return run.model_copy(update={"text": again.text})
+
+    async def _covering(
+        self,
+        run: ToolRunResult,
+        messages: list[ChatMessage],
+        toolbox: AgentToolbox,
+        user_text: str,
+        correlation_id: str | None,
+    ) -> ToolRunResult:
+        """Request 83: the sentence above the card names every item on it (it
+        left out "2 electricians" on 22 Oct). One more try, with no tools, when
+        one is missing; then the system's own sentence, built from the card's
+        items in the sender's language. A reply that carries a question is left
+        alone: the question must still end it."""
+        items = [item.summary for item in _entries(toolbox) if item.summary]
+        text = (run.text or "").strip()
+        if not items or not text or toolbox.parked is not None or not uncovered_items(text, items):
+            return run
+        missing = uncovered_items(text, items)
+        ask = (
+            "Your last reply left out: " + "; ".join(missing) + ". Say it again in the same language and "
+            "letters, naming every one of these, with their numbers: " + "; ".join(items) + ". "
+            "Short, friendly, nothing added. Only the reply."
+        )
+        try:
+            again = await self._provider.run_tools(
+                SYSTEM_PROMPT,
+                [*messages, ChatMessage(role="model", text=text), ChatMessage(role="user", text=ask)],
+                [],
+                _no_tools,
+                max_steps=1,
+                timeout_seconds=MANGLISH_TIMEOUT_SECONDS,
+                correlation_id=correlation_id,
+            )
+            retried = (again.text or "").strip()
+        except Exception:  # noqa: BLE001 -- the system's sentence stands in
+            _log.warning("agent.coverage_retry_failed correlation_id=%s", correlation_id)
+            retried = ""
+        if retried and not uncovered_items(retried, items):
+            return run.model_copy(update={"text": retried})
+        _log.warning("agent.coverage_fallback correlation_id=%s missing=%s", correlation_id, len(missing))
+        return run.model_copy(update={"text": covering_sentence(items, user_text)})
 
     # -- the one reply -----------------------------------------------------
 
@@ -205,6 +250,9 @@ class AgentRunner:
             if not text and run.stop_reason == "max_steps":
                 text = CHECK_LINE
             text = f"{text}\n\n{block}" if text else block
+            draft = draft_report_line(toolbox.report_text)
+            if draft:
+                text = f"{text}\n\n{draft}"
         asked = _questions_line(toolbox)
         if asked:
             text = f"{text}\n\n{asked}" if text else asked
@@ -237,7 +285,10 @@ class AgentRunner:
         words for what it did."""
         block = _saved_block(toolbox)
         parts = [block] if block else [item.text for item in toolbox.saved]
-        parts.extend(toolbox.answers)
+        draft = draft_report_line(toolbox.report_text) if block else ""
+        if draft:
+            parts.append(draft)
+        parts.extend(a for a in toolbox.answers if not (draft and a == toolbox.report_text))
         parked = toolbox.parked
         if parked is not None:
             parts.append(parked.text)
@@ -257,6 +308,82 @@ class AgentRunner:
 
 
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
+_ORDINAL = re.compile(r"\b\d+(?:st|nd|rd|th)\b", re.IGNORECASE)
+_LABOUR_TOTAL = re.compile(r"^\s*\d+ workers?\s*\(")
+
+
+def _required_numbers(summary: str) -> set[str]:
+    """The figures a sentence about this card line must carry: its counts and
+    amounts, not the labour total ("15 workers (5 mason, 8 helper, 2
+    electrician)": 5, 8 and 2) and not a floor ("3rd floor")."""
+    text = _ORDINAL.sub(" ", summary)
+    if _LABOUR_TOTAL.match(text):
+        text = text.split("(", 1)[1]
+    return _numbers(text)
+
+
+def uncovered_items(sentence: str, summaries: list[str]) -> list[str]:
+    """The card lines ``sentence`` does not mention: a figure of the line that
+    is not in it; for a line with no figure, none of its words (only checked
+    for a sentence in English letters, whose words are the card's)."""
+    spoken_numbers = _numbers(sentence)
+    spoken = sentence.casefold()
+    latin = letters_of(sentence) == "latin"
+    missing = []
+    for summary in summaries:
+        need = _required_numbers(summary)
+        if need:
+            if not need <= spoken_numbers:
+                missing.append(summary)
+            continue
+        words = [w for w in re.findall(r"[^\W\d_]{4,}", summary.casefold())]
+        if latin and words and not any(w[:5] in spoken for w in words):
+            missing.append(summary)
+    return missing
+
+
+#: The system's own sentence above the card when the model's leaves an item
+#: out twice: {items} are the card's lines. Never says it is saved (WA-37).
+_COVERING = {
+    "english": "Got it: {items}. Please check it and tap Save.",
+    "manglish": "Sheri, {items}. Nokki shariyenkil Save tap cheyyu.",
+    "malayalam": "ശരി, {items}. ശരിയാണെങ്കിൽ Save അമർത്തുക.",
+    "hindi": "ठीक है, {items}. सही हो तो Save दबाएँ.",
+}
+
+
+def covering_sentence(summaries: list[str], user_text: str) -> str:
+    items = "; ".join(s.strip() for s in summaries if s)
+    if re.search(r"[ഀ-ൿ]", user_text):
+        language = "malayalam"
+    elif re.search(r"[ऀ-ॿ]", user_text):
+        language = "hindi"
+    elif is_manglish(user_text):
+        language = "manglish"
+    else:
+        language = "english"
+    return _COVERING[language].format(items=items)
+
+
+#: "• Work: 2 items", one line per section of the day's draft report.
+_DRAFT_LINE = re.compile(r"^\s*•\s*(?P<item>\S.*)$", re.MULTILINE)
+DRAFT_TAIL = "(The items above are added once you tap Save.)"
+
+
+def draft_report_line(report_text: str | None) -> str:
+    """Request 83: ONE line for "send the report" asked in the same message as
+    saves -- what the day's draft holds so far (the WA-40 preview request_dpr
+    returned), and that the new items join it on Save. Empty when the answer
+    carries no preview (a finished PDF is attached by its own path)."""
+    text = report_text or ""
+    items = [m.group("item").strip().rstrip(".") for m in _DRAFT_LINE.finditer(text)]
+    if items:
+        return f"Today's draft so far: {', '.join(items)}. {DRAFT_TAIL}"
+    if text.startswith("No DPR has been generated"):
+        return f"Today's draft so far: nothing yet. {DRAFT_TAIL}"
+    return ""
+
+
 #: A camelCase or snake_case identifier ("clientIdb", "site_id"): code, not words.
 _CODE_WORD = re.compile(r"\b[a-z]+[A-Z][A-Za-z]*\b|\b[a-z]+_[a-z_]+\b")
 #: Words for one thing ("1 more question") need no source.

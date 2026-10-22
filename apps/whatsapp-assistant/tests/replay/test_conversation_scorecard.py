@@ -28,12 +28,12 @@ async def test_scorecard_3_labour_english(world):  # noqa: F811
     provider = FakeToolCallingProvider(
         [
             [("save_labour", {"workers": [{"trade": "mason", "headcount": 12}, {"trade": "helper", "headcount": 5}]})],
-            "Got it",
+            "Got it, 12 masons and 5 helpers.",
         ]
     )
     result = await world.say(provider, "12 masons and 5 helpers today")
     # WA-37: the model's words first, the saved line from the data under them.
-    assert result.reply.text.startswith("Got it\n\n✅ Saved: 17 workers (12 mason, 5 helper)")
+    assert result.reply.text.startswith("Got it, 12 masons and 5 helpers.\n\n✅ Saved: 17 workers (12 mason, 5 helper)")
 
 
 async def test_scorecard_4_percentage_is_progress_not_finished(world):  # noqa: F811
@@ -90,18 +90,18 @@ async def test_scorecard_6_finished_is_completed(world):  # noqa: F811
 
 async def test_scorecard_8_material_in(world):  # noqa: F811
     provider = FakeToolCallingProvider(
-        [[("save_material_receipt", {"material": "cement", "quantity": 25, "unit": "bags"})], "ok"]
+        [[("save_material_receipt", {"material": "cement", "quantity": 25, "unit": "bags"})], "ok, 25 bags cement"]
     )
     result = await world.say(provider, "25 bags cement vannu")
-    assert result.reply.text.startswith("ok\n\n✅ Saved: Cement in: 25 bags")
+    assert result.reply.text.startswith("ok, 25 bags cement\n\n✅ Saved: Cement in: 25 bags")
 
 
 async def test_scorecard_9_material_used(world):  # noqa: F811
     provider = FakeToolCallingProvider(
-        [[("save_material_usage", {"material": "cement", "quantity": 5, "unit": "bags", "work_item": "slab"})], "ok"]
+        [[("save_material_usage", {"material": "cement", "quantity": 5, "unit": "bags", "work_item": "slab"})], "ok, 5 bags cement"]
     )
     result = await world.say(provider, "5 bags cement use cheythu slab ku")
-    assert result.reply.text.startswith("ok\n\n✅ Saved: Cement used: 5 bags")
+    assert result.reply.text.startswith("ok, 5 bags cement\n\n✅ Saved: Cement used: 5 bags")
 
 
 async def test_scorecard_13_question_in_a_note_is_noted(world):  # noqa: F811

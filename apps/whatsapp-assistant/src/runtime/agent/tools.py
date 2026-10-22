@@ -189,7 +189,15 @@ def tool_specs() -> list[ToolSpec]:
                             }
                         ),
                     },
-                    "location": {"type": "string", "description": "Place on site, if stated."},
+                    "location": {
+                        "type": "string",
+                        "description": (
+                            "The floor or place on site, whenever the message gives one ('2nd floor', "
+                            "'ground floor', 'terrace'): '3rd floor slab concreting finished' -> "
+                            "location '3rd floor', work_type 'slab concreting'. Never leave it only "
+                            "inside work_type."
+                        ),
+                    },
                     "continues": {
                         "type": "string",
                         "description": (
@@ -212,7 +220,8 @@ def tool_specs() -> list[ToolSpec]:
                         "description": (
                             "'completed' when the work is said to be finished (done, finished, "
                             "theernnu, kazhinju, ho gaya), unless a percentage below 100 is given; "
-                            "'started' when it began (thudangi, shuru). Omit if genuinely unclear."
+                            "'started' when it began (thudangi, shuru); 'progress' when a percentage "
+                            "is given. Omit if genuinely unclear."
                         ),
                     },
                     "date": _DATE,

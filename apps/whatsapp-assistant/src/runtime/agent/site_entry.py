@@ -97,15 +97,21 @@ class SiteEntry(EntryScope):
                 fields["is_frequently_forwarded"] = True
         if workflow_key is WorkflowKey.SITE_UPDATE:
             from canonicalization.builder import _ensure_site_update_narrative
-            from canonicalization.progress import apply_progress
+            from canonicalization.progress import apply_progress, settle_place_and_status
 
-            fields = apply_progress(_ensure_site_update_narrative(fields, understanding), None)
+            # The floor is settled before the percentage rebuilds the note from
+            # the fields, and the status after it (it needs the percentage).
+            fields = settle_place_and_status(_ensure_site_update_narrative(fields, understanding))
+            fields = apply_progress(fields, None)
             if not fields.get("work_type"):
                 # The model often names the work only inside its quantities
                 # ("50 meter wiring": live golden set, 22 Oct).
                 named = [q.get("work_type") for q in fields.get("quantities") or [] if isinstance(q, dict)]
                 if named and named[0]:
                     fields["work_type"] = named[0]
+            # Request 83: the floor and "finished" reach the card and the note
+            # even when the model left them out of their fields.
+            fields = settle_place_and_status(fields)
         # The card's rule: a blank or default "UTC" zone is India, so a 2:45 AM
         # entry lands on today, not yesterday (22 Oct).
         fields = resolve_occurred_date(fields, timezone_name=str(company_zone(scoped.ctx.timezone)))
