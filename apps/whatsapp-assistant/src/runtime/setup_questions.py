@@ -50,6 +50,9 @@ TIME_PREFIX = "setup_q:time:"
 ADD_SITE = "setup_q:site_add"
 NO_SITE = "setup_q:site_no"
 
+#: onboarding_progress writes today's date here when it sends the progress card.
+CARD_SENT_KEY = "user:{user_id}:onboarding_card_sent"
+
 _OWNER_ROLE = "ADMIN"
 _ASKED_TTL_SECONDS = 24 * 60 * 60
 #: After the first photo, more photos in the next half hour join the request.
@@ -142,6 +145,11 @@ class SetupQuestions:
             return  # checked recently and nothing was due
         if await self._busy(actor.user_id):
             return
+        # The setup-progress card went out today: its NEXT box is today's ask.
+        if await self._redis.get_json(CARD_SENT_KEY.format(user_id=actor.user_id)) == self._today(
+            actor.timezone
+        ).isoformat():
+            return
 
         org_id = actor.organization_id
         async with self._db.transaction() as conn:
@@ -193,6 +201,40 @@ class SetupQuestions:
                 ttl_seconds=_ASKED_TTL_SECONDS,
             )
             _log.info("setup_question.asked org=%s question=%s", org_id, question)
+        await send(spec)
+
+    async def is_open(self, user_id: str) -> bool:
+        """A setup question waits for its answer, or a confirmation / question
+        is open: nothing else unprompted goes out (used by onboarding_progress)."""
+        if await self._redis.get_json(self._hint_key(user_id)):
+            return True
+        return await self._busy(user_id)
+
+    async def ask(self, actor: ActorIdentity, question: str, send: Callable[..., Any]) -> None:
+        """Ask one specific setup question now (the progress card's NEXT box
+        points at it). Same record-and-remember steps as after_reply."""
+        async with self._db.transaction() as conn:
+            org = (
+                await conn.execute(
+                    sa.select(_organizations.c.timezone).where(
+                        _organizations.c.id == actor.organization_id
+                    )
+                )
+            ).first()
+            spec = await self._question_spec(conn, actor.organization_id, question)
+            repo = PostgresOrganizationSettingsRepository(conn)
+            progress = await repo.get(actor.organization_id, org_settings.SETUP_PROGRESS)
+            await repo.set(
+                actor.organization_id,
+                org_settings.SETUP_PROGRESS,
+                rules.record(
+                    progress, question, rules.ASKED, today=self._today(org.timezone if org else None)
+                ),
+                updated_by=None,
+            )
+        await self._redis.set_json(
+            self._hint_key(actor.user_id), {"question": question}, ttl_seconds=_ASKED_TTL_SECONDS
+        )
         await send(spec)
 
     # -- answers ----------------------------------------------------------------

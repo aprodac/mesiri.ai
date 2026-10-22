@@ -85,6 +85,7 @@ if TYPE_CHECKING:
     from runtime.logging_ports import MessageLogger, TraceLogger
     from runtime.material_catalog_query import MaterialCatalogQueryService
     from runtime.money_account_query import MoneyAccountQueryService
+    from runtime.onboarding_progress import OnboardingProgress
     from runtime.org_settings_query import OrganizationSettingsQueryService
     from runtime.project_detail_query import ProjectDetailQueryService
     from runtime.reply_language import ReplyComposer, UserLanguageStore
@@ -158,6 +159,7 @@ def build_message_handlers(
     contact_share: ContactShareJourney | None = None,
     join_journey: Any = None,
     setup_questions: SetupQuestions | None = None,
+    onboarding_progress: OnboardingProgress | None = None,
     logo_from_whatsapp: Any = None,
     site_day_review: SiteDayReview | None = None,
     trial_journey: TrialJourney | None = None,
@@ -320,6 +322,33 @@ def build_message_handlers(
             # question (if any). Here, after every path's reply, rather than
             # in each of the journey's many early returns.
             actor = _resolved_actors.get(message.correlation_id)
+            # SS-17: the setup-progress card, after the first saved update and
+            # after each step. Before the setup question, which then stays
+            # quiet that day. Saved replies count (that is the trigger).
+            if (
+                onboarding_progress is not None
+                and actor is not None
+                and message.correlation_id not in _agent_parked
+                and message.correlation_id not in _conversational
+            ):
+                try:
+                    from runtime.plan_executor import plan_has_more_to_do
+
+                    if not await plan_has_more_to_do(plan_store, user_id=str(actor.user_id)):
+                        await onboarding_progress.after_reply(
+                            actor,
+                            wa_id=message.sender.wa_id,
+                            send_image=sender.send_image,
+                            send_spec=lambda spec: send_reply_spec(
+                                spec,
+                                message.sender.wa_id,
+                                send_text=sender.send_text,
+                                send_list=sender.send_list,
+                                send_button=sender.send_button,
+                            ),
+                        )
+                except Exception:  # noqa: BLE001 — a card never breaks a reply
+                    _log.exception("onboarding_card.follow_up_failed user=%s", actor.user_id)
             if (
                 setup_questions is not None
                 and actor is not None
@@ -1197,6 +1226,27 @@ def build_message_handlers(
                 )
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
                 return
+
+        if onboarding_progress is not None and message.modality is InputModality.TEXT:
+            # SS-17: the owner typed "setup" / "setup status".
+            from runtime.onboarding_progress import is_status_request
+
+            if is_status_request(message.text) and str(ctx.role or "").upper() == "ADMIN":
+                try:
+                    await onboarding_progress.send_status(
+                        ctx,
+                        wa_id=wa_id,
+                        send_image=sender.send_image,
+                        send_spec=lambda spec: _send_spec(spec, wa_id),
+                        send_text=sender.send_text,
+                    )
+                    await message_logger.log_reply(
+                        correlation_id=message.correlation_id, reply="[setup progress card]"
+                    )
+                    await message_logger.mark_completed(correlation_id=message.correlation_id)
+                    return
+                except Exception:  # noqa: BLE001 — fall through to the normal journey
+                    _log.exception("onboarding_card.status_failed user=%s", ctx.user_id)
 
         if setup_questions is not None:
             # SS-14: an answer to a daily setup question -- a tap on its

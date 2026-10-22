@@ -890,6 +890,17 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         start_site_followup=start_project_setup_followup,
     )
 
+    # SS-17: the setup-progress card (card 3 of the onboarding cards).
+    from runtime.onboarding_progress import OnboardingProgress
+
+    onboarding_progress = OnboardingProgress(
+        db=material_db,
+        redis=redis_client,
+        renderer=receipt_renderer,
+        setup_questions=setup_questions,
+        language_store=user_language_store,
+    )
+
     # WA-04: taps on the evening message about a site's day.
     from runtime.site_day_review import SiteDayReview
 
@@ -953,6 +964,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         contact_share=contact_share,
         join_journey=join_journey,
         setup_questions=setup_questions,
+        onboarding_progress=onboarding_progress,
         # WA-13: logos sent on WhatsApp.
         logo_from_whatsapp=LogoFromWhatsApp(db=material_db, storage=object_storage),
         site_day_review=site_day_review,
