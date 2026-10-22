@@ -137,3 +137,16 @@ async def test_work_named_only_in_its_quantities_gets_its_work_type():
         quantities=[{"work_type": "wiring", "quantity": 50, "unit": "m"}],
     )
     assert ready.event.fields["work_type"] == "wiring"
+
+
+async def test_work_with_no_site_of_the_senders_says_so_instead_of_failing_at_save():
+    """Live 22 Oct (Hospital Project): a PM with custom site access and no site
+    got "which site?" with nothing to pick; the save refuses work without one."""
+    entry = _entry(context=_Context(site_id=None))
+    entry.actor.sites = []
+    said = await _prepare(entry, SemanticType.GENERAL_SITE_UPDATE, narrative="slab concreting")
+    assert isinstance(said, Say) and said.status == "info"
+    assert "not on any site of this project" in said.text
+    # An issue or an expense still goes through without a site, as before.
+    ready = await _prepare(entry, SemanticType.SITE_ISSUE, issue_type="WEATHER")
+    assert isinstance(ready, Ready) and ready.event.site_id is None

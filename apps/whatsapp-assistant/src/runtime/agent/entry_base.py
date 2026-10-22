@@ -139,13 +139,13 @@ class EntryScope:
             if len(sites) > 1:
                 return choose("Which site is this for?", [s.name for s in sites], "site")
             site_id = sites[0].id if sites else None
-            if site_id is None and site_required:
+            if site_id is None and site_required and not self._has_site_in(ctx, project_id):
                 # Without a site the save refuses it, and the model asked
                 # "which site?" with nothing to pick (live 22 Oct): say why.
                 return Say(
                     "info",
-                    "Not saved: you have no site to report on in this project yet. Your admin "
-                    "can add the site, or add you to it, on the dashboard.",
+                    "Not saved: you are not on any site of this project yet, so work done "
+                    "can't be recorded. Your admin can add you to its site on the dashboard.",
                 )
             # Otherwise let it through site-less, as the classic site gate did.
         if project_id == ctx.project_id and ctx.context_project_id is not None:
@@ -201,6 +201,15 @@ class EntryScope:
             event=event,
             scope=(ctx.context_organization_id, ctx.context_user_id, scoped.context_project, scoped.context_site),
         )
+
+    def _has_site_in(self, ctx: Any, project_id: Any) -> bool:
+        """Whether the sender may report on any site of the project, in either
+        of its ids (the context layer's or the canonical one; the same in
+        production)."""
+        ids = {str(project_id)}
+        if project_id == ctx.project_id and ctx.context_project_id is not None:
+            ids.add(str(ctx.context_project_id))
+        return any(str(s.project_id) in ids for s in getattr(self.actor, "sites", None) or [])
 
     async def _scope(self, ctx: Any, picked_project: Any, picked_site: Any) -> tuple[Any, Any]:
         """(project, site) for the entry. What they picked or named, when it
