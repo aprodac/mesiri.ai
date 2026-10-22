@@ -331,35 +331,3 @@ async def test_a_prepared_image_is_not_uploaded_again_by_the_send():
     )
     assert sent is True
     assert sum(p.endswith("/media") for p in calls) == 1
-
-
-@pytest.mark.asyncio
-async def test_receipt_image_pin_attempt_only_for_listed_test_recipients(monkeypatch):
-    """EXPERIMENT: pin is tried for MESIRI_PIN_TEST_RECIPIENTS only, and a
-    rejection from Meta never fails the image send."""
-    requests: list[httpx.Request] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        requests.append(request)
-        if request.url.path.endswith("/media"):
-            return httpx.Response(200, json={"id": "media-1"})
-        if json.loads(request.content).get("type") == "pin":
-            return httpx.Response(422, json={"error": {"code": 131009, "message": "not a group"}})
-        return httpx.Response(200, json={"messages": [{"id": "wamid.img.1"}]})
-
-    sender = WhatsAppSender(
-        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
-        access_token="token",
-        phone_number_id="PHONE_NUMBER_ID",
-    )
-
-    monkeypatch.delenv("MESIRI_PIN_TEST_RECIPIENTS", raising=False)
-    assert await sender.send_image("919876543210", b"png") is True
-    assert len(requests) == 2  # upload + image, no pin
-
-    requests.clear()
-    monkeypatch.setenv("MESIRI_PIN_TEST_RECIPIENTS", "919876543210")
-    assert await sender.send_image("919876543210", b"png") is True
-    pin = json.loads(requests[-1].content)
-    assert pin["type"] == "pin"
-    assert pin["pin"] == {"type": "pin", "message_id": "wamid.img.1", "expiration_days": 1}

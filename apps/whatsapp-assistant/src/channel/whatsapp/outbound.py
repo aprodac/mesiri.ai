@@ -11,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import os
 import time
 
 import httpx
@@ -31,13 +30,6 @@ _LIST_ROW_DESCRIPTION_MAX_CHARS = 72
 _LIST_MAX_ROWS = 10
 _REPLY_BUTTON_TITLE_MAX_CHARS = 20
 _REPLY_BUTTON_MAX_COUNT = 3
-
-
-def _pin_test_recipients() -> frozenset[str]:
-    """wa_ids (comma-separated env MESIRI_PIN_TEST_RECIPIENTS) whose receipt
-    gets a pin attempt. Unset = feature off."""
-    raw = os.environ.get("MESIRI_PIN_TEST_RECIPIENTS", "")
-    return frozenset(x.strip() for x in raw.split(",") if x.strip())
 
 
 class WhatsAppSender:
@@ -240,14 +232,13 @@ class WhatsAppSender:
             if media_id is None:
                 return False
             interactive["header"] = {"type": "image", "image": {"id": media_id}}
-        wamid = await self._send(to_wa_id, {"type": "interactive", "interactive": interactive})
-        sent = wamid is not None
+        sent = (
+            await self._send(to_wa_id, {"type": "interactive", "interactive": interactive})
+        ) is not None
         if header_image is not None and sent:
             # Greppable proof in the server log that the card went out as the
             # message's header image (and which uploaded media it was).
             logger.info("receipt.sent as=header media_id=%s to=%s", media_id, to_wa_id)
-            if wamid and to_wa_id in _pin_test_recipients():
-                await self.pin_message(to_wa_id, wamid)
         return sent
 
     async def send_image(
@@ -272,50 +263,10 @@ class WhatsAppSender:
         image_fields: dict = {"id": media_id}
         if caption:
             image_fields["caption"] = caption
-        wamid = await self._send(to_wa_id, {"type": "image", "image": image_fields})
-        sent = wamid is not None
+        sent = (await self._send(to_wa_id, {"type": "image", "image": image_fields})) is not None
         if sent:
             logger.info("receipt.sent as=image media_id=%s to=%s", media_id, to_wa_id)
-            if wamid and to_wa_id in _pin_test_recipients():
-                await self.pin_message(to_wa_id, wamid)
         return sent
-
-    async def pin_message(
-        self, to_wa_id: str, message_id: str, *, expiration_days: int = 1
-    ) -> bool:
-        """EXPERIMENT: ask the Cloud API to pin one of our messages in a 1:1 chat.
-
-        Meta documents pinning for groups only, so this is expected to be
-        rejected for an individual recipient; the point is to log Meta's real
-        answer (pin_test.* lines). Best effort, never raises. Only reached for
-        recipients listed in MESIRI_PIN_TEST_RECIPIENTS."""
-        if not self.enabled or not message_id:
-            return False
-        url = f"{self._graph_base_url}/{self._api_version}/{self._phone_number_id}/messages"
-        payload = {
-            "messaging_product": "whatsapp",
-            "recipient_type": "individual",
-            "to": to_wa_id,
-            "type": "pin",
-            "pin": {"type": "pin", "message_id": message_id, "expiration_days": expiration_days},
-        }
-        try:
-            resp = await self._client.post(
-                url, json=payload, headers={"Authorization": f"Bearer {self._access_token}"}
-            )
-        except httpx.HTTPError as exc:
-            logger.warning("pin_test.failed to=%s wamid=%s: %s", to_wa_id, message_id, exc)
-            return False
-        accepted = resp.status_code < 400
-        logger.warning(
-            "pin_test.%s status=%s to=%s wamid=%s body=%s",
-            "accepted" if accepted else "rejected",
-            resp.status_code,
-            to_wa_id,
-            message_id,
-            resp.text[:300],
-        )
-        return accepted
 
     async def send_document(
         self,
