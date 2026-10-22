@@ -144,8 +144,9 @@ jobs:
               case "$TEXT" in
                 site) FILES="$T/test_site_golden.py" ;;
                 materials) FILES="$T/test_materials_golden.py" ;;
-                "") FILES="$T/test_site_golden.py $T/test_materials_golden.py" ;;
-                *) echo "text must be site, materials or empty"; exit 2 ;;
+                photos) FILES="$T/test_photo_golden.py" ;;
+                "") FILES="$T/test_site_golden.py $T/test_materials_golden.py $T/test_photo_golden.py" ;;
+                *) echo "text must be site, materials, photos or empty"; exit 2 ;;
               esac
               W="$GITHUB_WORKSPACE"
               cd /tmp

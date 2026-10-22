@@ -26,7 +26,6 @@ from mesiri_contracts.assistant.normalized_message import NormalizedMessage
 from workflows import WorkflowRunStatus
 
 from .gateway import StepResult
-from .preset_pipeline import PresetUnderstandingPipeline
 
 _log = logging.getLogger("mesiri.agent")
 
@@ -170,9 +169,9 @@ class JourneyGateway:
         (a failed lookup) is said, not handed to the old pipeline."""
         from types import SimpleNamespace
 
-        from .entry_base import Say
+        from .entry_base import Say, tool_understanding
 
-        understanding = await PresetUnderstandingPipeline(candidate, language=self.language).understand(message)
+        understanding = tool_understanding(candidate, message, language=self.language)
         prepared = await entry.prepare(message, understanding, candidate)
         kind = getattr(getattr(candidate, "semantic_type", None), "value", None)
         if prepared is None:

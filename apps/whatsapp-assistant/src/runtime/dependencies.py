@@ -915,8 +915,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         first_message_query=first_message_query,
         plan_store=plan_store,
         # Request [40]: the same resolver carries tool calling (routed by the
-        # "agent" capability). Only used for companies whose assistant_mode is
-        # "agent"; everyone else never reaches it.
+        # "agent" capability); every message goes to it.
         agent_provider=ai_resolver,
         recent_turns_store=recent_turns_store,
         labour_query_service=labour_query_service,

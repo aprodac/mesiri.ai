@@ -37,6 +37,24 @@ _log = logging.getLogger("mesiri.agent")
 SCOPE_KEYS = ("project_id", "site_id", "project_name", "site_name")
 
 
+def tool_understanding(candidate: Any, message: Any, *, language: str | None = None) -> Any:
+    """What the context layer reads to place an entry (``ContextResolver.resolve``
+    takes an understanding): the tool's candidate, as the model understood it."""
+    from mesiri_contracts.assistant.confidence import ConfidenceLevel
+    from mesiri_contracts.assistant.understanding_result import UnderstandingResult
+
+    return UnderstandingResult(
+        source_message_id=message.message_id,
+        correlation_id=message.correlation_id,
+        input_modality=InputModality.TEXT,
+        detected_language=language,
+        semantic_type=candidate.semantic_type,
+        candidates=[candidate],
+        intents=[candidate],
+        overall_confidence=ConfidenceLevel.HIGH,
+    )
+
+
 @dataclass(slots=True)
 class Ready:
     """Start this workflow: the event is complete."""

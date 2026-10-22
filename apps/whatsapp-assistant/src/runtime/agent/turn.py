@@ -1,9 +1,9 @@
 """One inbound message through the agent, from words to the sent reply.
 
-`message_journey` calls this for a free-text or voice message when the
-company's `assistant_mode` is "agent". It gathers the context, runs the
+`message_journey` calls this for every text, voice, photo or document message
+(ARCH-06: there is no other route). It gathers the context, runs the
 `AgentRunner`, sends the one reply, records the turn, and handles an AI outage
-the way the classic path does (queue + retry).
+(queue + retry).
 """
 
 from __future__ import annotations

@@ -204,9 +204,9 @@ class World:
             sites=tuple((s.id, s.name, s.project_id) for s in self.actor.sites),
         )
 
-    async def say(self, provider: FakeToolCallingProvider, text: str, turns=()):
+    async def say(self, provider: FakeToolCallingProvider, text: str, turns=(), menu_hint: str | None = None):
         result = await AgentRunner(provider).run(
-            ctx=self.context(tuple(turns)),
+            ctx=self.context(tuple(turns), menu_hint=menu_hint),
             user_text=text,
             gateway=(gateway := self.gateway(text)),
             scope=self.scope(),
