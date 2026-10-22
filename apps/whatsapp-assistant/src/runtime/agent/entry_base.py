@@ -126,8 +126,9 @@ class EntryScope:
 
         # Only when the context layer refused the pick does their own list
         # decide it; otherwise its resolved ids stand, as before.
+        named = any(candidate.fields.get(k) for k in SCOPE_KEYS)
         project_id, site_id = await self._scope(
-            ctx, picked_project if retried else None, picked_site if retried else None
+            ctx, picked_project if retried else None, picked_site if retried else None, named=named
         )
         if project_id is None:
             names = [p.name for p in getattr(self.actor, "projects", None) or []]
@@ -211,10 +212,12 @@ class EntryScope:
             ids.add(str(ctx.context_project_id))
         return any(str(s.project_id) in ids for s in getattr(self.actor, "sites", None) or [])
 
-    async def _scope(self, ctx: Any, picked_project: Any, picked_site: Any) -> tuple[Any, Any]:
+    async def _scope(
+        self, ctx: Any, picked_project: Any, picked_site: Any, *, named: bool = False
+    ) -> tuple[Any, Any]:
         """(project, site) for the entry. What they picked or named, when it
-        is in their own list; else what the context layer resolved; else the
-        project/site they last saved to (remembered for the chat). Every id
+        is in their own list; else, when the message names none, today's site
+        (or the last one saved to); else what the context layer resolved. Every id
         comes from the sender's own projects/sites (ActorIdentity), the same
         list the classic pickers offered and applied."""
         own_projects = {str(p.id) for p in getattr(self.actor, "projects", None) or [] if getattr(p, "id", None)}
@@ -226,9 +229,17 @@ class EntryScope:
         if picked_project is not None and str(picked_project) in own_projects:
             site = ctx.site_id if ctx.site_id is not None and own_sites.get(str(ctx.site_id)) == str(picked_project) else None
             return picked_project, site
+        remembered = await self._remembered(ctx)
+        if not named and remembered is not None and own_sites.get(str(remembered.site_id)) == str(remembered.project_id):
+            # Today's site (WA-45) when the message names none, before the
+            # context layer's pick: that layer authorises projects by a
+            # narrower rule (members only) and fell back to another project
+            # with no site of theirs (live 22 Oct, an admin at Tower A).
+            if ctx.site_id is not None and str(ctx.context_site_id) == str(remembered.site_id):
+                return ctx.project_id, ctx.site_id  # the same site, in canonical ids
+            return remembered.project_id, remembered.site_id
         if ctx.project_id is not None:
             return ctx.project_id, ctx.site_id
-        remembered = await self._remembered(ctx)
         if remembered is not None and str(remembered.project_id) in own_projects:
             site = remembered.site_id if own_sites.get(str(remembered.site_id)) == str(remembered.project_id) else None
             return remembered.project_id, site

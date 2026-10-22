@@ -150,3 +150,28 @@ async def test_work_with_no_site_of_the_senders_says_so_instead_of_failing_at_sa
     # An issue or an expense still goes through without a site, as before.
     ready = await _prepare(entry, SemanticType.SITE_ISSUE, issue_type="WEATHER")
     assert isinstance(ready, Ready) and ready.event.site_id is None
+
+
+class _Today:
+    """The active context: today's site (WA-45) or the last one saved to."""
+
+    def __init__(self, project_id: str, site_id: str) -> None:
+        self.slot = SimpleNamespace(project_id=project_id, site_id=site_id)
+
+    async def get_active_context(self, **kwargs: Any) -> Any:
+        return self.slot
+
+
+async def test_todays_site_wins_over_the_context_layers_other_project():
+    """Live 22 Oct: an admin set Tower A as today's site; the context layer
+    (members-only rule) resolved another project with no site of theirs, and
+    the work was refused. Unnamed, today's site from their own list is used."""
+    other = "99999999-9999-4999-8999-999999999999"
+    entry = _entry(context=_Context(project_id=other, site_id=None))
+    entry.active_context = _Today(PRJ, SITE)
+    ready = await _prepare(entry, SemanticType.GENERAL_SITE_UPDATE, narrative="slab concreting")
+    assert isinstance(ready, Ready)
+    assert (str(ready.event.project_id), str(ready.event.site_id)) == (PRJ, SITE)
+    # A message that names a project still goes by what it names.
+    named = await _prepare(entry, SemanticType.SITE_ISSUE, issue_type="WEATHER", project_name="Other")
+    assert isinstance(named, Ready) and str(named.event.project_id) == other
