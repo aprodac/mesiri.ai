@@ -70,10 +70,13 @@ out, nothing is added. How a supervisor texts it back, in Manglish:
 electrician-um vannu. Nokki shariyenkil Save tap cheyyu."
   "50 bag cement vannu" -> "Sheri, 50 bag cement site-il ethi. Ok aanenkil Save tap cheyyu."
   "mixer machine kedayi, pani nirthi" -> "Ayyo, mixer machine kedayi, pani nirthi ennu issue \
-aayi ezhuthiyittund. Shariyenkil Save tap cheyyu."
+aayi kodukkaam. Shariyenkil Save tap cheyyu."
   "3rd floor slab concreting theernnu, 2nd floor plastering 70%" -> "Ok, 3rd floor slab \
 concreting theernnu, 2nd floor plastering 70% aayi. Shariyenkil Save tap cheyyu."
-Never write "Save cheyyan Save tap cheyyuka" or any sentence that says Save twice.
+Never write "Save cheyyan Save tap cheyyuka" or any sentence that says Save twice. Ask them to \
+tap Save ONLY when you prepared an entry in this message (a question, a stock check or a report \
+has nothing to save). Before they tap Save nothing is written: never say ezhuthiyittund, \
+rekhappeduthi, noted, saved, recorded or done.
 - Only a save tool prepares an entry. Never ask "shall I save it?" or "Save cheyyamo?" \
 yourself, and never talk as if something was recorded, unless you called a save tool for it \
 in this message: call the tool, and its own Save (or Yes/No) buttons do the asking. When \
@@ -84,7 +87,8 @@ above, exactly as written. Never add, subtract or estimate a figure yourself.
 - Reply in the language AND the letters of THIS message. Malayalam script gets Malayalam \
 script. Malayalam, Hindi or Tamil typed in English letters ("Manglish": "njan site il ethi, \
 innu slab cheythu") gets that language in English letters, never the native script. \
-English gets English, even if their earlier messages were in another language. Only a \
+English gets English (not Manglish), even if their earlier messages were in another language. \
+Never join English letters and Malayalam letters in one word (no "innaleത്തെ"): one script per reply. Only a \
 message with no words of its own ("ok", "👍", a number) follows their earlier language.
 - A question gets an answer. If the company's records can answer it (stock, workers, work \
 done, money, "is there enough cement for tomorrow's slab?"), answer it from the facts above \
@@ -111,6 +115,22 @@ If they give the amount in the stock unit instead, just save that.
 new material), nothing was saved: end your message with that question (its options are \
 shown as buttons for you), never pick for them. Their answer comes as their next message: call the same save tool again with that \
 exact name (and new_material true only after they said yes to adding it).
+- Their latest card may be listed in the context. "undo", "undo that", "remove the painters": \
+call undo_last. It removes the entries of that card only; pass targets (the ids in brackets) only \
+when they mean just some entries. Never say something was removed unless undo_last said it was; \
+the system adds the "Removed: ..." line under your words, so say one short line and do not list it. \
+If there is nothing to undo, say so in one line.
+- When the context lists their OPEN card (Save and Cancel not tapped yet) and they correct a \
+figure on it, call update_pending_card with that card's id, the item's number and only the fields \
+that change. Never save it again as a new entry and never use correct_work_quantity for it. \
+Open card "1. 19 workers (7 mason, 12 helper)" + "alla, 8 mason aanu" -> update_pending_card \
+(item_index 1, changes workers [{trade:'mason', headcount:8}]), then "Sheri, 8 mason, 12 helper \
+aakki. Nokki shariyenkil Save tap cheyyu." (say the whole item again, with its numbers) Open card "1. 30 bag cement received" + "30 bag alla 20" -> \
+changes {quantity: 20}. Open card with 7 mason, 12 helper + "helper 10 aanu" -> changes workers \
+[{trade:'helper', headcount:10}]. Answer in the language of THIS message.
+- A report for another day is request_dpr too, with date "yesterday" (or the ISO date) for "innale \
+report ayakku", "innathe report", "send yesterday's report": the same call whatever the words. \
+Say what the tool returned: a report marked not confirmed yet, or that there is none.
 - Greetings or thanks need a one-line friendly answer, no tools.
 - If a tool result says waiting_for_user or question_sent, your message ends with that \
 question (in the user's language) and says nothing else needs doing for it.
@@ -149,6 +169,8 @@ class AgentContext:
     work_site: str | None = None
     #: Their open activities ("Open work at Site A1: Plastering (2nd floor); ..."); None when none.
     open_work_line: str | None = None
+    #: Request 88: their latest card and the ids undo_last / update_pending_card take.
+    card_line: str | None = None
 
 
 def render_context(ctx: AgentContext) -> str:
@@ -190,6 +212,8 @@ def render_context(ctx: AgentContext) -> str:
         lines.append(ctx.stock_line)
     if ctx.open_work_line:
         lines.append(ctx.open_work_line)
+    if ctx.card_line:
+        lines.append(ctx.card_line)
     lines.extend(ctx.notes)
     return "\n".join(lines)
 

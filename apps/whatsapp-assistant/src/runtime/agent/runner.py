@@ -25,9 +25,25 @@ from channel.replies import ReplySpec
 from interactions.saved_summary import QUESTION_PREFIX, render_saved
 from mesiri_ai.models import ChatMessage, ToolOutcome, ToolRunResult
 from mesiri_ai.ports.tool_calling import ToolCallingProvider
+from runtime.reply_composer import BODY_MAX
 
 from .gateway import WorkflowGateway
-from .prompt import SYSTEM_PROMPT, AgentContext, build_messages, is_manglish, letters_of
+from .prompt import (
+    _MANGLISH_WORDS,
+    SYSTEM_PROMPT,
+    AgentContext,
+    build_messages,
+    is_manglish,
+    letters_of,
+)
+from .reply_text import (
+    is_clearly_manglish,
+    mixed_script_words,
+    sentences,
+    trim_at_sentence,
+    without_native_script,
+    without_save_prompt,
+)
 from .toolbox import AgentToolbox, SavedItem, asks_for_engineer
 from .tools import ScopeLookup, tool_specs
 
@@ -115,6 +131,7 @@ class AgentRunner:
             )
         await toolbox.settle()
         run = await self._in_manglish(run, messages, user_text, correlation_id)
+        run = await self._one_script(run, messages, user_text, correlation_id)
         _park_plain_question(run, toolbox)
         # WA-37: every figure the model writes must come from what it was
         # given (the message, the facts in its prompt, a tool result) or from
@@ -164,6 +181,49 @@ class AgentRunner:
             return run
         return run.model_copy(update={"text": again.text})
 
+    async def _one_script(
+        self,
+        run: ToolRunResult,
+        messages: list[ChatMessage],
+        user_text: str,
+        correlation_id: str | None,
+    ) -> ToolRunResult:
+        """The reply is in the letters and language of THIS message, one script
+        (22 Oct: "innaleത്തെ" went out; English in, Manglish out). A reply
+        that is not gets one more try with no tools; if that is wrong too, the
+        sentences that break the rule go, so the sender never reads them."""
+        text = (run.text or "").strip()
+        problems = script_problems(text, user_text)
+        if not text or not problems:
+            return run
+        ask = (
+            "Your last reply was rejected: " + "; ".join(problems) + ". Say it again, same meaning and "
+            "numbers, nothing added, in the language and letters of the user's message only. "
+            "Only the reply."
+        )
+        retried = ""
+        try:
+            again = await self._provider.run_tools(
+                SYSTEM_PROMPT,
+                [*messages, ChatMessage(role="model", text=text), ChatMessage(role="user", text=ask)],
+                [],
+                _no_tools,
+                max_steps=1,
+                timeout_seconds=MANGLISH_TIMEOUT_SECONDS,
+                correlation_id=correlation_id,
+            )
+            retried = (again.text or "").strip()
+        except Exception:  # noqa: BLE001 -- the sentences that break the rule go instead
+            _log.warning("agent.script_retry_failed correlation_id=%s", correlation_id)
+        if retried and not script_problems(retried, user_text):
+            return run.model_copy(update={"text": retried})
+        _log.warning("agent.script_fallback correlation_id=%s problems=%s", correlation_id, problems)
+        if letters_of(user_text) == "latin" and any("English letters" in p for p in problems):
+            return run.model_copy(update={"text": without_native_script(text)})
+        broken = mixed_script_words(text)
+        kept = "".join(p for p in sentences(text) if not any(w in p for w in broken))
+        return run.model_copy(update={"text": kept.strip()})
+
     async def _covering(
         self,
         run: ToolRunResult,
@@ -177,14 +237,21 @@ class AgentRunner:
         one is missing; then the system's own sentence, built from the card's
         items in the sender's language. A reply that carries a question is left
         alone: the question must still end it."""
-        items = [item.summary for item in _entries(toolbox) if item.summary]
+        items = [item.summary for item in _entries(toolbox) if item.summary and not item.carried]
         text = (run.text or "").strip()
-        if not items or not text or toolbox.parked is not None or not uncovered_items(text, items):
+        if not items or not text or toolbox.parked is not None:
             return run
         missing = uncovered_items(text, items)
+        claims = bool(_DONE_WORD.search(text)) and self._card_attached(toolbox)
+        if not missing and not claims:
+            return run
         ask = (
-            "Your last reply left out: " + "; ".join(missing) + ". Say it again in the same language and "
-            "letters, naming every one of these, with their numbers: " + "; ".join(items) + ". "
+            "Your last reply was not right for a card that is not saved yet. "
+            + ("It left out: " + "; ".join(missing) + ". " if missing else "")
+            + ("It said the entry is written, noted or saved, which is not true before they tap Save. " if claims else "")
+            + "Say it again in the same language and letters, naming every one of these, with their numbers: "
+            + "; ".join(items)
+            + ". Ask them to check it and tap Save; never say it is saved, written, noted or done. "
             "Short, friendly, nothing added. Only the reply."
         )
         try:
@@ -201,9 +268,11 @@ class AgentRunner:
         except Exception:  # noqa: BLE001 -- the system's sentence stands in
             _log.warning("agent.coverage_retry_failed correlation_id=%s", correlation_id)
             retried = ""
-        if retried and not uncovered_items(retried, items):
+        if retried and not uncovered_items(retried, items) and not _DONE_WORD.search(retried):
             return run.model_copy(update={"text": retried})
-        _log.warning("agent.coverage_fallback correlation_id=%s missing=%s", correlation_id, len(missing))
+        _log.warning(
+            "agent.coverage_fallback correlation_id=%s missing=%s claims=%s", correlation_id, len(missing), claims
+        )
         return run.model_copy(update={"text": covering_sentence(items, user_text)})
 
     # -- the one reply -----------------------------------------------------
@@ -246,20 +315,28 @@ class AgentRunner:
                 "agent.number_guard correlation_id=%s numbers=%s", correlation_id, sorted(unbacked)
             )
             text = without_numbers(text, unbacked)
+        if not self._card_attached(toolbox):
+            # Only a reply with a card under it may ask to tap Save (22 Oct).
+            text = without_save_prompt(text)
+        tail: list[str] = []
         if block:
             if not text and run.stop_reason == "max_steps":
                 text = CHECK_LINE
-            text = f"{text}\n\n{block}" if text else block
+            tail.append(block)
             draft = draft_report_line(toolbox.report_text)
             if draft:
-                text = f"{text}\n\n{draft}"
+                tail.append(draft)
         asked = _questions_line(toolbox)
         if asked:
-            text = f"{text}\n\n{asked}" if text else asked
-        if not text:
+            tail.append(asked)
+        for line in toolbox.system_lines:
+            if line not in text:
+                tail.append(line)
+        if not text and not tail:
             return self._fallback(toolbox, partial=run.stop_reason == "max_steps")
-        if _entries(toolbox) and "undo" not in text.casefold():
-            text = f"{text}\n\n{UNDO_LINE}"
+        if _entries(toolbox) and "undo" not in (text + "\n".join(tail)).casefold():
+            tail.append(UNDO_LINE)
+        text = _within_cap(text, tail)
         parked = toolbox.parked
         if parked is None:
             return ReplySpec(text=text)
@@ -279,6 +356,22 @@ class AgentRunner:
             list_rows=parked.list_rows,
             buttons=parked.buttons,
         )
+
+    @staticmethod
+    def _card_attached(toolbox: AgentToolbox) -> bool:
+        """Whether the reply goes out with a Save card (Save / Cancel under
+        it): entries were prepared, and they fit one tap. A gateway that cannot
+        say counts any entry as a card."""
+        entries = _entries(toolbox)
+        if not entries:
+            return False
+        handled = getattr(toolbox.gateway, "handled", None)
+        if handled is None:
+            return True
+        from .save_button import facts_of
+
+        carry = lambda name: [i.fact for i in getattr(toolbox.gateway, name, ())]  # noqa: E731
+        return facts_of(handled, before=carry("carry_before"), after=carry("carry_after")) is not None
 
     def _fallback(self, toolbox: AgentToolbox, *, partial: bool) -> ReplySpec:
         """The reply when the model gave no usable text: the pipeline's own
@@ -305,6 +398,66 @@ class AgentRunner:
             list_rows=parked.list_rows,
             buttons=parked.buttons,
         )
+
+
+#: Little words that mark a sentence as English; Manglish keeps its English
+#: nouns ("cement", "report") but not these.
+_ENGLISH_LITTLE_WORDS = frozenset(
+    "the is are was were to of and for how what when please can could need have has do does did will "
+    "would my me we you your our this that it with from not much many any there".split()
+)
+
+
+def looks_english(text: str) -> bool:
+    """A message that is plainly English: three words or more, two of them
+    little English words, and none a Manglish word. A guess about the reply's
+    language is made only for such a message."""
+    if is_manglish(text) or text.startswith("(They sent"):
+        return False
+    words = re.findall(r"[a-z]+", text.lower())
+    return len(words) >= 3 and len(set(words) & _ENGLISH_LITTLE_WORDS) >= 2
+
+
+def script_problems(reply: str, user_text: str) -> list[str]:
+    """What is wrong with the letters of ``reply`` for a message ``user_text``:
+    a word in two scripts, native script for a message in English letters, or
+    Manglish for a message in plain English."""
+    problems = []
+    mixed = mixed_script_words(reply)
+    if mixed:
+        problems.append("it has a word that mixes English and Malayalam letters (" + ", ".join(mixed[:3]) + ")")
+    letters = letters_of(user_text)
+    # A message of a word or two ("ok", "yes") has no language of its own: the
+    # earlier conversation decides, so only a message with words is checked.
+    wordy = (
+        letters == "latin"
+        and len(re.findall(r"[A-Za-z]+", user_text)) >= 3
+        and not user_text.startswith("(They sent")
+    )
+    if wordy and letters_of(reply) == "native":
+        problems.append("it uses Malayalam/Hindi script but the message is in English letters")
+    elif looks_english(user_text) and is_clearly_manglish(reply, _MANGLISH_WORDS):
+        problems.append("it is in Manglish but the message is in English")
+    return problems
+
+
+#: A reply with buttons is a WhatsApp interactive body, 1024 characters at
+#: most, and the composer adds a line or two after the agent's text.
+REPLY_CAP = BODY_MAX - 80
+
+
+def _within_cap(words: str, tail: list[str]) -> str:
+    """The model's ``words`` and the system's ``tail`` lines as one reply. Only
+    when it would pass the cap are the words shortened, at a real sentence end
+    (22 Oct: a reply stopped after "e.g.")."""
+    rest = "\n\n".join(tail)
+    if not words:
+        return rest
+    if not rest:
+        return trim_at_sentence(words, REPLY_CAP)
+    if len(words) + len(rest) + 2 > REPLY_CAP:
+        words = trim_at_sentence(words, max(REPLY_CAP - len(rest) - 2, 0))
+    return f"{words}\n\n{rest}" if words else rest
 
 
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
@@ -405,7 +558,7 @@ def _numbers(text: str) -> set[str]:
 def without_numbers(reply: str, numbers: set[str]) -> str:
     """``reply`` without the sentences that carry any of ``numbers``; empty
     when nothing worded is left."""
-    kept = [m.group(0) for m in _NUMBER_SENTENCE.finditer(reply) if m.group(0) and not (_numbers(m.group(0)) & numbers)]
+    kept = [part for part in sentences(reply) if part and not (_numbers(part) & numbers)]
     text = "".join(kept).strip()
     if _numbers(text) & numbers or len(re.findall(r"[^\W\d_]+", text)) < 3:
         # A figure split across "sentences" ("12.5"), or only a scrap left
@@ -425,17 +578,23 @@ def unbacked_numbers(reply: str, sources: list[str]) -> set[str]:
 
 #: "It is saved / recorded" in the languages the sites write in. Before the
 #: Save tap nothing is kept, so a sentence saying so is not true (WA-37).
+#: Manglish for "it is written / done", which no reply may say before the Save
+#: tap (22 Oct: "issue aayi ezhuthiyittund"). Unlike the English claims, which
+#: are cut out of the sentence, a reply with one is asked for again.
+_DONE_WORD = re.compile(
+    r"\b(?:ezhuthiyittund[u]?|ezhuthiyirikkunnu|rekhappeduthiyittund|cheythittund|aakkiyittund|vechittund)\b",
+    re.IGNORECASE,
+)
 _SAVED_CLAIM = re.compile(
     r"(?<!not )\b(?:saved|recorded|logged|noted)\b"
     r"|\b(?:save|record|rekhappeduthi|note)\s*(?:cheythu|cheythittund|aakki)"
+    r"|" + _DONE_WORD.pattern + ""
     r"|സേവ്\s*ചെയ്തു|സേവ്\s*ചെയ്തിട്ടുണ്ട്|രേഖപ്പെടുത്തി|സേവ്\s*ആയി"
     r"|सेव\s*(?:कर\s*)?(?:दिया|किया|हो\s*गया)|दर्ज\s*(?:कर\s*)?(?:दिया|किया|हो\s*गया)",
     re.IGNORECASE,
 )
-_SENTENCE = re.compile(r"[^.!?।\n]*(?:[.!?।]+|\n|$)")
-#: A sentence for the number guard: a "." inside a number ("12.5") or before
-#: a space-less word ("Rs.4500") does not end it.
-_NUMBER_SENTENCE = re.compile(r"(?:[^.!?।\n]|\.(?=\S))*(?:[.!?।]+|\n|$)")
+# Sentences are cut by reply_text.sentences: a "." inside a number ("12.5"), before
+# a space-less word ("Rs.4500") or in an abbreviation ("e.g.") does not end one.
 
 
 _CLAUSE = re.compile(r"[^,;]*(?:[,;]\s*|$)")
@@ -473,7 +632,7 @@ _TOOL_TALK = re.compile(
 
 def without_tool_talk(text: str) -> str:
     """``text`` without the sentences that repeat the system's notes to the model."""
-    kept = [part for part in _SENTENCE.findall(text) if part and not _TOOL_TALK.search(part)]
+    kept = [part for part in sentences(text) if part and not _TOOL_TALK.search(part)]
     return re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
 
 
@@ -490,7 +649,7 @@ def _card_details(card: str) -> str:
 def without_saved_claims(text: str) -> str:
     """``text`` without what says an entry is already saved: the claiming
     clause, or the whole sentence when it is nothing else."""
-    kept = [_without_claim(part) for part in _SENTENCE.findall(text) if part]
+    kept = [_without_claim(part) for part in sentences(text) if part]
     return re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
 
 
