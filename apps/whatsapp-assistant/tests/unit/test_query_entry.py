@@ -96,3 +96,25 @@ async def test_the_dpr_pdf_goes_after_the_answer_and_a_failure_is_said():
     line = await entry.deliver(ready, message)
     assert sent == ["DPR-1.pdf", "DPR-1.pdf"]
     assert line.startswith("Sorry, the PDF didn't go through")
+
+
+async def test_a_lookup_asked_for_as_a_pdf_is_sent_as_one():
+    """The classic "send it as a PDF" of a lookup, from the agent's as_pdf."""
+    from runtime.agent.tools import QUERY_MATERIALS, ScopeLookup, to_candidate
+
+    sent: list[tuple[str, bytes]] = []
+
+    async def send_document(wa_id: str, data: bytes, *, filename: str, caption: Any) -> bool:
+        sent.append((filename, data[:4]))
+        return True
+
+    candidate = to_candidate(QUERY_MATERIALS, {"material": "cement", "as_pdf": True}, ScopeLookup())
+    assert candidate.fields["output_format"] == "pdf"
+    entry = _entry(send_document=send_document)
+    ready = await entry.prepare(MESSAGE, _Understanding(candidate), candidate)
+    ready.event.fields["inventory_levels"] = [{"material_name": "Cement", "on_hand": 40, "unit": "bags"}]
+    message = SimpleNamespace(correlation_id="c", sender=SimpleNamespace(wa_id="91"))
+    assert await entry.deliver(ready, message) is None
+    assert len(sent) == 1 and sent[0][0].endswith(".pdf") and sent[0][1] == b"%PDF"
+    without = to_candidate(QUERY_MATERIALS, {"material": "cement"}, ScopeLookup())
+    assert "output_format" not in without.fields

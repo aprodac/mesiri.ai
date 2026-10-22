@@ -15,8 +15,9 @@ tool's arguments become the workflow's event:
   (``runtime/inbound_journey/seeding.py``), so the read rules in them
   (SEC-01: expenses for admin/owner/finance/PM, own projects only) hold.
 
-The workflows, their answers and confirmations are unchanged. The DPR PDF is
-sent after the run, as the pipeline did (``deliver``).
+The workflows, their answers and confirmations are unchanged. The DPR PDF, and
+a lookup asked for as a PDF (``as_pdf``), are sent after the run, as the
+pipeline did (``deliver``).
 """
 
 from __future__ import annotations
@@ -180,23 +181,42 @@ class QueryEntry(EntryScope):
                 _log.warning("query_entry.seed_failed correlation_id=%s key=%s", message.correlation_id, key.value, exc_info=True)
 
     async def deliver(self, ready: Ready, message: Any) -> str | None:
-        """After the run: the DPR PDF the answer says is attached, as the
-        pipeline sent it (one retry). A line to add when it did not go."""
+        """After the run: the DPR PDF the answer says is attached, or a
+        lookup asked for as a PDF, sent as the pipeline sent them (one retry).
+        A line to add when it did not go."""
         fields = ready.event.fields
-        if ready.decision.workflow_key is not K.DPR_REQUEST or not fields.get("dpr_object_key"):
-            return None
-        if self.send_document is None or self.object_storage is None:
+        key = ready.decision.workflow_key
+        if self.send_document is None:
             return None
         from runtime.inbound_journey._shared import _send_with_one_retry
 
-        code = fields.get("dpr_code") or "DPR"
+        if key is K.DPR_REQUEST and fields.get("dpr_object_key") and self.object_storage is not None:
+            code = fields.get("dpr_code") or "DPR"
 
-        async def _send() -> None:
-            stored = await self.object_storage.get_object(fields["dpr_object_key"])
-            sent = await self.send_document(message.sender.wa_id, stored.data, filename=f"{code}.pdf", caption=None)
-            if sent is False:
-                raise RuntimeError("send_document returned False")
+            async def _send() -> None:
+                stored = await self.object_storage.get_object(fields["dpr_object_key"])
+                sent = await self.send_document(message.sender.wa_id, stored.data, filename=f"{code}.pdf", caption=None)
+                if sent is False:
+                    raise RuntimeError("send_document returned False")
 
-        if await _send_with_one_retry(_send, what="dpr_request.document", correlation_id=message.correlation_id):
-            return None
-        return f"Sorry, the PDF didn't go through. The report ({code}) is ready, please ask again in a minute."
+            if await _send_with_one_retry(_send, what="dpr_request.document", correlation_id=message.correlation_id):
+                return None
+            return f"Sorry, the PDF didn't go through. The report ({code}) is ready, please ask again in a minute."
+
+        if fields.get("output_format") == "pdf":
+            from runtime.inbound_journey.seeding import _build_query_pdf
+
+            built = _build_query_pdf(key, fields)
+            if built is None:
+                return None
+            data, filename = built
+
+            async def _send_pdf() -> None:
+                sent = await self.send_document(message.sender.wa_id, data, filename=filename, caption=None)
+                if sent is False:
+                    raise RuntimeError("send_document returned False")
+
+            if await _send_with_one_retry(_send_pdf, what="query_pdf", correlation_id=message.correlation_id):
+                return None
+            return "Sorry, the PDF didn't go through. Please ask again in a minute."
+        return None

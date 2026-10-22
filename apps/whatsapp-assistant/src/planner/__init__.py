@@ -1,20 +1,5 @@
-"""Planner (M5) — routes a CanonicalEvent to a PlannerDecision.
+"""Which workflow an event type starts (routing.py's WORKFLOW_KEY_BY_EVENT).
 
-Single responsibility: decide which workflow_key (if any) should run next.
-Must never import a workflow engine, LangGraph, or any specific graph
-(architecture rule #10) — it returns only a routing key.
+The planner that decided this per message went with the classic pipeline
+(ARCH-06, 22 Oct 2026); the agent's entries name their workflow directly.
 """
-
-from __future__ import annotations
-
-from .ambiguity import AmbiguityAction, AmbiguityDecision, caveat_text, decide_ambiguity
-from .planner import Planner, log_planner_decision
-
-__all__ = [
-    "Planner",
-    "log_planner_decision",
-    "AmbiguityAction",
-    "AmbiguityDecision",
-    "decide_ambiguity",
-    "caveat_text",
-]

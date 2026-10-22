@@ -84,6 +84,8 @@ _SITE = {
     "type": "string",
     "description": "Site name, ONLY if the user names one. Omit to use their usual site.",
 }
+#: The classic "send it as a PDF" of a lookup (stock, labour, work log, money).
+_AS_PDF = {"type": "boolean", "description": "True only when they ask for it as a PDF or a file."}
 _RANGE = {
     "type": "string",
     "enum": ["today", "this_week", "this_month"],
@@ -391,6 +393,7 @@ def tool_specs() -> list[ToolSpec]:
                 {
                     "date_range": _RANGE,
                     "trade": {"type": "string"},
+                    "as_pdf": _AS_PDF,
                     "project": _PROJECT,
                     "site": _SITE,
                 }
@@ -403,7 +406,9 @@ def tool_specs() -> list[ToolSpec]:
                 "totals (all materials if none named). It has NO per-day figures: asked how "
                 "much was used or received on one day, say you can only see the totals so far."
             ),
-            parameters=_obj({"material": {"type": "string"}, "project": _PROJECT, "site": _SITE}),
+            parameters=_obj(
+                {"material": {"type": "string"}, "as_pdf": _AS_PDF, "project": _PROJECT, "site": _SITE}
+            ),
         ),
         ToolSpec(
             name=QUERY_WORK_LOG,
@@ -412,6 +417,7 @@ def tool_specs() -> list[ToolSpec]:
                 {
                     "date_range": _RANGE,
                     "work_type": {"type": "string"},
+                    "as_pdf": _AS_PDF,
                     "project": _PROJECT,
                     "site": _SITE,
                 }
@@ -435,6 +441,7 @@ def tool_specs() -> list[ToolSpec]:
                         "type": "boolean",
                         "description": "True only when asking which expenses lack a receipt.",
                     },
+                    "as_pdf": _AS_PDF,
                     "project": _PROJECT,
                 },
                 ["kind"],
@@ -547,6 +554,10 @@ def _scope(args: dict[str, Any], scope: ScopeLookup) -> dict[str, Any]:
     return out
 
 
+def _pdf(args: dict[str, Any]) -> dict[str, str]:
+    return {"output_format": "pdf"} if args.get("as_pdf") is True else {}
+
+
 def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candidate | None:
     """The understanding a tool call stands for, or None for a tool that is not
     a workflow (ask_user, undo_last)."""
@@ -624,13 +635,13 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
         }
         return Candidate(semantic_type=SemanticType.TRANSFER, fields=_clean(fields))
     if name == QUERY_LABOUR:
-        fields = {"date_range": args.get("date_range"), "trade": args.get("trade"), **sc}
+        fields = {"date_range": args.get("date_range"), "trade": args.get("trade"), **_pdf(args), **sc}
         return Candidate(semantic_type=SemanticType.LABOUR_QUERY, fields=_clean(fields))
     if name == QUERY_MATERIALS:
-        fields = {"material_name": args.get("material"), **sc}
+        fields = {"material_name": args.get("material"), **_pdf(args), **sc}
         return Candidate(semantic_type=SemanticType.INVENTORY_QUERY, fields=_clean(fields))
     if name == QUERY_WORK_LOG:
-        fields = {"date_range": args.get("date_range"), "work_type": args.get("work_type"), **sc}
+        fields = {"date_range": args.get("date_range"), "work_type": args.get("work_type"), **_pdf(args), **sc}
         return Candidate(semantic_type=SemanticType.ACTIVITY_QUERY, fields=_clean(fields))
     if name == QUERY_PROJECT:
         return Candidate(semantic_type=SemanticType.PROJECT_DETAIL_QUERY, fields=_clean(dict(sc)))
@@ -641,6 +652,7 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             "category_name": args.get("category"),
             "date_range": args.get("date_range"),
             "missing_receipts": True if args.get("missing_receipts") else None,
+            **_pdf(args),
             **sc,
         }
         return Candidate(semantic_type=SemanticType.FINANCE_QUERY, fields=_clean(fields))

@@ -11,24 +11,8 @@ from backend.ports import ActorIdentity
 from canonicalization.occurred_date import parse_stated_date, today_for
 from channel.replies import (
     ReplySpec,
-    render_audience_candidate_picker,
-    render_audience_not_found_reply,
-    render_material_create_offer,
-    render_material_not_found_reply,
-    render_material_picker,
-    render_member_candidate_picker,
-    render_member_create_offer,
-    render_member_not_found_reply,
-    render_no_projects_reply,
-    render_petty_cash_recipient_not_found_reply,
-    render_petty_cash_recipient_picker,
-    render_project_picker,
-    render_site_picker,
-    render_unit_mismatch_reply,
-    render_usage_exceeds_stock_reply,
 )
 from interactions.handler import InteractionHandled
-from interactions.pending_report import PendingReportStore
 from mesiri_contracts.assistant.canonical_event import CanonicalEventType
 from mesiri_contracts.assistant.canonical_event import IntentCompleteness as _IntentCompleteness
 from mesiri_contracts.assistant.draft_action import DraftActionType
@@ -41,8 +25,6 @@ from runtime.activity_query import ActivityQueryService
 from runtime.activity_search_service import ActivitySearchService
 from runtime.dpr_request_query import DprRequestQueryService
 from runtime.duplicate_expense_query import DuplicateExpenseQueryService
-from runtime.entity_resolution.material_resolution import classify_material_matches
-from runtime.entity_resolution.member_resolution import MemberNameResolutionService
 from runtime.expense_query_service import ExpenseQueryService, resolve_date_range
 from runtime.inbound_journey._shared import _log
 from runtime.inbound_journey.reply import _safe
@@ -53,10 +35,8 @@ from runtime.labour_query_service import (
 from runtime.labour_query_service import (
     resolve_date_range as resolve_labour_date_range,
 )
-from runtime.material_catalog_query import MaterialCatalogQueryService
 from runtime.money_account_query import MoneyAccountQueryService
 from runtime.org_settings_query import OrganizationSettingsQueryService
-from runtime.petty_cash_query import PettyCashRecipientQueryService
 from runtime.project_detail_query import ProjectDetailQueryService
 from runtime.reversal_query import (
     ADVANCE_ACCOUNT_TYPE,
@@ -65,7 +45,6 @@ from runtime.reversal_query import (
     advance_holder_name,
 )
 from runtime.save_first import company_saves_first
-from runtime.site_issue_query import SiteIssueTargetQueryService
 from runtime.vendor_query import VendorQueryService
 from runtime.workforce_query import WorkforceQueryService
 from workflows import (
@@ -125,226 +104,10 @@ async def _may_create_material(
     return role_allowed(actor_role, allowed)
 
 
-async def _run_material_unit_gates(
-    canonical_event: CanonicalEventV2,
-    *,
-    catalog_query: MaterialCatalogQueryService,
-    pending_report_store: PendingReportStore,
-    actor_user_id: str,
-    actor_role: str | None = None,
-    org_settings_query: OrganizationSettingsQueryService | None = None,
-    ask_amount: bool = False,
-) -> ReplySpec | None:
-    """Resolve material_id/unit_id against materials_catalog/units_of_measure
-    before the report can proceed to the project gate or planner.
-
-    Mutates `canonical_event.fields` in place once resolved. Returns a
-    ReplySpec (and holds the event in `pending_report_store`) when the report
-    must pause for a clarifying tap -- ambiguous or unmatched material, or a
-    reported unit that doesn't match the material's Stock Unit. Returns None
-    once both resolve (or if there's nothing to resolve, e.g. no material_name
-    at all -- canonicalization's own missing-field check already covers that
-    case with CLARIFICATION_REQUIRED).
-
-    Never raises: a lookup failure degrades to "let it through unresolved"
-    (None) rather than dropping the reply entirely, same principle as the
-    project-selection gate below.
-    """
-    # Function-level, mirroring _run_member_name_gate's own import of the
-    # same vocabulary below.
-    from workflows.entities import Ambiguous, Resolved
-
-    material_id = canonical_event.fields.get("material_id")
-    material: dict | None = None
-
-    if material_id is None:
-        name = canonical_event.fields.get("material_name")
-        if not name:
-            return None
-        try:
-            matches = await catalog_query.find_materials(
-                organization_id=canonical_event.organization_id, name=name
-            )
-        except Exception:
-            _log.exception(
-                "material_gate.lookup_failed correlation_id=%s", canonical_event.correlation_id
-            )
-            return None
-
-        # Phase 3 (ENTITY_RESOLUTION_PLAN.md §5): the same
-        # Resolved/Ambiguous/Missing vocabulary _run_member_name_gate speaks,
-        # over the catalog's own SQL matching rather than difflib scoring --
-        # see runtime/entity_resolution/material_resolution.py for why
-        # materials need only that half of the layer.
-        outcome = classify_material_matches(str(name), matches)
-
-        if isinstance(outcome, Resolved):
-            # The full row, not just the outcome's id/name -- the unit gate
-            # below needs default_unit_id, which the shared Resolved
-            # deliberately does not carry (it is entity-agnostic).
-            material = next(m for m in matches if str(m["id"]) == outcome.entity_id)
-            canonical_event.fields["material_id"] = outcome.entity_id
-        elif isinstance(outcome, Ambiguous):
-            await pending_report_store.set_pending(user_id=actor_user_id, event=canonical_event)
-            return render_material_picker(
-                [(c.entity_id, c.display_name) for c in outcome.candidates]
-            )
-        else:
-            # The reported name matched nothing. Offering to add it is
-            # checked BEFORE the whole-catalog fallback picker below: once
-            # the sender is allowed to create, "add Fevicol" is a far better
-            # answer than a list of 20 unrelated materials to pick the wrong
-            # one from.
-            if await _may_create_material(
-                canonical_event, actor_role=actor_role, org_settings_query=org_settings_query
-            ):
-                await pending_report_store.set_pending(
-                    user_id=actor_user_id, event=canonical_event
-                )
-                return render_material_create_offer(str(name))
-
-            # Not allowed to create -- keep the pre-STA-139 behaviour: offer
-            # the org's active catalog so there's still something to pick
-            # (the reported name may just be phrased differently), and only
-            # dead-end when the catalog is genuinely empty.
-            try:
-                candidates = await catalog_query.list_active_materials(
-                    organization_id=canonical_event.organization_id
-                )
-            except Exception:
-                _log.exception(
-                    "material_gate.lookup_failed correlation_id=%s",
-                    canonical_event.correlation_id,
-                )
-                return None
-            if not candidates:
-                return ReplySpec(text=render_material_not_found_reply(str(name)))
-            await pending_report_store.set_pending(user_id=actor_user_id, event=canonical_event)
-            return render_material_picker([(str(c["id"]), c["name"]) for c in candidates])
-    else:
-        try:
-            material = await catalog_query.get_material(
-                organization_id=canonical_event.organization_id, material_id=material_id
-            )
-        except Exception:
-            _log.exception(
-                "material_gate.lookup_failed correlation_id=%s", canonical_event.correlation_id
-            )
-            return None
-        if material is None or not material["is_active"]:
-            return ReplySpec(
-                text="That material is no longer available — please resend your report."
-            )
-
-    from runtime.material_units import ask_amount_text, fit_stock_unit
-
-    fit = await fit_stock_unit(
-        canonical_event.fields,
-        material,
-        catalog_query=catalog_query,
-        organization_id=str(canonical_event.organization_id),
-        correlation_id=canonical_event.correlation_id,
-    )
-    if fit.kind != "mismatch":
-        return None
-    if ask_amount:
-        return ReplySpec(text=ask_amount_text(material, canonical_event.fields, fit, role=actor_role))
-    await pending_report_store.set_pending(user_id=actor_user_id, event=canonical_event)
-    stock_unit = fit.stock_unit
-    return render_unit_mismatch_reply(
-        material_name=material["name"],
-        unit_id=str(material["default_unit_id"]),
-        unit_display=stock_unit["display_name"] if stock_unit else "the correct unit",
-    )
 
 
-def _actor_may_create_user(actor_role: str | None) -> bool:
-    """Whether this sender's role may create a new user, per CREATE_USER's
-    own `allowed_roles` declaration in the registry (ENTITY_RESOLUTION_PLAN.md
-    ADR-E5). A lookup, not a branch -- if CREATE_USER's allowed_roles changes,
-    or a different workflow ever becomes the USER provider, this needs no
-    edit. Reuses `allowed_roles` for the purpose it was built for (discovery/
-    offer filtering); this is not a promotion of the field to an enforcement
-    gate -- see registry.py's field comment, and
-    ENTITY_RESOLUTION_PLAN.md §8.2's objection to doing that."""
-    if not actor_role:
-        return False
-    from workflows.entities import EntityType
-    from workflows.registry import get_definition, workflow_that_provides
-
-    provider_key = workflow_that_provides(EntityType.USER)
-    if provider_key is None:
-        return False
-    definition = get_definition(provider_key)
-    if definition is None or definition.allowed_roles is None:
-        return True
-    return actor_role.upper() in definition.allowed_roles
 
 
-async def _run_member_name_gate(
-    canonical_event: CanonicalEventV2,
-    *,
-    member_resolver: MemberNameResolutionService,
-    pending_report_store: PendingReportStore,
-    actor_user_id: str,
-    actor_role: str | None,
-) -> ReplySpec | None:
-    """Resolve ADD_PROJECT_MEMBER's member_name against the org's real active
-    users BEFORE a draft is ever built (ENTITY_RESOLUTION_PLAN.md ADR-E1) --
-    today the name is only resolved by the backend Handler at execution time
-    (application/projects/handlers.py), so a user confirms a draft that was
-    never capable of succeeding: "Yes" -> "couldn't find an active user
-    named X." That backend resolver is untouched and stays authoritative at
-    execution (ADR-E2) -- this gate's only job is to catch the two cases
-    that would otherwise dead-end, before confirmation:
-
-    - Resolved: an exact match exists. Falls through with `member_name`
-      untouched -- the backend's own exact-match resolver will find the
-      same row again at execution, so nothing needs to be written here.
-    - Ambiguous: one or more near-matches (e.g. a Malayalam transliteration
-      like "Hysam" against a real "Hisham" -- the live bug this fixes), none
-      certain enough to use silently. Holds the event and offers a tappable
-      picker; see runtime/entity_resolution/member_resolution.py's module
-      docstring for why this uses real near-match scoring where
-      workforce/matching.py's match_worker explicitly does not.
-    - Missing: nothing matched. Offers to create the user inline (chaining
-      into a real CREATE_USER workflow, then resuming this request) when the
-      sender's role allows it (ADR-E5); otherwise a plain "ask your admin"
-      reply, same as the disallowed-role path for material creation.
-
-    Never raises: a lookup failure degrades to "let it through unresolved"
-    (None), same posture as every other gate in this module -- the backend's
-    own resolver still runs at execution and will reject honestly if the
-    name really doesn't exist.
-    """
-    if canonical_event.event_type is not CanonicalEventType.ADD_PROJECT_MEMBER_REQUESTED:
-        return None
-    name_hint = canonical_event.fields.get("member_name")
-    if not name_hint:
-        return None
-
-    from workflows.entities import Ambiguous, Missing, Resolved
-
-    try:
-        outcome = await member_resolver.resolve(
-            organization_id=canonical_event.organization_id, name_hint=str(name_hint)
-        )
-    except Exception:
-        _log.exception(
-            "member_name_gate.lookup_failed correlation_id=%s", canonical_event.correlation_id
-        )
-        return None
-
-    if isinstance(outcome, Resolved):
-        return None
-    if isinstance(outcome, Ambiguous):
-        await pending_report_store.set_pending(user_id=actor_user_id, event=canonical_event)
-        return render_member_candidate_picker(str(name_hint), outcome.candidates)
-    assert isinstance(outcome, Missing)
-    if _actor_may_create_user(actor_role):
-        await pending_report_store.set_pending(user_id=actor_user_id, event=canonical_event)
-        return render_member_create_offer(str(name_hint))
-    return ReplySpec(text=render_member_not_found_reply(str(name_hint)))
 
 
 #: Marks which audience name the picker currently on screen is about, so the
@@ -354,294 +117,14 @@ async def _run_member_name_gate(
 AUDIENCE_PENDING_NAME_FIELD = "_audience_pending_name"
 
 
-async def _run_audience_name_gate(
-    canonical_event: CanonicalEventV2,
-    *,
-    member_resolver: MemberNameResolutionService,
-    pending_report_store: PendingReportStore,
-    actor_user_id: str,
-) -> ReplySpec | None:
-    """Resolve an automation's `audience_names` against real active users
-    BEFORE the draft -- Phase 4 of ENTITY_RESOLUTION_PLAN.md §5, same ADR-E1
-    move as the member and petty-cash gates.
-
-    Until now these names travelled untouched all the way to
-    application/automations/handlers.py, which resolved them via
-    `find_by_full_name_active` (exact) at persist time and rejected the whole
-    command listing any it missed. So "remind Ilan and Hysam every Monday"
-    against an org whose real user is "Hisham" showed a confirmation, took a
-    Yes, and only then answered "couldn't find: Hysam" -- another doomed
-    confirmation, and the §1 bug once more.
-
-    Resolves in order and stops at the first name that isn't settled, asking
-    about that one alone; answering it re-enters this gate, which asks about
-    the next or lets the automation through. One question per unknown name
-    rather than one summary of all of them: the summary would be fewer
-    messages but would send the user back to retyping the whole sentence,
-    and a name they can tap is worth more on a phone at a site than a name
-    they have to spell correctly on the second attempt.
-
-    Names that DO resolve are rewritten to their exact stored spelling, so
-    the Handler's own exact lookup finds the same rows at persist time.
-
-    Never raises: a lookup failure degrades to letting it through
-    unresolved, same posture as every other gate here -- the Handler still
-    rejects honestly if a name really is unknown.
-    """
-    if canonical_event.event_type is not CanonicalEventType.AUTOMATION_SETUP_REQUESTED:
-        return None
-    names = canonical_event.fields.get("audience_names")
-    if not isinstance(names, list) or not names:
-        return None
-
-    from workflows.entities import Ambiguous, Missing, Resolved
-
-    resolved: list[str] = []
-    for index, raw in enumerate(names):
-        name = str(raw or "").strip()
-        if not name:
-            continue
-        try:
-            outcome = await member_resolver.resolve(
-                organization_id=canonical_event.organization_id, name_hint=name
-            )
-        except Exception:
-            _log.exception(
-                "audience_name_gate.lookup_failed correlation_id=%s",
-                canonical_event.correlation_id,
-            )
-            return None
-
-        if isinstance(outcome, Resolved):
-            resolved.append(outcome.display_name)
-            continue
-
-        # Unsettled. Persist what resolved so far so answering this question
-        # doesn't re-ask about the names already agreed on.
-        canonical_event.fields["audience_names"] = [
-            *resolved,
-            name,
-            *[str(n) for n in names[index + 1 :]],
-        ]
-        canonical_event.fields[AUDIENCE_PENDING_NAME_FIELD] = name
-
-        if isinstance(outcome, Ambiguous):
-            await pending_report_store.set_pending(
-                user_id=actor_user_id, event=canonical_event
-            )
-            return render_audience_candidate_picker(name, outcome.candidates)
-
-        assert isinstance(outcome, Missing)
-        canonical_event.fields.pop(AUDIENCE_PENDING_NAME_FIELD, None)
-        return ReplySpec(text=render_audience_not_found_reply(name))
-
-    canonical_event.fields["audience_names"] = resolved
-    canonical_event.fields.pop(AUDIENCE_PENDING_NAME_FIELD, None)
-    return None
 
 
-async def _run_petty_cash_recipient_gate(
-    canonical_event: CanonicalEventV2,
-    *,
-    member_resolver: MemberNameResolutionService,
-    pending_report_store: PendingReportStore,
-    actor_user_id: str,
-) -> ReplySpec | None:
-    """Resolve PETTY_CASH's `recipient_name` against the org's real active
-    users BEFORE a draft is built -- Phase 4 of ENTITY_RESOLUTION_PLAN.md §5,
-    and the same ADR-E1 move _run_member_name_gate makes for
-    ADD_PROJECT_MEMBER.
-
-    Until now the only lookup was `find_by_full_name_active` (exact,
-    case-insensitive) inside _seed_petty_cash_recipient. A near-miss --
-    exactly §1's ഹൈസം/Hysam against a real "Hisham" -- resolved to nothing,
-    so `recipient_account_id` stayed unset, build_draft produced a draft
-    missing that leg of the transfer, and transfer_validation.py rejected it
-    *after* the user had already confirmed. A doomed confirmation, for the
-    one workflow where the thing being confirmed is money leaving an
-    account.
-
-    - Resolved: rewrite `recipient_name` to that user's exact stored name so
-      _seed_petty_cash_recipient's own exact lookup finds the same row, then
-      fall through unchanged.
-    - Ambiguous: hold the event and ask, never auto-pick -- a wrong pick
-      credits the wrong person's advance account.
-    - Missing: stop honestly here rather than building a draft that cannot
-      succeed. Deliberately NOT an offer to create the user the way the
-      member gate's Missing case is: issuing cash to someone is a poor
-      moment to also be creating their account, and unlike a project
-      membership there is no harmless "add them, then continue" -- the
-      created user would immediately be the destination of a money movement.
-
-    Never raises: a lookup failure degrades to letting it through
-    unresolved, same posture as every other gate in this module -- the
-    pre-existing validation still rejects honestly downstream.
-    """
-    if canonical_event.event_type not in _PETTY_CASH_EVENT_TYPES:
-        return None
-    name_hint = canonical_event.fields.get("recipient_name")
-    if not name_hint:
-        return None
-
-    from workflows.entities import Ambiguous, Missing, Resolved
-
-    try:
-        outcome = await member_resolver.resolve(
-            organization_id=canonical_event.organization_id, name_hint=str(name_hint)
-        )
-    except Exception:
-        _log.exception(
-            "petty_cash_recipient_gate.lookup_failed correlation_id=%s",
-            canonical_event.correlation_id,
-        )
-        return None
-
-    if isinstance(outcome, Resolved):
-        canonical_event.fields["recipient_name"] = outcome.display_name
-        return None
-    if isinstance(outcome, Ambiguous):
-        await pending_report_store.set_pending(user_id=actor_user_id, event=canonical_event)
-        return render_petty_cash_recipient_picker(str(name_hint), outcome.candidates)
-    assert isinstance(outcome, Missing)
-    return ReplySpec(text=render_petty_cash_recipient_not_found_reply(str(name_hint)))
 
 
-async def _run_project_gate(
-    canonical_event: CanonicalEventV2,
-    *,
-    actor: ActorIdentity | None,
-    actor_user_id: str,
-    pending_report_store: PendingReportStore,
-) -> ReplySpec | None:
-    """Ask which project a report belongs to, when it's otherwise ACTIONABLE
-    but has no project_id -- factored out of process_inbound_message so the
-    material/unit resume functions below can re-run this same gate after
-    they resolve their own field, instead of assuming project must already
-    be fine (see module docstring on gate re-running)."""
-    if canonical_event.completeness is not _IntentCompleteness.ACTIONABLE:
-        return None
-    if canonical_event.project_id is not None:
-        return None
-    try:
-        if actor is not None and actor.projects:
-            await pending_report_store.set_pending(user_id=actor_user_id, event=canonical_event)
-            return render_project_picker([(p.id, p.name, p.location) for p in actor.projects])
-        return ReplySpec(text=render_no_projects_reply())
-    except Exception:
-        # Must fail CLOSED, not open: project_id is required by domain
-        # validation (validation.py's "project is not resolved"), unlike the
-        # material/unit gates above where letting an unresolved field through
-        # is safe. Silently proceeding here would let the user tap Yes on a
-        # confirmation that's guaranteed to fail two steps later instead of
-        # failing honestly right now.
-        _log.exception(
-            "project_selection_gate.failed correlation_id=%s", canonical_event.correlation_id
-        )
-        return ReplySpec(
-            text="Sorry, something went wrong picking your project — please resend your report."
-        )
 
 
-async def _run_site_gate(
-    canonical_event: CanonicalEventV2,
-    *,
-    actor: ActorIdentity | None,
-    actor_user_id: str,
-    pending_report_store: PendingReportStore,
-    allow_combined: bool,
-) -> ReplySpec | None:
-    """Ask which site a report/query belongs to, once its project is settled
-    but site_id still isn't and the project has more than one site.
-
-    Mirrors _run_project_gate's shape: a single site under the resolved
-    project auto-resolves (no ask, no picker) the same way a single
-    authorized project already does in context/resolver.py; zero sites lets
-    the report through site-less rather than blocking on nothing to choose
-    from. Unlike project, site_id is not required by domain validation
-    (domains/materials/validation.py never checks it) -- so a failure here
-    fails OPEN (let it through unresolved), the same safe degrade the
-    material/unit gates use, not the fail-closed project gate needs.
-
-    ``allow_combined`` is only ever True for an inventory query -- asking
-    "how much cement" can meaningfully span every site, so its picker offers
-    an "All Sites Combined" row; a material report being recorded always
-    has to land on one real site, so recording never offers that option."""
-    if canonical_event.completeness is not _IntentCompleteness.ACTIONABLE:
-        return None
-    if canonical_event.site_id is not None:
-        return None
-    if canonical_event.project_id is None:
-        return None  # site only makes sense once a project is settled
-    if actor is None:
-        return None
-    try:
-        sites = [s for s in actor.sites if s.project_id == canonical_event.project_id]
-        if not sites:
-            return None
-        if len(sites) == 1:
-            canonical_event.site_id = sites[0].id
-            return None
-        await pending_report_store.set_pending(user_id=actor_user_id, event=canonical_event)
-        return render_site_picker(
-            [(s.id, s.name) for s in sites], allow_combined=allow_combined
-        )
-    except Exception:
-        _log.exception(
-            "site_selection_gate.failed correlation_id=%s", canonical_event.correlation_id
-        )
-        return None
 
 
-async def _run_stock_gate(
-    canonical_event: CanonicalEventV2,
-    *,
-    pending_report_store: PendingReportStore,
-    actor_user_id: str,
-    org_settings_query: OrganizationSettingsQueryService | None = None,
-) -> ReplySpec | None:
-    """Block a usage report whose quantity exceeds what's in stock, instead
-    of the old cosmetic-only warning (workflows/material/nodes.py's
-    _low_stock_warning showed "Only X in stock" on the confirmation prompt
-    but a Yes tap still saved the full over-limit quantity, driving stock
-    negative -- the real-world bug this fixes).
-
-    Must run after _inject_inventory_context has populated available_stock
-    on the event's fields, and after every other gate (material/unit/
-    project/site) has already resolved -- mirrors their "hold + ask" shape,
-    offering three explicit choices (cap at available / this was actually an
-    arrival / cancel) rather than guessing which one the user meant. Returns
-    None when there's nothing to check (not a usage report, not yet
-    actionable, or no stock figure available to compare against) or when the
-    requested quantity is within stock.
-
-    WA-03: a company that saves first (the default) is not asked: the usage
-    is saved as a draft, flagged on the DPR (BE-12) and the saved reply says
-    so. `org_settings_query` None counts as the default.
-    """
-    if canonical_event.event_type is not CanonicalEventType.MATERIAL_USAGE_REQUESTED:
-        return None
-    if canonical_event.completeness is not _IntentCompleteness.ACTIONABLE:
-        return None
-    available = canonical_event.fields.get("available_stock")
-    if available is None:
-        return None
-    try:
-        requested = float(canonical_event.fields.get("quantity"))
-        available = float(available)
-    except (TypeError, ValueError):
-        return None
-    if requested <= available:
-        return None
-    if await company_saves_first(org_settings_query, canonical_event.organization_id):
-        return None
-
-    await pending_report_store.set_pending(user_id=actor_user_id, event=canonical_event)
-    return render_usage_exceeds_stock_reply(
-        material_name=str(canonical_event.fields.get("material_name") or "this material"),
-        unit=str(canonical_event.fields.get("unit") or ""),
-        requested=requested,
-        available=available,
-    )
 
 
 async def _inject_inventory_context(
@@ -726,36 +209,6 @@ async def _seed_account_candidates(
         event.fields["created_by_role"] = actor.role
 
 
-async def _seed_petty_cash_recipient(
-    event: CanonicalEventV2,
-    decision: PlannerDecisionV2,
-    petty_cash_query: PettyCashRecipientQueryService | None,
-    actor: ActorIdentity | None,
-) -> None:
-    """Resolve `recipient_name` (e.g. "Alan") into their employee-advance
-    money account, auto-created on first issuance -- Finance Module Slice 5.
-    A node must never query a repository itself, so this is the seeding
-    point, same principle as _seed_account_candidates above. Only ever runs
-    for PETTY_CASH; an unresolved recipient (no matching active user) simply
-    leaves `recipient_account_id` unset -- workflows/petty_cash/nodes.py's
-    build_draft then produces a draft missing that leg of the transfer,
-    which the existing transfer_validation.py rejects rather than this
-    seeding step guessing who was meant."""
-    if petty_cash_query is None or actor is None or not actor.organization_id:
-        return
-    if decision.workflow_key is not WorkflowKey.PETTY_CASH:
-        return
-    recipient_name = event.fields.get("recipient_name")
-    if not recipient_name:
-        return
-    account = await petty_cash_query.resolve_or_create_advance_account(
-        organization_id=actor.organization_id,
-        recipient_name=str(recipient_name),
-        created_by=actor.user_id,
-    )
-    if account is not None:
-        event.fields["recipient_account_id"] = str(account.id)
-        event.fields["recipient_account_name"] = account.name
 
 
 def _apply_transfer_target(event: CanonicalEventV2, target: ReversalTransferTarget) -> None:
@@ -931,58 +384,8 @@ _CLOSE_TARGET_STATUSES: dict[str, tuple[str, ...]] = {
 }
 
 
-async def _seed_site_issue_close_target(
-    event: CanonicalEventV2,
-    decision: PlannerDecisionV2,
-    site_issue_query: SiteIssueTargetQueryService | None,
-    actor: ActorIdentity | None,
-) -> None:
-    """Resolve "my last reported issue" into a concrete site_issue_id --
-    same "most recent record of a kind" pattern as _seed_reversal_target
-    above, with `action` playing the role target_kind plays there: it picks
-    both which statuses are eligible (_CLOSE_TARGET_STATUSES) and, for
-    `reopen`, what "most recent" even means. Only ever runs for
-    SITE_ISSUE_CLOSE; finding nothing simply leaves site_issue_id unset --
-    workflows/site_issue_close/nodes.py's build_draft then completes with a
-    "nothing to close" reply instead of a draft (see that module's
-    docstring and `WorkflowDefinition.allows_completion_without_draft` in
-    workflows/registry.py)."""
-    if site_issue_query is None or actor is None or not actor.organization_id:
-        return
-    if decision.workflow_key is not WorkflowKey.SITE_ISSUE_CLOSE:
-        return
-
-    action = str(event.fields.get("action", "")).strip().lower()
-    statuses = _CLOSE_TARGET_STATUSES.get(action, _LIVE_STATUSES)
-    target = await site_issue_query.find_latest(
-        organization_id=actor.organization_id,
-        project_id=event.project_id,
-        site_id=event.site_id,
-        statuses=statuses,
-        # "Reopen that" means the issue most recently closed, not the one
-        # most recently reported -- see find_latest_by_status.
-        by_transition_time=action == "reopen",
-    )
-    if target is None:
-        return
-    event.fields["site_issue_id"] = target["site_issue_id"]
-    event.fields["site_issue_type"] = target["issue_type"]
-    event.fields["site_issue_severity"] = target["severity"]
-    event.fields["site_issue_narrative"] = target["narrative"]
 
 
-def _seed_account_admin_role(event: CanonicalEventV2, decision: PlannerDecisionV2, actor: ActorIdentity | None) -> None:
-    """Feed the sender's role into the draft the same way
-    _seed_account_candidates does for TRANSFER/PETTY_CASH -- defense-in-depth
-    for application/finance/validation.py's role check. Not the primary
-    gate: _account_admin_role_denied_reply (called before workflow_runtime.
-    start(), see process_inbound_message) already refuses a disallowed role
-    before a draft is ever built, so this only matters if that earlier gate
-    is ever bypassed. Only ever runs for ACCOUNT_ADMIN. No I/O -- actor.role
-    is already resolved, same as _seed_account_candidates's created_by_role."""
-    if actor is None or decision.workflow_key is not WorkflowKey.ACCOUNT_ADMIN:
-        return
-    event.fields["created_by_role"] = actor.role
 
 
 def _seed_project_create_role(
@@ -1007,19 +410,6 @@ def _seed_project_create_role(
     event.fields["created_by_role"] = actor.role
 
 
-def _seed_automation_setup_role(
-    event: CanonicalEventV2, decision: PlannerDecisionV2, actor: ActorIdentity | None
-) -> None:
-    """Feed the sender's role into the draft, same reasoning as
-    _seed_project_create_role -- defense-in-depth for
-    application/automations/create_validation.py's role check (an
-    automation targeting anyone other than SELF requires ADMIN/
-    PROJECT_MANAGER). Not the primary gate: the audience-aware role check
-    in process.py (before workflow_runtime.start()) already refuses a
-    disallowed role before a draft is ever built for a non-SELF audience."""
-    if actor is None or decision.workflow_key is not WorkflowKey.AUTOMATION_SETUP:
-        return
-    event.fields["created_by_role"] = actor.role
 
 
 async def _seed_labour_query(
@@ -2169,52 +1559,6 @@ async def _seed_open_activity(
             event.fields[UNCLEAR_TARGET_IS_NEW_KEY] = True
 
 
-async def _seed_correction_target(
-    event: CanonicalEventV2,
-    decision: PlannerDecisionV2,
-    activity_query: ActivityQueryService | None,
-    actor: ActorIdentity | None,
-    *,
-    remembered_activity_id: str | None = None,
-) -> None:
-    """Resolve "make that 180 sqm" into a concrete progress_update_id
-    (ADR-D14, docs/execution/ACTIVITY_RESOLUTION_AND_CORRECTION_PLAN.md).
-    Only ever runs for WorkflowKey.ACTIVITY_CORRECTION.
-
-    Deliberately scoped to the Activity THIS conversation just touched
-    (memory/conversation_scope.py's CurrentActivityStore) only -- same
-    same-session reasoning as undo (ADR-D15) and continuation
-    (_seed_open_activity above), not a broader "most recent in the org"
-    search: correcting a number makes sense only in reference to a number
-    just stated in this same exchange. No remembered activity -> nothing
-    seeded -> workflows/activity_correction/nodes.py's build_draft
-    completes with an honest "nothing to correct" reply and no draft.
-
-    Within that activity, targets its most recent quantity-bearing Progress
-    Update (`ActivityQueryService.get_latest_quantity_update`) -- never the
-    Activity's own initial quantity (stored in activity_quantities, a
-    different table this correction path does not touch; see that
-    method's docstring on why that's out of scope for V1)."""
-    if activity_query is None or actor is None or not actor.organization_id:
-        return
-    if decision.workflow_key is not WorkflowKey.ACTIVITY_CORRECTION:
-        return
-    if not remembered_activity_id:
-        return
-
-    target = await activity_query.get_latest_quantity_update(
-        organization_id=actor.organization_id, activity_id=remembered_activity_id
-    )
-    if target is None:
-        return
-
-    event.fields["progress_update_id"] = target["progress_update_id"]
-    event.fields["old_quantity"] = str(target["quantity"])
-    event.fields["old_unit_id"] = target.get("unit_id")
-    event.fields["old_unit"] = target.get("unit")
-    summary_bits = [b for b in (target.get("work_type"), target.get("narrative")) if b]
-    if summary_bits:
-        event.fields["correction_activity_summary"] = " — ".join(summary_bits)
 
 
 def _within_own_projects(expenses: list[Any], actor: ActorIdentity) -> list[Any]:
