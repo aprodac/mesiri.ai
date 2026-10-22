@@ -102,12 +102,17 @@ def summarise_draft(draft: DraftActionV2 | Any) -> str | None:
     action = getattr(draft, "action_type", None)
     if action is DraftActionType.RECORD_LABOUR_ATTENDANCE:
         return _labour(fields)
-    if action is DraftActionType.CREATE_ACTIVITY:
-        return _activity(fields)
-    if action is DraftActionType.ADD_PROGRESS_UPDATE:
+    if action in (DraftActionType.CREATE_ACTIVITY, DraftActionType.ADD_PROGRESS_UPDATE):
+        # A new activity says "(completed)" / "(started)" like a progress
+        # update does (22 Oct: "3rd floor slab concreting finished" showed
+        # as "Slab concreting"). A stated 100% is the same as completed.
         line = _activity(fields)
         kind = _title(fields.get("update_kind")).lower()
-        if line and not _text(fields.get("progress_percent")) and kind and kind != "progress":
+        pct = _text(fields.get("progress_percent"))
+        if line and pct in ("100", "100.0") and kind == "completed":
+            line = line.removesuffix(f": {pct}%")
+            return f"{line} (completed)"
+        if line and not pct and kind and kind != "progress":
             return f"{line} ({kind})"
         return line
     if action in (DraftActionType.RECORD_MATERIAL_RECEIPT, DraftActionType.RECORD_MATERIAL_USAGE):

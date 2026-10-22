@@ -58,7 +58,7 @@ async def test_recorded_lines_the_model_wrote_are_dropped_before_save():
     before the Save tap; WA-37 drops them instead of listing them."""
     provider = FakeToolCallingProvider(
         [
-            [("save_labour", {"workers": WORKERS}), ("save_material_usage", {})],
+            [("save_labour", {"workers": WORKERS}), ("save_material_usage", {"material": "cement", "quantity": 5, "unit": "bag"})],
             "Recorded 12 masons present today.\nRecorded 5 bags of cement used for slab work today."
             "\nCheck it and tap Save.",
         ]
@@ -226,7 +226,7 @@ def test_the_rules_are_in_the_system_prompt(needle):
 async def test_a_note_that_only_saves_still_gets_the_models_words_over_the_saved_line():
     provider = FakeToolCallingProvider(
         [
-            [("save_labour", {"workers": WORKERS}), ("save_material_usage", {})],
+            [("save_labour", {"workers": WORKERS}), ("save_material_usage", {"material": "cement", "quantity": 5, "unit": "bag"})],
             "Sheri, 3 mason and 5 bag cement. Check and tap Save.",
         ]
     )
@@ -274,7 +274,7 @@ def test_figures_must_come_from_the_message_or_the_records(reply, unbacked):
 async def test_a_made_up_figure_drops_the_models_words_but_keeps_the_saved_line():
     provider = FakeToolCallingProvider(
         [[("save_material_usage", {"material": "cement", "quantity": 20, "unit": "bags"})],
-         "Done, stock ippo 160 bag."]
+         "20 bag cement use cheythu, stock ippo 160 bag."]
     )
     result = await _run(
         provider,

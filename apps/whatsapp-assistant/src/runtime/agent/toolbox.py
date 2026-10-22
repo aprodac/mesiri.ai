@@ -24,11 +24,14 @@ from .gateway import StepResult, WorkflowGateway
 from .tools import (
     ASK_USER,
     NOTE_FOR_ENGINEER,
+    REQUEST_DPR,
+    SAVE_WORK_DONE,
     SET_UNIT_CONVERSION,
     SET_WORK_SITE,
     UNDO_LAST,
     WRITE_TOOLS,
     ScopeLookup,
+    check_work_done,
     to_candidate,
 )
 
@@ -190,6 +193,8 @@ class AgentToolbox:
                     ),
                 }
             )
+        if name == SAVE_WORK_DONE and (invalid := check_work_done(args)):
+            return ToolOutcome(content={"status": "error", "message": invalid})
         signature = f"{name}:{json.dumps(args, sort_keys=True, default=str)}"
         if signature in self._seen and name in WRITE_TOOLS:
             return ToolOutcome(
@@ -336,7 +341,19 @@ class AgentToolbox:
             )
         if step.status == "answer":
             self.answers.append(step.text)
-            return ToolOutcome(content={"status": "answer", "text": step.text})
+            content = {"status": "answer", "text": step.text}
+            pending = [item.summary for item in self.saved if item.summary]
+            if name == REQUEST_DPR and pending:
+                # Mixed message (save + "send the report"): the entries of this
+                # message wait on the Save tap, so the draft above does not hold
+                # them yet; the card under the reply already lists them.
+                content["waiting_for_save"] = pending
+                content["instruction"] = (
+                    "Say in ONE line what the draft holds so far, from 'text' (its figures exactly). "
+                    "The entries in waiting_for_save are on the card under your message and are added "
+                    "to the report when the user taps Save: say that, but do not list them again."
+                )
+            return ToolOutcome(content=content)
         if step.status == "error":
             self.failed += 1
         if step.text and step.text not in self.notes:

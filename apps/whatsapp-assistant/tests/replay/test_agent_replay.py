@@ -347,13 +347,13 @@ async def test_a_malayalam_note_gets_the_saved_list_then_the_models_own_words(wo
     provider = FakeToolCallingProvider(
         [
             [("save_labour", {"workers": [{"trade": "mason", "headcount": 3}]})],
-            "✅ 3 മേസൺമാരുടെ ഹാജർ സേവ് ചെയ്തു.\nനാളെ കാണാം.",
+            "✅ 3 മേസൺമാരുടെ ഹാജർ സേവ് ചെയ്തു.\n3 മേസൺ വന്നു, ശരി. നാളെ കാണാം.",
         ]
     )
     result = await world.say(provider, "ഇന്ന് 3 മേസൺ പണിക്ക് വന്നു")
     # WA-37: the model's own words first; under them the "Saved:" line, written
     # from the saved data, not copied from the model.
-    assert result.reply.text.startswith("നാളെ കാണാം.\n\n✅ Saved: 3 workers (3 mason)")
+    assert result.reply.text.startswith("3 മേസൺ വന്നു, ശരി. നാളെ കാണാം.\n\n✅ Saved: 3 workers (3 mason)")
     assert "സേവ് ചെയ്തു" not in result.reply.text  # the model's own saved line is dropped
     # The canned workflow wording ("Labour recorded", "draft", ...) never reaches the user.
     assert "draft" not in result.reply.text.lower()
@@ -526,7 +526,7 @@ async def test_a_question_in_a_note_is_noted_for_the_engineer_and_the_reply_says
                 ("save_labour", {"workers": [{"trade": "mason", "headcount": 6}, {"trade": "helper", "headcount": 10}]}),
                 ("note_for_engineer", {"question": "Nale slab concrete cheyyan pattumo?"}),
             ],
-            "Nale slab concrete cheyyan pattumo?",  # the model only echoes it
+            "Sheri, 6 mason 10 helper.\nNale slab concrete cheyyan pattumo?",  # it also echoes the question
         ]
     )
     # Passed on only because they asked for their engineer (Ilan, 21 Oct).
@@ -537,6 +537,7 @@ async def test_a_question_in_a_note_is_noted_for_the_engineer_and_the_reply_says
     # WA-37: the labour is the one entry to check; the question is passed on,
     # said once on its own line, never listed as saved.
     assert result.reply.text == (
+        "Sheri, 6 mason 10 helper.\n\n"
         "✅ Saved: 16 workers (6 mason, 10 helper)\n\n"
         "📨 Question for your engineer: Nale slab concrete cheyyan pattumo?\n\n"
         "Wrong? Reply UNDO."

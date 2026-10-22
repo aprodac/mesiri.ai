@@ -1,0 +1,17 @@
+# Request [84] (22 Oct): the live messages of Test Builders, with the tool calls a good model makes,
+# the sentence it writes from them, and the card lines the system renders from the saved data.
+# One JSON object per line (valid YAML flow mapping, parsed without a YAML dependency).
+#
+#   message   what the site sends
+#   calls     the tool calls a good model makes (CI scripts these, so the save code and card are real)
+#   sentence  the model's one sentence above the card (CI scripts it; it must speak of every saved item)
+#   card      lines the card must show, each exactly once
+#   report    true: the reply also carries ONE report line (from request_dpr) and the card is not listed twice
+#
+# The live run (pytest -m live) sends `message` to the real model instead of `calls`/`sentence`.
+
+- {"id": 1, "lang": "en", "message": "3rd floor slab concreting finished, 2nd floor plastering 70%", "calls": [["save_work_done", {"narrative": "3rd floor slab concreting finished", "work_type": "slab concreting", "location": "3rd floor", "update_kind": "completed"}], ["save_work_done", {"narrative": "2nd floor plastering 70%", "work_type": "plastering", "location": "2nd floor", "update_kind": "progress", "progress_percent": 70}]], "sentence": "3rd floor slab concreting finished and 2nd floor plastering at 70%, right? Please check and tap Save.", "card": ["• Slab concreting, 3rd floor (completed)", "• Plastering, 2nd floor: 70%"]}
+- {"id": 2, "lang": "manglish", "message": "6 mason vannu, 25 bag cement use cheythu, nale steel venam. innathe report ayakku", "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 6}]}], ["save_material_usage", {"material": "cement", "quantity": 25, "unit": "bag"}], ["report_issue", {"issue_type": "MATERIAL_SHORTAGE", "narrative": "nale steel venam"}], ["request_dpr", {}]], "sentence": "6 mason, cement 25 bag use cheythu, nale steel venam ennum manassilayi. Save tap cheyyu.", "card": ["• 6 workers (6 mason)", "• Cement used: 25 bag", "• Issue (material shortage)"], "report": true}
+- {"id": 3, "lang": "manglish", "message": "innu 5 mason, 8 helper, 2 electrician vannu", "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 5}, {"trade": "helper", "headcount": 8}, {"trade": "electrician", "headcount": 2}]}]], "sentence": "Innu 5 mason, 8 helper, pinne 2 electrician um vannu. Check cheythu Save tap cheyyu.", "card": ["15 workers (5 mason, 8 helper, 2 electrician)"]}
+- {"id": 4, "lang": "manglish", "message": "mixer machine kedayi, pani nirthi", "calls": [["report_issue", {"issue_type": "EQUIPMENT_BREAKDOWN", "narrative": "mixer machine kedayi, pani nirthi"}]], "sentence": "Mixer machine kedayi, pani nirthi ennu manassilayi. Save tap cheyyu.", "card": ["Issue (equipment breakdown)"]}
+- {"id": 5, "lang": "en", "message": "2nd floor plastering finished", "calls": [["save_work_done", {"narrative": "2nd floor plastering finished", "work_type": "plastering", "location": "2nd floor", "update_kind": "completed"}]], "sentence": "2nd floor plastering finished, right? Please check and tap Save.", "card": ["Plastering, 2nd floor (completed)"]}

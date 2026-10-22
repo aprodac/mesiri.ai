@@ -189,7 +189,14 @@ def tool_specs() -> list[ToolSpec]:
                             }
                         ),
                     },
-                    "location": {"type": "string", "description": "Place on site, if stated."},
+                    "location": {
+                        "type": "string",
+                        "description": (
+                            "The floor, block or part of the building the work is on, as said "
+                            "('2nd floor', '3rd floor slab', 'ground floor', 'block B'). Always "
+                            "fill it when the message names one; never leave it inside work_type."
+                        ),
+                    },
                     "continues": {
                         "type": "string",
                         "description": (
@@ -201,9 +208,10 @@ def tool_specs() -> list[ToolSpec]:
                     "progress_percent": {
                         "type": "number",
                         "description": (
-                            "How much of this work is done, when the message gives a "
+                            "How much of this work is done, 0-100, when the message gives a "
                             "percentage ('40% aayi', '40 percent done' -> 40). Omit otherwise. "
-                            "A percentage below 100 is never update_kind 'completed'."
+                            "A percentage below 100 is never update_kind 'completed'; "
+                            "'completed' needs 100 or no percentage."
                         ),
                     },
                     "update_kind": {
@@ -212,6 +220,7 @@ def tool_specs() -> list[ToolSpec]:
                         "description": (
                             "'completed' when the work is said to be finished (done, finished, "
                             "theernnu, kazhinju, ho gaya), unless a percentage below 100 is given; "
+                            "'progress' when it is still going (a percentage, 'in progress'); "
                             "'started' when it began (thudangi, shuru). Omit if genuinely unclear."
                         ),
                     },
@@ -607,6 +616,23 @@ class ScopeLookup:
     def site_id(self, name: str, project_id: str | None = None) -> str | None:
         rows = [(sid, sname) for sid, sname, pid in self.sites if project_id in (None, pid)]
         return self._match(rows, name)
+
+
+def check_work_done(args: dict[str, Any]) -> str | None:
+    """Why a save_work_done call cannot be saved as given, or None. The model
+    is told the reason and calls again; nothing is saved from a bad call.
+    "Completed" with a percentage below 100 is not rejected: the save code's
+    own rule (canonicalization/progress.py) makes it a progress update."""
+    raw = args.get("progress_percent")
+    if raw is None or raw == "":
+        return None
+    try:
+        percent = float(str(raw).strip().rstrip("%"))
+    except ValueError:
+        return "progress_percent must be a number from 0 to 100."
+    if isinstance(raw, bool) or not 0 <= percent <= 100:
+        return "progress_percent must be a number from 0 to 100."
+    return None
 
 
 def _clean(fields: dict[str, Any]) -> dict[str, Any]:

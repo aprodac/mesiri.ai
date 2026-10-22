@@ -27,7 +27,15 @@ from mesiri_ai.models import ChatMessage, ToolOutcome, ToolRunResult
 from mesiri_ai.ports.tool_calling import ToolCallingProvider
 
 from .gateway import WorkflowGateway
-from .prompt import SYSTEM_PROMPT, AgentContext, build_messages, is_manglish, letters_of
+from .prompt import (
+    SYSTEM_PROMPT,
+    AgentContext,
+    build_messages,
+    is_manglish,
+    letters_of,
+    reply_letters_rule,
+)
+from .sentence import fallback_line, items_of, missing_items, retry_request
 from .toolbox import AgentToolbox, SavedItem, asks_for_engineer
 from .tools import ScopeLookup, tool_specs
 
@@ -115,6 +123,7 @@ class AgentRunner:
             )
         await toolbox.settle()
         run = await self._in_manglish(run, messages, user_text, correlation_id)
+        run = await self._covering_items(run, messages, user_text, toolbox, correlation_id)
         _park_plain_question(run, toolbox)
         # WA-37: every figure the model writes must come from what it was
         # given (the message, the facts in its prompt, a tool result) or from
@@ -160,6 +169,52 @@ class AgentRunner:
         if not is_manglish(again.text or ""):
             return run
         return run.model_copy(update={"text": again.text})
+
+    async def _covering_items(
+        self,
+        run: ToolRunResult,
+        messages: list[ChatMessage],
+        user_text: str,
+        toolbox: AgentToolbox,
+        correlation_id: str | None,
+    ) -> ToolRunResult:
+        """The sentence above the card speaks of every saved item (22 Oct: the
+        electricians were left out). Checked against the tool calls' own
+        arguments; one more try with the reason, no tools; then a short line
+        built from those arguments. Nothing is run or saved again."""
+        items = items_of(run.calls)
+        # The words that go out: a "Saved:" list the model wrote is dropped later.
+        text = _without_saved_block((run.text or "").strip())
+        # No words at all is the old fallback's case (the pipeline's own lines).
+        if not items or not text or toolbox.parked is not None or run.stop_reason == "max_steps":
+            return run
+        missing = missing_items(text, items)
+        if not missing:
+            return run
+        _log.info(
+            "agent.sentence_missing correlation_id=%s items=%s", correlation_id, [i.label for i in missing]
+        )
+        ask = retry_request(missing)
+        rule = reply_letters_rule(user_text)
+        if rule:
+            ask = f"{ask} [{rule}]"
+        try:
+            again = await self._provider.run_tools(
+                SYSTEM_PROMPT,
+                [*messages, ChatMessage(role="model", text=text), ChatMessage(role="user", text=ask)],
+                [],
+                _no_tools,
+                max_steps=1,
+                timeout_seconds=MANGLISH_TIMEOUT_SECONDS,
+                correlation_id=correlation_id,
+            )
+            retried = (again.text or "").strip()
+        except Exception:  # noqa: BLE001 -- the code line below stands in
+            _log.warning("agent.sentence_retry_failed correlation_id=%s", correlation_id)
+            retried = ""
+        if retried and not missing_items(retried, items):
+            return run.model_copy(update={"text": retried})
+        return run.model_copy(update={"text": fallback_line(items, user_text)})
 
     # -- the one reply -----------------------------------------------------
 
