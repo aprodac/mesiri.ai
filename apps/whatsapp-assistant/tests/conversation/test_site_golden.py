@@ -121,6 +121,8 @@ async def test_live_model_on_the_site_golden_set():
         print(f"{'PASS' if why is None else 'FAIL'} #{case['id']} {case['message']!r} ({times[-1]:.1f}s) {why or ''}")
         if why is not None:
             failures.append(case["id"])
+            calls = [(c.name, c.outcome.content.get("status"), str(c.outcome.content.get("text") or "")[:160]) for c in (result.run.calls if result.run else [])]
+            print(f"    reply={(result.reply.text if result.reply else '')[:200]!r} calls={calls}")
     accuracy = 1 - len(failures) / len(CASES)
     print(f"ACCURACY {accuracy:.0%} ({len(CASES) - len(failures)}/{len(CASES)}) p50 {statistics.median(times):.1f}s")
     assert not failures, f"failed cases: {failures}"
