@@ -349,6 +349,7 @@ From `823719e` the site set has 24 cases (6 labour).
 |---|---|---|---|
 | `823719e` | ARCH-03 labour direct | 23/24 (#19 a Gemini timeout), labour 5/5 answered | 23/24 |
 | `ac43bee` | ARCH-06 step 2: lookups etc. direct | 22/24 (labour 6/6; #8 Malayalam script in a Manglish reply, #16 question as plain text), p50 1.4 s | 23/24 (stock questions 4/4), p50 1.4 s |
+| `275849d` | ARCH-06 step 3: classic pipeline deleted | **24/24**, p50 1.3 s | **24/24**, p50 1.1 s |
 
 Left on materials (ARCH-01, live since 21 Oct), neither saves anything wrong: "50 bags cement
 arrived" sometimes still gets one "Received or used?" tap (2 of the last 4 runs), and "cement
