@@ -2736,6 +2736,26 @@ def build_message_handlers(
                 today = await work_site.today(actor)
                 return site_label(actor, today[1]) if today else None
 
+            async def _open_work_line(actor):  # type: ignore[no-untyped-def]
+                """The open activities at today's site (or their only site)."""
+                from runtime.today_context import render_open_work_line
+
+                today = await work_site.today(actor) if work_site is not None else None
+                sites = list(getattr(actor, "sites", None) or [])
+                site_id = today[1] if today else (str(sites[0].id) if len(sites) == 1 else None)
+                if site_id is None:
+                    return None
+                rows = await asyncio.wait_for(
+                    activity_query.find_open_activities(
+                        organization_id=str(actor.organization_id),
+                        site_id=str(site_id),
+                        reported_by_user_id=str(actor.user_id),
+                        limit=6,
+                    ),
+                    timeout=0.5,
+                )
+                return render_open_work_line(site_label(actor, site_id), rows)
+
             def _gateway(msg, language):  # type: ignore[no-untyped-def]
                 early["gateway"] = JourneyGateway(
                     message=msg,
@@ -2807,6 +2827,7 @@ def build_message_handlers(
                 ),
                 stock_line=lambda actor: build_stock_line(inventory_query, actor),
                 work_site_line=_work_site_line if work_site is not None else None,
+                open_work_line=_open_work_line if activity_query is not None else None,
                 on_conversational=lambda: _conversational.add(message.correlation_id),
                 trace_logger=trace_logger,
             )

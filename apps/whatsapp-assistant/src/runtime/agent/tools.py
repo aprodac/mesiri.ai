@@ -172,6 +172,14 @@ def tool_specs() -> list[ToolSpec]:
                         ),
                     },
                     "location": {"type": "string", "description": "Place on site, if stated."},
+                    "continues": {
+                        "type": "string",
+                        "description": (
+                            "When this continues or finishes work listed under 'Open work', its name "
+                            "exactly as listed ('plastering finished' after 'started plastering'). "
+                            "Omit for new work."
+                        ),
+                    },
                     "progress_percent": {
                         "type": "number",
                         "description": (
@@ -560,6 +568,7 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             "location": args.get("location"),
             "update_kind": args.get("update_kind"),
             "progress_percent": args.get("progress_percent"),
+            "continues": args.get("continues"),
             "occurred_on": date,
             **sc,
         }

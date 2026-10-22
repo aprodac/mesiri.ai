@@ -85,6 +85,7 @@ class SiteEntry(EntryScope):
 
         for key in SCOPE_KEYS:
             fields.pop(key, None)
+        continues = str(fields.pop("continues", "") or "").strip()
         metadata = getattr(message, "metadata", None) or {}
         if metadata.get("forwarded"):
             fields["is_forwarded"] = True
@@ -107,6 +108,8 @@ class SiteEntry(EntryScope):
 
         ready = self.ready(scoped, message, event_type, workflow_key, fields)
         await self._seed(ready, message)
+        if continues and workflow_key is WorkflowKey.SITE_UPDATE:
+            _continue(ready.event.fields, continues, message)
         return ready
 
     async def _seed(self, ready: Ready, message: Any) -> None:
@@ -135,3 +138,34 @@ class SiteEntry(EntryScope):
                 await seed
             except Exception:  # noqa: BLE001 -- the graph asks without it, as the pipeline did on a failure
                 _log.warning("site_entry.seed_failed correlation_id=%s", message.correlation_id, exc_info=True)
+
+
+def _continue(fields: dict[str, Any], continues: str, message: Any) -> None:
+    """The model said which open activity this continues (it sees them in its
+    context, and the conversation): when that is one of the seeded open
+    activities, the update goes to it -- not a second activity for the same
+    work, which the classic guess made whenever it was unsure (save-first
+    treats an unclear match as new). Anything that matches none of them is
+    left to that guess, as before."""
+    from runtime.today_context import open_work_label
+    from workflows.site_update.nodes import _apply_match
+
+    candidates = fields.get("_open_activity_candidates") or []
+    said = " ".join(continues.casefold().split())
+    hits = [c for c in candidates if " ".join(open_work_label(c).casefold().split()) == said]
+    if not hits:
+        # A name given loosely ("plastering"): its work type, when only one
+        # open activity has it.
+        hits = [c for c in candidates if said and said == " ".join(str(c.get("work_type") or "").replace("_", " ").casefold().split())]
+    if len(hits) != 1:
+        _log.info(
+            "site_entry.continues_unmatched correlation_id=%s candidates=%s",
+            message.correlation_id,
+            len(candidates),
+        )
+        return
+    hit = hits[0]
+    fields.update(
+        _apply_match(fields, activity_id=hit["activity_id"], work_type=hit.get("work_type"), narrative=hit.get("narrative"))
+    )
+    fields.pop("_open_activity_candidates", None)

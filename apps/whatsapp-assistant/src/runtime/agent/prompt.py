@@ -125,6 +125,8 @@ class AgentContext:
     stock_line: str | None = None
     #: WA-45: where they work today ("Site B (Project B)"); None when not set.
     work_site: str | None = None
+    #: Their open activities ("Open work at Site A1: Plastering (2nd floor); ..."); None when none.
+    open_work_line: str | None = None
 
 
 def render_context(ctx: AgentContext) -> str:
@@ -164,6 +166,8 @@ def render_context(ctx: AgentContext) -> str:
         lines.append(ctx.today_line)
     if ctx.stock_line:
         lines.append(ctx.stock_line)
+    if ctx.open_work_line:
+        lines.append(ctx.open_work_line)
     lines.extend(ctx.notes)
     return "\n".join(lines)
 

@@ -129,3 +129,31 @@ async def build_stock_line(
         logger.debug("stock_context.skipped", exc_info=True)
         return None
     return render_stock_line(getattr(site, "name", None), levels)
+
+
+#: At most this many open activities in the open-work line.
+_MAX_OPEN = 6
+
+
+def open_work_label(row: dict[str, Any]) -> str:
+    """How an open activity is named to the model, and matched back from its
+    save_work_done ``continues``: "Plastering (2nd floor plastering)"."""
+    work = str(row.get("work_type") or "").replace("_", " ").strip().capitalize()
+    narrative = " ".join(str(row.get("narrative") or "").split())[:60]
+    if work and narrative and narrative.casefold() != work.casefold():
+        return f"{work} ({narrative})"
+    return work or narrative or "Work"
+
+
+def render_open_work_line(site: str | None, rows: list[dict[str, Any]] | None) -> str | None:
+    """The sender's open activities, so a "finished" or a new quantity can
+    name the one it continues (save_work_done's ``continues``)."""
+    labels = [open_work_label(r) for r in (rows or [])[:_MAX_OPEN]]
+    if not labels:
+        return None
+    where = f" at {site}" if site else ""
+    return (
+        f"Open work{where} (started, not finished): " + "; ".join(labels) + ". When a message "
+        "continues or finishes one of these, call save_work_done with continues set to its name "
+        "exactly as written here; leave continues out for new work."
+    )

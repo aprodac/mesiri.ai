@@ -234,3 +234,52 @@ async def test_todays_site_does_not_override_a_reply_to_another_record():
     entry.active_context = _Today(PRJ, SITE)
     ready = await _prepare(entry, SemanticType.SITE_ISSUE, issue_type="WEATHER")
     assert str(ready.event.project_id) == other
+
+
+class _OpenWork:
+    """Two open plastering activities on the site, as find_open_activities."""
+
+    ROWS = [
+        {"activity_id": "a1", "work_type": "plastering", "narrative": "2nd floor plastering"},
+        {"activity_id": "a2", "work_type": "plastering", "narrative": "3rd floor plastering"},
+    ]
+
+    async def find_open_activities(self, **kwargs: Any) -> list[dict]:
+        return self.ROWS
+
+
+async def test_the_open_work_the_model_names_gets_the_update_not_a_new_activity():
+    """User, 22 Oct: "plastering finished" after "started plastering" could
+    make a second activity when the code's guess was unsure. The model sees
+    the open work and names the one it continues."""
+    from runtime.today_context import open_work_label
+
+    entry = _entry(activity_query=_OpenWork())
+    entry.actor.organization_id = ORG
+    label = open_work_label(_OpenWork.ROWS[1])
+    assert label == "Plastering (3rd floor plastering)"
+    ready = await _prepare(
+        entry, SemanticType.GENERAL_SITE_UPDATE, narrative="plastering finished", work_type="plastering",
+        update_kind="completed", continues=label,
+    )
+    fields = ready.event.fields
+    assert fields["activity_id"] == "a2" and fields["_target_resolved"] is True
+    assert "_open_activity_candidates" not in fields and "continues" not in fields
+
+
+async def test_a_name_that_fits_several_or_none_is_left_to_the_usual_matching():
+    entry = _entry(activity_query=_OpenWork())
+    entry.actor.organization_id = ORG
+    for said in ("plastering", "brickwork"):
+        ready = await _prepare(entry, SemanticType.GENERAL_SITE_UPDATE, narrative="done", continues=said)
+        assert "activity_id" not in ready.event.fields
+        assert len(ready.event.fields["_open_activity_candidates"]) == 2
+
+
+def test_the_open_work_line_names_each_activity_once():
+    from runtime.today_context import render_open_work_line
+
+    line = render_open_work_line("Tower A (Hospital Project)", _OpenWork.ROWS)
+    assert line.startswith("Open work at Tower A (Hospital Project) (started, not finished): ")
+    assert "Plastering (2nd floor plastering); Plastering (3rd floor plastering)." in line
+    assert render_open_work_line("Tower A", []) is None
