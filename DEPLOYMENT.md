@@ -272,6 +272,26 @@ the running build is the commit just deployed, photos go to real storage, the
 WhatsApp webhook verification handshake succeeds, and the queue worker is
 alive. It reads only, and sends no WhatsApp message.
 
+### Uptime monitor and error alerts (INF-07, INF-08)
+
+**Uptime** — `.github/workflows/uptime.yml` runs `infra/deploy/uptime_check.sh`
+from GitHub every 10 minutes: the API (`/health`), the WhatsApp worker
+(`/health` → `"worker": "alive" | "down" | "off"`), the dashboard and the
+control panel. A check counts as down only after 3 tries, 20 s apart. It posts
+to the team WhatsApp group (and `NOTIFY_WEBHOOK_URL`, if set) when Mesiri goes
+down, about hourly while it stays down, and when it is back. A run that finds
+it down fails, so GitHub's failed-workflow email arrives even if the whole VPS
+(and the teammate listener that posts to WhatsApp) is gone. Run it by hand:
+Actions → Uptime → Run workflow, or `infra/deploy/uptime_check.sh` anywhere.
+
+**Errors** — the app and the worker send unhandled exceptions and
+`logger.error` lines to Sentry when `SENTRY_DSN` is set in `/opt/mesiri/.env`
+(off without it). To switch on: create a free Sentry project (platform
+Python → FastAPI), copy its DSN into `/opt/mesiri/.env` as `SENTRY_DSN=...`,
+then `systemctl restart mesiri mesiri-worker`. Set Sentry's alert rule to
+"a new issue is created" → email / Sentry mobile app. Request bodies, local
+variables, IPs and phone numbers are kept out (`runtime/error_reporting.py`).
+
 ---
 
 ## Manual emergency deploy

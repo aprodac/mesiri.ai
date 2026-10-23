@@ -48,6 +48,7 @@ infra = [
     "PyJWT>=2.8",
     "bcrypt>=4.0",
     "passlib>=1.7",
+    "sentry-sdk>=2.20",       # INF-07; off unless SENTRY_DSN is set
 ]
 # AI provider SDKs. Imported lazily inside provider adapters.
 providers = [

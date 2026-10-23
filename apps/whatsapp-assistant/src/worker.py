@@ -24,6 +24,7 @@ from runtime.ai_outage import (
     retry_attempt,
 )
 from runtime.dependencies import Settings, build_container
+from runtime.error_reporting import init_error_reporting
 from runtime.queue import (
     HEALTH_CHECK_INTERVAL_SECONDS,
     HEALTH_CHECK_KEY,
@@ -52,6 +53,7 @@ async def startup(ctx: dict) -> None:
     http client; nothing here is shared across processes.
     """
     configure_logging()
+    init_error_reporting("worker")
     settings = Settings()
     http_client = httpx.AsyncClient(timeout=30.0)
     container = build_container(settings, http_client)
