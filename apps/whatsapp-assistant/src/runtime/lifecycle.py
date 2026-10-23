@@ -24,9 +24,30 @@ def configure_logging() -> None:
     )
 
 
+async def worker_status(container) -> str:
+    """"alive", "down" or "off" (no queue: dev/test), for the uptime monitor (INF-08).
+
+    The worker runs every WhatsApp message, so a dead worker is an outage even
+    while the web process answers. Same ARQ health-check key the control panel
+    reads (admin/queue_router.py); a status word only, no counts.
+    """
+    from runtime.queue import HEALTH_CHECK_KEY
+
+    if container is None or container.message_enqueuer is None:
+        return "off"
+    try:
+        raw = await asyncio.wait_for(container.redis_client.get_raw(HEALTH_CHECK_KEY), 2.0)
+    except Exception:  # noqa: BLE001 — /health itself must still answer
+        return "down"
+    return "alive" if raw is not None else "down"
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Build the FastAPI application for the WhatsApp assistant."""
     configure_logging()
+    from runtime.error_reporting import init_error_reporting
+
+    init_error_reporting("app")
     app_settings = settings or Settings()
 
     @asynccontextmanager
@@ -115,6 +136,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "status": "ok",
             "build": build_sha(),
             "media_storage": media_storage_provider(),
+            "worker": await worker_status(getattr(app.state, "container", None)),
         }
 
     # Alias matching the documented liveness-probe convention

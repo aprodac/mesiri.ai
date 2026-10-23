@@ -1,0 +1,110 @@
+name: Uptime
+
+# INF-08: every 10 minutes, from outside the VPS, check that the API, the WhatsApp worker, the dashboard
+# and the control panel are up (infra/deploy/uptime_check.sh; each check retried 3 times, 20 s apart).
+#
+# Alerts go to the team WhatsApp group (through the teammate listener, like claude-ops.yml) and to
+# NOTIFY_WEBHOOK_URL if set, only when something changes: down, still down (about hourly), back up.
+# A run that finds Mesiri down also fails, so GitHub emails its failed-workflow notification too: that
+# path still works when the whole VPS is gone and the teammate listener with it.
+#
+# Secrets: TEAMMATE_API_TOKEN (already set for teammate-deploy/claude-ops), NOTIFY_WEBHOOK_URL (optional).
+# GitHub may start a scheduled run a few minutes late; worst case to an alert is about 10-20 minutes.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            infra/deploy/uptime_check.sh
+            teammate/inbox.py
+          sparse-checkout-cone-mode: false
+
+      - name: Check
+        id: check
+        run: |
+          set +e
+          infra/deploy/uptime_check.sh > report.txt
+          code=$?
+          cat report.txt
+          if [ "$code" -eq 0 ]; then echo "state=up" >> "$GITHUB_OUTPUT"; else echo "state=down" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Compare with the last runs
+        id: history
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Completed runs before this one, newest first: success = was up, failure = was down.
+          gh run list --repo "${{ github.repository }}" --workflow uptime.yml --limit 40 \
+            --json databaseId,status,conclusion,createdAt \
+            --jq '[.[] | select(.databaseId != ${{ github.run_id }} and .status == "completed"
+                    and (.conclusion == "success" or .conclusion == "failure"))]' > runs.json || echo '[]' > runs.json
+          python3 - <<'EOF' >> "$GITHUB_OUTPUT"
+          import json
+          runs = json.load(open("runs.json"))
+          prev = runs[0]["conclusion"] if runs else "success"
+          streak = []
+          for r in runs:
+              if r["conclusion"] != "failure":
+                  break
+              streak.append(r)
+          print(f"previous={'down' if prev == 'failure' else 'up'}")
+          print(f"down_runs={len(streak)}")
+          print(f"down_since={streak[-1]['createdAt'] if streak else ''}")
+          EOF
+
+      - name: Alert
+        # A failed alert must not fail the run: the next run reads this run's result as "was down".
+        continue-on-error: true
+        env:
+          STATE: ${{ steps.check.outputs.state }}
+          PREVIOUS: ${{ steps.history.outputs.previous }}
+          DOWN_RUNS: ${{ steps.history.outputs.down_runs }}
+          DOWN_SINCE: ${{ steps.history.outputs.down_since }}
+          TEAMMATE_TOKEN: ${{ secrets.TEAMMATE_API_TOKEN }}
+          TEAMMATE_PROJECT: mesiri
+          WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          since() {
+            [ -n "$DOWN_SINCE" ] || return 0
+            mins=$(( ( $(date -u +%s) - $(date -u -d "$DOWN_SINCE" +%s) ) / 60 ))
+            echo " (down since $(TZ=Asia/Kolkata date -d "$DOWN_SINCE" '+%H:%M IST'), about ${mins} min)"
+          }
+          msg=""
+          if [ "$STATE" = "down" ] && [ "$PREVIOUS" = "up" ]; then
+            msg="🚨 *Mesiri is DOWN*"$'\n'"$(grep -E '✗|\?' report.txt)"$'\n'"$RUN_URL"
+          elif [ "$STATE" = "down" ] && [ $(( DOWN_RUNS % 6 )) -eq 5 ]; then
+            msg="🚨 *Mesiri still down*$(since)"$'\n'"$(grep -E '✗|\?' report.txt)"$'\n'"$RUN_URL"
+          elif [ "$STATE" = "up" ] && [ "$PREVIOUS" = "down" ]; then
+            msg="✅ *Mesiri is back up*$(since)"
+          fi
+          if [ -z "$msg" ]; then echo "No change (${PREVIOUS} → ${STATE}); no alert."; exit 0; fi
+          echo "$msg"
+          if [ -n "$TEAMMATE_TOKEN" ]; then
+            python3 teammate/inbox.py post "$msg" || echo "::warning::Team WhatsApp group not reached (the VPS may be down)"
+          fi
+          if [ -n "$WEBHOOK_URL" ]; then
+            python3 -c 'import json,sys; print(json.dumps({"text": sys.argv[1]}))' "$msg" \
+              | curl -sf -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" -d @- || true
+          fi
+
+      - name: Fail the run while Mesiri is down
+        if: steps.check.outputs.state == 'down'
+        run: exit 1
