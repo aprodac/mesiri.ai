@@ -71,15 +71,37 @@ def mismatch(case: dict[str, Any], world: World, result: Any) -> str | None:
         return f"expected a confirmation, got {statuses}"
     if case.get("ask") and (result.toolbox.parked is None or "?" not in result.reply.text):
         return f"expected one question, got {result.reply.text!r}"
+    return lost_part(case, result)
+
+
+def lost_part(case: dict[str, Any], result: Any) -> str | None:
+    """WA-58: a part of the message that was neither saved, nor noted for later,
+    nor named in the question."""
+    box = result.toolbox
+    saved = [i.tool for i in box.saved]
+    noted = [i.tool for i in box.later]
+    question = (result.reply.text if result.reply else "").lower()
+    for part in case.get("keeps", []):
+        tool = part["tool"]
+        if tool in saved:
+            saved.remove(tool)
+        elif tool in noted:
+            noted.remove(tool)
+        elif not any(w in question for w in part["words"]):
+            return f"lost the {part['words'][0]} part ({tool}): not saved, noted or asked; reply {question!r}"
     return None
 
 
 def test_the_site_golden_set_is_well_formed():
-    assert len(CASES) == 24
+    assert len(CASES) == 28
     assert len({c["id"] for c in CASES}) == len(CASES)
     for case in CASES:
         assert case["message"] and case["calls"], case["id"]
-        assert bool(case["expect"]) != bool(case.get("confirm") or case.get("ask")), case["id"]
+        if case.get("keeps"):
+            # WA-58: a message with several parts may save some and ask about the rest.
+            assert case.get("ask") or case["expect"], case["id"]
+        else:
+            assert bool(case["expect"]) != bool(case.get("confirm") or case.get("ask")), case["id"]
     assert {"en", "manglish", "ml", "hindi"} <= {c["lang"] for c in CASES}
 
 

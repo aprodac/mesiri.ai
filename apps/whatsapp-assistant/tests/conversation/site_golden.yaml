@@ -9,7 +9,10 @@
 #                      a number must be equal
 #   confirm  true: an expense waits on Yes/No (confirm-first): nothing is saved yet,
 #            the reply ends with the confirmation
-#   ask      true: nothing is saved and the reply is ONE question
+#   ask      true: the reply is ONE question (nothing else saved unless `expect` says so)
+#   keeps    WA-58: parts of the message that must not be lost: each is saved with its
+#            tool, noted for later (still_to_do / other_parts), or named in the question
+#            (one of `words`, lower-case, any language)
 #
 # The live run (pytest -m live) sends `message` to the real model instead of `calls`.
 
@@ -37,3 +40,7 @@
 - {"id": 22, "lang": "hindi", "message": "aaj 3 mistri aur 7 majdoor aaye", "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 3}, {"trade": "helper", "headcount": 7}]}]], "expect": [{"action": "record_labour_attendance", "fields": {"lines": "'headcount': 7"}}]}
 - {"id": 23, "lang": "en", "message": "Ravi and Suresh came today, both masons", "calls": [["save_labour", {"workers": [{"name": "Ravi", "trade": "mason"}, {"name": "Suresh", "trade": "mason"}]}]], "expect": [{"action": "record_labour_attendance", "fields": {"lines": "suresh"}}]}
 - {"id": 24, "lang": "en", "message": "Sree Builders sent 10 helpers today", "calls": [["save_labour", {"workers": [{"trade": "helper", "headcount": 10}], "contractor": "Sree Builders"}]], "expect": [{"action": "record_labour_attendance", "fields": {"lines": "sree builders"}}]}
+- {"id": 25, "lang": "manglish", "message": "site-il holo bricks vannu, padavukarum thepuvanikkarum undayirunnu", "calls": [["ask_user", {"question": "Ethra holo bricks vannu, ethra padavukar, thepuvanikkar undayirunnu?", "other_parts": []}]], "expect": [], "ask": true, "keeps": [{"tool": "save_material_receipt", "words": ["holo", "brick", "ഹോളോ", "ബ്രിക"]}, {"tool": "save_labour", "words": ["padav", "thep", "scaffold", "plaster", "mason", "പടവ", "തേപ്പ"]}]}
+- {"id": 26, "lang": "ml", "message": "സൈറ്റിൽ ഹോളോ ബ്രിക്സ് എത്തി, പടവുകാരും തേപ്പുവണിക്കാരും ഉണ്ടായിരുന്നു", "calls": [["ask_user", {"question": "എത്ര ഹോളോ ബ്രിക്സ് എത്തി, എത്ര പടവുകാരും തേപ്പുകാരും ഉണ്ടായിരുന്നു?", "other_parts": []}]], "expect": [], "ask": true, "keeps": [{"tool": "save_material_receipt", "words": ["ഹോളോ", "ബ്രിക", "holo", "brick"]}, {"tool": "save_labour", "words": ["പടവ", "തേപ്പ", "padav", "thep", "mason", "plaster"]}]}
+- {"id": 27, "lang": "en", "message": "cement and sand came today, the masons were there too", "calls": [["ask_user", {"question": "How many bags of cement and how much sand came, and how many masons were there?", "other_parts": []}]], "expect": [], "ask": true, "keeps": [{"tool": "save_material_receipt", "words": ["cement"]}, {"tool": "save_material_receipt", "words": ["sand"]}, {"tool": "save_labour", "words": ["mason"]}]}
+- {"id": 28, "lang": "en", "message": "6 masons today, and some bricks came", "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 6}]}], ["ask_user", {"question": "How many bricks came?", "other_parts": []}]], "expect": [{"action": "record_labour_attendance", "fields": {"lines": "'trade': 'mason', 'headcount': 6"}}], "ask": true, "keeps": [{"tool": "save_material_receipt", "words": ["brick"]}]}
