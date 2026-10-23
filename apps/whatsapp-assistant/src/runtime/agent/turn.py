@@ -334,6 +334,7 @@ async def run_agent_turn(
         await deps.send_spec(reply, wa_id)
     _lap(deps, "agent_send")
     await _audit(message, gateway, reply, deps)
+    await _trace_tools(message.correlation_id, result, deps)
     if deps.later is not None:
         box = result.toolbox
         after = later.merged(
@@ -466,6 +467,38 @@ async def _guarded(
             )
         )
     return reply if not guarded.hits else ReplySpec(text=guarded.text)
+
+
+async def _trace_tools(correlation_id: str, result: AgentResult, deps: AgentTurnDeps) -> None:
+    """INF-14: what the model decided this turn, for `vps-agent-trace`: each
+    tool call's name, the names of its arguments and its outcome. No values
+    and no message text, so the trace never holds what the sender said."""
+    if deps.trace_logger is None:
+        return
+    box = result.toolbox
+    calls = [
+        {
+            "tool": call.name,
+            "args": sorted(call.arguments),
+            "status": str((call.outcome.content or {}).get("status") or ("error" if call.error else "")),
+        }
+        for call in getattr(result.run, "calls", None) or []
+    ]
+    await _safe(
+        deps.trace_logger.log_stage(
+            correlation_id=correlation_id,
+            stage="agent_tools",
+            stage_payload={
+                "calls": calls,
+                "parked_by": getattr(box, "parked_by", None),
+                "held": list(getattr(box, "held", []) or []),
+                "still_to_do": [i.tool or "?" for i in getattr(box, "later", []) or []],
+                "saved": [i.tool for i in getattr(box, "saved", []) or []],
+            },
+            duration_ms=None,
+            succeeded=result.outcome == "ok",
+        )
+    )
 
 
 def _lap(deps: AgentTurnDeps, name: str) -> None:
