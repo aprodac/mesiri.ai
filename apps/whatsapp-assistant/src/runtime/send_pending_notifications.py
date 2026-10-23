@@ -64,6 +64,8 @@ _RULE_KEY_MESSAGES: dict[str, str] = {
 }
 
 _DOCUMENT_MIME_TYPE = "application/pdf"
+#: WhatsApp allows 1024 characters in an image caption.
+_CAPTION_MAX = 1024
 
 # BE-38: rows whose send time the owner chose themselves -- the project
 # DPR, and the evening review of each site's day (WA-04), which runs between
@@ -103,6 +105,7 @@ async def _send_one(
     wa_id: str,
     sender: Any,
     object_storage: Any | None,
+    card_renderer: Any | None = None,
 ) -> bool:
     """Sends the document too when the payload names one and object storage
     is wired -- text is still sent either way (the caption/status line),
@@ -111,11 +114,29 @@ async def _send_one(
     with no words around it."""
     payload = row.get("payload") or {}
     buttons = _buttons(payload)
+    text = _render(row)
+    # Request 91: a day card, when the payload has one and it can be drawn. It
+    # carries the same text (header of the buttons, or the image's caption);
+    # any failure sends the text alone, as before.
+    from channel.cards import render_payload_card
+
+    card = await render_payload_card(payload.get("card"), card_renderer)
+    text_sent = False
     if buttons:
         # WA-04: tappable answers, e.g. "Site closed today".
-        text_sent = await sender.send_button(wa_id, body=_render(row), buttons=buttons)
+        if card is not None:
+            text_sent = await sender.send_button(
+                wa_id, body=text, buttons=buttons, header_image=card
+            )
+        if not text_sent:
+            text_sent = await sender.send_button(wa_id, body=text, buttons=buttons)
     else:
-        text_sent = await sender.send_text(wa_id, _render(row))
+        if card is not None:
+            text_sent = await sender.send_image(
+                wa_id, card, caption=text[:_CAPTION_MAX], filename="today.png"
+            )
+        if not text_sent:
+            text_sent = await sender.send_text(wa_id, text)
     if not text_sent:
         return False
 
@@ -186,6 +207,7 @@ async def drain_and_send(
     object_storage: Any | None = None,
     approved_templates: frozenset[str] = frozenset(),
     now_utc: datetime | None = None,
+    card_renderer: Any | None = None,
 ) -> dict[str, int]:
     """The reusable core: drain every 'pending' notification and send or
     skip each with a recorded reason. Shared by this script's own `run()`
@@ -266,7 +288,13 @@ async def drain_and_send(
                 row, template_choice, wa_id=wa_id, sender=sender, object_storage=object_storage
             )
         else:
-            sent = await _send_one(row, wa_id=wa_id, sender=sender, object_storage=object_storage)
+            sent = await _send_one(
+                row,
+                wa_id=wa_id,
+                sender=sender,
+                object_storage=object_storage,
+                card_renderer=card_renderer,
+            )
         if sent:
             await queue.mark_sent(notification_id=notification_id)
             counts["sent"] += 1

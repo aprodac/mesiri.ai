@@ -168,7 +168,9 @@ def _local_date(automation: dict[str, Any], now_utc: datetime.datetime) -> datet
     return local_now(timezone_name=automation.get("timezone") or "UTC", now_utc=now_utc).date()
 
 
-async def run_tick(*, db: Any, summary_writer: Any = None) -> dict[str, int] | None:
+async def run_tick(
+    *, db: Any, summary_writer: Any = None, card_renderer: Any = None
+) -> dict[str, int] | None:
     """One scheduler tick. Returns counts, or None if another worker held
     the lock (not an error -- exactly one runner per tick is the point)."""
     from sqlalchemy import text
@@ -239,7 +241,7 @@ async def run_tick(*, db: Any, summary_writer: Any = None) -> dict[str, int] | N
 
             sent_skipped = {"sent": 0, "skipped": 0}
             try:
-                sent_skipped = await _drain_and_send(db=db)
+                sent_skipped = await _drain_and_send(db=db, card_renderer=card_renderer)
             except Exception:  # noqa: BLE001
                 logger.exception("automation_runner.drain_failed")
 
@@ -255,7 +257,7 @@ async def run_tick(*, db: Any, summary_writer: Any = None) -> dict[str, int] | N
             await conn.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _ADVISORY_LOCK_KEY})
 
 
-async def _drain_and_send(*, db: Any) -> dict[str, int]:
+async def _drain_and_send(*, db: Any, card_renderer: Any = None) -> dict[str, int]:
     """Builds a throwaway WhatsApp sender + object storage for this tick and
     drains every pending notification through the shared #9 Notifications
     send policy. A fresh httpx client per tick is simpler and safe at this
@@ -291,10 +293,11 @@ async def _drain_and_send(*, db: Any) -> dict[str, int]:
             sender=sender,
             object_storage=object_storage,
             approved_templates=approved_template_names(whatsapp_settings.approved_templates),
+            card_renderer=card_renderer,
         )
 
 
-async def runner_loop(*, db: Any, summary_writer: Any = None) -> None:
+async def runner_loop(*, db: Any, summary_writer: Any = None, card_renderer: Any = None) -> None:
     """Forever-loop driving the scheduled tick. Cancelled on shutdown.
 
     Every failure mode is swallowed and retried on the next tick: this is the thing
@@ -311,7 +314,7 @@ async def runner_loop(*, db: Any, summary_writer: Any = None) -> None:
         await asyncio.sleep(delay)
         while True:
             try:
-                await run_tick(db=db, summary_writer=summary_writer)
+                await run_tick(db=db, summary_writer=summary_writer, card_renderer=card_renderer)
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001

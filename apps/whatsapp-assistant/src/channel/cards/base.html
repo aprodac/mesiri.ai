@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+{{ fonts }}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #FFFFFF; }
+body { width: 620px; font-family: "Inter", "Noto Sans Malayalam", "Noto Sans Devanagari",
+  "Noto Sans", sans-serif; color: #111111; font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased; }
+.card { width: 620px; background: #FFFFFF; }
+.head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  padding: 28px 32px 14px; }
+.head .tag { font-size: 13px; font-weight: 800; letter-spacing: 0.24em; text-transform: uppercase;
+  white-space: nowrap; }
+.head .where { font-size: 13px; color: #6B7280; text-align: right; overflow-wrap: anywhere; }
+.rule { height: 4px; background: #000000; margin: 0 32px; }
+.body { padding: 22px 32px 26px; }
+.label { font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+  color: #6B7280; }
+.big { font-size: 56px; font-weight: 700; line-height: 1; letter-spacing: -0.03em; }
+.red { color: #C8102E; }
+.sub { font-size: 15px; color: #6B7280; overflow-wrap: anywhere; }
+.text { font-size: 17px; line-height: 1.35; overflow-wrap: anywhere; }
+.foot { padding: 16px 32px; background: {{ '#C8102E' if footer_red else '#000000' }}; color: #FFFFFF;
+  font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  overflow-wrap: anywhere; }
+{% block style %}{% endblock %}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="head">
+    <div class="tag">Mesiri &middot; {{ tag }}</div>
+    <div class="where">{{ where }}</div>
+  </div>
+  <div class="rule"></div>
+  <div class="body">{% block body %}{% endblock %}</div>
+  <div class="foot">{{ footer }}</div>
+</div>
+</body>
+</html>

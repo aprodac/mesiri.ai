@@ -228,6 +228,31 @@ def _template_params(
     return [str(project), date_label, status]
 
 
+def _dpr_card(
+    report_payload: dict[str, Any],
+    *,
+    project_name: str | None,
+    report_date: datetime.date,
+    confirmed: bool,
+) -> dict[str, Any] | None:
+    """Request 91: the Today card for the report going out (drawn at send
+    time, in the 24h window only). None when it cannot be built."""
+    from channel.cards import build_today_card, today_payload
+
+    try:
+        return today_payload(
+            build_today_card(
+                report_payload,
+                site_name=report_payload.get("site_name") or project_name or "Site",
+                report_date=report_date,
+                footer="Confirmed" if confirmed else "Draft · not confirmed yet",
+            )
+        )
+    except Exception:  # noqa: BLE001 -- the card is an extra
+        logger.warning("project_dpr_send.card_failed", exc_info=True)
+        return None
+
+
 async def send_due_project_dprs(
     conn: Any,
     *,
@@ -369,6 +394,13 @@ async def send_due_project_dprs(
                         organization_id=project["organization_id"],
                         project_id=project["id"],
                     )
+                    # Request 91: the day's card, from this same report payload.
+                    card = _dpr_card(
+                        payload,
+                        project_name=project.get("name"),
+                        report_date=project["report_date"],
+                        confirmed=report.get("workflow_status") in ("APPROVED", "PUBLISHED"),
+                    )
                     for recipient in recipients:
                         payload = {
                             "message": message,
@@ -378,6 +410,8 @@ async def send_due_project_dprs(
                                 "body_params": template_params,
                             },
                         }
+                        if card:
+                            payload["card"] = card
                         user_id = recipient.get("user_id")
                         if user_id is None:
                             # BE-15 outside contact: no user row, so the
