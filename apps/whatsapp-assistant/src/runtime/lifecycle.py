@@ -96,6 +96,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     runner_loop(
                         db=app.state.container.material_db,
                         summary_writer=app.state.container.dpr_summary_writer,
+                        card_renderer=app.state.container.receipt_renderer,
                     )
                 )
             else:

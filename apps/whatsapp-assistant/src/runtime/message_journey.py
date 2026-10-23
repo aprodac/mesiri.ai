@@ -170,6 +170,7 @@ def build_message_handlers(
     offered_choices_store: Any | None = None,
     work_site: Any | None = None,
     cards: Any | None = None,
+    card_renderer: Any | None = None,
     ops_alerts: Any | None = None,
 ) -> tuple[Any, Any]:
     """Build the `on_normalized`/`on_message_claimed` callbacks WhatsAppReceiver
@@ -658,6 +659,18 @@ def build_message_handlers(
             async def _attach_receipt(reply, gateway):  # type: ignore[no-untyped-def]
                 if early["timer"] is not None:
                     early["timer"].cancel()
+                # Request 91: an all-materials stock answer is the Stock card with
+                # the reply as its caption. Only for a plain answer: nothing saved,
+                # no buttons or list, so no receipt or Save card competes for it.
+                stock_card = getattr(getattr(gateway, "query_entry", None), "stock_card", None)
+                if (
+                    stock_card
+                    and not getattr(gateway, "handled", None)
+                    and not reply.header_image
+                    and not reply.buttons
+                    and not reply.list_rows
+                ):
+                    return dataclasses.replace(reply, header_image=stock_card, caption_image=True)
                 if getattr(gateway, "carry_before", None) or getattr(gateway, "carry_after", None):
                     # Request 88: a changed card shows all its items in the text;
                     # a picture of the one new entry would show only part of it.
@@ -835,6 +848,7 @@ def build_message_handlers(
                         reversal_query=reversal_query,
                         object_storage=object_storage,
                         send_document=sender.send_document,
+                        card_renderer=card_renderer,
                     ),
                     # ARCH-03: labour attendance (Alan's approval, 22 Oct).
                     labour_entry=LabourEntry(

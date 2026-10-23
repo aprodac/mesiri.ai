@@ -152,6 +152,37 @@ def site_label(site_name: str, project_name: str | None) -> str:
     return f"{site_name} ({project_name})"
 
 
+def day_card(
+    day_payload: dict[str, Any] | None,
+    *,
+    site_name: str,
+    report_date: datetime.date,
+    deadline: str,
+    status: str | None = None,
+) -> dict[str, Any] | None:
+    """Request 91: the Today card for a site day, as the notification payload's
+    ``card`` (drawn when the row is sent, in the 24h window only). Its numbers
+    are read from the day's report payload, the one the DPR draft is built
+    from. None if the card cannot be built: the message goes out as text."""
+    from channel.cards import build_today_card, today_payload
+
+    confirmed = status in ("APPROVED", "PUBLISHED")
+    footer = "Confirmed" if confirmed else f"Draft · goes out at {time_label(deadline)}"
+    try:
+        return today_payload(
+            build_today_card(
+                day_payload or {}, site_name=site_name, report_date=report_date, footer=footer
+            )
+        )
+    except Exception:  # noqa: BLE001 -- the card is an extra
+        logger.warning("site_day_review.card_failed site=%s", site_name, exc_info=True)
+        return None
+
+
+def _with_card(payload: dict[str, Any], card: dict[str, Any] | None) -> dict[str, Any]:
+    return {**payload, "card": card} if card else payload
+
+
 def _sections(blocking: list[str]) -> list[str]:
     return [_SECTION_NAMES.get(section, section.replace("_", " ")) for section in blocking]
 
@@ -197,6 +228,7 @@ def no_update_payload(
     project_name: str | None,
     deadline: str,
     report_date: datetime.date,
+    card: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """WA-06: the reminder for a site that sent nothing by the cutoff -- in
     the window as a message with the "Site closed today" button, outside it
@@ -204,17 +236,20 @@ def no_update_payload(
     from channel.whatsapp.templates import SITE_NO_UPDATE
 
     closed = tap_id(CLOSED, site_id, report_date)
-    return {
-        "message": no_update_message(
-            site_name=site_name, project_name=project_name, deadline=deadline
-        ),
-        "buttons": [{"id": closed, "title": CLOSED_BUTTON_TITLE}],
-        "template": {
-            "name": SITE_NO_UPDATE.name,
-            "body_params": [site_label(site_name, project_name), time_label(deadline)],
-            "button_payloads": [closed],
+    return _with_card(
+        {
+            "message": no_update_message(
+                site_name=site_name, project_name=project_name, deadline=deadline
+            ),
+            "buttons": [{"id": closed, "title": CLOSED_BUTTON_TITLE}],
+            "template": {
+                "name": SITE_NO_UPDATE.name,
+                "body_params": [site_label(site_name, project_name), time_label(deadline)],
+                "button_payloads": [closed],
+            },
         },
-    }
+        card,
+    )
 
 
 def gap_check_payload(
@@ -225,6 +260,7 @@ def gap_check_payload(
     missing: dict[str, Any],
     deadline: str,
     report_date: datetime.date,
+    card: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The notification payload: the in-window message with its button,
     and the template for an engineer outside the 24h window."""
@@ -232,21 +268,24 @@ def gap_check_payload(
 
     sections = _sections(list(missing.get("blocking") or []))
     verb = "is" if len(sections) == 1 else "are"
-    return {
-        "message": gap_check_message(
-            site_name=site_name, project_name=project_name, missing=missing, deadline=deadline
-        ),
-        "buttons": [{"id": tap_id(CLOSED, site_id, report_date), "title": CLOSED_BUTTON_TITLE}],
-        "template": {
-            "name": SITE_DAY_REVIEW.name,
-            "body_params": [
-                site_label(site_name, project_name),
-                f"{' and '.join(sections)} {verb} missing.".capitalize(),
-                time_label(deadline),
-            ],
-            "button_payloads": [tap_id(OPEN, site_id, report_date)],
+    return _with_card(
+        {
+            "message": gap_check_message(
+                site_name=site_name, project_name=project_name, missing=missing, deadline=deadline
+            ),
+            "buttons": [{"id": tap_id(CLOSED, site_id, report_date), "title": CLOSED_BUTTON_TITLE}],
+            "template": {
+                "name": SITE_DAY_REVIEW.name,
+                "body_params": [
+                    site_label(site_name, project_name),
+                    f"{' and '.join(sections)} {verb} missing.".capitalize(),
+                    time_label(deadline),
+                ],
+                "button_payloads": [tap_id(OPEN, site_id, report_date)],
+            },
         },
-    }
+        card,
+    )
 
 
 def _count(n: int, one: str, many: str) -> str:
@@ -336,6 +375,7 @@ def confirm_payload(
     holds: dict[str, int],
     deadline: str,
     report_date: datetime.date,
+    card: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The notification payload for a ready day. Outside the 24h window it
     goes as the gap-check's template (WA-04, same wording slot); its "Open
@@ -343,25 +383,30 @@ def confirm_payload(
     from channel.whatsapp.templates import SITE_DAY_REVIEW
 
     buttons = confirm_buttons(site_id, report_date, holds=holds)
-    return {
-        "message": confirm_message(
-            site_name=site_name,
-            project_name=project_name,
-            payload=day_payload,
-            holds=holds,
-            deadline=deadline,
-        ),
-        "buttons": [{"id": b.id, "title": b.title} for b in buttons],
-        "template": {
-            "name": SITE_DAY_REVIEW.name,
-            "body_params": [
-                site_label(site_name, project_name),
-                "Some items need a look before you confirm." if holds else "It is ready to confirm.",
-                time_label(deadline),
-            ],
-            "button_payloads": [tap_id(OPEN, site_id, report_date)],
+    return _with_card(
+        {
+            "message": confirm_message(
+                site_name=site_name,
+                project_name=project_name,
+                payload=day_payload,
+                holds=holds,
+                deadline=deadline,
+            ),
+            "buttons": [{"id": b.id, "title": b.title} for b in buttons],
+            "template": {
+                "name": SITE_DAY_REVIEW.name,
+                "body_params": [
+                    site_label(site_name, project_name),
+                    "Some items need a look before you confirm."
+                    if holds
+                    else "It is ready to confirm.",
+                    time_label(deadline),
+                ],
+                "button_payloads": [tap_id(OPEN, site_id, report_date)],
+            },
         },
-    }
+        card,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -486,6 +531,13 @@ async def _review_project(conn: Any, db: Any, project: dict[str, Any]) -> int:
                 holds=holds,
                 deadline=project["send_deadline"],
                 report_date=report_date,
+                card=day_card(
+                    confirm_day["payload"],
+                    site_name=day["site_name"],
+                    report_date=report_date,
+                    deadline=project["send_deadline"],
+                    status=confirm_day["status"],
+                ),
             )
         elif step == evening_review.NO_UPDATE:
             payload = no_update_payload(
@@ -494,8 +546,21 @@ async def _review_project(conn: Any, db: Any, project: dict[str, Any]) -> int:
                 project_name=project["name"],
                 deadline=project["send_deadline"],
                 report_date=report_date,
+                card=day_card(
+                    None,
+                    site_name=day["site_name"],
+                    report_date=report_date,
+                    deadline=project["send_deadline"],
+                ),
             )
         else:
+            # The day so far, from the same report payload as the DPR draft.
+            gap_day = await site_day_for_confirm(
+                conn,
+                organization_id=organization_id,
+                site_id=day["site_id"],
+                report_date=report_date,
+            )
             payload = gap_check_payload(
                 site_id=day["site_id"],
                 site_name=day["site_name"],
@@ -503,6 +568,13 @@ async def _review_project(conn: Any, db: Any, project: dict[str, Any]) -> int:
                 missing=day["missing_sections"] or {},
                 deadline=project["send_deadline"],
                 report_date=report_date,
+                card=day_card(
+                    gap_day["payload"] if gap_day else None,
+                    site_name=day["site_name"],
+                    report_date=report_date,
+                    deadline=project["send_deadline"],
+                    status=gap_day["status"] if gap_day else None,
+                ),
             )
         for user_id in await _recipients(
             conn,

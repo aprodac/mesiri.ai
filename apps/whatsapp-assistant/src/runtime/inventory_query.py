@@ -10,6 +10,7 @@ execution wiring.
 
 from __future__ import annotations
 
+import datetime
 import uuid
 from typing import TYPE_CHECKING, Any
 
@@ -84,3 +85,53 @@ class MaterialInventoryQueryService:
             levels = [lvl for lvl in levels if needle in lvl["material_name"].lower()]
 
         return levels
+
+    async def usage_last_days(
+        self,
+        *,
+        organization_id: str,
+        project_id: str | None,
+        site_id: str | None,
+        days: int = 7,
+        now: datetime.datetime | None = None,
+    ) -> dict[tuple[str, str], float]:
+        """Request 91: what was used in the last ``days`` days, per
+        (lower-cased material name, unit) -- the same keys ``query`` rows give.
+        Read-only, from material_movements, counted the way get_stock_levels
+        counts "used" (a reversal of a receipt is use taken back, and the
+        other way round)."""
+        import sqlalchemy as sa
+
+        since = (now or datetime.datetime.now(datetime.UTC)) - datetime.timedelta(days=days)
+        scope = ""
+        params: dict[str, Any] = {"org": uuid.UUID(organization_id), "since": since}
+        if project_id:
+            scope += " AND m.project_id = :project"
+            params["project"] = uuid.UUID(project_id)
+        if site_id:
+            scope += " AND m.site_id = :site"
+            params["site"] = uuid.UUID(site_id)
+        sql = sa.text(
+            """
+            SELECT lower(c.name) AS name, u.code AS unit,
+                   COALESCE(SUM(CASE
+                       WHEN m.movement_type = 'ISSUE' AND m.reversal_of_movement_id IS NULL
+                           THEN m.quantity
+                       WHEN m.movement_type = 'RECEIPT' AND m.reversal_of_movement_id IS NOT NULL
+                           THEN -m.quantity
+                       ELSE 0 END), 0) AS used
+            FROM material_movements m
+            JOIN materials_catalog c ON c.id = m.material_id
+            JOIN units_of_measure u ON u.id = m.unit_id
+            WHERE m.organization_id = :org AND m.occurred_at >= :since
+            """
+            + scope
+            + " GROUP BY lower(c.name), u.code"
+        )
+        async with self._db.transaction() as conn:
+            rows = (await conn.execute(sql, params)).mappings().all()
+        usage: dict[tuple[str, str], float] = {}
+        for row in rows:
+            key = (str(row["name"]), str(row["unit"]))
+            usage[key] = usage.get(key, 0.0) + float(row["used"])
+        return usage

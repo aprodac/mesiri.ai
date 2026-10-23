@@ -242,7 +242,12 @@ class WhatsAppSender:
         return sent
 
     async def send_image(
-        self, to_wa_id: str, image_bytes: bytes, *, caption: str | None = None
+        self,
+        to_wa_id: str,
+        image_bytes: bytes,
+        *,
+        caption: str | None = None,
+        filename: str = "receipt.png",
     ) -> bool:
         """Upload an image and send it. Returns True on success.
 
@@ -256,7 +261,7 @@ class WhatsAppSender:
             logger.warning("WhatsApp sender disabled (missing phone_number_id/access_token)")
             return False
 
-        media_id = await self._upload_media(image_bytes, mime_type="image/png", filename="receipt.png")
+        media_id = await self._upload_media(image_bytes, mime_type="image/png", filename=filename)
         if media_id is None:
             return False
 

@@ -852,6 +852,8 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         plan_store=plan_store,
         workflow_runtime=workflow_runtime,
         send_text=sender.send_text,
+        send_image=sender.send_image,
+        card_renderer=receipt_renderer,
     )
 
     # SS-05: "JOIN ACME-4821" from a new number asks the company's admins;
@@ -975,6 +977,8 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         work_site=WorkSite(active_context=context_resolver.active_context, redis=redis_client),
         # Request 88: the latest card per sender, for undo and editing.
         cards=CardStore(redis_client),
+        # Request 91: the Stock card is drawn by the receipt's Chromium.
+        card_renderer=receipt_renderer,
         project_setup_offer_store=project_setup_offer_store,
         memory_loader=memory_loader,
         memory_coordinator=memory_coordinator,
