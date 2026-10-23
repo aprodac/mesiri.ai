@@ -1,7 +1,7 @@
 # Drawings → Progress: plan
 
-> **Status:** proposal, 23 Oct 2026. Nothing built. Needs a product decision before any
-> code (see *Decisions needed*): V1 is "DPR only", and this goes past it.
+> **Status:** **V2** (decided by Ilan, 23 Oct 2026), so V1 reaches clients first. Nothing
+> built. Mockups and sample WhatsApp cards are used to explain the concept in client demos.
 > Tracker section: **DRW** in [V1_TRACKER.md](V1_TRACKER.md).
 > Mockups (sample data, real drawing): footing plan, footing photo history, owner evening
 > card, photo pinning, whole building, slab pour readiness, material check, milestone message.
@@ -174,7 +174,7 @@ count from the existing DPR data, read only.
 
 ## Decisions needed (Alan / Ilan)
 
-1. **Scope:** V1 is "DPR only". Is this V1.x, after V1, or a pilot for one customer?
+1. ~~Scope~~ **Decided 23 Oct: V2.**
 2. **Drawings:** can we collect 5–10 real structural sets from customers for the golden set?
 3. **Who reviews extraction** for the first customers: the Mesiri team (concierge) or the
    contractor?
