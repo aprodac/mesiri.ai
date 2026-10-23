@@ -453,3 +453,25 @@ shown as, what undo may touch, and which day it is.**
   project's zone (India when blank, the untouched "UTC" default, or unknown). The agent's lookups, the
   today-so-far line and the work-site expiry use it; boundaries are tested at 00:30 and 23:30 IST.
 - A lookup answer with no model words goes through the same language decision as any reply.
+
+## Addendum (WA-52, 23 Oct): a stock question is answered in code, never passed on
+
+WA-38 refused `note_for_engineer` unless the sender named their engineer, but only told the model to
+look the stock up instead. In the live run of 23 Oct the model did not: "nale slab-inu cement mathiyo?"
+got "I'll ask your engineer", and "nale 10 bagcement venm ath stock undo?" was filed as a Material
+Shortage card (the prompt's "asking for more is a shortage" rule won). Same rule as above: **the code
+decides that a stock question gets the stock.**
+
+- `toolbox.asks_about_stock`: a stock word (stock, enough, mathi, balance, kaafi, മതി, स्टॉक ...) AND a
+  question (?, undo, mathiyo, ethra, kya, ഉണ്ടോ ...). "10 bag cement balance und, kooduthal venam" is not
+  one (no question) and stays a shortage.
+- A refused engineer note on a stock question runs the stock lookup itself (the material the message
+  names, else all) and hands the figures back with the refusal; a lookup the model already made is
+  reused, never repeated.
+- `report_issue` on a stock question is refused (nothing saved, no card) with the figures, unless the
+  message also says it ran out or work stopped ("cement theernnu, stock undo?").
+- The reply: with nothing passed to the engineer, a sentence saying it was or will be ("I'll ask your
+  engineer", "engineer-inodu chodikkam") is dropped (`reply_text.without_engineer_promise`); an offer
+  that asks ("Shall I ask your engineer?") stays. A "yes" passes a question on only after a reply that
+  offered (`toolbox.offers_engineer`), no longer after any reply that named the engineer (the "📨
+  Question for your engineer" line counted before).
