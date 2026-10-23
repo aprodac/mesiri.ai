@@ -292,6 +292,19 @@ then `systemctl restart mesiri mesiri-worker`. Set Sentry's alert rule to
 "a new issue is created" → email / Sentry mobile app. Request bodies, local
 variables, IPs and phone numbers are kept out (`runtime/error_reporting.py`).
 
+**Errors on WhatsApp (SA-11)** — the same errors, plus the AI provider alert,
+go to the super admins on WhatsApp, with or without Sentry
+(`runtime/ops_alerts.py`). Who: every platform admin with a WhatsApp number on
+their account, plus the numbers in control panel → Settings → *Error alerts on
+WhatsApp* (platform setting `ops_alerts`, audited); the same switch turns them
+off. The same error goes at most once per 30 minutes. Inside a super admin's
+24 h window it is a normal message; outside it, the `mesiri_ops_alert`
+template once Meta approves it and it is listed in `WHATSAPP_APPROVED_TEMPLATES`
+(text in `docs/ops/whatsapp-templates.md`); when nobody was reached, the team
+WhatsApp group. Replies: `alert details`, `mute alerts 2h`, `unmute alerts`.
+On wherever real Redis is configured; `MESIRI_OPS_ALERTS=off` in `.env`
+switches it off for that server (staging sets it).
+
 ---
 
 ## Manual emergency deploy

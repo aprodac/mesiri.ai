@@ -191,6 +191,27 @@ in-window buttons (only an admin of that company can decide).
 
 To switch it on: add `mesiri_join_request` to `WHATSAPP_APPROVED_TEMPLATES`.
 
+### `mesiri_ops_alert` — an error alert to a super admin (SA-11)
+
+Sent to a super admin when something breaks in the app or the worker, if they
+haven't messaged Mesiri in the last 24 hours (inside the window the alert goes
+as a normal message). Until it is approved, such a super admin is not reached;
+when nobody was reached the alert goes to the team WhatsApp group instead.
+
+| Field | Value |
+| --- | --- |
+| Name | `mesiri_ops_alert` |
+| Category | Utility |
+| Language | English (`en`) |
+| Header | None |
+| Body | `Mesiri alert ({{1}}): {{2}} Reply alert details for the full error.` |
+| Footer | `Sent by Mesiri` |
+| Buttons | None |
+
+Sample values: `{{1}}` = `worker`, `{{2}}` = `dpr.render_failed project=Skyline Towers`.
+
+To switch it on: add `mesiri_ops_alert` to `WHATSAPP_APPROVED_TEMPLATES`.
+
 ## Who receives the DPR, and opt-in (BE-15)
 
 - Each project can have its own DPR list (`/dpr/projects/{id}/recipients`):
