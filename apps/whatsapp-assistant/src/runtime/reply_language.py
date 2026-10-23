@@ -300,6 +300,7 @@ _FIXED_REPLIES: dict[str, dict[str, str]] = {
             "⚠️ ഇപ്പോൾ സേവ് ചെയ്യാൻ കഴിഞ്ഞില്ല, അതിനാൽ ഒന്നും രേഖപ്പെടുത്തിയിട്ടില്ല. ദയവായി വീണ്ടും അയയ്ക്കൂ."
         ),
         "Not saved yet.": "ഇതുവരെ സേവ് ചെയ്തിട്ടില്ല.",
+        "❌ Okay, nothing saved. Send it again whenever you're ready.": "❌ ശരി, ഒന്നും സേവ് ചെയ്തിട്ടില്ല. തയ്യാറാകുമ്പോൾ വീണ്ടും അയയ്ക്കൂ.",
         "I'll ask about this one after the rest.": "ഇതിനെക്കുറിച്ച് ബാക്കി കഴിഞ്ഞ് ചോദിക്കാം.",
         "Which site is this for?": "ഏത് സൈറ്റിനാണ് ഇത്?",
         "Which project is this for?": "ഏത് പ്രോജക്റ്റിനാണ് ഇത്?",
@@ -335,12 +336,24 @@ _FIXED_REPLIES: dict[str, dict[str, str]] = {
             "⚠️ अभी सेव नहीं हो सका, इसलिए कुछ भी दर्ज नहीं हुआ। कृपया फिर से भेजें।"
         ),
         "Not saved yet.": "अभी सेव नहीं हुआ।",
+        "❌ Okay, nothing saved. Send it again whenever you're ready.": "❌ ठीक है, कुछ सेव नहीं हुआ। जब तैयार हों, फिर से भेजें।",
         "I'll ask about this one after the rest.": "इसके बारे में बाकी के बाद पूछूँगा।",
         "Which site is this for?": "यह किस साइट के लिए है?",
         "Which project is this for?": "यह किस प्रोजेक्ट के लिए है?",
     },
 }
 _FIXED_ALIASES = {"ml": "malayalam", "hi": "hindi"}
+
+#: The same fixed sentences for a sender who types Malayalam in English letters
+#: (Manglish), who would not read the native-script tables above as easily.
+_MANGLISH_REPLIES: dict[str, str] = {
+    "❌ Okay, nothing saved. Send it again whenever you're ready.": "❌ Sheri, onnum save cheythilla. Ready aakumbol veendum ayakku.",
+}
+
+
+def _is_manglish_sender(language: str | None, script: str | None) -> bool:
+    key = _language_key(language)
+    return key == "malayalam" and normalize_script(script) == "latin"
 
 
 #: Label words of the "✅ Saved: ..." lines (interactions/saved_summary.py).
@@ -403,6 +416,10 @@ def localize_fixed_reply(text: str, language: str | None, script: str | None = N
     their language in English letters gets the English text -- the tables
     only hold native-script wording, which they would not read as easily."""
     normalized = normalize_language(language)
+    if normalized and text and _is_manglish_sender(language, script):
+        for english, manglish in _MANGLISH_REPLIES.items():
+            text = text.replace(english, manglish)
+        return text
     if not normalized or not text or normalize_script(script) == "latin":
         return text
     key = normalized.lower()
@@ -567,6 +584,11 @@ def localize_reply_spec(spec, language: str | None, script: str | None = None): 
     language. English (or an unknown language, or a sender who types in
     English letters) returns it unchanged."""
     key = _language_key(language)
+    if _is_manglish_sender(language, script):
+        from dataclasses import replace as _replace
+
+        text = localize_fixed_reply(spec.text, language, script)
+        return spec if text == spec.text else _replace(spec, text=text)
     if key is None or normalize_script(script) == "latin" or (key not in _FIXED_REPLIES and key not in _PROMOTION_PATTERNS):
         return spec
     from dataclasses import replace

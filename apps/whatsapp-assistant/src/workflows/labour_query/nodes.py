@@ -74,7 +74,11 @@ def generate_labour_query_reply(state: WorkflowGraphState) -> dict:
     except (InvalidOperation, ValueError):
         pass
 
-    if trades:
+    trade_counts = results.get("trade_counts") or []
+    if trade_counts:
+        # Request 94: every trade with its number, never a bare list of names.
+        lines.append(f"By trade: {', '.join(f'{c} {_pretty_trade(t)}' for t, c in trade_counts)}")
+    elif trades:
         lines.append(f"Trades: {', '.join(_pretty_trade(t) for t in trades)}")
 
     if named:

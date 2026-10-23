@@ -39,6 +39,7 @@ from .prompt import (
     reply_letters_rule,
 )
 from .reply_text import (
+    dpr_caption,
     manglish_word_count,
     mixed_script_words,
     sentences,
@@ -204,7 +205,13 @@ class AgentRunner:
         more in the language of THIS message, with no tools. Anything going
         wrong keeps the answer as it was."""
         language = reply_language(user_text)
-        if (run.text or "").strip() or language in (None, "english") or not toolbox.answers:
+        if language in (None, "english") or not toolbox.answers:
+            return run
+        said_now = (run.text or "").strip()
+        caption = dpr_caption(toolbox.report_text or "", language)
+        if caption is not None and toolbox.answers == [toolbox.report_text] and (not said_now or looks_english(said_now)):
+            return run.model_copy(update={"text": caption})
+        if said_now:
             return run
         answer = "\n".join(toolbox.answers)[:800]
         if not looks_english(answer):

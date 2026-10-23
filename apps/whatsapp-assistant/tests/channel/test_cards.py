@@ -341,13 +341,21 @@ def test_red_when_stock_is_zero_or_below_and_the_footer_says_low():
 def test_footer_names_the_low_materials_two_at_most_then_a_count():
     use = {("cement", "bags"): 70.0, ("sand", "bags"): 70.0}
     one = build_stock_card([_lvl("steel", 0, 9, "kg"), _lvl("tile", 50, 90)], {}, where="A")
-    assert one.footer == "Steel is out."
+    assert one.footer == "Steel is out. Order before the next pour."
     two = build_stock_card([_lvl("steel", 0, 9, "kg"), _lvl("cement", 20, 200)], use, where="A")
-    assert two.footer == "Steel is out. Cement ≈2 days left."
+    assert two.footer == "Steel is out. Cement ≈2 days left. Order before the next pour."
     three = build_stock_card(
         [_lvl("steel", 0, 9, "kg"), _lvl("cement", 20, 200), _lvl("sand", 25, 200)], use, where="A"
     )
-    assert three.footer == "Steel is out. Cement ≈2 days left. +1 more"
+    assert three.footer == "Steel is out. Cement ≈2 days left. +1 more. Order before the next pour."
+    low = build_stock_card([_lvl("cement", 20, 200), _lvl("tile", 50, 90)], use, where="A")
+    assert low.footer == "Cement ≈2 days left. Order soon."
+    lows = build_stock_card(
+        [_lvl("cement", 20, 200), _lvl("sand", 25, 200), _lvl("brick", 20, 200)],
+        {**use, ("brick", "bags"): 70.0},
+        where="A",
+    )
+    assert lows.footer == "Cement ≈2 days left. Brick ≈2 days left. +1 more. Order soon."
     ok = build_stock_card([_lvl("cement", 30, 200), _lvl("sand", 80, 100)], use, where="A")
     assert ok.footer == "Stock now"
 

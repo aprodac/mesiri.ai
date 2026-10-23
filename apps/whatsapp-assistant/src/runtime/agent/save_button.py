@@ -47,7 +47,7 @@ CANCEL_TITLE = "❌ Cancel"
 TO_SAVE_HEADER = "📝 To save:"
 
 SAVED_DONE = "✅ Saved."
-CANCELLED_DONE = "❌ Cancelled. Nothing from that message was kept. Send it again the right way."
+CANCELLED_DONE = "❌ Okay, nothing saved. Send it again whenever you're ready."
 ALREADY_DONE = "That one is already done."
 #: Request 90: entries were prepared that no Save card could show (more than
 #: one tap holds): they are taken back, never left as unseen drafts.

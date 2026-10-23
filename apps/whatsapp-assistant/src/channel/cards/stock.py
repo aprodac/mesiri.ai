@@ -3,7 +3,7 @@
 A bar per material scaled to what was received, stock in big numbers, red when
 the stock is at or below zero. "≈N days at this week's use" comes from the last
 seven days of usage and is left out when nothing was used. A red footer names
-the materials at zero or with under three days left.
+the materials at zero or with under three days left, and says what to do.
 """
 
 from __future__ import annotations
@@ -75,13 +75,14 @@ class StockCard:
     @property
     def footer(self) -> str:
         """What is wrong, in words ("Steel is out. Cement ≈2 days left."): up to
-        two materials, then "+N more"."""
+        two materials, then "+N more", then one line on what to do."""
         low = [r for r in self.rows if r.low]
         if not low:
             return "Stock now"
         parts = [f"{r.name} is out." if r.red else f"{r.name} ≈{r.days} days left." for r in low[:2]]
         if len(low) > 2:
-            parts.append(f"+{len(low) - 2} more")
+            parts.append(f"+{len(low) - 2} more.")
+        parts.append("Order before the next pour." if any(r.red for r in low) else "Order soon.")
         return " ".join(parts)
 
 

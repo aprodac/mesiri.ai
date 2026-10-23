@@ -478,7 +478,10 @@ def tool_specs() -> list[ToolSpec]:
         ),
         ToolSpec(
             name=QUERY_LABOUR,
-            description="Answer 'how many workers / who worked / labour cost' from saved records.",
+            description=(
+                "Answer 'how many workers / who worked / labour cost' from saved records. "
+                "Leave trade out unless the question names one: a headcount counts every trade."
+            ),
             parameters=_obj(
                 {
                     "date_range": _RANGE,

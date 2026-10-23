@@ -80,15 +80,27 @@ def _one_name_per_trade(results: Any) -> None:
     """Request 88: the trades a labour answer lists, each once. Stored trade
     codes differ in spelling ("mason" and "masons", "bar_bending" and
     "bar_bender"); the workforce module's own trade mapping says which are the
-    same, so the answer names each trade once. Only what is shown changes."""
+    same, so the answer names each trade once. Request 94: and with its
+    headcount (``trade_counts``, from the saved lines), so "trade wise" is
+    always answered with numbers. Only what is shown changes."""
     if not isinstance(results, dict) or not results.get("trades"):
         return
     from mesiri.domains.workforce.workers import normalize_trade
 
+    def name(trade: Any) -> str:
+        return normalize_trade(trade) or str(trade)
+
     seen: dict[str, str] = {}
     for trade in results["trades"]:
-        seen.setdefault(normalize_trade(trade) or str(trade), normalize_trade(trade) or str(trade))
+        seen.setdefault(name(trade), name(trade))
     results["trades"] = list(seen.values())
+    counts: dict[str, int] = dict.fromkeys(seen, 0)
+    for row in results.get("rows") or []:
+        trade = str(row.get("trade") or "").strip()
+        if trade:
+            counts[name(trade)] = counts.get(name(trade), 0) + int(row.get("headcount") or 1)
+    if any(counts.values()):
+        results["trade_counts"] = [[trade, count] for trade, count in counts.items()]
 
 
 @dataclass(slots=True)
