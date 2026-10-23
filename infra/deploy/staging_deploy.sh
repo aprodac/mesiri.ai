@@ -50,7 +50,7 @@ done
 echo "→ Settings (production's, made safe)"
 REDIS_DB="$(env_val MESIRI_REDIS__DB "${PROD}/.env")"
 {
-  grep -vE '^(MESIRI_POSTGRES__DB|MESIRI_POSTGRES__DATABASE|MESIRI_APP_PORT|MESIRI_REDIS__DB|MESIRI_AUTOMATIONS__ENABLED|MESIRI_OBJECT_STORAGE__LOCAL_ROOT|MESIRI_OBJECT_STORAGE__PUBLIC_BASE_URL|WHATSAPP_ACCESS_TOKEN|WHATSAPP_GRAPH_BASE_URL)=' "${PROD}/.env"
+  grep -vE '^(MESIRI_POSTGRES__DB|MESIRI_POSTGRES__DATABASE|MESIRI_APP_PORT|MESIRI_REDIS__DB|MESIRI_AUTOMATIONS__ENABLED|MESIRI_OBJECT_STORAGE__LOCAL_ROOT|MESIRI_OBJECT_STORAGE__PUBLIC_BASE_URL|WHATSAPP_ACCESS_TOKEN|WHATSAPP_GRAPH_BASE_URL|MESIRI_OPS_ALERTS)=' "${PROD}/.env"
   echo "# ── staging overrides (infra/deploy/staging_deploy.sh) ──"
   # The app reads MESIRI_POSTGRES__DATABASE (PostgresSettings.database); __DB
   # alone was ignored, so staging migrated and ran on production's database.
@@ -63,6 +63,8 @@ REDIS_DB="$(env_val MESIRI_REDIS__DB "${PROD}/.env")"
   echo "MESIRI_OBJECT_STORAGE__PUBLIC_BASE_URL=http://127.0.0.1:${PORT}"
   echo "WHATSAPP_ACCESS_TOKEN=staging-sends-nothing"
   echo "WHATSAPP_GRAPH_BASE_URL=http://127.0.0.1:9"
+  # SA-11: staging's errors are not production's; the team group token is copied above.
+  echo "MESIRI_OPS_ALERTS=off"
 } > "${STG}/.env.new"
 chmod 600 "${STG}/.env.new"
 mv "${STG}/.env.new" "${STG}/.env"

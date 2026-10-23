@@ -138,6 +138,16 @@ JOIN_REQUEST = TemplateSpec(
     quick_replies=("Approve", "Reject"),
 )
 
+#: An error alert to a super admin (SA-11) who has not messaged in 24 h.
+#: Body (submitted text, docs/ops/whatsapp-templates.md):
+#:   "Mesiri alert ({{1}}): {{2}} Reply alert details for the full error."
+OPS_ALERT = TemplateSpec(
+    name="mesiri_ops_alert",
+    language="en",
+    category="UTILITY",
+    body_param_count=2,
+)
+
 TEMPLATES: dict[str, TemplateSpec] = {
     spec.name: spec
     for spec in (
@@ -145,6 +155,7 @@ TEMPLATES: dict[str, TemplateSpec] = {
         DPR_OPT_IN,
         JOIN_REQUEST,
         LOGIN_CODE,
+        OPS_ALERT,
         SITE_DAY_REVIEW,
         SITE_NO_UPDATE,
         TRIAL_ENDING,

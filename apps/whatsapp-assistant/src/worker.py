@@ -25,6 +25,7 @@ from runtime.ai_outage import (
 )
 from runtime.dependencies import Settings, build_container
 from runtime.error_reporting import init_error_reporting
+from runtime.ops_alerts import install_ops_alerts
 from runtime.queue import (
     HEALTH_CHECK_INTERVAL_SECONDS,
     HEALTH_CHECK_KEY,
@@ -59,6 +60,7 @@ async def startup(ctx: dict) -> None:
     container = build_container(settings, http_client)
     await container.redis_client.connect()
     await container.material_db.connect()
+    install_ops_alerts(container.ops_alerts, "worker")
 
     ctx["http_client"] = http_client
     ctx["container"] = container

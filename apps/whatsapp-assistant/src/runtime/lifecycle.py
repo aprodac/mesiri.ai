@@ -75,6 +75,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await app.state.container.redis_client.connect()
             # M8: connect the Material execution transaction owner.
             await app.state.container.material_db.connect()
+            # SA-11: errors from here on go to the super admins on WhatsApp.
+            from runtime.ops_alerts import install_ops_alerts
+
+            install_ops_alerts(app.state.container.ops_alerts, "app")
             # Durable ingress queue (see runtime/queue.py): None against
             # FakeRedis, in which case WhatsAppReceiver already fell back to
             # asyncio.create_task at construction time and there is nothing

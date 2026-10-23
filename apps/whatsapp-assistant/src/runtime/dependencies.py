@@ -122,6 +122,9 @@ class AppContainer:
     #: ``(sender) -> on_normalized``: the message handler with another sender
     #: (the control panel's test message). None in tests that build their own.
     simulate_handler: Any = None
+    # SA-11: error alerts to the super admins on WhatsApp. Installed on the
+    # root logger by the app and the worker (runtime/ops_alerts.py).
+    ops_alerts: Any = None
 
 
 def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppContainer:
@@ -878,10 +881,24 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
 
     team_notifier = TeamNotifier()
 
+    # SA-11: errors to the super admins on WhatsApp; same 24 h window rule
+    # and last-message lookup as the join request above.
+    from runtime.ops_alerts import OpsAlerts
+
+    ops_alerts = OpsAlerts(
+        sender=sender,
+        db=material_db,
+        redis=redis_client,
+        team_notifier=team_notifier,
+        approved_templates=approved_template_names(settings.approved_templates),
+        last_inbound_at=NotificationSendQueueService(material_db, actor_reader).last_inbound_at,
+        live=_real_redis_configured,
+    )
+
     # AI provider failures: one alert per hour (runtime/ai_failure_alert.py).
     from runtime.ai_failure_alert import install_ai_failure_alerts
 
-    install_ai_failure_alerts(team_notifier)
+    install_ai_failure_alerts(team_notifier, ops_alerts)
     setup_questions = SetupQuestions(
         db=material_db,
         redis=redis_client,
@@ -974,6 +991,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         trial_journey=trial_journey,
         # SS-09: pause a trial company that runs past today's usage caps.
         trial_usage_guard=TrialUsageGuard(material_db),
+        ops_alerts=ops_alerts,
     )
     _on_normalized, _mark_read_on_claim = build_message_handlers(sender=sender, **handler_deps)
 
@@ -1016,6 +1034,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         material_db=material_db,
         dpr_summary_writer=dpr_summary_writer,
         simulate_handler=simulate_handler,
+        ops_alerts=ops_alerts,
     )
 
 

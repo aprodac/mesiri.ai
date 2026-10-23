@@ -19,6 +19,7 @@ TRIAL_POLICY = "trial_policy"
 SELF_SERVE = "self_serve"
 USAGE_PRICING = "usage_pricing"
 TRIAL_GUARDRAILS = "trial_guardrails"
+OPS_ALERTS = "ops_alerts"
 
 DEFAULT_TRIAL_POLICY: dict[str, int] = {
     # Length of a new company's free trial. Extendable per company.
@@ -54,6 +55,16 @@ DEFAULT_TRIAL_GUARDRAILS: dict[str, object] = {
     # until tomorrow -- runaway protection, ~15x a normal trial's day.
     "trial_daily_ai_cost_inr": 50,
     "trial_daily_whatsapp_messages": 200,
+}
+
+DEFAULT_OPS_ALERTS: dict[str, object] = {
+    # SA-11. Errors in the app and worker are sent to the super admins on
+    # WhatsApp: every platform admin with a WhatsApp number on their account,
+    # plus these numbers (digits with country code, e.g. "919876543210").
+    "enabled": True,
+    "numbers": [],
+    # When no super admin could be reached, post to the team WhatsApp group.
+    "team_group_fallback": True,
 }
 
 # Bounds a superadmin can't go past by typo.
@@ -100,6 +111,11 @@ _SPECS: dict[str, PlatformSettingSpec] = {
             "limits, and each trial's daily AI and WhatsApp caps."
         ),
     ),
+    OPS_ALERTS: PlatformSettingSpec(
+        key=OPS_ALERTS,
+        default=DEFAULT_OPS_ALERTS,
+        description="Error alerts on WhatsApp to the super admins: on/off and extra numbers.",
+    ),
 }
 
 
@@ -135,6 +151,17 @@ def _int_in_range(name: str, value: object, bounds: tuple[int, int]) -> int:
     if not low <= value <= high:
         raise ValueError(f"{name} must be between {low} and {high}")
     return value
+
+
+def normalize_alert_number(value: object) -> str:
+    """A WhatsApp number as digits with the country code; a bare 10-digit
+    number is taken as Indian (V1 is India-only)."""
+    digits = "".join(ch for ch in str(value) if ch.isdigit())
+    if len(digits) == 10:
+        digits = "91" + digits
+    if not 11 <= len(digits) <= 15:
+        raise ValueError(f"not a WhatsApp number with country code: {value!r}")
+    return digits
 
 
 def validate(key: str, value: object) -> dict[str, object]:
@@ -175,4 +202,12 @@ def validate(key: str, value: object) -> dict[str, object]:
         merged["allowed_country_codes"] = sorted(set(codes))
         for name, bounds in _GUARDRAIL_RANGES.items():
             merged[name] = _int_in_range(name, merged[name], bounds)
+    elif key == OPS_ALERTS:
+        for flag in ("enabled", "team_group_fallback"):
+            if not isinstance(merged[flag], bool):
+                raise ValueError(f"{flag} must be true or false")
+        numbers = merged["numbers"]
+        if not isinstance(numbers, list):
+            raise ValueError("numbers must be a list")
+        merged["numbers"] = sorted({normalize_alert_number(n) for n in numbers})
     return merged

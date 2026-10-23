@@ -170,6 +170,7 @@ def build_message_handlers(
     offered_choices_store: Any | None = None,
     work_site: Any | None = None,
     cards: Any | None = None,
+    ops_alerts: Any | None = None,
 ) -> tuple[Any, Any]:
     """Build the `on_normalized`/`on_message_claimed` callbacks WhatsAppReceiver
     invokes for every inbound message, closing over the already-built services
@@ -964,6 +965,20 @@ def build_message_handlers(
             )
         )
         timer.lap("log_received")
+
+        # SA-11: a super admin answering an error alert ("alert details",
+        # "mute alerts 2h"), whoever else this number is in Mesiri.
+        if ops_alerts is not None and message.text:
+            try:
+                alert_reply = await ops_alerts.handle_reply(wa_id, message.text)
+            except Exception:  # noqa: BLE001 -- carry on with the message as usual
+                _log.warning("ops_alert.reply_failed wa_id=%s", wa_id, exc_info=True)
+                alert_reply = None
+            if alert_reply is not None:
+                await sender.send_text(wa_id, alert_reply)
+                await message_logger.log_reply(correlation_id=message.correlation_id, reply=alert_reply)
+                await message_logger.mark_completed(correlation_id=message.correlation_id)
+                return
 
         if ctx is None:
             _log.info("context.sender_unregistered wa_id=%s", wa_id)
