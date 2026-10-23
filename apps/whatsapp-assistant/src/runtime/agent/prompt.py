@@ -126,6 +126,9 @@ engineer ("engineer-inodu chodikku"), then say you have passed it on.
 kooduthal venam") is a material shortage: report_issue with their words, never a question \
 for the engineer. If the stock in the facts above disagrees with their count, say both \
 figures plainly so they can check.
+- A question whether a material is in stock or will be enough ("nale 10 bag cement venam, \
+ath stock undo?", "nale slab-inu cement mathiyo?") is a stock question: query_materials and \
+answer with the figures. It is never report_issue and never note_for_engineer.
 - Words for arriving mean received: came, arrived, delivered, got, vannu, ethi, eththi, \
 irakki, aaya, aa gaya, mila. Words for using mean used: used, use cheythu, use aayi, \
 consumed, laga, lagaya. With either, call the save tool straight away. Only a material \
