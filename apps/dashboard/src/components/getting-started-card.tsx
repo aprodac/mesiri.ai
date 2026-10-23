@@ -73,8 +73,16 @@ function items(p: SetupProgress, onTimeOk: () => void, savingTime: boolean): Ite
     {
       key: 'time',
       done: p.report_time_set,
-      title: p.report_time_set ? 'Report time chosen' : `Your report goes out at ${sendTime}`,
-      detail: p.report_time_set ? `Reports go out at ${sendTime}.` : 'Keep it, or pick a time that suits you.',
+      title: p.report_time_set
+        ? 'Report time chosen'
+        : p.first_project?.auto_dpr
+          ? `Your report goes out at ${sendTime}`
+          : `Report time: ${sendTime}`,
+      detail: p.report_time_set
+        ? p.first_project?.auto_dpr
+          ? `Reports go out at ${sendTime}.`
+          : `Report time is ${sendTime}.`
+        : 'Keep it, or pick a time that suits you.',
       action: p.first_project && (
         <span className="flex items-center gap-3">
           {!p.report_time_set && (
@@ -103,7 +111,15 @@ function items(p: SetupProgress, onTimeOk: () => void, savingTime: boolean): Ite
       key: 'dpr',
       done: p.first_dpr_sent_at !== null,
       title: 'First daily report sent',
-      detail: `It goes out by itself at ${sendTime} once updates come in, or use Send now below.`,
+      // Only promise an automatic send when the project has one (WEB-15).
+      detail: p.first_project?.auto_dpr
+        ? `It goes out by itself at ${sendTime} once updates come in, or use Send now below.`
+        : 'Use Send now below once updates come in. To send it by itself every day, turn on automatic DPR in the project.',
+      action: p.first_project && !p.first_project.auto_dpr && (
+        <Link to={`/projects/${p.first_project.id}?tab=reporting`} className={linkClass}>
+          Turn on
+        </Link>
+      ),
     },
   ]
 }

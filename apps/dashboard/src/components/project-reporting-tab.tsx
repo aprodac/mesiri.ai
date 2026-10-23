@@ -135,8 +135,9 @@ export function ProjectReportingTab({ project }: ProjectReportingTabProps) {
               required
             />
             <p className="text-[11px] text-muted-foreground">
-              Sent to the owner and project managers as soon as every site is confirmed, or at this time with any
-              unconfirmed site shown as "Not reported".
+              {autoDpr
+                ? 'Sent to the owner and project managers as soon as every site is confirmed, or at this time with any unconfirmed site shown as "Not reported".'
+                : 'Automatic DPR is off, so nothing goes out by itself: use Send now on Today. Tick the box above to send it at this time every day.'}
             </p>
           </div>
 

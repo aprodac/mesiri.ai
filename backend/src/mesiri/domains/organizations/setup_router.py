@@ -41,6 +41,8 @@ class FirstProject(BaseModel):
     id: uuid.UUID
     name: str
     send_time: str  # "HH:MM" in the project's timezone, when its DPR goes out
+    # Whether the DPR goes out by itself at send_time; off, someone sends it.
+    auto_dpr: bool = False
 
 
 class SetupProgressResponse(BaseModel):
@@ -78,7 +80,7 @@ async def get_setup_progress(
         (
             await conn.execute(
                 sa.text(
-                    "SELECT id, name, dpr_send_deadline FROM projects "
+                    "SELECT id, name, dpr_send_deadline, auto_generate_dpr FROM projects "
                     "WHERE organization_id = :org ORDER BY created_at, name LIMIT 1"
                 ),
                 {"org": org_id},
@@ -98,7 +100,10 @@ async def get_setup_progress(
         first_dpr_sent_at=setup.first_dpr_sent_at,
         first_project=(
             FirstProject(
-                id=project["id"], name=project["name"], send_time=project["dpr_send_deadline"]
+                id=project["id"],
+                name=project["name"],
+                send_time=project["dpr_send_deadline"],
+                auto_dpr=bool(project["auto_generate_dpr"]),
             )
             if project is not None
             else None

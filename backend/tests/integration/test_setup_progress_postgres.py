@@ -71,6 +71,7 @@ async def test_a_new_signup_has_only_its_site(conn) -> None:
     assert progress.first_project.id == created.project_id
     assert progress.first_project.name == "Green Villa"
     assert progress.first_project.send_time == "21:00"
+    assert progress.first_project.auto_dpr is False
     assert progress.effective_status == "trial"
     assert progress.trial_days_left == 7
 
@@ -97,6 +98,17 @@ async def test_report_time_ticks_when_changed(conn) -> None:
     progress = await get_setup_progress(admin=admin, conn=conn)
     assert progress.report_time_set is True
     assert progress.first_project.send_time == "19:30"
+
+
+async def test_auto_dpr_follows_the_project(conn) -> None:
+    # WEB-15: the checklist only says the report goes out by itself when it does.
+    created, admin = await _signup(conn, "+91 98765 20005")
+    await conn.execute(
+        text("UPDATE projects SET auto_generate_dpr = true WHERE id = :id"),
+        {"id": created.project_id},
+    )
+    progress = await get_setup_progress(admin=admin, conn=conn)
+    assert progress.first_project.auto_dpr is True
 
 
 async def test_keeping_the_default_in_the_dashboard_answers_the_whatsapp_question(conn) -> None:
