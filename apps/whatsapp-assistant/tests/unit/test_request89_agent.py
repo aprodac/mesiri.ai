@@ -73,7 +73,7 @@ def at_ist(monkeypatch: pytest.MonkeyPatch) -> list[str | None]:
         zones.append(zone)
         return datetime.date(2026, 10, 22)
 
-    monkeypatch.setattr("runtime.agent.query_entry.today_for", today)
+    monkeypatch.setattr("runtime.agent.query_entry.project_today", today)
     return zones
 
 
