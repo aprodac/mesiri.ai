@@ -65,6 +65,10 @@ class ReplySpec:
     #: Only the button form carries it as a header; any other form sends it
     #: as its own image after the text (runtime/reply_dispatch.py).
     header_image: bytes | None = field(default=None, compare=False, repr=False)
+    #: Request 91: a card (Stock) sent as ONE image with ``text`` as its caption,
+    #: instead of the text and then the image. Only with no buttons or list; the
+    #: text alone goes out if the image fails. Receipts leave this False.
+    caption_image: bool = False
 
 
 # The two reply buttons shown under every "Confirm this record?" prompt.

@@ -16,6 +16,9 @@ from runtime.reply_composer import numbered
 
 _log = logging.getLogger("mesiri.reply_dispatch")
 
+#: WhatsApp allows 1024 characters in an image caption.
+_CAPTION_MAX = 1024
+
 
 async def send_reply_spec(
     reply: ReplySpec,
@@ -34,6 +37,20 @@ async def send_reply_spec(
     wamid must treat as "not captured" (see runtime/inbound_journey.py's
     final "Send reply" step, which only acts on a str result)."""
     image = reply.header_image
+    if (
+        image is not None
+        and reply.caption_image
+        and send_image is not None
+        and not reply.buttons
+        and not reply.list_rows
+    ):
+        sent = await send_image(
+            wa_id, image, caption=reply.text[:_CAPTION_MAX], filename="stock.png"
+        )
+        if sent is not False:
+            return sent
+        _log.warning("card.caption_send_failed wa_id=%s", wa_id)
+        return await send_text(wa_id, reply.text)
     if image is not None and not (reply.buttons and send_button is not None):
         # Only a reply-button message can carry the image as its header:
         # any other form sends its text, then the image on its own.

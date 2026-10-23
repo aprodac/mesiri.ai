@@ -108,6 +108,11 @@ class QueryEntry(EntryScope):
     object_storage: Any | None = None
     #: ``(wa_id, data, *, filename, caption) -> bool``: the DPR PDF.
     send_document: Callable[..., Awaitable[Any]] | None = None
+    #: Request 91: the receipt's renderer, for the Stock card; None draws none.
+    card_renderer: Any | None = None
+    #: The Stock card PNG for this turn's all-materials answer (set by
+    #: ``deliver``, read by the journey when it sends the reply), else None.
+    stock_card: bytes | None = None
 
     async def prepare(self, message: Any, understanding: Any, candidate: Any) -> Ready | Say | None:
         """The workflow to start, a line to say, or None (not one of these)."""
@@ -293,12 +298,47 @@ class QueryEntry(EntryScope):
         if key is K.LABOUR_QUERY:
             _one_name_per_trade(event.fields.get("labour_results"))
 
+    async def _stock_card(self, ready: Ready) -> None:
+        """Request 91: for an all-materials question (no one material named,
+        2+ rows) draw the Stock card; the journey sends it with the reply as
+        its caption. Any failure leaves ``stock_card`` None: the reply is
+        the text, as before."""
+        self.stock_card = None
+        fields, event = ready.event.fields, ready.event
+        levels = fields.get("inventory_levels") or []
+        if self.card_renderer is None or fields.get("material_name") or len(levels) < 2:
+            return
+        try:
+            from channel.cards import build_stock_card, render_png, stock_html
+
+            usage: dict[tuple[str, str], float] = {}
+            if self.inventory_query is not None:
+                try:
+                    usage = await self.inventory_query.usage_last_days(
+                        organization_id=event.organization_id,
+                        project_id=event.project_id,
+                        site_id=event.site_id,
+                    )
+                except Exception:  # noqa: BLE001 -- no usage figures, no "days left"
+                    _log.warning("query_entry.stock_usage_failed", exc_info=True)
+            site = next(
+                (s.name for s in getattr(self.actor, "sites", None) or () if str(s.id) == str(event.site_id)),
+                None,
+            )
+            card = build_stock_card(levels, usage, where=site or getattr(self.actor, "org_name", None) or "Site")
+            self.stock_card = await render_png(self.card_renderer, stock_html(card), card="stock")
+        except Exception:  # noqa: BLE001 -- the card is an extra
+            _log.warning("query_entry.stock_card_failed", exc_info=True)
+
     async def deliver(self, ready: Ready, message: Any) -> str | None:
         """After the run: the DPR PDF the answer says is attached, or a
         lookup asked for as a PDF, sent as the pipeline sent them (one retry).
         A line to add when it did not go."""
         fields = ready.event.fields
         key = ready.decision.workflow_key
+        if key is K.MATERIAL_INVENTORY_QUERY:
+            await self._stock_card(ready)
+            return None
         if self.send_document is None:
             return None
         from runtime.inbound_journey._shared import _send_with_one_retry

@@ -1183,7 +1183,7 @@ async def simulate_message(
             await _capture_button(_to, body=body, buttons=buttons)
             return True
 
-        async def send_image(self, _to: str, _data: bytes, *, caption: str | None = None) -> bool:
+        async def send_image(self, _to: str, _data: bytes, *, caption: str | None = None, filename: str = "") -> bool:
             await _capture_text(_to, f"[image]{' ' + caption if caption else ''}")
             return True
 

@@ -53,6 +53,11 @@ TYPICAL = {
 }
 
 
+def _markup(html: str) -> str:
+    """The page after its stylesheet (the embedded fonts are base64 noise)."""
+    return html.split("</style>", 1)[1]
+
+
 def _card(payload, **kw):
     return build_today_card(
         payload, site_name=kw.pop("site_name", "Block A"), report_date=DAY,
@@ -278,3 +283,221 @@ async def test_send_image_names_the_upload_receipt_png_unless_told_otherwise(mon
     assert await sender.send_image("91", PNG, caption="c", filename="today.png")
     assert uploads == ["receipt.png", "today.png"]
     assert posts[0] == {"type": "image", "image": {"id": "media-1", "caption": "c"}}
+
+
+# =============================== Stock card ====================================
+
+from types import SimpleNamespace  # noqa: E402
+
+from channel.cards import build_stock_card, days_left, stock_html  # noqa: E402
+from channel.replies import ReplySpec  # noqa: E402
+from runtime.agent.query_entry import QueryEntry  # noqa: E402
+from runtime.inventory_query import MaterialInventoryQueryService  # noqa: E402
+from runtime.reply_dispatch import send_reply_spec  # noqa: E402
+
+
+def _lvl(name, stock, received, unit="bags"):
+    return {"material_name": name, "unit": unit, "received": received, "used": received - stock,
+            "current_stock": stock}
+
+
+def test_days_left_is_stock_over_the_daily_use_of_the_week():
+    assert days_left(42, 70) == pytest.approx(4.2)  # 70 in 7 days = 10 a day
+    assert days_left(10, 7) == pytest.approx(10)
+
+
+def test_days_left_is_left_out_with_no_use_and_with_no_stock():
+    assert days_left(42, 0) is None
+    assert days_left(0, 70) is None
+    assert days_left(-5, 70) is None
+
+
+def test_stock_rows_note_days_or_received_and_scale_the_bar_to_received():
+    card = build_stock_card(
+        [_lvl("cement", 50, 200), _lvl("sand", 80, 100, "cft")],
+        {("cement", "bags"): 70.0},
+        where="Block A",
+    )
+    cement = next(r for r in card.rows if r.name == "Cement")
+    sand = next(r for r in card.rows if r.name == "Sand")
+    assert (cement.bar_pct, cement.note) == (25, "≈5 days at this week's use")
+    assert (sand.bar_pct, sand.note) == (80, "received 100")  # no use: no days figure
+    assert not card.low
+
+
+def test_red_when_stock_is_zero_or_below_and_the_footer_says_low():
+    card = build_stock_card([_lvl("steel", -100, 3000, "kg"), _lvl("sand", 600, 900, "cft")], {}, where="A")
+    steel = card.rows[0]  # trouble first
+    assert steel.name == "Steel" and steel.red and steel.low
+    assert card.low
+    html = stock_html(card)
+    assert "LOW · check stock" in html and "#C8102E" in html
+    zero = build_stock_card([_lvl("sand", 0, 900, "cft"), _lvl("tile", 5, 9, "nos")], {}, where="A")
+    assert zero.rows[0].red and zero.rows[0].note == "out of stock"
+
+
+def test_low_footer_when_under_three_days_left_but_not_red():
+    card = build_stock_card([_lvl("cement", 20, 200), _lvl("sand", 80, 100)], {("cement", "bags"): 70.0}, where="A")
+    cement = next(r for r in card.rows if r.name == "Cement")
+    assert not cement.red and cement.low and card.low  # 20 / 10 a day = 2 days
+    assert "≈2 days" in cement.note
+    ok = build_stock_card([_lvl("cement", 30, 200), _lvl("sand", 80, 100)], {("cement", "bags"): 70.0}, where="A")
+    assert not ok.low and "LOW" not in _markup(stock_html(ok))  # exactly 3 days is not low
+
+
+def test_stock_card_with_long_names_and_many_rows():
+    levels = [_lvl(f"material number {i} " + "x" * 40, 10 + i, 100) for i in range(11)]
+    card = build_stock_card(levels, {}, where="w" * 80)
+    assert len(card.rows) == 8 and card.more == 3
+    html = stock_html(card)
+    assert "+3 more" in html and "…" in html and "x" * 40 not in html
+
+
+def test_stock_html_escapes_names():
+    html = stock_html(build_stock_card([_lvl("<img src=x>", 5, 10), _lvl("sand", 5, 10)], {}, where="A"))
+    assert "<img" not in _markup(html) and "&lt;Img" in html
+
+
+# -- the image goes out with the reply as its caption ---------------------------
+
+
+class _Out:
+    def __init__(self, image_ok=True):
+        self.calls = []
+        self.image_ok = image_ok
+
+    async def text(self, wa_id, body):
+        self.calls.append(("text", body))
+        return "w"
+
+    async def image(self, wa_id, image, *, caption=None, filename="receipt.png"):
+        self.calls.append(("image", caption, filename))
+        return self.image_ok
+
+
+async def _dispatch(spec, out):
+    await send_reply_spec(spec, "91", send_text=out.text, send_image=out.image)
+
+
+async def test_a_stock_reply_is_one_captioned_image():
+    out = _Out()
+    await _dispatch(ReplySpec(text="📦 stock", header_image=PNG, caption_image=True), out)
+    assert out.calls == [("image", "📦 stock", "stock.png")]
+
+
+async def test_a_failed_stock_image_sends_the_text():
+    out = _Out(image_ok=False)
+    await _dispatch(ReplySpec(text="📦 stock", header_image=PNG, caption_image=True), out)
+    assert out.calls == [("image", "📦 stock", "stock.png"), ("text", "📦 stock")]
+
+
+async def test_the_receipt_still_goes_text_then_image():
+    out = _Out()
+    await _dispatch(ReplySpec(text="✅ Saved", header_image=PNG), out)
+    assert out.calls == [("text", "✅ Saved"), ("image", None, "receipt.png")]
+
+
+# -- the stock tool draws the card -------------------------------------------------
+
+
+class _Inventory:
+    def __init__(self, usage=None, fail=False):
+        self.usage, self.fail, self.asked = usage or {}, fail, 0
+
+    async def usage_last_days(self, **kw):
+        self.asked += 1
+        if self.fail:
+            raise RuntimeError("db")
+        return self.usage
+
+
+def _entry(renderer, inventory):
+    actor = SimpleNamespace(sites=[SimpleNamespace(id="s1", name="Block A")], org_name="Acme")
+    return QueryEntry(
+        context_resolver=None, org_settings_query=None, actor=actor,
+        inventory_query=inventory, card_renderer=renderer,
+    )
+
+
+def _ready(levels, **fields):
+    event = SimpleNamespace(
+        organization_id="o", project_id="p", site_id="s1",
+        fields={"inventory_levels": levels, **fields},
+    )
+    return SimpleNamespace(event=event)
+
+
+TWO = [_lvl("cement", 42, 200), _lvl("sand", 600, 900, "cft")]
+
+
+async def test_an_all_materials_question_draws_the_card():
+    entry, renderer = _entry(_Renderer(), _Inventory({("cement", "bags"): 70.0})), None
+    renderer = entry.card_renderer
+    await entry._stock_card(_ready(TWO))
+    assert entry.stock_card == PNG and renderer.calls == 1
+
+
+async def test_one_material_or_one_row_stays_text():
+    for ready in (_ready(TWO, material_name="cement"), _ready(TWO[:1])):
+        entry = _entry(_Renderer(), _Inventory())
+        await entry._stock_card(ready)
+        assert entry.stock_card is None and entry.card_renderer.calls == 0
+
+
+async def test_a_render_failure_leaves_the_text():
+    entry = _entry(_Renderer(fail=True), _Inventory())
+    await entry._stock_card(_ready(TWO))
+    assert entry.stock_card is None
+
+
+async def test_a_failed_usage_read_still_draws_without_days():
+    entry = _entry(_Renderer(), _Inventory(fail=True))
+    await entry._stock_card(_ready(TWO))
+    assert entry.stock_card == PNG
+
+
+async def test_no_renderer_no_card():
+    entry = _entry(None, _Inventory())
+    await entry._stock_card(_ready(TWO))
+    assert entry.stock_card is None
+
+
+class _Conn:
+    def __init__(self, rows):
+        self.rows, self.sql, self.params = rows, None, None
+
+    async def execute(self, sql, params):
+        self.sql, self.params = str(sql), params
+        return SimpleNamespace(mappings=lambda: SimpleNamespace(all=lambda: self.rows))
+
+
+class _Db:
+    def __init__(self, conn):
+        self.conn = conn
+
+    def transaction(self):
+        conn = self.conn
+
+        class _Tx:
+            async def __aenter__(self):
+                return conn
+
+            async def __aexit__(self, *a):
+                return False
+
+        return _Tx()
+
+
+async def test_usage_last_days_reads_seven_days_per_material_and_unit():
+    import uuid
+
+    conn = _Conn([{"name": "cement", "unit": "bags", "used": 70}, {"name": "cement", "unit": "kg", "used": 5}])
+    now = datetime.datetime(2026, 10, 23, tzinfo=datetime.UTC)
+    org, site = str(uuid.uuid4()), str(uuid.uuid4())
+    usage = await MaterialInventoryQueryService(_Db(conn)).usage_last_days(
+        organization_id=org, project_id=None, site_id=site, now=now
+    )
+    assert usage == {("cement", "bags"): 70.0, ("cement", "kg"): 5.0}
+    assert conn.params["since"] == now - datetime.timedelta(days=7)
+    assert "m.site_id = :site" in conn.sql and "m.project_id" not in conn.sql
+    assert "INSERT" not in conn.sql.upper() and "UPDATE" not in conn.sql.upper()  # read-only
