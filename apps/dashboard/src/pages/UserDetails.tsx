@@ -37,6 +37,7 @@ import {
 import { UserOverviewTab } from '@/components/user-overview-tab'
 import { UserWhatsAppMessagesTab } from '@/components/user-whatsapp-messages-tab'
 import type { ProjectItem } from '@/lib/scope-types'
+import { roleLabel } from '@/lib/permissions'
 
 const ROLE_BADGES = {
   ADMIN: 'destructive',
@@ -193,11 +194,11 @@ export default function UserDetails() {
               <h1 className="text-lg font-bold text-foreground flex items-center gap-2 leading-none">
                 {user.full_name}
                 <Badge variant="outline" className={`text-xs rounded-sm py-0.5 ${ROLE_BADGES[user.role as keyof typeof ROLE_BADGES] || 'bg-muted text-muted-foreground border'}`}>
-                  {user.role}
+                  {roleLabel(user.role)}
                 </Badge>
               </h1>
               <span className="text-xs text-muted-foreground">
-                {user.role} · {user.email} · {user.whatsapp_number || 'No WhatsApp Mapped'}
+                {roleLabel(user.role)} · {user.email} · {user.whatsapp_number || 'No WhatsApp number'}
               </span>
             </div>
           </div>
@@ -230,7 +231,7 @@ export default function UserDetails() {
           } flex items-center gap-1.5 whitespace-nowrap`}
         >
           <Shield className="size-3.5" />
-          Access Scope
+          Projects
         </button>
         <button
           onClick={() => setActiveTab('whatsapp')}
@@ -239,7 +240,7 @@ export default function UserDetails() {
           } flex items-center gap-1.5 whitespace-nowrap`}
         >
           <MessageSquare className="size-3.5" />
-          WhatsApp Mappings
+          WhatsApp number
         </button>
         <button
           onClick={() => setActiveTab('whatsapp_messages')}
@@ -257,7 +258,7 @@ export default function UserDetails() {
           } flex items-center gap-1.5 whitespace-nowrap`}
         >
           <History className="size-3.5" />
-          Timeline Logs
+          Activity
         </button>
         <button
           onClick={() => setActiveTab('settings')}
@@ -303,7 +304,7 @@ export default function UserDetails() {
               <div className="flex items-center gap-2 text-xs">
                 <span className="text-muted-foreground">Authorization Mode:</span>
                 <Badge variant="outline" className="rounded-sm">
-                  {user.access_policy?.mode === 'all_projects' ? 'ALL_PROJECTS (Org-Wide)' : 'CUSTOM_PROJECTS'}
+                  {user.access_policy?.mode === 'all_projects' ? 'All projects' : 'Selected projects'}
                 </Badge>
               </div>
 
@@ -383,7 +384,7 @@ export default function UserDetails() {
             <CardContent className="pt-4 space-y-4 text-xs">
               <div className="grid gap-2 border p-3 bg-muted/5 border-border/80">
                 <div className="flex justify-between items-center py-1">
-                  <span className="text-muted-foreground">Mapped Number</span>
+                  <span className="text-muted-foreground">WhatsApp number</span>
                   <span className="font-mono text-foreground font-semibold">
                     {user.whatsapp_number || 'None'}
                   </span>
@@ -391,7 +392,7 @@ export default function UserDetails() {
                 <div className="flex justify-between items-center py-1 border-t">
                   <span className="text-muted-foreground">Mapping Status</span>
                   <Badge variant={user.whatsapp_number ? 'default' : 'secondary'} className="rounded-sm">
-                    {user.whatsapp_number ? 'Mapped / Verified' : 'Unmapped'}
+                    {user.whatsapp_number ? 'Added' : 'Not added'}
                   </Badge>
                 </div>
               </div>
@@ -520,7 +521,7 @@ export default function UserDetails() {
               <CardContent className="pt-4 space-y-4 text-xs">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-border/40">
                   <div className="flex flex-col gap-0.5">
-                    <span className="font-semibold text-foreground">Revoke Access Scope</span>
+                    <span className="font-semibold text-foreground">Remove project access</span>
                     <span className="text-[11px] text-muted-foreground">
                       Remove all custom project permissions. This reverts the user to standard access.
                     </span>

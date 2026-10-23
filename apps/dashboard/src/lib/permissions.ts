@@ -5,6 +5,18 @@ import type { ScopeKind } from './scope-types'
 // _VALID_ROLES exactly — do not invent new role strings here.
 export type Role = 'ADMIN' | 'PROJECT_MANAGER' | 'SITE_ENGINEER' | 'FINANCE'
 
+// What each role is called on screen. Codes stay in data and API calls.
+export const ROLE_LABELS: Record<Role, string> = {
+  ADMIN: 'Admin / Director',
+  PROJECT_MANAGER: 'Project Manager',
+  SITE_ENGINEER: 'Site Engineer',
+  FINANCE: 'Finance / Accountant',
+}
+
+export function roleLabel(role: string | null | undefined): string {
+  return ROLE_LABELS[role as Role] ?? (role || '—')
+}
+
 // V1 access matrix (Portfolio / Project / Site). Finance uses the same 3
 // scopes as everyone else — there is no separate "Finance Mode."
 const ROLE_SCOPES: Record<Role, ScopeKind[]> = {

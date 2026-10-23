@@ -9,7 +9,6 @@ import {
   FolderLock,
   UserX,
   UserCheck,
-  Hash,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -22,6 +21,7 @@ import {
 } from '@/components/ui/tooltip'
 import type { User } from '@/lib/api'
 import type { ProjectItem } from '@/lib/scope-types'
+import { roleLabel } from '@/lib/permissions'
 
 interface UserOverviewTabProps {
   user: User
@@ -67,7 +67,7 @@ export function UserOverviewTab({
             <CardHeader className="pb-3 border-b border-l-3 border-l-blue-500 flex flex-row items-center justify-between gap-4 bg-transparent">
               <div>
                 <CardTitle className="text-xs uppercase tracking-wider text-blue-600 dark:text-blue-400 font-bold">
-                  User Account Information
+                  Details
                 </CardTitle>
               </div>
               <Button
@@ -95,16 +95,8 @@ export function UserOverviewTab({
                   <div>
                     <span className="block text-xs text-muted-foreground font-semibold uppercase tracking-wider">Role</span>
                     <Badge variant="outline" className={`text-xs rounded-sm py-0.5 mt-0.5 font-semibold ${ROLE_BADGES[user.role as keyof typeof ROLE_BADGES] || 'bg-muted text-muted-foreground border'}`}>
-                      {user.role}
+                      {roleLabel(user.role)}
                     </Badge>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-2.5">
-                  <Hash className="size-5 text-slate-500 dark:text-slate-400 shrink-0 mt-0.5" />
-                  <div>
-                    <span className="block text-xs text-muted-foreground font-semibold uppercase tracking-wider">Account ID</span>
-                    <span className="font-mono text-foreground text-sm select-all">{user.id}</span>
                   </div>
                 </div>
 
@@ -127,7 +119,7 @@ export function UserOverviewTab({
           <div>
             <CardHeader className="pb-3 border-b border-l-3 border-l-violet-500 bg-transparent">
               <CardTitle className="text-xs uppercase tracking-wider text-violet-600 dark:text-violet-400 font-bold">
-                Quick Access Status
+                Access
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-3 space-y-1.5 text-sm">
@@ -187,7 +179,7 @@ export function UserOverviewTab({
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="font-mono text-sky-600 dark:text-sky-400 text-sm font-semibold">
-                    {user.whatsapp_number || 'Not Mapped'}
+                    {user.whatsapp_number || 'Not added'}
                   </span>
                   <ChevronRight className="size-4 text-muted-foreground/50 group-hover:text-foreground transition-colors" />
                 </div>
@@ -230,7 +222,7 @@ export function UserOverviewTab({
                   <div>
                     <span className="block text-xs text-muted-foreground font-semibold uppercase tracking-wider">Number</span>
                     <span className="font-semibold text-foreground text-sm font-mono">
-                      {user.whatsapp_number || <span className="text-muted-foreground/60 italic font-normal">Not Mapped</span>}
+                      {user.whatsapp_number || <span className="text-muted-foreground/60 italic font-normal">Not added</span>}
                     </span>
                   </div>
                 </div>
@@ -243,7 +235,7 @@ export function UserOverviewTab({
                     </Badge>
                   ) : (
                     <Badge variant="outline" className="bg-muted text-muted-foreground border-border text-xs rounded-sm py-0.5 font-semibold">
-                      Pending Mapping
+                      Not added yet
                     </Badge>
                   )}
                 </div>

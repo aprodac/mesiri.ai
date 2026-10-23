@@ -265,8 +265,8 @@ export function WhatsAppMessagesTab() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Participants</SelectItem>
-                  <SelectItem value="mapped">Mapped Users</SelectItem>
-                  <SelectItem value="unmapped">Unmapped</SelectItem>
+                  <SelectItem value="mapped">From your team</SelectItem>
+                  <SelectItem value="unmapped">Unknown numbers</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -380,7 +380,7 @@ export function WhatsAppMessagesTab() {
                       ) : (
                         <div className="flex flex-col gap-0.5">
                           <span className="font-mono text-xs text-rose-500 font-semibold">{msg.sender_wa_id}</span>
-                          <span className="text-[9px] italic text-rose-400">Unmapped Participant</span>
+                          <span className="text-[9px] italic text-rose-400">Unknown number</span>
                         </div>
                       )}
                     </TableCell>
@@ -507,7 +507,7 @@ export function WhatsAppMessagesTab() {
                   </div>
                   <div>
                     <div className="font-semibold text-foreground">
-                      {detail.member ? detail.member.full_name : 'Unmapped WhatsApp Participant'}
+                      {detail.member ? detail.member.full_name : 'Unknown number'}
                     </div>
                     <div className="text-muted-foreground flex items-center gap-1.5 mt-0.5">
                       <span className="font-mono">{detail.sender_wa_id}</span>

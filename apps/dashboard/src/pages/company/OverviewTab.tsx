@@ -35,7 +35,7 @@ export function OverviewTab({ summary, onSelectTab }: OverviewTabProps) {
           </div>
           <div>
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Users Directory
+              Team
             </h3>
             <div className="mt-1 flex items-baseline gap-2">
               <span className="text-2xl font-bold tracking-tight font-mono">
@@ -49,7 +49,7 @@ export function OverviewTab({ summary, onSelectTab }: OverviewTabProps) {
               onClick={() => onSelectTab('users')}
               className="mt-3 text-xs font-medium text-primary hover:underline inline-flex items-center gap-1"
             >
-              Manage Users <ArrowRight className="size-3" />
+              Manage team <ArrowRight className="size-3" />
             </button>
           </div>
         </div>
@@ -61,7 +61,7 @@ export function OverviewTab({ summary, onSelectTab }: OverviewTabProps) {
           </div>
           <div>
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Operational Scope
+              Projects & sites
             </h3>
             <div className="mt-1 flex items-baseline gap-2">
               <span className="text-2xl font-bold tracking-tight font-mono">
@@ -93,20 +93,20 @@ export function OverviewTab({ summary, onSelectTab }: OverviewTabProps) {
           </div>
           <div>
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              WhatsApp Pipeline
+              WhatsApp
             </h3>
             <div className="mt-1 flex items-baseline gap-2">
               <span className="text-2xl font-bold tracking-tight font-mono">
                 {summary.wa_mapped_users}
               </span>
               <span className="text-xs text-emerald-500 font-medium">
-                Mapped
+                Number added
               </span>
               <span className="text-2xl font-bold tracking-tight font-mono ml-2">
                 {summary.wa_unmapped_users}
               </span>
               <span className="text-xs text-rose-500 font-medium">
-                Unmapped
+                No number
               </span>
             </div>
             <button

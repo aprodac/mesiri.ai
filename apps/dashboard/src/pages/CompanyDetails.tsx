@@ -8,7 +8,6 @@ import {
   Settings,
   Briefcase,
   Loader2,
-  CheckCircle,
   FileText,
 } from 'lucide-react'
 import { fetchCompany, fetchCompanySummary } from '@/lib/api'
@@ -97,18 +96,10 @@ export default function CompanyDetails() {
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 font-normal">
-            <Briefcase className="size-3.5" /> Company Administration Portal
-            <span className="text-muted-foreground/30">•</span>
-            <span className="font-mono text-[10px]">ID: {company.id}</span>
+            <Briefcase className="size-3.5" /> Your company's details, team and letterhead
           </p>
         </div>
 
-        {/* Deploy type indicator */}
-        <div className="flex items-center gap-1 bg-muted/30 border border-border/40 px-2.5 py-1 rounded text-[10px]">
-          <CheckCircle className="size-3.5 text-emerald-500" />
-          <span className="text-muted-foreground">Tenant Deployment:</span>
-          <span className="font-bold text-foreground capitalize font-mono">{company.deployment_type}</span>
-        </div>
       </div>
 
       {/* Navigation tabs row */}
@@ -133,7 +124,7 @@ export default function CompanyDetails() {
           }`}
         >
           <Users className="size-3.5" />
-          Users Directory
+          Team
         </button>
         <button
           onClick={() => setActiveTab('messages')}

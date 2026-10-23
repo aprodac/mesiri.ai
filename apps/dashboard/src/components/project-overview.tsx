@@ -152,7 +152,7 @@ export function ProjectOverview({ projectId }: ProjectOverviewProps) {
                 </Badge>
               </div>
               <p className="text-xs text-muted-foreground font-semibold">
-                {project.code || 'NO-CODE'} · {project.client || 'No Client'} · {project.location || 'No Location'} · {sites.length} Sites
+                {[project.code, project.client, project.location, `${sites.length} ${sites.length === 1 ? 'site' : 'sites'}`].filter(Boolean).join(' · ')}
               </p>
               <p className="text-xs text-muted-foreground italic font-medium pt-1">
                 Monitoring operational field activity across all sites in this project.

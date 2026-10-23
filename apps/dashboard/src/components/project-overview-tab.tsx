@@ -179,7 +179,7 @@ export function ProjectOverviewTab({
                   >
                     <div className="flex items-center gap-2">
                       <Building2 className="size-4 text-violet-500 dark:text-violet-400" />
-                      <span className="font-semibold text-foreground text-sm">Registered Sites</span>
+                      <span className="font-semibold text-foreground text-sm">Sites</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <span className="font-bold font-mono text-sm text-violet-600 dark:text-violet-400">{sites.length}</span>
@@ -221,7 +221,7 @@ export function ProjectOverviewTab({
                   >
                     <div className="flex items-center gap-2">
                       <Users className="size-4 text-sky-500 dark:text-sky-400" />
-                      <span className="font-semibold text-foreground text-sm">Mapped Members</span>
+                      <span className="font-semibold text-foreground text-sm">Team members</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <span className="font-bold font-mono text-sm text-sky-600 dark:text-sky-400">{members.length}</span>
@@ -278,7 +278,7 @@ export function ProjectOverviewTab({
               >
                 <div className="flex items-center gap-2">
                   <Clock className="size-4 text-amber-500 dark:text-amber-400" />
-                  <span className="font-semibold text-foreground text-sm">Reporting Period</span>
+                  <span className="font-semibold text-foreground text-sm">Daily cutoff</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="font-mono text-amber-600 dark:text-amber-400 text-sm font-semibold">{project.reportingCutoffTime} ({project.reportingTimezone})</span>

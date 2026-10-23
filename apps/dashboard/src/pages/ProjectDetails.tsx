@@ -176,11 +176,11 @@ export default function ProjectDetails() {
   }
 
   const handleOpenProject = () => {
-    navigate(`/overview?project=${project.id}`)
+    navigate(`/today?project=${project.id}`)
   }
 
   const handleOpenSite = (site: Site) => {
-    navigate(`/overview?project=${project.id}&site=${site.id}`)
+    navigate(`/today?project=${project.id}&site=${site.id}`)
   }
 
   // Filters site list
@@ -215,13 +215,13 @@ export default function ProjectDetails() {
                 </Badge>
               </h1>
               <span className="text-xs text-muted-foreground font-mono">
-                {project.code || 'NO-CODE'} · {project.client || 'No Client'} · {project.location || 'No Location'}
+                {[project.code, project.client, project.location].filter(Boolean).join(' · ') || 'Add code, client and location in Edit Info'}
               </span>
             </div>
           </div>
           <div className="flex gap-2">
             <Button size="sm" onClick={handleOpenProject} className="h-7 gap-1">
-              Open Project
+              Today's updates
             </Button>
             {isModuleEnabled('finance') && (
               <Button

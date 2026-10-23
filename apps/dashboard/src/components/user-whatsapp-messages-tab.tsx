@@ -173,7 +173,7 @@ export function UserWhatsAppMessagesTab({
             <MessageSquare className="size-6 text-muted-foreground/55" />
           </div>
           <div className="max-w-[400px] space-y-1.5">
-            <h3 className="font-semibold text-foreground">No WhatsApp Mapping Mapped</h3>
+            <h3 className="font-semibold text-foreground">No WhatsApp number added</h3>
             <p className="text-xs text-muted-foreground leading-relaxed">
               No WhatsApp identity is mapped to this user. Map a WhatsApp number to this user before Mesiri can associate messages with their account.
             </p>
@@ -253,7 +253,7 @@ export function UserWhatsAppMessagesTab({
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Card className="rounded-none border-border/70 shadow-none">
           <CardHeader className="p-4 pb-2">
-            <CardDescription className="text-[10px] uppercase font-semibold text-muted-foreground">Mapped WhatsApp Number</CardDescription>
+            <CardDescription className="text-[10px] uppercase font-semibold text-muted-foreground">WhatsApp number</CardDescription>
           </CardHeader>
           <CardContent className="px-4 pb-4 pt-0 flex justify-between items-center">
             <span className="font-mono text-base font-semibold text-foreground">{user.whatsapp_number}</span>
@@ -277,11 +277,11 @@ export function UserWhatsAppMessagesTab({
 
         <Card className="rounded-none border-border/70 shadow-none sm:col-span-2 lg:col-span-1">
           <CardHeader className="p-4 pb-2">
-            <CardDescription className="text-[10px] uppercase font-semibold text-muted-foreground">Mapped Identity Source</CardDescription>
+            <CardDescription className="text-[10px] uppercase font-semibold text-muted-foreground">Linked to</CardDescription>
           </CardHeader>
           <CardContent className="px-4 pb-4 pt-0 flex justify-between items-center">
             <Badge variant="outline" className="rounded-sm py-0.5 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 font-semibold">
-              Mapped & Verified
+              This person
             </Badge>
           </CardContent>
         </Card>
@@ -413,14 +413,14 @@ export function UserWhatsAppMessagesTab({
                               {msg.project!.name}
                             </Link>
                           ) : (
-                            <span className="text-muted-foreground/60 italic text-[11px]">Unmapped Project</span>
+                            <span className="text-muted-foreground/60 italic text-[11px]">No project</span>
                           )}
                           {hasSite ? (
                             <Link to={`/overview?project=${msg.project!.id}&site=${msg.site!.id}`} className="text-muted-foreground hover:text-foreground text-[10px] hover:underline truncate block">
                               {msg.site!.name}
                             </Link>
                           ) : hasProject ? (
-                            <span className="text-muted-foreground/50 italic text-[10px]">Unmapped Site</span>
+                            <span className="text-muted-foreground/50 italic text-[10px]">No site</span>
                           ) : null}
                         </div>
                       </TableCell>
@@ -485,7 +485,7 @@ export function UserWhatsAppMessagesTab({
                         {msg.project.name} {msg.site ? `· ${msg.site.name}` : ''}
                       </span>
                     ) : (
-                      <span className="text-muted-foreground/60 italic block">Not Mapped</span>
+                      <span className="text-muted-foreground/60 italic block">Not added</span>
                     )}
                   </div>
                   {msg.outcome && (
@@ -542,7 +542,7 @@ export function UserWhatsAppMessagesTab({
                   <SelectValue placeholder="All Identities" />
                 </SelectTrigger>
                 <SelectContent className="text-xs">
-                  <SelectItem value="ALL">All Mapped Numbers</SelectItem>
+                  <SelectItem value="ALL">All numbers</SelectItem>
                   {user.whatsapp_number && (
                     <SelectItem value={user.whatsapp_number}>{user.whatsapp_number}</SelectItem>
                   )}
@@ -632,7 +632,7 @@ export function UserWhatsAppMessagesTab({
                   <SelectValue placeholder="All Projects" />
                 </SelectTrigger>
                 <SelectContent className="text-xs">
-                  <SelectItem value="ALL">All Mapped Projects</SelectItem>
+                  <SelectItem value="ALL">All projects</SelectItem>
                   {projects.map((p) => (
                     <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                   ))}

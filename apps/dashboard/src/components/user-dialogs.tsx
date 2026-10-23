@@ -36,13 +36,9 @@ import {
 } from '@/lib/api'
 import { fetchProjects, fetchSites } from '@/lib/projects'
 import type { ProjectItem, SiteItem } from '@/lib/scope-types'
+import { ROLE_LABELS, type Role } from '@/lib/permissions'
 
-const ROLES = [
-  { value: 'ADMIN', label: 'Admin / Director' },
-  { value: 'PROJECT_MANAGER', label: 'Project Manager' },
-  { value: 'SITE_ENGINEER', label: 'Site Engineer' },
-  { value: 'FINANCE', label: 'Finance / Accountant' },
-] as const
+const ROLES = (Object.keys(ROLE_LABELS) as Role[]).map((value) => ({ value, label: ROLE_LABELS[value] }))
 
 interface AddEditUserDialogProps {
   open: boolean
@@ -657,7 +653,7 @@ export function WhatsAppManagerDialog({
                 Mapping Status
               </span>
               <Badge variant={isMapped ? 'default' : 'secondary'} className="rounded-sm px-1.5 py-0.5">
-                {isMapped ? 'Mapped / Verified' : 'Unmapped'}
+                {isMapped ? 'Added' : 'Not added'}
               </Badge>
             </div>
             {isMapped && (

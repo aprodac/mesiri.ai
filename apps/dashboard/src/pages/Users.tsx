@@ -59,6 +59,7 @@ import {
 } from '@/components/user-dialogs'
 import type { ProjectItem } from '@/lib/scope-types'
 import { useReadOnly } from '@/lib/trial'
+import { roleLabel } from '@/lib/permissions'
 
 const ROLE_BADGES = {
   ADMIN: 'destructive',
@@ -261,9 +262,9 @@ export default function Users() {
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">Users</h1>
+          <h1 className="text-xl font-bold tracking-tight text-foreground">Team</h1>
           <p className="text-xs text-muted-foreground">
-            Manage organization users, roles, project/site access policies, and WhatsApp identities.
+            Everyone in your company who uses Mesiri: their role, the projects they can see, and their WhatsApp number.
           </p>
         </div>
         <div className="flex gap-2">
@@ -309,13 +310,13 @@ export default function Users() {
         </div>
         <div>
           <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Mapped WhatsApp
+            WhatsApp added
           </span>
           <span className="text-lg font-bold text-primary font-mono">{stats.withWa}</span>
         </div>
         <div>
           <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Unmapped WhatsApp
+            No WhatsApp yet
           </span>
           <span className="text-lg font-bold text-muted-foreground font-mono">{stats.withoutWa}</span>
         </div>
@@ -387,8 +388,8 @@ export default function Users() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL">All Mappings</SelectItem>
-                  <SelectItem value="MAPPED">Mapped Only</SelectItem>
-                  <SelectItem value="UNMAPPED">Unmapped Only</SelectItem>
+                  <SelectItem value="MAPPED">WhatsApp added</SelectItem>
+                  <SelectItem value="UNMAPPED">No WhatsApp yet</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -454,7 +455,7 @@ export default function Users() {
                 </TableHead>
                 <TableHead>User</TableHead>
                 <TableHead>Role</TableHead>
-                <TableHead>Project Scope</TableHead>
+                <TableHead>Projects</TableHead>
                 <TableHead>WhatsApp Number</TableHead>
                 <TableHead>Account Status</TableHead>
                 <TableHead className="w-20 text-right pr-4">Actions</TableHead>
@@ -495,7 +496,7 @@ export default function Users() {
                     </TableCell>
                     <TableCell>
                       <Badge variant={ROLE_BADGES[user.role] || 'secondary'} className="text-[10px] rounded-sm px-1.5 py-0">
-                        {user.role}
+                        {roleLabel(user.role)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
