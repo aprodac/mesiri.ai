@@ -25,6 +25,8 @@ from .gateway import StepResult, WorkflowGateway
 from .tools import (
     ASK_USER,
     NOTE_FOR_ENGINEER,
+    QUERY_MATERIALS,
+    REPORT_ISSUE,
     REQUEST_DPR,
     SET_UNIT_CONVERSION,
     SET_WORK_SITE,
@@ -71,6 +73,59 @@ def asks_for_engineer(text: str) -> bool:
     """Whether the message mentions their engineer ("engineer-inodu chodikku",
     "ask the engineer"): the only case a question is passed on."""
     return bool(_ENGINEER.search(text or ""))
+
+
+def offers_engineer(reply: str) -> bool:
+    """Whether a reply offered to ask their engineer ("Shall I ask your
+    engineer?"), so a "yes" to it passes the question on. The "📨 Question for
+    your engineer: ..." line of a question already passed on is no offer."""
+    return any(
+        "?" in line and asks_for_engineer(line)
+        for line in (reply or "").splitlines()
+        if not line.lstrip().startswith("📨")
+    )
+
+
+#: WA-52: a question whether a material is in stock or will last. Both parts
+#: are needed: a stock word, and a question ("10 bag cement balance und,
+#: kooduthal venam" is a shortage, not a question).
+_STOCK_WORD = re.compile(
+    r"\bstock\b|\benough\b|\bmathi\w*|\bbalance\b|\bkaa?fi\b|\bbacha\b|സ്റ്റോക്ക്|മതി|स्टॉक|काफ़?ी|बचा",
+    re.IGNORECASE,
+)
+_QUESTION = re.compile(
+    r"\?|\b(?:undo|ondo|mathiyo|aakumo|aavumo|kya|ethra|kitna|how much|is there|do we have)\b"
+    r"|ഉണ്ടോ|മതിയോ|ആകുമോ|എത്ര|क्या|कितना",
+    re.IGNORECASE,
+)
+#: Words that it ran out or work is held up: then a shortage issue is right.
+_RAN_OUT = re.compile(
+    r"\btheer\w*|\bkazhinj\w*|\bran out\b|\brunning out\b|\bout of\b|\bfinished\b|\bstopp?\w*"
+    r"|\bnilach\w*|\bnin(?:nu|ni)\b|\bkhatam\b|\bkhatm\b|തീർന്ന|കഴിഞ്ഞ|നിന്നു|खत्म|रुक",
+    re.IGNORECASE,
+)
+_MATERIAL_WORDS = (
+    ("cement", re.compile(r"cement|സിമന്റ|സിമെന്റ|सीमेंट", re.IGNORECASE)),
+    ("sand", re.compile(r"\b(?:m-?|p-?)?sand\b|മണൽ|रेत|बालू", re.IGNORECASE)),
+    ("steel", re.compile(r"\bsteel\b|\btmt\b|\brods?\b|കമ്പി|सरिया", re.IGNORECASE)),
+    ("brick", re.compile(r"\bbricks?\b|ഇഷ്ടിക|ईंट", re.IGNORECASE)),
+    ("block", re.compile(r"\bblocks?\b", re.IGNORECASE)),
+    ("aggregate", re.compile(r"\baggregate\b|\bjelly\b|\bmetal\b|മെറ്റൽ|गिट्टी", re.IGNORECASE)),
+)
+
+
+def asks_about_stock(text: str) -> bool:
+    """Whether the message asks if a material is in stock or will be enough
+    ("nale slab-inu cement mathiyo?", "nale 10 bag cement venam, ath stock undo?")."""
+    text = text or ""
+    return bool(_STOCK_WORD.search(text) and _QUESTION.search(text))
+
+
+def material_named(text: str) -> str | None:
+    """The one common material the message names, for the stock lookup; None
+    when it names none or several (the lookup then lists all)."""
+    found = [name for name, pattern in _MATERIAL_WORDS if pattern.search(text or "")]
+    return found[0] if len(found) == 1 else None
 
 
 def _tool_fields(tool: str) -> set[str]:
@@ -151,6 +206,8 @@ class AgentToolbox:
     #: Request 88: items of the open card that follow the one being changed.
     _carry_after: list[SavedItem] = field(default_factory=list)
     _seen: set[str] = field(default_factory=set)
+    #: WA-52: what the stock lookup answered this message, if it ran.
+    _stock_answer: str | None = None
     _inflight: set[asyncio.Task[Any]] = field(default_factory=set)
 
     async def handle(self, name: str, args: dict[str, Any]) -> ToolOutcome:
@@ -203,6 +260,22 @@ class AgentToolbox:
             # Ilan, 21 Oct: a question goes to the engineer ONLY when the
             # sender asks for that. The live model passed "is there enough
             # cement for tomorrow's slab?" on instead of answering it.
+            # WA-52: telling it to look the stock up was not enough (23 Oct it
+            # still said "I'll ask your engineer"), so a stock question gets
+            # the stock looked up here and handed back with the refusal.
+            stock = await self._stock_for_question()
+            if stock:
+                return ToolOutcome(
+                    content={
+                        "status": "not_asked_to_pass_on",
+                        "stock": stock,
+                        "instruction": (
+                            "They did not ask you to ask their engineer. Answer their question "
+                            "yourself from these stock figures, copying the numbers. Do not say "
+                            "you will ask anyone."
+                        ),
+                    }
+                )
             return ToolOutcome(
                 content={
                     "status": "not_asked_to_pass_on",
@@ -211,6 +284,23 @@ class AgentToolbox:
                         "use the facts you were given or the query tools (query_materials for "
                         "stock). If the records cannot answer it, say so plainly in one line "
                         "and offer to ask their engineer."
+                    ),
+                }
+            )
+        if name == REPORT_ISSUE and asks_about_stock(self.user_text) and not _RAN_OUT.search(self.user_text):
+            # WA-52: "nale 10 bag cement venam, ath stock undo?" asks whether
+            # it is in stock; the live model filed it as a Material Shortage
+            # card. A question is answered, never saved as a problem.
+            stock = await self._stock_for_question()
+            return ToolOutcome(
+                content={
+                    "status": "not_saved",
+                    "reason": "they asked whether it is in stock: a question, not a problem on site",
+                    "stock": stock or "",
+                    "instruction": (
+                        "Nothing was saved and nothing needs saving. Answer their question from "
+                        "these stock figures, copying the numbers. Do not report an issue for it "
+                        "and do not say you will ask anyone."
                     ),
                 }
             )
@@ -229,6 +319,28 @@ class AgentToolbox:
             self.failed += 1
             return ToolOutcome(content={"status": "error", "message": "that action failed"})
         return self._outcome(name, step)
+
+    async def _stock_for_question(self) -> str | None:
+        """WA-52: the stock answer for a message asking whether a material is
+        in stock or will be enough -- the one the model already got this
+        message, else looked up now (the named material, else all of them).
+        None when the message asks no such thing or the lookup fails."""
+        if self._stock_answer is not None:
+            return self._stock_answer
+        if not asks_about_stock(self.user_text):
+            return None
+        material = material_named(self.user_text)
+        for args in ([{"material": material}] if material else []) + [{}]:
+            try:
+                step = await self._run(QUERY_MATERIALS, args)
+            except Exception:  # noqa: BLE001 -- the refusal still goes back without figures
+                _log.exception("agent.stock_lookup_failed")
+                return None
+            if step.status == "answer" and step.text:
+                self.answers.append(step.text)
+                self._stock_answer = step.text
+                return step.text
+        return None
 
     def _ask(self, args: dict[str, Any]) -> ToolOutcome:
         question = str(args.get("question") or "").strip()
@@ -466,6 +578,8 @@ class AgentToolbox:
             )
         if step.status == "answer":
             self.answers.append(step.text)
+            if name == QUERY_MATERIALS:
+                self._stock_answer = step.text
             return ToolOutcome(content={"status": "answer", "text": step.text})
         if step.status == "error":
             self.failed += 1

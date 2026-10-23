@@ -222,3 +222,31 @@ def without_stray_sentences(text: str, grounds: list[str]) -> str:
             kept.append(sentence)
     result = re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
     return result or text
+
+
+# -- promises to ask the engineer ------------------------------------------------
+
+_ENGINEER_WORD = re.compile(r"engin|\bengg?\b|എഞ്ചിനീ|എൻജിനീ|ഇഞ്ചിനീ|इंजीनियर|इंजिनियर", re.IGNORECASE)
+_PASS_ON_WORD = re.compile(
+    r"\b(?:ask|asked|asking|pass|passed|passing|forward\w*|send|sent|tell|told|inform\w*|check with"
+    r"|chodikk\w*|chodich\w*|chodhikk\w*|ariyikk\w*|ariyich\w*|parayam|paranj\w*)\b"
+    r"|ചോദിക്ക|ചോദിച്ച|അറിയിക്ക|അറിയിച്ച|പറയാം|പറഞ്ഞ|पूछ|बता|भेज",
+    re.IGNORECASE,
+)
+
+
+def promises_engineer(sentence: str) -> bool:
+    """A sentence saying the question goes (or went) to their engineer ("I'll
+    ask your engineer", "engineer-inodu chodikkam"). An offer that asks ("Shall
+    I ask your engineer?") is no promise."""
+    return bool(
+        "?" not in sentence and _ENGINEER_WORD.search(sentence) and _PASS_ON_WORD.search(sentence)
+    )
+
+
+def without_engineer_promise(text: str) -> str:
+    """``text`` without the sentences saying a question was passed to their
+    engineer, for a reply where nothing was (WA-52: 23 Oct "I'll ask your
+    engineer" went out for a stock question the records answered)."""
+    kept = [s for s in sentences(text) if not promises_engineer(s)]
+    return re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
