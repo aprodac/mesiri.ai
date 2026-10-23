@@ -555,6 +555,7 @@ def build_message_handlers(
             from runtime.agent.journey_gateway import JourneyGateway
             from runtime.agent.labour_entry import LabourEntry
             from runtime.agent.material_entry import MaterialEntry
+            from runtime.agent.project_day import project_zone_name
             from runtime.agent.query_entry import QueryEntry
             from runtime.agent.site_entry import SiteEntry
             from runtime.agent.turn import AgentTurnDeps, run_agent_turn
@@ -690,6 +691,12 @@ def build_message_handlers(
                 further messages."""
                 handled_list = list(getattr(gateway, "handled", []))
                 receipt_image = reply.header_image
+                entries = save_button.entries_of(handled_list)
+                if entries and (reply.buttons or reply.list_rows):
+                    # Request 90: a question's buttons must not push the Save card
+                    # out: the entries would stay drafts nobody was shown. The
+                    # question stays in the words, to be answered by typing.
+                    reply = save_button.question_as_text(reply)
                 if not handled_list or reply.buttons or reply.list_rows:
                     await _send_composed(
                         target_wa_id, ctx.user_id, reply, header_image=receipt_image
@@ -708,15 +715,25 @@ def build_message_handlers(
                 saved = any(h.saved_draft and not save_button.is_engineer_question(h) for h in handled_list)
                 composed = compose(reply.text, offers, saved=saved)
                 # WA-35: drafts wait on the sender's Save tap, not on Undo.
-                facts = save_button.facts_of(
+                plan, facts = save_button.card_plan(
                     handled_list,
                     before=[i.fact for i in getattr(gateway, "carry_before", ())],
                     after=[i.fact for i in getattr(gateway, "carry_after", ())],
                 )
-                if facts is not None and any(r.id == UNDO_ROW.id for r in composed.buttons or composed.list_rows or ()):
+                if plan == "card":
                     composed = save_button.with_save_buttons(composed, facts)
                     await _remember_card(gateway, open_card=True)
+                elif plan == "blocked":
+                    # Request 90: records were written but no card can show them:
+                    # block the reply, take them back, log it. No silent writes.
+                    _log.error("agent.write_without_card user=%s entries=%s", ctx.user_id, len(facts))
+                    await _undo_facts(facts)
+                    await _remember_card(gateway, open_card=False)
+                    composed = ReplySpec(text=save_button.NOT_SHOWN)
+                    receipt_image = None
                 elif saved:
+                    if plan == "legacy":
+                        _log.error("agent.write_without_card user=%s reviewable=false", ctx.user_id)
                     await _remember_card(gateway, open_card=False)
                 await _send_composed(
                     target_wa_id,
@@ -877,7 +894,7 @@ def build_message_handlers(
                 lap=timer.lap,
                 after_tool=_after_tool,
                 today_line=lambda actor: build_today_line(
-                    activity_search_service, actor, timezone_name=getattr(actor, "timezone", None)
+                    activity_search_service, actor, timezone_name=project_zone_name(getattr(actor, "timezone", None))
                 ),
                 stock_line=lambda actor: build_stock_line(inventory_query, actor),
                 work_site_line=_work_site_line if work_site is not None else None,
@@ -2246,6 +2263,32 @@ def build_message_handlers(
         # WA-01: "UNDO" right after a save-first update removes that draft
         # (through its own module's undo). Only when there is no recent draft
         # of the sender's does it fall through to the older undo handling.
+        # Request 90: for a sender whose replies carry Save cards, a bare "undo"
+        # removes the entries of THEIR LATEST CARD (recorded by the code), never
+        # "the latest draft of any type"; the older path below stays only for a
+        # reply that had no card (the old Undo button) or where cards are off.
+        if undo_hint is not None and cards is not None and agent_provider is not None:
+            from runtime.agent.cards import LEGACY
+            from runtime.agent.journey_gateway import undo_from_card
+
+            latest = await cards.get(ctx)
+            if latest is None or latest.state != LEGACY:
+
+                async def _undo_card_facts(facts):  # type: ignore[no-untyped-def]
+                    return await interaction_handler.undo_facts(
+                        organization_id=str(ctx.organization_id), user_id=ctx.user_id, facts=facts
+                    )
+
+                step = await undo_from_card(cards, ctx, _undo_card_facts, [])
+                if step.reply is not None:
+                    await _send_composed(wa_id, ctx.user_id, step.reply)
+                    reply_text = step.reply.text
+                else:
+                    await sender.send_text(wa_id, step.text)
+                    reply_text = step.text
+                await message_logger.log_reply(correlation_id=message.correlation_id, reply=reply_text)
+                await message_logger.mark_completed(correlation_id=message.correlation_id)
+                return
         if undo_hint is not None:
             try:
                 undo_reply = await interaction_handler.undo_latest_draft(

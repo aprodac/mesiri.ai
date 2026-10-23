@@ -27,14 +27,14 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from canonicalization.occurred_date import parse_stated_date, today_for
-from channel.receipt.data import company_zone
+from canonicalization.occurred_date import parse_stated_date
 from mesiri_contracts.assistant.canonical_event import CanonicalEventType as E
 from mesiri_contracts.assistant.enums import SemanticType as T
 from mesiri_contracts.assistant.planner_decision import WorkflowKey as K
 from workflows.registry import module_for_event
 
 from .entry_base import SCOPE_KEYS, EntryScope, Ready, Say, number
+from .project_day import project_today, project_zone_name
 
 _log = logging.getLogger("mesiri.agent")
 
@@ -145,7 +145,7 @@ class QueryEntry(EntryScope):
         for key in SCOPE_KEYS:
             fields.pop(key, None)
         ready = self.ready(scoped, message, event_type, workflow_key, fields)
-        timezone = str(company_zone(scoped.ctx.timezone))
+        timezone = project_zone_name(scoped.ctx.timezone)
         await self._seed(ready, message, timezone=timezone)
         if workflow_key is K.DPR_REQUEST:
             draft = await self._past_day_draft(ready, timezone=timezone)
@@ -156,7 +156,7 @@ class QueryEntry(EntryScope):
     async def _past_day_draft(self, ready: Ready, *, timezone: str) -> Say | None:
         """Request 89: ONE rule for a past day's report, however it is worded
         ("yesterday's report", "innale report ayakku"). The day is the project's
-        own (its time zone, ``today_for``), and what it holds is counted from the
+        own (its time zone, ``project_today``), and what it holds is counted from the
         same saved-entry source the day's summary uses (``preview_lines``: Save
         tapped, not cancelled), not from the stored version's count (which said
         "0 updates" for a day with a dozen saves, 22 Oct).
@@ -178,7 +178,7 @@ class QueryEntry(EntryScope):
         from runtime.inbound_journey.seeding import _dpr_scope
 
         stated = fields.get("report_date") or fields.get("occurred_on")
-        report_date = parse_stated_date(stated, today=today_for(timezone)) if stated else None
+        report_date = parse_stated_date(stated, today=project_today(timezone)) if stated else None
         project_id, site_id = _dpr_scope(ready.event, self.actor)
         if report_date is None or not project_id or not site_id:
             return None

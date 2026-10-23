@@ -33,6 +33,8 @@ from interactions.saved_summary import QUESTION_PREFIX, SAVED_HEADER
 from runtime.reply_composer import UNDO_ROW, pick_form
 from runtime.save_first import FACT_TYPE_BY_ACTION
 
+#: WhatsApp reply-button ids hold 256 characters: "agt:cancel:" + 34 each.
+MAX_ITEMS = 7
 TAP_PREFIX = "agt:"
 SAVE = "save"
 CANCEL = "cancel"
@@ -47,6 +49,12 @@ TO_SAVE_HEADER = "📝 To save:"
 SAVED_DONE = "✅ Saved."
 CANCELLED_DONE = "❌ Cancelled. Nothing from that message was kept. Send it again the right way."
 ALREADY_DONE = "That one is already done."
+#: Request 90: entries were prepared that no Save card could show (more than
+#: one tap holds): they are taken back, never left as unseen drafts.
+NOT_SHOWN = (
+    f"Nothing was kept: that was more than {MAX_ITEMS} entries, too many to check on one card. "
+    "Please send it again in smaller parts."
+)
 EXPIRED = "That message has expired."
 REFUSED = "Couldn't {what} {n} of them: {why}."
 #: A tap on one entry that can't be settled, said as a sentence (round 3,
@@ -72,8 +80,6 @@ _CODES: dict[str, str] = {
 }
 _TYPES = {code: fact_type for fact_type, code in _CODES.items()}
 
-#: WhatsApp reply-button ids hold 256 characters: "agt:cancel:" + 34 each.
-MAX_ITEMS = 7
 
 
 def fact_of(handled: Any) -> tuple[str, uuid.UUID] | None:
@@ -125,6 +131,40 @@ def facts_of(
     return facts if 0 < len(facts) <= MAX_ITEMS else None
 
 
+def entries_of(handled_list: Iterable[Any]) -> list[Any]:
+    """The records a reply wrote that the sender must check: saved drafts,
+    except a question passed on to the engineer."""
+    return [h for h in handled_list if getattr(h, "saved_draft", False) and not is_engineer_question(h)]
+
+
+def card_plan(
+    handled_list: Iterable[Any],
+    *,
+    before: Iterable[tuple[str, uuid.UUID]] = (),
+    after: Iterable[tuple[str, uuid.UUID]] = (),
+) -> tuple[str, list[tuple[str, uuid.UUID]]]:
+    """Request 90: what the reply must do about the records it wrote. One write
+    path: a record is only ever prepared, and the sender sees it on a card.
+
+    - ``"none"``: nothing to check;
+    - ``"card"``: Save / Cancel under the reply (the facts the buttons carry);
+    - ``"blocked"``: records were written but no card can hold them (more than
+      one tap holds): the reply is held back and the facts are to be taken back;
+    - ``"legacy"``: records the review log does not cover (a progress update)
+      keep the old Undo button -- logged as an error, never silent."""
+    handled = list(handled_list)
+    entries = entries_of(handled)
+    if not entries and not list(before) and not list(after):
+        return "none", []
+    facts = facts_of(handled, before=before, after=after)
+    if facts is not None:
+        return "card", facts
+    own = [fact_of(h) for h in entries]
+    if entries and all(f is not None for f in own):
+        return "blocked", [f for f in own if f is not None]
+    return "legacy", []
+
+
 def tap_id(action: str, facts: list[tuple[str, uuid.UUID]]) -> str:
     return f"{TAP_PREFIX}{action}:" + ".".join(f"{_CODES[t]}{i.hex}" for t, i in facts)
 
@@ -166,6 +206,18 @@ def with_save_buttons(spec: ReplySpec, facts: list[tuple[str, uuid.UUID]]) -> Re
         *others,
     ][:3]
     return replace(pick_form(text, rows), header_image=spec.header_image)
+
+
+def question_as_text(spec: ReplySpec) -> ReplySpec:
+    """``spec`` without its buttons or list: the options are written under the
+    question (bulleted, never numbered: a typed number would pick Save), so it can still
+    be answered by typing. Used when the
+    reply must carry the Save card instead (request 90)."""
+    rows = list(spec.buttons or spec.list_rows or ())
+    if not rows:
+        return spec
+    lines = "\n".join(f"• {row.title}" for row in rows)
+    return replace(spec, text=f"{spec.text}\n\n{lines}", buttons=None, list_rows=None, list_button_label=None)
 
 
 def tap_reply(action: str, settled: Any) -> str:

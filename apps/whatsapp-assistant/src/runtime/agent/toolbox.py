@@ -317,7 +317,7 @@ class AgentToolbox:
         name ids the code listed; the gateway rejects any other."""
         undo_card = getattr(self.gateway, "undo_card", None)
         if undo_card is None:
-            return await self.gateway.undo_latest_draft()
+            return StepResult("info", text="Nothing to undo from your last card.")
         targets = args.get("targets")
         refs = [str(t) for t in targets] if isinstance(targets, list) else []
         return await undo_card(refs)

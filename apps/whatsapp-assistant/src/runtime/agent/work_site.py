@@ -24,11 +24,12 @@ import logging
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from channel.replies import ListRow, ReplySpec
 from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage
+
+from .project_day import project_zone
 
 _log = logging.getLogger("mesiri.agent")
 
@@ -38,7 +39,6 @@ TAP_PREFIX = "today_site:"
 PARK_TTL_SECONDS = 2 * 60 * 60
 #: The site picked last time is offered first (kept a month).
 LAST_SITE_TTL_SECONDS = 30 * 24 * 60 * 60
-_DEFAULT_TZ = "Asia/Kolkata"
 _MAX_ROWS = 10  # WhatsApp list limit
 _TITLE_MAX = 24  # WhatsApp row title limit
 _DESC_MAX = 72  # WhatsApp row description limit
@@ -57,10 +57,7 @@ def _cut(text: str, limit: int) -> str:
 
 def seconds_until_midnight(now: datetime, timezone: str | None) -> int:
     """Seconds left in the company's day (at least one minute)."""
-    try:
-        zone = ZoneInfo(timezone or _DEFAULT_TZ)
-    except Exception:  # noqa: BLE001 -- an unknown zone name is India
-        zone = ZoneInfo(_DEFAULT_TZ)
+    zone = project_zone(timezone)  # request 90: the project's day, never UTC's
     local = now.astimezone(zone)
     midnight = (local + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     return max(60, int((midnight - local).total_seconds()))

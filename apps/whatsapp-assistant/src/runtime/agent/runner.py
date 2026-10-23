@@ -136,6 +136,7 @@ class AgentRunner:
         await toolbox.settle()
         run = await self._in_manglish(run, messages, user_text, correlation_id)
         run = await self._one_script(run, messages, user_text, correlation_id)
+        run = await self._answer_in_language(run, messages, toolbox, user_text, correlation_id)
         _park_plain_question(run, toolbox)
         # WA-37: every figure the model writes must come from what it was
         # given (the message, the facts in its prompt, a tool result) or from
@@ -184,6 +185,48 @@ class AgentRunner:
         if not is_manglish(again.text or ""):
             return run
         return run.model_copy(update={"text": again.text})
+
+    async def _answer_in_language(
+        self,
+        run: ToolRunResult,
+        messages: list[ChatMessage],
+        toolbox: AgentToolbox,
+        user_text: str,
+        correlation_id: str | None,
+    ) -> ToolRunResult:
+        """Request 90: a lookup's answer (a report, a count) goes through the
+        same language decision as every other reply. When the model gave no
+        words of its own, the system's English answer would go out as it is
+        ("innale report ayakku" answered in English, 23 Oct): it is said once
+        more in the language of THIS message, with no tools. Anything going
+        wrong keeps the answer as it was."""
+        language = reply_language(user_text)
+        if (run.text or "").strip() or language in (None, "english") or not toolbox.answers:
+            return run
+        answer = "\n".join(toolbox.answers)[:800]
+        if not looks_english(answer):
+            return run
+        ask = (
+            "Say this answer to the sender as a short reply. " + (reply_letters_rule(user_text) or "")
+            + " Same meaning, same numbers, nothing added. Only the reply.\n\n" + answer
+        )
+        try:
+            again = await self._provider.run_tools(
+                SYSTEM_PROMPT,
+                [*messages, ChatMessage(role="user", text=ask)],
+                [],
+                _no_tools,
+                max_steps=1,
+                timeout_seconds=MANGLISH_TIMEOUT_SECONDS,
+                correlation_id=correlation_id,
+            )
+        except Exception:  # noqa: BLE001 -- the answer goes out as it is
+            _log.warning("agent.answer_language_failed correlation_id=%s", correlation_id)
+            return run
+        said = (again.text or "").strip()
+        if not said or script_problems(said, user_text) or looks_english(said):
+            return run
+        return run.model_copy(update={"text": said})
 
     async def _one_script(
         self,

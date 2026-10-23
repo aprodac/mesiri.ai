@@ -84,6 +84,35 @@ def undo_step(gone: list[CardItem], undone: Any) -> StepResult:
     return StepResult("info", text="That is already removed. Nothing more to undo.")
 
 
+NOTHING_TO_UNDO = "Nothing to undo from your last card."
+
+
+async def undo_from_card(cards: Any, actor: Any, undo_facts: Any, refs: list[str]) -> StepResult:
+    """Request 88/90: remove entries of the sender's latest card, and nothing
+    else. The ids come from the card the code recorded; with no card (none
+    made, expired, or a reply that had no Save card) there is nothing to undo
+    -- it never falls back to "the latest record of any type" (22/23 Oct: the
+    3 masons stayed and an unrelated issue was removed)."""
+    card = await cards.get(actor) if cards is not None and actor is not None else None
+    if undo_facts is None or card is None or card.state == LEGACY or not card.items:
+        return StepResult("info", text=NOTHING_TO_UNDO)
+    if refs:
+        items = card.by_ref(refs)
+        if items is None:
+            return StepResult("error", text="Those entries are not on their latest card, so nothing was removed.")
+    elif len(card.items) > 1:
+        return StepResult("choose", text="Which one should be removed?", reply=undo_pick_list(card))
+    else:
+        items = card.items
+    undone = await undo_facts([i.fact for i in items])
+    if undone is None:
+        return StepResult("info", text=NOTHING_TO_UNDO)
+    gone = [i for i in items if i.fact in set(undone.done)]
+    if gone:
+        await cards.drop(actor, [i.fact for i in gone])
+    return undo_step(gone, undone)
+
+
 def _without_menu(text: str) -> str:
     """A module-disabled reply is one line; older replies carried the
     capability list after it, which the agent never repeats (requests [43], [59])."""
@@ -206,33 +235,10 @@ class JourneyGateway:
         return bool(undone is not None and undone.done)
 
     async def undo_card(self, refs: list[str]) -> StepResult:
-        """Request 88: "undo that" removes the entries of the sender's latest
+        """Request 88/90: "undo that" removes the entries of the sender's latest
         card -- never a record the code did not offer. ``refs`` are the ids the
         model named; one that is not on the card is refused."""
-        card = await self._latest_card()
-        if self.cards is None or self.undo_facts is None or (card is not None and card.state == LEGACY):
-            # No card to go by (an old reply with only an Undo button).
-            return await self.undo_latest_draft()
-        if card is None or not card.items:
-            return StepResult("info", text="Nothing to undo: there is no entry of theirs from the last few hours on a card.")
-        if refs:
-            items = card.by_ref(refs)
-            if items is None:
-                return StepResult(
-                    "error",
-                    text="Those entries are not on their latest card, so nothing was removed.",
-                )
-        elif len(card.items) > 1:
-            return StepResult("choose", text="Which one should be removed?", reply=undo_pick_list(card))
-        else:
-            items = card.items
-        undone = await self.undo_facts([i.fact for i in items])
-        if undone is None:
-            return await self.undo_latest_draft()
-        gone = [i for i in items if i.fact in set(undone.done)]
-        if gone:
-            await self.cards.drop(self.actor, [i.fact for i in gone])
-        return undo_step(gone, undone)
+        return await undo_from_card(self.cards, self.actor, self.undo_facts, refs)
 
     async def _remember_site(self, handled: Any) -> None:
         """WA-45: a save at a site keeps the sender there for the rest of the
