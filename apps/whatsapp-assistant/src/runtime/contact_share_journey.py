@@ -122,6 +122,8 @@ class ContactShareJourney:
         plan_store: PlanStore,
         workflow_runtime: WorkflowRuntime,
         send_text: Callable[[str, str], Awaitable[Any]] | None = None,
+        send_image: Callable[..., Awaitable[Any]] | None = None,
+        card_renderer: Any | None = None,
     ) -> None:
         self._redis = redis
         self._db = db
@@ -129,6 +131,9 @@ class ContactShareJourney:
         self._runtime = workflow_runtime
         # SS-05: tells someone who asked to join that they're in.
         self._send_text = send_text
+        # Request 91: the Welcome card (image, JOINED text as its caption).
+        self._send_image = send_image
+        self._card_renderer = card_renderer
 
     # -- entry points ---------------------------------------------------------
 
@@ -229,10 +234,10 @@ class ContactShareJourney:
         join_phone = invite.get("join_phone")
         if join_phone and self._send_text is not None:
             # SS-05: they asked to join, so tell them directly.
+            joined = JOINED.format(first=first, company=company, project=project)
             try:
-                await self._send_text(
-                    str(join_phone), JOINED.format(first=first, company=company, project=project)
-                )
+                if not await self._send_welcome_card(str(join_phone), joined, first, actor, company):
+                    await self._send_text(str(join_phone), joined)
                 return [ADDED_JOINER.format(name=name, project=project)]
             except Exception:  # noqa: BLE001 -- fall back to the invite to forward
                 _log.warning("contact_share.joiner_not_told user=%s", actor.user_id)
@@ -248,6 +253,32 @@ class ContactShareJourney:
         ]
 
     # -- internals ------------------------------------------------------------
+
+    async def _send_welcome_card(
+        self, wa_id: str, caption: str, first: str, actor: ActorIdentity, company: str
+    ) -> bool:
+        """Request 91: the Welcome card with the JOINED text as its caption.
+        False (nothing sent) when there is no renderer or the card could not
+        be made or sent: the caller then sends the text."""
+        if self._send_image is None or self._card_renderer is None:
+            return False
+        from channel.cards import build_welcome_card, render_png, welcome_html
+
+        card = build_welcome_card(
+            first=first,
+            role_code=_NEW_MEMBER_ROLE,
+            added_by=actor.full_name or "",
+            company=company,
+        )
+        png = await render_png(self._card_renderer, welcome_html(card), card="welcome")
+        if png is None:
+            return False
+        try:
+            sent = await self._send_image(wa_id, png, caption=caption, filename="welcome.png")
+        except Exception:  # noqa: BLE001 -- the text goes instead
+            _log.warning("contact_share.welcome_card_not_sent user=%s", actor.user_id, exc_info=True)
+            return False
+        return sent is not False
 
     async def _start(
         self, actor: ActorIdentity, pending: dict, project_id: str, project_name: str

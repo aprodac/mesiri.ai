@@ -501,3 +501,115 @@ async def test_usage_last_days_reads_seven_days_per_material_and_unit():
     assert conn.params["since"] == now - datetime.timedelta(days=7)
     assert "m.site_id = :site" in conn.sql and "m.project_id" not in conn.sql
     assert "INSERT" not in conn.sql.upper() and "UPDATE" not in conn.sql.upper()  # read-only
+
+
+# =============================== Welcome card ==================================
+
+import uuid  # noqa: E402
+
+from backend.ports import ActorIdentity, ProjectSummary  # noqa: E402
+from channel.cards import build_welcome_card, welcome_html  # noqa: E402
+from channel.cards.welcome import EXAMPLES, FOOTER  # noqa: E402
+from mesiri.infrastructure.redis.client import FakeRedis  # noqa: E402
+from mesiri_contracts.assistant.draft_action import DraftActionType  # noqa: E402
+from runtime import contact_share_journey as cs  # noqa: E402
+
+
+def test_the_welcome_card_greets_by_first_name_and_role():
+    card = build_welcome_card(first="Ravi", role_code="SITE_ENGINEER", added_by="Suresh", company="Acme Builders")
+    html = welcome_html(card)
+    body = _markup(html)
+    assert "Hi Ravi." in body and "You're the site engineer." in body
+    assert "Added by Suresh" in body and "Acme Builders" in body
+    assert FOOTER.replace("'", "&#39;") in body and "Mesiri &middot; Welcome" in body
+
+
+def test_welcome_uses_the_roles_own_examples():
+    engineer = build_welcome_card(first="R", role_code="SITE_ENGINEER", added_by="S", company="A")
+    supervisor = build_welcome_card(first="R", role_code="SUPERVISOR", added_by="S", company="A")
+    assert engineer.examples == EXAMPLES["SITE_ENGINEER"] and len(engineer.examples) == 3
+    assert supervisor.examples == EXAMPLES["SUPERVISOR"] != engineer.examples
+    # the engineer's three: workers, progress, a stock question (Malayalam-English mix)
+    assert "workers" in engineer.examples[0] and "Cement" in engineer.examples[2]
+    for line in engineer.examples:
+        assert line in welcome_html(engineer)
+
+
+def test_an_unknown_role_gets_the_engineer_examples_and_a_readable_name():
+    card = build_welcome_card(first="R", role_code="STORE_KEEPER", added_by="", company="")
+    assert card.role == "store keeper" and card.examples == EXAMPLES["SITE_ENGINEER"]
+    assert card.added_by == "your admin"
+
+
+def test_welcome_with_a_long_name_and_markup_is_clipped_and_escaped():
+    card = build_welcome_card(first="<b>" + "R" * 60, role_code="SITE_ENGINEER", added_by="S" * 90, company="C" * 90)
+    body = _markup(welcome_html(card))
+    assert "<b>" not in body and "…" in body and "R" * 60 not in body
+
+
+def _admin():
+    return ActorIdentity(
+        user_id=str(uuid.uuid4()), full_name="Suresh Nair", role="ADMIN",
+        organization_id=str(uuid.uuid4()), org_name="Acme Builders", org_active=True,
+        projects=[ProjectSummary(id=str(uuid.uuid4()), name="Green Villa")],
+    )
+
+
+async def _joined(monkeypatch, *, renderer, send_image):
+    async def fake_plan(**kw):
+        return ReplySpec(text="confirm")
+
+    monkeypatch.setattr(cs, "start_member_create_plan", fake_plan)
+    texts = []
+
+    async def send_text(to, body):
+        texts.append((to, body))
+
+    share = cs.ContactShareJourney(
+        redis=FakeRedis(), db=None, plan_store=None, workflow_runtime=None,
+        send_text=send_text, send_image=send_image, card_renderer=renderer,
+    )
+
+    async def nobody(phone):
+        return None
+
+    share._find_user = nobody  # type: ignore[method-assign]
+    actor = _admin()
+    await share.start_join(actor, name="Ravi Kumar", phone="919876500001", business_number="15550001111")
+    to_owner = await share.invite_after_member_added(
+        action_type=DraftActionType.ADD_PROJECT_MEMBER, member_name="Ravi Kumar", actor=actor
+    )
+    return to_owner, texts
+
+
+async def test_the_joiner_gets_the_welcome_card_with_the_joined_text_as_caption(monkeypatch):
+    images = []
+
+    async def send_image(to, png, *, caption=None, filename="receipt.png"):
+        images.append((to, png, caption, filename))
+        return True
+
+    to_owner, texts = await _joined(monkeypatch, renderer=_Renderer(), send_image=send_image)
+    assert texts == []  # the text is the caption, not a second message
+    [(to, png, caption, filename)] = images
+    assert (to, png, filename) == ("919876500001", PNG, "welcome.png")
+    assert caption.startswith("✅ You're in, Ravi! *Acme Builders* added you to *Green Villa*")
+    assert to_owner == ["✅ *Ravi Kumar* can now report on *Green Villa*. I've told them they're in."]
+
+
+@pytest.mark.parametrize("why", ["render", "upload"])
+async def test_the_joined_text_goes_alone_when_the_card_cannot(monkeypatch, why):
+    async def send_image(to, png, *, caption=None, filename="receipt.png"):
+        return why != "upload"
+
+    to_owner, texts = await _joined(
+        monkeypatch, renderer=_Renderer(fail=why == "render"), send_image=send_image
+    )
+    [(to, body)] = texts
+    assert to == "919876500001" and body.startswith("✅ You're in, Ravi! *Acme Builders* added you")
+    assert to_owner[0].startswith("✅ *Ravi Kumar* can now report")
+
+
+async def test_without_a_renderer_the_joiner_text_is_unchanged(monkeypatch):
+    to_owner, texts = await _joined(monkeypatch, renderer=None, send_image=None)
+    assert len(texts) == 1 and texts[0][1].startswith("✅ You're in, Ravi!")

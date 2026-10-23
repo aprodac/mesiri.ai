@@ -849,6 +849,8 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         plan_store=plan_store,
         workflow_runtime=workflow_runtime,
         send_text=sender.send_text,
+        send_image=sender.send_image,
+        card_renderer=receipt_renderer,
     )
 
     # SS-05: "JOIN ACME-4821" from a new number asks the company's admins;
