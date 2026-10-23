@@ -43,12 +43,13 @@ from .reply_text import (
     mixed_script_words,
     sentences,
     trim_at_sentence,
+    without_engineer_promise,
     without_manglish,
     without_native_script,
     without_save_prompt,
     without_stray_sentences,
 )
-from .toolbox import AgentToolbox, SavedItem, asks_for_engineer
+from .toolbox import AgentToolbox, SavedItem, offers_engineer
 from .tools import ScopeLookup, tool_specs
 
 _log = logging.getLogger("mesiri.agent")
@@ -111,7 +112,9 @@ class AgentRunner:
         toolbox = AgentToolbox(
             gateway=gateway, scope=scope, user_text=user_text, lap=lap, after_tool=after_tool
         )
-        toolbox.engineer_offered = bool(ctx.turns) and asks_for_engineer(ctx.turns[-1].assistant_reply)
+        # WA-52: only a reply that OFFERED to ask counts ("Shall I ask your
+        # engineer?"), not one that merely named the engineer.
+        toolbox.engineer_offered = bool(ctx.turns) and offers_engineer(ctx.turns[-1].assistant_reply)
         prompt_messages = build_messages(ctx, user_text)
         messages = [ChatMessage(role=r, text=t) for r, t in prompt_messages]
         try:
@@ -337,6 +340,9 @@ class AgentRunner:
             # Before the Save tap nothing is kept (WA-37).
             text = without_saved_claims(text)
         text = without_tool_talk(text)
+        if not _questions_line(toolbox):
+            # WA-52: nothing went to the engineer, so the reply never says it did.
+            text = without_engineer_promise(text)
         if toolbox.parked is None and (_entries(toolbox) or toolbox.system_lines or toolbox.answers):
             text = without_stray_sentences(text, _grounds(toolbox))
         text = saved_list(_unique_paragraphs(text))
