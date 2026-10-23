@@ -372,16 +372,16 @@ def tool_specs() -> list[ToolSpec]:
             name=SET_UNIT_CONVERSION,
             description=(
                 "Remember, for the whole company, how a unit of a material compares with its stock "
-                "unit, exactly as they said it: '1 load of holo bricks is 300 nos' -> unit 'load', "
-                "unit_amount 1, stock_amount 300; '28 bags of sand make 1 m³' -> unit 'bags', "
-                "unit_amount 28, stock_amount 1. Only when a tool said the material is counted in "
-                "another unit and the user gave the numbers, or they state it themselves. Then save "
-                "their entry again with their own amount and unit."
+                "unit. ONLY after a save tool answered that the material is counted in another unit "
+                "and the user then gave the numbers; never ask about units yourself, save first. "
+                "Copy the numbers as they said them: '1 is 300' -> unit_amount 1, stock_amount 300; "
+                "'28 make 1' -> unit_amount 28, stock_amount 1. Then save their entry again with "
+                "their own amount and unit."
             ),
             parameters=_obj(
                 {
                     "material": {"type": "string"},
-                    "unit": {"type": "string", "description": "The unit they reported in, e.g. load, bags."},
+                    "unit": {"type": "string", "description": "The unit they reported in."},
                     "unit_amount": {
                         "type": "number",
                         "description": "How many of that unit, as they said it (usually 1).",
