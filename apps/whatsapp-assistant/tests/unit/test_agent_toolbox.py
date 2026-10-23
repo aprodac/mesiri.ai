@@ -133,11 +133,13 @@ async def test_a_failing_tool_is_reported_to_the_model_not_raised():
     assert box.saved == []
 
 
-async def test_undo_of_the_latest_update_goes_to_the_classic_undo():
+async def test_undo_without_a_card_never_falls_back_to_the_latest_record():
+    # Request 90: "undo that" only ever names the entries of the sender's latest
+    # card; a gateway with no card to go by removes nothing.
     box, gateway = _box(StepResult("undone", text="Removed your last update"))
     out = await box.handle("undo_last", {})
-    assert gateway.undo_calls == 1
-    assert out.content["status"] == "undone"
+    assert gateway.undo_calls == 0
+    assert out.content["status"] == "info"
     assert box.saved == []  # an undo is not a saved record
 
 

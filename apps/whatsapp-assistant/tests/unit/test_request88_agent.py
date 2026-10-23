@@ -139,11 +139,13 @@ async def test_nothing_on_a_card_says_so_and_a_refused_undo_says_why():
     assert (await store.get(ACTOR)).items == [item]  # still there
 
 
-async def test_a_reply_without_save_buttons_keeps_the_old_undo():
+async def test_a_reply_without_a_card_has_nothing_to_undo_from_the_agent():
+    # Request 90: no fallback to "the latest record of any type" (the old Undo
+    # button of such a reply is answered before the agent, by the old path).
     store = c.CardStore(_Redis())
     await store.put(ACTOR, c.new_card(c.LEGACY, []))
     step = await _gateway(store).undo_card([])
-    assert (step.status, step.text) == ("undone", "Done. I've removed the issue.")
+    assert (step.status, step.text) == ("info", "Nothing to undo from your last card.")
 
 
 # -- the toolbox: undo_last and update_pending_card ----------------------------
