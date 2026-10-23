@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from './api';
 import PlatformSettingsCard from './PlatformSettingsCard';
+import OpsAlertsCard from './OpsAlertsCard';
 
 export default function Settings() {
   const [currentPassword, setCurrentPassword] = useState('');
@@ -48,6 +49,10 @@ export default function Settings() {
 
       <div style={{ marginBottom: 'var(--space-6)' }}>
         <PlatformSettingsCard />
+      </div>
+
+      <div style={{ marginBottom: 'var(--space-6)' }}>
+        <OpsAlertsCard />
       </div>
 
       <div className="card">
