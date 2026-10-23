@@ -32,13 +32,17 @@ SITE = "44444444-4444-4444-8444-444444444444"
 
 
 class _Query:
-    def __init__(self, result: dict[str, Any] | Exception) -> None:
+    def __init__(self, result: dict[str, Any] | Exception, draft_lines: list[str] | None = None) -> None:
         self._result = result
+        self._draft_lines = draft_lines or []
 
     async def find_report(self, **kwargs: Any) -> dict[str, Any]:
         if isinstance(self._result, Exception):
             raise self._result
         return dict(self._result)
+
+    async def draft_pdf(self, **kwargs: Any) -> tuple[list[str], bytes | None]:
+        return self._draft_lines, None
 
 
 class _Documents:
@@ -134,7 +138,8 @@ async def test_a_draft_nobody_confirmed_says_so_instead_of_being_prepared():
                 "code": "DPR-1",
                 "confirmed": False,
                 "update_count": 3,
-            }
+            },
+            draft_lines=["• Labour: 16 workers"],
         ),
         documents=_Documents(),
         storage=await _stored(),
@@ -174,7 +179,7 @@ async def test_nothing_built_yet_is_said_plainly():
         documents=_Documents(),
         storage=await _stored(),
     )
-    assert sink.replies[0].text.startswith("No DPR has been generated for today yet.")
+    assert sink.replies[0].text.startswith("Nothing's been logged for today yet")
 
 
 async def test_a_failed_lookup_is_fixed_words_and_logged_with_the_correlation_id(caplog):
@@ -256,6 +261,9 @@ class _PreviewQuery(_Query):
         self.asked = kwargs
         return self.lines
 
+    async def draft_pdf(self, **kwargs: Any) -> tuple[list[str], bytes | None]:
+        return self.lines, None  # nothing to render here: the lines answer
+
 
 async def test_during_the_day_the_sender_gets_the_day_so_far_marked_as_a_draft():
     query = _PreviewQuery(["• Work: 3 items", "• Labour: 16 workers", "• Materials: 2 entries"])
@@ -272,7 +280,7 @@ async def test_during_the_day_the_sender_gets_the_day_so_far_marked_as_a_draft()
 
 async def test_a_day_with_nothing_recorded_yet_still_says_so_plainly():
     _, sink = await _ask(_PreviewQuery([]), documents=_Documents(), storage=await _stored())
-    assert sink.replies[0].text.startswith("No DPR has been generated for today yet.")
+    assert sink.replies[0].text.startswith("Nothing's been logged for today yet")
 
 
 async def test_after_the_cutoff_a_day_waiting_on_the_site_says_what_it_needs():

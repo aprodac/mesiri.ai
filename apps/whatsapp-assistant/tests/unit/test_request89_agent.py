@@ -135,7 +135,7 @@ async def test_a_day_with_no_entries_says_there_is_none(at_ist):
     ready = _ready("pending_confirmation")
     assert await entry._past_day_draft(ready, timezone="Asia/Kolkata") is None
     text = generate_dpr_request_reply({"collected_fields": ready.event.fields})["pending_prompt"]
-    assert text.startswith("There is no DPR for 21 Oct 2026") and "0 updates" not in text
+    assert text.startswith("Nothing's been logged for 21 Oct 2026") and "0 updates" not in text
     assert storage.objects == {}
 
 
@@ -145,9 +145,8 @@ async def test_a_draft_that_cannot_be_rendered_is_shown_as_text(at_ist):
     assert say.status == "answer" and "isn't confirmed yet" in say.text and "• Labour: 16 workers" in say.text
 
 
-async def test_today_and_a_ready_pdf_are_left_alone(at_ist):
+async def test_a_ready_pdf_is_left_alone(at_ist):
     entry = QueryEntry(None, None, ACTOR, dpr_request_query=_Query(["• Labour: 16 workers"]), object_storage=_Storage())
-    assert await entry._past_day_draft(_ready("pending_confirmation", day=""), timezone="Asia/Kolkata") is None
     ready = _ready("ready")
     assert await entry._past_day_draft(ready, timezone="Asia/Kolkata") is None
     assert ready.event.fields["dpr_status"] == "ready" and "dpr_object_key" not in ready.event.fields

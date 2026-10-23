@@ -238,7 +238,7 @@ def test_reply_wording_names_the_day_for_a_past_report():
         "The DPR for 12 Oct 2026 (D-1) attached."
     )
     assert say(dpr_status="ready", dpr_code="D-1") == "Today's DPR (D-1) attached."
-    assert say(dpr_status="not_generated", dpr_day="12 Oct 2026").startswith("There is no DPR for 12 Oct 2026")
+    assert say(dpr_status="not_generated", dpr_day="12 Oct 2026").startswith("Nothing's been logged for 12 Oct 2026")
     assert say(dpr_status="pending_render", dpr_day="12 Oct 2026").startswith(
         "The report for 12 Oct 2026 is being prepared"
     )

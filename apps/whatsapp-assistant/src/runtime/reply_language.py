@@ -301,6 +301,12 @@ _FIXED_REPLIES: dict[str, dict[str, str]] = {
         ),
         "Not saved yet.": "ഇതുവരെ സേവ് ചെയ്തിട്ടില്ല.",
         "❌ Okay, nothing saved. Send it again whenever you're ready.": "❌ ശരി, ഒന്നും സേവ് ചെയ്തിട്ടില്ല. തയ്യാറാകുമ്പോൾ വീണ്ടും അയയ്ക്കൂ.",
+        "Nothing's been logged for today yet, so there's no report. Send me today's update and I'll make it.": (
+            "ഇന്ന് ഇതുവരെ ഒന്നും രേഖപ്പെടുത്തിയിട്ടില്ല, അതിനാൽ റിപ്പോർട്ട് ഇല്ല. ഇന്നത്തെ അപ്ഡേറ്റ് അയക്കൂ, ഞാൻ ഉണ്ടാക്കാം."
+        ),
+        "Couldn't make today's report just now, try again in a few minutes.": (
+            "ഇന്നത്തെ റിപ്പോർട്ട് ഇപ്പോൾ ഉണ്ടാക്കാനായില്ല, കുറച്ച് മിനിറ്റ് കഴിഞ്ഞ് വീണ്ടും ശ്രമിക്കൂ."
+        ),
         "I'll ask about this one after the rest.": "ഇതിനെക്കുറിച്ച് ബാക്കി കഴിഞ്ഞ് ചോദിക്കാം.",
         "Which site is this for?": "ഏത് സൈറ്റിനാണ് ഇത്?",
         "Which project is this for?": "ഏത് പ്രോജക്റ്റിനാണ് ഇത്?",
@@ -337,6 +343,12 @@ _FIXED_REPLIES: dict[str, dict[str, str]] = {
         ),
         "Not saved yet.": "अभी सेव नहीं हुआ।",
         "❌ Okay, nothing saved. Send it again whenever you're ready.": "❌ ठीक है, कुछ सेव नहीं हुआ। जब तैयार हों, फिर से भेजें।",
+        "Nothing's been logged for today yet, so there's no report. Send me today's update and I'll make it.": (
+            "आज अभी तक कुछ दर्ज नहीं हुआ, इसलिए रिपोर्ट नहीं है। आज का अपडेट भेजें, मैं बना दूँगा।"
+        ),
+        "Couldn't make today's report just now, try again in a few minutes.": (
+            "आज की रिपोर्ट अभी नहीं बन सकी, कुछ मिनट बाद फिर कोशिश करें।"
+        ),
         "I'll ask about this one after the rest.": "इसके बारे में बाकी के बाद पूछूँगा।",
         "Which site is this for?": "यह किस साइट के लिए है?",
         "Which project is this for?": "यह किस प्रोजेक्ट के लिए है?",

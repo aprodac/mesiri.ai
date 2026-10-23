@@ -103,6 +103,10 @@ def _one_name_per_trade(results: Any) -> None:
         results["trade_counts"] = [[trade, count] for trade, count in counts.items()]
 
 
+#: Request 67: today's report could not be made. Fixed words, no stack text.
+DPR_RETRY_REPLY = "Couldn't make today's report just now, try again in a few minutes."
+
+
 @dataclass(slots=True)
 class QueryEntry(EntryScope):
     context_resolver: Any
@@ -188,7 +192,12 @@ class QueryEntry(EntryScope):
         A draft that cannot be rendered is shown as text. Returns a ``Say`` only
         then."""
         fields = ready.event.fields
-        if not fields.get("dpr_day") or fields.get("dpr_status") not in ("pending_confirmation", "not_generated"):
+        today = not fields.get("dpr_day")
+        # Today too (request 67): "send me today's report" at 3 pm with entries
+        # saved gets the draft PDF, not a dead end. The wait-for-evening text
+        # (WA-40 preview/waiting) only stays when no PDF can be made.
+        statuses = ("pending_confirmation", "not_generated") + (("preview", "waiting") if today else ())
+        if fields.get("dpr_status") not in statuses:
             return None
         if self.dpr_request_query is None:
             return None
@@ -196,6 +205,8 @@ class QueryEntry(EntryScope):
 
         stated = fields.get("report_date") or fields.get("occurred_on")
         report_date = parse_stated_date(stated, today=project_today(timezone)) if stated else None
+        if today:
+            report_date = project_today(timezone)
         project_id, site_id = _dpr_scope(ready.event, self.actor)
         if report_date is None or not project_id or not site_id:
             return None
@@ -212,7 +223,7 @@ class QueryEntry(EntryScope):
             )
         except Exception:  # noqa: BLE001 -- the workflow's own answer stands
             _log.warning("query_entry.past_draft_failed", exc_info=True)
-            return None
+            return Say("answer", DPR_RETRY_REPLY) if today else None
         if not lines:
             # Nothing was saved that day: say so, not "0 updates, not confirmed yet".
             fields["dpr_status"] = "not_generated"
@@ -224,6 +235,7 @@ class QueryEntry(EntryScope):
             except Exception:  # noqa: BLE001 -- shown as text below
                 _log.warning("query_entry.draft_store_failed", exc_info=True)
             else:
+                fields.pop("dpr_preview", None)
                 fields.update(
                     dpr_status="ready",
                     dpr_object_key=key,
@@ -231,11 +243,13 @@ class QueryEntry(EntryScope):
                     dpr_confirmed=False,
                 )
                 return None
+        if today:
+            return None  # no PDF: the workflow's own "so far today" lines (WA-40) answer
         site = fields.get("dpr_site_name")
         where = f" at {site}" if site else ""
         return Say(
             "answer",
-            f"The report for {fields['dpr_day']}{where} isn't confirmed yet. So far:\n"
+            f"The report for {fields['dpr_day'] or 'today'}{where} isn't confirmed yet. So far:\n"
             + "\n".join(lines)
             + "\nThis is a draft: not final, and not sent to anyone.",
         )

@@ -28,8 +28,8 @@ _STATUS_TEXT = {
         "Please ask again in a minute."
     ),
     "not_generated": (
-        "No DPR has been generated for today yet. Log an activity first, "
-        "or check back once today's report has run."
+        "Nothing's been logged for today yet, so there's no report. "
+        "Send me today's update and I'll make it."
     ),
     # WA-40: asked during the day, before the evening cutoff builds it.
     "preview": (
@@ -48,8 +48,7 @@ _STATUS_TEXT = {
 
 #: A past day: nothing is "yet" about it, so the wording is its own.
 _PAST_NOT_GENERATED = (
-    "There is no DPR for {day}: nothing was logged that day, or its report "
-    "was never generated."
+    "Nothing's been logged for {day}, so there's no report."
 )
 
 

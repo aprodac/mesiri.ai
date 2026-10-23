@@ -614,7 +614,7 @@ def draft_report_line(report_text: str | None) -> str:
     items = [m.group("item").strip().rstrip(".") for m in _DRAFT_LINE.finditer(text)]
     if items:
         return f"Today's draft so far: {', '.join(items)}. {DRAFT_TAIL}"
-    if text.startswith("No DPR has been generated"):
+    if text.startswith(("No DPR has been generated", "Nothing's been logged for today")):
         return f"Today's draft so far: nothing yet. {DRAFT_TAIL}"
     return ""
 

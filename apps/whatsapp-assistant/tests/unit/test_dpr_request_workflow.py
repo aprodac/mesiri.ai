@@ -58,7 +58,7 @@ def test_pending_render_status_says_it_is_being_prepared():
 def test_not_generated_status_explains_nothing_was_logged():
     reply = generate_dpr_request_reply(_state(dpr_status="not_generated"))
     text = reply["pending_prompt"].lower()
-    assert "no dpr" in text
+    assert "nothing's been logged" in text and "send me today's update" in text
 
 
 def test_missing_status_field_defaults_to_not_generated_not_a_crash():
