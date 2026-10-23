@@ -432,3 +432,24 @@ is told it as a fact and checked.**
   (`DprRequestQueryService.draft_pdf`, code line "Draft · not confirmed yet") and sent through the
   workflow's own "attached" path; else "there is no DPR for that day". The stored version's
   `activity_count` is no longer what decides.
+
+## Addendum (request 90, 23 Oct): one write path, undo from the latest card, the project's day
+
+The re-test of [89] showed an issue written with no Save card, "undo that" removing the wrong
+record, and "today" counted on the server's UTC day. Same rule: **code decides what a record is
+shown as, what undo may touch, and which day it is.**
+
+- One write path: every agent record is a draft the sender sees on a Save card; `save_button.card_plan`
+  decides (card / blocked / old Undo for records the review log does not cover). A question in the same
+  reply no longer replaces the card's buttons (its options are written under it, bulleted, not numbered:
+  a typed number would pick Save). Records no card can hold (more than one tap) are taken back and the
+  reply says so; each such case logs `agent.write_without_card`.
+- Undo: the old WA-01 "undo = the latest draft of any type" ran before the agent and hit the wrong entry.
+  For senders with cards, a bare undo is answered by `journey_gateway.undo_from_card` from the latest
+  card the code recorded (a list when it holds several entries); with no card it says "Nothing to undo
+  from your last card." The agent's `undo_last` has no fallback either. The old path remains only for a
+  reply that had the old Undo button (a legacy marker) and for deployments without cards.
+- Dates: `runtime/agent/project_day.py` is the one helper for today / yesterday / this week in the
+  project's zone (India when blank, the untouched "UTC" default, or unknown). The agent's lookups, the
+  today-so-far line and the work-site expiry use it; boundaries are tested at 00:30 and 23:30 IST.
+- A lookup answer with no model words goes through the same language decision as any reply.
