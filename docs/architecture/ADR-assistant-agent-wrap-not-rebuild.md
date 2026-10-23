@@ -359,6 +359,8 @@ From `0c72b3e` a third set: photos and bills (10 cases, `photo_golden.yaml`), as
 | `cb045f4` | plain material names asked for; a plain-text question waits | **24/24** | **24/24** | 7/10 (trade names) |
 | `54621e6` | a bill's trade name finds the one listed material it names | - | - | **10/10** |
 | `cba73d8` | ARCH-07: add_member, correct_work_quantity, update_issue | **24/24** | 23/24 (#20 "nale slab-inu cement mathiyo?": tried the engineer note, not the stock lookup; passed in the four runs before) | **10/10** |
+| `e66e25e` | WA-57/58/61: still-to-do list, one combined question, other_parts, conversions as said; site set +4 multi-part cases (28) | **28/28** (all 4 new cases kept every part) | 22/24 (#6 "40 ചാക്ക്" unit kept in Malayalam; #10 asked "cft per load?" before saving: the WA-61 tool text, narrowed in `3aa11a4`) | **10/10** |
+| `3aa11a4` | set_unit_conversion only after a save asked | - | 22/24 (#6 and #10 pass; #5 "500 kg steel" asked which steel; #21 rain got sympathy, no issue). Different cases fail each run: model variance, watch it | - |
 
 Left on materials (ARCH-01, live since 21 Oct), neither saves anything wrong: "50 bags cement
 arrived" sometimes still gets one "Received or used?" tap (2 of the last 4 runs), and "cement
