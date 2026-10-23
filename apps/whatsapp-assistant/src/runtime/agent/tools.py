@@ -371,18 +371,27 @@ def tool_specs() -> list[ToolSpec]:
         ToolSpec(
             name=SET_UNIT_CONVERSION,
             description=(
-                "Remember, for the whole company, how many of a unit make one stock unit of a "
-                "material ('28 bags of sand make 1 m³': material 'sand', unit 'bags', count 28). "
-                "Only after a tool said the material is counted in another unit and the user "
-                "gave that number. Then save their entry again with their own amount and unit."
+                "Remember, for the whole company, how a unit of a material compares with its stock "
+                "unit, exactly as they said it: '1 load of holo bricks is 300 nos' -> unit 'load', "
+                "unit_amount 1, stock_amount 300; '28 bags of sand make 1 m³' -> unit 'bags', "
+                "unit_amount 28, stock_amount 1. Only when a tool said the material is counted in "
+                "another unit and the user gave the numbers, or they state it themselves. Then save "
+                "their entry again with their own amount and unit."
             ),
             parameters=_obj(
                 {
                     "material": {"type": "string"},
-                    "unit": {"type": "string", "description": "The unit they reported in, e.g. bags."},
-                    "count": {"type": "number", "description": "How many of that unit make ONE stock unit."},
+                    "unit": {"type": "string", "description": "The unit they reported in, e.g. load, bags."},
+                    "unit_amount": {
+                        "type": "number",
+                        "description": "How many of that unit, as they said it (usually 1).",
+                    },
+                    "stock_amount": {
+                        "type": "number",
+                        "description": "How much of the stock unit that many make, as they said it.",
+                    },
                 },
-                ["material", "unit", "count"],
+                ["material", "unit", "unit_amount", "stock_amount"],
             ),
         ),
         ToolSpec(

@@ -16,6 +16,9 @@ from typing import Any
 
 _log = logging.getLogger(__name__)
 
+#: Stock units of whole things: a conversion into one never gives a fraction.
+COUNTED_UNITS = frozenset({"nos", "pcs", "rolls"})
+
 
 @dataclass(slots=True)
 class UnitFit:
@@ -25,6 +28,9 @@ class UnitFit:
     kind: str
     stock_unit: dict | None = None
     reported_unit: dict | None = None
+    #: WA-61: a saved conversion that turned whole things into a fraction
+    #: ("1 load" -> 0.333 nos): wrong, so it is asked again instead.
+    doubtful: Any = None
 
 
 async def fit_stock_unit(
@@ -66,9 +72,16 @@ async def fit_stock_unit(
         if per_stock_unit is not None:
             from mesiri.domains.materials.unit_conversion import to_stock_quantity
 
+            converted = to_stock_quantity(qty, per_stock_unit)
+            if str(stock_unit.get("code") or "").lower() in COUNTED_UNITS and converted != converted.to_integral_value():
+                _log.warning(
+                    "unit_gate.doubtful_conversion material=%s converted=%s correlation_id=%s",
+                    material.get("id"), converted, correlation_id,
+                )
+                return UnitFit("mismatch", stock_unit=stock_unit, reported_unit=reported, doubtful=converted)
             fields["reported_quantity"] = qty
             fields["reported_unit"] = str(unit_text)
-            fields["quantity"] = float(to_stock_quantity(qty, per_stock_unit))
+            fields["quantity"] = float(converted)
             fields["unit"] = stock_unit["code"]
             fields["unit_id"] = str(stock_unit_id)
             return UnitFit("ok")
@@ -90,11 +103,18 @@ def ask_amount_text(
     unit_text = fields.get("unit")
     said = " ".join(p for p in (str(qty) if qty is not None else "", str(unit_text)) if p)
     head = f"Not saved yet: {material['name']} is counted in {unit_display} here, so {said} can't be saved as it is."
+    if fit.doubtful is not None:
+        head = (
+            f"Not saved yet: the company's saved conversion makes {said} of {material['name']} "
+            f"{fit.doubtful.normalize():f} {unit_display}, which can't be right."
+        )
     if fit.reported_unit is not None and may_set_unit_conversions(role):
-        unit_word = fit.reported_unit.get("display_name") or str(unit_text)
+        # WA-61: asked the way people know it ("1 load = 300 nos"); "how many
+        # loads make 1 nos?" was unanswerable and got saved upside down.
+        unit_word = str(fit.reported_unit.get("display_name") or unit_text).lower()
         return (
-            f"{head} How many {str(unit_word).lower()} of {material['name']} make 1 "
-            f"{unit_display}? I'll remember it for the company, "
+            f"{head} How many {unit_display} is 1 {unit_word} of {material['name']} (or how many "
+            f"{unit_word} make 1 {unit_display})? I'll remember it for the company, "
             f"or tell me the amount in {unit_display}."
         )
     return (

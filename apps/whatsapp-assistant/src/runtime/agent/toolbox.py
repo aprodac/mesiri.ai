@@ -14,6 +14,7 @@ import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from channel.replies import ListRow, ReplySpec
@@ -55,6 +56,22 @@ _TITLE_MAX = 24  # WhatsApp button/row title limit
 _RECORDED = re.compile(
     r"^\W*(?:recorded\.?(?:\s+thank you\.?)?|saved\s*:.*)\s*$", re.IGNORECASE | re.DOTALL
 )
+
+
+def per_stock_unit(args: dict[str, Any]) -> Decimal | None:
+    """WA-61: set_unit_conversion's two amounts as the stored number -- how many
+    of the unit make ONE stock unit. The model copies what was said ("1 load is
+    300 nos": 1 and 300) and the code divides; asked for that number directly,
+    "how many loads make 1 nos?" was unanswerable and saved upside down (live
+    23 Oct: 1 load of holobricks became 0.333 nos)."""
+    try:
+        unit_amount = Decimal(str(args.get("unit_amount", 1)))
+        stock_amount = Decimal(str(args.get("stock_amount")))
+    except (InvalidOperation, ValueError):
+        return None
+    if unit_amount <= 0 or stock_amount <= 0:
+        return None
+    return unit_amount / stock_amount
 
 
 def _without_recorded(text: str) -> str:
@@ -456,7 +473,7 @@ class AgentToolbox:
             return await self.gateway.set_unit_conversion(
                 material=str(args.get("material") or ""),
                 unit=str(args.get("unit") or ""),
-                count=args.get("count"),
+                count=per_stock_unit(args),
             )
         candidate = to_candidate(name, args, self.scope)
         if candidate is None:

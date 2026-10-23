@@ -216,8 +216,13 @@ class MaterialCatalogQueryService:
                 per_stock_unit=per_stock_unit,
                 user_id=_uuid_or_none(user_id),
             )
+        unit_word = from_unit["display_name"].lower()
+        if per_stock_unit < 1:
+            # WA-61: "1 load of Holobricks = 300 Numbers", not "0.00333 load = 1".
+            per_unit = (1 / per_stock_unit).quantize(Decimal("0.001")).normalize()
+            return f"Saved for the company: 1 {unit_word} of {material['name']} = {per_unit:f} {stock_unit['display_name']}."
         return (
-            f"Saved for the company: {per_stock_unit.normalize():f} {from_unit['display_name'].lower()} "
+            f"Saved for the company: {per_stock_unit.normalize():f} {unit_word} "
             f"of {material['name']} = 1 {stock_unit['display_name']}."
         )
 
