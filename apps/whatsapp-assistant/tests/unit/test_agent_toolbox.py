@@ -182,11 +182,13 @@ async def test_laps_split_the_models_time_from_the_tools():
     ["nale slab-inu cement mathiyo?", "is there enough cement for tomorrow's slab?", "10 bag balance und"],
 )
 async def test_a_question_they_did_not_ask_to_pass_on_is_answered_not_passed(text):
-    gateway = FakeGateway()
+    # WA-52: a stock question gets the stock looked up with the refusal.
+    gateway = FakeGateway(StepResult("answer", text="Cement: 368 bags in stock"))
     box = tb.AgentToolbox(gateway=gateway, scope=ScopeLookup(), user_text=text)
     out = await box.handle("note_for_engineer", {"question": text})
     assert out.content["status"] == "not_asked_to_pass_on"
-    assert box.saved == [] and gateway.runs == []
+    assert box.saved == []
+    assert all(run.semantic_type.value == "inventory_query" for run in gateway.runs)
 
 
 @pytest.mark.parametrize(
