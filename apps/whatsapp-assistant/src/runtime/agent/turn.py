@@ -28,7 +28,8 @@ from runtime.persona import guard, is_what_can_you_do, what_can_you_do
 
 from .prompt import AgentContext, Turn
 from .runner import AgentResult, AgentRunner, default_now
-from .tools import ScopeLookup
+from .stock_question import is_stock_question
+from .tools import QUERY_MATERIALS, ScopeLookup
 
 _log = logging.getLogger("mesiri.agent")
 
@@ -308,7 +309,7 @@ async def run_agent_turn(
         await _outage(message, language, deps, result.error or RuntimeError("no reply"), actor.user_id)
         return result
 
-    reply = result.reply
+    reply = await _stock_lookup(result, user_text) or result.reply
     if _is_conversational(result):
         reply = await _guarded(reply, result, deps, message, user_text, context, gateway, actor, language, script)
         if deps.on_conversational is not None:
@@ -352,6 +353,27 @@ async def _context_line(
         return await fetch(actor)
     except Exception:  # noqa: BLE001 — context is a nicety
         return None
+
+
+async def _stock_lookup(result: AgentResult, user_text: str) -> ReplySpec | None:
+    """Request 93: a stock question the model answered in words without calling
+    ``query_materials`` (from the stock line in its prompt) gets the lookup's
+    own answer, so the Stock card is drawn every time. Only when the turn did
+    nothing else: no save, no parked question, no lookup of its own."""
+    box, run = result.toolbox, result.run
+    if (
+        result.outcome != "ok"
+        or run is None
+        or any(call.name == QUERY_MATERIALS for call in run.calls)
+        or getattr(box, "saved", None)
+        or getattr(box, "attempted_writes", 0)
+        or getattr(box, "parked", None) is not None
+        or not is_stock_question(user_text)
+        or not hasattr(box, "look_up_stock")
+    ):
+        return None
+    text = await box.look_up_stock()
+    return ReplySpec(text=text) if text else None
 
 
 def _is_conversational(result: AgentResult) -> bool:

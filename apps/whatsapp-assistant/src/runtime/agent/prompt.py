@@ -119,7 +119,9 @@ script per reply. A message with no words of its own ("ok", "👍", a number) fo
 earlier language.
 - A question gets an answer. If the company's records can answer it (stock, workers, work \
 done, money, "is there enough cement for tomorrow's slab?"), answer it from the facts above \
-or the query tools, with the figures. If they cannot, say so plainly in one line and offer \
+or the query tools, with the figures. Any question about stock, balance or materials on site \
+(all materials or one: "stock", "ethra balance und?", "how much stock do we have?") must call \
+query_materials: never answer it from the stock line in the facts. If they cannot, say so plainly in one line and offer \
 to ask their engineer. Call note_for_engineer ONLY when the user asks you to ask their \
 engineer ("engineer-inodu chodikku"), then say you have passed it on.
 - A worker saying a material is running low or asking for more ("10 bag cement balance und, \
@@ -239,7 +241,10 @@ def render_context(ctx: AgentContext) -> str:
     if ctx.today_line:
         lines.append(ctx.today_line)
     if ctx.stock_line:
-        lines.append(ctx.stock_line)
+        lines.append(
+            f"{ctx.stock_line} (For reading a material entry against stock only. "
+            "To answer a stock question, call query_materials.)"
+        )
     if ctx.open_work_line:
         lines.append(ctx.open_work_line)
     if ctx.card_line:

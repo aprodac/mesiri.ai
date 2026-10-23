@@ -329,6 +329,12 @@ class AgentToolbox:
             return self._stock_answer
         if not asks_about_stock(self.user_text):
             return None
+        return await self.look_up_stock()
+
+    async def look_up_stock(self) -> str | None:
+        """The stock lookup (``query_materials``) for this message: the named
+        material, else all of them. Its answer is recorded like the model's own
+        call; its Stock card is drawn by the query entry. None when it fails."""
         material = material_named(self.user_text)
         for args in ([{"material": material}] if material else []) + [{}]:
             try:
