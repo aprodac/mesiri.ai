@@ -16,6 +16,7 @@ Now each such part is kept here, per sender (Redis, like the card):
 * a part leaves the list when a save of its tool names it (WA-58: matched by
   its words, so saving the cement does not clear the holo bricks), or when the
   model drops it (already recorded, or they said it is not needed);
+* it lasts to the end of the sender's day (WA-59), not a fixed 6 hours;
 * right after the Save tap, the first part not yet asked about is asked
   (``ask_next``, ``follow_up_text``); it stays on the list until it is saved
   or dropped, and the rest wait for the next Save.
@@ -31,8 +32,10 @@ from typing import Any
 
 _log = logging.getLogger("mesiri.agent")
 
-#: A part nobody came back to within this time is dropped.
-LATER_TTL_SECONDS = 6 * 60 * 60
+#: WA-59: a part lasts to the end of the sender's day (the day its report is
+#: about), and at least this long, so one noted late in the evening still
+#: reaches the next message.
+MIN_TTL_SECONDS = 2 * 60 * 60
 MAX_ITEMS = 4
 NOTE_LIMIT = 160
 #: The follow-up's own words start with this; the reply language then follows
@@ -144,6 +147,12 @@ def follow_up_text(item: LaterItem) -> str:
     )
 
 
+def _ttl(actor: Any) -> int:
+    from .work_site import _now, seconds_until_midnight
+
+    return max(MIN_TTL_SECONDS, seconds_until_midnight(_now(), getattr(actor, "timezone", None)))
+
+
 class LaterStore:
     """Per sender, the parts still to do (Redis, like the card)."""
 
@@ -181,7 +190,7 @@ class LaterStore:
         try:
             if items:
                 rows = [{"tool": i.tool, "note": i.note, "asked": i.asked} for i in items]
-                await self._redis.set_json(key, rows, ttl_seconds=LATER_TTL_SECONDS)
+                await self._redis.set_json(key, rows, ttl_seconds=_ttl(actor))
             else:
                 await self._redis.delete(self._redis.namespaced(key))
         except Exception:  # noqa: BLE001 -- the list is a reminder, never a record

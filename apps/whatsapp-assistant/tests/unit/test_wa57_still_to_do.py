@@ -315,3 +315,18 @@ async def test_one_part_is_asked_per_save_and_the_rest_wait(monkeypatch):
     follow_up = told[told.index(lt.FOLLOW_UP_PREFIX):]
     assert "scaffolders and plasterers" in follow_up and "cement" not in follow_up
     assert await store.get(actor) == [lt.LaterItem(LABOUR.tool, LABOUR.note, 1), cement]
+
+
+def test_the_list_lasts_to_the_end_of_the_senders_day_and_at_least_two_hours(monkeypatch):
+    """WA-59: not a fixed 6 hours -- a part noted in the morning reaches the evening."""
+    import datetime as dt
+
+    from runtime.agent import work_site
+
+    morning = dt.datetime(2026, 10, 24, 3, 30, tzinfo=dt.UTC)  # 09:00 in India
+    monkeypatch.setattr(work_site, "_now", lambda: morning)
+    actor = SimpleNamespace(timezone="Asia/Kolkata")
+    assert lt._ttl(actor) == 15 * 60 * 60
+    late = dt.datetime(2026, 10, 24, 18, 0, tzinfo=dt.UTC)  # 23:30 in India
+    monkeypatch.setattr(work_site, "_now", lambda: late)
+    assert lt._ttl(actor) == lt.MIN_TTL_SECONDS
