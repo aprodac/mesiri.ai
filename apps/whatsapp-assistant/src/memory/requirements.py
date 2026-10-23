@@ -132,4 +132,6 @@ RECENT_TURNS = MemoryScopeSpec(
 # Cap enforced by RecentTurnsStore regardless of what a caller passes in --
 # unbounded growth of a per-user Redis list is the one failure mode every
 # other scope above structurally avoids by being single-slot.
-RECENT_TURNS_MAX_ENTRIES = 6
+# WA-58: 10, not 6 -- a clarification of a few turns (which project, how many,
+# which unit) pushed the message it was about out of the window (live 23 Oct).
+RECENT_TURNS_MAX_ENTRIES = 10

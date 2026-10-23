@@ -68,22 +68,44 @@ def _box(*results: StepResult) -> tb.AgentToolbox:
 # -- the list ---------------------------------------------------------------
 
 
-def test_a_save_takes_its_part_off_and_new_parts_come_in_once():
+def test_a_save_takes_off_the_part_it_names_and_new_parts_come_in_once():
     cement = lt.LaterItem("save_material_receipt", "cement came, no count")
-    after = lt.merged([LABOUR, cement], saved_tools={"save_labour"}, added=[])
+    after = lt.merged([LABOUR, cement], saved=[("save_labour", "4 scaffolder, 3 plasterer")], added=[])
     assert after == [cement]
     reworded = lt.LaterItem("save_material_receipt", "cement arrived")
-    assert lt.merged([cement], saved_tools=set(), added=[reworded]) == [reworded]
+    assert lt.merged([cement], saved=[], added=[reworded]) == [reworded]
     loose = lt.LaterItem("", "Check the crane")
-    assert lt.merged([loose], saved_tools=set(), added=[lt.LaterItem("", "check the crane")]) == [
+    assert lt.merged([loose], saved=[], added=[lt.LaterItem("", "check the crane")]) == [
         lt.LaterItem("", "check the crane")
     ]
 
 
+def test_two_materials_are_two_parts_and_saving_one_keeps_the_other():
+    """WA-58: one item per tool lost the first of two materials."""
+    bricks = lt.LaterItem("save_material_receipt", "holo bricks came, no count")
+    cement = lt.LaterItem("save_material_receipt", "cement came, no count")
+    both = lt.merged([], saved=[], added=[bricks, cement])
+    assert both == [bricks, cement]
+    assert lt.merged(both, saved=[("save_material_receipt", "Cement 10 bag")], added=[]) == [bricks]
+    assert lt.merged(both, saved=[("save_material_receipt", "Holobricks 100 nos")], added=[]) == [cement]
+    # A save of something else of the same kind clears nothing.
+    assert lt.merged(both, saved=[("save_material_receipt", "Sand 2 load")], added=[]) == both
+
+
+def test_a_held_call_and_the_models_note_of_it_are_one_part():
+    held = lt.held_item("save_labour", {"workers": [{"trade": "scaffolder"}, {"trade": "plasterer"}]})
+    assert lt.merged([], saved=[], added=[held, LABOUR]) == [LABOUR]
+
+
+def test_the_model_drops_a_part_that_is_done_or_not_needed():
+    cement = lt.LaterItem("save_material_receipt", "cement came, no count")
+    assert lt.merged([LABOUR, cement], saved=[], added=[], drop={1}) == [cement]
+
+
 def test_the_list_is_short_and_notes_are_cut():
     many = [lt.LaterItem("", f"part {n}") for n in range(10)]
-    assert len(lt.merged([], saved_tools=set(), added=many)) == lt.MAX_ITEMS
-    long = lt.merged([], saved_tools=set(), added=[lt.LaterItem("", "x" * 500)])[0]
+    assert len(lt.merged([], saved=[], added=many)) == lt.MAX_ITEMS
+    long = lt.merged([], saved=[], added=[lt.LaterItem("", "x" * 500)])[0]
     assert len(long.note) == lt.NOTE_LIMIT
 
 
@@ -98,17 +120,18 @@ def test_the_model_is_told_what_is_left_and_the_follow_up_keeps_their_language()
     assert reply_language(text) is None
 
 
-async def test_the_store_keeps_takes_and_clears():
+async def test_the_store_keeps_the_list_and_asks_each_part_once():
     store = lt.LaterStore(_Redis())
     assert await store.get(ACTOR) == []
-    await store.put(ACTOR, [LABOUR])
     cement = lt.LaterItem("save_material_receipt", "cement came, no count")
     await store.put(ACTOR, [LABOUR, cement])
-    assert await store.take_first(ACTOR) == LABOUR
-    assert await store.get(ACTOR) == [cement]
-    assert await store.take_first(ACTOR) == cement
+    assert await store.ask_next(ACTOR) == LABOUR
+    # Asked, but still on the list until it is saved or dropped.
+    assert await store.get(ACTOR) == [lt.LaterItem(LABOUR.tool, LABOUR.note, 1), cement]
+    assert await store.ask_next(ACTOR) == cement
+    assert await store.ask_next(ACTOR) is None
+    await store.put(ACTOR, [])
     assert await store.get(ACTOR) == []
-    assert await store.take_first(ACTOR) is None
     # No company or user: nothing kept, nothing raised.
     assert await store.get(SimpleNamespace()) == []
 
@@ -144,6 +167,28 @@ async def test_the_model_can_note_parts_even_while_a_question_waits():
     assert box.calls == 1  # the bricks; a note is not an action
     empty = await box.handle("still_to_do", {"items": [{"tool": "save_labour"}]})
     assert empty.content["status"] == "error"
+    dropped = await box.handle("still_to_do", {"drop": [2, 0, "x"]})
+    assert dropped.content["status"] == "noted" and box.later_drop == {2}
+
+
+async def test_a_question_carries_the_other_parts_of_the_message():
+    box = _box()
+    asked = await box.handle(
+        "ask_user",
+        {"question": "Ethra holo bricks?", "other_parts": [{"tool": "save_labour", "what": LABOUR.note}]},
+    )
+    assert asked.content["status"] == "question_sent"
+    assert box.later == [LABOUR]
+
+
+async def test_a_question_held_behind_a_gate_still_keeps_its_other_parts():
+    gate = ReplySpec(text="How many holo bricks?")
+    box = _box(StepResult("needs_answer", text="How many holo bricks?", reply=gate))
+    await box.handle("save_material_receipt", {"material": "Holobricks"})
+    await box.handle(
+        "ask_user", {"question": "x?", "other_parts": [{"tool": "save_labour", "what": LABOUR.note}]}
+    )
+    assert box.later == [LABOUR]
 
 
 # -- the turn ----------------------------------------------------------------
@@ -169,9 +214,10 @@ def _deps(runner, store) -> AgentTurnDeps:
     )
 
 
-def _turn_box(*, later=(), saved=()):
+def _turn_box(*, later=(), saved=(), drop=()):
     return SimpleNamespace(
         saved=list(saved), attempted_writes=0, parked=None, answers=["x"], notes=[], later=list(later),
+        later_drop=set(drop),
     )
 
 
@@ -240,7 +286,11 @@ async def test_after_save_the_next_part_is_asked_at_once(monkeypatch):
     told = str(provider.last_messages[-1])
     assert lt.FOLLOW_UP_PREFIX in told and "scaffolders and plasterers" in told
     assert question in str(deps["sender"].mock_calls)
-    assert await store.get(actor) == []
+    # Asked once; it stays until the answer is saved.
+    assert await store.get(actor) == [lt.LaterItem(LABOUR.tool, LABOUR.note, 1)]
+    # WA-58: the tap itself is in the conversation the model reads next.
+    recorded = [c.kwargs for c in deps["memory_coordinator"].record_turn.await_args_list]
+    assert recorded[0]["assistant_reply"] == sb.SAVED_DONE
 
 
 async def test_cancel_asks_nothing_and_keeps_the_list(monkeypatch):
@@ -262,5 +312,6 @@ async def test_one_part_is_asked_per_save_and_the_rest_wait(monkeypatch):
     await on_normalized(_tap(sb.SAVE), {})
 
     told = str(provider.last_messages[-1])
-    assert "scaffolders and plasterers" in told
-    assert await store.get(actor) == [cement]
+    follow_up = told[told.index(lt.FOLLOW_UP_PREFIX):]
+    assert "scaffolders and plasterers" in follow_up and "cement" not in follow_up
+    assert await store.get(actor) == [lt.LaterItem(LABOUR.tool, LABOUR.note, 1), cement]

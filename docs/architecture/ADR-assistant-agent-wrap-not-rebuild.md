@@ -495,3 +495,13 @@ memory.**
   ("(They tapped Save. ...)"), so it is asked at once; the rest wait for the next Save. The note is the system's words, so it forces no reply
   language: the sender's earlier language decides (`reply_language` returns None for it, as for a
   photo's note). Cancel asks nothing and keeps the list.
+
+**WA-58 (24 Oct), hardening after review.** Parts are matched by their words, not one per tool (two
+materials both missing a count kept only one; saving either cleared both): a save takes off the one part
+of its tool it names (`later.same_part`: "Holobricks 100 nos" names "holo bricks came"), and the model can
+drop a listed part that is done or not needed (`still_to_do` `drop`). The root cause is addressed too:
+"never ask several questions" became one question for everything a message is missing ("Ethra holo bricks,
+ethra padavukar?"), and `ask_user` must list the message's other parts (`other_parts`, required, may be
+empty). The part asked after a Save stays listed (marked asked) until it is saved or dropped, so nothing
+leaves the list unseen. The Save tap is recorded as a turn, and the turn window is 10, not 6. Every turn's
+tool calls are traced without values (`agent_tools`, read with claude-ops `vps-agent-trace`, INF-14).

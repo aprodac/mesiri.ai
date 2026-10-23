@@ -424,7 +424,7 @@ def build_message_handlers(
         parsed = save_button.parse_tap(str((message.metadata or {}).get("interactive_reply_id") or ""))
         if parsed is None or parsed[0] != save_button.SAVE:
             return None
-        item = await later.take_first(ctx)
+        item = await later.ask_next(ctx)
         if item is None:
             return None
         metadata = {
@@ -1429,6 +1429,16 @@ def build_message_handlers(
             await _send_composed(wa_id, ctx.user_id, save_reply)
             await message_logger.log_reply(correlation_id=message.correlation_id, reply=save_reply.text)
             await message_logger.mark_completed(correlation_id=message.correlation_id)
+            # WA-58: the tap is part of the conversation the model reads next.
+            try:
+                await memory_coordinator.record_turn(
+                    user_id=ctx.user_id,
+                    user_text=str(message.text or "").strip() or "(tap)",
+                    assistant_reply=save_reply.text,
+                    correlation_id=message.correlation_id,
+                )
+            except Exception:  # noqa: BLE001 -- memory is a hint
+                _log.warning("save_button.record_turn_failed user=%s", ctx.user_id, exc_info=True)
             # WA-57: what their message also had and is not recorded yet is
             # taken up right after the Save, not left behind.
             try:

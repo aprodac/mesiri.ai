@@ -191,6 +191,8 @@ class AgentToolbox:
     #: WA-57: parts of the message still to do (held calls and the model's
     #: still_to_do notes), kept for the sender's next turns (runtime/agent/later.py).
     later: list[LaterItem] = field(default_factory=list)
+    #: WA-58: numbers of listed parts the model said are done or not needed.
+    later_drop: set[int] = field(default_factory=set)
     attempted_writes: int = 0
     calls: int = 0
     #: B-7: the journey's lap stopwatch; time before a tool call is the
@@ -247,6 +249,8 @@ class AgentToolbox:
             self.held.append(name)
             if name in WRITE_TOOLS:
                 self.later.append(held_item(name, args))
+            elif name == ASK_USER:
+                self._note_later(args.get("other_parts"))
             return ToolOutcome(
                 content={
                     "status": "held",
@@ -358,8 +362,21 @@ class AgentToolbox:
         return None
 
     def _still_to_do(self, args: dict[str, Any]) -> ToolOutcome:
-        """WA-57: the parts the model cannot record this turn, kept for later."""
-        rows = args.get("items")
+        """WA-57: the parts the model cannot record this turn, kept for later;
+        WA-58: listed parts it says are done or not needed, dropped."""
+        noted = self._note_later(args.get("items"))
+        dropped = {n for n in args.get("drop") or [] if isinstance(n, int) and n > 0}
+        self.later_drop |= dropped
+        if not noted and not dropped:
+            return ToolOutcome(content={"status": "error", "message": "nothing to note"})
+        return ToolOutcome(
+            content={
+                "status": "noted",
+                "instruction": "It is asked after this. Do not mention this note in your reply.",
+            }
+        )
+
+    def _note_later(self, rows: Any) -> int:
         noted = 0
         for row in rows if isinstance(rows, list) else []:
             if not isinstance(row, dict):
@@ -369,14 +386,7 @@ class AgentToolbox:
             if what:
                 self.later.append(LaterItem(tool if tool in WRITE_TOOLS else "", what))
                 noted += 1
-        if not noted:
-            return ToolOutcome(content={"status": "error", "message": "nothing to note"})
-        return ToolOutcome(
-            content={
-                "status": "noted",
-                "instruction": "It is asked after this. Do not mention this note in your reply.",
-            }
-        )
+        return noted
 
     def _ask(self, args: dict[str, Any]) -> ToolOutcome:
         question = str(args.get("question") or "").strip()
@@ -389,6 +399,8 @@ class AgentToolbox:
         options = args.get("options") or []
         self.parked = question_reply(question, options if isinstance(options, list) else [])
         self.parked_by = "ask"
+        # WA-58: what the question leaves aside is taken up next.
+        self._note_later(args.get("other_parts"))
         return ToolOutcome(
             content={
                 "status": "question_sent",

@@ -338,7 +338,10 @@ async def run_agent_turn(
     if deps.later is not None:
         box = result.toolbox
         after = later.merged(
-            later_items, saved_tools={i.tool for i in box.saved if not i.carried}, added=box.later
+            later_items,
+            saved=[(i.tool, i.summary or i.text) for i in box.saved if not i.carried],
+            added=box.later,
+            drop=getattr(box, "later_drop", set()),
         )
         if after != later_items:
             await _safe(deps.later.put(actor, after))

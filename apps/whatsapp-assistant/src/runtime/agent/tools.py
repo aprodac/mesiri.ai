@@ -122,6 +122,22 @@ def _obj(properties: dict[str, Any], required: list[str] | None = None) -> dict[
     return schema
 
 
+#: WA-57/58: one part of a message still to do (still_to_do, ask_user other_parts).
+_LATER_ITEM = _obj(
+    {
+        "tool": {"type": "string", "description": "The save tool that will record it, e.g. save_labour."},
+        "what": {
+            "type": "string",
+            "description": (
+                "What they said about it, in a few English words, e.g. "
+                "'scaffolders and plasterers came, no count yet'."
+            ),
+        },
+    },
+    ["what"],
+)
+
+
 def tool_specs() -> list[ToolSpec]:
     """The tools handed to the model, in the order shown to it."""
     return [
@@ -463,7 +479,9 @@ def tool_specs() -> list[ToolSpec]:
             name=ASK_USER,
             description=(
                 "Ask the user ONE question when you cannot tell what they mean or something "
-                "needed is missing, instead of guessing. Ends your turn; their answer comes "
+                "needed is missing, instead of guessing. When several things in their message "
+                "miss a detail, ask for all of them in this one question ('How many holo bricks, "
+                "and how many scaffolders and plasterers?'). Ends your turn; their answer comes "
                 "as their next message. Give 2-3 short options when the answer is a choice."
             ),
             parameters=_obj(
@@ -474,40 +492,38 @@ def tool_specs() -> list[ToolSpec]:
                         "items": {"type": "string"},
                         "description": "At most 10; 3 or fewer are shown as buttons.",
                     },
+                    "other_parts": {
+                        "type": "array",
+                        "description": (
+                            "Every other part of their message that this question does not ask "
+                            "about and that you are not saving this turn, so it is taken up next. "
+                            "[] when there is none."
+                        ),
+                        "items": _LATER_ITEM,
+                    },
                 },
-                ["question"],
+                ["question", "other_parts"],
             ),
         ),
         ToolSpec(
             name=STILL_TO_DO,
             description=(
-                "Note the parts of their message you cannot record this turn (a detail is "
-                "missing and you are already asking about something else, or a question is "
-                "waiting), so they are taken up next. Never drop a part of their message."
+                "Note the parts of their message you cannot record this turn (a question is "
+                "waiting, or a detail is missing), so they are taken up next; or drop listed "
+                "parts that are done or not needed. Never leave a part of their message out."
             ),
             parameters=_obj(
                 {
-                    "items": {
+                    "items": {"type": "array", "items": _LATER_ITEM},
+                    "drop": {
                         "type": "array",
-                        "items": _obj(
-                            {
-                                "tool": {
-                                    "type": "string",
-                                    "description": "The save tool that will record it, e.g. save_labour.",
-                                },
-                                "what": {
-                                    "type": "string",
-                                    "description": (
-                                        "What they said about it, in a few English words, e.g. "
-                                        "'scaffolders and plasterers came, no count yet'."
-                                    ),
-                                },
-                            },
-                            ["what"],
+                        "items": {"type": "integer"},
+                        "description": (
+                            "Numbers of listed 'still to do' parts that are already recorded or "
+                            "that they say are not needed."
                         ),
                     },
                 },
-                ["items"],
             ),
         ),
         ToolSpec(
