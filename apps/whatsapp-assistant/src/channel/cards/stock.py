@@ -2,8 +2,8 @@
 
 A bar per material scaled to what was received, stock in big numbers, red when
 the stock is at or below zero. "≈N days at this week's use" comes from the last
-seven days of usage and is left out when nothing was used. A red LOW footer
-appears when a material is at zero or has under three days left.
+seven days of usage and is left out when nothing was used. A red footer names
+the materials at zero or with under three days left.
 """
 
 from __future__ import annotations
@@ -11,6 +11,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from typing import Any
+
+from workflows.readable import format_quantity
 
 from .base import clip, render_html
 
@@ -57,6 +59,7 @@ class StockRow:
     note: str
     red: bool
     low: bool
+    days: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +72,18 @@ class StockCard:
     def low(self) -> bool:
         return any(r.low for r in self.rows)
 
+    @property
+    def footer(self) -> str:
+        """What is wrong, in words ("Steel is out. Cement ≈2 days left."): up to
+        two materials, then "+N more"."""
+        low = [r for r in self.rows if r.low]
+        if not low:
+            return "Stock now"
+        parts = [f"{r.name} is out." if r.red else f"{r.name} ≈{r.days} days left." for r in low[:2]]
+        if len(low) > 2:
+            parts.append(f"+{len(low) - 2} more")
+        return " ".join(parts)
+
 
 def days_left(stock: float, used_week: float) -> float | None:
     """Days the stock lasts at this week's use, or None when nothing was used
@@ -78,8 +93,7 @@ def days_left(stock: float, used_week: float) -> float | None:
     return stock / (used_week / 7)
 
 
-def _fmt(value: float) -> str:
-    return f"{value:,.0f}" if abs(value - round(value)) < 0.005 else f"{value:,.1f}"
+_fmt = format_quantity
 
 
 def build_stock_card(
@@ -110,10 +124,11 @@ def build_stock_card(
                 name=clip(str(level["material_name"]).title(), 26),
                 unit=str(level["unit"]),
                 stock=_fmt(stock),
-                bar_pct=min(100, max(3, bar)) if stock > 0 else 100 if red else 0,
+                bar_pct=min(100, max(3, bar)) if stock > 0 else 0,
                 note=note,
                 red=red,
                 low=low,
+                days=max(1, math.floor(left)) if left is not None else 0,
             )
         )
     return StockCard(where=where, rows=tuple(rows), more=max(0, len(ordered) - MAX_ROWS))
@@ -124,7 +139,7 @@ def stock_html(card: StockCard) -> str:
         _BODY,
         tag="Stock",
         where=clip(card.where, 34),
-        footer="LOW · check stock" if card.low else "Stock now",
+        footer=card.footer,
         footer_red=card.low,
         style=_STYLE,
         rows=card.rows,

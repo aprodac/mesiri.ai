@@ -16,6 +16,16 @@ from typing import Any
 
 from trade_label import trade_label
 
+
+def format_quantity(value: Any) -> str:
+    """A stock quantity as people read it: whole numbers stay whole, otherwise
+    up to 2 decimals (1.43, 2.5). One rule for the text reply and the Stock card."""
+    number = float(value)
+    if abs(number - round(number)) < 0.005:
+        return str(int(round(number)))
+    return f"{number:.2f}".rstrip("0").rstrip(".")
+
+
 #: What each known field is called to a person.
 FIELD_LABELS: dict[str, str] = {
     "material_name": "Material",

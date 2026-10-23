@@ -331,9 +331,34 @@ def test_red_when_stock_is_zero_or_below_and_the_footer_says_low():
     assert steel.name == "Steel" and steel.red and steel.low
     assert card.low
     html = stock_html(card)
-    assert "LOW · check stock" in html and "#C8102E" in html
+    assert "Steel is out." in html and "#C8102E" in html
     zero = build_stock_card([_lvl("sand", 0, 900, "cft"), _lvl("tile", 5, 9, "nos")], {}, where="A")
     assert zero.rows[0].red and zero.rows[0].note == "out of stock"
+    # Request 93: no stock draws an empty bar and a red "0", never a full red bar.
+    assert zero.rows[0].bar_pct == 0 and zero.rows[0].stock == "0" and steel.bar_pct == 0
+
+
+def test_footer_names_the_low_materials_two_at_most_then_a_count():
+    use = {("cement", "bags"): 70.0, ("sand", "bags"): 70.0}
+    one = build_stock_card([_lvl("steel", 0, 9, "kg"), _lvl("tile", 50, 90)], {}, where="A")
+    assert one.footer == "Steel is out."
+    two = build_stock_card([_lvl("steel", 0, 9, "kg"), _lvl("cement", 20, 200)], use, where="A")
+    assert two.footer == "Steel is out. Cement ≈2 days left."
+    three = build_stock_card(
+        [_lvl("steel", 0, 9, "kg"), _lvl("cement", 20, 200), _lvl("sand", 25, 200)], use, where="A"
+    )
+    assert three.footer == "Steel is out. Cement ≈2 days left. +1 more"
+    ok = build_stock_card([_lvl("cement", 30, 200), _lvl("sand", 80, 100)], use, where="A")
+    assert ok.footer == "Stock now"
+
+
+def test_card_and_text_reply_round_the_same_way():
+    from channel.cards.stock import _fmt as card_fmt
+    from workflows.material_inventory_query.nodes import _fmt as text_fmt
+
+    for value in (1.4285, 12, 12.0, 2.5, 1234.5678, 0.001):
+        assert card_fmt(value) == text_fmt(value)
+    assert card_fmt(1.4285) == "1.43" and card_fmt(12.0) == "12"
 
 
 def test_low_footer_when_under_three_days_left_but_not_red():

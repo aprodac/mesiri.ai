@@ -2,17 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
-
+from ..readable import format_quantity
 from ..state import WorkflowGraphState
 
-
-def _fmt(value: Any) -> str:
-    """Render a stock quantity without a noisy trailing .0 for whole numbers."""
-    number = float(value)
-    if number == int(number):
-        return str(int(number))
-    return f"{number:.2f}".rstrip("0").rstrip(".")
+_fmt = format_quantity
 
 
 def generate_inventory_reply(state: WorkflowGraphState) -> dict:
