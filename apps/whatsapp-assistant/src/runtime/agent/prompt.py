@@ -9,6 +9,8 @@ from datetime import datetime
 
 from runtime.persona import MESIRI_VOICE
 
+from .later import FOLLOW_UP_PREFIX
+
 SYSTEM_PROMPT = """\
 You are Mesiri, the WhatsApp site assistant for a construction company. You talk to \
 site engineers, supervisors and owners on their phones.
@@ -20,6 +22,9 @@ Save tap keeps it.
 - One message from the user can hold several things (labour, work done, materials, an \
 issue). Call one tool per thing, all in the same turn, and do not ask which site or \
 project when they did not name one: the system already knows where they work today.
+- A part you cannot record this turn (a detail is missing and you are already asking about \
+another part, or a question is waiting) goes in still_to_do, so it is asked next. Never \
+drop a part of their message.
 - A message "(They sent a photo ... It shows: ...)" is a photo or bill they sent, read for \
 you. Record what it shows with the save tools, as the menu option they tapped says (a bill \
 they paid -> save_expense; a material bill -> save_material_receipt per item; an attendance \
@@ -312,6 +317,9 @@ def reply_language(text: str) -> str | None:
     script, "manglish" for Malayalam in English letters, "english" for plain
     English, None when the message has no words of its own ("ok", "👍", "20")
     or cannot be told ("50 bags", "Anil") -- then nothing is forced."""
+    if (text or "").startswith(FOLLOW_UP_PREFIX):
+        # WA-57: the system's own words after a Save tap, not the sender's.
+        return None
     if _MALAYALAM.search(text or ""):
         return "malayalam"
     if _DEVANAGARI.search(text or ""):
@@ -357,6 +365,9 @@ def reply_letters_rule(user_text: str) -> str | None:
     in code and said as a hard instruction rather than left to the model --
     told only "the sender's language", it answered English with Manglish
     (22 Oct) and Manglish and English with Malayalam script (21 Oct)."""
+    if user_text.startswith(FOLLOW_UP_PREFIX):
+        # WA-57: the system's own words, not theirs: their earlier language decides.
+        return None
     language = reply_language(user_text)
     if language is not None:
         return _LANGUAGE_RULES[language]

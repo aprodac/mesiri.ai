@@ -26,6 +26,7 @@ from runtime.ai_outage import (
 )
 from runtime.persona import guard, is_what_can_you_do, what_can_you_do
 
+from . import later
 from .prompt import AgentContext, Turn
 from .runner import AgentResult, AgentRunner, default_now
 from .stock_question import is_stock_question
@@ -88,6 +89,9 @@ class AgentTurnDeps:
     on_conversational: Callable[[], None] | None = None
     #: [68]: journey traces; guardrail hits are logged as stage "persona_guard".
     trace_logger: Any | None = None
+    #: WA-57: the sender's parts still to do (runtime/agent/later.py's
+    #: LaterStore); None keeps no list.
+    later: Any | None = None
 
 
 def _scope_of(actor: ActorIdentity) -> ScopeLookup:
@@ -279,6 +283,10 @@ async def run_agent_turn(
         open_work_line=lines[3],
         card_line=lines[4],
     )
+    later_items = await deps.later.get(actor) if deps.later is not None else []
+    later_line = later.context_line(later_items)
+    if later_line:
+        context = replace(context, notes=[*context.notes, later_line])
     _lap(deps, "agent_context")
     result = await deps.runner.run(
         ctx=context,
@@ -326,6 +334,13 @@ async def run_agent_turn(
         await deps.send_spec(reply, wa_id)
     _lap(deps, "agent_send")
     await _audit(message, gateway, reply, deps)
+    if deps.later is not None:
+        box = result.toolbox
+        after = later.merged(
+            later_items, saved_tools={i.tool for i in box.saved if not i.carried}, added=box.later
+        )
+        if after != later_items:
+            await _safe(deps.later.put(actor, after))
     if deps.memory_coordinator is not None:
         await _safe(
             deps.memory_coordinator.record_turn(

@@ -22,6 +22,7 @@ from runtime.save_first import DRAFT_NOTE
 
 from .cards import CardItem, merge_changes
 from .gateway import StepResult, WorkflowGateway
+from .later import LaterItem, held_item
 from .tools import (
     ASK_USER,
     NOTE_FOR_ENGINEER,
@@ -30,6 +31,7 @@ from .tools import (
     REQUEST_DPR,
     SET_UNIT_CONVERSION,
     SET_WORK_SITE,
+    STILL_TO_DO,
     UNDO_LAST,
     UPDATE_PENDING_CARD,
     WRITE_TOOLS,
@@ -186,6 +188,9 @@ class AgentToolbox:
     parked_confirm: bool = False
     #: Tool calls not run because a gate was waiting (named for the reply).
     held: list[str] = field(default_factory=list)
+    #: WA-57: parts of the message still to do (held calls and the model's
+    #: still_to_do notes), kept for the sender's next turns (runtime/agent/later.py).
+    later: list[LaterItem] = field(default_factory=list)
     attempted_writes: int = 0
     calls: int = 0
     #: B-7: the journey's lap stopwatch; time before a tool call is the
@@ -236,8 +241,12 @@ class AgentToolbox:
             await asyncio.wait(list(self._inflight), timeout=timeout)
 
     async def _dispatch(self, name: str, args: dict[str, Any]) -> ToolOutcome:
+        if name == STILL_TO_DO:
+            return self._still_to_do(args)
         if self.parked_by == "gate":
             self.held.append(name)
+            if name in WRITE_TOOLS:
+                self.later.append(held_item(name, args))
             return ToolOutcome(
                 content={
                     "status": "held",
@@ -347,6 +356,27 @@ class AgentToolbox:
                 self._stock_answer = step.text
                 return step.text
         return None
+
+    def _still_to_do(self, args: dict[str, Any]) -> ToolOutcome:
+        """WA-57: the parts the model cannot record this turn, kept for later."""
+        rows = args.get("items")
+        noted = 0
+        for row in rows if isinstance(rows, list) else []:
+            if not isinstance(row, dict):
+                continue
+            what = str(row.get("what") or "").strip()
+            tool = str(row.get("tool") or "").strip()
+            if what:
+                self.later.append(LaterItem(tool if tool in WRITE_TOOLS else "", what))
+                noted += 1
+        if not noted:
+            return ToolOutcome(content={"status": "error", "message": "nothing to note"})
+        return ToolOutcome(
+            content={
+                "status": "noted",
+                "instruction": "It is asked after this. Do not mention this note in your reply.",
+            }
+        )
 
     def _ask(self, args: dict[str, Any]) -> ToolOutcome:
         question = str(args.get("question") or "").strip()

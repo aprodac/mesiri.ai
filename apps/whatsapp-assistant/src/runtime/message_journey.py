@@ -170,6 +170,7 @@ def build_message_handlers(
     offered_choices_store: Any | None = None,
     work_site: Any | None = None,
     cards: Any | None = None,
+    later: Any | None = None,
     card_renderer: Any | None = None,
     ops_alerts: Any | None = None,
 ) -> tuple[Any, Any]:
@@ -411,6 +412,29 @@ def build_message_handlers(
     #: Correlation ids whose reply ended on a question: the daily setup
     #: question must not pile a second one on top of it.
     _agent_parked: set[str] = set()
+
+    async def _later_follow_up(message, ctx):  # type: ignore[no-untyped-def]
+        """WA-57: after a Save tap, the message the agent runs on for the parts
+        of the earlier message still to do; None after a Cancel or when none are."""
+        from runtime.agent import save_button
+        from runtime.agent.later import follow_up_text
+
+        if later is None or agent_provider is None:
+            return None
+        parsed = save_button.parse_tap(str((message.metadata or {}).get("interactive_reply_id") or ""))
+        if parsed is None or parsed[0] != save_button.SAVE:
+            return None
+        item = await later.take_first(ctx)
+        if item is None:
+            return None
+        metadata = {
+            k: v
+            for k, v in (message.metadata or {}).items()
+            if k not in ("interactive_reply_id", "interactive_reply_type")
+        }
+        return message.model_copy(
+            update={"text": follow_up_text(item), "modality": InputModality.TEXT, "metadata": metadata}
+        )
 
     def _as_tap(message, row):  # type: ignore[no-untyped-def]
         """The message a tap on ``row`` would have been. Undo becomes the typed
@@ -917,6 +941,7 @@ def build_message_handlers(
                 card_line=_card_line if cards is not None else None,
                 on_conversational=lambda: _conversational.add(message.correlation_id),
                 trace_logger=trace_logger,
+                later=later,
             )
             timer.lap("agent_setup")
             result = await run_agent_turn(message, ctx, deps, menu_hint=hint)
@@ -1404,6 +1429,14 @@ def build_message_handlers(
             await _send_composed(wa_id, ctx.user_id, save_reply)
             await message_logger.log_reply(correlation_id=message.correlation_id, reply=save_reply.text)
             await message_logger.mark_completed(correlation_id=message.correlation_id)
+            # WA-57: what their message also had and is not recorded yet is
+            # taken up right after the Save, not left behind.
+            try:
+                follow_up = await _later_follow_up(message, ctx)
+                if follow_up is not None:
+                    await _run_agent(follow_up, ctx, None, timer)
+            except Exception:  # noqa: BLE001 -- the Save went through; this is a nicety
+                _log.exception("agent.later_follow_up_failed user=%s", ctx.user_id)
             return
 
         if contact_share is not None:

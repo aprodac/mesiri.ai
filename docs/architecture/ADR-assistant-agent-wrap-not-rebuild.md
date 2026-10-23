@@ -475,3 +475,23 @@ decides that a stock question gets the stock.**
   that asks ("Shall I ask your engineer?") stays. A "yes" passes a question on only after a reply that
   offered (`toolbox.offers_engineer`), no longer after any reply that named the engineer (the "📨
   Question for your engineer" line counted before).
+
+## Addendum (WA-57, 24 Oct): a message's other parts are kept until they are done
+
+Live 23 Oct: "holo bricks came, the scaffolders and plasterers were there" got one question (how many
+bricks?), and once the bricks were saved the labour part was gone. Two holes: a save call held behind a
+waiting question went to `toolbox.held`, which nothing read, and a part the model could not record yet
+(no count, while it asked about something else) was simply not called. The 6 recent turns still held
+the message, but nothing told the model to go back to it. **The code keeps the list, not the model's
+memory.**
+
+- `runtime/agent/later.py`: per sender, up to 4 "still to do" parts (Redis, 6 h, like the card), each
+  the save tool that will record it and a few English words of what was said.
+- In: a write call held behind a waiting question goes in by itself, with its arguments; the model
+  notes any other part with the new `still_to_do` tool (allowed even while a question waits; not an
+  action, not counted). Out: a part goes when its save tool saves.
+- Every turn shows the list to the model ("Still to do from their earlier message ...").
+- After a **Save** tap its oldest part is taken off and the agent runs once more on a note of it
+  ("(They tapped Save. ...)"), so it is asked at once; the rest wait for the next Save. The note is the system's words, so it forces no reply
+  language: the sender's earlier language decides (`reply_language` returns None for it, as for a
+  photo's note). Cancel asks nothing and keeps the list.

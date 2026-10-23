@@ -45,6 +45,8 @@ CORRECT_WORK_QUANTITY = "correct_work_quantity"
 UPDATE_ISSUE = "update_issue"
 # Request 88: change one item of the card that is still open.
 UPDATE_PENDING_CARD = "update_pending_card"
+# WA-57: a part of the message that cannot be recorded this turn.
+STILL_TO_DO = "still_to_do"
 
 #: Tools that write a record (or an undo of one). A run that has attempted one
 #: must never be retried from the top.
@@ -474,6 +476,38 @@ def tool_specs() -> list[ToolSpec]:
                     },
                 },
                 ["question"],
+            ),
+        ),
+        ToolSpec(
+            name=STILL_TO_DO,
+            description=(
+                "Note the parts of their message you cannot record this turn (a detail is "
+                "missing and you are already asking about something else, or a question is "
+                "waiting), so they are taken up next. Never drop a part of their message."
+            ),
+            parameters=_obj(
+                {
+                    "items": {
+                        "type": "array",
+                        "items": _obj(
+                            {
+                                "tool": {
+                                    "type": "string",
+                                    "description": "The save tool that will record it, e.g. save_labour.",
+                                },
+                                "what": {
+                                    "type": "string",
+                                    "description": (
+                                        "What they said about it, in a few English words, e.g. "
+                                        "'scaffolders and plasterers came, no count yet'."
+                                    ),
+                                },
+                            },
+                            ["what"],
+                        ),
+                    },
+                },
+                ["items"],
             ),
         ),
         ToolSpec(
