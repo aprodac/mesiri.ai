@@ -336,9 +336,8 @@ class QueryEntry(EntryScope):
         A line to add when it did not go."""
         fields = ready.event.fields
         key = ready.decision.workflow_key
-        if key is K.MATERIAL_INVENTORY_QUERY:
+        if key is K.MATERIAL_INVENTORY_QUERY and fields.get("output_format") != "pdf":
             await self._stock_card(ready)
-            return None
         if self.send_document is None:
             return None
         from runtime.inbound_journey._shared import _send_with_one_retry

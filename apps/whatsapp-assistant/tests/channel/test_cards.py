@@ -613,3 +613,21 @@ async def test_the_joined_text_goes_alone_when_the_card_cannot(monkeypatch, why)
 async def test_without_a_renderer_the_joiner_text_is_unchanged(monkeypatch):
     to_owner, texts = await _joined(monkeypatch, renderer=None, send_image=None)
     assert len(texts) == 1 and texts[0][1].startswith("✅ You're in, Ravi!")
+
+
+async def test_deliver_draws_the_card_but_a_pdf_lookup_still_sends_the_pdf():
+    from runtime.agent import query_entry as qe
+
+    entry = _entry(_Renderer(), _Inventory())
+    ready = SimpleNamespace(
+        event=SimpleNamespace(organization_id="o", project_id="p", site_id="s1",
+                              fields={"inventory_levels": TWO}),
+        decision=SimpleNamespace(workflow_key=qe.K.MATERIAL_INVENTORY_QUERY),
+    )
+    message = SimpleNamespace(correlation_id="c", sender=SimpleNamespace(wa_id="91"))
+    assert await entry.deliver(ready, message) is None
+    assert entry.stock_card == PNG
+    pdf = _entry(_Renderer(), _Inventory())
+    ready.event.fields["output_format"] = "pdf"
+    assert await pdf.deliver(ready, message) is None
+    assert pdf.stock_card is None  # a PDF was asked for: no card
