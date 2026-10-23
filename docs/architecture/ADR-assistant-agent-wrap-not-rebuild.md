@@ -505,3 +505,13 @@ ethra padavukar?"), and `ask_user` must list the message's other parts (`other_p
 empty). The part asked after a Save stays listed (marked asked) until it is saved or dropped, so nothing
 leaves the list unseen. The Save tap is recorded as a turn, and the turn window is 10, not 6. Every turn's
 tool calls are traced without values (`agent_tools`, read with claude-ops `vps-agent-trace`, INF-14).
+
+## Addendum (WA-61, 24 Oct): a unit conversion is said the way people know it
+
+Live 23 Oct: "1 load" of holobricks became 0.333 nos. The stored number is "how many of the reported unit
+make one stock unit" -- right for "28 bags of sand = 1 m³", unanswerable for loads of bricks ("how many
+loads make 1 nos?"), so it was saved upside down for the whole company. Now the question reads "How many
+Numbers is 1 load of Holobricks (or how many load make 1 Numbers)?", `set_unit_conversion` takes the two
+amounts as said (`unit_amount`, `stock_amount`) and the code divides (`toolbox.per_stock_unit`), and a
+stored conversion that turns whole things (nos/pcs/rolls) into a fraction is asked again, never saved
+(`material_units.COUNTED_UNITS`). The backend's stored number and its API are unchanged.
