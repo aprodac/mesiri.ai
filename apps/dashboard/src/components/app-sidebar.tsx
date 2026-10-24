@@ -533,8 +533,8 @@ export function AppSidebar() {
           which ui/sidebar.tsx renders without our className. */}
       <div className={cn('flex h-full w-full flex-col', S.aside)}>
         <SidebarHeader className={cn('gap-0 p-0', S.headerBg)}>
-          {/* A 64px band with a wedge sloping into the sidebar body and an
-              accent stripe on its edge. The wedge is filled with --sidebar so
+          {/* A 64px band with a wedge sloping into the sidebar body and a
+              yellow stripe on its edge. The wedge is filled with --sidebar so
               it always matches the body; preserveAspectRatio="none" stretches
               it to any width (collapsed too), and the -10 / 290 ends run the
               stripe past both edges so the corners stay clean. */}
@@ -549,7 +549,7 @@ export function AppSidebar() {
               <path d="M -10 64 H 290 V 34 L -10 58 Z" fill="var(--sidebar)" />
               <path
                 d="M -10 58 L 290 34"
-                stroke="var(--primary)"
+                stroke="#FACC15"
                 strokeWidth="2"
                 strokeLinecap="round"
                 opacity="0.85"
