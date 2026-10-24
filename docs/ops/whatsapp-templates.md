@@ -24,9 +24,12 @@ How it works in code:
    category, language, header, body, footer). Use the sample values given.
 2. Wait for **Approved**. If Meta changes the category (e.g. Utility →
    Marketing), tell the team before switching it on: the price differs.
-3. On the server, add the name to `/opt/mesiri/.env`:
-   `WHATSAPP_APPROVED_TEMPLATES=mesiri_dpr_delivery` (comma-separate more), then
-   restart `mesiri` and `mesiri-worker`.
+3. On the server, add the name to `WHATSAPP_APPROVED_TEMPLATES` in
+   `/opt/mesiri/.env` and restart `mesiri` and `mesiri-worker`. Easiest: run the
+   **Claude ops** workflow with task `vps-templates`, text
+   `add:<name>[,<name>]` (or `check` to see the list). It only accepts names
+   declared in `templates.py`, backs up `.env`, restarts, and rolls back if
+   `/health` fails (`infra/deploy/whatsapp_templates.sh`).
 4. To switch every template off again: empty the setting and restart. Behaviour
    is then exactly as before WA-12.
 
@@ -57,7 +60,7 @@ Submitted on the **Mesiri** WhatsApp account (named Paraclete until 24 Oct) (ID 
 | `mesiri_ops_alert` | In review |
 | `mesiri_dpr_delivery` | In review |
 | `mesiri_dpr_optin` | In review (reworded, see above) |
-| `mesiri_login_code` | **Approved (Active)**. Refused at first ("does not have permission") because the business portfolio (StarShape, renamed Aprodac on 24 Oct) was not verified; verified as **APRODAC PRIVATE LIMITED** on 24 Oct (public-records match, director Mohammed Sahel), then submitted and approved at once. Add it to `WHATSAPP_APPROVED_TEMPLATES` to switch code login and web signup on |
+| `mesiri_login_code` | **Approved (Active)**. Refused at first ("does not have permission") because the business portfolio (StarShape, renamed Aprodac on 24 Oct) was not verified; verified as **APRODAC PRIVATE LIMITED** on 24 Oct (public-records match, director Mohammed Sahel), then submitted and approved at once. **Switched on 24 Oct**: `WHATSAPP_APPROVED_TEMPLATES=mesiri_login_code` on the server (sender: whatsapp) |
 | `mesiri_trial_ending` | Skipped (Ilan, 24 Oct): Meta only accepts it as Marketing; the in-window reminder is enough for now. Owners silent for 24 h get no trial-ending reminder |
 
 ## Templates
