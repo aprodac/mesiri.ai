@@ -25,13 +25,13 @@ pages, empty ones included, for every role.
 
 | ID | Problem | Severity | Approval | Verified |
 | --- | --- | --- | --- | --- |
-| DSH-01 | Menu isn't the V1 menu; old and empty pages under "More" for every role | Serious | None (Workers Roster hiding is in the approved scope list) | Code read |
+| DSH-01 | Menu isn't the V1 menu; old and empty pages under "More" for every role | Serious | None (Workers Roster hiding is in the approved scope list) — **fixed (WEB-20), retest; Workers Roster still shown** | Code read |
 | DSH-02 | Report details / confirm / publish / revise check only the company, not the project | Serious | Alan: security | Code read |
 | DSH-03 | Time zone is free text; "IST" or "India" quietly means UTC | Serious | None — **fixed (WEB-18), retest** | Scripted run |
 | DSH-04 | Today says a site "hasn't reported" when it sent materials, issues or progress | Serious | None — **fixed (WEB-19), retest** | Code read |
 | DSH-05 | Attendance page is about wages (₹0), not counts | Other | Alan: Labour | Code read |
 | DSH-06 | "Development only" delete button on every attendance row | Other | Alan: Labour | Code read |
-| DSH-07 | WhatsApp Inbox listed for everyone; admin-only on the server | Other | None | Code read |
+| DSH-07 | WhatsApp Inbox listed for everyone; admin-only on the server | Other | None — **fixed (WEB-20), retest** | Code read |
 | DSH-08 | Team offers a "Finance / Accountant" role | Other | None | Code read |
 | DSH-09 | Daily Reports CSV has an always-0 "Labour cost" column | Other | None | Code read |
 | DSH-10 | Today's open-issue list loads only the latest 100 issues | Other | None | Code read |
@@ -58,6 +58,7 @@ Issues, Attendance and Materials match what was sent on WhatsApp.
 - **Actual:** no Attendance or Materials at the top. "More" lists WhatsApp Inbox; Operations (Dashboard, Activities, Timeline, Gallery, Analytics, Settings); Labour (Overview, Attendance, Workers Roster, Analytics, WhatsApp Automations, Reports, Settings); Materials (Overview, Inventory, Purchases, Suppliers, Categories). Inventory/Purchases/Suppliers/Categories open an empty placeholder page.
 - **Code:** `PRIMARY_ITEMS`, `ROOT_MANAGEMENT_ITEMS`, `MORE_CATEGORIES` in `apps/dashboard/src/components/app-sidebar.tsx`; placeholder routes in `apps/dashboard/src/App.tsx` (`OperationalPlaceholder`).
 - **Fix direction:** add Attendance (`/labour/attendance`) and Materials (`/materials`) to `PRIMARY_ITEMS`; drop "More" for non-admins, or hide it behind a company flag (routes stay, per the scope's "nothing is deleted").
+- **Fixed (WEB-20):** V1 menu; More for admins only with Inbox, Finance (if on) and Workers Roster. Workers Roster hiding waits for Alan.
 
 ### DSH-02 · Report actions check only the company
 

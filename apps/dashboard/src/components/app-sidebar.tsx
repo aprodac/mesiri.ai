@@ -144,12 +144,14 @@ const MATERIALS_CATEGORY: NavCategory = {
   ],
 }
 
-// V1 primary navigation (tracker WEB-01). "Today" is the WEB-03 page; the
-// older overview stays reachable under More > Operations.
+// V1 primary navigation (tracker WEB-01; V1 scope's menu, audit DSH-01).
+// Attendance and Materials follow their company module switch (WEB-02).
 const PRIMARY_ITEMS: NavItem[] = [
   { title: 'Today', url: '/today', icon: CalendarDays },
   { title: 'Daily Reports', url: '/operations/daily-reports', icon: FileText },
   { title: 'Issues', url: '/operations/issues', icon: AlertCircle },
+  { title: 'Attendance', url: '/labour/attendance', icon: ClipboardCheck, module: 'labour' },
+  { title: 'Materials', url: '/materials/overview', icon: Boxes, module: 'materials' },
 ]
 
 const ROOT_MANAGEMENT_ITEMS: NavItem[] = [
@@ -170,12 +172,20 @@ const OPERATIONS_MORE_CATEGORY: NavCategory = {
   ),
 }
 
-const MORE_CATEGORIES: NavCategory[] = [
-  OPERATIONS_MORE_CATEGORY,
-  LABOUR_CATEGORY,
-  MATERIALS_CATEGORY,
-  FINANCE_CATEGORY,
-]
+// V1 audit DSH-01: the scope hides the old Operations pages, the empty
+// Materials pages and the extra Labour pages (their routes stay). Workers
+// Roster stays until its hiding is approved (Labour module, Alan). "More"
+// is for admins only.
+const V1_MORE_HIDDEN = true
+
+const LABOUR_MORE_CATEGORY: NavCategory = {
+  ...LABOUR_CATEGORY,
+  items: LABOUR_CATEGORY.items.filter((item) => item.url === '/labour/workers'),
+}
+
+const MORE_CATEGORIES: NavCategory[] = V1_MORE_HIDDEN
+  ? [LABOUR_MORE_CATEGORY, FINANCE_CATEGORY]
+  : [OPERATIONS_MORE_CATEGORY, LABOUR_CATEGORY, MATERIALS_CATEGORY, FINANCE_CATEGORY]
 
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -412,6 +422,9 @@ export function AppSidebar() {
     ),
   }))
 
+  // DSH-01 / DSH-07: "More" (WhatsApp Inbox, Finance, Workers Roster) is the
+  // admin's; the inbox API is admin-only anyway.
+  const showMore = (me?.role || '').toUpperCase() === 'ADMIN'
   const isMoreActive =
     visibleMoreCategories.some((category) =>
       category.items.some((item) => checkIsItemActive(location.pathname, item.url))
@@ -477,7 +490,9 @@ export function AppSidebar() {
       <SidebarContent className="px-1.5 py-1 gap-1">
         <SidebarGroup className="p-1">
           <SidebarGroupContent>
-            <SidebarMenu className="gap-0.5">{PRIMARY_ITEMS.map(renderLink)}</SidebarMenu>
+            <SidebarMenu className="gap-0.5">
+              {PRIMARY_ITEMS.filter((item) => isModuleEnabled(item.module)).map(renderLink)}
+            </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
@@ -492,6 +507,7 @@ export function AppSidebar() {
           </SidebarGroup>
         )}
 
+        {showMore && (
         <SidebarGroup className="p-1">
           <SidebarMenu className="gap-0.5">
             <SidebarMenuItem>
@@ -522,6 +538,7 @@ export function AppSidebar() {
             )}
           </SidebarMenu>
         </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-2">

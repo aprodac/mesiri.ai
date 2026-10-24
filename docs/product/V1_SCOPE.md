@@ -112,7 +112,7 @@ back on per company.
 > **Audit note (24 Oct 2026):** "Confirm equipment appears in the DPR PDF": it does not;
 > there is no equipment capture or table at all. See
 > [ISS-01](../qa/v1-audit/06-issues-conditions.md#iss-01--equipment-cannot-be-recorded).
-> The menu changes are not done yet: see [DSH-01](../qa/v1-audit/09-dashboard.md#dsh-01--the-menu-isnt-the-v1-menu).
+> The menu changes are done (WEB-20) except hiding Workers Roster, which waits for Alan: see [DSH-01](../qa/v1-audit/09-dashboard.md#dsh-01--the-menu-isnt-the-v1-menu).
 
 ## Decision
 
