@@ -30,6 +30,27 @@ How it works in code:
 4. To switch every template off again: empty the setting and restart. Behaviour
    is then exactly as before WA-12.
 
+**Meta rule:** a body may not start or end with a variable. That is why
+`mesiri_dpr_optin` starts "Hello!" and `mesiri_join_request` starts "New join
+request:" (added 24 Oct; the variables and their order are unchanged, so the
+code needed no change).
+
+## Submission status (WA-10, 24 Oct 2026)
+
+Submitted on the **Paraclete** WhatsApp account (ID 1450347316419889, number
++91 89040 34938), not the "Test WhatsApp Business Account".
+
+| Template | Status |
+| --- | --- |
+| `mesiri_site_no_update` | In review |
+| `mesiri_site_day_review` | In review |
+| `mesiri_join_request` | In review |
+| `mesiri_ops_alert` | In review |
+| `mesiri_dpr_delivery` | Not submitted: needs a sample PDF uploaded by hand (form otherwise as below) |
+| `mesiri_login_code` | Not submitted: Meta said the account "does not have permission" to create Authentication templates (usually business verification) |
+| `mesiri_trial_ending` | Held: Meta flagged it as Marketing and said it would be rejected as Utility. Needs a decision: submit as Marketing (higher price) or reword |
+| `mesiri_dpr_optin` | Held: same Marketing flag as above |
+
 ## Templates
 
 ### `mesiri_dpr_delivery` — the project DPR
@@ -141,7 +162,7 @@ messaged the number, so this always goes as the template.
 | Category | Utility |
 | Language | English (`en`) |
 | Header | None |
-| Body | `{{1}} would like to send you the daily progress report for {{2}} on WhatsApp. Reply YES to receive it, or STOP to never be messaged.` |
+| Body | `Hello! {{1}} would like to send you the daily progress report for {{2}} on WhatsApp. Reply YES to receive it, or STOP to never be messaged.` |
 | Footer | `Sent by Mesiri` |
 | Buttons | Quick replies: `YES`, `STOP` |
 
@@ -180,7 +201,7 @@ admin outside the window is not alerted (logged as
 | Category | Utility |
 | Language | English (`en`) |
 | Header | None |
-| Body | `{{1}} (+{{2}}) wants to join {{3}} on Mesiri with your join code. Approve them?` |
+| Body | `New join request: {{1}} (+{{2}}) wants to join {{3}} on Mesiri with your join code. Approve them?` |
 | Footer | `Sent by Mesiri` |
 | Buttons | Quick replies: `Approve`, `Reject` |
 
