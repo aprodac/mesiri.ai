@@ -34,6 +34,10 @@ import TransactionsPage from '@/pages/TransactionsPage'
 import VendorsPage from '@/pages/VendorsPage'
 import CategoriesPage from '@/pages/CategoriesPage'
 import OperationsIssuesPage from '@/pages/OperationsIssuesPage'
+import ActivitiesPage from '@/pages/ActivitiesPage'
+import OperationsGalleryPage from '@/pages/OperationsGalleryPage'
+import OperationsTimelinePage from '@/pages/OperationsTimelinePage'
+import OperationsAnalyticsPage from '@/pages/OperationsAnalyticsPage'
 import AutomationsPage from '@/pages/AutomationsPage'
 import { ToastProvider } from '@/components/ui/toast-notification'
 
@@ -79,6 +83,12 @@ export default function App() {
           <Route path="reports/:date/projects/:projectId" element={<ProjectDayPage />} />
           <Route path="issues" element={<OperationsIssuesPage />} />
 
+          {/* Site records: everything the sites sent, across days. */}
+          <Route path="activities" element={<ActivitiesPage />} />
+          <Route path="gallery" element={<OperationsGalleryPage />} />
+          <Route path="timeline" element={<OperationsTimelinePage />} />
+          <Route path="analytics" element={<OperationsAnalyticsPage />} />
+
           {/* Labour (module). Its pages are unchanged; folding them into
               Attendance + Workers waits for approval (CLAUDE.md, Labour). */}
           <Route path="labour" element={lab(<Navigate to="/labour/attendance" replace />)} />
@@ -123,6 +133,10 @@ export default function App() {
           <Route path="operations/daily-reports" element={<Moved to="/reports" />} />
           <Route path="operations/issues" element={<Moved to="/issues" />} />
           <Route path="operations/automations" element={<Moved to="/automations" />} />
+          <Route path="operations/activities" element={<Moved to="/activities" />} />
+          <Route path="operations/gallery" element={<Moved to="/gallery" />} />
+          <Route path="operations/timeline" element={<Moved to="/timeline" />} />
+          <Route path="operations/analytics" element={<Moved to="/analytics" />} />
           <Route path="users" element={<Moved to="/team" />} />
           <Route path="users/:id" element={<MovedUser />} />
           <Route path="materials/*" element={<Moved to="/materials" />} />
@@ -130,8 +144,8 @@ export default function App() {
           <Route path="whatsapp/labour" element={<Moved to="/labour/whatsapp" />} />
           <Route path="expenses" element={<Moved to="/finance/expenses" />} />
           <Route path="petty-cash" element={<Moved to="/finance/petty-cash" />} />
-          {/* Removed pages (operations dashboard, activities, timeline,
-              gallery, analytics, settings) and anything unknown. */}
+          {/* Removed pages (the operations dashboard -- Today does its job --
+              and operations settings, which nothing read) and anything unknown. */}
           <Route path="*" element={<Moved to="/today" />} />
         </Route>
       </Routes>

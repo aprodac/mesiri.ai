@@ -6,6 +6,9 @@ import {
   LogOut,
   Users,
   ArrowLeft,
+  Activity,
+  History,
+  Image as ImageIcon,
   BarChart3,
   FileText,
   DollarSign,
@@ -124,6 +127,14 @@ const PRIMARY_ITEMS: NavItem[] = [
   { title: 'Today', url: '/today', icon: CalendarDays, tone: 'orange', badge: 'drafts' },
   { title: 'Reports', url: '/reports', icon: FileText, tone: 'sky' },
   { title: 'Issues', url: '/issues', icon: AlertCircle, tone: 'rose', badge: 'issues' },
+]
+
+// Site records: everything the sites sent, across days and sites.
+const RECORD_ITEMS: NavItem[] = [
+  { title: 'Activities', url: '/activities', icon: Activity, tone: 'sky' },
+  { title: 'Gallery', url: '/gallery', icon: ImageIcon, tone: 'violet' },
+  { title: 'Timeline', url: '/timeline', icon: History, tone: 'teal' },
+  { title: 'Analytics', url: '/analytics', icon: BarChart3, tone: 'indigo' },
 ]
 
 const MATERIALS_ITEM: NavItem = { title: 'Materials', url: '/materials', icon: Boxes, module: 'materials', tone: 'emerald' }
@@ -602,8 +613,17 @@ export function AppSidebar() {
         <SidebarContent className={cn('px-1.5 py-1 gap-1', S.scrollbar)}>
           <SidebarGroup className="p-1">
             <SidebarGroupContent>
+              <SidebarMenu className="gap-0.5">{PRIMARY_ITEMS.map(renderLink)}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarGroup className="p-1">
+            <SidebarGroupLabel className={cn('px-2.5 text-[11px] font-semibold uppercase tracking-wider', S.label)}>
+              Site records
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
-                {PRIMARY_ITEMS.map(renderLink)}
+                {RECORD_ITEMS.map(renderLink)}
                 {moduleCategories.filter((c) => c.module === 'labour').map(renderCategory)}
                 {isModuleEnabled(MATERIALS_ITEM.module) && renderLink(MATERIALS_ITEM)}
                 {moduleCategories.filter((c) => c.module !== 'labour').map(renderCategory)}
