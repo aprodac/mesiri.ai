@@ -1682,6 +1682,10 @@ export interface SiteDayItem {
   work_items: number
   photos: number
   open_issues: number
+  /** The day's material receipts and usages (V1 audit DSH-04). */
+  materials?: number
+  /** Issues reported on the day (V1 audit DSH-04). */
+  issues_today?: number
   last_update_at: string | null
   last_update_by: string | null
   latest_update: string | null

@@ -28,7 +28,7 @@ pages, empty ones included, for every role.
 | DSH-01 | Menu isn't the V1 menu; old and empty pages under "More" for every role | Serious | None (Workers Roster hiding is in the approved scope list) | Code read |
 | DSH-02 | Report details / confirm / publish / revise check only the company, not the project | Serious | Alan: security | Code read |
 | DSH-03 | Time zone is free text; "IST" or "India" quietly means UTC | Serious | None — **fixed (WEB-18), retest** | Scripted run |
-| DSH-04 | Today says a site "hasn't reported" when it sent materials, issues or progress | Serious | None | Code read |
+| DSH-04 | Today says a site "hasn't reported" when it sent materials, issues or progress | Serious | None — **fixed (WEB-19), retest** | Code read |
 | DSH-05 | Attendance page is about wages (₹0), not counts | Other | Alan: Labour | Code read |
 | DSH-06 | "Development only" delete button on every attendance row | Other | Alan: Labour | Code read |
 | DSH-07 | WhatsApp Inbox listed for everyone; admin-only on the server | Other | None | Code read |
@@ -85,6 +85,7 @@ Issues, Attendance and Materials match what was sent on WhatsApp.
 - **Actual:** Today shows Site 1 "Nothing received today" and "Site 1 hasn't reported today".
 - **Code:** `hasUpdates` in `apps/dashboard/src/lib/site-day.ts` is `work_items > 0 || workers > 0 || site_working === 'none'`; `list_site_days` (`dpr.py`) counts only activities created that day (WRK-01).
 - **Fix direction:** return materials, issues, photos and progress-update counts from `list_site_days` and count them in `hasUpdates`.
+- **Fixed (WEB-19, with WA-65 for progress updates).** Retest.
 
 ### DSH-05 · Attendance page is about wages
 

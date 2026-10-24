@@ -1456,6 +1456,24 @@ class PostgresDprRepository:
                           AND {live_report_sql("lar")}
                           AND {counted_line_sql("lal", "lar")}
                         GROUP BY lar.site_id
+                    ), materials AS (
+                        -- V1 audit DSH-04: a site that only sent materials or
+                        -- issues has reported. Same rows as the DPR's sections.
+                        SELECT mm.site_id, count(*) AS materials
+                        FROM material_movements mm
+                        WHERE mm.organization_id = :org_id AND mm.occurred_at::date = :report_date
+                          AND mm.reversal_of_movement_id IS NULL
+                          AND NOT EXISTS (
+                              SELECT 1 FROM material_movements r WHERE r.reversal_of_movement_id = mm.id
+                          )
+                        GROUP BY mm.site_id
+                    ), day_issues AS (
+                        SELECT site_id, count(*) AS issues_today
+                        FROM site_issues
+                        WHERE organization_id = :org_id AND occurred_at::date = :report_date
+                          AND status != 'CANCELLED'
+                          AND COALESCE(narrative, '') NOT LIKE 'Question for your engineer:%'
+                        GROUP BY site_id
                     ), issues AS (
                         SELECT site_id, count(*) AS open_issues
                         FROM site_issues
@@ -1471,6 +1489,8 @@ class PostgresDprRepository:
                            COALESCE(acts.work_items, 0) AS work_items,
                            COALESCE(photos.photos, 0) AS photos,
                            COALESCE(issues.open_issues, 0) AS open_issues,
+                           COALESCE(materials.materials, 0) AS materials,
+                           COALESCE(day_issues.issues_today, 0) AS issues_today,
                            GREATEST(acts.last_at, labour.last_at) AS last_update_at,
                            latest_act.reporter_name AS last_update_by,
                            latest_act.narrative AS latest_update
@@ -1485,6 +1505,8 @@ class PostgresDprRepository:
                     LEFT JOIN photos ON photos.site_id = s.id
                     LEFT JOIN labour ON labour.site_id = s.id
                     LEFT JOIN issues ON issues.site_id = s.id
+                    LEFT JOIN materials ON materials.site_id = s.id
+                    LEFT JOIN day_issues ON day_issues.site_id = s.id
                     WHERE {" AND ".join(where)}
                     ORDER BY p.name, s.name
                     """
@@ -1497,8 +1519,8 @@ class PostgresDprRepository:
             day = dict(row)
             if isinstance(day["missing_sections"], str):
                 day["missing_sections"] = json.loads(day["missing_sections"])
-            for key in ("workers", "work_items", "photos", "open_issues"):
-                day[key] = int(day[key] or 0)
+            for key in ("workers", "work_items", "photos", "open_issues", "materials", "issues_today"):
+                day[key] = int(day.get(key) or 0)
             days.append(day)
         return days
 

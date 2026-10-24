@@ -30,8 +30,17 @@ export function errorDetail(err: unknown): string | null {
   return detail.charAt(0).toUpperCase() + detail.slice(1)
 }
 
+// V1 audit DSH-04: materials, issues or photos alone are an update too; a
+// site that sent only cement and a breakdown read as "hasn't reported".
 export function hasUpdates(site: SiteDayItem): boolean {
-  return site.work_items > 0 || site.workers > 0 || site.site_working === 'none'
+  return (
+    site.work_items > 0 ||
+    site.workers > 0 ||
+    site.photos > 0 ||
+    (site.materials ?? 0) > 0 ||
+    (site.issues_today ?? 0) > 0 ||
+    site.site_working === 'none'
+  )
 }
 
 export function siteStatus(site: SiteDayItem): { label: string; className: string } {

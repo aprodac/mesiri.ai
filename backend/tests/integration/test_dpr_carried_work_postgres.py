@@ -149,3 +149,60 @@ async def test_earlier_work_updated_today_is_in_todays_dpr(conn) -> None:
         site_id=created.site_id,
         report_date=NEXT,
     )
+
+
+async def test_a_site_that_sent_only_materials_and_an_issue_has_reported(conn) -> None:
+    """V1 audit DSH-04: cement + a crane breakdown read as "hasn't reported"."""
+    from decimal import Decimal
+
+    from mesiri.domains.materials.posting import post_material_movement
+
+    created = await create_company(
+        conn,
+        NewCompany(
+            name="Cement Only Builders",
+            owner_name="Owner",
+            owner_phone="9876500078",
+            project_name="Green Towers",
+            site_names=("Block A",),
+        ),
+    )
+    at = dt.datetime(2026, 10, 22, 6, 0, tzinfo=dt.UTC)
+    material = (
+        await conn.execute(
+            text("SELECT id, default_unit_id FROM materials_catalog WHERE organization_id = :org LIMIT 1"),
+            {"org": created.organization_id},
+        )
+    ).one()
+    await post_material_movement(
+        conn,
+        movement_type="RECEIPT",
+        material_id=material.id,
+        unit_id=material.default_unit_id,
+        quantity=Decimal(50),
+        organization_id=created.organization_id,
+        project_id=created.project_id,
+        site_id=created.site_id,
+        occurred_at=at,
+        source_type="material_receipt",
+        source_id=uuid.uuid4(),
+        recorded_by_user_id=created.owner_user_id,
+    )
+    await conn.execute(
+        text(
+            "INSERT INTO site_issues (id, organization_id, project_id, site_id, issue_type,"
+            " narrative, occurred_at) VALUES (:id, :org, :project, :site, 'OTHER', 'crane breakdown', :at)"
+        ),
+        {
+            "id": uuid.uuid4(),
+            "org": created.organization_id,
+            "project": created.project_id,
+            "site": created.site_id,
+            "at": at,
+        },
+    )
+    days = await PostgresDprRepository(conn).list_site_days(
+        organization_id=created.organization_id, project_ids=None, report_date=DAY
+    )
+    (day,) = [d for d in days if d["site_id"] == created.site_id]
+    assert (day["work_items"], day["materials"], day["issues_today"]) == (0, 1, 1)

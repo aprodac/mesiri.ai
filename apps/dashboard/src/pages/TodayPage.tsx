@@ -26,6 +26,7 @@ import {
   hasUpdates,
   localIsoDate,
   missingText,
+  plural,
   projectDayPath,
   siteDayPath,
   siteStatus,
@@ -119,6 +120,15 @@ function SiteCard({
         <p className="text-sm rounded-lg bg-draft-soft text-draft px-3 py-2">{missing}</p>
       ) : site.latest_update ? (
         <p className="text-sm text-foreground/80 line-clamp-3">{site.latest_update}</p>
+      ) : hasUpdates(site) ? (
+        <p className="text-sm text-foreground/80">
+          {[
+            site.materials ? plural(site.materials, 'material update') : null,
+            site.issues_today ? plural(site.issues_today, 'issue') : null,
+          ]
+            .filter(Boolean)
+            .join(' · ') || 'Updates received today.'}
+        </p>
       ) : (
         <p className="text-sm text-muted-foreground">Nothing received today.</p>
       )}
