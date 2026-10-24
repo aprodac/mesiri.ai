@@ -22,6 +22,7 @@ from decimal import Decimal, InvalidOperation
 
 from mesiri_contracts.application.commands.material import (
     RecordMaterialReceiptCommand,
+    RecordMaterialTransferCommand,
     RecordMaterialUsageCommand,
 )
 from mesiri_contracts.assistant.draft_action import DraftActionType
@@ -56,7 +57,7 @@ def _occurred_date(fields: dict) -> date:
 
 def build_command(
     confirmed: ConfirmedActionV2,
-) -> RecordMaterialReceiptCommand | RecordMaterialUsageCommand:
+) -> RecordMaterialReceiptCommand | RecordMaterialUsageCommand | RecordMaterialTransferCommand:
     """Map a ConfirmedActionV2 into the typed command its action_type calls for."""
     draft = confirmed.draft_action
     fields = draft.fields
@@ -81,6 +82,13 @@ def build_command(
         return RecordMaterialReceiptCommand(
             **common,
             supplier=fields.get("supplier"),
+            movement_reason=fields.get("movement_reason"),
+        )
+    if draft.action_type is DraftActionType.TRANSFER_MATERIAL:
+        return RecordMaterialTransferCommand(
+            **common,
+            to_project_id=fields.get("to_project_id"),
+            to_site_id=fields.get("to_site_id"),
         )
     return RecordMaterialUsageCommand(
         **common,

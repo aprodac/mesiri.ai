@@ -24,6 +24,7 @@ class DraftActionType(str, Enum):
 
     RECORD_MATERIAL_RECEIPT = "record_material_receipt"
     RECORD_MATERIAL_USAGE = "record_material_usage"
+    TRANSFER_MATERIAL = "transfer_material"
     RECORD_EXPENSE = "record_expense"
     MANAGE_MONEY_ACCOUNT = "manage_money_account"
     TRANSFER_MONEY = "transfer_money"

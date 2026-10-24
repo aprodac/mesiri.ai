@@ -48,6 +48,8 @@ class WorkflowKey(str, Enum):
 
     MATERIAL_RECEIPT = "material.receipt"
     MATERIAL_USAGE = "material.usage"
+    # Material sent from one site to another (agent tool transfer_material).
+    MATERIAL_TRANSFER = "material.transfer"
     EXPENSE_SUBMIT = "expense.submit"
     EQUIPMENT_USAGE = "equipment.usage"
     LABOUR_ATTENDANCE = "labour.attendance"

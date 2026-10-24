@@ -258,6 +258,16 @@ _DEFINITIONS: dict[WorkflowKey, WorkflowDefinition] = dict(
             menu_row_id_override="dir_used",
         ),
         _define(
+            WorkflowKey.MATERIAL_TRANSFER,
+            build_material_graph,
+            WorkflowCategory.MATERIAL,
+            title="Material Transfer",
+            one_liner="Send material to another site",
+            examples=("10 bags of cement sent to Site B",),
+            # Started only by the agent's transfer_material tool.
+            user_initiable=False,
+        ),
+        _define(
             WorkflowKey.WHO_AM_I,
             build_who_am_i_graph,
             WorkflowCategory.IDENTITY,

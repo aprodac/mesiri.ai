@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from mesiri_contracts.application.commands.material import (
     RecordMaterialReceiptCommand,
+    RecordMaterialTransferCommand,
     RecordMaterialUsageCommand,
 )
 from mesiri_contracts.application.results.execution_result import ExecutionResult
@@ -21,7 +22,9 @@ from mesiri_contracts.application.results.execution_result import ExecutionResul
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection
 
-MaterialCommand = RecordMaterialReceiptCommand | RecordMaterialUsageCommand
+MaterialCommand = (
+    RecordMaterialReceiptCommand | RecordMaterialUsageCommand | RecordMaterialTransferCommand
+)
 
 
 class MaterialExecutionRepository(ABC):
@@ -31,6 +34,11 @@ class MaterialExecutionRepository(ABC):
     async def check_idempotency(self, conn: AsyncConnection, key: str) -> ExecutionResult | None:
         """Return the cached ExecutionResult if `key` was already claimed, else None."""
         ...
+
+    async def check_rules(self, conn: AsyncConnection, cmd: MaterialCommand) -> list[str]:
+        """Stock rules that refuse a save (reasons), checked in the Handler's
+        transaction before ``persist_success``. None by default."""
+        return []
 
     @abstractmethod
     async def persist_success(self, conn: AsyncConnection, cmd: MaterialCommand) -> ExecutionResult:

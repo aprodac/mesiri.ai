@@ -512,9 +512,34 @@ class PostgresFactReviewRepository:
         else:
             from fastapi import HTTPException
 
-            from mesiri.domains.materials.router import reverse_material_record
+            from mesiri.domains.materials.router import (
+                reverse_material_record,
+                reverse_transfer_record,
+            )
 
             try:
+                # A transfer's outflow is the reviewable fact: rejecting it
+                # takes back both halves, never one (stock at both sites).
+                transfer_id = None
+                if fact_type == fact_review.MATERIAL_USAGE:
+                    transfer_id = (
+                        await self._conn.execute(
+                            text(
+                                "SELECT transfer_id FROM material_usage "
+                                "WHERE id = :id AND organization_id = :org"
+                            ),
+                            {"id": fact_id, "org": organization_id},
+                        )
+                    ).scalar()
+                if transfer_id is not None:
+                    await reverse_transfer_record(
+                        self._conn,
+                        transfer_id=transfer_id,
+                        organization_id=organization_id,
+                        user_id=actor_user_id,
+                        reason_note=reason,
+                    )
+                    return
                 await reverse_material_record(
                     self._conn,
                     kind="receipt" if fact_type == fact_review.MATERIAL_RECEIPT else "usage",
