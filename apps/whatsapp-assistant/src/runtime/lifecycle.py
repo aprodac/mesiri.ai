@@ -297,6 +297,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Database admin router not loaded: %s", exc)
 
+    # Claude's read-only control-plane API (SA-16); off until MESIRI_CLAUDE_OPS_TOKEN is set.
+    try:
+        from mesiri.domains.admin.claude_ops_router import router as claude_ops_router
+
+        app.include_router(claude_ops_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Claude-ops router not loaded: %s", exc)
+
     # Auth routes (mobile app login/register)
     try:
         from auth.router import router as auth_router

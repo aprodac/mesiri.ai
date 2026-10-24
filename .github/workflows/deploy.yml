@@ -160,6 +160,24 @@ jobs:
           scp -i ~/.ssh/deploy_key infra/deploy/staging_deploy.sh "${VPS_USER}@${VPS_HOST}:/tmp/staging_deploy.sh"
           ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "bash /tmp/staging_deploy.sh ${{ github.sha }}"
 
+      # SA-16: Claude's read-only control-plane API is off until this token is
+      # set. From the GitHub secret MESIRI_CLAUDE_OPS_TOKEN (32+ characters),
+      # passed on stdin so it never shows in a log; the restart below loads it.
+      # Secret empty = the .env is left as it is.
+      - name: Claude ops token
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          CLAUDE_OPS_TOKEN: ${{ secrets.MESIRI_CLAUDE_OPS_TOKEN }}
+        run: |
+          if [ -z "${CLAUDE_OPS_TOKEN}" ]; then
+            echo "MESIRI_CLAUDE_OPS_TOKEN secret not set; .env unchanged"
+            exit 0
+          fi
+          scp -i ~/.ssh/deploy_key infra/deploy/set_env_value.py "${VPS_USER}@${VPS_HOST}:/tmp/set_env_value.py"
+          printf '%s' "${CLAUDE_OPS_TOKEN}" | ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
+            "python3 /tmp/set_env_value.py /opt/mesiri/.env MESIRI_CLAUDE_OPS_TOKEN && rm -f /tmp/set_env_value.py"
+
       # ── Step 1: update code + deps + run migrations + restart ──────────────
       - name: Deploy backend
         env:

@@ -53,6 +53,8 @@ GitHub Actions: deploy.yml
 
 If staging fails, production is not touched. If the production health check fails after restart, the code is reverted to the previous commit; a schema change is undone from the pre-migrate dump (restore steps at the top of `infra/deploy/backup_db.sh`). A failed smoke test fails the job without rolling back.
 
+**Claude's read-only data access (SA-16):** set the GitHub secret `MESIRI_CLAUDE_OPS_TOKEN` (32+ characters); each deploy writes it to `/opt/mesiri/.env`. Off while unset. See [docs/backend/claude-ops.md](docs/backend/claude-ops.md).
+
 **Ops without SSH (Claude Code, TM-12):** the manual workflow `.github/workflows/claude-ops.yml` runs `vps-check`, `vps-backup-now`, `vps-staging`, `vps-smoke` and the bot test chat with the secrets that stay in GitHub. To see what the assistant decided for recent messages, run `vps-agent-trace` (INF-14: per message, the tool calls with argument names and outcomes, the parked question, held calls and parts still to do; no message text or values).
 
 ---

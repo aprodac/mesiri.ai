@@ -180,6 +180,11 @@ class Settings(BaseSettings):
     #: "Replace", which supersedes the old report while keeping it auditable.
     allow_labour_delete: bool = False
 
+    #: Token for Claude's read-only control-plane API (SA-16, /claude-ops/*,
+    #: MESIRI_CLAUDE_OPS_TOKEN). Unset or shorter than 32 characters means
+    #: the API is off: every /claude-ops/ path answers 404.
+    claude_ops_token: SecretStr | None = None
+
     log: LogSettings = Field(default_factory=LogSettings)
     postgres: PostgresSettings = Field(default_factory=PostgresSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
