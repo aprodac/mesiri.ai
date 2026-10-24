@@ -506,14 +506,26 @@ class PostgresProgressReadRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        where = ["pa.organization_id = :organization_id"]
+        # progress_attachments has no organization/project/site of its own
+        # (migration 0430): they come from the parent -- the work item, or the
+        # issue -- the same join the DPR photo counts use. The gallery query
+        # used to read pa.organization_id etc. directly and failed on every
+        # call (WEB-24). Photos of removed work items are left out.
+        source = """
+            FROM progress_attachments pa
+            LEFT JOIN activities a
+              ON pa.parent_type = 'ACTIVITY' AND a.id = pa.parent_id AND a.deleted_at IS NULL
+            LEFT JOIN site_issues si
+              ON pa.parent_type = 'SITE_ISSUE' AND si.id = pa.parent_id
+        """
+        where = ["COALESCE(a.organization_id, si.organization_id) = :organization_id"]
         params: dict[str, Any] = {"organization_id": organization_id, "limit": limit, "offset": offset}
 
         if project_ids is not None:
-            where.append("pa.project_id = ANY(:project_ids)")
+            where.append("COALESCE(a.project_id, si.project_id) = ANY(:project_ids)")
             params["project_ids"] = list(project_ids)
         if site_id is not None:
-            where.append("pa.site_id = :site_id")
+            where.append("COALESCE(a.site_id, si.site_id) = :site_id")
             params["site_id"] = site_id
         if attachment_type is not None:
             where.append("pa.attachment_type = :attachment_type")
@@ -522,18 +534,16 @@ class PostgresProgressReadRepository:
         where_clause = " AND ".join(where)
 
         total_row = (
-            await self._conn.execute(
-                text(f"SELECT COUNT(*) AS total FROM progress_attachments pa WHERE {where_clause}"), params
-            )
+            await self._conn.execute(text(f"SELECT COUNT(*) AS total {source} WHERE {where_clause}"), params)
         ).mappings().first()
         total = total_row["total"] if total_row else 0
 
         query = f"""
             SELECT
                 pa.id,
-                pa.organization_id,
-                pa.project_id,
-                pa.site_id,
+                COALESCE(a.organization_id, si.organization_id) AS organization_id,
+                COALESCE(a.project_id, si.project_id) AS project_id,
+                COALESCE(a.site_id, si.site_id) AS site_id,
                 pa.parent_type,
                 pa.parent_id,
                 pa.media_object_key,
@@ -543,10 +553,12 @@ class PostgresProgressReadRepository:
                 pa.ai_caption,
                 pa.role,
                 pa.captured_at,
-                pa.created_at
-            FROM progress_attachments pa
+                pa.created_at,
+                COALESCE(a.activity_date, (si.occurred_at AT TIME ZONE 'UTC')::date) AS work_date,
+                COALESCE(a.work_type, si.narrative) AS parent_title
+            {source}
             WHERE {where_clause}
-            ORDER BY pa.created_at DESC
+            ORDER BY work_date DESC NULLS LAST, pa.created_at DESC
             LIMIT :limit OFFSET :offset
         """
         rows = (await self._conn.execute(text(query), params)).mappings().all()

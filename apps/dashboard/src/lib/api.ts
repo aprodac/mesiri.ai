@@ -451,6 +451,11 @@ export interface GalleryItem {
   role?: string | null
   captured_at?: string | null
   created_at: string
+  /** Short-lived link to the photo (WEB-24); null when storage can't give one. */
+  url?: string | null
+  /** The work item's (or issue's) date and title (WEB-24). */
+  work_date?: string | null
+  parent_title?: string | null
 }
 
 export interface GalleryListResponse {

@@ -1,6 +1,5 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
-import { useQueries, useQuery } from '@tanstack/react-query'
 import {
   Activity as ActivityIcon,
   Search,
@@ -38,7 +37,7 @@ import {
 } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Callout, PageHeader, StatStrip } from '@/components/dpr-page'
-import { fetchProjects, fetchSites } from '@/lib/projects'
+import { useSiteNames } from '@/lib/site-names'
 import { downloadTextFile, toCsv } from '@/lib/export'
 import { CHIP, longDate, plural, qty, siteDayPath } from '@/lib/site-day'
 import { Button } from '@/components/ui/button'
@@ -348,22 +347,7 @@ export default function ActivitiesPage() {
   const scopeLabel =
     scope.mode === 'portfolio' ? 'All projects' : scope.mode === 'project' ? scope.projectName : `${scope.projectName} / ${scope.siteName}`
 
-  // Site and project names for each row, from the same cached lists the
-  // scope picker uses.
-  const projectsQuery = useQuery({ queryKey: ['scope-projects'], queryFn: fetchProjects, staleTime: 60_000 })
-  const siteQueries = useQueries({
-    queries: (projectsQuery.data ?? []).map((p) => ({
-      queryKey: ['scope-sites', p.id],
-      queryFn: () => fetchSites(p.id),
-      staleTime: 60_000,
-    })),
-  })
-  const names = React.useMemo(() => {
-    const projectName = new Map((projectsQuery.data ?? []).map((p) => [p.id, p.name]))
-    const site = new Map<string, { name: string; project: string }>()
-    for (const q of siteQueries) for (const st of q.data ?? []) site.set(st.id, { name: st.name, project: projectName.get(st.projectId) ?? '' })
-    return site
-  }, [projectsQuery.data, siteQueries])
+  const names = useSiteNames()
 
   // Newest day first; within a day, one block per site.
   const days = React.useMemo(() => {

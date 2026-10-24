@@ -36,7 +36,7 @@ from mesiri.application.dpr.site_day import InvalidSiteDayTransition
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.domains.dpr.pdf import render_dpr_pdf_bytes
 from mesiri.domains.projects.router import get_auth_context
-from mesiri.domains.shared.media import assert_downloadable_url
+from mesiri.domains.shared.media import signed_media_url
 from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.objectstorage.dependency import get_object_storage
 from mesiri.infrastructure.postgres.dependency import get_db_conn
@@ -206,25 +206,6 @@ def _site_denied(
     return not scope.grants_all_sites and site_id not in scope.site_ids
 
 
-_MEDIA_URL_TTL_SECONDS = 600
-
-
-async def _signed_url(object_storage: ObjectStoragePort, key: str | None) -> str | None:
-    """A short-lived link to a stored photo/voice note, or None when storage
-    can't give one (the panel then shows the item without it)."""
-    if not key:
-        return None
-    try:
-        return assert_downloadable_url(
-            await object_storage.generate_presigned_url(
-                key, expires_in_seconds=_MEDIA_URL_TTL_SECONDS
-            )
-        )
-    except Exception:  # noqa: BLE001 -- one missing photo must not hide the rest
-        logger.warning("dpr.sources_media_unavailable key=%s", key)
-        return None
-
-
 @router.get("/site-days/{site_id}")
 async def get_site_day(
     site_id: uuid.UUID,
@@ -313,9 +294,9 @@ async def get_fact_sources(
         organization_id=auth_context.organization_id, fact_type=fact_type, fact_id=fact_id
     )
     for message in sources["messages"]:
-        message["media_url"] = await _signed_url(object_storage, message.pop("media_object_key"))
+        message["media_url"] = await signed_media_url(object_storage, message.pop("media_object_key"))
     for photo in sources["photos"]:
-        photo["url"] = await _signed_url(object_storage, photo.pop("media_object_key"))
+        photo["url"] = await signed_media_url(object_storage, photo.pop("media_object_key"))
     return sources
 
 
