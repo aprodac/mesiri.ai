@@ -57,7 +57,7 @@ Submitted on the **Paraclete** WhatsApp account (ID 1450347316419889, number
 | `mesiri_ops_alert` | In review |
 | `mesiri_dpr_delivery` | In review |
 | `mesiri_dpr_optin` | In review (reworded, see above) |
-| `mesiri_login_code` | Not submitted: Meta said the account "does not have permission" to create Authentication templates. The StarShape business portfolio is **not verified** (Security Centre: "Eligible for verification"), which is the likely cause. Until it is approved, code login and web signup answer "not available yet" |
+| `mesiri_login_code` | Not submitted: Meta said the account "does not have permission" to create Authentication templates. The StarShape business portfolio was not verified. Verification submitted 24 Oct as **APRODAC PRIVATE LIMITED** (matched in Meta's public-records lookup; identity: director Mohammed Sahel; website aprodac.com): **In review**, about two working days. Submit the template once it shows Verified. Until then, code login and web signup answer "not available yet" |
 | `mesiri_trial_ending` | Skipped (Ilan, 24 Oct): Meta only accepts it as Marketing; the in-window reminder is enough for now. Owners silent for 24 h get no trial-ending reminder |
 
 ## Templates
