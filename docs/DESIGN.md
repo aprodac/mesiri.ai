@@ -23,6 +23,10 @@ owner gets the DPR — plus setup. The sidebar has no "More".
 | | `/reports/:date/sites/:id` | one site's day: review, confirm, approve |
 | | `/reports/:date/projects/:id` | one project's DPR: preview, send |
 | **Issues** | `/issues` | what's stuck |
+| *Site records* **Activities** | `/activities` | every work item, across days and sites |
+| **Gallery** | `/gallery` | every site photo |
+| **Timeline** | `/timeline` | what happened, when |
+| **Analytics** | `/analytics` | trends |
 | **Labour** (module) | `/labour/...` | attendance, workers (sub-pages unchanged until approved) |
 | **Materials** (module) | `/materials` | one page with tabs |
 | *Setup* **Projects & Sites** | `/projects`, `/projects/:id` | |
