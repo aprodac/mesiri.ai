@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ChevronRight, CircleCheck, CircleDashed, Eye, MapPin, Package, Send, TriangleAlert } from 'lucide-react'
+import { ChevronRight, CircleCheck, CircleDashed, Eye, MapPin, Package, Send, TriangleAlert } from 'lucide-react'
 import {
   fetchDailyReportPdfApi,
   fetchProjectDayApi,
@@ -30,7 +30,7 @@ import { useToast } from '@/components/ui/toast-notification'
 import { DprSummaryCard } from '@/components/dpr-summary-card'
 import { DprVersionsCard } from '@/components/dpr-versions-card'
 import { Button } from '@/components/ui/button'
-import { Callout, DprAside, DprSection, DprSteps, StatStrip, type StepState } from '@/components/dpr-page'
+import { Callout, DprAside, DprHeader, DprSection, DprSteps, StatStrip, type StepState } from '@/components/dpr-page'
 
 // Project DPR page (WEB-05): one project's day. Every site's day as it stands
 // (opened from here to review and confirm), and the project DPR -- the
@@ -83,7 +83,7 @@ function SiteRow({
   const drafts = site.drafts ?? 0
   const inReport = Boolean(line?.reported)
   return (
-    <li className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 py-3.5 md:grid-cols-[auto_minmax(0,1.6fr)_repeat(4,minmax(0,0.6fr))_auto]">
+    <li className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-1 py-2.5 md:grid-cols-[auto_minmax(0,1.6fr)_repeat(4,minmax(0,0.6fr))_auto]">
       <span title={inReport ? 'In the DPR' : sent ? 'Not in the sent DPR' : 'Not in the DPR yet'}>
         {inReport ? <CircleCheck className="size-5 text-success" /> : <CircleDashed className="size-5 text-muted-foreground" />}
       </span>
@@ -193,19 +193,22 @@ export default function ProjectDayPage() {
 
   const confirmedCount = sites.filter((s) => FROZEN.includes(s.status)).length
   const anyUpdates = sites.some(hasUpdates)
-  const steps: { label: string; hint?: string; state: StepState }[] = [
+  const steps: { label: string; short?: string; hint?: string; state: StepState }[] = [
     {
       label: 'Updates from sites',
+      short: 'Updates',
       hint: `${sites.filter(hasUpdates).length} of ${plural(sites.length, 'site')}`,
       state: anyUpdates ? 'done' : 'current',
     },
     {
       label: 'Engineers confirm',
+      short: 'Confirm',
       hint: `${confirmedCount} of ${sites.length} confirmed`,
       state: confirmedCount === sites.length && sites.length > 0 ? 'done' : anyUpdates ? 'current' : 'todo',
     },
     {
       label: 'DPR sent',
+      short: 'Sent',
       hint: project.sent
         ? 'Sent'
         : project.send_requested
@@ -220,28 +223,24 @@ export default function ProjectDayPage() {
   const severe = report.issues.filter((i) => ['CRITICAL', 'HIGH'].includes((i.severity ?? '').toUpperCase())).length
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 sm:p-8">
-      <header className="flex flex-col gap-5">
-        <Link to={`/today?date=${date}`} className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="size-4" /> Today
-        </Link>
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="flex min-w-0 flex-col gap-1">
-            <p className="text-sm text-muted-foreground">Project DPR</p>
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-3xl font-semibold tracking-tight">{project.project_name}</h1>
-              <span className={cn(CHIP, state.className)}>{state.label}</span>
-            </div>
-            <p className="text-sm text-muted-foreground">{longDate(date)}</p>
-          </div>
-          {canSend && (
-            <Button className="h-11 px-5 font-semibold" disabled={busy} onClick={sendNow}>
-              <Send /> Send now
-            </Button>
-          )}
-        </div>
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-4 sm:px-2">
+      <div className="flex flex-col gap-3">
+        <DprHeader
+          back={{ to: `/today?date=${date}`, label: 'Today' }}
+          crumb="Project DPR"
+          title={project.project_name}
+          chip={<span className={cn(CHIP, state.className)}>{state.label}</span>}
+          date={longDate(date)}
+          action={
+            canSend && (
+              <Button className="h-10 px-4 font-semibold" disabled={busy} onClick={sendNow}>
+                <Send /> Send now
+              </Button>
+            )
+          }
+        />
         <DprSteps steps={steps} />
-      </header>
+      </div>
 
       <Callout
         tone={detail.report_source === 'sent' ? 'success' : project.send_requested ? 'info' : 'muted'}
@@ -254,14 +253,18 @@ export default function ProjectDayPage() {
           ) : undefined
         }
       >
-        {state.note}
-        {singleSite && ' Single-site project: its site DPR is what gets sent.'}
+        {/* Phone: the first sentence only; the steps above carry the rest. */}
+        <span className="sm:hidden">{state.note.split('. ')[0].replace(/\.$/, '')}.</span>
+        <span className="hidden sm:inline">
+          {state.note}
+          {singleSite && ' Single-site project: its site DPR is what gets sent.'}
+        </span>
       </Callout>
 
       <StatStrip
         stats={[
           {
-            label: 'Sites in the DPR',
+            label: 'Sites in DPR',
             value: (
               <>
                 {report.reported_site_count}
@@ -276,7 +279,7 @@ export default function ProjectDayPage() {
         ]}
       />
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex min-w-0 flex-col">
           <DprSection icon={MapPin} title="Sites" meta={sites.length}>
             <div className="hidden grid-cols-[auto_minmax(0,1.6fr)_repeat(4,minmax(0,0.6fr))_auto] gap-x-3 border-b pb-2 text-xs text-muted-foreground md:grid">
@@ -295,25 +298,30 @@ export default function ProjectDayPage() {
             </ul>
           </DprSection>
 
-          <DprSection
-            icon={TriangleAlert}
-            title="Issues"
-            meta={report.issues.length || undefined}
-            action={severe > 0 ? <span className={cn(CHIP, 'bg-destructive/10 text-destructive')}>{severe} high or critical</span> : undefined}
-          >
-            {report.issues.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                {detail.report_source === 'preview' && report.reported_site_count === 0
-                  ? 'Issues show here once a site is confirmed.'
-                  : 'No issues reported.'}
-              </p>
-            ) : (
+          {report.issues.length === 0 ? (
+            <DprSection
+              icon={TriangleAlert}
+              title="Issues"
+              className="py-3"
+              meta={
+                detail.report_source === 'preview' && report.reported_site_count === 0
+                  ? 'Show here once a site is confirmed'
+                  : 'None reported'
+              }
+            />
+          ) : (
+            <DprSection
+              icon={TriangleAlert}
+              title="Issues"
+              meta={report.issues.length}
+              action={severe > 0 ? <span className={cn(CHIP, 'bg-destructive/10 text-destructive')}>{severe} high or critical</span> : undefined}
+            >
               <ul className="flex flex-col divide-y">
                 {report.issues.map((issue, i) => {
                   const sev = severityChip(issue.severity)
                   return (
-                    <li key={i} className="flex items-start justify-between gap-3 py-3">
-                      <div className="flex min-w-0 flex-col gap-0.5">
+                    <li key={i} className="flex items-start justify-between gap-3 py-2">
+                      <div className="flex min-w-0 flex-col">
                         <span className="text-sm">{issue.narrative || (issue.issue_type ?? 'Issue').toLowerCase().replace(/_/g, ' ')}</span>
                         <span className="text-xs text-muted-foreground">
                           {issue.site_name}
@@ -325,37 +333,37 @@ export default function ProjectDayPage() {
                   )
                 })}
               </ul>
-            )}
-          </DprSection>
+            </DprSection>
+          )}
 
-          <DprSection icon={Package} title="Materials" meta={report.materials.length || undefined}>
-            {report.materials.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No materials received or used.</p>
-            ) : (
+          {report.materials.length === 0 ? (
+            <DprSection icon={Package} title="Materials" meta="None received or used" className="py-3" />
+          ) : (
+            <DprSection icon={Package} title="Materials" meta={report.materials.length}>
               <div className="overflow-x-auto rounded-lg border">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-xs text-muted-foreground">
                     <tr>
-                      <th className="px-3 py-2 text-left font-medium">Material</th>
-                      <th className="px-3 py-2 text-right font-medium">Received</th>
-                      <th className="px-3 py-2 text-right font-medium">Used</th>
+                      <th className="px-3 py-1.5 text-left font-medium">Material</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Received</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Used</th>
                     </tr>
                   </thead>
                   <tbody className="tabular-nums">
                     {report.materials.map((m) => (
                       <tr key={`${m.material_name}-${m.unit}`} className="border-t">
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-1.5">
                           {m.material_name} <span className="text-muted-foreground">({m.unit})</span>
                         </td>
-                        <td className="px-3 py-2 text-right">{qty(m.received)}</td>
-                        <td className="px-3 py-2 text-right">{qty(m.used)}</td>
+                        <td className="px-3 py-1.5 text-right">{qty(m.received)}</td>
+                        <td className="px-3 py-1.5 text-right">{qty(m.used)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            )}
-          </DprSection>
+            </DprSection>
+          )}
         </div>
 
         <DprAside>

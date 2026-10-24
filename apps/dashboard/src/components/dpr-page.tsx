@@ -1,5 +1,6 @@
 import * as React from 'react'
-import { Check } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ArrowLeft, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // The building blocks of the site and project DPR pages (WEB-04/05, reworked
@@ -19,15 +20,15 @@ export function DprSection({
   title: string
   meta?: React.ReactNode
   action?: React.ReactNode
-  children: React.ReactNode
+  children?: React.ReactNode
   className?: string
 }) {
   return (
-    <section className={cn('flex flex-col gap-3 border-t py-6 first:border-t-0 first:pt-0', className)}>
+    <section className={cn('flex flex-col gap-2 border-t py-4 first:border-t-0 first:pt-0', className)}>
       <header className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-foreground/70">
-            <Icon className="size-4" />
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-foreground/70">
+            <Icon className="size-3.5" />
           </span>
           <h2 className="text-[15px] font-semibold">{title}</h2>
           {meta && <span className="text-sm text-muted-foreground">{meta}</span>}
@@ -46,21 +47,13 @@ export function StatStrip({
   stats: { label: string; value: React.ReactNode; tone?: 'default' | 'warn' | 'bad' }[]
 }) {
   return (
-    <dl className="grid grid-cols-2 overflow-hidden rounded-xl border sm:flex sm:divide-x">
-      {stats.map((s, i) => (
-        <div
-          key={s.label}
-          className={cn(
-            'flex flex-1 flex-col gap-0.5 px-4 py-3',
-            // Phone: a 2-column grid, so draw the inner rules by hand.
-            i % 2 === 1 && 'border-l sm:border-l-0',
-            i >= 2 && 'border-t sm:border-t-0',
-          )}
-        >
-          <dt className="text-xs text-muted-foreground">{s.label}</dt>
+    <dl className="flex divide-x overflow-hidden rounded-xl border">
+      {stats.map((s) => (
+        <div key={s.label} className="flex min-w-0 flex-1 flex-col px-2.5 py-1.5 sm:px-4 sm:py-2">
+          <dt className="truncate text-[11px] text-muted-foreground sm:text-xs">{s.label}</dt>
           <dd
             className={cn(
-              'text-xl font-semibold tabular-nums',
+              'truncate text-base font-semibold tabular-nums sm:text-lg',
               s.tone === 'warn' && 'text-draft',
               s.tone === 'bad' && 'text-destructive',
             )}
@@ -76,33 +69,34 @@ export function StatStrip({
 export type StepState = 'done' | 'current' | 'todo'
 
 /** Where the day is: updates in -> engineer confirms -> sent. */
-export function DprSteps({ steps }: { steps: { label: string; hint?: string; state: StepState }[] }) {
+export function DprSteps({ steps }: { steps: { label: string; short?: string; hint?: string; state: StepState }[] }) {
   return (
-    <ol className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-0">
+    <ol className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
       {steps.map((step, i) => (
-        <li key={step.label} className="flex flex-1 items-start gap-2.5 sm:flex-col sm:gap-2">
-          <div className="flex items-center sm:w-full">
-            <span
+        <li key={step.label} className={cn('flex min-w-0 items-center gap-2', i < steps.length - 1 && 'flex-1')}>
+          <span
               className={cn(
-                'flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
+                'flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold',
                 step.state === 'done' && 'bg-success text-white dark:text-background',
-                step.state === 'current' && 'bg-primary text-primary-foreground ring-4 ring-primary/15',
+                step.state === 'current' && 'bg-primary text-primary-foreground ring-3 ring-primary/15',
                 step.state === 'todo' && 'border border-input bg-background text-muted-foreground',
               )}
             >
-              {step.state === 'done' ? <Check className="size-3.5" strokeWidth={3} /> : i + 1}
+              {step.state === 'done' ? <Check className="size-3" strokeWidth={3} /> : i + 1}
+          </span>
+          <span className="flex min-w-0 flex-col leading-tight sm:flex-row sm:items-baseline sm:gap-1.5">
+            <span className={cn('truncate text-xs font-medium sm:text-sm', step.state === 'todo' && 'text-muted-foreground')}>
+              <span className="sm:hidden">{step.short ?? step.label}</span>
+              <span className="hidden sm:inline">{step.label}</span>
             </span>
-            {i < steps.length - 1 && (
-              <span
-                aria-hidden
-                className={cn('mx-2 hidden h-0.5 flex-1 rounded sm:block', step.state === 'done' ? 'bg-success' : 'bg-border')}
-              />
-            )}
-          </div>
-          <div className="flex flex-col sm:pr-4">
-            <span className={cn('text-sm font-medium', step.state === 'todo' && 'text-muted-foreground')}>{step.label}</span>
-            {step.hint && <span className="text-xs text-muted-foreground">{step.hint}</span>}
-          </div>
+            {step.hint && <span className="truncate text-[11px] text-muted-foreground sm:text-xs">{step.hint}</span>}
+          </span>
+          {i < steps.length - 1 && (
+            <span
+              aria-hidden
+              className={cn('mx-1 hidden h-px min-w-4 flex-1 sm:block', step.state === 'done' ? 'bg-success' : 'bg-border')}
+            />
+          )}
         </li>
       ))}
     </ol>
@@ -129,7 +123,7 @@ export function Callout({
   action?: React.ReactNode
 }) {
   return (
-    <div className={cn('flex flex-col gap-2 rounded-lg border px-3.5 py-2.5 text-sm sm:flex-row sm:items-center', CALLOUT_TONES[tone])}>
+    <div className={cn('flex flex-col gap-2 rounded-lg border px-3 py-2 text-sm sm:flex-row sm:items-center', CALLOUT_TONES[tone])}>
       <div className="flex flex-1 items-start gap-2.5">
         <Icon className="mt-0.5 size-4 shrink-0" />
         <div className="min-w-0">{children}</div>
@@ -142,6 +136,44 @@ export function Callout({
 /** The right-hand column on wide screens; stacks under the page on phones. */
 export function DprAside({ children }: { children: React.ReactNode }) {
   return (
-    <aside className="flex flex-col divide-y rounded-xl border lg:sticky lg:top-6 lg:self-start [&>*]:p-5">{children}</aside>
+    <aside className="flex flex-col divide-y rounded-xl border lg:sticky lg:top-4 lg:self-start [&>*]:p-4">{children}</aside>
+  )
+}
+
+/** Back link, breadcrumb, title + status chip + date, and the one primary
+ * action, in as few lines as fit. */
+export function DprHeader({
+  back,
+  crumb,
+  title,
+  chip,
+  date,
+  action,
+}: {
+  back: { to: string; label: string }
+  crumb: string
+  title: string
+  chip?: React.ReactNode
+  date: string
+  action?: React.ReactNode
+}) {
+  return (
+    <header className="flex flex-col gap-1">
+      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <Link to={back.to} className="inline-flex items-center gap-1 hover:text-foreground">
+          <ArrowLeft className="size-4" /> {back.label}
+        </Link>
+        <span aria-hidden>/</span>
+        <span className="truncate">{crumb}</span>
+      </p>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+          {chip}
+          <span className="text-sm text-muted-foreground">{date}</span>
+        </div>
+        {action}
+      </div>
+    </header>
   )
 }

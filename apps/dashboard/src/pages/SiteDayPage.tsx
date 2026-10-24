@@ -2,7 +2,6 @@ import * as React from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowLeft,
   Check,
   CheckCheck,
   CircleCheck,
@@ -52,7 +51,7 @@ import { DprVersionsCard } from '@/components/dpr-versions-card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Callout, DprAside, DprSection, DprSteps, StatStrip, type StepState } from '@/components/dpr-page'
+import { Callout, DprAside, DprHeader, DprSection, DprSteps, StatStrip, type StepState } from '@/components/dpr-page'
 import {
   Dialog,
   DialogContent,
@@ -71,7 +70,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 // /dpr/facts confirm/reject, PATCH /progress/activities and .../approve.
 
 const TEXTAREA =
-  'flex min-h-[70px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring'
+  'flex min-h-[56px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring'
 const SELECT = 'h-9 rounded-md border border-input bg-background px-2 text-sm'
 
 const SECTIONS: {
@@ -140,16 +139,23 @@ function ItemRow({
   const quantities = (item.quantities ?? []).map((q) => `${qty(q.quantity)} ${q.unit}`).join(', ')
   const severity = severityChip(item.severity)
   return (
-    <li className={cn('group flex gap-3 py-3.5', draft && '-mx-3 rounded-lg bg-draft-soft/40 px-3')}>
-      <span className="mt-0.5 shrink-0" title={draft ? 'Draft: not confirmed yet' : 'Confirmed'}>
+    <li className={cn('group flex gap-3 py-2', draft && '-mx-3 rounded-lg bg-draft-soft/40 px-3')}>
+      <span className="mt-1.5 shrink-0" title={draft ? 'Draft: not confirmed yet' : 'Confirmed'}>
         {draft ? (
           <CircleDashed className="size-5 text-draft" />
         ) : (
           <CircleCheck className="size-5 text-success" />
         )}
       </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-        <div className="flex min-w-0 flex-col gap-1">
+      <div
+        className={cn(
+          'flex min-w-0 flex-1 gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4',
+          // Phone: actions drop to their own line only when there is a
+          // quantity or a Confirm button to sit beside them.
+          quantities || (draft && !frozen) ? 'flex-col' : 'flex-row items-start justify-between',
+        )}
+      >
+        <div className="flex min-w-0 flex-col gap-0.5">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium">{title}</span>
             {draft && <span className={cn(CHIP, 'bg-draft-soft text-draft')}>Draft</span>}
@@ -216,6 +222,10 @@ function Section({
   children: (item: ReviewItem) => React.ReactNode
 }) {
   const drafts = items.filter((i) => i.review === 'draft').length
+  // Nothing to show: say so on the header line instead of a whole block.
+  if (items.length === 0 && !summary) {
+    return <DprSection icon={icon} title={title} meta={empty} className="py-3" />
+  }
   return (
     <DprSection
       icon={icon}
@@ -526,9 +536,9 @@ function ConditionsCard({
   }
 
   return (
-    <div className="grid gap-3">
+    <div className="grid gap-2">
         <h2 className="text-sm font-semibold">Day conditions</h2>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-2">
           <label className="grid gap-1.5 text-sm">
             <span className="text-muted-foreground">Weather</span>
             <select className={SELECT} value={form.weather} onChange={set('weather')} disabled={frozen}>
@@ -566,7 +576,7 @@ function ConditionsCard({
         </label>
         <label className="grid gap-1.5 text-sm">
           <span className="text-muted-foreground">Tomorrow's plan</span>
-          <textarea className={TEXTAREA} value={form.tomorrow_plan} onChange={set('tomorrow_plan')} disabled={frozen} />
+          <textarea rows={2} className={TEXTAREA} value={form.tomorrow_plan} onChange={set('tomorrow_plan')} disabled={frozen} />
         </label>
         {!frozen && (
           <Button variant="outline" className="justify-self-start" disabled={saving} onClick={save}>
@@ -663,14 +673,16 @@ export default function SiteDayPage() {
   const confirmed = day ? FROZEN.includes(day.status) : false
   const sent = day?.status === 'published' || Boolean(detail.project?.sent)
   const hasUpdates = detail.items.length > 0 || (day ? siteHasUpdates(day) : false)
-  const steps: { label: string; hint?: string; state: StepState }[] = [
+  const steps: { label: string; short?: string; hint?: string; state: StepState }[] = [
     {
       label: 'Updates from site',
+      short: 'Updates',
       hint: hasUpdates ? plural(detail.items.length, 'item') : 'Nothing yet',
       state: hasUpdates ? 'done' : 'current',
     },
     {
       label: 'Engineer confirms',
+      short: 'Confirm',
       hint: confirmed
         ? current?.approved_by
           ? `By ${current.approved_by}`
@@ -682,6 +694,7 @@ export default function SiteDayPage() {
     },
     {
       label: 'Sent to owner',
+      short: 'Sent',
       hint: sent ? 'In the project DPR' : detail.project?.dpr_send_deadline ? `By ${formatClock(detail.project.dpr_send_deadline)}` : undefined,
       state: sent ? 'done' : confirmed ? 'current' : 'todo',
     },
@@ -689,35 +702,30 @@ export default function SiteDayPage() {
   const issues = bySection('issues')
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 sm:p-8">
-      <header className="flex flex-col gap-5">
-        <Link to={`/today?date=${date}`} className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="size-4" /> Today
-        </Link>
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="flex min-w-0 flex-col gap-1">
-            <p className="text-sm text-muted-foreground">
-              Site DPR{day?.project_name ? ` · ${day.project_name}` : ''}
-            </p>
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-3xl font-semibold tracking-tight">{day?.site_name ?? 'Site'}</h1>
-              {status && <span className={cn(CHIP, status.className)}>{status.label}</span>}
-            </div>
-            <p className="text-sm text-muted-foreground">{longDate(date)}</p>
-          </div>
-          {!frozen && reportId && (
-            <Button className="h-11 px-5 font-semibold" disabled={busy} onClick={() => setApproving(true)}>
-              <CheckCheck /> Approve and send
-            </Button>
-          )}
-        </div>
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-4 sm:px-2">
+      <div className="flex flex-col gap-3">
+        <DprHeader
+          back={{ to: `/today?date=${date}`, label: 'Today' }}
+          crumb={`Site DPR${day?.project_name ? ` · ${day.project_name}` : ''}`}
+          title={day?.site_name ?? 'Site'}
+          chip={status && <span className={cn(CHIP, status.className)}>{status.label}</span>}
+          date={longDate(date)}
+          action={
+            !frozen &&
+            reportId && (
+              <Button className="h-10 px-4 font-semibold" disabled={busy} onClick={() => setApproving(true)}>
+                <CheckCheck /> Approve and send
+              </Button>
+            )
+          }
+        />
         <DprSteps steps={steps} />
-      </header>
+      </div>
 
       {detail.drafts > 0 && !frozen && (
         <Callout tone="draft" icon={CircleDashed}>
-          <strong className="font-semibold">{plural(detail.drafts, 'item')} from WhatsApp still to confirm.</strong> Confirm them one by one, or
-          approve the day to confirm them all.
+          <strong className="font-semibold">{plural(detail.drafts, 'item')} from WhatsApp still to confirm.</strong>
+          <span className="hidden sm:inline"> Confirm them one by one, or approve the day to confirm them all.</span>
         </Callout>
       )}
       {confirmed && current?.approved_at && (
@@ -750,10 +758,10 @@ export default function SiteDayPage() {
         ]}
       />
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex min-w-0 flex-col">
           {detail.summary && (
-            <div className="pb-6">
+            <div className="pb-4">
               <DprSummaryCard summary={detail.summary} />
             </div>
           )}
@@ -765,7 +773,9 @@ export default function SiteDayPage() {
               empty={section.empty}
               items={bySection(section.key)}
               summary={
-                section.key === 'labour' && labour.headcount > 0 ? (
+                // One labour report already reads "24 workers · mason 8, …": the
+                // trade summary only adds anything when several were sent.
+                section.key === 'labour' && labour.headcount > 0 && bySection('labour').length > 1 ? (
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="mr-1 text-sm">
                       <strong className="text-lg font-semibold tabular-nums">{labour.headcount}</strong>{' '}
@@ -782,23 +792,23 @@ export default function SiteDayPage() {
                     <table className="w-full text-sm">
                       <thead className="bg-muted/50 text-xs text-muted-foreground">
                         <tr>
-                          <th className="px-3 py-2 text-left font-medium">Material</th>
-                          <th className="px-3 py-2 text-right font-medium">Opening</th>
-                          <th className="px-3 py-2 text-right font-medium">Received</th>
-                          <th className="px-3 py-2 text-right font-medium">Used</th>
-                          <th className="px-3 py-2 text-right font-medium">Closing</th>
+                          <th className="px-3 py-1.5 text-left font-medium">Material</th>
+                          <th className="px-3 py-1.5 text-right font-medium">Opening</th>
+                          <th className="px-3 py-1.5 text-right font-medium">Received</th>
+                          <th className="px-3 py-1.5 text-right font-medium">Used</th>
+                          <th className="px-3 py-1.5 text-right font-medium">Closing</th>
                         </tr>
                       </thead>
                       <tbody className="tabular-nums">
                         {detail.report.materials.map((m) => (
                           <tr key={`${m.material_name}-${m.unit}`} className={cn('border-t', m.beyond_stock && 'text-destructive')}>
-                            <td className="px-3 py-2">
+                            <td className="px-3 py-1.5">
                               {m.material_name} <span className="text-muted-foreground">({m.unit})</span>
                             </td>
-                            <td className="px-3 py-2 text-right">{qty(m.opening)}</td>
-                            <td className="px-3 py-2 text-right">{qty(m.received)}</td>
-                            <td className="px-3 py-2 text-right">{qty(m.used)}</td>
-                            <td className="px-3 py-2 text-right font-semibold">{qty(m.closing)}</td>
+                            <td className="px-3 py-1.5 text-right">{qty(m.opening)}</td>
+                            <td className="px-3 py-1.5 text-right">{qty(m.received)}</td>
+                            <td className="px-3 py-1.5 text-right">{qty(m.used)}</td>
+                            <td className="px-3 py-1.5 text-right font-semibold">{qty(m.closing)}</td>
                           </tr>
                         ))}
                       </tbody>
