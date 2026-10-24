@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { updateProject, type Project } from '@/lib/projects'
+import { TimezoneSelect } from '@/components/timezone-select'
 
 const REPORT_TYPES = [
   { value: 'Work Progress', label: 'Work Progress' },
@@ -91,13 +92,7 @@ export function ProjectReportingTab({ project }: ProjectReportingTabProps) {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-1.5">
               <Label htmlFor="repTimezone">Reporting Timezone</Label>
-              <Input
-                id="repTimezone"
-                value={timezone}
-                onChange={(e) => setTimezone(e.target.value)}
-                placeholder="e.g. UTC, Asia/Kolkata"
-                required
-              />
+              <TimezoneSelect id="repTimezone" value={timezone} onChange={setTimezone} />
             </div>
 
             <div className="grid gap-1.5">

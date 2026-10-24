@@ -31,6 +31,7 @@ from mesiri.application.automations.scheduling import parse_time_of_day
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.domains.shared.modules import require_module
+from mesiri.domains.shared.timezones import TimezoneName
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.repositories.automations import PostgresAutomationRepository
 
@@ -59,7 +60,7 @@ class AutomationRequest(BaseModel):
     frequency: Literal["DAILY", "WEEKDAYS", "WEEKLY"] = "DAILY"
     day_of_week: int | None = None
     time_of_day: str
-    timezone: str = "UTC"
+    timezone: TimezoneName = "UTC"
 
     @model_validator(mode="after")
     def _check_shape(self) -> AutomationRequest:
@@ -96,7 +97,7 @@ class AutomationUpdateRequest(BaseModel):
     frequency: Literal["DAILY", "WEEKDAYS", "WEEKLY"] | None = None
     day_of_week: int | None = None
     time_of_day: str | None = None
-    timezone: str | None = None
+    timezone: TimezoneName | None = None
     enabled: bool | None = None
 
 

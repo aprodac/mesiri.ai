@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from mesiri.application.organizations import branding_admin
 from mesiri.domains.organizations import settings as org_settings
 from mesiri.domains.shared.auth import require_admin
+from mesiri.domains.shared.timezones import TimezoneName
 from mesiri.infrastructure.objectstorage.dependency import get_object_storage
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.models.organization import (
@@ -52,7 +53,7 @@ class CompanyUpdate(BaseModel):
     phone: str | None = None
     address: str | None = None
     primary_contact: str | None = None
-    timezone: str | None = None
+    timezone: TimezoneName | None = None
 
 
 class CompanySummaryResponse(BaseModel):

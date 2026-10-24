@@ -27,7 +27,7 @@ pages, empty ones included, for every role.
 | --- | --- | --- | --- | --- |
 | DSH-01 | Menu isn't the V1 menu; old and empty pages under "More" for every role | Serious | None (Workers Roster hiding is in the approved scope list) | Code read |
 | DSH-02 | Report details / confirm / publish / revise check only the company, not the project | Serious | Alan: security | Code read |
-| DSH-03 | Time zone is free text; "IST" or "India" quietly means UTC | Serious | None | Scripted run |
+| DSH-03 | Time zone is free text; "IST" or "India" quietly means UTC | Serious | None — **fixed (WEB-18), retest** | Scripted run |
 | DSH-04 | Today says a site "hasn't reported" when it sent materials, issues or progress | Serious | None | Code read |
 | DSH-05 | Attendance page is about wages (₹0), not counts | Other | Alan: Labour | Code read |
 | DSH-06 | "Development only" delete button on every attendance row | Other | Alan: Labour | Code read |
@@ -76,6 +76,7 @@ Issues, Attendance and Materials match what was sent on WhatsApp.
 - **Code:** text input in `apps/dashboard/src/components/project-reporting-tab.tsx` (placeholder "e.g. UTC, Asia/Kolkata", state defaults to `'UTC'`); the API doesn't validate it; `local_now` in `backend/src/mesiri/application/automations/scheduling.py` silently falls back to UTC.
 - **Evidence (scripted run):** 13:00 UTC → `Asia/Kolkata 18:30 IST`, `Asia/Calcutta 18:30 IST`, `IST 13:00 UTC`, `India 13:00 UTC`, `UTC+5:30 13:00 UTC`.
 - **Fix direction:** a select of IANA zones (India first); reject unknown zones in `ProjectCreate` / `ProjectUpdate`.
+- **Fixed (WEB-18):** picker on both forms; the API stores IST/India as Asia/Kolkata and refuses other unknown names. Existing bad values are not rewritten.
 
 ### DSH-04 · Today says a site "hasn't reported"
 

@@ -4,6 +4,7 @@ import { Save, Check, Loader2, Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { updateCompany, type Company } from '@/lib/api'
+import { TimezoneSelect } from '@/components/timezone-select'
 
 interface SettingsTabProps {
   company: Company
@@ -124,13 +125,10 @@ export function SettingsTab({ company }: SettingsTabProps) {
         {/* Timezone */}
         <div className="grid gap-1.5">
           <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">System Timezone</label>
-          <Input
+          <TimezoneSelect
             name="timezone"
             value={formData.timezone}
-            onChange={handleChange}
-            placeholder="Asia/Kolkata"
-            required
-            className="h-9 text-xs"
+            onChange={(timezone) => setFormData((prev) => ({ ...prev, timezone }))}
           />
         </div>
 
