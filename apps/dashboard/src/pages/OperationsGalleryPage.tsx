@@ -205,7 +205,7 @@ function Viewer({
   items: GalleryItem[]
   index: number | null
   onIndex: (i: number | null) => void
-  names: Map<string, { name: string; project: string }>
+  names: Map<string, { name: string; project: string; projectId: string }>
 }) {
   const item = index !== null ? items[index] : null
   const prev = index !== null && index > 0 ? index - 1 : null
