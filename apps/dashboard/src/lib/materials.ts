@@ -555,19 +555,19 @@ export const ADJUSTMENT_REASONS = new Set(['ADJUSTMENT_IN', 'ADJUSTMENT_OUT', 'O
 export const TRANSFER_REASONS = new Set(['TRANSFER_IN', 'TRANSFER_OUT'])
 
 export const INFLOW_REASONS: Array<{ value: InflowReason; label: string }> = [
-  { value: 'RECEIVED', label: 'Received' },
-  { value: 'TRANSFER_IN', label: 'Transfer In' },
-  { value: 'RETURN_IN', label: 'Return In' },
-  { value: 'ADJUSTMENT_IN', label: 'Adjustment In' },
+  { value: 'RECEIVED', label: 'Delivery' },
+  { value: 'TRANSFER_IN', label: 'From another site' },
+  { value: 'RETURN_IN', label: 'Returned to site' },
+  { value: 'ADJUSTMENT_IN', label: 'Stock correction' },
   { value: 'OPENING_STOCK', label: 'Opening Stock' },
 ]
 
 export const OUTFLOW_REASONS: Array<{ value: OutflowReason; label: string }> = [
-  { value: 'CONSUMED', label: 'Consumed' },
-  { value: 'TRANSFER_OUT', label: 'Transfer Out' },
-  { value: 'RETURN_TO_VENDOR', label: 'Return To Vendor' },
+  { value: 'CONSUMED', label: 'Used' },
+  { value: 'TRANSFER_OUT', label: 'To another site' },
+  { value: 'RETURN_TO_VENDOR', label: 'Returned to supplier' },
   { value: 'WASTAGE', label: 'Wastage' },
-  { value: 'ADJUSTMENT_OUT', label: 'Adjustment Out' },
+  { value: 'ADJUSTMENT_OUT', label: 'Stock correction' },
 ]
 
 // ---------------------------------------------------------------------
@@ -634,4 +634,19 @@ export async function reverseTransfer(
 ): Promise<{ id: string; status: string }> {
   const res = await api.post<{ id: string; status: string }>(`/materials/transfers/${id}/reverse`, payload)
   return res.data
+}
+
+// What each movement reason is called on screen (WEB-29): the words people
+// use on site, not the codes.
+export const REASON_WORDS: Record<InflowReason | OutflowReason, string> = {
+  RECEIVED: 'Delivery',
+  TRANSFER_IN: 'From another site',
+  RETURN_IN: 'Returned to site',
+  ADJUSTMENT_IN: 'Stock correction',
+  OPENING_STOCK: 'Opening stock',
+  CONSUMED: 'Used',
+  TRANSFER_OUT: 'To another site',
+  RETURN_TO_VENDOR: 'Returned to supplier',
+  WASTAGE: 'Wastage',
+  ADJUSTMENT_OUT: 'Stock correction',
 }

@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from '@/components/ui/dialog'
 import {
   Sheet,
@@ -16,7 +17,6 @@ import {
   SheetDescription,
   SheetFooter,
 } from '@/components/ui/sheet'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -144,7 +144,7 @@ export function AddEditUserDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'Edit User' : 'Add User'}</DialogTitle>
+          <DialogTitle>{isEdit ? `Edit ${user?.full_name ?? 'person'}` : 'Add a person'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           {error && (
@@ -155,31 +155,31 @@ export function AddEditUserDialog({
           )}
 
           <div className="grid gap-1.5">
-            <Label htmlFor="fullName">Full Name</Label>
+            <Label htmlFor="fullName">Name</Label>
             <Input
               id="fullName"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="John Doe"
+              placeholder="e.g. Ravi Menon"
               required
             />
           </div>
 
           <div className="grid gap-1.5">
-            <Label htmlFor="email">Email / Username</Label>
+            <Label htmlFor="email">Email (to sign in)</Label>
             <Input
               id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="john@example.com"
+              placeholder="ravi@company.in"
               disabled={isEdit}
               required
             />
           </div>
 
           <div className="grid gap-1.5">
-            <Label htmlFor="role">Organization Role</Label>
+            <Label htmlFor="role">Role</Label>
             <Select value={role} onValueChange={setRole}>
               <SelectTrigger className="h-9">
                 <SelectValue placeholder="Select role" />
@@ -195,19 +195,19 @@ export function AddEditUserDialog({
           </div>
 
           <div className="grid gap-1.5">
-            <Label htmlFor="whatsapp">WhatsApp Number (Optional)</Label>
+            <Label htmlFor="whatsapp">WhatsApp number · for sending site updates</Label>
             <Input
               id="whatsapp"
               value={whatsapp}
               onChange={(e) => setWhatsapp(e.target.value)}
-              placeholder="+919999999999"
+              placeholder="+91 98765 43210"
             />
           </div>
 
           <div className="border-t pt-3 space-y-3">
             <div className="flex items-center justify-between">
               <Label htmlFor="password">
-                {isEdit ? 'Reset Password (Optional)' : 'Account Password'}
+                {isEdit ? 'New password (leave empty to keep it)' : 'Password'}
               </Label>
               <Button
                 type="button"
@@ -237,7 +237,7 @@ export function AddEditUserDialog({
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm Password"
+                  placeholder="Type it again"
                   required={!!password}
                 />
               </div>
@@ -254,7 +254,7 @@ export function AddEditUserDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? 'Processing...' : isEdit ? 'Save Changes' : 'Create User'}
+              {loading ? 'Saving…' : isEdit ? 'Save' : 'Add person'}
             </Button>
           </DialogFooter>
         </form>
@@ -406,9 +406,9 @@ export function AccessManagerDialog({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="sm:max-w-md flex flex-col h-full p-0">
         <SheetHeader className="p-6 pb-2 border-b">
-          <SheetTitle>Manage Access</SheetTitle>
+          <SheetTitle>Projects and sites</SheetTitle>
           <SheetDescription>
-            Configure project and site permissions for {user?.full_name}.
+            What {user?.full_name} can see and report on.
           </SheetDescription>
         </SheetHeader>
 
@@ -421,7 +421,7 @@ export function AccessManagerDialog({
           )}
 
           <div className="space-y-2">
-            <Label>Organization Access Mode</Label>
+            <Label>Reaches</Label>
             <div className="flex items-center gap-4">
               <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
                 <input
@@ -430,7 +430,7 @@ export function AccessManagerDialog({
                   onChange={() => setMode('all_projects')}
                   className="accent-primary"
                 />
-                All Projects (Org-Wide)
+                Every project, including new ones
               </label>
               <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
                 <input
@@ -439,7 +439,7 @@ export function AccessManagerDialog({
                   onChange={() => setMode('custom_projects')}
                   className="accent-primary"
                 />
-                Custom Projects
+                Only the ones ticked below
               </label>
             </div>
           </div>
@@ -447,7 +447,7 @@ export function AccessManagerDialog({
           {mode === 'custom_projects' && (
             <div className="space-y-4 border-t pt-4">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Projects and Sites Scope
+                Projects and sites
               </Label>
               <div className="space-y-3">
                 {projects.map((proj) => (
@@ -463,7 +463,7 @@ export function AccessManagerDialog({
                 ))}
                 {projects.length === 0 && (
                   <div className="text-sm text-muted-foreground text-center py-4">
-                    No projects found in the organization.
+                    No projects yet.
                   </div>
                 )}
               </div>
@@ -476,7 +476,7 @@ export function AccessManagerDialog({
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={loading}>
-            {loading ? 'Saving...' : 'Save Access Policy'}
+            {loading ? 'Saving…' : 'Save'}
           </Button>
         </SheetFooter>
       </SheetContent>
@@ -604,116 +604,71 @@ export function WhatsAppManagerDialog({
     }
   }
 
-  const handleActionGap = (actionName: string) => {
-    alert(
-      `Integration Gap: "${actionName}" is not supported by the backend router. The M1 backend table exposes only raw 'whatsapp_number' storage. Real-time verification, custom mapping states, and conversation logs are managed asynchronously by the whatsapp-assistant engine.`
-    )
+  const isMapped = !!user?.whatsapp_number
+  const [confirmRemove, setConfirmRemove] = React.useState(false)
+  const removeNumber = async () => {
+    if (!user) return
+    setLoading(true)
+    setError('')
+    try {
+      await updateUser(user.id, { whatsapp_number: null })
+      setWhatsapp('')
+      onSuccess()
+      onOpenChange(false)
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Could not remove the number.')
+    } finally {
+      setLoading(false)
+      setConfirmRemove(false)
+    }
   }
 
-  const isMapped = !!user?.whatsapp_number
-
+  // WEB-29: a number field, Save and Remove. The old "Send verification"
+  // and "Resolve duplicate conflicts" buttons only showed an "Integration
+  // Gap" alert; they are gone.
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[450px]">
+      <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
-          <DialogTitle>Manage WhatsApp Identity</DialogTitle>
+          <DialogTitle>WhatsApp number</DialogTitle>
+          <DialogDescription>
+            Messages from this number count as {user?.full_name ?? 'their'}'s site updates.
+          </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 py-2">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {error && (
-            <div className="bg-destructive/10 border border-destructive text-destructive text-xs p-2.5 rounded flex items-center gap-2">
-              <ShieldAlert className="size-4 shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          <div className="grid gap-1.5">
-            <Label htmlFor="mgrWhatsapp">Primary WhatsApp Number</Label>
-            <div className="flex gap-2">
-              <Input
-                id="mgrWhatsapp"
-                value={whatsapp}
-                onChange={(e) => setWhatsapp(e.target.value)}
-                placeholder="+919999999999"
-                className="flex-1 font-mono"
-              />
-              {whatsapp && whatsapp !== user?.whatsapp_number && (
-                <Button type="submit" disabled={loading}>
-                  Update
-                </Button>
-              )}
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              Always include country code (e.g. +91 for India, +1 for US).
+            <p className="flex items-center gap-2 text-sm text-destructive">
+              <ShieldAlert className="size-4 shrink-0" /> {error}
             </p>
+          )}
+          <div className="grid gap-1.5">
+            <Label htmlFor="mgrWhatsapp">Number, with country code</Label>
+            <Input id="mgrWhatsapp" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="+91 98765 43210" inputMode="tel" autoFocus />
           </div>
-
-          <div className="border border-border/80 bg-muted/10 p-3.5 space-y-3 rounded-md">
-            <div className="flex justify-between items-center text-xs">
-              <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">
-                Mapping Status
-              </span>
-              <Badge variant={isMapped ? 'default' : 'secondary'} className="rounded-sm px-1.5 py-0.5">
-                {isMapped ? 'Added' : 'Not added'}
-              </Badge>
-            </div>
-            {isMapped && (
-              <div className="text-[11px] text-muted-foreground space-y-1">
-                <div><strong>Verified Country Code:</strong> {user?.whatsapp_number?.startsWith('+') ? user.whatsapp_number.substring(0, 3) : 'Auto'}</div>
-                <div><strong>Verification Mode:</strong> Automatic (Direct Mapping)</div>
-              </div>
+          <DialogFooter className="flex-row items-center gap-2 sm:justify-between">
+            {isMapped ? (
+              confirmRemove ? (
+                <span className="flex items-center gap-2 text-sm">
+                  Remove it?
+                  <Button type="button" size="sm" variant="destructive" disabled={loading} onClick={removeNumber}>
+                    Remove
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmRemove(false)}>
+                    Keep
+                  </Button>
+                </span>
+              ) : (
+                <Button type="button" size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setConfirmRemove(true)}>
+                  Remove number
+                </Button>
+              )
+            ) : (
+              <span />
             )}
-          </div>
-
-          <div className="border-t pt-4 space-y-2">
-            <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Actions
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="text-xs"
-                disabled={!isMapped}
-                onClick={() => handleActionGap('Send Verification Code')}
-              >
-                Send Verification
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="text-xs text-destructive hover:bg-destructive/10"
-                disabled={!isMapped}
-                onClick={async () => {
-                  if (confirm('Are you sure you want to unmap this WhatsApp number?')) {
-                    setLoading(true)
-                    try {
-                      await updateUser(user!.id, { whatsapp_number: null })
-                      setWhatsapp('')
-                      onSuccess()
-                      onOpenChange(false)
-                    } catch (err: any) {
-                      setError(err.response?.data?.detail || 'Failed to unmap.')
-                    } finally {
-                      setLoading(false)
-                    }
-                  }
-                }}
-              >
-                Unmap Number
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="text-xs col-span-2"
-                onClick={() => handleActionGap('Resolve Mapping Conflicts')}
-              >
-                Resolve Duplicate Conflicts
-              </Button>
-            </div>
-          </div>
+            <Button type="submit" disabled={loading || !whatsapp.trim() || whatsapp === user?.whatsapp_number}>
+              {loading ? 'Saving…' : 'Save'}
+            </Button>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

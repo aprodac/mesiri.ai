@@ -9,12 +9,18 @@ import {
   SheetDescription,
   SheetFooter,
 } from '@/components/ui/sheet'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/AuthContext'
-import { fetchInflow, fetchOutflow, type MaterialReceipt, type MaterialUsage } from '@/lib/materials'
+import { Callout } from '@/components/dpr-page'
+import { fetchInflow, fetchOutflow, formatMoney, REASON_WORDS, type MaterialReceipt, type MaterialUsage } from '@/lib/materials'
+import { fetchUsers } from '@/lib/api'
+import { useSiteNames } from '@/lib/site-names'
+import { longDate, qty } from '@/lib/site-day'
+import { cn } from '@/lib/utils'
 import { MaterialLedgerSheet } from './material-ledger-sheet'
 import { CorrectionDialog } from './correction-dialog'
+
+// One movement in plain words (WEB-29): what, where, when, who -- names, not ids.
 
 interface MovementDetailsSheetProps {
   direction: 'IN' | 'OUT'
@@ -40,6 +46,10 @@ export function MovementDetailsSheet({ direction, id, open, onOpenChange }: Move
   })
 
   const canCorrect = me?.role === 'ADMIN' || me?.role === 'PROJECT_MANAGER'
+  const siteNames = useSiteNames()
+  const site = movement?.site_id ? siteNames.get(movement.site_id) : undefined
+  const users = useQuery({ queryKey: ['users-list'], queryFn: fetchUsers, enabled: open, retry: false, staleTime: 5 * 60_000 })
+  const recorder = movement?.created_by ? users.data?.find((u) => u.id === movement.created_by)?.full_name : undefined
   const canOpenLedger = !!movement?.material_id && !!movement?.site_id
 
   const copyId = () => {
@@ -51,120 +61,90 @@ export function MovementDetailsSheet({ direction, id, open, onOpenChange }: Move
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>{direction === 'IN' ? 'Material Inflow' : 'Material Outflow'}</SheetTitle>
-            <SheetDescription>Movement details and audit trail.</SheetDescription>
+            <SheetTitle>{direction === 'IN' ? 'Received' : 'Left the site'}</SheetTitle>
+            <SheetDescription>One entry in the stock book.</SheetDescription>
           </SheetHeader>
 
-          <div className="px-4 pb-4 flex-1 text-xs">
+          <div className="flex-1 px-4 pb-4 text-sm">
             {isLoading && (
               <div className="flex items-center justify-center py-10 gap-2 text-muted-foreground">
-                <Loader2 className="size-4 animate-spin text-primary" />
-                Loading movement...
+                <Loader2 className="size-4 animate-spin" />
+                Loading…
               </div>
             )}
 
             {isError && (
               <div className="flex flex-col items-center gap-3 py-10 text-center">
-                <AlertTriangle className="size-6 text-rose-500" />
-                <p className="text-muted-foreground">Failed to load this movement.</p>
+                <AlertTriangle className="size-6 text-destructive" />
+                <p className="text-muted-foreground">This entry could not be loaded.</p>
                 <Button size="sm" variant="outline" onClick={() => refetch()}>
-                  Retry
+                  Try again
                 </Button>
               </div>
             )}
 
             {movement && (
-              <div className="space-y-4">
-                <div className="space-y-1">
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                    Material
-                  </span>
-                  <div className="text-sm font-bold text-foreground">{movement.material_name}</div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Direction">
-                    <Badge variant={direction === 'IN' ? 'default' : 'secondary'} className="text-[10px]">
-                      {direction === 'IN' ? 'Inflow' : 'Outflow'}
-                    </Badge>
-                  </Field>
-                  <Field label="Reason">
-                    <Badge variant="outline" className="text-[10px]">
-                      {movement.movement_reason}
-                    </Badge>
-                  </Field>
-                  <Field label="Quantity">
-                    <span className="font-mono tabular-nums font-semibold">
-                      {movement.quantity} {movement.unit}
-                    </span>
-                  </Field>
-                  <Field label="Source">
-                    <Badge variant="outline" className="text-[10px]">
-                      {movement.source}
-                    </Badge>
-                  </Field>
-                  <Field label="Occurred At">
-                    <span>
-                      {movement.occurred_date}
-                      {movement.occurred_time ? ` ${movement.occurred_time}` : ''}
-                    </span>
-                  </Field>
-                  <Field label="Recorded By">
-                    <span className="font-mono text-[10px] break-all">{movement.created_by ?? '—'}</span>
-                  </Field>
+              <div className="flex flex-col gap-4">
+                <p className={cn('text-lg', movement.reverses_movement_id && 'text-muted-foreground')}>
+                  <strong className="font-semibold tabular-nums">
+                    {direction === 'IN' ? '+' : '−'}
+                    {qty(movement.quantity)} {movement.unit}
+                  </strong>{' '}
+                  {movement.material_name}
+                </p>
+                <dl className="grid grid-cols-[96px_1fr] gap-x-3 gap-y-1.5 text-sm">
+                  <dt className="text-muted-foreground">What</dt>
+                  <dd>{REASON_WORDS[movement.movement_reason] ?? movement.movement_reason}</dd>
+                  <dt className="text-muted-foreground">Site</dt>
+                  <dd>{site ? `${site.name} · ${site.project}` : '—'}</dd>
+                  <dt className="text-muted-foreground">Day</dt>
+                  <dd>
+                    {longDate(movement.occurred_date)}
+                    {movement.occurred_time && movement.occurred_time !== '00:00:00' ? `, ${movement.occurred_time.slice(0, 5)}` : ''}
+                  </dd>
                   {direction === 'IN' ? (
-                    <Field label="Supplier">
-                      <span>{(movement as MaterialReceipt).supplier ?? '—'}</span>
-                    </Field>
+                    <>
+                      <dt className="text-muted-foreground">Supplier</dt>
+                      <dd>{(movement as MaterialReceipt).supplier || <span className="text-muted-foreground">Not named</span>}</dd>
+                      <dt className="text-muted-foreground">Cost</dt>
+                      <dd className={cn(!(movement as MaterialReceipt).total_cost && 'text-muted-foreground')}>
+                        {formatMoney((movement as MaterialReceipt).total_cost)}
+                      </dd>
+                    </>
                   ) : (
-                    <Field label="Work Item">
-                      <span>{(movement as MaterialUsage).work_item ?? '—'}</span>
-                    </Field>
+                    <>
+                      <dt className="text-muted-foreground">For</dt>
+                      <dd>{(movement as MaterialUsage).work_item || <span className="text-muted-foreground">Not said</span>}</dd>
+                    </>
                   )}
-                  <Field label="Created">
-                    <span>{new Date(movement.created_at).toLocaleString()}</span>
-                  </Field>
-                </div>
-
-                {movement.notes && (
-                  <div className="space-y-1">
-                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                      Notes
-                    </span>
-                    <p className="text-foreground leading-relaxed">{movement.notes}</p>
-                  </div>
-                )}
+                  <dt className="text-muted-foreground">Recorded</dt>
+                  <dd>
+                    {[recorder, movement.source === 'whatsapp' ? 'on WhatsApp' : 'on the dashboard', new Date(movement.created_at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </dd>
+                  {movement.notes && (
+                    <>
+                      <dt className="text-muted-foreground">Note</dt>
+                      <dd className="whitespace-pre-line">{movement.notes}</dd>
+                    </>
+                  )}
+                </dl>
 
                 {movement.reverses_movement_id && (
-                  <div className="bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 p-2.5 rounded flex items-center gap-2">
-                    <Undo2 className="size-3.5 shrink-0" />
-                    <span>Corrects movement {movement.reverses_movement_id}</span>
-                  </div>
+                  <Callout tone="draft" icon={Undo2}>
+                    This is a correction: it cancels an earlier entry.
+                  </Callout>
                 )}
-
-                <div className="space-y-1 pt-2 border-t">
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                    Movement ID
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-[10px] break-all text-muted-foreground">{movement.id}</span>
-                  </div>
-                </div>
               </div>
             )}
           </div>
 
           {movement && (
-            <SheetFooter className="border-t pt-3 flex-row flex-wrap gap-2">
+            <SheetFooter className="flex-row flex-wrap gap-2 border-t pt-3">
               {canOpenLedger && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 gap-1.5 text-xs"
-                  onClick={() => setLedgerOpen(true)}
-                >
-                  <History className="size-3.5" />
-                  Open Ledger
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setLedgerOpen(true)}>
+                  <History className="size-3.5" /> Stock history
                 </Button>
               )}
               {/* Hidden once a correction exists, rather than shown disabled:
@@ -172,26 +152,18 @@ export function MovementDetailsSheet({ direction, id, open, onOpenChange }: Move
                   offsetting movement and doubles the adjustment. The backend
                   409s either way -- this stops the user reaching for it. */}
               {movement.already_reversed ? (
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                  <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                  Already corrected
+                <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <CheckCircle2 className="size-3.5 text-success" /> Already corrected
                 </span>
               ) : (
                 canCorrect && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 gap-1.5 text-xs"
-                    onClick={() => setCorrectionOpen(true)}
-                  >
-                    <Undo2 className="size-3.5" />
-                    Correct Movement
+                  <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setCorrectionOpen(true)}>
+                    <Undo2 className="size-3.5" /> Correct
                   </Button>
                 )
               )}
-              <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={copyId}>
-                <Copy className="size-3.5" />
-                Copy Movement ID
+              <Button size="sm" variant="ghost" className="ml-auto gap-1.5 text-muted-foreground" onClick={copyId} title="For support">
+                <Copy className="size-3.5" /> Copy reference
               </Button>
             </SheetFooter>
           )}
@@ -213,22 +185,11 @@ export function MovementDetailsSheet({ direction, id, open, onOpenChange }: Move
           direction={direction}
           movementId={id}
           transferId={movement.transfer_id}
-          originalSummary={`${movement.material_name} · ${movement.quantity} ${movement.unit} · ${movement.movement_reason}`}
+          originalSummary={`${movement.material_name} · ${qty(movement.quantity)} ${movement.unit} · ${REASON_WORDS[movement.movement_reason] ?? movement.movement_reason}`}
           open={correctionOpen}
           onOpenChange={setCorrectionOpen}
         />
       )}
     </>
-  )
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold block">
-        {label}
-      </span>
-      <div className="text-foreground font-medium">{children}</div>
-    </div>
   )
 }

@@ -1,29 +1,23 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import {
-  Search,
-  AlertTriangle,
-  RotateCcw,
-  ShoppingBag,
-  DollarSign,
-  ArrowUpDown,
-  Truck,
-  CalendarDays,
-  FileText,
-} from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { ArrowUpDown, FileText, Search, ShoppingBag, TriangleAlert, Truck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
-import { KpiCard } from '@/components/ui/kpi-card'
-import { fetchInflows, formatMoney, INFLOW_REASONS, type MaterialReceipt } from '@/lib/materials'
-import { fetchProjects, fetchSites } from '@/lib/projects'
-import { toLocalISODate } from '@/lib/utils'
+import { Callout, StatStrip } from '@/components/dpr-page'
+import { fetchInflows, formatMoney, INFLOW_REASONS, REASON_WORDS, type MaterialReceipt } from '@/lib/materials'
+import { useSiteNames } from '@/lib/site-names'
+import { CHIP, qty } from '@/lib/site-day'
+import { cn, toLocalISODate } from '@/lib/utils'
 import { PurchaseDetailsSheet } from './purchase-details-sheet'
 import { InvoiceDetailsSheet } from './invoice-details-sheet'
+
+// WEB-29: what was bought, from whom, for how much -- one row per purchase,
+// supplier first, price on the right. Totals say how many purchases carry a
+// price, so a partial figure never reads as the whole spend.
+
+const shortDay = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString([], { day: 'numeric', month: 'short' })
 
 interface PurchaseHistoryViewProps {
   projectId: string | null
@@ -35,7 +29,9 @@ type SortOption = 'newest' | 'oldest' | 'material_asc' | 'supplier_asc'
 export function PurchaseHistoryView({ projectId, siteId }: PurchaseHistoryViewProps) {
   const [search, setSearch] = React.useState('')
   const [supplierSearch, setSupplierSearch] = React.useState('')
-  const [reason, setReason] = React.useState('ALL')
+  // Purchases are deliveries; stock moved in from another site or opening
+  // stock is not spend (WEB-29), though the other kinds stay one pick away.
+  const [reason, setReason] = React.useState('RECEIVED')
   const [sortOrder, setSortOrder] = React.useState<SortOption>('newest')
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
   const [selectedInvoiceId, setSelectedInvoiceId] = React.useState<string | null>(null)
@@ -55,24 +51,7 @@ export function PurchaseHistoryView({ projectId, siteId }: PurchaseHistoryViewPr
     queryFn: () => fetchInflows(filters),
   })
 
-  const { data: projects = [] } = useQuery({
-    queryKey: ['scope-projects'],
-    queryFn: fetchProjects,
-    staleTime: 60_000,
-  })
-
-  const { data: sites = [] } = useQuery({
-    queryKey: ['scope-sites', projectId],
-    queryFn: () => fetchSites(projectId!),
-    enabled: !!projectId,
-    staleTime: 60_000,
-  })
-
-  const projectNameById = React.useMemo(() => new Map(projects.map((p) => [p.id, p.name])), [projects])
-  const siteNameById = React.useMemo(() => new Map(sites.map((s) => [s.id, s.name])), [sites])
-
-  const showSiteColumn = !siteId
-  const showProjectColumn = !projectId
+  const siteNames = useSiteNames()
 
   const openPurchase = (id: string) => {
     setSelectedId(id)
@@ -165,211 +144,120 @@ export function PurchaseHistoryView({ projectId, siteId }: PurchaseHistoryViewPr
     }
   }, [items])
 
+  const unpriced = summary.costableCount - summary.pricedCount
+  const total = data?.total ?? 0
+
   return (
-    <div className="space-y-3">
-      {/* KPI Cards (4-column responsive grid) */}
-      {!isLoading && !isError && (
-        <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-          <KpiCard
-            title="Purchases Today"
-            value={summary.purchasesToday}
-            icon={<ShoppingBag />}
-            trend={summary.purchasesToday > 0 ? 'up' : 'neutral'}
-          />
-          <KpiCard
-            title="Purchases This Month"
-            value={summary.purchasesThisMonth}
-            icon={<CalendarDays />}
-          />
-          <KpiCard
-            title="Suppliers Used"
-            value={summary.suppliersUsed}
-            icon={<Truck />}
-          />
-          <KpiCard
-            title="Total Purchase Value"
-            value={
-              summary.pricedCount > 0
-                ? `₹${summary.totalCostSum.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
-                : 'Not recorded'
-            }
-            // Never present a partial figure as the whole spend. If only some
-            // purchases carry a price, say so outright. Uses KpiCard's existing
-            // `description` prop -- that component is shared with the Labour
-            // pages and must not be modified from here.
-            description={
-              summary.pricedCount > 0 && summary.pricedCount < summary.costableCount
-                ? `from ${summary.pricedCount} of ${summary.costableCount} purchases`
-                : undefined
-            }
-            icon={<DollarSign />}
-            trend="neutral"
-          />
-        </div>
+    <div className="flex flex-col gap-3">
+      {!isLoading && !isError && rawItems.length > 0 && (
+        <StatStrip
+          stats={[
+            {
+              label: summary.pricedCount < summary.costableCount ? `Spent (${summary.pricedCount} of ${summary.costableCount} priced)` : 'Spent',
+              value: summary.pricedCount > 0 ? `₹${summary.totalCostSum.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '—',
+            },
+            { label: 'No price recorded', value: unpriced || '—', tone: unpriced ? 'warn' : 'default' },
+            { label: 'Suppliers', value: summary.suppliersUsed || '—' },
+            { label: 'This month', value: summary.purchasesThisMonth || '—' },
+          ]}
+        />
       )}
 
-      {/* Filter Toolbar */}
-      <Card className="rounded-md border-border/70 shadow-xs">
-        <CardContent className="p-3 flex flex-col md:flex-row gap-2 items-center">
-          <div className="relative flex-1 w-full max-w-xs">
-            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Search material..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 h-8 text-xs"
-            />
-          </div>
-          <div className="relative flex-1 w-full max-w-xs">
-            <Truck className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Search supplier..."
-              value={supplierSearch}
-              onChange={(e) => setSupplierSearch(e.target.value)}
-              className="pl-8 h-8 text-xs"
-            />
-          </div>
-          <div className="flex gap-2 w-full md:w-auto flex-wrap sm:flex-nowrap">
-            <Select value={reason} onValueChange={setReason}>
-              <SelectTrigger className="w-full sm:w-[150px] h-8 text-xs">
-                <SelectValue placeholder="Reason" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Reasons</SelectItem>
-                {INFLOW_REASONS.map((r) => (
-                  <SelectItem key={r.value} value={r.value}>
-                    {r.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:w-52">
+          <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+          <Input placeholder="Material…" aria-label="Search material" value={search} onChange={(e) => setSearch(e.target.value)} className="h-9 pl-8" />
+        </div>
+        <div className="relative w-full sm:w-52">
+          <Truck className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+          <Input placeholder="Supplier…" aria-label="Search supplier" value={supplierSearch} onChange={(e) => setSupplierSearch(e.target.value)} className="h-9 pl-8" />
+        </div>
+        <Select value={reason} onValueChange={setReason}>
+          <SelectTrigger className="h-9 w-[170px]" aria-label="Kind">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Everything received</SelectItem>
+            {INFLOW_REASONS.map((r) => (
+              <SelectItem key={r.value} value={r.value}>
+                {REASON_WORDS[r.value]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={sortOrder} onValueChange={(v) => setSortOrder(v as SortOption)}>
+          <SelectTrigger className="h-9 w-[150px]" aria-label="Sort">
+            <ArrowUpDown className="mr-1 size-3.5 text-muted-foreground" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="newest">Newest first</SelectItem>
+            <SelectItem value="oldest">Oldest first</SelectItem>
+            <SelectItem value="material_asc">Material A–Z</SelectItem>
+            <SelectItem value="supplier_asc">Supplier A–Z</SelectItem>
+          </SelectContent>
+        </Select>
+        {total > rawItems.length && <span className="ml-auto text-sm text-muted-foreground">Newest {rawItems.length} of {total}</span>}
+      </div>
 
-            <Select value={sortOrder} onValueChange={(v) => setSortOrder(v as SortOption)}>
-              <SelectTrigger className="w-full sm:w-[150px] h-8 text-xs">
-                <ArrowUpDown className="size-3 mr-1 text-muted-foreground" />
-                <SelectValue placeholder="Sort by" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="newest">Newest First</SelectItem>
-                <SelectItem value="oldest">Oldest First</SelectItem>
-                <SelectItem value="material_asc">Material (A-Z)</SelectItem>
-                <SelectItem value="supplier_asc">Supplier (A-Z)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Main Purchase Table */}
-      <Card className="rounded-md border-border/70 shadow-xs overflow-hidden">
-        <CardContent className="p-0">
-          {isError ? (
-            <div className="flex flex-col items-center gap-3 py-12 text-center text-xs">
-              <AlertTriangle className="size-6 text-rose-500" />
-              <p className="text-muted-foreground">Failed to load purchase records.</p>
-              <Button size="sm" variant="outline" onClick={() => refetch()} className="gap-1.5">
-                <RotateCcw className="size-3.5" />
-                Retry
-              </Button>
-            </div>
-          ) : isLoading ? (
-            <div className="p-3 space-y-2">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-8 w-full" />
-              ))}
-            </div>
-          ) : items.length === 0 ? (
-            <div className="flex flex-col items-center gap-1.5 py-12 text-center text-xs">
-              <ShoppingBag className="size-8 text-muted-foreground/50 mb-1" />
-              <p className="font-semibold text-foreground">No purchases recorded yet.</p>
-              <p className="text-muted-foreground">
-                Record your first material receipt to see it here.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Material</TableHead>
-                    <TableHead className="text-right">Quantity</TableHead>
-                    <TableHead>Supplier / Vendor</TableHead>
-                    <TableHead>Purchase Date</TableHead>
-                    {showSiteColumn && <TableHead>Site</TableHead>}
-                    {showProjectColumn && <TableHead>Project</TableHead>}
-                    <TableHead className="text-right">Total Cost</TableHead>
-                    <TableHead>Invoice</TableHead>
-                    <TableHead>Reason</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((row: MaterialReceipt) => (
-                    <TableRow
-                      key={row.id}
-                      onClick={() => openPurchase(row.id)}
-                      className="cursor-pointer hover:bg-muted/30 transition-colors text-xs"
-                    >
-                      <TableCell className="font-semibold text-foreground">{row.material_name}</TableCell>
-                      <TableCell className="text-right font-mono tabular-nums font-medium">
-                        {row.quantity} {row.unit}
-                      </TableCell>
-                      <TableCell className="text-foreground font-medium">
-                        {row.supplier ? row.supplier : <span className="text-muted-foreground/60">Direct Receipt</span>}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {row.occurred_date}
-                        {row.occurred_time ? ` ${row.occurred_time}` : ''}
-                      </TableCell>
-                      {showSiteColumn && (
-                        <TableCell className="text-muted-foreground">
-                          {row.site_id ? (siteNameById.get(row.site_id) ?? row.site_id.slice(0, 8)) : '—'}
-                        </TableCell>
-                      )}
-                      {showProjectColumn && (
-                        <TableCell className="text-muted-foreground">
-                          {projectNameById.get(row.project_id) ?? row.project_id.slice(0, 8)}
-                        </TableCell>
-                      )}
-                      <TableCell className="text-right font-mono tabular-nums font-semibold">
-                        <span className={row.total_cost ? '' : 'text-muted-foreground font-normal'}>
-                          {formatMoney(row.total_cost)}
-                        </span>
-                        {row.is_reversed && (
-                          <span className="ml-1.5 text-[10px] font-normal text-amber-700 dark:text-amber-400">
-                            corrected
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        {row.invoice_id ? (
-                          <button
-                            type="button"
-                            onClick={() => openInvoice(row.invoice_id!)}
-                            className="inline-flex items-center gap-1 text-primary font-semibold hover:underline"
-                          >
-                            <FileText className="size-3" />
-                            View
-                          </button>
-                        ) : (
-                          // Typed in by hand rather than read off a document.
-                          // Not a gap to chase — plenty of purchases have no
-                          // paperwork to attach.
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-[10px]">
-                          {row.movement_reason}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {isError ? (
+        <Callout
+          tone="draft"
+          icon={TriangleAlert}
+          action={
+            <Button variant="outline" size="sm" className="bg-background" onClick={() => refetch()}>
+              Try again
+            </Button>
+          }
+        >
+          Purchases could not be loaded.
+        </Callout>
+      ) : isLoading ? (
+        <div className="flex flex-col gap-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 rounded-lg" />
+          ))}
+        </div>
+      ) : items.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
+          <ShoppingBag className="size-6 text-muted-foreground" aria-hidden="true" />
+          <p className="text-sm font-medium">{rawItems.length ? 'Nothing matches' : 'No purchases recorded yet'}</p>
+        </div>
+      ) : (
+        <ul className="divide-y rounded-lg border">
+          {items.map((row: MaterialReceipt) => {
+            const site = row.site_id ? siteNames.get(row.site_id) : undefined
+            return (
+              <li key={row.id} className="flex items-center gap-3 px-3 py-2">
+                <button type="button" onClick={() => openPurchase(row.id)} className="flex min-w-0 flex-1 flex-col text-left">
+                  <span className="truncate">
+                    <strong className="font-semibold">{row.supplier || 'No supplier named'}</strong>
+                    <span className="text-muted-foreground"> · </span>
+                    <span className="tabular-nums">
+                      {qty(row.quantity)} {row.unit}
+                    </span>{' '}
+                    {row.material_name}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {[shortDay(row.occurred_date), !siteId && site?.name, !projectId && site?.project, row.movement_reason !== 'RECEIVED' && REASON_WORDS[row.movement_reason]]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                </button>
+                {row.invoice_id && (
+                  <Button variant="ghost" size="sm" className="gap-1" onClick={() => openInvoice(row.invoice_id!)}>
+                    <FileText className="size-3.5" /> Invoice
+                  </Button>
+                )}
+                <span className={cn('w-28 text-right tabular-nums', row.total_cost ? 'font-semibold' : 'text-sm text-muted-foreground', row.is_reversed && 'line-through')}>
+                  {row.total_cost ? formatMoney(row.total_cost) : 'No price'}
+                </span>
+                {row.is_reversed && <span className={cn(CHIP, 'bg-draft-soft text-draft')}>Corrected</span>}
+              </li>
+            )
+          })}
+        </ul>
+      )}
 
       {/* Read-Only Purchase Details Sheet */}
       <PurchaseDetailsSheet id={selectedId} open={sheetOpen} onOpenChange={setSheetOpen} />

@@ -67,7 +67,7 @@ export function CorrectionDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[440px]">
         <DialogHeader>
-          <DialogTitle>Correct Movement</DialogTitle>
+          <DialogTitle>Correct this entry</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2 text-xs">
           <p className="text-muted-foreground leading-relaxed">
@@ -95,13 +95,13 @@ export function CorrectionDialog({
           )}
 
           <div className="grid gap-1.5">
-            <Label htmlFor="correctionNote">Reason For Correction</Label>
+            <Label htmlFor="correctionNote">Why</Label>
             <textarea
               id="correctionNote"
               value={reasonNote}
               onChange={(e) => setReasonNote(e.target.value)}
               className="flex min-h-[70px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-xs shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-              placeholder="Explain why this movement is being corrected..."
+              placeholder="e.g. Entered twice, wrong site"
             />
           </div>
         </div>

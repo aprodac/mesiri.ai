@@ -156,8 +156,8 @@ export function AddEditProjectDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[460px] max-h-[85vh] overflow-y-auto px-5 py-4">
         <DialogHeader className="pb-1 border-b">
-          <DialogTitle className="text-sm font-bold tracking-tight text-foreground uppercase">
-            {isEdit ? 'Edit Project Config' : 'Create New Project'}
+          <DialogTitle className="text-base font-semibold">
+            {isEdit ? `Edit ${project?.name ?? 'project'}` : 'New project'}
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-3 text-xs">
@@ -168,14 +168,9 @@ export function AddEditProjectDialog({
             </div>
           )}
 
-          {/* Group 1: Basic Information */}
           <div className="space-y-3">
-            <span className="block font-bold uppercase tracking-wider text-[10px] text-muted-foreground/80">
-              Basic Information
-            </span>
-
             <div className="grid gap-1.5">
-              <Label htmlFor="projName" className="font-semibold">Project Name</Label>
+              <Label htmlFor="projName" className="font-semibold">Name</Label>
               <div className="relative">
                 <Briefcase className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground/60" />
                 <Input
@@ -192,7 +187,7 @@ export function AddEditProjectDialog({
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="grid gap-1.5">
                 <div className="flex justify-between items-center">
-                  <Label htmlFor="projCode" className="font-semibold">Project Code</Label>
+                  <Label htmlFor="projCode" className="font-semibold">Short code (optional)</Label>
                   {!isEdit && (
                     <button
                        type="button"
@@ -210,13 +205,13 @@ export function AddEditProjectDialog({
                     value={code}
                     onChange={(e) => setCode(e.target.value)}
                     placeholder="e.g. SKY-782"
-                    className="pl-9 h-9 font-mono"
+                    className="pl-9 h-9"
                   />
                 </div>
               </div>
 
               <div className="grid gap-1.5">
-                <Label htmlFor="projLocation" className="font-semibold">Location</Label>
+                <Label htmlFor="projLocation" className="font-semibold">Location (optional)</Label>
                 <div className="relative">
                   <MapPin className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground/60" />
                   <Input
@@ -231,33 +226,33 @@ export function AddEditProjectDialog({
             </div>
 
             <div className="grid gap-1.5">
-              <Label htmlFor="projClient" className="font-semibold">Client Name</Label>
+              <Label htmlFor="projClient" className="font-semibold">Client (optional)</Label>
               <div className="relative">
                 <UserIcon className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground/60" />
                 <Input
                   id="projClient"
                   value={client}
                   onChange={(e) => setClient(e.target.value)}
-                  placeholder="e.g. Mercon Corp"
+                  placeholder="e.g. Mehta Developers"
                   className="pl-9 h-9"
                 />
               </div>
             </div>
 
             <div className="grid gap-1.5">
-              <Label htmlFor="projDesc" className="font-semibold">Description</Label>
+              <Label htmlFor="projDesc" className="font-semibold">Notes (optional)</Label>
               <textarea
                 id="projDesc"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="flex min-h-[50px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-xs shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-                placeholder="Brief summary of project scope..."
+                placeholder="Anything worth knowing about the project"
               />
             </div>
 
             {isEdit && (
               <div className="grid gap-1.5">
-                <Label htmlFor="projStatus" className="font-semibold">Project Status</Label>
+                <Label htmlFor="projStatus" className="font-semibold">Status</Label>
                 <Select value={status} onValueChange={setStatus}>
                   <SelectTrigger className="h-9">
                     <SelectValue placeholder="Select status" />
@@ -291,7 +286,7 @@ export function AddEditProjectDialog({
               </Button>
             )}
             <Button type="submit" disabled={loading} className="h-8">
-              {loading ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Project'}
+              {loading ? 'Saving…' : isEdit ? 'Save' : 'Create project'}
             </Button>
           </DialogFooter>
         </form>
@@ -367,7 +362,7 @@ export function AddEditSiteDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[400px]">
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'Edit Site' : 'Add Site'}</DialogTitle>
+          <DialogTitle>{isEdit ? `Rename ${site?.name ?? 'site'}` : 'Add a site'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-2 text-xs">
           {error && (
@@ -378,19 +373,19 @@ export function AddEditSiteDialog({
           )}
 
           <div className="grid gap-1.5">
-            <Label htmlFor="siteName">Site Name</Label>
+            <Label htmlFor="siteName">Name</Label>
             <Input
               id="siteName"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Building A Wing"
+              placeholder="e.g. Tower 1, Block A"
               required
             />
           </div>
 
           {isEdit && (
             <div className="grid gap-1.5">
-              <Label htmlFor="siteStatus">Site Status</Label>
+              <Label htmlFor="siteStatus">Status</Label>
               <Select value={status} onValueChange={setStatus}>
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder="Select status" />
@@ -408,7 +403,7 @@ export function AddEditSiteDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Site'}
+              {loading ? 'Saving…' : isEdit ? 'Save' : 'Add site'}
             </Button>
           </DialogFooter>
         </form>
@@ -483,7 +478,7 @@ export function ProjectMemberDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
-          <DialogTitle>Add Project Member</DialogTitle>
+          <DialogTitle>Add a person to this project</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-2 text-xs">
           {error && (
@@ -494,7 +489,7 @@ export function ProjectMemberDialog({
           )}
 
           <div className="grid gap-1.5">
-            <Label htmlFor="memberSelect">Select Organization User</Label>
+            <Label htmlFor="memberSelect">Person</Label>
             {isUsersLoading ? (
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground py-2">
                 <Loader2 className="size-3.5 animate-spin text-primary" /> Loading users list...
@@ -506,7 +501,7 @@ export function ProjectMemberDialog({
             ) : (
               <Select value={selectedUserId} onValueChange={setSelectedUserId}>
                 <SelectTrigger className="h-9">
-                  <SelectValue placeholder="-- Choose User --" />
+                  <SelectValue placeholder="Choose someone from the team" />
                 </SelectTrigger>
                 <SelectContent>
                   {availableUsers.map((u) => (
@@ -520,7 +515,7 @@ export function ProjectMemberDialog({
           </div>
 
           <div className="grid gap-1.5">
-            <Label htmlFor="memberRole">Project Role</Label>
+            <Label htmlFor="memberRole">Role on this project</Label>
             <Select value={role} onValueChange={setRole}>
               <SelectTrigger className="h-9">
                 <SelectValue placeholder="Select role" />

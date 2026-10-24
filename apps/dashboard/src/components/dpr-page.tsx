@@ -280,7 +280,7 @@ export function Segmented<T extends string>({
   onChange: (value: T) => void
 }) {
   return (
-    <div className="flex max-w-full overflow-x-auto rounded-lg border p-0.5" role="group" aria-label={label}>
+    <div className="flex w-fit max-w-full overflow-x-auto rounded-lg border p-0.5" role="group" aria-label={label}>
       {options.map((o) => (
         <button
           key={o.value}

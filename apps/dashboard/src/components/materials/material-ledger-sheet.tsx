@@ -1,17 +1,18 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2, AlertTriangle } from 'lucide-react'
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from '@/components/ui/sheet'
-import { Badge } from '@/components/ui/badge'
+import { TriangleAlert } from 'lucide-react'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { fetchLedger, type LedgerEntry, type StockState } from '@/lib/materials'
+import { Skeleton } from '@/components/ui/skeleton'
+import { fetchLedger, REASON_WORDS, type LedgerEntry, type StockState } from '@/lib/materials'
+import { fetchUsers } from '@/lib/api'
+import { qty } from '@/lib/site-day'
+import { cn } from '@/lib/utils'
+
+// One material at one site, every movement with the stock after it
+// (WEB-29: plain words, names instead of user ids, no code badges).
+
+const shortDay = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })
 
 const PAGE_SIZE = 25
 
@@ -54,139 +55,84 @@ export function MaterialLedgerSheet({
   }, [data, offset])
 
   const hasMore = data ? entries.length < data.total : false
+  // Who recorded each movement; the list is admin-only, so others see none.
+  const users = useQuery({ queryKey: ['users-list'], queryFn: fetchUsers, enabled: open, retry: false, staleTime: 5 * 60_000 })
+  const userNames = React.useMemo(() => new Map((users.data ?? []).map((u) => [u.id, u.full_name])), [users.data])
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader>
           <SheetTitle>{materialName}</SheetTitle>
-          <SheetDescription>Chronological movement ledger for this Site.</SheetDescription>
+          <SheetDescription>Everything in and out, newest first. The right-hand number is the stock after each.</SheetDescription>
         </SheetHeader>
 
-        <div className="px-4 pb-4 flex-1 text-xs space-y-4">
+        <div className="flex flex-1 flex-col gap-4 px-4 pb-4 text-sm">
           {data && (
-            <div className="grid grid-cols-3 gap-2">
-              <div className="border border-border/60 rounded p-2.5">
-                <span className="block text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                  Balance
-                </span>
-                <span className="block text-sm font-mono font-bold tabular-nums text-foreground">
-                  {data.current_balance}
-                </span>
-              </div>
-              <div className="border border-border/60 rounded p-2.5">
-                <span className="block text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                  Unit
-                </span>
-                <span className="block text-sm font-semibold text-foreground">{data.unit}</span>
-              </div>
-              {stockState && (
-                <div className="border border-border/60 rounded p-2.5">
-                  <span className="block text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                    State
-                  </span>
-                  <Badge variant={stockStateVariant(stockState)} className="text-[10px] mt-0.5">
-                    {stockState}
-                  </Badge>
-                </div>
-              )}
-            </div>
+            <p className="text-sm">
+              <span className={cn('text-2xl font-semibold tabular-nums', stockState === 'NEGATIVE_STOCK' && 'text-destructive', stockState === 'OUT_OF_STOCK' && 'text-draft')}>
+                {qty(data.current_balance)}
+              </span>{' '}
+              <span className="text-muted-foreground">{data.unit} on site now</span>
+              {stockState === 'NEGATIVE_STOCK' && <span className="block text-destructive">More used than received: a delivery or opening stock is probably missing.</span>}
+            </p>
           )}
 
           {isLoading && entries.length === 0 && (
-            <div className="flex items-center justify-center py-10 gap-2 text-muted-foreground">
-              <Loader2 className="size-4 animate-spin text-primary" />
-              Loading ledger...
+            <div className="flex flex-col gap-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-10 rounded-md" />
+              ))}
             </div>
           )}
 
           {isError && (
             <div className="flex flex-col items-center gap-3 py-10 text-center">
-              <AlertTriangle className="size-6 text-rose-500" />
-              <p className="text-muted-foreground">Failed to load the ledger.</p>
+              <TriangleAlert className="size-6 text-destructive" />
+              <p className="text-muted-foreground">The history could not be loaded.</p>
               <Button size="sm" variant="outline" onClick={() => refetch()}>
-                Retry
+                Try again
               </Button>
             </div>
           )}
 
           {entries.length > 0 && (
-            <div className="border border-border/60 rounded overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/10">
-                    <TableHead>Date/Time</TableHead>
-                    <TableHead>Movement</TableHead>
-                    <TableHead className="text-right">In</TableHead>
-                    <TableHead className="text-right">Out</TableHead>
-                    <TableHead className="text-right">Balance</TableHead>
-                    <TableHead>Recorded By</TableHead>
-                    <TableHead>Source</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {entries.map((entry) => (
-                    <TableRow key={entry.id}>
-                      <TableCell className="text-muted-foreground">
-                        {entry.occurred_date}
-                        {entry.occurred_time ? ` ${entry.occurred_time}` : ''}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={entry.direction === 'IN' ? 'default' : 'secondary'} className="text-[9px]">
-                          {entry.movement_reason}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-mono tabular-nums">
-                        {entry.direction === 'IN' ? entry.quantity : ''}
-                      </TableCell>
-                      <TableCell className="text-right font-mono tabular-nums">
-                        {entry.direction === 'OUT' ? entry.quantity : ''}
-                      </TableCell>
-                      <TableCell className="text-right font-mono tabular-nums font-semibold">
-                        {entry.running_balance}
-                      </TableCell>
-                      <TableCell className="font-mono text-[10px] text-muted-foreground">
-                        {entry.created_by ?? '—'}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-[9px]">
-                          {entry.source}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+            <ul className="divide-y rounded-lg border">
+              {entries.map((entry) => {
+                const by = entry.created_by ? userNames.get(entry.created_by) : undefined
+                return (
+                  <li key={entry.id} className="flex items-center gap-3 px-3 py-2">
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate">
+                        {REASON_WORDS[entry.movement_reason as keyof typeof REASON_WORDS] ?? entry.movement_reason}
+                        {entry.reverses_movement_id && <span className="text-draft"> · correction</span>}
+                      </span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {[shortDay(entry.occurred_date), entry.occurred_time && entry.occurred_time !== '00:00:00' ? entry.occurred_time.slice(0, 5) : null, by, entry.source === 'whatsapp' ? 'WhatsApp' : null, entry.notes]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </span>
+                    </div>
+                    <span className={cn('w-16 text-right font-semibold tabular-nums', entry.direction === 'IN' ? 'text-success' : '')}>
+                      {entry.direction === 'IN' ? '+' : '−'}
+                      {qty(entry.quantity)}
+                    </span>
+                    <span className="w-16 text-right tabular-nums text-muted-foreground">{qty(entry.running_balance)}</span>
+                  </li>
+                )
+              })}
+            </ul>
           )}
 
-          {!isLoading && !isError && entries.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground italic">
-              No ledger entries recorded for this material at this Site.
-            </div>
-          )}
+          {!isLoading && !isError && entries.length === 0 && <p className="py-8 text-center text-muted-foreground">Nothing recorded for it here yet.</p>}
 
           {hasMore && (
-            <div className="flex justify-center">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 text-xs"
-                disabled={isFetching}
-                onClick={() => setOffset((prev) => prev + PAGE_SIZE)}
-              >
-                {isFetching ? 'Loading...' : 'Load More'}
-              </Button>
-            </div>
+            <Button size="sm" variant="outline" className="self-center" disabled={isFetching} onClick={() => setOffset((prev) => prev + PAGE_SIZE)}>
+              {isFetching ? 'Loading…' : 'Show older'}
+            </Button>
           )}
         </div>
       </SheetContent>
     </Sheet>
   )
-}
-
-function stockStateVariant(state: StockState): 'default' | 'secondary' | 'outline' | 'destructive' {
-  if (state === 'AVAILABLE') return 'default'
-  if (state === 'OUT_OF_STOCK') return 'outline'
-  return 'destructive'
 }
