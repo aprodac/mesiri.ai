@@ -35,20 +35,39 @@ If a screen makes the reader hunt for any of those, it is wrong.
   stat strip, the side column, tables, and callouts. Nothing else.
 - **Side column for "settings of this thing".** Forms and history that
   are not the main job (day conditions, versions, PDF) go in a right-hand
-  column, 320px, sticky on desktop; it drops under the page on phones.
+  column, 300px, sticky on desktop; it drops under the page on phones.
   `DprAside` does this.
-- **Width:** `max-w-6xl`, padding `p-4` on phones, `p-8` from `sm`.
+- **Width:** `max-w-6xl`; side column 300px.
 
 ### Page header (every detail page)
 
 ```
-← Back link                                   (muted, small)
-Kind of page · parent                        (muted, small)   e.g. "Site DPR · Green Villa"
-Big name  [status chip]                      (text-3xl semibold)
-Date / subtitle                              (muted)
-                                  [Primary action]  ← right on desktop, below on phone
-1 ─── 2 ─── 3   progress steps (where this item is in its life)
+← Today / Site DPR · Green Villa                         (muted, small)
+Tower 1  [Collecting]  Sat, Oct 24, 2026      [Primary action]
+( ✓ Updates from site ── ② Engineer confirms ── 3 Sent to owner )   one slim bar
 ```
+
+### Density: less scrolling
+
+Empty space costs a scroll on a phone. The Site DPR page fits on one laptop
+screen; keep new pages to that standard.
+
+- **Don't pad twice.** `AppLayout` already pads every page by 16px; a page
+  adds no top padding of its own (`pb-4 sm:px-2` only).
+- **Header in three short lines:** back link + breadcrumb on one line;
+  title, status chip and date on one line, with the primary action on the
+  same row (`DprHeader`).
+- **Steps in one slim bar** (`DprSteps`), with short labels on phones
+  ("Updates · Confirm · Sent").
+- **An empty section is one line**: its header plus "None reported" beside
+  the title. No body, no separate "No items" paragraph.
+- **Spacing scale:** page gap `gap-4`; sections `py-4` (`py-3` when
+  empty); list rows `py-2`; table cells `py-1.5`; side column `p-4`.
+- **Don't repeat information.** If a row already says "24 workers · mason 8,
+  helper 12", don't add a summary line above it saying the same.
+- **Phones:** stat strip stays one row; callouts show their first sentence;
+  row actions sit beside the text unless a quantity or Confirm button needs
+  the line.
 
 ---
 
@@ -123,7 +142,7 @@ Rules:
 ## 6. Type
 
 - **IBM Plex Sans** everywhere.
-- Page title `text-3xl font-semibold tracking-tight`; section title
+- Page title `text-2xl font-semibold tracking-tight`; section title
   `text-[15px] font-semibold`; body `text-sm`; meta `text-xs text-muted-foreground`.
 - Weights: 400 body, 500 row titles, 600 headings and numbers. Avoid 700+.
 - **No monospace for numbers or labels** in the UI, and **no ALL-CAPS
@@ -186,6 +205,7 @@ add it here and to this table.
 ## 11. Checklist before pushing a page
 
 - [ ] White ground; no card-per-section stack.
+- [ ] Main content fits on one laptop screen where it can; no double padding, empty sections are one line.
 - [ ] State visible at a glance (status chip + row icons + steps if it has a life cycle).
 - [ ] Exactly one primary button in the header.
 - [ ] No hard-coded palette colours, no monospace, no ALL-CAPS labels.
