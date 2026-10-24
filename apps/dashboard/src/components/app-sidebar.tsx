@@ -59,6 +59,7 @@ import type { ScopeKind } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
 import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
 import { useSidebarTheme, type SidebarTheme } from '@/lib/sidebar-theme'
+import { useNavCounts } from '@/lib/nav-counts'
 
 // Mirrors backend mesiri/authorization/roles.py EXPENSE_VIEW_ROLES (SEC-01);
 // the API refuses everyone else, this only keeps the link out of their way.
@@ -74,6 +75,10 @@ type NavItem = {
   allowedRoles?: readonly string[]
   // Switched-off modules are hidden (WEB-02); see lib/modules.tsx.
   module?: ModuleKey
+  // The icon's colour (WEB-20), like the More sections' icons.
+  tone?: NavTone
+  // Which live count to show as a badge (WEB-20).
+  badge?: 'drafts' | 'issues'
 }
 
 type NavCategory = {
@@ -154,15 +159,15 @@ const MATERIALS_CATEGORY: NavCategory = {
 // V1 primary navigation (tracker WEB-01). "Today" is the WEB-03 page; the
 // older overview stays reachable under More > Operations.
 const PRIMARY_ITEMS: NavItem[] = [
-  { title: 'Today', url: '/today', icon: CalendarDays },
-  { title: 'Daily Reports', url: '/operations/daily-reports', icon: FileText },
-  { title: 'Issues', url: '/operations/issues', icon: AlertCircle },
+  { title: 'Today', url: '/today', icon: CalendarDays, tone: 'orange', badge: 'drafts' },
+  { title: 'Daily Reports', url: '/operations/daily-reports', icon: FileText, tone: 'sky' },
+  { title: 'Issues', url: '/operations/issues', icon: AlertCircle, tone: 'rose', badge: 'issues' },
 ]
 
 const ROOT_MANAGEMENT_ITEMS: NavItem[] = [
-  { title: 'Projects & Sites', url: '/projects', icon: Building2, requiredRole: 'ADMIN' },
-  { title: 'Team', url: '/users', icon: Users, requiredRole: 'ADMIN' },
-  { title: 'Company', url: '/company', icon: Building, requiredRole: 'ADMIN' },
+  { title: 'Projects & Sites', url: '/projects', icon: Building2, requiredRole: 'ADMIN', tone: 'emerald' },
+  { title: 'Team', url: '/users', icon: Users, requiredRole: 'ADMIN', tone: 'violet' },
+  { title: 'Company', url: '/company', icon: Building, requiredRole: 'ADMIN', tone: 'amber' },
 ]
 
 // Everything outside V1's core, kept reachable under "More". WEB-02 hides
@@ -273,6 +278,28 @@ const SECTION_TONES = {
 } as const
 
 type SectionTone = keyof typeof SECTION_TONES
+
+// Main navigation icon colours (WEB-20): the same treatment as the More
+// sections -- a coloured icon, no background -- in the shade that reads on
+// the theme. Palette classes are allowed here only: identity colours, not
+// states (docs/DESIGN.md).
+const NAV_TONES = {
+  orange: { charcoal: 'text-orange-300', light: 'text-orange-700 dark:text-orange-300' },
+  sky: { charcoal: 'text-sky-300', light: 'text-sky-700 dark:text-sky-300' },
+  rose: { charcoal: 'text-rose-300', light: 'text-rose-700 dark:text-rose-300' },
+  emerald: { charcoal: 'text-emerald-300', light: 'text-emerald-700 dark:text-emerald-300' },
+  violet: { charcoal: 'text-violet-300', light: 'text-violet-700 dark:text-violet-300' },
+  amber: { charcoal: 'text-amber-300', light: 'text-amber-700 dark:text-amber-300' },
+  green: { charcoal: 'text-green-300', light: 'text-green-700 dark:text-green-300' },
+} as const
+
+type NavTone = keyof typeof NAV_TONES
+
+// Badges: orange = waiting on someone, red = something is wrong.
+const BADGE = {
+  drafts: 'bg-orange-500 text-white',
+  issues: 'bg-rose-500 text-white',
+} as const
 
 const NAV_LINK_BASE =
   'group/row flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm transition-colors'
@@ -485,6 +512,7 @@ export function AppSidebar() {
   const userName = me?.name || me?.full_name || ''
 
   const isModuleEnabled = useModuleEnabled()
+  const counts = useNavCounts()
   const visibleMoreCategories = MORE_CATEGORIES.filter((category) =>
     isModuleEnabled(category.module)
   ).map((category) => ({
@@ -508,6 +536,7 @@ export function AppSidebar() {
   const renderLink = (item: NavItem) => {
     const ItemIcon = item.icon
     const active = checkIsItemActive(location.pathname, item.url)
+    const count = item.badge === 'drafts' ? counts.drafts : item.badge === 'issues' ? counts.openIssues : 0
     // A plain string className, not NavLink's function form: SidebarMenuButton
     // (asChild -> Radix Slot) merges className as text, which silently drops
     // a function, so the active state never rendered.
@@ -519,8 +548,27 @@ export function AppSidebar() {
             aria-current={active ? 'page' : undefined}
             className={cn(NAV_LINK_BASE, S.ring, active ? S.rowActive : S.rowIdle, 'data-[active=true]:font-semibold')}
           >
-            <ItemIcon className={cn('size-4 shrink-0', active ? S.iconActive : S.icon)} />
+            <span className="relative shrink-0">
+              <ItemIcon className={cn('size-4', item.tone ? NAV_TONES[item.tone][sidebarTheme] : active ? S.iconActive : S.icon)} />
+              {count > 0 && (
+                <span
+                  aria-hidden
+                  className={cn('absolute -top-1 -right-1 hidden size-2 rounded-full ring-2 ring-sidebar group-data-[collapsible=icon]:block', BADGE[item.badge!])}
+                />
+              )}
+            </span>
             <span className="truncate">{item.title}</span>
+            {count > 0 && (
+              <span
+                className={cn(
+                  'ml-auto min-w-5 rounded-full px-1.5 py-px text-center text-[11px] font-semibold tabular-nums group-data-[collapsible=icon]:hidden',
+                  BADGE[item.badge!],
+                )}
+                title={item.badge === 'drafts' ? `${count} items to confirm today` : `${count} open issues`}
+              >
+                {count > 99 ? '99+' : count}
+              </span>
+            )}
           </NavLink>
         </SidebarMenuButton>
       </SidebarMenuItem>
@@ -641,7 +689,7 @@ export function AppSidebar() {
               </SidebarMenuItem>
               {isMoreOpen && (
                 <>
-                  {renderLink({ title: 'WhatsApp Inbox', url: '/whatsapp/inbox', icon: MessageSquare })}
+                  {renderLink({ title: 'WhatsApp Inbox', url: '/whatsapp/inbox', icon: MessageSquare, tone: 'green' })}
                   {visibleMoreCategories.map((category) => (
                     <CollapsibleNavCategory
                       key={category.title}

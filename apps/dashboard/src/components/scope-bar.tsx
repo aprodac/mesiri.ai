@@ -38,12 +38,25 @@ export function ScopeBar() {
         : `${scope.projectName} / ${scope.siteName}`
 
   const Icon = scope.mode === 'portfolio' ? Globe : scope.mode === 'project' ? Building2 : MapPin
+  // Each scope level has its colour (WEB-20): all projects blue, one project
+  // green, one site orange -- the same at a glance on every page.
+  const tile =
+    scope.mode === 'portfolio'
+      ? 'bg-sky-100 text-sky-700 dark:bg-sky-400/15 dark:text-sky-300'
+      : scope.mode === 'project'
+        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300'
+        : 'bg-orange-100 text-orange-700 dark:bg-orange-400/15 dark:text-orange-300'
+  const badge = (
+    <span className={`flex size-6 items-center justify-center rounded-md ${tile}`}>
+      <Icon className="size-3.5" />
+    </span>
+  )
 
   if (allowed.length <= 1) {
     // Nothing to switch between — show context without a picker.
     return (
       <div className="flex items-center gap-2 text-sm font-medium">
-        <Icon className="size-4 text-muted-foreground" />
+        {badge}
         {label}
       </div>
     )
@@ -52,9 +65,9 @@ export function ScopeBar() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2">
-          <Icon className="size-4 text-muted-foreground" />
-          {label}
+        <Button variant="ghost" size="sm" className="h-9 gap-2 pl-1.5 pr-2.5 font-semibold">
+          {badge}
+          <span className="max-w-[40vw] truncate">{label}</span>
           <ChevronsUpDown className="size-3.5 text-muted-foreground" />
         </Button>
       </DropdownMenuTrigger>
