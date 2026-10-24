@@ -2117,3 +2117,17 @@ export async function fetchAnalyticsApi(params: {
   })
   return res.data
 }
+
+// ─── The DPR as a document, live (WEB-27) ────────────────────────────────────
+
+/** The site DPR as the PDF will look (HTML), from the day as it stands now. */
+export async function fetchSiteDayDocumentApi(siteId: string, date: string): Promise<string> {
+  const res = await api.get<string>(`/dpr/site-days/${siteId}/document`, { params: { date }, responseType: 'text' })
+  return res.data
+}
+
+/** The project DPR as a document: as sent once it has gone out, else a preview. */
+export async function fetchProjectDayDocumentApi(projectId: string, date: string): Promise<string> {
+  const res = await api.get<string>(`/dpr/project-days/${projectId}/document`, { params: { date }, responseType: 'text' })
+  return res.data
+}

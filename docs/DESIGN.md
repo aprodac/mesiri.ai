@@ -263,11 +263,46 @@ and lets the whole product be re-themed from one file.
 | Side column | `DprAside` | `components/dpr-page.tsx` |
 | AI summary | `DprSummaryCard` | `components/dpr-summary-card.tsx` |
 | Versions + PDF | `DprVersionsCard` | `components/dpr-versions-card.tsx` |
+| The DPR as a page of paper, live | `DprDocument`, `DprViewToggle` | `components/dpr-document.tsx` |
 | Status / severity chips | `siteStatus`, `severityChip`, `CHIP` | `lib/site-day.ts` |
 | Buttons, inputs, dialogs, sheets | shadcn/ui | `components/ui/*` |
 
 Reuse these before writing new ones. If a page needs something new twice,
 add it here and to this table.
+
+---
+
+## 10a. The DPR document (WEB-27)
+
+The DPR the owner receives is a PDF. The Site DPR and Project DPR pages show
+it **as that PDF**, live, under a **Review | Document** switch (`?view=document`).
+
+- **One template, two uses.** The page shows the HTML the PDF is printed from
+  (`apps/whatsapp-assistant/src/channel/dpr_document/template.py`), served by
+  `GET /dpr/site-days/{id}/document` and `GET /dpr/project-days/{id}/document`.
+  Never rebuild the document in React: the page and the PDF must not drift.
+- **Live.** A day that is not confirmed re-reads every 30 seconds
+  (`LIVE_REFRESH_MS`); its code line reads "Live preview · not confirmed yet"
+  (project: "Preview · not sent yet"). Once confirmed or sent it shows the
+  report's code and stops refreshing. The review data on the page refreshes on
+  the same 30 seconds.
+- **Safe.** Shown in a sandboxed frame without scripts; the template escapes
+  every value (BE-36).
+- **Print / PDF.** Print works on any day (the browser's own PDF). The stored
+  PDF button appears only once confirmed: a draft's stored PDF is older than
+  the live page.
+
+The template's look:
+
+| Part | Rule |
+|---|---|
+| Letterhead band | Logo + company (brand colour) left; "Site report / Daily Progress Report / code" right; 3px brand rule under it |
+| Project block | Project · Site · Date (said as people say it) · Client, one bordered row |
+| Day in figures | Tinted tiles; open issues and hours lost turn red only when non-zero; "Not set" greyed |
+| Sections | Numbered (1 Work done, 2 Manpower, 3 Materials, 4 Site Issues, 5 Tomorrow's Plan, Late entries); counts on the right |
+| Tables | Tinted header, zebra rows, numbers right-aligned, total row for several trades; header repeats on every page, rows never split |
+| Status / severity | Pills: green done, amber in progress, red stopped/open, grey planned; severity critical/high in red |
+| Values | `5th Floor` not `5Th Floor`; `180 sqm` not `180.000 sqm —`; cost as `₹14,400`, hidden when zero |
 
 ---
 
@@ -308,6 +343,6 @@ pass the same.
 
 | Page | Follows these rules |
 |---|---|
-| Site DPR, Project DPR | Yes (WEB-25) |
+| Site DPR, Project DPR | Yes (WEB-25); Document view (WEB-27) |
 | Today, Daily Reports, Issues | Mostly (WEB-01/03/06/07 style); not yet moved to sections/steps |
 | Projects, Team, Company, Labour, Materials, others | No — old template look; to be reworked page by page |

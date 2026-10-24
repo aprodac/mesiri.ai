@@ -21,6 +21,7 @@ import {
   confirmFactApi,
   correctActivityApi,
   fetchDailyReportPdfApi,
+  fetchSiteDayDocumentApi,
   fetchFactSourcesApi,
   fetchSiteDayApi,
   rejectFactApi,
@@ -53,6 +54,8 @@ import { DprVersionsCard } from '@/components/dpr-versions-card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { DprDocument, DprViewToggle, LIVE_REFRESH_MS, type DprView } from '@/components/dpr-document'
+import { useUrlState } from '@/lib/url-state'
 import { Callout, DprAside, DprHeader, DprPageSkeleton, DprSection, DprSteps, PageError, StatStrip, type StepState } from '@/components/dpr-page'
 import {
   Dialog,
@@ -601,17 +604,21 @@ export default function SiteDayPage() {
   const [removing, setRemoving] = React.useState<ReviewItem | null>(null)
   const [editing, setEditing] = React.useState<ReviewItem | null>(null)
   const [approving, setApproving] = React.useState(false)
+  const [view, setView] = useUrlState<DprView>('view', 'review')
 
+  // WEB-27: the day is live -- updates sent from site appear without a reload.
   const query = useQuery({
     queryKey: ['site-day', siteId, date],
     queryFn: () => fetchSiteDayApi(siteId, date),
     enabled: Boolean(siteId && date),
+    refetchInterval: LIVE_REFRESH_MS,
   })
   const detail = query.data
   usePageTitle(`${detail?.day?.site_name ?? 'Site'} · Site DPR`)
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['site-day', siteId, date] })
+    queryClient.invalidateQueries({ queryKey: ['site-day-document', siteId, date] })
     queryClient.invalidateQueries({ queryKey: ['site-days'] })
   }
 
@@ -711,141 +718,157 @@ export default function SiteDayPage() {
           chip={status && <span className={cn(CHIP, status.className)}>{status.label}</span>}
           date={longDate(date)}
           action={
-            !frozen &&
-            reportId && (
-              <Button className="h-10 px-4 font-semibold" disabled={busy} onClick={() => setApproving(true)}>
-                <CheckCheck /> Approve and send
-              </Button>
-            )
+            <div className="flex flex-wrap items-center gap-2">
+              <DprViewToggle value={view} onChange={setView} />
+              {!frozen && reportId && (
+                <Button className="h-10 px-4 font-semibold" disabled={busy} onClick={() => setApproving(true)}>
+                  <CheckCheck /> <span className="sm:hidden">Approve</span>
+                  <span className="hidden sm:inline">Approve and send</span>
+                </Button>
+              )}
+            </div>
           }
         />
         <DprSteps steps={steps} />
       </div>
 
-      {detail.drafts > 0 && !frozen && (
-        <Callout tone="draft" icon={CircleDashed}>
-          <strong className="font-semibold">{plural(detail.drafts, 'item')} from WhatsApp still to confirm.</strong>
-          <span className="hidden sm:inline"> Confirm them one by one, or approve the day to confirm them all.</span>
-        </Callout>
-      )}
-      {confirmed && current?.approved_at && (
-        <Callout tone="success" icon={CircleCheck}>
-          Approved{current.approved_by ? ` by ${current.approved_by}` : ''} · {dateTime(current.approved_at)}. Changes sent later show as late
-          entries on the next report.
-        </Callout>
-      )}
-      {missing && !frozen && (
-        <Callout tone="muted" icon={Info}>
-          {missing}
-          {!reportId && ". The report is built at the project's cutoff time; items can be checked now."}
-        </Callout>
-      )}
-
-      <StatStrip
-        stats={[
-          { label: 'Workers', value: labour.headcount || '—' },
-          { label: 'Work items', value: bySection('work').length || '—' },
-          { label: 'Photos', value: detail.report.evidence_count || '—' },
-          {
-            label: 'Open issues',
-            value: Math.max(day?.open_issues ?? 0, issues.length) || '—',
-            tone: issues.some((i) => ['CRITICAL', 'HIGH'].includes((i.severity ?? '').toUpperCase()))
-              ? 'bad'
-              : (day?.open_issues ?? 0) > 0
-                ? 'warn'
-                : 'default',
-          },
-        ]}
-      />
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="flex min-w-0 flex-col">
-          {detail.summary && (
-            <div className="pb-4">
-              <DprSummaryCard summary={detail.summary} />
-            </div>
+      {view === 'document' ? (
+        <DprDocument
+          queryKey={['site-day-document', siteId, date]}
+          fetchHtml={() => fetchSiteDayDocumentApi(siteId, date)}
+          live={!confirmed}
+          title={`${day?.site_name ?? 'Site'} daily progress report`}
+          // The stored PDF only once confirmed: a draft's is older than the live page.
+          onDownload={confirmed && current ? () => openPdf(current) : undefined}
+        />
+      ) : (
+        <>
+          {detail.drafts > 0 && !frozen && (
+            <Callout tone="draft" icon={CircleDashed}>
+              <strong className="font-semibold">{plural(detail.drafts, 'item')} from WhatsApp still to confirm.</strong>
+              <span className="hidden sm:inline"> Confirm them one by one, or approve the day to confirm them all.</span>
+            </Callout>
           )}
-          {SECTIONS.map((section) => (
-            <Section
-              key={section.key}
-              icon={section.icon}
-              title={section.title}
-              empty={section.empty}
-              items={bySection(section.key)}
-              summary={
-                // One labour report already reads "24 workers · mason 8, …": the
-                // trade summary only adds anything when several were sent.
-                section.key === 'labour' && labour.headcount > 0 && bySection('labour').length > 1 ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="mr-1 text-sm">
-                      <strong className="text-lg font-semibold tabular-nums">{labour.headcount}</strong>{' '}
-                      <span className="text-muted-foreground">workers today</span>
-                    </span>
-                    {labour.trades.map((t) => (
-                      <span key={t.trade} className="rounded-md border px-2 py-0.5 text-sm">
-                        {humanize(t.trade)} <strong className="font-semibold tabular-nums">{t.headcount}</strong>
-                      </span>
-                    ))}
-                  </div>
-                ) : section.key === 'materials' && detail.report.materials.length > 0 ? (
-                  <div className="overflow-x-auto rounded-lg border">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted/50 text-xs text-muted-foreground">
-                        <tr>
-                          <th className="px-3 py-1.5 text-left font-medium">Material</th>
-                          <th className="px-3 py-1.5 text-right font-medium">Opening</th>
-                          <th className="px-3 py-1.5 text-right font-medium">Received</th>
-                          <th className="px-3 py-1.5 text-right font-medium">Used</th>
-                          <th className="px-3 py-1.5 text-right font-medium">Closing</th>
-                        </tr>
-                      </thead>
-                      <tbody className="tabular-nums">
-                        {detail.report.materials.map((m) => (
-                          <tr key={`${m.material_name}-${m.unit}`} className={cn('border-t', m.beyond_stock && 'text-destructive')}>
-                            <td className="px-3 py-1.5">
-                              {m.material_name} <span className="text-muted-foreground">({m.unit})</span>
-                            </td>
-                            <td className="px-3 py-1.5 text-right">{qty(m.opening)}</td>
-                            <td className="px-3 py-1.5 text-right">{qty(m.received)}</td>
-                            <td className="px-3 py-1.5 text-right">{qty(m.used)}</td>
-                            <td className="px-3 py-1.5 text-right font-semibold">{qty(m.closing)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : undefined
-              }
-            >
-              {(item) => <ItemRow key={`${item.fact_type}-${item.id}`} item={item} {...rowProps} />}
-            </Section>
-          ))}
-
-          {detail.report.late_entries.length > 0 && (
-            <DprSection icon={History} title="Late entries for earlier days">
-              <ul className="flex flex-col gap-1 text-sm">
-                {detail.report.late_entries.map((e, i) => (
-                  <li key={i}>
-                    <span className="text-muted-foreground">{longDate(e.report_date)}:</span> {e.summary}
-                  </li>
-                ))}
-              </ul>
-            </DprSection>
+          {confirmed && current?.approved_at && (
+            <Callout tone="success" icon={CircleCheck}>
+              Approved{current.approved_by ? ` by ${current.approved_by}` : ''} · {dateTime(current.approved_at)}. Changes sent later show as late
+              entries on the next report.
+            </Callout>
           )}
-        </div>
+          {missing && !frozen && (
+            <Callout tone="muted" icon={Info}>
+              {missing}
+              {!reportId && ". The report is built at the project's cutoff time; items can be checked now."}
+            </Callout>
+          )}
 
-        <DprAside>
-          <ConditionsCard
-            key={`${siteId}-${date}-${current?.id ?? 'none'}`}
-            detail={detail}
-            frozen={frozen}
-            onSave={(changes) =>
-              run(() => setSiteDayConditionsApi(siteId, date, changes), ['Saved', "The day's conditions are saved."], 'Could not save')
-            }
+          <StatStrip
+            stats={[
+              { label: 'Workers', value: labour.headcount || '—' },
+              { label: 'Work items', value: bySection('work').length || '—' },
+              { label: 'Photos', value: detail.report.evidence_count || '—' },
+              {
+                label: 'Open issues',
+                value: Math.max(day?.open_issues ?? 0, issues.length) || '—',
+                tone: issues.some((i) => ['CRITICAL', 'HIGH'].includes((i.severity ?? '').toUpperCase()))
+                  ? 'bad'
+                  : (day?.open_issues ?? 0) > 0
+                    ? 'warn'
+                    : 'default',
+              },
+            ]}
           />
-          <DprVersionsCard reportId={reportId} versions={detail.versions} onPdf={openPdf} />
-        </DprAside>
-      </div>
+
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+            <div className="flex min-w-0 flex-col">
+              {detail.summary && (
+                <div className="pb-4">
+                  <DprSummaryCard summary={detail.summary} />
+                </div>
+              )}
+              {SECTIONS.map((section) => (
+                <Section
+                  key={section.key}
+                  icon={section.icon}
+                  title={section.title}
+                  empty={section.empty}
+                  items={bySection(section.key)}
+                  summary={
+                    // One labour report already reads "24 workers · mason 8, …": the
+                    // trade summary only adds anything when several were sent.
+                    section.key === 'labour' && labour.headcount > 0 && bySection('labour').length > 1 ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="mr-1 text-sm">
+                          <strong className="text-lg font-semibold tabular-nums">{labour.headcount}</strong>{' '}
+                          <span className="text-muted-foreground">workers today</span>
+                        </span>
+                        {labour.trades.map((t) => (
+                          <span key={t.trade} className="rounded-md border px-2 py-0.5 text-sm">
+                            {humanize(t.trade)} <strong className="font-semibold tabular-nums">{t.headcount}</strong>
+                          </span>
+                        ))}
+                      </div>
+                    ) : section.key === 'materials' && detail.report.materials.length > 0 ? (
+                      <div className="overflow-x-auto rounded-lg border">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted/50 text-xs text-muted-foreground">
+                            <tr>
+                              <th className="px-3 py-1.5 text-left font-medium">Material</th>
+                              <th className="px-3 py-1.5 text-right font-medium">Opening</th>
+                              <th className="px-3 py-1.5 text-right font-medium">Received</th>
+                              <th className="px-3 py-1.5 text-right font-medium">Used</th>
+                              <th className="px-3 py-1.5 text-right font-medium">Closing</th>
+                            </tr>
+                          </thead>
+                          <tbody className="tabular-nums">
+                            {detail.report.materials.map((m) => (
+                              <tr key={`${m.material_name}-${m.unit}`} className={cn('border-t', m.beyond_stock && 'text-destructive')}>
+                                <td className="px-3 py-1.5">
+                                  {m.material_name} <span className="text-muted-foreground">({m.unit})</span>
+                                </td>
+                                <td className="px-3 py-1.5 text-right">{qty(m.opening)}</td>
+                                <td className="px-3 py-1.5 text-right">{qty(m.received)}</td>
+                                <td className="px-3 py-1.5 text-right">{qty(m.used)}</td>
+                                <td className="px-3 py-1.5 text-right font-semibold">{qty(m.closing)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : undefined
+                  }
+                >
+                  {(item) => <ItemRow key={`${item.fact_type}-${item.id}`} item={item} {...rowProps} />}
+                </Section>
+              ))}
+
+              {detail.report.late_entries.length > 0 && (
+                <DprSection icon={History} title="Late entries for earlier days">
+                  <ul className="flex flex-col gap-1 text-sm">
+                    {detail.report.late_entries.map((e, i) => (
+                      <li key={i}>
+                        <span className="text-muted-foreground">{longDate(e.report_date)}:</span> {e.summary}
+                      </li>
+                    ))}
+                  </ul>
+                </DprSection>
+              )}
+            </div>
+
+            <DprAside>
+              <ConditionsCard
+                key={`${siteId}-${date}-${current?.id ?? 'none'}`}
+                detail={detail}
+                frozen={frozen}
+                onSave={(changes) =>
+                  run(() => setSiteDayConditionsApi(siteId, date, changes), ['Saved', "The day's conditions are saved."], 'Could not save')
+                }
+              />
+              <DprVersionsCard reportId={reportId} versions={detail.versions} onPdf={openPdf} />
+            </DprAside>
+          </div>
+        </>
+      )}
 
       <SourcesSheet item={sourcesFor} onClose={() => setSourcesFor(null)} />
       <RemoveDialog

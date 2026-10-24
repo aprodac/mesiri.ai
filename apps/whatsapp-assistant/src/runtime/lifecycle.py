@@ -462,6 +462,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("DPR router not loaded: %s", exc)
 
+    # WEB-27: the site DPR as a live document (the PDF's own HTML).
+    try:
+        from dpr_preview.router import router as dpr_preview_router
+
+        app.include_router(dpr_preview_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("DPR preview router not loaded: %s", exc)
+
     # Signed download links for media kept on this server's disk (INF-09,
     # object storage provider "local"). Answers 404 under any other provider.
     try:

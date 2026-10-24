@@ -5,7 +5,9 @@ channel/receipt/data.py's split between data-shaping and layout.
 
 from __future__ import annotations
 
+import datetime
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from trade_label import trade_label
@@ -97,6 +99,10 @@ class DprDocumentData:
     late_entries: list[DprLateEntryRow] = field(default_factory=list)
     # BE-18: the version's AI summary of its confirmed facts; "" for none.
     summary: str = ""
+    # WEB-27: the date as people say it ("Friday, 24 October 2026"), and the
+    # labour cost in rupees ("₹14,400"), "" when there is none to show.
+    date_label: str = ""
+    labour_cost_label: str = ""
 
 
 _WEATHER_LABELS = {
@@ -110,18 +116,64 @@ _SITE_WORKING_LABELS = {"full": "Full day", "half": "Half day", "none": "No work
 
 
 def _pretty(label: object) -> str:
+    """``SLAB_SHUTTERING`` -> ``Slab Shuttering``; a word that starts with a
+    digit stays lower case (``5th``, not str.title()'s ``5Th``)."""
     if not label:
         return "—"
-    return str(label).replace("_", " ").title()
+    return " ".join(
+        w.capitalize() if w[:1].isalpha() else w.lower()
+        for w in str(label).replace("_", " ").split()
+    )
+
+
+def _number(value: object) -> str:
+    """``180.000`` -> ``180``, ``2.400`` -> ``2.4``: quantities come from a
+    NUMERIC column and carry its scale."""
+    try:
+        n = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return str(value)
+    text = format(n.normalize(), "f")
+    return text if text != "-0" else "0"
 
 
 def _quantities_text(quantities: list[dict[str, Any]]) -> str:
     if not quantities:
         return "—"
-    return ", ".join(
-        f"{q.get('quantity')} {q.get('unit')} {_pretty(q.get('work_type'))}".strip()
-        for q in quantities
-    )
+    parts = []
+    for q in quantities:
+        work = q.get("work_type")
+        part = f"{_number(q.get('quantity'))} {q.get('unit') or ''}".strip()
+        parts.append(f"{part} {_pretty(work)}" if work else part)
+    return ", ".join(parts)
+
+
+def _rupees(value: object) -> str:
+    """``14400`` -> ``₹14,400`` (Indian grouping: ``₹1,23,456``); "" for none."""
+    try:
+        n = Decimal(str(value or 0))
+    except (InvalidOperation, ValueError):
+        return ""
+    if n <= 0:
+        return ""
+    whole, _, frac = format(n.quantize(Decimal("0.01")), "f").partition(".")
+    head, tail = whole[:-3], whole[-3:]
+    groups = []
+    while len(head) > 2:
+        groups.insert(0, head[-2:])
+        head = head[:-2]
+    if head:
+        groups.insert(0, head)
+    text = ",".join([*groups, tail])
+    return f"₹{text}" + (f".{frac}" if frac != "00" else "")
+
+
+def _date_label(value: object) -> str:
+    try:
+        day = datetime.date.fromisoformat(str(value))
+    except ValueError:
+        return str(value or "—")
+    return f"{day:%A}, {day.day} {day:%B %Y}"
 
 
 def build_document_data(
@@ -184,6 +236,8 @@ def build_document_data(
     hours_lost = conditions.get("hours_lost")
     return DprDocumentData(
         summary=(summary or "").strip(),
+        date_label=_date_label(payload.get("report_date")),
+        labour_cost_label=_rupees(labour.get("total_cost")),
         weather=_WEATHER_LABELS.get(conditions.get("weather") or "", "Not set"),
         site_working=_SITE_WORKING_LABELS.get(conditions.get("site_working") or "", "Not set"),
         hours_lost=f"{hours_lost} h" if hours_lost is not None else "—",

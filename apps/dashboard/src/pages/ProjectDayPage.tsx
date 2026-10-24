@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, CircleCheck, CircleDashed, Eye, MapPin, Package, Send, TriangleAlert } from 'lucide-react'
 import {
   fetchDailyReportPdfApi,
+  fetchProjectDayDocumentApi,
   fetchProjectDayApi,
   sendProjectDprNowApi,
   type DprVersion,
@@ -32,6 +33,8 @@ import { useToast } from '@/components/ui/toast-notification'
 import { DprSummaryCard } from '@/components/dpr-summary-card'
 import { DprVersionsCard } from '@/components/dpr-versions-card'
 import { Button } from '@/components/ui/button'
+import { DprDocument, DprViewToggle, LIVE_REFRESH_MS, type DprView } from '@/components/dpr-document'
+import { useUrlState } from '@/lib/url-state'
 import { Callout, DprAside, DprHeader, DprPageSkeleton, DprSection, DprSteps, PageError, StatStrip, type StepState } from '@/components/dpr-page'
 
 // Project DPR page (WEB-05): one project's day. Every site's day as it stands
@@ -140,12 +143,13 @@ export default function ProjectDayPage() {
   const queryClient = useQueryClient()
   const readOnly = useReadOnly()
   const [busy, setBusy] = React.useState(false)
+  const [view, setView] = useUrlState<DprView>('view', 'review')
 
   const query = useQuery({
     queryKey: ['project-day', projectId, date],
     queryFn: () => fetchProjectDayApi(projectId, date),
     enabled: Boolean(projectId && date),
-    refetchInterval: 60_000,
+    refetchInterval: LIVE_REFRESH_MS,
   })
   const detail = query.data
   usePageTitle(`${detail?.project.project_name ?? 'Project'} · Project DPR`)
@@ -173,6 +177,7 @@ export default function ProjectDayPage() {
       await sendProjectDprNowApi(project.project_id)
       toast.success('Sending the DPR', `${project.project_name}'s DPR goes out within a minute.`)
       queryClient.invalidateQueries({ queryKey: ['project-day', projectId, date] })
+      queryClient.invalidateQueries({ queryKey: ['project-day-document', projectId, date] })
       queryClient.invalidateQueries({ queryKey: ['site-days'] })
     } catch (err) {
       toast.error('Could not send', errorDetail(err) ?? `${project.project_name}'s DPR could not be sent.`)
@@ -191,6 +196,7 @@ export default function ProjectDayPage() {
     }
   }
 
+  const sentVersion = detail.versions.find((v) => v.is_current)
   const confirmedCount = sites.filter((s) => FROZEN.includes(s.status)).length
   const anyUpdates = sites.some(hasUpdates)
   const steps: { label: string; short?: string; hint?: string; state: StepState }[] = [
@@ -232,150 +238,165 @@ export default function ProjectDayPage() {
           chip={<span className={cn(CHIP, state.className)}>{state.label}</span>}
           date={longDate(date)}
           action={
-            canSend && (
-              <Button className="h-10 px-4 font-semibold" disabled={busy} onClick={sendNow}>
-                <Send /> Send now
-              </Button>
-            )
+            <div className="flex flex-wrap items-center gap-2">
+              <DprViewToggle value={view} onChange={setView} />
+              {canSend && (
+                <Button className="h-10 px-4 font-semibold" disabled={busy} onClick={sendNow}>
+                  <Send /> Send now
+                </Button>
+              )}
+            </div>
           }
         />
         <DprSteps steps={steps} />
       </div>
 
-      <Callout
-        tone={detail.report_source === 'sent' ? 'success' : project.send_requested ? 'info' : 'muted'}
-        icon={detail.report_source === 'sent' ? CircleCheck : Eye}
-        action={
-          singleSite ? (
-            <Button asChild variant="outline" size="sm" className="bg-background">
-              <Link to={siteDayPath(sites[0].site_id, date)}>Open the site DPR</Link>
-            </Button>
-          ) : undefined
-        }
-      >
-        {/* Phone: the first sentence only; the steps above carry the rest. */}
-        <span className="sm:hidden">{state.note.split('. ')[0].replace(/\.$/, '')}.</span>
-        <span className="hidden sm:inline">
-          {state.note}
-          {singleSite && ' Single-site project: its site DPR is what gets sent.'}
-        </span>
-      </Callout>
+      {view === 'document' ? (
+        <DprDocument
+          queryKey={['project-day-document', projectId, date]}
+          fetchHtml={() => fetchProjectDayDocumentApi(projectId, date)}
+          live={detail.report_source !== 'sent'}
+          title={`${project.project_name} daily progress report`}
+          onDownload={sentVersion ? () => openPdf(sentVersion) : undefined}
+        />
+      ) : (
+        <>
+          <Callout
+            tone={detail.report_source === 'sent' ? 'success' : project.send_requested ? 'info' : 'muted'}
+            icon={detail.report_source === 'sent' ? CircleCheck : Eye}
+            action={
+              singleSite ? (
+                <Button asChild variant="outline" size="sm" className="bg-background">
+                  <Link to={siteDayPath(sites[0].site_id, date)}>Open the site DPR</Link>
+                </Button>
+              ) : undefined
+            }
+          >
+            {/* Phone: the first sentence only; the steps above carry the rest. */}
+            <span className="sm:hidden">{state.note.split('. ')[0].replace(/\.$/, '')}.</span>
+            <span className="hidden sm:inline">
+              {state.note}
+              {singleSite && ' Single-site project: its site DPR is what gets sent.'}
+            </span>
+          </Callout>
 
-      <StatStrip
-        stats={[
-          {
-            label: 'Sites in DPR',
-            value: (
-              <>
-                {report.reported_site_count}
-                <span className="text-sm font-normal text-muted-foreground"> of {report.total_site_count}</span>
-              </>
-            ),
-            tone: report.reported_site_count < report.total_site_count ? 'warn' : 'default',
-          },
-          { label: 'Workers', value: report.labour.headcount || '—' },
-          { label: 'Work items', value: report.activity_count || '—' },
-          { label: 'Labour cost', value: money(report.labour.total_cost) },
-        ]}
-      />
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="flex min-w-0 flex-col">
-          <DprSection icon={MapPin} title="Sites" meta={sites.length}>
-            <div className="hidden grid-cols-[auto_minmax(0,1.6fr)_repeat(4,minmax(0,0.6fr))_auto] gap-x-3 border-b pb-2 text-xs text-muted-foreground md:grid">
-              <span className="w-5" />
-              <span>Site</span>
-              <span className="text-right">Workers</span>
-              <span className="text-right">Work items</span>
-              <span className="text-right">Photos</span>
-              <span className="text-right">Open issues</span>
-              <span className="w-[88px]" />
-            </div>
-            <ul className="flex flex-col divide-y">
-              {sites.map((site) => (
-                <SiteRow key={site.site_id} site={site} date={date} line={lineFor(site)} sent={project.sent} />
-              ))}
-            </ul>
-          </DprSection>
-
-          {report.issues.length === 0 ? (
-            <DprSection
-              icon={TriangleAlert}
-              title="Issues"
-              className="py-3"
-              meta={
-                detail.report_source === 'preview' && report.reported_site_count === 0
-                  ? 'Show here once a site is confirmed'
-                  : 'None reported'
-              }
-            />
-          ) : (
-            <DprSection
-              icon={TriangleAlert}
-              title="Issues"
-              meta={report.issues.length}
-              action={severe > 0 ? <span className={cn(CHIP, 'bg-destructive/10 text-destructive')}>{severe} high or critical</span> : undefined}
-            >
-              <ul className="flex flex-col divide-y">
-                {report.issues.map((issue, i) => {
-                  const sev = severityChip(issue.severity)
-                  return (
-                    <li key={i} className="flex items-start justify-between gap-3 py-2">
-                      <div className="flex min-w-0 flex-col">
-                        <span className="text-sm">{issue.narrative || (issue.issue_type ?? 'Issue').toLowerCase().replace(/_/g, ' ')}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {issue.site_name}
-                          {issue.status && ` · ${issue.status.toLowerCase()}`}
-                        </span>
-                      </div>
-                      {sev && <span className={cn(CHIP, sev.className)}>{sev.label}</span>}
-                    </li>
-                  )
-                })}
-              </ul>
-            </DprSection>
-          )}
-
-          {report.materials.length === 0 ? (
-            <DprSection icon={Package} title="Materials" meta="None received or used" className="py-3" />
-          ) : (
-            <DprSection icon={Package} title="Materials" meta={report.materials.length}>
-              <div className="overflow-x-auto rounded-lg border">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50 text-xs text-muted-foreground">
-                    <tr>
-                      <th className="px-3 py-1.5 text-left font-medium">Material</th>
-                      <th className="px-3 py-1.5 text-right font-medium">Received</th>
-                      <th className="px-3 py-1.5 text-right font-medium">Used</th>
-                    </tr>
-                  </thead>
-                  <tbody className="tabular-nums">
-                    {report.materials.map((m) => (
-                      <tr key={`${m.material_name}-${m.unit}`} className="border-t">
-                        <td className="px-3 py-1.5">
-                          {m.material_name} <span className="text-muted-foreground">({m.unit})</span>
-                        </td>
-                        <td className="px-3 py-1.5 text-right">{qty(m.received)}</td>
-                        <td className="px-3 py-1.5 text-right">{qty(m.used)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </DprSection>
-          )}
-        </div>
-
-        <DprAside>
-          {detail.summary && <DprSummaryCard summary={detail.summary} />}
-          <DprVersionsCard
-            reportId={reportId}
-            versions={detail.versions}
-            onPdf={openPdf}
-            empty="Versions appear once the project DPR is sent."
+          <StatStrip
+            stats={[
+              {
+                label: 'Sites in DPR',
+                value: (
+                  <>
+                    {report.reported_site_count}
+                    <span className="text-sm font-normal text-muted-foreground"> of {report.total_site_count}</span>
+                  </>
+                ),
+                tone: report.reported_site_count < report.total_site_count ? 'warn' : 'default',
+              },
+              { label: 'Workers', value: report.labour.headcount || '—' },
+              { label: 'Work items', value: report.activity_count || '—' },
+              { label: 'Labour cost', value: money(report.labour.total_cost) },
+            ]}
           />
-        </DprAside>
-      </div>
+
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+            <div className="flex min-w-0 flex-col">
+              <DprSection icon={MapPin} title="Sites" meta={sites.length}>
+                <div className="hidden grid-cols-[auto_minmax(0,1.6fr)_repeat(4,minmax(0,0.6fr))_auto] gap-x-3 border-b pb-2 text-xs text-muted-foreground md:grid">
+                  <span className="w-5" />
+                  <span>Site</span>
+                  <span className="text-right">Workers</span>
+                  <span className="text-right">Work items</span>
+                  <span className="text-right">Photos</span>
+                  <span className="text-right">Open issues</span>
+                  <span className="w-[88px]" />
+                </div>
+                <ul className="flex flex-col divide-y">
+                  {sites.map((site) => (
+                    <SiteRow key={site.site_id} site={site} date={date} line={lineFor(site)} sent={project.sent} />
+                  ))}
+                </ul>
+              </DprSection>
+
+              {report.issues.length === 0 ? (
+                <DprSection
+                  icon={TriangleAlert}
+                  title="Issues"
+                  className="py-3"
+                  meta={
+                    detail.report_source === 'preview' && report.reported_site_count === 0
+                      ? 'Show here once a site is confirmed'
+                      : 'None reported'
+                  }
+                />
+              ) : (
+                <DprSection
+                  icon={TriangleAlert}
+                  title="Issues"
+                  meta={report.issues.length}
+                  action={severe > 0 ? <span className={cn(CHIP, 'bg-destructive/10 text-destructive')}>{severe} high or critical</span> : undefined}
+                >
+                  <ul className="flex flex-col divide-y">
+                    {report.issues.map((issue, i) => {
+                      const sev = severityChip(issue.severity)
+                      return (
+                        <li key={i} className="flex items-start justify-between gap-3 py-2">
+                          <div className="flex min-w-0 flex-col">
+                            <span className="text-sm">{issue.narrative || (issue.issue_type ?? 'Issue').toLowerCase().replace(/_/g, ' ')}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {issue.site_name}
+                              {issue.status && ` · ${issue.status.toLowerCase()}`}
+                            </span>
+                          </div>
+                          {sev && <span className={cn(CHIP, sev.className)}>{sev.label}</span>}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </DprSection>
+              )}
+
+              {report.materials.length === 0 ? (
+                <DprSection icon={Package} title="Materials" meta="None received or used" className="py-3" />
+              ) : (
+                <DprSection icon={Package} title="Materials" meta={report.materials.length}>
+                  <div className="overflow-x-auto rounded-lg border">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/50 text-xs text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-1.5 text-left font-medium">Material</th>
+                          <th className="px-3 py-1.5 text-right font-medium">Received</th>
+                          <th className="px-3 py-1.5 text-right font-medium">Used</th>
+                        </tr>
+                      </thead>
+                      <tbody className="tabular-nums">
+                        {report.materials.map((m) => (
+                          <tr key={`${m.material_name}-${m.unit}`} className="border-t">
+                            <td className="px-3 py-1.5">
+                              {m.material_name} <span className="text-muted-foreground">({m.unit})</span>
+                            </td>
+                            <td className="px-3 py-1.5 text-right">{qty(m.received)}</td>
+                            <td className="px-3 py-1.5 text-right">{qty(m.used)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </DprSection>
+              )}
+            </div>
+
+            <DprAside>
+              {detail.summary && <DprSummaryCard summary={detail.summary} />}
+              <DprVersionsCard
+                reportId={reportId}
+                versions={detail.versions}
+                onPdf={openPdf}
+                empty="Versions appear once the project DPR is sent."
+              />
+            </DprAside>
+          </div>
+        </>
+      )}
     </div>
   )
 }

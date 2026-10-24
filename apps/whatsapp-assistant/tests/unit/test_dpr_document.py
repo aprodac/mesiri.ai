@@ -137,7 +137,7 @@ def test_render_html_shows_labour_and_materials_sections():
     html = render_html(data)
     assert "Mason" in html
     assert "Cement" in html
-    assert "8000" in html
+    assert "₹8,000" in html  # WEB-27: rupees, Indian grouping
 
 
 def test_render_html_shows_empty_state_for_no_labour_or_materials():
