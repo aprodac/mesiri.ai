@@ -244,3 +244,72 @@ def test_reply_wording_names_the_day_for_a_past_report():
     )
     assert say(dpr_status="unavailable") == "I can't look up today's report right now. Please try again in a minute."
     assert say(dpr_status="bad_date").startswith("Which day's report")
+
+
+async def test_an_owner_with_several_sites_gets_each_sites_day_so_far():
+    """V1 audit DPR-05: "today's DPR?" from the owner at 4 PM said "Nothing's
+    been logged" while the engineers' entries were in."""
+    from types import SimpleNamespace
+
+    from backend.ports import ProjectSummary, SiteSummary
+    from workflows.dpr_request.nodes import generate_dpr_request_reply
+
+    class _Service(_FakeDprRequestQueryService):
+        async def preview_lines(self, *, organization_id, project_id, site_id, report_date):
+            return {"s1": ["Work: plastering 180 sqm", "Labour: 12 workers"], "s3": ["Materials: cement 50 bags"]}.get(
+                site_id, []
+            )
+
+    owner = SimpleNamespace(
+        organization_id=ORG,
+        user_id=USR,
+        role="ADMIN",
+        projects=[ProjectSummary("p1", "Green Villa"), ProjectSummary("p2", "Skyline")],
+        sites=[SiteSummary("s1", "Block A", "p1"), SiteSummary("s2", "Block B", "p1"), SiteSummary("s3", "Tower", "p2")],
+    )
+    service = _Service({"status": "not_generated", "object_key": None, "code": None})
+    event = CanonicalEventV2(
+        event_id="evt_1",
+        correlation_id="cor_1",
+        source_message_id="msg_1",
+        event_type=CanonicalEventType.DPR_REQUESTED,
+        completeness=IntentCompleteness.ACTIONABLE,
+        organization_id=ORG,
+        user_id=USR,
+        fields={},
+    )
+    decision = _decision(WorkflowKey.DPR_REQUEST, CanonicalEventType.DPR_REQUESTED)
+
+    await _seed_dpr_request(event, decision, service, owner, "Asia/Kolkata")
+
+    assert event.fields["dpr_status"] == "preview"
+    assert event.fields["dpr_preview"] == (
+        "*Block A (Green Villa)*\nWork: plastering 180 sqm\nLabour: 12 workers\n\n*Tower (Skyline)*\nMaterials: cement 50 bags"
+    )
+    reply = generate_dpr_request_reply({"collected_fields": event.fields})["pending_prompt"]
+    assert "Nothing" not in reply and "Block A (Green Villa)" in reply
+
+
+async def test_an_owner_whose_sites_have_nothing_yet_is_told_so():
+    from types import SimpleNamespace
+
+    from backend.ports import SiteSummary
+
+    class _Service(_FakeDprRequestQueryService):
+        async def preview_lines(self, **kwargs):
+            return []
+
+    owner = SimpleNamespace(
+        organization_id=ORG, user_id=USR, role="ADMIN", projects=[],
+        sites=[SiteSummary("s1", "Block A", "p1"), SiteSummary("s2", "Block B", "p1")],
+    )
+    event = CanonicalEventV2(
+        event_id="evt_1", correlation_id="cor_1", source_message_id="msg_1",
+        event_type=CanonicalEventType.DPR_REQUESTED, completeness=IntentCompleteness.ACTIONABLE,
+        organization_id=ORG, user_id=USR, fields={},
+    )
+    await _seed_dpr_request(
+        event, _decision(WorkflowKey.DPR_REQUEST, CanonicalEventType.DPR_REQUESTED),
+        _Service({"status": "not_generated", "object_key": None, "code": None}), owner, "Asia/Kolkata",
+    )
+    assert event.fields["dpr_status"] == "not_generated"

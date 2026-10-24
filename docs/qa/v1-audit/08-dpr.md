@@ -35,7 +35,7 @@ send (dpr_send_deadline, default 21:00)
 | DPR-02 | No DPR for anyone quiet for 24 hours (templates not approved) | Serious | Ops (WA-10) | Code read |
 | DPR-03 | Multi-site project DPR lists no work; labour table empty | Serious | Decision | Scripted run |
 | DPR-04 | An unconfirmed site is sent as "Not reported", all zeros | Serious | Decision (P8 rule) | Scripted run |
-| DPR-05 | Owner/PM told "Nothing's been logged" during the day | Serious | None | Scripted run |
+| DPR-05 | Owner/PM told "Nothing's been logged" during the day | Serious | None — **fixed (WA-70), retest** | Scripted run |
 | DPR-06 | "Total cost: 0" printed on every DPR with workers | Other | None | Scripted run |
 | DPR-07 | "Confirm all" shows only counts | Other | None | Code read |
 | DPR-08 | A labour-only unconfirmed site is called "not reported" | Other | None | Code read |
@@ -103,6 +103,7 @@ Dashboard → Daily Reports.
 - **Code:** `_dpr_scope` (`seeding.py`) resolves no project for 2+ projects and no site for 2+ sites; `find_report` (`apps/whatsapp-assistant/src/runtime/dpr_request_query.py`) then returns `not_generated`; `_past_day_draft` (`query_entry.py`) needs a site; `"not_generated"` text in `workflows/dpr_request/nodes.py`.
 - **Evidence (scripted run):** `_seed_dpr_request` + `generate_dpr_request_reply` for both actors → the reply above.
 - **Fix direction:** for an owner/PM, answer with each site's "so far today" lines (or ask which project/site with buttons); never "nothing logged" when sites have entries.
+- **Fixed (WA-70):** each site's lines so far, under its name. Retest.
 
 ### DPR-06 · "Total cost: 0" on every DPR
 

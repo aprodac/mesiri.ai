@@ -525,6 +525,45 @@ def _dpr_scope(event: CanonicalEventV2, actor: ActorIdentity) -> tuple[str | Non
     return project_id, site_id
 
 
+#: Sites a multi-site "today's DPR?" lists (DPR-05); one WhatsApp message.
+_PREVIEW_SITES_MAX = 10
+
+
+async def _site_previews(
+    event: CanonicalEventV2,
+    dpr_request_query: DprRequestQueryService,
+    actor: ActorIdentity,
+    project_id: str | None,
+    today: datetime.date,
+) -> list[str]:
+    """"*Site (Project)*" and its lines so far, per site of the sender's (in
+    the project, when one is known) that has something today."""
+    from runtime.agent.work_site import site_label
+
+    sites = [
+        s
+        for s in getattr(actor, "sites", None) or []
+        if s.project_id and (project_id is None or str(s.project_id) == str(project_id))
+    ]
+    blocks: list[str] = []
+    for site in sites[:_PREVIEW_SITES_MAX]:
+        try:
+            lines = await dpr_request_query.preview_lines(
+                organization_id=actor.organization_id,
+                project_id=str(site.project_id),
+                site_id=str(site.id),
+                report_date=today,
+            )
+        except Exception:  # noqa: BLE001 -- the other sites still answer
+            _log.warning("dpr_request.preview_failed correlation_id=%s", event.correlation_id, exc_info=True)
+            continue
+        if lines:
+            blocks.append("\n".join([f"*{site_label(actor, site.id) or site.name}*", *lines]))
+    if blocks and len(sites) > _PREVIEW_SITES_MAX:
+        blocks.append(f"(+{len(sites) - _PREVIEW_SITES_MAX} more sites: see the dashboard's Today page.)")
+    return blocks
+
+
 async def _seed_dpr_request(
     event: CanonicalEventV2,
     decision: PlannerDecisionV2,
@@ -612,6 +651,15 @@ async def _seed_dpr_request(
             result = {**result, "status": "waiting" if waiting else "preview"}
             event.fields["dpr_preview"] = "\n".join(lines)
             event.fields["dpr_missing"] = list(result.get("missing") or [])
+    elif result["status"] in ("not_generated", "pending_confirmation") and report_date == today and not site_id:
+        # V1 audit DPR-05: an owner or PM with several projects or sites has
+        # no one site, so they were told "nothing's been logged" while the
+        # sites had entries. Each site's day so far, under its name.
+        blocks = await _site_previews(event, dpr_request_query, actor, project_id, today)
+        if blocks:
+            result = {**result, "status": "preview"}
+            event.fields["dpr_preview"] = "\n\n".join(blocks)
+            event.fields["dpr_missing"] = []
     event.fields["dpr_status"] = result["status"]
     event.fields["dpr_object_key"] = result["object_key"]
     event.fields["dpr_code"] = result["code"]
