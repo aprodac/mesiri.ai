@@ -11,29 +11,29 @@
 
 ---
 
-## 0. Pages and routes (V1, WEB-21)
+## 0. Pages and routes (V1, WEB-21; sorted to 11 entries, WEB-31)
 
 V1 is one loop — sites send updates on WhatsApp, the engineer confirms, the
-owner gets the DPR — plus setup. The sidebar has no "More".
+owner gets the DPR — plus setup. The sidebar has no "More", and **one entry
+per subject**: a subject with several ways of looking at it is one page with
+a view switch (`Segmented`), not several sidebar entries.
 
 | Sidebar | Address | What it is |
 |---|---|---|
 | **Today** | `/today` | what's in, what's missing, what needs me |
 | **Reports** | `/reports` | every DPR, newest first |
-| | `/reports/:date/sites/:id` | one site's day: review, confirm, approve |
-| | `/reports/:date/projects/:id` | one project's DPR: preview, send |
+| | `/reports/:date/sites/:id` | one site's day: review, confirm, approve; Review / Document |
+| | `/reports/:date/projects/:id` | one project's DPR: preview, send; Review / Document |
 | **Issues** | `/issues` | what's stuck |
-| *Site records* **Activities** | `/activities` | every work item, across days and sites |
-| **Gallery** | `/gallery` | every site photo |
-| **Timeline** | `/timeline` | what happened, when |
+| *Site records* **Site log** | `/site-log` (`?view=photos`, `?view=all`) | Work · Photos · Everything (was Activities, Gallery, Timeline) |
 | **Analytics** | `/analytics` | trends |
-| **Labour** (module) | `/labour` (`?view=workers`) | one page: Attendance and Workers (WEB-22); old `/labour/*` addresses redirect |
-| **Materials** (module) | `/materials` | one page with tabs |
+| **Labour** (module) | `/labour` (`?view=workers`) | Attendance · Workers (was 7 pages, WEB-22) |
+| **Materials** (module) | `/materials` | Ledger · Catalogue; Stock now panel (WEB-30) |
 | *Setup* **Projects & Sites** | `/projects`, `/projects/:id` | |
 | **Team** | `/team`, `/team/:id` | |
 | **Company** | `/company` | details, letterhead |
-| **WhatsApp Inbox** | `/whatsapp/inbox` | |
-| Finance, Automations | `/finance/...`, `/automations` | only when the company has the module |
+| **WhatsApp** | `/whatsapp` (`?view=messages`, `?view=automations`) | Conversations · All messages · Automations (module) (was WhatsApp Inbox, Automations, Company > messages) |
+| Finance | `/finance/...` | only when the company has the module |
 
 Rules:
 - One address per thing, named as the sidebar names it. No section prefixes
@@ -346,10 +346,11 @@ pass the same.
 | Site DPR, Project DPR | Yes (WEB-25); Document view (WEB-27) |
 | Today, Reports, Issues | Yes (WEB-25 step 3) |
 | Activities, Gallery, Timeline, Analytics | Yes (WEB-24, WEB-26) |
-| Projects & Sites, a project, Team, a person, Company, WhatsApp messages | Yes (WEB-28): one page each, sections instead of tabs |
+| Projects & Sites, a project, Team, a person, Company | Yes (WEB-28): one page each, sections instead of tabs |
+| Site log (Work, Photos, Everything), WhatsApp (Conversations, All messages, Automations) | Views yes (WEB-31); the Inbox and Automations insides keep their older look |
 | Labour (one page: Attendance, Workers) | Yes (WEB-22) |
 | Materials (Ledger, Catalogue, Stock now, sheets) | Yes (WEB-29, WEB-30); invoice detail sheet not yet |
-| WhatsApp Inbox, Automations, Finance, Login / Signup | No — old template look |
+| Finance, Login / Signup | No — old template look |
 | Dialogs (project, site, person, access, WhatsApp number, record delivery / use / move, correction) | Yes (WEB-29): sentence case, plain words, no fake buttons |
 
 ### Setup pages (WEB-28)

@@ -15,9 +15,7 @@ const ROUTE_TITLES: [string, string][] = [
   ['/today', 'Today'],
   ['/reports', 'Reports'],
   ['/issues', 'Issues'],
-  ['/activities', 'Activities'],
-  ['/gallery', 'Gallery'],
-  ['/timeline', 'Timeline'],
+  ['/site-log', 'Site log'],
   ['/analytics', 'Analytics'],
   ['/labour/attendance', 'Attendance'],
   ['/labour/workers', 'Workers'],
@@ -26,8 +24,7 @@ const ROUTE_TITLES: [string, string][] = [
   ['/projects', 'Projects & Sites'],
   ['/team', 'Team'],
   ['/company', 'Company'],
-  ['/whatsapp', 'WhatsApp Inbox'],
-  ['/automations', 'Automations'],
+  ['/whatsapp', 'WhatsApp'],
   ['/finance', 'Finance'],
 ]
 

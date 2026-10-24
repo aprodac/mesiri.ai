@@ -73,7 +73,7 @@ function Thumb({ item, onOpen }: { item: GalleryItem; onOpen: () => void }) {
   )
 }
 
-export default function OperationsGalleryPage() {
+export default function OperationsGalleryPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { scope } = useScope()
   const names = useSiteNames()
   const [search, setSearch] = useUrlState<string>('q', '')
@@ -118,16 +118,24 @@ export default function OperationsGalleryPage() {
     scope.mode === 'portfolio' ? 'All projects' : scope.mode === 'project' ? scope.projectName : `${scope.projectName} / ${scope.siteName}`
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
-      <PageHeader
-        title="Gallery"
-        subtitle={<>Every photo the sites sent, newest first · {scopeLabel}</>}
-        actions={
+    <div className={embedded ? 'flex flex-col gap-4' : 'mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2'}>
+      {embedded ? (
+        <div className="flex justify-end gap-2 sm:-mt-[52px] sm:self-end">
           <Button variant="ghost" size="icon" className="size-8" onClick={() => query.refetch()} disabled={query.isFetching} title="Refresh" aria-label="Refresh">
             <RefreshCw className={cn('size-4', query.isFetching && 'animate-spin')} />
           </Button>
-        }
-      />
+        </div>
+      ) : (
+        <PageHeader
+          title="Gallery"
+          subtitle={<>Every photo the sites sent, newest first · {scopeLabel}</>}
+          actions={
+            <Button variant="ghost" size="icon" className="size-8" onClick={() => query.refetch()} disabled={query.isFetching} title="Refresh" aria-label="Refresh">
+              <RefreshCw className={cn('size-4', query.isFetching && 'animate-spin')} />
+            </Button>
+          }
+        />
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative w-full sm:w-72">

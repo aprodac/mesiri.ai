@@ -7,8 +7,6 @@ import {
   Users,
   ArrowLeft,
   Activity,
-  History,
-  Image as ImageIcon,
   BarChart3,
   FileText,
   DollarSign,
@@ -29,7 +27,6 @@ import {
   HardHat,
   MessageSquare,
   AlertCircle,
-  Clock,
   Palette,
 } from 'lucide-react'
 import { NavLink, Link, useLocation } from 'react-router-dom'
@@ -118,9 +115,7 @@ const PRIMARY_ITEMS: NavItem[] = [
 
 // Site records: everything the sites sent, across days and sites.
 const RECORD_ITEMS: NavItem[] = [
-  { title: 'Activities', url: '/activities', icon: Activity, tone: 'sky' },
-  { title: 'Gallery', url: '/gallery', icon: ImageIcon, tone: 'violet' },
-  { title: 'Timeline', url: '/timeline', icon: History, tone: 'teal' },
+  { title: 'Site log', url: '/site-log', icon: Activity, tone: 'sky' },
   { title: 'Analytics', url: '/analytics', icon: BarChart3, tone: 'indigo' },
 ]
 
@@ -130,8 +125,7 @@ const ROOT_MANAGEMENT_ITEMS: NavItem[] = [
   { title: 'Projects & Sites', url: '/projects', icon: Building2, requiredRole: 'ADMIN', tone: 'teal' },
   { title: 'Team', url: '/team', icon: Users, requiredRole: 'ADMIN', tone: 'violet' },
   { title: 'Company', url: '/company', icon: Building, requiredRole: 'ADMIN', tone: 'indigo' },
-  { title: 'WhatsApp Inbox', url: '/whatsapp/inbox', icon: MessageSquare, tone: 'green' },
-  { title: 'Automations', url: '/automations', icon: Clock, module: 'automations', tone: 'sky' },
+  { title: 'WhatsApp', url: '/whatsapp', icon: MessageSquare, tone: 'green' },
 ]
 
 function initialsOf(name: string): string {
@@ -427,7 +421,7 @@ export function AppSidebar() {
   }
 
   const getUrlWithScope = (baseUrl: string) => {
-    const isOperational = !['/projects', '/team', '/company', '/whatsapp/inbox', '/automations'].includes(baseUrl)
+    const isOperational = !['/projects', '/team', '/company', '/whatsapp'].includes(baseUrl)
     if (!isOperational) return baseUrl
 
     const params = new URLSearchParams()

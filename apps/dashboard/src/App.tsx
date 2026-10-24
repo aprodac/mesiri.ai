@@ -9,8 +9,9 @@ import ProjectDayPage from '@/pages/ProjectDayPage'
 import Users from '@/pages/Users'
 import UserDetails from '@/pages/UserDetails'
 import CompanyDetails from '@/pages/CompanyDetails'
-import CompanyMessagesPage from '@/pages/CompanyMessagesPage'
+import WhatsAppPage from '@/pages/WhatsAppPage'
 import LabourPage from '@/pages/LabourPage'
+import SiteLogPage from '@/pages/SiteLogPage'
 import Projects from '@/pages/Projects'
 import ProjectDetails from '@/pages/ProjectDetails'
 import DailyReportsPage from '@/pages/DailyReportsPage'
@@ -19,7 +20,6 @@ import ExpensesPage from '@/pages/ExpensesPage'
 import ReceiptsPage from '@/pages/ReceiptsPage'
 import AccountsPage from '@/pages/AccountsPage'
 import WhatsAppFinancePage from '@/pages/WhatsAppFinancePage'
-import WhatsAppInboxPage from '@/pages/WhatsAppInboxPage'
 import PettyCashPage from '@/pages/PettyCashPage'
 import FinanceOverviewPage from '@/pages/FinanceOverviewPage'
 import FinanceReportsPage from '@/pages/FinanceReportsPage'
@@ -29,11 +29,7 @@ import TransactionsPage from '@/pages/TransactionsPage'
 import VendorsPage from '@/pages/VendorsPage'
 import CategoriesPage from '@/pages/CategoriesPage'
 import OperationsIssuesPage from '@/pages/OperationsIssuesPage'
-import ActivitiesPage from '@/pages/ActivitiesPage'
-import OperationsGalleryPage from '@/pages/OperationsGalleryPage'
-import OperationsTimelinePage from '@/pages/OperationsTimelinePage'
 import OperationsAnalyticsPage from '@/pages/OperationsAnalyticsPage'
-import AutomationsPage from '@/pages/AutomationsPage'
 import { ToastProvider } from '@/components/ui/toast-notification'
 
 // V1 routes (WEB-21, docs/DESIGN.md "Pages and routes"): one address per
@@ -82,9 +78,10 @@ export default function App() {
           <Route path="issues" element={<OperationsIssuesPage />} />
 
           {/* Site records: everything the sites sent, across days. */}
-          <Route path="activities" element={<ActivitiesPage />} />
-          <Route path="gallery" element={<OperationsGalleryPage />} />
-          <Route path="timeline" element={<OperationsTimelinePage />} />
+          <Route path="site-log" element={<SiteLogPage />} />
+          <Route path="activities" element={<Moved to="/site-log" />} />
+          <Route path="gallery" element={<Moved to="/site-log?view=photos" />} />
+          <Route path="timeline" element={<Moved to="/site-log?view=all" />} />
           <Route path="analytics" element={<OperationsAnalyticsPage />} />
 
           {/* Labour (module): one page, Attendance | Workers (WEB-22). The
@@ -102,9 +99,10 @@ export default function App() {
           <Route path="team" element={<Users />} />
           <Route path="team/:id" element={<UserDetails />} />
           <Route path="company" element={<CompanyDetails />} />
-          <Route path="company/messages" element={<CompanyMessagesPage />} />
-          <Route path="whatsapp/inbox" element={<WhatsAppInboxPage />} />
-          <Route path="automations" element={<RequireModule module="automations"><AutomationsPage /></RequireModule>} />
+          <Route path="company/messages" element={<Moved to="/whatsapp?view=messages" />} />
+          <Route path="whatsapp" element={<WhatsAppPage />} />
+          <Route path="whatsapp/inbox" element={<Moved to="/whatsapp" />} />
+          <Route path="automations" element={<Moved to="/whatsapp?view=automations" />} />
 
           {/* Finance (module; not in V1 by default) */}
           <Route path="finance" element={fin(<Navigate to="/finance/expenses" replace />)} />
@@ -126,10 +124,10 @@ export default function App() {
           <Route path="today/projects/:id/:date" element={<MovedDayPage level="projects" />} />
           <Route path="operations/daily-reports" element={<Moved to="/reports" />} />
           <Route path="operations/issues" element={<Moved to="/issues" />} />
-          <Route path="operations/automations" element={<Moved to="/automations" />} />
-          <Route path="operations/activities" element={<Moved to="/activities" />} />
-          <Route path="operations/gallery" element={<Moved to="/gallery" />} />
-          <Route path="operations/timeline" element={<Moved to="/timeline" />} />
+          <Route path="operations/automations" element={<Moved to="/whatsapp?view=automations" />} />
+          <Route path="operations/activities" element={<Moved to="/site-log" />} />
+          <Route path="operations/gallery" element={<Moved to="/site-log?view=photos" />} />
+          <Route path="operations/timeline" element={<Moved to="/site-log?view=all" />} />
           <Route path="operations/analytics" element={<Moved to="/analytics" />} />
           <Route path="users" element={<Moved to="/team" />} />
           <Route path="users/:id" element={<MovedUser />} />

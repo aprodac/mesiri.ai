@@ -107,7 +107,7 @@ function RowSkeleton() {
 
 // --- Main Page ---
 
-export default function ActivitiesPage() {
+export default function ActivitiesPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { scope } = useScope()
 
   const [activities, setActivities] = React.useState<ActivitySummary[]>([])
@@ -384,11 +384,9 @@ export default function ActivitiesPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
-      <PageHeader
-        title="Activities"
-        subtitle={<>Every work item the sites sent, newest first · {scopeLabel}</>}
-        actions={
+    <div className={embedded ? 'flex flex-col gap-4' : 'mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2'}>
+      {embedded ? (
+        <div className="flex justify-end gap-2 sm:-mt-[52px] sm:self-end">
           <>
             <Button variant="outline" size="sm" className="gap-1.5" onClick={exportCsv} disabled={loading || filteredActivities.length === 0}>
               <Download className="size-4" /> Export CSV
@@ -397,8 +395,23 @@ export default function ActivitiesPage() {
               <RefreshCw className={cn('size-4', loading && 'animate-spin')} />
             </Button>
           </>
-        }
-      />
+        </div>
+      ) : (
+        <PageHeader
+          title="Activities"
+          subtitle={<>Every work item the sites sent, newest first · {scopeLabel}</>}
+          actions={
+            <>
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={exportCsv} disabled={loading || filteredActivities.length === 0}>
+                <Download className="size-4" /> Export CSV
+              </Button>
+              <Button variant="ghost" size="icon" className="size-8" onClick={fetchList} disabled={loading} title="Refresh" aria-label="Refresh">
+                <RefreshCw className={cn('size-4', loading && 'animate-spin')} />
+              </Button>
+            </>
+          }
+        />
+      )}
 
       <StatStrip
         stats={[
