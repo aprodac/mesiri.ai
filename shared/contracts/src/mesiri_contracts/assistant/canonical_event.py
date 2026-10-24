@@ -31,6 +31,7 @@ class CanonicalEventType(str, Enum):
 
     MATERIAL_RECEIPT_REQUESTED = "MaterialReceiptRequested"
     MATERIAL_USAGE_REQUESTED = "MaterialUsageRequested"
+    MATERIAL_TRANSFER_REQUESTED = "MaterialTransferRequested"
     EXPENSE_REQUESTED = "ExpenseRequested"
     EQUIPMENT_USAGE_REQUESTED = "EquipmentUsageRequested"
     LABOUR_ATTENDANCE_REQUESTED = "LabourAttendanceRequested"

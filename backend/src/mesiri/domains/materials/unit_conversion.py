@@ -19,6 +19,9 @@ _FIXED: dict[tuple[str, str], Decimal] = {
     ("kg", "mt"): Decimal("1000"),
     ("kg", "tons"): Decimal("1000"),
     ("cft", "cum"): Decimal("35.3147"),
+    # A brass is 100 cubic feet (2.83168 m³): how sand and metal are bought in Kerala.
+    ("cft", "brass"): Decimal("100"),
+    ("cum", "brass"): Decimal("2.83168"),
 }
 
 #: A cement bag is 50 kg in India (IS 269 packing).

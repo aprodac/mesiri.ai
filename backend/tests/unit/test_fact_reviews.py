@@ -81,6 +81,9 @@ class _Result:
     def all(self):
         return self._rows
 
+    def scalar(self):
+        return self._rows[0] if self._rows else None
+
 
 class _Conn:
     def __init__(self, answers=None):
@@ -249,7 +252,12 @@ def undo_calls(monkeypatch):
     monkeypatch.setattr(
         workforce.PostgresWorkforceReadRepository, "void_attendance_report", void_attendance_report
     )
+    async def reverse_transfer_record(conn, **kwargs):
+        calls.append(("reverse_transfer_record", kwargs))
+        return [uuid.uuid4(), uuid.uuid4()]
+
     monkeypatch.setattr(materials_router, "reverse_material_record", reverse_material_record)
+    monkeypatch.setattr(materials_router, "reverse_transfer_record", reverse_transfer_record)
     return calls
 
 
@@ -277,6 +285,19 @@ async def test_rejecting_a_draft_uses_its_modules_own_undo_then_records_why(fact
         assert undo_calls[0][1]["kind"] == "usage"
     [row] = conn.appended()
     assert (row["state"], row["note"]) == (REJECTED, "wrong site")
+
+
+async def test_rejecting_a_transfers_outflow_takes_back_both_halves(undo_calls):
+    transfer_id = uuid.uuid4()
+    conn = _conn(latest_state=DRAFT)
+    conn.answers["SELECT transfer_id FROM material_usage"] = _Result([transfer_id])
+
+    await PostgresFactReviewRepository(conn).reject(
+        organization_id=ORG, fact_type=fact_review.MATERIAL_USAGE, fact_id=FACT, actor_user_id=None, reason="wrong"
+    )
+
+    assert [name for name, _ in undo_calls] == ["reverse_transfer_record"]
+    assert undo_calls[0][1]["transfer_id"] == transfer_id
 
 
 async def test_a_reason_is_required_to_reject(undo_calls):

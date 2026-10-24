@@ -32,6 +32,11 @@ from mesiri.domains.materials.responses import (
     MaterialUsageListResponse,
     MaterialUsageResponse,
 )
+from mesiri.domains.materials.transfers import (
+    MaterialRuleError,
+    assert_no_opening_stock,
+    record_transfer,
+)
 from mesiri.domains.materials.validation import (
     ADJUSTMENT_REASONS,
     ELEVATED_REASONS,
@@ -746,40 +751,12 @@ async def _assert_no_opening_stock(
     site_id: uuid.UUID | None,
     material: dict,
 ) -> None:
-    """Opening stock is entered once per site+material (BE-12). A second one
-    would count what was on site twice; the fix for a wrong figure is to
-    correct the first entry or post an adjustment. A corrected (reversed)
-    opening entry no longer counts, so it can be entered again.
-
-    Takes the same per-site+material lock as the outflow stock guard, so two
-    people entering opening stock at once cannot both pass."""
-    await PostgresMaterialReadRepository(conn).lock_stock_for_update(site_id, material["id"])
-    existing = (
-        await conn.execute(
-            text(
-                "SELECT r.occurred_date FROM material_receipts r "
-                "WHERE r.organization_id = :org_id AND r.material_id = :material_id "
-                "AND r.site_id IS NOT DISTINCT FROM CAST(:site_id AS uuid) "
-                "AND r.movement_reason = :reason "
-                "AND NOT EXISTS (SELECT 1 FROM material_usage u WHERE u.reverses_movement_id = r.id) "
-                "LIMIT 1"
-            ),
-            {
-                "org_id": organization_id,
-                "material_id": material["id"],
-                "site_id": site_id,
-                "reason": OPENING_STOCK,
-            },
-        )
-    ).first()
-    if existing is not None:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Opening stock for {material['name']} at this site was already entered "
-                f"(dated {existing[0]}). Correct that entry, or record an adjustment."
-            ),
-        )
+    """Opening stock is entered once per site+material (BE-12); the rule lives
+    in ``transfers.py`` so the WhatsApp save applies the same one."""
+    try:
+        await assert_no_opening_stock(conn, organization_id, site_id, material)
+    except MaterialRuleError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
 @router.post("/inflows", status_code=201)
@@ -1425,110 +1402,29 @@ async def create_transfer(
         conn, org_id, body.material_id, body.unit_id
     )
 
-    if not body.allow_negative:
-        read_repo = PostgresMaterialReadRepository(conn)
-        await read_repo.lock_stock_for_update(body.from_site_id, material["id"])
-        available = await read_repo.get_available_stock(org_id, body.from_site_id, material["id"])
-        if body.quantity > available:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "message": (
-                        f"Only {available} {unit['code']} of {material['name']} "
-                        f"at the sending site, but {body.quantity} was entered."
-                    ),
-                    "available": str(available),
-                    "requested": str(body.quantity),
-                    "unit": unit["code"],
-                    "material_name": material["name"],
-                },
-            )
-
-    transfer_id = uuid.uuid4()
-    outflow_id = uuid.uuid4()
-    inflow_id = uuid.uuid4()
-    notes = body.notes.strip() if body.notes else None
-    occurred_at = datetime.datetime.combine(body.occurred_date, datetime.time.min)
-    common = {
-        "organization_id": org_id,
-        "material_name": material["name"],
-        "quantity": body.quantity,
-        "unit": unit["code"],
-        "unit_id": unit["id"],
-        "occurred_date": body.occurred_date,
-        "notes": notes,
-        "material_id": material["id"],
-        "created_by": auth_context.user_id,
-        "transfer_id": transfer_id,
-    }
-    await conn.execute(
-        text(
-            "INSERT INTO material_usage "
-            "(id, organization_id, project_id, site_id, material_name, quantity, unit, unit_id, "
-            "work_item, occurred_date, occurred_date_source, source, movement_reason, notes, "
-            "material_id, created_by, transfer_id) "
-            "VALUES (:id, :organization_id, :project_id, :site_id, :material_name, "
-            ":quantity, :unit, :unit_id, NULL, :occurred_date, 'reported', 'web', "
-            "'TRANSFER_OUT', :notes, :material_id, :created_by, :transfer_id)"
-        ),
-        {**common, "id": outflow_id, "project_id": from_project_id, "site_id": body.from_site_id},
-    )
-    await conn.execute(
-        text(
-            "INSERT INTO material_receipts "
-            "(id, organization_id, project_id, site_id, material_name, quantity, unit, unit_id, "
-            "supplier, occurred_date, occurred_date_source, source, movement_reason, notes, "
-            "material_id, created_by, transfer_id) "
-            "VALUES (:id, :organization_id, :project_id, :site_id, :material_name, "
-            ":quantity, :unit, :unit_id, NULL, :occurred_date, 'reported', 'web', "
-            "'TRANSFER_IN', :notes, :material_id, :created_by, :transfer_id)"
-        ),
-        {**common, "id": inflow_id, "project_id": to_project_id, "site_id": body.to_site_id},
-    )
-    for movement_type, source_type, source_id, project_id, site_id in (
-        ("ISSUE", "material_usage", outflow_id, from_project_id, body.from_site_id),
-        ("RECEIPT", "material_receipt", inflow_id, to_project_id, body.to_site_id),
-    ):
-        await post_material_movement(
+    try:
+        ids = await record_transfer(
             conn,
-            movement_type=movement_type,
-            material_id=material["id"],
-            unit_id=unit["id"],
-            quantity=body.quantity,
             organization_id=org_id,
-            project_id=project_id,
-            site_id=site_id,
-            occurred_at=occurred_at,
-            source_type=source_type,
-            source_id=source_id,
-            recorded_by_user_id=auth_context.user_id,
+            user_id=auth_context.user_id,
+            material=material,
+            unit=unit,
+            from_project_id=from_project_id,
+            from_site_id=body.from_site_id,
+            to_project_id=to_project_id,
+            to_site_id=body.to_site_id,
+            quantity=body.quantity,
+            occurred_date=body.occurred_date,
+            notes=body.notes,
+            allow_negative=body.allow_negative,
+            publish_event=_publish_outbox_event,
         )
-    event = {
-        "material_name": material["name"],
-        "quantity": str(body.quantity),
-        "unit": unit["code"],
-        "occurred_date": body.occurred_date.isoformat(),
-        "occurred_date_source": "reported",
-        "transfer_id": str(transfer_id),
-    }
-    await _publish_outbox_event(
-        conn,
-        aggregate_type="material_usage",
-        aggregate_id=outflow_id,
-        event_type="MaterialUsed",
-        payload={**event, "movement_reason": "TRANSFER_OUT"},
-    )
-    await _publish_outbox_event(
-        conn,
-        aggregate_type="material_receipt",
-        aggregate_id=inflow_id,
-        event_type="MaterialReceived",
-        payload={**event, "movement_reason": "TRANSFER_IN"},
-    )
+    except MaterialRuleError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     result = {
-        "id": transfer_id,
-        "outflow_id": outflow_id,
-        "inflow_id": inflow_id,
+        "id": ids.transfer_id,
+        "outflow_id": ids.outflow_id,
+        "inflow_id": ids.inflow_id,
         "status": "success",
     }
     if idempotency_key:
@@ -1594,7 +1490,32 @@ async def reverse_transfer(
     both sites. Never one half alone."""
     if not role_can_adjust(auth_context.role):
         raise HTTPException(status_code=403, detail="Not authorized to correct movements")
-    org_id = auth_context.organization_id
+    correction_ids = await reverse_transfer_record(
+        conn,
+        transfer_id=transfer_id,
+        organization_id=auth_context.organization_id,
+        user_id=auth_context.user_id,
+        reason_note=body.reason_note,
+        occurred_date=body.occurred_date,
+        authorize=lambda original: _authorize_write(
+            auth_context, original["project_id"], original["site_id"]
+        ),
+    )
+    return {"id": transfer_id, "correction_ids": correction_ids, "status": "success"}
+
+
+async def reverse_transfer_record(
+    conn: AsyncConnection,
+    *,
+    transfer_id: uuid.UUID,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID | None,
+    reason_note: str | None,
+    occurred_date: datetime.date | None = None,
+    authorize: Callable[[dict], None] | None = None,
+) -> list[uuid.UUID]:
+    """Reverse both halves of a transfer together (never one alone) -- the one
+    implementation behind the web route and a rejected WhatsApp draft."""
     halves = (
         await conn.execute(
             text(
@@ -1604,7 +1525,7 @@ async def reverse_transfer(
                 "SELECT 'receipt' AS kind, id FROM material_receipts "
                 "WHERE organization_id = :org_id AND transfer_id = :transfer_id"
             ),
-            {"org_id": org_id, "transfer_id": transfer_id},
+            {"org_id": organization_id, "transfer_id": transfer_id},
         )
     ).all()
     if not halves:
@@ -1617,17 +1538,15 @@ async def reverse_transfer(
                 conn,
                 kind=kind,
                 record_id=record_id,
-                organization_id=org_id,
-                user_id=auth_context.user_id,
-                reason_note=body.reason_note,
-                occurred_date=body.occurred_date,
-                authorize=lambda original: _authorize_write(
-                    auth_context, original["project_id"], original["site_id"]
-                ),
+                organization_id=organization_id,
+                user_id=user_id,
+                reason_note=reason_note,
+                occurred_date=occurred_date,
+                authorize=authorize,
                 transfer_half=True,
             )
         )
-    return {"id": transfer_id, "correction_ids": correction_ids, "status": "success"}
+    return correction_ids
 
 
 @contextlib.contextmanager

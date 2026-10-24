@@ -568,6 +568,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         {
             DraftActionType.RECORD_MATERIAL_RECEIPT: material_dispatcher,
             DraftActionType.RECORD_MATERIAL_USAGE: material_dispatcher,
+            DraftActionType.TRANSFER_MATERIAL: material_dispatcher,
             DraftActionType.RECORD_EXPENSE: expense_dispatcher,
             DraftActionType.MANAGE_MONEY_ACCOUNT: account_admin_dispatcher,
             DraftActionType.TRANSFER_MONEY: transfer_dispatcher,

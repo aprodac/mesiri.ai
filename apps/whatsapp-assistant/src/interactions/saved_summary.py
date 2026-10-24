@@ -111,6 +111,18 @@ def summarise_draft(draft: DraftActionV2 | Any) -> str | None:
         if line and not _text(fields.get("progress_percent")) and kind and shown:
             return f"{line} ({kind})"
         return line
+    if action is DraftActionType.TRANSFER_MATERIAL:
+        material = _title(fields.get("material_name")) or "Material"
+        qty = " ".join(p for p in (_num(fields.get("quantity")), _text(fields.get("unit"))) if p)
+        sites = " → ".join(p for p in (_text(fields.get("from_site_name")), _text(fields.get("to_site_name"))) if p)
+        head = f"Transfer: {material} {qty}".strip()
+        return f"{head} · {sites}" if sites else head
+    if action is DraftActionType.RECORD_MATERIAL_RECEIPT and fields.get("movement_reason") == "OPENING_STOCK":
+        material = _title(fields.get("material_name")) or "Material"
+        qty = " ".join(p for p in (_num(fields.get("quantity")), _text(fields.get("unit"))) if p)
+        site = _text(fields.get("site_label"))
+        line = f"Opening stock: {material} {qty}".strip()
+        return f"{line} ({site})" if site else line
     if action in (DraftActionType.RECORD_MATERIAL_RECEIPT, DraftActionType.RECORD_MATERIAL_USAGE):
         material = _title(fields.get("material_name")) or "Material"
         qty = " ".join(p for p in (_num(fields.get("quantity")), _text(fields.get("unit"))) if p)

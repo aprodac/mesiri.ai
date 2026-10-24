@@ -370,9 +370,12 @@ def choose(question: str, options: list[str], arg: str, *, note: str = "") -> Sa
     """The sender must choose (ARCH-04): the model is told, and the options
     go out as buttons under its question."""
     shown = list(options)[:10]
+    # A name can hold a comma ("Green Villa, Kakkanad"): quoted and separated
+    # by " | " so the model never reads one name as two options.
+    listed = " | ".join(f'"{name}"' for name in shown)
     return Say(
         "choose",
-        f"Not saved yet. {question} Options: {', '.join(shown)}. The options are shown as buttons; "
+        f"Not saved yet. {question} Options: {listed} (names may contain commas). The options are shown as buttons; "
         f"when they answer, call this tool again with that exact {arg}.{note}",
         question=question,
         options=tuple(shown),

@@ -21,11 +21,13 @@ from ..state import WorkflowGraphState
 _ACTION_TYPE_BY_WORKFLOW_KEY: dict[WorkflowKey, DraftActionType] = {
     WorkflowKey.MATERIAL_RECEIPT: DraftActionType.RECORD_MATERIAL_RECEIPT,
     WorkflowKey.MATERIAL_USAGE: DraftActionType.RECORD_MATERIAL_USAGE,
+    WorkflowKey.MATERIAL_TRANSFER: DraftActionType.TRANSFER_MATERIAL,
 }
 
 _ACTION_LABEL: dict[DraftActionType, str] = {
     DraftActionType.RECORD_MATERIAL_RECEIPT: "Material Receipt",
     DraftActionType.RECORD_MATERIAL_USAGE: "Material Usage",
+    DraftActionType.TRANSFER_MATERIAL: "Material Transfer",
 }
 
 
@@ -39,6 +41,7 @@ def build_draft(state: WorkflowGraphState) -> dict:
     # business field, so it must never appear as a line in the saved draft
     # or the confirmation text's field list.
     fields.pop("available_stock", None)
+    fields.pop("no_opening_stock", None)
     draft = DraftActionV2(
         draft_id=new_id("draft"),
         correlation_id=state["correlation_id"],
@@ -99,6 +102,8 @@ def request_confirmation(state: WorkflowGraphState) -> dict:
     boundary once those requirements arrive)."""
     draft: DraftActionV2 = state["draft_action"]
     label = _ACTION_LABEL[draft.action_type]
+    if draft.fields.get("movement_reason") == "OPENING_STOCK":
+        label = "Opening Stock"
     lines = ["*Confirm this record?*", "", f"📦 {label}"]
     date_line = _date_line(draft.fields)
     if date_line:
@@ -114,6 +119,9 @@ def request_confirmation(state: WorkflowGraphState) -> dict:
             quantity = int(quantity)
         shown["quantity"] = f"{quantity} {unit}"
     lines.extend(field_lines(shown))
+    if draft.action_type is DraftActionType.TRANSFER_MATERIAL:
+        lines.append(f"   • From: {draft.fields.get('from_site_name') or 'this site'}")
+        lines.append(f"   • To: {draft.fields.get('to_site_name') or ''}")
     warning = _low_stock_warning(state, draft)
     if warning:
         lines.append("")

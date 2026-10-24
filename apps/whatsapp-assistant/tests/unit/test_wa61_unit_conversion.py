@@ -60,7 +60,7 @@ async def test_a_conversion_that_makes_a_fraction_of_bricks_is_asked_not_saved()
     assert fields == {"quantity": 1, "unit": "load"}
     text = ask_amount_text(BRICKS, fields, fit, role="ADMIN")
     assert "can't be right" in text
-    assert "How many Numbers is 1 load of Holobricks" in text
+    assert "How many nos is 1 load of Holobricks" in text
 
 
 async def test_fractions_of_a_measured_unit_are_fine():
@@ -72,4 +72,4 @@ async def test_fractions_of_a_measured_unit_are_fine():
 def test_the_question_is_asked_the_way_people_know_it():
     fit = UnitFit("mismatch", stock_unit=NOS, reported_unit=LOAD)
     text = ask_amount_text(BRICKS, {"quantity": 1, "unit": "load"}, fit, role="ADMIN")
-    assert "How many Numbers is 1 load of Holobricks (or how many load make 1 Numbers)?" in text
+    assert "How many nos is 1 load of Holobricks (or how many load make 1 nos)?" in text

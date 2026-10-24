@@ -133,6 +133,105 @@ side panel with photo history, pour readiness card. Same design system tokens.
 `GET /projects/{id}/progress/building`. Agent tools: `report_element_progress`,
 `send_drawing`.
 
+## Code layout
+
+Mapped against the current code on 24 Oct 2026 (after ARCH-06: the classic pipeline is gone,
+every company runs the agent, and agent tools call services directly).
+
+### Data flow
+
+```
+SETUP (once per project)
+Dashboard upload / WhatsApp PDF
+  → backend drawings API ── stores file, writes DrawingUploaded (outbox)
+  → background job: pdf_reader → domain rules (grid, schedules) → AI cross-check
+  → drafts saved ── reviewer notified
+  → review page → ConfirmSheetReview command
+  → location_nodes (Building → Level → Element) + drawing_elements + work_packages
+  → DrawingElementsConfirmed (outbox)
+
+EVERY DAY
+WhatsApp "B5 poured" + photo
+  → agent → report_element_progress → element_entry.py
+  → backend progress service: activity with location_id + progress_attachments
+  → activity event → DPR, timeline, evening card react
+```
+
+Core rules kept (Core-architecture.md): AI only writes drafts, a person's confirm writes the
+records; business rules in `domains/` with no SQL; every write emits its event through the
+outbox in the same transaction; downstream (timeline, cards) reacts to events; Labour untouched.
+
+### Files by layer
+
+**Shared contracts:** `shared/contracts/src/mesiri_contracts/events/schemas/`: event schemas
+`DrawingUploaded`, `DrawingSheetsExtracted`, `DrawingElementsConfirmed`,
+`ElementProgressRecorded`.
+
+**AI:** `platform/ai/src/mesiri_ai/`: reuse the vision port (page classification) and the
+extraction port (table structuring); add a `drawing_extraction` route in `resolver.py` so the
+control panel picks the model and BE-25 records the cost. If neither port can return a
+schema-bound result from an image, extend the vision port with one method; no new port, no
+second pipeline. Decide during DRW-03's investigation.
+
+**Backend:** `backend/src/mesiri/`
+
+| Where | File | Job |
+|---|---|---|
+| `infrastructure/drawings/` | `pdf_reader.py` | Words, lines and rectangles with positions per page (pdfplumber / pypdfium2) |
+| | `page_render.py` | Page → PNG for review, stored through `infrastructure/objectstorage` |
+| `domains/drawings/` | `grid.py` | Grid bubbles, element labels placed at intersections. Pure, no SQL |
+| | `schedules.py` | Footing / column / slab tables from positioned words |
+| | `elements.py` | Element and element-type rules, step vocabulary per type |
+| | `quantities.py` | Concrete, steel, shuttering formulas |
+| | `router.py`, `responses.py` | API endpoints and shapes (same pattern as `domains/progress/`) |
+| `application/drawings/` | `handlers.py` | Upload, confirm review, fix element: transaction + outbox |
+| | `extraction.py` | Job: reader → domain rules → AI cross-check → drafts |
+| | `repository.py` | Port the application depends on |
+| `application/progress/` | extend `handlers.py` | Record element progress (activity with `location_id`); Phase 9 work-package wiring |
+| `infrastructure/postgres/repositories/` | `drawings.py`, `drawing_execution.py`, `work_packages.py`, `locations.py` | SQL |
+| `migrations/versions/` | `04xx_drawings_register_and_elements.py` | `project_drawings`, `drawing_sheets`, `drawing_elements`; additive; RLS policies (approval) |
+| `http/app.py` | one `include_router` | Wire the drawings router |
+
+The extraction job is triggered by `DrawingUploaded`. Which worker process hosts backend
+jobs today must be checked before DRW-03 places it.
+
+**WhatsApp assistant:** `apps/whatsapp-assistant/src/`
+
+| Where | File | Job |
+|---|---|---|
+| `runtime/agent/tools.py` | add 2 tool specs | `report_element_progress`, `send_drawing` |
+| `runtime/agent/` | `element_entry.py` | Same shape as `site_entry.py`: sender scope → resolve the element among confirmed ones → backend service; `ask_user` buttons when unclear |
+| | `element_ref.py` | Deterministic parser: "B5", "C3 at B3", "B-5 footing", typos |
+| `ingress/` | extend | Inbound PDF document → drawing upload |
+| `channel/cards/` | `plan_svg.py`, `footings.py`, `pinned.py`, `building.py`, `pour_check.py`, `milestone.py` | The five cards on the existing `base.html` + renderer |
+| `runtime/send_pending_notifications.py` | extend | Evening card in the existing evening flow |
+
+Photos were kept out of the agent by the ADR; pinning a photo to an element changes that and
+needs Alan's approval.
+
+**Dashboard:** `apps/dashboard/src/`: `pages/DrawingsPage.tsx` (register, upload),
+`pages/DrawingReviewPage.tsx` (overlay, confirm/fix), `pages/BuildingPage.tsx` plus a plan tab
+in the project page, `components/drawings/` (`plan-svg.tsx`, `element-panel.tsx`,
+`pour-readiness-card.tsx`), additions in `lib/api.ts`.
+
+**Tests and eval:** `backend/tests/unit/drawings/` (grid, schedules, quantities); integration
+tests that RLS blocks other companies on the new tables; `apps/whatsapp-assistant/tests/` for
+`element_entry` with a golden set of real phrasings (as in ARCH-02); `scripts/eval_drawings.py`
+scoring extraction against hand-checked answers. **Customer PDFs never go in the repo** (the
+consultant owns them): keep them in private storage; commit only synthetic samples and the
+expected answers.
+
+### Commit order
+
+1. Tables + `pdf_reader` + grid/schedule rules + eval script (no user-visible change; proves
+   accuracy).
+2. Upload + extraction job + review page.
+3. WhatsApp tool + photo pinning.
+4. Cards + evening card.
+5. Phase 9 stages + pour readiness + materials.
+
+One tracker item per step (DRW-01 to DRW-09), each behind the per-company switch.
+
 ## Risks
 
 | Risk | Mitigation |

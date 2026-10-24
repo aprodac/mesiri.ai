@@ -228,6 +228,8 @@ class InteractionHandler:
                 confirmed_draft.fields.get("quantity"),
                 confirmed_draft.fields.get("unit"),
                 (loaded.state.collected_fields or {}).get("available_stock"),
+                no_opening_stock=bool((loaded.state.collected_fields or {}).get("no_opening_stock")),
+                material=confirmed_draft.fields.get("material_name"),
             )
             if over_stock:
                 note = f"{over_stock}\n{note}"

@@ -14,6 +14,7 @@ from mesiri_contracts.assistant.planner_decision import WorkflowKey
 WORKFLOW_KEY_BY_EVENT: dict[CanonicalEventType, WorkflowKey] = {
     CanonicalEventType.MATERIAL_RECEIPT_REQUESTED: WorkflowKey.MATERIAL_RECEIPT,
     CanonicalEventType.MATERIAL_USAGE_REQUESTED: WorkflowKey.MATERIAL_USAGE,
+    CanonicalEventType.MATERIAL_TRANSFER_REQUESTED: WorkflowKey.MATERIAL_TRANSFER,
     CanonicalEventType.EXPENSE_REQUESTED: WorkflowKey.EXPENSE_SUBMIT,
     CanonicalEventType.EQUIPMENT_USAGE_REQUESTED: WorkflowKey.EQUIPMENT_USAGE,
     CanonicalEventType.LABOUR_ATTENDANCE_REQUESTED: WorkflowKey.LABOUR_ATTENDANCE,

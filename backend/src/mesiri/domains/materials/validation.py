@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from mesiri_contracts.application.commands.material import (
     RecordMaterialReceiptCommand,
+    RecordMaterialTransferCommand,
     RecordMaterialUsageCommand,
 )
 
@@ -42,10 +43,29 @@ def validate_usage(cmd: RecordMaterialUsageCommand) -> list[str]:
     return reasons
 
 
-def validate(cmd: RecordMaterialReceiptCommand | RecordMaterialUsageCommand) -> list[str]:
+def validate_transfer(cmd: RecordMaterialTransferCommand) -> list[str]:
+    """Return violation reasons; empty list means valid."""
+    reasons = validate_usage(cmd)  # type: ignore[arg-type]  # same shared fields
+    if cmd.to_project_id is None or cmd.to_site_id is None:
+        reasons.append("the receiving site is not resolved")
+    elif cmd.to_site_id == cmd.site_id:
+        reasons.append("A transfer needs two different sites")
+    if cmd.site_id is None:
+        reasons.append("the sending site is not resolved")
+    return reasons
+
+
+def validate(
+    cmd: RecordMaterialReceiptCommand | RecordMaterialUsageCommand | RecordMaterialTransferCommand,
+) -> list[str]:
     """Single dispatch entry point the Handler calls — before any transaction opens."""
     if isinstance(cmd, RecordMaterialReceiptCommand):
-        return validate_receipt(cmd)
+        reasons = validate_receipt(cmd)
+        if cmd.movement_reason not in (None, OPENING_STOCK):
+            reasons.append(f"movement reason {cmd.movement_reason} cannot be recorded this way")
+        return reasons
+    if isinstance(cmd, RecordMaterialTransferCommand):
+        return validate_transfer(cmd)
     return validate_usage(cmd)
 
 

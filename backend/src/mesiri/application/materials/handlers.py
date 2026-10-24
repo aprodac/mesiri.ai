@@ -61,6 +61,9 @@ class ExecuteConfirmedMaterialActionHandler:
                         }
                     )
 
+            if not reasons:
+                reasons = await self._repo.check_rules(conn, cmd)
+
             if reasons:
                 return await self._repo.persist_rejection(conn, cmd, reasons)
             return await self._repo.persist_success(conn, cmd)

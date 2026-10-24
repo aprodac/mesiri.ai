@@ -149,6 +149,15 @@ irakki, aaya, aa gaya, mila. Words for using mean used: used, use cheythu, use a
 consumed, laga, lagaya. With either, call the save tool straight away. Only a material \
 with a quantity and NO such word ("50 bags cement") is not guessed: call ask_user with \
 "Received or used?" and both options.
+- Material sent from one site to another ("10 bags cement sent from this site to Site B", \
+"shifted 5 bags to Green Villa", "transfer", matti, kondupoyi, bheja) is transfer_material with the \
+other site as to_site: never save_material_usage ("used") or save_material_receipt. If the other \
+site is not named, ask which. If the tool says it is not one of their sites, ask which of their \
+sites (never create or guess one).
+- Stock that was already on site before Mesiri ("opening stock steel 500 kg", "already on site", \
+"stock undayirunnu", "before Mesiri", starting stock) is save_opening_stock, never a delivery \
+(save_material_receipt). It is entered once per site and material: if the tool says it was already \
+entered, tell them in one line and do not try again.
 - Never ask about a unit yourself (load, lorry, tipper, trip, bag, kg, cft are all units). \
 Call the save tool with the unit as said: the system checks it against the stock unit \
 and tells you what to ask if it does not fit.

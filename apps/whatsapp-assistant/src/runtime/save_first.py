@@ -56,6 +56,7 @@ SAVE_FIRST_KEYS: frozenset[WorkflowKey] = frozenset(
         WorkflowKey.LABOUR_ATTENDANCE,
         WorkflowKey.MATERIAL_RECEIPT,
         WorkflowKey.MATERIAL_USAGE,
+        WorkflowKey.MATERIAL_TRANSFER,
         WorkflowKey.SITE_ISSUE_REPORT,
     }
 )
@@ -67,6 +68,8 @@ FACT_TYPE_BY_ACTION: dict[DraftActionType, str] = {
     DraftActionType.RECORD_LABOUR_ATTENDANCE: "labour_report",
     DraftActionType.RECORD_MATERIAL_RECEIPT: "material_receipt",
     DraftActionType.RECORD_MATERIAL_USAGE: "material_usage",
+    # The outflow is the reviewable fact: rejecting it takes back both halves.
+    DraftActionType.TRANSFER_MATERIAL: "material_usage",
     DraftActionType.RECORD_SITE_ISSUE: "site_issue",
 }
 
@@ -131,8 +134,18 @@ async def company_saves_first(
     return settings_spec.saves_first(stored)
 
 
+#: [103]: under the over-stock line when no opening stock was ever entered.
+OPENING_STOCK_HINT = 'If there was stock before Mesiri, send "opening stock {material} 500 {unit}".'
+
+
 def over_stock_note(
-    action_type: DraftActionType, quantity: Any, unit: Any, available_stock: Any
+    action_type: DraftActionType,
+    quantity: Any,
+    unit: Any,
+    available_stock: Any,
+    *,
+    no_opening_stock: bool = False,
+    material: Any = None,
 ) -> str | None:
     """WA-03: the line saying a saved usage is more than the known stock, or
     None when it is not (or the figures can't be read)."""
@@ -145,7 +158,11 @@ def over_stock_note(
     if used <= available:
         return None
     unit_text = f" {unit}" if unit else ""
-    return OVER_STOCK_NOTE.format(available=f"{available:g}{unit_text}")
+    note = OVER_STOCK_NOTE.format(available=f"{available:g}{unit_text}")
+    if no_opening_stock:
+        name = " ".join(str(material or "").casefold().split()) or "cement"
+        note += "\n" + OPENING_STOCK_HINT.format(material=name, unit=unit or "bags")
+    return note
 
 
 def _norm(value: Any) -> str:

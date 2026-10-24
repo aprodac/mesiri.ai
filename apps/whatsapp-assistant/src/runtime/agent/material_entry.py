@@ -33,8 +33,9 @@ from channel.receipt.data import company_zone
 from mesiri_contracts.assistant.canonical_event import CanonicalEventType
 from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.planner_decision import WorkflowKey
+from mesiri.domains.materials.validation import OPENING_STOCK, role_can_adjust
 from runtime.entity_resolution.material_resolution import classify_material_matches
-from runtime.material_units import ask_amount_text, fit_stock_unit
+from runtime.material_units import ask_amount_text, conversion_question, fit_stock_unit
 
 from .entry_base import (
     SCOPE_KEYS,
@@ -53,7 +54,15 @@ _MODULE = "materials"
 _BY_DIRECTION = {
     "received": (CanonicalEventType.MATERIAL_RECEIPT_REQUESTED, WorkflowKey.MATERIAL_RECEIPT),
     "used": (CanonicalEventType.MATERIAL_USAGE_REQUESTED, WorkflowKey.MATERIAL_USAGE),
+    # [103]: stock that was on site before Mesiri is a receipt with its own reason.
+    "opening_stock": (CanonicalEventType.MATERIAL_RECEIPT_REQUESTED, WorkflowKey.MATERIAL_RECEIPT),
+    "transfer": (CanonicalEventType.MATERIAL_TRANSFER_REQUESTED, WorkflowKey.MATERIAL_TRANSFER),
 }
+
+#: [103]: the last choice of a long material list: they type the name instead.
+SOMETHING_ELSE = "Something else"
+#: WhatsApp lists hold ten rows: nine materials and "Something else".
+LIST_MATERIALS = 9
 
 
 @dataclass(slots=True)
@@ -78,11 +87,27 @@ class MaterialEntry(EntryScope):
             return Say("error", "Not saved: the material and a quantity above zero are needed.")
         fields["quantity"] = quantity
 
-        scoped = await self.settle(message, understanding, candidate, module=_MODULE)
+        opening = direction == "opening_stock"
+        if opening and not role_can_adjust(str(getattr(self.actor, "role", "") or "")):
+            # The web's rule (BE-12): stock that changes without a delivery behind it.
+            return Say(
+                "info",
+                "Not saved: opening stock can only be entered by an admin or project manager.",
+            )
+        transfer = direction == "transfer"
+        to_name = str(fields.pop("to_site_name", "") or "").strip()
+
+        scoped = await self.settle(message, understanding, candidate, module=_MODULE, site_required=transfer)
         if isinstance(scoped, Say):
             return scoped
         ctx, organization_id = scoped.ctx, scoped.organization_id
         project_id, site_id = scoped.project_id, scoped.site_id
+        destination: dict[str, Any] = {}
+        if transfer:
+            placed = self._destination(scoped, to_name)
+            if isinstance(placed, Say):
+                return placed
+            destination = placed
 
         found = await self._material(organization_id, str(fields["material_name"]), fields, ctx, message)
         if not isinstance(found, dict):
@@ -100,8 +125,31 @@ class MaterialEntry(EntryScope):
             correlation_id=message.correlation_id,
         )
         if fit.kind == "mismatch":
-            return Say("info", ask_amount_text(material, fields, fit, role=getattr(self.actor, "role", None)))
+            role = getattr(self.actor, "role", None)
+            text = ask_amount_text(material, fields, fit, role=role)
+            ask = conversion_question(material, fit, role=role)
+            if ask is None:
+                return Say("info", text)
+            question, options = ask
+            return Say(
+                "choose",
+                f"{text} The question is shown to them"
+                + (f" with buttons {' / '.join(options)}" if options else "")
+                + f': "{question}". When they answer with a number, call set_unit_conversion '
+                "(unit_amount 1, stock_amount that number), then this tool again with their original "
+                "amount and unit. If they pick Other, ask them the number (ask_user, no options).",
+                question=question,
+                options=options,
+            )
 
+        site_name = self._site_name(site_id)
+        if transfer:
+            fields.update(destination)
+            fields["from_site_name"] = site_name
+        elif opening:
+            fields["movement_reason"] = OPENING_STOCK
+            fields["direction"] = "received"
+            fields["site_label"] = site_name
         for key in SCOPE_KEYS:
             fields.pop(key, None)
         # The card's rule: a blank or default "UTC" zone is India, so a 2:45 AM
@@ -111,8 +159,99 @@ class MaterialEntry(EntryScope):
             stock = await self._stock(organization_id, project_id, site_id, fields["material_id"], message)
             if stock is not None:
                 fields["available_stock"] = stock
+                if float(fields["quantity"]) > float(stock) and not await self._has_opening(organization_id, site_id, fields, message):
+                    # [103]: used more than the book says and no starting stock was
+                    # ever entered: the warning points at "opening stock".
+                    fields["no_opening_stock"] = True
 
         return self.ready(scoped, message, event_type, workflow_key, fields)
+
+    def _site_name(self, site_id: Any) -> str:
+        for site in getattr(self.actor, "sites", None) or []:
+            if str(site.id) == str(site_id):
+                return str(site.name)
+        return ""
+
+    def _destination(self, scoped: Any, said: str) -> dict[str, Any] | Say:
+        """The site it went to, only ever one of the sender's own sites (their
+        company's, by the same list the pickers use); anything else is asked
+        as a list, never guessed."""
+        sites = list(getattr(self.actor, "sites", None) or [])
+        projects = {str(p.id): str(p.name) for p in getattr(self.actor, "projects", None) or []}
+        others = [s for s in sites if str(s.id) != str(scoped.site_id)]
+        names = [str(s.name) for s in sites]
+        # Two sites with one name are told apart by their project.
+        labels = {
+            str(s.id): (
+                f"{s.name} ({projects.get(str(s.project_id), '')})"
+                if names.count(str(s.name)) > 1 and projects.get(str(s.project_id))
+                else str(s.name)
+            )
+            for s in sites
+        }
+        key = " ".join(said.casefold().split())
+        hit = [s for s in others if key and " ".join(labels[str(s.id)].casefold().split()) == key]
+        if not hit and key:
+            hit = [s for s in others if " ".join(str(s.name).casefold().split()) == key]
+        if len(hit) != 1:
+            if not others:
+                return Say("info", "Not saved: you have no other site to send it to. Your admin can add one.")
+            question = "Which site did it go to?" if not said else f'"{said}" isn\'t one of your sites. Which site did it go to?'
+            return choose(question, [labels[str(s.id)] for s in others], "to_site")
+        site = hit[0]
+        return {
+            "to_site_id": str(site.id),
+            "to_project_id": str(site.project_id),
+            "to_site_name": str(site.name),
+        }
+
+    async def _has_opening(self, organization_id: str, site_id: Any, fields: dict, message: Any) -> bool:
+        """Whether opening stock was ever entered for this material here. A
+        failed lookup says yes: the hint is never worth a wrong line."""
+        check = getattr(self.catalog_query, "has_opening_stock", None)
+        if check is None:
+            return True
+        try:
+            return bool(
+                await check(
+                    organization_id=organization_id,
+                    site_id=str(site_id) if site_id else None,
+                    material_id=str(fields["material_id"]),
+                )
+            )
+        except Exception:  # noqa: BLE001
+            _log.warning("material_entry.opening_lookup_failed correlation_id=%s", message.correlation_id, exc_info=True)
+            return True
+
+    async def _pick_material(self, organization_id: str, question: str, name: str, note: str = "") -> Say:
+        """The material to choose from. A company with more than ten materials
+        gets the nine closest to what was typed (recent use first) and
+        "Something else": a WhatsApp list holds ten rows, and the first ten
+        alphabetically was all anyone saw."""
+        listed: list[dict] = []
+        total = 0
+        try:
+            closest = getattr(self.catalog_query, "closest_materials", None)
+            if closest is not None:
+                listed, total = await closest(organization_id=organization_id, name=name, limit=LIST_MATERIALS)
+            else:
+                listed = await self.catalog_query.list_active_materials(organization_id=organization_id)
+                total = len(listed)
+        except Exception:  # noqa: BLE001
+            listed = []
+        if not listed:
+            return Say(
+                "info",
+                f'Not saved: "{name}" is not in the material list, and the list is empty. An admin adds materials on the dashboard.',
+            )
+        names = [m["name"] for m in listed]
+        if total > len(names) or total > 10:
+            names = names[:LIST_MATERIALS] + [SOMETHING_ELSE]
+            note += (
+                f' If they pick "{SOMETHING_ELSE}", ask them to type the material name (ask_user, '
+                "no options), then call this tool again with what they typed."
+            )
+        return choose(question, names, "material", note=note)
 
     async def _material(
         self, organization_id: str, name: str, fields: dict, ctx: Any, message: Any
@@ -139,6 +278,8 @@ class MaterialEntry(EntryScope):
             return material
         if isinstance(outcome, Ambiguous):
             names = [c.display_name for c in outcome.candidates]
+            if len(names) > 10:
+                return await self._pick_material(organization_id, f'Which material is "{name}"?', name)
             return choose(f'Which material is "{name}"?', names, "material")
 
         if getattr(message, "modality", None) in (InputModality.IMAGE, InputModality.DOCUMENT):
@@ -162,16 +303,10 @@ class MaterialEntry(EntryScope):
                 question=f'"{name}" isn\'t in your material list yet. Add it as a new material?',
                 options=("Yes, add it", "No"),
             )
-        try:
-            listed = await self.catalog_query.list_active_materials(organization_id=organization_id)
-        except Exception:  # noqa: BLE001
-            listed = []
-        if not listed:
-            return Say("info", f'Not saved: "{name}" is not in the material list, and the list is empty. An admin adds materials on the dashboard.')
-        return choose(
+        return await self._pick_material(
+            organization_id,
             f'"{name}" isn\'t in the material list. Which one is it?',
-            [m["name"] for m in listed],
-            "material",
+            name,
             note=" A new material is added by an admin on the dashboard.",
         )
 
@@ -236,7 +371,7 @@ class MaterialEntry(EntryScope):
                 f'Not saved yet: which unit is "{name}" counted in? Ask, then call this tool again with '
                 "new_material true and that unit.",
                 question=f'Which unit is "{name}" counted in?',
-                options=("Bags", "Kg", "Nos", "Cum", "Litres"),
+                options=("Bags", "Kg", "Nos", "Cum", "Cft", "Tons", "Litres", "Load"),
             )
         created = await self.catalog_query.create_material(
             organization_id=organization_id, name=name, unit_id=str(unit["id"]), created_by=str(getattr(self.actor, "user_id", None) or ctx.user_id)

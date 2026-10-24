@@ -41,6 +41,9 @@ class RecordMaterialReceiptCommand(BaseModel):
     quantity: Decimal
     unit: str
     supplier: str | None = None
+    #: None is an ordinary delivery. "OPENING_STOCK" is what was already on
+    #: site before Mesiri (entered once per site + material).
+    movement_reason: str | None = None
 
     # Populated once the WhatsApp assistant's deterministic resolution gates
     # (or the Handler's defense-in-depth resolver, see application/materials/
@@ -74,6 +77,37 @@ class RecordMaterialUsageCommand(BaseModel):
     quantity: Decimal
     unit: str
     work_item: str | None = None
+
+    material_id: CanonicalUuid | None = None
+    unit_id: CanonicalUuid | None = None
+
+    occurred_date: date
+    occurred_date_source: str = "inferred_at_confirmation"
+
+    created_by: CanonicalUuid
+
+    model_config = {"extra": "forbid"}
+
+
+class RecordMaterialTransferCommand(BaseModel):
+    """Record that material moved from one site to another (``project_id`` /
+    ``site_id`` is the sending site)."""
+
+    version: str = CONTRACT_VERSION
+
+    command_id: str
+    idempotency_key: str
+    correlation_id: str
+
+    organization_id: CanonicalUuid
+    project_id: CanonicalUuid | None
+    site_id: CanonicalUuid | None
+    to_project_id: CanonicalUuid | None = None
+    to_site_id: CanonicalUuid | None = None
+
+    material_name: str
+    quantity: Decimal
+    unit: str
 
     material_id: CanonicalUuid | None = None
     unit_id: CanonicalUuid | None = None
