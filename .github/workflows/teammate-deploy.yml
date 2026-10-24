@@ -123,7 +123,7 @@ jobs:
             chown -R root:root /opt/teammate/brain/hooks && chmod 755 /opt/teammate/brain/hooks/pre-push
             {
               printf 'TEAMMATE_API_TOKEN=%s\nTEAMMATE_API=http://127.0.0.1:8790\nTEAMMATE_BRAIN_PORT=8791\n' "$TEAMMATE_API_TOKEN"
-              printf 'TEAMMATE_BRAIN_PROJECTS=mercon=aprodac/MERCON@ilan,mesiri=StarShape-in/mesiri.ai@main\n'
+              printf 'TEAMMATE_BRAIN_PROJECTS=mercon=aprodac/MERCON@ilan,mesiri=aprodac/mesiri.ai@main\n'
               # Mercon dev sites and the Mesiri dashboard (Mesiri has no dev site); never this server's own
               # local addresses. Screenshots only look, signed in with a test account, never a real user's.
               printf 'TEAMMATE_BRAIN_SCREENSHOT_HOSTS=dev.mercon.tech,track-dev.mercon.tech,app.whatsapp.mesiri.ai\n'

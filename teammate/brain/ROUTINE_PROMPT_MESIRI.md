@@ -1,7 +1,7 @@
 # Cloud routine for approved Mesiri work (TM-09 + plan 25)
 
 The routine `trig_018ZvNwJZNkiC6XLg8vvJnvS` at claude.ai/code/routines (rename it to
-**Mesiri dev (from WhatsApp)**). Repository `StarShape-in/mesiri.ai`, environment `Teammate`, API trigger,
+**Mesiri dev (from WhatsApp)**). Repository `aprodac/mesiri.ai`, environment `Teammate`, API trigger,
 connectors off. The environment must be able to install the backend and dashboard dependencies
 (Python 3 with pip / uv, Node with npm), or the checks can't run.
 
