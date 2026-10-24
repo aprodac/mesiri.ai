@@ -160,6 +160,23 @@ Rules:
   project green, a site orange); on the right, today's date with the drafts
   count, and the open-issues button with its count.
 
+### Charts (WEB-24, Analytics)
+
+Follow the dataviz method: pick the form first, colour last, and **run the
+validator** on any multi-colour palette instead of judging by eye.
+
+- **One series = one hue**: `--chart-2` (navy; light blue in dark mode).
+  Thin bars, 4px rounded top, horizontal gridlines only, axes muted.
+- **Issue severity in charts** is an *ordinal* one-hue ramp, not four
+  hues: `--sev-critical`, `--sev-high`, `--sev-medium`, `--sev-low`
+  (validated `--ordinal`, light and dark; darker = worse on white, brighter =
+  worse on dark). The text chips elsewhere keep `severityChip()`.
+- Every chart has a **tooltip** on each mark and a **Table** view of the same
+  numbers (the accessible view); a stacked chart has a legend.
+- Figures come from the server, aggregated over the whole range — never the
+  first page of a list counted in the browser. No sparkline or trend that is
+  not real data.
+
 ## 4. Numbers
 
 - **Stat strip** (`StatStrip`): 3–5 key numbers in **one** bordered strip
