@@ -57,7 +57,7 @@ Submitted on the **Mesiri** WhatsApp account (named Paraclete until 24 Oct) (ID 
 | `mesiri_ops_alert` | In review |
 | `mesiri_dpr_delivery` | In review |
 | `mesiri_dpr_optin` | In review (reworded, see above) |
-| `mesiri_login_code` | Not submitted: Meta said the account "does not have permission" to create Authentication templates. The business portfolio (StarShape, renamed Aprodac on 24 Oct) was not verified. Verification submitted 24 Oct as **APRODAC PRIVATE LIMITED** (matched in Meta's public-records lookup; identity: director Mohammed Sahel; website aprodac.com): **In review**, about two working days. Submit the template once it shows Verified. Until then, code login and web signup answer "not available yet" |
+| `mesiri_login_code` | **Approved (Active)**. Refused at first ("does not have permission") because the business portfolio (StarShape, renamed Aprodac on 24 Oct) was not verified; verified as **APRODAC PRIVATE LIMITED** on 24 Oct (public-records match, director Mohammed Sahel), then submitted and approved at once. Add it to `WHATSAPP_APPROVED_TEMPLATES` to switch code login and web signup on |
 | `mesiri_trial_ending` | Skipped (Ilan, 24 Oct): Meta only accepts it as Marketing; the in-window reminder is enough for now. Owners silent for 24 h get no trial-ending reminder |
 
 ## Templates
