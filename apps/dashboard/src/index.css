@@ -174,3 +174,13 @@
 }
 
 
+
+/* Sidebar scrollbars, one per sidebar theme (see app-sidebar.tsx). */
+.sidebar-scrollbar { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.15) transparent; }
+.sidebar-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
+.sidebar-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 99px; }
+.sidebar-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.28); }
+.sidebar-scrollbar-light { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.12) transparent; }
+.sidebar-scrollbar-light::-webkit-scrollbar { width: 5px; height: 5px; }
+.sidebar-scrollbar-light::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 99px; }
+.sidebar-scrollbar-light::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.22); }

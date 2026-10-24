@@ -36,6 +36,7 @@ import {
   MessageSquare,
   AlertCircle,
   Clock,
+  Palette,
 } from 'lucide-react'
 import { NavLink, Link, useLocation } from 'react-router-dom'
 import {
@@ -57,6 +58,7 @@ import { logout } from '@/lib/api'
 import type { ScopeKind } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
 import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
+import { useSidebarTheme, type SidebarTheme } from '@/lib/sidebar-theme'
 
 // Mirrors backend mesiri/authorization/roles.py EXPENSE_VIEW_ROLES (SEC-01);
 // the API refuses everyone else, this only keeps the link out of their way.
@@ -77,6 +79,7 @@ type NavItem = {
 type NavCategory = {
   title: string
   icon: React.ElementType
+  tone: SectionTone
   items: NavItem[]
   requiredRole?: string
   module?: ModuleKey
@@ -85,6 +88,7 @@ type NavCategory = {
 const OPERATIONS_CATEGORY: NavCategory = {
   title: 'Operations',
   icon: Activity,
+  tone: 'operations',
   items: [
     { title: 'Dashboard', url: '/operations/dashboard', icon: LayoutDashboard },
     { title: 'Activities', url: '/operations/activities', icon: Activity },
@@ -102,6 +106,7 @@ const FINANCE_CATEGORY: NavCategory = {
   title: 'Finance',
   module: 'finance',
   icon: Landmark,
+  tone: 'finance',
   items: [
     { title: 'Overview', url: '/finance/overview', icon: PieChart },
     { title: 'Expenses', url: '/finance/expenses', icon: DollarSign, allowedRoles: EXPENSE_VIEW_ROLES },
@@ -120,6 +125,7 @@ const LABOUR_CATEGORY: NavCategory = {
   title: 'Labour & Workforce',
   module: 'labour',
   icon: HardHat,
+  tone: 'labour',
   items: [
     { title: 'Overview', url: '/labour/overview', icon: PieChart },
     { title: 'Attendance', url: '/labour/attendance', icon: ClipboardCheck },
@@ -135,6 +141,7 @@ const MATERIALS_CATEGORY: NavCategory = {
   title: 'Materials',
   module: 'materials',
   icon: Boxes,
+  tone: 'materials',
   items: [
     { title: 'Overview', url: '/materials/overview', icon: Boxes },
     { title: 'Inventory', url: '/materials/inventory', icon: Warehouse },
@@ -192,14 +199,76 @@ function roleLabel(role: string | undefined): string {
     .join(' ')
 }
 
+// Visual tokens per sidebar theme. Charcoal is the default; Light follows the
+// app's shadcn tokens (so it also darkens correctly in dark mode). `aside` also
+// re-points the --sidebar-* variables, so the shadcn sidebar parts' own hover,
+// active and focus styles match the theme without changing ui/sidebar.tsx.
+const SIDEBAR_THEMES = {
+  charcoal: {
+    aside:
+      'bg-[#3E3C3D] text-[#EEF1F6] [--sidebar:#3E3C3D] [--sidebar-foreground:#EEF1F6] [--sidebar-accent:rgba(255,255,255,0.10)] [--sidebar-accent-foreground:#FFFFFF] [--sidebar-border:rgba(255,255,255,0.06)] [--sidebar-ring:rgba(255,255,255,0.30)]',
+    edge: 'border-white/[0.06]',
+    ring: 'focus-visible:ring-white/30',
+    rowIdle: 'text-white/65 hover:bg-white/[0.06] hover:text-white',
+    rowActive: 'bg-white/[0.10] text-white font-semibold',
+    hoverBg: 'hover:bg-white/[0.06]',
+    label: 'text-white/40',
+    icon: 'text-white/45 group-hover/row:text-white/80',
+    iconActive: 'text-white',
+    iconBtn: 'text-white/40 hover:text-white hover:bg-white/10',
+    divider: 'border-white/[0.06]',
+    guide: 'border-white/10',
+    chevron: 'text-white/35',
+    groupIdle: 'text-white/65 hover:text-white',
+    groupActive: 'text-white font-semibold',
+    card: 'border-white/10 bg-white/[0.06]',
+    brand: 'bg-[#EEF1F6] text-[#3E3C3D]',
+    avatar: 'bg-white/10 text-white',
+    danger: 'hover:text-[#FF9A8B]',
+    name: 'text-white',
+    role: 'text-white/45',
+    scrollbar: 'sidebar-scrollbar',
+  },
+  light: {
+    aside:
+      'bg-[#EEF1F6] text-foreground dark:bg-card [--sidebar:#EEF1F6] dark:[--sidebar:var(--card)] [--sidebar-foreground:var(--foreground)] [--sidebar-accent:#FFFFFF] dark:[--sidebar-accent:var(--muted)] [--sidebar-accent-foreground:var(--foreground)] [--sidebar-border:rgba(0,0,0,0.06)] dark:[--sidebar-border:var(--border)] [--sidebar-ring:var(--ring)]',
+    edge: 'border-black/[0.06] dark:border-border',
+    ring: 'focus-visible:ring-ring',
+    rowIdle: 'text-foreground/70 hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-muted',
+    rowActive: 'bg-white text-foreground font-semibold shadow-xs dark:bg-muted',
+    hoverBg: 'hover:bg-black/[0.04] dark:hover:bg-muted',
+    label: 'text-muted-foreground',
+    icon: 'text-muted-foreground group-hover/row:text-foreground',
+    iconActive: 'text-foreground',
+    iconBtn: 'text-muted-foreground hover:text-foreground hover:bg-white dark:hover:bg-background',
+    divider: 'border-black/[0.06] dark:border-border',
+    guide: 'border-black/[0.08] dark:border-border',
+    chevron: 'text-muted-foreground',
+    groupIdle: 'text-foreground/70 hover:text-foreground',
+    groupActive: 'text-foreground font-semibold',
+    card: 'border-black/[0.06] bg-white dark:border-border dark:bg-background',
+    brand: 'bg-[#3E3C3D] text-white dark:bg-foreground dark:text-background',
+    avatar: 'bg-white text-foreground border border-black/[0.06] dark:bg-background dark:border-border',
+    danger: 'hover:text-destructive',
+    name: 'text-foreground',
+    role: 'text-muted-foreground',
+    scrollbar: 'sidebar-scrollbar-light',
+  },
+} as const
+
+// Each More section keeps its own icon colour, in the shade that reads on the
+// theme's background (on-dark for charcoal, on-light for light).
+const SECTION_TONES = {
+  operations: { charcoal: 'text-sky-300', light: 'text-sky-700 dark:text-sky-300' },
+  labour: { charcoal: 'text-amber-300', light: 'text-amber-700 dark:text-amber-300' },
+  materials: { charcoal: 'text-emerald-300', light: 'text-emerald-700 dark:text-emerald-300' },
+  finance: { charcoal: 'text-violet-300', light: 'text-violet-700 dark:text-violet-300' },
+} as const
+
+type SectionTone = keyof typeof SECTION_TONES
+
 const NAV_LINK_BASE =
-  'flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm transition-colors'
-// data-[active=true]:font-semibold so it outranks SidebarMenuButton's own
-// data-[active=true]:font-medium for the primary links.
-const NAV_LINK_ACTIVE =
-  'bg-sidebar-accent text-sidebar-accent-foreground font-semibold data-[active=true]:font-semibold'
-const NAV_LINK_IDLE =
-  'text-sidebar-foreground hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground'
+  'group/row flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm transition-colors'
 
 function checkIsItemActive(pathname: string, itemUrl: string): boolean {
   if (pathname === itemUrl) return true
@@ -217,13 +286,16 @@ function CollapsibleNavCategory({
   pathname,
   allowedScopes,
   userRole,
+  theme,
 }: {
   category: NavCategory
   getUrlWithScope: (url: string) => string
   pathname: string
   allowedScopes: ScopeKind[]
   userRole?: string
+  theme: SidebarTheme
 }) {
+  const S = SIDEBAR_THEMES[theme]
   const { state } = useSidebar()
   const isCollapsedMode = state === 'collapsed'
 
@@ -256,21 +328,23 @@ function CollapsibleNavCategory({
         aria-expanded={isOpen}
         className={cn(
           'w-full flex items-center justify-between rounded-lg px-2.5 py-2 text-sm transition-colors',
-          isChildActive ? 'font-semibold text-sidebar-accent-foreground' : NAV_LINK_IDLE
+          S.hoverBg,
+          S.ring,
+          isChildActive ? S.groupActive : S.groupIdle
         )}
       >
         <div className="flex items-center gap-2.5 min-w-0">
-          <IconComp className="size-4 shrink-0" />
+          <IconComp className={cn('size-4 shrink-0', SECTION_TONES[category.tone][theme])} />
           <span className="truncate group-data-[collapsible=icon]:hidden">{category.title}</span>
         </div>
-        <span className="group-data-[collapsible=icon]:hidden text-muted-foreground">
+        <span className={cn('group-data-[collapsible=icon]:hidden', S.chevron)}>
           {isOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
         </span>
       </SidebarMenuButton>
 
       {/* Submenu Items */}
       {isOpen && !isCollapsedMode && (
-        <div className="ml-4 pl-2.5 border-l border-sidebar-border my-0.5 flex flex-col gap-0.5 group-data-[collapsible=icon]:hidden">
+        <div className={cn('ml-4 pl-2.5 border-l my-0.5 flex flex-col gap-0.5 group-data-[collapsible=icon]:hidden', S.guide)}>
           {filteredItems.map((item) => {
             const ItemIcon = item.icon
             const targetUrl = getUrlWithScope(item.url)
@@ -282,12 +356,13 @@ function CollapsibleNavCategory({
                 to={targetUrl}
                 className={({ isActive: isLinkActive }) =>
                   cn(
-                    'flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] transition-colors',
-                    isLinkActive || isActive ? NAV_LINK_ACTIVE : NAV_LINK_IDLE
+                    'group/row flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] transition-colors',
+                    S.ring,
+                    isLinkActive || isActive ? S.rowActive : S.rowIdle
                   )
                 }
               >
-                <ItemIcon className="size-3.5 shrink-0" />
+                <ItemIcon className={cn('size-3.5 shrink-0', isActive ? S.iconActive : S.icon)} />
                 <span className="truncate">{item.title}</span>
               </NavLink>
             )
@@ -303,6 +378,8 @@ export function AppSidebar() {
   const allowed = useAllowedScopes()
   const { scope } = useScope()
   const location = useLocation()
+  const [sidebarTheme, setSidebarTheme] = useSidebarTheme(me?.user_id || me?.org_id)
+  const S = SIDEBAR_THEMES[sidebarTheme]
 
   const [isDark, setIsDark] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -433,9 +510,9 @@ export function AppSidebar() {
           <NavLink
             to={getUrlWithScope(item.url)}
             aria-current={active ? 'page' : undefined}
-            className={cn(NAV_LINK_BASE, active ? NAV_LINK_ACTIVE : NAV_LINK_IDLE)}
+            className={cn(NAV_LINK_BASE, S.ring, active ? S.rowActive : S.rowIdle, 'data-[active=true]:font-semibold')}
           >
-            <ItemIcon className="size-4 shrink-0" />
+            <ItemIcon className={cn('size-4 shrink-0', active ? S.iconActive : S.icon)} />
             <span className="truncate">{item.title}</span>
           </NavLink>
         </SidebarMenuButton>
@@ -444,122 +521,164 @@ export function AppSidebar() {
   }
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-sidebar-border">
-      <SidebarHeader className="gap-3 px-2.5 pt-3 pb-1">
-        <div className="flex items-center justify-between gap-2 px-1">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="size-8 rounded-lg bg-sidebar-primary text-sidebar-primary-foreground flex items-center justify-center font-bold text-sm shrink-0">
-              M
+    <Sidebar collapsible="icon" className={cn('border-r', S.edge)}>
+      {/* The themed surface wraps everything so it also covers the mobile sheet,
+          which ui/sidebar.tsx renders without our className. */}
+      <div className={cn('flex h-full w-full flex-col', S.aside)}>
+        <SidebarHeader className="gap-3 px-2.5 pt-3 pb-1">
+          <div className="flex items-center justify-between gap-2 px-1">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div
+                className={cn(
+                  'size-8 rounded-lg flex items-center justify-center font-bold text-sm shrink-0',
+                  S.brand
+                )}
+              >
+                M
+              </div>
+              <span
+                className={cn(
+                  'font-bold text-[17px] tracking-tight group-data-[collapsible=icon]:hidden',
+                  S.name
+                )}
+              >
+                Mesiri
+              </span>
             </div>
-            <span className="font-bold text-[17px] tracking-tight text-sidebar-accent-foreground group-data-[collapsible=icon]:hidden">
-              Mesiri
-            </span>
+            {showBackButton && (
+              <Link
+                to={location.pathname.startsWith('/users/') ? '/users' : '/projects'}
+                className={cn(
+                  'transition-colors group-data-[collapsible=icon]:hidden size-8 flex items-center justify-center rounded-lg',
+                  S.iconBtn,
+                  S.ring
+                )}
+                title="Back"
+                aria-label="Back"
+              >
+                <ArrowLeft className="size-4" />
+              </Link>
+            )}
           </div>
-          {showBackButton && (
-            <Link
-              to={location.pathname.startsWith('/users/') ? '/users' : '/projects'}
-              className="text-muted-foreground hover:text-foreground transition-colors group-data-[collapsible=icon]:hidden size-8 flex items-center justify-center hover:bg-sidebar-accent rounded-lg"
-              title="Back"
-              aria-label="Back"
-            >
-              <ArrowLeft className="size-4" />
-            </Link>
-          )}
-        </div>
-        <div className="rounded-xl border border-sidebar-border bg-background/60 px-3 py-2 group-data-[collapsible=icon]:hidden">
-          <div className="text-xs text-muted-foreground">Company</div>
-          <div className="text-sm font-semibold text-sidebar-accent-foreground truncate">
-            {companyName}
+          <div className={cn('rounded-xl border px-3 py-2 group-data-[collapsible=icon]:hidden', S.card)}>
+            <div className={cn('text-xs', S.label)}>Company</div>
+            <div className={cn('text-sm font-semibold truncate', S.name)}>{companyName}</div>
           </div>
-        </div>
-      </SidebarHeader>
+        </SidebarHeader>
 
-      <SidebarContent className="px-1.5 py-1 gap-1">
-        <SidebarGroup className="p-1">
-          <SidebarGroupContent>
-            <SidebarMenu className="gap-0.5">{PRIMARY_ITEMS.map(renderLink)}</SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        {visibleManagementItems.length > 0 && (
+        <SidebarContent className={cn('px-1.5 py-1 gap-1', S.scrollbar)}>
           <SidebarGroup className="p-1">
-            <SidebarGroupLabel className="px-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Setup
-            </SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu className="gap-0.5">{visibleManagementItems.map(renderLink)}</SidebarMenu>
+              <SidebarMenu className="gap-0.5">{PRIMARY_ITEMS.map(renderLink)}</SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-        )}
 
-        <SidebarGroup className="p-1">
-          <SidebarMenu className="gap-0.5">
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => setIsMoreOpen((prev) => !prev)}
-                tooltip="More"
-                aria-expanded={isMoreOpen}
-                className="w-full flex items-center justify-between rounded-lg px-2.5 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:bg-sidebar-accent/70"
+          {visibleManagementItems.length > 0 && (
+            <SidebarGroup className="p-1">
+              <SidebarGroupLabel
+                className={cn('px-2.5 text-[11px] font-semibold uppercase tracking-wider', S.label)}
               >
-                <span className="group-data-[collapsible=icon]:hidden">More</span>
-                {isMoreOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+                Setup
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu className="gap-0.5">{visibleManagementItems.map(renderLink)}</SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
+
+          <SidebarGroup className="p-1">
+            <SidebarMenu className="gap-0.5">
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => setIsMoreOpen((prev) => !prev)}
+                  tooltip="More"
+                  aria-expanded={isMoreOpen}
+                  className={cn(
+                    'w-full flex items-center justify-between rounded-lg px-2.5 py-2 text-[11px] font-semibold uppercase tracking-wider',
+                    S.label,
+                    S.hoverBg,
+                    S.ring
+                  )}
+                >
+                  <span className="group-data-[collapsible=icon]:hidden">More</span>
+                  <span className={S.chevron}>
+                    {isMoreOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+                  </span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              {isMoreOpen && (
+                <>
+                  {renderLink({ title: 'WhatsApp Inbox', url: '/whatsapp/inbox', icon: MessageSquare })}
+                  {visibleMoreCategories.map((category) => (
+                    <CollapsibleNavCategory
+                      key={category.title}
+                      category={category}
+                      getUrlWithScope={getUrlWithScope}
+                      pathname={location.pathname}
+                      allowedScopes={allowed}
+                      userRole={me?.role}
+                      theme={sidebarTheme}
+                    />
+                  ))}
+                </>
+              )}
+            </SidebarMenu>
+          </SidebarGroup>
+        </SidebarContent>
+
+        <SidebarFooter className={cn('border-t p-2', S.divider)}>
+          <div className="flex items-center gap-2.5 px-1 group-data-[collapsible=icon]:hidden">
+            <div
+              className={cn(
+                'size-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0',
+                S.avatar
+              )}
+              aria-hidden="true"
+            >
+              {initialsOf(userName || companyName)}
+            </div>
+            <div className="flex flex-col min-w-0 flex-1">
+              <span className={cn('text-sm font-semibold truncate', S.name)}>
+                {userName || 'Signed in'}
+              </span>
+              <span className={cn('text-xs truncate', S.role)}>{roleLabel(me?.role)}</span>
+            </div>
+          </div>
+          <SidebarMenu>
+            <SidebarMenuItem className="flex items-center gap-1 group-data-[collapsible=icon]:flex-col">
+              <SidebarMenuButton
+                onClick={() => logout().then(() => window.location.assign('/login'))}
+                tooltip="Log out"
+                className={cn(
+                  'flex-1 rounded-lg px-2.5 py-2 text-sm transition-colors',
+                  S.rowIdle,
+                  S.danger,
+                  S.ring
+                )}
+              >
+                <LogOut className="size-4 shrink-0" />
+                <span>Log out</span>
+              </SidebarMenuButton>
+              <SidebarMenuButton
+                onClick={() => setSidebarTheme(sidebarTheme === 'charcoal' ? 'light' : 'charcoal')}
+                tooltip={sidebarTheme === 'charcoal' ? 'Light sidebar' : 'Charcoal sidebar'}
+                aria-label={sidebarTheme === 'charcoal' ? 'Switch to light sidebar' : 'Switch to charcoal sidebar'}
+                className={cn('size-8 p-0 flex items-center justify-center rounded-lg shrink-0', S.iconBtn, S.ring)}
+              >
+                <Palette className="size-4 shrink-0" />
+              </SidebarMenuButton>
+              <SidebarMenuButton
+                onClick={toggleTheme}
+                tooltip={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+                aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+                className={cn('size-8 p-0 flex items-center justify-center rounded-lg shrink-0', S.iconBtn, S.ring)}
+              >
+                {isDark ? <Sun className="size-4 shrink-0" /> : <Moon className="size-4 shrink-0" />}
               </SidebarMenuButton>
             </SidebarMenuItem>
-            {isMoreOpen && (
-              <>
-                {renderLink({ title: 'WhatsApp Inbox', url: '/whatsapp/inbox', icon: MessageSquare })}
-                {visibleMoreCategories.map((category) => (
-                  <CollapsibleNavCategory
-                    key={category.title}
-                    category={category}
-                    getUrlWithScope={getUrlWithScope}
-                    pathname={location.pathname}
-                    allowedScopes={allowed}
-                    userRole={me?.role}
-                  />
-                ))}
-              </>
-            )}
           </SidebarMenu>
-        </SidebarGroup>
-      </SidebarContent>
-
-      <SidebarFooter className="border-t border-sidebar-border p-2">
-        <div className="flex items-center gap-2.5 px-1 group-data-[collapsible=icon]:hidden">
-          <div
-            className="size-8 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center text-xs font-semibold shrink-0"
-            aria-hidden="true"
-          >
-            {initialsOf(userName || companyName)}
-          </div>
-          <div className="flex flex-col min-w-0 flex-1">
-            <span className="text-sm font-semibold text-sidebar-accent-foreground truncate">
-              {userName || 'Signed in'}
-            </span>
-            <span className="text-xs text-muted-foreground truncate">{roleLabel(me?.role)}</span>
-          </div>
-        </div>
-        <SidebarMenu>
-          <SidebarMenuItem className="flex items-center gap-1">
-            <SidebarMenuButton
-              onClick={() => logout().then(() => window.location.assign('/login'))}
-              tooltip="Log out"
-              className="flex-1 rounded-lg px-2.5 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent/70 hover:text-destructive transition-colors"
-            >
-              <LogOut className="size-4 shrink-0" />
-              <span>Log out</span>
-            </SidebarMenuButton>
-            <SidebarMenuButton
-              onClick={toggleTheme}
-              tooltip={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-              aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-              className="size-8 p-0 flex items-center justify-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent/70 shrink-0"
-            >
-              {isDark ? <Sun className="size-4 shrink-0" /> : <Moon className="size-4 shrink-0" />}
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
+        </SidebarFooter>
+      </div>
     </Sidebar>
   )
 }
