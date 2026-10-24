@@ -10,6 +10,7 @@ import Users from '@/pages/Users'
 import UserDetails from '@/pages/UserDetails'
 import CompanyDetails from '@/pages/CompanyDetails'
 import CompanyMessagesPage from '@/pages/CompanyMessagesPage'
+import LabourPage from '@/pages/LabourPage'
 import Projects from '@/pages/Projects'
 import ProjectDetails from '@/pages/ProjectDetails'
 import DailyReportsPage from '@/pages/DailyReportsPage'
@@ -18,14 +19,7 @@ import ExpensesPage from '@/pages/ExpensesPage'
 import ReceiptsPage from '@/pages/ReceiptsPage'
 import AccountsPage from '@/pages/AccountsPage'
 import WhatsAppFinancePage from '@/pages/WhatsAppFinancePage'
-import WhatsAppLabourPage from '@/pages/WhatsAppLabourPage'
-import LabourAnalyticsPage from '@/pages/LabourAnalyticsPage'
-import LabourOverviewPage from '@/pages/LabourOverviewPage'
-import LabourReportsPage from '@/pages/LabourReportsPage'
-import LabourSettingsPage from '@/pages/LabourSettingsPage'
-import AttendancePage from '@/pages/AttendancePage'
 import WhatsAppInboxPage from '@/pages/WhatsAppInboxPage'
-import WorkersPage from '@/pages/WorkersPage'
 import PettyCashPage from '@/pages/PettyCashPage'
 import FinanceOverviewPage from '@/pages/FinanceOverviewPage'
 import FinanceReportsPage from '@/pages/FinanceReportsPage'
@@ -49,7 +43,10 @@ import { ToastProvider } from '@/components/ui/toast-notification'
 /** Redirect to `to`, keeping the query string (scope, filters, date). */
 function Moved({ to }: { to: string }) {
   const { search } = useLocation()
-  return <Navigate to={`${to}${search}`} replace />
+  // Keep the old address's query (the scope's project/site), merged with
+  // any the new address carries (/labour?view=workers).
+  const joined = search && to.includes('?') ? `${to}&${search.slice(1)}` : `${to}${search}`
+  return <Navigate to={joined} replace />
 }
 
 /** The DPR pages moved from /today/... (date last) to /reports/:date/... */
@@ -90,16 +87,11 @@ export default function App() {
           <Route path="timeline" element={<OperationsTimelinePage />} />
           <Route path="analytics" element={<OperationsAnalyticsPage />} />
 
-          {/* Labour (module). Its pages are unchanged; folding them into
-              Attendance + Workers waits for approval (CLAUDE.md, Labour). */}
-          <Route path="labour" element={lab(<Navigate to="/labour/attendance" replace />)} />
-          <Route path="labour/overview" element={lab(<LabourOverviewPage />)} />
-          <Route path="labour/attendance" element={lab(<AttendancePage />)} />
-          <Route path="labour/workers" element={lab(<WorkersPage />)} />
-          <Route path="labour/whatsapp" element={lab(<WhatsAppLabourPage />)} />
-          <Route path="labour/analytics" element={lab(<LabourAnalyticsPage />)} />
-          <Route path="labour/reports" element={lab(<LabourReportsPage />)} />
-          <Route path="labour/settings" element={lab(<LabourSettingsPage />)} />
+          {/* Labour (module): one page, Attendance | Workers (WEB-22). The
+              old seven addresses land on the matching view. */}
+          <Route path="labour" element={lab(<LabourPage />)} />
+          <Route path="labour/workers" element={<Moved to="/labour?view=workers" />} />
+          <Route path="labour/*" element={<Moved to="/labour" />} />
 
           {/* Materials (module): one page with its own tabs. */}
           <Route path="materials" element={mat(<MaterialsPage />)} />
@@ -143,7 +135,7 @@ export default function App() {
           <Route path="users/:id" element={<MovedUser />} />
           <Route path="materials/*" element={<Moved to="/materials" />} />
           <Route path="whatsapp/finance" element={<Moved to="/finance/whatsapp" />} />
-          <Route path="whatsapp/labour" element={<Moved to="/labour/whatsapp" />} />
+          <Route path="whatsapp/labour" element={<Moved to="/labour" />} />
           <Route path="expenses" element={<Moved to="/finance/expenses" />} />
           <Route path="petty-cash" element={<Moved to="/finance/petty-cash" />} />
           {/* Removed pages (the operations dashboard -- Today does its job --

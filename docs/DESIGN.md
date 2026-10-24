@@ -27,7 +27,7 @@ owner gets the DPR — plus setup. The sidebar has no "More".
 | **Gallery** | `/gallery` | every site photo |
 | **Timeline** | `/timeline` | what happened, when |
 | **Analytics** | `/analytics` | trends |
-| **Labour** (module) | `/labour/...` | attendance, workers (sub-pages unchanged until approved) |
+| **Labour** (module) | `/labour` (`?view=workers`) | one page: Attendance and Workers (WEB-22); old `/labour/*` addresses redirect |
 | **Materials** (module) | `/materials` | one page with tabs |
 | *Setup* **Projects & Sites** | `/projects`, `/projects/:id` | |
 | **Team** | `/team`, `/team/:id` | |
@@ -347,7 +347,7 @@ pass the same.
 | Today, Reports, Issues | Yes (WEB-25 step 3) |
 | Activities, Gallery, Timeline, Analytics | Yes (WEB-24, WEB-26) |
 | Projects & Sites, a project, Team, a person, Company, WhatsApp messages | Yes (WEB-28): one page each, sections instead of tabs |
-| Labour (7 pages) | No — waits on WEB-22 (needs approval) |
+| Labour (one page: Attendance, Workers) | Yes (WEB-22) |
 | Materials (Ledger, Catalogue, Stock now, sheets) | Yes (WEB-29, WEB-30); invoice detail sheet not yet |
 | WhatsApp Inbox, Automations, Finance, Login / Signup | No — old template look |
 | Dialogs (project, site, person, access, WhatsApp number, record delivery / use / move, correction) | Yes (WEB-29): sentence case, plain words, no fake buttons |

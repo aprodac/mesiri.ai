@@ -27,7 +27,6 @@ import {
   Sun,
   Moon,
   HardHat,
-  ClipboardCheck,
   MessageSquare,
   AlertCircle,
   Clock,
@@ -105,21 +104,8 @@ const FINANCE_CATEGORY: NavCategory = {
   ],
 }
 
-const LABOUR_CATEGORY: NavCategory = {
-  title: 'Labour',
-  module: 'labour',
-  icon: HardHat,
-  tone: 'labour',
-  items: [
-    { title: 'Overview', url: '/labour/overview', icon: PieChart },
-    { title: 'Attendance', url: '/labour/attendance', icon: ClipboardCheck },
-    { title: 'Workers Roster', url: '/labour/workers', icon: Users },
-    { title: 'Analytics', url: '/labour/analytics', icon: BarChart3 },
-    { title: 'WhatsApp Automations', url: '/labour/whatsapp', icon: Bot },
-    { title: 'Reports', url: '/labour/reports', icon: FileText },
-    { title: 'Settings', url: '/labour/settings', icon: SlidersHorizontal },
-  ],
-}
+// Labour is one page since WEB-22 (Attendance | Workers).
+const LABOUR_ITEM: NavItem = { title: 'Labour', url: '/labour', icon: HardHat, module: 'labour', tone: 'amber' }
 
 // V1 navigation (WEB-21, docs/DESIGN.md "Pages and routes"): the daily
 // pages, then setup. No "More": pages outside V1 were removed, and modules a
@@ -472,8 +458,8 @@ export function AppSidebar() {
   const userName = me?.name || me?.full_name || ''
 
   const counts = useNavCounts()
-  // Module sections (Labour, Finance) with only the items this role may see.
-  const moduleCategories = [LABOUR_CATEGORY, FINANCE_CATEGORY]
+  // Module sections (Finance) with only the items this role may see.
+  const moduleCategories = [FINANCE_CATEGORY]
     .filter((category) => isModuleEnabled(category.module))
     .map((category) => ({
       ...category,
@@ -613,9 +599,9 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
                 {RECORD_ITEMS.map(renderLink)}
-                {moduleCategories.filter((c) => c.module === 'labour').map(renderCategory)}
+                {isModuleEnabled(LABOUR_ITEM.module) && renderLink(LABOUR_ITEM)}
                 {isModuleEnabled(MATERIALS_ITEM.module) && renderLink(MATERIALS_ITEM)}
-                {moduleCategories.filter((c) => c.module !== 'labour').map(renderCategory)}
+                {moduleCategories.map(renderCategory)}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
