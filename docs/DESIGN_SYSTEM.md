@@ -1,4 +1,4 @@
-> **Superseded for the web dashboard by [DESIGN.md](DESIGN.md) (24 Oct 2026, WEB-19).** Kept for history; it does not describe the shipped product.
+> **Superseded for the web dashboard by [DESIGN.md](DESIGN.md) (24 Oct 2026, WEB-25).** Kept for history; it does not describe the shipped product.
 
 # Mesiri.ai — Complete UI Design System
 

@@ -4,7 +4,7 @@ import { ArrowLeft, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // The building blocks of the site and project DPR pages (WEB-04/05, reworked
-// in WEB-19): one white page in flat sections split by rules, not a stack of
+// in WEB-25): one white page in flat sections split by rules, not a stack of
 // cards. See docs/DESIGN.md.
 
 /** A titled part of the page. `icon` sits in a small tinted square. */

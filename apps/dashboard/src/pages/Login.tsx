@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { login, loginWithCode } from '@/lib/api'
 import { WhatsAppCodeForm } from '@/components/auth/whatsapp-code-form'
+import { MesiriLogo } from '@/components/brand/mesiri-logo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -33,6 +34,7 @@ export default function Login() {
     <div className="flex h-svh items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
+          <MesiriLogo className="mb-3" />
           <CardTitle>Sign in</CardTitle>
           <CardDescription>Use your WhatsApp number, or your email and password.</CardDescription>
         </CardHeader>

@@ -3,7 +3,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Mesiri V1 look (tracker WEB-01; ground made plain white in WEB-19,
+/* Mesiri V1 look (tracker WEB-01; ground made plain white in WEB-25,
    see docs/DESIGN.md): a white ground with neutral greys, near-black ink, one site-orange accent kept for
    primary actions and attention, and dedicated status tokens for the
    confirmed / draft / info / AI states the DPR screens are built from.
@@ -104,6 +104,9 @@
   /* Geist Mono is used for numeric displays throughout the dashboard
      (stat values, tables, chart ticks) via the font-mono utility. */
   --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Unbounded is the brand face, used only for the Mesiri logo/wordmark
+     (components/brand/mesiri-logo.tsx) via the font-brand utility. */
+  --font-brand: 'Unbounded', 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

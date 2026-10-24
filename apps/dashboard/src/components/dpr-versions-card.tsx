@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 
 // A DPR's versions, newest first, each with its PDF. Shared by the site DPR
 // page (WEB-04) and the project DPR page (WEB-05); sits in the page's side
-// column (WEB-19).
+// column (WEB-25).
 
 export function DprVersionsCard({
   reportId,

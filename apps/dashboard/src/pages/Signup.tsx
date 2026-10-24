@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { signup, verifySignupCode } from '@/lib/api'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { WhatsAppCodeForm } from '@/components/auth/whatsapp-code-form'
+import { MesiriLogo } from '@/components/brand/mesiri-logo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -44,6 +45,7 @@ export default function Signup() {
     <div className="flex h-svh items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
+          <MesiriLogo className="mb-3" />
           <CardTitle>Start your free trial</CardTitle>
           <CardDescription>
             {ticket

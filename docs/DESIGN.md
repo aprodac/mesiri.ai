@@ -3,7 +3,7 @@
 > The rules every dashboard page follows. Short on purpose: if a rule is not
 > here, copy what the **Site DPR** and **Project DPR** pages do
 > (`apps/dashboard/src/pages/SiteDayPage.tsx`, `ProjectDayPage.tsx`) — they
-> are the reference pages (tracker WEB-19).
+> are the reference pages (tracker WEB-25).
 >
 > Replaces `docs/DESIGN_SYSTEM.md` for the web dashboard. That document is a
 > wider wish-list (mobile, libraries we do not use, a lime accent we do not
@@ -269,6 +269,6 @@ add it here and to this table.
 
 | Page | Follows these rules |
 |---|---|
-| Site DPR, Project DPR | Yes (WEB-19) |
+| Site DPR, Project DPR | Yes (WEB-25) |
 | Today, Daily Reports, Issues | Mostly (WEB-01/03/06/07 style); not yet moved to sections/steps |
 | Projects, Team, Company, Labour, Materials, others | No — old template look; to be reworked page by page |
