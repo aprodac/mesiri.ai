@@ -1,7 +1,22 @@
 import * as React from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Check, MessageSquareText, Pencil, Trash2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  Check,
+  CheckCheck,
+  CircleCheck,
+  CircleDashed,
+  HardHat,
+  History,
+  Info,
+  MessageSquareText,
+  Package,
+  Pencil,
+  Trash2,
+  TriangleAlert,
+  Users,
+} from 'lucide-react'
 import {
   approveDailyReportApi,
   confirmFactApi,
@@ -21,10 +36,12 @@ import {
   FROZEN,
   dateTime,
   errorDetail,
+  hasUpdates as siteHasUpdates,
   longDate,
   missingText,
   plural,
   qty,
+  severityChip,
   siteStatus,
 } from '@/lib/site-day'
 import { useReadOnly } from '@/lib/trial'
@@ -35,7 +52,7 @@ import { DprVersionsCard } from '@/components/dpr-versions-card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Callout, DprAside, DprSection, DprSteps, StatStrip, type StepState } from '@/components/dpr-page'
 import {
   Dialog,
   DialogContent,
@@ -57,11 +74,16 @@ const TEXTAREA =
   'flex min-h-[70px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring'
 const SELECT = 'h-9 rounded-md border border-input bg-background px-2 text-sm'
 
-const SECTIONS: { key: ReviewItem['section']; title: string; empty: string }[] = [
-  { key: 'work', title: 'Work done', empty: 'No work reported.' },
-  { key: 'labour', title: 'Labour', empty: 'No labour count yet.' },
-  { key: 'materials', title: 'Materials', empty: 'No materials received or used.' },
-  { key: 'issues', title: 'Issues', empty: 'No issues reported.' },
+const SECTIONS: {
+  key: ReviewItem['section']
+  icon: React.ComponentType<{ className?: string }>
+  title: string
+  empty: string
+}[] = [
+  { key: 'work', icon: HardHat, title: 'Work done', empty: 'No work reported.' },
+  { key: 'labour', icon: Users, title: 'Labour', empty: 'No labour count yet.' },
+  { key: 'materials', icon: Package, title: 'Materials', empty: 'No materials received or used.' },
+  { key: 'issues', icon: TriangleAlert, title: 'Issues', empty: 'No issues reported.' },
 ]
 
 const FACT_LABEL: Record<ReviewItem['fact_type'], string> = {
@@ -112,88 +134,102 @@ function ItemRow({
   onSources: (item: ReviewItem) => void
 }) {
   const draft = item.review === 'draft'
+  const title = humanize(item.title) || FACT_LABEL[item.fact_type]
+  // The AI often repeats the title as the description; say it once.
+  const detail = item.detail && item.detail.trim().toLowerCase() !== (item.title ?? '').trim().toLowerCase() ? item.detail : null
   const quantities = (item.quantities ?? []).map((q) => `${qty(q.quantity)} ${q.unit}`).join(', ')
+  const severity = severityChip(item.severity)
   return (
-    <li className="flex flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between">
-      <div className="flex min-w-0 flex-col gap-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-semibold">{humanize(item.title) || FACT_LABEL[item.fact_type]}</span>
-          {draft ? (
-            <span className={cn(CHIP, 'bg-draft-soft text-draft')}>Draft</span>
-          ) : (
-            <span className={cn(CHIP, 'bg-success-soft text-success')}>Confirmed</span>
+    <li className={cn('group flex gap-3 py-3.5', draft && '-mx-3 rounded-lg bg-draft-soft/40 px-3')}>
+      <span className="mt-0.5 shrink-0" title={draft ? 'Draft: not confirmed yet' : 'Confirmed'}>
+        {draft ? (
+          <CircleDashed className="size-5 text-draft" />
+        ) : (
+          <CircleCheck className="size-5 text-success" />
+        )}
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="flex min-w-0 flex-col gap-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">{title}</span>
+            {draft && <span className={cn(CHIP, 'bg-draft-soft text-draft')}>Draft</span>}
+            {severity && <span className={cn(CHIP, severity.className)}>{severity.label}</span>}
+            {item.flags.includes('possible_duplicate') && (
+              <span className={cn(CHIP, 'bg-draft-soft text-draft')}>Possible repeat</span>
+            )}
+            {item.flags.includes('beyond_stock') && (
+              <span className={cn(CHIP, 'bg-destructive/10 text-destructive')}>More than in stock</span>
+            )}
+          </div>
+          {detail && <p className="text-sm text-muted-foreground">{detail}</p>}
+          {(item.evidence_count ?? 0) > 0 && (
+            <p className="text-xs text-muted-foreground">{plural(item.evidence_count ?? 0, 'photo')}</p>
           )}
-          {item.flags.includes('possible_duplicate') && (
-            <span className={cn(CHIP, 'bg-draft-soft text-draft')}>Possible repeat</span>
-          )}
-          {item.flags.includes('beyond_stock') && (
-            <span className={cn(CHIP, 'bg-destructive/10 text-destructive')}>More than in stock</span>
-          )}
-          {item.severity && <span className={cn(CHIP, 'bg-muted text-muted-foreground')}>{humanize(item.severity)}</span>}
         </div>
-        {item.detail && <p className="text-sm text-foreground/80">{item.detail}</p>}
-        {(quantities || (item.evidence_count ?? 0) > 0) && (
-          <p className="text-xs text-muted-foreground">
-            {[quantities, item.evidence_count ? plural(item.evidence_count, 'photo') : ''].filter(Boolean).join(' · ')}
-          </p>
-        )}
-      </div>
-      <div className="flex shrink-0 flex-wrap gap-2">
-        <Button variant="ghost" size="sm" onClick={() => onSources(item)}>
-          <MessageSquareText /> Sources
-        </Button>
-        {!frozen && item.fact_type === 'activity' && (
-          <Button variant="outline" size="sm" disabled={busy} onClick={() => onEdit(item)}>
-            <Pencil /> Edit
+        <div className="flex shrink-0 items-center gap-1 sm:gap-3">
+          {quantities && <span className="mr-auto text-sm font-semibold tabular-nums sm:mr-2">{quantities}</span>}
+          <Button variant="ghost" size="icon" className="size-8 text-muted-foreground" title="Where this came from" aria-label="Where this came from" onClick={() => onSources(item)}>
+            <MessageSquareText />
           </Button>
-        )}
-        {!frozen && (
-          <Button variant="outline" size="sm" disabled={busy} onClick={() => onRemove(item)}>
-            <Trash2 /> Remove
-          </Button>
-        )}
-        {!frozen && draft && (
-          <Button size="sm" disabled={busy} onClick={() => onConfirm(item)}>
-            <Check /> Confirm
-          </Button>
-        )}
+          {!frozen && item.fact_type === 'activity' && (
+            <Button variant="ghost" size="icon" className="size-8 text-muted-foreground" title="Edit" aria-label="Edit" disabled={busy} onClick={() => onEdit(item)}>
+              <Pencil />
+            </Button>
+          )}
+          {!frozen && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+              title="Remove"
+              aria-label="Remove"
+              disabled={busy}
+              onClick={() => onRemove(item)}
+            >
+              <Trash2 />
+            </Button>
+          )}
+          {!frozen && draft && (
+            <Button size="sm" className="ml-1" disabled={busy} onClick={() => onConfirm(item)}>
+              <Check /> Confirm
+            </Button>
+          )}
+        </div>
       </div>
     </li>
   )
 }
 
 function Section({
+  icon,
   title,
   empty,
   items,
   summary,
-  footer,
   children,
 }: {
+  icon: React.ComponentType<{ className?: string }>
   title: string
   empty: string
   items: ReviewItem[]
   summary?: React.ReactNode
-  footer?: React.ReactNode
   children: (item: ReviewItem) => React.ReactNode
 }) {
   const drafts = items.filter((i) => i.review === 'draft').length
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle className="text-base">{title}</CardTitle>
-        {drafts > 0 && <span className="text-xs font-semibold text-draft">{plural(drafts, 'draft')}</span>}
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
-        {summary}
-        {items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{empty}</p>
-        ) : (
-          <ul className="divide-y">{items.map(children)}</ul>
-        )}
-        {footer}
-      </CardContent>
-    </Card>
+    <DprSection
+      icon={icon}
+      title={title}
+      meta={items.length > 0 ? items.length : undefined}
+      action={drafts > 0 ? <span className={cn(CHIP, 'bg-draft-soft text-draft')}>{plural(drafts, 'draft')} to confirm</span> : undefined}
+    >
+      {summary}
+      {items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{empty}</p>
+      ) : (
+        <ul className="flex flex-col divide-y">{items.map(children)}</ul>
+      )}
+    </DprSection>
   )
 }
 
@@ -490,11 +526,8 @@ function ConditionsCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Day conditions</CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-3">
+    <div className="grid gap-3">
+        <h2 className="text-sm font-semibold">Day conditions</h2>
         <div className="grid grid-cols-2 gap-3">
           <label className="grid gap-1.5 text-sm">
             <span className="text-muted-foreground">Weather</span>
@@ -540,8 +573,7 @@ function ConditionsCard({
             Save conditions
           </Button>
         )}
-      </CardContent>
-    </Card>
+    </div>
   )
 }
 
@@ -628,123 +660,181 @@ export default function SiteDayPage() {
     onSources: setSourcesFor,
   }
 
+  const confirmed = day ? FROZEN.includes(day.status) : false
+  const sent = day?.status === 'published' || Boolean(detail.project?.sent)
+  const hasUpdates = detail.items.length > 0 || (day ? siteHasUpdates(day) : false)
+  const steps: { label: string; hint?: string; state: StepState }[] = [
+    {
+      label: 'Updates from site',
+      hint: hasUpdates ? plural(detail.items.length, 'item') : 'Nothing yet',
+      state: hasUpdates ? 'done' : 'current',
+    },
+    {
+      label: 'Engineer confirms',
+      hint: confirmed
+        ? current?.approved_by
+          ? `By ${current.approved_by}`
+          : 'Confirmed'
+        : detail.drafts > 0
+          ? `${plural(detail.drafts, 'draft')} waiting`
+          : 'Waiting',
+      state: confirmed ? 'done' : hasUpdates ? 'current' : 'todo',
+    },
+    {
+      label: 'Sent to owner',
+      hint: sent ? 'In the project DPR' : detail.project?.dpr_send_deadline ? `By ${formatClock(detail.project.dpr_send_deadline)}` : undefined,
+      state: sent ? 'done' : confirmed ? 'current' : 'todo',
+    },
+  ]
+  const issues = bySection('issues')
+
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-5 p-4 sm:p-6">
-      <div className="flex flex-col gap-3">
-        <Link to={`/today?date=${date}`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 sm:p-8">
+      <header className="flex flex-col gap-5">
+        <Link to={`/today?date=${date}`} className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="size-4" /> Today
         </Link>
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="flex min-w-0 flex-col gap-1">
-            <h1 className="text-2xl font-bold">{day?.site_name ?? 'Site'}</h1>
             <p className="text-sm text-muted-foreground">
-              {day?.project_name ? `${day.project_name} · ` : ''}
-              {longDate(date)}
+              Site DPR{day?.project_name ? ` · ${day.project_name}` : ''}
             </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-3xl font-semibold tracking-tight">{day?.site_name ?? 'Site'}</h1>
+              {status && <span className={cn(CHIP, status.className)}>{status.label}</span>}
+            </div>
+            <p className="text-sm text-muted-foreground">{longDate(date)}</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {status && <span className={cn(CHIP, status.className)}>{status.label}</span>}
-            {!frozen && reportId && (
-              <Button className="h-11 font-semibold" disabled={busy} onClick={() => setApproving(true)}>
-                Approve and send
-              </Button>
-            )}
-          </div>
+          {!frozen && reportId && (
+            <Button className="h-11 px-5 font-semibold" disabled={busy} onClick={() => setApproving(true)}>
+              <CheckCheck /> Approve and send
+            </Button>
+          )}
         </div>
-        {detail.drafts > 0 && !frozen && (
-          <p className="rounded-lg bg-draft-soft px-3 py-2 text-sm text-draft">
-            {plural(detail.drafts, 'item')} sent on WhatsApp still to confirm. Approving the day confirms them all.
-          </p>
-        )}
-        {missing && !frozen && <p className="text-sm text-muted-foreground">{missing}</p>}
-        {day && FROZEN.includes(day.status) && current?.approved_at && (
-          <p className="rounded-lg bg-success-soft px-3 py-2 text-sm text-success">
-            Approved{current.approved_by ? ` by ${current.approved_by}` : ''} · {dateTime(current.approved_at)}. Changes sent later
-            show as late entries on the next report.
-          </p>
-        )}
-        {!reportId && (
-          <p className="text-sm text-muted-foreground">
-            The report is built at the project's cutoff time; items can be checked now.
-          </p>
-        )}
-      </div>
+        <DprSteps steps={steps} />
+      </header>
 
-      <DprSummaryCard summary={detail.summary} />
-
-      {SECTIONS.map((section) => (
-        <Section
-          key={section.key}
-          title={section.title}
-          empty={section.empty}
-          items={bySection(section.key)}
-          summary={
-            section.key === 'labour' && labour.headcount > 0 ? (
-              <p className="text-sm text-muted-foreground">
-                {plural(labour.headcount, 'worker')} today
-                {labour.trades.length > 0 && ` · ${labour.trades.map((t) => `${t.trade} ${t.headcount}`).join(', ')}`}
-              </p>
-            ) : section.key === 'materials' && detail.report.materials.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="text-xs text-muted-foreground">
-                    <tr>
-                      <th className="py-1 text-left font-medium">Material</th>
-                      <th className="py-1 text-right font-medium">Opening</th>
-                      <th className="py-1 text-right font-medium">Received</th>
-                      <th className="py-1 text-right font-medium">Used</th>
-                      <th className="py-1 text-right font-medium">Closing</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detail.report.materials.map((m) => (
-                      <tr key={`${m.material_name}-${m.unit}`} className={cn(m.beyond_stock && 'text-destructive')}>
-                        <td className="py-1">
-                          {m.material_name} <span className="text-muted-foreground">({m.unit})</span>
-                        </td>
-                        <td className="py-1 text-right">{qty(m.opening)}</td>
-                        <td className="py-1 text-right">{qty(m.received)}</td>
-                        <td className="py-1 text-right">{qty(m.used)}</td>
-                        <td className="py-1 text-right">{qty(m.closing)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : undefined
-          }
-        >
-          {(item) => <ItemRow key={`${item.fact_type}-${item.id}`} item={item} {...rowProps} />}
-        </Section>
-      ))}
-
-      {detail.report.late_entries.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Late entries for earlier days</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="flex flex-col gap-1 text-sm">
-              {detail.report.late_entries.map((e, i) => (
-                <li key={i}>
-                  {longDate(e.report_date)}: {e.summary}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
+      {detail.drafts > 0 && !frozen && (
+        <Callout tone="draft" icon={CircleDashed}>
+          <strong className="font-semibold">{plural(detail.drafts, 'item')} from WhatsApp still to confirm.</strong> Confirm them one by one, or
+          approve the day to confirm them all.
+        </Callout>
+      )}
+      {confirmed && current?.approved_at && (
+        <Callout tone="success" icon={CircleCheck}>
+          Approved{current.approved_by ? ` by ${current.approved_by}` : ''} · {dateTime(current.approved_at)}. Changes sent later show as late
+          entries on the next report.
+        </Callout>
+      )}
+      {missing && !frozen && (
+        <Callout tone="muted" icon={Info}>
+          {missing}
+          {!reportId && ". The report is built at the project's cutoff time; items can be checked now."}
+        </Callout>
       )}
 
-      <div className="grid gap-5 md:grid-cols-2">
-        <ConditionsCard
-          key={`${siteId}-${date}-${current?.id ?? 'none'}`}
-          detail={detail}
-          frozen={frozen}
-          onSave={(changes) =>
-            run(() => setSiteDayConditionsApi(siteId, date, changes), ['Saved', "The day's conditions are saved."], 'Could not save')
-          }
-        />
-        <DprVersionsCard reportId={reportId} versions={detail.versions} onPdf={openPdf} />
+      <StatStrip
+        stats={[
+          { label: 'Workers', value: labour.headcount || '—' },
+          { label: 'Work items', value: bySection('work').length || '—' },
+          { label: 'Photos', value: detail.report.evidence_count || '—' },
+          {
+            label: 'Open issues',
+            value: Math.max(day?.open_issues ?? 0, issues.length) || '—',
+            tone: issues.some((i) => ['CRITICAL', 'HIGH'].includes((i.severity ?? '').toUpperCase()))
+              ? 'bad'
+              : (day?.open_issues ?? 0) > 0
+                ? 'warn'
+                : 'default',
+          },
+        ]}
+      />
+
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="flex min-w-0 flex-col">
+          {detail.summary && (
+            <div className="pb-6">
+              <DprSummaryCard summary={detail.summary} />
+            </div>
+          )}
+          {SECTIONS.map((section) => (
+            <Section
+              key={section.key}
+              icon={section.icon}
+              title={section.title}
+              empty={section.empty}
+              items={bySection(section.key)}
+              summary={
+                section.key === 'labour' && labour.headcount > 0 ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="mr-1 text-sm">
+                      <strong className="text-lg font-semibold tabular-nums">{labour.headcount}</strong>{' '}
+                      <span className="text-muted-foreground">workers today</span>
+                    </span>
+                    {labour.trades.map((t) => (
+                      <span key={t.trade} className="rounded-md border px-2 py-0.5 text-sm">
+                        {humanize(t.trade)} <strong className="font-semibold tabular-nums">{t.headcount}</strong>
+                      </span>
+                    ))}
+                  </div>
+                ) : section.key === 'materials' && detail.report.materials.length > 0 ? (
+                  <div className="overflow-x-auto rounded-lg border">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/50 text-xs text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-medium">Material</th>
+                          <th className="px-3 py-2 text-right font-medium">Opening</th>
+                          <th className="px-3 py-2 text-right font-medium">Received</th>
+                          <th className="px-3 py-2 text-right font-medium">Used</th>
+                          <th className="px-3 py-2 text-right font-medium">Closing</th>
+                        </tr>
+                      </thead>
+                      <tbody className="tabular-nums">
+                        {detail.report.materials.map((m) => (
+                          <tr key={`${m.material_name}-${m.unit}`} className={cn('border-t', m.beyond_stock && 'text-destructive')}>
+                            <td className="px-3 py-2">
+                              {m.material_name} <span className="text-muted-foreground">({m.unit})</span>
+                            </td>
+                            <td className="px-3 py-2 text-right">{qty(m.opening)}</td>
+                            <td className="px-3 py-2 text-right">{qty(m.received)}</td>
+                            <td className="px-3 py-2 text-right">{qty(m.used)}</td>
+                            <td className="px-3 py-2 text-right font-semibold">{qty(m.closing)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : undefined
+              }
+            >
+              {(item) => <ItemRow key={`${item.fact_type}-${item.id}`} item={item} {...rowProps} />}
+            </Section>
+          ))}
+
+          {detail.report.late_entries.length > 0 && (
+            <DprSection icon={History} title="Late entries for earlier days">
+              <ul className="flex flex-col gap-1 text-sm">
+                {detail.report.late_entries.map((e, i) => (
+                  <li key={i}>
+                    <span className="text-muted-foreground">{longDate(e.report_date)}:</span> {e.summary}
+                  </li>
+                ))}
+              </ul>
+            </DprSection>
+          )}
+        </div>
+
+        <DprAside>
+          <ConditionsCard
+            key={`${siteId}-${date}-${current?.id ?? 'none'}`}
+            detail={detail}
+            frozen={frozen}
+            onSave={(changes) =>
+              run(() => setSiteDayConditionsApi(siteId, date, changes), ['Saved', "The day's conditions are saved."], 'Could not save')
+            }
+          />
+          <DprVersionsCard reportId={reportId} versions={detail.versions} onPdf={openPdf} />
+        </DprAside>
       </div>
 
       <SourcesSheet item={sourcesFor} onClose={() => setSourcesFor(null)} />

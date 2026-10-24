@@ -3,14 +3,14 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Mesiri V1 look (tracker WEB-01, per the "Mesiri V1 — DPR Design" canvas):
-   a warm off-white ground, near-black ink, one site-orange accent kept for
+/* Mesiri V1 look (tracker WEB-01; ground made plain white in WEB-19,
+   see docs/DESIGN.md): a white ground with neutral greys, near-black ink, one site-orange accent kept for
    primary actions and attention, and dedicated status tokens for the
    confirmed / draft / info / AI states the DPR screens are built from.
    Every shadcn component reads these, so this block IS the theme. */
 :root {
   --radius: 0.625rem;
-  --background: #f6f5f2;
+  --background: #ffffff;
   --foreground: #1a1d21;
   --card: #ffffff;
   --card-foreground: #1a1d21;
@@ -18,15 +18,15 @@
   --popover-foreground: #1a1d21;
   --primary: #c2410c;
   --primary-foreground: #ffffff;
-  --secondary: #f1efea;
+  --secondary: #f3f4f6;
   --secondary-foreground: #1a1d21;
-  --muted: #f1efea;
+  --muted: #f3f4f6;
   --muted-foreground: #5b6168;
-  --accent: #f1efea;
+  --accent: #f3f4f6;
   --accent-foreground: #1a1d21;
   --destructive: #b42318;
-  --border: #e3e1dc;
-  --input: #d9d6cf;
+  --border: #e5e7eb;
+  --input: #d1d5db;
   --ring: #c2410c;
   --chart-1: #c2410c;
   --chart-2: #1e3a8a;
@@ -37,9 +37,9 @@
   --sidebar-foreground: #3d4248;
   --sidebar-primary: #1a1d21;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f1efea;
+  --sidebar-accent: #f3f4f6;
   --sidebar-accent-foreground: #1a1d21;
-  --sidebar-border: #e3e1dc;
+  --sidebar-border: #e5e7eb;
   --sidebar-ring: #c2410c;
   /* Status: text colour on its soft background clears 4.5:1 in both themes. */
   --success: #0f5132;

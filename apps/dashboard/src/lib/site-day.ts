@@ -96,3 +96,20 @@ export function qty(value: string | null | undefined): string {
   const n = Number(value)
   return Number.isFinite(n) ? n.toLocaleString(undefined, { maximumFractionDigits: 3 }) : value
 }
+
+/** Issue severity as a coloured chip: red, orange, blue, grey. */
+export function severityChip(severity: string | null | undefined): { label: string; className: string } | null {
+  if (!severity) return null
+  const key = severity.toUpperCase()
+  const label = key.charAt(0) + key.slice(1).toLowerCase()
+  switch (key) {
+    case 'CRITICAL':
+      return { label, className: 'bg-destructive/10 text-destructive' }
+    case 'HIGH':
+      return { label, className: 'bg-draft-soft text-draft' }
+    case 'MEDIUM':
+      return { label, className: 'bg-info-soft text-info' }
+    default:
+      return { label, className: 'bg-muted text-muted-foreground' }
+  }
+}
