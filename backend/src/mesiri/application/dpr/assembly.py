@@ -165,6 +165,59 @@ def _flag_possible_duplicates(activities: list[dict[str, Any]], rows: list[dict[
         seen.add(key)
 
 
+#: The status a progress update leaves its activity in (the same moves
+#: progress_execution.persist_add_progress_update_success makes); a PROGRESS
+#: or NOTE update leaves it as the day's earlier update left it.
+_STATUS_BY_UPDATE_KIND = {
+    "STARTED": "IN_PROGRESS",
+    "RESUMED": "IN_PROGRESS",
+    "PROGRESS": "IN_PROGRESS",
+    "PAUSED": "STOPPED",
+    "COMPLETED": "COMPLETED",
+}
+
+
+def carried_activity_rows(update_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """V1 audit WRK-01: one activity row per earlier-day activity from the
+    day's progress update rows (one row per update, activity columns plus
+    `update_kind`, `update_narrative`, `quantity`, `unit_code`, oldest
+    first). The row shows the day's update, not the day the work started:
+    the updates' words, the status the last one left, their quantities, and
+    `carried_from`, the activity's own date."""
+    by_activity: dict[Any, dict[str, Any]] = {}
+    for row in update_rows:
+        carried = by_activity.get(row["id"])
+        if carried is None:
+            started = row["activity_date"]
+            carried = by_activity[row["id"]] = {
+                "id": row["id"],
+                "work_type": row.get("work_type"),
+                "status": "IN_PROGRESS",
+                "contractor": row.get("contractor"),
+                "location_id": row.get("location_id"),
+                "carried_from": started.isoformat() if hasattr(started, "isoformat") else started,
+                "_words": [],
+                "_base_narrative": row.get("narrative"),
+                "quantities": [],
+            }
+        carried["status"] = _STATUS_BY_UPDATE_KIND.get(row.get("update_kind"), carried["status"])
+        if row.get("update_narrative"):
+            carried["_words"].append(row["update_narrative"])
+        if row.get("quantity") is not None and row.get("unit_code"):
+            carried["quantities"].append(
+                {"work_type": row.get("work_type"), "quantity": str(row["quantity"]), "unit": row["unit_code"]}
+            )
+    out = []
+    for carried in by_activity.values():
+        words = "; ".join(carried.pop("_words")) or carried.pop("_base_narrative") or ""
+        carried.pop("_base_narrative", None)
+        started = datetime.date.fromisoformat(carried["carried_from"])
+        note = f"started {started.day} {started:%b}"
+        carried["narrative"] = f"{words} ({note})" if words else note.capitalize()
+        out.append(carried)
+    return out
+
+
 def build_site_report_payload(
     *,
     project_name: str | None,
@@ -203,8 +256,9 @@ def build_site_report_payload(
     def review_of(fact_type: str, fact_id: Any) -> str:
         return (review_states.get(fact_type) or {}).get(fact_id, fact_review.CONFIRMED)
 
-    activities = [
-        {
+    activities = []
+    for row in activity_rows:
+        activity = {
             "work_type": row.get("work_type"),
             "narrative": row.get("narrative"),
             "status": row.get("status"),
@@ -213,8 +267,16 @@ def build_site_report_payload(
             "evidence_count": evidence_count_by_activity.get(row["id"], 0),
             "review": review_of(fact_review.ACTIVITY, row["id"]),
         }
-        for row in activity_rows
-    ]
+        if row.get("carried_from"):
+            # WRK-01: the day's update of earlier work (carried_activity_rows).
+            # Its photos and review belong to the day it started.
+            activity.update(
+                quantities=row["quantities"],
+                evidence_count=0,
+                review=fact_review.CONFIRMED,
+                carried_from=row["carried_from"],
+            )
+        activities.append(activity)
     _flag_possible_duplicates(activities, activity_rows)
     issues = [
         {
@@ -290,6 +352,8 @@ def build_review_items(
 
     items: list[dict[str, Any]] = []
     for activity, row in zip(payload["activities"], activity_rows, strict=True):
+        if row.get("carried_from"):
+            continue  # WRK-01: confirmed or removed on the day it started
         items.append(
             {
                 "fact_type": fact_review.ACTIVITY,

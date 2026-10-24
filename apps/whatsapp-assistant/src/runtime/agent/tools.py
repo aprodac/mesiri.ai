@@ -671,6 +671,13 @@ def tool_specs() -> list[ToolSpec]:
             parameters=_obj(
                 {
                     "date_range": _RANGE,
+                    "day": {
+                        "type": "string",
+                        "description": (
+                            "One day asked about, ONLY when the question names it: 'yesterday', "
+                            "'day before yesterday' or an ISO date YYYY-MM-DD. Omit otherwise."
+                        ),
+                    },
                     "work_type": {"type": "string"},
                     "as_pdf": _AS_PDF,
                     "project": _PROJECT,
@@ -1029,7 +1036,13 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
         fields = {"material_name": args.get("material"), **_pdf(args), **sc}
         return Candidate(semantic_type=SemanticType.INVENTORY_QUERY, fields=_clean(fields))
     if name == QUERY_WORK_LOG:
-        fields = {"date_range": args.get("date_range"), "work_type": args.get("work_type"), **_pdf(args), **sc}
+        fields = {
+            "date_range": args.get("date_range"),
+            "day": args.get("day"),
+            "work_type": args.get("work_type"),
+            **_pdf(args),
+            **sc,
+        }
         return Candidate(semantic_type=SemanticType.ACTIVITY_QUERY, fields=_clean(fields))
     if name == QUERY_PROJECT:
         return Candidate(semantic_type=SemanticType.PROJECT_DETAIL_QUERY, fields=_clean(dict(sc)))

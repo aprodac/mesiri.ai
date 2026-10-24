@@ -505,3 +505,81 @@ def test_project_rollup_counts_possible_duplicates():
     )
     assert project["possible_duplicates"] == 1
     assert [s["possible_duplicates"] for s in project["sites"]] == [1, 0]
+
+
+def _update(activity_id, kind, words, quantity=None, unit=None, started=datetime.date(2026, 10, 22)):
+    return {
+        "id": activity_id,
+        "work_type": "brickwork",
+        "narrative": "started brickwork ground floor",
+        "status": "COMPLETED",
+        "contractor": None,
+        "location_id": None,
+        "activity_date": started,
+        "update_kind": kind,
+        "update_narrative": words,
+        "quantity": quantity,
+        "unit_code": unit,
+    }
+
+
+def test_work_updated_on_a_later_day_shows_that_days_update():
+    """V1 audit WRK-01: day 2's DPR had no brickwork at all."""
+    from mesiri.application.dpr.assembly import build_review_items, carried_activity_rows
+
+    carried = carried_activity_rows(
+        [
+            _update(ACTIVITY_1, "PROGRESS", "brickwork 60% done", "12", "cum"),
+            _update(ACTIVITY_1, "COMPLETED", "brickwork finished"),
+        ]
+    )
+    assert len(carried) == 1
+    payload = build_site_report_payload(
+        project_name="Skyline Towers",
+        site_name="Block A",
+        report_date=datetime.date(2026, 10, 23),
+        activity_rows=carried,
+        quantities_by_activity={ACTIVITY_1: [{"work_type": "x", "quantity": "999", "unit": "sqm"}]},
+        evidence_count_by_activity={ACTIVITY_1: 4},
+        issue_rows=[],
+    )
+    activity = payload["activities"][0]
+    assert activity["work_type"] == "brickwork"
+    assert activity["narrative"] == "brickwork 60% done; brickwork finished (started 22 Oct)"
+    assert activity["status"] == "COMPLETED"
+    assert activity["quantities"] == [{"work_type": "brickwork", "quantity": "12", "unit": "cum"}]
+    assert activity["evidence_count"] == 0  # the photos belong to the day it started
+    assert activity["carried_from"] == "2026-10-22"
+    assert payload["activity_count"] == 1
+
+    # Not offered for confirm/remove on day 2: removing it would remove day 1's work.
+    items = build_review_items(
+        payload=payload,
+        activity_rows=carried,
+        issue_rows=[],
+        labour_lines=[],
+        material_movement_rows=[],
+        review_states={},
+    )
+    assert items == []
+
+
+def test_a_progress_update_without_words_names_the_start_day():
+    from mesiri.application.dpr.assembly import carried_activity_rows
+
+    (row,) = carried_activity_rows([_update(ACTIVITY_2, "PAUSED", None)])
+    assert row["status"] == "STOPPED"
+    assert row["narrative"] == "started brickwork ground floor (started 22 Oct)"
+
+
+def test_same_day_activities_have_no_carried_from():
+    payload = build_site_report_payload(
+        project_name="P",
+        site_name="S",
+        report_date=datetime.date(2026, 10, 23),
+        activity_rows=[{"id": ACTIVITY_1, "work_type": "plastering", "narrative": "x", "status": "IN_PROGRESS"}],
+        quantities_by_activity={},
+        evidence_count_by_activity={},
+        issue_rows=[],
+    )
+    assert "carried_from" not in payload["activities"][0]

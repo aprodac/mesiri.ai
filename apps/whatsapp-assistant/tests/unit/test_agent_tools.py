@@ -122,6 +122,12 @@ def test_finance_query_uses_the_classic_field_names():
     }
 
 
+def test_work_log_passes_the_day_asked_about():
+    """V1 audit WRK-03: 'what was done yesterday?' reaches the seed as one day."""
+    c = t.to_candidate("query_work_log", {"day": "yesterday"}, SCOPE)
+    assert c.fields["day"] == "yesterday"
+
+
 def test_the_latest_update_undo_and_ask_user_are_not_workflows():
     assert t.to_candidate("undo_last", {}, SCOPE) is None
     assert t.to_candidate("ask_user", {"question": "?"}, SCOPE) is None

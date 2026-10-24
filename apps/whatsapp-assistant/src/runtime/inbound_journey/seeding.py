@@ -4,6 +4,7 @@ unit/project/site/stock gates and the worker-promotion follow-up flow."""
 
 from __future__ import annotations
 
+import datetime
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -452,6 +453,14 @@ async def _seed_labour_query(
     event.fields["labour_results"] = results
 
 
+def _day_label(day: datetime.date, *, today: datetime.date) -> str:
+    if day == today:
+        return "today"
+    if day == today - datetime.timedelta(days=1):
+        return "yesterday"
+    return f"{day.day} {day:%b}"
+
+
 async def _seed_activity_search(
     event: CanonicalEventV2,
     decision: PlannerDecisionV2,
@@ -473,9 +482,16 @@ async def _seed_activity_search(
         return
 
     today = today_for(timezone_name)
-    start_date, end_date, date_range_label = resolve_labour_date_range(
-        event.fields.get("date_range"), today=today
-    )
+    # V1 audit WRK-03: "what was done yesterday?" names one day, which the
+    # today/week/month buckets cannot say, so it was answered with today.
+    day = parse_stated_date(event.fields.get("day"), today=today)
+    if day is not None:
+        start_date = end_date = day
+        date_range_label = _day_label(day, today=today)
+    else:
+        start_date, end_date, date_range_label = resolve_labour_date_range(
+            event.fields.get("date_range"), today=today
+        )
     results = await activity_search_service.search(
         organization_id=actor.organization_id,
         project_id=event.project_id,

@@ -14,9 +14,9 @@ earlier day never reaches the DPR.
 
 | ID | Problem | Severity | Approval |
 | --- | --- | --- | --- |
-| WRK-01 | Work continued on a later day never reaches the DPR | Serious (missing data) | None |
-| WRK-02 | Common units refused (metres, rft, "sq ft", m2, m3), nothing saved | Serious (lost entry) | None |
-| WRK-03 | "What was done yesterday?" answers today | Serious (wrong answer) | None |
+| WRK-01 | Work continued on a later day never reaches the DPR | Serious (missing data) | None — **fixed (WA-65), retest** |
+| WRK-02 | Common units refused (metres, rft, "sq ft", m2, m3), nothing saved | Serious (lost entry) | None — **fixed (WA-65), retest** |
+| WRK-03 | "What was done yesterday?" answers today | Serious (wrong answer) | None — **fixed (WA-65), retest** |
 | WRK-04 | Only 6 open jobs are tracked | Other | None |
 | WRK-05 | Multi-site workers lose the link to open work | Other | None |
 | WRK-06 | A correction only works in the same chat session | Other | None |
@@ -40,6 +40,7 @@ Use a **Site Engineer** number with **one site**. WRK-01 runs over **two days**,
 - **Actual:** day 2's DPR has **no** brickwork at all.
 - **Code:** the DPR lists only activities whose `activity_date` is the report date; the day's `progress_updates` rows are never read. The same rule drives the Today page's `work_items` (`list_site_days` in `dpr.py`), so the site also shows "hasn't reported today" (see DSH-04).
 - **Fix direction:** include activities with a progress update on the report date, showing that day's update.
+- **Fixed (WA-65):** the site DPR and the Today page include them; the DPR row shows the day's update words, status and quantities and "(started <day>)". Retest on the phone.
 
 ### WRK-02 · Common units refused, nothing saved
 
@@ -47,6 +48,7 @@ Use a **Site Engineer** number with **one site**. WRK-01 runs over **two days**,
 - **Repro:** each alone: `50 meter wiring done`, `120 rft skirting done`, `200 sq ft tiling done`, `20 m3 concreting done`
 - **Actual:** Mesiri says it isn't saved ("not a recognized unit"). Known units: sqm, sqft, cum, cft, nos, load, bags, kg. No metres or running feet, and no "sq ft", "m2", "m3" spellings.
 - **Fix direction:** add rm/m/metre, rft/running feet, and spelling aliases (sq ft, sq.ft, m2, m², m3, m³).
+- **Fixed (WA-65):** migration 0489 adds `m` and `rft` and the spellings. Retest after the deploy.
 
 ### WRK-03 · "What was done yesterday?" answers today
 
@@ -54,6 +56,7 @@ Use a **Site Engineer** number with **one site**. WRK-01 runs over **two days**,
 - **Repro:** after saving work today: `what work was done yesterday?`
 - **Actual:** the answer lists **today's** work.
 - **Code (start here):** `_seed_activity_search` in `apps/whatsapp-assistant/src/runtime/inbound_journey/seeding.py`; `date_range` of `query_work_log` in `apps/whatsapp-assistant/src/runtime/agent/tools.py`. Same pattern as ATT-04.
+- **Fixed (WA-65):** `query_work_log` takes a `day`; the seed searches that day. Needs live AI to confirm the model sets it. ATT-04 (labour) is not changed.
 
 ### WRK-04 · Only 6 open jobs are tracked
 

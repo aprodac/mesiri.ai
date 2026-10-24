@@ -38,6 +38,22 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from mesiri.application.dpr import site_day
 
 
+def _day_window(
+    report_date: datetime.date, timezone_name: str | None
+) -> tuple[datetime.datetime, datetime.datetime]:
+    """`report_date` as a [start, end) instant range in the project's time
+    zone. `reporting_timezone` is free text (V1 audit DSH-03): a name the
+    tz database doesn't know is read as UTC rather than failing the DPR."""
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    try:
+        tz = ZoneInfo(timezone_name or "UTC")
+    except (ZoneInfoNotFoundError, ValueError):
+        tz = ZoneInfo("UTC")
+    start = datetime.datetime.combine(report_date, datetime.time.min, tzinfo=tz)
+    return start, start + datetime.timedelta(days=1)
+
+
 class PostgresDprRepository:
     def __init__(self, conn: AsyncConnection) -> None:
         self._conn = conn
@@ -439,7 +455,9 @@ class PostgresDprRepository:
             """
             SELECT
                 (SELECT name FROM projects WHERE id = :project_id) AS project_name,
-                (SELECT name FROM sites WHERE id = :site_id) AS site_name
+                (SELECT name FROM sites WHERE id = :site_id) AS site_name,
+                (SELECT reporting_timezone FROM projects WHERE id = :project_id)
+                    AS reporting_timezone
             """
         )
         header = (
@@ -474,6 +492,15 @@ class PostgresDprRepository:
         ).mappings().all()
 
         activity_ids = [row["id"] for row in activity_rows]
+        # V1 audit WRK-01: work started on an earlier day and updated today
+        # ("brickwork 60% done", "brickwork finished") is part of today.
+        carried_rows = await self._carried_activities(
+            organization_id=organization_id,
+            project_id=project_id,
+            site_id=site_id,
+            report_date=report_date,
+            timezone_name=header["reporting_timezone"] if header else None,
+        )
 
         quantities_by_activity: dict[Any, list[dict[str, Any]]] = {}
         evidence_count_by_activity: dict[Any, int] = {}
@@ -727,7 +754,7 @@ class PostgresDprRepository:
             project_name=header["project_name"] if header else None,
             site_name=header["site_name"] if header else None,
             report_date=report_date,
-            activity_rows=[dict(row) for row in activity_rows],
+            activity_rows=[dict(row) for row in activity_rows] + carried_rows,
             quantities_by_activity=quantities_by_activity,
             evidence_count_by_activity=evidence_count_by_activity,
             issue_rows=[dict(row) for row in issue_rows],
@@ -737,13 +764,68 @@ class PostgresDprRepository:
         )
         items = build_review_items(
             payload=payload,
-            activity_rows=[dict(row) for row in activity_rows],
+            activity_rows=[dict(row) for row in activity_rows] + carried_rows,
             issue_rows=[dict(row) for row in issue_rows],
             labour_lines=[dict(row) for row in labour_rows],
             material_movement_rows=[dict(row) for row in material_rows],
             review_states=review_states,
         )
         return payload, items
+
+    async def _carried_activities(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        project_id: uuid.UUID,
+        site_id: uuid.UUID,
+        report_date: datetime.date,
+        timezone_name: str | None,
+    ) -> list[dict[str, Any]]:
+        """Activities from an earlier day with a progress update on
+        `report_date` (the project's day), shaped like an activity row but
+        showing that day's update: its words, the status it left, its
+        quantities, and `carried_from` (the day the work started). A
+        correction (`supersedes_id`) replaces the row it corrects."""
+        from mesiri.application.dpr.assembly import carried_activity_rows
+
+        start, end = _day_window(report_date, timezone_name)
+        rows = (
+            await self._conn.execute(
+                text(
+                    """
+                    SELECT a.id, a.work_type, a.narrative, a.status, a.contractor,
+                           a.started_at, a.ended_at, a.location_id, a.activity_date,
+                           pu.update_kind::text AS update_kind,
+                           pu.narrative AS update_narrative,
+                           pu.quantity, u.code AS unit_code
+                    FROM progress_updates pu
+                    JOIN activities a ON a.id = pu.activity_id
+                    LEFT JOIN units_of_measure u ON u.id = pu.unit_id
+                    WHERE a.organization_id = :org_id
+                      AND a.project_id = :project_id
+                      AND a.site_id = :site_id
+                      AND a.activity_date < :report_date
+                      AND a.deleted_at IS NULL
+                      AND pu.deleted_at IS NULL
+                      AND pu.occurred_at >= :start AND pu.occurred_at < :end
+                      AND NOT EXISTS (
+                          SELECT 1 FROM progress_updates c
+                          WHERE c.supersedes_id = pu.id AND c.deleted_at IS NULL
+                      )
+                    ORDER BY a.created_at, pu.occurred_at, pu.created_at
+                    """
+                ),
+                {
+                    "org_id": organization_id,
+                    "project_id": project_id,
+                    "site_id": site_id,
+                    "report_date": report_date,
+                    "start": start,
+                    "end": end,
+                },
+            )
+        ).mappings().all()
+        return carried_activity_rows([dict(r) for r in rows])
 
     async def find_site_report(
         self,
@@ -1322,11 +1404,31 @@ class PostgresDprRepository:
             await self._conn.execute(
                 text(
                     f"""
-                    WITH acts AS (
-                        SELECT site_id, count(*) AS work_items, max(created_at) AS last_at
-                        FROM activities
-                        WHERE organization_id = :org_id AND activity_date = :report_date
-                          AND deleted_at IS NULL
+                    WITH project_tz AS (
+                        -- reporting_timezone is free text (V1 audit DSH-03):
+                        -- a name Postgres doesn't know is read as UTC.
+                        SELECT p.id, COALESCE(n.name, 'UTC') AS tz
+                        FROM projects p
+                        LEFT JOIN pg_timezone_names n ON n.name = p.reporting_timezone
+                        WHERE p.organization_id = :org_id
+                    ), acts AS (
+                        SELECT site_id, count(*) AS work_items, max(last_at) AS last_at
+                        FROM (
+                            SELECT site_id, created_at AS last_at
+                            FROM activities
+                            WHERE organization_id = :org_id AND activity_date = :report_date
+                              AND deleted_at IS NULL
+                            UNION ALL
+                            -- V1 audit WRK-01: earlier work updated today.
+                            SELECT a.site_id, max(pu.created_at)
+                            FROM progress_updates pu
+                            JOIN activities a ON a.id = pu.activity_id
+                            JOIN project_tz ON project_tz.id = a.project_id
+                            WHERE a.organization_id = :org_id AND a.activity_date < :report_date
+                              AND a.deleted_at IS NULL AND pu.deleted_at IS NULL
+                              AND (pu.occurred_at AT TIME ZONE project_tz.tz)::date = :report_date
+                            GROUP BY a.id, a.site_id
+                        ) day_work
                         GROUP BY site_id
                     ), latest_act AS (
                         SELECT DISTINCT ON (a.site_id) a.site_id, a.narrative,

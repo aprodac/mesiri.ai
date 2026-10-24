@@ -538,7 +538,7 @@ async def test_site_days_carry_live_counts_as_numbers_and_parsed_missing_section
         "last_update_by": None,
         "latest_update": None,
     }
-    conn = _Conn({"WITH acts AS": _Result([row])})
+    conn = _Conn({"WITH project_tz AS": _Result([row])})
 
     [day] = await PostgresDprRepository(conn).list_site_days(
         organization_id=uuid.uuid4(), project_ids=None, report_date=datetime.date(2026, 10, 13)
@@ -552,7 +552,7 @@ async def test_site_days_carry_live_counts_as_numbers_and_parsed_missing_section
 
 
 async def test_site_days_are_limited_to_the_projects_the_user_can_see():
-    conn = _Conn({"WITH acts AS": _Result([])})
+    conn = _Conn({"WITH project_tz AS": _Result([])})
     allowed = {uuid.uuid4()}
 
     await PostgresDprRepository(conn).list_site_days(

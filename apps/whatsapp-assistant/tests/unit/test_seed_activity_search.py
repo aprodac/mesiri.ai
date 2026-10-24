@@ -126,6 +126,46 @@ async def test_activity_search_respects_extracted_date_range_and_work_type():
     assert event.fields["activity_search_results"]["date_range_label"] == "this week"
 
 
+async def test_activity_search_yesterday_searches_yesterday_not_today():
+    """V1 audit WRK-03: "what work was done yesterday?" listed today's work."""
+    from canonicalization.occurred_date import today_for
+
+    service = _FakeActivitySearchService(
+        {"activities": [], "activity_count": 0, "open_issues": [], "open_issue_count": 0}
+    )
+    event = _event(CanonicalEventType.ACTIVITY_QUERY_ASKED, {"day": "yesterday"})
+    decision = _decision(WorkflowKey.ACTIVITY_QUERY, CanonicalEventType.ACTIVITY_QUERY_ASKED)
+
+    await _seed_activity_search(event, decision, service, _Actor(), "Asia/Kolkata")
+
+    yesterday = today_for("Asia/Kolkata") - datetime.timedelta(days=1)
+    call = service.calls[0]
+    assert call["start_date"] == call["end_date"] == yesterday
+    assert event.fields["activity_search_results"]["date_range_label"] == "yesterday"
+
+
+async def test_activity_search_iso_day_and_future_day():
+    from canonicalization.occurred_date import today_for
+
+    today = today_for("Asia/Kolkata")
+    service = _FakeActivitySearchService(
+        {"activities": [], "activity_count": 0, "open_issues": [], "open_issue_count": 0}
+    )
+    decision = _decision(WorkflowKey.ACTIVITY_QUERY, CanonicalEventType.ACTIVITY_QUERY_ASKED)
+    day = today - datetime.timedelta(days=5)
+    event = _event(CanonicalEventType.ACTIVITY_QUERY_ASKED, {"day": day.isoformat()})
+    await _seed_activity_search(event, decision, service, _Actor(), "Asia/Kolkata")
+    assert service.calls[-1]["start_date"] == day
+    assert event.fields["activity_search_results"]["date_range_label"] == f"{day.day} {day:%b}"
+
+    # A future day is a misread: fall back to the range (today), as before.
+    future = _event(
+        CanonicalEventType.ACTIVITY_QUERY_ASKED, {"day": (today + datetime.timedelta(days=2)).isoformat()}
+    )
+    await _seed_activity_search(future, decision, service, _Actor(), "Asia/Kolkata")
+    assert service.calls[-1]["start_date"] == today
+
+
 async def test_activity_search_is_a_no_op_for_a_different_workflow():
     service = _FakeActivitySearchService({})
     event = _event(CanonicalEventType.LABOUR_QUERY_ASKED, {})
