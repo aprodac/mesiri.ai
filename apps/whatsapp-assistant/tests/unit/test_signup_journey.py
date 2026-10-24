@@ -326,3 +326,32 @@ async def test_signup_falls_back_to_text_when_the_image_send_fails(journey) -> N
     await journey.j.handle(_text("Acme"))
     done = await journey.j.handle(_text("Site 1"))
     assert journey.sender.texts[-1] == done
+
+
+async def test_typing_the_buttons_words_works_like_tapping(journey) -> None:
+    """V1 audit SET-03: "yes" or "start free trial" repeated the welcome."""
+    await journey.j.handle(_text("Hi"))
+    assert await journey.j.handle(_text("Start free trial")) == sj.ASK_COMPANY
+
+    await journey.j.handle(_text("cancel"))
+    await journey.j.handle(_text("Hi"))
+    assert await journey.j.handle(_text("yes.")) == sj.ASK_COMPANY
+
+    await journey.j.handle(_text("cancel"))
+    await journey.j.handle(_text("Hi"))
+    assert await journey.j.handle(_text("I'm in a company")) == sj.IN_COMPANY_MESSAGE.format(wa_id=WA_ID)
+
+
+@pytest.mark.parametrize("answer", ["what is this?", "ok", "Hi", "is this free", "?", "1"])
+async def test_a_question_or_a_reply_is_not_taken_as_a_name(journey, answer) -> None:
+    """V1 audit SET-03: a company called "what is this?" was created."""
+    await journey.j.handle(_tap(sj.START_TRIAL_ID))
+    assert await journey.j.handle(_text(answer)) == sj.NOT_A_NAME_MESSAGE.format(question=sj.ASK_COMPANY)
+    assert await journey.j.handle(_text("Suresh Builders")) == sj.ASK_SITE
+    assert await journey.j.handle(_text(answer)) == sj.NOT_A_NAME_MESSAGE.format(question=sj.ASK_SITE)
+    assert journey.created_with == []
+
+
+@pytest.mark.parametrize("name", ["Suresh Builders", "ഗ്രീൻ വില്ല", "AB Constructions", "Tower 9, Aluva"])
+def test_real_names_pass(name) -> None:
+    assert sj.looks_like_a_name(name)

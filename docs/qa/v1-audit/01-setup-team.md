@@ -13,8 +13,8 @@ Admin over WhatsApp (security).
 | --- | --- | --- | --- | --- |
 | SET-01 | A PM can create an Admin over WhatsApp | Serious | Alan: security | B (PM) |
 | SET-02 | A joiner is told "I've asked…" but no admin is reached | Serious | Ops (WA-10) | C (new) |
-| SET-03 | Signup takes any text as the company or site name | Serious | None | C (new) |
-| SET-04 | A typed "add person" sends no invite | Serious | None | A (Admin) |
+| SET-03 | Signup takes any text as the company or site name | Serious | None — **fixed (WA-69), retest** | C (new) |
+| SET-04 | A typed "add person" sends no invite | Serious | None — **fixed (WA-69), retest** | A (Admin) |
 | SET-05 | Role words saved wrong (accountant, PM, owner → Site Engineer) | Other | Alan: security (roles) | A |
 | SET-06 | A shared contact card always becomes Site Engineer | Other | Alan: security (roles) | A |
 | SET-07 | The join code needs exact words | Other | None | A |
@@ -68,6 +68,7 @@ Use three WhatsApp numbers, all in the test company **Mesiri Test Builders** onl
 - **Actual:** a company called "what is this?" appears in the control panel. Delete it after.
 - **Code:** `apps/whatsapp-assistant/src/runtime/signup_journey.py`.
 - **Fix direction:** accept typed equivalents of the buttons; reject questions and very short or no-word answers as names.
+- **Fixed (WA-69).** Retest. A real-looking word ("venda") is still accepted as a site name.
 
 ### SET-04 · A typed "add person" sends no invite
 
@@ -75,6 +76,7 @@ Use three WhatsApp numbers, all in the test company **Mesiri Test Builders** onl
 - **Repro (Phone A):** `add Ravi Test to Green Villa as supervisor`, give his number, tap Yes.
 - **Actual:** no "Forward the next message to them" text with a link arrives.
 - **Fix direction:** the typed path should end the same way as the contact-card path, with the invite to forward.
+- **Fixed (WA-69).** Retest.
 
 ### SET-05 · Role words saved wrong
 

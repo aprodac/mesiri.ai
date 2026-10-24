@@ -1888,6 +1888,8 @@ def build_message_handlers(
                             action_type=confirmed.draft_action.action_type,
                             member_name=confirmed.draft_action.fields.get("member_name"),
                             actor=ctx,
+                            project_id=confirmed.draft_action.project_id,
+                            business_number=(message.metadata or {}).get("display_phone_number"),
                         ):
                             await sender.send_text(wa_id, text)
                 except Exception:  # noqa: BLE001 — the member is already added

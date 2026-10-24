@@ -213,20 +213,38 @@ class ContactShareJourney:
         return await self._start(actor, pending, project.id, project.name)
 
     async def invite_after_member_added(
-        self, *, action_type: object, member_name: object, actor: ActorIdentity
+        self,
+        *,
+        action_type: object,
+        member_name: object,
+        actor: ActorIdentity,
+        project_id: object = None,
+        business_number: object = None,
     ) -> list[str]:
         """The messages to send once ADD_PROJECT_MEMBER has succeeded for the
-        person whose contact was shared; [] for any other confirmation."""
+        person whose contact was shared, or who was added by typing ("add Ravi
+        to Green Villa as supervisor"); [] for any other confirmation."""
         if action_type is not DraftActionType.ADD_PROJECT_MEMBER:
             return []
         invite = await self._redis.get_json(_key(actor.user_id, "invite"))
+        if isinstance(invite, dict) and invite.get("sent"):
+            return []  # this one's invite just went out
         if not isinstance(invite, dict):
-            return []
+            # V1 audit SET-04: added by typing, so no shared contact left an
+            # invite behind; the person still needs one to forward.
+            if not member_name:
+                return []
+            project = next((p for p in actor.projects or [] if str(p.id) == str(project_id)), None)
+            invite = {
+                "name": str(member_name),
+                "project_name": project.name if project is not None else None,
+                "business_number": _digits(business_number) if business_number else None,
+            }
         wanted = " ".join(str(invite.get("name") or "").lower().split())
         added = " ".join(str(member_name or "").lower().split())
         if wanted and wanted != added:
             return []
-        await self._redis.set_json(_key(actor.user_id, "invite"), None, ttl_seconds=60)
+        await self._redis.set_json(_key(actor.user_id, "invite"), {"sent": True}, ttl_seconds=60)
         name = str(member_name or invite.get("name") or "")
         first = _first_name(name)
         company = actor.org_name or "Your company"

@@ -21,6 +21,7 @@ runtime/join_journey.py), or at being added by number.
 
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import logging
 from collections.abc import Callable
@@ -65,6 +66,16 @@ IN_COMPANY_ID = "signup:in_company"
 
 _CANCEL_WORDS = frozenset({"cancel", "stop", "exit", "quit"})
 _NAME_MAX = 120
+# V1 audit SET-03: typing a button's words instead of tapping it repeated
+# the welcome, and any text at all became the company's name.
+_START_WORDS = frozenset(
+    {"yes", "y", "ok", "okay", "start", "start trial", "start free trial", "free trial", "try", "try it", "sure"}
+)
+_IN_COMPANY_WORDS = frozenset({"i'm in a company", "im in a company", "i am in a company", "join", "join company"})
+_NOT_NAMES = frozenset(
+    {"yes", "no", "ok", "okay", "hi", "hello", "hey", "hai", "thanks", "thank you", "start", "start free trial", "sure"}
+)
+_QUESTION_WORDS = ("what ", "why ", "how ", "who ", "where ", "when ", "which ", "is this", "can ", "do ", "does ")
 
 WELCOME_MESSAGE = (
     "👋 Hi{name}! Mesiri turns your site's WhatsApp updates into a daily progress "
@@ -82,6 +93,7 @@ IN_COMPANY_MESSAGE = (
     "*JOIN ACME-4821*. Or ask them to add your number *+{wa_id}*."
 )
 TYPE_IT_MESSAGE = "Please type the answer as a message. {question}"
+NOT_A_NAME_MESSAGE = "That doesn't look like a name. {question}"
 TOO_LONG_MESSAGE = "That's a bit long. Please keep it under {limit} characters. {question}"
 CANCELLED_MESSAGE = "No problem, nothing was set up. Message *Hi* any time to start again."
 ALREADY_SET_UP_MESSAGE = "This number is already set up on Mesiri. Send your update any time."
@@ -157,6 +169,12 @@ class SignupJourney:
             await self._store.clear(wa_id)
             return await self._say(wa_id, IN_COMPANY_MESSAGE.format(wa_id=wa_id))
 
+        if state is not None and state.stage == "welcome":
+            typed = text.casefold().strip(" .!")
+            if typed in _START_WORDS:
+                return await self.handle(_as_tap(message, START_TRIAL_ID))
+            if typed in _IN_COMPANY_WORDS:
+                return await self.handle(_as_tap(message, IN_COMPANY_ID))
         if state is None or state.stage == "welcome":
             return await self._welcome(wa_id, message.sender.profile_name)
 
@@ -171,6 +189,8 @@ class SignupJourney:
             return await self._say(
                 wa_id, TOO_LONG_MESSAGE.format(limit=_NAME_MAX, question=question)
             )
+        if not looks_like_a_name(text):
+            return await self._say(wa_id, NOT_A_NAME_MESSAGE.format(question=question))
 
         if state.stage == "company":
             await self._store.set(wa_id, SignupState(stage="site", company_name=text))
@@ -295,6 +315,25 @@ class SignupJourney:
     async def _say(self, wa_id: str, body: str) -> str:
         await self._sender.send_text(wa_id, body)
         return body
+
+
+def looks_like_a_name(text: str) -> bool:
+    """A company, site or person's name, not a question or a one-word reply
+    ("what is this?", "ok"). Two letters at least; any language."""
+    words = " ".join(text.casefold().split())
+    if sum(ch.isalpha() for ch in words) < 2 or words.strip(" .!") in _NOT_NAMES:
+        return False
+    return not (words.endswith("?") or words.startswith(_QUESTION_WORDS))
+
+
+def _as_tap(message: Any, reply_id: str) -> Any:
+    """The same message as if its button had been tapped."""
+    metadata = {**(getattr(message, "metadata", None) or {}), "interactive_reply_id": reply_id}
+    if hasattr(message, "model_copy"):
+        return message.model_copy(update={"metadata": metadata})
+    tapped = copy.copy(message)
+    tapped.metadata = metadata
+    return tapped
 
 
 def _clean_profile_name(value: str | None) -> str | None:

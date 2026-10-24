@@ -217,3 +217,26 @@ async def test_invite_without_business_number_has_no_link(journey) -> None:
         action_type=DraftActionType.ADD_PROJECT_MEMBER, member_name="Biju", actor=actor
     )
     assert "wa.me" not in texts[1] and "Save this number" in texts[1]
+
+
+async def test_a_member_added_by_typing_gets_the_invite_to_forward(journey) -> None:
+    """V1 audit SET-04: "add Ravi Test to Green Villa as supervisor" + Yes
+    sent no invite: only a shared contact card left one behind."""
+    actor = _actor()
+    project = actor.projects[0]
+    texts = await journey.j.invite_after_member_added(
+        action_type=DraftActionType.ADD_PROJECT_MEMBER,
+        member_name="Ravi Test",
+        actor=actor,
+        project_id=project.id,
+        business_number="+1 555-000-1111",
+    )
+    assert texts[0] == f"✅ *Ravi Test* can now report on *{project.name}*. Forward the next message to them so they can start:"
+    assert "Hi Ravi" in texts[1] and "https://wa.me/15550001111?text=Hi" in texts[1]
+    # Once: the same confirmation handled again sends nothing more.
+    assert (
+        await journey.j.invite_after_member_added(
+            action_type=DraftActionType.ADD_PROJECT_MEMBER, member_name="Ravi Test", actor=actor
+        )
+        == []
+    )
