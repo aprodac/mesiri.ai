@@ -30,10 +30,10 @@ from typing import Any
 
 from canonicalization.occurred_date import resolve_occurred_date
 from channel.receipt.data import company_zone
+from mesiri.domains.materials.validation import OPENING_STOCK, role_can_adjust
 from mesiri_contracts.assistant.canonical_event import CanonicalEventType
 from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.planner_decision import WorkflowKey
-from mesiri.domains.materials.validation import OPENING_STOCK, role_can_adjust
 from runtime.entity_resolution.material_resolution import classify_material_matches
 from runtime.material_units import ask_amount_text, conversion_question, fit_stock_unit
 
