@@ -21,6 +21,7 @@ from channel.replies import ListRow, ReplySpec
 from mesiri_ai.models import ToolOutcome
 from runtime.save_first import DRAFT_NOTE
 
+from .actions import CLOSE_ISSUES, ENGINEER_QUESTION, SITE_CONDITIONS
 from .cards import CardItem, merge_changes
 from .equipment import EQUIPMENT_LINE, is_equipment_only
 from .gateway import StepResult, WorkflowGateway
@@ -45,6 +46,8 @@ from .tools import (
 )
 
 _log = logging.getLogger("mesiri.agent")
+
+ACTION_KINDS = frozenset({ENGINEER_QUESTION, SITE_CONDITIONS, CLOSE_ISSUES})
 
 #: Most tool calls one message may make in total (steps are bounded separately
 #: by the provider loop). A note with many parts is still a handful of calls.
@@ -321,6 +324,8 @@ class AgentToolbox:
     #: Request 83: what request_dpr answered, for the one "draft so far" line a
     #: message that also saves entries gets under its card.
     report_text: str | None = None
+    #: Request 104: the card lines this turn prepared for pending actions.
+    _action_summaries: list[str] = field(default_factory=list)
     #: Request 104, D2: the hours-lost question was the last thing asked.
     hours_asked: bool = False
     #: Request 104: every tool the model called this message (even a refused one).
@@ -359,6 +364,19 @@ class AgentToolbox:
                     self.after_tool()
                 except Exception:  # noqa: BLE001 -- a speed-up, never a failure
                     _log.warning("agent.after_tool_failed", exc_info=True)
+
+    def drop_actions(self) -> None:
+        """Request 104: a reply that ends on a question carries no Save card, so
+        the cards prepared in the same turn are withdrawn -- the reply never
+        lists them as waiting."""
+        discard = getattr(self.gateway, "discard_actions", None)
+        if discard is None or not getattr(self.gateway, "action_items", None):
+            return
+        gone = {i.fact_id for i in self.gateway.action_items}
+        discard()
+        self.saved = [i for i in self.saved if not any(i.summary == s for s in self._action_summaries)]
+        self._action_summaries = []
+        _log.info("agent.cards_dropped count=%s", len(gone))
 
     async def settle(self, timeout: float = 5.0) -> None:
         """Wait for tool calls still running after the model loop was cut off."""
@@ -703,6 +721,11 @@ class AgentToolbox:
         self._carry_after = []
 
     def _outcome(self, name: str, step: StepResult) -> ToolOutcome:
+        if step.status == "saved" and step.workflow_key in ACTION_KINDS:
+            self._action_summaries.extend(step.summaries or ([step.summary] if step.summary else []))
+        if step.status == "info" and name == NOTE_FOR_ENGINEER and step.text not in self.system_lines:
+            # Nobody to send it to: said plainly, whatever the model wrote.
+            self.system_lines.append(step.text)
         if step.status == "saved" and name == NOTE_FOR_ENGINEER:
             # Request 104: a card, not a message sent: the Send tap messages the
             # engineer. Nothing has gone yet, and the reply must not say it did.

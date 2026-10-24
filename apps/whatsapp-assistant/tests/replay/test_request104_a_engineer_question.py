@@ -124,3 +124,11 @@ async def test_the_card_is_kept_so_undo_cancels_it_before_the_tap():
     )
     assert world.actions.delivered == []
     assert again.text == sb.ALREADY_DONE
+
+
+async def test_no_one_to_send_to_is_in_the_reply_whatever_the_model_wrote():
+    world = await _make_world(site_keys=(seed.SITE_A1,))
+    world.actions = FakeActions(people=[])
+    provider = FakeToolCallingProvider([[("note_for_engineer", {"question": QUESTION})], "You'll need to ask them directly."])
+    result = await world.say(provider, ASK)
+    assert "Not sent: I couldn't find a site engineer or project manager" in result.reply.text

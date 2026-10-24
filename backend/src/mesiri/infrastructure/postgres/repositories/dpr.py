@@ -522,6 +522,9 @@ class PostgresDprRepository:
               -- Withdrawn as reported in error (0460) -- including a
               -- rejected draft (BE-09) -- is not part of the day.
               AND status != 'CANCELLED'
+              -- A question noted for the engineer (before request 104 these
+              -- were saved as low-severity issues) is not a site issue.
+              AND COALESCE(narrative, '') NOT LIKE 'Question for your engineer:%'
             ORDER BY
                 CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1
                               WHEN 'MEDIUM' THEN 2 ELSE 3 END,

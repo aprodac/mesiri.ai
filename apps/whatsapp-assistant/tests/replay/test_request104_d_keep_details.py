@@ -244,3 +244,27 @@ def test_the_search_counts_open_and_acknowledged():
 
     source = inspect.getsource(activity_search_service)
     assert '.in_(["OPEN", "ACKNOWLEDGED"])' in source
+
+
+# -- a question ends the reply: no card is left looking saved ------------------------
+
+
+async def test_a_card_prepared_beside_the_hours_question_is_not_listed_as_saved(world):
+    """Live 24 Oct: the weather card was prepared, then the hours question ended
+    the reply, which listed "✅ Saved: Weather: Rainy" with no button to tap."""
+    from tests.unit.request104_fakes import FakeActions
+
+    world.actions = FakeActions()
+    provider = FakeToolCallingProvider(
+        [
+            [
+                ("set_site_conditions", {"weather": "rainy"}),
+                ("report_issue", {"issue_type": "WEATHER", "narrative": "Rain since afternoon, work stopped"}),
+            ],
+            "Sorry to hear that.",
+        ]
+    )
+    result = await world.say(provider, "Rain since afternoon, work stopped")
+    assert HOURS_QUESTION in result.reply.text
+    assert "Saved" not in result.reply.text and "Weather" not in result.reply.text
+    assert world.last_gateway.action_items == []

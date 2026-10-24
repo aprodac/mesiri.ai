@@ -77,7 +77,12 @@ class SiteIssueTargetQueryService:
         first. Read-only."""
         import sqlalchemy as sa
 
-        where = ["organization_id = :org", "status IN ('OPEN', 'ACKNOWLEDGED')"]
+        where = [
+            "organization_id = :org",
+            "status IN ('OPEN', 'ACKNOWLEDGED')",
+            # Not the "Question for your engineer" notes older versions saved as issues.
+            "COALESCE(narrative, '') NOT LIKE 'Question for your engineer:%'",
+        ]
         params: dict = {"org": uuid.UUID(organization_id), "limit": limit}
         if project_id:
             where.append("project_id = :project")

@@ -138,6 +138,8 @@ class ActivitySearchService:
             # Request 104, D4: what the dashboard counts as open -- open and
             # acknowledged ("being handled").
             site_issues.c.status.in_(["OPEN", "ACKNOWLEDGED"]),
+            # Not the "Question for your engineer" notes older versions saved as issues.
+            sa.func.coalesce(site_issues.c.narrative, "").notlike("Question for your engineer:%"),
         ]
         # A null project/site on the caller's context means "don't narrow",
         # not "match rows with a null column" -- mirrors labour_query.

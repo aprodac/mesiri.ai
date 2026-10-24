@@ -354,6 +354,8 @@ class AgentRunner:
         sources: list[str],
         correlation_id: str | None = None,
     ) -> ReplySpec:
+        if toolbox.parked is not None:
+            toolbox.drop_actions()
         text = (run.text or "").strip()
         if toolbox.equipment_noted and not _entries(toolbox):
             # Request 104: the one plain line, whatever the model wrote.

@@ -243,6 +243,13 @@ class JourneyGateway:
         tool, args = self.current_call
         self.card_items.append(CardItem(tool, dict(args), fact[0], str(fact[1]), step.summary or ""))
 
+    def discard_actions(self) -> None:
+        """The turn ended on a question, so its card is never shown: nothing
+        pending may look as if it waits on a tap (they expire unread)."""
+        gone = {i.fact_id for i in self.action_items}
+        self.card_items = [i for i in self.card_items if i.fact_id not in gone]
+        self.action_items = []
+
     def action_facts(self) -> list[tuple[str, Any]]:
         """The pending actions this turn put on its card (their tap ids)."""
         return [i.fact for i in self.action_items]
