@@ -2083,3 +2083,37 @@ export async function requestContinue(): Promise<{ requested: boolean; already_r
   const res = await api.post('/company/trial/continue')
   return res.data
 }
+
+// ─── Analytics (WEB-24) ──────────────────────────────────────────────────────
+
+export interface AnalyticsDay {
+  day: string
+  workers: number
+  work_items: number
+  photos: number
+  issues: number
+  delay_minutes: number
+}
+
+export interface AnalyticsSummary {
+  date_from: string
+  date_to: string
+  days: AnalyticsDay[]
+  /** Open (or acknowledged) issues now, by type and severity. */
+  open_issues: { issue_type: string; severity: string; count: number }[]
+  /** Each active site: days it sent anything, days its site DPR was confirmed. */
+  sites: { site_id: string; site_name: string; project_name: string; days_with_updates: number; days_confirmed: number }[]
+}
+
+/** GET /dpr/analytics: aggregated over the whole range in SQL. */
+export async function fetchAnalyticsApi(params: {
+  dateFrom: string
+  dateTo: string
+  projectId?: string
+  siteId?: string
+}): Promise<AnalyticsSummary> {
+  const res = await api.get<AnalyticsSummary>('/dpr/analytics', {
+    params: { date_from: params.dateFrom, date_to: params.dateTo, project_id: params.projectId, site_id: params.siteId },
+  })
+  return res.data
+}

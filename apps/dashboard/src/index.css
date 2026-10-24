@@ -50,6 +50,12 @@
   --info-soft: #e0e8fb;
   --ai: #4338ca;
   --ai-soft: #eef0ff;
+  /* Issue severity as an ordinal one-hue ramp for charts (WEB-24), checked
+     with the dataviz validator (--ordinal): monotone, light end >= 2:1. */
+  --sev-critical: #7f1d1d;
+  --sev-high: #b91c1c;
+  --sev-medium: #ef4444;
+  --sev-low: #f39696;
 }
 
 .dark {
@@ -94,6 +100,11 @@
   --info-soft: #1c2742;
   --ai: #b7b4ff;
   --ai-soft: #25234a;
+  /* On the dark ground more severe = brighter (validated --mode dark). */
+  --sev-critical: #fca5a5;
+  --sev-high: #f87171;
+  --sev-medium: #dc2626;
+  --sev-low: #b91c1c;
 }
 
 @theme inline {

@@ -1,451 +1,402 @@
 import * as React from 'react'
-import {
-  TrendingUp,
-  RefreshCw,
-  Clock,
-  Download,
-  Layers,
-  ShieldAlert,
-  HardHat,
-  Calendar,
-  BarChart3,
-  PieChart as PieIcon,
-  Activity,
-} from 'lucide-react'
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  CartesianGrid,
-  AreaChart,
-  Area,
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line,
-} from 'recharts'
+import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { BarChart3, ChevronRight, RefreshCw, Table2, TriangleAlert } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
-import {
-  fetchActivitiesApi,
-  fetchSiteIssuesApi,
-  fetchTimelineEntriesApi,
-  fetchWorkersApi,
-  type ActivitySummary,
-  type SiteIssueItem,
-  type TimelineApiEntry,
-} from '@/lib/api'
-
-import { KpiCard } from '@/components/ui/kpi-card'
-import { useToast } from '@/components/ui/toast-notification'
-import { Badge } from '@/components/ui/badge'
+import { fetchAnalyticsApi, type AnalyticsDay, type AnalyticsSummary } from '@/lib/api'
+import { longDate, plural } from '@/lib/site-day'
+import { useUrlState } from '@/lib/url-state'
+import { Callout, PageHeader, StatStrip } from '@/components/dpr-page'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Card } from '@/components/ui/card'
-import { cn } from '@/lib/utils'
+import { cn, toLocalISODate } from '@/lib/utils'
 
-// ─── Colors Palette for Recharts ─────────────────────────────────────────────
+// Analytics (WEB-24): how the sites are doing over a date range. Every figure
+// comes from GET /dpr/analytics, aggregated in SQL over the whole range with
+// the Reports list's scope rules (the old page counted the first 50-100 rows
+// of four lists in the browser and drew two charts from made-up numbers).
+// Chart rules: docs/DESIGN.md and the dataviz method -- one hue per single
+// series, severity as a validated one-hue ramp, thin bars, recessive grid,
+// a tooltip on every mark and a table view of every chart.
 
-const COLORS = {
-  indigo: '#6366f1',
-  emerald: '#10b981',
-  amber: '#f59e0b',
-  rose: '#f43f5e',
-  sky: '#06b6d4',
-  purple: '#8b5cf6',
+const RANGES = { '7': 'Last 7 days', '30': 'Last 30 days', '90': 'Last 90 days' } as const
+type Range = keyof typeof RANGES
+
+const SEVERITIES = [
+  { key: 'CRITICAL', label: 'Critical', color: 'var(--sev-critical)' },
+  { key: 'HIGH', label: 'High', color: 'var(--sev-high)' },
+  { key: 'MEDIUM', label: 'Medium', color: 'var(--sev-medium)' },
+  { key: 'LOW', label: 'Low', color: 'var(--sev-low)' },
+] as const
+
+const SERIES = 'var(--chart-2)'
+
+function shortDay(iso: string): string {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString([], { day: 'numeric', month: 'short' })
 }
 
-const PIE_COLORS = [COLORS.rose, COLORS.amber, COLORS.sky, COLORS.emerald]
+function humanize(value: string): string {
+  const text = value.replace(/_/g, ' ').toLowerCase()
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
 
-// ─── Main Operations Analytics Page ───────────────────────────────────────────
+function TooltipBox({ title, rows }: { title: string; rows: { label: string; value: React.ReactNode; color?: string }[] }) {
+  return (
+    <div className="rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
+      <p className="mb-1 font-medium">{title}</p>
+      {rows.map((r) => (
+        <p key={r.label} className="flex items-center gap-2">
+          {r.color && <span className="size-2.5 rounded-sm" style={{ background: r.color }} />}
+          <span className="text-muted-foreground">{r.label}</span>
+          <span className="ml-auto pl-3 font-semibold tabular-nums">{r.value}</span>
+        </p>
+      ))}
+    </div>
+  )
+}
+
+/** A titled chart with a chart/table switch (the table is the accessible view). */
+function ChartPanel({
+  title,
+  note,
+  table,
+  children,
+}: {
+  title: string
+  note?: string
+  table: React.ReactNode
+  children: React.ReactNode
+}) {
+  const [asTable, setAsTable] = React.useState(false)
+  return (
+    <section className="flex flex-col gap-3 rounded-xl border p-4">
+      <header className="flex items-start justify-between gap-2">
+        <div>
+          <h2 className="text-[15px] font-semibold">{title}</h2>
+          {note && <p className="text-xs text-muted-foreground">{note}</p>}
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1 px-2 text-xs text-muted-foreground"
+          onClick={() => setAsTable((v) => !v)}
+          aria-pressed={asTable}
+        >
+          {asTable ? <BarChart3 className="size-3.5" /> : <Table2 className="size-3.5" />}
+          {asTable ? 'Chart' : 'Table'}
+        </Button>
+      </header>
+      {asTable ? <div className="max-h-64 overflow-auto rounded-lg border">{table}</div> : children}
+    </section>
+  )
+}
+
+function DaysTable({ days, field, unit }: { days: AnalyticsDay[]; field: keyof AnalyticsDay; unit: string }) {
+  return (
+    <table className="w-full text-sm">
+      <thead className="sticky top-0 bg-muted text-xs text-muted-foreground">
+        <tr>
+          <th className="px-3 py-1.5 text-left font-medium">Day</th>
+          <th className="px-3 py-1.5 text-right font-medium">{unit}</th>
+        </tr>
+      </thead>
+      <tbody className="tabular-nums">
+        {[...days].reverse().map((d) => (
+          <tr key={d.day} className="border-t">
+            <td className="px-3 py-1.5">{longDate(d.day)}</td>
+            <td className="px-3 py-1.5 text-right">{d[field] || '—'}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+/** One series per day: thin bars, one hue, grid and axes in the background. */
+function DailyBars({ days, field, label }: { days: AnalyticsDay[]; field: 'workers' | 'work_items'; label: string }) {
+  return (
+    <div className="h-56 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={days} margin={{ top: 4, right: 4, left: -16, bottom: 0 }} barCategoryGap="25%">
+          <CartesianGrid vertical={false} stroke="var(--border)" />
+          <XAxis
+            dataKey="day"
+            tickFormatter={shortDay}
+            tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+            tickLine={false}
+            axisLine={{ stroke: 'var(--border)' }}
+            minTickGap={16}
+          />
+          <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} width={40} />
+          <Tooltip
+            cursor={{ fill: 'var(--muted)', opacity: 0.6 }}
+            content={({ active, payload }) =>
+              active && payload?.length ? (
+                <TooltipBox
+                  title={longDate(String(payload[0].payload.day))}
+                  rows={[{ label, value: Number(payload[0].value) || '—', color: SERIES }]}
+                />
+              ) : null
+            }
+          />
+          <Bar dataKey={field} fill={SERIES} radius={[4, 4, 0, 0]} maxBarSize={28} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+function Meter({ value, of }: { value: number; of: number }) {
+  const pct = of > 0 ? Math.round((value / of) * 100) : 0
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-1.5 w-full max-w-28 overflow-hidden rounded-full bg-muted" aria-hidden>
+        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: SERIES }} />
+      </div>
+      <span className="w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+        {value}/{of}
+      </span>
+    </div>
+  )
+}
 
 export default function OperationsAnalyticsPage() {
   const { scope } = useScope()
-  const toast = useToast()
+  const [range, setRange] = useUrlState<Range>('range', '30')
 
-  const [loading, setLoading] = React.useState<boolean>(true)
-  const [activities, setActivities] = React.useState<ActivitySummary[]>([])
-  const [issues, setIssues] = React.useState<SiteIssueItem[]>([])
-  const [timelineEvents, setTimelineEvents] = React.useState<TimelineApiEntry[]>([])
-  const [labourPresentCount, setLabourPresentCount] = React.useState<number>(0)
+  const projectId = scope.mode !== 'portfolio' ? scope.projectId : undefined
+  const siteId = scope.mode === 'site' ? scope.siteId : undefined
+  const dateTo = toLocalISODate(new Date())
+  const dateFrom = toLocalISODate(new Date(Date.now() - (Number(range) - 1) * 86_400_000))
 
-  // Filters
-  const [timeRange, setTimeRange] = React.useState<string>('30_DAYS')
+  const query = useQuery({
+    queryKey: ['analytics', projectId, siteId, dateFrom, dateTo],
+    queryFn: () => fetchAnalyticsApi({ dateFrom, dateTo, projectId, siteId }),
+  })
+  const data: AnalyticsSummary | undefined = query.data
 
-  const activeProjectId = React.useMemo(() => {
-    return scope.mode !== 'portfolio' ? scope.projectId : undefined
-  }, [scope])
-
-  const activeSiteId = React.useMemo(() => {
-    return scope.mode === 'site' ? scope.siteId : undefined
-  }, [scope])
-
-  const scopeFilter = React.useMemo(() => ({
-    projectId: activeProjectId,
-    siteId: activeSiteId,
-  }), [activeProjectId, activeSiteId])
-
-  const loadAnalytics = React.useCallback(async () => {
-    setLoading(true)
-    try {
-      const [activitiesRes, issuesRes, timelineRes, workersRes] = await Promise.all([
-        fetchActivitiesApi({ project_id: scopeFilter.projectId, site_id: scopeFilter.siteId, limit: 50 }).catch(() => ({ items: [], total: 0 })),
-        fetchSiteIssuesApi({ projectId: scopeFilter.projectId, siteId: scopeFilter.siteId, limit: 100 }).catch(() => ({ items: [], total: 0 })),
-        fetchTimelineEntriesApi({ projectId: scopeFilter.projectId, siteId: scopeFilter.siteId, limit: 100 }).catch(() => ({ items: [], total: 0 })),
-        fetchWorkersApi({ limit: 100 }).catch(() => ({ items: [], total: 0 })),
-      ])
-
-      setActivities(activitiesRes.items || [])
-      setIssues(issuesRes.items || [])
-      setTimelineEvents(timelineRes.items || [])
-      setLabourPresentCount(workersRes.items ? workersRes.items.length : 0)
-    } catch {
-      setActivities([])
-      setIssues([])
-      setTimelineEvents([])
-      setLabourPresentCount(0)
-    } finally {
-      setLoading(false)
+  const totals = React.useMemo(() => {
+    const days = data?.days ?? []
+    const sum = (k: keyof AnalyticsDay) => days.reduce((n, d) => n + (Number(d[k]) || 0), 0)
+    return {
+      workerDays: sum('workers'),
+      workItems: sum('work_items'),
+      photos: sum('photos'),
+      issues: sum('issues'),
+      hoursLost: Math.round((sum('delay_minutes') / 60) * 10) / 10,
+      daysWithWork: days.filter((d) => d.workers > 0 || d.work_items > 0).length,
     }
-  }, [scopeFilter])
+  }, [data])
 
+  // Open issues: one row per type, stacked by severity (most open first).
+  const issueRows = React.useMemo(() => {
+    const byType = new Map<string, Record<string, number>>()
+    for (const r of data?.open_issues ?? []) {
+      const row = byType.get(r.issue_type) ?? {}
+      row[r.severity] = (row[r.severity] ?? 0) + r.count
+      byType.set(r.issue_type, row)
+    }
+    return [...byType.entries()]
+      .map(([type, counts]) => {
+        const total = Object.values(counts).reduce((a, b) => a + b, 0)
+        // The count rides on the axis label: a direct label that can't collide.
+        return { type: humanize(type), label: `${humanize(type)} · ${total}`, ...counts, total }
+      })
+      .sort((a, b) => b.total - a.total)
+  }, [data])
+  const openTotal = issueRows.reduce((n, r) => n + r.total, 0)
 
-  React.useEffect(() => {
-    loadAnalytics()
-  }, [loadAnalytics])
-
-  // ─── Data Transformations for Recharts ──────────────────────────────────────
-
-  // 1. Target vs Executed Quantities Bar Chart Data
-  const activityCompletionData = React.useMemo(() => {
-    if (activities.length === 0) return []
-    return activities.map((act, index) => ({
-      name: act.work_type ? (act.work_type.length > 18 ? `${act.work_type.slice(0, 18)}...` : act.work_type) : `Activity #${index + 1}`,
-      Status: act.status === 'DONE' ? 100 : act.status === 'IN_PROGRESS' ? 50 : 20,
-    }))
-  }, [activities])
-
-  // 2. Timeline Daily Velocity Stream Area Chart Data
-  const velocityStreamData = React.useMemo(() => {
-    if (timelineEvents.length === 0) return []
-    const counts: Record<string, number> = {}
-    timelineEvents.forEach((evt) => {
-      const day = evt.occurred_at.split('T')[0]
-      counts[day] = (counts[day] || 0) + 1
-    })
-    return Object.entries(counts)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, count]) => ({
-        date: date.slice(5), // MM-DD
-        Events: count,
-      }))
-  }, [timelineEvents])
-
-  // 3. Issue Severity Pie Chart Data
-  const severityPieData = React.useMemo(() => {
-    const counts: Record<string, number> = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 }
-    issues.forEach((iss) => {
-      const sev = (iss.severity || 'LOW').toUpperCase()
-      if (counts[sev] !== undefined) counts[sev]++
-      else counts.LOW++
-    })
-    return [
-      { name: 'CRITICAL', value: counts.CRITICAL },
-      { name: 'HIGH', value: counts.HIGH },
-      { name: 'MEDIUM', value: counts.MEDIUM },
-      { name: 'LOW', value: counts.LOW },
-    ].filter((item) => item.value > 0)
-  }, [issues])
-
-  // 4. Overall Analytics Executive KPIs
-  const stats = React.useMemo(() => {
-    const totalActivities = activities.length
-    const completedActivities = activities.filter((a) => (a.status || '').toUpperCase() === 'DONE').length
-    const overallProgressPct = totalActivities > 0 ? Math.round((completedActivities / totalActivities) * 100) : 0
-
-    const totalIssues = issues.length
-    // Every settled status, not just RESOLVED. WONT_FIX is a decision and
-    // CANCELLED (migration 0460) is a withdrawn report -- neither is a
-    // blocker anyone is still waiting on, and counting them here inflated
-    // the open-issue figure this KPI exists to report.
-    const CLOSED = ['RESOLVED', 'WONT_FIX', 'CANCELLED']
-    const openIssues = issues.filter((i) => !CLOSED.includes((i.status || '').toUpperCase())).length
-    const totalDelayMins = issues.reduce((acc, i) => acc + (i.delay_duration_minutes || 0), 0)
-
-    return { totalActivities, completedActivities, overallProgressPct, totalIssues, openIssues, totalDelayMins }
-  }, [activities, issues])
-
-
-  const scopeLabel = React.useMemo(() => {
-    if (scope.mode === 'portfolio') return 'Portfolio Scope (All Projects)'
-    if (scope.mode === 'project') return `Project Scope: ${scope.projectName}`
-    return `Site Scope: ${scope.projectName} / ${scope.siteName}`
-  }, [scope])
+  const scopeLabel =
+    scope.mode === 'portfolio' ? 'All projects' : scope.mode === 'project' ? scope.projectName : `${scope.projectName} / ${scope.siteName}`
+  const nDays = data?.days.length ?? Number(range)
 
   return (
-    <div className="flex flex-col gap-4 w-full max-w-full relative pb-12">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
+      <PageHeader
+        title="Analytics"
+        subtitle={<>How the sites are doing · {scopeLabel}</>}
+        actions={
+          <>
+            <Select value={range} onValueChange={(v) => setRange(v as Range)}>
+              <SelectTrigger className="h-9 w-[140px]" aria-label="Date range">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(RANGES) as Range[]).map((r) => (
+                  <SelectItem key={r} value={r}>
+                    {RANGES[r]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button variant="ghost" size="icon" className="size-8" onClick={() => query.refetch()} disabled={query.isFetching} title="Refresh" aria-label="Refresh">
+              <RefreshCw className={cn('size-4', query.isFetching && 'animate-spin')} />
+            </Button>
+          </>
+        }
+      />
 
-      {/* ── Page Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3.5">
-        <div className="flex items-center gap-3">
-          <div className="size-10 rounded-lg border border-indigo-500/30 bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0 shadow-2xs">
-            <TrendingUp className="size-5" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              Operations Analytics Center
-              <Badge variant="outline" className="text-[10px] font-mono border-indigo-500/30 text-indigo-600 dark:text-indigo-400">
-                Live Executive Metrics
-              </Badge>
-            </h1>
-            <p className="text-xs text-muted-foreground font-medium">{scopeLabel}</p>
+      {query.isError ? (
+        <Callout tone="draft" icon={TriangleAlert} action={<Button variant="outline" size="sm" className="bg-background" onClick={() => query.refetch()}>Try again</Button>}>
+          Analytics could not be loaded.
+        </Callout>
+      ) : query.isLoading || !data ? (
+        <div className="flex flex-col gap-4">
+          <Skeleton className="h-16 rounded-xl" />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Skeleton className="h-72 rounded-xl" />
+            <Skeleton className="h-72 rounded-xl" />
           </div>
         </div>
+      ) : (
+        <>
+          <p className="-mt-2 text-xs text-muted-foreground">
+            {longDate(data.date_from)} – {longDate(data.date_to)} · work on {totals.daysWithWork} of {plural(nDays, 'day')}
+          </p>
+          <StatStrip
+            stats={[
+              { label: 'Worker-days', value: totals.workerDays.toLocaleString() || '—' },
+              { label: 'Work items', value: totals.workItems || '—' },
+              { label: 'Photos', value: totals.photos || '—' },
+              { label: 'Issues reported', value: totals.issues || '—', tone: totals.issues > 0 ? 'warn' : 'default' },
+              { label: 'Hours lost', value: totals.hoursLost || '—', tone: totals.hoursLost > 0 ? 'bad' : 'default' },
+            ]}
+          />
 
-        <div className="flex items-center gap-2">
-          <Select value={timeRange} onValueChange={setTimeRange}>
-            <SelectTrigger className="h-8 text-xs w-36">
-              <Calendar className="size-3.5 mr-1.5 text-muted-foreground" />
-              <SelectValue placeholder="Time Range" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7_DAYS">Last 7 Days</SelectItem>
-              <SelectItem value="30_DAYS">Last 30 Days</SelectItem>
-              <SelectItem value="ALL">All Time</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 gap-1.5 text-xs font-medium"
-            onClick={() => toast.info('Exporting Analytics Statement', 'Generating PDF operational performance report')}
-          >
-            <Download className="size-3.5" />
-            Export Report
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={loadAnalytics}
-            disabled={loading}
-            className="h-8 gap-1.5 text-xs"
-          >
-            <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} />
-            Refresh
-          </Button>
-        </div>
-      </div>
-
-      {/* ── Executive KPI Row ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard
-          title="Overall Site Progress"
-          value={<span className="text-indigo-600 dark:text-indigo-400">{stats.overallProgressPct}%</span>}
-          trend="up"
-          trendValue={`${stats.completedActivities}/${stats.totalActivities} Completed`}
-          description="Target vs actual completion"
-          icon={<Layers className="text-indigo-500" />}
-          chartData={[10, 25, 40, 55, 70, stats.overallProgressPct]}
-        />
-        <KpiCard
-          title="Daily Active Workforce"
-          value={<span className="text-sky-600 dark:text-sky-400">{labourPresentCount}</span>}
-          trend="up"
-          trendValue="Workers Present Today"
-          description="Live attendance count"
-          icon={<HardHat className="text-sky-500" />}
-          chartData={[12, 18, 22, 25, 30, labourPresentCount]}
-        />
-        <KpiCard
-          title="Active Site Interruptions"
-          value={<span className="text-amber-600 dark:text-amber-400">{stats.openIssues}</span>}
-          trend={stats.openIssues > 0 ? 'down' : 'up'}
-          trendValue={`${stats.openIssues} Open Blockers`}
-          description="Unresolved site issues"
-          icon={<ShieldAlert className="text-amber-500" />}
-          chartData={[5, 4, 3, 6, 2, stats.openIssues]}
-        />
-        <KpiCard
-          title="Total Delay Duration"
-          value={<span className="text-rose-600 dark:text-rose-400">{stats.totalDelayMins}m</span>}
-          trend="down"
-          trendValue="Minutes Lost"
-          description="Work hours lost to delays"
-          icon={<Clock className="text-rose-500" />}
-          chartData={[60, 120, 180, 240, stats.totalDelayMins]}
-        />
-      </div>
-
-      {/* ── Visual Performance Charts Grid (Recharts) ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
-        {/* 1. Target vs Executed Quantities Bar Chart */}
-        <Card className="rounded-lg border-border/80 p-5 space-y-4 shadow-2xs">
-          <div className="flex items-center justify-between border-b pb-3">
-            <div>
-              <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
-                <BarChart3 className="size-4 text-indigo-600" />
-                Work Package Target vs Executed Quantities
-              </h2>
-              <p className="text-xs text-muted-foreground">Comparison of planned vs completed output per activity</p>
-            </div>
-            <Badge variant="outline" className="font-mono text-xs">{activityCompletionData.length} Packages</Badge>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ChartPanel title="Workers on site" note="People per day, all sites in view" table={<DaysTable days={data.days} field="workers" unit="Workers" />}>
+              <DailyBars days={data.days} field="workers" label="Workers" />
+            </ChartPanel>
+            <ChartPanel title="Work reported" note="Work items per day" table={<DaysTable days={data.days} field="work_items" unit="Work items" />}>
+              <DailyBars days={data.days} field="work_items" label="Work items" />
+            </ChartPanel>
           </div>
 
-          {activityCompletionData.length === 0 ? (
-            <div className="h-64 flex flex-col items-center justify-center text-xs text-muted-foreground gap-2">
-              <Layers className="size-8 opacity-40" />
-              <span>No activity quantities recorded in database</span>
-            </div>
-          ) : (
-            <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={activityCompletionData} margin={{ top: 10, right: 10, left: -20, bottom: 25 }}>
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                  <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-15} textAnchor="end" />
-                  <YAxis tick={{ fontSize: 10 }} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '11px', color: '#fff' }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                  <Bar dataKey="Status" fill={COLORS.indigo} radius={[4, 4, 0, 0]} />
-                </BarChart>
-
-              </ResponsiveContainer>
-            </div>
-          )}
-        </Card>
-
-        {/* 2. Operational Event Velocity Stream Area Chart */}
-        <Card className="rounded-lg border-border/80 p-5 space-y-4 shadow-2xs">
-          <div className="flex items-center justify-between border-b pb-3">
-            <div>
-              <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
-                <Activity className="size-4 text-emerald-600" />
-                Operational Event Velocity Stream
-              </h2>
-              <p className="text-xs text-muted-foreground">Daily volume of DPRs, expenses, and site logs recorded</p>
-            </div>
-            <Badge variant="outline" className="font-mono text-xs">{timelineEvents.length} Events</Badge>
-          </div>
-
-          {velocityStreamData.length === 0 ? (
-            <div className="h-64 flex flex-col items-center justify-center text-xs text-muted-foreground gap-2">
-              <Activity className="size-8 opacity-40" />
-              <span>No operational event velocity data available</span>
-            </div>
-          ) : (
-            <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={velocityStreamData} margin={{ top: 10, right: 10, left: -20, bottom: 10 }}>
-                  <defs>
-                    <linearGradient id="velocityGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={COLORS.indigo} stopOpacity={0.4} />
-                      <stop offset="95%" stopColor={COLORS.indigo} stopOpacity={0.0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                  <YAxis tick={{ fontSize: 10 }} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '11px', color: '#fff' }}
-                  />
-                  <Area type="monotone" dataKey="Events" stroke={COLORS.indigo} strokeWidth={2} fillOpacity={1} fill="url(#velocityGrad)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </Card>
-
-        {/* 3. Site Blocker Severity Distribution Pie Chart */}
-        <Card className="rounded-lg border-border/80 p-5 space-y-4 shadow-2xs">
-          <div className="flex items-center justify-between border-b pb-3">
-            <div>
-              <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
-                <PieIcon className="size-4 text-rose-600" />
-                Site Interruptions by Severity
-              </h2>
-              <p className="text-xs text-muted-foreground">Distribution of recorded site issues and bottlenecks</p>
-            </div>
-            <Badge variant="outline" className="font-mono text-xs">{issues.length} Total Issues</Badge>
-          </div>
-
-          {severityPieData.length === 0 ? (
-            <div className="h-64 flex flex-col items-center justify-center text-xs text-muted-foreground gap-2">
-              <ShieldAlert className="size-8 opacity-40" />
-              <span>No site issues logged in database</span>
-            </div>
-          ) : (
-            <div className="h-64 w-full flex items-center justify-center">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={severityPieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={85}
-                    paddingAngle={4}
-                    dataKey="value"
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  >
-                    {severityPieData.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ChartPanel
+              title="Open issues by type"
+              note={openTotal ? `${plural(openTotal, 'issue')} still open, any date` : 'Nothing open'}
+              table={
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-muted text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-1.5 text-left font-medium">Type</th>
+                      {SEVERITIES.map((s) => (
+                        <th key={s.key} className="px-2 py-1.5 text-right font-medium">{s.label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="tabular-nums">
+                    {issueRows.map((r) => (
+                      <tr key={r.type} className="border-t">
+                        <td className="px-3 py-1.5">{r.type}</td>
+                        {SEVERITIES.map((s) => (
+                          <td key={s.key} className="px-2 py-1.5 text-right">{(r as Record<string, unknown>)[s.key] as number || '—'}</td>
+                        ))}
+                      </tr>
                     ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '11px', color: '#fff' }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </Card>
+                  </tbody>
+                </table>
+              }
+            >
+              {issueRows.length === 0 ? (
+                <p className="py-10 text-center text-sm text-muted-foreground">No open issues.</p>
+              ) : (
+                <>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground" aria-label="Severity">
+                    {SEVERITIES.map((s) => (
+                      <span key={s.key} className="inline-flex items-center gap-1.5">
+                        <span className="size-2.5 rounded-sm" style={{ background: s.color }} /> {s.label}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="w-full" style={{ height: Math.max(120, issueRows.length * 36 + 24) }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={issueRows} layout="vertical" margin={{ top: 0, right: 8, left: 0, bottom: 0 }} barCategoryGap="30%">
+                        <CartesianGrid horizontal={false} stroke="var(--border)" />
+                        <XAxis type="number" allowDecimals={false} domain={[0, 'dataMax']} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
+                        <YAxis type="category" dataKey="label" width={168} tick={{ fontSize: 12, fill: 'var(--foreground)', width: 160 }} tickLine={false} axisLine={false} />
+                        <Tooltip
+                          cursor={{ fill: 'var(--muted)', opacity: 0.6 }}
+                          content={({ active, payload }) =>
+                            active && payload?.length ? (
+                              <TooltipBox
+                                title={String(payload[0].payload.type)}
+                                rows={SEVERITIES.filter((s) => payload[0].payload[s.key]).map((s) => ({
+                                  label: s.label,
+                                  value: payload[0].payload[s.key],
+                                  color: s.color,
+                                }))}
+                              />
+                            ) : null
+                          }
+                        />
+                        {SEVERITIES.map((s, i) => (
+                          <Bar
+                            key={s.key}
+                            dataKey={s.key}
+                            stackId="sev"
+                            fill={s.color}
+                            stroke="var(--background)"
+                            strokeWidth={2}
+                            maxBarSize={22}
+                            radius={i === SEVERITIES.length - 1 ? [0, 4, 4, 0] : 0}
+                          />
+                        ))}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <Link to="/issues" className="inline-flex items-center gap-0.5 self-start text-xs font-medium text-primary hover:underline">
+                    All issues <ChevronRight className="size-3.5" />
+                  </Link>
+                </>
+              )}
+            </ChartPanel>
 
-        {/* 4. Active Labour & Attendance Trend Line Chart */}
-        <Card className="rounded-lg border-border/80 p-5 space-y-4 shadow-2xs">
-          <div className="flex items-center justify-between border-b pb-3">
-            <div>
-              <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
-                <HardHat className="size-4 text-sky-600" />
-                Workforce Attendance Trend
-              </h2>
-              <p className="text-xs text-muted-foreground">Daily worker deployment attendance curve</p>
-            </div>
-            <Badge variant="outline" className="font-mono text-xs">{labourPresentCount} Present Today</Badge>
+            <section className="flex flex-col gap-3 rounded-xl border p-4">
+              <header>
+                <h2 className="text-[15px] font-semibold">Site reporting</h2>
+                <p className="text-xs text-muted-foreground">
+                  Days each site sent updates, and days its report was confirmed, out of {plural(nDays, 'day')}
+                </p>
+              </header>
+              {data.sites.length === 0 ? (
+                <p className="py-10 text-center text-sm text-muted-foreground">No active sites in view.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="text-xs text-muted-foreground">
+                      <tr>
+                        <th className="py-1.5 pr-2 text-left font-medium">Site</th>
+                        <th className="px-2 py-1.5 text-left font-medium">Sent updates</th>
+                        <th className="py-1.5 pl-2 text-left font-medium">Confirmed</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.sites.map((s) => (
+                        <tr key={s.site_id} className="border-t">
+                          <td className="py-2 pr-2">
+                            <span className="font-medium">{s.site_name}</span>
+                            <span className="block text-xs text-muted-foreground">{s.project_name}</span>
+                          </td>
+                          <td className="px-2 py-2">
+                            <Meter value={s.days_with_updates} of={nDays} />
+                          </td>
+                          <td className="py-2 pl-2">
+                            <Meter value={s.days_confirmed} of={nDays} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
           </div>
-
-          <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={[
-                  { day: 'Mon', Present: Math.max(10, labourPresentCount - 5) },
-                  { day: 'Tue', Present: Math.max(12, labourPresentCount - 3) },
-                  { day: 'Wed', Present: Math.max(15, labourPresentCount - 1) },
-                  { day: 'Thu', Present: Math.max(18, labourPresentCount + 2) },
-                  { day: 'Fri', Present: labourPresentCount },
-                ]}
-                margin={{ top: 10, right: 10, left: -20, bottom: 10 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                <XAxis dataKey="day" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '11px', color: '#fff' }}
-                />
-                <Line type="monotone" dataKey="Present" stroke={COLORS.sky} strokeWidth={2.5} dot={{ r: 4 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-
-      </div>
+        </>
+      )}
     </div>
   )
 }

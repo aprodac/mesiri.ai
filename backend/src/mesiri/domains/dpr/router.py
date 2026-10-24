@@ -40,6 +40,7 @@ from mesiri.domains.shared.media import signed_media_url
 from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.objectstorage.dependency import get_object_storage
 from mesiri.infrastructure.postgres.dependency import get_db_conn
+from mesiri.infrastructure.postgres.repositories.analytics import PostgresAnalyticsRepository
 from mesiri.infrastructure.postgres.repositories.dpr import PostgresDprRepository
 from mesiri.infrastructure.postgres.repositories.fact_reviews import PostgresFactReviewRepository
 from mesiri_contracts.common.storage import ObjectStoragePort
@@ -143,6 +144,45 @@ async def list_daily_reports(
         level=level,
     )
     return {"items": items, "total": total}
+
+
+_ANALYTICS_MAX_DAYS = 366
+
+
+@router.get("/analytics")
+async def get_analytics(
+    date_from: datetime.date | None = None,
+    date_to: datetime.date | None = None,
+    project_id: uuid.UUID | None = None,
+    site_id: uuid.UUID | None = None,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """The Analytics page (WEB-24): per-day workers, work items, photos,
+    issues and hours lost for a date range, open issues by type and
+    severity, and each site's reporting (days with updates / days its site
+    DPR was confirmed). Scoped exactly like /daily-reports, BE-42 included.
+    Defaults to the 30 days ending `date_to` (today); at most a year."""
+    date_to = date_to or datetime.date.today()
+    date_from = date_from or date_to - datetime.timedelta(days=29)
+    if date_from > date_to:
+        raise HTTPException(status_code=422, detail="The start date is after the end date.")
+    if (date_to - date_from).days >= _ANALYTICS_MAX_DAYS:
+        raise HTTPException(status_code=422, detail="Pick a range of a year or less.")
+
+    project_ids, denied = _resolve_project_ids(auth_context, project_id)
+    if denied:
+        return {"date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "days": [], "open_issues": [], "sites": []}
+    restricted, allowed = _site_filter(auth_context, project_ids)
+    return await PostgresAnalyticsRepository(conn).summary(
+        organization_id=auth_context.organization_id,
+        project_ids=project_ids,
+        site_id=site_id,
+        restricted_project_ids=restricted,
+        allowed_site_ids=allowed,
+        date_from=date_from,
+        date_to=date_to,
+    )
 
 
 @router.get("/site-days")

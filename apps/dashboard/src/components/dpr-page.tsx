@@ -48,9 +48,24 @@ export function StatStrip({
   stats: { label: string; value: React.ReactNode; tone?: 'default' | 'warn' | 'bad' }[]
 }) {
   return (
-    <dl className="flex divide-x overflow-hidden rounded-xl border">
-      {stats.map((s) => (
-        <div key={s.label} className="flex min-w-0 flex-1 flex-col px-2.5 py-1.5 sm:px-4 sm:py-2">
+    // One row; on phones more than four wrap to rows of three. The 1px gap
+    // over a border-coloured ground draws the rules in either layout.
+    <dl
+      className={cn(
+        'grid gap-px overflow-hidden rounded-xl border bg-border sm:flex',
+        stats.length <= 2 ? 'grid-cols-2' : stats.length === 4 ? 'grid-cols-4' : 'grid-cols-3',
+      )}
+    >
+      {stats.map((s, i) => (
+        <div
+          key={s.label}
+          className={cn(
+            'flex min-w-0 flex-1 flex-col bg-background px-2.5 py-1.5 sm:px-4 sm:py-2',
+            // In rows of three, the last one fills what is left of its row.
+            i === stats.length - 1 && stats.length > 4 && stats.length % 3 === 2 && 'col-span-2',
+            i === stats.length - 1 && stats.length > 4 && stats.length % 3 === 1 && 'col-span-3',
+          )}
+        >
           <dt className="truncate text-[11px] text-muted-foreground sm:text-xs">{s.label}</dt>
           <dd
             className={cn(
