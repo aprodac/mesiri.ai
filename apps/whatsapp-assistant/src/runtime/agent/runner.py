@@ -51,7 +51,7 @@ from .reply_text import (
     without_stray_sentences,
 )
 from .toolbox import AgentToolbox, SavedItem, offers_engineer
-from .tools import ScopeLookup, tool_specs
+from .tools import NOTE_FOR_ENGINEER, ScopeLookup, tool_specs
 
 _log = logging.getLogger("mesiri.agent")
 
@@ -352,8 +352,9 @@ class AgentRunner:
             # Before the Save tap nothing is kept (WA-37).
             text = without_saved_claims(text)
         text = without_tool_talk(text)
-        if not _questions_line(toolbox):
+        if not _questions_line(toolbox) and not _engineer_card(toolbox):
             # WA-52: nothing went to the engineer, so the reply never says it did.
+            # (A Send card is no promise: its words say what will be sent.)
             text = without_engineer_promise(text)
         if toolbox.parked is None and (_entries(toolbox) or toolbox.system_lines or toolbox.answers):
             text = without_stray_sentences(text, _grounds(toolbox))
@@ -458,7 +459,12 @@ class AgentRunner:
         from .save_button import facts_of
 
         carry = lambda name: [i.fact for i in getattr(toolbox.gateway, name, ())]  # noqa: E731
-        return facts_of(handled, before=carry("carry_before"), after=carry("carry_after")) is not None
+        # Request 104: a pending action (a question for the engineer, the day's
+        # weather, issues to close) is on the card like a draft.
+        return (
+            facts_of(handled, before=carry("carry_before"), after=[*carry("carry_after"), *carry("action_items")])
+            is not None
+        )
 
     def _fallback(self, toolbox: AgentToolbox, *, partial: bool) -> ReplySpec:
         """The reply when the model gave no usable text: the pipeline's own
@@ -758,6 +764,11 @@ def _entries(toolbox: AgentToolbox) -> list[SavedItem]:
 
 #: Marks a question the system passed to the engineer (WA-37): said, not saved.
 QUESTION_MARK = "📨 "
+
+
+def _engineer_card(toolbox: AgentToolbox) -> bool:
+    """Request 104: a "Send to engineer" card is on this reply."""
+    return any(item.tool == NOTE_FOR_ENGINEER for item in toolbox.saved)
 
 
 def _questions_line(toolbox: AgentToolbox) -> str:

@@ -141,12 +141,23 @@ def summarise_draft(draft: DraftActionV2 | Any) -> str | None:
     return None
 
 
-def render_saved(summaries: list[str]) -> str:
+#: Request 104: a card whose lines all start the same way says it in its
+#: header instead ("📝 To close: Crane breakdown"), not "To save: To close: ...".
+CARD_VERBS = {
+    "Send to engineer: ": "📝 Send to engineer:",
+    "To close: ": "📝 To close:",
+}
+
+
+def render_saved(summaries: list[str], header: str = SAVED_HEADER) -> str:
     """The "Saved:" block: one line for one thing, a header and bullets for
     several. Empty when there is nothing to say."""
     items = [s for s in (summaries or []) if s]
     if not items:
         return ""
+    for prefix, verb in CARD_VERBS.items():
+        if header == SAVED_HEADER and all(s.startswith(prefix) for s in items):
+            return render_saved([s[len(prefix) :] for s in items], verb)
     if len(items) == 1:
-        return f"{SAVED_HEADER} {items[0]}"
-    return "\n".join([SAVED_HEADER, *(f"• {s}" for s in items)])
+        return f"{header} {items[0]}"
+    return "\n".join([header, *(f"• {s}" for s in items)])

@@ -33,6 +33,8 @@ from interactions.saved_summary import QUESTION_PREFIX, SAVED_HEADER
 from runtime.reply_composer import UNDO_ROW, pick_form
 from runtime.save_first import FACT_TYPE_BY_ACTION
 
+from .cards import removed_line
+
 #: WhatsApp reply-button ids hold 256 characters: "agt:cancel:" + 34 each.
 MAX_ITEMS = 7
 TAP_PREFIX = "agt:"
@@ -42,6 +44,8 @@ CANCEL = "cancel"
 UNDO = "undo"
 
 SAVE_TITLE = "✅ Save"
+#: Request 104: the tap of a card that only sends the engineer a question.
+SEND_TITLE = "✅ Send"
 CANCEL_TITLE = "❌ Cancel"
 #: Replaces "✅ Saved:" at the top of a reply whose records wait on the tap.
 TO_SAVE_HEADER = "📝 To save:"
@@ -56,6 +60,7 @@ NOT_SHOWN = (
     "Please send it again in smaller parts."
 )
 EXPIRED = "That message has expired."
+CANT_UNDO_ACTION = "That one has already been done, so it can't be taken back here."
 REFUSED = "Couldn't {what} {n} of them: {why}."
 #: A tap on one entry that can't be settled, said as a sentence (round 3,
 #: 21 Oct: "Couldn't cancel 1 of them: it was already saved; fix it on the
@@ -72,6 +77,7 @@ REFUSED_ONE = {
 
 #: One letter per review fact type, to keep the tap id short.
 _CODES: dict[str, str] = {
+    "action": "x",  # request 104: a pending action (runtime/agent/actions.py), not a draft
     "activity": "a",
     "labour_report": "l",
     "material_receipt": "r",
@@ -189,7 +195,9 @@ def parse_tap(value: str) -> tuple[str, list[tuple[str, uuid.UUID]]] | None:
     return (action, facts) if len(facts) <= MAX_ITEMS else None
 
 
-def with_save_buttons(spec: ReplySpec, facts: list[tuple[str, uuid.UUID]]) -> ReplySpec:
+def with_save_buttons(
+    spec: ReplySpec, facts: list[tuple[str, uuid.UUID]], *, save_title: str = SAVE_TITLE
+) -> ReplySpec:
     """The composed reply with Save / Cancel in place of Undo, and its
     "Saved:" header saying the records still wait on the tap. Any other
     choice it carried (the team-photo offer) stays after them."""
@@ -201,7 +209,7 @@ def with_save_buttons(spec: ReplySpec, facts: list[tuple[str, uuid.UUID]]) -> Re
         text = before + TO_SAVE_HEADER + after
     others = [row for row in (spec.buttons or spec.list_rows or ()) if row.id != UNDO_ROW.id]
     rows = [
-        ListRow(tap_id(SAVE, facts), SAVE_TITLE),
+        ListRow(tap_id(SAVE, facts), save_title),
         ListRow(tap_id(CANCEL, facts), CANCEL_TITLE),
         *others,
     ][:3]
@@ -241,11 +249,21 @@ def tap_reply(action: str, settled: Any) -> str:
 
 
 async def handle_tap(
-    message: Any, actor: Any, interaction_handler: Any, cards: Any | None = None
+    message: Any,
+    actor: Any,
+    interaction_handler: Any,
+    cards: Any | None = None,
+    actions: Any | None = None,
+    sender: Any | None = None,
 ) -> ReplySpec | None:
     """The reply to a Save / Cancel / remove tap, or None when the message is
     not one. ``cards`` (runtime/agent/cards.py) keeps the sender's latest card
-    in step with the tap: Save marks it saved, Cancel and remove drop it."""
+    in step with the tap: Save marks it saved, Cancel and remove drop it.
+    ``actions`` (runtime/agent/actions.py) runs the card's pending actions on
+    Save (a question for the engineer, the day's weather, issues to close) and
+    drops them on Cancel; ``sender`` is the WhatsApp sender they may use."""
+    from .actions import ACTION_FACT, GONE_LINE
+
     tap = str((message.metadata or {}).get("interactive_reply_id") or "")
     if not tap.startswith(TAP_PREFIX):
         return None
@@ -255,40 +273,80 @@ async def handle_tap(
     action, facts = parsed
     org = str(actor.organization_id) if actor.organization_id else None
     if action == UNDO:
-        return await _undo_tap(actor, interaction_handler, cards, org, facts)
+        return await _undo_tap(actor, interaction_handler, cards, org, facts, actions)
+    drafts = [f for f in facts if f[0] != ACTION_FACT]
+    pending = [f for f in facts if f[0] == ACTION_FACT]
     card = None
     if cards is not None:
         try:
             card = await cards.get(actor)
         except Exception:  # noqa: BLE001 -- the card only helps undo and edit
             card = None
-    settled = await interaction_handler.settle_drafts(
-        organization_id=org,
-        user_id=actor.user_id,
-        facts=facts,
-        keep=action == SAVE,
-    )
-    if settled is None:
-        return ReplySpec(text=EXPIRED)
-    if cards is not None and card is not None and settled.done:
+    lines: list[str] = []
+    settled = None
+    if drafts:
+        settled = await interaction_handler.settle_drafts(
+            organization_id=org,
+            user_id=actor.user_id,
+            facts=drafts,
+            keep=action == SAVE,
+        )
+        if settled is None:
+            return ReplySpec(text=EXPIRED)
+        lines.append(tap_reply(action, settled))
+    ran = not drafts
+    for _kind, action_id in pending:
+        if actions is None:
+            lines.append(GONE_LINE)
+            continue
+        if action == CANCEL:
+            await actions.store.drop(actor, action_id.hex)
+            continue
+        waiting = await actions.store.take(actor, action_id.hex)
+        lines.append(await actions.run(waiting, actor, sender) if waiting is not None else ALREADY_DONE)
+        ran = True
+    if pending and action == CANCEL and not drafts:
+        lines.append(CANCELLED_DONE)
+    if cards is not None and card is not None and (settled.done if settled is not None else ran):
         await cards.settle(actor, facts, keep=action == SAVE)
-    return ReplySpec(text=tap_reply(action, settled))
+    return ReplySpec(text="\n".join(line for line in lines if line))
 
 
-async def _undo_tap(actor: Any, interaction_handler: Any, cards: Any | None, org: str | None, facts: list) -> ReplySpec:
-    """A row of the remove list: exactly those entries, by their own undo."""
+async def _undo_tap(
+    actor: Any, interaction_handler: Any, cards: Any | None, org: str | None, facts: list, actions: Any | None = None
+) -> ReplySpec:
+    """A row of the remove list: exactly those entries, by their own undo. A
+    pending action (not yet tapped) is simply dropped; one that ran cannot be
+    taken back (a sent message stays sent)."""
+    from .actions import ACTION_FACT
     from .journey_gateway import undo_step
 
-    undo = getattr(interaction_handler, "undo_facts", None)
-    undone = await undo(organization_id=org, user_id=actor.user_id, facts=facts) if undo else None
-    if undone is None:
-        return ReplySpec(text=EXPIRED)
     card = await cards.get(actor) if cards is not None else None
-    items = [i for i in (card.items if card else []) if i.fact in set(undone.done)]
-    if cards is not None and undone.done:
-        await cards.drop(actor, list(undone.done))
+    pending = [f for f in facts if f[0] == ACTION_FACT]
+    drafts = [f for f in facts if f[0] != ACTION_FACT]
+    notes: list[str] = []
+    dropped: list[Any] = []
+    for fact in pending:
+        if card is not None and card.state == "open" and actions is not None:
+            await actions.store.drop(actor, fact[1].hex)
+            dropped.append(fact)
+        else:
+            notes.append(CANT_UNDO_ACTION)
+    undone = None
+    if drafts:
+        undo = getattr(interaction_handler, "undo_facts", None)
+        undone = await undo(organization_id=org, user_id=actor.user_id, facts=drafts) if undo else None
+        if undone is None:
+            return ReplySpec(text=EXPIRED)
+    done = [*(undone.done if undone is not None else []), *dropped]
+    items = [i for i in (card.items if card else []) if i.fact in set(done)]
+    if cards is not None and done:
+        await cards.drop(actor, list(done))
     if items:
-        return ReplySpec(text=undo_step(items, undone).text)
-    if undone.done:
-        return ReplySpec(text="Removed.")
+        text = undo_step(items, undone).text if undone is not None else removed_line(items)
+        return ReplySpec(text="\n".join([text, *notes]))
+    if done:
+        return ReplySpec(text="\n".join(["Removed.", *notes]))
+    if notes:
+        return ReplySpec(text="\n".join(notes))
     return ReplySpec(text=undo_step([], undone).text)

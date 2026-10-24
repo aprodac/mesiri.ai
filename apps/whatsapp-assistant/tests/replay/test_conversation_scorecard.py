@@ -104,22 +104,24 @@ async def test_scorecard_9_material_used(world):  # noqa: F811
     assert result.reply.text.startswith("ok, 5 bags cement\n\n✅ Saved: Cement used: 5 bags")
 
 
-async def test_scorecard_13_question_in_a_note_is_noted(world):  # noqa: F811
+async def test_scorecard_13_question_in_a_note_is_a_send_card(world):  # noqa: F811
+    from tests.unit.request104_fakes import ENGINEER, FakeActions
+
+    world.actions = FakeActions(people=[ENGINEER])
     provider = FakeToolCallingProvider(
         [
             [
                 ("save_labour", {"workers": [{"trade": "mason", "headcount": 6}, {"trade": "helper", "headcount": 10}]}),
                 ("note_for_engineer", {"question": "Nale slab concrete cheyyan pattumo?"}),
             ],
-            "Nale slab concrete cheyyan pattumo?",
+            "6 mason, 10 helper, and the question for the engineer. Check and tap Save.",
         ]
     )
     result = await world.say(
         provider, "6 mason, 10 helper vannu. Engineer-inodu chodikku: nale slab concrete cheyyan pattumo?"
     )
-    # WA-37: passed on, said once, never listed as a saved entry.
-    assert "📨 Question for your engineer: Nale slab concrete cheyyan pattumo?" in result.reply.text
+    # Request 104: a "Send to engineer" card item, nothing sent or saved as an issue.
+    assert "• Send to engineer: Nale slab concrete cheyyan pattumo?" in result.reply.text
     assert result.reply.text.count("Nale slab concrete cheyyan pattumo?") == 1
-    issue = world.dispatcher.dispatched[1].draft_action.fields
-    assert issue["issue_type"] == "OTHER"
-    assert issue["narrative"].startswith("Question for your engineer:")
+    assert len(world.dispatcher.dispatched) == 1  # only the labour was written
+    assert world.actions.delivered == []

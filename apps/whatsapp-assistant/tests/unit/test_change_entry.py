@@ -9,6 +9,7 @@ from typing import Any
 from tests.unit.test_material_entry import MESSAGE, ORG, PRJ, SITE, _actor, _Context, _Understanding
 
 from channel.replies import ReplySpec
+from mesiri_contracts.assistant.candidates import Candidate as Candidate_
 from mesiri_contracts.assistant.canonical_event import CanonicalEventType
 from mesiri_contracts.assistant.enums import SemanticType
 from mesiri_contracts.assistant.planner_decision import WorkflowKey
@@ -127,7 +128,13 @@ class _Issues:
 
 async def test_fixed_resolves_the_latest_open_issue():
     issues = _Issues()
-    ready = await _prepare(_entry(site_issue_query=issues), UPDATE_ISSUE, action="resolve", notes="mechanic came")
+    # Request 104: the agent's "resolve" is a card now (action_entry); the entry
+    # still takes a resolve candidate, as the other actions do.
+    candidate = Candidate_(
+        semantic_type=SemanticType.SITE_ISSUE_UPDATE,
+        fields={"action": "resolve", "resolution_notes": "mechanic came"},
+    )
+    ready = await _entry(site_issue_query=issues).prepare(MESSAGE, _Understanding(candidate), candidate)
     assert ready.event.event_type is CanonicalEventType.SITE_ISSUE_RESOLVE_REQUESTED
     assert ready.decision.workflow_key is WorkflowKey.SITE_ISSUE_CLOSE
     assert ready.event.fields["site_issue_id"] == "i7" and ready.event.fields["resolution_notes"] == "mechanic came"

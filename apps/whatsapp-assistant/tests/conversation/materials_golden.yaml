@@ -11,6 +11,7 @@
 #              supplier / work_item  must appear in the saved value (lower-case), when given
 #   ask      true: nothing is saved and the reply is ONE question
 #   query    true: nothing is saved and a query tool answers
+#   card     true: nothing is saved; a Send / Save card (engineer question) waits on the tap
 #
 # The live run (pytest -m live) sends `message` to the real model instead of `calls`.
 
@@ -40,5 +41,5 @@
 - {"id": 22, "lang": "en", "message": "thanks bro 👍", "calls": [], "expect": [], "chat": true}
 # Round 2 (21 Oct afternoon): a question is passed on ONLY when they ask for the engineer (Ilan);
 # a shortage is an issue, never a question.
-- {"id": 23, "lang": "manglish", "message": "engineer-inodu chodikku, nale slab concrete cheyyamo?", "calls": [["note_for_engineer", {"question": "nale slab concrete cheyyamo?"}]], "expect": [{"action": "record_site_issue"}]}
+- {"id": 23, "lang": "manglish", "message": "engineer-inodu chodikku, nale slab concrete cheyyamo?", "calls": [["note_for_engineer", {"question": "nale slab concrete cheyyamo?"}]], "expect": [], "card": true}
 - {"id": 24, "lang": "manglish", "message": "10 bag cement balance und, kooduthal venam", "calls": [["report_issue", {"issue_type": "MATERIAL_SHORTAGE", "narrative": "10 bag cement balance, kooduthal venam"}]], "expect": [{"action": "record_site_issue"}]}

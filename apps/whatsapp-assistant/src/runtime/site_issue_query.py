@@ -63,3 +63,38 @@ class SiteIssueTargetQueryService:
             severity=row["severity"],
             narrative=row["narrative"],
         )
+
+    async def list_open(
+        self,
+        *,
+        organization_id: str,
+        project_id: str | None,
+        site_id: str | None,
+        limit: int = 100,
+    ) -> list[dict]:
+        """Request 104, C/D: the site's open issues -- open and acknowledged
+        ("being handled"), the same two statuses the dashboard counts -- newest
+        first. Read-only."""
+        import sqlalchemy as sa
+
+        where = ["organization_id = :org", "status IN ('OPEN', 'ACKNOWLEDGED')"]
+        params: dict = {"org": uuid.UUID(organization_id), "limit": limit}
+        if project_id:
+            where.append("project_id = :project")
+            params["project"] = uuid.UUID(project_id)
+        if site_id:
+            where.append("site_id = :site")
+            params["site"] = uuid.UUID(site_id)
+        async with self._db.transaction() as conn:
+            rows = (
+                await conn.execute(
+                    sa.text(
+                        "SELECT id, site_id, issue_type, severity, narrative, status, occurred_at, "
+                        "delay_duration_minutes FROM site_issues WHERE "
+                        + " AND ".join(where)
+                        + " ORDER BY occurred_at DESC, created_at DESC LIMIT :limit"
+                    ),
+                    params,
+                )
+            ).mappings().all()
+        return [dict(row) for row in rows]

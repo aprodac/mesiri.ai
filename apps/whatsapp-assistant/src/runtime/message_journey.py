@@ -173,6 +173,7 @@ def build_message_handlers(
     later: Any | None = None,
     card_renderer: Any | None = None,
     ops_alerts: Any | None = None,
+    actions: Any | None = None,
 ) -> tuple[Any, Any]:
     """Build the `on_normalized`/`on_message_claimed` callbacks WhatsAppReceiver
     invokes for every inbound message, closing over the already-built services
@@ -577,6 +578,7 @@ def build_message_handlers(
             """The agent's turn. The pipeline it drives is the one below, with
             the senders swapped for a capture so the model writes the one reply."""
             from runtime.agent import save_button
+            from runtime.agent.action_entry import ActionEntry
             from runtime.agent.change_entry import ChangeEntry
             from runtime.agent.journey_gateway import JourneyGateway
             from runtime.agent.labour_entry import LabourEntry
@@ -730,12 +732,13 @@ def build_message_handlers(
                 handled_list = list(getattr(gateway, "handled", []))
                 receipt_image = reply.header_image
                 entries = save_button.entries_of(handled_list)
-                if entries and (reply.buttons or reply.list_rows):
+                action_items = list(getattr(gateway, "action_items", ()))
+                if (entries or action_items) and (reply.buttons or reply.list_rows):
                     # Request 90: a question's buttons must not push the Save card
                     # out: the entries would stay drafts nobody was shown. The
                     # question stays in the words, to be answered by typing.
                     reply = save_button.question_as_text(reply)
-                if not handled_list or reply.buttons or reply.list_rows:
+                if (not handled_list and not action_items) or reply.buttons or reply.list_rows:
                     await _send_composed(
                         target_wa_id, ctx.user_id, reply, header_image=receipt_image
                     )
@@ -751,15 +754,23 @@ def build_message_handlers(
                     offers.extend(gathered.offers)
                 # WA-37: a question passed to the engineer is no entry to undo.
                 saved = any(h.saved_draft and not save_button.is_engineer_question(h) for h in handled_list)
+                saved = saved or bool(action_items)
                 composed = compose(reply.text, offers, saved=saved)
                 # WA-35: drafts wait on the sender's Save tap, not on Undo.
                 plan, facts = save_button.card_plan(
                     handled_list,
                     before=[i.fact for i in getattr(gateway, "carry_before", ())],
-                    after=[i.fact for i in getattr(gateway, "carry_after", ())],
+                    after=[i.fact for i in (*getattr(gateway, "carry_after", ()), *action_items)],
                 )
                 if plan == "card":
-                    composed = save_button.with_save_buttons(composed, facts)
+                    only_questions = bool(action_items) and not handled_list and all(
+                        i.tool == "note_for_engineer" for i in action_items
+                    )
+                    composed = save_button.with_save_buttons(
+                        composed,
+                        facts,
+                        save_title=save_button.SEND_TITLE if only_questions else save_button.SAVE_TITLE,
+                    )
                     await _remember_card(gateway, open_card=True)
                 elif plan == "blocked":
                     # Request 90: records were written but no card can show them:
@@ -817,6 +828,16 @@ def build_message_handlers(
 
                 return context_line(await cards.get(actor))
 
+            async def _open_issues(scoped):  # type: ignore[no-untyped-def]
+                """The site's open issues (open + being handled), newest first."""
+                if site_issue_query is None:
+                    return []
+                return await site_issue_query.list_open(
+                    organization_id=str(scoped.organization_id),
+                    project_id=str(scoped.project_id) if scoped.project_id else None,
+                    site_id=str(scoped.site_id) if scoped.site_id else None,
+                )
+
             def _gateway(msg, language):  # type: ignore[no-untyped-def]
                 early["gateway"] = JourneyGateway(
                     message=msg,
@@ -828,6 +849,19 @@ def build_message_handlers(
                     cards=cards,
                     actor=ctx,
                     undo_facts=_undo_facts,
+                    actions=actions,
+                    action_entry=(
+                        ActionEntry(
+                            context_resolver=context_resolver,
+                            org_settings_query=org_settings_query,
+                            actor=ctx,
+                            active_context=getattr(context_resolver, "active_context", None),
+                            service=actions,
+                            open_issues=_open_issues,
+                        )
+                        if actions is not None
+                        else None
+                    ),
                     set_today_site=_set_today_site if work_site is not None else None,
                     set_conversion=(
                         (
@@ -1421,7 +1455,9 @@ def build_message_handlers(
         from runtime.agent import save_button
 
         try:
-            save_reply = await save_button.handle_tap(message, ctx, interaction_handler, cards)
+            save_reply = await save_button.handle_tap(
+                message, ctx, interaction_handler, cards, actions=actions, sender=sender
+            )
         except Exception:  # noqa: BLE001 — a tap must always get some reply
             _log.exception("save_button.tap_failed user=%s", ctx.user_id)
             save_reply = ReplySpec(text="Sorry, that didn't work — please try again.")
@@ -2351,7 +2387,7 @@ def build_message_handlers(
                         organization_id=str(ctx.organization_id), user_id=ctx.user_id, facts=facts
                     )
 
-                step = await undo_from_card(cards, ctx, _undo_card_facts, [])
+                step = await undo_from_card(cards, ctx, _undo_card_facts, [], actions)
                 if step.reply is not None:
                     await _send_composed(wa_id, ctx.user_id, step.reply)
                     reply_text = step.reply.text

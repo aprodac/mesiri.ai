@@ -12,7 +12,6 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from canonicalization.question_note import question_note_candidate
 from mesiri_ai.models import ToolSpec
 from mesiri_contracts.assistant.candidates import Candidate
 from mesiri_contracts.assistant.enums import SemanticType
@@ -47,6 +46,8 @@ UPDATE_ISSUE = "update_issue"
 UPDATE_PENDING_CARD = "update_pending_card"
 # WA-57: a part of the message that cannot be recorded this turn.
 STILL_TO_DO = "still_to_do"
+# Request 104, B: the day's weather, whether the site worked, tomorrow's plan.
+SET_SITE_CONDITIONS = "set_site_conditions"
 
 #: Tools that write a record (or an undo of one). A run that has attempted one
 #: must never be retried from the top.
@@ -68,6 +69,7 @@ WRITE_TOOLS = frozenset(
         CORRECT_WORK_QUANTITY,
         UPDATE_ISSUE,
         UPDATE_PENDING_CARD,
+        SET_SITE_CONDITIONS,
     }
 )
 
@@ -349,7 +351,8 @@ def tool_specs() -> list[ToolSpec]:
         ToolSpec(
             name=NOTE_FOR_ENGINEER,
             description=(
-                "Pass a question to the user's engineer. ONLY when the user asks for it "
+                "Prepare a question for the user's engineer: it shows a 'Send to engineer' card and "
+                "is sent only when they tap Send. ONLY when the user asks for it "
                 "('engineer-inodu chodikku', 'ask the engineer ...'). Any other question you "
                 "answer yourself from the facts or the query tools, or say plainly that the "
                 "records cannot answer it. Never for a problem or delay (report_issue) and "
@@ -366,6 +369,41 @@ def tool_specs() -> list[ToolSpec]:
                     "site": _SITE,
                 },
                 ["question"],
+            ),
+        ),
+        ToolSpec(
+            name=SET_SITE_CONDITIONS,
+            description=(
+                "Set the day's site conditions or tomorrow's plan: the weather today (rain, sunny, "
+                "cloudy, windy, extreme heat), whether the site worked a full day, half a day or not "
+                "at all, and 'tomorrow plan: ...'. It shows a card; nothing is kept until they tap "
+                "Save. 'Rain since 2 pm, work stopped 2 hours' is this tool AND report_issue (WEATHER, "
+                "with the hours). A plan for tomorrow is ALWAYS this tool, never just noted."
+            ),
+            parameters=_obj(
+                {
+                    "weather": {
+                        "type": "string",
+                        "enum": ["sunny", "cloudy", "rainy", "windy", "extreme_heat"],
+                        "description": "Only if the weather is said.",
+                    },
+                    "site_working": {
+                        "type": "string",
+                        "enum": ["full", "half", "none"],
+                        "description": "full day / half day / no work, only if said.",
+                    },
+                    "hours_lost": {
+                        "type": "number",
+                        "description": "Hours of work lost today, only if said as hours.",
+                    },
+                    "tomorrow_plan": {
+                        "type": "string",
+                        "description": "Tomorrow's plan in their words ('2nd floor slab casting, need 15 workers').",
+                    },
+                    "date": _DATE,
+                    "project": _PROJECT,
+                    "site": _SITE,
+                }
             ),
         ),
         ToolSpec(
@@ -685,13 +723,26 @@ def tool_specs() -> list[ToolSpec]:
             description=(
                 "Change a site issue reported earlier: it is fixed / sorted / done "
                 "(resolve), seen and being handled (acknowledge), will not be fixed (wont_fix), "
-                "was reported by mistake (cancel), or is back again (reopen). The user confirms with Yes."
+                "was reported by mistake (cancel), or is back again (reopen). Resolving shows a "
+                "'To close' card (Save / Cancel); the other actions ask Yes / No. For resolve, pass "
+                "`about` with the words that name the issue ('crane') -- never pick one yourself: the "
+                "system matches the words, or lists the open issues as buttons when it is unclear. "
+                "'Both are fixed' / 'all done' is all_issues true."
             ),
             parameters=_obj(
                 {
                     "action": {
                         "type": "string",
                         "enum": ["resolve", "acknowledge", "wont_fix", "cancel", "reopen"],
+                    },
+                    "about": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "resolve only: the words naming the issue(s), e.g. ['crane'].",
+                    },
+                    "all_issues": {
+                        "type": "boolean",
+                        "description": "resolve only: true when they say all / both of the open issues are fixed.",
                     },
                     "notes": {"type": "string", "description": "What was done, only if said."},
                     "project": _PROJECT,
@@ -862,9 +913,20 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
         question = str(args.get("question") or "").strip()
         if not question:
             return None
-        note = question_note_candidate(question)
-        fields = {**note.fields, "occurred_on": date, **sc}
+        # Not an issue: a card whose Send tap messages the engineer (actions.py).
+        fields = {"_action": "engineer_question", "question": question, **sc}
         return Candidate(semantic_type=SemanticType.SITE_ISSUE, fields=_clean(fields))
+    if name == SET_SITE_CONDITIONS:
+        fields = {
+            "_action": "site_conditions",
+            "weather": args.get("weather"),
+            "site_working": args.get("site_working"),
+            "hours_lost": args.get("hours_lost"),
+            "tomorrow_plan": args.get("tomorrow_plan"),
+            "occurred_on": date,
+            **sc,
+        }
+        return Candidate(semantic_type=SemanticType.GENERAL_SITE_UPDATE, fields=_clean(fields))
     if name == TRANSFER_MONEY:
         fields = {
             "amount": args.get("amount"),
@@ -922,6 +984,17 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
         fields = {"new_quantity": args.get("new_quantity"), "unit": args.get("unit"), "reason": args.get("reason")}
         return Candidate(semantic_type=SemanticType.ACTIVITY_CORRECTION, fields=_clean(fields))
     if name == UPDATE_ISSUE:
+        if str(args.get("action") or "") == "resolve":
+            # Request 104, C: a card ("To close: ...") naming the issue by the
+            # sender's words, several at once; the Save tap closes them.
+            about = args.get("about")
+            fields = {
+                "_action": "close_issues",
+                "about": [str(a) for a in about] if isinstance(about, list) else about,
+                "all_issues": args.get("all_issues") is True,
+                **sc,
+            }
+            return Candidate(semantic_type=SemanticType.SITE_ISSUE_UPDATE, fields=_clean(fields))
         fields = {"action": args.get("action"), "resolution_notes": args.get("notes"), **sc}
         return Candidate(semantic_type=SemanticType.SITE_ISSUE_UPDATE, fields=_clean(fields))
     if name == CREATE_PROJECT:

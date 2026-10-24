@@ -576,14 +576,18 @@ class AgentToolbox:
 
     def _outcome(self, name: str, step: StepResult) -> ToolOutcome:
         if step.status == "saved" and name == NOTE_FOR_ENGINEER:
-            # Passed on, not an entry: nothing for the sender to check or save.
+            # Request 104: a card, not a message sent: the Send tap messages the
+            # engineer. Nothing has gone yet, and the reply must not say it did.
             self.saved.append(SavedItem(name, step.text, step.summary))
+            self._carry_after_flush()
             return ToolOutcome(
                 content={
-                    "status": "passed_to_engineer",
+                    "status": "saved",
+                    "saved_as": step.summary,
                     "instruction": (
-                        "Say in one short line that you passed it to their engineer. Do not "
-                        "repeat the question and do not ask them to tap Save for it."
+                        "Nothing is sent yet: a Send card is shown. Say in one short line what you "
+                        "will send to their engineer and ask them to check it and tap Send. Never "
+                        "say it was sent or passed on."
                     ),
                 }
             )
@@ -599,10 +603,15 @@ class AgentToolbox:
                 }
             )
         if step.status == "saved":
-            self.saved.append(SavedItem(name, step.text, step.summary))
+            if step.summaries:
+                self.saved.extend(SavedItem(name, line, line) for line in step.summaries)
+            else:
+                self.saved.append(SavedItem(name, step.text, step.summary))
             self._carry_after_flush()
             content: dict[str, Any] = {"status": "saved"}
-            if step.summary:
+            if step.summaries:
+                content["saved_as"] = "; ".join(step.summaries)
+            elif step.summary:
                 content["saved_as"] = step.summary
             # B-9: not the pipeline's "✅ Recorded. Thank you." -- the model
             # copied it onto every line ("Recorded 12 masons present today.")

@@ -70,7 +70,7 @@ def test_the_most_records_still_fit_a_whatsapp_button_id():
         "agt:",
         "agt:save:",
         "agt:delete:l" + LABOUR.hex,
-        "agt:save:x" + LABOUR.hex,
+        "agt:save:z" + LABOUR.hex,
         "agt:save:lnothex",
     ],
 )

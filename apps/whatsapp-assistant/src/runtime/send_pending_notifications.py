@@ -70,7 +70,8 @@ _CAPTION_MAX = 1024
 # BE-38: rows whose send time the owner chose themselves -- the project
 # DPR, and the evening review of each site's day (WA-04), which runs between
 # the owner's cutoff and send deadline.
-_QUIET_HOURS_EXEMPT_PREFIXES = ("project_dpr_send:", "site_day_")
+# Request 104: so is a question the sender asked their engineer on WhatsApp.
+_QUIET_HOURS_EXEMPT_PREFIXES = ("project_dpr_send:", "site_day_", "engineer_question:")
 
 
 def _render(row: dict[str, Any]) -> str:
@@ -208,11 +209,17 @@ async def drain_and_send(
     approved_templates: frozenset[str] = frozenset(),
     now_utc: datetime | None = None,
     card_renderer: Any | None = None,
+    only_ids: frozenset[str] | None = None,
+    outcomes: dict[str, str] | None = None,
 ) -> dict[str, int]:
     """The reusable core: drain every 'pending' notification and send or
     skip each with a recorded reason. Shared by this script's own `run()`
     and runtime/automation_runner.py's scheduler tick -- one send/skip
-    policy, never two copies drifting apart."""
+    policy, never two copies drifting apart.
+
+    ``only_ids`` (request 104): drain just these rows, for a message the sender
+    is waiting to hear the result of; ``outcomes`` is then filled with
+    ``{id: "sent" | the skip reason | "held"}`` so the reply can say who got it."""
     from channel.whatsapp.templates import choose_template
     from mesiri.application.automations.scheduling import local_now
     from mesiri.application.dpr.recipients import may_message
@@ -227,6 +234,9 @@ async def drain_and_send(
     timezones: dict[tuple[str, str], str] = {}
 
     pending = await queue.list_pending()
+    if only_ids is not None:
+        pending = [row for row in pending if str(row["id"]) in only_ids]
+    outcomes = outcomes if outcomes is not None else {}
     for row in pending:
         notification_id = str(row["id"])
         payload = row.get("payload") or {}
@@ -238,6 +248,7 @@ async def drain_and_send(
             wa_id = payload.get("to_wa_id") or None
         if wa_id is None:
             await queue.mark_skipped(notification_id=notification_id, reason="no_resolvable_recipient")
+            outcomes[notification_id] = "no_resolvable_recipient"
             counts["skipped"] += 1
             continue
 
@@ -251,6 +262,7 @@ async def drain_and_send(
         )
         if not allowed:
             await queue.mark_skipped(notification_id=notification_id, reason=consent_reason or "no_opt_in")
+            outcomes[notification_id] = consent_reason or "no_opt_in"
             counts["skipped"] += 1
             continue
 
@@ -263,10 +275,9 @@ async def drain_and_send(
             # with none, skip with the reason rather than pretend.
             template_choice = choose_template(row.get("payload"), approved_templates)
             if template_choice.spec is None:
-                await queue.mark_skipped(
-                    notification_id=notification_id,
-                    reason=template_choice.skip_reason or "outside_whatsapp_session_window_needs_template",
-                )
+                reason = template_choice.skip_reason or "outside_whatsapp_session_window_needs_template"
+                await queue.mark_skipped(notification_id=notification_id, reason=reason)
+                outcomes[notification_id] = reason
                 counts["skipped"] += 1
                 continue
 
@@ -281,6 +292,7 @@ async def drain_and_send(
                 # Left 'pending' on purpose -- not skipped -- so the next
                 # drain picks it back up once quiet hours end, rather than
                 # losing it.
+                outcomes[notification_id] = "held"
                 continue
 
         if template_choice is not None:
@@ -297,9 +309,11 @@ async def drain_and_send(
             )
         if sent:
             await queue.mark_sent(notification_id=notification_id)
+            outcomes[notification_id] = "sent"
             counts["sent"] += 1
         else:
             await queue.mark_skipped(notification_id=notification_id, reason="send_failed")
+            outcomes[notification_id] = "send_failed"
             counts["skipped"] += 1
 
     return counts

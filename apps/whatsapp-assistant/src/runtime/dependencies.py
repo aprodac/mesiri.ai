@@ -292,6 +292,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
 
     pipeline = build_pipeline(object_storage, material_db, redis_client)
     context_resolver = build_context_resolver(redis=redis_client)
+    from runtime.agent.actions import ActionService, ActionStore
     from runtime.agent.cards import CardStore
     from runtime.agent.later import LaterStore
     from runtime.agent.work_site import WorkSite
@@ -980,6 +981,16 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         cards=CardStore(redis_client),
         # WA-57: the parts of a message still to do, per sender.
         later=LaterStore(redis_client),
+        # Request 104: cards for what is not a record (engineer question,
+        # the day's conditions, issues to close).
+        actions=ActionService(
+            store=ActionStore(redis_client),
+            db=material_db,
+            actor_reader=actor_reader,
+            dispatcher=execution_dispatcher,
+            object_storage=object_storage,
+            approved_templates=approved_template_names(settings.approved_templates),
+        ),
         # Request 91: the Stock card is drawn by the receipt's Chromium.
         card_renderer=receipt_renderer,
         project_setup_offer_store=project_setup_offer_store,

@@ -29,6 +29,7 @@ from mesiri_ai.fakes import (
 from mesiri_contracts.application.results.execution_result import ExecutionResult, ExecutionStatus
 from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage, SenderInfo
+from runtime.agent.action_entry import ActionEntry
 from runtime.agent.change_entry import ChangeEntry
 from runtime.agent.journey_gateway import JourneyGateway
 from runtime.agent.labour_entry import LabourEntry
@@ -142,6 +143,10 @@ class World:
     direct: bool = True
     #: The change entry's lookups (member_resolver, activity_query, ...).
     change: dict = field(default_factory=dict)
+    #: Request 104: cards for what is not a record (an ``ActionService``), and
+    #: the site's open issues for closing.
+    actions: Any = None
+    open_issues: Any = None
 
     def message(self, text: str, modality: InputModality = InputModality.TEXT) -> NormalizedMessage:
         media = None
@@ -195,6 +200,16 @@ class World:
             change_entry=ChangeEntry(
                 ContextResolver(self.deps), None, self.actor, active_context=self.deps.active_context, **self.change
             ),
+            actions=self.actions,
+            action_entry=(
+                ActionEntry(
+                    ContextResolver(self.deps), None, self.actor, service=self.actions,
+                    active_context=self.deps.active_context, open_issues=self.open_issues,
+                )
+                if self.actions is not None
+                else None
+            ),
+            actor=self.actor,
             start_workflow=self.runtime.start,
         )
 
@@ -522,32 +537,32 @@ async def test_one_expense_is_one_question_then_one_saved_reply(world):
     assert len(world.dispatcher.dispatched) == 1  # a second Yes saves nothing more
 
 
-async def test_a_question_in_a_note_is_noted_for_the_engineer_and_the_reply_says_so(world):
-    """Request 57, B2/B3: the question is saved (not just echoed), and the saved
-    list is built from what was saved, not from the worker's raw words."""
+async def test_a_question_in_a_note_is_a_send_card_beside_the_saved_labour(world):
+    """Request 104, A2: asked for the engineer, the question is a "Send to
+    engineer" card item (nothing is sent before the tap) next to the labour,
+    never a saved issue; the labour is the entry that is saved."""
+    from tests.unit.request104_fakes import ENGINEER, FakeActions
+
+    world.actions = FakeActions(people=[ENGINEER])
     provider = FakeToolCallingProvider(
         [
             [
                 ("save_labour", {"workers": [{"trade": "mason", "headcount": 6}, {"trade": "helper", "headcount": 10}]}),
                 ("note_for_engineer", {"question": "Nale slab concrete cheyyan pattumo?"}),
             ],
-            "6 mason, 10 helper. Nale slab concrete cheyyan pattumo?",  # names the labour, echoes the question
+            "6 mason, 10 helper, and I can send your question to the engineer. Check and tap Save.",
         ]
     )
-    # Passed on only because they asked for their engineer (Ilan, 21 Oct).
     result = await world.say(
         provider, "6 mason, 10 helper vannu. Engineer-inodu chodikku: nale slab concrete cheyyan pattumo?"
     )
     assert len(result.toolbox.saved) == 2
-    # WA-37: the labour is the one entry to check; the question is passed on,
-    # said once on its own line, never listed as saved.
-    assert result.reply.text == (
-        "✅ Saved: 16 workers (6 mason, 10 helper)\n\n"
-        "📨 Question for your engineer: Nale slab concrete cheyyan pattumo?\n\n"
-        "Wrong? Reply UNDO."
-    )
-    assert "vannu" not in result.reply.text
-    assert result.reply.text.count("Nale slab concrete cheyyan pattumo?") == 1
+    assert world.actions.delivered == []  # nothing is sent before the tap
+    lines = result.reply.text.split("\n")
+    assert "• 16 workers (6 mason, 10 helper)" in lines
+    assert "• Send to engineer: Nale slab concrete cheyyan pattumo?" in lines
+    assert len(world.last_gateway.action_items) == 1
+    assert "passed" not in result.reply.text.lower()
 
 
 async def test_a_figure_the_tools_never_gave_is_not_sent(world):

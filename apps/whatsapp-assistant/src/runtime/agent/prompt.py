@@ -134,7 +134,9 @@ or the query tools, with the figures. Any question about stock, balance or mater
 (all materials or one: "stock", "ethra balance und?", "how much stock do we have?") must call \
 query_materials: never answer it from the stock line in the facts. If they cannot, say so plainly in one line and offer \
 to ask their engineer. Call note_for_engineer ONLY when the user asks you to ask their \
-engineer ("engineer-inodu chodikku"), then say you have passed it on.
+engineer ("engineer-inodu chodikku"): it only prepares a "Send to engineer" card, and the question \
+goes when they tap Send, so say what you will send and ask them to tap Send, never that it was \
+sent or passed on. If the tool says there is nobody to send it to, say that plainly.
 - A worker saying a material is running low or asking for more ("10 bag cement balance und, \
 kooduthal venam") is a material shortage: report_issue with their words, never a question \
 for the engineer. If the stock in the facts above disagrees with their count, say both \

@@ -97,6 +97,8 @@ def mismatch(case: dict[str, Any], world: World, result: Any) -> str | None:
         return f"expected a query tool, called {called}"
     if case.get("chat") and called:
         return f"expected a plain reply, called {called}"
+    if case.get("card") and not world.last_gateway.action_items:
+        return "expected a card waiting on the tap"
     return None
 
 
@@ -119,7 +121,9 @@ def test_the_golden_set_is_well_formed():
     assert len({c["id"] for c in CASES}) == len(CASES)
     for case in CASES:
         assert case["message"] and (case["calls"] or case.get("chat")), case["id"]
-        assert bool(case["expect"]) != bool(case.get("ask") or case.get("query") or case.get("chat")), case["id"]
+        assert bool(case["expect"]) != bool(
+            case.get("ask") or case.get("query") or case.get("chat") or case.get("card")
+        ), case["id"]
     langs = {c["lang"] for c in CASES}
     assert {"en", "manglish", "ml", "hindi"} <= langs
 
@@ -127,6 +131,10 @@ def test_the_golden_set_is_well_formed():
 @pytest.mark.parametrize("case", CASES, ids=[f"{c['id']}:{c['message'][:30]}" for c in CASES])
 async def test_the_save_code_files_exactly_the_expected_records(case):
     world = await _make_world(site_keys=(seed.SITE_A1,))
+    if case.get("card"):
+        from tests.unit.request104_fakes import ENGINEER, FakeActions
+
+        world.actions = FakeActions(people=[ENGINEER])
     calls = [(name, args) for name, args in case["calls"]]
     question = next((args["question"] for name, args in calls if name == "ask_user"), "")
     provider = FakeToolCallingProvider([calls, question or "Done."] if calls else ["Anytime 👍"])

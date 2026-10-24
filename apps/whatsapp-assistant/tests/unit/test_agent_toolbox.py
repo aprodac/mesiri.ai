@@ -203,7 +203,8 @@ async def test_a_question_they_asked_to_pass_on_goes_to_the_engineer(text):
     gateway = FakeGateway(StepResult("saved", text="noted", summary="Question for your engineer: x"))
     box = tb.AgentToolbox(gateway=gateway, scope=ScopeLookup(), user_text=text)
     out = await box.handle("note_for_engineer", {"question": "nale slab cheyyamo?"})
-    assert out.content["status"] == "passed_to_engineer"
+    # Request 104: a Send card is prepared; nothing has gone yet.
+    assert out.content["status"] == "saved" and "Nothing is sent yet" in out.content["instruction"]
     assert len(gateway.runs) == 1
 
 
@@ -211,4 +212,4 @@ async def test_a_yes_to_the_offer_to_ask_the_engineer_passes_it_on():
     gateway = FakeGateway(StepResult("saved", text="noted", summary="Question for your engineer: x"))
     box = tb.AgentToolbox(gateway=gateway, scope=ScopeLookup(), user_text="yes", engineer_offered=True)
     out = await box.handle("note_for_engineer", {"question": "nale slab cheyyamo?"})
-    assert out.content["status"] == "passed_to_engineer"
+    assert out.content["status"] == "saved" and "Nothing is sent yet" in out.content["instruction"]

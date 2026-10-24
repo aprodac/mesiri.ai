@@ -39,6 +39,8 @@ class StepResult:
     #: ``saved`` only: what was saved in a few words, from the saved data
     #: ("16 workers (6 mason, 10 helper)").
     summary: str | None = None
+    #: Request 104: several lines for one step (issues to close, one per issue).
+    summaries: list[str] = field(default_factory=list)
     #: Replies the pipeline produced beyond ``reply`` (documents are sent by the
     #: pipeline itself and are not captured).
     extra: list[ReplySpec] = field(default_factory=list)

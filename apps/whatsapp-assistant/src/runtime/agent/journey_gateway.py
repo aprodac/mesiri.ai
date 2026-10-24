@@ -10,8 +10,10 @@ is testable without the whole container.
 from __future__ import annotations
 
 import logging
+import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any
 
 from channel.replies import (
@@ -87,14 +89,17 @@ def undo_step(gone: list[CardItem], undone: Any) -> StepResult:
 NOTHING_TO_UNDO = "Nothing to undo from your last card."
 
 
-async def undo_from_card(cards: Any, actor: Any, undo_facts: Any, refs: list[str]) -> StepResult:
+async def undo_from_card(
+    cards: Any, actor: Any, undo_facts: Any, refs: list[str], actions: Any | None = None
+) -> StepResult:
     """Request 88/90: remove entries of the sender's latest card, and nothing
     else. The ids come from the card the code recorded; with no card (none
     made, expired, or a reply that had no Save card) there is nothing to undo
     -- it never falls back to "the latest record of any type" (22/23 Oct: the
-    3 masons stayed and an unrelated issue was removed)."""
+    3 masons stayed and an unrelated issue was removed). An action still
+    waiting on its tap (request 104) is dropped; one that ran stays done."""
     card = await cards.get(actor) if cards is not None and actor is not None else None
-    if undo_facts is None or card is None or card.state == LEGACY or not card.items:
+    if card is None or card.state == LEGACY or not card.items:
         return StepResult("info", text=NOTHING_TO_UNDO)
     if refs:
         items = card.by_ref(refs)
@@ -104,13 +109,32 @@ async def undo_from_card(cards: Any, actor: Any, undo_facts: Any, refs: list[str
         return StepResult("choose", text="Which one should be removed?", reply=undo_pick_list(card))
     else:
         items = card.items
-    undone = await undo_facts([i.fact for i in items])
-    if undone is None:
+    from .actions import ACTION_FACT
+
+    pending = [i for i in items if i.fact_type == ACTION_FACT]
+    drafts = [i for i in items if i.fact_type != ACTION_FACT]
+    gone: list[CardItem] = []
+    refused: list[str] = []
+    for item in pending:
+        if card.state == OPEN and actions is not None:
+            await actions.store.drop(actor, uuid.UUID(item.fact_id).hex)
+            gone.append(item)
+        else:
+            refused.append("it has already been done, so it can't be taken back here")
+    undone = None
+    if drafts and undo_facts is None:
         return StepResult("info", text=NOTHING_TO_UNDO)
-    gone = [i for i in items if i.fact in set(undone.done)]
+    if drafts:
+        undone = await undo_facts([i.fact for i in drafts])
+        if undone is None and not gone:
+            return StepResult("info", text=NOTHING_TO_UNDO)
+        if undone is not None:
+            gone.extend(i for i in drafts if i.fact in set(undone.done))
+            refused.extend(getattr(undone, "refused", []) or [])
     if gone:
         await cards.drop(actor, [i.fact for i in gone])
-    return undo_step(gone, undone)
+    summary = SimpleNamespace(done=[i.fact for i in gone], refused=refused)
+    return undo_step(gone, summary)
 
 
 def _without_menu(text: str) -> str:
@@ -173,6 +197,13 @@ class JourneyGateway:
     #: 22 Oct: add a team member, correct a work quantity, close a site issue
     #: (runtime/agent/change_entry.py).
     change_entry: Any | None = None
+    #: Request 104: cards for what is not a record -- a question for the engineer,
+    #: the day's conditions, issues to close (runtime/agent/actions.py). The
+    #: store keeps what the Save tap runs; the entry places and prepares it.
+    actions: Any | None = None
+    action_entry: Any | None = None
+    #: The pending actions this turn put on the card.
+    action_items: list[CardItem] = field(default_factory=list)
     #: ``WorkflowRuntime.start``, for the direct routes.
     start_workflow: Callable[[Any, Any], Awaitable[Any]] | None = None
     #: WA-45: ``(project_id, site_id) -> label``: today's site is this one
@@ -193,7 +224,7 @@ class JourneyGateway:
 
     async def run(self, candidate: Candidate, *, text: str) -> StepResult:
         step = await self._run(candidate, text=text)
-        if step.status == "saved" and self.handled:
+        if step.status == "saved" and self.handled and not (getattr(candidate, "fields", None) or {}).get("_action"):
             await self._remember_site(self.handled[-1])
             self._note_card_item(self.handled[-1], step)
         return step
@@ -207,6 +238,10 @@ class JourneyGateway:
             return
         tool, args = self.current_call
         self.card_items.append(CardItem(tool, dict(args), fact[0], str(fact[1]), step.summary or ""))
+
+    def action_facts(self) -> list[tuple[str, Any]]:
+        """The pending actions this turn put on its card (their tap ids)."""
+        return [i.fact for i in self.action_items]
 
     def card_facts(self) -> list[tuple[str, Any]]:
         """Every entry of the card this turn shows: the items kept from the
@@ -229,6 +264,13 @@ class JourneyGateway:
     async def withdraw_card_item(self, item: CardItem) -> bool:
         """Take one entry of the open card back (its draft), through its
         module's own undo. True when it is gone."""
+        from .actions import ACTION_FACT
+
+        if item.fact_type == ACTION_FACT:
+            if self.actions is None:
+                return False
+            await self.actions.store.drop(self.actor, uuid.UUID(item.fact_id).hex)
+            return True
         if self.undo_facts is None:
             return False
         undone = await self.undo_facts([item.fact])
@@ -238,7 +280,7 @@ class JourneyGateway:
         """Request 88/90: "undo that" removes the entries of the sender's latest
         card -- never a record the code did not offer. ``refs`` are the ids the
         model named; one that is not on the card is refused."""
-        return await undo_from_card(self.cards, self.actor, self.undo_facts, refs)
+        return await undo_from_card(self.cards, self.actor, self.undo_facts, refs, self.actions)
 
     async def _remember_site(self, handled: Any) -> None:
         """WA-45: a save at a site keeps the sender there for the rest of the
@@ -267,12 +309,48 @@ class JourneyGateway:
         if self.message.modality not in (InputModality.IMAGE, InputModality.DOCUMENT):
             update["modality"] = InputModality.TEXT
         message = self.message.model_copy(update=update)
+        if (getattr(candidate, "fields", None) or {}).get("_action"):
+            return await self._run_action(candidate, message)
         entry = self._entry_for(getattr(candidate, "semantic_type", None))
         if entry is None:
             kind = getattr(getattr(candidate, "semantic_type", None), "value", None)
             _log.warning("agent.no_entry correlation_id=%s kind=%s", message.correlation_id, kind)
             return StepResult("error", text="Not saved: that can't be done here yet.")
         return await self._direct(entry, candidate, message)
+
+    async def _run_action(self, candidate: Candidate, message: Any) -> StepResult:
+        """Request 104: a card for something that is not a record. Nothing is
+        done here; the Save tap runs it (runtime/agent/actions.py)."""
+        from .actions import ACTION_FACT
+        from .entry_base import Say, tool_understanding
+
+        if self.action_entry is None or self.actions is None:
+            return StepResult("error", text="Not done: that can't be done here yet.")
+        understanding = tool_understanding(candidate, message, language=self.language)
+        prepared = await self.action_entry.prepare(message, understanding, candidate)
+        if isinstance(prepared, Say):
+            from .toolbox import question_reply
+
+            reply = question_reply(prepared.question, list(prepared.options)) if prepared.question else None
+            return StepResult(prepared.status, text=prepared.text, reply=reply)
+        prepared_list = prepared if isinstance(prepared, list) else [prepared]
+        tool = self.current_call[0] if self.current_call else prepared_list[0].kind
+        args = dict(self.current_call[1]) if self.current_call else {}
+        for action in prepared_list:
+            if not await self.actions.store.put(self.actor, action):
+                return StepResult("error", text="Not done: the card could not be prepared. Please send it again.")
+        for action in prepared_list:
+            item = CardItem(tool, args, ACTION_FACT, str(uuid.UUID(action.id)), action.summary)
+            self.card_items.append(item)
+            self.action_items.append(item)
+        summaries = [a.summary for a in prepared_list]
+        return StepResult(
+            "saved",
+            text="; ".join(summaries),
+            workflow_key=prepared_list[0].kind,
+            summary=summaries[0],
+            summaries=summaries if len(summaries) > 1 else [],
+        )
 
     def _entry_for(self, semantic_type: Any) -> Any | None:
         """The direct entry for this kind of record, or None (not wired)."""

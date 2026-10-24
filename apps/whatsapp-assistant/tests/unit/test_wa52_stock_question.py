@@ -111,7 +111,7 @@ async def test_a_stock_answer_already_given_is_not_looked_up_twice():
 async def test_asked_for_the_engineer_it_still_goes_to_the_engineer():
     box, gateway = _box("engineer-inodu chodikku, nale slab-inu cement mathiyo?")
     out = await box.handle("note_for_engineer", {"question": "nale slab-inu cement mathiyo?"})
-    assert out.content["status"] == "passed_to_engineer"
+    assert out.content["status"] == "saved"  # request 104: a Send card, sent on the tap
     assert gateway.lookups() == []
 
 

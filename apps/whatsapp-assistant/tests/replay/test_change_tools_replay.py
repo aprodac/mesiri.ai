@@ -9,7 +9,7 @@ import pytest
 pytest.importorskip("langgraph", reason="needs the `workflow` extra (LangGraph)")
 
 from tests.replay.test_agent_replay import _make_world  # noqa: E402
-from tests.unit.test_change_entry import _Activities, _Issues, _Members  # noqa: E402
+from tests.unit.test_change_entry import _Activities, _Members  # noqa: E402
 
 from context import seed  # noqa: E402
 from mesiri_ai.fakes import FakeToolCallingProvider  # noqa: E402
@@ -53,9 +53,25 @@ async def test_nothing_to_correct_is_said_plainly():
     assert step["status"] == "answer" and step["text"], step
 
 
-async def test_fixed_closes_the_latest_issue_after_yes():
+async def test_fixed_shows_a_to_close_card_and_closes_nothing_before_the_tap():
+    """Request 104, C: "resolve" is a Save / Cancel card naming the issue by the
+    sender's words; the old Yes / No question is for the other actions."""
+    import datetime as dt
+
+    from tests.unit.request104_fakes import FakeActions, FakeDispatcher
+
     world = await _make_world(site_keys=(seed.SITE_A1,))
-    world.change = {"site_issue_query": _Issues()}
-    result, step = await _say(world, ("update_issue", {"action": "resolve"}))
-    assert step["status"] == "waiting_for_user", step
-    assert "JCB" in result.reply.text or "breakdown" in result.reply.text.lower()
+    dispatcher = FakeDispatcher()
+    world.actions = FakeActions(dispatcher=dispatcher)
+
+    async def open_issues(scoped):  # noqa: ANN001, ANN202
+        return [
+            {"id": "i7", "issue_type": "EQUIPMENT_BREAKDOWN", "severity": "HIGH", "narrative": "JCB breakdown",
+             "status": "OPEN", "occurred_at": dt.datetime(2026, 10, 19, 5, 0, tzinfo=dt.UTC)},
+        ]
+
+    world.open_issues = open_issues
+    result, step = await _say(world, ("update_issue", {"action": "resolve", "about": ["jcb"]}))
+    assert step["status"] == "saved", step
+    assert "To close: JCB breakdown" in result.reply.text
+    assert dispatcher.dispatched == []
