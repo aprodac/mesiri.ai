@@ -358,7 +358,9 @@ class ActionService:
         payload = action.payload
         done, failed = [], []
         for issue in payload["issues"]:
-            instance = f"wa-close-{action.id}-{issue['id']}"
+            # A workflow-instance id is a UUID in the database; this one is
+            # fixed by the card and the issue, so a repeated tap is a replay.
+            instance = str(uuid.uuid5(uuid.NAMESPACE_URL, f"mesiri:close:{action.id}:{issue['id']}"))
             draft = DraftActionV2(
                 draft_id=f"draft-{instance}",
                 correlation_id=instance,

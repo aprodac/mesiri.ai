@@ -43,7 +43,9 @@ _TYPE_WORDS = {
 
 
 def _tokens(text: str) -> set[str]:
-    return {w for w in re.findall(r"[^\W_]{3,}", (text or "").casefold()) if w not in _STOP}
+    # Words of 3+ letters, and the day number of a date ("24 Oct" picks one of
+    # two issues that read the same).
+    return {w for w in re.findall(r"[^\W\d_]{3,}|\d{1,2}", (text or "").casefold()) if w not in _STOP}
 
 
 def _day(issue: dict[str, Any], zone: str) -> dt.date:
@@ -140,7 +142,6 @@ def closing_action(
             "Which issue is fixed?",
             [*labels, SOMETHING_ELSE],
             "issue",
-            note=" Pass what they tapped as `about`.",
         )
     out = []
     for issue in picked:

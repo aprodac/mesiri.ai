@@ -92,6 +92,9 @@ async def test_save_closes_exactly_that_issue_through_the_shared_dispatcher():
     await _say(world, "Crane is repaired", {"about": ["crane"]})
     reply = await sb.handle_tap(_tap(world, sb.SAVE), world.actor, world.handler, actions=world.actions)
     (confirmed,) = world.dispatcher_for_close.dispatched
+    import uuid
+
+    uuid.UUID(confirmed.workflow_instance_id)  # the database keys workflow instances by UUID
     fields = confirmed.draft_action.fields
     assert fields == {"site_issue_id": CRANE["id"], "action": "resolve"}
     assert confirmed.draft_action.action_type.value == "close_site_issue"
@@ -164,3 +167,11 @@ async def test_a_close_that_fails_is_not_called_closed():
     await _say(world, "Crane is repaired", {"about": ["crane"]})
     reply = await sb.handle_tap(_tap(world, sb.SAVE), world.actor, world.handler, actions=world.actions)
     assert reply.text.startswith("❌ Couldn't close") and "Closed" not in reply.text
+
+
+async def test_two_issues_of_the_same_words_are_told_apart_by_the_picked_day():
+    a = _issue(5, "Rain today", "WEATHER", 21)
+    b = _issue(6, "Rain today", "WEATHER", 19)
+    world = await _world([a, b])
+    result = await _say(world, "Rain today · 21 Oct", {"about": ["Rain today · 21 Oct"]})
+    assert "To close: Rain today (since 21 Oct)" in result.reply.text
