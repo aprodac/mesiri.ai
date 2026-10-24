@@ -53,18 +53,19 @@ CONF
   echo "nginx: ${HOST} port-80 block added"
 fi
 
-# 2. Certificate, once the name reaches this server (exactly what certbot's
-#    HTTP check needs, so test that rather than comparing IPs).
+# 2. Certificate, once the name resolves. Let's Encrypt checks from outside,
+#    so this server fetching its own name is no test: the first run (24 Oct)
+#    could not, though the name already served from outside. A failed
+#    certbot changes nothing and is retried on the next deploy.
 if [ ! -d "/etc/letsencrypt/live/${HOST}" ]; then
-  TOKEN="dns-check-$(date +%s)-$RANDOM"
-  echo "$TOKEN" > "${WEBROOT}/${TOKEN}.txt"
-  GOT=$(curl -fsS -m 10 "http://${HOST}/${TOKEN}.txt" 2>/dev/null || true)
-  rm -f "${WEBROOT}/${TOKEN}.txt"
-  if [ "$GOT" != "$TOKEN" ]; then
-    echo "::notice::${HOST} does not reach this server yet (DNS). Control panel stays on api.whatsapp.mesiri.ai/mesiriadmin for now."
+  if ! getent ahostsv4 "$HOST" > /dev/null; then
+    echo "::notice::${HOST} does not resolve yet (DNS). Control panel stays on api.whatsapp.mesiri.ai/mesiriadmin for now."
     exit 0
   fi
-  certbot --nginx -d "$HOST" --non-interactive --agree-tos --redirect
+  if ! certbot --nginx -d "$HOST" --non-interactive --agree-tos --redirect; then
+    echo "::warning::certbot could not get a certificate for ${HOST}; retried on the next deploy. Old address unchanged."
+    exit 0
+  fi
   echo "certbot: certificate for ${HOST} issued"
 fi
 
