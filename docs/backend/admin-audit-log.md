@@ -59,6 +59,8 @@ await record_admin_action(
 | `company_user.created` / `.updated` / `.status_changed` / `.access_changed` / `.deleted` | the `/admin/organizations/{id}/users...` routes |
 | `platform_admin.created` / `.updated` | `/admin/platform-users` |
 | `ai_config.changed` | `PUT /admin/providers/config` (records which providers got a new key, never the key) |
+| `database.query_read` | `POST /admin/database/query`, mode `read` (SA-15; the statement, first 4000 characters) |
+| `database.rows_changed` | `POST /admin/database/query`, mode `write` (SA-15; the statement and the rows changed) |
 
 Not recorded, on purpose: reconcile runs, the simulator, review findings, log
 acknowledge/retry (operator tools that don't change a company), and a tenant admin's own

@@ -51,6 +51,10 @@ PLATFORM_ADMIN_UPDATED = "platform_admin.updated"
 PLATFORM_SETTING_CHANGED = "platform_setting.changed"
 AI_CONFIG_CHANGED = "ai_config.changed"
 
+# Database page (SA-15): a SQL read, and a write that changed rows.
+DATABASE_QUERY_READ = "database.query_read"
+DATABASE_ROWS_CHANGED = "database.rows_changed"
+
 ACTIONS = frozenset(
     {
         COMPANY_CREATED,
@@ -72,6 +76,8 @@ ACTIONS = frozenset(
         PLATFORM_ADMIN_UPDATED,
         PLATFORM_SETTING_CHANGED,
         AI_CONFIG_CHANGED,
+        DATABASE_QUERY_READ,
+        DATABASE_ROWS_CHANGED,
     }
 )
 

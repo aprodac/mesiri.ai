@@ -18,7 +18,8 @@ import {
   ListOrdered,
   Stamp,
   IndianRupee,
-  Funnel
+  Funnel,
+  Database as DatabaseIcon
 } from 'lucide-react';
 import { RequireAuth } from './AuthContext';
 import Login from './Login';
@@ -37,6 +38,7 @@ import Costs from './Costs';
 import Trials from './Trials';
 import Perf from './Perf';
 import QueueHealth from './QueueHealth';
+import Database from './Database';
 
 const Sidebar = () => (
   <div className="sidebar">
@@ -71,6 +73,10 @@ const Sidebar = () => (
       <NavLink to="/logs" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
         <ScrollText size={16} />
         Assistant Logs
+      </NavLink>
+      <NavLink to="/database" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <DatabaseIcon size={16} />
+        Database
       </NavLink>
       <NavLink to="/providers" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
         <Cpu size={16} />
@@ -184,6 +190,7 @@ function AppLayout() {
             <Route path="/costs" element={<Costs />} />
             <Route path="/trials" element={<Trials />} />
             <Route path="/logs" element={<Logs />} />
+            <Route path="/database" element={<Database />} />
             <Route path="/providers" element={<Providers />} />
             <Route path="/perf" element={<Perf />} />
             <Route path="/queue-health" element={<QueueHealth />} />

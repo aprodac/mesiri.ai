@@ -287,6 +287,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Costs admin router not loaded: %s", exc)
 
+    # The control panel's Database page (SA-15); the backend's router, like costs.
+    try:
+        from mesiri.domains.admin.database_router import router as database_admin_router
+
+        app.include_router(database_admin_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Database admin router not loaded: %s", exc)
+
     # Auth routes (mobile app login/register)
     try:
         from auth.router import router as auth_router
