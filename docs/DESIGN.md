@@ -108,6 +108,22 @@ Rules:
 
 ---
 
+### Sidebar and top bar (WEB-20)
+
+- **Sidebar icons are coloured, nothing else is.** Each item has its own
+  icon colour (Today orange, Daily Reports blue, Issues red, Projects green,
+  Team violet, Company amber, WhatsApp green, and the More sections as
+  before). No coloured tiles or backgrounds behind them: that was tried and
+  rejected (24 Oct). These are identity colours, so palette classes are
+  allowed in `app-sidebar.tsx` only.
+- **Live counts as badges:** Today shows drafts still to confirm (orange),
+  Issues shows open issues (red); a dot on the icon when collapsed.
+  `lib/nav-counts.ts`, sharing the Today page's query.
+- **Top bar** stays on screen while scrolling; a 3px orange→yellow stripe on
+  top; the scope picker's icon is coloured by level (all projects blue, a
+  project green, a site orange); on the right, today's date with the drafts
+  count, and the open-issues button with its count.
+
 ## 4. Numbers
 
 - **Stat strip** (`StatStrip`): 3–5 key numbers in **one** bordered strip
