@@ -203,9 +203,10 @@ trials only), days data is kept after a trial expires, and the self-serve signup
 - **Code:** `apps/whatsapp-assistant/src/runtime/signup_journey.py`, with its state in
   `interactions/signup_state.py` (Redis, keyed by WhatsApp number, 24 h).
 - **When it runs:** called from the unknown-number branch of `runtime/message_journey.py`,
-  only when the platform setting `self_serve.signup_enabled` is on. It's **off by
-  default**, and while off the old "not registered" reply is unchanged. Reading the
-  setting fails closed.
+  only when the platform setting `self_serve.signup_enabled` is on. It's **on by
+  default** since SS-16 (15 Oct; switch it off in the control panel's Settings), and
+  while off the old "not registered" reply is unchanged. Reading the setting fails
+  closed. Live on 24 Oct: on.
 - **The conversation:**
   1. Welcome with buttons: **Start free trial** / **I'm in a company**.
   2. "I'm in a company": ask your admin for the join code and send *JOIN ACME-4821* (SS-05), or ask them to add this number.
@@ -438,7 +439,7 @@ WhatsApp door (SS-04) asks on the "Start free trial" tap and before creating. In
 
 | Rule | Default | What the person is told |
 | --- | --- | --- |
-| Signup switch (`self_serve.signup_enabled`) | off | "Sign-up is closed for now…" |
+| Signup switch (`self_serve.signup_enabled`) | on (SS-16) | "Sign-up is closed for now…" |
 | Number's country code is allowed | `["91"]` | "Mesiri is only available for Indian WhatsApp numbers for now…" |
 | One free trial per number per N days | 365 | "This number has already had a free trial. Message us…" |
 | Self-serve trials across the platform in 24 h | 25 | "We're getting a lot of sign-ups right now. Please try again tomorrow." |
