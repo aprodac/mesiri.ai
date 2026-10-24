@@ -175,3 +175,15 @@ async def test_two_issues_of_the_same_words_are_told_apart_by_the_picked_day():
     world = await _world([a, b])
     result = await _say(world, "Rain today · 21 Oct", {"about": ["Rain today · 21 Oct"]})
     assert "To close: Rain today (since 21 Oct)" in result.reply.text
+
+
+async def test_a_card_line_the_model_wrote_itself_is_not_doubled():
+    world = await _world([CEMENT, CRANE])
+    provider = FakeToolCallingProvider(
+        [
+            [("update_issue", {"action": "resolve", "about": ["crane"]})],
+            "Okay, the crane is fixed.\n\n📝 To close: Crane breakdown (since 20 Oct)",
+        ]
+    )
+    result = await world.say(provider, "Crane is repaired")
+    assert result.reply.text.count("To close: Crane breakdown") == 1

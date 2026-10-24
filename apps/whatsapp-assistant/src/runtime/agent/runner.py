@@ -612,7 +612,14 @@ _COVERING = {
 
 
 def covering_sentence(summaries: list[str], user_text: str) -> str:
-    items = "; ".join(s.strip() for s in summaries if s)
+    # The card header says "To close:" / "Send to engineer:" already (request 104):
+    # the sentence above it says it as words, not the same label twice.
+    said = [
+        s.strip().replace("To close: ", "Close ", 1).replace("Send to engineer: ", "Send to your engineer: ", 1)
+        for s in summaries
+        if s
+    ]
+    items = "; ".join(said)
     items = items[:1].upper() + items[1:]
     if re.search(r"[ഀ-ൿ]", user_text):
         language = "malayalam"
@@ -834,7 +841,8 @@ def _without_echoed_questions(text: str, toolbox: AgentToolbox, *, saved_list: b
     return "\n".join(kept).strip("\n").strip()
 
 
-_SAVED_HEAD = re.compile(r"^\s*✅")
+# (also the card headers of request 104, so a model-written "📝 To close: ..." is not doubled)
+_SAVED_HEAD = re.compile(r"^\s*(?:✅|📝\s*(?:To close|To save|Send to engineer))")
 _BULLET = re.compile(r"^\s*[•\-\*]\s")
 
 
