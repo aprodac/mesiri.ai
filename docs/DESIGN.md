@@ -254,6 +254,27 @@ add it here and to this table.
 
 ---
 
+## 10b. Basics every page must have (WEB-26)
+
+What anyone expects from software. Checked on Site DPR, Project DPR,
+Activities, Gallery and Timeline on 24 Oct; every page reworked later must
+pass the same.
+
+| Basic | How |
+|---|---|
+| Its own browser tab title | Default per route in `lib/page-title.ts`; a page about one thing names it: `usePageTitle('Tower 1 · Site DPR')` |
+| Filters and search survive Back, refresh and a shared link | Keep them in the address with `useUrlState('q', '')` (`lib/url-state.ts`). Several keys at once (Clear filters) = one `setSearchParams` call |
+| Loading looks like the page, not a line of text | Skeletons (`DprPageSkeleton`, row/tile skeletons) |
+| A failure says what failed, with **Try again** and a way out | `PageError` (full page) or a `Callout` with a Try again action (list pages). Never show "nothing here" when the request failed |
+| An empty page says what will appear and when; with filters on, offers Clear | Dashed box with icon, one line, one action |
+| Long lists don't load everything | "Load more" (Gallery, Timeline) |
+| Every button does something | No buttons that only show a toast ("Exporting…") — build it or remove it |
+| Keyboard | "Skip to content" link (AppLayout); visible focus; toggles have `aria-pressed`; icon buttons have `aria-label` + `title`; viewers take ← / → |
+| Phone | Header actions stay on the title row; nothing wider than the screen |
+| Dark mode | Colours from tokens only |
+| Destructive actions ask first and say what happens | Remove dialogs with a reason |
+| Plain words, no internal terms | "This page isn't available", not "Invalid Scope Context" |
+
 ## 11. Checklist before pushing a page
 
 - [ ] White ground; no card-per-section stack.
@@ -261,6 +282,7 @@ add it here and to this table.
 - [ ] State visible at a glance (status chip + row icons + steps if it has a life cycle).
 - [ ] Exactly one primary button in the header.
 - [ ] No hard-coded palette colours, no monospace, no ALL-CAPS labels.
+- [ ] Passes "Basics every page must have" (10b).
 - [ ] Checked at 1440px and 390px, light and dark.
 
 ---
