@@ -348,7 +348,7 @@ pass the same.
 | Activities, Gallery, Timeline, Analytics | Yes (WEB-24, WEB-26) |
 | Projects & Sites, a project, Team, a person, Company, WhatsApp messages | Yes (WEB-28): one page each, sections instead of tabs |
 | Labour (7 pages) | No — waits on WEB-22 (needs approval) |
-| Materials (Stock, Delivered, Used, Between sites, Spend, Catalogue + sheets) | Yes (WEB-29); purchase and invoice detail sheets not yet |
+| Materials (Ledger, Catalogue, Stock now, sheets) | Yes (WEB-29, WEB-30); invoice detail sheet not yet |
 | WhatsApp Inbox, Automations, Finance, Login / Signup | No — old template look |
 | Dialogs (project, site, person, access, WhatsApp number, record delivery / use / move, correction) | Yes (WEB-29): sentence case, plain words, no fake buttons |
 
@@ -374,19 +374,20 @@ pass the same.
   "Required report types" checklist (nothing read it; its stored value is
   kept on save).
 
-### Materials (WEB-29)
+### Materials (WEB-29, ledger WEB-30)
 
-- **Stock by site.** What each site holds now, one block per site; a
-  material that went below zero is red with a callout ("a delivery or
-  opening stock is probably missing"); run out is orange.
-- **Movements are sentences**: "40 bags Cement · Tower 2 · Ultratech
-  dealer", by day; the kind ("From another site", "Wastage") shows only
-  when it is not the usual one. Words for reasons live in
-  `lib/materials.ts REASON_WORDS`; never show the codes.
-- **Spend counts deliveries**, not stock moved in from another site; its
-  total says how many purchases carry a price.
-- **One stock book per material and site** (the ledger sheet): + and −,
-  the balance after each, who recorded it, by name.
-- **No bulk actions** on stock or movements (they deactivated catalogue
-  items or reversed deliveries with a fixed note). Corrections are one at
-  a time from an entry.
+- **Two views: Ledger and Catalogue.** The Ledger is the page: every
+  delivery, use, move between sites and correction in one table, newest
+  first, filtered by material, site, dates and In / Out (all in the
+  address). **In is green, Out is red**, each in its own tinted column.
+- **Pick a material** and the table becomes its stock book: a "Stock
+  after" column (per site, from the material's whole history, so it is
+  right whatever the dates) and a totals row (in, out, net, spent).
+- **Phones** get one line per entry with the quantity in green or red on
+  the right and "left N" under it, instead of a table cut off at the side.
+- **Stock now** (what each site holds) opens in a side panel; a stock row
+  opens that material's stock book for the site.
+- **CSV** downloads exactly the lines shown.
+- Words for reasons live in `lib/materials.ts REASON_WORDS`; moves read
+  "Moved to Block B" / "Moved from Block A". Never show the codes.
+- **No bulk actions.** Corrections are one at a time from an entry.

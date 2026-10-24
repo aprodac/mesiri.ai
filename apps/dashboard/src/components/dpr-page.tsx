@@ -48,8 +48,11 @@ export function DprSection({
 /** The day's numbers in one bordered strip, split by dividers. */
 export function StatStrip({
   stats,
+  phoneCols,
 }: {
   stats: { label: string; value: React.ReactNode; tone?: 'default' | 'warn' | 'bad' }[]
+  /** Columns on phones when the values are long (e.g. "+365 bags"). */
+  phoneCols?: 2
 }) {
   return (
     // One row; on phones more than four wrap to rows of three. The 1px gap
@@ -57,7 +60,7 @@ export function StatStrip({
     <dl
       className={cn(
         'grid gap-px overflow-hidden rounded-xl border bg-border sm:flex',
-        stats.length <= 2 ? 'grid-cols-2' : stats.length === 4 ? 'grid-cols-4' : 'grid-cols-3',
+        stats.length <= 2 || phoneCols === 2 ? 'grid-cols-2' : stats.length === 4 ? 'grid-cols-4' : 'grid-cols-3',
       )}
     >
       {stats.map((s, i) => (

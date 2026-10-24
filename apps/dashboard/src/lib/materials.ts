@@ -650,3 +650,52 @@ export const REASON_WORDS: Record<InflowReason | OutflowReason, string> = {
   WASTAGE: 'Wastage',
   ADJUSTMENT_OUT: 'Stock correction',
 }
+
+// ---------------------------------------------------------------------
+// One ledger of every movement (WEB-30)
+// ---------------------------------------------------------------------
+
+/** A movement in or out, as one row of the materials ledger. */
+export type LedgerRow =
+  | ({ direction: 'IN' } & MaterialReceipt)
+  | ({ direction: 'OUT' } & MaterialUsage)
+
+/** How many movements of each direction the ledger loads at most. */
+export const LEDGER_CAP = 1000
+
+async function fetchAllPages<T>(fetchPage: (offset: number) => Promise<MaterialMovementListResponse<T>>, cap: number) {
+  const items: T[] = []
+  let total = 0
+  do {
+    const page = await fetchPage(items.length)
+    items.push(...page.items)
+    total = page.total
+    if (page.items.length === 0) break
+  } while (items.length < total && items.length < cap)
+  return { items, total }
+}
+
+/**
+ * Every delivery and use matching `filters`, oldest first, merged into one
+ * list (the in/out endpoints page at 100; this pages through up to
+ * LEDGER_CAP of each). `truncated` says when there were more.
+ */
+export async function fetchLedgerRows(
+  filters: Omit<MovementFilters, 'limit' | 'offset' | 'movement_reason'>,
+): Promise<{ rows: LedgerRow[]; truncated: boolean }> {
+  const [ins, outs] = await Promise.all([
+    fetchAllPages((offset) => fetchInflows({ ...filters, limit: 100, offset }), LEDGER_CAP),
+    fetchAllPages((offset) => fetchOutflows({ ...filters, limit: 100, offset }), LEDGER_CAP),
+  ])
+  const rows: LedgerRow[] = [
+    ...ins.items.map((m) => ({ ...m, direction: 'IN' as const })),
+    ...outs.items.map((m) => ({ ...m, direction: 'OUT' as const })),
+  ]
+  rows.sort(
+    (a, b) =>
+      a.occurred_date.localeCompare(b.occurred_date) ||
+      (a.occurred_time ?? '').localeCompare(b.occurred_time ?? '') ||
+      a.created_at.localeCompare(b.created_at),
+  )
+  return { rows, truncated: ins.items.length < ins.total || outs.items.length < outs.total }
+}
