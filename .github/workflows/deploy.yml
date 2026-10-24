@@ -73,6 +73,15 @@ jobs:
           name: control-panel-dist
           path: apps/control-panel/dist/
           retention-days: 1
+      # INF-15: the same app built for the root of control.mesiri.ai.
+      - run: pnpm --filter @mesiri/control-panel exec vite build --outDir dist-root
+        env:
+          VITE_BASE: /
+      - uses: actions/upload-artifact@v4
+        with:
+          name: control-panel-root-dist
+          path: apps/control-panel/dist-root/
+          retention-days: 1
 
   # ── Build dashboard static assets ──────────────────────────────────────────
   build-dashboard:
@@ -111,6 +120,12 @@ jobs:
         with:
           name: control-panel-dist
           path: frontend-dist/
+
+      - name: Download control panel build (control.mesiri.ai)
+        uses: actions/download-artifact@v4
+        with:
+          name: control-panel-root-dist
+          path: control-dist/
 
       - name: Download dashboard build
         uses: actions/download-artifact@v4
@@ -395,6 +410,25 @@ jobs:
 
           ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
             "chown -R www-data:www-data /var/www/mesiriadmin/"
+
+          ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "mkdir -p /var/www/mesiricontrol"
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
+            control-dist/ \
+            "${VPS_USER}@${VPS_HOST}:/var/www/mesiricontrol/"
+
+          ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
+            "chown -R www-data:www-data /var/www/mesiricontrol/"
+
+      # INF-15: control.mesiri.ai. Waits (no-op) until its DNS reaches this
+      # server, then gets the certificate and redirects the old address.
+      - name: Control panel address (nginx)
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
+            "bash /opt/mesiri/infra/deploy/nginx_control_panel.sh"
 
       - name: Upload dashboard
         env:

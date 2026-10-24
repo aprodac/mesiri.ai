@@ -5,7 +5,8 @@
 #   1. the API answers and reports ok        (api /health)
 #   2. the WhatsApp worker is alive           (api /health "worker")
 #   3. the dashboard loads                    (app.whatsapp.mesiri.ai)
-#   4. the control panel loads                (api /mesiriadmin/)
+#   4. the control panel loads                (api /mesiriadmin/, which redirects
+#                                               to control.mesiri.ai once INF-15 is live)
 #
 # Each check is tried 3 times, 20 s apart, before it counts as down, so a
 # deploy restart or a network blip does not wake anyone. Prints one line per
@@ -33,7 +34,7 @@ try() {
   FAILED=1
 }
 
-http_ok() { curl -fsS -m 15 -o /dev/null "$1" 2>/dev/null; }
+http_ok() { curl -fsSL -m 15 -o /dev/null "$1" 2>/dev/null; }
 
 api_ok() {
   curl -fsS -m 15 "${API_URL}/health" 2>/dev/null | python3 -c \

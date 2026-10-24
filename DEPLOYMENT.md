@@ -5,7 +5,8 @@ This project uses GitHub Actions for automated CI/CD. Every push to `main` that 
 > **Since 14 Oct 2026 (INF-11, INF-12):** Mesiri runs on **`82.29.167.128`** (a server
 > shared with other apps) under its own domain, DNS in Cloudflare (`mesiri.ai`):
 >
-> - `api.whatsapp.mesiri.ai` — backend API, WhatsApp webhook (`/webhook`), `control-panel` under `/mesiriadmin`. nginx: [`infra/nginx/api.whatsapp.mesiri.ai.conf`](infra/nginx/api.whatsapp.mesiri.ai.conf).
+> - `api.whatsapp.mesiri.ai` — backend API, WhatsApp webhook (`/webhook`). nginx: [`infra/nginx/api.whatsapp.mesiri.ai.conf`](infra/nginx/api.whatsapp.mesiri.ai.conf).
+> - `control.mesiri.ai` — `control-panel` (superadmin), static files from `/var/www/mesiricontrol` (built with `VITE_BASE=/`). nginx: [`infra/nginx/control.mesiri.ai.conf`](infra/nginx/control.mesiri.ai.conf). Set up by the deploy (INF-15, [`infra/deploy/nginx_control_panel.sh`](infra/deploy/nginx_control_panel.sh)): a port-80 block, then — once Cloudflare DNS `A control → 82.29.167.128` (DNS only) reaches the server — a Let's Encrypt certificate, then `api.whatsapp.mesiri.ai/mesiriadmin/...` redirects (301) to `https://control.mesiri.ai/...`. Until then the old address serves the control panel as before.
 > - `app.whatsapp.mesiri.ai` — `apps/dashboard`, static files. nginx: [`infra/nginx/app.whatsapp.mesiri.ai.conf`](infra/nginx/app.whatsapp.mesiri.ai.conf).
 > - The app listens on `127.0.0.1:8100` (`MESIRI_APP_PORT` in `/opt/mesiri/.env`; 8000 is taken on this server).
 > - Postgres 16 and Redis 7 run from [`infra/docker-compose.prod.yml`](infra/docker-compose.prod.yml), bound to `127.0.0.1` only (Postgres on 5434): `docker compose -p mesiri -f infra/docker-compose.prod.yml --env-file .env up -d`.
@@ -44,7 +45,9 @@ GitHub Actions: deploy.yml
             ├── timers refreshed (INF-05/06): mesiri-backup (nightly 02:15 IST, 14 kept),
             │     mesiri-timeline (every minute), mesiri-dpr-render (every 15 min)
             ├── smoke_test.sh (INF-04): build, storage, webhook handshake, worker
-            ├── rsync control-panel dist → /var/www/mesiriadmin/
+            ├── rsync control-panel dist → /var/www/mesiriadmin/ (old address) and
+            │     its VITE_BASE=/ build → /var/www/mesiricontrol/ (control.mesiri.ai)
+            ├── nginx_control_panel.sh (INF-15): control.mesiri.ai block, cert, redirect
             └── rsync dashboard dist → /var/www/mesiriweb/
 ```
 
@@ -372,7 +375,8 @@ cd /opt/mesiri/backend && PYTHONPATH=... .venv/bin/alembic current
 └── infra/
     └── mesiri.service        ← systemd unit (installed to /etc/systemd)
 
-/var/www/mesiriadmin/         ← control panel static files (served by nginx)
+/var/www/mesiricontrol/       ← control panel static files for control.mesiri.ai (INF-15)
+/var/www/mesiriadmin/         ← control panel built for the old /mesiriadmin address (unused once it redirects)
 /var/www/mesiriweb/           ← dashboard static files (served by nginx)
 /etc/nginx/sites-available/mesiri.mercon.tech.conf     ← nginx config (from mercon.conf) — mercon.tech's root domain is a separate app on the same VPS
 /etc/nginx/sites-available/mesiriweb.mercon.tech.conf  ← nginx config (from mercon_web.conf)

@@ -36,8 +36,9 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401 || error.response?.status === 403) {
       clearToken();
-      if (window.location.pathname !== '/mesiriadmin/login') {
-        window.location.href = '/mesiriadmin/login';
+      const loginPath = `${import.meta.env.BASE_URL}login`;
+      if (window.location.pathname !== loginPath) {
+        window.location.href = loginPath;
       }
     }
     return Promise.reject(error);
