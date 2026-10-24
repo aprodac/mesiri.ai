@@ -11,6 +11,38 @@
 
 ---
 
+## 0. Pages and routes (V1, WEB-21)
+
+V1 is one loop — sites send updates on WhatsApp, the engineer confirms, the
+owner gets the DPR — plus setup. The sidebar has no "More".
+
+| Sidebar | Address | What it is |
+|---|---|---|
+| **Today** | `/today` | what's in, what's missing, what needs me |
+| **Reports** | `/reports` | every DPR, newest first |
+| | `/reports/:date/sites/:id` | one site's day: review, confirm, approve |
+| | `/reports/:date/projects/:id` | one project's DPR: preview, send |
+| **Issues** | `/issues` | what's stuck |
+| **Labour** (module) | `/labour/...` | attendance, workers (sub-pages unchanged until approved) |
+| **Materials** (module) | `/materials` | one page with tabs |
+| *Setup* **Projects & Sites** | `/projects`, `/projects/:id` | |
+| **Team** | `/team`, `/team/:id` | |
+| **Company** | `/company` | details, letterhead |
+| **WhatsApp Inbox** | `/whatsapp/inbox` | |
+| Finance, Automations | `/finance/...`, `/automations` | only when the company has the module |
+
+Rules:
+- One address per thing, named as the sidebar names it. No section prefixes
+  (`/operations/...`).
+- A report's address is its date and site, not "today".
+- A page outside V1 is removed, not hidden under "More". A module a
+  company has not bought is hidden by the module switch (WEB-02).
+- Moving a page means a redirect from the old address (`App.tsx`, "Old
+  addresses"); unknown addresses land on Today.
+- No "coming soon" placeholder pages.
+
+---
+
 ## 1. Who we design for
 
 A site engineer or owner, often on a phone, often outdoors, with five minutes.
