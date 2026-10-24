@@ -222,7 +222,11 @@ const SIDEBAR_THEMES = {
     groupIdle: 'text-white/65 hover:text-white',
     groupActive: 'text-white font-semibold',
     card: 'border-white/10 bg-white/[0.06]',
-    brand: 'bg-[#EEF1F6] text-[#3E3C3D]',
+    // Header band above the wedge: light band, charcoal ink.
+    headerBg: '[--sidebar-header:#EEF1F6]',
+    headerText: 'text-[#3E3C3D]',
+    headerBtn: 'text-[#3E3C3D]/60 hover:text-[#3E3C3D] hover:bg-black/[0.06]',
+    brand: 'bg-[#3E3C3D] text-white',
     avatar: 'bg-white/10 text-white',
     danger: 'hover:text-[#FF9A8B]',
     name: 'text-white',
@@ -247,6 +251,9 @@ const SIDEBAR_THEMES = {
     groupIdle: 'text-foreground/70 hover:text-foreground',
     groupActive: 'text-foreground font-semibold',
     card: 'border-black/[0.06] bg-white dark:border-border dark:bg-background',
+    headerBg: '[--sidebar-header:#FFFFFF] dark:[--sidebar-header:var(--background)]',
+    headerText: 'text-foreground',
+    headerBtn: 'text-muted-foreground hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-muted',
     brand: 'bg-[#3E3C3D] text-white dark:bg-foreground dark:text-background',
     avatar: 'bg-white text-foreground border border-black/[0.06] dark:bg-background dark:border-border',
     danger: 'hover:text-destructive',
@@ -525,44 +532,70 @@ export function AppSidebar() {
       {/* The themed surface wraps everything so it also covers the mobile sheet,
           which ui/sidebar.tsx renders without our className. */}
       <div className={cn('flex h-full w-full flex-col', S.aside)}>
-        <SidebarHeader className="gap-3 px-2.5 pt-3 pb-1">
-          <div className="flex items-center justify-between gap-2 px-1">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div
-                className={cn(
-                  'size-8 rounded-lg flex items-center justify-center font-bold text-sm shrink-0',
-                  S.brand
-                )}
-              >
-                M
+        <SidebarHeader className={cn('gap-0 p-0', S.headerBg)}>
+          {/* A 64px band with a wedge sloping into the sidebar body and an
+              accent stripe on its edge. The wedge is filled with --sidebar so
+              it always matches the body; preserveAspectRatio="none" stretches
+              it to any width (collapsed too), and the -10 / 290 ends run the
+              stripe past both edges so the corners stay clean. */}
+          <div className="relative h-16 shrink-0">
+            <svg
+              className="absolute inset-0 size-full"
+              viewBox="0 0 280 64"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <rect width="280" height="64" fill="var(--sidebar-header)" />
+              <path d="M -10 64 H 290 V 34 L -10 58 Z" fill="var(--sidebar)" />
+              <path
+                d="M -10 58 L 290 34"
+                stroke="var(--primary)"
+                strokeWidth="2"
+                strokeLinecap="round"
+                opacity="0.85"
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
+            <div className="relative flex h-full items-center justify-between gap-2 px-3.5 -mt-3 group-data-[collapsible=icon]:px-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div
+                  className={cn(
+                    'size-8 rounded-lg flex items-center justify-center font-bold text-sm shrink-0',
+                    S.brand
+                  )}
+                >
+                  M
+                </div>
+                <span
+                  className={cn(
+                    'font-bold text-[17px] tracking-tight group-data-[collapsible=icon]:hidden',
+                    S.headerText
+                  )}
+                >
+                  Mesiri
+                </span>
               </div>
-              <span
-                className={cn(
-                  'font-bold text-[17px] tracking-tight group-data-[collapsible=icon]:hidden',
-                  S.name
-                )}
-              >
-                Mesiri
-              </span>
+              {showBackButton && (
+                <Link
+                  to={location.pathname.startsWith('/users/') ? '/users' : '/projects'}
+                  className={cn(
+                    'transition-colors group-data-[collapsible=icon]:hidden size-8 flex items-center justify-center rounded-lg',
+                    S.headerBtn,
+                    S.ring
+                  )}
+                  title="Back"
+                  aria-label="Back"
+                >
+                  <ArrowLeft className="size-4" />
+                </Link>
+              )}
             </div>
-            {showBackButton && (
-              <Link
-                to={location.pathname.startsWith('/users/') ? '/users' : '/projects'}
-                className={cn(
-                  'transition-colors group-data-[collapsible=icon]:hidden size-8 flex items-center justify-center rounded-lg',
-                  S.iconBtn,
-                  S.ring
-                )}
-                title="Back"
-                aria-label="Back"
-              >
-                <ArrowLeft className="size-4" />
-              </Link>
-            )}
           </div>
-          <div className={cn('rounded-xl border px-3 py-2 group-data-[collapsible=icon]:hidden', S.card)}>
-            <div className={cn('text-xs', S.label)}>Company</div>
-            <div className={cn('text-sm font-semibold truncate', S.name)}>{companyName}</div>
+          <div className="bg-sidebar px-2.5 pt-2 pb-1 group-data-[collapsible=icon]:hidden">
+            <div className={cn('rounded-xl border px-3 py-2', S.card)}>
+              <div className={cn('text-xs', S.label)}>Company</div>
+              <div className={cn('text-sm font-semibold truncate', S.name)}>{companyName}</div>
+            </div>
           </div>
         </SidebarHeader>
 
