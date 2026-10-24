@@ -50,8 +50,8 @@ from .reply_text import (
     without_save_prompt,
     without_stray_sentences,
 )
-from .toolbox import AgentToolbox, SavedItem, offers_engineer
-from .tools import NOTE_FOR_ENGINEER, ScopeLookup, tool_specs
+from .toolbox import AgentToolbox, SavedItem, offers_engineer, tomorrow_plan_text
+from .tools import NOTE_FOR_ENGINEER, SET_SITE_CONDITIONS, ScopeLookup, tool_specs
 
 _log = logging.getLogger("mesiri.agent")
 
@@ -138,6 +138,7 @@ class AgentRunner:
                 "degraded", self._fallback(toolbox, partial=True), toolbox, error=exc
             )
         await toolbox.settle()
+        await self._tomorrow_plan(toolbox, user_text)
         run = await self._in_manglish(run, messages, user_text, correlation_id)
         run = await self._one_script(run, messages, user_text, correlation_id)
         run = await self._answer_in_language(run, messages, toolbox, user_text, correlation_id)
@@ -154,6 +155,15 @@ class AgentRunner:
             # (a reply with a made-up figure loses that sentence below anyway)
             run = await self._covering(run, messages, toolbox, user_text, correlation_id)
         return AgentResult("ok", self._compose(run, toolbox, sources, correlation_id), toolbox, run=run)
+
+    @staticmethod
+    async def _tomorrow_plan(toolbox: AgentToolbox, user_text: str) -> None:
+        """Request 104, B: "Tomorrow plan: ..." is never just "noted". When the
+        model did not call ``set_site_conditions`` for it, the card is prepared
+        here from the message's own words."""
+        plan = tomorrow_plan_text(user_text)
+        if plan and SET_SITE_CONDITIONS not in toolbox.called and toolbox.parked is None:
+            await toolbox.handle(SET_SITE_CONDITIONS, {"tomorrow_plan": plan})
 
     async def _in_manglish(
         self,

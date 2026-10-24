@@ -109,6 +109,7 @@ class EntryScope:
         project: str = "required",
         ask_site: bool = True,
         lookup: bool = False,
+        site_prompt: bool = False,
     ) -> Scoped | Say:
         """The sender's context and the project/site for this entry, or what
         to say (a question with buttons, a module that is off, a failure).
@@ -117,7 +118,9 @@ class EntryScope:
         fine: the whole company where the answer allows it) or "none" (not
         used: a new project, a transfer). ``ask_site`` False: with several
         sites, none is picked (a lookup covers the whole project).
-        ``lookup``: the wording is "couldn't look this up", not "not saved"."""
+        ``lookup``: the wording is "couldn't look this up", not "not saved".
+        ``site_prompt``: the entry needs a site (an issue, the day's conditions):
+        a sender with none in this project is asked which of their sites."""
         no = "Couldn't look this up:" if lookup else "Not saved:"
         picked_project = candidate.fields.get("project_id")
         picked_site = candidate.fields.get("site_id")
@@ -188,12 +191,15 @@ class EntryScope:
             if len(sites) > 1:
                 return choose("Which site is this for?", [s.name for s in sites], "site")
             site_id = sites[0].id if sites else None
-            if site_id is None and site_required and not self._has_site_in(ctx, project_id):
+            if site_id is None and (site_required or site_prompt) and not self._has_site_in(ctx, project_id):
                 # Without a site the save refuses it, and the model asked
                 # "which site?" with nothing to pick (live 22 Oct): say why.
+                # Request 104, D: an issue or the day's conditions are the same
+                # (they used to go on and "didn't go through" at save).
+                what = "work done" if site_required else "this"
                 return Say(
                     "info",
-                    "Not saved: you are not on any site of this project yet, so work done "
+                    f"Not saved: you are not on any site of this project yet, so {what} "
                     "can't be recorded. Your admin can add you to its site on the dashboard.",
                 )
             # Otherwise let it through site-less, as the classic site gate did.

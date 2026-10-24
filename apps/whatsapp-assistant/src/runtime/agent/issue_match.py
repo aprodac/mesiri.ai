@@ -74,10 +74,24 @@ def issue_line(issue: dict[str, Any], zone: str) -> str:
     return f"{issue_label(issue)} ({'today' if day == today else 'since ' + short_day(day)})"
 
 
-def _match_text(issue: dict[str, Any], zone: str) -> set[str]:
+def row_titles(issues: list[dict[str, Any]], zone: str) -> list[str]:
+    """The list rows (24 characters each): the issue in a few words; when two
+    read the same, the day is added so they can be told apart."""
+    labels = [issue_label(i) for i in issues]
+    cut = [label[:24] for label in labels]
+    return [
+        f"{label[:15].rstrip()} · {short_day(_day(issue, zone))}" if cut.count(cut[n]) > 1 else cut[n]
+        for n, (label, issue) in enumerate(zip(labels, issues, strict=True))
+    ]
+
+
+def _match_text(issue: dict[str, Any], zone: str) -> tuple[set[str], set[str]]:
+    """(the words of the issue's own note, the words of its type and day): a
+    word in the note counts double."""
     day = _day(issue, zone)
-    words = f"{issue.get('narrative') or ''} {_TYPE_WORDS.get(str(issue.get('issue_type')), '')} {short_day(day)}"
-    return _tokens(words) | {str(day.day), day.strftime("%b").casefold()}
+    note = _tokens(str(issue.get("narrative") or ""))
+    extra = _tokens(f"{_TYPE_WORDS.get(str(issue.get('issue_type')), '')} {short_day(day)}")
+    return note, extra
 
 
 def best_matches(issues: list[dict[str, Any]], about: list[str], zone: str) -> list[dict[str, Any]]:
@@ -88,7 +102,10 @@ def best_matches(issues: list[dict[str, Any]], about: list[str], zone: str) -> l
         wanted |= _tokens(phrase)
     if not wanted:
         return []
-    scored = [(len(wanted & _match_text(issue, zone)), issue) for issue in issues]
+    scored = []
+    for issue in issues:
+        note, extra = _match_text(issue, zone)
+        scored.append((2 * len(wanted & note) + len(wanted & (extra - note)), issue))
     top = max((score for score, _ in scored), default=0)
     return [issue for score, issue in scored if score == top] if top else []
 
@@ -118,7 +135,7 @@ def closing_action(
             offered = matched
     if picked is None:
         shown = offered[:MAX_LISTED]
-        labels = [f"{issue_label(i)} · {short_day(_day(i, zone))}" for i in shown]
+        labels = row_titles(shown, zone)
         return choose(
             "Which issue is fixed?",
             [*labels, SOMETHING_ELSE],

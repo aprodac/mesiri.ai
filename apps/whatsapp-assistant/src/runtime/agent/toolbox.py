@@ -150,6 +150,21 @@ def material_named(text: str) -> str | None:
     return found[0] if len(found) == 1 else None
 
 
+#: "Tomorrow plan: 2nd floor slab casting, need 15 workers" -- the plan is what follows.
+_TOMORROW_PLAN = re.compile(
+    r"(?:tomorrow'?s?\s+plan|plan\s+for\s+tomorrow|plan\s+tomorrow|nale(?:yude|thhe|the)?\s+plan"
+    r"|നാളത്തെ\s+പ്ലാൻ|कल\s+का\s+(?:प्लान|plan))\s*[:\-–]?\s*(?P<plan>.+)",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def tomorrow_plan_text(text: str) -> str | None:
+    """The plan in a "Tomorrow plan: ..." message, else None (request 104, B)."""
+    found = _TOMORROW_PLAN.search(text or "")
+    plan = " ".join(found.group("plan").split())[:500] if found else ""
+    return plan or None
+
+
 def _tool_fields(tool: str) -> set[str]:
     """The argument names a save tool takes: what a card change may touch."""
     for spec in tool_specs():
@@ -225,6 +240,8 @@ class AgentToolbox:
     #: Request 83: what request_dpr answered, for the one "draft so far" line a
     #: message that also saves entries gets under its card.
     report_text: str | None = None
+    #: Request 104: every tool the model called this message (even a refused one).
+    called: set[str] = field(default_factory=set)
     #: Request 104: the message is only about equipment, which WhatsApp does not
     #: record yet; its reply is the one plain line, never a Save.
     equipment_noted: bool = False
@@ -283,6 +300,7 @@ class AgentToolbox:
                     ),
                 }
             )
+        self.called.add(name)
         self.calls += 1
         if self.calls > MAX_CALLS:
             return ToolOutcome(

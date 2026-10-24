@@ -115,6 +115,7 @@ class ActionEntry(EntryScope):
             candidate,
             module=module_for_workflow(WorkflowKey.SITE_UPDATE),
             site_required=True,
+            site_prompt=True,
         )
         if isinstance(scoped, Say):
             return scoped

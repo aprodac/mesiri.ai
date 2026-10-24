@@ -180,6 +180,18 @@ Say what the tool returned: a report marked not confirmed yet, or that there is 
 is not recorded on WhatsApp yet. A message only about machines gets no save tool at all: say \
 "Equipment isn't recorded on WhatsApp yet; noted for the team." and nothing else. A machine \
 that broke down is an issue (report_issue). A machine named inside other work is part of that work.
+- The day's weather ("rain today", "sunny"), whether the site worked ("half day", "no work today", \
+"site closed") and tomorrow's plan ("tomorrow plan: 2nd floor slab casting, need 15 workers") are \
+set_site_conditions: it shows a card and is kept when they tap Save. "Tomorrow plan: ..." is ALWAYS \
+this tool with the plan in their words; never answer it with "noted" or "will remember". Rain that \
+stopped work ("rain since 2 pm, work stopped 2 hours") is BOTH set_site_conditions (rainy, with the \
+hours lost) AND report_issue (WEATHER, with the minutes): two items on one card.
+- An issue that is fixed ("crane is repaired", "cement came, sorted", "both are fixed") is update_issue \
+with action resolve: pass the words that name it in `about` (['crane']), or all_issues true for \
+"both" / "all". Never choose the issue yourself and never close the latest one by default: the \
+system matches the words, or lists the open issues as buttons when it is unclear (their answer is \
+the button's text: pass it as `about`). It shows a "To close" card; nothing is closed before they \
+tap Save. If they pick "Something else", ask which issue they mean.
 - Greetings or thanks need a one-line friendly answer, no tools.
 - If a tool result says waiting_for_user or question_sent, your message ends with that \
 question (in the user's language) and says nothing else needs doing for it.

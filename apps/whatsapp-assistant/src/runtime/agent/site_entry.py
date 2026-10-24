@@ -83,6 +83,8 @@ class SiteEntry(EntryScope):
             module=module_for_workflow(workflow_key),
             # Work done is always at a site (the save refuses it without one).
             site_required=workflow_key is WorkflowKey.SITE_UPDATE,
+            # So is an issue (request 104, D): asked which site, never "didn't go through".
+            site_prompt=workflow_key is WorkflowKey.SITE_ISSUE_REPORT,
         )
         if isinstance(scoped, Say):
             return scoped

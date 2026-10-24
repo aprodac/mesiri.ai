@@ -147,9 +147,12 @@ async def test_work_with_no_site_of_the_senders_says_so_instead_of_failing_at_sa
     said = await _prepare(entry, SemanticType.GENERAL_SITE_UPDATE, narrative="slab concreting")
     assert isinstance(said, Say) and said.status == "info"
     assert "not on any site of this project" in said.text
-    # An issue or an expense still goes through without a site, as before.
-    ready = await _prepare(entry, SemanticType.SITE_ISSUE, issue_type="WEATHER")
-    assert isinstance(ready, Ready) and ready.event.site_id is None
+    # Request 104, D: an issue needs a site too -- said plainly, not left to a
+    # save that "didn't go through". An expense still goes through without one.
+    issue = await _prepare(entry, SemanticType.SITE_ISSUE, issue_type="WEATHER")
+    assert isinstance(issue, Say) and issue.status == "info" and "not on any site" in issue.text
+    expense = await _prepare(entry, SemanticType.EXPENSE, amount=500)
+    assert isinstance(expense, Ready) and expense.event.site_id is None
 
 
 class _Today:
@@ -173,7 +176,7 @@ async def test_todays_site_wins_over_the_context_layers_other_project():
     assert isinstance(ready, Ready)
     assert (str(ready.event.project_id), str(ready.event.site_id)) == (PRJ, SITE)
     # A message that names a project still goes by what it names.
-    named = await _prepare(entry, SemanticType.SITE_ISSUE, issue_type="WEATHER", project_name="Other")
+    named = await _prepare(entry, SemanticType.EXPENSE, amount=500, project_name="Other")
     assert isinstance(named, Ready) and str(named.event.project_id) == other
 
 
@@ -232,7 +235,7 @@ async def test_todays_site_does_not_override_a_reply_to_another_record():
     context.ctx.context_source = SimpleNamespace(value="reply_context")
     entry = _entry(context=context)
     entry.active_context = _Today(PRJ, SITE)
-    ready = await _prepare(entry, SemanticType.SITE_ISSUE, issue_type="WEATHER")
+    ready = await _prepare(entry, SemanticType.EXPENSE, amount=500)
     assert str(ready.event.project_id) == other
 
 
