@@ -571,6 +571,32 @@ def build_message_handlers(
             (message.text or "").strip()
         )
 
+    async def _open_activity_for_photos(actor):  # type: ignore[no-untyped-def]
+        """The open work "Site Update" photos attach to (V1 audit PHO-01: it
+        was looked up with no site, so never found): at today's site, else
+        their only site, else the one of their sites with open work of theirs."""
+        today = None
+        if work_site is not None:
+            try:
+                today = await work_site.today(actor)
+            except Exception:  # noqa: BLE001 -- the other sites are still tried
+                _log.warning("photos.work_site_failed user=%s", actor.user_id, exc_info=True)
+        sites = [str(s.id) for s in getattr(actor, "sites", None) or []]
+        candidates = [today[1]] if today else sites
+        found = [
+            row
+            for site_id in candidates[:10]
+            if (
+                row := await activity_query.find_open_activity(
+                    organization_id=actor.organization_id,
+                    site_id=site_id,
+                    reported_by_user_id=actor.user_id,
+                )
+            )
+            is not None
+        ]
+        return found[0] if len(found) == 1 else None
+
     async def _run_journey_steps(message, raw_payload, retry_of_id, timer) -> None:  # type: ignore[no-untyped-def]
         wa_id = message.sender.wa_id
 
@@ -2140,11 +2166,7 @@ def build_message_handlers(
                 # workflow (see AttachEvidenceCommand's docstring) -- no
                 # single-active-invariant concern, so the WHOLE batch
                 # attaches in one shot regardless of size.
-                found = await activity_query.find_open_activity(
-                    organization_id=ctx.organization_id,
-                    site_id=None,
-                    reported_by_user_id=ctx.user_id,
-                )
+                found = await _open_activity_for_photos(ctx)
                 if found is None:
                     reply_text = render_no_open_activity_for_evidence_reply()
                 else:

@@ -29,9 +29,9 @@ A PDF or document bill skips the picker and goes straight to the agent.
 
 | ID | Problem | Severity | Approval | Verified |
 | --- | --- | --- | --- | --- |
-| PHO-01 | "Site Update" photos are never attached; caption dropped | Serious | None | Scripted run |
+| PHO-01 | "Site Update" photos are never attached; caption dropped | Serious | None — **fixed (WA-67), retest** | Scripted run |
 | PHO-02 | The DPR shows a photo count, never the photos | Serious | None | Code read |
-| PHO-03 | A bill photo is not kept with the material receipt | Serious | None | Code read |
+| PHO-03 | A bill photo is not kept with the material receipt | Serious | None — **blocked (WA-68): needs a decision** | Code read |
 | PHO-04 | Only the first photo of a bill or register is read | Serious | Alan: Labour (registers) | Scripted run |
 | PHO-05 | Photos are lost when the server restarts | Serious | Ops (INF-09) | Tracker |
 | PHO-06 | Untapped photos vanish after 10 minutes, silently | Other | None | Scripted run |
@@ -63,6 +63,7 @@ the receipt?).
 - **Code:** `message_journey.py` (the `img_site_update` branch) calls `activity_query.find_open_activity(organization_id=…, site_id=None, reported_by_user_id=…)`; `ActivityQueryService.find_open_activity` (`apps/whatsapp-assistant/src/runtime/activity_query.py`) starts with `if not site_id or not reported_by_user_id: return None`. The caption (`held_batch[0].text`) is never read on this branch.
 - **Evidence (scripted run):** real `build_message_handlers` + real `PendingMediaStore` + real `ActivityQueryService` with a database that raises on any use: the database was never touched, `attach_photos` called 0 times, reply as above.
 - **Fix direction:** pass today's site (WA-45 work site) or the sender's site; when the caption describes work, save it as work done and attach the photos to it.
+- **Fixed (WA-67):** today's site, else the one of their sites with open work. The caption part is not done.
 
 ### PHO-02 · The DPR shows a photo count, never the photos
 

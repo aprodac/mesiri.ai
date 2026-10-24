@@ -170,3 +170,56 @@ async def test_now_at_site_a_switches_mid_day(monkeypatch):
     assert (active.project_id, active.site_id) == ("pa", "a1")
     reply = deps["sender"].send_text.await_args.args[1]
     assert reply == "OK 👍 Site A (Project A) for the rest of today."
+
+
+def _photo(n, caption=None):
+    from mesiri_contracts.assistant.normalized_message import MediaReference
+
+    return NormalizedMessage(
+        message_id=f"wamid.photo.{n}",
+        sender=SenderInfo(wa_id="919000000002", profile_name="Suresh"),
+        timestamp=dt.datetime(2026, 10, 22, 6, tzinfo=dt.UTC),
+        modality=InputModality.IMAGE,
+        text=caption,
+        media=MediaReference(object_key=f"media/p{n}.jpg", mime_type="image/jpeg"),
+    )
+
+
+async def _site_update_tap(monkeypatch, work_site, open_by_site):
+    on_normalized, deps = _build(monkeypatch, FakeToolCallingProvider([]), work_site)
+    deps["interaction_handler"].handle_image_purpose_tap = MagicMock(return_value="img_site_update")
+    deps["pending_media_store"].pop_batch.return_value = [_photo(1, "2nd floor plastering"), _photo(2)]
+
+    async def find_open_activity(*, organization_id, site_id, reported_by_user_id):
+        assert site_id is not None and reported_by_user_id == USER
+        return open_by_site.get(site_id)
+
+    deps["activity_query"].find_open_activity.side_effect = find_open_activity
+    deps["evidence_query"].attach_photos.return_value = ["x1", "x2"]
+    await on_normalized(_message("Site Update", tap="img_site_update", n=9), {})
+    return deps
+
+
+async def test_site_update_photos_attach_to_the_open_work_at_todays_site(monkeypatch):
+    """V1 audit PHO-01: the lookup had no site, so it never found the work."""
+    work_site, _ = _work_site()
+    await work_site.set_today(SimpleNamespace(organization_id=ORG, user_id=USER, sites=SITES, timezone=None),
+                              project_id="pb", site_id="b2")
+    plastering = {"activity_id": "act-1", "work_type": "plastering", "narrative": "2nd floor"}
+    deps = await _site_update_tap(monkeypatch, work_site, {"b2": plastering, "a1": {"activity_id": "other"}})
+
+    attach = deps["evidence_query"].attach_photos.await_args.kwargs
+    assert attach["activity_id"] == "act-1"
+    assert attach["media_object_keys"] == ["media/p1.jpg", "media/p2.jpg"]
+
+
+async def test_site_update_photos_without_todays_site_use_the_one_site_with_open_work(monkeypatch):
+    work_site, _ = _work_site()
+    deps = await _site_update_tap(monkeypatch, work_site, {"a1": {"activity_id": "act-a"}})
+    assert deps["evidence_query"].attach_photos.await_args.kwargs["activity_id"] == "act-a"
+
+
+async def test_site_update_photos_are_not_guessed_between_two_sites_with_open_work(monkeypatch):
+    work_site, _ = _work_site()
+    deps = await _site_update_tap(monkeypatch, work_site, {"a1": {"activity_id": "a"}, "b2": {"activity_id": "b"}})
+    deps["evidence_query"].attach_photos.assert_not_awaited()
