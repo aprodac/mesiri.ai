@@ -296,7 +296,7 @@ async def test_when_the_second_try_is_wrong_too_the_code_line_in_english_goes_ou
 async def test_a_flat_okay_never_goes_out_above_a_card(bare):
     text, _ = await _reply_for(
         "crane breakdown, work stopped since morning",
-        [[("report_issue", {"issue_type": "EQUIPMENT", "narrative": "crane breakdown, work stopped"})], bare],
+        [[("report_issue", {"issue_type": "EQUIPMENT", "narrative": "crane breakdown, work stopped", "delay_duration_minutes": 480})], bare],
         [bare, bare],
         summary="Issue: crane breakdown, work stopped",
     )

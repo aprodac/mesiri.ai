@@ -18,6 +18,9 @@ from ..state import WorkflowGraphState
 #: query's _MAX_NAMES_SHOWN reasoning: past this, a WhatsApp message becomes
 #: a wall of text and the count is the useful part.
 _MAX_ENTRIES_SHOWN = 8
+#: Open issues listed (request 104, D4): the service reads at most this many
+#: and the reply says how many more there are.
+_MAX_ISSUES_SHOWN = 20
 
 
 def _pretty(label: str) -> str:
@@ -64,13 +67,17 @@ def generate_activity_search_reply(state: WorkflowGraphState) -> dict:
         lines.append("")
         issue_word = "issue" if open_issue_count == 1 else "issues"
         lines.append(f"⚠️ {open_issue_count} open {issue_word}")
-        for issue in open_issues[:_MAX_ENTRIES_SHOWN]:
+        shown = open_issues[:_MAX_ISSUES_SHOWN]
+        for issue in shown:
             issue_type = issue.get("issue_type")
             narrative = issue.get("narrative")
             severity = issue.get("severity")
             label = _pretty(issue_type) if issue_type else "Issue"
             detail = f" — {narrative}" if narrative else ""
-            severity_tag = f" ({_pretty(severity)})" if severity else ""
+            tags = [t for t in (_pretty(severity) if severity else "", "being handled" if issue.get("status") == "ACKNOWLEDGED" else "") if t]
+            severity_tag = f" ({', '.join(tags)})" if tags else ""
             lines.append(f"• {label}{detail}{severity_tag}")
+        if open_issue_count > len(shown):
+            lines.append(f"+{open_issue_count - len(shown)} more")
 
     return {"pending_prompt": "\n".join(lines)}

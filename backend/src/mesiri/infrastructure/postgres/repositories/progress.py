@@ -51,6 +51,8 @@ VALID_ISSUE_TYPES = frozenset(
         "EQUIPMENT_BREAKDOWN",
         "INSPECTION_WAITING",
         "ACCESS",
+        "SAFETY",
+        "QUALITY",
         "OTHER",
     }
 )

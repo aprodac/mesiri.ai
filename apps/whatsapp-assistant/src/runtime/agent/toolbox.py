@@ -165,6 +165,63 @@ def tomorrow_plan_text(text: str) -> str | None:
     return plan or None
 
 
+#: Request 104, D2: "rain since afternoon, work stopped" says when it began, not
+#: how long: the hours lost are asked once.
+HOURS_QUESTION = "About how many hours were lost?"
+HOURS_OPTIONS = ["2 hours", "4 hours", "Full day"]
+_SINCE = re.compile(
+    r"\bsince\s+(?:the\s+)?(?:morning|afternoon|evening|noon|lunch)\b"
+    r"|\bfrom\s+(?:the\s+)?(?:morning|afternoon)\b"
+    r"|\b(?:morning|afternoon|raavile|ucha)\s*(?:muthal|mudal|mutal)\b"
+    r"|രാവിലെ\s*മുതൽ|ഉച്ച\w*\s*മുതൽ|सुबह\s*से|दोपहर\s*से",
+    re.IGNORECASE,
+)
+_STOPPED = re.compile(
+    r"\bstop+\w*|\bhalt\w*|\bnirth\w*|\bnilach\w*|\bno work\b|നിർത്ത|നിന്ന|बंद|रुक",
+    re.IGNORECASE,
+)
+_HOURS_GIVEN = re.compile(r"\d\s*(?:hours?|hrs?|h\b|minutes?|mins?|മണിക്കൂർ|घंटे)|\bfull day\b|\bhalf day\b", re.IGNORECASE)
+
+
+_PEOPLE = r"(?:worker|labour|labourer|mason|helper|person|man|woman|someone|painter|electrician|carpenter|plumber|supervisor)"
+_SAFETY = re.compile(
+    r"\binjur\w*|\baccident\w*|\bhurt\b|\bambulance\b|\bhospital\b|\bbleed\w*|\bshock(?:ed)?\b"
+    rf"|\b{_PEOPLE}s?\s+(?:\w+\s+){{0,2}}(?:fell|fallen|slipped|collapsed)\b"
+    r"|പരിക്ക്|അപകടം|चोट|हादसा|दुर्घटना|\bghayal\b|\bchot\b|\bapakadam\b|\bparikk\w*",
+    re.IGNORECASE,
+)
+_QUALITY = re.compile(
+    r"\bleak\w*|\bseepage\b|\bcracks?\b|\bcracked\b|\bdampness\b|ചോർച്ച|വിള്ളൽ|रिसाव|दरार|\bchoorch\w*",
+    re.IGNORECASE,
+)
+_RAISE_TO_HIGH = {"", "LOW", "MEDIUM"}
+
+
+def classify_issue(text: str, args: dict[str, Any]) -> dict[str, Any]:
+    """Request 104, D3: "worker fell / injury / accident" is SAFETY (severity at
+    least HIGH); "leak / seepage / crack", filed as OTHER, is QUALITY. The model
+    picks the type; this only corrects the two cases it left in OTHER."""
+    said = f"{text or ''} {args.get('narrative') or ''}"
+    kind = str(args.get("issue_type") or "").upper()
+    if _SAFETY.search(said) and kind != "SAFETY":
+        severity = str(args.get("severity") or "").upper()
+        return {**args, "issue_type": "SAFETY", "severity": "HIGH" if severity in _RAISE_TO_HIGH else severity}
+    if kind == "SAFETY":
+        severity = str(args.get("severity") or "").upper()
+        return {**args, "severity": "HIGH" if severity in _RAISE_TO_HIGH else severity}
+    if kind in ("", "OTHER") and _QUALITY.search(said):
+        return {**args, "issue_type": "QUALITY"}
+    return args
+
+
+def needs_hours_question(text: str, args: dict[str, Any]) -> bool:
+    """A work-stopping issue that says when it began but not for how long."""
+    if args.get("delay_duration_minutes") not in (None, "", 0):
+        return False
+    text = text or ""
+    return bool(_SINCE.search(text) and _STOPPED.search(text) and not _HOURS_GIVEN.search(text))
+
+
 def _tool_fields(tool: str) -> set[str]:
     """The argument names a save tool takes: what a card change may touch."""
     for spec in tool_specs():
@@ -264,6 +321,8 @@ class AgentToolbox:
     #: Request 83: what request_dpr answered, for the one "draft so far" line a
     #: message that also saves entries gets under its card.
     report_text: str | None = None
+    #: Request 104, D2: the hours-lost question was the last thing asked.
+    hours_asked: bool = False
     #: Request 104: every tool the model called this message (even a refused one).
     called: set[str] = field(default_factory=set)
     #: Request 104: the message is only about equipment, which WhatsApp does not
@@ -390,6 +449,27 @@ class AgentToolbox:
                     "status": "not_saved",
                     "reason": "equipment is not recorded on WhatsApp yet",
                     "instruction": f"Nothing was saved. Say exactly: {EQUIPMENT_LINE}",
+                }
+            )
+        if name == REPORT_ISSUE:
+            args = classify_issue(self.user_text, args)
+        if (
+            name == REPORT_ISSUE
+            and not self.hours_asked
+            and self.parked is None
+            and needs_hours_question(self.user_text, args)
+        ):
+            self.parked = question_reply(HOURS_QUESTION, HOURS_OPTIONS)
+            self.parked_by = "ask"
+            return ToolOutcome(
+                content={
+                    "status": "question_sent",
+                    "reason": "the hours lost are not said, so the issue is not saved yet",
+                    "instruction": (
+                        f"Nothing was saved yet. End your message with: {HOURS_QUESTION} (its options "
+                        "are shown as buttons). When they answer, call report_issue again with the same "
+                        "issue and delay_duration_minutes (2 hours = 120, 4 hours = 240, Full day = 480)."
+                    ),
                 }
             )
         signature = f"{name}:{json.dumps(args, sort_keys=True, default=str)}"

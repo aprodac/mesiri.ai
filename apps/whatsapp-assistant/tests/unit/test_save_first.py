@@ -486,6 +486,7 @@ async def test_a_reviewable_draft_is_still_saved_first(action):
         DraftActionType.RECORD_MATERIAL_RECEIPT: WorkflowKey.MATERIAL_RECEIPT,
         DraftActionType.RECORD_MATERIAL_USAGE: WorkflowKey.MATERIAL_USAGE,
         DraftActionType.RECORD_SITE_ISSUE: WorkflowKey.SITE_ISSUE_REPORT,
+        DraftActionType.TRANSFER_MATERIAL: WorkflowKey.MATERIAL_TRANSFER,
     }[action]
     handler, dispatcher = _handler(_state(key, action))
     assert await handler.save_now(USR) is not None

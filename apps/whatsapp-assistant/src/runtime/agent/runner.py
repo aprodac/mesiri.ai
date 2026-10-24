@@ -50,7 +50,7 @@ from .reply_text import (
     without_save_prompt,
     without_stray_sentences,
 )
-from .toolbox import AgentToolbox, SavedItem, offers_engineer, tomorrow_plan_text
+from .toolbox import HOURS_QUESTION, AgentToolbox, SavedItem, offers_engineer, tomorrow_plan_text
 from .tools import NOTE_FOR_ENGINEER, SET_SITE_CONDITIONS, ScopeLookup, tool_specs
 
 _log = logging.getLogger("mesiri.agent")
@@ -116,6 +116,8 @@ class AgentRunner:
         # WA-52: only a reply that OFFERED to ask counts ("Shall I ask your
         # engineer?"), not one that merely named the engineer.
         toolbox.engineer_offered = bool(ctx.turns) and offers_engineer(ctx.turns[-1].assistant_reply)
+        # Request 104, D2: the hours-lost question is asked once.
+        toolbox.hours_asked = bool(ctx.turns) and HOURS_QUESTION in ctx.turns[-1].assistant_reply
         prompt_messages = build_messages(ctx, user_text)
         messages = [ChatMessage(role=r, text=t) for r, t in prompt_messages]
         try:

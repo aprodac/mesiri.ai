@@ -63,6 +63,8 @@ def test_accepts_every_real_issue_type_and_severity():
         "EQUIPMENT_BREAKDOWN",
         "INSPECTION_WAITING",
         "ACCESS",
+        "SAFETY",
+        "QUALITY",
         "OTHER",
     ):
         assert validate_report_site_issue(_command(issue_type=issue_type)) == []

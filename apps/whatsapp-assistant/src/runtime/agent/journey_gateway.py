@@ -145,11 +145,15 @@ def _without_menu(text: str) -> str:
     return text
 
 
-def _saved_summary(handled: Any) -> str | None:
+def _saved_summary(handled: Any, timezone: str | None = None) -> str | None:
     """What the confirmed record says, from its own data. Never raises."""
     try:
+        from canonicalization.occurred_date import today_for
+        from channel.receipt.data import company_zone
+
         confirmed = getattr(handled.result, "confirmed_action", None)
-        return summarise_draft(confirmed.draft_action) if confirmed is not None else None
+        today = today_for(str(company_zone(timezone)))
+        return summarise_draft(confirmed.draft_action, today=today) if confirmed is not None else None
     except Exception:  # noqa: BLE001 -- the summary is wording only
         _log.warning("agent.saved_summary_failed", exc_info=True)
         return None
@@ -430,7 +434,7 @@ class JourneyGateway:
                     "saved",
                     text=saved.reply_text,
                     workflow_key=key,
-                    summary=_saved_summary(saved),
+                    summary=_saved_summary(saved, getattr(self.actor, "timezone", None)),
                 )
             # Confirm-first (expenses, transfers) or the save failed: the
             # prompt the sender must answer.

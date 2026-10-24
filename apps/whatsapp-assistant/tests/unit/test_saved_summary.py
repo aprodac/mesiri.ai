@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from interactions.response_handler import render_execution_reply
@@ -82,7 +84,7 @@ def _draft(action: DraftActionType, fields: dict) -> DraftActionV2:
         (
             DraftActionType.RECORD_SITE_ISSUE,
             {"issue_type": "WEATHER", "narrative": "rain stopped work"},
-            "Issue (weather): rain stopped work",
+            "Issue (weather): rain stopped work (Medium severity)",
         ),
         (
             DraftActionType.RECORD_SITE_ISSUE,
@@ -132,3 +134,33 @@ def test_label_words_follow_the_senders_language_but_numbers_and_trades_do_not()
     # English letters (Manglish) and English stay as written.
     assert localize_saved_lines(text, "Malayalam", "latin") == text
     assert localize_saved_lines(text, None, "native") == text
+
+
+# -- request 104, D1: the line shows what the DPR will carry -----------------------
+
+
+def _issue(**fields):  # noqa: ANN003, ANN202
+    from datetime import date
+
+    from interactions.saved_summary import summarise_draft
+
+    draft = SimpleNamespace(
+        action_type=DraftActionType.RECORD_SITE_ISSUE,
+        fields={"issue_type": "WEATHER", "narrative": "Heavy rain, work stopped", **fields},
+    )
+    return summarise_draft(draft, today=date(2026, 10, 24))
+
+
+def test_an_issue_of_yesterday_shows_the_day_the_hours_and_the_severity():
+    line = _issue(occurred_date="2026-10-23", delay_duration_minutes=180, severity="HIGH")
+    assert line == "Issue (weather): Heavy rain, work stopped (yesterday, 23 Oct · 3 h lost · High severity)"
+
+
+def test_an_issue_of_today_leaves_the_day_out():
+    line = _issue(occurred_date="2026-10-24", delay_duration_minutes=90, severity="MEDIUM")
+    assert line.endswith("(1.5 h lost · Medium severity)")
+
+
+def test_an_older_day_is_just_the_date_and_a_short_delay_is_minutes():
+    line = _issue(occurred_date="2026-10-20", delay_duration_minutes=45, severity="LOW")
+    assert line.endswith("(20 Oct · 45 min lost · Low severity)")

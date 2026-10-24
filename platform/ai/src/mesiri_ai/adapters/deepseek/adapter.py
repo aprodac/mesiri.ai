@@ -179,7 +179,8 @@ _EXTRACTION_PROMPT = (
     "- site_issue: issue_type, severity, narrative, delay_duration_minutes, project_name, "
     'occurred_on. issue_type MUST be exactly one of "WEATHER", "MATERIAL_SHORTAGE", '
     '"LABOUR_SHORTAGE", "DRAWING_PENDING", "EQUIPMENT_BREAKDOWN", "INSPECTION_WAITING", '
-    '"ACCESS", "OTHER" -- infer from context (e.g. "no cement left" -> MATERIAL_SHORTAGE, '
+    '"ACCESS", "SAFETY", "QUALITY", "OTHER" -- infer from context (e.g. "no cement left" -> '
+    'MATERIAL_SHORTAGE, "worker fell, injury, accident" -> SAFETY, "leak, seepage, crack" -> QUALITY, '
     '"JCB broke down" -> EQUIPMENT_BREAKDOWN, "raining since morning" -> WEATHER), '
     'defaulting to "OTHER" only when genuinely unclear. severity MUST be exactly one of '
     '"LOW", "MEDIUM", "HIGH", "CRITICAL" -- infer from the language used (e.g. "completely '

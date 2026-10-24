@@ -378,7 +378,9 @@ def tool_specs() -> list[ToolSpec]:
             name=REPORT_ISSUE,
             description=(
                 "Report a problem, delay or blocker on site (ran out of cement, JCB broke "
-                "down, rain stopped work). Not for work done."
+                "down, rain stopped work, a worker was hurt, a leak). Not for work done. Pass the "
+                "day when it is not today (date), the hours lost as minutes when they say how long "
+                "(delay_duration_minutes) and the severity."
             ),
             parameters=_obj(
                 {
@@ -392,8 +394,14 @@ def tool_specs() -> list[ToolSpec]:
                             "EQUIPMENT_BREAKDOWN",
                             "INSPECTION_WAITING",
                             "ACCESS",
+                            "SAFETY",
+                            "QUALITY",
                             "OTHER",
                         ],
+                        "description": (
+                            "SAFETY: an accident, injury or someone fell (severity HIGH or CRITICAL). "
+                            "QUALITY: a leak, seepage or crack."
+                        ),
                     },
                     "severity": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]},
                     "narrative": {"type": "string"},

@@ -26,7 +26,7 @@ CASES = [
     (
         "crane breakdown, work stopped since morning",
         "english",
-        ("report_issue", {"issue_type": "EQUIPMENT", "narrative": "crane breakdown, work stopped since morning"}),
+        ("report_issue", {"issue_type": "EQUIPMENT", "narrative": "crane breakdown, work stopped since morning", "delay_duration_minutes": 480}),
         "Okay. Shariyenkil Save tap cheyyu.",
         ["crane"],
     ),

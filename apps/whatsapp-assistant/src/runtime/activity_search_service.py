@@ -135,7 +135,9 @@ class ActivitySearchService:
         ]
         issue_conditions = [
             site_issues.c.organization_id == org_id,
-            site_issues.c.status == "OPEN",
+            # Request 104, D4: what the dashboard counts as open -- open and
+            # acknowledged ("being handled").
+            site_issues.c.status.in_(["OPEN", "ACKNOWLEDGED"]),
         ]
         # A null project/site on the caller's context means "don't narrow",
         # not "match rows with a null column" -- mirrors labour_query.
@@ -167,6 +169,7 @@ class ActivitySearchService:
                 site_issues.c.issue_type,
                 site_issues.c.severity,
                 site_issues.c.narrative,
+                site_issues.c.status,
                 site_issues.c.occurred_at,
             )
             .where(*issue_conditions)
@@ -204,6 +207,7 @@ class ActivitySearchService:
                     "issue_type": row["issue_type"],
                     "severity": row["severity"],
                     "narrative": row["narrative"],
+                    "status": row["status"],
                     "occurred_at": row["occurred_at"].isoformat() if row["occurred_at"] else None,
                 }
                 for row in issue_rows

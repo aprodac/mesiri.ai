@@ -513,6 +513,8 @@ export default function OperationsIssuesPage() {
                     <SelectItem value="EQUIPMENT_BREAKDOWN">EQUIPMENT_BREAKDOWN</SelectItem>
                     <SelectItem value="INSPECTION_WAITING">INSPECTION_WAITING</SelectItem>
                     <SelectItem value="ACCESS">ACCESS</SelectItem>
+                    <SelectItem value="SAFETY">SAFETY (accident, injury)</SelectItem>
+                    <SelectItem value="QUALITY">QUALITY (leakage, seepage, crack)</SelectItem>
                     <SelectItem value="OTHER">OTHER</SelectItem>
                   </SelectContent>
                 </Select>

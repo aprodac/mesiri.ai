@@ -85,7 +85,7 @@ class SiteIssueCandidate(Candidate):
     # Conventional keys: issue_type (required to route -- see
     # canonicalization/mapping.py; one of WEATHER/MATERIAL_SHORTAGE/
     # LABOUR_SHORTAGE/DRAWING_PENDING/EQUIPMENT_BREAKDOWN/
-    # INSPECTION_WAITING/ACCESS/OTHER), severity (LOW/MEDIUM/HIGH/CRITICAL),
+    # INSPECTION_WAITING/ACCESS/SAFETY/QUALITY/OTHER), severity (LOW/MEDIUM/HIGH/CRITICAL),
     # narrative, delay_duration_minutes, occurred_on. A reported blocker/
     # delay -- never a question about existing ones (that's activity_query).
 

@@ -18,6 +18,7 @@ swap looks for: change one, change both.
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -95,7 +96,45 @@ def _activity(fields: dict[str, Any]) -> str | None:
     return f"{head}: {detail}" if detail else head
 
 
-def summarise_draft(draft: DraftActionV2 | Any) -> str | None:
+#: The two types added in request 104, as the sender reads them.
+_ISSUE_LABELS = {"SAFETY": "safety / accident", "QUALITY": "leakage / quality"}
+
+
+def _issue_day(fields: dict[str, Any], today: date | None) -> str:
+    """"yesterday, 23 Oct" / "22 Oct" for an issue that is not of today."""
+    raw = _text(fields.get("occurred_date"))
+    if not raw or today is None:
+        return ""
+    try:
+        day = date.fromisoformat(raw)
+    except ValueError:
+        return ""
+    if day == today:
+        return ""
+    shown = f"{day.day} {day.strftime('%b')}"
+    return f"yesterday, {shown}" if (today - day).days == 1 else shown
+
+
+def _hours_lost(fields: dict[str, Any]) -> str:
+    """"3 h lost" from the delay in minutes ("45 min lost" under an hour)."""
+    try:
+        minutes = float(fields.get("delay_duration_minutes"))
+    except (TypeError, ValueError):
+        return ""
+    if minutes <= 0:
+        return ""
+    if minutes < 60:
+        return f"{minutes:g} min lost"
+    return f"{_num(round(minutes / 60, 1))} h lost"
+
+
+def _severity(fields: dict[str, Any]) -> str:
+    # A report with no severity is saved as Medium (progress mapper), so say so.
+    raw = _text(fields.get("severity")).lower() or "medium"
+    return f"{raw.capitalize()} severity"
+
+
+def summarise_draft(draft: DraftActionV2 | Any, *, today: date | None = None) -> str | None:
     """One short line for a saved record, or None when the type has no
     summary (the reply then keeps its generic wording)."""
     fields = dict(getattr(draft, "fields", None) or {})
@@ -145,8 +184,13 @@ def summarise_draft(draft: DraftActionV2 | Any) -> str | None:
         narrative = _text(fields.get("narrative"))
         if narrative.startswith(QUESTION_PREFIX.strip()):
             return narrative[:160]
-        issue = _title(fields.get("issue_type")).lower() or "issue"
-        return f"Issue ({issue}): {narrative[:80]}" if narrative else f"Issue ({issue})"
+        kind = _text(fields.get("issue_type")).upper()
+        issue = _ISSUE_LABELS.get(kind) or _title(fields.get("issue_type")).lower() or "issue"
+        line = f"Issue ({issue}): {narrative[:80]}" if narrative else f"Issue ({issue})"
+        # Request 104, D: what the DPR will carry is what the sender checks --
+        # the day when it is not today, the hours lost and the severity.
+        facts = [f for f in (_issue_day(fields, today), _hours_lost(fields), _severity(fields)) if f]
+        return f"{line} ({' · '.join(facts)})" if facts else line
     if action is DraftActionType.TRANSFER_MONEY:
         amount = _num(fields.get("amount"))
         return f"Transfer ₹{amount}" if amount else None
