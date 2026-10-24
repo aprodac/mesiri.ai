@@ -344,5 +344,31 @@ pass the same.
 | Page | Follows these rules |
 |---|---|
 | Site DPR, Project DPR | Yes (WEB-25); Document view (WEB-27) |
-| Today, Daily Reports, Issues | Mostly (WEB-01/03/06/07 style); not yet moved to sections/steps |
-| Projects, Team, Company, Labour, Materials, others | No — old template look; to be reworked page by page |
+| Today, Reports, Issues | Yes (WEB-25 step 3) |
+| Activities, Gallery, Timeline, Analytics | Yes (WEB-24, WEB-26) |
+| Projects & Sites, a project, Team, a person, Company, WhatsApp messages | Yes (WEB-28): one page each, sections instead of tabs |
+| Labour (7 pages) | No — waits on WEB-22 (needs approval) |
+| Materials, WhatsApp Inbox, Automations, Finance, Login / Signup | No — old template look |
+| Dialogs (add / edit project, site, person, access, WhatsApp number) | Partly — still Title Case labels ("Save Changes") |
+
+### Setup pages (WEB-28)
+
+- **One page, no tabs.** A project, a person and the company each fit on one
+  page of sections (`DprSection`), with a side column for details. Old
+  `?tab=` links scroll to the matching section (`id` on `DprSection`).
+- **Rows say what matters for Mesiri to work**: a project's sites, people and
+  cutoff; a person's projects and WhatsApp number. What is missing is in the
+  draft (orange) colour: "No sites yet", "No projects yet", "No WhatsApp
+  number" — with a callout and the action that fixes it.
+- **Who reaches what comes from `project_members`**, the table access is
+  checked against (`lib/team.ts useMemberships`), not `users.access_policy`,
+  which goes stale when someone is added from a project page. Admins show
+  "All projects" (their role reaches every project).
+- **Destructive actions confirm in a dialog** that says what is kept
+  (archive, deactivate, delete, remove from project); never `confirm()` or
+  `alert()`.
+- **Removed:** count tiles, grid/list toggles, bulk select and bulk delete on
+  Team, placeholder tabs (project "WhatsApp", person "Activity"), the fake
+  "Delete project" button, "Technical Infrastructure Claims", the unused
+  "Required report types" checklist (nothing read it; its stored value is
+  kept on save).

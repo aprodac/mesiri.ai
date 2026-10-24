@@ -1,592 +1,322 @@
 import * as React from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import {
-  ArrowLeft,
-  User as UserIcon,
-  Shield,
-  MessageSquare,
-  History,
-  Settings as SettingsIcon,
-  Edit2,
-  FolderLock,
-  ShieldAlert,
-  Loader2,
-  Building2,
-} from 'lucide-react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { FolderLock, KeyRound, MessageSquare, MessageSquareOff, Pencil, Trash2, UserCheck, UserX } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  fetchUser,
-  updateUser,
-  updateUserStatus,
-  updateUserAccess,
-  deleteUser,
-  api,
-  type User,
-} from '@/lib/api'
-import { fetchProjects } from '@/lib/projects'
-import {
-  AddEditUserDialog,
-  AccessManagerDialog,
-  WhatsAppManagerDialog,
-} from '@/components/user-dialogs'
-import { UserOverviewTab } from '@/components/user-overview-tab'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { useToast } from '@/components/ui/toast-notification'
+import { Callout, DprAside, DprHeader, DprSection, PageError } from '@/components/dpr-page'
+import { AccessManagerDialog, AddEditUserDialog, WhatsAppManagerDialog } from '@/components/user-dialogs'
 import { UserWhatsAppMessagesTab } from '@/components/user-whatsapp-messages-tab'
-import type { ProjectItem } from '@/lib/scope-types'
+import { deleteUser, fetchUser, updateUser, updateUserStatus, type User } from '@/lib/api'
+import { isOrgWide, useMemberships } from '@/lib/team'
 import { roleLabel } from '@/lib/permissions'
+import { CHIP } from '@/lib/site-day'
+import { useSiteNames } from '@/lib/site-names'
+import { apiErrorMessage } from '@/lib/logo-upload'
+import { usePageTitle } from '@/lib/page-title'
+import { useReadOnly } from '@/lib/trial'
+import { cn } from '@/lib/utils'
 
-const ROLE_BADGES = {
-  ADMIN: 'destructive',
-  PROJECT_MANAGER: 'default',
-  SITE_ENGINEER: 'secondary',
-  FINANCE: 'outline',
-} as const
-
-interface TimelineEntry {
-  id: string
-  event_type: string
-  summary: string
-  occurred_at: string
-}
+// WEB-28: one person on one page -- what they can reach, the messages they
+// sent on WhatsApp, their details -- instead of six tabs. The old Activity
+// tab (the whole company's timeline under an "Integration Gap" notice) and
+// the WhatsApp tab (one field and a jargon notice) are gone.
 
 export default function UserDetails() {
-  const { id } = useParams<{ id: string }>()
+  const { id = '' } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const toast = useToast()
+  const readOnly = useReadOnly()
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = React.useState<'overview' | 'access' | 'whatsapp' | 'whatsapp_messages' | 'activity' | 'settings'>('overview')
+  const siteNames = useSiteNames()
+  const [dialog, setDialog] = React.useState<'edit' | 'access' | 'whatsapp' | 'status' | 'delete' | 'password' | null>(null)
 
-  // Dialog States
-  const [editOpen, setEditOpen] = React.useState(false)
-  const [accessOpen, setAccessOpen] = React.useState(false)
-  const [whatsappOpen, setWhatsappOpen] = React.useState(false)
+  const query = useQuery<User>({ queryKey: ['user-details', id], queryFn: () => fetchUser(id), enabled: !!id })
+  const memberships = useMemberships()
+  const user = query.data
+  usePageTitle(`${user?.full_name ?? 'Person'} · Team`)
 
-  // Password reset fields
-  const [newPassword, setNewPassword] = React.useState('')
-  const [confirmPassword, setConfirmPassword] = React.useState('')
-  const [pwdLoading, setPwdLoading] = React.useState(false)
-  const [pwdSuccess, setPwdSuccess] = React.useState(false)
-  const [pwdError, setPwdError] = React.useState('')
-
-  // Fetch User
-  const { data: user, isLoading, isError, error } = useQuery<User>({
-    queryKey: ['user-details', id],
-    queryFn: () => fetchUser(id!),
-    enabled: !!id,
-  })
-
-  // Fetch Timeline for Activity tab (general timeline)
-  const { data: timeline = [], isLoading: isTimelineLoading } = useQuery<TimelineEntry[]>({
-    queryKey: ['org-timeline'],
-    queryFn: async () => {
-      const res = await api.get<{ items: TimelineEntry[] }>('/timeline', {
-        params: { limit: 20 },
-      })
-      return res.data.items
-    },
-    enabled: activeTab === 'activity',
-  })
-
-  // Fetch Projects for displaying names in Access tab
-  const { data: projects = [] } = useQuery<ProjectItem[]>({
-    queryKey: ['all-projects-details'],
-    queryFn: fetchProjects,
-  })
-
-  // Status mutation
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['user-details', id] })
+    queryClient.invalidateQueries({ queryKey: ['users-list'] })
+    queryClient.invalidateQueries({ queryKey: ['project-members-count'] })
+  }
   const statusMutation = useMutation({
-    mutationFn: (status: string) => updateUserStatus(id!, status),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['user-details', id] })
+    mutationFn: (status: string) => updateUserStatus(id, status),
+    onSuccess: (_, status) => {
+      toast.success(status === 'active' ? 'Active again' : 'Deactivated', status === 'active' ? 'They can use Mesiri again.' : 'They can no longer use the dashboard or send updates.')
+      setDialog(null)
+      refresh()
     },
-    onError: (err: any) => {
-      alert(err.response?.data?.detail || 'Failed to update user status.')
-    },
+    onError: (err) => toast.error('Could not change', apiErrorMessage(err)),
   })
-
-  // Delete user mutation
   const deleteMutation = useMutation({
-    mutationFn: () => deleteUser(id!),
+    mutationFn: () => deleteUser(id),
     onSuccess: () => {
+      toast.success('Deleted', `${user?.full_name ?? 'They'} are removed from the team.`)
       queryClient.invalidateQueries({ queryKey: ['users-list'] })
       navigate('/team')
     },
-    onError: (err: any) => {
-      alert(err.response?.data?.detail || 'Failed to delete user.')
-    },
+    onError: (err) => toast.error('Could not delete', apiErrorMessage(err)),
   })
 
-  // Access reset mutation
-  const revokeAccessMutation = useMutation({
-    mutationFn: () =>
-      updateUserAccess(id!, { mode: 'custom_projects', projects: [] }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['user-details', id] })
-    },
-    onError: (err: any) => {
-      alert(err.response?.data?.detail || 'Failed to revoke access.')
-    },
-  })
-
-  if (isLoading) {
+  if (query.isLoading) {
     return (
-      <div className="flex h-64 items-center justify-center text-sm text-muted-foreground gap-2">
-        <Loader2 className="size-4 animate-spin text-primary" />
-        Loading user account details...
-      </div>
-    )
-  }
-
-  if (isError || !user) {
-    return (
-      <div className="space-y-4">
-        <Link to="/team" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="size-3" /> Back to Directory
-        </Link>
-        <div className="bg-destructive/10 border border-destructive text-destructive text-xs p-4 rounded text-center">
-          Failed to load user details: {error instanceof Error ? error.message : 'User not found.'}
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 sm:px-2" aria-busy="true" aria-label="Loading">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-8 w-64" />
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+          <Skeleton className="h-48 rounded-lg" />
+          <Skeleton className="h-48 rounded-lg" />
         </div>
       </div>
     )
   }
+  if (query.isError || !user) {
+    return <PageError message="This person could not be loaded." onRetry={() => query.refetch()} back={{ to: '/team', label: 'Back to Team' }} />
+  }
 
-  const handlePasswordReset = async (e: React.FormEvent) => {
+  const orgWide = isOrgWide(user)
+  // What access is checked against (project_members); the access settings
+  // only say which sites, when limited.
+  const projectIds = memberships.byUser.get(user.id) ?? []
+  const siteGrant = new Map((user.access_policy?.projects ?? []).map((g) => [g.projectId, g.siteAccess]))
+  const active = user.status === 'active'
+
+  return (
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
+      <DprHeader
+        back={{ to: '/team', label: 'Team' }}
+        crumb="Person"
+        title={user.full_name}
+        chip={!active ? <span className={cn(CHIP, 'bg-muted text-muted-foreground')}>{user.status === 'invited' ? 'Invited' : 'Deactivated'}</span> : undefined}
+        date={roleLabel(user.role)}
+        action={
+          !readOnly && (
+            <Button size="sm" className="gap-1.5 font-semibold" onClick={() => setDialog('edit')}>
+              <Pencil className="size-3.5" /> Edit
+            </Button>
+          )
+        }
+      />
+
+      {!user.whatsapp_number ? (
+        <Callout
+          tone="draft"
+          icon={MessageSquareOff}
+          action={
+            !readOnly && (
+              <Button size="sm" variant="outline" className="bg-background" onClick={() => setDialog('whatsapp')}>
+                Add number
+              </Button>
+            )
+          }
+        >
+          No WhatsApp number: they can't send updates from site.
+        </Callout>
+      ) : !orgWide && !memberships.loading && projectIds.length === 0 ? (
+        <Callout
+          tone="draft"
+          icon={FolderLock}
+          action={
+            !readOnly && (
+              <Button size="sm" variant="outline" className="bg-background" onClick={() => setDialog('access')}>
+                Give access
+              </Button>
+            )
+          }
+        >
+          No projects yet: what they send can't land on a site.
+        </Callout>
+      ) : null}
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="flex min-w-0 flex-col">
+          <DprSection
+            icon={FolderLock}
+            title="Projects and sites"
+            action={
+              !readOnly &&
+              user.role !== 'ADMIN' && (
+                <Button size="sm" variant="outline" onClick={() => setDialog('access')}>
+                  Change
+                </Button>
+              )
+            }
+          >
+            {orgWide ? (
+              <p className="text-sm text-muted-foreground">
+                {user.role === 'ADMIN' ? 'Admins reach every project and site, including new ones.' : 'Every project and site, including new ones.'}
+              </p>
+            ) : memberships.loading ? (
+              <Skeleton className="h-10 rounded-lg" />
+            ) : projectIds.length === 0 ? (
+              <p className="text-sm text-muted-foreground">None yet.</p>
+            ) : (
+              <ul className="divide-y rounded-lg border text-sm">
+                {projectIds.map((pid) => {
+                  const custom = siteGrant.get(pid)?.mode === 'custom_sites'
+                  const ids = siteGrant.get(pid)?.siteIds ?? []
+                  return (
+                    <li key={pid} className="flex flex-wrap items-baseline justify-between gap-x-3 px-3 py-2">
+                      <Link to={`/projects/${pid}`} className="font-medium hover:underline">
+                        {memberships.names.get(pid) ?? 'A project'}
+                      </Link>
+                      <span className="text-muted-foreground">
+                        {!custom ? 'All sites' : ids.length === 0 ? 'No sites' : ids.map((sid) => siteNames.get(sid)?.name ?? 'A site').join(', ')}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </DprSection>
+
+          <DprSection icon={MessageSquare} title="Messages on WhatsApp">
+            <UserWhatsAppMessagesTab user={user} setActiveTab={() => undefined} setWhatsappOpen={(open) => setDialog(open ? 'whatsapp' : null)} />
+          </DprSection>
+        </div>
+
+        <DprAside>
+          <section className="flex flex-col gap-2">
+            <h2 className="text-[15px] font-semibold">Details</h2>
+            <dl className="grid grid-cols-[84px_1fr] gap-x-3 gap-y-1.5 text-sm">
+              <dt className="text-muted-foreground">Role</dt>
+              <dd>{roleLabel(user.role)}</dd>
+              <dt className="text-muted-foreground">Email</dt>
+              <dd className="min-w-0 break-all">{user.email || <span className="text-muted-foreground">Not set</span>}</dd>
+              <dt className="text-muted-foreground">WhatsApp</dt>
+              <dd className="flex items-center justify-between gap-2">
+                <span className={cn('tabular-nums', !user.whatsapp_number && 'text-draft')}>
+                  {user.whatsapp_number ? `+${user.whatsapp_number.replace(/^\+/, '')}` : 'Not added'}
+                </span>
+                {!readOnly && (
+                  <button type="button" className="text-sm text-muted-foreground hover:text-foreground hover:underline" onClick={() => setDialog('whatsapp')}>
+                    Change
+                  </button>
+                )}
+              </dd>
+              <dt className="text-muted-foreground">Status</dt>
+              <dd>{active ? 'Active' : user.status === 'invited' ? 'Invited' : 'Deactivated'}</dd>
+            </dl>
+          </section>
+          {!readOnly && (
+            <section className="flex flex-col items-start gap-1 border-t pt-4">
+              <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setDialog('password')}>
+                <KeyRound className="size-3.5" /> Set a new password
+              </Button>
+              <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setDialog('status')}>
+                {active ? <UserX className="size-3.5" /> : <UserCheck className="size-3.5" />}
+                {active ? 'Deactivate' : 'Make active'}
+              </Button>
+              <Button variant="ghost" size="sm" className="gap-1.5 text-destructive hover:text-destructive" onClick={() => setDialog('delete')}>
+                <Trash2 className="size-3.5" /> Delete
+              </Button>
+            </section>
+          )}
+        </DprAside>
+      </div>
+
+      <Dialog open={dialog === 'status' || dialog === 'delete'} onOpenChange={(open) => !open && setDialog(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">
+              {dialog === 'delete' ? `Delete ${user.full_name}?` : active ? `Deactivate ${user.full_name}?` : `Make ${user.full_name} active again?`}
+            </DialogTitle>
+            <DialogDescription>
+              {dialog === 'delete'
+                ? 'They are removed from the team for good. What they reported stays on the reports. To pause someone instead, deactivate them.'
+                : active
+                  ? 'They can no longer use the dashboard, and messages from their WhatsApp number are not taken as updates. You can make them active again later.'
+                  : 'They can use the dashboard and send updates again.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialog(null)}>
+              Cancel
+            </Button>
+            {dialog === 'delete' ? (
+              <Button variant="destructive" disabled={deleteMutation.isPending} onClick={() => deleteMutation.mutate()}>
+                {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+              </Button>
+            ) : (
+              <Button variant={active ? 'destructive' : 'default'} disabled={statusMutation.isPending} onClick={() => statusMutation.mutate(active ? 'inactive' : 'active')}>
+                {active ? 'Deactivate' : 'Make active'}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <PasswordDialog user={user} open={dialog === 'password'} onClose={() => setDialog(null)} />
+      <AddEditUserDialog open={dialog === 'edit'} onOpenChange={(open) => !open && setDialog(null)} user={user} onSuccess={refresh} />
+      <AccessManagerDialog open={dialog === 'access'} onOpenChange={(open) => !open && setDialog(null)} user={user} onSuccess={refresh} />
+      <WhatsAppManagerDialog open={dialog === 'whatsapp'} onOpenChange={(open) => !open && setDialog(null)} user={user} onSuccess={refresh} />
+    </div>
+  )
+}
+
+/** Set someone's password (same rules as before: 6+ characters, typed twice). */
+function PasswordDialog({ user, open, onClose }: { user: User; open: boolean; onClose: () => void }) {
+  const toast = useToast()
+  const [password, setPassword] = React.useState('')
+  const [again, setAgain] = React.useState('')
+  const [error, setError] = React.useState('')
+  const [saving, setSaving] = React.useState(false)
+
+  const close = () => {
+    setPassword('')
+    setAgain('')
+    setError('')
+    onClose()
+  }
+  const save = async (e: React.FormEvent) => {
     e.preventDefault()
-    setPwdError('')
-    setPwdSuccess(false)
-
-    if (newPassword.length < 6) {
-      setPwdError('Password must be at least 6 characters long.')
-      return
-    }
-
-    if (newPassword !== confirmPassword) {
-      setPwdError('Passwords do not match.')
-      return
-    }
-
-    setPwdLoading(true)
+    if (password.length < 6) return setError('At least 6 characters.')
+    if (password !== again) return setError("The two don't match.")
+    setSaving(true)
     try {
-      await updateUser(user.id, { password: newPassword })
-      setPwdSuccess(true)
-      setNewPassword('')
-      setConfirmPassword('')
-    } catch (err: any) {
-      setPwdError(err.response?.data?.detail || 'Failed to update password.')
+      await updateUser(user.id, { password })
+      toast.success('Password set', `${user.full_name} signs in with the new password.`)
+      close()
+    } catch (err) {
+      setError(apiErrorMessage(err))
     } finally {
-      setPwdLoading(false)
+      setSaving(false)
     }
   }
 
   return (
-    <div className="flex flex-col gap-4 text-sm">
-      {/* Header section */}
-      <div className="flex flex-col gap-1.5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
-          <div className="flex items-center gap-3">
-            <div className="size-10 rounded-full border border-primary/20 bg-primary/10 flex items-center justify-center text-sm font-bold text-primary shrink-0">
-              {user.full_name.substring(0, 2).toUpperCase()}
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-foreground flex items-center gap-2 leading-none">
-                {user.full_name}
-                <Badge variant="outline" className={`text-xs rounded-sm py-0.5 ${ROLE_BADGES[user.role as keyof typeof ROLE_BADGES] || 'bg-muted text-muted-foreground border'}`}>
-                  {roleLabel(user.role)}
-                </Badge>
-              </h1>
-              <span className="text-xs text-muted-foreground">
-                {roleLabel(user.role)} · {user.email} · {user.whatsapp_number || 'No WhatsApp number'}
-              </span>
-            </div>
+    <Dialog open={open} onOpenChange={(o) => !o && close()}>
+      <DialogContent className="sm:max-w-sm">
+        <form onSubmit={save} className="flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">New password for {user.full_name}</DialogTitle>
+            <DialogDescription>Tell them the new password yourself; it isn't sent to them.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-1.5">
+            <Label htmlFor="pw1">New password</Label>
+            <Input id="pw1" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => setEditOpen(true)} className="h-7 text-xs gap-1.5 font-bold border border-primary/30 text-primary hover:bg-primary hover:text-white dark:hover:bg-primary bg-transparent rounded-md px-3 transition-all">
-              <Edit2 className="size-3" /> Edit Profile
+          <div className="grid gap-1.5">
+            <Label htmlFor="pw2">Type it again</Label>
+            <Input id="pw2" type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} />
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={close}>
+              Cancel
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setAccessOpen(true)} className="h-7 text-xs gap-1.5 font-bold border border-slate-500/30 text-slate-700 hover:bg-slate-600 hover:text-white dark:text-slate-300 dark:hover:bg-slate-500 bg-transparent rounded-md px-3 transition-all">
-              <FolderLock className="size-3" /> Manage Access
+            <Button type="submit" disabled={saving || !password}>
+              {saving ? 'Saving…' : 'Set password'}
             </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Tabs list */}
-      <div className="flex border-b border-border/60 gap-4 text-xs font-semibold text-muted-foreground overflow-x-auto">
-        <button
-          onClick={() => setActiveTab('overview')}
-          className={`pb-2 border-b-2 transition-colors ${
-            activeTab === 'overview' ? 'border-primary text-foreground' : 'border-transparent hover:text-foreground'
-          } flex items-center gap-1.5 whitespace-nowrap`}
-        >
-          <UserIcon className="size-3.5" />
-          Overview
-        </button>
-        <button
-          onClick={() => setActiveTab('access')}
-          className={`pb-2 border-b-2 transition-colors ${
-            activeTab === 'access' ? 'border-primary text-foreground' : 'border-transparent hover:text-foreground'
-          } flex items-center gap-1.5 whitespace-nowrap`}
-        >
-          <Shield className="size-3.5" />
-          Projects
-        </button>
-        <button
-          onClick={() => setActiveTab('whatsapp')}
-          className={`pb-2 border-b-2 transition-colors ${
-            activeTab === 'whatsapp' ? 'border-primary text-foreground' : 'border-transparent hover:text-foreground'
-          } flex items-center gap-1.5 whitespace-nowrap`}
-        >
-          <MessageSquare className="size-3.5" />
-          WhatsApp number
-        </button>
-        <button
-          onClick={() => setActiveTab('whatsapp_messages')}
-          className={`pb-2 border-b-2 transition-colors ${
-            activeTab === 'whatsapp_messages' ? 'border-primary text-foreground' : 'border-transparent hover:text-foreground'
-          } flex items-center gap-1.5 whitespace-nowrap`}
-        >
-          <History className="size-3.5" />
-          WhatsApp Messages
-        </button>
-        <button
-          onClick={() => setActiveTab('activity')}
-          className={`pb-2 border-b-2 transition-colors ${
-            activeTab === 'activity' ? 'border-primary text-foreground' : 'border-transparent hover:text-foreground'
-          } flex items-center gap-1.5 whitespace-nowrap`}
-        >
-          <History className="size-3.5" />
-          Activity
-        </button>
-        <button
-          onClick={() => setActiveTab('settings')}
-          className={`pb-2 border-b-2 transition-colors ${
-            activeTab === 'settings' ? 'border-primary text-foreground' : 'border-transparent hover:text-foreground'
-          } flex items-center gap-1.5 whitespace-nowrap`}
-        >
-          <SettingsIcon className="size-3.5" />
-          Account Settings
-        </button>
-      </div>
-
-      {/* Tab Panels */}
-      <div className="py-2">
-        {activeTab === 'overview' && (
-          <UserOverviewTab
-            user={user}
-            projects={projects}
-            setActiveTab={setActiveTab}
-            setEditOpen={setEditOpen}
-            setAccessOpen={setAccessOpen}
-            setWhatsappOpen={setWhatsappOpen}
-            statusMutation={statusMutation}
-          />
-        )}
-
-        {activeTab === 'access' && (
-          <Card className="rounded-none border-border/70 shadow-none">
-            <CardHeader className="pb-3 border-b flex flex-row items-center justify-between gap-4">
-              <div>
-                <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                  Access Permissions Summary
-                </CardTitle>
-                <CardDescription className="text-[11px] text-muted-foreground">
-                  Shows projects and sites the user has access to.
-                </CardDescription>
-              </div>
-              <Button size="sm" variant="outline" onClick={() => setAccessOpen(true)}>
-                Modify Access
-              </Button>
-            </CardHeader>
-            <CardContent className="pt-4 space-y-4">
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-muted-foreground">Authorization Mode:</span>
-                <Badge variant="outline" className="rounded-sm">
-                  {user.access_policy?.mode === 'all_projects' ? 'All projects' : 'Selected projects'}
-                </Badge>
-              </div>
-
-              {user.access_policy?.mode === 'all_projects' ? (
-                <div className="bg-muted/10 border border-border p-4 rounded text-xs flex gap-2.5">
-                  <Shield className="size-4 text-primary shrink-0" />
-                  <div>
-                    <strong className="block text-foreground">Full Organization Access</strong>
-                    <span className="text-muted-foreground">
-                      User automatically inherits access to all current and future projects and sites.
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {(user.access_policy?.projects || []).map((policyProj) => {
-                    const matchedProj = projects.find((p) => p.id === policyProj.projectId)
-                    const isAllSites = policyProj.siteAccess?.mode === 'all_sites'
-                    const siteIds = policyProj.siteAccess?.siteIds || []
-
-                    return (
-                      <div
-                        key={policyProj.projectId}
-                        className="border border-border/60 bg-muted/5 p-3.5 rounded-sm text-xs space-y-1.5"
-                      >
-                        <div className="flex items-center gap-2 font-semibold text-foreground">
-                          <Building2 className="size-4 text-muted-foreground" />
-                          {matchedProj?.name || `Project (ID: ${policyProj.projectId})`}
-                        </div>
-                        <div className="pl-6 text-muted-foreground space-y-1">
-                          <div>
-                            <strong>Sites Scope:</strong>{' '}
-                            {isAllSites ? (
-                              <span className="text-primary font-medium">All Sites (Project-wide)</span>
-                            ) : siteIds.length > 0 ? (
-                              <span>{siteIds.length} Site(s) Assigned</span>
-                            ) : (
-                              <span className="italic text-muted-foreground/60">No sites mapped</span>
-                            )}
-                          </div>
-                          {!isAllSites && siteIds.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5 pt-1">
-                              {siteIds.map((sid) => (
-                                <Badge key={sid} variant="outline" className="text-[10px] rounded-sm">
-                                  Site ID: {sid}
-                                </Badge>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                  {(!user.access_policy?.projects || user.access_policy.projects.length === 0) && (
-                    <div className="border border-dashed p-6 text-center text-xs text-muted-foreground italic">
-                      No project access configured.
-                    </div>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {activeTab === 'whatsapp' && (
-          <Card className="rounded-none border-border/70 shadow-none">
-            <CardHeader className="pb-3 border-b flex flex-row items-center justify-between gap-4">
-              <div>
-                <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                  WhatsApp Connection Details
-                </CardTitle>
-              </div>
-              <Button size="sm" variant="outline" onClick={() => setWhatsappOpen(true)}>
-                Modify Identity
-              </Button>
-            </CardHeader>
-            <CardContent className="pt-4 space-y-4 text-xs">
-              <div className="grid gap-2 border p-3 bg-muted/5 border-border/80">
-                <div className="flex justify-between items-center py-1">
-                  <span className="text-muted-foreground">WhatsApp number</span>
-                  <span className="font-mono text-foreground font-semibold">
-                    {user.whatsapp_number || 'None'}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center py-1 border-t">
-                  <span className="text-muted-foreground">Mapping Status</span>
-                  <Badge variant={user.whatsapp_number ? 'default' : 'secondary'} className="rounded-sm">
-                    {user.whatsapp_number ? 'Added' : 'Not added'}
-                  </Badge>
-                </div>
-              </div>
-
-              <div className="bg-destructive/5 border border-destructive/20 text-muted-foreground p-3.5 rounded text-[11px] flex gap-2">
-                <ShieldAlert className="size-4 text-destructive shrink-0" />
-                <div>
-                  <strong className="block text-foreground mb-0.5">Verification & Group Mapping</strong>
-                  Standard WhatsApp status mapping logic is controlled natively by the async WhatsApp webhook parser engine. You can change the primary phone number map above, but interactive verifications must be completed via incoming WhatsApp messages.
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {activeTab === 'whatsapp_messages' && (
-          <UserWhatsAppMessagesTab
-            user={user}
-            setActiveTab={setActiveTab}
-            setWhatsappOpen={setWhatsappOpen}
-          />
-        )}
-
-        {activeTab === 'activity' && (
-          <Card className="rounded-none border-border/70 shadow-none">
-            <CardHeader className="pb-3 border-b">
-              <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                User Activity Log
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4 space-y-4">
-              <div className="bg-yellow-500/5 border border-yellow-500/20 text-muted-foreground p-3 rounded text-[11px] flex gap-2">
-                <ShieldAlert className="size-4 text-yellow-600 dark:text-yellow-400 shrink-0" />
-                <span>
-                  <strong>Integration Gap:</strong> User-specific activity logging is not supported in the backend endpoint. Showing general organization activities below.
-                </span>
-              </div>
-
-              {isTimelineLoading ? (
-                <div className="flex justify-center text-xs py-4 text-muted-foreground">
-                  Loading timeline events...
-                </div>
-              ) : timeline.length === 0 ? (
-                <div className="text-center text-xs italic text-muted-foreground py-4">
-                  No activity logs found.
-                </div>
-              ) : (
-                <div className="relative border-l border-border pl-4 ml-2 space-y-4">
-                  {timeline.map((entry) => (
-                    <div key={entry.id} className="relative text-xs">
-                      <div className="absolute -left-[21px] top-1 size-2 rounded-full bg-border border border-background" />
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-foreground">{entry.summary || entry.event_type}</span>
-                        <span className="text-[10px] text-muted-foreground">
-                          {new Date(entry.occurred_at).toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {activeTab === 'settings' && (
-          <div className="space-y-4">
-            {/* Password Reset Section */}
-            <Card className="rounded-none border-border/70 shadow-none">
-              <CardHeader className="pb-3 border-b">
-                <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                  Change Credentials / Password
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-4">
-                <form onSubmit={handlePasswordReset} className="max-w-sm space-y-3 text-xs">
-                  {pwdError && (
-                    <div className="bg-destructive/10 border border-destructive text-destructive text-[11px] p-2 rounded">
-                      {pwdError}
-                    </div>
-                  )}
-                  {pwdSuccess && (
-                    <div className="bg-emerald-500/10 border border-emerald-500 text-emerald-700 dark:text-emerald-400 text-[11px] p-2 rounded">
-                      Password updated successfully!
-                    </div>
-                  )}
-
-                  <div className="grid gap-1">
-                    <Label htmlFor="newPassword">New Password</Label>
-                    <Input
-                      id="newPassword"
-                      type="password"
-                      value={newPassword}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPassword(e.target.value)}
-                      placeholder="••••••••"
-                      required
-                    />
-                  </div>
-
-                  <div className="grid gap-1">
-                    <Label htmlFor="confirmPasswordDetails">Confirm Password</Label>
-                    <Input
-                      id="confirmPasswordDetails"
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setConfirmPassword(e.target.value)}
-                      placeholder="Confirm new password"
-                      required
-                    />
-                  </div>
-
-                  <Button type="submit" disabled={pwdLoading} className="text-xs mt-1">
-                    {pwdLoading ? 'Updating...' : 'Reset Password'}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-
-            {/* Dangerous Actions */}
-            <Card className="rounded-none border-destructive/20 shadow-none">
-              <CardHeader className="pb-3 border-b bg-destructive/5">
-                <CardTitle className="text-xs uppercase tracking-wider text-destructive font-semibold">
-                  Danger Zone
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-4 space-y-4 text-xs">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-border/40">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="font-semibold text-foreground">Remove project access</span>
-                    <span className="text-[11px] text-muted-foreground">
-                      Remove all custom project permissions. This reverts the user to standard access.
-                    </span>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      if (confirm('Are you sure you want to revoke all project permissions?')) {
-                        revokeAccessMutation.mutate()
-                      }
-                    }}
-                    className="text-xs shrink-0"
-                  >
-                    Revoke All Access
-                  </Button>
-                </div>
-
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="font-semibold text-foreground">Delete Account</span>
-                    <span className="text-[11px] text-muted-foreground">
-                      Permanently purge this user. This will fail if the user owns historical records in the organization.
-                    </span>
-                  </div>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => {
-                      if (confirm(`Purge user account for "${user.full_name}"? This action cannot be undone.`)) {
-                        deleteMutation.mutate()
-                      }
-                    }}
-                    className="text-xs shrink-0"
-                  >
-                    Delete User
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-      </div>
-
-      {/* Shared Dialog Containers */}
-      <AddEditUserDialog
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        user={user}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['user-details', id] })}
-      />
-
-      <AccessManagerDialog
-        open={accessOpen}
-        onOpenChange={setAccessOpen}
-        user={user}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['user-details', id] })}
-      />
-
-      <WhatsAppManagerDialog
-        open={whatsappOpen}
-        onOpenChange={setWhatsappOpen}
-        user={user}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['user-details', id] })}
-      />
-    </div>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

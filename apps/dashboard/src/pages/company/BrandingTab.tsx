@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, ImagePlus, Loader2, Save, Trash2 } from 'lucide-react'
+import { ImagePlus, Loader2, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -13,12 +13,16 @@ import {
 } from '@/lib/api'
 import { LOGO_TYPES, apiErrorMessage as apiError, logoFileProblem, readAsBase64 } from '@/lib/logo-upload'
 import { useReadOnly } from '@/lib/trial'
+import { useToast } from '@/components/ui/toast-notification'
 
 // How the company appears on its DPRs (tracker WEB-10, backed by BE-20).
 // Name, address, phone and email are the company record's own fields
-// (Settings tab); this tab holds only what the letterhead adds on top.
+// (Company details); this holds only what the letterhead adds on top.
+// WEB-28: flat section; the preview follows the DPR template (WEB-27) and
+// its default colour is the PDF's own (channel/dpr_document/template.py
+// _ACCENT), not the blue it used to show.
 
-const DEFAULT_COLOR = '#1F6FEB'
+const DEFAULT_COLOR = '#0A8F4C'
 
 const FIELDS: { key: keyof BrandingFields; label: string; placeholder: string; hint?: string }[] = [
   {
@@ -56,7 +60,7 @@ export function BrandingTab() {
   })
 
   const [form, setForm] = React.useState<Record<keyof BrandingFields, string> | null>(null)
-  const [saved, setSaved] = React.useState(false)
+  const toast = useToast()
   const [logoError, setLogoError] = React.useState<string | null>(null)
   const fileInput = React.useRef<HTMLInputElement>(null)
 
@@ -68,14 +72,11 @@ export function BrandingTab() {
 
   const save = useMutation({
     mutationFn: updateBranding,
-    // A new attempt clears the last "saved" note, so a failure is never
-    // hidden behind it.
-    onMutate: () => setSaved(false),
     onSuccess: (data) => {
       onSaved(data)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
+      toast.success('Letterhead saved', 'The next DPR prints with it.')
     },
+    onError: (err) => toast.error('Could not save', apiError(err)),
   })
 
   const upload = useMutation({
@@ -92,13 +93,13 @@ export function BrandingTab() {
 
   if (isLoading || !form) {
     return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground p-6">
+      <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
         <Loader2 className="size-4 animate-spin" /> Loading letterhead…
       </div>
     )
   }
   if (isError || !branding) {
-    return <p className="text-xs text-rose-500 p-6">Could not load the letterhead: {apiError(error)}</p>
+    return <p className="py-2 text-sm text-destructive">Could not load the letterhead: {apiError(error)}</p>
   }
 
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -124,22 +125,20 @@ export function BrandingTab() {
   const busy = upload.isPending || remove.isPending || readOnly
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] max-w-5xl text-xs">
-      <div className="space-y-6">
+    <div className="grid gap-6 text-sm lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="flex flex-col gap-5">
         {/* Logo */}
-        <section className="border border-border/60 bg-card rounded p-6 space-y-4">
+        <section className="flex flex-col gap-2">
           <div>
-            <h3 className="font-semibold text-foreground text-sm">Company logo</h3>
-            <p className="text-muted-foreground mt-1">
-              Printed at the top of every DPR. PNG, JPEG or WebP, up to 700 KB.
-            </p>
+            <h3 className="font-medium">Logo</h3>
+            <p className="text-muted-foreground">Top left of every DPR. PNG, JPEG or WebP, up to 700 KB.</p>
           </div>
           <div className="flex items-center gap-4">
-            <div className="size-20 rounded border border-border/60 bg-muted/30 flex items-center justify-center overflow-hidden">
+            <div className="size-16 shrink-0 rounded-lg border bg-muted/30 flex items-center justify-center overflow-hidden">
               {branding.logo_url ? (
                 <img src={branding.logo_url} alt="Company logo" className="max-h-full max-w-full object-contain" />
               ) : (
-                <span className="text-[10px] text-muted-foreground text-center px-1">
+                <span className="px-1 text-center text-xs text-muted-foreground">
                   {branding.has_logo ? 'Preview unavailable' : 'No logo'}
                 </span>
               )}
@@ -155,7 +154,7 @@ export function BrandingTab() {
               <Button
                 type="button"
                 variant="outline"
-                className="h-9 text-xs gap-1.5"
+                className="gap-1.5"
                 disabled={busy}
                 onClick={() => fileInput.current?.click()}
               >
@@ -166,7 +165,7 @@ export function BrandingTab() {
                 <Button
                   type="button"
                   variant="ghost"
-                  className="h-9 text-xs gap-1.5 text-rose-600"
+                  className="gap-1.5 text-destructive"
                   disabled={busy}
                   onClick={() => {
                     setLogoError(null)
@@ -178,30 +177,30 @@ export function BrandingTab() {
               )}
             </div>
           </div>
-          {logoError && <p className="text-rose-500">{logoError}</p>}
+          {logoError && <p className="text-destructive">{logoError}</p>}
         </section>
 
         {/* Text fields */}
-        <form onSubmit={onSubmit} className="border border-border/60 bg-card rounded p-6 space-y-4">
-          <h3 className="font-semibold text-foreground text-sm">Letterhead details</h3>
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
             {FIELDS.map((f) => (
               <div key={f.key} className="grid gap-1.5">
-                <label htmlFor={`branding-${f.key}`} className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                <label htmlFor={`branding-${f.key}`} className="text-sm font-medium">
                   {f.label}
-                  {f.hint && <span className="normal-case font-normal ml-1">({f.hint})</span>}
+                  {f.hint && <span className="ml-1.5 font-normal text-muted-foreground">· {f.hint}</span>}
                 </label>
                 <Input
                   id={`branding-${f.key}`}
                   value={form[f.key]}
                   placeholder={f.placeholder}
                   onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
-                  className="h-9 text-xs"
+                  disabled={readOnly}
+                  className="h-9"
                 />
               </div>
             ))}
             <div className="grid gap-1.5">
-              <label htmlFor="branding-brand_color" className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+              <label htmlFor="branding-brand_color" className="text-sm font-medium">
                 Brand colour
               </label>
               <div className="flex items-center gap-2">
@@ -210,73 +209,80 @@ export function BrandingTab() {
                   aria-label="Pick brand colour"
                   value={color}
                   onChange={(e) => setForm({ ...form, brand_color: e.target.value.toUpperCase() })}
-                  className="h-9 w-10 rounded border border-border/60 bg-transparent p-0.5"
+                  disabled={readOnly}
+                  className="h-9 w-10 shrink-0 rounded-md border bg-transparent p-0.5"
                 />
                 <Input
                   id="branding-brand_color"
                   value={form.brand_color}
                   placeholder={DEFAULT_COLOR}
                   onChange={(e) => setForm({ ...form, brand_color: e.target.value })}
-                  className="h-9 text-xs font-mono"
+                  disabled={readOnly}
+                  className="h-9 font-mono"
                 />
               </div>
             </div>
           </div>
-          <p className="text-muted-foreground">
-            Address, phone and email come from the Settings tab.
-          </p>
-          <div className="border-t pt-4 flex items-center justify-between gap-3">
-            {saved ? (
-              <span className="text-emerald-500 font-semibold flex items-center gap-1">
-                <Check className="size-4" /> Letterhead saved
-              </span>
-            ) : save.isError ? (
-              <span className="text-rose-500">{apiError(save.error)}</span>
-            ) : (
-              <span />
-            )}
-            <Button type="submit" disabled={save.isPending || readOnly} className="h-9 text-xs gap-1.5">
-              {save.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-              Save letterhead
-            </Button>
-          </div>
+          <p className="text-muted-foreground">Name, address, phone and email come from Company details above.</p>
+          {!readOnly && (
+            <div>
+              <Button type="submit" size="sm" disabled={save.isPending} className="font-semibold">
+                {save.isPending ? 'Saving…' : 'Save letterhead'}
+              </Button>
+            </div>
+          )}
         </form>
       </div>
 
-      {/* Preview: roughly how the top of a DPR will look */}
-      <section className="border border-border/60 bg-card rounded p-6 space-y-3 self-start">
-        <h3 className="font-semibold text-foreground text-sm">Preview</h3>
-        <div className="rounded border border-border/60 bg-white text-neutral-900 p-5 shadow-sm">
-          <div className="flex items-start gap-4 pb-3" style={{ borderBottom: `3px solid ${color}` }}>
-            {branding.logo_url && (
-              <img src={branding.logo_url} alt="" className="h-12 max-w-[96px] object-contain" />
-            )}
-            <div className="min-w-0">
-              <div className="text-base font-bold leading-tight" style={{ color }}>
-                {printedName}
+      {/* Preview: the top of a DPR, laid out as the PDF template is (WEB-27). */}
+      <section className="flex flex-col gap-2 self-start lg:sticky lg:top-20">
+        <h3 className="font-medium">Preview</h3>
+        <div className="rounded-lg border bg-white p-5 text-neutral-900 shadow-sm">
+          <div className="flex items-start justify-between gap-4 pb-3" style={{ borderBottom: `3px solid ${color}` }}>
+            <div className="flex min-w-0 items-center gap-3">
+              {branding.logo_url && <img src={branding.logo_url} alt="" className="h-11 max-w-[96px] object-contain" />}
+              <div className="min-w-0">
+                <div className="text-base font-bold leading-tight" style={{ color }}>
+                  {printedName}
+                </div>
+                {branding.address && <div className="text-[11px] text-neutral-500">{branding.address}</div>}
+                {(branding.phone || branding.email) && (
+                  <div className="text-[11px] text-neutral-500">{[branding.phone, branding.email].filter(Boolean).join(' · ')}</div>
+                )}
+                {form.gstin && <div className="text-[11px] text-neutral-500">GSTIN: {form.gstin.toUpperCase()}</div>}
               </div>
-              {branding.address && <div className="text-[11px] text-neutral-600">{branding.address}</div>}
-              <div className="text-[11px] text-neutral-600">
-                {[branding.phone, branding.email].filter(Boolean).join(' · ')}
+            </div>
+            <div className="shrink-0 text-right">
+              <div className="text-[9px] font-bold uppercase tracking-[0.12em]" style={{ color }}>
+                Site report
               </div>
-              {form.gstin && <div className="text-[11px] text-neutral-600">GSTIN: {form.gstin.toUpperCase()}</div>}
+              <div className="text-sm font-bold">Daily Progress Report</div>
             </div>
           </div>
-          <div className="pt-3 text-[11px] font-semibold tracking-wide uppercase text-neutral-500">
-            Daily Progress Report
+          <div className="mt-3 grid grid-cols-4 gap-1.5">
+            {['Workers', 'Work items', 'Photos', 'Open issues'].map((k) => (
+              <div key={k} className="rounded px-2 py-1.5" style={{ background: `color-mix(in srgb, ${color} 8%, white)` }}>
+                <div className="text-[8px] font-semibold uppercase tracking-wide text-neutral-500">{k}</div>
+                <div className="h-2.5 w-5 rounded bg-neutral-300/70" />
+              </div>
+            ))}
           </div>
-          <div className="mt-2 space-y-1.5">
-            <div className="h-2 rounded bg-neutral-100 w-full" />
-            <div className="h-2 rounded bg-neutral-100 w-5/6" />
-            <div className="h-2 rounded bg-neutral-100 w-2/3" />
+          <div className="mt-3 flex items-center gap-1.5 text-[11px] font-bold">
+            <span className="flex size-4 items-center justify-center rounded text-[9px] text-white" style={{ background: color }}>
+              1
+            </span>
+            Work done
+          </div>
+          <div className="mt-1.5 space-y-1.5">
+            <div className="h-2 w-full rounded bg-neutral-100" />
+            <div className="h-2 w-5/6 rounded bg-neutral-100" />
           </div>
           {(form.signatory_name || form.signatory_designation) && (
-            <div className="mt-4 text-right text-[11px]">
+            <div className="mt-5 ml-auto w-36 border-t border-neutral-800 pt-1 text-center text-[11px]">
               <div className="font-semibold">{form.signatory_name}</div>
-              <div className="text-neutral-600">{form.signatory_designation}</div>
+              <div className="text-neutral-500">{form.signatory_designation}</div>
             </div>
           )}
-          <div className="mt-4 text-center text-[9px] text-neutral-400">Generated with Mesiri</div>
         </div>
       </section>
     </div>

@@ -1,640 +1,427 @@
 import * as React from 'react'
-import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import {
-  ArrowLeft,
-  Building2,
-  Users as UsersIcon,
-  MessageSquare,
-  History,
-  Settings as SettingsIcon,
-  Edit2,
-  FolderLock,
-  Plus,
-  Trash2,
-  Loader2,
-  ShieldAlert,
-  Search,
-  ChevronDown,
-  Send,
-} from 'lucide-react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Archive, Clock, FileText, MapPin, MoreHorizontal, Pencil, Plus, Send, Sparkles, Trash2, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from '@/components/ui/table'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import {
-  fetchProject,
-  fetchSitesFull,
-  fetchProjectMembers,
-  archiveProject,
-  archiveSite,
-  removeProjectMember,
-  type Project,
-  type Site,
-  type ProjectMember,
-} from '@/lib/projects'
-import {
-  AddEditProjectDialog,
-  AddEditSiteDialog,
-  ProjectMemberDialog,
-} from '@/components/project-dialogs'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { useToast } from '@/components/ui/toast-notification'
+import { Callout, DprAside, DprHeader, DprSection, PageError } from '@/components/dpr-page'
+import { AddEditProjectDialog, AddEditSiteDialog, ProjectMemberDialog } from '@/components/project-dialogs'
 import { ProjectReportingTab } from '@/components/project-reporting-tab'
 import { ProjectRecipientsTab } from '@/components/project-recipients-tab'
 import { ProjectClientLogoCard } from '@/components/project-client-logo-card'
-import { ProjectOverviewTab } from '@/components/project-overview-tab'
+import {
+  archiveProject,
+  archiveSite,
+  fetchProject,
+  fetchProjectMembers,
+  fetchSitesFull,
+  removeProjectMember,
+  type Project,
+  type ProjectMember,
+  type Site,
+} from '@/lib/projects'
+import { roleLabel } from '@/lib/permissions'
+import { CHIP, localIsoDate, plural, siteDayPath } from '@/lib/site-day'
 import { useModuleEnabled } from '@/lib/modules'
+import { usePageTitle } from '@/lib/page-title'
+import { useReadOnly } from '@/lib/trial'
+import { apiErrorMessage } from '@/lib/logo-upload'
+import { cn } from '@/lib/utils'
 
-const STATUS_BADGES = {
-  success: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-none',
-  warning: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-none',
-  critical: 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-none',
-  neutral: 'bg-muted text-muted-foreground border-none',
-} as const
+// WEB-28: one project's setup on one page -- its sites, its people, when its
+// DPR goes out and who gets it -- in flat sections instead of seven tabs.
+// The old "WhatsApp" tab (a "deferred to V2" notice) and "Delete project"
+// (a button that only showed an alert) are gone.
+
+const STATUS_CHIP: Record<string, string> = {
+  success: 'bg-success-soft text-success',
+  warning: 'bg-draft-soft text-draft',
+  critical: 'bg-destructive/10 text-destructive',
+  neutral: 'bg-muted text-muted-foreground',
+}
+
+/** ?tab=… from older links (the getting-started checklist) -> the section to scroll to. */
+const SECTION_FOR_TAB: Record<string, string> = {
+  sites: 'sites',
+  members: 'people',
+  reporting: 'daily-report',
+  recipients: 'recipients',
+  settings: 'details',
+}
 
 export default function ProjectDetails() {
-  const { id } = useParams<{ id: string }>()
+  const { id = '' } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const toast = useToast()
+  const readOnly = useReadOnly()
   const isModuleEnabled = useModuleEnabled()
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
-  const isNewProject = searchParams.get('new') === '1'
+  const [today] = React.useState(() => localIsoDate(new Date()))
 
-  const handleDismissBanner = () => {
-    const nextParams = new URLSearchParams(searchParams)
-    nextParams.delete('new')
-    setSearchParams(nextParams, { replace: true })
-  }
-
-  type ProjectTab = 'overview' | 'sites' | 'members' | 'reporting' | 'recipients' | 'whatsapp' | 'settings'
-  // ?tab=reporting opens a tab directly (the getting-started checklist links here).
-  const [activeTab, setActiveTab] = React.useState<ProjectTab>(() => {
-    const tab = searchParams.get('tab')
-    return tab && ['sites', 'members', 'reporting', 'recipients', 'whatsapp', 'settings'].includes(tab)
-      ? (tab as ProjectTab)
-      : 'overview'
-  })
-
-  // Dialog open states
   const [projectDialogOpen, setProjectDialogOpen] = React.useState(false)
   const [siteDialogOpen, setSiteDialogOpen] = React.useState(false)
   const [memberDialogOpen, setMemberDialogOpen] = React.useState(false)
-  
-  // Selected entities for editing
   const [selectedSite, setSelectedSite] = React.useState<Site | null>(null)
+  const [confirm, setConfirm] = React.useState<
+    { kind: 'project' } | { kind: 'site'; site: Site } | { kind: 'member'; member: ProjectMember } | null
+  >(null)
 
-  // Search states inside tabs
-  const [siteSearch, setSiteSearch] = React.useState('')
-  const [memberSearch, setMemberSearch] = React.useState('')
+  const projectQuery = useQuery<Project>({ queryKey: ['project-details', id], queryFn: () => fetchProject(id), enabled: !!id })
+  const sitesQuery = useQuery<Site[]>({ queryKey: ['project-sites', id], queryFn: () => fetchSitesFull(id), enabled: !!id })
+  const membersQuery = useQuery<ProjectMember[]>({ queryKey: ['project-members', id], queryFn: () => fetchProjectMembers(id), enabled: !!id })
+  const project = projectQuery.data
+  const sites = sitesQuery.data ?? []
+  const members = membersQuery.data ?? []
+  usePageTitle(`${project?.name ?? 'Project'} · Projects & Sites`)
 
-  // Queries
-  const { data: project, isLoading, isError, error } = useQuery<Project>({
-    queryKey: ['project-details', id],
-    queryFn: () => fetchProject(id!),
-    enabled: !!id,
-  })
+  // Older links open a tab (?tab=reporting): scroll to that section instead.
+  const tab = searchParams.get('tab')
+  React.useEffect(() => {
+    if (!project || !tab) return
+    document.getElementById(SECTION_FOR_TAB[tab] ?? '')?.scrollIntoView({ block: 'start' })
+  }, [project, tab])
 
-  const { data: sites = [], isLoading: isSitesLoading } = useQuery<Site[]>({
-    queryKey: ['project-sites', id],
-    queryFn: () => fetchSitesFull(id!),
-    enabled: !!id,
-  })
-
-  const { data: members = [], isLoading: isMembersLoading } = useQuery<ProjectMember[]>({
-    queryKey: ['project-members', id],
-    queryFn: () => fetchProjectMembers(id!),
-    enabled: !!id,
-  })
-
-  // Mutations
+  const onFail = (title: string) => (err: unknown) => toast.error(title, apiErrorMessage(err))
   const archiveProjectMutation = useMutation({
-    mutationFn: () => archiveProject(id!),
+    mutationFn: () => archiveProject(id),
     onSuccess: () => {
+      toast.success('Archived', `${project?.name ?? 'The project'} is off the active list.`)
       queryClient.invalidateQueries({ queryKey: ['projects-list'] })
       queryClient.invalidateQueries({ queryKey: ['scope-projects'] })
       navigate('/projects')
     },
-    onError: (err: any) => {
-      alert(err.response?.data?.detail || 'Failed to archive project.')
-    },
+    onError: onFail('Could not archive the project'),
   })
-
   const archiveSiteMutation = useMutation({
-    mutationFn: (siteId: string) => archiveSite(id!, siteId),
+    mutationFn: (siteId: string) => archiveSite(id, siteId),
     onSuccess: () => {
+      setConfirm(null)
+      toast.success('Site archived', 'Its reports are kept.')
       queryClient.invalidateQueries({ queryKey: ['project-sites', id] })
+      queryClient.invalidateQueries({ queryKey: ['project-sites-count', id] })
     },
-    onError: (err: any) => {
-      alert(err.response?.data?.detail || 'Failed to archive site.')
-    },
+    onError: onFail('Could not archive the site'),
   })
-
   const removeMemberMutation = useMutation({
-    mutationFn: (userId: string) => removeProjectMember(id!, userId),
+    mutationFn: (userId: string) => removeProjectMember(id, userId),
     onSuccess: () => {
+      setConfirm(null)
+      toast.success('Removed', 'They no longer see this project.')
       queryClient.invalidateQueries({ queryKey: ['project-members', id] })
+      queryClient.invalidateQueries({ queryKey: ['project-members-count', id] })
     },
-    onError: (err: any) => {
-      alert(err.response?.data?.detail || 'Failed to remove project member.')
-    },
+    onError: onFail('Could not remove'),
   })
 
-  if (isLoading) {
+  if (projectQuery.isLoading) {
     return (
-      <div className="flex h-64 items-center justify-center text-sm text-muted-foreground gap-2">
-        <Loader2 className="size-4 animate-spin text-primary" />
-        Loading project administration panel...
-      </div>
-    )
-  }
-
-  if (isError || !project) {
-    return (
-      <div className="space-y-4 text-xs">
-        <Link to="/projects" className="flex items-center gap-1 text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="size-3" /> Back to Projects & Sites
-        </Link>
-        <div className="bg-destructive/10 border border-destructive text-destructive p-4 rounded text-center">
-          Failed to load project details: {error instanceof Error ? error.message : 'Project not found.'}
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 sm:px-2" aria-busy="true" aria-label="Loading">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-8 w-72" />
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="flex flex-col gap-3">
+            <Skeleton className="h-28 rounded-lg" />
+            <Skeleton className="h-28 rounded-lg" />
+          </div>
+          <Skeleton className="h-48 rounded-lg" />
         </div>
       </div>
     )
   }
-
-  const handleOpenProject = () => {
-    navigate(`/today?project=${project.id}`)
+  if (projectQuery.isError || !project) {
+    return <PageError message="This project could not be loaded." onRetry={() => projectQuery.refetch()} back={{ to: '/projects', label: 'Back to Projects' }} />
   }
 
-  const handleOpenSite = (site: Site) => {
-    navigate(`/today?project=${project.id}&site=${site.id}`)
+  const openSiteDialog = (site: Site | null) => {
+    setSelectedSite(site)
+    setSiteDialogOpen(true)
   }
-
-  // Filters site list
-  const filteredSites = sites.filter(
-    (s) =>
-      s.name.toLowerCase().includes(siteSearch.toLowerCase()) ||
-      s.status.toLowerCase().includes(siteSearch.toLowerCase())
-  )
-
-  // Filters member list
-  const filteredMembers = members.filter(
-    (m) =>
-      m.fullName.toLowerCase().includes(memberSearch.toLowerCase()) ||
-      m.email.toLowerCase().includes(memberSearch.toLowerCase()) ||
-      m.role.toLowerCase().includes(memberSearch.toLowerCase())
-  )
+  const dismissNew = () => {
+    const next = new URLSearchParams(searchParams)
+    next.delete('new')
+    setSearchParams(next, { replace: true })
+  }
+  const facts = [project.client && `Client: ${project.client}`, project.location, project.code && `Code ${project.code}`].filter(Boolean)
 
   return (
-    <div className="flex flex-col gap-4 text-sm">
-      {/* Header section */}
-      <div className="flex flex-col gap-1.5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
-          <div className="flex items-center gap-3">
-            <div className="size-10 rounded-full border border-primary/20 bg-primary/10 flex items-center justify-center text-primary shrink-0">
-              <Building2 className="size-5" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-foreground flex items-center gap-2 leading-none">
-                {project.name}
-                <Badge variant="outline" className={`text-xs rounded-sm py-0.5 ${STATUS_BADGES[project.status as keyof typeof STATUS_BADGES] || STATUS_BADGES.neutral}`}>
-                  {project.statusLabel || project.status}
-                </Badge>
-              </h1>
-              <span className="text-xs text-muted-foreground font-mono">
-                {[project.code, project.client, project.location].filter(Boolean).join(' · ') || 'Add code, client and location in Edit Info'}
-              </span>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={handleOpenProject} className="h-7 gap-1">
-              Today's updates
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
+      <DprHeader
+        back={{ to: '/projects', label: 'Projects & Sites' }}
+        crumb="Project"
+        title={project.name}
+        chip={<span className={cn(CHIP, STATUS_CHIP[project.status] ?? STATUS_CHIP.neutral)}>{project.statusLabel}</span>}
+        date={facts.join(' · ') || undefined}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link to={`/today?project=${project.id}`}>Today's updates</Link>
             </Button>
             {isModuleEnabled('finance') && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => navigate(`/finance/expenses?project_id=${project.id}`)}
-                className="h-7 gap-1 text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10 font-semibold"
-              >
-                View Finance
+              <Button asChild variant="outline" size="sm">
+                <Link to={`/finance/expenses?project_id=${project.id}`}>Finance</Link>
               </Button>
             )}
-            <Button size="sm" variant="outline" onClick={() => setProjectDialogOpen(true)} className="h-7 gap-1">
-              <Edit2 className="size-3" /> Edit Settings
+            {!readOnly && (
+              <Button size="sm" className="gap-1.5 font-semibold" onClick={() => setProjectDialogOpen(true)}>
+                <Pencil className="size-3.5" /> Edit details
+              </Button>
+            )}
+          </div>
+        }
+      />
+
+      {searchParams.get('new') === '1' ? (
+        <Callout
+          tone="success"
+          icon={Sparkles}
+          action={
+            <Button variant="ghost" size="sm" onClick={dismissNew}>
+              Dismiss
             </Button>
-          </div>
-        </div>
-      </div>
+          }
+        >
+          Project created. Add its sites and the people who report from them.
+        </Callout>
+      ) : !sitesQuery.isLoading && sites.length === 0 ? (
+        <Callout
+          tone="draft"
+          icon={MapPin}
+          action={
+            !readOnly && (
+              <Button size="sm" variant="outline" className="bg-background" onClick={() => openSiteDialog(null)}>
+                Add a site
+              </Button>
+            )
+          }
+        >
+          No sites yet: updates from WhatsApp need a site to land on.
+        </Callout>
+      ) : null}
 
-      {/* Internal Tabs list */}
-      <div className="flex border-b border-border/60 gap-4 font-semibold text-muted-foreground overflow-x-auto">
-        <button
-          onClick={() => setActiveTab('overview')}
-          className={`pb-2 border-b-2 transition-colors ${
-            activeTab === 'overview' ? 'border-primary text-foreground' : 'border-transparent hover:text-foreground'
-          } flex items-center gap-1.5 whitespace-nowrap`}
-        >
-          <Building2 className="size-3.5" />
-          Overview
-        </button>
-        <button
-          onClick={() => setActiveTab('sites')}
-          className={`pb-2 border-b-2 transition-colors ${
-            activeTab === 'sites' ? 'border-primary text-foreground' : 'border-transparent hover:text-foreground'
-          } flex items-center gap-1.5 whitespace-nowrap`}
-        >
-          <FolderLock className="size-3.5" />
-          Sites ({sites.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('members')}
-          className={`pb-2 border-b-2 transition-colors ${
-            activeTab === 'members' ? 'border-primary text-foreground' : 'border-transparent hover:text-foreground'
-          } flex items-center gap-1.5 whitespace-nowrap`}
-        >
-          <UsersIcon className="size-3.5" />
-          Members ({members.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('reporting')}
-          className={`pb-2 border-b-2 transition-colors ${
-            activeTab === 'reporting' ? 'border-primary text-foreground' : 'border-transparent hover:text-foreground'
-          } flex items-center gap-1.5 whitespace-nowrap`}
-        >
-          <History className="size-3.5" />
-          Reporting
-        </button>
-        <button
-          onClick={() => setActiveTab('recipients')}
-          className={`pb-2 border-b-2 transition-colors ${
-            activeTab === 'recipients' ? 'border-primary text-foreground' : 'border-transparent hover:text-foreground'
-          } flex items-center gap-1.5 whitespace-nowrap`}
-        >
-          <Send className="size-3.5" />
-          DPR Recipients
-        </button>
-        <button
-          onClick={() => setActiveTab('whatsapp')}
-          className={`pb-2 border-b-2 transition-colors ${
-            activeTab === 'whatsapp' ? 'border-primary text-foreground' : 'border-transparent hover:text-foreground'
-          } flex items-center gap-1.5 whitespace-nowrap`}
-        >
-          <MessageSquare className="size-3.5" />
-          WhatsApp
-        </button>
-        <button
-          onClick={() => setActiveTab('settings')}
-          className={`pb-2 border-b-2 transition-colors ${
-            activeTab === 'settings' ? 'border-primary text-foreground' : 'border-transparent hover:text-foreground'
-          } flex items-center gap-1.5 whitespace-nowrap`}
-        >
-          <SettingsIcon className="size-3.5" />
-          Settings
-        </button>
-      </div>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="flex min-w-0 flex-col">
+          <DprSection
+            id="sites"
+            icon={MapPin}
+            title="Sites"
+            meta={sites.length || undefined}
+            action={
+              !readOnly && (
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => openSiteDialog(null)}>
+                  <Plus className="size-3.5" /> Add site
+                </Button>
+              )
+            }
+            >
+            {sitesQuery.isLoading ? (
+              <Skeleton className="h-16 rounded-lg" />
+            ) : sites.length > 0 ? (
+              <ul className="divide-y rounded-lg border">
+                {sites.map((site) => (
+                  <li key={site.id} className="flex items-center gap-3 px-3 py-2">
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <span className="font-medium">{site.name}</span>
+                      {site.status !== 'active' && <span className={cn(CHIP, 'bg-muted text-muted-foreground')}>{site.status}</span>}
+                    </div>
+                    <Button asChild variant="ghost" size="sm" className="gap-1.5">
+                      <Link to={siteDayPath(site.id, today)}>
+                        <FileText className="size-3.5" /> Today's DPR
+                      </Link>
+                    </Button>
+                    {!readOnly && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="size-8" aria-label={`More for ${site.name}`}>
+                            <MoreHorizontal className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuItem onClick={() => openSiteDialog(site)}>
+                            <Pencil className="mr-2 size-3.5" /> Rename
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setConfirm({ kind: 'site', site })}>
+                            <Archive className="mr-2 size-3.5" /> Archive
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </DprSection>
 
-      {/* Tab Panels */}
-      <div className="py-1">
-        {activeTab === 'overview' && (
-          <div className="space-y-4">
-            {isNewProject && (
-              <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400 p-3 rounded-sm flex justify-between items-center text-xs">
-                <span>Project created successfully. Add sites, members, and configure reporting when ready.</span>
-                <button
-                  type="button"
-                  onClick={handleDismissBanner}
-                  className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:underline"
-                >
-                  Dismiss
-                </button>
-              </div>
+          <DprSection
+            id="people"
+            icon={Users}
+            title="People on this project"
+            meta={members.length || undefined}
+            action={
+              !readOnly && (
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setMemberDialogOpen(true)}>
+                  <Plus className="size-3.5" /> Add person
+                </Button>
+              )
+            }
+            >
+            {membersQuery.isLoading ? (
+              <Skeleton className="h-16 rounded-lg" />
+            ) : members.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Only company admins see this project. Add its site engineers and managers so they can report and review.
+              </p>
+            ) : (
+              <ul className="divide-y rounded-lg border">
+                {members.map((m) => (
+                  <li key={m.userId} className="flex items-center gap-3 px-3 py-2">
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <Link to={`/team/${m.userId}`} className="font-medium hover:underline">
+                        {m.fullName}
+                      </Link>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {roleLabel(m.role)}
+                        {m.email ? ` · ${m.email}` : ''}
+                      </span>
+                    </div>
+                    {!readOnly && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 text-muted-foreground hover:text-destructive"
+                        aria-label={`Remove ${m.fullName}`}
+                        title="Remove from project"
+                        onClick={() => setConfirm({ kind: 'member', member: m })}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
             )}
-            <ProjectOverviewTab
-              project={project}
-              sites={sites}
-              members={members}
-              setActiveTab={setActiveTab}
-              setProjectDialogOpen={setProjectDialogOpen}
-              setMemberDialogOpen={setMemberDialogOpen}
-            />
-          </div>
-        )}
+          </DprSection>
 
-        {activeTab === 'sites' && (
-          <Card className="rounded-none border-border/70 shadow-none">
-            <CardHeader className="pb-3 border-b flex flex-row items-center justify-between gap-4">
-              <div>
-                <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                  Project Sites Registry
-                </CardTitle>
-                <CardDescription className="text-[11px]">
-                  Sites represent physical locations or sub-divisions inside this project.
-                </CardDescription>
-              </div>
-              <Button
-                size="sm"
-                onClick={() => {
-                  setSelectedSite(null)
-                  setSiteDialogOpen(true)
-                }}
-                className="h-8 gap-1.5"
-              >
-                <Plus className="size-4" />
-                Add Site
-              </Button>
-            </CardHeader>
-            <CardContent className="pt-4 space-y-3">
-              <div className="flex max-w-xs gap-2">
-                <Search className="size-4 text-muted-foreground self-center ml-2 absolute" />
-                <Input
-                  placeholder="Search sites..."
-                  value={siteSearch}
-                  onChange={(e) => setSiteSearch(e.target.value)}
-                  className="pl-8 h-8 text-xs w-full"
-                />
-              </div>
+          <DprSection id="daily-report" icon={Clock} title="Daily report">
+            <ProjectReportingTab key={`${project.id}-${project.reportingCutoffTime}-${project.dprSendDeadline}-${project.autoGenerateDpr}`} project={project} readOnly={readOnly} />
+          </DprSection>
 
-              {isSitesLoading ? (
-                <div className="flex justify-center text-xs py-4 text-muted-foreground">
-                  <Loader2 className="size-3.5 animate-spin mr-2" /> Loading sites list...
-                </div>
-              ) : filteredSites.length === 0 ? (
-                <div className="text-center text-xs italic text-muted-foreground py-6 border border-dashed rounded">
-                  No sites registered on this project.
-                </div>
-              ) : (
-                <div className="border border-border/60 rounded overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/10">
-                        <TableHead>Site Name</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="w-24 text-right pr-4">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredSites.map((site) => (
-                        <TableRow key={site.id}>
-                          <TableCell>
-                            <span className="font-semibold text-foreground">{site.name}</span>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={site.status === 'active' ? 'default' : 'outline'} className="text-[9px] rounded-sm py-0">
-                              {site.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right pr-4">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" className="size-8 p-0">
-                                  <ChevronDown className="size-4 text-muted-foreground" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-36">
-                                <DropdownMenuItem onClick={() => handleOpenSite(site)}>
-                                  <Building2 className="size-3.5 mr-2" />
-                                  Open Site
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => {
-                                  setSelectedSite(site)
-                                  setSiteDialogOpen(true)
-                                }}>
-                                  <Edit2 className="size-3.5 mr-2" />
-                                  Edit Site
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    if (confirm(`Archive site "${site.name}"?`)) {
-                                      archiveSiteMutation.mutate(site.id)
-                                    }
-                                  }}
-                                  className="text-destructive hover:bg-destructive/10"
-                                >
-                                  <Trash2 className="size-3.5 mr-2" />
-                                  Archive Site
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+          <DprSection id="recipients" icon={Send} title="Who gets the DPR">
+            <ProjectRecipientsTab projectId={project.id} />
+          </DprSection>
+        </div>
+
+        <DprAside>
+          <section id="details" className="flex scroll-mt-20 flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-[15px] font-semibold">Details</h2>
+              {!readOnly && (
+                <Button variant="ghost" size="sm" onClick={() => setProjectDialogOpen(true)}>
+                  Edit
+                </Button>
               )}
-            </CardContent>
-          </Card>
-        )}
-
-        {activeTab === 'members' && (
-          <Card className="rounded-none border-border/70 shadow-none">
-            <CardHeader className="pb-3 border-b flex flex-row items-center justify-between gap-4">
-              <div>
-                <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                  Project Membership Scope
-                </CardTitle>
-                <CardDescription className="text-[11px]">
-                  Users explicitly assigned to this project.
-                </CardDescription>
-              </div>
-              <Button size="sm" onClick={() => setMemberDialogOpen(true)} className="h-8 gap-1.5">
-                <Plus className="size-4" />
-                Add Member
-              </Button>
-            </CardHeader>
-            <CardContent className="pt-4 space-y-3">
-              <div className="flex max-w-xs gap-2">
-                <Search className="size-4 text-muted-foreground self-center ml-2 absolute" />
-                <Input
-                  placeholder="Search members..."
-                  value={memberSearch}
-                  onChange={(e) => setMemberSearch(e.target.value)}
-                  className="pl-8 h-8 text-xs w-full"
-                />
-              </div>
-
-              {isMembersLoading ? (
-                <div className="flex justify-center text-xs py-4 text-muted-foreground">
-                  <Loader2 className="size-3.5 animate-spin mr-2" /> Loading members list...
-                </div>
-              ) : filteredMembers.length === 0 ? (
-                <div className="text-center text-xs italic text-muted-foreground py-6 border border-dashed rounded">
-                  No members assigned to this project.
-                </div>
-              ) : (
-                <div className="border border-border/60 rounded overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/10">
-                        <TableHead>User Name</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Project Role</TableHead>
-                        <TableHead className="w-20 text-right pr-4">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredMembers.map((member) => (
-                        <TableRow key={member.userId}>
-                          <TableCell>
-                            <span className="font-semibold text-foreground">{member.fullName}</span>
-                          </TableCell>
-                          <TableCell className="font-mono text-muted-foreground text-[10px]">{member.email}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className="text-[9px] rounded-sm py-0">
-                              {member.role}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right pr-4">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                if (confirm(`Remove "${member.fullName}" from this project?`)) {
-                                  removeMemberMutation.mutate(member.userId)
-                                }
-                              }}
-                              className="text-destructive hover:bg-destructive/10 size-8 p-0"
-                            >
-                              <Trash2 className="size-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {activeTab === 'reporting' && (
-          <ProjectReportingTab project={project} />
-        )}
-
-        {activeTab === 'recipients' && <ProjectRecipientsTab projectId={project.id} />}
-
-        {activeTab === 'whatsapp' && (
-          <Card className="rounded-none border-border/70 shadow-none">
-            <CardHeader className="pb-3 border-b">
-              <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                WhatsApp Connection Link
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-6 space-y-4">
-              <div className="bg-yellow-500/5 border border-yellow-500/20 text-muted-foreground p-3.5 rounded text-[11px] flex gap-2.5">
-                <ShieldAlert className="size-4 text-yellow-600 dark:text-yellow-400 shrink-0" />
-                <div>
-                  <strong className="block text-foreground mb-0.5">Integration Deferred (V2)</strong>
-                  Interactive WhatsApp ingestion group-linking and participant configuration is deferred until the core WhatsApp webhook ingestion architecture is fully deployed.
-                </div>
-              </div>
-
-              <div className="border border-dashed p-10 text-center text-muted-foreground text-xs italic">
-                No active WhatsApp group links mapped for this project.
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {activeTab === 'settings' && (
-          <div className="space-y-4">
+            </div>
+            <dl className="grid grid-cols-[88px_1fr] gap-x-3 gap-y-1.5 text-sm">
+              {(
+                [
+                  ['Client', project.client],
+                  ['Location', project.location],
+                  ['Code', project.code],
+                ] as const
+              ).map(([k, v]) => (
+                <React.Fragment key={k}>
+                  <dt className="text-muted-foreground">{k}</dt>
+                  <dd className={cn('min-w-0 break-words', !v && 'text-muted-foreground')}>{v || 'Not set'}</dd>
+                </React.Fragment>
+              ))}
+            </dl>
+            {project.description && <p className="text-sm text-muted-foreground">{project.description}</p>}
+          </section>
+          <section className="flex flex-col gap-2 border-t pt-4">
+            <h2 className="text-[15px] font-semibold">Client logo on the DPR</h2>
             <ProjectClientLogoCard projectId={project.id} clientName={project.client} />
-
-            {/* Project edit triggers */}
-            <Card className="rounded-none border-border/70 shadow-none">
-              <CardHeader className="pb-3 border-b">
-                <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                  Metadata Configurations
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-4 flex flex-wrap gap-3">
-                <Button variant="outline" size="sm" onClick={() => setProjectDialogOpen(true)}>
-                  Modify Info Sheet
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    if (confirm('Archive this project? This removes it from active list views.')) {
-                      archiveProjectMutation.mutate()
-                    }
-                  }}
-                >
-                  Archive Project
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Danger Zone */}
-            <Card className="rounded-none border-destructive/20 shadow-none">
-              <CardHeader className="pb-3 border-b bg-destructive/5">
-                <CardTitle className="text-xs uppercase tracking-wider text-destructive font-semibold">
-                  Danger Zone
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-4 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="font-semibold text-foreground">Permanently Delete Project</span>
-                    <span className="text-[11.5px] text-muted-foreground">
-                      This action is highly protected. It will delete the project metadata and all nested site records.
-                    </span>
-                  </div>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => {
-                      alert('Delete action aborted. Mercon project files containing active records must be archived instead of permanently deleted to preserve organization timeline history.')
-                    }}
-                    className="shrink-0 text-xs"
-                  >
-                    Delete Project
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+          </section>
+          {!readOnly && (
+            <section className="border-t pt-4">
+              <Button variant="ghost" size="sm" className="gap-1.5 text-destructive hover:text-destructive" onClick={() => setConfirm({ kind: 'project' })}>
+                <Archive className="size-3.5" /> Archive this project
+              </Button>
+            </section>
+          )}
+        </DprAside>
       </div>
 
-      {/* Dialog Containers */}
+      <Dialog open={confirm !== null} onOpenChange={(open) => !open && setConfirm(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">
+              {confirm?.kind === 'project'
+                ? `Archive ${project.name}?`
+                : confirm?.kind === 'site'
+                  ? `Archive ${confirm.site.name}?`
+                  : confirm?.kind === 'member'
+                    ? `Remove ${confirm.member.fullName}?`
+                    : ''}
+            </DialogTitle>
+            <DialogDescription>
+              {confirm?.kind === 'project'
+                ? 'It leaves the active list and its daily report stops. Its reports and records are kept.'
+                : confirm?.kind === 'site'
+                  ? 'Updates can no longer be sent for it. Its reports and records are kept.'
+                  : `They stop seeing ${project.name}. ${plural(members.length - 1, 'person')} will be left on it.`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirm(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={archiveProjectMutation.isPending || archiveSiteMutation.isPending || removeMemberMutation.isPending}
+              onClick={() => {
+                if (confirm?.kind === 'project') archiveProjectMutation.mutate()
+                else if (confirm?.kind === 'site') archiveSiteMutation.mutate(confirm.site.id)
+                else if (confirm?.kind === 'member') removeMemberMutation.mutate(confirm.member.userId)
+              }}
+            >
+              {confirm?.kind === 'member' ? 'Remove' : 'Archive'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <AddEditProjectDialog
         open={projectDialogOpen}
         onOpenChange={setProjectDialogOpen}
         project={project}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['project-details', id] })}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['project-details', id] })
+          queryClient.invalidateQueries({ queryKey: ['projects-list'] })
+        }}
       />
-
       <AddEditSiteDialog
         open={siteDialogOpen}
         onOpenChange={setSiteDialogOpen}
         projectId={project.id}
         site={selectedSite}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['project-sites', id] })}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['project-sites', id] })
+          queryClient.invalidateQueries({ queryKey: ['project-sites-count', id] })
+        }}
       />
-
       <ProjectMemberDialog
         open={memberDialogOpen}
         onOpenChange={setMemberDialogOpen}
         projectId={project.id}
         existingUserIds={members.map((m) => m.userId)}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['project-members', id] })}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['project-members', id] })
+          queryClient.invalidateQueries({ queryKey: ['project-members-count', id] })
+        }}
       />
     </div>
   )

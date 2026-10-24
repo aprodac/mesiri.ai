@@ -9,6 +9,7 @@ import ProjectDayPage from '@/pages/ProjectDayPage'
 import Users from '@/pages/Users'
 import UserDetails from '@/pages/UserDetails'
 import CompanyDetails from '@/pages/CompanyDetails'
+import CompanyMessagesPage from '@/pages/CompanyMessagesPage'
 import Projects from '@/pages/Projects'
 import ProjectDetails from '@/pages/ProjectDetails'
 import DailyReportsPage from '@/pages/DailyReportsPage'
@@ -109,6 +110,7 @@ export default function App() {
           <Route path="team" element={<Users />} />
           <Route path="team/:id" element={<UserDetails />} />
           <Route path="company" element={<CompanyDetails />} />
+          <Route path="company/messages" element={<CompanyMessagesPage />} />
           <Route path="whatsapp/inbox" element={<WhatsAppInboxPage />} />
           <Route path="automations" element={<RequireModule module="automations"><AutomationsPage /></RequireModule>} />
 

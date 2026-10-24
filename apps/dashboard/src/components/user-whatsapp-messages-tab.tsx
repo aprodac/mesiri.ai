@@ -6,7 +6,6 @@ import {
   ArrowUpDown,
   Search,
   SlidersHorizontal,
-  Clock,
   ChevronRight,
   Info,
   Loader2,
@@ -20,7 +19,7 @@ import {
   MessageCircle,
   ExternalLink,
 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardDescription } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -167,32 +166,18 @@ export function UserWhatsAppMessagesTab({
 
   if (hasNoMapping) {
     return (
-      <Card className="rounded-none border-border/70 shadow-none text-sm animate-fade-in">
-        <CardContent className="flex flex-col items-center justify-center py-12 text-center space-y-4">
-          <div className="size-12 rounded-full bg-muted/40 border flex items-center justify-center text-muted-foreground">
-            <MessageSquare className="size-6 text-muted-foreground/55" />
-          </div>
-          <div className="max-w-[400px] space-y-1.5">
-            <h3 className="font-semibold text-foreground">No WhatsApp number added</h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              No WhatsApp identity is mapped to this user. Map a WhatsApp number to this user before Mesiri can associate messages with their account.
-            </p>
-          </div>
-          <Button size="sm" onClick={() => setWhatsappOpen(true)} className="font-bold text-xs gap-1.5 rounded-md px-4 py-1.5">
-            <Settings className="size-3.5" /> Manage WhatsApp Mapping
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="flex flex-col items-start gap-2 text-sm">
+        <p className="text-muted-foreground">Add their WhatsApp number to see the messages they send.</p>
+        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setWhatsappOpen(true)}>
+          <Settings className="size-3.5" /> Add WhatsApp number
+        </Button>
+      </div>
     )
   }
 
   const messagesList = messagesData?.items || []
   const totalCount = messagesData?.total || 0
   const totalPages = Math.ceil(totalCount / limit)
-
-  // Last Activity calculations from the newest message in the list
-  const newestMessage = messagesList[0]
-  const lastActivity = newestMessage ? new Date(newestMessage.occurred_at).toLocaleString() : 'None'
 
   const activeFiltersCount = [
     waIdFilter !== 'ALL',
@@ -248,47 +233,9 @@ export function UserWhatsAppMessagesTab({
   }
 
   return (
-    <div className="space-y-4 animate-fade-in text-sm">
-      {/* Tab Header Summary metrics */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <Card className="rounded-none border-border/70 shadow-none">
-          <CardHeader className="p-4 pb-2">
-            <CardDescription className="text-[10px] uppercase font-semibold text-muted-foreground">WhatsApp number</CardDescription>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 pt-0 flex justify-between items-center">
-            <span className="font-mono text-base font-semibold text-foreground">{user.whatsapp_number}</span>
-            <Button size="sm" variant="outline" onClick={() => setWhatsappOpen(true)} className="h-7 text-[10px] font-bold gap-1 rounded-md px-2">
-              Manage Mappings
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-none border-border/70 shadow-none">
-          <CardHeader className="p-4 pb-2">
-            <CardDescription className="text-[10px] uppercase font-semibold text-muted-foreground">Last WhatsApp Activity</CardDescription>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 pt-0">
-            <span className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-              <Clock className="size-4 text-muted-foreground/75" />
-              {lastActivity}
-            </span>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-none border-border/70 shadow-none sm:col-span-2 lg:col-span-1">
-          <CardHeader className="p-4 pb-2">
-            <CardDescription className="text-[10px] uppercase font-semibold text-muted-foreground">Linked to</CardDescription>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 pt-0 flex justify-between items-center">
-            <Badge variant="outline" className="rounded-sm py-0.5 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 font-semibold">
-              This person
-            </Badge>
-          </CardContent>
-        </Card>
-      </div>
-
+    <div className="space-y-3 text-sm">
       {/* Toolbar / Filters */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-muted/20 border p-3">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 ">
         <div className="flex items-center gap-2 flex-1 max-w-md relative">
           <Search className="size-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
           <Input

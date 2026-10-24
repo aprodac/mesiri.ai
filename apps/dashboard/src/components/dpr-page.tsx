@@ -16,16 +16,19 @@ export function DprSection({
   action,
   children,
   className,
+  id,
 }: {
   icon: React.ComponentType<{ className?: string }>
   title: string
+  /** An anchor, for links to one section (?tab=…). */
+  id?: string
   meta?: React.ReactNode
   action?: React.ReactNode
   children?: React.ReactNode
   className?: string
 }) {
   return (
-    <section className={cn('flex flex-col gap-2 border-t py-4 first:border-t-0 first:pt-0', className)}>
+    <section id={id} className={cn('flex scroll-mt-20 flex-col gap-2 border-t py-4 first:border-t-0 first:pt-0', className)}>
       {/* The action drops under the title when the row is too narrow. */}
       <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -171,7 +174,8 @@ export function DprHeader({
   crumb: string
   title: string
   chip?: React.ReactNode
-  date: string
+  /** The day, or any one muted line beside the title. */
+  date?: string
   action?: React.ReactNode
 }) {
   return (
@@ -187,7 +191,7 @@ export function DprHeader({
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
           {chip}
-          <span className="text-sm text-muted-foreground">{date}</span>
+          {date && <span className="text-sm text-muted-foreground">{date}</span>}
         </div>
         {action}
       </div>
@@ -259,6 +263,39 @@ export function PageError({
           <Link to={back.to}>{back.label}</Link>
         </Button>
       </div>
+    </div>
+  )
+}
+
+/** A small one-of-several switch (filters on list pages). */
+export function Segmented<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: T
+  options: { value: T; label: string; count?: number }[]
+  onChange: (value: T) => void
+}) {
+  return (
+    <div className="flex max-w-full overflow-x-auto rounded-lg border p-0.5" role="group" aria-label={label}>
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          aria-pressed={value === o.value}
+          onClick={() => onChange(o.value)}
+          className={cn(
+            'shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium',
+            value === o.value ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          {o.label}
+          {o.count !== undefined && <span className="ml-1 tabular-nums opacity-70">{o.count}</span>}
+        </button>
+      ))}
     </div>
   )
 }
