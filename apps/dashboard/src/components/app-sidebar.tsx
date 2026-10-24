@@ -227,7 +227,6 @@ const SIDEBAR_THEMES = {
     headerBg: '[--sidebar-header:#EEF1F6]',
     headerText: 'text-[#3E3C3D]',
     headerBtn: 'text-[#3E3C3D]/60 hover:text-[#3E3C3D] hover:bg-black/[0.06]',
-    brand: 'bg-[#3E3C3D] text-white',
     avatar: 'bg-white/10 text-white',
     danger: 'hover:text-[#FF9A8B]',
     name: 'text-white',
@@ -255,7 +254,6 @@ const SIDEBAR_THEMES = {
     headerBg: '[--sidebar-header:#FFFFFF] dark:[--sidebar-header:var(--background)]',
     headerText: 'text-foreground',
     headerBtn: 'text-muted-foreground hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-muted',
-    brand: 'bg-[#3E3C3D] text-white dark:bg-foreground dark:text-background',
     avatar: 'bg-white text-foreground border border-black/[0.06] dark:bg-background dark:border-border',
     danger: 'hover:text-destructive',
     name: 'text-foreground',
@@ -559,9 +557,11 @@ export function AppSidebar() {
             </svg>
             <div className="relative flex h-full items-center justify-between gap-2 px-3.5 -mt-3 group-data-[collapsible=icon]:px-2">
               <div className="flex items-center gap-2.5 min-w-0">
-                <MesiriMark className={S.brand} />
+                <MesiriMark
+                  className={cn('hidden text-lg px-1.5 group-data-[collapsible=icon]:inline', S.headerText)}
+                />
                 <MesiriWordmark
-                  className={cn('text-[17px] group-data-[collapsible=icon]:hidden', S.headerText)}
+                  className={cn('text-[19px] group-data-[collapsible=icon]:hidden', S.headerText)}
                 />
               </div>
               {showBackButton && (
