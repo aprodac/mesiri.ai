@@ -22,6 +22,9 @@ SAVE_LABOUR = "save_labour"
 SAVE_WORK_DONE = "save_work_done"
 SAVE_MATERIAL_RECEIPT = "save_material_receipt"
 SAVE_MATERIAL_USAGE = "save_material_usage"
+# [103]: material sent to another site; stock that was on site before Mesiri.
+TRANSFER_MATERIAL = "transfer_material"
+SAVE_OPENING_STOCK = "save_opening_stock"
 SAVE_EXPENSE = "save_expense"
 REPORT_ISSUE = "report_issue"
 TRANSFER_MONEY = "transfer_money"
@@ -56,6 +59,8 @@ WRITE_TOOLS = frozenset(
         SAVE_WORK_DONE,
         SAVE_MATERIAL_RECEIPT,
         SAVE_MATERIAL_USAGE,
+        TRANSFER_MATERIAL,
+        SAVE_OPENING_STOCK,
         SAVE_EXPENSE,
         REPORT_ISSUE,
         NOTE_FOR_ENGINEER,
@@ -293,6 +298,58 @@ def tool_specs() -> list[ToolSpec]:
                     "work_item": {"type": "string", "description": "What it was used for."},
                     "new_material": _NEW_MATERIAL,
                     "date": _DATE,
+                    "project": _PROJECT,
+                    "site": _SITE,
+                },
+                ["material", "quantity", "unit"],
+            ),
+        ),
+        ToolSpec(
+            name=TRANSFER_MATERIAL,
+            description=(
+                "Save material SENT FROM one site TO ANOTHER site of the company (sent to, shifted "
+                "to, transferred, moved to site B, matti, kondupoyi, bheja). It takes stock off "
+                "the sending site and adds it to the receiving one. Never save it as used, and "
+                "not as received: the other site is named, so this is the tool. If only the "
+                "sending site is named and it is where they work, the receiving one is still "
+                "needed: ask. Call it with the unit as said; the system checks the unit."
+            ),
+            parameters=_obj(
+                {
+                    "material": _MATERIAL,
+                    "quantity": {"type": "number"},
+                    "unit": {"type": "string"},
+                    "to_site": {
+                        "type": "string",
+                        "description": "The site the material went TO, as said. Never a guess.",
+                    },
+                    "date": _DATE,
+                    "project": _PROJECT,
+                    "site": {
+                        "type": "string",
+                        "description": (
+                            "The site it was sent FROM, ONLY if the user names one. Omit to use "
+                            "their usual site."
+                        ),
+                    },
+                },
+                ["material", "quantity", "unit", "to_site"],
+            ),
+        ),
+        ToolSpec(
+            name=SAVE_OPENING_STOCK,
+            description=(
+                "Save stock that was ALREADY on site before they started using Mesiri (opening "
+                "stock, already on site, stock undayirunnu, before Mesiri, starting stock). Never "
+                "a delivery: use this, not save_material_receipt. Entered once per site and "
+                "material. Call it with the unit as said; the system checks the unit."
+            ),
+            parameters=_obj(
+                {
+                    "material": _MATERIAL,
+                    "quantity": {"type": "number"},
+                    "unit": {"type": "string"},
+                    "new_material": _NEW_MATERIAL,
                     "project": _PROJECT,
                     "site": _SITE,
                 },
@@ -833,6 +890,28 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             "supplier": args.get("supplier") if received else None,
             "work_item": None if received else args.get("work_item"),
             "occurred_on": date,
+            "new_material": True if args.get("new_material") is True else None,
+            **sc,
+        }
+        return Candidate(semantic_type=SemanticType.MATERIAL_UPDATE, fields=_clean(fields))
+    if name == TRANSFER_MATERIAL:
+        fields = {
+            "material_name": args.get("material"),
+            "quantity": args.get("quantity"),
+            "unit": args.get("unit"),
+            "direction": "transfer",
+            "to_site_name": str(args.get("to_site") or "").strip(),
+            "occurred_on": date,
+            "new_material": None,
+            **sc,
+        }
+        return Candidate(semantic_type=SemanticType.MATERIAL_UPDATE, fields=_clean(fields))
+    if name == SAVE_OPENING_STOCK:
+        fields = {
+            "material_name": args.get("material"),
+            "quantity": args.get("quantity"),
+            "unit": args.get("unit"),
+            "direction": "opening_stock",
             "new_material": True if args.get("new_material") is True else None,
             **sc,
         }

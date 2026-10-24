@@ -60,6 +60,11 @@ HIDDEN_FIELDS = frozenset(
     {
         "currency",
         "available_stock",
+        "no_opening_stock",
+        "site_label",
+        "from_site_name",
+        "to_site_name",
+        "movement_reason",
         "is_forwarded",
         "is_frequently_forwarded",
         "is_tax_inclusive",

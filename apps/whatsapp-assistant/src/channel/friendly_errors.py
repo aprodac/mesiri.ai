@@ -28,6 +28,14 @@ _RULES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"worker_name"), "What is the worker's name?"),
     (re.compile(r"daily_wage"), "That wage doesn't look right — please send it again."),
     (re.compile(r"already exists"), "That already exists, so I didn't add it again."),
+    (
+        re.compile(r"opening stock .* already entered"),
+        "Opening stock for that material was already entered at this site, so I didn't add it again. "
+        "To change it, remove the first entry and send it again.",
+    ),
+    (re.compile(r"receiving site is not resolved"), "Which site did it go to?"),
+    (re.compile(r"two different sites"), "That is the same site. Which other site did it go to?"),
+    (re.compile(r"site not found"), "I couldn't find that site in your company."),
     (re.compile(r"project is not resolved"), "Which project is this for?"),
     (re.compile(r"site is not resolved"), "Which site is this for?"),
 )

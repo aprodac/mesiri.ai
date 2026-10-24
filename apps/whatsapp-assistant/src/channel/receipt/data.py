@@ -237,6 +237,7 @@ _DRAFT_TYPES = frozenset(
         DraftActionType.RECORD_LABOUR_ATTENDANCE,
         DraftActionType.RECORD_MATERIAL_RECEIPT,
         DraftActionType.RECORD_MATERIAL_USAGE,
+        DraftActionType.TRANSFER_MATERIAL,
         DraftActionType.RECORD_SITE_ISSUE,
     }
 )
@@ -310,7 +311,7 @@ def build_receipt_data(
         summary_value = hero_number
     elif draft.action_type is DraftActionType.RECORD_MATERIAL_RECEIPT:
         kind = ReceiptKind.MATERIAL_IN
-        category = "Material received"
+        category = "Opening stock" if fields.get("movement_reason") == "OPENING_STOCK" else "Material received"
         hero_number, hero_unit = _number(fields.get("quantity", "")), str(fields.get("unit", "")).strip()
         rows = _rows(kind, ("Material", material_name.title()), ("Supplier", fields.get("supplier")))
         id_prefix = "MR"
@@ -321,6 +322,18 @@ def build_receipt_data(
         hero_number, hero_unit = _number(fields.get("quantity", "")), str(fields.get("unit", "")).strip()
         rows = _rows(kind, ("Material", material_name.title()), ("Used for", fields.get("work_item")))
         id_prefix = "MU"
+        summary_text, summary_value = material_name.title(), _fmt_quantity(fields)
+    elif draft.action_type is DraftActionType.TRANSFER_MATERIAL:
+        kind = ReceiptKind.MATERIAL_USED
+        category = "Material transfer"
+        hero_number, hero_unit = _number(fields.get("quantity", "")), str(fields.get("unit", "")).strip()
+        rows = _rows(
+            kind,
+            ("Material", material_name.title()),
+            ("From", fields.get("from_site_name")),
+            ("To", fields.get("to_site_name")),
+        )
+        id_prefix = "MT"
         summary_text, summary_value = material_name.title(), _fmt_quantity(fields)
     elif draft.action_type is DraftActionType.RECORD_LABOUR_ATTENDANCE:
         trades, headcount, named = _labour_trades(fields)
