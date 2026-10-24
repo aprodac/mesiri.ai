@@ -101,8 +101,8 @@ SITE_NO_UPDATE = TemplateSpec(
 
 #: Asking an outside DPR contact to opt in (WA-09). Body (submitted text,
 #: docs/ops/whatsapp-templates.md):
-#:   "{{1}} would like to send you the daily progress report for {{2}} on
-#:    WhatsApp. Reply YES to receive it, or STOP to never be messaged."
+#:   "Report access: {{1}} has added you to the daily progress report list
+#:    for project {{2}}. Reply YES to start receiving it, or STOP to opt out."
 #: Quick replies YES / STOP; typed replies work the same.
 DPR_OPT_IN = TemplateSpec(
     name="mesiri_dpr_optin",
@@ -126,8 +126,8 @@ TRIAL_ENDING = TemplateSpec(
 #: Someone asked to join the company with its code (SS-05), to an admin who
 #: has not messaged in 24 h (SS-12). Body (submitted text,
 #: docs/ops/whatsapp-templates.md):
-#:   "{{1}} (+{{2}}) wants to join {{3}} on Mesiri with your join code.
-#:    Approve them?"
+#:   "New join request: {{1}} (+{{2}}) wants to join {{3}} on Mesiri with
+#:    your join code. Approve them?"
 #: The Approve / Reject taps carry the same ids as the in-window buttons
 #: (runtime/join_journey.py), so the decision is handled the same way.
 JOIN_REQUEST = TemplateSpec(

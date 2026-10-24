@@ -31,9 +31,18 @@ How it works in code:
    is then exactly as before WA-12.
 
 **Meta rule:** a body may not start or end with a variable. That is why
-`mesiri_dpr_optin` starts "Hello!" and `mesiri_join_request` starts "New join
-request:" (added 24 Oct; the variables and their order are unchanged, so the
-code needed no change).
+`mesiri_dpr_optin` starts "Report access:" and `mesiri_join_request` starts
+"New join request:" (24 Oct; the variables and their order are unchanged, so
+the code needed no change).
+
+**Utility vs Marketing:** Meta's classifier flagged the original
+`mesiri_dpr_optin` ("... would like to send you ...") as Marketing; the
+"Report access: ... has added you to ..." wording passed as Utility.
+`mesiri_trial_ending` was flagged as Marketing in three wordings, including a
+plain account notice ("Account update for {{1}}: your Mesiri trial ends on
+{{2}}. After that date, daily reports for this account stop. Reply CONTINUE if
+you need help with your account."). Meta treats any trial-ending notice as
+Marketing, so it can only go in as Marketing (higher price per message).
 
 ## Submission status (WA-10, 24 Oct 2026)
 
@@ -46,10 +55,10 @@ Submitted on the **Paraclete** WhatsApp account (ID 1450347316419889, number
 | `mesiri_site_day_review` | In review |
 | `mesiri_join_request` | In review |
 | `mesiri_ops_alert` | In review |
-| `mesiri_dpr_delivery` | Not submitted: needs a sample PDF uploaded by hand (form otherwise as below) |
+| `mesiri_dpr_delivery` | In review |
+| `mesiri_dpr_optin` | In review (reworded, see above) |
 | `mesiri_login_code` | Not submitted: Meta said the account "does not have permission" to create Authentication templates (usually business verification) |
-| `mesiri_trial_ending` | Held: Meta flagged it as Marketing and said it would be rejected as Utility. Needs a decision: submit as Marketing (higher price) or reword |
-| `mesiri_dpr_optin` | Held: same Marketing flag as above |
+| `mesiri_trial_ending` | Held: flagged Marketing even after rewording (see above). Needs a decision: submit as Marketing, or rely on the in-window reminder only |
 
 ## Templates
 
@@ -162,7 +171,7 @@ messaged the number, so this always goes as the template.
 | Category | Utility |
 | Language | English (`en`) |
 | Header | None |
-| Body | `Hello! {{1}} would like to send you the daily progress report for {{2}} on WhatsApp. Reply YES to receive it, or STOP to never be messaged.` |
+| Body | `Report access: {{1}} has added you to the daily progress report list for project {{2}}. Reply YES to start receiving it, or STOP to opt out.` |
 | Footer | `Sent by Mesiri` |
 | Buttons | Quick replies: `YES`, `STOP` |
 
