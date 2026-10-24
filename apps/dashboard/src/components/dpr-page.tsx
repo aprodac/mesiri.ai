@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Check } from 'lucide-react'
+import { ArrowLeft, Check, TriangleAlert } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 // The building blocks of the site and project DPR pages (WEB-04/05, reworked
@@ -190,12 +191,58 @@ export function PageHeader({
   actions?: React.ReactNode
 }) {
   return (
-    <header className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+    <header className="flex items-start justify-between gap-3 sm:items-end">
       <div className="flex min-w-0 flex-col gap-0.5">
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
     </header>
+  )
+}
+
+/** Placeholder while a DPR page loads: the shape of the page, not a line of
+ * text. */
+export function DprPageSkeleton() {
+  return (
+    <div className="mx-auto flex w-full max-w-6xl animate-pulse flex-col gap-4 pb-4 sm:px-2" aria-busy="true" aria-label="Loading">
+      <div className="h-4 w-48 rounded bg-muted" />
+      <div className="h-7 w-72 rounded bg-muted" />
+      <div className="h-9 rounded-lg bg-muted/60" />
+      <div className="h-16 rounded-xl bg-muted/60" />
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="flex flex-col gap-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="h-10 rounded-lg bg-muted/60" />
+          ))}
+        </div>
+        <div className="h-64 rounded-xl bg-muted/60" />
+      </div>
+    </div>
+  )
+}
+
+/** A page that could not load: what failed, Try again, and a way out. */
+export function PageError({
+  message,
+  onRetry,
+  back,
+}: {
+  message: string
+  onRetry: () => void
+  back: { to: string; label: string }
+}) {
+  return (
+    <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 py-16 text-center">
+      <TriangleAlert className="size-6 text-destructive" />
+      <p className="font-medium">{message}</p>
+      <p className="text-sm text-muted-foreground">Check your connection and try again.</p>
+      <div className="flex gap-2">
+        <Button onClick={onRetry}>Try again</Button>
+        <Button asChild variant="outline">
+          <Link to={back.to}>{back.label}</Link>
+        </Button>
+      </div>
+    </div>
   )
 }

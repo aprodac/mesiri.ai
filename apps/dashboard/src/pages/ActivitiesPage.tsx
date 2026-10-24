@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   Activity as ActivityIcon,
   Search,
@@ -38,6 +38,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Callout, PageHeader, StatStrip } from '@/components/dpr-page'
 import { useSiteNames } from '@/lib/site-names'
+import { useUrlState } from '@/lib/url-state'
 import { downloadTextFile, toCsv } from '@/lib/export'
 import { CHIP, longDate, plural, qty, siteDayPath } from '@/lib/site-day'
 import { Button } from '@/components/ui/button'
@@ -114,12 +115,22 @@ export default function ActivitiesPage() {
   const [loading, setLoading] = React.useState<boolean>(true)
   const [error, setError] = React.useState<string | null>(null)
 
-  // Filters
-  const [statusFilter, setStatusFilter] = React.useState<string>('ALL')
-  const [searchQuery, setSearchQuery] = React.useState<string>('')
-  const [datePreset, setDatePreset] = React.useState<string>('ALL')
-  const [dateFrom, setDateFrom] = React.useState<string>('')
-  const [dateTo, setDateTo] = React.useState<string>('')
+  // Filters live in the address (survive Back/refresh, shareable). The date
+  // range is derived from the preset; only "Pick dates" stores from/to.
+  const [, setParams] = useSearchParams()
+  const [statusFilter, setStatusFilter] = useUrlState<string>('status', 'ALL')
+  const [searchQuery, setSearchQuery] = useUrlState<string>('q', '')
+  const [datePreset, setDatePreset] = useUrlState<string>('date', 'ALL')
+  const [customFrom, setDateFrom] = useUrlState<string>('from', '')
+  const [customTo, setDateTo] = useUrlState<string>('to', '')
+  const [dateFrom, dateTo] = React.useMemo(() => {
+    const now = new Date()
+    if (datePreset === 'TODAY') return [toLocalISODate(now), toLocalISODate(now)]
+    if (datePreset === 'THIS_WEEK') return [toLocalISODate(new Date(now.getTime() - 6 * 86_400_000)), toLocalISODate(now)]
+    if (datePreset === 'THIS_MONTH') return [toLocalISODate(new Date(now.getFullYear(), now.getMonth(), 1)), toLocalISODate(now)]
+    if (datePreset === 'CUSTOM') return [customFrom, customTo]
+    return ['', '']
+  }, [datePreset, customFrom, customTo])
 
   // Detail sheet
   const [selectedActivityId, setSelectedActivityId] = React.useState<string | null>(null)
@@ -260,26 +271,7 @@ export default function ActivitiesPage() {
     }
   }
 
-  const handleDatePresetChange = (val: string) => {
-    setDatePreset(val)
-    const now = new Date()
-    if (val === 'ALL') {
-      setDateFrom('')
-      setDateTo('')
-    } else if (val === 'TODAY') {
-      const todayStr = toLocalISODate(now)
-      setDateFrom(todayStr)
-      setDateTo(todayStr)
-    } else if (val === 'THIS_WEEK') {
-      const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-      setDateFrom(toLocalISODate(lastWeek))
-      setDateTo(toLocalISODate(now))
-    } else if (val === 'THIS_MONTH') {
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
-      setDateFrom(toLocalISODate(firstDay))
-      setDateTo(toLocalISODate(now))
-    }
-  }
+  const handleDatePresetChange = (val: string) => setDatePreset(val)
 
   const fetchList = React.useCallback(async () => {
     setLoading(true)
@@ -360,15 +352,18 @@ export default function ActivitiesPage() {
     return [...byDay.entries()].sort(([a], [b]) => b.localeCompare(a))
   }, [filteredActivities])
 
-  const hasActiveFilters = statusFilter !== 'ALL' || datePreset !== 'ALL' || !!dateFrom || !!dateTo || !!searchQuery
+  const hasActiveFilters = statusFilter !== 'ALL' || datePreset !== 'ALL' || !!searchQuery
 
-  const resetFilters = () => {
-    setStatusFilter('ALL')
-    setDatePreset('ALL')
-    setDateFrom('')
-    setDateTo('')
-    setSearchQuery('')
-  }
+  // One address update: several setters in the same tick would overwrite
+  // each other.
+  const resetFilters = () =>
+    setParams(
+      (prev) => {
+        for (const key of ['status', 'q', 'date', 'from', 'to']) prev.delete(key)
+        return prev
+      },
+      { replace: true },
+    )
 
   const exportCsv = () => {
     const rows = filteredActivities.map((a) => [
@@ -450,11 +445,11 @@ export default function ActivitiesPage() {
             <SelectItem value="CUSTOM">Pick dates</SelectItem>
           </SelectContent>
         </Select>
-        {(datePreset === 'CUSTOM' || (dateFrom && !['TODAY', 'THIS_WEEK', 'THIS_MONTH'].includes(datePreset))) && (
+        {datePreset === 'CUSTOM' && (
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setDatePreset('CUSTOM') }} className="h-9 w-[150px] dark:[color-scheme:dark]" />
+            <Input type="date" value={customFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 w-[150px] dark:[color-scheme:dark]" />
             to
-            <Input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setDatePreset('CUSTOM') }} className="h-9 w-[150px] dark:[color-scheme:dark]" />
+            <Input type="date" value={customTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 w-[150px] dark:[color-scheme:dark]" />
           </div>
         )}
         {hasActiveFilters && (

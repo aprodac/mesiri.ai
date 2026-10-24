@@ -1,4 +1,5 @@
-import { Link, Outlet } from 'react-router-dom'
+import * as React from 'react'
+import { Link, Outlet, useLocation } from 'react-router-dom'
 import { AlertCircle, CalendarDays } from 'lucide-react'
 import { AppSidebar } from '@/components/app-sidebar'
 import { ScopeBar } from '@/components/scope-bar'
@@ -7,6 +8,7 @@ import { Separator } from '@/components/ui/separator'
 import { RequireAuth } from '@/lib/AuthContext'
 import { TrialBanner } from '@/components/trial-banner'
 import { useNavCounts } from '@/lib/nav-counts'
+import { routeTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
 
 // Top bar (WEB-20): stays put while the page scrolls; a thin site-colour
@@ -56,13 +58,26 @@ function TopBar() {
 }
 
 export function AppLayout() {
+  const { pathname } = useLocation()
+  // Default tab title per route; a page naming its exact subject overrides
+  // it (usePageTitle runs in a passive effect, after this one).
+  React.useLayoutEffect(() => {
+    document.title = routeTitle(pathname)
+  }, [pathname])
   return (
     <RequireAuth>
+      {/* Keyboard users jump past the sidebar to the page. */}
+      <a
+        href="#main-content"
+        className="sr-only z-50 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
+      >
+        Skip to content
+      </a>
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset>
           <TopBar />
-          <div className="flex flex-1 flex-col gap-4 p-4">
+          <div id="main-content" tabIndex={-1} className="flex flex-1 flex-col gap-4 p-4 outline-none">
             <TrialBanner />
             <Outlet />
           </div>

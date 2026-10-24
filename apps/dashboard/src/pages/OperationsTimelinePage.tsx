@@ -18,6 +18,7 @@ import { useScope } from '@/lib/ScopeContext'
 import { fetchTimelineEntriesApi, type TimelineApiEntry } from '@/lib/api'
 import { longDate, plural, siteDayPath } from '@/lib/site-day'
 import { useSiteNames } from '@/lib/site-names'
+import { useUrlState } from '@/lib/url-state'
 import { Callout, PageHeader } from '@/components/dpr-page'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -101,9 +102,9 @@ const PAGE = 50
 export default function OperationsTimelinePage() {
   const { scope } = useScope()
   const names = useSiteNames()
-  const [search, setSearch] = React.useState('')
-  const [kind, setKind] = React.useState<Kind | 'all'>('all')
-  const [range, setRange] = React.useState<'all' | 'today' | 'week' | 'month'>('all')
+  const [search, setSearch] = useUrlState<string>('q', '')
+  const [kind, setKind] = useUrlState<Kind | 'all'>('kind', 'all')
+  const [range, setRange] = useUrlState<'all' | 'today' | 'week' | 'month'>('range', 'all')
 
   const projectId = scope.mode !== 'portfolio' ? scope.projectId : undefined
   const siteId = scope.mode === 'site' ? scope.siteId : undefined
@@ -198,6 +199,7 @@ export default function OperationsTimelinePage() {
               key={k}
               type="button"
               onClick={() => setKind(k)}
+              aria-pressed={active}
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
                 active ? 'border-foreground bg-foreground text-background' : 'hover:bg-muted',

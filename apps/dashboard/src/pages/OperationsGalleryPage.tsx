@@ -16,6 +16,7 @@ import { useScope } from '@/lib/ScopeContext'
 import { fetchSiteGalleryApi, type GalleryItem } from '@/lib/api'
 import { longDate, plural, siteDayPath } from '@/lib/site-day'
 import { useSiteNames } from '@/lib/site-names'
+import { useUrlState } from '@/lib/url-state'
 import { Callout, PageHeader } from '@/components/dpr-page'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -75,7 +76,7 @@ function Thumb({ item, onOpen }: { item: GalleryItem; onOpen: () => void }) {
 export default function OperationsGalleryPage() {
   const { scope } = useScope()
   const names = useSiteNames()
-  const [search, setSearch] = React.useState('')
+  const [search, setSearch] = useUrlState<string>('q', '')
   const [open, setOpen] = React.useState<number | null>(null)
 
   const projectId = scope.mode !== 'portfolio' ? scope.projectId : undefined

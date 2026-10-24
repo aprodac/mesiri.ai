@@ -265,7 +265,7 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
 
     const hasProjectAccess = projects.some((p) => p.id === projectId)
     if (!hasProjectAccess) {
-      return { isValid: false, reason: 'Project not found or access denied.' }
+      return { isValid: false, reason: "This project doesn't exist, or you don't have access to it." }
     }
 
     if (siteId) {
@@ -275,7 +275,7 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
 
       const hasSiteAccess = sites.some((s) => s.id === siteId)
       if (!hasSiteAccess) {
-        return { isValid: false, reason: 'Site not found or does not belong to this project.' }
+        return { isValid: false, reason: "This site doesn't exist, or it isn't part of this project." }
       }
     }
 
@@ -324,7 +324,7 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex h-svh items-center justify-center text-sm text-muted-foreground gap-2">
         <Loader2 className="size-4 animate-spin text-primary" />
-        Resolving scope context...
+        Loading…
       </div>
     )
   }
@@ -334,13 +334,13 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex h-svh items-center justify-center p-6 text-center">
         <div className="flex flex-col items-center gap-4 max-w-md bg-card p-6 rounded-lg border border-border shadow-xs">
-          <ShieldAlert className="size-10 text-rose-500" />
-          <h2 className="text-base font-bold text-foreground">Invalid Scope Context</h2>
+          <ShieldAlert className="size-8 text-destructive" />
+          <h2 className="text-base font-semibold text-foreground">This page isn't available</h2>
           <p className="text-sm text-muted-foreground leading-relaxed">
             {validation.reason}
           </p>
           <Button size="sm" onClick={setPortfolioScope} className="mt-2">
-            Return to Portfolio
+            Show all projects
           </Button>
         </div>
       </div>

@@ -26,12 +26,13 @@ import {
   siteStatus,
 } from '@/lib/site-day'
 import { useReadOnly } from '@/lib/trial'
+import { usePageTitle } from '@/lib/page-title'
 import { cn, formatClock } from '@/lib/utils'
 import { useToast } from '@/components/ui/toast-notification'
 import { DprSummaryCard } from '@/components/dpr-summary-card'
 import { DprVersionsCard } from '@/components/dpr-versions-card'
 import { Button } from '@/components/ui/button'
-import { Callout, DprAside, DprHeader, DprSection, DprSteps, StatStrip, type StepState } from '@/components/dpr-page'
+import { Callout, DprAside, DprHeader, DprPageSkeleton, DprSection, DprSteps, PageError, StatStrip, type StepState } from '@/components/dpr-page'
 
 // Project DPR page (WEB-05): one project's day. Every site's day as it stands
 // (opened from here to review and confirm), and the project DPR -- the
@@ -147,18 +148,16 @@ export default function ProjectDayPage() {
     refetchInterval: 60_000,
   })
   const detail = query.data
+  usePageTitle(`${detail?.project.project_name ?? 'Project'} · Project DPR`)
 
-  if (query.isLoading) {
-    return <div className="p-6 text-sm text-muted-foreground">Loading the project's day…</div>
-  }
+  if (query.isLoading) return <DprPageSkeleton />
   if (query.isError || !detail) {
     return (
-      <div className="flex flex-col gap-3 p-6">
-        <p className="text-sm text-destructive">This project's day could not be loaded.</p>
-        <Link to={`/today?date=${date}`} className="text-sm font-semibold text-primary hover:underline">
-          Back to Today
-        </Link>
-      </div>
+      <PageError
+        message="This project's day could not be loaded."
+        onRetry={() => query.refetch()}
+        back={date === localIsoDate(new Date()) ? { to: '/today', label: 'Back to Today' } : { to: '/reports', label: 'Back to Reports' }}
+      />
     )
   }
 
