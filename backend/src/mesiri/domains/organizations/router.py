@@ -433,7 +433,7 @@ async def get_company_summary(
     admin: dict = Depends(require_admin),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
-    org_uuid = uuid.UUID(admin.get("org"))
+    org_uuid = _org_id(admin)
 
     # 1. Total & Active users
     u_total = await conn.execute(
