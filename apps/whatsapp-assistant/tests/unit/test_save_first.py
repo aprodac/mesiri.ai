@@ -455,3 +455,38 @@ def test_snapshot_note_says_which_figures_a_resend_replaced():
     # Nothing on record, or not labour: no note.
     assert snapshot_note(labour, sent, None) is None
     assert snapshot_note(_T.RECORD_MATERIAL_USAGE, sent, day) is None
+
+
+# ---------------------------------------------------------------------------
+# Request 104, A1: nothing is written without a card
+# ---------------------------------------------------------------------------
+
+
+def _action_types_without_a_fact():
+    return [t for t in DraftActionType if t not in save_first_module.FACT_TYPE_BY_ACTION]
+
+
+@pytest.mark.parametrize("action", _action_types_without_a_fact(), ids=lambda a: a.value)
+async def test_a_draft_the_review_log_does_not_cover_is_never_saved_first(action):
+    """The guard: a save-first flow only commits what a Save card can hold. Any
+    other kind (a progress update on an open activity: "JCB worked 6 hours")
+    stays a Yes / No question, so nothing is written without a pending card."""
+    handler, dispatcher = _handler(_state(WorkflowKey.SITE_UPDATE, action))
+    assert await handler.save_now(USR) is None
+    assert dispatcher.dispatched == []
+
+
+@pytest.mark.parametrize(
+    "action", list(save_first_module.FACT_TYPE_BY_ACTION), ids=lambda a: a.value
+)
+async def test_a_reviewable_draft_is_still_saved_first(action):
+    key = {
+        DraftActionType.CREATE_ACTIVITY: WorkflowKey.SITE_UPDATE,
+        DraftActionType.RECORD_LABOUR_ATTENDANCE: WorkflowKey.LABOUR_ATTENDANCE,
+        DraftActionType.RECORD_MATERIAL_RECEIPT: WorkflowKey.MATERIAL_RECEIPT,
+        DraftActionType.RECORD_MATERIAL_USAGE: WorkflowKey.MATERIAL_USAGE,
+        DraftActionType.RECORD_SITE_ISSUE: WorkflowKey.SITE_ISSUE_REPORT,
+    }[action]
+    handler, dispatcher = _handler(_state(key, action))
+    assert await handler.save_now(USR) is not None
+    assert len(dispatcher.dispatched) == 1

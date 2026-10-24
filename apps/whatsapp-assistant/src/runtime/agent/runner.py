@@ -343,6 +343,11 @@ class AgentRunner:
         correlation_id: str | None = None,
     ) -> ReplySpec:
         text = (run.text or "").strip()
+        if toolbox.equipment_noted and not _entries(toolbox):
+            # Request 104: the one plain line, whatever the model wrote.
+            from .equipment import EQUIPMENT_LINE
+
+            return ReplySpec(text=EQUIPMENT_LINE)
         if _entries(toolbox):
             # Before the Save tap nothing is kept (WA-37).
             text = without_saved_claims(text)

@@ -22,6 +22,7 @@ from mesiri_ai.models import ToolOutcome
 from runtime.save_first import DRAFT_NOTE
 
 from .cards import CardItem, merge_changes
+from .equipment import EQUIPMENT_LINE, is_equipment_only
 from .gateway import StepResult, WorkflowGateway
 from .later import LaterItem, held_item
 from .tools import (
@@ -30,6 +31,8 @@ from .tools import (
     QUERY_MATERIALS,
     REPORT_ISSUE,
     REQUEST_DPR,
+    SAVE_LABOUR,
+    SAVE_WORK_DONE,
     SET_UNIT_CONVERSION,
     SET_WORK_SITE,
     STILL_TO_DO,
@@ -222,6 +225,9 @@ class AgentToolbox:
     #: Request 83: what request_dpr answered, for the one "draft so far" line a
     #: message that also saves entries gets under its card.
     report_text: str | None = None
+    #: Request 104: the message is only about equipment, which WhatsApp does not
+    #: record yet; its reply is the one plain line, never a Save.
+    equipment_noted: bool = False
     #: The last reply offered to ask their engineer, so a bare "yes" asks it.
     engineer_offered: bool = False
     #: Request 88: lines the system adds under the model's words, from the
@@ -332,6 +338,16 @@ class AgentToolbox:
                         "these stock figures, copying the numbers. Do not report an issue for it "
                         "and do not say you will ask anyone."
                     ),
+                }
+            )
+        if name in (SAVE_WORK_DONE, SAVE_LABOUR) and is_equipment_only(self.user_text):
+            _log.warning("agent.equipment_not_recorded tool=%s", name)
+            self.equipment_noted = True
+            return ToolOutcome(
+                content={
+                    "status": "not_saved",
+                    "reason": "equipment is not recorded on WhatsApp yet",
+                    "instruction": f"Nothing was saved. Say exactly: {EQUIPMENT_LINE}",
                 }
             )
         signature = f"{name}:{json.dumps(args, sort_keys=True, default=str)}"

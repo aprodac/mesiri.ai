@@ -183,6 +183,17 @@ class InteractionHandler:
             workflow_key=loaded.state.workflow_key, organization_id=organization_id
         ):
             return None
+        from runtime.save_first import FACT_TYPE_BY_ACTION
+
+        if draft is not None and draft.action_type not in FACT_TYPE_BY_ACTION:
+            # Request 104: a record the review log does not cover (a progress
+            # update on an open activity) cannot sit on a Save card, so it
+            # cannot be saved first either -- it would be kept with no way to
+            # tap Cancel or say UNDO ("JCB worked 6 hours": "Saved" and then
+            # "Nothing to undo"). It asks Yes / No instead; nothing is written
+            # until the sender says yes.
+            logger.info("save_first.not_reviewable action=%s", draft.action_type.value)
+            return None
 
         result, reply_text, execution_result, receipt_coro, next_segment_reply = await self._resume_and_render(
             user_id, loaded, ResumeAction.CONFIRM, log_prefix="save_first", actor=actor
