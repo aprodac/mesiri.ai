@@ -776,7 +776,8 @@ def build_message_handlers(
                     # Request 90: records were written but no card can show them:
                     # block the reply, take them back, log it. No silent writes.
                     _log.error("agent.write_without_card user=%s entries=%s", ctx.user_id, len(facts))
-                    await _undo_facts(facts)
+                    # (a pending action wrote nothing: only the drafts are taken back)
+                    await _undo_facts([f for f in facts if f[0] != "action"])
                     await _remember_card(gateway, open_card=False)
                     composed = ReplySpec(text=save_button.NOT_SHOWN)
                     receipt_image = None
