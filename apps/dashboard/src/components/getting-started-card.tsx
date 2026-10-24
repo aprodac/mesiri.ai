@@ -158,11 +158,16 @@ export function GettingStartedCard() {
   const continueAsked = trial.continueRequested || continueAsk.isSuccess
 
   return (
-    <section aria-label="Getting started" className="rounded-xl border bg-card px-5 py-4 flex flex-col gap-3">
-      <header className="flex flex-wrap items-baseline justify-between gap-2">
-        <div className="flex flex-col gap-0.5">
-          <h2 className="text-base font-semibold">Getting started</h2>
-          <p className="text-sm text-muted-foreground">
+    // Compact (WEB-25 density): progress on the title line, done steps
+    // folded into it; only the steps still to do get a row.
+    <section aria-label="Getting started" className="flex flex-col gap-2 rounded-xl border px-4 py-3">
+      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+          <h2 className="text-sm font-semibold">Getting started</h2>
+          <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted" aria-hidden>
+            <div className="h-full bg-primary transition-all" style={{ width: `${(doneCount / list.length) * 100}%` }} />
+          </div>
+          <p className="text-xs text-muted-foreground">
             {doneCount} of {list.length} done
             {daysLeft !== null && ` · ${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left in your free trial`}
             {daysLeft !== null &&
@@ -194,12 +199,9 @@ export function GettingStartedCard() {
           Hide for now
         </button>
       </header>
-      <div className="h-1.5 rounded-full bg-muted overflow-hidden" aria-hidden>
-        <div className="h-full bg-primary transition-all" style={{ width: `${(doneCount / list.length) * 100}%` }} />
-      </div>
       <ul className="flex flex-col divide-y">
-        {list.map((item) => (
-          <li key={item.key} className="flex items-start gap-3 py-2.5">
+        {list.filter((item) => !item.done).map((item) => (
+          <li key={item.key} className="flex items-start gap-3 py-2">
             <span
               className={cn(
                 'mt-0.5 size-5 shrink-0 rounded-full border flex items-center justify-center',

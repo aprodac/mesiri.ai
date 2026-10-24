@@ -26,8 +26,9 @@ export function DprSection({
 }) {
   return (
     <section className={cn('flex flex-col gap-2 border-t py-4 first:border-t-0 first:pt-0', className)}>
-      <header className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
+      {/* The action drops under the title when the row is too narrow. */}
+      <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-foreground/70">
             <Icon className="size-3.5" />
           </span>
