@@ -35,5 +35,5 @@ If you need the owner to do something (a permission, a decision, a credential), 
 starting with "👀 Please check Claude Code:" and stop.
 ```
 
-Then add GitHub secrets in `StarShape-in/mesiri.ai`: `TEAMMATE_ROUTINE_MERCON_URL` (the routine's `/fire`
+Then add GitHub secrets in `aprodac/mesiri.ai`: `TEAMMATE_ROUTINE_MERCON_URL` (the routine's `/fire`
 URL) and `TEAMMATE_ROUTINE_MERCON_TOKEN` (its API token), and run **Deploy Teammate listener**.

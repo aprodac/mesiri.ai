@@ -27,6 +27,8 @@ name: Claude ops
 #                     (read-only; no message text or values; INF-14, approved by Ilan 24 Oct)
 #   vps-scope         infra/deploy/scope_report.sh `text` = project name: its sites (status) and members' site
 #                     access (read-only, names and counts only)
+#   vps-templates     infra/deploy/whatsapp_templates.sh: `text` = check | add:<name>[,<name>] -- list Meta-approved
+#                     templates in WHATSAPP_APPROVED_TEMPLATES, restart, /health (WA-10; asked by Ilan 24 Oct)
 #   golden-live       the agent golden sets on the real model (`pytest -m live`, ARCH-02 gate; `text` = site |
 #                     materials | empty for both). Uses TEAMMATE_GEMINI_API_KEY (approved by Ilan 22 Oct); no VPS.
 #
@@ -40,7 +42,7 @@ on:
         description: What to run
         required: true
         type: choice
-        options: [vps-check, vps-backup-now, vps-staging, vps-app-login, vps-smoke, vps-perf, vps-evening, bot-status, bot-chats, bot-test, bot-recent-test, bot-recent-team, bot-items, bot-label-test, golden-live, vps-agent-log, vps-agent-trace, vps-scope]
+        options: [vps-check, vps-backup-now, vps-staging, vps-app-login, vps-smoke, vps-perf, vps-evening, bot-status, bot-chats, bot-test, bot-recent-test, bot-recent-team, bot-items, bot-label-test, golden-live, vps-agent-log, vps-agent-trace, vps-scope, vps-templates]
       text:
         description: "bot-test: the message (or choose:<n|title>); bot-label-test: the chat jid"
         required: false
@@ -134,6 +136,14 @@ jobs:
             vps-scope)
               ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "bash -s -- '$(printf '%s' "$TEXT" | tr -dc '[:alnum:] _-')'" \
                 < infra/deploy/scope_report.sh 2>&1 | mask ;;
+            vps-templates)
+              case "$TEXT" in
+                check) ARGS="check" ;;
+                add:*) ARGS="add $(printf '%s' "${TEXT#add:}" | tr -dc 'a-z_,')" ;;
+                *) echo "text must be check or add:<name>[,<name>]"; exit 2 ;;
+              esac
+              scp -i ~/.ssh/deploy_key infra/deploy/whatsapp_templates.sh "${VPS_USER}@${VPS_HOST}:/tmp/whatsapp_templates.sh"
+              ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "bash /tmp/whatsapp_templates.sh ${ARGS}" 2>&1 | mask ;;
             vps-evening)
               ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "bash -s -- $(printf '%s' "$TEXT" | tr -dc 0-9-)" \
                 < infra/deploy/evening_report.sh 2>&1 | mask ;;
