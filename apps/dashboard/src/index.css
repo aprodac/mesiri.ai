@@ -104,6 +104,9 @@
   /* Geist Mono is used for numeric displays throughout the dashboard
      (stat values, tables, chart ticks) via the font-mono utility. */
   --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Unbounded is the brand face, used only for the Mesiri logo/wordmark
+     (components/brand/mesiri-logo.tsx) via the font-brand utility. */
+  --font-brand: 'Unbounded', 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

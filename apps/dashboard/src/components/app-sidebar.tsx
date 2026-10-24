@@ -55,6 +55,7 @@ import {
 import { useAuth } from '@/lib/AuthContext'
 import { useAllowedScopes, useScope } from '@/lib/ScopeContext'
 import { logout } from '@/lib/api'
+import { MesiriMark, MesiriWordmark } from '@/components/brand/mesiri-logo'
 import type { ScopeKind } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
 import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
@@ -558,22 +559,10 @@ export function AppSidebar() {
             </svg>
             <div className="relative flex h-full items-center justify-between gap-2 px-3.5 -mt-3 group-data-[collapsible=icon]:px-2">
               <div className="flex items-center gap-2.5 min-w-0">
-                <div
-                  className={cn(
-                    'size-8 rounded-lg flex items-center justify-center font-bold text-sm shrink-0',
-                    S.brand
-                  )}
-                >
-                  M
-                </div>
-                <span
-                  className={cn(
-                    'font-bold text-[17px] tracking-tight group-data-[collapsible=icon]:hidden',
-                    S.headerText
-                  )}
-                >
-                  Mesiri
-                </span>
+                <MesiriMark className={S.brand} />
+                <MesiriWordmark
+                  className={cn('text-[17px] group-data-[collapsible=icon]:hidden', S.headerText)}
+                />
               </div>
               {showBackButton && (
                 <Link
