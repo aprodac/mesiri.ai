@@ -13,10 +13,10 @@ wrong site or lose the message.
 
 | ID | Problem | Severity | Approval |
 | --- | --- | --- | --- |
-| SIT-01 | A site name Mesiri can't match is saved to today's site | Serious (wrong data) | None |
-| SIT-02 | A second message before tapping drops the first | Serious (lost message) | None |
-| SIT-03 | Typing the site name loses the waiting message | Serious (lost message) | None |
-| SIT-04 | A late tap loses the waiting message | Serious (lost message) | None |
+| SIT-01 | A site name Mesiri can't match is saved to today's site | Serious (wrong data) | None — **fixed (WA-66), retest** |
+| SIT-02 | A second message before tapping drops the first | Serious (lost message) | None — **fixed (WA-66), retest** |
+| SIT-03 | Typing the site name loses the waiting message | Serious (lost message) | None — **fixed (WA-66), retest** |
+| SIT-04 | A late tap loses the waiting message | Serious (lost message) | None — **fixed (WA-66), retest** |
 | SIT-05 | One entry for another site moves the whole day there | UX | None |
 | SIT-06 | Same site name in two projects shows identical buttons | UX | None |
 | SIT-07 | "Good morning" at any hour | UX | None |
@@ -54,6 +54,7 @@ Two projects both having a **Site A** is on purpose (SIT-05, SIT-06).
 - **Actual:** each is saved under **Site B** with no question. Confirmed in code for 4 of 7 cases: unclear, misspelt, unknown, another company's site.
 - **Code (start here):** `apps/whatsapp-assistant/src/runtime/agent/entry_base.py` (`settle` / `_scope`: where a named site that matches none of the sender's sites ends up on today's site).
 - **Fix direction:** a site name that was said but not matched must be asked about, never replaced by today's site.
+- **Fixed (WA-66):** asked with the project's sites as buttons. Retest.
 
 ### SIT-02 · A second message before tapping drops the first
 
@@ -62,6 +63,7 @@ Two projects both having a **Site A** is on purpose (SIT-05, SIT-06).
 - **Actual:** only the masons entry appears. The cement message is gone.
 - **Code:** `apps/whatsapp-assistant/src/runtime/agent/work_site.py` (one held message per sender).
 - **Fix direction:** hold every message sent before the tap and run them all after it, in order.
+- **Fixed (WA-66):** up to 10 wait and run in order. Retest.
 
 ### SIT-03 · Typing the site name loses the waiting message
 
@@ -69,6 +71,7 @@ Two projects both having a **Site A** is on purpose (SIT-05, SIT-06).
 - **Repro (fresh day):** `50 bags cement arrived`. Type `Site B` instead of tapping.
 - **Actual:** Mesiri switches to Site B, but the cement entry is never made.
 - **Fix direction:** a typed site name that matches one of the list rows answers the question, and the held message runs.
+- **Fixed (WA-66).** Retest.
 
 ### SIT-04 · A late tap loses the waiting message
 
@@ -76,6 +79,7 @@ Two projects both having a **Site A** is on purpose (SIT-05, SIT-06).
 - **Repro (fresh day):** `50 bags cement arrived`. Wait 2+ hours, then tap a site.
 - **Actual:** "👍 Site B for today" and nothing else; the cement entry is never made.
 - **Fix direction:** keep the held message for the whole day, or say plainly that it expired and ask them to resend.
+- **Fixed (WA-66):** kept until midnight. Retest.
 
 ### SIT-05 · One entry for another site moves the whole day there
 

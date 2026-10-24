@@ -142,19 +142,78 @@ async def test_the_tap_sets_today_and_hands_back_the_waiting_message():
     reply, parked = await work_site.handle_tap(_message("Site B", tap="today_site:b2"), actor)
 
     assert reply.text.startswith("👍 Site B (Project B) for today.")
-    assert parked is not None and parked.text == "50 bags cement arrived"
+    assert [m.text for m in parked] == ["50 bags cement arrived"]
     active = await store.get_active_context(organization_id=ORG, user_id=USER)
     assert (active.project_id, active.site_id) == ("pb", "b2")
     # The waiting message runs once: a second tap has nothing to run.
     _, again = await work_site.handle_tap(_message("Site B", tap="today_site:b2"), actor)
-    assert again is None
+    assert again == []
 
 
 async def test_a_tap_on_a_site_they_lost_access_to_changes_nothing():
     work_site, store = _work_site()
     reply, parked = await work_site.handle_tap(_message("Site X", tap="today_site:gone"), _actor(A1, B2))
-    assert "isn't one of yours" in reply.text and parked is None
+    assert "isn't one of yours" in reply.text and parked == []
     assert await store.get_active_context(organization_id=ORG, user_id=USER) is None
+
+
+async def test_a_second_message_before_the_tap_waits_too():
+    """V1 audit SIT-02: the cement message was dropped by the masons one."""
+    work_site, _ = _work_site()
+    actor = _actor(A1, B2)
+    await work_site.morning_question(_message("50 bags cement arrived"), actor)
+    again = await work_site.morning_question(_message("12 masons today"), actor)
+    assert again.text.startswith("Got it, that waits too")
+    assert [r.id for r in again.list_rows] == ["today_site:a1", "today_site:b2"]
+
+    _, parked = await work_site.handle_tap(_message("Site B", tap="today_site:b2"), actor)
+    assert [m.text for m in parked] == ["50 bags cement arrived", "12 masons today"]
+
+
+async def test_a_message_parked_before_the_change_still_runs():
+    work_site, _ = _work_site()
+    actor = _actor(A1, B2)
+    old = _message("50 bags cement arrived").model_dump(mode="json")
+    await work_site._redis.set_json(f"{ORG}:user:{USER}:work_site:parked", old)
+    _, parked = await work_site.handle_tap(_message("Site B", tap="today_site:b2"), actor)
+    assert [m.text for m in parked] == ["50 bags cement arrived"]
+
+
+async def test_a_typed_site_name_answers_the_question():
+    """V1 audit SIT-03: typing "Site B" switched but lost the cement entry."""
+    work_site, store = _work_site()
+    actor = _actor(A1, B2)
+    await work_site.morning_question(_message("50 bags cement arrived"), actor)
+
+    reply, parked = await work_site.handle_typed(_message("at site b."), actor)
+
+    assert reply.text.startswith("👍 Site B (Project B) for today.")
+    assert [m.text for m in parked] == ["50 bags cement arrived"]
+    active = await store.get_active_context(organization_id=ORG, user_id=USER)
+    assert active.site_id == "b2"
+
+
+async def test_a_typed_name_is_only_an_answer_when_something_waits_and_it_is_one_site():
+    work_site, _ = _work_site()
+    assert await work_site.handle_typed(_message("Site B"), _actor(A1, B2)) is None  # nothing waiting
+    await work_site.morning_question(_message("50 bags cement arrived"), _actor(A1, B1, B2))
+    assert await work_site.handle_typed(_message("Site A"), _actor(A1, B1, B2)) is None  # two "Site A"s
+    assert await work_site.handle_typed(_message("20 masons at Site B"), _actor(A1, B1, B2)) is None
+
+
+async def test_the_waiting_message_lasts_until_midnight_not_two_hours():
+    """V1 audit SIT-04: a tap after 2 hours found nothing to run."""
+    work_site, _ = _work_site()
+    ttls: dict[str, int | None] = {}
+    real_set = work_site._redis.set_json
+
+    async def set_json(key, value, *, ttl_seconds=None):
+        ttls[key] = ttl_seconds
+        await real_set(key, value, ttl_seconds=ttl_seconds)
+
+    work_site._redis.set_json = set_json
+    await work_site.morning_question(_message("50 bags cement arrived"), _actor(A1, B2))
+    assert ttls[f"{ORG}:user:{USER}:work_site:parked"] == 17 * 3600 + 30 * 60  # 06:30 -> midnight India
 
 
 async def test_any_other_tap_is_not_ours():

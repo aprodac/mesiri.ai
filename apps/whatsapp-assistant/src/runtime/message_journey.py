@@ -1442,14 +1442,14 @@ def build_message_handlers(
                 picked = await work_site.handle_tap(message, ctx)
             except Exception:  # noqa: BLE001 — a tap must always get some reply
                 _log.exception("work_site.tap_failed user=%s", ctx.user_id)
-                picked = (ReplySpec(text="Sorry, that didn't work — please try again."), None)
+                picked = (ReplySpec(text="Sorry, that didn't work — please try again."), [])
             if picked is not None:
                 confirm, parked = picked
                 await _send_spec(confirm, wa_id)
                 await message_logger.log_reply(correlation_id=message.correlation_id, reply=confirm.text)
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
-                if parked is not None:
-                    await _run_journey_steps(parked, {}, None, timer)
+                for waiting in parked:  # V1 audit SIT-02: every one, in order
+                    await _run_journey_steps(waiting, {}, None, timer)
                 return
 
         # WA-35: Save / Cancel on the agent's reply keeps or drops its drafts.
@@ -2419,6 +2419,20 @@ def build_message_handlers(
             # waits for "Where are you working today?".
             morning = None
             if work_site is not None and category_hint is None:
+                try:
+                    typed = await work_site.handle_typed(message, ctx)
+                except Exception:  # noqa: BLE001 — the message goes on as usual
+                    _log.exception("work_site.typed_failed user=%s", ctx.user_id)
+                    typed = None
+                if typed is not None:
+                    # V1 audit SIT-03: "Site B" typed answers the question.
+                    confirm, parked = typed
+                    await _send_spec(confirm, wa_id)
+                    await message_logger.log_reply(correlation_id=message.correlation_id, reply=confirm.text)
+                    await message_logger.mark_completed(correlation_id=message.correlation_id)
+                    for waiting in parked:
+                        await _run_journey_steps(waiting, {}, None, timer)
+                    return
                 try:
                     morning = await work_site.morning_question(message, ctx)
                 except Exception:  # noqa: BLE001 — the question is a nicety

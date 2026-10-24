@@ -118,6 +118,27 @@ async def test_the_days_first_message_waits_for_where_and_runs_after_the_tap(mon
     assert asked["body"] == "Received or used?"
 
 
+async def test_two_waiting_messages_both_reach_the_model_after_a_typed_site(monkeypatch):
+    """V1 audit SIT-02 + SIT-03: both messages run, in order, and typing
+    "Site B" answers the question like the tap."""
+    work_site, store = _work_site()
+    model = FakeToolCallingProvider(["Noted.", "Noted."])
+    on_normalized, deps = _build(monkeypatch, model, work_site)
+
+    await on_normalized(_message("50 bags cement"), {})
+    await on_normalized(_message("12 masons today", n=2), {})
+    assert model.calls == 0
+    assert deps["sender"].send_list.await_args.kwargs["body"].startswith("Got it, that waits too")
+
+    await on_normalized(_message("Site B", n=3), {})
+
+    texts = [c.args[1] for c in deps["sender"].send_text.await_args_list]
+    assert any(t.startswith("👍 Site B (Project B) for today.") for t in texts)
+    assert (await store.get_active_context(organization_id=ORG, user_id=USER)).site_id == "b2"
+    assert model.calls == 2  # one run per waiting message
+    assert "12 masons today" in str(model.last_messages)  # the second ran last
+
+
 async def test_once_the_site_is_set_the_next_message_goes_straight_on(monkeypatch):
     work_site, _ = _work_site()
     await work_site.set_today(SimpleNamespace(organization_id=ORG, user_id=USER, sites=SITES, timezone=None),

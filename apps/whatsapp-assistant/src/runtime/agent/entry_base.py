@@ -178,6 +178,9 @@ class EntryScope:
             if not names:
                 return Say("info", f"{no} you are not on any project yet. Your admin can add you.")
             return choose("Which project is this for?", names, "project")
+        unmatched = self._unmatched_site(candidate, project_id, site_id)
+        if unmatched is not None:
+            return unmatched
         if site_id is None:
             sites = [s for s in getattr(self.actor, "sites", None) or [] if str(s.project_id) == str(project_id)]
             said = " ".join(str(candidate.fields.get("site_name") or "").casefold().split())
@@ -264,6 +267,27 @@ class EntryScope:
             event=event,
             scope=(ctx.context_organization_id, ctx.context_user_id, scoped.context_project, scoped.context_site),
         )
+
+    def _unmatched_site(self, candidate: Any, project_id: Any, site_id: Any) -> Say | None:
+        """V1 audit SIT-01: a site the message names ("5 masons at Site Z",
+        "Sight B") that is none of the sender's sites is asked about, never
+        filed under today's site. None when no name was said, or the site
+        the entry goes to is the one named."""
+        said = " ".join(str(candidate.fields.get("site_name") or "").casefold().split())
+        if not said or candidate.fields.get("site_id"):
+            return None
+        own = list(getattr(self.actor, "sites", None) or [])
+        named = [s for s in own if " ".join(str(s.name).casefold().split()) == said]
+        if site_id is not None and any(str(s.id) == str(site_id) for s in named):
+            return None
+        if site_id is None and any(str(s.project_id) == str(project_id) for s in named):
+            return None  # one of this project's sites by name: settled below
+        in_project = [s.name for s in own if str(s.project_id) == str(project_id)]
+        options = in_project or [s.name for s in own]
+        if not options:
+            return None
+        said_as = " ".join(str(candidate.fields.get("site_name")).split())
+        return choose(f'I don\'t have a site called "{said_as}". Which site is this for?', options, "site")
 
     def _has_site_in(self, ctx: Any, project_id: Any) -> bool:
         """Whether the sender may report on any site of the project, in either
