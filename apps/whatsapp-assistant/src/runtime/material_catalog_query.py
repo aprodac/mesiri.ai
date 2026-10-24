@@ -59,6 +59,84 @@ class MaterialCatalogQueryService:
             )
             return items
 
+    async def closest_materials(
+        self, *, organization_id: str, name: str, limit: int = 9
+    ) -> tuple[list[dict[str, Any]], int]:
+        """[103]: the ``limit`` active materials closest to ``name`` (spelling,
+        then most recently used), and how many active materials there are in
+        all. A WhatsApp list holds ten rows, so a long catalog is shown as its
+        nearest nine and "Something else" instead of its first ten."""
+        from difflib import SequenceMatcher
+
+        from sqlalchemy import text
+
+        from mesiri.infrastructure.postgres.repositories.materials import (
+            PostgresMaterialCatalogRepository,
+        )
+
+        org = uuid.UUID(organization_id)
+        async with self._db.transaction() as conn:
+            items, total = await PostgresMaterialCatalogRepository(conn).list_materials(
+                organization_id=org, is_active=True, limit=500
+            )
+            recent = {
+                str(row[0]): row[1]
+                for row in (
+                    await conn.execute(
+                        text(
+                            "SELECT material_id, max(created_at) FROM ("
+                            " SELECT material_id, created_at FROM material_usage"
+                            "  WHERE organization_id = :org AND material_id IS NOT NULL"
+                            " UNION ALL"
+                            " SELECT material_id, created_at FROM material_receipts"
+                            "  WHERE organization_id = :org AND material_id IS NOT NULL"
+                            ") m GROUP BY material_id"
+                        ),
+                        {"org": org},
+                    )
+                ).all()
+            }
+        typed = " ".join(name.casefold().split())
+
+        def closeness(item: dict[str, Any]) -> float:
+            listed = " ".join(str(item["name"]).casefold().split())
+            if typed and (typed in listed or listed in typed):
+                return 1.0
+            return SequenceMatcher(None, typed, listed).ratio() if typed else 0.0
+
+        ranked = sorted(
+            items,
+            key=lambda item: (
+                -round(closeness(item), 1),
+                -(recent[str(item["id"])].timestamp() if str(item["id"]) in recent else 0),
+                str(item["name"]).casefold(),
+            ),
+        )
+        return ranked[:limit], total
+
+    async def has_opening_stock(
+        self, *, organization_id: str, site_id: str | None, material_id: str
+    ) -> bool:
+        """Whether opening stock was entered (and not corrected away) for this
+        material at this site."""
+        from sqlalchemy import text
+
+        async with self._db.transaction() as conn:
+            found = (
+                await conn.execute(
+                    text(
+                        "SELECT 1 FROM material_receipts r "
+                        "WHERE r.organization_id = :org AND r.material_id = :material "
+                        "AND r.site_id IS NOT DISTINCT FROM CAST(:site AS uuid) "
+                        "AND r.movement_reason = 'OPENING_STOCK' "
+                        "AND NOT EXISTS (SELECT 1 FROM material_usage u WHERE u.reverses_movement_id = r.id) "
+                        "LIMIT 1"
+                    ),
+                    {"org": uuid.UUID(organization_id), "material": uuid.UUID(material_id), "site": site_id},
+                )
+            ).first()
+        return found is not None
+
     async def get_material(self, *, organization_id: str, material_id: str) -> dict[str, Any] | None:
         from mesiri.infrastructure.postgres.repositories.materials import (
             PostgresMaterialCatalogRepository,

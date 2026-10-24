@@ -160,6 +160,30 @@ def _title(option: str) -> str:
     return option if len(option) <= _TITLE_MAX else option[: _TITLE_MAX - 1] + "…"
 
 
+def rejoin_names(options: list[Any], known: list[str]) -> list[str]:
+    """``options`` with a name that holds a comma put back together: a model
+    that read "Green Villa, Kakkanad" as two options gave two buttons (live,
+    24 Oct). Only a run of options that spells one of their own names is joined."""
+    items = [str(o).strip() for o in options if str(o).strip()]
+    if not known:
+        return items
+    wanted = {" ".join(name.casefold().split()): name for name in known}
+    out: list[str] = []
+    i = 0
+    while i < len(items):
+        for size in range(min(len(items) - i, 4), 1, -1):
+            joined = ", ".join(items[i : i + size])
+            hit = wanted.get(" ".join(joined.casefold().split()))
+            if hit is not None:
+                out.append(hit)
+                i += size
+                break
+        else:
+            out.append(items[i])
+            i += 1
+    return out
+
+
 def question_reply(question: str, options: list[str]) -> ReplySpec:
     """The one question as a message: buttons for up to three options, a list
     for up to ten, plain text otherwise."""
@@ -414,7 +438,8 @@ class AgentToolbox:
                 content={"status": "skipped", "reason": "one question per message"}
             )
         options = args.get("options") or []
-        self.parked = question_reply(question, options if isinstance(options, list) else [])
+        options = rejoin_names(options if isinstance(options, list) else [], self._known_names())
+        self.parked = question_reply(question, options)
         self.parked_by = "ask"
         # WA-58: what the question leaves aside is taken up next.
         self._note_later(args.get("other_parts"))
@@ -424,6 +449,11 @@ class AgentToolbox:
                 "instruction": "Your final message must end with this question.",
             }
         )
+
+    def _known_names(self) -> list[str]:
+        """Their project and site names that hold a comma."""
+        names = [name for _pid, name in self.scope.projects] + [name for _sid, name, _pid in self.scope.sites]
+        return [name for name in names if "," in name]
 
     async def _set_work_site(self, args: dict[str, Any]) -> ToolOutcome:
         """WA-45: "now at Site B". One of their sites -> today's site; anything

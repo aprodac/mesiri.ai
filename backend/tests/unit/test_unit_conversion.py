@@ -38,3 +38,14 @@ def test_two_bags_of_cement_stocked_in_kg_are_a_hundred_kg():
                                            ("SITE_ENGINEER", False), ("FINANCE", False), (None, False)])
 def test_admins_and_project_managers_set_conversions(role, may):
     assert may_set_unit_conversions(role) is may
+
+
+def test_a_brass_is_100_cubic_feet():
+    from decimal import Decimal
+
+    from mesiri.domains.materials.unit_conversion import built_in_per_stock_unit, to_stock_quantity
+
+    assert built_in_per_stock_unit("cft", "brass", "M sand") == Decimal("100")
+    assert to_stock_quantity(300, built_in_per_stock_unit("cft", "brass", "M sand")) == Decimal("3")
+    # and the other way: 2 brass of sand counted in cft
+    assert to_stock_quantity(2, built_in_per_stock_unit("brass", "cft", "M sand")) == Decimal("200")

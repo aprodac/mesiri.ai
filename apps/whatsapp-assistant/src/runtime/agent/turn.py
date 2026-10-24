@@ -27,6 +27,7 @@ from runtime.ai_outage import (
 from runtime.persona import guard, is_what_can_you_do, what_can_you_do
 
 from . import later
+from .left_it import LEFT_IT, is_drop_word, question_is_open
 from .prompt import AgentContext, Turn
 from .runner import AgentResult, AgentRunner, default_now
 from .stock_question import is_stock_question
@@ -263,6 +264,25 @@ async def run_agent_turn(
             )
         except Exception:  # noqa: BLE001 — memory is a hint
             _log.warning("agent.memory_load_failed user=%s", actor.user_id)
+
+    if is_drop_word(user_text) and question_is_open(pack) and not getattr(pack, "has_pending_confirmation", False):
+        # [103]: "cancel that" answers the open question; it is not an undo.
+        reply = ReplySpec(text=LEFT_IT)
+        await deps.send_spec(reply, wa_id)
+        if deps.on_conversational is not None:
+            deps.on_conversational()
+        await _safe(deps.message_logger.log_reply(correlation_id=correlation_id, reply=reply.text))
+        await _safe(deps.message_logger.mark_completed(correlation_id=correlation_id))
+        if deps.memory_coordinator is not None:
+            await _safe(
+                deps.memory_coordinator.record_turn(
+                    user_id=actor.user_id,
+                    user_text=user_text,
+                    assistant_reply=reply.text,
+                    correlation_id=correlation_id,
+                )
+            )
+        return None
 
     gateway = deps.make_gateway(message, language)
     context = _context_of(actor, deps, pack, language, menu_hint, script)

@@ -168,8 +168,8 @@ async def test_a_convertible_unit_is_converted_and_what_was_said_is_kept():
 async def test_a_unit_with_no_conversion_asks_for_the_amount():
     said = await _prepare(_entry(), material_name="Sand", quantity=40)
     assert isinstance(said, Say)
-    assert said.text.startswith("Not saved yet: Sand is counted in Cubic Meters here")
-    assert "How much is that in Cubic Meters?" in said.text  # a site engineer is not asked for the rule
+    assert said.text.startswith("Not saved yet: Sand is counted in cum here")
+    assert "How much is that in cum?" in said.text  # a site engineer is not asked for the rule
 
 
 async def test_usage_carries_the_stock_of_that_material_by_id():
@@ -193,7 +193,7 @@ async def test_a_switched_off_module_says_so():
 async def test_a_name_with_several_matches_is_a_question_with_the_options():
     said = await _prepare(_entry(catalog=_Catalog([{**CEMENT, "name": "Cement Paint"}, {**CEMENT, "id": "c2", "name": "Cement PPC"}])))
     assert isinstance(said, Say) and said.status == "choose"
-    assert "Options: Cement Paint, Cement PPC" in said.text
+    assert 'Options: "Cement Paint" | "Cement PPC"' in said.text
     assert said.options == ("Cement Paint", "Cement PPC")  # shown as buttons by the code
 
 
@@ -201,7 +201,7 @@ async def test_an_unknown_name_lists_the_catalogue_when_they_may_not_add_one():
     catalog = _Catalog([SAND])
     said = await _prepare(_entry(catalog=catalog, modules=_Modules(["materials"], create_roles=[])))
     assert said.status == "choose"
-    assert "Options: Sand" in said.text and "admin on the dashboard" in said.text
+    assert 'Options: "Sand"' in said.text and "admin on the dashboard" in said.text
 
 
 async def test_an_unknown_name_asks_to_add_it_when_they_may():
@@ -239,12 +239,12 @@ async def test_no_project_is_a_question_with_their_projects():
     actor = _actor(SITE)
     actor.projects = [SimpleNamespace(name="Green Villa"), SimpleNamespace(name="Lake View")]
     said = await _prepare(_entry(context=_Context(project_id=None, site_id=None), actor=actor))
-    assert said.status == "choose" and "Options: Green Villa, Lake View" in said.text
+    assert said.status == "choose" and 'Options: "Green Villa" | "Lake View"' in said.text
 
 
 async def test_two_sites_is_a_question_with_the_sites():
     said = await _prepare(_entry(context=_Context(site_id=None), actor=_actor("Kakkanad", "Edappally")))
-    assert said.status == "choose" and "Options: Kakkanad, Edappally" in said.text
+    assert said.status == "choose" and 'Options: "Kakkanad" | "Edappally"' in said.text
 
 
 async def test_a_failed_context_asks_for_the_project_with_buttons():

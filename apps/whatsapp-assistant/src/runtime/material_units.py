@@ -98,7 +98,8 @@ def ask_amount_text(
     from mesiri.authorization.roles import may_set_unit_conversions
 
     stock = fit.stock_unit
-    unit_display = stock["display_name"] if stock else "its stock unit"
+    # Plain words, as sites say them: "cum", not "Cubic Meters" ([103]).
+    unit_display = _plain(stock) if stock else "its stock unit"
     qty = fields.get("quantity")
     unit_text = fields.get("unit")
     said = " ".join(p for p in (str(qty) if qty is not None else "", str(unit_text)) if p)
@@ -111,7 +112,7 @@ def ask_amount_text(
     if fit.reported_unit is not None and may_set_unit_conversions(role):
         # WA-61: asked the way people know it ("1 load = 300 nos"); "how many
         # loads make 1 nos?" was unanswerable and got saved upside down.
-        unit_word = str(fit.reported_unit.get("display_name") or unit_text).lower()
+        unit_word = _plain(fit.reported_unit) or str(unit_text).lower()
         return (
             f"{head} How many {unit_display} is 1 {unit_word} of {material['name']} (or how many "
             f"{unit_word} make 1 {unit_display})? I'll remember it for the company, "
@@ -121,6 +122,35 @@ def ask_amount_text(
         f"{head} How much is that in {unit_display}? (Your admin or project manager can "
         f"tell me how many {unit_text} make 1 {unit_display}, so this works next time.)"
     )
+
+
+def _plain(unit: dict[str, Any] | None) -> str:
+    """A unit as a site says it: its short code ("cum", "load", "kg")."""
+    return str((unit or {}).get("code") or (unit or {}).get("display_name") or "").lower()
+
+
+#: How many cum a load of sand or metal usually is: the buttons of the question.
+LOAD_GUESSES = ("2", "3", "4", "Other")
+
+
+def conversion_question(
+    material: dict[str, Any], fit: UnitFit, *, role: str | None
+) -> tuple[str, tuple[str, ...]] | None:
+    """[103]: the one question to put to someone who may set the company's
+    conversion ("2 loads sand" when sand is counted in cum): asked once, the
+    answer is remembered for the company and never asked again. None for
+    anyone else, or when there is no unit to compare."""
+    from mesiri.authorization.roles import may_set_unit_conversions
+
+    if fit.reported_unit is None or fit.stock_unit is None or fit.doubtful is not None:
+        return None
+    if not may_set_unit_conversions(role):
+        return None
+    reported, stock = _plain(fit.reported_unit), _plain(fit.stock_unit)
+    question = f"1 {reported} = how many {stock}? (e.g. 3)"
+    if reported == "load" and stock == "cum":
+        return question, LOAD_GUESSES
+    return question, ()
 
 
 async def _conversion(
