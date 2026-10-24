@@ -112,7 +112,7 @@ export default function UserDetails() {
     mutationFn: () => deleteUser(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users-list'] })
-      navigate('/users')
+      navigate('/team')
     },
     onError: (err: any) => {
       alert(err.response?.data?.detail || 'Failed to delete user.')
@@ -143,7 +143,7 @@ export default function UserDetails() {
   if (isError || !user) {
     return (
       <div className="space-y-4">
-        <Link to="/users" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+        <Link to="/team" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
           <ArrowLeft className="size-3" /> Back to Directory
         </Link>
         <div className="bg-destructive/10 border border-destructive text-destructive text-xs p-4 rounded text-center">

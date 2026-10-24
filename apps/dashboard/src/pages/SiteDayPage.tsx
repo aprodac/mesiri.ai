@@ -35,6 +35,7 @@ import {
   FROZEN,
   dateTime,
   errorDetail,
+  localIsoDate,
   hasUpdates as siteHasUpdates,
   longDate,
   missingText,
@@ -705,7 +706,7 @@ export default function SiteDayPage() {
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-4 sm:px-2">
       <div className="flex flex-col gap-3">
         <DprHeader
-          back={{ to: `/today?date=${date}`, label: 'Today' }}
+          back={date === localIsoDate(new Date()) ? { to: '/today', label: 'Today' } : { to: '/reports', label: 'Reports' }}
           crumb={`Site DPR${day?.project_name ? ` · ${day.project_name}` : ''}`}
           title={day?.site_name ?? 'Site'}
           chip={status && <span className={cn(CHIP, status.className)}>{status.label}</span>}

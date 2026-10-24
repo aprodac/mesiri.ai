@@ -140,7 +140,7 @@ export function AddEditProjectDialog({
         onSuccess()
         onOpenChange(false)
         if (openAfter) {
-          navigate(`/overview?project=${created.id}`)
+          navigate(`/today?project=${created.id}`)
         } else {
           navigate(`/projects/${created.id}?new=1`)
         }

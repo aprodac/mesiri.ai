@@ -17,7 +17,7 @@ export function RequireModule({ module, children }: { module: ModuleKey; childre
         This part of Mesiri isn't included for your company. Ask the Mesiri team if you need it.
       </p>
       <Link
-        to="/overview"
+        to="/today"
         className="mt-2 inline-flex min-h-10 items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground"
       >
         Go to Today

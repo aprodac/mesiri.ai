@@ -15,6 +15,7 @@ import {
   CHIP,
   FROZEN,
   errorDetail,
+  localIsoDate,
   hasUpdates,
   longDate,
   missingText,
@@ -226,7 +227,7 @@ export default function ProjectDayPage() {
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-4 sm:px-2">
       <div className="flex flex-col gap-3">
         <DprHeader
-          back={{ to: `/today?date=${date}`, label: 'Today' }}
+          back={date === localIsoDate(new Date()) ? { to: '/today', label: 'Today' } : { to: '/reports', label: 'Reports' }}
           crumb="Project DPR"
           title={project.project_name}
           chip={<span className={cn(CHIP, state.className)}>{state.label}</span>}

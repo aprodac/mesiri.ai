@@ -409,14 +409,14 @@ export function UserWhatsAppMessagesTab({
                       <TableCell>
                         <div className="flex flex-col gap-0.5 font-medium">
                           {hasProject ? (
-                            <Link to={`/overview?project=${msg.project!.id}`} className="text-primary hover:underline truncate block">
+                            <Link to={`/today?project=${msg.project!.id}`} className="text-primary hover:underline truncate block">
                               {msg.project!.name}
                             </Link>
                           ) : (
                             <span className="text-muted-foreground/60 italic text-[11px]">No project</span>
                           )}
                           {hasSite ? (
-                            <Link to={`/overview?project=${msg.project!.id}&site=${msg.site!.id}`} className="text-muted-foreground hover:text-foreground text-[10px] hover:underline truncate block">
+                            <Link to={`/today?project=${msg.project!.id}&site=${msg.site!.id}`} className="text-muted-foreground hover:text-foreground text-[10px] hover:underline truncate block">
                               {msg.site!.name}
                             </Link>
                           ) : hasProject ? (
@@ -783,7 +783,7 @@ export function UserWhatsAppMessagesTab({
                   {messageDetail.project && (
                     <div className="flex justify-between items-center py-1 border-t">
                       <span className="text-muted-foreground font-normal">Associated Project</span>
-                      <Link to={`/overview?project=${messageDetail.project.id}`} className="text-primary hover:underline font-semibold flex items-center gap-1">
+                      <Link to={`/today?project=${messageDetail.project.id}`} className="text-primary hover:underline font-semibold flex items-center gap-1">
                         {messageDetail.project.name} <ExternalLink className="size-2.5" />
                       </Link>
                     </div>
@@ -791,7 +791,7 @@ export function UserWhatsAppMessagesTab({
                   {messageDetail.site && (
                     <div className="flex justify-between items-center py-1 border-t">
                       <span className="text-muted-foreground font-normal">Associated Site</span>
-                      <Link to={`/overview?project=${messageDetail.project?.id}&site=${messageDetail.site.id}`} className="text-primary hover:underline font-semibold flex items-center gap-1">
+                      <Link to={`/today?project=${messageDetail.project?.id}&site=${messageDetail.site.id}`} className="text-primary hover:underline font-semibold flex items-center gap-1">
                         {messageDetail.site.name} <ExternalLink className="size-2.5" />
                       </Link>
                     </div>

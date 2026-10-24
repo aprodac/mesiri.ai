@@ -142,7 +142,7 @@ export default function Projects() {
   }, [projects])
 
   const handleOpenProject = (project: Project) => {
-    navigate(`/overview?project=${project.id}`)
+    navigate(`/today?project=${project.id}`)
   }
 
   return (

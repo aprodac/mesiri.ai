@@ -34,7 +34,7 @@ function TopBar() {
             )}
           </Link>
           <Link
-            to="/operations/issues"
+            to="/issues"
             className={cn(
               'relative inline-flex size-8 items-center justify-center rounded-full hover:bg-muted',
               openIssues > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground',

@@ -484,7 +484,7 @@ export default function Users() {
                         </Avatar>
                         <div className="flex flex-col">
                           <Link
-                            to={`/users/${user.id}`}
+                            to={`/team/${user.id}`}
                             className="font-medium text-foreground hover:underline flex items-center gap-1"
                           >
                             {user.full_name}

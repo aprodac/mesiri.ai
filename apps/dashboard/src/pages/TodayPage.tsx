@@ -389,7 +389,7 @@ export default function TodayPage() {
         <section aria-labelledby="issues-h" className="w-full lg:flex-[1.4] rounded-2xl border bg-card p-5 flex flex-col gap-3 min-w-0">
           <div className="flex items-center justify-between gap-2">
             <h2 id="issues-h" className="text-base font-semibold">Open issues</h2>
-            <Link to="/operations/issues" className="text-sm font-semibold text-primary hover:underline">
+            <Link to="/issues" className="text-sm font-semibold text-primary hover:underline">
               All issues
             </Link>
           </div>

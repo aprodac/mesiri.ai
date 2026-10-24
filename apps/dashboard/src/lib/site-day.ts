@@ -64,12 +64,12 @@ export function missingText(site: SiteDayItem): string | null {
 
 /** The page for one site's day: review drafts, see sources, approve. */
 export function siteDayPath(siteId: string, date: string): string {
-  return `/today/sites/${siteId}/${date}`
+  return `/reports/${date}/sites/${siteId}`
 }
 
 /** The page for one project's day: every site and the project DPR (WEB-05). */
 export function projectDayPath(projectId: string, date: string): string {
-  return `/today/projects/${projectId}/${date}`
+  return `/reports/${date}/projects/${projectId}`
 }
 
 export function longDate(iso: string): string {

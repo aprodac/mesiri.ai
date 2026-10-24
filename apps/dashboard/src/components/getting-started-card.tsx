@@ -59,7 +59,7 @@ function items(p: SetupProgress, onTimeOk: () => void, savingTime: boolean): Ite
       title: 'Add your site supervisor',
       detail: 'On WhatsApp, share their contact with Mesiri, or add them on the Team page.',
       action: (
-        <Link to="/users" className={linkClass}>
+        <Link to="/team" className={linkClass}>
           Team
         </Link>
       ),
