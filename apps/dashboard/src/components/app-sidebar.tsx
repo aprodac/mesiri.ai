@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { flushSync } from 'react-dom'
+import { useQuery } from '@tanstack/react-query'
 import {
   Building2,
   Building,
@@ -47,7 +48,7 @@ import {
 } from '@/components/ui/sidebar'
 import { useAuth } from '@/lib/AuthContext'
 import { useAllowedScopes, useScope } from '@/lib/ScopeContext'
-import { logout } from '@/lib/api'
+import { fetchBranding, logout, type Me } from '@/lib/api'
 import { MesiriMark, MesiriWordmark } from '@/components/brand/mesiri-logo'
 import { SETUP_URL, setupCounts, useSetupProgress } from '@/lib/setup'
 import { useTrial } from '@/lib/trial'
@@ -595,11 +596,8 @@ export function AppSidebar() {
               )}
             </div>
           </div>
-          <div className="bg-sidebar px-2.5 pt-2 pb-1 group-data-[collapsible=icon]:hidden">
-            <div className={cn('rounded-xl border px-3 py-2', S.card)}>
-              <div className={cn('text-xs', S.label)}>Company</div>
-              <div className={cn('text-sm font-semibold truncate', S.name)}>{companyName}</div>
-            </div>
+          <div className="bg-sidebar px-2 pt-2 pb-1 group-data-[collapsible=icon]:hidden">
+            <CompanyRow name={companyName} isAdmin={me?.role === 'ADMIN'} company={me?.company ?? null} S={S} />
           </div>
         </SidebarHeader>
 
@@ -696,5 +694,70 @@ export function AppSidebar() {
         </SidebarFooter>
       </div>
     </Sidebar>
+  )
+}
+
+// WEB-38: the company at the top of the sidebar, as a row rather than a
+// labelled box: its logo (or initials on its brand colour), the name, and
+// one useful line -- the trial's days left, or what an admin can open here.
+// Admins tap it to open the Company page.
+function CompanyRow({
+  name,
+  isAdmin,
+  company,
+  S,
+}: {
+  name: string
+  isAdmin: boolean
+  company: Me['company']
+  S: (typeof SIDEBAR_THEMES)[SidebarTheme]
+}) {
+  // The branding API answers admins only; everyone else gets initials.
+  const branding = useQuery({ queryKey: ['company-branding'], queryFn: fetchBranding, enabled: isAdmin, retry: false, staleTime: 10 * 60_000 })
+  const logo = branding.data?.logo_url
+  const colour = branding.data?.brand_color || undefined
+  const letters = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+  const trialLeft = company?.status === 'trial' ? company.trial_days_left : null
+  const line =
+    trialLeft !== null && trialLeft !== undefined
+      ? trialLeft <= 0
+        ? 'Free trial ends today'
+        : `Free trial · ${trialLeft} ${trialLeft === 1 ? 'day' : 'days'} left`
+      : company?.status === 'expired'
+        ? 'Trial ended'
+        : isAdmin
+          ? 'Company settings'
+          : 'Your company'
+  const body = (
+    <>
+      <span
+        className={cn(
+          'flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-lg text-xs font-bold',
+          logo ? 'bg-white p-1' : colour ? 'text-white' : S.avatar,
+        )}
+        style={!logo && colour ? { backgroundColor: colour } : undefined}
+        aria-hidden="true"
+      >
+        {logo ? <img src={logo} alt="" className="max-h-full max-w-full object-contain" /> : letters || 'M'}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className={cn('truncate text-sm leading-tight font-semibold', S.name)}>{name}</span>
+        <span className={cn('truncate text-xs', trialLeft !== null && trialLeft !== undefined && trialLeft <= 3 ? 'text-amber-400' : S.role)}>{line}</span>
+      </span>
+      {isAdmin && <ChevronRight className={cn('size-4 shrink-0 opacity-0 transition-opacity group-hover/company:opacity-100', S.chevron)} aria-hidden="true" />}
+    </>
+  )
+  return isAdmin ? (
+    <Link to="/company" className={cn('group/company flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors', S.hoverBg, S.ring)} title="Open company settings">
+      {body}
+    </Link>
+  ) : (
+    <div className="flex items-center gap-2.5 px-2 py-1.5">{body}</div>
   )
 }

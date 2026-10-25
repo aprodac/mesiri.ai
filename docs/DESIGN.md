@@ -354,6 +354,14 @@ pass the same.
 | Finance, Login / Signup | No — old template look (Signup: SS-18 intro) |
 | Dialogs (project, site, person, access, WhatsApp number, record delivery / use / move, correction) | Yes (WEB-29): sentence case, plain words, no fake buttons |
 
+### Company at the top of the sidebar (WEB-38)
+
+A row, not a labelled box: the company's logo on white (or its initials on
+its brand colour, else a neutral tile), the name, and one useful line -- the
+free trial's days left (amber in the last three), else "Company settings".
+Admins tap it to open Company. The logo comes from `/company/branding`
+(admins only, shared cache with the Company page); others see initials.
+
 ### Visual cues across pages (WEB-37)
 
 - **Number strips** (`StatStrip`): each figure can carry an `icon`, a
