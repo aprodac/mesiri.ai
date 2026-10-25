@@ -385,6 +385,72 @@ class PostgresFactReviewRepository:
             ],
         }
 
+    async def questions(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        project_id: uuid.UUID,
+        site_id: uuid.UUID,
+        since: datetime.datetime,
+        until: datetime.datetime,
+        workflow_keys: list[str],
+        limit: int = 30,
+    ) -> list[dict[str, Any]]:
+        """Questions asked about one site (or its whole project) in a window,
+        with Mesiri's reply (WEB-37's Live report). A message is a question
+        when the workflow it started is one of ``workflow_keys``; its
+        workflow resolves as the message log does (directly, or through the
+        interaction group)."""
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT * FROM ("
+                    " SELECT im.id, im.message_type, im.body_text, im.body_text_en, "
+                    " im.assistant_reply, im.received_at, im.site_id, su.full_name AS sender_name, "
+                    " COALESCE(im.raw_payload::jsonb ->> 'source', 'whatsapp') AS source, "
+                    " COALESCE(wi.workflow_key, wi_origin.workflow_key) AS workflow_key "
+                    " FROM inbound_messages im "
+                    # One name per message, even if two people share a number.
+                    " LEFT JOIN LATERAL (SELECT u.full_name FROM users u "
+                    "   WHERE u.organization_id = im.organization_id "
+                    "   AND regexp_replace(u.whatsapp_number, '\\D', '', 'g') "
+                    "       = regexp_replace(im.sender_wa_id, '\\D', '', 'g') LIMIT 1) su ON true "
+                    " LEFT JOIN workflow_instances wi ON wi.id = im.workflow_instance_id "
+                    " LEFT JOIN workflow_instances wi_origin "
+                    "   ON wi_origin.correlation_id = im.interaction_group_id "
+                    " WHERE im.organization_id = :org "
+                    " AND im.received_at >= :since AND im.received_at < :until "
+                    " AND (im.site_id = :site OR (im.site_id IS NULL AND im.project_id = :project))"
+                    ") q WHERE q.workflow_key = ANY(:keys) "
+                    "ORDER BY q.received_at, q.id LIMIT :limit"
+                ),
+                {
+                    "org": organization_id,
+                    "project": project_id,
+                    "site": site_id,
+                    "since": since,
+                    "until": until,
+                    "keys": workflow_keys,
+                    "limit": limit,
+                },
+            )
+        ).mappings().all()
+        return [
+            {
+                "id": str(r["id"]),
+                "type": r["message_type"],
+                "text": r["body_text"],
+                "translated_text": r["body_text_en"],
+                "reply": r["assistant_reply"],
+                "received_at": r["received_at"].isoformat() if r["received_at"] else None,
+                "sender_name": r["sender_name"],
+                "source": r["source"] or "whatsapp",
+                "workflow_key": r["workflow_key"],
+                "whole_project": r["site_id"] is None,
+            }
+            for r in rows
+        ]
+
     async def locate(
         self, organization_id: uuid.UUID, fact_type: str, fact_id: uuid.UUID
     ) -> dict[str, Any]:

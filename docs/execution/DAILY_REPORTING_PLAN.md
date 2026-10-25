@@ -292,6 +292,12 @@ AI Extraction → Save as DRAFT (+ reply "Saved as a draft… Reply UNDO")
   older version. `items` is built beside the payload, never stored in it, so
   versions and PDFs are unchanged. All of them 404 for a site outside the
   caller's site access (custom sites, BE-34).
+- **Live report questions (WEB-38):** `GET /dpr/site-days/{site_id}/questions?since=&until=`
+  (at most two days): the messages about this site, or its whole project,
+  whose workflow was a lookup (stock, manpower, work, project, report), with
+  Mesiri's reply and the voice note's English. Finance lookups are never
+  listed (SEC-01). Read-only, from `inbound_messages` joined to
+  `workflow_instances` as the message log does; the site rule is the site day's.
 
 *Previously:* "Nothing is persisted before an explicit confirmation." That
 made every site update a two-message exchange, which supervisors skipped.

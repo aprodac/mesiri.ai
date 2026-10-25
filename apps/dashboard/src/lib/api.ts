@@ -1964,6 +1964,29 @@ export async function fetchFactSourcesApi(factType: FactType, factId: string): P
   return res.data
 }
 
+/** A question asked about a site and what Mesiri answered (WEB-37's Live report). */
+export interface SiteQuestion {
+  id: string
+  type: string
+  text: string | null
+  translated_text: string | null
+  reply: string | null
+  received_at: string | null
+  sender_name: string | null
+  source: string
+  /** What was asked about. Finance questions are never listed. */
+  kind: 'stock' | 'manpower' | 'work' | 'project' | 'report'
+  /** Asked about the whole project rather than this site. */
+  whole_project: boolean
+}
+
+export async function fetchSiteQuestionsApi(siteId: string, since: Date, until: Date): Promise<SiteQuestion[]> {
+  const res = await api.get<{ items: SiteQuestion[] }>(`/dpr/site-days/${siteId}/questions`, {
+    params: { since: since.toISOString(), until: until.toISOString() },
+  })
+  return res.data.items
+}
+
 /** Confirm one draft (BE-09). */
 export async function confirmFactApi(factType: FactType, factId: string): Promise<void> {
   await api.post(`/dpr/facts/${factType}/${factId}/confirm`)

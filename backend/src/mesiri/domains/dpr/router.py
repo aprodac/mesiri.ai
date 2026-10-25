@@ -362,6 +362,54 @@ async def get_fact_sources(
     return sources
 
 
+#: The questions the Live report shows (WEB-37): workflow -> what was asked
+#: about. Finance questions are left out: their answers are for admins,
+#: owners, finance and project managers only (SEC-01), and Live is open to
+#: everyone on the site.
+QUESTION_KINDS: dict[str, str] = {
+    "material.inventory_query": "stock",
+    "labour.query": "manpower",
+    "activity.query": "work",
+    "project.detail_query": "project",
+    "dpr.request": "report",
+}
+
+
+@router.get("/site-days/{site_id}/questions")
+async def list_site_day_questions(
+    site_id: uuid.UUID,
+    since: datetime.datetime,
+    until: datetime.datetime,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """What was asked about this site (or its whole project) between
+    `since` and `until` (the viewer's day), and what Mesiri answered, for
+    the Live report (WEB-37). Read-only; the site rule is the site day's."""
+    site = await PostgresDprRepository(conn).find_site(
+        organization_id=auth_context.organization_id, site_id=site_id
+    )
+    if site is None or site["project_id"] is None:
+        raise HTTPException(status_code=404, detail="Site not found")
+    if _site_denied(auth_context, site["project_id"], site_id):
+        raise HTTPException(status_code=404, detail="Site not found")
+    if until <= since or until - since > datetime.timedelta(days=2):
+        raise HTTPException(status_code=422, detail="Ask for one day at a time")
+    rows = await PostgresFactReviewRepository(conn).questions(
+        organization_id=auth_context.organization_id,
+        project_id=site["project_id"],
+        site_id=site_id,
+        since=since,
+        until=until,
+        workflow_keys=list(QUESTION_KINDS),
+    )
+    items = []
+    for row in rows:
+        kind = QUESTION_KINDS[row.pop("workflow_key")]
+        items.append({**row, "kind": kind})
+    return {"items": items}
+
+
 class SiteDayConditionsRequest(BaseModel):
     """Only the fields sent are changed; null clears one (BE-14)."""
 
