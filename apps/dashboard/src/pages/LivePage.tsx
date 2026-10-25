@@ -55,6 +55,8 @@ import { SPOT_MS, Spotlight, type SpotlightFact } from '@/components/live/spotli
 // work line it is evidence for, landing in that line's strip of photos.
 // A correction ("6 not 5") plays the same way with the old value struck out
 // (WEB-42); a line taken back crumbles away; a draft confirmed flips green.
+// Nothing counts until it is saved (WA-77): an entry whose ✅ Save hasn't
+// been tapped waits on the left as "Waiting for Save"; the tap lands it.
 
 const POLL_MS = 3_000
 const FLY_MS = 750
@@ -102,6 +104,11 @@ interface Chip {
   flown: boolean
   /** Mesiri flagged it. */
   warn?: boolean
+  /** Sent but not saved yet: waits for its ✅ Save on WhatsApp (WA-77). */
+  waiting?: boolean
+  /** Saved by the tap, or taken back with ❌ Cancel. */
+  saved?: boolean
+  cancelled?: boolean
 }
 
 interface Thinking {
@@ -302,7 +309,11 @@ function ThinkingPanel({
               ref={(el) => chipRef(chip.key, el)}
               className={cn(
                 'px-2.5 py-1 text-[12.5px] font-semibold transition-all duration-500 animate-in zoom-in-75 fade-in fill-mode-both motion-reduce:animate-none',
-                chip.flown
+                chip.cancelled
+                  ? 'border border-foreground/20 bg-transparent text-foreground/35 line-through'
+                  : chip.waiting
+                  ? 'border border-dashed border-amber-600 bg-amber-50 text-amber-800'
+                  : chip.flown
                   ? chip.warn
                     ? 'border border-red-700/50 bg-transparent text-red-700'
                     : 'border border-foreground/25 bg-transparent text-foreground/45'
@@ -312,11 +323,22 @@ function ThinkingPanel({
               )}
               style={{ animationDelay: `${i * 140}ms` }}
             >
-              {chip.flown && (chip.warn ? '! ' : '✓ ')}
+              {chip.cancelled ? '✕ ' : chip.waiting ? '⏳ ' : chip.flown && (chip.warn ? '! ' : '✓ ')}
               {chip.label}
             </span>
           ))}
         </div>
+      )}
+      {think.chips.some((c) => c.waiting) && (
+        <span className="flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-[0.08em] text-amber-700">
+          <span className="size-1.5 animate-pulse rounded-full bg-amber-600" aria-hidden="true" />
+          Waiting for ✅ Save on WhatsApp · not on the report yet
+        </span>
+      )}
+      {think.chips.some((c) => c.saved) && !think.chips.some((c) => c.waiting) && (
+        <span className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-emerald-700 animate-in fade-in duration-500 motion-reduce:animate-none">
+          ✓ Saved on WhatsApp
+        </span>
       )}
     </div>
   )
@@ -489,8 +511,11 @@ function DayProgress({
   project,
   today,
   frozen,
+  unsaved = 0,
 }: {
   needs: { label: string; done: boolean; needed: boolean }[]
+  /** WA-77: entries sent but not saved yet (not on the report). */
+  unsaved?: number
   project: SiteDayDetail['project']
   today: boolean
   frozen: boolean
@@ -533,6 +558,12 @@ function DayProgress({
             <span className="sr-only">{n.done ? 'in' : n.needed ? 'still needed' : 'optional'}</span>
           </li>
         ))}
+        {unsaved > 0 && (
+          <li className="flex items-center gap-1.5 text-amber-700">
+            <span className="size-1.5 animate-pulse rounded-full bg-amber-600" aria-hidden="true" />
+            {unsaved} waiting for Save
+          </li>
+        )}
       </ul>
       {project && today && (
         <span
@@ -621,6 +652,10 @@ export default function LivePage() {
   const [ghosts, setGhosts] = React.useState<ReviewItem[]>([])
   const [corrected, setCorrected] = React.useState<Record<string, string>>({})
   const [confirmedNow, setConfirmedNow] = React.useState<Set<string>>(new Set())
+  // WA-77: entries waiting for their Save tap (fact key -> the message showing their chip), and taps to play.
+  const waiting = React.useRef(new Map<string, string>())
+  const [waitingCount, setWaitingCount] = React.useState(0)
+  const saveQueue = React.useRef<ReviewItem[]>([])
   const wasSent = React.useRef<boolean | null>(null)
 
   const known = React.useRef<Set<string> | null>(null)
@@ -734,6 +769,24 @@ export default function LivePage() {
     }, 2400)
   }
 
+  /** Where an entry stands now: a tap may have saved it since it was queued. */
+  const reviewNow = (item: ReviewItem) =>
+    latest.current?.items.find((i) => factKey(i) === factKey(item))?.review ?? item.review
+
+  const wait = (key: string, messageId: string | null) => {
+    waiting.current.set(key, messageId ?? '')
+    setWaitingCount(waiting.current.size)
+  }
+  const unwait = (key: string) => {
+    const messageId = waiting.current.get(key)
+    waiting.current.delete(key)
+    setWaitingCount(waiting.current.size)
+    return messageId || null
+  }
+  const markChip = (messageId: string | null, key: string, change: Partial<Chip>) => {
+    if (messageId) think(messageId, (t) => ({ ...t, chips: t.chips.map((c) => (c.key === key ? { ...c, ...change } : c)) }))
+  }
+
   const landPhotos = (key: string, photos: Photo[]) => {
     const ids = photos.map((p) => p.id).filter((id): id is string => !!id)
     setRowPhotos((all) => {
@@ -803,6 +856,13 @@ export default function LivePage() {
         if (!live()) return
         const key = factKey(item)
         const isLabour = item.section === 'labour'
+        if (reviewNow(item) === 'draft') {
+          // WA-77: not saved yet; its chip waits for the ✅ Save tap.
+          wait(key, msg?.id ?? null)
+          markChip(msg?.id ?? null, key, { waiting: true })
+          if (!still) await sleep(500)
+          continue
+        }
         setWritten((all) => new Set(all).add(key))
         setWriting(key)
         if (!still) {
@@ -1003,6 +1063,58 @@ export default function LivePage() {
     }
   }, [site?.site_name, site?.project_name])
 
+  /** WA-77: the ✅ Save was tapped: the waiting chip says so, then the entry lands on the report like any other. */
+  const playSaved = React.useCallback(
+    async (item: ReviewItem, gen: number) => {
+      const still = prefersReducedMotion()
+      const live = () => alive.current && gen === generation.current
+      const key = factKey(item)
+      const isLabour = item.section === 'labour'
+      const messageId = unwait(key)
+      markChip(messageId, key, { waiting: false, saved: true })
+      if (!still) await sleep(700)
+      if (!live()) return
+      setWritten((all) => new Set(all).add(key))
+      setWriting(key)
+      if (!still) {
+        await sleep(80)
+        const target = targetEls.current.get(isLabour ? 'labour' : key)
+        if (target) {
+          const image = (await sourceOf(item)).photos.find((p) => p.url)?.url ?? null
+          setSpot({
+            id: Date.now(),
+            fact: { ...spotFact(item, latest.current?.report.labour, image), kind: `Saved · ${KINDS[item.section] ?? 'Update'}` },
+            from: chipEls.current.get(key)?.getBoundingClientRect() ?? target.getBoundingClientRect(),
+            to: target.getBoundingClientRect(),
+          })
+          await sleep(SPOT_MS)
+          setSpot(null)
+        }
+      }
+      if (isLabour) setLabour(latest.current?.report.labour ?? null)
+      land(key)
+      const itemPhotos = (await sourceOf(item)).photos
+      if (itemPhotos.length) landPhotos(key, itemPhotos)
+      markChip(messageId, key, { flown: true })
+      if (!still) {
+        await sleep(900)
+        if (!live()) return
+        setRelay({ from: isLabour ? 'labour-total' : key, to: item.section })
+        await sleep(THREAD_MS)
+      }
+      setModuleLast((all) => ({ ...all, [item.section]: chipLabel(item, latest.current?.report.labour.headcount) }))
+      pulse(item.section)
+      if (!still) {
+        await sleep(450)
+        setRelay(null)
+      }
+      setWriting(null)
+    },
+    // the helpers it calls only set state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sourceOf],
+  )
+
   /** A correction: the message that changed it read, the new value full size over the old one struck out, then into its place. */
   const playFix = React.useCallback(
     async (fix: Fix, gen: number) => {
@@ -1087,13 +1199,24 @@ export default function LivePage() {
     running.current = true
     const gen = generation.current
     while (
-      (queue.current.length || qQueue.current.length || photoQueue.current.length || fixQueue.current.length) &&
+      (queue.current.length ||
+        qQueue.current.length ||
+        photoQueue.current.length ||
+        fixQueue.current.length ||
+        saveQueue.current.length) &&
       alive.current &&
       gen === generation.current
     ) {
       await Promise.all(queue.current.map(sourceOf))
       if (gen !== generation.current) break
       // Corrections, then photos added to lines already on the report: they change lines people are reading.
+      if (saveQueue.current.length) {
+        const next = saveQueue.current[0]
+        saveQueue.current = saveQueue.current.slice(1)
+        await playSaved(next, gen)
+        if (!prefersReducedMotion()) await sleep(500)
+        continue
+      }
       if (fixQueue.current.length) {
         const next = fixQueue.current[0]
         fixQueue.current = fixQueue.current.slice(1)
@@ -1133,7 +1256,7 @@ export default function LivePage() {
       running.current = false
       if (finaleDue.current && alive.current) startFinale()
     }
-  }, [sourceOf, playMessage, playQuestion, playPhoto, playFix, startFinale])
+  }, [sourceOf, playMessage, playQuestion, playPhoto, playFix, playSaved, startFinale])
 
   // New facts from the day's re-read join the queue; the first read is
   // taken as already written (with its messages in the feed, unanimated).
@@ -1145,19 +1268,28 @@ export default function LivePage() {
       evidence.current = new Map(data.items.map((item) => [factKey(item), item.evidence_count ?? 0]))
       lastSeen.current = new Map(data.items.map((item) => [factKey(item), item]))
       lastHeadcount.current = data.report.labour.headcount
-      setWritten(new Set(known.current))
+      // WA-77: what is not saved yet is not on the report; it waits on the left.
+      setWritten(new Set(data.items.filter((item) => item.review !== 'draft').map(factKey)))
       setLabour(data.report.labour)
       void Promise.all(data.items.map(sourceOf)).then((all) => {
         setRowPhotos(Object.fromEntries(data.items.map((item, i) => [factKey(item), all[i].photos])))
         const seen = new Map<string, FeedMessage>()
-        for (const { message } of all) {
-          if (!message || seen.has(message.id)) continue
+        all.forEach(({ message }, i) => {
+          if (!message) return
+          const item = data.items[i]
           const english = message.translated_text?.trim() || null
-          seen.set(message.id, {
+          const entry = seen.get(message.id) ?? {
             ...toFeed(message, false),
-            think: english ? { step: 'done', english, lines: [], chips: [] } : null,
-          })
-        }
+            think: english ? { step: 'done' as const, english, lines: [], chips: [] } : null,
+          }
+          if (item.review === 'draft') {
+            const chip: Chip = { key: factKey(item), label: chipLabel(item, data.report.labour.headcount), flown: false, waiting: true }
+            entry.think = { ...(entry.think ?? { step: 'done', english, lines: [], chips: [] }), chips: [...(entry.think?.chips ?? []), chip] }
+            waiting.current.set(factKey(item), message.id)
+          }
+          seen.set(message.id, entry)
+        })
+        setWaitingCount(waiting.current.size)
         for (const id of seen.keys()) feedIds.current.add(id)
         setFeed((all) =>
           [...all.filter((m) => !seen.has(m.id)), ...seen.values()].sort((a, b) => (a.at ?? '').localeCompare(b.at ?? '')),
@@ -1169,7 +1301,11 @@ export default function LivePage() {
     const now = new Map(data.items.map((item) => [factKey(item), item]))
     const freshLabour = data.items.some((item) => item.section === 'labour' && !known.current!.has(factKey(item)))
     // Confirmed by the engineer since the last read: the tag flips green a while.
-    const confirmed = data.items.filter((item) => before.get(factKey(item))?.review === 'draft' && item.review === 'confirmed').map(factKey)
+    const tapped = data.items.filter((item) => before.get(factKey(item))?.review === 'draft' && item.review === 'confirmed')
+    // WA-77: a waiting entry whose Save was tapped lands now.
+    const saved = tapped.filter((item) => waiting.current.has(factKey(item)))
+    saveQueue.current.push(...saved)
+    const confirmed = tapped.filter((item) => !waiting.current.has(factKey(item))).map(factKey)
     if (confirmed.length) {
       setConfirmedNow((all) => new Set([...all, ...confirmed]))
       window.setTimeout(() => setConfirmedNow((all) => new Set([...all].filter((k) => !confirmed.includes(k)))), LANDED_MS)
@@ -1183,13 +1319,24 @@ export default function LivePage() {
     }
     // The manpower total changed with no new manpower line: corrected.
     const headcount = data.report.labour.headcount
-    if (lastHeadcount.current !== null && headcount !== lastHeadcount.current && !freshLabour) {
+    // A manpower line just saved or taken back changes the total too; that is not a correction (WA-77).
+    const labourReviewed = data.items.some(
+      (item) => item.section === 'labour' && before.has(factKey(item)) && before.get(factKey(item))!.review !== item.review,
+    )
+    const labourGone = [...before.values()].some((item) => item.section === 'labour' && !now.has(factKey(item)))
+    if (lastHeadcount.current !== null && headcount !== lastHeadcount.current && !freshLabour && !labourReviewed && !labourGone) {
       const line = data.items.find((item) => item.section === 'labour')
       if (line) fixQueue.current.push({ item: line, was: String(lastHeadcount.current), now: String(headcount), labour: true })
       else setLabour(data.report.labour)
     }
     lastHeadcount.current = headcount
     // A line taken back (undone or removed): it crumbles away.
+    // A waiting entry taken back with ❌ Cancel: its chip is struck out.
+    for (const item of before.values()) {
+      if (now.has(factKey(item)) || !waiting.current.has(factKey(item))) continue
+      markChip(unwait(factKey(item)), factKey(item), { waiting: false, cancelled: true })
+      known.current!.delete(factKey(item))
+    }
     const gone = [...before.values()].filter((item) => !now.has(factKey(item)) && written.has(factKey(item)))
     if (gone.length) {
       gone.forEach((item) => known.current!.delete(factKey(item)))
@@ -1197,7 +1344,7 @@ export default function LivePage() {
       window.setTimeout(() => setGhosts((all) => all.filter((g) => !gone.includes(g))), SNAP_MS + 300)
     }
     lastSeen.current = now
-    if (fixQueue.current.length) void play()
+    if (fixQueue.current.length || saveQueue.current.length) void play()
     // A photo added to a line already shown: its new photos play on their own.
     const grown = data.items.filter(
       (item) => known.current!.has(factKey(item)) && (item.evidence_count ?? 0) > (evidence.current.get(factKey(item)) ?? 0),
@@ -1289,6 +1436,9 @@ export default function LivePage() {
     setHeld({})
     setGhosts([])
     setCorrected({})
+    waiting.current = new Map()
+    saveQueue.current = []
+    setWaitingCount(0)
   }, [siteId, date])
 
   /** The demo: the report snaps to dust, then every line comes back from its message, in order. */
@@ -1310,6 +1460,9 @@ export default function LivePage() {
     setFinale(null)
     photoQueue.current = []
     fixQueue.current = []
+    saveQueue.current = []
+    waiting.current = new Map()
+    setWaitingCount(0)
     setHeld({})
     setCorrected({})
     if (!prefersReducedMotion() && written.size > 0) {
@@ -1528,7 +1681,7 @@ export default function LivePage() {
                     ) : (
                       <p className="m-0 text-[16px] leading-relaxed text-foreground/80">{m.text}</p>
                     )}
-                    {m.think && (m.fresh || m.think.english) && (
+                    {m.think && (m.fresh || m.think.english || m.think.chips.length > 0) && (
                       <ThinkingPanel think={m.think} chipRef={setChipEl} looking={!!m.image || isImage(m.type)} />
                     )}
                     {m.replied && m.reply && (
@@ -1571,6 +1724,7 @@ export default function LivePage() {
                 project={detail.data?.project ?? null}
                 today={date === today}
                 frozen={frozen}
+                unsaved={waitingCount}
               />
               <div
                 ref={(el) => {
