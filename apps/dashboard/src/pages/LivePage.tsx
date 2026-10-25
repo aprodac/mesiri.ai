@@ -597,10 +597,30 @@ export default function LivePage() {
   const [today] = React.useState(() => localIsoDate(new Date()))
   const date = params.get('date') || today
 
-  const days = useQuery({ queryKey: ['live-site-days', date], queryFn: () => fetchSiteDaysApi(date) })
-  const sites = days.data?.items ?? []
-  const siteId = params.get('site') || sites[0]?.site_id || ''
+  // The scope the dashboard is in (?project=), as everywhere else.
+  const projectId = params.get('project')
+  const days = useQuery({
+    queryKey: ['live-site-days', date, projectId],
+    queryFn: () => fetchSiteDaysApi(date, projectId ?? undefined),
+  })
+  const sites = (days.data?.items ?? []).filter((s) => !projectId || s.project_id === projectId)
+  // With no site named, the one that heard from site last, so what was just sent is on screen.
+  const latestSite = [...sites].sort((a, b) => (b.last_update_at ?? '').localeCompare(a.last_update_at ?? ''))[0]
+  const siteId = params.get('site') || latestSite?.site_id || ''
   const site = sites.find((s) => s.site_id === siteId)
+  // Pin it in the address, so a later update elsewhere never switches the page under the viewer.
+  React.useEffect(() => {
+    if (!params.get('site') && latestSite) {
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.set('site', latestSite.site_id)
+          return next
+        },
+        { replace: true },
+      )
+    }
+  }, [params, latestSite, setParams])
 
   const detail = useQuery({
     queryKey: ['live-site-day', siteId, date],
@@ -1588,7 +1608,13 @@ export default function LivePage() {
               <select
                 aria-label="Site"
                 value={siteId}
-                onChange={(e) => setParams({ site: e.target.value, ...(params.get('date') ? { date } : {}) })}
+                onChange={(e) =>
+                  setParams({
+                    site: e.target.value,
+                    ...(projectId ? { project: projectId } : {}),
+                    ...(params.get('date') ? { date } : {}),
+                  })
+                }
                 className="h-8 border border-foreground/30 bg-background px-2 text-sm"
               >
                 {sites.map((s) => (
