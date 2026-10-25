@@ -1,35 +1,15 @@
 import * as React from 'react'
-import { Link } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link, useSearchParams } from 'react-router-dom'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Check } from 'lucide-react'
-import { confirmReportTime, fetchSetupProgress, requestContinue, type SetupProgress } from '@/lib/api'
+import { confirmReportTime, hideSetupCard, requestContinue, showSetupCard, type SetupProgress } from '@/lib/api'
 import { apiErrorMessage } from '@/lib/logo-upload'
-import { useAuth } from '@/lib/AuthContext'
+import { setupSteps, useSetupProgress } from '@/lib/setup'
 import { useTrial } from '@/lib/trial'
+import { inviteText } from '@/lib/invite'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/toast-notification'
 import { cn, formatClock } from '@/lib/utils'
-
-const HIDE_KEY = 'mesiri_getting_started_hidden'
-
-// "Hide for now" is a per-browser convenience; the card goes for good once
-// everything is done. Storage can be unavailable (private window), so never
-// let it break the page.
-function readHidden(orgId: string): boolean {
-  try {
-    return localStorage.getItem(`${HIDE_KEY}:${orgId}`) === '1'
-  } catch {
-    return false
-  }
-}
-
-function writeHidden(orgId: string): void {
-  try {
-    localStorage.setItem(`${HIDE_KEY}:${orgId}`, '1')
-  } catch {
-    // nothing to do: the card just shows again next time
-  }
-}
 
 interface Item {
   key: string
@@ -57,8 +37,10 @@ function items(p: SetupProgress, onTimeOk: () => void, savingTime: boolean, invi
     {
       key: 'team',
       done: p.has_team,
-      title: 'Add your site supervisor',
-      detail: 'On WhatsApp, share their contact with Mesiri, or add them on the Team page.',
+      // The person who reports from site: in Mesiri's roles, a Site Engineer
+      // (supervisors included; WEB-17 decided against a separate role).
+      title: 'Add the person who reports from site',
+      detail: 'Your site engineer or supervisor. On WhatsApp, share their contact with Mesiri, or add them on the Team page with just their number.',
       action: (
         <span className="flex items-center gap-3">
           {invite && (
@@ -143,27 +125,59 @@ function items(p: SetupProgress, onTimeOk: () => void, savingTime: boolean, invi
  * ticks anything by hand. Company admins only; gone once everything is done.
  */
 export function GettingStartedCard() {
-  const { me } = useAuth()
   const queryClient = useQueryClient()
-  const orgId = me?.org_id || me?.organization_id || ''
-  const isCompanyAdmin = (me?.role ?? '').toUpperCase() === 'ADMIN' && !me?.is_platform_admin && !!orgId
-  const [hidden, setHidden] = React.useState(() => (orgId ? readHidden(orgId) : false))
-
-  const progress = useQuery({
-    queryKey: ['setup-progress'],
-    queryFn: fetchSetupProgress,
-    enabled: isCompanyAdmin && !hidden,
-    refetchInterval: 60_000,
-  })
+  const progress = useSetupProgress()
+  const { isCompanyAdmin } = progress
+  // The sidebar's "Finish setup" (SS-19) asks for the card even when hidden.
+  const [params, setParams] = useSearchParams()
+  const asked = params.get('setup') === '1'
+  const section = React.useRef<HTMLElement>(null)
   const trial = useTrial()
+  const save = (data: SetupProgress) => queryClient.setQueryData(['setup-progress'], data)
+  // "Hide for now" holds for the whole company for a week (SS-19).
+  const hide = useMutation({
+    mutationFn: hideSetupCard,
+    onSuccess: (data) => {
+      save(data)
+      // Drop ?setup=1, or the card would ask to be shown again at once.
+      if (asked) {
+        setParams(
+          (prev) => {
+            const next = new URLSearchParams(prev)
+            next.delete('setup')
+            return next
+          },
+          { replace: true },
+        )
+      }
+    },
+  })
+  const show = useMutation({ mutationFn: showSetupCard, onSuccess: save })
+  const hiddenUntil = progress.data?.hidden_until
+  const showCard = show.mutate
+  // Once per visit from the link: hiding again while the address still says
+  // ?setup=1 must not bring the card straight back.
+  const handled = React.useRef(false)
+  React.useEffect(() => {
+    if (!asked) {
+      handled.current = false
+      return
+    }
+    if (handled.current || hiddenUntil === undefined) return
+    handled.current = true
+    if (hiddenUntil) showCard()
+    section.current?.scrollIntoView({ block: 'start' })
+  }, [asked, hiddenUntil, showCard])
   const toast = useToast()
   const continueAsk = useMutation({ mutationFn: requestContinue })
   const timeOk = useMutation({
     mutationFn: confirmReportTime,
-    onSuccess: (data) => queryClient.setQueryData(['setup-progress'], data),
+    onSuccess: save,
   })
 
-  // Once the trial has ended the banner (trial-banner.tsx) takes over.
+  // Once the trial has ended the banner (trial-banner.tsx) takes over: the
+  // dashboard is read-only, so none of these could be done anyway.
+  const hidden = !!hiddenUntil && !(asked && !hide.isSuccess)
   if (!isCompanyAdmin || hidden || trial.readOnly || !progress.data) return null
   const number = progress.data.whatsapp_number
   const site = progress.data.first_project?.name
@@ -171,9 +185,7 @@ export function GettingStartedCard() {
   // number and what to send, so nobody has to explain it.
   const invite = number
     ? async () => {
-        const text =
-          `Please send today's site work${site ? ` for ${site}` : ''} to Mesiri on WhatsApp: ${number}. ` +
-          'A voice note is fine, in any language: who worked, what got done, anything that held you up.'
+        const text = inviteText({ number, site })
         try {
           await navigator.clipboard.writeText(text)
           toast.success('Invite copied', 'Paste it to your supervisor on WhatsApp.')
@@ -183,7 +195,7 @@ export function GettingStartedCard() {
       }
     : null
   const list = items(progress.data, () => timeOk.mutate(), timeOk.isPending, invite)
-  const doneCount = list.filter((i) => i.done).length
+  const doneCount = setupSteps(progress.data).filter(Boolean).length
   if (doneCount === list.length) return null
   const daysLeft = progress.data.effective_status === 'trial' ? progress.data.trial_days_left : null
   const continueAsked = trial.continueRequested || continueAsk.isSuccess
@@ -191,7 +203,7 @@ export function GettingStartedCard() {
   return (
     // Compact (WEB-25 density): progress on the title line, done steps
     // folded into it; only the steps still to do get a row.
-    <section aria-label="Getting started" className="flex flex-col gap-2 rounded-xl border px-4 py-3">
+    <section ref={section} aria-label="Getting started" className="scroll-mt-16 flex flex-col gap-2 rounded-xl border px-4 py-3">
       <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
           <h2 className="text-sm font-semibold">Getting started</h2>
@@ -222,10 +234,8 @@ export function GettingStartedCard() {
         <button
           type="button"
           className="text-xs text-muted-foreground underline underline-offset-2"
-          onClick={() => {
-            writeHidden(orgId)
-            setHidden(true)
-          }}
+          disabled={hide.isPending}
+          onClick={() => hide.mutate()}
         >
           Hide for now
         </button>

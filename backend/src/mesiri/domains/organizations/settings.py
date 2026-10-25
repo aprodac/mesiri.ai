@@ -22,9 +22,7 @@ from mesiri.domains.organizations.branding import DEFAULT_BRANDING
 # Every role the system recognises (users/router.py's _VALID_ROLES). Kept as
 # a frozenset here so a settings payload naming a role that doesn't exist is
 # rejected at the boundary instead of silently never matching anyone.
-VALID_ROLES: frozenset[str] = frozenset(
-    {"ADMIN", "PROJECT_MANAGER", "SITE_ENGINEER", "FINANCE"}
-)
+VALID_ROLES: frozenset[str] = frozenset({"ADMIN", "PROJECT_MANAGER", "SITE_ENGINEER", "FINANCE"})
 
 # Which roles may create a materials_catalog entry directly from a WhatsApp
 # report (STA-139). Default is Admin + Project Manager: before this setting
@@ -42,6 +40,9 @@ SETUP_PROGRESS = "setup_progress"
 BRANDING_REQUESTS = "branding_requests"
 # "Continue after the trial" requests (SS-08); rules in trial_notices.py.
 CONTINUE_REQUESTS = "continue_requests"
+# The dashboard's getting-started card (SS-07/SS-19): hidden for the company
+# until a time, so "Hide for now" holds for every admin and browser.
+GETTING_STARTED = "getting_started"
 # Joining a company by code (SS-05); rules in domains/organizations/team_join.py.
 JOIN_CODE = "join_code"
 JOIN_REQUESTS = "join_requests"
@@ -209,6 +210,14 @@ _SPECS: dict[str, SettingSpec] = {
             "to approve or reject them on WhatsApp."
         ),
     ),
+    GETTING_STARTED: SettingSpec(
+        key=GETTING_STARTED,
+        default={},
+        description=(
+            "The dashboard's getting-started card: hidden_until, when an admin chose "
+            "'Hide for now'. Written through /company/setup-progress only."
+        ),
+    ),
     CONTINUE_REQUESTS: SettingSpec(
         key=CONTINUE_REQUESTS,
         default=[],
@@ -223,7 +232,15 @@ _SPECS: dict[str, SettingSpec] = {
 # upload), or written only by the assistant (SS-14). The generic settings API
 # refuses them: a hand-written logo key could point at another company's file.
 DEDICATED_ENDPOINT_KEYS: frozenset[str] = frozenset(
-    {BRANDING, SETUP_PROGRESS, BRANDING_REQUESTS, CONTINUE_REQUESTS, JOIN_CODE, JOIN_REQUESTS}
+    {
+        BRANDING,
+        SETUP_PROGRESS,
+        BRANDING_REQUESTS,
+        CONTINUE_REQUESTS,
+        JOIN_CODE,
+        JOIN_REQUESTS,
+        GETTING_STARTED,
+    }
 )
 
 

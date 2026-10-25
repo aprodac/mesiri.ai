@@ -52,9 +52,10 @@ def test_active_and_old_capitalised_status() -> None:
 
 
 def test_owner_alone_is_not_a_team() -> None:
-    assert to_overview(_row(active_users=1), _NOW).setup.has_team is False
-    assert to_overview(_row(active_users=2), _NOW).setup.has_team is True
-    assert to_overview(_row(active_users=None), _NOW).setup.has_team is False
+    # SS-19: a second login isn't enough; someone has to report from site.
+    assert to_overview(_row(active_users=2), _NOW).setup.has_team is False
+    assert to_overview(_row(has_reporter=True), _NOW).setup.has_team is True
+    assert to_overview(_row(has_reporter=None), _NOW).setup.has_team is False
 
 
 def test_setup_progress_is_carried_through() -> None:
@@ -79,7 +80,9 @@ def test_an_expired_trial_past_the_retention_days_is_eligible_for_deletion() -> 
 
 def test_within_retention_converted_or_still_on_trial_is_not_eligible() -> None:
     recent = _NOW - dt.timedelta(days=29)
-    assert not to_overview(_row(trial_ends_at=recent), _NOW, retention_days=30).eligible_for_deletion
+    assert not to_overview(
+        _row(trial_ends_at=recent), _NOW, retention_days=30
+    ).eligible_for_deletion
     old = _NOW - dt.timedelta(days=90)
     converted = _row(status="active", trial_ends_at=old, converted_at=old)
     assert not to_overview(converted, _NOW, retention_days=30).eligible_for_deletion

@@ -154,7 +154,8 @@ export interface User {
 
 export interface UserCreatePayload {
   full_name: string
-  email: string
+  /** Left out for someone who works on WhatsApp only (WEB-17). */
+  email?: string
   password?: string
   role: string
   whatsapp_number?: string | null
@@ -2069,6 +2070,8 @@ export interface SetupProgress {
   trial_days_left: number | null
   /** Mesiri's own WhatsApp number, for inviting people to send updates (SS-18). */
   whatsapp_number?: string | null
+  /** "Hide for now", for the whole company until then (SS-19); null: showing. */
+  hidden_until?: string | null
 }
 
 export async function fetchSetupProgress(): Promise<SetupProgress> {
@@ -2080,6 +2083,18 @@ export async function fetchSetupProgress(): Promise<SetupProgress> {
  * Answers the WhatsApp setup question too (SS-14), so it isn't asked again. */
 export async function confirmReportTime(): Promise<SetupProgress> {
   const res = await api.post<SetupProgress>('/company/setup-progress/report-time-ok')
+  return res.data
+}
+
+/** Hide the getting-started card for the company for a week (SS-19). */
+export async function hideSetupCard(): Promise<SetupProgress> {
+  const res = await api.post<SetupProgress>('/company/setup-progress/hide')
+  return res.data
+}
+
+/** Bring it back (the sidebar's "Finish setup"). */
+export async function showSetupCard(): Promise<SetupProgress> {
+  const res = await api.post<SetupProgress>('/company/setup-progress/show')
   return res.data
 }
 

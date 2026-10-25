@@ -551,7 +551,16 @@ site orange only for the report's rule and the one button.
 Rollback: revert `navigate('/welcome')` in `Signup.tsx` and signup lands on Today as
 before; everything else is additive. No migration.
 
-Not built / known: the supervisor's own welcome message and adding people by WhatsApp
-number only (WEB-17, needs approval); counting "site supervisor" only for a reporting
-role; "Hide for now" kept on the server; a "time saved" figure on Today.
+Since then (25 Oct, approved by Alan):
+
+- **Team: add by WhatsApp number (WEB-17).** Name, number, role and project; a dashboard
+  login is opt-in. Created through the same `CreateUserHandler` WhatsApp uses
+  (`application/identity/add_by_number.py`). Afterwards, a message to forward with
+  Mesiri's number and "Send on WhatsApp": Mesiri can't message a new person first until
+  an invite template is approved (SS-12). No separate Supervisor role: the checklist
+  asks for "the person who reports from site".
+- **Checklist (SS-19).** That step ticks only for an active site engineer or project
+  manager with a WhatsApp number on a project. "Hide for now" is company-wide for 7 days
+  (`POST /company/setup-progress/hide`, `/show`). A "Finish setup N/6" link sits in the
+  sidebar's Setup group until everything is done.
 
