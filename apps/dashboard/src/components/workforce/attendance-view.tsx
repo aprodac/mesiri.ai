@@ -2,6 +2,7 @@ import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { ChevronRight, Download, HardHat, MessageSquare, TriangleAlert } from 'lucide-react'
+import { Users as IcUsers, TrendingUp as IcTrendingUp, CalendarDays as IcCalendarDays, IndianRupee as IcIndianRupee } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -9,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/components/ui/toast-notification'
 import { Callout, DprSection, Segmented, StatStrip } from '@/components/dpr-page'
+import { dayBand } from '@/lib/cues'
 import { fetchLabourStatementApi } from '@/lib/api'
 import { downloadTextFile, toCsv } from '@/lib/export'
 import { downloadStatement, fetchAllAttendance, fetchAttendanceLines, rangeName, STATEMENTS } from '@/lib/labour'
@@ -64,6 +66,9 @@ export function AttendanceView({ projectId, siteId }: { projectId: string | null
   const ledgerRows = allRows.filter(
     (r) => (siteFilter === 'all' || r.report.site_id === siteFilter) && (tradeFilter === 'all' || (r.line.trade ?? '') === tradeFilter),
   )
+  // Each day's position, newest first, for the alternate-day shading.
+  const dayIndex = new Map<string, number>()
+  for (const r of ledgerRows) if (!dayIndex.has(r.report.occurred_date)) dayIndex.set(r.report.occurred_date, dayIndex.size)
   const ledgerTotal = ledgerRows.reduce(
     (t, { line }) => ({ workers: t.workers + (line.headcount || 0), cost: t.cost + (line.daily_wage ? line.daily_wage * (line.headcount || 1) : 0) }),
     { workers: 0, cost: 0 },
@@ -163,12 +168,15 @@ export function AttendanceView({ projectId, siteId }: { projectId: string | null
           <StatStrip
             phoneCols={2}
             stats={[
-              { label: 'Man-days', value: manDays.toLocaleString('en-IN') },
-              { label: 'Average a day', value: days.length ? Math.round(manDays / days.length) : '—' },
-              { label: 'Days reported', value: days.length },
+              { label: 'Man-days', value: manDays.toLocaleString('en-IN'), icon: IcUsers },
+              { label: 'Average a day', value: days.length ? Math.round(manDays / days.length) : '—', icon: IcTrendingUp, hint: 'workers on site' },
+              { label: 'Days reported', value: days.length, icon: IcCalendarDays },
               {
                 label: st && st.unpriced_man_days > 0 && st.priced_man_days > 0 ? `Labour cost (${st.priced_man_days} of ${st.total_man_days} priced)` : 'Labour cost',
                 value: st && st.total_cost > 0 ? `₹${st.total_cost.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : st && st.unpriced_man_days > 0 ? 'No wages sent' : '—',
+                icon: IcIndianRupee,
+                tone: st && st.unpriced_man_days > 0 ? 'warn' : 'default',
+                hint: st && st.unpriced_man_days > 0 ? 'send wages to see cost' : undefined,
               },
             ]}
           />
@@ -260,9 +268,10 @@ export function AttendanceView({ projectId, siteId }: { projectId: string | null
                           <tr
                             key={`${report.id}-${line.id}`}
                             onClick={() => setOpenId(report.id)}
-                            className={cn('cursor-pointer border-t hover:bg-muted/40', newDay && i > 0 && 'border-t-foreground/15')}
+                            // WEB-37: alternate days shaded, each day a block.
+                            className={cn('cursor-pointer border-t hover:bg-muted/40', dayBand(dayIndex.get(report.occurred_date) ?? 0), newDay && i > 0 && 'border-t-foreground/15')}
                           >
-                            <td className={cn('whitespace-nowrap px-3 py-1.5', !newDay && 'text-transparent')}>{shortDay(report.occurred_date)}</td>
+                            <td className={cn('whitespace-nowrap px-3 py-1.5 font-medium', !newDay && 'text-transparent')}>{shortDay(report.occurred_date)}</td>
                             {!siteId && (
                               <td className="whitespace-nowrap px-3 py-1.5">
                                 {newReport && (

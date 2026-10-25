@@ -16,6 +16,7 @@ import {
   TriangleAlert,
   Users,
 } from 'lucide-react'
+import { HardHat as IcHardHat, Hammer as IcHammer, Camera as IcCamera, TriangleAlert as IcTriangleAlert } from 'lucide-react'
 import {
   approveDailyReportApi,
   confirmFactApi,
@@ -764,10 +765,11 @@ export default function SiteDayPage() {
 
           <StatStrip
             stats={[
-              { label: 'Workers', value: labour.headcount || '—' },
-              { label: 'Work items', value: bySection('work').length || '—' },
-              { label: 'Photos', value: detail.report.evidence_count || '—' },
+              { label: 'Workers', value: labour.headcount || '—', icon: IcHardHat },
+              { label: 'Work items', value: bySection('work').length || '—', icon: IcHammer },
+              { label: 'Photos', value: detail.report.evidence_count || '—', icon: IcCamera, tone: detail.report.evidence_count ? 'default' : 'warn', hint: detail.report.evidence_count ? undefined : 'none sent' },
               {
+                icon: IcTriangleAlert,
                 label: 'Open issues',
                 value: Math.max(day?.open_issues ?? 0, issues.length) || '—',
                 tone: issues.some((i) => ['CRITICAL', 'HIGH'].includes((i.severity ?? '').toUpperCase()))

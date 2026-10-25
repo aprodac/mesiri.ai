@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { BarChart3, ChevronRight, RefreshCw, Table2, TriangleAlert } from 'lucide-react'
+import { HardHat as IcHardHat, Hammer as IcHammer, Camera as IcCamera, TriangleAlert as IcTriangleAlert, Clock as IcClock } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
 import { fetchAnalyticsApi, type AnalyticsDay, type AnalyticsSummary } from '@/lib/api'
 import { longDate, plural } from '@/lib/site-day'
@@ -257,11 +258,11 @@ export default function OperationsAnalyticsPage() {
           </p>
           <StatStrip
             stats={[
-              { label: 'Worker-days', value: totals.workerDays.toLocaleString() || '—' },
-              { label: 'Work items', value: totals.workItems || '—' },
-              { label: 'Photos', value: totals.photos || '—' },
-              { label: 'Issues reported', value: totals.issues || '—', tone: totals.issues > 0 ? 'warn' : 'default' },
-              { label: 'Hours lost', value: totals.hoursLost || '—', tone: totals.hoursLost > 0 ? 'bad' : 'default' },
+              { label: 'Worker-days', value: totals.workerDays.toLocaleString() || '—', icon: IcHardHat },
+              { label: 'Work items', value: totals.workItems || '—', icon: IcHammer },
+              { label: 'Photos', value: totals.photos || '—', icon: IcCamera },
+              { label: 'Issues reported', value: totals.issues || '—', tone: totals.issues > 0 ? 'warn' : 'good', icon: IcTriangleAlert },
+              { label: 'Hours lost', value: totals.hoursLost || '—', tone: totals.hoursLost > 0 ? 'bad' : 'default', icon: IcClock },
             ]}
           />
 

@@ -1,5 +1,8 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { fetchSiteDaysApi } from '@/lib/api'
+import { fetchAllOpenIssues } from '@/lib/issues'
+import { FROZEN, hasUpdates, localIsoDate } from '@/lib/site-day'
 import { Link } from 'react-router-dom'
 import { Archive, Building2, Clock, MapPin, MoreHorizontal, Pencil, Plus, Search, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -9,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/components/ui/toast-notification'
 import { PageError, PageHeader, Segmented } from '@/components/dpr-page'
+import { ROW_ACCENT } from '@/lib/cues'
 import { AddEditProjectDialog } from '@/components/project-dialogs'
 import { archiveProject, fetchProjectMembers, fetchProjectsFull, fetchSitesFull, type Project } from '@/lib/projects'
 import { CHIP, plural } from '@/lib/site-day'
@@ -45,6 +49,22 @@ export default function Projects() {
   const [archiving, setArchiving] = React.useState<Project | null>(null)
 
   const query = useQuery<Project[]>({ queryKey: ['projects-list'], queryFn: fetchProjectsFull })
+  // WEB-37: today at a glance on each project -- sites reported and open
+  // issues -- from the same reads Today uses (cached between the pages).
+  const [today] = React.useState(() => localIsoDate(new Date()))
+  const days = useQuery({ queryKey: ['site-days', today, undefined], queryFn: () => fetchSiteDaysApi(today) })
+  const openIssues = useQuery({ queryKey: ['today-open-issues', undefined], queryFn: () => fetchAllOpenIssues(undefined) })
+  const todayFor = (projectId: string): ProjectToday | undefined => {
+    if (!days.data) return undefined
+    const sites = days.data.items.filter((d) => d.project_id === projectId)
+    const issues = (openIssues.data ?? []).filter((i) => i.project_id === projectId)
+    return {
+      sites: sites.length,
+      reported: sites.filter((d) => hasUpdates(d) || FROZEN.includes(d.status)).length,
+      issues: issues.length,
+      urgent: issues.filter((i) => ['CRITICAL', 'HIGH'].includes(i.severity.toUpperCase())).length,
+    }
+  }
   const projects = React.useMemo(() => query.data ?? [], [query.data])
 
   const archive = useMutation({
@@ -138,6 +158,7 @@ export default function Projects() {
             <ProjectRow
               key={project.id}
               project={project}
+              today={todayFor(project.id)}
               readOnly={readOnly}
               onEdit={() => {
                 setEditing(project)
@@ -183,8 +204,10 @@ function ProjectRow({
   readOnly,
   onEdit,
   onArchive,
+  today,
 }: {
   project: Project
+  today?: ProjectToday
   readOnly: boolean
   onEdit: () => void
   onArchive: () => void
@@ -196,7 +219,12 @@ function ProjectRow({
   const facts = [project.client && `Client: ${project.client}`, project.location, project.code].filter(Boolean)
 
   return (
-    <li className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-4">
+    <li
+      className={cn(
+        'flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-4',
+        today?.urgent ? ROW_ACCENT.bad : today && today.sites > 0 && today.reported === today.sites ? ROW_ACCENT.good : ROW_ACCENT.none,
+      )}
+    >
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
           <Link to={`/projects/${project.id}`} className="font-semibold hover:underline">
@@ -205,6 +233,7 @@ function ProjectRow({
           <span className={cn(CHIP, STATUS_CHIP[project.status] ?? STATUS_CHIP.neutral)}>{project.statusLabel}</span>
         </div>
         {facts.length > 0 && <p className="text-sm text-muted-foreground">{facts.join(' · ')}</p>}
+        {today && today.sites > 0 && <TodayLine today={today} />}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
           <span className="inline-flex items-center gap-1.5">
             <MapPin className="size-3.5 text-muted-foreground" aria-hidden="true" />
@@ -249,5 +278,26 @@ function ProjectRow({
         )}
       </div>
     </li>
+  )
+}
+
+type ProjectToday = { sites: number; reported: number; issues: number; urgent: number }
+
+/** "Today: 1 of 2 sites reported · 2 open issues", coloured by how it stands. */
+function TodayLine({ today }: { today: ProjectToday }) {
+  const all = today.reported === today.sites
+  return (
+    <p className="flex flex-wrap items-center gap-1.5 text-sm">
+      <span className="text-muted-foreground">Today:</span>
+      <span className={cn(CHIP, all ? 'bg-success-soft text-success' : today.reported ? 'bg-draft-soft text-draft' : 'bg-muted text-muted-foreground')}>
+        {today.reported} of {today.sites} {today.sites === 1 ? 'site' : 'sites'} reported
+      </span>
+      {today.issues > 0 && (
+        <span className={cn(CHIP, today.urgent ? 'bg-destructive/10 text-destructive' : 'bg-draft-soft text-draft')}>
+          {today.issues} open {today.issues === 1 ? 'issue' : 'issues'}
+          {today.urgent ? ` · ${today.urgent} urgent` : ''}
+        </span>
+      )}
+    </p>
   )
 }

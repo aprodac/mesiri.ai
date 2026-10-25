@@ -1,11 +1,12 @@
 import * as React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { fetchAllOpenIssues } from '@/lib/issues'
 import { Building2, ChevronLeft, ChevronRight, CircleCheck, CircleDashed, CircleDot, RefreshCw, Send, TriangleAlert } from 'lucide-react'
+import { MapPin as IcMapPin, HardHat as IcHardHat, Hammer as IcHammer, TriangleAlert as IcTriangleAlert } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
 import {
   fetchSiteDaysApi,
-  fetchSiteIssuesApi,
   sendProjectDprNowApi,
   setSiteDayConditionsApi,
   type ProjectDayItem,
@@ -20,6 +21,7 @@ import { useReadOnly } from '@/lib/trial'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Callout, DprAside, DprSection, PageHeader, StatStrip } from '@/components/dpr-page'
+import { ROW_ACCENT } from '@/lib/cues'
 import { cn, formatClock } from '@/lib/utils'
 import {
   CHIP,
@@ -71,6 +73,12 @@ function timeLost(minutes: number | null | undefined): string {
   return `${hours} hr${hours === 1 ? '' : 's'}`
 }
 
+// An open issue turns amber after a day and red after three (WEB-37).
+function issueAgeClass(occurredAt: string): string {
+  const days = (Date.now() - new Date(occurredAt).getTime()) / 86_400_000
+  return days >= 3 ? 'font-medium text-destructive' : days >= 1 ? 'font-medium text-draft' : ''
+}
+
 function SiteRow({
   site,
   date,
@@ -94,7 +102,14 @@ function SiteRow({
   const quiet = !hasUpdates(site)
 
   return (
-    <li className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:gap-4">
+    // WEB-37: the left stripe is the site's state -- green done, blue with
+    // the engineer, amber details missing, none while nothing has come in.
+    <li
+      className={cn(
+        'flex flex-col gap-2 py-3 pl-3 sm:flex-row sm:items-center sm:gap-4',
+        done ? ROW_ACCENT.good : site.status === 'needs_details' ? ROW_ACCENT.warn : quiet ? ROW_ACCENT.none : ROW_ACCENT.info,
+      )}
+    >
       <div className="flex min-w-0 flex-1 items-start gap-3">
         <span className="mt-0.5 shrink-0" title={status.label}>
           {done ? (
@@ -153,22 +168,6 @@ function SiteRow({
       </div>
     </li>
   )
-}
-
-// DSH-10: every open issue, not just the latest 100 of all statuses: the server
-// filters by status, and each status is read page by page (the API caps a page
-// at 100) so the most severe ones are ranked from the whole list.
-const ISSUE_PAGE = 100
-async function fetchAllOpenIssues(projectId: string | undefined): Promise<SiteIssueItem[]> {
-  const all: SiteIssueItem[] = []
-  for (const status of ['OPEN', 'ACKNOWLEDGED']) {
-    for (let offset = 0; ; offset += ISSUE_PAGE) {
-      const page = await fetchSiteIssuesApi({ projectId, status, limit: ISSUE_PAGE, offset })
-      all.push(...page.items)
-      if (page.items.length < ISSUE_PAGE || offset + ISSUE_PAGE >= page.total) break
-    }
-  }
-  return all
 }
 
 export default function TodayPage() {
@@ -373,11 +372,13 @@ export default function TodayPage() {
                     <span className="text-sm font-normal text-muted-foreground"> of {sites.length}</span>
                   </>
                 ),
-                tone: totals.reported < sites.length ? 'warn' : 'default',
+                tone: totals.reported < sites.length ? 'warn' : sites.length ? 'good' : 'default',
+                icon: IcMapPin,
+                hint: totals.reported < sites.length ? `${sites.length - totals.reported} still to report` : sites.length ? 'All sites in' : undefined,
               },
-              { label: 'Workers', value: totals.workers || '—' },
-              { label: 'Work items', value: totals.workItems || '—' },
-              { label: 'Open issues', value: totals.openIssues || '—', tone: totals.openIssues > 0 ? 'warn' : 'default' },
+              { label: 'Workers', value: totals.workers || '—', icon: IcHardHat, hint: totals.workers ? 'on site today' : 'none reported yet' },
+              { label: 'Work items', value: totals.workItems || '—', icon: IcHammer, hint: totals.workItems ? 'reported today' : 'none reported yet' },
+              { label: 'Open issues', value: totals.openIssues || '—', tone: totals.openIssues > 0 ? 'warn' : 'good', icon: IcTriangleAlert, hint: totals.openIssues > 0 ? 'waiting on someone' : 'nothing stuck' },
             ]}
           />
 
@@ -450,13 +451,20 @@ export default function TodayPage() {
                     {openIssues.map((issue) => {
                       const sev = severityChip(issue.severity)
                       return (
-                        <li key={issue.id} className="flex items-start justify-between gap-3 py-2">
+                        <li
+                          key={issue.id}
+                          className={cn(
+                            'flex items-start justify-between gap-3 py-2 pl-3',
+                            ['CRITICAL'].includes(issue.severity.toUpperCase()) ? ROW_ACCENT.bad : issue.severity.toUpperCase() === 'HIGH' ? ROW_ACCENT.warn : ROW_ACCENT.none,
+                          )}
+                        >
                           <div className="flex min-w-0 flex-col">
                             <span className="line-clamp-2 text-sm">
                               {issue.narrative || issue.issue_type.toLowerCase().replace(/_/g, ' ')}
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              {siteNames.get(issue.site_id) ?? '—'} · open {openFor(issue.occurred_at).toLowerCase()}
+                              {siteNames.get(issue.site_id) ?? '—'} ·{' '}
+                              <span className={issueAgeClass(issue.occurred_at)}>open {openFor(issue.occurred_at).toLowerCase()}</span>
                               {issue.delay_duration_minutes ? ` · ${timeLost(issue.delay_duration_minutes)} lost` : ''}
                             </span>
                           </div>

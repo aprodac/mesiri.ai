@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { Search, Plus, RefreshCw, CheckCircle2, Check, TriangleAlert } from 'lucide-react'
+import { CircleDot as IcCircleDot, Siren as IcSiren, Clock as IcClock } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
 import {
   fetchSiteIssuesApi,
@@ -20,6 +21,7 @@ import { Sheet, SheetContent, SheetFooter, SheetTitle } from '@/components/ui/sh
 import { ByLine, Fact, Facts, SheetHero, SheetSection } from '@/components/detail-sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Callout, PageHeader, StatStrip } from '@/components/dpr-page'
+import { ROW_ACCENT } from '@/lib/cues'
 import { useSiteNames } from '@/lib/site-names'
 import { useUrlState } from '@/lib/url-state'
 import { plural } from '@/lib/site-day'
@@ -96,6 +98,20 @@ function openFor(occurredAt: string): string {
   if (hours < 24) return `${hours} h`
   const days = Math.floor(hours / 24)
   return days === 1 ? '1 day' : `${days} days`
+}
+
+// WEB-37: an open issue turns amber after a day and red after three, so
+// what has been left waiting stands out.
+function ageClass(occurredAt: string): string {
+  const days = (Date.now() - new Date(occurredAt).getTime()) / 86_400_000
+  return days >= 3 ? 'font-medium text-destructive' : days >= 1 ? 'font-medium text-draft' : ''
+}
+
+/** The row's left stripe: its severity while open, none once closed. */
+function severityAccent(item: SiteIssueItem): string {
+  if (isClosed(item.status)) return ROW_ACCENT.none
+  const sev = item.severity.toUpperCase()
+  return sev === 'CRITICAL' ? ROW_ACCENT.bad : sev === 'HIGH' ? ROW_ACCENT.warn : sev === 'MEDIUM' ? ROW_ACCENT.info : ROW_ACCENT.none
 }
 
 // ─── Main Operations Issues Page ───────────────────────────────────────────────
@@ -317,9 +333,9 @@ export default function OperationsIssuesPage() {
 
       <StatStrip
         stats={[
-          { label: 'Open', value: stats.openCount || '—', tone: stats.openCount > 0 ? 'warn' : 'default' },
-          { label: 'High or critical', value: stats.urgentOpenCount || '—', tone: stats.urgentOpenCount > 0 ? 'bad' : 'default' },
-          { label: 'Time lost', value: stats.openMinutesLost ? formatDuration(stats.openMinutesLost) : '—' },
+          { label: 'Open', value: stats.openCount || '—', tone: stats.openCount > 0 ? 'warn' : 'good', icon: IcCircleDot, hint: stats.openCount ? 'not closed yet' : 'nothing stuck' },
+          { label: 'High or critical', value: stats.urgentOpenCount || '—', tone: stats.urgentOpenCount > 0 ? 'bad' : 'default', icon: IcSiren, hint: stats.urgentOpenCount ? 'deal with these first' : 'none' },
+          { label: 'Time lost', value: stats.openMinutesLost ? formatDuration(stats.openMinutesLost) : '—', tone: stats.openMinutesLost ? 'warn' : 'default', icon: IcClock, hint: 'by open issues' },
         ]}
       />
 
@@ -390,11 +406,11 @@ export default function OperationsIssuesPage() {
           <p className="text-sm text-muted-foreground">Issues reported on WhatsApp or here show up in this list.</p>
         </div>
       ) : (
-        <ul className="flex flex-col divide-y rounded-xl border px-4">
+        <ul className="flex flex-col divide-y overflow-hidden rounded-xl border px-4">
           {filteredIssues.map((item) => {
             const closed = isClosed(item.status)
             return (
-              <li key={item.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:gap-4">
+              <li key={item.id} className={cn('-mx-4 flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-4', severityAccent(item), closed && 'opacity-70')}>
                 <div className="flex min-w-0 flex-1 items-start gap-3">
                   <span className="mt-0.5 w-[68px] shrink-0">{getSeverityBadge(item.severity)}</span>
                   <button
@@ -408,13 +424,14 @@ export default function OperationsIssuesPage() {
                     <span className="font-medium hover:underline">{humanizeIssueType(item.issue_type)}</span>
                     {item.narrative && <span className="line-clamp-1 text-sm text-muted-foreground">{item.narrative}</span>}
                     <span className="text-xs text-muted-foreground">
-                      {[
-                        siteLabel(item),
-                        closed ? null : `open ${openFor(item.occurred_at).toLowerCase()}`,
-                        item.delay_duration_minutes ? `${formatDuration(item.delay_duration_minutes)} lost` : null,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')}
+                      {siteLabel(item)}
+                      {!closed && (
+                        <>
+                          {' · '}
+                          <span className={ageClass(item.occurred_at)}>open {openFor(item.occurred_at).toLowerCase()}</span>
+                        </>
+                      )}
+                      {item.delay_duration_minutes ? ` · ${formatDuration(item.delay_duration_minutes)} lost` : ''}
                     </span>
                   </button>
                 </div>

@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Callout, PageHeader } from '@/components/dpr-page'
+import { ROW_ACCENT } from '@/lib/cues'
 import { useUrlState } from '@/lib/url-state'
 
 // Daily Reports history (WEB-06): every site and project DPR, newest day
@@ -87,7 +88,16 @@ function ReportRow({ item, onPdf, nested }: { item: DprHistoryItem; onPdf: (item
   const confirmed = item.workflow_status === 'approved' && !unsentProject(item)
   const quiet = item.workflow_status === 'not_reported' || unsentProject(item) || item.version_no === null
   return (
-    <li className={cn('flex items-center gap-3 py-2.5', nested && 'pl-3 sm:pl-7')}>
+    // WEB-37: a left stripe says the state at a glance -- green confirmed or
+    // sent, amber waiting on the engineer, none when there is nothing to do.
+    <li
+      className={cn(
+        '-mx-4 flex items-center gap-3 px-4 py-2.5',
+        nested && 'pl-7 sm:pl-11',
+        sent || confirmed ? ROW_ACCENT.good : quiet ? ROW_ACCENT.none : ROW_ACCENT.warn,
+        item.level === 'project' && 'bg-muted/30',
+      )}
+    >
       <span className="shrink-0" title={status.label}>
         {sent || confirmed ? (
           <CircleCheck className="size-5 text-success" />
@@ -123,6 +133,20 @@ function ReportRow({ item, onPdf, nested }: { item: DprHistoryItem; onPdf: (item
         </Button>
       </div>
     </li>
+  )
+}
+
+/** "3 of 4 sites confirmed" beside a day's heading, green when all are. */
+function DayProgress({ projects }: { projects: { sites: DprHistoryItem[] }[] }) {
+  const sites = projects.flatMap((p) => p.sites)
+  if (sites.length === 0) return null
+  const done = sites.filter((i) => i.workflow_status === 'approved' || i.workflow_status === 'published').length
+  const all = done === sites.length
+  return (
+    <span className={cn(CHIP, 'font-medium', all ? 'bg-success-soft text-success' : done ? 'bg-draft-soft text-draft' : 'bg-muted text-muted-foreground')}>
+      {all ? <CircleCheck className="size-3" /> : null}
+      {done} of {plural(sites.length, 'site')} confirmed
+    </span>
   )
 }
 
@@ -308,10 +332,13 @@ export default function DailyReportsPage() {
         <div className="flex flex-col gap-5">
           {byDate.map(([day, projects]) => (
             <section key={day} aria-label={longDate(day)} className="flex flex-col">
-              <h2 className="sticky top-[60px] z-10 -mx-1 bg-background/95 px-1 py-1.5 text-sm font-semibold backdrop-blur">{longDate(day)}</h2>
+              <h2 className="sticky top-[60px] z-10 -mx-1 flex items-center gap-2 bg-background/95 px-1 py-1.5 text-sm font-semibold backdrop-blur">
+                {longDate(day)}
+                <DayProgress projects={[...projects.values()]} />
+              </h2>
               <div className="flex flex-col gap-3">
                 {[...projects.entries()].map(([projectId, group]) => (
-                  <div key={projectId} className="rounded-xl border px-4 py-1">
+                  <div key={projectId} className="overflow-hidden rounded-xl border px-4 py-1">
                     <p className="flex items-center gap-2 border-b py-2 text-sm">
                       <Building2 className="size-4 text-muted-foreground" />
                       <span className="font-medium">{group.name}</span>

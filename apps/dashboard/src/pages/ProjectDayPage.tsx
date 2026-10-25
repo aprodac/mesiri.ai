@@ -2,6 +2,7 @@ import * as React from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, CircleCheck, CircleDashed, Eye, MapPin, Package, Send, TriangleAlert } from 'lucide-react'
+import { MapPin as IcMapPin, HardHat as IcHardHat, Hammer as IcHammer, IndianRupee as IcIndianRupee } from 'lucide-react'
 import {
   fetchDailyReportPdfApi,
   fetchProjectDayDocumentApi,
@@ -290,11 +291,13 @@ export default function ProjectDayPage() {
                     <span className="text-sm font-normal text-muted-foreground"> of {report.total_site_count}</span>
                   </>
                 ),
-                tone: report.reported_site_count < report.total_site_count ? 'warn' : 'default',
+                tone: report.reported_site_count < report.total_site_count ? 'warn' : 'good',
+                icon: IcMapPin,
+                hint: report.reported_site_count < report.total_site_count ? `${report.total_site_count - report.reported_site_count} missing` : 'all sites in',
               },
-              { label: 'Workers', value: report.labour.headcount || '—' },
-              { label: 'Work items', value: report.activity_count || '—' },
-              { label: 'Labour cost', value: money(report.labour.total_cost) },
+              { label: 'Workers', value: report.labour.headcount || '—', icon: IcHardHat },
+              { label: 'Work items', value: report.activity_count || '—', icon: IcHammer },
+              { label: 'Labour cost', value: money(report.labour.total_cost), icon: IcIndianRupee },
             ]}
           />
 

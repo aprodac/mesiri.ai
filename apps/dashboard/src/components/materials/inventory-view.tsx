@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Boxes, ChevronRight, MapPin, TriangleAlert } from 'lucide-react'
+import { Package as IcPackage, MapPin as IcMapPin, PackageX as IcPackageX, TriangleAlert as IcTriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Callout, StatStrip } from '@/components/dpr-page'
@@ -85,10 +86,10 @@ export function InventoryView({ projectId, siteId }: InventoryViewProps) {
     <div className="flex flex-col gap-4">
       <StatStrip
         stats={[
-          { label: 'Materials', value: new Set(rows.map((r) => r.material_id)).size },
-          { label: 'Sites', value: groups.length },
-          { label: 'Run out', value: out.length || '—', tone: out.length ? 'warn' : 'default' },
-          { label: 'Over-used', value: below.length || '—', tone: below.length ? 'bad' : 'default' },
+          { label: 'Materials', value: new Set(rows.map((r) => r.material_id)).size, icon: IcPackage },
+          { label: 'Sites', value: groups.length, icon: IcMapPin },
+          { label: 'Run out', value: out.length || '—', tone: out.length ? 'warn' : 'good', icon: IcPackageX },
+          { label: 'Over-used', value: below.length || '—', tone: below.length ? 'bad' : 'good', icon: IcTriangleAlert },
         ]}
       />
       {below.length > 0 && (

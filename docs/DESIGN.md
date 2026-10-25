@@ -354,6 +354,24 @@ pass the same.
 | Finance, Login / Signup | No — old template look (Signup: SS-18 intro) |
 | Dialogs (project, site, person, access, WhatsApp number, record delivery / use / move, correction) | Yes (WEB-29): sentence case, plain words, no fake buttons |
 
+### Visual cues across pages (WEB-37)
+
+- **Number strips** (`StatStrip`): each figure can carry an `icon`, a
+  `tone` and a `hint` (a few words under the number: "4 still to report",
+  "deal with these first"). Tone is meaning, never decoration: `good` green,
+  `info` blue, `warn` amber, `bad` red; a toned figure gets a 2px bar on top.
+- **Row stripe** (`ROW_ACCENT` in `lib/cues.ts`): a 3px inset bar on a
+  row's left edge says its state -- Reports and Today (green done, blue with
+  the engineer, amber details missing), Issues (red critical, amber high,
+  blue medium), Projects (red when an urgent issue is open, green when every
+  site has reported today).
+- **Day bands** (`dayBand`): alternate days shaded in the Materials,
+  Labour and Site log ledgers, the date in medium weight.
+- **Age**: an open issue's "open N days" turns amber after a day, red after
+  three (Issues, Today).
+- **Progress beside a heading**: Reports shows "N of M sites confirmed" per
+  day; Projects shows "Today: N of M sites reported · K open issues".
+
 ### Side panels (WEB-36)
 
 Every side panel is built from `components/detail-sheet.tsx`, so they read

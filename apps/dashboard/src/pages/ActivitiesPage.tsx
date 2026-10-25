@@ -18,6 +18,7 @@ import {
   CirclePause,
   TriangleAlert,
 } from 'lucide-react'
+import { ListChecks as IcListChecks, CirclePlay as IcCirclePlay, CircleCheck as IcCircleCheck, CirclePause as IcCirclePause } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
 import {
   fetchActivitiesApi,
@@ -32,6 +33,7 @@ import {
   type ActivityCorrection,
 } from '@/lib/api'
 import { Callout, PageHeader, StatStrip } from '@/components/dpr-page'
+import { dayBand } from '@/lib/cues'
 import { useSiteNames } from '@/lib/site-names'
 import { useUrlState } from '@/lib/url-state'
 import { downloadTextFile, toCsv } from '@/lib/export'
@@ -407,10 +409,10 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
 
       <StatStrip
         stats={[
-          { label: 'Work items', value: stats.totalCount || '—' },
-          { label: 'In progress', value: stats.inProgress || '—' },
-          { label: 'Completed', value: stats.completed || '—' },
-          { label: 'Stopped', value: stats.stopped || '—', tone: stats.stopped > 0 ? 'warn' : 'default' },
+          { label: 'Work items', value: stats.totalCount || '—', icon: IcListChecks },
+          { label: 'In progress', value: stats.inProgress || '—', tone: stats.inProgress ? 'info' : 'default', icon: IcCirclePlay },
+          { label: 'Completed', value: stats.completed || '—', tone: stats.completed ? 'good' : 'default', icon: IcCircleCheck },
+          { label: 'Stopped', value: stats.stopped || '—', tone: stats.stopped > 0 ? 'warn' : 'default', icon: IcCirclePause, hint: stats.stopped ? 'needs a look' : undefined },
         ]}
       />
 
@@ -512,9 +514,10 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
                       <tr
                         key={act.id}
                         onClick={() => setSelectedActivityId(act.id)}
-                        className={cn('cursor-pointer border-t hover:bg-muted/40', firstOfDay && di > 0 && 'border-t-foreground/15')}
+                        // WEB-37: alternate days shaded, each day a block.
+                        className={cn('cursor-pointer border-t hover:bg-muted/40', dayBand(di), firstOfDay && di > 0 && 'border-t-foreground/15')}
                       >
-                        <td className={cn('whitespace-nowrap px-3 py-1.5', !firstOfDay && 'text-transparent')}>
+                        <td className={cn('whitespace-nowrap px-3 py-1.5 font-medium', !firstOfDay && 'text-transparent')}>
                           {new Date(`${day}T00:00:00`).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}
                         </td>
                         <td className="whitespace-nowrap px-3 py-1.5">

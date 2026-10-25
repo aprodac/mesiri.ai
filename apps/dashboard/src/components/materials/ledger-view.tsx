@@ -1,11 +1,13 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowRight, Download, FileText, MessageSquare, TriangleAlert } from 'lucide-react'
+import { ArrowDownLeft as IcArrowDownLeft, ArrowUpRight as IcArrowUpRight, Warehouse as IcWarehouse, Package as IcPackage, IndianRupee as IcIndianRupee } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Callout, Segmented, StatStrip } from '@/components/dpr-page'
+import { dayBand } from '@/lib/cues'
 import {
   fetchInventory,
   fetchLedgerRows,
@@ -93,6 +95,12 @@ export function LedgerView({ projectId, siteId: scopeSiteId }: { projectId: stri
     return { lines: shown, balanceAfter: after }
   }, [query.data, material, dir, range])
 
+  // Each day's position, newest first, for the alternate-day shading.
+  const dayIndex = React.useMemo(() => {
+    const m = new Map<string, number>()
+    for (const r of lines) if (!m.has(r.occurred_date)) m.set(r.occurred_date, m.size)
+    return m
+  }, [lines])
   const unit = material ? catalogue.data?.items.find((m) => m.id === material)?.default_unit ?? lines[0]?.unit ?? '' : ''
   const materialName = material ? catalogue.data?.items.find((m) => m.id === material)?.name ?? 'Material' : null
   const totalIn = lines.filter((r) => r.direction === 'IN').reduce((s, r) => s + Number(r.quantity), 0)
@@ -233,16 +241,16 @@ export function LedgerView({ projectId, siteId: scopeSiteId }: { projectId: stri
           stats={
             material
               ? [
-                  { label: 'Came in', value: totalIn ? `+${qty(String(totalIn))} ${unit}` : '—' },
-                  { label: 'Went out', value: totalOut ? `−${qty(String(totalOut))} ${unit}` : '—' },
-                  { label: siteId ? 'On site now' : 'On sites now', value: inventory.isLoading ? '…' : `${qty(String(stockNow))} ${unit}`, tone: stockNow < 0 ? 'bad' : stockNow === 0 ? 'warn' : 'default' },
-                  { label: 'Spent', value: spent ? `₹${spent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '—' },
+                  { label: 'Came in', value: totalIn ? `+${qty(String(totalIn))} ${unit}` : '—', tone: totalIn ? 'good' : 'default', icon: IcArrowDownLeft },
+                  { label: 'Went out', value: totalOut ? `−${qty(String(totalOut))} ${unit}` : '—', tone: totalOut ? 'bad' : 'default', icon: IcArrowUpRight },
+                  { label: siteId ? 'On site now' : 'On sites now', value: inventory.isLoading ? '…' : `${qty(String(stockNow))} ${unit}`, tone: stockNow < 0 ? 'bad' : stockNow === 0 ? 'warn' : 'default', icon: IcWarehouse, hint: stockNow < 0 ? 'more used than received' : stockNow === 0 ? 'run out' : undefined },
+                  { label: 'Spent', value: spent ? `₹${spent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '—', icon: IcIndianRupee },
                 ]
               : [
-                  { label: 'Came in', value: lines.filter((r) => r.direction === 'IN').length || '—' },
-                  { label: 'Went out', value: lines.filter((r) => r.direction === 'OUT').length || '—' },
-                  { label: 'Materials', value: new Set(lines.map((r) => r.material_name)).size || '—' },
-                  { label: 'Spent', value: spent ? `₹${spent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '—' },
+                  { label: 'Came in', value: lines.filter((r) => r.direction === 'IN').length || '—', tone: 'good', icon: IcArrowDownLeft, hint: 'deliveries and moves in' },
+                  { label: 'Went out', value: lines.filter((r) => r.direction === 'OUT').length || '—', tone: 'bad', icon: IcArrowUpRight, hint: 'used, moved or returned' },
+                  { label: 'Materials', value: new Set(lines.map((r) => r.material_name)).size || '—', icon: IcPackage },
+                  { label: 'Spent', value: spent ? `₹${spent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '—', icon: IcIndianRupee, hint: 'on deliveries' },
                 ]
           }
         />
@@ -334,11 +342,13 @@ export function LedgerView({ projectId, siteId: scopeSiteId }: { projectId: stri
                     onClick={() => setOpenRow(r)}
                     className={cn(
                       'cursor-pointer border-t hover:bg-muted/40',
+                      // WEB-37: alternate days are shaded so each day reads as a block.
+                      dayBand(dayIndex.get(r.occurred_date) ?? 0),
                       newDay && i > 0 && 'border-t-foreground/15',
                       correction && 'text-muted-foreground',
                     )}
                   >
-                    <td className={cn('whitespace-nowrap px-3 py-1.5', !newDay && 'text-transparent')}>{dayLabel(r.occurred_date)}</td>
+                    <td className={cn('whitespace-nowrap px-3 py-1.5 font-medium', !newDay && 'text-transparent')}>{dayLabel(r.occurred_date)}</td>
                     {showSite && (
                       <td className="whitespace-nowrap px-3 py-1.5">
                         {site?.name ?? '—'}
