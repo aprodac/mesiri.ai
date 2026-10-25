@@ -152,6 +152,9 @@ class WhatsAppSettings(_Section):
     app_secret: SecretStr | None = None
     access_token: SecretStr | None = None
     phone_number_id: str | None = None
+    # The number people message ("+91 90000 12345"), shown on the dashboard's
+    # welcome screen so a new owner knows where to send their first update.
+    display_number: str | None = None
 
 
 class Settings(BaseSettings):
