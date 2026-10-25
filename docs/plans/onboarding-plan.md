@@ -563,4 +563,9 @@ Since then (25 Oct, approved by Alan):
   manager with a WhatsApp number on a project. "Hide for now" is company-wide for 7 days
   (`POST /company/setup-progress/hide`, `/show`). A "Finish setup N/6" link sits in the
   sidebar's Setup group until everything is done.
+- **Report time as a choice.** The step asks "When should the daily report go out?" with
+  evening times from 6:30 pm (after the 6 pm close) and "Send it by itself" beside it.
+  Save writes the first project's send time and auto-send (`PUT /projects/{id}`, as its
+  Reporting tab does) and records the question answered (`report-time-ok`), so keeping
+  9 pm counts too.
 
