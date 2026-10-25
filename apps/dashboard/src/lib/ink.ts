@@ -6,3 +6,9 @@ export function inkDuration(text: string): number {
 
 /** The thread from the message is drawn before the line starts writing. */
 export const THREAD_MS = 800
+
+/** How long a line takes to gather out of dust, or crumble into it. */
+export const DUST_MS = 1500
+
+/** The replay's snap is slower: dust blowing away should be watched. */
+export const SNAP_MS = 2000

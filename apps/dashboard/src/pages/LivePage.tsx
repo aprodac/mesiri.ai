@@ -17,10 +17,11 @@ import { cn } from '@/lib/utils'
 import { MesiriWordmark } from '@/components/brand/mesiri-logo'
 import { Label, WordsIn } from '@/components/onboarding/conversation'
 import { Mic, Monitor } from 'lucide-react'
-import { CountTo, Ink } from '@/components/live/ink'
+import { CountTo } from '@/components/live/ink'
+import { DustText } from '@/components/live/dust'
 import { WhatsAppIcon } from '@/components/brand/whatsapp-icon'
 import { TellMesiri } from '@/components/tell-mesiri/tell-mesiri'
-import { inkDuration, THREAD_MS } from '@/lib/ink'
+import { DUST_MS, SNAP_MS, THREAD_MS } from '@/lib/ink'
 
 // The Live report (WEB-37): the day's report writing itself as the site's
 // messages come in. Left, the messages as they arrive on WhatsApp (or from
@@ -98,35 +99,49 @@ function Thread({ from, to }: { from: DOMRect; to: DOMRect }) {
   )
 }
 
+/** The second line gathers just after the first. */
+const SUB_LAG_MS = 350
+
 function Row({
   item,
   writing,
+  snapping,
   innerRef,
 }: {
   item: ReviewItem
   writing: boolean
+  /** The replay's snap: crumble into dust. */
+  snapping: boolean
   innerRef?: (el: HTMLElement | null) => void
 }) {
   const { main, sub } = rowText(item)
+  const mode = snapping ? 'scatter' : writing ? 'gather' : 'still'
   return (
     <li
       ref={innerRef}
       className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 border-b border-black/10 py-2.5 last:border-b-0"
-      style={writing && !prefersReducedMotion() ? { animation: 'live-glow 2.6s ease-out both' } : undefined}
+      style={writing && !prefersReducedMotion() ? { animation: 'live-glow 2.8s ease-out both' } : undefined}
     >
       <span className="min-w-0">
-        <Ink text={main} writing={writing} delay={THREAD_MS} className="block text-[14.5px] font-medium" />
+        <DustText text={main} mode={mode} delay={writing ? THREAD_MS : 0} className="block text-[14.5px] font-medium" />
         {sub && (
-          <Ink
+          <DustText
             text={sub}
-            writing={writing}
-            delay={THREAD_MS + inkDuration(main)}
+            mode={mode}
+            delay={writing ? THREAD_MS + SUB_LAG_MS : 80}
             className="block text-[12.5px] text-black/55"
           />
         )}
       </span>
       {item.review === 'draft' && (
-        <span className="self-start pt-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-primary">Draft</span>
+        <span
+          className={cn(
+            'self-start pt-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-primary transition-opacity duration-700',
+            snapping && 'opacity-0',
+          )}
+        >
+          Draft
+        </span>
       )}
     </li>
   )
@@ -161,6 +176,7 @@ export default function LivePage() {
   const [, redraw] = React.useReducer((n: number) => n + 1, 0)
   // WEB-37: tell Mesiri right here; what's saved writes itself in like any message.
   const [telling, setTelling] = React.useState(params.get('tell') === '1')
+  const [snapping, setSnapping] = React.useState(false)
 
   const known = React.useRef<Set<string> | null>(null)
   const queue = React.useRef<ReviewItem[]>([])
@@ -234,8 +250,8 @@ export default function LivePage() {
       if (!still) {
         await sleep(60)
         setThread({ message: messageId, target })
-        const { main, sub } = rowText(item)
-        await sleep(THREAD_MS + inkDuration(main) + (sub ? inkDuration(sub) : 0) + 700)
+        const { sub } = rowText(item)
+        await sleep(THREAD_MS + DUST_MS + (sub ? SUB_LAG_MS : 0) + 800)
         setThread(null)
       }
       setWriting(null)
@@ -289,6 +305,14 @@ export default function LivePage() {
     generation.current++
     running.current = false
     queue.current = []
+    setThread(null)
+    setWriting(null)
+    // The snap: what's written crumbles into dust and blows away first.
+    if (!prefersReducedMotion() && written.size > 0) {
+      setSnapping(true)
+      await sleep(SNAP_MS + 500)
+    }
+    setSnapping(false)
     setWritten(new Set())
     setWriting(null)
     setThread(null)
@@ -398,7 +422,10 @@ export default function LivePage() {
                 </div>
               )}
               <Label>From site · {site?.site_name ?? ''}</Label>
-              <ol className="mt-4 grid gap-5" aria-live="polite">
+              <ol
+                className={cn('mt-4 grid gap-5 transition-[opacity,filter,transform] duration-1000', snapping && 'translate-x-3 opacity-0 blur-[3px]')}
+                aria-live="polite"
+              >
                 {feed.length === 0 && (
                   <li className="text-sm text-muted-foreground">Waiting for the first message from site…</li>
                 )}
@@ -473,7 +500,7 @@ export default function LivePage() {
                   ref={(el) => {
                     if (el) targetEls.current.set('labour', el)
                   }}
-                  className="mt-6"
+                  className={cn('mt-6 transition-[opacity,filter,transform] duration-1000', snapping && 'translate-x-3 opacity-0 blur-[3px]')}
                   style={writing && writing.startsWith('labour') && !prefersReducedMotion() ? { animation: 'live-glow 2.6s ease-out both' } : undefined}
                 >
                   <div className="flex items-baseline justify-between border-b border-black/80 pb-1.5">
@@ -514,6 +541,7 @@ export default function LivePage() {
                               key={factKey(item)}
                               item={item}
                               writing={writing === factKey(item)}
+                              snapping={snapping}
                               innerRef={(el) => {
                                 if (el) targetEls.current.set(factKey(item), el)
                                 else targetEls.current.delete(factKey(item))
