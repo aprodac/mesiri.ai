@@ -19,6 +19,7 @@ import { fetchUsers } from '@/lib/api'
 import { useSiteNames } from '@/lib/site-names'
 import { localIsoDate, qty } from '@/lib/site-day'
 import { useUrlState } from '@/lib/url-state'
+import { PERIOD_OPTIONS, periodRange, type Period } from '@/lib/period'
 import { cn } from '@/lib/utils'
 import { MovementDetailsSheet } from './movement-details-sheet'
 import { InvoiceDetailsSheet } from './invoice-details-sheet'
@@ -28,25 +29,14 @@ import { InvoiceDetailsSheet } from './invoice-details-sheet'
 // red. Pick a material and it becomes that material's stock book, with the
 // stock left on the site after every line and totals at the foot.
 
-type Period = '7d' | '30d' | 'month' | 'all' | 'custom'
 type Dir = 'all' | 'in' | 'out'
-
-function periodRange(period: Period, from: string, to: string): { from?: string; to?: string } {
-  const today = new Date()
-  const back = (days: number) => localIsoDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - days))
-  if (period === '7d') return { from: back(6) }
-  if (period === '30d') return { from: back(29) }
-  if (period === 'month') return { from: localIsoDate(new Date(today.getFullYear(), today.getMonth(), 1)) }
-  if (period === 'custom') return { from: from || undefined, to: to || undefined }
-  return {}
-}
 
 const dayLabel = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })
 
 export function LedgerView({ projectId, siteId: scopeSiteId }: { projectId: string | null; siteId: string | null }) {
   const siteNames = useSiteNames()
   const [materialId, setMaterialId] = useUrlState<string>('material', 'all')
-  const [pickedSite, setPickedSite] = useUrlState<string>('site', 'all')
+  const [pickedSite, setPickedSite] = useUrlState<string>('at', 'all')
   const [period, setPeriod] = useUrlState<Period>('period', '30d')
   const [from, setFrom] = useUrlState<string>('from', '')
   const [to, setTo] = useUrlState<string>('to', '')
@@ -196,13 +186,7 @@ export function LedgerView({ projectId, siteId: scopeSiteId }: { projectId: stri
           label="Period"
           value={period}
           onChange={setPeriod}
-          options={[
-            { value: '7d', label: '7 days' },
-            { value: '30d', label: '30 days' },
-            { value: 'month', label: 'This month' },
-            { value: 'all', label: 'All' },
-            { value: 'custom', label: 'Dates' },
-          ]}
+          options={PERIOD_OPTIONS}
         />
         <Segmented<Dir>
           label="Direction"

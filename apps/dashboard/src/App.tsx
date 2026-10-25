@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import { AppLayout } from '@/components/app-layout'
-import { RequireAdmin, RequireModule } from '@/components/require-module'
+import { RequireModule } from '@/components/require-module'
 import Login from '@/pages/Login'
 import Signup from '@/pages/Signup'
 import TodayPage from '@/pages/TodayPage'
@@ -9,7 +9,9 @@ import ProjectDayPage from '@/pages/ProjectDayPage'
 import Users from '@/pages/Users'
 import UserDetails from '@/pages/UserDetails'
 import CompanyDetails from '@/pages/CompanyDetails'
-import CompanyMessagesPage from '@/pages/CompanyMessagesPage'
+import WhatsAppPage from '@/pages/WhatsAppPage'
+import LabourPage from '@/pages/LabourPage'
+import SiteLogPage from '@/pages/SiteLogPage'
 import Projects from '@/pages/Projects'
 import ProjectDetails from '@/pages/ProjectDetails'
 import DailyReportsPage from '@/pages/DailyReportsPage'
@@ -18,14 +20,6 @@ import ExpensesPage from '@/pages/ExpensesPage'
 import ReceiptsPage from '@/pages/ReceiptsPage'
 import AccountsPage from '@/pages/AccountsPage'
 import WhatsAppFinancePage from '@/pages/WhatsAppFinancePage'
-import WhatsAppLabourPage from '@/pages/WhatsAppLabourPage'
-import LabourAnalyticsPage from '@/pages/LabourAnalyticsPage'
-import LabourOverviewPage from '@/pages/LabourOverviewPage'
-import LabourReportsPage from '@/pages/LabourReportsPage'
-import LabourSettingsPage from '@/pages/LabourSettingsPage'
-import AttendancePage from '@/pages/AttendancePage'
-import WhatsAppInboxPage from '@/pages/WhatsAppInboxPage'
-import WorkersPage from '@/pages/WorkersPage'
 import PettyCashPage from '@/pages/PettyCashPage'
 import FinanceOverviewPage from '@/pages/FinanceOverviewPage'
 import FinanceReportsPage from '@/pages/FinanceReportsPage'
@@ -35,11 +29,7 @@ import TransactionsPage from '@/pages/TransactionsPage'
 import VendorsPage from '@/pages/VendorsPage'
 import CategoriesPage from '@/pages/CategoriesPage'
 import OperationsIssuesPage from '@/pages/OperationsIssuesPage'
-import ActivitiesPage from '@/pages/ActivitiesPage'
-import OperationsGalleryPage from '@/pages/OperationsGalleryPage'
-import OperationsTimelinePage from '@/pages/OperationsTimelinePage'
 import OperationsAnalyticsPage from '@/pages/OperationsAnalyticsPage'
-import AutomationsPage from '@/pages/AutomationsPage'
 import { ToastProvider } from '@/components/ui/toast-notification'
 
 // V1 routes (WEB-21, docs/DESIGN.md "Pages and routes"): one address per
@@ -49,7 +39,10 @@ import { ToastProvider } from '@/components/ui/toast-notification'
 /** Redirect to `to`, keeping the query string (scope, filters, date). */
 function Moved({ to }: { to: string }) {
   const { search } = useLocation()
-  return <Navigate to={`${to}${search}`} replace />
+  // Keep the old address's query (the scope's project/site), merged with
+  // any the new address carries (/labour?view=workers).
+  const joined = search && to.includes('?') ? `${to}&${search.slice(1)}` : `${to}${search}`
+  return <Navigate to={joined} replace />
 }
 
 /** The DPR pages moved from /today/... (date last) to /reports/:date/... */
@@ -85,21 +78,17 @@ export default function App() {
           <Route path="issues" element={<OperationsIssuesPage />} />
 
           {/* Site records: everything the sites sent, across days. */}
-          <Route path="activities" element={<ActivitiesPage />} />
-          <Route path="gallery" element={<OperationsGalleryPage />} />
-          <Route path="timeline" element={<OperationsTimelinePage />} />
+          <Route path="site-log" element={<SiteLogPage />} />
+          <Route path="activities" element={<Moved to="/site-log" />} />
+          <Route path="gallery" element={<Moved to="/site-log?view=photos" />} />
+          <Route path="timeline" element={<Moved to="/site-log?view=all" />} />
           <Route path="analytics" element={<OperationsAnalyticsPage />} />
 
-          {/* Labour (module). Its pages are unchanged; folding them into
-              Attendance + Workers waits for approval (CLAUDE.md, Labour). */}
-          <Route path="labour" element={lab(<Navigate to="/labour/attendance" replace />)} />
-          <Route path="labour/overview" element={lab(<LabourOverviewPage />)} />
-          <Route path="labour/attendance" element={lab(<AttendancePage />)} />
-          <Route path="labour/workers" element={lab(<WorkersPage />)} />
-          <Route path="labour/whatsapp" element={lab(<WhatsAppLabourPage />)} />
-          <Route path="labour/analytics" element={lab(<LabourAnalyticsPage />)} />
-          <Route path="labour/reports" element={lab(<LabourReportsPage />)} />
-          <Route path="labour/settings" element={lab(<LabourSettingsPage />)} />
+          {/* Labour (module): one page, Attendance | Workers (WEB-22). The
+              old seven addresses land on the matching view. */}
+          <Route path="labour" element={lab(<LabourPage />)} />
+          <Route path="labour/workers" element={<Moved to="/labour?view=workers" />} />
+          <Route path="labour/*" element={<Moved to="/labour" />} />
 
           {/* Materials (module): one page with its own tabs. */}
           <Route path="materials" element={mat(<MaterialsPage />)} />
@@ -110,9 +99,10 @@ export default function App() {
           <Route path="team" element={<Users />} />
           <Route path="team/:id" element={<UserDetails />} />
           <Route path="company" element={<CompanyDetails />} />
-          <Route path="company/messages" element={<CompanyMessagesPage />} />
-          <Route path="whatsapp/inbox" element={<RequireAdmin><WhatsAppInboxPage /></RequireAdmin>} />
-          <Route path="automations" element={<RequireModule module="automations"><AutomationsPage /></RequireModule>} />
+          <Route path="company/messages" element={<Moved to="/whatsapp?view=messages" />} />
+          <Route path="whatsapp" element={<WhatsAppPage />} />
+          <Route path="whatsapp/inbox" element={<Moved to="/whatsapp" />} />
+          <Route path="automations" element={<Moved to="/whatsapp?view=automations" />} />
 
           {/* Finance (module; not in V1 by default) */}
           <Route path="finance" element={fin(<Navigate to="/finance/expenses" replace />)} />
@@ -134,16 +124,16 @@ export default function App() {
           <Route path="today/projects/:id/:date" element={<MovedDayPage level="projects" />} />
           <Route path="operations/daily-reports" element={<Moved to="/reports" />} />
           <Route path="operations/issues" element={<Moved to="/issues" />} />
-          <Route path="operations/automations" element={<Moved to="/automations" />} />
-          <Route path="operations/activities" element={<Moved to="/activities" />} />
-          <Route path="operations/gallery" element={<Moved to="/gallery" />} />
-          <Route path="operations/timeline" element={<Moved to="/timeline" />} />
+          <Route path="operations/automations" element={<Moved to="/whatsapp?view=automations" />} />
+          <Route path="operations/activities" element={<Moved to="/site-log" />} />
+          <Route path="operations/gallery" element={<Moved to="/site-log?view=photos" />} />
+          <Route path="operations/timeline" element={<Moved to="/site-log?view=all" />} />
           <Route path="operations/analytics" element={<Moved to="/analytics" />} />
           <Route path="users" element={<Moved to="/team" />} />
           <Route path="users/:id" element={<MovedUser />} />
           <Route path="materials/*" element={<Moved to="/materials" />} />
           <Route path="whatsapp/finance" element={<Moved to="/finance/whatsapp" />} />
-          <Route path="whatsapp/labour" element={<Moved to="/labour/whatsapp" />} />
+          <Route path="whatsapp/labour" element={<Moved to="/labour" />} />
           <Route path="expenses" element={<Moved to="/finance/expenses" />} />
           <Route path="petty-cash" element={<Moved to="/finance/petty-cash" />} />
           {/* Removed pages (the operations dashboard -- Today does its job --

@@ -94,7 +94,7 @@ const DEFAULT_FORM: FormState = {
   site_id: '',
 }
 
-export default function AutomationsPage() {
+export default function AutomationsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { scope } = useScope()
   const toast = useToast()
 
@@ -210,7 +210,14 @@ export default function AutomationsPage() {
 
   return (
     <div className="flex flex-col gap-4 w-full max-w-full relative pb-12">
-      {/* Page Header */}
+      {/* Page Header (embedded in the WhatsApp page: just the action) */}
+      {embedded ? (
+        <div className="flex justify-end">
+          <Button size="sm" className="gap-1.5 font-semibold" onClick={() => setCreateOpen(true)}>
+            <Plus className="size-4" /> New automation
+          </Button>
+        </div>
+      ) : (
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3.5">
         <div className="flex items-center gap-3">
           <div className="size-10 rounded-lg border border-violet-500/30 bg-violet-500/10 flex items-center justify-center text-violet-600 dark:text-violet-400 shrink-0 shadow-2xs">
@@ -236,12 +243,12 @@ export default function AutomationsPage() {
           New Automation
         </Button>
       </div>
+      )}
 
-      <p className="text-xs text-muted-foreground max-w-2xl">
-        A recurring rule of the form <em>(schedule) × (action) × (audience)</em> -- e.g. "every
-        day at 5pm send me the DPR" or "at 3pm tell me who hasn't reported". Fires over WhatsApp
-        only to people who have messaged in the last 24 hours (Meta's rule); anyone outside that
-        window is recorded as skipped, not silently dropped -- see Run History below.
+      <p className="max-w-2xl text-sm text-muted-foreground">
+        Messages Mesiri sends on WhatsApp on a schedule, e.g. "every day at 5 pm send me the DPR" or "at 3 pm tell me who
+        hasn't reported". WhatsApp only lets them reach people who messaged in the last 24 hours; anyone else shows as skipped in
+        the run history.
       </p>
 
       {loading ? (
