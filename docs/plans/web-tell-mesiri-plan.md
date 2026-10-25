@@ -1,6 +1,6 @@
 # Tell Mesiri from the dashboard (voice or text) — plan
 
-**Status:** approved by Alan 25 Oct 2026 (relayed in session), with the recommended answers to the three decisions below. In progress (tracker WEB-36).
+**Status:** approved by Alan 25 Oct 2026 (relayed in session), with the recommended answers to the three decisions below. Built 25 Oct, pending a live check (tracker WEB-36).
 
 **Built so far:** push 1, `POST /assistant/messages` (text and button taps) in `apps/whatsapp-assistant/src/web_assistant/router.py`, sharing `runtime/reply_capture.py` with the control panel's `simulate`. The panel (push 3) comes after voice (push 2), so it is built once with both.
 
@@ -169,3 +169,25 @@ About **4–6 focused days**, in three pushes, each usable on its own:
    admins and project managers only.
 3. **Replies on WhatsApp too?** Recommended **no** for V1 (the web shows them); yes would
    need the 24 h window or templates.
+
+## As built (25 Oct)
+
+- **Push 1** `abd63885`: `POST /assistant/messages` (text, button taps), `runtime/reply_capture.py`
+  shared with `simulate`.
+- **Push 2** `d838caac`: `POST /assistant/messages/voice` (Ogg/Opus body, transcript read back).
+- **Push 3**: the panel, `apps/dashboard/src/components/tell-mesiri/tell-mesiri.tsx`:
+  - On **Today** under the setup cards, and on the **welcome screen** under the WhatsApp
+    invite ("Or tell Mesiri here"; compact: the latest exchange only).
+  - Mic: tap to record, tap the square to stop and send, Cancel to discard; live waveform
+    from the microphone's level; 0:00 / 1:00 with a stop at the minute.
+    `lib/voice-recorder.ts` encodes Ogg/Opus in the browser (opus-recorder's libopus
+    worker, 385 kB, loaded on the first recording only), mono, 16 kHz.
+  - Text box beside it (Enter sends).
+  - Each exchange in the conversation layout: time · what you said (the voice note's words
+    arrive word by word) · Mesiri's replies, with its buttons as real buttons (the chosen
+    one stays dark, the rest fade; taps go back as `interactive_reply_id`).
+  - After every reply, Today and the welcome screen re-read the day.
+- **Verified in Chromium with a fake microphone:** the upload is real Ogg/Opus (ffprobe:
+  opus, mono), 2.96 s measured by the billing's reader for a 3 s recording; taps and typed
+  text sent as expected. **Not verified:** a real Sarvam call with a browser recording, and
+  iPhone Safari / Android Chrome on real devices (test server, before telling customers).

@@ -19,6 +19,7 @@ import { DprDocument } from '@/components/dpr-document'
 import { Exchange, ExchangeHeads, Fact, Label, Reveal, Rule, Words } from '@/components/onboarding/conversation'
 import { SceneStage, SceneSteps } from '@/components/onboarding/scenes'
 import { QrCode } from '@/components/onboarding/qr-code'
+import { TellMesiri } from '@/components/tell-mesiri/tell-mesiri'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/toast-notification'
 
@@ -254,7 +255,20 @@ export default function WelcomePage() {
   const sendScene = site && (
     <Exchange
       time={<Label>{shown ? clock(site.last_update_at) : 'Now'}</Label>}
-      site={shown ? message : <Invite number={setup.data?.whatsapp_number ?? null} siteName={siteName} />}
+      site={
+        shown ? (
+          message
+        ) : (
+          <div className="grid max-w-[440px] gap-6">
+            <Invite number={setup.data?.whatsapp_number ?? null} siteName={siteName} />
+            {/* WEB-36: or right here, no phone needed. */}
+            <div className="grid gap-3 border-t pt-5">
+              <Label>Or tell Mesiri here</Label>
+              <TellMesiri compact />
+            </div>
+          </div>
+        )
+      }
       mesiri={
         shown ? (
           <Reveal at={1200}>

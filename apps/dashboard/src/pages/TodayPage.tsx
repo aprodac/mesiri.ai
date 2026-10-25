@@ -16,6 +16,7 @@ import { useToast } from '@/components/ui/toast-notification'
 import { GettingStartedCard } from '@/components/getting-started-card'
 import { FirstReportMoment } from '@/components/first-report-moment'
 import { TimeSaved } from '@/components/time-saved'
+import { TellMesiri } from '@/components/tell-mesiri/tell-mesiri'
 import { useReadOnly } from '@/lib/trial'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -327,6 +328,7 @@ export default function TodayPage() {
       {isToday && <TimeSaved />}
       {isToday && <FirstReportMoment />}
       {isToday && <GettingStartedCard />}
+      {isToday && <TellMesiri className="rounded-xl border px-4 py-3" />}
 
       {daysQuery.isError ? (
         <Callout tone="draft" icon={TriangleAlert} action={<Button variant="outline" size="sm" className="bg-background" onClick={refresh}>Try again</Button>}>

@@ -2152,3 +2152,45 @@ export async function fetchProjectDayDocumentApi(projectId: string, date: string
   const res = await api.get<string>(`/dpr/project-days/${projectId}/document`, { params: { date }, responseType: 'text' })
   return res.data
 }
+
+// ─── Tell Mesiri from the dashboard (WEB-36) ─────────────────────────────────
+// apps/whatsapp-assistant/src/web_assistant/router.py: the same handler as a
+// WhatsApp message, as the signed-in user; Mesiri's replies come back here.
+
+export interface AssistantReplyOption {
+  id: string
+  title: string
+  description?: string | null
+}
+
+export interface AssistantReply {
+  type: 'text' | 'buttons' | 'list'
+  text: string
+  buttons: AssistantReplyOption[]
+  list_rows: AssistantReplyOption[]
+  button_label?: string | null
+}
+
+export interface AssistantResponse {
+  message_id: string
+  replies: AssistantReply[]
+  /** A voice note's words, as Mesiri heard them. */
+  transcript: string | null
+}
+
+/** Mesiri can take up to a minute (voice + model); the request waits for it. */
+const ASSISTANT_TIMEOUT_MS = 90_000
+
+export async function sendToMesiri(body: { text?: string; interactive_reply_id?: string }): Promise<AssistantResponse> {
+  const res = await api.post<AssistantResponse>('/assistant/messages', body, { timeout: ASSISTANT_TIMEOUT_MS })
+  return res.data
+}
+
+export async function sendVoiceToMesiri(audio: Blob): Promise<AssistantResponse> {
+  const res = await api.post<AssistantResponse>('/assistant/messages/voice', audio, {
+    headers: { 'Content-Type': 'audio/ogg' },
+    timeout: ASSISTANT_TIMEOUT_MS,
+  })
+  return res.data
+}
+
