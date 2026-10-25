@@ -1307,7 +1307,9 @@ class PostgresDprRepository:
         the labour dashboard (workforce.live_report_sql, plus BE-10's
         counted_line_sql), so the three can't disagree; a line with no headcount counts as one person, as the DPR
         does. `open_issues` is everything still open on the site, not only
-        today's."""
+        today's. `materials`, `issues_today` and `progress_updates` (on work
+        started earlier) are the day's other entries (WEB-32): a site that
+        sent only those has still reported."""
         from mesiri.infrastructure.postgres.repositories.workforce import (
             counted_line_sql,
             live_report_sql,
@@ -1359,6 +1361,42 @@ class PostgresDprRepository:
                         FROM site_issues
                         WHERE organization_id = :org_id AND status IN ('OPEN', 'ACKNOWLEDGED')
                         GROUP BY site_id
+                    ), mats AS (
+                        -- WEB-32: the day's material entries, by the DPR's
+                        -- own rule (a corrected entry and its correction
+                        -- cancel out), so a site that only sent materials
+                        -- counts as having reported.
+                        SELECT mm.site_id, count(*) AS materials, max(mm.created_at) AS last_at
+                        FROM material_movements mm
+                        WHERE mm.organization_id = :org_id
+                          AND mm.occurred_at::date = :report_date
+                          AND mm.reversal_of_movement_id IS NULL
+                          AND NOT EXISTS (
+                              SELECT 1 FROM material_movements r
+                              WHERE r.reversal_of_movement_id = mm.id
+                          )
+                        GROUP BY mm.site_id
+                    ), new_issues AS (
+                        -- The day's issues, as the DPR lists them.
+                        SELECT site_id, count(*) AS issues_today, max(created_at) AS last_at
+                        FROM site_issues
+                        WHERE organization_id = :org_id
+                          AND occurred_at::date = :report_date
+                          AND status != 'CANCELLED'
+                          AND COALESCE(narrative, '') NOT LIKE 'Question for your engineer:%'
+                        GROUP BY site_id
+                    ), updates AS (
+                        -- Progress sent today on work started on an earlier
+                        -- day (today's own work is already in work_items).
+                        SELECT a.site_id, count(*) AS progress_updates,
+                               max(pu.created_at) AS last_at
+                        FROM progress_updates pu
+                        JOIN activities a ON a.id = pu.activity_id
+                        WHERE a.organization_id = :org_id
+                          AND pu.occurred_at::date = :report_date
+                          AND a.activity_date <> :report_date
+                          AND pu.deleted_at IS NULL AND a.deleted_at IS NULL
+                        GROUP BY a.site_id
                     )
                     SELECT s.id AS site_id, s.name AS site_name,
                            p.id AS project_id, p.name AS project_name,
@@ -1369,7 +1407,11 @@ class PostgresDprRepository:
                            COALESCE(acts.work_items, 0) AS work_items,
                            COALESCE(photos.photos, 0) AS photos,
                            COALESCE(issues.open_issues, 0) AS open_issues,
-                           GREATEST(acts.last_at, labour.last_at) AS last_update_at,
+                           COALESCE(mats.materials, 0) AS materials,
+                           COALESCE(new_issues.issues_today, 0) AS issues_today,
+                           COALESCE(updates.progress_updates, 0) AS progress_updates,
+                           GREATEST(acts.last_at, labour.last_at, mats.last_at,
+                                    new_issues.last_at, updates.last_at) AS last_update_at,
                            latest_act.reporter_name AS last_update_by,
                            latest_act.narrative AS latest_update
                     FROM sites s
@@ -1383,6 +1425,9 @@ class PostgresDprRepository:
                     LEFT JOIN photos ON photos.site_id = s.id
                     LEFT JOIN labour ON labour.site_id = s.id
                     LEFT JOIN issues ON issues.site_id = s.id
+                    LEFT JOIN mats ON mats.site_id = s.id
+                    LEFT JOIN new_issues ON new_issues.site_id = s.id
+                    LEFT JOIN updates ON updates.site_id = s.id
                     WHERE {" AND ".join(where)}
                     ORDER BY p.name, s.name
                     """
@@ -1395,7 +1440,10 @@ class PostgresDprRepository:
             day = dict(row)
             if isinstance(day["missing_sections"], str):
                 day["missing_sections"] = json.loads(day["missing_sections"])
-            for key in ("workers", "work_items", "photos", "open_issues"):
+            for key in (
+                "workers", "work_items", "photos", "open_issues",
+                "materials", "issues_today", "progress_updates",
+            ):
                 day[key] = int(day[key] or 0)
             days.append(day)
         return days
