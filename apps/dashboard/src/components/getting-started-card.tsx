@@ -6,6 +6,7 @@ import { confirmReportTime, fetchSetupProgress, requestContinue, type SetupProgr
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { useAuth } from '@/lib/AuthContext'
 import { useTrial } from '@/lib/trial'
+import { inviteText } from '@/lib/invite'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/toast-notification'
 import { cn, formatClock } from '@/lib/utils'
@@ -57,8 +58,10 @@ function items(p: SetupProgress, onTimeOk: () => void, savingTime: boolean, invi
     {
       key: 'team',
       done: p.has_team,
-      title: 'Add your site supervisor',
-      detail: 'On WhatsApp, share their contact with Mesiri, or add them on the Team page.',
+      // The person who reports from site: in Mesiri's roles, a Site Engineer
+      // (supervisors included; WEB-17 decided against a separate role).
+      title: 'Add the person who reports from site',
+      detail: 'Your site engineer or supervisor. On WhatsApp, share their contact with Mesiri, or add them on the Team page with just their number.',
       action: (
         <span className="flex items-center gap-3">
           {invite && (
@@ -171,9 +174,7 @@ export function GettingStartedCard() {
   // number and what to send, so nobody has to explain it.
   const invite = number
     ? async () => {
-        const text =
-          `Please send today's site work${site ? ` for ${site}` : ''} to Mesiri on WhatsApp: ${number}. ` +
-          'A voice note is fine, in any language: who worked, what got done, anything that held you up.'
+        const text = inviteText({ number, site })
         try {
           await navigator.clipboard.writeText(text)
           toast.success('Invite copied', 'Paste it to your supervisor on WhatsApp.')

@@ -154,7 +154,8 @@ export interface User {
 
 export interface UserCreatePayload {
   full_name: string
-  email: string
+  /** Left out for someone who works on WhatsApp only (WEB-17). */
+  email?: string
   password?: string
   role: string
   whatsapp_number?: string | null
