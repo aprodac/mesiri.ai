@@ -19,6 +19,8 @@ _material_receipts = sa.Table(
     sa.Column("unit", sa.String),
     sa.Column("unit_id", sa.UUID(as_uuid=True)),
     sa.Column("transfer_id", sa.UUID(as_uuid=True)),
+    # WEB-35: set when the purchase came from a supplier invoice.
+    sa.Column("invoice_id", sa.UUID(as_uuid=True)),
     sa.Column("unit_cost", sa.Numeric),
     sa.Column("total_cost", sa.Numeric),
     sa.Column("supplier", sa.String),
