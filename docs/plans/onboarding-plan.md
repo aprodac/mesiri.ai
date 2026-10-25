@@ -513,17 +513,24 @@ The web signup's first minutes, in the Swiss style the WhatsApp onboarding cards
 what Mesiri made of it on the right**, hairlines between exchanges, black type and
 site orange only for the report's rule and the one button.
 
+- **One scene at a time, not one long page.** Both screens play as a slideshow in a
+  single frame (`components/onboarding/scenes.tsx`): a numbered step bar on top
+  (`01 · Voice note`, …) whose current step fills as the scene runs; each step is a
+  button, and choosing one stops the automatic changes. On signup every scene sits in
+  the same grid cell, so the frame keeps one height and nothing jumps.
 - **`/signup`** plays an example evening beside the form
-  (`components/onboarding/intro-conversation.tsx`): a Malayalam voice note (waveform
-  inks in, words arrive, English below) → "Understood": 10 workers counting up, the
-  work, the issue → "Send today's report." → the report sheet drawing in → "One voice
-  note in. A finished daily report out." The company and site are labelled an
-  example. Narrow, the intro comes first and its button jumps to the form.
+  (`components/onboarding/intro-conversation.tsx`), four scenes on a loop:
+  01 Voice note (waveform inks in, Malayalam words arrive, English below) → 02
+  Understood (10 workers counting up, the work, the issue) → 03 Report ("Send today's
+  report." and the sheet drawing in) → 04 Your site ("One voice note in. A finished
+  daily report out." and the button). The company and site are labelled an example.
+  Narrow, the intro comes first and its button jumps to the form.
 - **`/welcome`** is where signup now lands (`pages/WelcomePage.tsx`), full screen and
   skippable at every point. It shows Mesiri's WhatsApp number, a QR code and an
   "Open WhatsApp" link with the text pre-filled, then polls the owner's site day every
-  3 s. When the first update arrives it plays the same reveal with the owner's own
-  data (their words, what Mesiri understood, the live report from WEB-27), with
+  3 s. Its steps are 01 Send · 02 Understood · 03 Report; it rests on Send until the
+  first update arrives, then plays through with the owner's own data (their words,
+  what Mesiri understood, the live report from WEB-27) and stops on the report, with
   "Looks right" (confirms the drafts through the existing confirm API) and "Change
   something" (the site's day page). After 10 minutes of nothing it stops polling and
   points at Today.
@@ -537,9 +544,9 @@ site orange only for the report's rule and the one button.
 - **Checklist (SS-07) changes:** "Get the first update" links to `/welcome`; "Add your
   site supervisor" gains **Copy invite** (a message to forward with Mesiri's number and
   what to send); the logo link reads "Add logo".
-- **Motion:** one clock (`lib/timeline.ts`) drives every reveal, the waveform and the
-  count-ups; CSS transitions only, no animation library. With reduced motion, or at
-  rest, everything shows.
+- **Motion:** one clock per scene (`lib/timeline.ts`, `useScenes`) drives every reveal,
+  the waveform and the count-ups; CSS transitions only, no animation library. With
+  reduced motion nothing changes by itself and every scene shows complete.
 
 Rollback: revert `navigate('/welcome')` in `Signup.tsx` and signup lands on Today as
 before; everything else is additive. No migration.

@@ -18,29 +18,28 @@ export function prefersReducedMotion(): boolean {
  * shown) once past `endMs`, when `run` is null, or with reduced motion.
  */
 export function useTimeline(endMs: number, run: number | null): number {
-  const [now, setNow] = React.useState(() => (run === null || prefersReducedMotion() ? Infinity : 0))
+  const still = run === null || prefersReducedMotion()
+  // The clock remembers which run it belongs to, so the first render of a
+  // new run never reads the last run's "finished" (that skipped scenes).
+  const [clock, setClock] = React.useState<{ run: number | null; now: number }>({ run, now: still ? Infinity : 0 })
 
-  // Layout effect: a restart hides what's due later before it is painted.
-  React.useLayoutEffect(() => {
-    if (run === null || prefersReducedMotion()) {
-      setNow(Infinity)
+  React.useEffect(() => {
+    if (still) {
+      setClock({ run, now: Infinity })
       return
     }
     const start = performance.now()
-    setNow(0)
+    setClock({ run, now: 0 })
     const timer = window.setInterval(() => {
       const elapsed = performance.now() - start
-      if (elapsed >= endMs) {
-        setNow(Infinity)
-        window.clearInterval(timer)
-      } else {
-        setNow(elapsed)
-      }
+      setClock({ run, now: elapsed >= endMs ? Infinity : elapsed })
+      if (elapsed >= endMs) window.clearInterval(timer)
     }, TICK_MS)
     return () => window.clearInterval(timer)
-  }, [endMs, run])
+  }, [endMs, run, still])
 
-  return now
+  if (clock.run !== run) return still ? Infinity : 0
+  return clock.now
 }
 
 /** 0 → 1 over `ms` from `at`, eased out; for count-ups and the waveform. */
@@ -49,4 +48,44 @@ export function progress(now: number, at: number, ms: number): number {
   if (now <= at) return 0
   const p = (now - at) / ms
   return 1 - Math.pow(1 - p, 3)
+}
+
+/**
+ * A slideshow of scenes (SS-18): which scene is showing, its clock, and how
+ * far it has run. When a scene's time is up, `next(index)` says where to go
+ * (null stays put). Choosing a scene by hand stops the automatic changes,
+ * and so does reduced motion.
+ */
+export function useScenes(
+  durations: number[],
+  next: (index: number) => number | null,
+): { index: number; now: number; progress: number; select: (i: number) => void; go: (i: number) => void } {
+  const [index, setIndex] = React.useState(0)
+  const [run, setRun] = React.useState(0)
+  const [manual, setManual] = React.useState(false)
+  const duration = durations[index] ?? 0
+  const now = useTimeline(duration, run)
+  const nextRef = React.useRef(next)
+  nextRef.current = next
+
+  const go = React.useCallback((i: number) => {
+    setIndex(i)
+    setRun((r) => r + 1)
+  }, [])
+
+  React.useEffect(() => {
+    if (now !== Infinity || manual || prefersReducedMotion()) return
+    const to = nextRef.current(index)
+    if (to !== null && to !== index) go(to)
+  }, [now, manual, index, go])
+
+  const select = React.useCallback(
+    (i: number) => {
+      setManual(true)
+      go(i)
+    },
+    [go],
+  )
+
+  return { index, now, progress: now === Infinity ? 1 : Math.min(1, now / duration), select, go }
 }
