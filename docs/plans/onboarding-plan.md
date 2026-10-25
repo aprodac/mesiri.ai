@@ -568,4 +568,12 @@ Since then (25 Oct, approved by Alan):
   Save writes the first project's send time and auto-send (`PUT /projects/{id}`, as its
   Reporting tab does) and records the question answered (`report-time-ok`), so keeping
   9 pm counts too.
+- **The first report going out** gets a one-time note on Today ("Your first daily report
+  is out.", `components/first-report-moment.tsx`) for 3 days after `first_dpr_sent_at`,
+  with *See the report* and *Send it to your client too* (the project's recipients).
+  Closing it is remembered in that browser.
+- **Not built: "Send it to my WhatsApp"** from the welcome screen, logged as WA-74. *Send
+  now* publishes to every recipient, "send me today's DPR" needs the evening report
+  (`not_generated` on day 0), and a dashboard-side sender would duplicate the WhatsApp
+  sending path. The welcome screen's live report has *Print* (save as PDF) meanwhile.
 
