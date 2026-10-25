@@ -209,7 +209,15 @@ async def run_agent_turn(
             await _safe(deps.message_logger.log_reply(correlation_id=correlation_id, reply=CANT_HEAR_REPLY))
             await _safe(deps.message_logger.mark_completed(correlation_id=correlation_id))
             return None
-        await _safe(deps.message_logger.update_body_text(correlation_id=correlation_id, body_text=user_text))
+        # WEB-37: the English too, for the Live report (when it says something else).
+        english = (translated or "").strip()
+        await _safe(
+            deps.message_logger.update_body_text(
+                correlation_id=correlation_id,
+                body_text=user_text,
+                translated_text=english if english and english != user_text else None,
+            )
+        )
         if deps.user_language_store is not None and language:
             await _safe(
                 deps.user_language_store.remember(

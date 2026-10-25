@@ -558,17 +558,24 @@ class PostgresMessageLogger:
             )
         return [dict(row) for row in rows]
 
-    async def update_body_text(self, *, correlation_id: str, body_text: str) -> None:
+    async def update_body_text(
+        self, *, correlation_id: str, body_text: str, translated_text: str | None = None
+    ) -> None:
         from sqlalchemy import text
 
         try:
             async with self._get_engine().begin() as conn:
                 await conn.execute(
                     text(
-                        "UPDATE inbound_messages SET body_text = :body_text "
+                        "UPDATE inbound_messages SET body_text = :body_text, "
+                        "body_text_en = COALESCE(:body_text_en, body_text_en) "
                         "WHERE correlation_id = :correlation_id"
                     ),
-                    {"correlation_id": correlation_id, "body_text": body_text},
+                    {
+                        "correlation_id": correlation_id,
+                        "body_text": body_text,
+                        "body_text_en": translated_text,
+                    },
                 )
         except Exception:  # noqa: BLE001
             _log.exception(

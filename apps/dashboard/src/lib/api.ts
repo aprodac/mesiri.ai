@@ -1945,6 +1945,8 @@ export interface FactSources {
     sender_number: string | null
     /** Where it came in: 'whatsapp', or 'dashboard' for Tell Mesiri (WEB-36). */
     source?: string
+    /** A voice note's English, from the speech step (WEB-37); null for text. */
+    translated_text?: string | null
   }[]
   readings: {
     provider: string | null

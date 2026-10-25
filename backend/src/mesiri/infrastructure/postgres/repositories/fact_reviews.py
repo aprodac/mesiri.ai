@@ -303,7 +303,8 @@ class PostgresFactReviewRepository:
             messages = (
                 await self._conn.execute(
                     text(
-                        "SELECT im.id, im.message_type, im.body_text, im.media_object_key, "
+                        "SELECT im.id, im.message_type, im.body_text, im.body_text_en, "
+                        "im.media_object_key, "
                         "im.received_at, im.sender_wa_id, u.full_name AS sender_name, "
                         # Where it came in: "dashboard" for Tell Mesiri (WEB-36), else WhatsApp.
                         "COALESCE(im.raw_payload::jsonb ->> 'source', 'whatsapp') AS source "
@@ -344,6 +345,8 @@ class PostgresFactReviewRepository:
                     "id": str(m["id"]),
                     "type": m["message_type"],
                     "text": m["body_text"],
+                    # A voice note's English, from the speech step (WEB-37); None for text.
+                    "translated_text": m.get("body_text_en"),
                     "media_object_key": m["media_object_key"],
                     "received_at": when(m["received_at"]),
                     "sender_name": m["sender_name"],

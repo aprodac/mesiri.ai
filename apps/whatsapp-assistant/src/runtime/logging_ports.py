@@ -55,8 +55,11 @@ class MessageLogger(Protocol):
         """UPDATE the row to add the assistant_reply."""
         ...
 
-    async def update_body_text(self, *, correlation_id: str, body_text: str) -> None:
-        """UPDATE the row's body_text column (e.g. after speech transcription)."""
+    async def update_body_text(
+        self, *, correlation_id: str, body_text: str, translated_text: str | None = None
+    ) -> None:
+        """UPDATE the row's body_text column (e.g. after speech transcription),
+        and its English (body_text_en, WEB-37) when the speech step gave one."""
         ...
 
     async def link_workflow_instance(
