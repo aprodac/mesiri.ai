@@ -348,11 +348,26 @@ pass the same.
 | Today, Reports, Issues | Yes (WEB-25 step 3) |
 | Activities, Gallery, Timeline, Analytics | Yes (WEB-24, WEB-26) |
 | Projects & Sites, a project, Team, a person, Company | Yes (WEB-28): one page each, sections instead of tabs |
-| Site log (Work, Photos, Everything), WhatsApp (Conversations, All messages, Automations) | Views yes (WEB-33); the Inbox and Automations insides keep their older look |
+| Site log (Work, Photos, Everything), WhatsApp (Conversations, All messages, Automations) | Yes (WEB-33, WEB-35): Conversations and Automations redone; All messages keeps its older look |
 | Labour (one page: Attendance, Workers) | Yes (WEB-22) |
-| Materials (Ledger, Catalogue, Stock now, sheets) | Yes (WEB-29, WEB-30); invoice detail sheet not yet |
-| Finance, Login / Signup | No — old template look |
+| Materials (Ledger, Catalogue, Stock now, sheets) | Yes (WEB-29, WEB-30, invoice sheet WEB-35) |
+| Finance, Login / Signup | No — old template look (Signup: SS-18 intro) |
 | Dialogs (project, site, person, access, WhatsApp number, record delivery / use / move, correction) | Yes (WEB-29): sentence case, plain words, no fake buttons |
+
+### WhatsApp chat and Automations (WEB-35)
+
+- **Conversations** is a chat, not a monitoring console: the person's
+  messages on the left (white), Mesiri's replies on the right (green, headed
+  "Mesiri"), a pill per day, the site each update was filed to, and a red
+  sentence under a message Mesiri could not handle (`ERROR_WORDS`; the code
+  is in the tooltip). No guessed "intent" badges and no side panel: who the
+  person is sits in the thread header with **Profile** or **Add to team**.
+  The open thread is in the address (`?with=<number>`); on phones the list
+  and the thread are one screen each, with Back.
+- **Automations** read as sentences ("Every day at 6:00 pm, send the DPR to
+  me"), with On / Paused, the site and when it last ran, and words for
+  buttons (History, Pause, Delete). The form picks people and roles from
+  lists; History is a side panel with skip reasons in words.
 
 ### Setup pages (WEB-28)
 
