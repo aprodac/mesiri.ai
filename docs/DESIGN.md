@@ -354,6 +354,18 @@ pass the same.
 | Finance, Login / Signup | No — old template look (Signup: SS-18 intro) |
 | Dialogs (project, site, person, access, WhatsApp number, record delivery / use / move, correction) | Yes (WEB-29): sentence case, plain words, no fake buttons |
 
+### Site report and Labour ledger cues (WEB-41)
+
+- Site report: each section's icon tile has its colour (work blue, labour
+  amber, materials green, issues red); quantities sit in a blue pill; what is
+  still missing shows as chips (amber needed, grey nice to have); the
+  materials table shows received in green and used in red, closing red below
+  zero and amber at zero; Issues says "None today · N still open from
+  earlier days" when older ones remain.
+- Labour ledger: a column nobody filled (contractor, wage and cost) is left
+  out; a missing site or trade reads "Site not said" / "Trade not said";
+  a line without a wage, where others have one, says "no wage" in amber.
+
 ### Filters are dropdowns (WEB-40)
 
 Filters are compact dropdowns (`components/filter-select.tsx`:

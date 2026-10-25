@@ -41,6 +41,7 @@ import {
   hasUpdates as siteHasUpdates,
   longDate,
   missingText,
+  MISSING_LABELS,
   plural,
   qty,
   severityChip,
@@ -84,11 +85,13 @@ const SECTIONS: {
   icon: React.ComponentType<{ className?: string }>
   title: string
   empty: string
+  /** WEB-41: each section's icon tile has its own colour. */
+  tile: string
 }[] = [
-  { key: 'work', icon: HardHat, title: 'Work done', empty: 'No work reported.' },
-  { key: 'labour', icon: Users, title: 'Labour', empty: 'No labour count yet.' },
-  { key: 'materials', icon: Package, title: 'Materials', empty: 'No materials received or used.' },
-  { key: 'issues', icon: TriangleAlert, title: 'Issues', empty: 'No issues reported.' },
+  { key: 'work', icon: HardHat, title: 'Work done', empty: 'No work reported.', tile: 'bg-info-soft text-info' },
+  { key: 'labour', icon: Users, title: 'Labour', empty: 'No labour count yet.', tile: 'bg-draft-soft text-draft' },
+  { key: 'materials', icon: Package, title: 'Materials', empty: 'No materials received or used.', tile: 'bg-success-soft text-success' },
+  { key: 'issues', icon: TriangleAlert, title: 'Issues', empty: 'No issues reported.', tile: 'bg-destructive/10 text-destructive' },
 ]
 
 const FACT_LABEL: Record<ReviewItem['fact_type'], string> = {
@@ -179,7 +182,9 @@ function ItemRow({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1 sm:gap-3">
-          {quantities && <span className="mr-auto text-sm font-semibold tabular-nums sm:mr-2">{quantities}</span>}
+          {quantities && (
+            <span className="mr-auto rounded-full bg-info-soft px-2.5 py-0.5 text-sm font-semibold text-info tabular-nums sm:mr-2">{quantities}</span>
+          )}
           <Button variant="ghost" size="icon" className="size-8 text-muted-foreground" title="Where this came from" aria-label="Where this came from" onClick={() => onSources(item)}>
             <MessageSquareText />
           </Button>
@@ -219,9 +224,11 @@ function Section({
   items,
   summary,
   children,
+  tile,
 }: {
   icon: React.ComponentType<{ className?: string }>
   title: string
+  tile?: string
   empty: string
   items: ReviewItem[]
   summary?: React.ReactNode
@@ -230,11 +237,12 @@ function Section({
   const drafts = items.filter((i) => i.review === 'draft').length
   // Nothing to show: say so on the header line instead of a whole block.
   if (items.length === 0 && !summary) {
-    return <DprSection icon={icon} title={title} meta={empty} className="py-3" />
+    return <DprSection icon={icon} iconClass={tile} title={title} meta={empty} className="py-3" />
   }
   return (
     <DprSection
       icon={icon}
+      iconClass={tile}
       title={title}
       meta={items.length > 0 ? items.length : undefined}
       action={drafts > 0 ? <span className={cn(CHIP, 'bg-draft-soft text-draft')}>{plural(drafts, 'draft')} to confirm</span> : undefined}
@@ -756,11 +764,24 @@ export default function SiteDayPage() {
               entries on the next report.
             </Callout>
           )}
-          {missing && !frozen && (
-            <Callout tone="muted" icon={Info}>
-              {missing}
-              {!reportId && ". The report is built at the project's cutoff time; items can be checked now."}
-            </Callout>
+          {missing && !frozen && day?.missing_sections && (
+            // WEB-41: each missing part as its own chip -- amber for what the
+            // report needs, grey for what is nice to have.
+            <div className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+              <Info className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="mr-1 text-muted-foreground">Still missing:</span>
+              {day.missing_sections.blocking.map((k) => (
+                <span key={k} className={cn(CHIP, 'bg-draft-soft text-draft')}>
+                  {MISSING_LABELS[k] ?? k}
+                </span>
+              ))}
+              {day.missing_sections.optional.map((k) => (
+                <span key={k} className={cn(CHIP, 'bg-muted text-muted-foreground')}>
+                  {MISSING_LABELS[k] ?? k}
+                </span>
+              ))}
+              {!reportId && <span className="basis-full text-xs text-muted-foreground sm:basis-auto sm:pl-1">The report is built at the cutoff; items can be checked now.</span>}
+            </div>
           )}
 
           <StatStrip
@@ -793,7 +814,13 @@ export default function SiteDayPage() {
                   key={section.key}
                   icon={section.icon}
                   title={section.title}
-                  empty={section.empty}
+                  tile={section.tile}
+                  empty={
+                    // Issues: none today, but older ones still open -- say so.
+                    section.key === 'issues' && (day?.open_issues ?? 0) > issues.length
+                      ? `None today · ${plural((day?.open_issues ?? 0) - issues.length, 'issue')} still open from earlier days`
+                      : section.empty
+                  }
                   items={bySection(section.key)}
                   summary={
                     // One labour report already reads "24 workers · mason 8, …": the
@@ -829,9 +856,20 @@ export default function SiteDayPage() {
                                   {m.material_name} <span className="text-muted-foreground">({m.unit})</span>
                                 </td>
                                 <td className="px-3 py-1.5 text-right">{qty(m.opening)}</td>
-                                <td className="px-3 py-1.5 text-right">{qty(m.received)}</td>
-                                <td className="px-3 py-1.5 text-right">{qty(m.used)}</td>
-                                <td className="px-3 py-1.5 text-right font-semibold">{qty(m.closing)}</td>
+                                <td className={cn('px-3 py-1.5 text-right', Number(m.received) > 0 ? 'font-medium text-success' : 'text-muted-foreground')}>
+                                  {Number(m.received) > 0 ? `+${qty(m.received)}` : '—'}
+                                </td>
+                                <td className={cn('px-3 py-1.5 text-right', Number(m.used) > 0 ? 'font-medium text-destructive' : 'text-muted-foreground')}>
+                                  {Number(m.used) > 0 ? `−${qty(m.used)}` : '—'}
+                                </td>
+                                <td
+                                  className={cn(
+                                    'px-3 py-1.5 text-right font-semibold',
+                                    Number(m.closing) < 0 ? 'text-destructive' : Number(m.closing) === 0 ? 'text-draft' : '',
+                                  )}
+                                >
+                                  {qty(m.closing)}
+                                </td>
                               </tr>
                             ))}
                           </tbody>

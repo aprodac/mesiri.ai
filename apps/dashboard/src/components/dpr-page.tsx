@@ -17,9 +17,12 @@ export function DprSection({
   children,
   className,
   id,
+  iconClass,
 }: {
   icon: React.ComponentType<{ className?: string }>
   title: string
+  /** The icon tile's colours (WEB-41), e.g. 'bg-info-soft text-info'. */
+  iconClass?: string
   /** An anchor, for links to one section (?tab=…). */
   id?: string
   meta?: React.ReactNode
@@ -32,7 +35,7 @@ export function DprSection({
       {/* The action drops under the title when the row is too narrow. */}
       <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-foreground/70">
+          <span className={cn('flex size-6 shrink-0 items-center justify-center rounded-md', iconClass ?? 'bg-muted text-foreground/70')}>
             <Icon className="size-3.5" />
           </span>
           <h2 className="text-[15px] font-semibold">{title}</h2>

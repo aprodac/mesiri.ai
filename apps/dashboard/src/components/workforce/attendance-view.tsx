@@ -69,6 +69,10 @@ export function AttendanceView({ projectId, siteId, leading }: { projectId: stri
   // Each day's position, newest first, for the alternate-day shading.
   const dayIndex = new Map<string, number>()
   for (const r of ledgerRows) if (!dayIndex.has(r.report.occurred_date)) dayIndex.set(r.report.occurred_date, dayIndex.size)
+  // WEB-41: a column nobody filled in (contractor, wage) is left out rather
+  // than drawn as an empty strip down the table.
+  const showContractor = ledgerRows.some((r) => r.line.contractor)
+  const showWage = ledgerRows.some((r) => r.line.daily_wage)
   const ledgerTotal = ledgerRows.reduce(
     (t, { line }) => ({ workers: t.workers + (line.headcount || 0), cost: t.cost + (line.daily_wage ? line.daily_wage * (line.headcount || 1) : 0) }),
     { workers: 0, cost: 0 },
@@ -246,11 +250,15 @@ export function AttendanceView({ projectId, siteId, leading }: { projectId: stri
                         <th className="px-3 py-2 font-medium">Date</th>
                         {!siteId && <th className="px-3 py-2 font-medium">Site</th>}
                         <th className="px-3 py-2 font-medium">Trade / worker</th>
-                        <th className="px-3 py-2 font-medium">Contractor</th>
-                        <th className="bg-success-soft/60 px-3 py-2 text-right font-medium text-success">Workers</th>
-                        <th className="px-3 py-2 text-right font-medium">Wage / day</th>
-                        <th className="px-3 py-2 text-right font-medium">Cost</th>
-                        <th className="px-3 py-2 font-medium">From</th>
+                        {showContractor && <th className="px-3 py-2 font-medium">Contractor</th>}
+                        <th className="w-28 bg-success-soft/60 px-3 py-2 text-right font-medium text-success">Workers</th>
+                        {showWage && (
+                          <>
+                            <th className="px-3 py-2 text-right font-medium">Wage / day</th>
+                            <th className="px-3 py-2 text-right font-medium">Cost</th>
+                          </>
+                        )}
+                        <th className="w-28 px-3 py-2 font-medium">From</th>
                       </tr>
                     </thead>
                     <tbody className="tabular-nums">
@@ -272,7 +280,7 @@ export function AttendanceView({ projectId, siteId, leading }: { projectId: stri
                               <td className="whitespace-nowrap px-3 py-1.5">
                                 {newReport && (
                                   <>
-                                    {s?.name ?? '—'}
+                                    {s?.name ?? <span className="text-muted-foreground italic">Site not said</span>}
                                     {!projectId && s && <span className="text-xs text-muted-foreground"> · {s.project}</span>}
                                   </>
                                 )}
@@ -285,13 +293,19 @@ export function AttendanceView({ projectId, siteId, leading }: { projectId: stri
                                   {line.trade && <span className="text-muted-foreground"> · {trade(line.trade)}</span>}
                                 </>
                               ) : (
-                                <span className="font-medium">{trade(line.trade)}</span>
+                                line.trade ? <span className="font-medium">{trade(line.trade)}</span> : <span className="text-muted-foreground italic">Trade not said</span>
                               )}
                             </td>
-                            <td className="whitespace-nowrap px-3 py-1.5 text-muted-foreground">{line.contractor ?? ''}</td>
+                            {showContractor && <td className="whitespace-nowrap px-3 py-1.5 text-muted-foreground">{line.contractor ?? ''}</td>}
                             <td className="bg-success-soft/40 whitespace-nowrap px-3 py-1.5 text-right font-semibold text-success">{line.headcount}</td>
-                            <td className="whitespace-nowrap px-3 py-1.5 text-right">{line.daily_wage ? `₹${line.daily_wage.toLocaleString('en-IN')}` : ''}</td>
-                            <td className="whitespace-nowrap px-3 py-1.5 text-right">{cost ? `₹${cost.toLocaleString('en-IN')}` : ''}</td>
+                            {showWage && (
+                              <>
+                                <td className="whitespace-nowrap px-3 py-1.5 text-right">
+                                  {line.daily_wage ? `₹${line.daily_wage.toLocaleString('en-IN')}` : <span className="text-xs text-draft">no wage</span>}
+                                </td>
+                                <td className="whitespace-nowrap px-3 py-1.5 text-right">{cost ? `₹${cost.toLocaleString('en-IN')}` : ''}</td>
+                              </>
+                            )}
                             <td className="whitespace-nowrap px-3 py-1.5 text-muted-foreground">
                               {newReport ? (report.recorded_via?.includes('whatsapp') ? 'WhatsApp' : 'Dashboard') : ''}
                             </td>
@@ -301,12 +315,16 @@ export function AttendanceView({ projectId, siteId, leading }: { projectId: stri
                     </tbody>
                     <tfoot className="border-t-2 bg-muted/40 font-semibold tabular-nums">
                       <tr>
-                        <td className="px-3 py-2" colSpan={siteId ? 3 : 4}>
+                        <td className="px-3 py-2" colSpan={(siteId ? 2 : 3) + (showContractor ? 1 : 0)}>
                           Total · {plural(new Set(ledgerRows.map((r) => r.report.occurred_date)).size, 'day')}
                         </td>
                         <td className="whitespace-nowrap px-3 py-2 text-right text-success">{ledgerTotal.workers.toLocaleString('en-IN')} man-days</td>
-                        <td />
-                        <td className="whitespace-nowrap px-3 py-2 text-right">{ledgerTotal.cost ? `₹${ledgerTotal.cost.toLocaleString('en-IN')}` : ''}</td>
+                        {showWage && (
+                          <>
+                            <td />
+                            <td className="whitespace-nowrap px-3 py-2 text-right">{ledgerTotal.cost ? `₹${ledgerTotal.cost.toLocaleString('en-IN')}` : ''}</td>
+                          </>
+                        )}
                         <td />
                       </tr>
                     </tfoot>
