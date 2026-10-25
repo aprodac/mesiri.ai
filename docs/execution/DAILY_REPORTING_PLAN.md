@@ -295,7 +295,11 @@ AI Extraction → Save as DRAFT (+ reply "Saved as a draft… Reply UNDO")
   not a draft; no review row counts). Stock: `fact_review.movement_counted_sql`
   on `material_movements` (stock levels, ledger, the DPR's opening/closing);
   the over-stock hint while capturing still counts unsaved entries.
-  Attendance and the site log follow in the last slice of WA-77.
+  Attendance: `workforce.COUNTED_LINE_SQL` (a line counts once its report is
+  saved; an unsaved later report replaces nothing). Site log, issues and
+  analytics leave out unsaved entries; the agent's own picture of today still
+  sees them. A day whose only entries are unsaved is not "missing" a section
+  (`site_day.missing_sections`): the engineer is asked to keep them.
 - **Site DPR page reads (WEB-04):** `GET /dpr/site-days/{site_id}?date=` (the
   day, the report as it stands, `items` = every confirmable item with its fact
   type, id, draft/confirmed and flags, and the versions);

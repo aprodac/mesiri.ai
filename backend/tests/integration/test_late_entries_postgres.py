@@ -234,29 +234,48 @@ async def test_entry_for_a_sent_day_is_a_revision_and_shows_next_day_once(conn) 
         conn, fact_type="material_receipt", fact_id=receipt_id
     )
 
-    # The next day's report lists both, once.
+    # WA-77 (Alan, 25 Oct): the next day's report lists the saved late entry;
+    # the late draft waits for its Save and is neither listed nor confirmed.
     await _activity(conn, created, NEXT)
     await _labour(conn, created, NEXT)
     await _generate(conn, created, NEXT)
     listed = (await _site_report(conn, created, NEXT))["payload"]["late_entries"]
-    assert [e["report_date"] for e in listed] == [DAY.isoformat(), DAY.isoformat()]
-    assert any("Received 15 bags Cement" in e["summary"] for e in listed)
+    assert [e["report_date"] for e in listed] == [DAY.isoformat()]
+    assert not any("Received 15 bags Cement" in e["summary"] for e in listed)
     assert all(e["outcome"] == "revised" for e in listed)
 
-    # Confirming the next day claims them and confirms the late draft.
     await _confirm(conn, created, NEXT)
     states = await reviews.states_for("material_receipt", [receipt_id])
-    assert states[receipt_id] == "confirmed"
-    unshown = (
-        await conn.execute(
-            text(
-                "SELECT count(*) FROM late_entries WHERE site_id = :site"
-                " AND shown_in_report_id IS NULL"
-            ),
-            {"site": created.site_id},
-        )
-    ).scalar()
-    assert unshown == 0
+    assert states[receipt_id] == "draft"
+
+    async def unshown() -> int:
+        return (
+            await conn.execute(
+                text(
+                    "SELECT count(*) FROM late_entries WHERE site_id = :site"
+                    " AND shown_in_report_id IS NULL"
+                ),
+                {"site": created.site_id},
+            )
+        ).scalar()
+
+    assert await unshown() == 1  # the draft, waiting
+
+    # Once saved, the following day's report lists it, once.
+    await reviews.confirm(
+        organization_id=created.organization_id,
+        fact_type="material_receipt",
+        fact_id=receipt_id,
+        actor_user_id=created.owner_user_id,
+    )
+    later = NEXT + dt.timedelta(days=1)
+    await _activity(conn, created, later)
+    await _labour(conn, created, later)
+    await _generate(conn, created, later)
+    listed = (await _site_report(conn, created, later))["payload"]["late_entries"]
+    assert any("Received 15 bags Cement" in e["summary"] for e in listed)
+    await _confirm(conn, created, later)
+    assert await unshown() == 0
 
 
 async def test_open_days_and_old_entries_are_not_late(conn) -> None:

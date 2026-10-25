@@ -73,9 +73,14 @@ class ActivitySearchService:
         start_date: datetime.date,
         end_date: datetime.date,
         work_type: str | None = None,
+        include_unsaved: bool = False,
     ) -> dict[str, Any]:
         """Activities logged over [start_date, end_date] plus currently open
         site issues in scope.
+
+        WA-77 (Alan, 25 Oct): what was saved; an entry still waiting for its
+        Save is left out. `include_unsaved` keeps it, for the agent's own
+        picture of today (so it never logs the same thing twice).
 
         Returns a plain dict rather than a domain object because the only
         consumer is the reply node, which formats it -- the same choice
@@ -167,6 +172,11 @@ class ActivitySearchService:
             issue_conditions.append(site_issues.c.site_id == site_uuid)
         if work_type:
             activity_conditions.append(activities.c.work_type.ilike(f"%{work_type.strip()}%"))
+        if not include_unsaved:
+            from mesiri.application.dpr import fact_review
+
+            activity_conditions.append(sa.text(fact_review.counted_sql(fact_review.ACTIVITY, "activities.id")))
+            issue_conditions.append(sa.text(fact_review.counted_sql(fact_review.SITE_ISSUE, "site_issues.id")))
 
         activity_query = (
             sa.select(

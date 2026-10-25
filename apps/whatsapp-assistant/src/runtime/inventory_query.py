@@ -121,6 +121,8 @@ class MaterialInventoryQueryService:
         if material_id:
             scope += " AND mm.material_id = :material"
             params["material"] = uuid.UUID(material_id)
+        from mesiri.application.dpr import fact_review
+
         sql = sa.text(
             """
             SELECT mm.material_id, mc.name AS material_name, u.code AS unit,
@@ -140,6 +142,8 @@ class MaterialInventoryQueryService:
                   SELECT 1 FROM material_movements r WHERE r.reversal_of_movement_id = mm.id
               )
             """
+            # WA-77: the period's totals are what was saved, as the stock is.
+            + f" AND {fact_review.movement_counted_sql('mm')}"
             + scope
         )
         async with self._db.transaction() as conn:
@@ -178,6 +182,8 @@ class MaterialInventoryQueryService:
         if site_id:
             scope += " AND m.site_id = :site"
             params["site"] = uuid.UUID(site_id)
+        from mesiri.application.dpr import fact_review
+
         sql = sa.text(
             """
             SELECT lower(c.name) AS name, u.code AS unit,
@@ -192,6 +198,7 @@ class MaterialInventoryQueryService:
             JOIN units_of_measure u ON u.id = m.unit_id
             WHERE m.organization_id = :org AND m.occurred_at >= :since
             """
+            + f" AND {fact_review.movement_counted_sql('m')}"
             + scope
             + " GROUP BY lower(c.name), u.code"
         )

@@ -21,6 +21,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from mesiri.application.dpr import fact_review
+
 
 class PostgresAnalyticsRepository:
     def __init__(self, conn: AsyncConnection) -> None:
@@ -74,6 +76,7 @@ class PostgresAnalyticsRepository:
                         SELECT a.activity_date AS day, count(*) AS work_items
                         FROM activities a
                         WHERE {scope("a")} AND a.deleted_at IS NULL
+                          AND {fact_review.counted_sql(fact_review.ACTIVITY, "a.id")}
                           AND a.activity_date BETWEEN :date_from AND :date_to
                         GROUP BY 1
                     ), photos AS (
@@ -81,6 +84,7 @@ class PostgresAnalyticsRepository:
                         FROM activities a
                         JOIN progress_attachments pa ON pa.parent_type = 'ACTIVITY' AND pa.parent_id = a.id
                         WHERE {scope("a")} AND a.deleted_at IS NULL
+                          AND {fact_review.counted_sql(fact_review.ACTIVITY, "a.id")}
                           AND a.activity_date BETWEEN :date_from AND :date_to
                         GROUP BY 1
                     ), labour AS (
@@ -99,6 +103,7 @@ class PostgresAnalyticsRepository:
                                COALESCE(sum(si.delay_duration_minutes), 0) AS delay_minutes
                         FROM site_issues si
                         WHERE {scope("si")}
+                          AND {fact_review.counted_sql(fact_review.SITE_ISSUE, "si.id")}
                           AND (si.occurred_at AT TIME ZONE {tz})::date BETWEEN :date_from AND :date_to
                         GROUP BY 1
                     )
@@ -127,6 +132,7 @@ class PostgresAnalyticsRepository:
                     SELECT si.issue_type::text AS issue_type, si.severity::text AS severity, count(*) AS count
                     FROM site_issues si
                     WHERE {scope("si")} AND si.status IN ('OPEN', 'ACKNOWLEDGED')
+                      AND {fact_review.counted_sql(fact_review.SITE_ISSUE, "si.id")}
                     GROUP BY 1, 2
                     """
                 ),

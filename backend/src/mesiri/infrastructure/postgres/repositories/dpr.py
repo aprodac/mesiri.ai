@@ -749,10 +749,13 @@ class PostgresDprRepository:
         # on it. From the whole ledger (corrections included), the same sum
         # get_available_stock uses, so "closing" is what the site really held.
         # Stock is per site, not per project, matching the outflow guard.
-        stock_rows = (
-            await self._conn.execute(
-                text(
-                    f"""
+        # WA-77: the report's stock is what is saved; the review list judges a
+        # draft as if it were saved ("more used than in stock" is about it).
+        async def stock(saved_only: bool) -> list[Any]:
+            return (
+                await self._conn.execute(
+                    text(
+                        f"""
                     SELECT mm.material_id, mc.name AS material_name, u.code AS unit,
                            SUM(CASE WHEN mm.occurred_at::date < :report_date
                                     THEN CASE WHEN mm.movement_type = 'RECEIPT'
@@ -766,14 +769,17 @@ class PostgresDprRepository:
                     WHERE mm.organization_id = :org_id
                       AND mm.site_id = :site_id
                       AND mm.occurred_at::date <= :report_date
-                      AND {fact_review.movement_counted_sql("mm")}
+                      AND {fact_review.movement_counted_sql("mm") if saved_only else "true"}
                     GROUP BY mm.material_id, mc.name, u.code
                     HAVING bool_or(mm.occurred_at::date = :report_date)
                     """
-                ),
-                {"org_id": organization_id, "site_id": site_id, "report_date": report_date},
-            )
-        ).mappings().all()
+                    ),
+                    {"org_id": organization_id, "site_id": site_id, "report_date": report_date},
+                )
+            ).mappings().all()
+
+        stock_rows = await stock(saved_only=True)
+        stock_rows_with_drafts = await stock(saved_only=False)
 
         conditions_row = (
             await self._conn.execute(
@@ -847,7 +853,7 @@ class PostgresDprRepository:
             saved_rows_only,
         )
 
-        def build(rows: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+        def build(rows: dict[str, list[dict[str, Any]]], stock: list[Any]) -> dict[str, Any]:
             return build_site_report_payload(
                 review_states=review_states,
                 late_entries=late_entries,
@@ -863,7 +869,7 @@ class PostgresDprRepository:
                 carried_issue_rows=[dict(row) for row in carried_rows],
                 labour_lines=rows["labour"],
                 material_movement_rows=rows["materials"],
-                material_stock_rows=[dict(row) for row in stock_rows],
+                material_stock_rows=[dict(row) for row in stock],
             )
 
         every_row = {
@@ -875,9 +881,9 @@ class PostgresDprRepository:
         # WA-77 (Alan, 25 Oct): the report is made of saved entries only; a
         # draft (Save not yet tapped) is left out of it and only listed for
         # the engineer to save (`items`, and `drafts` in the payload).
-        payload = build(saved_rows_only(every_row, review_states))
+        payload = build(saved_rows_only(every_row, review_states), stock_rows)
         items = build_review_items(
-            payload=build(every_row),
+            payload=build(every_row, stock_rows_with_drafts),
             activity_rows=every_row["activities"],
             issue_rows=every_row["issues"],
             labour_lines=every_row["labour"],
