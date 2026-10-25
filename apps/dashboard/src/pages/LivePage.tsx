@@ -56,7 +56,9 @@ import { SPOT_MS, Spotlight, type SpotlightFact } from '@/components/live/spotli
 // A correction ("6 not 5") plays the same way with the old value struck out
 // (WEB-42); a line taken back crumbles away; a draft confirmed flips green.
 // Nothing counts until it is saved (WA-77): an entry whose ✅ Save hasn't
-// been tapped waits on the left as "Waiting for Save"; the tap lands it.
+// been tapped lands on the sheet as a draft ("Draft · waiting for Save") and
+// can be corrected like any line; the tap turns it solid and only then is it
+// entered into its module (Labour, Materials, …).
 
 const POLL_MS = 3_000
 const FLY_MS = 750
@@ -332,7 +334,7 @@ function ThinkingPanel({
       {think.chips.some((c) => c.waiting) && (
         <span className="flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-[0.08em] text-amber-700">
           <span className="size-1.5 animate-pulse rounded-full bg-amber-600" aria-hidden="true" />
-          Waiting for ✅ Save on WhatsApp · not on the report yet
+          Draft · waiting for ✅ Save on WhatsApp
         </span>
       )}
       {think.chips.some((c) => c.saved) && !think.chips.some((c) => c.waiting) && (
@@ -394,8 +396,11 @@ function Row({
       onClick={onOpen ? (e) => open(e.currentTarget) : undefined}
       onKeyDown={onOpen ? (e) => e.key === 'Enter' && open(e.currentTarget) : undefined}
       className={cn(
-        'group relative grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 border-b border-black/10 py-3 transition-opacity duration-300 last:border-b-0',
+        'group relative grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 border-b border-black/10 py-3 transition-[opacity,background-color,padding] duration-500 last:border-b-0',
         writing && !landed && 'opacity-0',
+        // WA-77: a draft is on the sheet, marked, until it is saved.
+        item.review === 'draft' && 'border-l-2 border-l-amber-500 border-dashed bg-amber-50/40 pl-2.5',
+        confirmedNow && 'bg-emerald-50/60',
         onOpen && 'cursor-pointer outline-none hover:bg-black/[0.025] focus-visible:bg-black/[0.04]',
       )}
       style={
@@ -466,11 +471,14 @@ function Row({
           </span>
         )}
         {item.review === 'draft' ? (
-          <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-primary">Draft</span>
+          <span className="flex items-center gap-1 border border-dashed border-amber-600 bg-amber-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-amber-800">
+            <span className="size-1.5 animate-pulse rounded-full bg-amber-600 motion-reduce:animate-none" aria-hidden="true" />
+            Draft · waiting for Save
+          </span>
         ) : (
           confirmedNow && (
             <span className="bg-emerald-700 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-white animate-in zoom-in-50 fade-in duration-300 motion-reduce:animate-none">
-              ✓ Confirmed
+              ✓ Saved
             </span>
           )
         )}
@@ -656,6 +664,8 @@ export default function LivePage() {
   const waiting = React.useRef(new Map<string, string>())
   const [waitingCount, setWaitingCount] = React.useState(0)
   const saveQueue = React.useRef<ReviewItem[]>([])
+  // What the modules hold: saved manpower only (a draft isn't entered yet).
+  const [savedHeadcount, setSavedHeadcount] = React.useState(0)
   const wasSent = React.useRef<boolean | null>(null)
 
   const known = React.useRef<Set<string> | null>(null)
@@ -769,6 +779,9 @@ export default function LivePage() {
     }, 2400)
   }
 
+  /** The report with drafts in it: the sheet shows a draft, marked draft (WA-77). */
+  const fullReport = () => latest.current?.report_with_drafts ?? latest.current?.report
+
   /** Where an entry stands now: a tap may have saved it since it was queued. */
   const reviewNow = (item: ReviewItem) =>
     latest.current?.items.find((i) => factKey(i) === factKey(item))?.review ?? item.review
@@ -807,7 +820,7 @@ export default function LivePage() {
       const source = await sourceOf(group[0])
       const msg = source.message
       const live = () => alive.current && gen === generation.current
-      const headcount = latest.current?.report.labour.headcount
+      const headcount = fullReport()?.labour.headcount
 
       if (msg) {
         if (!feedIds.current.has(msg.id)) {
@@ -856,13 +869,8 @@ export default function LivePage() {
         if (!live()) return
         const key = factKey(item)
         const isLabour = item.section === 'labour'
-        if (reviewNow(item) === 'draft') {
-          // WA-77: not saved yet; its chip waits for the ✅ Save tap.
-          wait(key, msg?.id ?? null)
-          markChip(msg?.id ?? null, key, { waiting: true })
-          if (!still) await sleep(500)
-          continue
-        }
+        // WA-77: a draft lands on the sheet too, marked draft; it is entered into its module once saved.
+        const isDraft = reviewNow(item) === 'draft'
         setWritten((all) => new Set(all).add(key))
         setWriting(key)
         if (!still) {
@@ -872,9 +880,10 @@ export default function LivePage() {
           const target = targetEls.current.get(isLabour ? 'labour' : key)
           if (chip && target) {
             const image = (await sourceOf(item)).photos.find((p) => p.url)?.url ?? null
+            const fact = spotFact(item, fullReport()?.labour, image)
             setSpot({
               id: Date.now(),
-              fact: spotFact(item, latest.current?.report.labour, image),
+              fact: isDraft ? { ...fact, kind: `Draft · ${fact.kind}` } : fact,
               from: chip.getBoundingClientRect(),
               to: target.getBoundingClientRect(),
             })
@@ -882,17 +891,27 @@ export default function LivePage() {
             setSpot(null)
           }
         }
-        if (isLabour) setLabour(latest.current?.report.labour ?? null)
+        if (isLabour) setLabour(fullReport()?.labour ?? null)
         land(key)
         const itemPhotos = (await sourceOf(item)).photos
         if (itemPhotos.length) landPhotos(key, itemPhotos)
-        if (!still && noticeOf(item, latest.current?.report)) {
+        if (!still && noticeOf(item, fullReport())) {
           // Mesiri points it out before moving on.
           await sleep(400)
           setNoticing(key)
           await sleep(2600)
         }
         if (msg) think(msg.id, (t) => ({ ...t, chips: t.chips.map((c) => (c.key === key ? { ...c, flown: true } : c)) }))
+        if (isDraft) {
+          // On the sheet as a draft; it waits there for its ✅ Save.
+          wait(key, msg?.id ?? null)
+          markChip(msg?.id ?? null, key, { waiting: true })
+          if (!still) await sleep(900)
+          setThread(null)
+          setWriting(null)
+          if (!still) await sleep(350)
+          continue
+        }
         if (!still) {
           await sleep(1200)
           setThread(null)
@@ -901,6 +920,7 @@ export default function LivePage() {
           setRelay({ from: isLabour ? 'labour-total' : key, to: item.section })
           await sleep(THREAD_MS)
         }
+        if (isLabour) setSavedHeadcount(latest.current?.report.labour.headcount ?? 0)
         setModuleLast((all) => ({ ...all, [item.section]: chipLabel(item, headcount) }))
         pulse(item.section)
         if (!still) {
@@ -1063,7 +1083,7 @@ export default function LivePage() {
     }
   }, [site?.site_name, site?.project_name])
 
-  /** WA-77: the ✅ Save was tapped: the waiting chip says so, then the entry lands on the report like any other. */
+  /** WA-77: the ✅ Save was tapped: the draft on the sheet turns solid ("✓ Saved") and is entered into its module. */
   const playSaved = React.useCallback(
     async (item: ReviewItem, gen: number) => {
       const still = prefersReducedMotion()
@@ -1071,48 +1091,29 @@ export default function LivePage() {
       const key = factKey(item)
       const isLabour = item.section === 'labour'
       const messageId = unwait(key)
-      markChip(messageId, key, { waiting: false, saved: true })
-      if (!still) await sleep(700)
-      if (!live()) return
+      markChip(messageId, key, { waiting: false, saved: true, flown: true })
       setWritten((all) => new Set(all).add(key))
-      setWriting(key)
+      setConfirmedNow((all) => new Set(all).add(key))
+      window.setTimeout(() => setConfirmedNow((all) => new Set([...all].filter((k) => k !== key))), LANDED_MS)
+      if (isLabour) setLabour(fullReport()?.labour ?? null)
+      land(isLabour ? 'labour:saved' : key)
       if (!still) {
-        await sleep(80)
-        const target = targetEls.current.get(isLabour ? 'labour' : key)
-        if (target) {
-          const image = (await sourceOf(item)).photos.find((p) => p.url)?.url ?? null
-          setSpot({
-            id: Date.now(),
-            fact: { ...spotFact(item, latest.current?.report.labour, image), kind: `Saved · ${KINDS[item.section] ?? 'Update'}` },
-            from: chipEls.current.get(key)?.getBoundingClientRect() ?? target.getBoundingClientRect(),
-            to: target.getBoundingClientRect(),
-          })
-          await sleep(SPOT_MS)
-          setSpot(null)
-        }
-      }
-      if (isLabour) setLabour(latest.current?.report.labour ?? null)
-      land(key)
-      const itemPhotos = (await sourceOf(item)).photos
-      if (itemPhotos.length) landPhotos(key, itemPhotos)
-      markChip(messageId, key, { flown: true })
-      if (!still) {
-        await sleep(900)
+        await sleep(1100)
         if (!live()) return
         setRelay({ from: isLabour ? 'labour-total' : key, to: item.section })
         await sleep(THREAD_MS)
       }
-      setModuleLast((all) => ({ ...all, [item.section]: chipLabel(item, latest.current?.report.labour.headcount) }))
+      if (isLabour) setSavedHeadcount(latest.current?.report.labour.headcount ?? 0)
+      setModuleLast((all) => ({ ...all, [item.section]: `${chipLabel(item, fullReport()?.labour.headcount)} (saved)` }))
       pulse(item.section)
       if (!still) {
         await sleep(450)
         setRelay(null)
       }
-      setWriting(null)
     },
     // the helpers it calls only set state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sourceOf],
+    [],
   )
 
   /** A correction: the message that changed it read, the new value full size over the old one struck out, then into its place. */
@@ -1168,7 +1169,10 @@ export default function LivePage() {
         setSpot(null)
       }
       // The new value takes the line; the old one stays struck out beside it a while.
-      if (fix.labour) setLabour(latest.current?.report.labour ?? null)
+      if (fix.labour) {
+        setLabour(fullReport()?.labour ?? null)
+        setSavedHeadcount(latest.current?.report.labour.headcount ?? 0)
+      }
       setHeld((all) => {
         const next = { ...all }
         delete next[factKey(fix.item)]
@@ -1184,8 +1188,11 @@ export default function LivePage() {
       }, LANDED_MS)
       land(fix.labour ? 'labour:fix' : factKey(fix.item))
       if (msg) think(msg.id, (t) => ({ ...t, chips: t.chips.map((c) => ({ ...c, flown: true })), step: 'done' }))
-      setModuleLast((all) => ({ ...all, [fix.item.section]: `${fix.labour ? `${fix.now} workers` : `${what} · ${fix.now}`} (corrected)` }))
-      pulse(fix.item.section)
+      // A draft corrected is still a draft: nothing is entered into its module yet.
+      if (reviewNow(fix.item) !== 'draft') {
+        setModuleLast((all) => ({ ...all, [fix.item.section]: `${fix.labour ? `${fix.now} workers` : `${what} · ${fix.now}`} (corrected)` }))
+        pulse(fix.item.section)
+      }
       if (!still) await sleep(1200)
     },
     // land, think, toFeed and pulse only set state.
@@ -1267,10 +1274,11 @@ export default function LivePage() {
       known.current = new Set(data.items.map(factKey))
       evidence.current = new Map(data.items.map((item) => [factKey(item), item.evidence_count ?? 0]))
       lastSeen.current = new Map(data.items.map((item) => [factKey(item), item]))
-      lastHeadcount.current = data.report.labour.headcount
-      // WA-77: what is not saved yet is not on the report; it waits on the left.
-      setWritten(new Set(data.items.filter((item) => item.review !== 'draft').map(factKey)))
-      setLabour(data.report.labour)
+      lastHeadcount.current = (data.report_with_drafts ?? data.report).labour.headcount
+      // WA-77: drafts are on the sheet too, marked draft, until saved.
+      setWritten(new Set(data.items.map(factKey)))
+      setLabour((data.report_with_drafts ?? data.report).labour)
+      setSavedHeadcount(data.report.labour.headcount)
       void Promise.all(data.items.map(sourceOf)).then((all) => {
         setRowPhotos(Object.fromEntries(data.items.map((item, i) => [factKey(item), all[i].photos])))
         const seen = new Map<string, FeedMessage>()
@@ -1318,7 +1326,7 @@ export default function LivePage() {
       fixQueue.current.push({ item, was: said(old), now: said(item) })
     }
     // The manpower total changed with no new manpower line: corrected.
-    const headcount = data.report.labour.headcount
+    const headcount = (data.report_with_drafts ?? data.report).labour.headcount
     // A manpower line just saved or taken back changes the total too; that is not a correction (WA-77).
     const labourReviewed = data.items.some(
       (item) => item.section === 'labour' && before.has(factKey(item)) && before.get(factKey(item))!.review !== item.review,
@@ -1327,7 +1335,7 @@ export default function LivePage() {
     if (lastHeadcount.current !== null && headcount !== lastHeadcount.current && !freshLabour && !labourReviewed && !labourGone) {
       const line = data.items.find((item) => item.section === 'labour')
       if (line) fixQueue.current.push({ item: line, was: String(lastHeadcount.current), now: String(headcount), labour: true })
-      else setLabour(data.report.labour)
+      else setLabour((data.report_with_drafts ?? data.report).labour)
     }
     lastHeadcount.current = headcount
     // A line taken back (undone or removed): it crumbles away.
@@ -1439,6 +1447,7 @@ export default function LivePage() {
     waiting.current = new Map()
     saveQueue.current = []
     setWaitingCount(0)
+    setSavedHeadcount(0)
   }, [siteId, date])
 
   /** The demo: the report snaps to dust, then every line comes back from its message, in order. */
@@ -1477,6 +1486,7 @@ export default function LivePage() {
     feedIds.current = new Set()
     setFeed([])
     setLabour({ ...data.report.labour, headcount: 0, trades: [] })
+    setSavedHeadcount(0)
     const withTimes = await Promise.all(data.items.map(async (item) => ({ item, src: await sourceOf(item) })))
     withTimes.sort((a, b) => (a.src.message?.received_at ?? '9').localeCompare(b.src.message?.received_at ?? '9'))
     queue.current = withTimes.map((x) => x.item)
@@ -1523,10 +1533,16 @@ export default function LivePage() {
   const frozen = ['approved', 'published'].includes(detail.data?.day?.status ?? '')
   const lastRead = detail.dataUpdatedAt ? new Date(detail.dataUpdatedAt).toLocaleTimeString('en-GB') : null
   const labourLanding = [...landed].some((k) => k.startsWith('labour'))
+  const labourDraft = items.some((i) => i.section === 'labour' && i.review === 'draft' && written.has(factKey(i)))
+  const labourSavedNow = [...confirmedNow].some((k) => k.startsWith('labour_report'))
   const relayFrom = relay ? targetEls.current.get(relay.from) : undefined
   const relayTo = relay ? nodeEls.current.get(relay.to) : undefined
   const counts = Object.fromEntries(
-    LIVE_MODULES.map((m) => [m.section, m.section === 'labour' ? (labour?.headcount ?? 0) : shown(m.section).length]),
+    // What each module holds: saved entries only (a draft isn't entered yet).
+    LIVE_MODULES.map((m) => [
+      m.section,
+      m.section === 'labour' ? savedHeadcount : shown(m.section).filter((i) => i.review !== 'draft').length,
+    ]),
   ) as Record<Section, number>
   const canOpen = (m: LiveModule) => moduleEnabled(m.module)
   const scopeQuery = () => {
@@ -1802,7 +1818,21 @@ export default function LivePage() {
                   style={labourLanding && !prefersReducedMotion() ? { animation: 'live-glow 3s ease-out both' } : undefined}
                 >
                   <div className="flex items-baseline justify-between border-b border-black/80 pb-1.5">
-                    <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-black/60">Manpower</span>
+                    <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.08em] text-black/60">
+                      Manpower
+                      {labourDraft ? (
+                        <span className="flex items-center gap-1 border border-dashed border-amber-600 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-800">
+                          <span className="size-1.5 animate-pulse rounded-full bg-amber-600 motion-reduce:animate-none" aria-hidden="true" />
+                          Draft · waiting for Save
+                        </span>
+                      ) : (
+                        labourSavedNow && (
+                          <span className="bg-emerald-700 px-1.5 py-0.5 text-[10px] text-white animate-in zoom-in-50 fade-in duration-300 motion-reduce:animate-none">
+                            ✓ Saved
+                          </span>
+                        )
+                      )}
+                    </span>
                     <span className="flex items-baseline gap-1.5 text-[13px]">
                       Total
                       <span

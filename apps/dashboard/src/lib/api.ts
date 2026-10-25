@@ -1822,6 +1822,8 @@ export interface SiteDayDetail {
   day: SiteDayItem | null
   project: ProjectDayItem | null
   report: SiteDayReport
+  /** WA-77: the same report with unsaved entries in it (the Live page shows them as drafts). */
+  report_with_drafts?: SiteDayReport
   items: ReviewItem[]
   drafts: number
   versions: DprVersion[]

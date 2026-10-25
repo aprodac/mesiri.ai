@@ -423,7 +423,29 @@ class PostgresDprRepository:
         site_id: uuid.UUID,
         report_date: datetime.date,
     ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-        """The payload below, plus the day's reviewable items with their ids
+        """The day's report (saved entries) and its reviewable items; see
+        `assemble_site_day_with_drafts`."""
+        payload, _, items = await self.assemble_site_day_with_drafts(
+            organization_id=organization_id,
+            project_id=project_id,
+            site_id=site_id,
+            report_date=report_date,
+        )
+        return payload, items
+
+    async def assemble_site_day_with_drafts(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        project_id: uuid.UUID,
+        site_id: uuid.UUID,
+        report_date: datetime.date,
+    ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
+        """WA-77: the report (saved entries only), the same report with the
+        drafts in it too (the Live page shows a draft on the sheet, marked
+        draft, until it is saved), and the reviewable items.
+
+        The payload below, plus the day's reviewable items with their ids
         (WEB-04's site DPR page; application/dpr/assembly.build_review_items).
 
         Compose one SITE-level DPR payload from what was actually
@@ -882,15 +904,16 @@ class PostgresDprRepository:
         # draft (Save not yet tapped) is left out of it and only listed for
         # the engineer to save (`items`, and `drafts` in the payload).
         payload = build(saved_rows_only(every_row, review_states), stock_rows)
+        with_drafts = build(every_row, stock_rows_with_drafts)
         items = build_review_items(
-            payload=build(every_row, stock_rows_with_drafts),
+            payload=with_drafts,
             activity_rows=every_row["activities"],
             issue_rows=every_row["issues"],
             labour_lines=every_row["labour"],
             material_movement_rows=every_row["materials"],
             review_states=review_states,
         )
-        return payload, items
+        return payload, with_drafts, items
 
     async def find_site_report(
         self,

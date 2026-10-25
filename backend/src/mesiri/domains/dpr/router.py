@@ -298,7 +298,7 @@ async def get_site_day(
         project_ids={project_id},
         report_date=report_date,
     )
-    payload, items = await repo.assemble_site_day(
+    payload, with_drafts, items = await repo.assemble_site_day_with_drafts(
         organization_id=auth_context.organization_id,
         project_id=project_id,
         site_id=site_id,
@@ -325,6 +325,9 @@ async def get_site_day(
         "day": day,
         "project": projects[0] if projects else None,
         "report": payload,
+        # WA-77: the same report with unsaved entries in it, for the Live page
+        # (which shows a draft on the sheet, marked draft, until it is saved).
+        "report_with_drafts": with_drafts,
         "items": items,
         "drafts": sum(1 for i in items if i["review"] == "draft"),
         "versions": versions,

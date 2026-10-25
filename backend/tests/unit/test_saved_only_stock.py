@@ -52,4 +52,4 @@ def test_the_ledger_and_the_dpr_stock_follow_the_rule():
     from mesiri.infrastructure.postgres.repositories.dpr import PostgresDprRepository
 
     assert "movement_counted_sql" in inspect.getsource(PostgresMaterialReadRepository.get_ledger)
-    assert 'movement_counted_sql("mm")' in inspect.getsource(PostgresDprRepository.assemble_site_day)
+    assert 'movement_counted_sql("mm")' in inspect.getsource(PostgresDprRepository.assemble_site_day_with_drafts)
