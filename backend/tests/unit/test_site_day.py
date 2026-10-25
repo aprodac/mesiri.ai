@@ -534,6 +534,9 @@ async def test_site_days_carry_live_counts_as_numbers_and_parsed_missing_section
         "work_items": 4,
         "photos": 0,
         "open_issues": 2,
+        "materials": 3,
+        "issues_today": None,
+        "progress_updates": 1,
         "last_update_at": None,
         "last_update_by": None,
         "latest_update": None,
@@ -546,6 +549,7 @@ async def test_site_days_carry_live_counts_as_numbers_and_parsed_missing_section
 
     assert day["missing_sections"] == {"blocking": ["labour"], "optional": []}
     assert (day["workers"], day["work_items"], day["open_issues"]) == (0, 4, 2)
+    assert (day["materials"], day["issues_today"], day["progress_updates"]) == (3, 0, 1)
     sql, params = conn.calls[0]
     assert "COALESCE(NULLIF(lal.headcount, 0), 1)" in sql  # same per-line rule as the DPR
     assert "project_ids" not in params

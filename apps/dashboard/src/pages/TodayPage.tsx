@@ -116,6 +116,8 @@ function SiteRow({
             {[
               site.workers ? plural(site.workers, 'worker') : null,
               site.work_items ? plural(site.work_items, 'work item') : null,
+              site.progress_updates ? plural(site.progress_updates, 'progress update') : null,
+              site.materials ? plural(site.materials, 'material entry', 'material entries') : null,
               site.photos ? plural(site.photos, 'photo') : null,
               site.open_issues ? plural(site.open_issues, 'open issue') : null,
             ]

@@ -1687,6 +1687,11 @@ export interface SiteDayItem {
   work_items: number
   photos: number
   open_issues: number
+  /** The day's other entries (WEB-32): materials, issues raised that day,
+   * progress on work started earlier. */
+  materials: number
+  issues_today: number
+  progress_updates: number
   last_update_at: string | null
   last_update_by: string | null
   latest_update: string | null

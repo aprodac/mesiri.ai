@@ -31,7 +31,17 @@ export function errorDetail(err: unknown): string | null {
 }
 
 export function hasUpdates(site: SiteDayItem): boolean {
-  return site.work_items > 0 || site.workers > 0 || site.site_working === 'none'
+  // WEB-32: anything the site sent that day counts, not only work and labour:
+  // a site that sent only materials, an issue or progress has reported.
+  return (
+    site.work_items > 0 ||
+    site.workers > 0 ||
+    (site.materials ?? 0) > 0 ||
+    (site.issues_today ?? 0) > 0 ||
+    (site.progress_updates ?? 0) > 0 ||
+    (site.drafts ?? 0) > 0 ||
+    site.site_working === 'none'
+  )
 }
 
 export function siteStatus(site: SiteDayItem): { label: string; className: string } {
@@ -86,8 +96,8 @@ export function dateTime(iso: string | null): string {
   return new Date(iso).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
 }
 
-export function plural(n: number, word: string): string {
-  return `${n} ${word}${n === 1 ? '' : 's'}`
+export function plural(n: number, word: string, many = `${word}s`): string {
+  return `${n} ${n === 1 ? word : many}`
 }
 
 /** "40.000" -> "40", "12.50" -> "12.5": quantities arrive as stored decimals. */
