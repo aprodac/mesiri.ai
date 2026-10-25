@@ -524,7 +524,9 @@ site orange only for the report's rule and the one button.
   Understood (10 workers counting up, the work, the issue) → 03 Report ("Send today's
   report." and the sheet drawing in) → 04 Your site ("One voice note in. A finished
   daily report out." and the button). The company and site are labelled an example.
-  Narrow, the intro comes first and its button jumps to the form.
+  Narrow, the form comes first (wordmark, Sign in, "One voice note in. A finished daily
+  report out."), with the intro under it as "How it works"; its last button scrolls back
+  up to the form. Sign-in (`/login`) shows the intro on desktop only.
 - **`/welcome`** is where signup now lands (`pages/WelcomePage.tsx`), full screen and
   skippable at every point. It shows Mesiri's WhatsApp number, a QR code and an
   "Open WhatsApp" link with the text pre-filled, then polls the owner's site day every

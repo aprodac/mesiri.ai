@@ -4,6 +4,7 @@ import { signup, verifySignupCode } from '@/lib/api'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { WhatsAppCodeForm } from '@/components/auth/whatsapp-code-form'
 import { IntroConversation } from '@/components/onboarding/intro-conversation'
+import { MesiriWordmark } from '@/components/brand/mesiri-logo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -43,14 +44,18 @@ export default function Signup() {
   }
 
   const goToForm = () => {
+    // Narrow, the form is at the top: back up to it.
     document.getElementById('start')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     document.getElementById(ticket ? 'owner-name' : 'phone')?.focus({ preventScroll: true })
   }
 
   return (
-    <div className="min-h-svh bg-background lg:grid lg:grid-cols-[minmax(0,1fr)_400px]">
-      <section aria-label="How Mesiri works" className="px-4 pb-14 sm:px-8 lg:px-12">
+    // Narrow: the form first, the intro under it (nobody should have to
+    // scroll past a slideshow to sign up). Desktop: side by side.
+    <div className="flex min-h-svh flex-col bg-background lg:grid lg:grid-cols-[minmax(0,1fr)_400px]">
+      <section aria-label="How Mesiri works" className="border-t px-4 pb-14 sm:px-8 lg:border-t-0 lg:px-12">
         <IntroConversation
+          belowForm
           onStart={goToForm}
           headerAction={
             <Link to="/login" className="text-sm font-medium underline underline-offset-2">
@@ -63,9 +68,20 @@ export default function Signup() {
       <aside
         id="start"
         aria-label="Start your free trial"
-        className="scroll-mt-4 border-t px-4 py-12 sm:px-8 lg:sticky lg:top-0 lg:flex lg:h-svh lg:items-center lg:overflow-y-auto lg:border-t-0 lg:border-l"
+        className="order-first scroll-mt-4 px-4 pt-7 pb-10 sm:px-8 lg:order-none lg:sticky lg:top-0 lg:flex lg:h-svh lg:items-center lg:overflow-y-auto lg:border-l lg:py-12"
       >
         <div className="mx-auto grid w-full max-w-sm gap-6">
+          <div className="grid gap-6 lg:hidden">
+            <div className="flex items-baseline justify-between gap-4">
+              <MesiriWordmark className="text-lg" />
+              <Link to="/login" className="text-sm font-medium underline underline-offset-2">
+                Sign in
+              </Link>
+            </div>
+            <p className="m-0 text-[28px] leading-[1.05] font-semibold tracking-[-0.03em] text-balance">
+              One voice note in. <span className="text-muted-foreground">A finished daily report out.</span>
+            </p>
+          </div>
           <div className="grid gap-1.5">
             <h2 className="text-2xl font-semibold tracking-tight">Start your free trial</h2>
             <p className="text-sm text-muted-foreground">
