@@ -49,7 +49,8 @@ def build_draft(state: WorkflowGraphState) -> dict:
     the unit the original quantity was stated in (old_unit), since a
     correction almost never also changes the unit of measure."""
     fields = dict(state.get("collected_fields") or {})
-    progress_update_id = fields.get("progress_update_id")
+    # WRK-06: the target is a progress update, or the quantity the activity was started with.
+    progress_update_id = fields.get("progress_update_id") or fields.get("activity_quantity_id")
 
     if not progress_update_id:
         return {"pending_prompt": _NOTHING_TO_CORRECT}

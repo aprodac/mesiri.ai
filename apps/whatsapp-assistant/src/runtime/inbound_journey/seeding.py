@@ -472,10 +472,18 @@ async def _seed_activity_search(
     if decision.workflow_key is not WorkflowKey.ACTIVITY_QUERY:
         return
 
-    today = today_for(timezone_name)
-    start_date, end_date, date_range_label = resolve_labour_date_range(
-        event.fields.get("date_range"), today=today
-    )
+    # WRK-03: a named day or period ("yesterday") is the project's own; the
+    # labour resolver below only knows today / this week / this month and
+    # would answer "yesterday" with today.
+    from runtime.agent.project_day import resolve_period
+
+    period = resolve_period(event.fields.get("date_range"), event.fields.get("date"), timezone_name)
+    if period is not None:
+        start_date, end_date, date_range_label = period
+    else:
+        start_date, end_date, date_range_label = resolve_labour_date_range(
+            event.fields.get("date_range"), today=today_for(timezone_name)
+        )
     results = await activity_search_service.search(
         organization_id=actor.organization_id,
         project_id=event.project_id,

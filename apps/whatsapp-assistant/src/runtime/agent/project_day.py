@@ -53,3 +53,49 @@ def week_start(name: str | None, now: dt.datetime | None = None) -> dt.date:
     """Monday of the project's current week."""
     today = project_today(name, now)
     return today - dt.timedelta(days=today.weekday())
+
+
+#: The periods a lookup may name (``date_range``) besides a single day.
+DAY_RANGES = ("today", "yesterday", "this_week", "last_week", "this_month")
+
+
+def day_label(day: dt.date, today: dt.date) -> str:
+    """"today", "yesterday (24 Oct)" or "24 Oct" -- how an answer names its day."""
+    if day == today:
+        return "today"
+    short = f"{day.day} {day:%b}"
+    return f"yesterday ({short})" if day == today - dt.timedelta(days=1) else short
+
+
+def resolve_period(
+    date_range: str | None,
+    day: object,
+    name: str | None,
+    now: dt.datetime | None = None,
+) -> tuple[dt.date, dt.date, str] | None:
+    """WRK-03 / MAT-03: the dates a work-log or material question is about, in
+    the project's own zone: (first day, last day, label). ``day`` is the
+    tool's ``date`` ("yesterday", "day before yesterday", an ISO date) and
+    wins over ``date_range``. None when the question names no period (the
+    caller answers as before: all-time stock, or today for the work log)."""
+    from canonicalization.occurred_date import parse_stated_date
+
+    today = project_today(name, now)
+    if day not in (None, ""):
+        stated = parse_stated_date(day, today=today)
+        if stated is not None:
+            return stated, stated, day_label(stated, today)
+    key = str(date_range or "").strip().lower()
+    if key == "today":
+        return today, today, "today"
+    if key == "yesterday":
+        yesterday = today - dt.timedelta(days=1)
+        return yesterday, yesterday, day_label(yesterday, today)
+    if key == "this_week":
+        return week_start(name, now), today, "this week"
+    if key == "last_week":
+        start = week_start(name, now) - dt.timedelta(days=7)
+        return start, start + dt.timedelta(days=6), "last week"
+    if key == "this_month":
+        return today.replace(day=1), today, "this month"
+    return None

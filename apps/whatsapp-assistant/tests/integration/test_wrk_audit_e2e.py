@@ -17,10 +17,12 @@ from interactions.execution_router import ActionTypeRoutingDispatcher
 from mesiri.application.organizations.create_company import NewCompany, create_company
 from mesiri.application.progress.dispatcher import (
     AddProgressUpdateExecutionDispatcher,
+    CorrectActivityQuantityExecutionDispatcher,
     CreateActivityExecutionDispatcher,
 )
 from mesiri.application.progress.handlers import (
     ExecuteConfirmedAddProgressUpdateHandler,
+    ExecuteConfirmedCorrectActivityQuantityHandler,
     ExecuteConfirmedCreateActivityHandler,
 )
 from mesiri.application.progress.resolution import PostgresProgressUnitResolver
@@ -102,6 +104,8 @@ async def world():
                 ExecuteConfirmedCreateActivityHandler(db=db, repo=repo, resolver=resolver)),
             DraftActionType.ADD_PROGRESS_UPDATE: AddProgressUpdateExecutionDispatcher(
                 ExecuteConfirmedAddProgressUpdateHandler(db=db, repo=repo, resolver=resolver)),
+            DraftActionType.CORRECT_ACTIVITY_QUANTITY: CorrectActivityQuantityExecutionDispatcher(
+                ExecuteConfirmedCorrectActivityQuantityHandler(db=db, repo=repo, resolver=resolver)),
         }),
         save_first=SaveFirstService(db),
     )
@@ -111,6 +115,7 @@ async def world():
         o = created.organization_id
         for sql in (
             "DELETE FROM fact_reviews WHERE organization_id = :o",
+            "DELETE FROM activity_corrections WHERE activity_id IN (SELECT id FROM activities WHERE organization_id = :o)",
             "DELETE FROM progress_updates WHERE activity_id IN (SELECT id FROM activities WHERE organization_id = :o)",
             "DELETE FROM activity_quantities WHERE activity_id IN (SELECT id FROM activities WHERE organization_id = :o)",
             "DELETE FROM activity_links WHERE activity_id IN (SELECT id FROM activities WHERE organization_id = :o)",
@@ -189,3 +194,86 @@ async def test_wrk02_an_unknown_unit_asks_with_unit_buttons_and_saves_nothing(wo
     async with world.db.transaction() as conn:
         n = (await conn.execute(text("SELECT count(*) FROM activities WHERE organization_id = :o"), {"o": world.org})).scalar_one()
     assert n == 0
+
+
+async def _correct(world, message_id: str, **fields: Any):
+    from runtime.agent.change_entry import ChangeEntry
+
+    entry = ChangeEntry(
+        context_resolver=world.entry.context_resolver, org_settings_query=None, actor=world.entry.actor,
+        activity_query=ActivityQueryService(world.db), remembered_activity=None,
+    )
+    message = SimpleNamespace(correlation_id=f"cor_{message_id}", message_id=message_id, modality=None, text="", metadata={})
+    candidate = Candidate(semantic_type=SemanticType.ACTIVITY_CORRECTION, fields=fields)
+    prepared = await entry.prepare(message, _Understanding(candidate), candidate)
+    assert isinstance(prepared, Ready), prepared
+    await world.runtime.start(prepared.decision, prepared.event)
+    return await world.handler.handle_fast_path(world.user, SimpleNamespace(text="yes", message_id=message_id))
+
+
+async def test_wrk06_a_correction_after_a_session_gap_changes_the_starting_quantity(world):
+    """"180 sqm plastering 2nd floor", a new session (nothing remembered), "correction, 150 sqm"."""
+    saved = await _send(world, "c1", narrative="plastering 2nd floor", work_type="plastering",
+                        quantities=[{"work_type": "plastering", "quantity": 180, "unit": "sqm"}],
+                        occurred_on=DAY2.isoformat())
+    assert saved is not None and saved.execution_result is not None
+
+    corrected = await _correct(world, "c2", new_quantity=150, unit="sqm")
+    assert corrected is not None and corrected.execution_result is not None, corrected
+    assert corrected.execution_result.status.value.lower() == "succeeded", corrected.reply_text
+    async with world.db.transaction() as conn:
+        quantity = (await conn.execute(text(
+            "SELECT q.quantity FROM activity_quantities q JOIN activities a ON a.id = q.activity_id"
+            " WHERE a.organization_id = :o"), {"o": world.org})).scalar_one()
+        audit = (await conn.execute(text(
+            "SELECT field_name FROM activity_corrections c JOIN activities a ON a.id = c.activity_id"
+            " WHERE a.organization_id = :o"), {"o": world.org})).scalars().all()
+    assert float(quantity) == 150 and audit == ["activity_quantity.quantity"]
+    payload, _ = await _day(world, DAY2)
+    assert payload["activities"][0]["quantities"][0]["quantity"] == "150.000"
+
+
+async def test_wrk06_a_correction_after_a_gap_changes_the_latest_progress_update(world):
+    await _send(world, "p1", narrative="brickwork", work_type="brickwork", occurred_on=DAY1.isoformat())
+    await _send(world, "p2", narrative="brickwork 40 sqm more", work_type="brickwork",
+                quantities=[{"work_type": "brickwork", "quantity": 40, "unit": "sqm"}],
+                occurred_on=DAY2.isoformat(), continues="brickwork")
+    corrected = await _correct(world, "p3", new_quantity=30, unit="sqm")
+    assert corrected is not None and corrected.execution_result is not None, corrected
+    assert corrected.execution_result.status.value.lower() == "succeeded", corrected.reply_text
+    payload, _ = await _day(world, DAY2)
+    assert [q["quantity"] for q in payload["activities"][0]["quantities"]] == ["30.000"]
+
+
+async def test_wrk04_more_than_six_open_jobs_are_all_tracked(world):
+    for i in range(1, 13):
+        saved = await _send(world, f"j{i}", narrative=f"started job{i}", work_type=f"job{i}",
+                            occurred_on=DAY1.isoformat())
+        assert saved is not None and saved.execution_result is not None
+    finished = await _send(world, "j1f", narrative="job1 finished", work_type="job1", status="completed",
+                           occurred_on=DAY2.isoformat(), continues="job1")
+    assert finished is not None and finished.execution_result is not None, finished
+    async with world.db.transaction() as conn:
+        rows = (await conn.execute(text(
+            "SELECT work_type, status::text FROM activities WHERE organization_id = :o ORDER BY work_type"),
+            {"o": world.org})).all()
+    assert len(rows) == 12, rows  # no second job1 (the oldest of twelve open jobs)
+    assert dict(rows)["job1"] == "COMPLETED"
+
+
+async def test_wrk03_the_work_log_for_yesterday_and_today_follow_the_dates(world):
+    from runtime.activity_search_service import ActivitySearchService
+
+    await _send(world, "l1", narrative="started brickwork", work_type="brickwork", occurred_on=DAY1.isoformat())
+    await _send(world, "l2", narrative="brickwork 60%", work_type="brickwork", progress_percent=60,
+                occurred_on=DAY2.isoformat(), continues="brickwork")
+    await _send(world, "l3", narrative="started wiring", work_type="wiring", occurred_on=DAY2.isoformat())
+    search = ActivitySearchService(world.db)
+
+    def names(result):
+        return sorted(a["work_type"] for a in result["activities"])
+
+    kwargs = {"organization_id": str(world.org), "project_id": str(world.project), "site_id": str(world.site)}
+    assert names(await search.search(start_date=DAY1, end_date=DAY1, **kwargs)) == ["brickwork"]
+    # today: the new job and the earlier one that was updated today
+    assert names(await search.search(start_date=DAY2, end_date=DAY2, **kwargs)) == ["brickwork", "wiring"]

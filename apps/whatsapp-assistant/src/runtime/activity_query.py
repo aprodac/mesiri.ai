@@ -141,23 +141,26 @@ class ActivityQueryService:
         organization_id: str,
         site_id: str | None,
         reported_by_user_id: str | None,
-        limit: int = 10,
+        limit: int = 50,
+        site_ids: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Every open activity for this reporter on this site, most recently
         updated first. Empty list when there is nothing open -- a normal,
         common outcome (e.g. the first report of the day), not a failure.
 
-        `limit` is a sanity cap, not a real-world expectation -- one person
-        genuinely running ten simultaneous open activities on one site would
-        be unusual, but nothing here assumes it can't happen."""
-        if not site_id or not reported_by_user_id:
+        `limit` is a sanity cap, not a real-world expectation (WRK-04: it was
+        10, and a site running more open jobs than that lost the rest).
+        ``site_ids`` (WRK-05): the sender's open work across several sites, when
+        none is chosen yet; each row then says which site it is at."""
+        if (not site_id and not site_ids) or not reported_by_user_id:
             return []
 
         import sqlalchemy as sa
 
         try:
             org_id = uuid.UUID(organization_id)
-            site_uuid = uuid.UUID(site_id)
+            site_uuid = uuid.UUID(site_id) if site_id else None
+            many = [uuid.UUID(x) for x in site_ids or []]
             reporter_uuid = uuid.UUID(reported_by_user_id)
         except (TypeError, ValueError):
             return []
@@ -178,13 +181,14 @@ class ActivityQueryService:
         query = (
             sa.select(
                 activities.c.id,
+                activities.c.site_id,
                 activities.c.work_type,
                 activities.c.narrative,
                 activities.c.status,
             )
             .where(
                 activities.c.organization_id == org_id,
-                activities.c.site_id == site_uuid,
+                activities.c.site_id == site_uuid if site_uuid is not None else activities.c.site_id.in_(many),
                 activities.c.reported_by_user_id == reporter_uuid,
                 activities.c.status.in_(_OPEN_STATUSES),
                 activities.c.deleted_at.is_(None),
@@ -199,6 +203,7 @@ class ActivityQueryService:
         return [
             {
                 "activity_id": str(row["id"]),
+                "site_id": str(row["site_id"]),
                 "work_type": row["work_type"],
                 "narrative": row["narrative"],
                 "status": row["status"],
@@ -342,3 +347,81 @@ class ActivityQueryService:
             "work_type": row["work_type"],
             "narrative": row["narrative"],
         }
+
+    async def find_correction_target(
+        self,
+        *,
+        organization_id: str,
+        reported_by_user_id: str | None,
+        remembered_activity_id: str | None = None,
+        within_hours: int = 48,
+    ) -> dict[str, Any] | None:
+        """WRK-06: what "correction, that was 150 sqm" is about. The activity
+        this conversation last touched when it is known (its latest quantity
+        update, else the quantity it was started with); after a gap or in a
+        new session, the sender's own latest quantity of the last
+        ``within_hours`` -- an update they sent or an activity they started,
+        whichever is newer. None when they have logged nothing to correct.
+
+        The result has ``progress_update_id`` (an update) or
+        ``activity_quantity_id`` (the starting quantity), and the old
+        quantity, unit and a work summary."""
+        import sqlalchemy as sa
+
+        try:
+            org_id = uuid.UUID(organization_id)
+            user_id = uuid.UUID(reported_by_user_id) if reported_by_user_id else None
+            remembered = uuid.UUID(remembered_activity_id) if remembered_activity_id else None
+        except (TypeError, ValueError):
+            return None
+        if remembered is not None:
+            update = await self.get_latest_quantity_update(
+                organization_id=organization_id, activity_id=str(remembered)
+            )
+            if update is not None:
+                return update
+        if remembered is None and user_id is None:
+            return None
+
+        if remembered is not None:
+            owner, params = "a.id = :remembered", {"org": org_id, "remembered": remembered}
+            window = ""
+        else:
+            owner, params = "a.reported_by_user_id = :user", {"org": org_id, "user": user_id}
+            window = " AND {col} >= now() - make_interval(hours => :hours)"
+            params["hours"] = within_hours
+        async with self._db.transaction() as conn:
+            rows = (
+                await conn.execute(
+                    sa.text(
+                        "SELECT * FROM ("
+                        " SELECT pu.id AS target_id, 'update' AS kind, pu.quantity, pu.unit_id, u.code AS unit,"
+                        "        a.work_type, a.narrative, pu.created_at"
+                        " FROM progress_updates pu JOIN activities a ON a.id = pu.activity_id"
+                        " LEFT JOIN units_of_measure u ON u.id = pu.unit_id"
+                        " WHERE a.organization_id = :org AND a.deleted_at IS NULL AND pu.deleted_at IS NULL"
+                        "   AND pu.quantity IS NOT NULL AND " + owner + window.format(col="pu.created_at") +
+                        " UNION ALL"
+                        " SELECT aq.id, 'start', aq.quantity, aq.unit_id, u.code, a.work_type, a.narrative, aq.created_at"
+                        " FROM activity_quantities aq JOIN activities a ON a.id = aq.activity_id"
+                        " LEFT JOIN units_of_measure u ON u.id = aq.unit_id"
+                        " WHERE a.organization_id = :org AND a.deleted_at IS NULL AND " + owner
+                        + window.format(col="aq.created_at") +
+                        ") t ORDER BY created_at DESC LIMIT 1"
+                    ),
+                    params,
+                )
+            ).mappings().all()
+        if not rows:
+            return None
+        row = rows[0]
+        target = {
+            "quantity": row["quantity"],
+            "unit_id": str(row["unit_id"]) if row["unit_id"] else None,
+            "unit": row["unit"],
+            "work_type": row["work_type"],
+            "narrative": row["narrative"],
+        }
+        key = "progress_update_id" if row["kind"] == "update" else "activity_quantity_id"
+        target[key] = str(row["target_id"])
+        return target

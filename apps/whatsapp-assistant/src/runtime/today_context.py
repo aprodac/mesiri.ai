@@ -153,15 +153,33 @@ def open_work_label(row: dict[str, Any]) -> str:
     return work or narrative or "Work"
 
 
-def render_open_work_line(site: str | None, rows: list[dict[str, Any]] | None) -> str | None:
+def render_open_work_line(
+    site: str | None, rows: list[dict[str, Any]] | None, *, site_names: dict[str, str] | None = None
+) -> str | None:
     """The sender's open activities, so a "finished" or a new quantity can
-    name the one it continues (save_work_done's ``continues``)."""
-    labels = [open_work_label(r) for r in (rows or [])[:_MAX_OPEN]]
-    if not labels:
+    name the one it continues (save_work_done's ``continues``).
+
+    WRK-04: the first ``_MAX_OPEN`` are named and the rest counted; the code
+    still matches any open job by its work type, so a 7th job named in a
+    message is continued, not started again. WRK-05: with no site chosen the
+    rows come from all the sender's sites (``site_names`` maps site id to
+    name) and each is shown under its site."""
+    rows = rows or []
+    if not rows:
         return None
-    where = f" at {site}" if site else ""
+    shown, more = rows[:_MAX_OPEN], max(len(rows) - _MAX_OPEN, 0)
+    if site_names:
+        by_site: dict[str, list[str]] = {}
+        for row in shown:
+            by_site.setdefault(site_names.get(str(row.get("site_id")), "another site"), []).append(open_work_label(row))
+        listed = "; ".join(f"{name}: " + ", ".join(labels) for name, labels in by_site.items())
+        where = ""
+    else:
+        listed = "; ".join(open_work_label(r) for r in shown)
+        where = f" at {site}" if site else ""
+    tail = f"; and {more} more open (name the work as the message does)" if more else ""
     return (
-        f"Open work{where} (started, not finished): " + "; ".join(labels) + ". When a message "
+        f"Open work{where} (started, not finished): {listed}{tail}. When a message "
         "continues or finishes one of these, call save_work_done with continues set to its name "
         "exactly as written here; leave continues out for new work."
     )

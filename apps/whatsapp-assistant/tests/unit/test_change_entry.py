@@ -90,6 +90,19 @@ async def test_a_new_person_is_offered_then_created_through_the_plan():
 
 
 class _Activities:
+    def __init__(self, latest: dict | None = None) -> None:
+        #: What the sender's own latest quantity is (the lookup after a gap).
+        self.latest = latest
+        self.asked: list[dict] = []
+
+    async def find_correction_target(self, **kwargs: Any) -> dict | None:
+        self.asked.append(kwargs)
+        if kwargs.get("remembered_activity_id"):
+            return await self.get_latest_quantity_update(
+                organization_id=kwargs["organization_id"], activity_id=kwargs["remembered_activity_id"]
+            )
+        return self.latest
+
     async def get_latest_quantity_update(self, *, organization_id: str, activity_id: str) -> dict | None:
         if activity_id != "a1":
             return None
@@ -108,10 +121,23 @@ async def test_a_correction_targets_the_last_quantity_this_chat_logged():
     assert f["correction_activity_summary"] == "plastering — 2nd floor"
 
 
-async def test_with_nothing_logged_in_this_chat_the_workflow_says_so():
+async def test_with_nothing_logged_at_all_the_workflow_says_so():
     entry = _entry(activity_query=_Activities(), remembered_activity=None)
     ready = await _prepare(entry, CORRECT_WORK_QUANTITY, new_quantity=150)
-    assert "progress_update_id" not in ready.event.fields  # the workflow answers "nothing to correct"
+    fields = ready.event.fields
+    assert "progress_update_id" not in fields and "activity_quantity_id" not in fields
+
+
+async def test_wrk06_after_a_session_gap_the_senders_latest_quantity_is_the_target():
+    latest = {"activity_quantity_id": "q3", "quantity": 180, "unit": "sqm", "unit_id": "u-sqm",
+              "work_type": "plastering", "narrative": "2nd floor"}
+    activities = _Activities(latest)
+    entry = _entry(activity_query=activities, remembered_activity=None)
+    ready = await _prepare(entry, CORRECT_WORK_QUANTITY, new_quantity=150)
+    f = ready.event.fields
+    assert (f["activity_quantity_id"], f["old_quantity"], f["old_unit"]) == ("q3", "180", "sqm")
+    assert "progress_update_id" not in f
+    assert activities.asked[0]["remembered_activity_id"] is None
 
 
 # -- close, reopen or withdraw a site issue -----------------------------------------

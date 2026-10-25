@@ -350,3 +350,40 @@ async def test_wrk02_every_quantity_of_a_message_is_checked():
                     {"work_type": "wiring", "quantity": 50, "unit": "reels"}],
     )
     assert isinstance(said, Say) and "reels" in said.question and "wiring" in said.question
+
+
+def test_wrk04_past_six_open_jobs_the_rest_are_counted_not_dropped():
+    from runtime.today_context import render_open_work_line
+
+    rows = [{"activity_id": f"a{i}", "work_type": f"job{i}", "narrative": f"job{i}"} for i in range(1, 10)]
+    line = render_open_work_line("Tower A", rows)
+    assert "Job6" in line and "Job7" not in line
+    assert "and 3 more open" in line
+    assert "more open" not in render_open_work_line("Tower A", rows[:6])
+
+
+def test_wrk05_with_no_site_chosen_the_open_work_is_shown_under_each_site():
+    from runtime.today_context import render_open_work_line
+
+    rows = [
+        {"activity_id": "a1", "site_id": "s1", "work_type": "plastering", "narrative": "plastering"},
+        {"activity_id": "a2", "site_id": "s2", "work_type": "wiring", "narrative": "wiring"},
+    ]
+    line = render_open_work_line(None, rows, site_names={"s1": "Site A", "s2": "Site B"})
+    assert "Site A: Plastering" in line and "Site B: Wiring" in line
+
+
+async def test_wrk04_the_seventh_job_is_continued_not_started_again():
+    candidates = [
+        {"activity_id": f"a{i}", "work_type": f"job{i}", "narrative": f"started job{i}"} for i in range(1, 9)
+    ]
+
+    class _Many:
+        async def find_open_activities(self, **kwargs: Any) -> list[dict[str, Any]]:
+            assert kwargs["limit"] >= 8 if "limit" in kwargs else True
+            return candidates
+
+    entry = _entry(activity_query=_Many())
+    entry.actor.organization_id = ORG
+    ready = await _prepare(entry, SemanticType.GENERAL_SITE_UPDATE, narrative="job7 finished", continues="job7")
+    assert ready.event.fields["activity_id"] == "a7"

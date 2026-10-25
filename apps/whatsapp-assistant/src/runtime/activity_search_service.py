@@ -127,10 +127,26 @@ class ActivitySearchService:
             sa.column("occurred_at"),
         )
 
+        # WRK-01: work started earlier that has an update in the period is
+        # part of the period's log, as it is of the day's DPR.
+        updates = sa.table(
+            "progress_updates",
+            sa.column("activity_id"),
+            sa.column("occurred_at", sa.DateTime(timezone=True)),
+            sa.column("deleted_at"),
+        )
+        updated_in_period = sa.exists().where(
+            updates.c.activity_id == activities.c.id,
+            updates.c.deleted_at.is_(None),
+            sa.cast(updates.c.occurred_at, sa.Date) >= start_date,
+            sa.cast(updates.c.occurred_at, sa.Date) <= end_date,
+        )
         activity_conditions = [
             activities.c.organization_id == org_id,
-            activities.c.activity_date >= start_date,
-            activities.c.activity_date <= end_date,
+            sa.or_(
+                sa.and_(activities.c.activity_date >= start_date, activities.c.activity_date <= end_date),
+                updated_in_period,
+            ),
             activities.c.deleted_at.is_(None),
         ]
         issue_conditions = [

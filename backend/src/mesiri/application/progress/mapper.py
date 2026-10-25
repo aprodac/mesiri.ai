@@ -164,6 +164,7 @@ def build_correct_activity_quantity_command(
         correlation_id=confirmed.correlation_id,
         organization_id=draft.organization_id,
         progress_update_id=fields.get("progress_update_id"),
+        activity_quantity_id=None if fields.get("progress_update_id") else fields.get("activity_quantity_id"),
         new_quantity=_decimal(fields.get("new_quantity")),
         new_unit=fields.get("unit"),
         new_unit_id=fields.get("unit_id"),

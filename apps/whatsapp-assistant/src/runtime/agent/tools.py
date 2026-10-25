@@ -122,6 +122,13 @@ _RANGE = {
 }
 
 
+_PERIOD = {
+    "type": "string",
+    "enum": ["today", "yesterday", "this_week", "last_week", "this_month"],
+    "description": "The period asked about ('yesterday', 'this week'); omit if none is stated.",
+}
+
+
 def _obj(properties: dict[str, Any], required: list[str] | None = None) -> dict[str, Any]:
     schema: dict[str, Any] = {"type": "object", "properties": properties}
     if required:
@@ -657,20 +664,32 @@ def tool_specs() -> list[ToolSpec]:
         ToolSpec(
             name=QUERY_MATERIALS,
             description=(
-                "How much of a material is in stock now, with all-time received and used "
-                "totals (all materials if none named). It has NO per-day figures: asked how "
-                "much was used or received on one day, say you can only see the totals so far."
+                "How much of a material is in stock now (all materials if none named). Asked how "
+                "much was used or received on a day or in a period ('cement used today?', 'received "
+                "yesterday?', 'this week?'), pass date or date_range: the answer then gives that "
+                "period's received and used from the records, with the stock now."
             ),
             parameters=_obj(
-                {"material": {"type": "string"}, "as_pdf": _AS_PDF, "project": _PROJECT, "site": _SITE}
+                {
+                    "material": {"type": "string"},
+                    "date": _DATE,
+                    "date_range": _PERIOD,
+                    "as_pdf": _AS_PDF,
+                    "project": _PROJECT,
+                    "site": _SITE,
+                }
             ),
         ),
         ToolSpec(
             name=QUERY_WORK_LOG,
-            description="Answer what was logged / open site issues (the site log).",
+            description=(
+                "Answer what was logged / open site issues (the site log). Asked about a day "
+                "('what was done yesterday?'), pass date or date_range."
+            ),
             parameters=_obj(
                 {
-                    "date_range": _RANGE,
+                    "date": _DATE,
+                    "date_range": _PERIOD,
                     "work_type": {"type": "string"},
                     "as_pdf": _AS_PDF,
                     "project": _PROJECT,
@@ -1033,10 +1052,22 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
         fields = {"date_range": args.get("date_range"), "trade": args.get("trade"), **_pdf(args), **sc}
         return Candidate(semantic_type=SemanticType.LABOUR_QUERY, fields=_clean(fields))
     if name == QUERY_MATERIALS:
-        fields = {"material_name": args.get("material"), **_pdf(args), **sc}
+        fields = {
+            "material_name": args.get("material"),
+            "date": date,
+            "date_range": args.get("date_range"),
+            **_pdf(args),
+            **sc,
+        }
         return Candidate(semantic_type=SemanticType.INVENTORY_QUERY, fields=_clean(fields))
     if name == QUERY_WORK_LOG:
-        fields = {"date_range": args.get("date_range"), "work_type": args.get("work_type"), **_pdf(args), **sc}
+        fields = {
+            "date": date,
+            "date_range": args.get("date_range"),
+            "work_type": args.get("work_type"),
+            **_pdf(args),
+            **sc,
+        }
         return Candidate(semantic_type=SemanticType.ACTIVITY_QUERY, fields=_clean(fields))
     if name == QUERY_PROJECT:
         return Candidate(semantic_type=SemanticType.PROJECT_DETAIL_QUERY, fields=_clean(dict(sc)))

@@ -840,24 +840,28 @@ def build_message_handlers(
                 return site_label(actor, today[1]) if today else None
 
             async def _open_work_line(actor):  # type: ignore[no-untyped-def]
-                """The open activities at today's site (or their only site)."""
+                """The open activities at today's site (or their only site); with
+                several sites and none chosen yet, at all of them (WRK-05)."""
                 from runtime.today_context import render_open_work_line
 
                 today = await work_site.today(actor) if work_site is not None else None
                 sites = list(getattr(actor, "sites", None) or [])
                 site_id = today[1] if today else (str(sites[0].id) if len(sites) == 1 else None)
-                if site_id is None:
+                if site_id is None and not sites:
                     return None
+                names = {str(s.id): site_label(actor, str(s.id)) for s in sites} if site_id is None else None
                 rows = await asyncio.wait_for(
                     activity_query.find_open_activities(
                         organization_id=str(actor.organization_id),
-                        site_id=str(site_id),
+                        site_id=str(site_id) if site_id is not None else None,
+                        site_ids=[str(s.id) for s in sites] if site_id is None else None,
                         reported_by_user_id=str(actor.user_id),
-                        limit=6,
                     ),
                     timeout=0.5,
                 )
-                return render_open_work_line(site_label(actor, site_id), rows)
+                return render_open_work_line(
+                    site_label(actor, site_id) if site_id is not None else None, rows, site_names=names
+                )
 
             async def _card_line(actor):  # type: ignore[no-untyped-def]
                 """Request 88: the sender's latest card, with the ids the model

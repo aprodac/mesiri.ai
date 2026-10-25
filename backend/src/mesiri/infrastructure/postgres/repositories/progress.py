@@ -924,6 +924,66 @@ class PostgresProgressReadRepository:
             "supersedes_id": update_id,
         }
 
+    async def correct_activity_quantity_row(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        quantity_id: uuid.UUID,
+        quantity: Any,
+        unit_id: uuid.UUID | None,
+        reason: str | None,
+        corrected_by_user_id: uuid.UUID | None,
+        correlation_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """WRK-06: correct the quantity an activity was started with
+        (``activity_quantities``; "180 sqm plastering", then "that was 150").
+        That row has no progress update of its own to supersede, so it is
+        changed in place with the old value kept in ``activity_corrections``
+        (the audit ADR-D14 describes for header edits), and a frozen DPR gets
+        a revision exactly as for a progress update. None when the row does
+        not exist, is not this organization's, or its activity is deleted."""
+        old = (
+            await self._conn.execute(
+                text(
+                    "SELECT aq.id, aq.activity_id, aq.quantity, aq.unit_id, a.organization_id, "
+                    "a.project_id, a.site_id, a.activity_date "
+                    "FROM activity_quantities aq JOIN activities a ON a.id = aq.activity_id "
+                    "WHERE aq.id = :id AND a.organization_id = :org_id AND a.deleted_at IS NULL"
+                ),
+                {"id": quantity_id, "org_id": organization_id},
+            )
+        ).mappings().first()
+        if old is None:
+            return None
+        new_unit_id = unit_id or old["unit_id"]
+        await self._conn.execute(
+            text("UPDATE activity_quantities SET quantity = :q, unit_id = :u WHERE id = :id"),
+            {"q": quantity, "u": new_unit_id, "id": quantity_id},
+        )
+        for field, old_value, new_value in (
+            ("quantity", old["quantity"], quantity),
+            ("unit_id", old["unit_id"], new_unit_id),
+        ):
+            if str(old_value) != str(new_value):
+                await self._record_correction(
+                    activity_id=old["activity_id"],
+                    field_name=f"activity_quantity.{field}",
+                    old_value=old_value,
+                    new_value=new_value,
+                    reason=reason,
+                    corrected_by_user_id=corrected_by_user_id,
+                    correlation_id=correlation_id,
+                )
+        await self._revise_dpr_if_frozen(
+            organization_id=old["organization_id"],
+            project_id=old["project_id"],
+            site_id=old["site_id"],
+            report_date=old["activity_date"],
+            reason=reason or "Activity quantity corrected",
+        )
+        return {"id": quantity_id, "activity_id": old["activity_id"], "quantity": quantity,
+                "unit_id": new_unit_id, "supersedes_id": None}
+
     async def void_progress_update(
         self,
         *,

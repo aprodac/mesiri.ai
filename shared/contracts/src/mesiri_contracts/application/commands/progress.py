@@ -30,7 +30,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from mesiri_contracts.assistant.v2.uuid_scope import CanonicalUuid
 
@@ -197,7 +197,11 @@ class CorrectActivityQuantityCommand(BaseModel):
     #: The progress_updates row being corrected -- resolved by seeding
     #: (runtime/inbound_journey.py's `_seed_correction_target`), never
     #: stated by the user.
-    progress_update_id: CanonicalUuid
+    progress_update_id: CanonicalUuid | None = None
+    #: WRK-06: or the quantity the activity was started with
+    #: (``activity_quantities``), which has no progress update of its own:
+    #: "180 sqm plastering" then "correction, 150". Exactly one of the two.
+    activity_quantity_id: CanonicalUuid | None = None
 
     new_quantity: Decimal
     new_unit: str | None = None
@@ -209,6 +213,12 @@ class CorrectActivityQuantityCommand(BaseModel):
     created_by: CanonicalUuid
 
     model_config = {"extra": "forbid"}
+
+    @model_validator(mode="after")
+    def _one_target(self) -> CorrectActivityQuantityCommand:
+        if (self.progress_update_id is None) == (self.activity_quantity_id is None):
+            raise ValueError("exactly one of progress_update_id / activity_quantity_id is needed")
+        return self
 
 
 class ReportSiteIssueCommand(BaseModel):

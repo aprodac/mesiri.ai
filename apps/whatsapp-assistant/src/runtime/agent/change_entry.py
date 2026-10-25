@@ -163,17 +163,23 @@ class ChangeEntry(EntryScope):
                 remembered = await self.remembered_activity()
             except Exception:  # noqa: BLE001 -- the workflow says there is nothing to correct
                 _log.warning("change_entry.remembered_failed correlation_id=%s", message.correlation_id, exc_info=True)
-        if remembered and self.activity_query is not None:
+        if self.activity_query is not None:
             try:
-                target = await self.activity_query.get_latest_quantity_update(
-                    organization_id=str(self.actor.organization_id), activity_id=remembered
+                # The activity this conversation touched, else (after a gap,
+                # a new session) the sender's own latest quantity (WRK-06).
+                target = await self.activity_query.find_correction_target(
+                    organization_id=str(self.actor.organization_id),
+                    reported_by_user_id=str(getattr(self.actor, "user_id", "") or "") or None,
+                    remembered_activity_id=remembered,
                 )
             except Exception:  # noqa: BLE001
                 _log.warning("change_entry.correction_lookup_failed correlation_id=%s", message.correlation_id, exc_info=True)
                 target = None
             if target is not None:
                 f = ready.event.fields
-                f["progress_update_id"] = target["progress_update_id"]
+                for key in ("progress_update_id", "activity_quantity_id"):
+                    if target.get(key):
+                        f[key] = target[key]
                 f["old_quantity"] = str(target["quantity"])
                 f["old_unit_id"] = target.get("unit_id")
                 f["old_unit"] = target.get("unit")
