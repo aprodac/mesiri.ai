@@ -29,6 +29,7 @@ import {
   Clock,
   AlertCircle,
   Palette,
+  ListChecks,
 } from 'lucide-react'
 import { NavLink, Link, useLocation } from 'react-router-dom'
 import {
@@ -48,6 +49,8 @@ import { useAuth } from '@/lib/AuthContext'
 import { useAllowedScopes, useScope } from '@/lib/ScopeContext'
 import { logout } from '@/lib/api'
 import { MesiriMark, MesiriWordmark } from '@/components/brand/mesiri-logo'
+import { SETUP_URL, setupCounts, useSetupProgress } from '@/lib/setup'
+import { useTrial } from '@/lib/trial'
 import type { ScopeKind } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
 import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
@@ -72,6 +75,8 @@ type NavItem = {
   tone?: NavTone
   // Which live count to show as a badge (WEB-20).
   badge?: 'drafts' | 'issues'
+  // Small text at the row's end, e.g. "3/6" on Finish setup (SS-19).
+  note?: string
 }
 
 type NavCategory = {
@@ -105,14 +110,14 @@ const FINANCE_CATEGORY: NavCategory = {
 // Labour is one page since WEB-22 (Attendance | Workers).
 const NON_ADMIN_ROLES = ['PROJECT_MANAGER', 'SITE_ENGINEER', 'FINANCE'] as const
 
-const LABOUR_ITEM: NavItem = { title: 'Labour', url: '/labour', icon: HardHat, module: 'labour', tone: 'amber' }
+const LABOUR_ITEM: NavItem = { title: 'Attendance', url: '/labour', icon: HardHat, module: 'labour', tone: 'amber' }
 
 // V1 navigation (WEB-21, docs/DESIGN.md "Pages and routes"): the daily
 // pages, then setup. No "More": pages outside V1 were removed, and modules a
 // company has not switched on (WEB-02) are hidden.
 const PRIMARY_ITEMS: NavItem[] = [
   { title: 'Today', url: '/today', icon: CalendarDays, tone: 'orange', badge: 'drafts' },
-  { title: 'Reports', url: '/reports', icon: FileText, tone: 'sky' },
+  { title: 'Daily Reports', url: '/reports', icon: FileText, tone: 'sky' },
   { title: 'Issues', url: '/issues', icon: AlertCircle, tone: 'rose', badge: 'issues' },
 ]
 
@@ -459,6 +464,15 @@ export function AppSidebar() {
   const userName = me?.name || me?.full_name || ''
 
   const counts = useNavCounts()
+  // "Finish setup" (SS-19): the getting-started card stays one click away,
+  // hidden or not, until everything is done.
+  const setup = useSetupProgress()
+  const trial = useTrial()
+  const setupDone = setup.data ? setupCounts(setup.data) : null
+  const finishSetup: NavItem | null =
+    setup.isCompanyAdmin && !trial.readOnly && setupDone && setupDone.done < setupDone.total
+      ? { title: 'Finish setup', url: SETUP_URL, icon: ListChecks, tone: 'orange', note: `${setupDone.done}/${setupDone.total}` }
+      : null
   // Module sections (Finance) with only the items this role may see.
   const moduleCategories = [FINANCE_CATEGORY]
     .filter((category) => isModuleEnabled(category.module))
@@ -507,6 +521,9 @@ export function AppSidebar() {
               )}
             </span>
             <span className="truncate">{item.title}</span>
+            {item.note && (
+              <span className="ml-auto text-[11px] tabular-nums opacity-70 group-data-[collapsible=icon]:hidden">{item.note}</span>
+            )}
             {count > 0 && (
               <span
                 className={cn(
@@ -615,7 +632,10 @@ export function AppSidebar() {
                 Setup
               </SidebarGroupLabel>
               <SidebarGroupContent>
-                <SidebarMenu className="gap-0.5">{visibleManagementItems.map(renderLink)}</SidebarMenu>
+                <SidebarMenu className="gap-0.5">
+                  {finishSetup && renderLink(finishSetup)}
+                  {visibleManagementItems.map(renderLink)}
+                </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
           )}

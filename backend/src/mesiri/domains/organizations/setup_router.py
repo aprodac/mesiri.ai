@@ -60,6 +60,25 @@ class SetupProgressResponse(BaseModel):
     # Mesiri's own WhatsApp number, for the welcome screen's "send your first
     # update" invite; None when the deployment hasn't set one.
     whatsapp_number: str | None = None
+    # "Hide for now" (SS-19): the card stays hidden for the whole company
+    # until then. None: showing.
+    hidden_until: dt.datetime | None = None
+
+
+#: How long "Hide for now" hides the card before it comes back, if unfinished.
+HIDE_FOR = dt.timedelta(days=7)
+
+
+def hidden_until(record: object, now: dt.datetime) -> dt.datetime | None:
+    """When the hidden card comes back, from the stored record; None once past."""
+    raw = record.get("hidden_until") if isinstance(record, dict) else None
+    try:
+        until = dt.datetime.fromisoformat(str(raw)) if raw else None
+    except ValueError:
+        return None
+    if until is not None and until.tzinfo is None:
+        until = until.replace(tzinfo=dt.UTC)
+    return until if until is not None and until > now else None
 
 
 def mesiri_whatsapp_number() -> str | None:
@@ -101,6 +120,9 @@ async def get_setup_progress(
     )
 
     setup = company.setup
+    card = await PostgresOrganizationSettingsRepository(conn).get(
+        org_id, org_settings.GETTING_STARTED
+    )
     return SetupProgressResponse(
         has_team=setup.has_team,
         has_site=setup.has_site,
@@ -121,6 +143,7 @@ async def get_setup_progress(
         effective_status=company.effective_status,
         trial_days_left=company.trial_days_left,
         whatsapp_number=mesiri_whatsapp_number(),
+        hidden_until=hidden_until(card, dt.datetime.now(dt.UTC)),
     )
 
 
@@ -151,4 +174,33 @@ async def keep_report_time(
         ),
         updated_by=uuid.UUID(admin["sub"]) if admin.get("sub") else None,
     )
+    return await get_setup_progress(admin=admin, conn=conn)
+
+
+async def _set_hidden(admin: dict, conn: AsyncConnection, until: dt.datetime | None) -> None:
+    await PostgresOrganizationSettingsRepository(conn).set(
+        _org_id(admin),
+        org_settings.GETTING_STARTED,
+        {"hidden_until": until.isoformat() if until else None},
+        updated_by=uuid.UUID(admin["sub"]) if admin.get("sub") else None,
+    )
+
+
+@router.post("/setup-progress/hide", response_model=SetupProgressResponse)
+async def hide_card(
+    admin: dict = Depends(require_admin),
+    conn: AsyncConnection = Depends(get_db_conn),
+) -> SetupProgressResponse:
+    """ "Hide for now" (SS-19): hidden for the company for HIDE_FOR."""
+    await _set_hidden(admin, conn, dt.datetime.now(dt.UTC) + HIDE_FOR)
+    return await get_setup_progress(admin=admin, conn=conn)
+
+
+@router.post("/setup-progress/show", response_model=SetupProgressResponse)
+async def show_card(
+    admin: dict = Depends(require_admin),
+    conn: AsyncConnection = Depends(get_db_conn),
+) -> SetupProgressResponse:
+    """Bring the card back (the sidebar's "Finish setup")."""
+    await _set_hidden(admin, conn, None)
     return await get_setup_progress(admin=admin, conn=conn)

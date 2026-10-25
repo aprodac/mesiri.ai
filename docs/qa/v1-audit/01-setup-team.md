@@ -134,13 +134,13 @@ Use three WhatsApp numbers, all in the test company **Mesiri Test Builders** onl
 | --- | --- | --- | --- | --- |
 | SET-01 | PM can create an Admin | B | Not tested | |
 | SET-02 | Joiner never hears back | C | Not tested | |
-| SET-03 | Signup takes any text | C | Not tested | |
-| SET-04 | Typed add sends no invite | A | Not tested | |
+| SET-03 | Signup takes any text | C | Fixed (unit test) | Names checked; typed yes/start work; Company · Site card with Looks good / Edit before creating. Live check pending after deploy |
+| SET-04 | Typed add sends no invite | A | Fixed (unit test) | Typed add ends with the ADDED + invite link, as a shared contact does. Live check pending after deploy |
 | SET-05 | Role words saved wrong | A | Not tested | |
 | SET-06 | Contact card always Site Engineer | A | Not tested | |
-| SET-07 | Join code needs exact words | A | Not tested | |
-| SET-08 | Add a site goes to first project | A | Not tested | |
-| SET-09 | Broken join-code sentence | A | Not tested | |
-| SET-10 | "Not registered" points to an app | C | Not tested | |
-| SET-11 | Report time changes every project | A | Not tested | |
+| SET-07 | Join code needs exact words | A | Fixed (unit test) | `get_join_code` agent tool answers any phrasing (admin / PM only). Live check pending after deploy |
+| SET-08 | Add a site goes to first project | A | Fixed (unit test) | Asks which project (buttons) when there is more than one. Live check pending after deploy |
+| SET-09 | Broken join-code sentence | A | Fixed (unit test) | Now "asked for your approval". Live check pending after deploy |
+| SET-10 | "Not registered" points to an app | C | Fixed (unit test) | Shows the number, the join code and the web signup link. Live check pending after deploy |
+| SET-11 | Report time changes every project | A | Fixed (unit test) | Asks "all projects or one?" when there is more than one. Live check pending after deploy |
 | SET-12 | PM can't approve joiners | B | Not tested | |

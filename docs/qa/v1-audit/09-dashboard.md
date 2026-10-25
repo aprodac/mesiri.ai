@@ -141,13 +141,13 @@ letterhead (checked in a browser earlier, tracker WEB-10).
 
 | ID | Problem | Result | What the dashboard showed |
 | --- | --- | --- | --- |
-| DSH-01 | Menu not V1; old and empty pages under More | Not tested | |
+| DSH-01 | Menu not V1; old and empty pages under More | Fixed (build + tests; no browser check) | No "More" left (WEB-21/22/33); sidebar labels now Daily Reports and Attendance; old pages hide behind module toggles |
 | DSH-02 | Other project's DPR can be confirmed | Not tested | |
-| DSH-03 | "IST" time zone quietly means UTC | Not tested | |
+| DSH-03 | "IST" time zone quietly means UTC | Fixed (build + tests; no browser check) | Time zone is a select of IANA zones (India first); the server refuses other words (422); an invalid saved value shows a warning, no rewrite |
 | DSH-04 | Site with only materials or issues "hasn't reported" | Not tested | |
 | DSH-05 | Attendance page shows wages, ₹0 | Not tested | |
 | DSH-06 | "Development only" delete button | Not tested | |
 | DSH-07 | WhatsApp Inbox fails for non-admins | Not tested | |
-| DSH-08 | Finance role offered | Not tested | |
-| DSH-09 | CSV has a Labour cost column | Not tested | |
-| DSH-10 | Open-issue list misses older issues | Not tested | |
+| DSH-08 | Finance role offered | Fixed (build + tests; no browser check) | Finance / Accountant no longer offered on Team or project roles; existing users keep it as a fixed label |
+| DSH-09 | CSV has a Labour cost column | Fixed (build + tests; no browser check) | Labour cost column removed from the CSV |
+| DSH-10 | Open-issue list misses older issues | Fixed (build + tests; no browser check) | Open issues read by status, page by page, so all are ranked |

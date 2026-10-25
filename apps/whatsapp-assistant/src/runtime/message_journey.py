@@ -30,8 +30,8 @@ from channel.replies import (
 from context.live_identity import (
     NO_ORG_MESSAGE,
     ORG_SUSPENDED_MESSAGE,
-    UNREGISTERED_MESSAGE,
     resolve_sender,
+    unregistered_message,
 )
 from interactions.image_purpose import (
     photo_wait_notice,
@@ -884,6 +884,16 @@ def build_message_handlers(
                     site_id=str(scoped.site_id) if scoped.site_id else None,
                 )
 
+            async def _share_join_code(msg) -> str:  # type: ignore[no-untyped-def]
+                """SET-07: the join-code tool. "" once sent; else why not."""
+                from runtime.join_journey import NOT_ALLOWED_TO_SHARE
+
+                spec = await join_journey.share_code(msg, ctx)
+                if spec.text == NOT_ALLOWED_TO_SHARE:
+                    return spec.text
+                await _send_composed(msg.sender.wa_id, ctx.user_id, spec)
+                return ""
+
             def _gateway(msg, language):  # type: ignore[no-untyped-def]
                 early["gateway"] = JourneyGateway(
                     message=msg,
@@ -910,6 +920,11 @@ def build_message_handlers(
                     ),
                     set_today_site=_set_today_site if work_site is not None else None,
                     get_today_site=_get_today_site if work_site is not None else None,
+                    share_code=(
+                        (lambda: _share_join_code(msg))
+                        if join_journey is not None
+                        else None
+                    ),
                     set_conversion=(
                         (
                             lambda material, unit, count: catalog_query.set_conversion(
@@ -1124,7 +1139,7 @@ def build_message_handlers(
             # a free trial instead of hitting a dead end.
             reply = await signup_journey.handle(message) if signup_journey else None
             if reply is None:
-                reply = UNREGISTERED_MESSAGE
+                reply = unregistered_message(wa_id)
                 await sender.send_text(wa_id, reply)
             await message_logger.log_reply(correlation_id=message.correlation_id, reply=reply)
             await message_logger.mark_completed(correlation_id=message.correlation_id)
@@ -1909,6 +1924,8 @@ def build_message_handlers(
                             action_type=confirmed.draft_action.action_type,
                             member_name=confirmed.draft_action.fields.get("member_name"),
                             actor=ctx,
+                            project_id=confirmed.draft_action.project_id,
+                            business_number=(message.metadata or {}).get("display_phone_number"),
                         ):
                             await sender.send_text(wa_id, text)
                 except Exception:  # noqa: BLE001 — the member is already added

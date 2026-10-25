@@ -66,13 +66,23 @@ async def test_team_update_and_sent_dpr_are_seen(conn) -> None:
     created = await _company(conn, "Busy Builders", "+91 98765 10002")
     org, project, site = created.organization_id, created.project_id, created.site_id
     reported_at = _NOW - dt.timedelta(hours=3)
+    supervisor = uuid.uuid4()
     await conn.execute(
         text(
             "INSERT INTO users (id, organization_id, hashed_password, full_name, role, status,"
             " whatsapp_number) VALUES (:id, :org, 'x', 'Supervisor', 'SITE_ENGINEER', 'active',"
             " '919876510099')"
         ),
-        {"id": uuid.uuid4(), "org": org},
+        {"id": supervisor, "org": org},
+    )
+    # SS-19: they count once they are on a project, so they can report.
+    assert _find(await list_companies(conn, now=_NOW), org).setup.has_team is False
+    await conn.execute(
+        text(
+            "INSERT INTO project_members (id, project_id, user_id, role, site_access_mode)"
+            " VALUES (:id, :project, :user, 'SITE_ENGINEER', 'all_sites')"
+        ),
+        {"id": uuid.uuid4(), "project": project, "user": supervisor},
     )
     await conn.execute(
         text(

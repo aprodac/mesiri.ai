@@ -523,7 +523,6 @@ export function ProjectMemberDialog({
               <SelectContent>
                 <SelectItem value="PROJECT_MANAGER">Project Manager</SelectItem>
                 <SelectItem value="SITE_ENGINEER">Site Engineer</SelectItem>
-                <SelectItem value="FINANCE">Finance / Accountant</SelectItem>
               </SelectContent>
             </Select>
           </div>

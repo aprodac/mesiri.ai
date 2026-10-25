@@ -551,7 +551,40 @@ site orange only for the report's rule and the one button.
 Rollback: revert `navigate('/welcome')` in `Signup.tsx` and signup lands on Today as
 before; everything else is additive. No migration.
 
-Not built / known: the supervisor's own welcome message and adding people by WhatsApp
-number only (WEB-17, needs approval); counting "site supervisor" only for a reporting
-role; "Hide for now" kept on the server; a "time saved" figure on Today.
+Since then (25 Oct, approved by Alan):
+
+- **Team: add by WhatsApp number (WEB-17).** Name, number, role and project; a dashboard
+  login is opt-in. Created through the same `CreateUserHandler` WhatsApp uses
+  (`application/identity/add_by_number.py`). Afterwards, a message to forward with
+  Mesiri's number and "Send on WhatsApp": Mesiri can't message a new person first until
+  an invite template is approved (SS-12). No separate Supervisor role: the checklist
+  asks for "the person who reports from site".
+- **Checklist (SS-19).** That step ticks only for an active site engineer or project
+  manager with a WhatsApp number on a project. "Hide for now" is company-wide for 7 days
+  (`POST /company/setup-progress/hide`, `/show`). A "Finish setup N/6" link sits in the
+  sidebar's Setup group until everything is done.
+- **Report time as a choice.** The step asks "When should the daily report go out?" with
+  evening times from 6:30 pm (after the 6 pm close) and "Send it by itself" beside it.
+  Save writes the first project's send time and auto-send (`PUT /projects/{id}`, as its
+  Reporting tab does) and records the question answered (`report-time-ok`), so keeping
+  9 pm counts too.
+- **The first report going out** gets a one-time note on Today ("Your first daily report
+  is out.", `components/first-report-moment.tsx`) for 3 days after `first_dpr_sent_at`,
+  with *See the report* and *Send it to your client too* (the project's recipients).
+  Closing it is remembered in that browser.
+- **Not built: "Send it to my WhatsApp"** from the welcome screen, logged as WA-74. *Send
+  now* publishes to every recipient, "send me today's DPR" needs the evening report
+  (`not_generated` on day 0), and a dashboard-side sender would duplicate the WhatsApp
+  sending path. The welcome screen's live report has *Print* (save as PDF) meanwhile.
+- **Time saved on Today** (`components/time-saved.tsx`): "This week Mesiri sent 5 daily
+  reports for you: about 2 h 5 min of writing saved." The count is real (project DPRs
+  `PUBLISHED` in the last 7 days, the history API's total); the **25 minutes per report
+  is an assumption**, stated in the line's tooltip and kept in one constant
+  (`MINUTES_PER_REPORT`). Hidden until a report has gone out.
+- **Two more intro scenes** (six in all): **03 Photo**, the site photo as a line drawing
+  (a two-storey frame, brickwork drawing itself in on the second floor's east bay) and
+  "Read from the photo: 2nd floor · Brickwork, east wall"; **04 Any language**, the same
+  update in Hindi, Tamil and English giving the same report. Devanagari and Tamil fonts
+  load from Google Fonts by unicode range, only when used. The Hindi and Tamil (like the
+  Malayalam) have not been read by native speakers.
 

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import uuid
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Protocol
 from zoneinfo import ZoneInfo
@@ -49,6 +50,10 @@ SKIP_BRANDING = "setup_q:branding_skip"
 TIME_PREFIX = "setup_q:time:"
 ADD_SITE = "setup_q:site_add"
 NO_SITE = "setup_q:site_no"
+#: SET-08 / SET-11: with several projects the answer asks which one.
+SITE_IN_PREFIX = "setup_q:site_in:"
+TIME_FOR_PREFIX = "setup_q:time_for:"
+ALL_PROJECTS = "all"
 
 #: onboarding_progress writes today's date here when it sends the progress card.
 CARD_SENT_KEY = "user:{user_id}:onboarding_card_sent"
@@ -79,6 +84,9 @@ ASK_REPORT_TIME = "Your daily report goes out by *{current}*. Want it at a diffe
 REPORT_TIME_SET = "✅ Done. Your daily report will go out by *{time}*."
 REPORT_TIME_KEPT = "👍 Keeping *{time}*."
 ASK_MORE_SITES = "Working on another site too? I can make a report for each site."
+ASK_SITE_PROJECT = "Which project is the new site for?"
+ASK_TIME_SCOPE = "Use *{time}* for which projects?"
+REPORT_TIME_SET_FOR = "✅ Done. *{project}*'s daily report will go out by *{time}*."
 NO_MORE_SITES = "👍 Got it. Tell me any time you start a new site."
 EXPIRED = "That question has expired."
 
@@ -101,6 +109,7 @@ _organizations = sa.Table(
 _projects = sa.Table(
     "projects",
     sa.MetaData(),
+    sa.Column("id", sa.UUID(as_uuid=True)),
     sa.Column("organization_id", sa.UUID(as_uuid=True)),
     sa.Column("dpr_send_deadline", sa.String),
 )
@@ -249,10 +258,30 @@ class SetupQuestions:
             SKIP_BRANDING: rules.BRANDING,
             ADD_SITE: rules.MORE_SITES,
             NO_SITE: rules.MORE_SITES,
-        }.get(tap, rules.REPORT_TIME if tap.startswith(TIME_PREFIX) else None)
+        }.get(tap)
+        if expected is None:
+            if tap.startswith(SITE_IN_PREFIX):
+                expected = rules.MORE_SITES
+            elif tap.startswith((TIME_PREFIX, TIME_FOR_PREFIX)):
+                expected = rules.REPORT_TIME
         if expected is None or question != expected:
             return ReplySpec(text=EXPIRED)
         await self._clear_hint(actor.user_id)
+
+        if tap.startswith(TIME_FOR_PREFIX):
+            return await self._time_for(actor, hint, tap[len(TIME_FOR_PREFIX) :])
+        if tap.startswith(SITE_IN_PREFIX):
+            project = next(
+                (p for p in actor.projects or [] if str(p.id) == tap[len(SITE_IN_PREFIX) :]), None
+            )
+            if project is None:
+                return ReplySpec(text=EXPIRED)
+            return await self._start_site_followup(
+                stage="site",
+                project_id=str(project.id),
+                actor=actor,
+                workflow_runtime=self._runtime,
+            )
 
         if tap == SKIP_BRANDING:
             await self._record(actor, rules.BRANDING, rules.SKIPPED)
@@ -264,6 +293,15 @@ class SetupQuestions:
                 return ReplySpec(text=EXPIRED)
             async with self._db.transaction() as conn:
                 current = await self._current_deadline(conn, actor.organization_id)
+            if chosen != current and len(actor.projects or []) > 1:
+                # SET-11: a change with several projects asks where it applies.
+                await self._redis.set_json(
+                    self._hint_key(actor.user_id),
+                    {"question": rules.REPORT_TIME, "time": chosen},
+                    ttl_seconds=_ASKED_TTL_SECONDS,
+                )
+                return self._time_scope_spec(actor, chosen)
+            async with self._db.transaction() as conn:
                 if chosen != current:
                     await conn.execute(
                         _projects.update()
@@ -277,6 +315,16 @@ class SetupQuestions:
         await self._record(actor, rules.MORE_SITES, rules.ANSWERED)
         if tap == NO_SITE or not actor.projects:
             return ReplySpec(text=NO_MORE_SITES)
+        if len(actor.projects) > 1:
+            # SET-08: never the first project by default.
+            await self._redis.set_json(
+                self._hint_key(actor.user_id),
+                {"question": rules.MORE_SITES},
+                ttl_seconds=_ASKED_TTL_SECONDS,
+            )
+            return self._project_picker(
+                ASK_SITE_PROJECT, SITE_IN_PREFIX, list(actor.projects)
+            )
         return await self._start_site_followup(
             stage="site",
             project_id=str(actor.projects[0].id),
@@ -318,6 +366,42 @@ class SetupQuestions:
         return ReplySpec(text=BRANDING_RECEIVED if started else BRANDING_MORE)
 
     # -- internals --------------------------------------------------------------
+
+    @staticmethod
+    def _project_picker(text: str, prefix: str, projects: list[Any], *, first: ListRow | None = None) -> ReplySpec:
+        rows = ([first] if first else []) + [
+            ListRow(id=f"{prefix}{p.id}", title=p.name[:24]) for p in projects
+        ]
+        if len(rows) <= 3:
+            return ReplySpec(text=text, buttons=tuple(rows))
+        return ReplySpec(text=text, list_button_label="Choose", list_rows=tuple(rows[:10]))
+
+    def _time_scope_spec(self, actor: ActorIdentity, chosen: str) -> ReplySpec:
+        return self._project_picker(
+            ASK_TIME_SCOPE.format(time=_time_label(chosen)),
+            TIME_FOR_PREFIX,
+            list(actor.projects or []),
+            first=ListRow(id=f"{TIME_FOR_PREFIX}{ALL_PROJECTS}", title="All projects"),
+        )
+
+    async def _time_for(self, actor: ActorIdentity, hint: Any, which: str) -> ReplySpec:
+        chosen = str(hint.get("time") or "") if isinstance(hint, dict) else ""
+        if chosen not in rules.REPORT_TIMES:
+            return ReplySpec(text=EXPIRED)
+        project = None
+        if which != ALL_PROJECTS:
+            project = next((p for p in actor.projects or [] if str(p.id) == which), None)
+            if project is None:
+                return ReplySpec(text=EXPIRED)
+        async with self._db.transaction() as conn:
+            stmt = _projects.update().where(_projects.c.organization_id == actor.organization_id)
+            if project is not None:
+                stmt = stmt.where(_projects.c.id == uuid.UUID(str(project.id)))
+            await conn.execute(stmt.values(dpr_send_deadline=chosen))
+        await self._record(actor, rules.REPORT_TIME, rules.ANSWERED)
+        if project is not None:
+            return ReplySpec(text=REPORT_TIME_SET_FOR.format(project=project.name, time=_time_label(chosen)))
+        return ReplySpec(text=REPORT_TIME_SET.format(time=_time_label(chosen)))
 
     async def _question_spec(self, conn: Any, org_id: Any, question: str) -> ReplySpec:
         if question == rules.BRANDING:

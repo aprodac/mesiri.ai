@@ -73,10 +73,13 @@ def pick_project(understanding, projects: list[ProjectSummary]) -> ProjectSummar
 # User-facing messages
 # ---------------------------------------------------------------------------
 
+SIGNUP_URL = "https://app.whatsapp.mesiri.ai/signup"
+
 UNREGISTERED_MESSAGE = (
-    "👋 Hi! This number isn't registered on Mesiri yet.\n\n"
-    "Please ask your administrator to add your WhatsApp number to your profile "
-    "in the Mesiri app, then message again."
+    "👋 Hi! This number (+{number}) isn't registered on Mesiri yet.\n\n"
+    "• Joining a company? Ask your admin for their *join code* and send it here, "
+    "e.g. *JOIN ACME-4821*. Or ask them to add this number.\n"
+    "• Starting for your own company? Sign up at {signup_url}"
 )
 
 NO_ORG_MESSAGE = (
@@ -156,3 +159,8 @@ def whoami_reply(actor: ActorIdentity) -> str:
             lines.append(f"   • {s.name}")
 
     return "\n".join(lines)
+
+
+def unregistered_message(wa_id: str) -> str:
+    """The "not registered" reply with this sender's number and the real ways in."""
+    return UNREGISTERED_MESSAGE.format(number=wa_id, signup_url=SIGNUP_URL)
