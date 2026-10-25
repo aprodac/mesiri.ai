@@ -1748,11 +1748,10 @@ export async function approveDailyReportApi(reportId: string, notes?: string): P
   await api.post(`/dpr/daily-reports/${reportId}/approve`, { notes })
 }
 
-/** Fetches the DPR PDF as a Blob -- GET /dpr/daily-reports/{id}/pdf serves
- * either the already-rendered Playwright artifact (if the nightly cron has
- * caught up) or an on-demand fpdf2 fallback, transparently to the caller. */
+/** Fetches the DPR PDF as a Blob -- the PDF WhatsApp sent when one exists,
+ * otherwise printed now from the same template (BE-47). */
 export async function fetchDailyReportPdfApi(reportId: string, versionId?: string): Promise<Blob> {
-  const res = await api.get(`/dpr/daily-reports/${reportId}/pdf`, {
+  const res = await api.get(`/dpr/daily-reports/${reportId}/document.pdf`, {
     responseType: 'blob',
     params: versionId ? { version_id: versionId } : undefined,
   })

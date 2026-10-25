@@ -41,7 +41,7 @@ import { Callout, DprAside, DprHeader, DprPageSkeleton, DprSection, DprSteps, Pa
 // (opened from here to review and confirm), and the project DPR -- the
 // roll-up of the confirmed site DPRs (BE-16, P8) -- as it would go out now or,
 // once sent, as it went out. Reads GET /dpr/projects/{id}/day; "Send now" is
-// the BE-16 send, the PDF the existing /dpr/daily-reports/{id}/pdf.
+// the BE-16 send, the PDF /dpr/daily-reports/{id}/document.pdf (BE-47).
 
 function money(value: string | null | undefined): string {
   const n = Number(value ?? 0)

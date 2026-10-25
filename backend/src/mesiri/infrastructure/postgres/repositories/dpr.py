@@ -1703,6 +1703,7 @@ class PostgresDprRepository:
                     SELECT
                         dr.id, dr.code, dr.report_date::text AS report_date,
                         dr.status::text AS workflow_status,
+                        dr.project_id, dr.site_id,
                         p.name AS project_name,
                         s.name AS site_name,
                         v.id AS version_id, v.payload, v.rendered_object_key,

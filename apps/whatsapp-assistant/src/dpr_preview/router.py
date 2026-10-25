@@ -1,5 +1,7 @@
 """The DPR as a document, live (WEB-27): the site DPR page shows the day as
-the PDF will look, refreshing as updates arrive.
+the PDF will look, refreshing as updates arrive. And the dashboard's
+"Download PDF" (BE-47), printed from the same template as the PDF sent on
+WhatsApp.
 
 Returns the HTML the PDF is printed from -- channel/dpr_document's template,
 filled from the day as it stands now (the same assembly the report itself
@@ -19,7 +21,7 @@ import datetime
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -145,6 +147,55 @@ async def project_day_document(
     return _document(
         render_html(build_document_data(code=code, payload=payload, summary=summary), letterhead)
     )
+
+
+@router.get("/daily-reports/{report_id}/document.pdf")
+async def daily_report_document_pdf(
+    report_id: uuid.UUID,
+    version_id: uuid.UUID | None = None,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+    object_storage=Depends(get_object_storage),
+) -> Response:
+    """BE-47: one DPR version as a PDF for the dashboard's "Download PDF".
+
+    The stored PDF when the render cron (or the send) has made one -- the
+    exact file WhatsApp sent -- otherwise printed now from the same template
+    and stored nowhere, so a draft-time render can't stand in for the
+    confirmed one (BE-43). Replaces the dashboard's use of backend's
+    ``/daily-reports/{id}/pdf``, whose fallback was a different, plain fpdf
+    report (no letterhead, codes, no Malayalam: audit DPR-09, ISS-07, ISS-13).
+    Access is the report's site or project, as on the DPR pages."""
+    import json
+
+    from channel.dpr_document.data import build_document_data
+    from channel.dpr_document.letterhead import load_letterhead
+    from channel.dpr_document.template import render_html
+    from runtime.dpr_request_query import DRAFT_CODE, shared_renderer
+
+    report = await PostgresDprRepository(conn).get_report_for_pdf(
+        organization_id=auth_context.organization_id, report_id=report_id, version_id=version_id
+    )
+    if report is None or _site_denied(auth_context, report["project_id"], report["site_id"]):
+        raise HTTPException(status_code=404, detail="This report has no content yet.")
+    headers = {"Content-Disposition": f'inline; filename="{report["code"] or "DPR"}.pdf"'}
+
+    if report["rendered_object_key"]:
+        stored = await object_storage.get_object(report["rendered_object_key"])
+        return Response(stored.data, media_type="application/pdf", headers=headers)
+
+    payload = report["payload"]
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    confirmed = (report["workflow_status"] or "").lower() in FROZEN
+    code = (report["code"] if confirmed else None) or DRAFT_CODE
+    letterhead = await load_letterhead(conn, object_storage, report_id)
+    html = render_html(
+        build_document_data(code=code, payload=payload, summary=report.get("narrative_summary")),
+        letterhead,
+    )
+    pdf = await shared_renderer().render_pdf(html)
+    return Response(pdf, media_type="application/pdf", headers=headers)
 
 
 async def _report_row(
