@@ -292,8 +292,10 @@ AI Extraction → Save as DRAFT (+ reply "Saved as a draft… Reply UNDO")
   and late entries are listed and claimed once saved. The evening message
   says how many were not saved and to keep them under "Fix something". The
   SQL rule is one helper, `fact_review.counted_sql` (latest review state is
-  not a draft; no review row counts). Stock and attendance follow in later
-  slices of WA-77.
+  not a draft; no review row counts). Stock: `fact_review.movement_counted_sql`
+  on `material_movements` (stock levels, ledger, the DPR's opening/closing);
+  the over-stock hint while capturing still counts unsaved entries.
+  Attendance and the site log follow in the last slice of WA-77.
 - **Site DPR page reads (WEB-04):** `GET /dpr/site-days/{site_id}?date=` (the
   day, the report as it stands, `items` = every confirmable item with its fact
   type, id, draft/confirmed and flags, and the versions);

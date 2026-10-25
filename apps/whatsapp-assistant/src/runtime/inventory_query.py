@@ -32,6 +32,7 @@ class MaterialInventoryQueryService:
         site_id: str | None,
         material_name: str | None,
         material_id: str | None = None,
+        include_unsaved: bool = False,
     ) -> list[dict[str, Any]]:
         """Stock levels for the given scope, optionally filtered to one material
         (substring match). Returns plain JSON-safe dicts: material_name, unit,
@@ -52,6 +53,7 @@ class MaterialInventoryQueryService:
                 organization_id=uuid.UUID(organization_id),
                 project_ids={uuid.UUID(project_id)} if project_id else None,
                 site_id=uuid.UUID(site_id) if site_id else None,
+                include_unsaved=include_unsaved,
             )
 
         # get_stock_levels groups by (org, project, site, material_id, unit_id)

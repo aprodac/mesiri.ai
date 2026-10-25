@@ -35,7 +35,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from mesiri.application.dpr import site_day
+from mesiri.application.dpr import fact_review, site_day
 
 _STATUS_BY_UPDATE_KIND = {"COMPLETED": "COMPLETED", "PAUSED": "STOPPED"}
 
@@ -752,7 +752,7 @@ class PostgresDprRepository:
         stock_rows = (
             await self._conn.execute(
                 text(
-                    """
+                    f"""
                     SELECT mm.material_id, mc.name AS material_name, u.code AS unit,
                            SUM(CASE WHEN mm.occurred_at::date < :report_date
                                     THEN CASE WHEN mm.movement_type = 'RECEIPT'
@@ -766,6 +766,7 @@ class PostgresDprRepository:
                     WHERE mm.organization_id = :org_id
                       AND mm.site_id = :site_id
                       AND mm.occurred_at::date <= :report_date
+                      AND {fact_review.movement_counted_sql("mm")}
                     GROUP BY mm.material_id, mc.name, u.code
                     HAVING bool_or(mm.occurred_at::date = :report_date)
                     """
@@ -796,7 +797,6 @@ class PostgresDprRepository:
         # Draft or confirmed, per fact (BE-09). Labour and materials are
         # reviewed per report / per receipt-or-usage record, the unit people
         # actually send.
-        from mesiri.application.dpr import fact_review
         from mesiri.infrastructure.postgres.repositories.fact_reviews import (
             PostgresFactReviewRepository,
         )

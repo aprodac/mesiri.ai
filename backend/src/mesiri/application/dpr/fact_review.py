@@ -50,6 +50,26 @@ def counted_sql_by_column(fact_type_sql: str, fact_id_sql: str) -> str:
     )
 
 
+def movement_counted_sql(alias: str) -> str:
+    """WA-77 for stock: SQL true unless this `material_movements` row comes
+    from an entry still waiting for its Save -- a receipt or usage whose
+    latest review is a draft, or the incoming half of a transfer whose
+    outgoing half (the reviewed one) is. Rejecting a draft posts a reversal
+    and leaves the draft `rejected`, so the two still cancel out. `alias` is
+    a table alias from code, never input. For what is shown as stock; the
+    write-time over-stock check still counts drafts (they were reported)."""
+    return (
+        f"NOT ("
+        f"({alias}.source_type = 'material_usage' AND NOT ({counted_sql(MATERIAL_USAGE, f'{alias}.source_id')})) "
+        f"OR ({alias}.source_type = 'material_receipt' AND NOT ({counted_sql(MATERIAL_RECEIPT, f'{alias}.source_id')})) "
+        f"OR ({alias}.source_type = 'material_receipt' AND EXISTS ("
+        f"SELECT 1 FROM material_receipts r_c JOIN material_usage u_c ON u_c.transfer_id = r_c.transfer_id "
+        f"WHERE r_c.id = {alias}.source_id AND r_c.transfer_id IS NOT NULL "
+        f"AND NOT ({counted_sql(MATERIAL_USAGE, 'u_c.id')})))"
+        f")"
+    )
+
+
 def counts(state: str | None) -> bool:
     """WA-77: whether a fact in this review state is part of the record
     (stock, attendance, the report). A draft is not, until it is saved."""

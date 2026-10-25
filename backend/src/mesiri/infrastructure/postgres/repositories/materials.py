@@ -7,6 +7,8 @@ from decimal import Decimal
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from mesiri.application.dpr import fact_review
+
 _material_receipts = sa.Table(
     "material_receipts",
     sa.MetaData(),
@@ -324,8 +326,14 @@ class PostgresMaterialReadRepository:
         project_ids: set[uuid.UUID] | None = None,
         site_id: uuid.UUID | None = None,
         material_id: uuid.UUID | None = None,
+        *,
+        include_unsaved: bool = False,
     ) -> list[dict]:
         """Aggregated inventory stock levels, derived solely from material_movements.
+
+        WA-77 (Alan, 25 Oct): stock is what is saved; an entry still waiting
+        for its Save on WhatsApp is left out. `include_unsaved` counts it,
+        for the over-stock hint while capturing (what was reported so far).
 
         RECEIPT movements add, ISSUE movements subtract; a reversal posts the
         opposite movement_type of what it corrects, so summing signed quantity
@@ -385,6 +393,8 @@ class PostgresMaterialReadRepository:
             ).join(_units_of_measure, _units_of_measure.c.id == _material_movements.c.unit_id)
         ).where(_material_movements.c.organization_id == organization_id)
 
+        if not include_unsaved:
+            stmt = stmt.where(sa.text(fact_review.movement_counted_sql("material_movements")))
         if project_ids is not None:
             stmt = stmt.where(_material_movements.c.project_id.in_(project_ids))
         if site_id is not None:
@@ -605,6 +615,8 @@ class PostgresMaterialReadRepository:
                 _material_movements.c.organization_id == organization_id,
                 _material_movements.c.site_id == site_id,
                 _material_movements.c.material_id == material_id,
+                # WA-77: the ledger is what is saved (an unsaved entry isn't in it yet).
+                sa.text(fact_review.movement_counted_sql("material_movements")),
             )
         )
 
