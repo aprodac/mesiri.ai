@@ -117,6 +117,26 @@ class PostgresCreateSiteExecutionRepository(CreateSiteExecutionRepository):
             },
         )
 
+        # WA-46: a creator with "selected sites only" access to the project
+        # (project_members.site_access_mode = 'custom_sites') would not reach
+        # the site they just made, so could not report on it. They get it.
+        # Everyone else already reaches every site of the project.
+        await conn.execute(
+            sa.text(
+                "INSERT INTO site_members (id, site_id, user_id) "
+                "SELECT :id, :site_id, pm.user_id FROM project_members pm "
+                "WHERE pm.project_id = :project_id AND pm.user_id::text = :user_id "
+                "AND pm.site_access_mode = 'custom_sites' "
+                "ON CONFLICT (site_id, user_id) DO NOTHING"
+            ),
+            {
+                "id": uuid.uuid4(),
+                "site_id": site_id,
+                "project_id": project_id,
+                "user_id": str(cmd.created_by),
+            },
+        )
+
         payload = {"name": cmd.name.strip(), "location": cmd.location, "project_id": cmd.project_id}
         await conn.execute(
             sa.text(
