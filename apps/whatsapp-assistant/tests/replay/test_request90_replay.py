@@ -35,7 +35,7 @@ async def test_the_mixer_issue_has_a_card_and_undo_removes_the_masons(world):  #
     _, _, mason_facts = await day.say(masons, MASONS)
     assert mason_facts is not None
     reply = await day.tap(sb.SAVE, mason_facts)
-    assert reply.text == sb.SAVED_DONE
+    assert reply.text == "✅ Saved · 3 workers (3 mason)"
     assert (await day.cards.get(world.actor)).state == c.SAVED
 
     # "undo that": the journey answers it from the latest card, before the agent.

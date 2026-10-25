@@ -229,6 +229,9 @@ class JourneyGateway:
     #: The entries this turn saved, with the call that made each; and, when an
     #: open card was changed, the items of that card before and after the new one.
     card_items: list[CardItem] = field(default_factory=list)
+    #: Request 116 H: the join code and the message to forward went out, so the
+    #: model's closing line would be a third, redundant message.
+    code_shared: bool = False
     carry_before: list[CardItem] = field(default_factory=list)
     carry_after: list[CardItem] = field(default_factory=list)
 
@@ -525,6 +528,7 @@ class JourneyGateway:
         refusal = await self.share_code()
         if refusal:
             return StepResult("info", text=refusal)
+        self.code_shared = True
         return StepResult(
             "info",
             text=(

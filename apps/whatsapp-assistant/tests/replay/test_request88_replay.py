@@ -146,7 +146,7 @@ async def test_the_painters_undo_removes_the_painters_not_another_entry(world): 
     result, _, facts = await day.say(painters, "2 painter vannu")
     assert "Saved: 2 workers (2 painter)" in result.reply.text
     reply = await day.tap(sb.SAVE, facts)
-    assert reply.text == sb.SAVED_DONE
+    assert reply.text == "✅ Saved · 2 workers (2 painter)"
     card = await day.cards.get(world.actor)
     assert card.state == c.SAVED
 
