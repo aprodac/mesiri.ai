@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Mic, Monitor } from 'lucide-react'
+import { AlertTriangle, Mic, Monitor } from 'lucide-react'
 import {
   fetchBranding,
   fetchFactSourcesApi,
@@ -16,7 +16,7 @@ import {
 import { useAuth } from '@/lib/AuthContext'
 import { localIsoDate, longDate, siteDayPath } from '@/lib/site-day'
 import { prefersReducedMotion } from '@/lib/timeline'
-import { cn } from '@/lib/utils'
+import { cn, formatClock } from '@/lib/utils'
 import { DUST_MS, inkDuration, SNAP_MS, THREAD_MS } from '@/lib/ink'
 import { keyValue, readingLines, rowLines } from '@/lib/live-reading'
 import { MesiriWordmark } from '@/components/brand/mesiri-logo'
@@ -28,6 +28,7 @@ import { TellMesiri } from '@/components/tell-mesiri/tell-mesiri'
 import { LIVE_MODULES, ModuleRail, moduleOf, useCinematicGo, type LiveModule, type ModuleSection } from '@/components/live/modules'
 import { useModuleEnabled } from '@/lib/modules'
 import { AnswerSheet, answerTitle, questionChip, type AnswerTarget } from '@/components/live/answer'
+import { Finale } from '@/components/live/finale'
 
 // The Live report (WEB-37): the day's report writing itself as the site's
 // messages come in, and Mesiri seen reading each one. Left, a message
@@ -42,8 +43,12 @@ import { AnswerSheet, answerTitle, questionChip, type AnswerTarget } from '@/com
 // right); a line, the manpower block or a module opens that module with a
 // cinematic cut. A question asked on WhatsApp ("stock at Tower A?") is read
 // the same way, then the sheet turns over to the answer, from the same
-// records, with Mesiri's reply under the question. Read-only: it shows what
-// Mesiri saved and said.
+// records, with Mesiri's reply under the question. Above the sheet: what the
+// report is still waiting for, ticking off as lines land, and the time left
+// before it sends. A line Mesiri flagged (more used than in stock, a likely
+// repeat) shudders and says so. When the report goes out, it folds into its
+// PDF and drops into WhatsApp (the finale). Read-only: it shows what Mesiri
+// saved and said.
 
 const POLL_MS = 3_000
 const FLY_MS = 750
@@ -72,6 +77,8 @@ interface Chip {
   key: string
   label: string
   flown: boolean
+  /** Mesiri flagged it. */
+  warn?: boolean
 }
 
 interface Thinking {
@@ -116,6 +123,18 @@ function kindLabel(type: string): string {
   if (type.includes('image') || type.includes('photo')) return 'Photo'
   if (type.includes('document')) return 'Document'
   return 'Message'
+}
+
+/** What Mesiri noticed about a line (its review flags), in plain words; null when nothing. */
+function noticeOf(item: ReviewItem, report: SiteDayDetail['report'] | undefined): string | null {
+  if (item.flags?.includes('beyond_stock')) {
+    const name = (item.title ?? '').toLowerCase()
+    const line = report?.materials.find((m) => (m.material_name ?? '').toLowerCase() === name)
+    const left = line?.closing != null ? ` The stock would be ${Number(line.closing)} ${line.unit ?? ''}.` : ''
+    return `More used than was in stock.${left} Check it before confirming.`
+  }
+  if (item.flags?.includes('possible_duplicate')) return 'This looks like a repeat of an earlier message. Check it before confirming.'
+  return null
 }
 
 function chipLabel(item: ReviewItem, headcount: number | undefined): string {
@@ -223,7 +242,10 @@ function ThinkingPanel({
       {think.lines.length > 0 && think.step !== 'done' && (
         <ul className="m-0 grid list-none gap-0.5 p-0 font-mono text-[12px] text-foreground/70">
           {think.lines.map((line, i) => (
-            <li key={i} className="animate-in fade-in slide-in-from-left-1 duration-300 motion-reduce:animate-none">
+            <li
+              key={i}
+              className={cn('animate-in fade-in slide-in-from-left-1 duration-300 motion-reduce:animate-none', line.startsWith('⚠') && 'font-semibold text-red-700')}
+            >
               {line}
             </li>
           ))}
@@ -237,11 +259,17 @@ function ThinkingPanel({
               ref={(el) => chipRef(chip.key, el)}
               className={cn(
                 'px-2.5 py-1 text-[12.5px] font-semibold transition-all duration-500 animate-in zoom-in-75 fade-in fill-mode-both motion-reduce:animate-none',
-                chip.flown ? 'border border-foreground/25 bg-transparent text-foreground/45' : 'bg-foreground text-background',
+                chip.flown
+                  ? chip.warn
+                    ? 'border border-red-700/50 bg-transparent text-red-700'
+                    : 'border border-foreground/25 bg-transparent text-foreground/45'
+                  : chip.warn
+                    ? 'bg-red-700 text-white'
+                    : 'bg-foreground text-background',
               )}
               style={{ animationDelay: `${i * 140}ms` }}
             >
-              {chip.flown && '✓ '}
+              {chip.flown && (chip.warn ? '! ' : '✓ ')}
               {chip.label}
             </span>
           ))}
@@ -260,6 +288,8 @@ function Row({
   valueRef,
   opensIn,
   onOpen,
+  notice,
+  noticing,
 }: {
   item: ReviewItem
   writing: boolean
@@ -270,6 +300,9 @@ function Row({
   /** The module this line is kept in, when it can be opened. */
   opensIn?: string
   onOpen?: (el: HTMLElement) => void
+  /** What Mesiri noticed about this line, and whether it's being said now. */
+  notice?: string | null
+  noticing?: boolean
 }) {
   const { main, sub } = rowLines(item)
   const value = keyValue(item)
@@ -287,7 +320,15 @@ function Row({
         'group relative grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 border-b border-black/10 py-3 last:border-b-0',
         onOpen && 'cursor-pointer outline-none hover:bg-black/[0.025] focus-visible:bg-black/[0.04]',
       )}
-      style={writing && !prefersReducedMotion() ? { animation: 'live-glow 3s ease-out both' } : undefined}
+      style={
+        prefersReducedMotion()
+          ? undefined
+          : noticing
+            ? { animation: 'live-shake 600ms ease-in-out both' }
+            : writing
+              ? { animation: 'live-glow 3s ease-out both' }
+              : undefined
+      }
     >
       {onOpen && opensIn && (
         <span className="pointer-events-none absolute -bottom-2.5 right-0 z-10 bg-[#1a1d21] px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100">
@@ -314,7 +355,7 @@ function Row({
       >
         {value && (
           <span ref={valueRef}>
-            <Landed active={landed} className="text-[18px] font-semibold tabular-nums">
+            <Landed active={landed} className={cn('text-[18px] font-semibold tabular-nums', notice && 'text-red-700')}>
               {value}
             </Landed>
           </span>
@@ -323,7 +364,102 @@ function Row({
           <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-primary">Draft</span>
         )}
       </span>
+      {notice && (!writing || noticing) && !snapping && (
+        // Mesiri caught something: said in red, under the line.
+        <span className="col-span-2 mt-2 flex items-start gap-2 border-l-2 border-red-700 bg-red-50 px-2.5 py-1.5 text-[13px] text-red-800 animate-in fade-in slide-in-from-top-1 duration-300 motion-reduce:animate-none">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          <span>
+            <b className="font-semibold">Mesiri noticed:</b> <Ink text={notice} writing={!!noticing} />
+          </span>
+        </span>
+      )}
     </li>
+  )
+}
+
+/** "HH:MM[:SS]" today, as a time; null when unset. */
+function todayAt(hhmm: string | null | undefined): Date | null {
+  if (!hhmm) return null
+  const [h, m] = hhmm.split(':').map(Number)
+  if (Number.isNaN(h) || Number.isNaN(m)) return null
+  const at = new Date()
+  at.setHours(h, m, 0, 0)
+  return at
+}
+
+function left(ms: number): string {
+  const mins = Math.max(0, Math.round(ms / 60_000))
+  if (mins < 60) return `${mins} min`
+  return `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m`
+}
+
+/** Above the sheet: what the report still waits for, ticking off as lines
+ * land, and the time left before it sends. */
+function DayProgress({
+  needs,
+  project,
+  today,
+  frozen,
+}: {
+  needs: { label: string; done: boolean; needed: boolean }[]
+  project: SiteDayDetail['project']
+  today: boolean
+  frozen: boolean
+}) {
+  const [now, setNow] = React.useState(() => Date.now())
+  React.useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 15_000)
+    return () => window.clearInterval(timer)
+  }, [])
+  const deadline = today && !project?.sent ? todayAt(project?.dpr_send_deadline) : null
+  const remaining = deadline ? deadline.getTime() - now : null
+  const close = remaining !== null && remaining > 0 && remaining < 30 * 60_000
+  const missing = needs.filter((n) => n.needed && !n.done)
+
+  return (
+    <div className="mx-auto mb-4 flex max-w-[720px] flex-wrap items-center justify-between gap-x-6 gap-y-2">
+      <ul className="m-0 flex list-none flex-wrap items-center gap-x-4 gap-y-1 p-0 text-[12.5px]" aria-label="What the report needs">
+        <li className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-muted-foreground">
+          {frozen || project?.sent ? 'Complete' : missing.length ? 'Waiting for' : 'Has everything it needs'}
+        </li>
+        {needs.map((n) => (
+          <li
+            key={n.label}
+            className={cn(
+              'flex items-center gap-1.5 transition-colors duration-500',
+              n.done ? 'text-foreground' : n.needed ? 'text-foreground/70' : 'text-foreground/40',
+            )}
+          >
+            <span
+              key={String(n.done)}
+              className={cn(
+                'grid size-4 place-items-center rounded-full border text-[10px] leading-none',
+                n.done ? 'border-foreground bg-foreground text-background animate-in zoom-in-50 duration-300 motion-reduce:animate-none' : 'border-current',
+              )}
+              aria-hidden="true"
+            >
+              {n.done ? '✓' : ''}
+            </span>
+            <span className={cn(n.done && 'line-through decoration-foreground/40')}>{n.label}</span>
+            <span className="sr-only">{n.done ? 'in' : n.needed ? 'still needed' : 'optional'}</span>
+          </li>
+        ))}
+      </ul>
+      {project && today && (
+        <span
+          className={cn('font-mono text-[11px] uppercase tracking-[0.06em]', close ? 'text-primary' : 'text-muted-foreground')}
+          style={close && !prefersReducedMotion() ? { animation: 'pulse 2s ease-in-out infinite' } : undefined}
+        >
+          {project.sent
+            ? 'Sent today'
+            : deadline && remaining !== null && remaining > 0
+              ? `${project.auto_generate_dpr ? 'Sends' : 'Due'} at ${formatClock(project.dpr_send_deadline)} · in ${left(remaining)}`
+              : deadline
+                ? `${project.auto_generate_dpr ? 'Sending' : 'Was due'} at ${formatClock(project.dpr_send_deadline)}`
+                : null}
+        </span>
+      )}
+    </div>
   )
 }
 
@@ -378,6 +514,11 @@ export default function LivePage() {
   const qKnown = React.useRef<Set<string> | null>(null)
   const qQueue = React.useRef<SiteQuestion[]>([])
   const release = React.useRef<(() => void) | null>(null)
+  // The line Mesiri is pointing a mistake out on, and the finale (the report going out).
+  const [noticing, setNoticing] = React.useState<string | null>(null)
+  const [finale, setFinale] = React.useState<DOMRect | null>(null)
+  const finaleDue = React.useRef(false)
+  const wasSent = React.useRef<boolean | null>(null)
 
   const known = React.useRef<Set<string> | null>(null)
   const queue = React.useRef<ReviewItem[]>([])
@@ -507,16 +648,20 @@ export default function LivePage() {
             const reading = (await sourceOf(item)).reading
             for (const line of readingLines(reading?.extracted)) if (!lines.includes(line)) lines.push(line)
           }
-          for (const line of lines.slice(0, 8)) {
+          for (const item of group) {
+            if (item.flags?.includes('beyond_stock')) lines.push('⚠ more used than in stock')
+            else if (item.flags?.includes('possible_duplicate')) lines.push('⚠ looks like a repeat')
+          }
+          for (const line of lines.slice(0, 9)) {
             think(msg.id, (t) => ({ ...t, lines: [...t.lines, line] }))
-            await sleep(230)
+            await sleep(line.startsWith('⚠') ? 600 : 230)
           }
           if (!live()) return
         }
         think(msg.id, (t) => ({
           ...t,
           step: 'chips',
-          chips: group.map((item) => ({ key: factKey(item), label: chipLabel(item, headcount), flown: false })),
+          chips: group.map((item) => ({ key: factKey(item), label: chipLabel(item, headcount), flown: false, warn: item.flags?.length > 0 })),
         }))
         if (!still) await sleep(700 + group.length * 140)
       }
@@ -540,6 +685,13 @@ export default function LivePage() {
         }
         if (isLabour) setLabour(latest.current?.report.labour ?? null)
         land(key)
+        if (!still && noticeOf(item, latest.current?.report)) {
+          // Mesiri points it out before moving on.
+          const { sub } = rowLines(item)
+          await sleep(DUST_MS + (sub ? SUB_LAG_MS : 0))
+          setNoticing(key)
+          await sleep(2600)
+        }
         if (msg) think(msg.id, (t) => ({ ...t, chips: t.chips.map((c) => (c.key === key ? { ...c, flown: true } : c)) }))
         if (!still) {
           const { sub } = rowLines(item)
@@ -563,6 +715,17 @@ export default function LivePage() {
     },
     [sourceOf],
   )
+
+  /** The report went out: the sheet folds into its PDF and drops into WhatsApp. */
+  const startFinale = React.useCallback(() => {
+    finaleDue.current = false
+    setThread(null)
+    setRelay(null)
+    release.current?.()
+    setAnswer(null)
+    const sheet = targetEls.current.get('sheet')
+    setFinale(sheet?.getBoundingClientRect() ?? new DOMRect(window.innerWidth / 2 - 300, 120, 600, 700))
+  }, [])
 
   /** A question: read like any message, then the sheet turns over to the answer. */
   const playQuestion = React.useCallback(async (q: SiteQuestion, gen: number) => {
@@ -663,8 +826,11 @@ export default function LivePage() {
       if (!prefersReducedMotion()) await sleep(600)
     }
     // A replay started meanwhile owns the flag now.
-    if (gen === generation.current) running.current = false
-  }, [sourceOf, playMessage, playQuestion])
+    if (gen === generation.current) {
+      running.current = false
+      if (finaleDue.current && alive.current) startFinale()
+    }
+  }, [sourceOf, playMessage, playQuestion, startFinale])
 
   // New facts from the day's re-read join the queue; the first read is
   // taken as already written (with its messages in the feed, unanimated).
@@ -718,6 +884,22 @@ export default function LivePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [questions.data, play])
 
+  // The report going out while watching ends the story: the finale, once what's playing has landed.
+  React.useEffect(() => {
+    const data = detail.data
+    if (!data) return
+    const sent = !!data.project?.sent
+    if (wasSent.current === null) {
+      wasSent.current = sent
+      return
+    }
+    if (sent && !wasSent.current) {
+      finaleDue.current = true
+      if (!running.current) startFinale()
+    }
+    wasSent.current = sent
+  }, [detail.data, startFinale])
+
   // A new site or day starts over.
   React.useEffect(() => {
     generation.current++
@@ -738,6 +920,10 @@ export default function LivePage() {
     release.current?.()
     setAnswer(null)
     setStamped(false)
+    setNoticing(null)
+    setFinale(null)
+    finaleDue.current = false
+    wasSent.current = null
   }, [siteId, date])
 
   /** The demo: the report snaps to dust, then every line comes back from its message, in order. */
@@ -755,6 +941,8 @@ export default function LivePage() {
     release.current?.()
     setAnswer(null)
     setStamped(false)
+    setNoticing(null)
+    setFinale(null)
     if (!prefersReducedMotion() && written.size > 0) {
       setSnapping(true)
       await sleep(SNAP_MS + 500)
@@ -770,6 +958,8 @@ export default function LivePage() {
     withTimes.sort((a, b) => (a.src.message?.received_at ?? '9').localeCompare(b.src.message?.received_at ?? '9'))
     queue.current = withTimes.map((x) => x.item)
     qQueue.current = [...(questions.data ?? [])]
+    // A day that went out ends the way it did: in WhatsApp.
+    finaleDue.current = !!data.project?.sent
     await sleep(500)
     void play()
   }
@@ -977,6 +1167,17 @@ export default function LivePage() {
 
             {/* The report */}
             <section aria-label="Daily progress report" className="min-w-0 lg:sticky lg:top-6 lg:self-start">
+              <DayProgress
+                needs={[
+                  { label: 'Manpower', done: (labour?.headcount ?? 0) > 0, needed: true },
+                  { label: 'Work done', done: shown('work').length > 0, needed: true },
+                  { label: 'Materials', done: shown('materials').length > 0, needed: false },
+                  { label: 'Photos', done: (detail.data?.report.evidence_count ?? 0) > 0, needed: false },
+                ]}
+                project={detail.data?.project ?? null}
+                today={date === today}
+                frozen={frozen}
+              />
               <div
                 ref={(el) => {
                   if (el) targetEls.current.set('sheet', el)
@@ -1118,6 +1319,8 @@ export default function LivePage() {
                                   if (el) targetEls.current.set(`${k}:value`, el)
                                   else targetEls.current.delete(`${k}:value`)
                                 }}
+                                notice={noticeOf(item, detail.data?.report)}
+                                noticing={noticing === k}
                                 opensIn={moduleOf(key).name}
                                 onOpen={
                                   canOpen(moduleOf(key))
@@ -1143,7 +1346,7 @@ export default function LivePage() {
                       frozen ? 'border-emerald-700 text-emerald-700' : 'border-primary text-primary',
                     )}
                   >
-                    {frozen ? 'CONFIRMED' : 'LIVE DRAFT'}
+                    {frozen ? 'CONFIRMED' : detail.data?.project?.sent ? 'SENT' : 'LIVE DRAFT'}
                   </span>
                 </div>
               </div>
@@ -1207,6 +1410,16 @@ export default function LivePage() {
       </div>
       {flyer && <Flyer key={flyer.id} label={flyer.label} from={flyer.from} to={flyer.to} />}
       {cinematic.overlay}
+      {finale && (
+        <Finale
+          from={finale}
+          projectId={site?.project_id}
+          company={company}
+          code={detail.data?.day?.code ?? null}
+          site={site?.site_name ?? ''}
+          onDone={() => setFinale(null)}
+        />
+      )}
     </div>
   )
 }

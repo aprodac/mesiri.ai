@@ -222,4 +222,13 @@
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent); }
   100% { box-shadow: 0 0 0 18px transparent; }
 }
+/* Mesiri noticing a mistake in the Live report: the line shudders once. */
+@keyframes live-shake {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-6px); }
+  30% { transform: translateX(5px); }
+  45% { transform: translateX(-4px); }
+  60% { transform: translateX(3px); }
+  75% { transform: translateX(-1px); }
+}
 
