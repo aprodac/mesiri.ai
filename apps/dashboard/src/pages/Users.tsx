@@ -8,7 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/components/ui/toast-notification'
-import { Callout, PageError, PageHeader, Segmented } from '@/components/dpr-page'
+import { Callout, PageError, PageHeader } from '@/components/dpr-page'
 import { AccessManagerDialog, AddEditUserDialog, WhatsAppManagerDialog } from '@/components/user-dialogs'
 import { deleteUser, fetchUsers, updateUserStatus, type User } from '@/lib/api'
 import { roleLabel, type Role } from '@/lib/permissions'
@@ -16,6 +16,7 @@ import { CHIP } from '@/lib/site-day'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { usePageTitle } from '@/lib/page-title'
 import { useUrlState } from '@/lib/url-state'
+import { FilterSelect } from '@/components/filter-select'
 import { useReadOnly } from '@/lib/trial'
 import { cn } from '@/lib/utils'
 import { initials, projectAccessText, useMemberships } from '@/lib/team'
@@ -118,22 +119,26 @@ export default function Users() {
           <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
           <Input placeholder="Search name, email or number…" aria-label="Search the team" value={search} onChange={(e) => setSearch(e.target.value)} className="h-9 pl-8" />
         </div>
+        {/* WEB-40: dropdowns, like the other filters. */}
         {roleCounts.length > 1 && (
-          <Segmented<string>
+          <FilterSelect<string>
             label="Role"
             value={role}
             onChange={setRole}
-            options={[{ value: 'ALL', label: 'Everyone' }, ...roleCounts.map(({ r, n }) => ({ value: r, label: SHORT_ROLE[r], count: n }))]}
+            icon={UsersIcon}
+            className="h-9 w-[180px]"
+            options={[{ value: 'ALL', label: 'Everyone' }, ...roleCounts.map(({ r, n }) => ({ value: r, label: `${SHORT_ROLE[r]} · ${n}` }))]}
           />
         )}
         {inactive > 0 && (
-          <Segmented<'active' | 'inactive'>
+          <FilterSelect<'active' | 'inactive'>
             label="Show"
             value={show}
             onChange={setShow}
+            className="h-9 w-[160px]"
             options={[
               { value: 'active', label: 'Active' },
-              { value: 'inactive', label: 'Deactivated', count: inactive },
+              { value: 'inactive', label: `Deactivated · ${inactive}` },
             ]}
           />
         )}

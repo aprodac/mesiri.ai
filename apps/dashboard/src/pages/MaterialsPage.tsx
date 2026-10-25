@@ -58,6 +58,25 @@ export default function MaterialsPage() {
   // the record dialogs themselves.
   const canRecord = !!me && me.role !== 'FINANCE' && !readOnly
 
+  const switcher = (
+    <>
+      {isAdmin && (
+        <Segmented<MaterialsView>
+          label="View"
+          value={view}
+          onChange={setView}
+          options={[
+            { value: 'ledger', label: 'Ledger' },
+            { value: 'catalogue', label: 'Catalogue' },
+          ]}
+        />
+      )}
+      <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => setStockOpen(true)}>
+        <Boxes className="size-3.5" /> Stock now
+      </Button>
+    </>
+  )
+
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
       <PageHeader
@@ -82,25 +101,15 @@ export default function MaterialsPage() {
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        {isAdmin && (
-          <Segmented<MaterialsView>
-            label="View"
-            value={view}
-            onChange={setView}
-            options={[
-              { value: 'ledger', label: 'Ledger' },
-              { value: 'catalogue', label: 'Catalogue' },
-            ]}
-          />
-        )}
-        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setStockOpen(true)}>
-          <Boxes className="size-3.5" /> Stock now
-        </Button>
-      </div>
-
-      {view === 'ledger' && <LedgerView projectId={projectId} siteId={siteId} />}
-      {view === 'catalogue' && <CatalogueView />}
+      {/* WEB-40: the view switch and Stock now open the ledger's filter row,
+          so the top of the page is one line of controls. */}
+      {view === 'ledger' && <LedgerView projectId={projectId} siteId={siteId} leading={switcher} />}
+      {view === 'catalogue' && (
+        <>
+          <div className="flex flex-wrap items-center gap-2">{switcher}</div>
+          <CatalogueView />
+        </>
+      )}
 
       <Sheet open={stockOpen} onOpenChange={setStockOpen}>
         <SheetContent className="w-full overflow-y-auto sm:max-w-xl">

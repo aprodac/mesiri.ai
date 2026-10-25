@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Callout, PageHeader } from '@/components/dpr-page'
 import { ROW_ACCENT } from '@/lib/cues'
 import { useUrlState } from '@/lib/url-state'
+import { FilterSelect } from '@/components/filter-select'
 
 // Daily Reports history (WEB-06): every site and project DPR, newest day
 // first, with the figures from the version that was confirmed or sent. Each
@@ -276,19 +277,15 @@ export default function DailyReportsPage() {
             <Input type="date" aria-label="To" value={customTo} min={customFrom || undefined} onChange={(e) => setCustomTo(e.target.value)} className="h-9 w-[150px] dark:[color-scheme:dark]" />
           </div>
         )}
-        <div className="flex rounded-lg border p-0.5" role="group" aria-label="Reports">
-          {LEVELS.map((l) => (
-            <button
-              key={l.value}
-              type="button"
-              aria-pressed={level === l.value}
-              onClick={() => setLevel(l.value)}
-              className={cn('rounded-md px-2.5 py-1 text-xs font-medium', level === l.value ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground')}
-            >
-              {l.short}
-            </button>
-          ))}
-        </div>
+        {/* WEB-40: a dropdown, like the other filters. */}
+        <FilterSelect<string>
+          label="Reports"
+          value={level || 'all'}
+          onChange={(v) => setLevel(v === 'all' ? '' : (v as 'site' | 'project'))}
+          icon={FileText}
+          className="h-9 w-[160px]"
+          options={LEVELS.map((l) => ({ value: l.value || 'all', label: l.value ? l.short : 'All reports' }))}
+        />
         <Select value={status || 'any'} onValueChange={(v) => setStatus(v === 'any' ? '' : v)}>
           <SelectTrigger className="h-9 w-[170px]" aria-label="Status">
             <SelectValue />

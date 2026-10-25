@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/components/ui/toast-notification'
-import { Callout, DprSection, Segmented } from '@/components/dpr-page'
+import { Callout, DprSection } from '@/components/dpr-page'
 import { fetchWorkersApi, fetchWorkerStatisticsApi, updateWorkerApi, type WorkerStatistics, type WorkforceWorkerItem } from '@/lib/api'
 import { downloadTextFile, toCsv } from '@/lib/export'
 import { CHIP, localIsoDate } from '@/lib/site-day'
@@ -15,6 +15,7 @@ import { useUrlState } from '@/lib/url-state'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { cn } from '@/lib/utils'
 import { AddWorkerDialog } from './add-worker-dialog'
+import { FilterSelect } from '@/components/filter-select'
 import { EditWorkerSheet } from './edit-worker-sheet'
 import { WorkerStatisticsSheet } from './worker-statistics-sheet'
 
@@ -29,7 +30,7 @@ const KIND_WORDS: Record<WorkforceWorkerItem['worker_type'], string> = { permane
 const shortDay = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString([], { day: 'numeric', month: 'short' })
 const cap = (v: string | null) => (v ? v.charAt(0).toUpperCase() + v.slice(1).replace(/_/g, ' ') : '')
 
-export function WorkersView({ addOpen, setAddOpen }: { addOpen: boolean; setAddOpen: (open: boolean) => void }) {
+export function WorkersView({ addOpen, setAddOpen, leading }: { addOpen: boolean; setAddOpen: (open: boolean) => void; leading?: React.ReactNode }) {
   const toast = useToast()
   const queryClient = useQueryClient()
   const [search, setSearch] = useUrlState<string>('q', '')
@@ -90,36 +91,44 @@ export function WorkersView({ addOpen, setAddOpen }: { addOpen: boolean; setAddO
 
   return (
     <div className="flex flex-col gap-4">
+      {/* WEB-40: one toolbar row -- the view switch, then search and the
+          type / status dropdowns and CSV on the right. */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative w-full sm:w-60">
-          <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-          <Input placeholder="Name, trade or contractor…" aria-label="Search workers" value={search} onChange={(e) => setSearch(e.target.value)} className="h-9 pl-8" />
-        </div>
-        <Segmented<Kind>
-          label="Type"
-          value={kind}
-          onChange={setKind}
-          options={[
-            { value: 'all', label: 'Everyone', count: pool.length },
-            { value: 'permanent', label: 'Permanent', count: counts.permanent },
-            { value: 'temporary', label: 'Temporary', count: counts.temporary },
-            { value: 'contractor', label: 'Contractor', count: counts.contractor },
-          ]}
-        />
-        {retiredCount > 0 && (
-          <Segmented<'no' | 'yes'>
-            label="Status"
-            value={showRetired}
-            onChange={setShowRetired}
+        {leading}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="relative w-full sm:w-56">
+            <Search className="absolute top-2 left-2.5 size-4 text-muted-foreground" />
+            <Input placeholder="Name, trade or contractor…" aria-label="Search workers" value={search} onChange={(e) => setSearch(e.target.value)} className="h-8 pl-8" />
+          </div>
+          <FilterSelect<Kind>
+            label="Type"
+            value={kind}
+            onChange={setKind}
+            icon={Users}
+            className="w-[170px]"
             options={[
-              { value: 'no', label: 'Active' },
-              { value: 'yes', label: 'Retired', count: retiredCount },
+              { value: 'all', label: `Everyone · ${pool.length}` },
+              { value: 'permanent', label: `Own workers · ${counts.permanent}` },
+              { value: 'temporary', label: `Temporary · ${counts.temporary}` },
+              { value: 'contractor', label: `Contractor's · ${counts.contractor}` },
             ]}
           />
-        )}
-        <Button variant="outline" size="sm" className="ml-auto gap-1.5" disabled={visible.length === 0} onClick={exportCsv}>
-          <Download className="size-3.5" /> CSV
-        </Button>
+          {retiredCount > 0 && (
+            <FilterSelect<'no' | 'yes'>
+              label="Status"
+              value={showRetired}
+              onChange={setShowRetired}
+              className="w-[130px]"
+              options={[
+                { value: 'no', label: 'Working' },
+                { value: 'yes', label: `Retired · ${retiredCount}` },
+              ]}
+            />
+          )}
+          <Button variant="outline" size="sm" className="gap-1.5" disabled={visible.length === 0} onClick={exportCsv}>
+            <Download className="size-3.5" /> CSV
+          </Button>
+        </div>
       </div>
 
       {workers.isError ? (

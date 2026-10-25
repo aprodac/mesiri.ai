@@ -27,6 +27,18 @@ export default function LabourPage() {
   const siteId = scope.mode === 'site' ? scope.siteId : null
   const scopeLabel = scope.mode === 'portfolio' ? 'All projects' : scope.mode === 'project' ? scope.projectName : `${scope.projectName} / ${scope.siteName}`
 
+  const switcher = (
+    <Segmented<View>
+      label="View"
+      value={view}
+      onChange={setView}
+      options={[
+        { value: 'attendance', label: 'Attendance' },
+        { value: 'workers', label: 'Workers' },
+      ]}
+    />
+  )
+
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
       <PageHeader
@@ -48,16 +60,13 @@ export default function LabourPage() {
           )
         }
       />
-      <Segmented<View>
-        label="View"
-        value={view}
-        onChange={setView}
-        options={[
-          { value: 'attendance', label: 'Attendance' },
-          { value: 'workers', label: 'Workers' },
-        ]}
-      />
-      {view === 'attendance' ? <AttendanceView projectId={projectId} siteId={siteId} /> : <WorkersView addOpen={addOpen} setAddOpen={setAddOpen} />}
+      {/* WEB-40: the view switch sits in the same toolbar row as each view's
+          filters and export, so the top of the page is one line. */}
+      {view === 'attendance' ? (
+        <AttendanceView projectId={projectId} siteId={siteId} leading={switcher} />
+      ) : (
+        <WorkersView addOpen={addOpen} setAddOpen={setAddOpen} leading={switcher} />
+      )}
     </div>
   )
 }

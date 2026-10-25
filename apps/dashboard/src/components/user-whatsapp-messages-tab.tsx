@@ -7,7 +7,7 @@ import {
   Search,
   SlidersHorizontal,
   ChevronRight,
-  Info,
+  AlertTriangle,
   Loader2,
   Settings,
   Inbox,
@@ -17,7 +17,6 @@ import {
   FileText,
   MapPin,
   MessageCircle,
-  ExternalLink,
 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -25,7 +24,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+import { Fact, Facts, SheetHero, SheetSection } from '@/components/detail-sheet'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
   fetchUserWhatsAppMessages,
@@ -67,7 +67,6 @@ export function UserWhatsAppMessagesTab({
 
   // Details Sheet state
   const [selectedMessageId, setSelectedMessageId] = React.useState<string | null>(null)
-  const [detailsTab, setDetailsTab] = React.useState<'details' | 'conversation'>('details')
 
   // Fetch Projects for filters
   const { data: projects = [] } = useQuery({
@@ -147,19 +146,6 @@ export function UserWhatsAppMessagesTab({
     queryKey: ['user-whatsapp-message-detail', user.id, selectedMessageId],
     queryFn: () => fetchUserWhatsAppMessageDetail(user.id, selectedMessageId!),
     enabled: !!selectedMessageId && !!user.id,
-  })
-
-  // Fetch full conversation history for the identity when in conversation view
-  const conversationWaId = messageDetail?.sender_wa_id
-  const { data: conversationData, isLoading: isConversationLoading } = useQuery({
-    queryKey: ['user-whatsapp-conversation', user.id, conversationWaId],
-    queryFn: () =>
-      fetchUserWhatsAppMessages(user.id, {
-        wa_id: conversationWaId,
-        sort: 'asc',
-        limit: 100,
-      }),
-    enabled: detailsTab === 'conversation' && !!conversationWaId && !!user.id,
   })
 
   const hasNoMapping = !user.whatsapp_number
@@ -380,7 +366,6 @@ export function UserWhatsAppMessagesTab({
                       <TableCell className="text-right">
                         <Button size="sm" variant="ghost" onClick={() => {
                           setSelectedMessageId(msg.id)
-                          setDetailsTab('details')
                         }} className="font-bold text-[10px] text-primary h-7 px-2">
                           Details
                         </Button>
@@ -446,7 +431,6 @@ export function UserWhatsAppMessagesTab({
                 <div className="flex justify-end pt-2 border-t">
                   <Button size="sm" variant="outline" onClick={() => {
                     setSelectedMessageId(msg.id)
-                    setDetailsTab('details')
                   }} className="h-7 text-[10px] font-bold">
                     View Details
                   </Button>
@@ -638,239 +622,131 @@ export function UserWhatsAppMessagesTab({
       </Sheet>
 
       {/* Message Details Sheet (reusing details and conversation timelines) */}
+      {/* WEB-39: one message, laid out like every side panel (detail-sheet.tsx):
+          what was sent and what Mesiri replied as chat bubbles, what it became,
+          a link to the whole chat; ids, pipeline steps and raw data folded
+          under "For support". */}
       <Sheet open={!!selectedMessageId} onOpenChange={(open) => {
         if (!open) setSelectedMessageId(null)
       }}>
-        <SheetContent className="w-full sm:max-w-[480px] p-0 flex flex-col text-xs">
-          <SheetHeader className="p-4 pb-3 border-b flex flex-row justify-between items-center bg-muted/10 shrink-0">
-            <div>
-              <SheetTitle className="text-sm font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <MessageSquare className="size-4" /> Message Inspector
-              </SheetTitle>
-              <SheetDescription className="text-[10px] text-muted-foreground leading-none">
-                Details and surrounding conversation context.
-              </SheetDescription>
+        <SheetContent className="w-full gap-0 overflow-y-auto p-0 sm:max-w-[480px]">
+          {isDetailLoading ? (
+            <div className="flex h-64 items-center justify-center gap-2 text-sm text-muted-foreground">
+              <SheetTitle className="sr-only">Loading</SheetTitle>
+              <Loader2 className="size-4 animate-spin" /> Loading…
             </div>
-          </SheetHeader>
+          ) : !messageDetail ? (
+            <div className="p-6 text-center text-sm text-muted-foreground">
+              <SheetTitle className="sr-only">Not found</SheetTitle>
+              This message could not be found.
+            </div>
+          ) : (
+            (() => {
+              const failed = messageDetail.processing_status === 'failed' || Boolean(messageDetail.error_code)
+              const waiting = ['pending', 'processing'].includes(messageDetail.processing_status)
+              const asking = messageDetail.clarification_status === 'awaiting_user'
+              const at = (iso: string) => new Date(iso).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+              const number = messageDetail.sender_wa_id.replace(/\D/g, '')
+              return (
+                <>
+                  <SheetHero
+                    tone={failed ? 'out' : waiting || asking ? 'warn' : messageDetail.outcome ? 'in' : 'neutral'}
+                    kicker={failed ? 'Not handled' : waiting ? 'Waiting for Mesiri' : asking ? 'Mesiri asked a question' : messageDetail.outcome ? 'Filed' : 'Handled'}
+                    title={`Message from ${user.full_name}`}
+                  >
+                    <span>{at(messageDetail.received_at)}</span>
+                    {messageDetail.site && <span>{messageDetail.site.name}</span>}
+                  </SheetHero>
 
-          {/* Toggle Tab buttons */}
-          <div className="flex border-b text-[11px] font-bold text-muted-foreground shrink-0 bg-muted/5">
-            <button
-              onClick={() => setDetailsTab('details')}
-              className={`flex-1 py-2 text-center border-b-2 transition-colors ${
-                detailsTab === 'details' ? 'border-primary text-foreground bg-background' : 'border-transparent hover:text-foreground'
-              }`}
-            >
-              Trace Details
-            </button>
-            <button
-              onClick={() => setDetailsTab('conversation')}
-              className={`flex-1 py-2 text-center border-b-2 transition-colors ${
-                detailsTab === 'conversation' ? 'border-primary text-foreground bg-background' : 'border-transparent hover:text-foreground'
-              }`}
-            >
-              Conversation Context
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto min-h-0 bg-background">
-            {isDetailLoading ? (
-              <div className="flex h-64 items-center justify-center text-xs text-muted-foreground gap-2">
-                <Loader2 className="size-4 animate-spin text-primary" />
-                Loading trace details...
-              </div>
-            ) : !messageDetail ? (
-              <div className="p-4 text-center text-xs text-muted-foreground">
-                Message trace not found.
-              </div>
-            ) : detailsTab === 'details' ? (
-              /* Trace Details Content */
-              <div className="p-4 space-y-4">
-                {/* Bubble flow preview */}
-                <div className="bg-muted/15 border p-3.5 space-y-2.5">
-                  <div className="flex flex-col space-y-1 self-start max-w-[90%]">
-                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
-                      User ({messageDetail.sender_wa_id})
-                    </span>
-                    <div className="bg-muted border rounded-lg p-2.5 text-xs text-foreground font-normal leading-relaxed whitespace-pre-wrap">
-                      {messageDetail.body_text || <span className="text-muted-foreground/60 italic">[Media message]</span>}
-                    </div>
-                  </div>
-
-                  {messageDetail.assistant_reply && (
-                    <div className="flex flex-col space-y-1 items-end self-end max-w-[90%] ml-auto text-right">
-                      <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
-                        Assistant Reply
-                      </span>
-                      <div className="bg-primary/5 text-primary border border-primary/20 rounded-lg p-2.5 text-xs text-foreground font-normal leading-relaxed text-left whitespace-pre-wrap">
-                        {messageDetail.assistant_reply}
+                  <SheetSection title="The message">
+                    <div className="flex flex-col gap-2 rounded-lg bg-muted/30 p-3">
+                      <div className="max-w-[90%] self-start rounded-xl rounded-bl-sm border bg-background px-3 py-2 text-sm whitespace-pre-wrap">
+                        {messageDetail.body_text || <span className="text-muted-foreground">{messageDetail.message_type === 'image' ? 'Photo' : messageDetail.message_type === 'audio' ? 'Voice note' : 'No text'}</span>}
                       </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Status and Mappings metadata */}
-                <div className="grid gap-2 border p-3 bg-muted/5 font-medium">
-                  <div className="flex justify-between items-center py-1">
-                    <span className="text-muted-foreground font-normal">AI Processing Status</span>
-                    <Badge variant="outline" className={`rounded-sm py-0 text-[10px] capitalize ${
-                      messageDetail.processing_status === 'completed'
-                        ? 'bg-emerald-500/5 text-emerald-700 border-emerald-500/20'
-                        : 'bg-rose-500/5 text-rose-700 border-rose-500/20'
-                    }`}>
-                      {messageDetail.processing_status}
-                    </Badge>
-                  </div>
-                  <div className="flex justify-between items-center py-1 border-t">
-                    <span className="text-muted-foreground font-normal">Clarification State</span>
-                    <Badge variant="outline" className="rounded-sm py-0 text-[10px] capitalize bg-muted text-muted-foreground">
-                      {messageDetail.clarification_status.replace('_', ' ')}
-                    </Badge>
-                  </div>
-                  {messageDetail.project && (
-                    <div className="flex justify-between items-center py-1 border-t">
-                      <span className="text-muted-foreground font-normal">Associated Project</span>
-                      <Link to={`/today?project=${messageDetail.project.id}`} className="text-primary hover:underline font-semibold flex items-center gap-1">
-                        {messageDetail.project.name} <ExternalLink className="size-2.5" />
-                      </Link>
-                    </div>
-                  )}
-                  {messageDetail.site && (
-                    <div className="flex justify-between items-center py-1 border-t">
-                      <span className="text-muted-foreground font-normal">Associated Site</span>
-                      <Link to={`/today?project=${messageDetail.project?.id}&site=${messageDetail.site.id}`} className="text-primary hover:underline font-semibold flex items-center gap-1">
-                        {messageDetail.site.name} <ExternalLink className="size-2.5" />
-                      </Link>
-                    </div>
-                  )}
-                  {messageDetail.outcome && (
-                    <div className="flex justify-between items-start py-1 border-t">
-                      <span className="text-muted-foreground font-normal">Created Record</span>
-                      <div className="flex flex-col items-end gap-1">
-                        {renderOutcomeBadge(messageDetail.outcome)}
-                        <span className="text-[10px] text-muted-foreground font-mono text-right">{messageDetail.outcome.summary}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* ID keys */}
-                <div className="text-[10px] font-mono text-muted-foreground bg-muted/20 border p-2.5 grid gap-1">
-                  <div>Correlation ID: {messageDetail.correlation_id}</div>
-                  <div>Internal Msg ID: {messageDetail.id}</div>
-                  {messageDetail.media_object_key && (
-                    <div className="truncate">Media Storage Key: {messageDetail.media_object_key}</div>
-                  )}
-                </div>
-
-                {/* AI execution and debugging traces */}
-                {messageDetail.traces && messageDetail.traces.length > 0 && (
-                  <div className="space-y-2.5">
-                    <h4 className="font-semibold text-foreground uppercase tracking-wider text-[9px] border-b pb-1 text-muted-foreground">
-                      Pipeline Execution Logs (Admin Debugging)
-                    </h4>
-                    <div className="border rounded divide-y overflow-hidden max-h-56 overflow-y-auto">
-                      {messageDetail.traces.map((trace, idx) => (
-                        <div key={idx} className="p-2.5 flex justify-between gap-4 items-start hover:bg-muted/10 bg-muted/5 font-medium">
-                          <div>
-                            <span className="font-bold text-foreground capitalize block">{trace.stage}</span>
-                            {trace.error_message && (
-                              <span className="text-rose-500 block text-[10px] mt-0.5 leading-tight">{trace.error_message}</span>
-                            )}
-                            <span className="text-[9px] text-muted-foreground block mt-0.5">
-                              {trace.event_source} · {new Date(trace.created_at).toLocaleTimeString()}
-                            </span>
-                          </div>
-                          <div className="flex flex-col items-end gap-1">
-                            <Badge variant="outline" className={`rounded-sm py-0 text-[8px] font-semibold ${
-                              trace.succeeded ? 'bg-emerald-500/5 text-emerald-700 border-emerald-500/20' : 'bg-rose-500/5 text-rose-700 border-rose-500/20'
-                            }`}>
-                              {trace.succeeded ? 'SUCCESS' : 'FAILED'}
-                            </Badge>
-                            {trace.duration_ms !== null && (
-                              <span className="text-[9px] text-muted-foreground">{trace.duration_ms}ms</span>
-                            )}
-                          </div>
+                      {messageDetail.assistant_reply && (
+                        <div className="max-w-[90%] self-end rounded-xl rounded-br-sm border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm whitespace-pre-wrap dark:border-emerald-900 dark:bg-emerald-950/50">
+                          <p className="mb-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400">Mesiri</p>
+                          {messageDetail.assistant_reply}
                         </div>
-                      ))}
+                      )}
                     </div>
-                  </div>
-                )}
+                    {failed && (
+                      <p className="flex items-start gap-1.5 text-sm text-destructive" title={messageDetail.error_code ?? undefined}>
+                        <AlertTriangle className="mt-0.5 size-4 shrink-0" /> Mesiri could not handle this message. Ask them to send it again.
+                      </p>
+                    )}
+                  </SheetSection>
 
-                {/* Raw Payloads toggle panel */}
-                {messageDetail.normalized_message && (
-                  <div className="border rounded overflow-hidden">
-                    <details className="group">
-                      <summary className="flex justify-between items-center p-2.5 bg-muted/20 border-b cursor-pointer select-none font-bold uppercase tracking-wider text-[9px] text-muted-foreground">
-                        <span>Raw Internal Message Normalized Schema</span>
-                        <ChevronRight className="size-3 text-muted-foreground transition-transform group-open:rotate-90" />
+                  <SheetSection title="What it became" className="border-t">
+                    <Facts>
+                      <Fact label="Record" missing="Nothing was filed">
+                        {messageDetail.outcome && (
+                          <span className="flex flex-col">
+                            <span className="font-medium">{messageDetail.outcome.record_type.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim()}</span>
+                            {messageDetail.outcome.summary && <span className="text-muted-foreground">{messageDetail.outcome.summary}</span>}
+                          </span>
+                        )}
+                      </Fact>
+                      <Fact label="Project">{messageDetail.project?.name}</Fact>
+                      <Fact label="Site">{messageDetail.site?.name}</Fact>
+                      {messageDetail.clarification_status !== 'none' && (
+                        <Fact label="Question">
+                          {asking ? 'Waiting for their answer' : messageDetail.clarification_status === 'resolved' ? 'Answered' : 'No answer came'}
+                        </Fact>
+                      )}
+                    </Facts>
+                  </SheetSection>
+
+                  <SheetSection title="For support" className="border-t">
+                    <details className="group text-sm">
+                      <summary className="flex cursor-pointer items-center gap-1 text-muted-foreground select-none hover:text-foreground">
+                        <ChevronRight className="size-3.5 transition-transform group-open:rotate-90" /> Technical details
                       </summary>
-                      <div className="p-2 bg-neutral-950 text-neutral-200 font-mono text-[10px] overflow-x-auto leading-relaxed max-h-48">
-                        <pre>{JSON.stringify(messageDetail.normalized_message, null, 2)}</pre>
+                      <div className="mt-3 flex flex-col gap-3">
+                        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-xs text-muted-foreground">
+                          <dt>Reference</dt>
+                          <dd className="break-all">{messageDetail.correlation_id}</dd>
+                          <dt>Status</dt>
+                          <dd>{messageDetail.processing_status}{messageDetail.error_code ? ` · ${messageDetail.error_code}` : ''}</dd>
+                        </dl>
+                        {messageDetail.traces && messageDetail.traces.length > 0 && (
+                          <ul className="divide-y rounded-lg border text-xs">
+                            {messageDetail.traces.map((trace, idx) => (
+                              <li key={idx} className="flex items-start justify-between gap-3 px-3 py-2">
+                                <span className="min-w-0">
+                                  <span className="font-medium capitalize">{trace.stage.replace(/_/g, ' ')}</span>
+                                  {trace.error_message && <span className="block text-destructive">{trace.error_message}</span>}
+                                </span>
+                                <span className={trace.succeeded ? 'shrink-0 text-success' : 'shrink-0 text-destructive'}>
+                                  {trace.succeeded ? 'OK' : 'Failed'}
+                                  {trace.duration_ms !== null && trace.duration_ms !== undefined ? ` · ${trace.duration_ms} ms` : ''}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {messageDetail.normalized_message && (
+                          <pre className="max-h-48 overflow-auto rounded-lg bg-neutral-950 p-2 text-[10px] leading-relaxed text-neutral-200">
+                            {JSON.stringify(messageDetail.normalized_message, null, 2)}
+                          </pre>
+                        )}
                       </div>
                     </details>
-                  </div>
-                )}
-              </div>
-            ) : (
-              /* Conversation Context view */
-              <div className="flex flex-col h-full p-4 space-y-4">
-                <div className="bg-yellow-500/5 border border-yellow-500/20 text-muted-foreground p-3 rounded-[4px] text-[10px] flex gap-1.5 shrink-0">
-                  <Info className="size-3.5 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
-                  <span>
-                    Showing up to 100 chronological messages for this identity. The message inspected to open this context is <strong>highlighted</strong>.
-                  </span>
-                </div>
+                  </SheetSection>
 
-                {isConversationLoading ? (
-                  <div className="flex h-32 items-center justify-center text-xs text-muted-foreground gap-2">
-                    <Loader2 className="size-4 animate-spin text-primary" />
-                    Loading conversation timeline...
-                  </div>
-                ) : !conversationData || conversationData.items.length === 0 ? (
-                  <div className="text-center italic text-muted-foreground text-xs py-8">
-                    No message history found for this number.
-                  </div>
-                ) : (
-                  <div className="space-y-3 flex-1">
-                    {conversationData.items.map((msg) => {
-                      const isInspected = msg.id === selectedMessageId || msg.id.replace('_reply', '') === selectedMessageId
-                      const isInbound = msg.direction === 'inbound'
-
-                      return (
-                        <div
-                          key={msg.id}
-                          className={`flex flex-col max-w-[85%] space-y-0.5 p-2 rounded-lg border ${
-                            isInbound 
-                              ? 'bg-muted/30 border-border/80 self-start' 
-                              : 'bg-primary/5 text-primary border-primary/20 self-end ml-auto'
-                          } ${isInspected ? 'ring-2 ring-yellow-400 ring-offset-1 border-yellow-400' : ''}`}
-                        >
-                          <div className="flex justify-between items-center gap-4 text-[9px] text-muted-foreground font-semibold">
-                            <span>{isInbound ? `USER (${msg.sender_wa_id})` : 'ASSISTANT'}</span>
-                            <span>{new Date(msg.occurred_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                          </div>
-                          <p className="text-xs text-foreground font-normal leading-relaxed whitespace-pre-wrap">
-                            {msg.body_text || <span className="text-muted-foreground/60 italic">[Media message]</span>}
-                          </p>
-                          {isInspected && (
-                            <span className="text-[8px] text-yellow-600 dark:text-yellow-400 font-bold block text-right">
-                              (Inspected Message)
-                            </span>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-          <div className="p-3 border-t bg-muted/10 flex justify-end shrink-0">
-            <Button size="sm" onClick={() => setSelectedMessageId(null)} className="h-8 w-20 font-bold rounded-sm">
-              Close
-            </Button>
-          </div>
+                  <SheetFooter className="flex-row items-center gap-2 border-t px-5 py-3">
+                    {number && (
+                      <Button asChild size="sm" variant="outline" className="gap-1.5">
+                        <Link to={`/whatsapp?with=${number}`}>
+                          <MessageSquare className="size-3.5" /> Open the whole chat
+                        </Link>
+                      </Button>
+                    )}
+                  </SheetFooter>
+                </>
+              )
+            })()
+          )}
         </SheetContent>
       </Sheet>
     </div>

@@ -354,6 +354,20 @@ pass the same.
 | Finance, Login / Signup | No — old template look (Signup: SS-18 intro) |
 | Dialogs (project, site, person, access, WhatsApp number, record delivery / use / move, correction) | Yes (WEB-29): sentence case, plain words, no fake buttons |
 
+### Filters are dropdowns (WEB-40)
+
+Filters are compact dropdowns (`components/filter-select.tsx`:
+`FilterSelect`, `PeriodSelect` -- "Last 30 days", "Pick dates…" opens two
+date boxes), not rows of pill buttons. Pills (`Segmented`) are kept only for
+switching between a page's views (Attendance / Workers, Ledger /
+Catalogue). A page's view switch, filters and export share one toolbar row:
+the switch on the left, filters and export on the right. Used on Labour
+(both views), Materials, Reports, Team and Projects.
+
+The work item panel's Updates are a timeline with an icon and colour per
+kind (WEB-39): started / progress / resumed blue, paused amber, completed
+green, note grey, with the quantity added as a green pill.
+
 ### Company at the top of the sidebar (WEB-38)
 
 A row, not a labelled box: the company's logo on white (or its initials on

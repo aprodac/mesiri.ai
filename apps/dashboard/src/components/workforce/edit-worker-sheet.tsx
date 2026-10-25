@@ -1,16 +1,10 @@
 import * as React from 'react'
-import { HardHat, Save, UserX, UserCheck } from 'lucide-react'
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
+import { Save, UserX, UserCheck } from 'lucide-react'
+import { Sheet, SheetContent, SheetFooter } from '@/components/ui/sheet'
+import { SheetHero } from '@/components/detail-sheet'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
 import {
   Select,
   SelectContent,
@@ -27,6 +21,8 @@ interface EditWorkerSheetProps {
   onSuccess: () => void
 }
 
+// WEB-39: the side-panel layout (detail-sheet.tsx), plain labels, actions in
+// the footer: Retire / Bring back on the left, Save on the right.
 export function EditWorkerSheet({ worker, open, onOpenChange, onSuccess }: EditWorkerSheetProps) {
   const [name, setName] = React.useState('')
   const [trade, setTrade] = React.useState('')
@@ -83,7 +79,7 @@ export function EditWorkerSheet({ worker, open, onOpenChange, onSuccess }: EditW
   const handleToggleStatus = async () => {
     const nextStatus = status === 'active' ? 'inactive' : 'active'
     if (nextStatus === 'inactive') {
-      if (!confirm(`Are you sure you want to retire ${worker.name}? They will no longer appear in active attendance pickers.`)) {
+      if (!confirm(`Retire ${worker.name}? They stay in past attendance but are no longer offered for new days.`)) {
         return
       }
     }
@@ -103,146 +99,75 @@ export function EditWorkerSheet({ worker, open, onOpenChange, onSuccess }: EditW
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-[440px] flex flex-col justify-between">
-        <div className="space-y-4">
-          <SheetHeader className="pb-2 border-b">
-            <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-              <div className="p-1.5 rounded-md bg-amber-500/10 border border-amber-500/20">
-                <HardHat className="size-5" />
-              </div>
-              <div className="flex items-center gap-2">
-                <SheetTitle className="text-base font-bold">Edit Worker Profile</SheetTitle>
-                <Badge
-                  variant="outline"
-                  className={
-                    status === 'active'
-                      ? 'border-emerald-500/30 text-emerald-600 bg-emerald-500/10'
-                      : 'border-slate-500/30 text-slate-500 bg-slate-500/10'
-                  }
-                >
-                  {status.toUpperCase()}
-                </Badge>
-              </div>
-            </div>
-            <SheetDescription className="text-xs">
-              Update site worker credentials, default daily wages, or change status.
-            </SheetDescription>
-          </SheetHeader>
+      <SheetContent className="w-full gap-0 overflow-y-auto p-0 sm:max-w-[440px]">
+        <SheetHero tone={status === 'active' ? 'neutral' : 'warn'} kicker={status === 'active' ? 'Working' : 'Retired'} title={`Edit ${worker.name}`}>
+          <span>Changes apply to new attendance; past days keep what was recorded.</span>
+        </SheetHero>
 
-          <form id="edit-worker-form" onSubmit={handleSave} className="space-y-3.5 text-xs py-2">
-            {error && (
-              <div className="p-2.5 rounded-md bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs">
-                {error}
-              </div>
-            )}
+        <form id="edit-worker-form" onSubmit={handleSave} className="flex flex-col gap-4 px-5 py-4 text-sm">
+          {error && <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive">{error}</p>}
 
-            <div className="space-y-1">
-              <Label htmlFor="edit-name" className="text-xs font-semibold">
-                Worker Name
-              </Label>
-              <Input
-                id="edit-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="h-9 text-xs"
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label htmlFor="edit-trade" className="text-xs font-semibold">
-                  Trade / Skill
-                </Label>
-                <Input
-                  id="edit-trade"
-                  value={trade}
-                  onChange={(e) => setTrade(e.target.value)}
-                  className="h-9 text-xs"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold">Worker Type</Label>
-                <Select value={workerType} onValueChange={(val: any) => setWorkerType(val)}>
-                  <SelectTrigger className="h-9 text-xs">
-                    <SelectValue placeholder="Select Type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="permanent" className="text-xs">Permanent Staff</SelectItem>
-                    <SelectItem value="temporary" className="text-xs">Temporary Labor</SelectItem>
-                    <SelectItem value="contractor" className="text-xs">Subcontractor</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label htmlFor="edit-dailyWage" className="text-xs font-semibold">
-                  Default Daily Wage (₹)
-                </Label>
-                <Input
-                  id="edit-dailyWage"
-                  type="number"
-                  value={dailyWage}
-                  onChange={(e) => setDailyWage(e.target.value)}
-                  className="h-9 text-xs font-mono"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label htmlFor="edit-contractor" className="text-xs font-semibold">
-                  Contractor / Agency
-                </Label>
-                <Input
-                  id="edit-contractor"
-                  value={contractor}
-                  onChange={(e) => setContractor(e.target.value)}
-                  className="h-9 text-xs"
-                />
-              </div>
-            </div>
-          </form>
-        </div>
-
-        <div className="space-y-3 pt-4 border-t">
-          <div className="flex items-center justify-between">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleToggleStatus}
-              disabled={saving}
-              className={
-                status === 'active'
-                  ? 'text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20 text-xs'
-                  : 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 text-xs'
-              }
-            >
-              {status === 'active' ? (
-                <>
-                  <UserX className="size-3.5 mr-1.5" /> Retire Worker
-                </>
-              ) : (
-                <>
-                  <UserCheck className="size-3.5 mr-1.5" /> Reactivate Worker
-                </>
-              )}
-            </Button>
-
-            <Button
-              form="edit-worker-form"
-              type="submit"
-              size="sm"
-              disabled={saving}
-              className="bg-amber-600 hover:bg-amber-700 text-white font-bold gap-1.5"
-            >
-              <Save className="size-3.5" />
-              {saving ? 'Saving...' : 'Save Profile'}
-            </Button>
+          <div className="grid gap-1.5">
+            <Label htmlFor="edit-name">Name</Label>
+            <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
-        </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="edit-trade">Trade</Label>
+              <Input id="edit-trade" value={trade} onChange={(e) => setTrade(e.target.value)} placeholder="Mason" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Type</Label>
+              <Select value={workerType} onValueChange={(val: 'permanent' | 'temporary' | 'contractor') => setWorkerType(val)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="permanent">Own worker</SelectItem>
+                  <SelectItem value="temporary">Temporary</SelectItem>
+                  <SelectItem value="contractor">Contractor's worker</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="edit-dailyWage">Wage a day (₹)</Label>
+              <Input id="edit-dailyWage" type="number" inputMode="numeric" value={dailyWage} onChange={(e) => setDailyWage(e.target.value)} className="tabular-nums" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="edit-contractor">Contractor</Label>
+              <Input id="edit-contractor" value={contractor} onChange={(e) => setContractor(e.target.value)} placeholder="Own worker" />
+            </div>
+          </div>
+        </form>
+
+        <SheetFooter className="flex-row items-center gap-2 border-t px-5 py-3">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={handleToggleStatus}
+            disabled={saving}
+            className={status === 'active' ? 'gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive' : 'gap-1.5 text-success hover:bg-success-soft hover:text-success'}
+          >
+            {status === 'active' ? (
+              <>
+                <UserX className="size-3.5" /> Retire
+              </>
+            ) : (
+              <>
+                <UserCheck className="size-3.5" /> Bring back
+              </>
+            )}
+          </Button>
+          <Button form="edit-worker-form" type="submit" size="sm" disabled={saving} className="ml-auto gap-1.5">
+            <Save className="size-3.5" />
+            {saving ? 'Saving…' : 'Save'}
+          </Button>
+        </SheetFooter>
       </SheetContent>
     </Sheet>
   )

@@ -1,12 +1,11 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowRight, Download, FileText, MessageSquare, TriangleAlert } from 'lucide-react'
+import { ArrowLeftRight, ArrowRight, Download, FileText, MapPin, MessageSquare, Package, TriangleAlert } from 'lucide-react'
 import { ArrowDownLeft as IcArrowDownLeft, ArrowUpRight as IcArrowUpRight, Warehouse as IcWarehouse, Package as IcPackage, IndianRupee as IcIndianRupee } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Callout, Segmented, StatStrip } from '@/components/dpr-page'
+import { Callout, StatStrip } from '@/components/dpr-page'
 import { dayBand } from '@/lib/cues'
 import {
   fetchInventory,
@@ -21,7 +20,8 @@ import { fetchUsers } from '@/lib/api'
 import { useSiteNames } from '@/lib/site-names'
 import { localIsoDate, qty } from '@/lib/site-day'
 import { useUrlState } from '@/lib/url-state'
-import { PERIOD_OPTIONS, periodRange, type Period } from '@/lib/period'
+import { periodRange, type Period } from '@/lib/period'
+import { FilterSelect, PeriodSelect } from '@/components/filter-select'
 import { cn } from '@/lib/utils'
 import { MovementDetailsSheet } from './movement-details-sheet'
 import { InvoiceDetailsSheet } from './invoice-details-sheet'
@@ -35,7 +35,7 @@ type Dir = 'all' | 'in' | 'out'
 
 const dayLabel = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })
 
-export function LedgerView({ projectId, siteId: scopeSiteId }: { projectId: string | null; siteId: string | null }) {
+export function LedgerView({ projectId, siteId: scopeSiteId, leading }: { projectId: string | null; siteId: string | null; leading?: React.ReactNode }) {
   const siteNames = useSiteNames()
   const [materialId, setMaterialId] = useUrlState<string>('material', 'all')
   const [pickedSite, setPickedSite] = useUrlState<string>('at', 'all')
@@ -156,10 +156,12 @@ export function LedgerView({ projectId, siteId: scopeSiteId }: { projectId: stri
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Filters */}
+      {/* Filters -- WEB-40: all dropdowns, in one row after the view switch. */}
       <div className="flex flex-wrap items-center gap-2">
+        {leading}
         <Select value={materialId} onValueChange={setMaterialId}>
-          <SelectTrigger className="h-9 w-[190px]" aria-label="Material">
+          <SelectTrigger className="h-8 w-[170px] gap-1.5 rounded-md [&>span]:flex-1 [&>span]:text-left" aria-label="Material">
+            <Package className="size-3.5 text-muted-foreground" />
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -176,7 +178,8 @@ export function LedgerView({ projectId, siteId: scopeSiteId }: { projectId: stri
         </Select>
         {!scopeSiteId && sitesInScope.length > 1 && (
           <Select value={pickedSite} onValueChange={setPickedSite}>
-            <SelectTrigger className="h-9 w-[190px]" aria-label="Site">
+            <SelectTrigger className="h-8 w-[170px] gap-1.5 rounded-md [&>span]:flex-1 [&>span]:text-left" aria-label="Site">
+              <MapPin className="size-3.5 text-muted-foreground" />
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -190,29 +193,19 @@ export function LedgerView({ projectId, siteId: scopeSiteId }: { projectId: stri
             </SelectContent>
           </Select>
         )}
-        <Segmented<Period>
-          label="Period"
-          value={period}
-          onChange={setPeriod}
-          options={PERIOD_OPTIONS}
-        />
-        <Segmented<Dir>
+        <PeriodSelect value={period} onChange={setPeriod} from={from} to={to} onFrom={setFrom} onTo={setTo} />
+        <FilterSelect<Dir>
           label="Direction"
           value={dir}
           onChange={setDir}
+          icon={ArrowLeftRight}
+          className="w-[140px]"
           options={[
             { value: 'all', label: 'In and out' },
-            { value: 'in', label: 'In' },
-            { value: 'out', label: 'Out' },
+            { value: 'in', label: 'Only in' },
+            { value: 'out', label: 'Only out' },
           ]}
         />
-        {period === 'custom' && (
-          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Input type="date" aria-label="From" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="h-9 w-[150px] dark:[color-scheme:dark]" />
-            to
-            <Input type="date" aria-label="To" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="h-9 w-[150px] dark:[color-scheme:dark]" />
-          </div>
-        )}
         <div className="ml-auto flex items-center gap-1">
           {filtered && (
             <Button

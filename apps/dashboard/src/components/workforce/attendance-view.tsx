@@ -4,17 +4,17 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { ChevronRight, Download, HardHat, MessageSquare, TriangleAlert } from 'lucide-react'
 import { Users as IcUsers, TrendingUp as IcTrendingUp, CalendarDays as IcCalendarDays, IndianRupee as IcIndianRupee } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/components/ui/toast-notification'
-import { Callout, DprSection, Segmented, StatStrip } from '@/components/dpr-page'
+import { Callout, DprSection, StatStrip } from '@/components/dpr-page'
 import { dayBand } from '@/lib/cues'
 import { fetchLabourStatementApi } from '@/lib/api'
 import { downloadTextFile, toCsv } from '@/lib/export'
 import { downloadStatement, fetchAllAttendance, fetchAttendanceLines, rangeName, STATEMENTS } from '@/lib/labour'
-import { PERIOD_OPTIONS, periodRange, type Period } from '@/lib/period'
+import { periodRange, type Period } from '@/lib/period'
+import { PeriodSelect } from '@/components/filter-select'
 import { useSiteNames } from '@/lib/site-names'
 import { longDate, plural } from '@/lib/site-day'
 import { useUrlState } from '@/lib/url-state'
@@ -36,7 +36,7 @@ const trade = (value: string | null) => {
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
-export function AttendanceView({ projectId, siteId }: { projectId: string | null; siteId: string | null }) {
+export function AttendanceView({ projectId, siteId, leading }: { projectId: string | null; siteId: string | null; leading?: React.ReactNode }) {
   const toast = useToast()
   const siteNames = useSiteNames()
   const [period, setPeriod] = useUrlState<Period>('period', '30d')
@@ -112,17 +112,12 @@ export function AttendanceView({ projectId, siteId }: { projectId: string | null
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Segmented<Period> label="Period" value={period} onChange={setPeriod} options={PERIOD_OPTIONS} />
-        {period === 'custom' && (
-          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Input type="date" aria-label="From" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="h-9 w-[150px] dark:[color-scheme:dark]" />
-            to
-            <Input type="date" aria-label="To" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="h-9 w-[150px] dark:[color-scheme:dark]" />
-          </div>
-        )}
+        {leading}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+        <PeriodSelect value={period} onChange={setPeriod} from={from} to={to} onFrom={setFrom} onTo={setTo} />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="ml-auto gap-1.5" disabled={!reports.data}>
+            <Button variant="outline" size="sm" className="gap-1.5" disabled={!reports.data}>
               <Download className="size-3.5" /> Export
             </Button>
           </DropdownMenuTrigger>
@@ -137,6 +132,7 @@ export function AttendanceView({ projectId, siteId }: { projectId: string | null
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+        </div>
       </div>
 
       {reports.isError ? (

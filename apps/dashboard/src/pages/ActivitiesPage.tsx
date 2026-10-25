@@ -17,6 +17,8 @@ import {
   CircleDashed,
   CirclePause,
   TriangleAlert,
+  TrendingUp,
+  StickyNote,
 } from 'lucide-react'
 import { ListChecks as IcListChecks, CirclePlay as IcCirclePlay, CircleCheck as IcCircleCheck, CirclePause as IcCirclePause } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
@@ -68,6 +70,17 @@ const STATUS: Record<string, { label: string; icon: React.ComponentType<{ classN
 
 function statusOf(status: string) {
   return STATUS[status.toLowerCase()] ?? { label: status, icon: CircleDashed, className: 'text-muted-foreground', chip: 'bg-muted text-muted-foreground' }
+}
+
+// WEB-39: how each kind of progress update looks in a work item's timeline
+// (progress_update_kind: STARTED, PROGRESS, PAUSED, RESUMED, COMPLETED, NOTE).
+const UPDATE_KINDS: Record<string, { label: string; icon: React.ComponentType<{ className?: string }>; dot: string; text: string }> = {
+  STARTED: { label: 'Started', icon: CirclePlay, dot: 'bg-info-soft text-info', text: 'text-info' },
+  PROGRESS: { label: 'Progress', icon: TrendingUp, dot: 'bg-info-soft text-info', text: '' },
+  PAUSED: { label: 'Paused', icon: CirclePause, dot: 'bg-draft-soft text-draft', text: 'text-draft' },
+  RESUMED: { label: 'Resumed', icon: CirclePlay, dot: 'bg-info-soft text-info', text: 'text-info' },
+  COMPLETED: { label: 'Completed', icon: CircleCheck, dot: 'bg-success-soft text-success', text: 'text-success' },
+  NOTE: { label: 'Note', icon: StickyNote, dot: 'bg-muted text-muted-foreground', text: '' },
 }
 
 function humanize(value: string | null | undefined): string {
@@ -701,46 +714,63 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
 
               {detailData.progress_updates && detailData.progress_updates.length > 0 && (
                 <SheetSection title={`Updates · ${detailData.progress_updates.length}`} className="border-t">
-                  <ol className="ml-1.5 flex flex-col gap-3 border-l-2 py-1 pl-4">
-                    {detailData.progress_updates.map((upd) => {
+                  {/* WEB-39: each kind of update has its own icon and colour --
+                      started/progress blue, paused amber, resumed blue,
+                      completed green, note grey -- with the quantity added
+                      and the time in plain words. */}
+                  <ol className="relative flex flex-col">
+                    {detailData.progress_updates.map((upd, idx) => {
                       const superseded = detailData.progress_updates.some((other) => other.supersedes_id === upd.id)
+                      const kind = UPDATE_KINDS[upd.update_kind?.toUpperCase()] ?? UPDATE_KINDS.NOTE
+                      const last = idx === detailData.progress_updates.length - 1
                       return (
-                        <li key={upd.id} className={cn('relative flex flex-col gap-1 text-sm', superseded && 'opacity-50')}>
-                          <span className="absolute top-1.5 -left-[22px] size-2.5 rounded-full bg-info" aria-hidden="true" />
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-medium capitalize">
-                              {upd.update_kind}
-                              {upd.quantity != null && <span className="ml-2 font-semibold text-success tabular-nums">+{upd.quantity} {upd.unit || ''}</span>}
-                            </span>
-                            <div className="flex shrink-0 items-center gap-2">
-                              <span className="text-xs text-muted-foreground">
-                                {new Date(upd.occurred_at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
+                        <li key={upd.id} className={cn('relative flex gap-3 pb-4 text-sm', last && 'pb-0', superseded && 'opacity-50')}>
+                          {!last && <span className="absolute top-7 bottom-0 left-[13px] w-px bg-border" aria-hidden="true" />}
+                          <span className={cn('relative z-10 flex size-7 shrink-0 items-center justify-center rounded-full', kind.dot)} aria-hidden="true">
+                            <kind.icon className="size-3.5" />
+                          </span>
+                          <div className="flex min-w-0 flex-1 flex-col gap-0.5 pt-0.5">
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                <span className={cn('font-semibold', kind.text)}>{kind.label}</span>
+                                {upd.quantity != null && Number(upd.quantity) !== 0 && (
+                                  <span className="rounded-full bg-success-soft px-2 py-0.5 text-xs font-semibold text-success tabular-nums">
+                                    +{qty(String(upd.quantity))} {upd.unit || ''}
+                                  </span>
+                                )}
                               </span>
-                              {!superseded && (
-                                <>
-                                  <button
-                                    type="button"
-                                    className="text-muted-foreground hover:text-foreground"
-                                    title="Correct this quantity"
-                                    onClick={() => openCorrectUpdate(upd.id, upd.quantity)}
-                                  >
-                                    <Pencil className="size-3.5" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="text-muted-foreground hover:text-destructive"
-                                    title="Remove this update"
-                                    onClick={() => { setVoidUpdateId(upd.id); setVoidUpdateReason(''); setVoidUpdateError(null) }}
-                                  >
-                                    <Trash2 className="size-3.5" />
-                                  </button>
-                                </>
-                              )}
+                              <span className="flex shrink-0 items-center gap-1.5">
+                                <span className="text-xs text-muted-foreground tabular-nums">
+                                  {new Date(upd.occurred_at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
+                                </span>
+                                {!superseded && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                      title="Correct this quantity"
+                                      aria-label="Correct this update"
+                                      onClick={() => openCorrectUpdate(upd.id, upd.quantity)}
+                                    >
+                                      <Pencil className="size-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="rounded p-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                      title="Remove this update"
+                                      aria-label="Remove this update"
+                                      onClick={() => { setVoidUpdateId(upd.id); setVoidUpdateReason(''); setVoidUpdateError(null) }}
+                                    >
+                                      <Trash2 className="size-3.5" />
+                                    </button>
+                                  </>
+                                )}
+                              </span>
                             </div>
+                            {upd.narrative && <p className="text-muted-foreground">{upd.narrative}</p>}
+                            {upd.supersedes_id && <p className="text-xs text-draft">Corrects an earlier entry</p>}
+                            {superseded && <p className="text-xs text-muted-foreground italic">Replaced by a correction</p>}
                           </div>
-                          {upd.narrative && <p className="text-muted-foreground">{upd.narrative}</p>}
-                          {upd.supersedes_id && <p className="text-xs text-draft">Corrects an earlier entry</p>}
-                          {superseded && <p className="text-xs text-muted-foreground italic">Replaced by a correction</p>}
                         </li>
                       )
                     })}

@@ -11,13 +11,14 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/components/ui/toast-notification'
-import { PageError, PageHeader, Segmented } from '@/components/dpr-page'
+import { PageError, PageHeader } from '@/components/dpr-page'
 import { ROW_ACCENT } from '@/lib/cues'
 import { AddEditProjectDialog } from '@/components/project-dialogs'
 import { archiveProject, fetchProjectMembers, fetchProjectsFull, fetchSitesFull, type Project } from '@/lib/projects'
 import { CHIP, plural } from '@/lib/site-day'
 import { usePageTitle } from '@/lib/page-title'
 import { useUrlState } from '@/lib/url-state'
+import { FilterSelect } from '@/components/filter-select'
 import { useReadOnly } from '@/lib/trial'
 import { cn, formatClock } from '@/lib/utils'
 
@@ -119,14 +120,15 @@ export default function Projects() {
             <Input placeholder="Search projects…" aria-label="Search projects" value={search} onChange={(e) => setSearch(e.target.value)} className="h-9 pl-8" />
           </div>
           {paused.length > 0 && (
-            <Segmented<Show>
+            <FilterSelect<Show>
               label="Show"
               value={show}
               onChange={setShow}
+              className="h-9 w-[180px]"
               options={[
-                { value: 'current', label: 'Running', count: current },
-                { value: 'paused', label: 'Paused or done', count: paused.length },
-                { value: 'all', label: 'All' },
+                { value: 'current', label: `Running · ${current}` },
+                { value: 'paused', label: `Paused or done · ${paused.length}` },
+                { value: 'all', label: 'All projects' },
               ]}
             />
           )}
