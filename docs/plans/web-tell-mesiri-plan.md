@@ -3,6 +3,18 @@
 **Status:** approved by Alan 25 Oct 2026 (relayed in session), with the recommended answers to the three decisions below. In progress (tracker WEB-36).
 
 **Built so far:** push 1, `POST /assistant/messages` (text and button taps) in `apps/whatsapp-assistant/src/web_assistant/router.py`, sharing `runtime/reply_capture.py` with the control panel's `simulate`. The panel (push 3) comes after voice (push 2), so it is built once with both.
+
+**Push 2 (voice, server side):** `POST /assistant/messages/voice` takes the recording as
+the request body, **Ogg/Opus only** (415 otherwise), up to 5 MB and about a minute. Found
+while building it: the speech adapter labels every upload `audio.ogg` and the billing reads
+the length from the Ogg file, so the browser will **encode Ogg/Opus itself** (opus-recorder,
+WebAssembly libopus) rather than send Chrome's WebM or Safari's MP4. No change to the
+shared speech adapter, no server-side converter (the VPS may not have ffmpeg), no new
+Python dependency (raw body, not multipart). The voice note is stored at
+`media/{id}/web-voice.ogg` and sent as a `VOICE` message; its words come back as
+`transcript`, read from the message's log row the agent writes them to, so it is
+transcribed once. The English translation is not returned (it isn't stored), so the panel
+shows the words as heard.
 **Why approval:** it adds a way for a signed-in dashboard user to make Mesiri act on their
 behalf (a new authenticated entry into the assistant). CLAUDE.md stop rule 5:
 security-sensitive (auth, permissions).
