@@ -292,6 +292,43 @@ def _count(n: int, one: str, many: str) -> str:
     return f"{n} {one if n == 1 else many}"
 
 
+#: Unit codes as a person says them (the rest are shown as stored).
+_UNIT_WORDS = {"sqft": "sq ft", "sqm": "sq m", "cum": "cu m", "nos": "nos"}
+
+
+def _amount(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
+def _works_with_amounts(activities: list[dict[str, Any]]) -> list[str]:
+    """Request 116 F: each kind of work with what was done, summed across the
+    day's entries ("Plastering 150 sq ft"), not just its name. Work with no
+    quantity keeps its bare name."""
+    from workflows.readable import format_quantity
+
+    order: dict[str, dict[str, float]] = {}
+    for activity in activities:
+        name = str(activity.get("work_type") or "").replace("_", " ").strip().capitalize()
+        if not name:
+            continue
+        totals = order.setdefault(name, {})
+        for q in activity.get("quantities") or []:
+            number = _amount(q.get("quantity"))
+            unit = str(q.get("unit") or "").strip()
+            if number is not None:
+                unit = _UNIT_WORDS.get(unit.lower(), unit)
+                totals[unit] = totals.get(unit, 0.0) + number
+    out = []
+    for name, totals in order.items():
+        amounts = " + ".join(f"{format_quantity(n)} {u}".strip() for u, n in totals.items())
+        out.append(f"{name} {amounts}" if amounts else name)
+    return out
+
+
 def day_lines(payload: dict[str, Any]) -> list[str]:
     """What the day holds, one short line per section."""
     if (payload.get("conditions") or {}).get("site_working") == "none":
@@ -300,12 +337,8 @@ def day_lines(payload: dict[str, Any]) -> list[str]:
     if payload.get("activity_count"):
         # DPR-07: what is being confirmed, not just how many ("Confirm all" on
         # "Work: 2 items" was a tap on something unseen).
-        works = [
-            str(a.get("work_type") or "").replace("_", " ").strip().capitalize()
-            for a in payload.get("activities") or []
-            if a.get("review") != "rejected"
-        ]
-        works = list(dict.fromkeys(w for w in works if w))
+        kept = [a for a in payload.get("activities") or [] if a.get("review") != "rejected"]
+        works = _works_with_amounts(kept)
         count = _count(int(payload["activity_count"]), "item", "items")
         shown = ", ".join(works[:4]) + (f" and {len(works) - 4} more" if len(works) > 4 else "")
         lines.append(f"• Work: {shown} ({count})" if shown else f"• Work: {count}")

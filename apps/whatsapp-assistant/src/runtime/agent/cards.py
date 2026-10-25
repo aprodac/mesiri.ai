@@ -67,6 +67,8 @@ class Card:
     state: str
     items: list[CardItem] = field(default_factory=list)
     created: float = 0.0
+    #: The one site every entry is for, so "✅ Saved" can name it (request 116).
+    site: str = ""
 
     def to_json(self) -> dict[str, Any]:
         return asdict(self)
@@ -75,7 +77,13 @@ class Card:
     def from_json(cls, raw: Any) -> Card | None:
         try:
             items = [CardItem(**item) for item in raw.get("items", [])]
-            return cls(id=str(raw["id"]), state=str(raw["state"]), items=items, created=float(raw.get("created", 0)))
+            return cls(
+                id=str(raw["id"]),
+                state=str(raw["state"]),
+                items=items,
+                created=float(raw.get("created", 0)),
+                site=str(raw.get("site") or ""),
+            )
         except Exception:  # noqa: BLE001 -- an unreadable card is no card
             return None
 
@@ -91,8 +99,8 @@ class Card:
         return found
 
 
-def new_card(state: str, items: list[CardItem]) -> Card:
-    return Card(id=uuid.uuid4().hex[:6], state=state, items=items, created=time.time())
+def new_card(state: str, items: list[CardItem], site: str = "") -> Card:
+    return Card(id=uuid.uuid4().hex[:6], state=state, items=items, created=time.time(), site=site)
 
 
 def removed_line(items: list[CardItem]) -> str:
@@ -169,7 +177,7 @@ class CardStore:
         if {i.fact for i in card.items} != set(facts):
             return None
         if keep:
-            await self.put(actor, Card(card.id, SAVED, card.items, card.created))
+            await self.put(actor, Card(card.id, SAVED, card.items, card.created, card.site))
         else:
             await self.clear(actor)
         return card
@@ -184,7 +192,7 @@ class CardStore:
         if len(left) == len(card.items):
             return
         if left:
-            await self.put(actor, Card(card.id, card.state, left, card.created))
+            await self.put(actor, Card(card.id, card.state, left, card.created, card.site))
         else:
             await self.clear(actor)
 

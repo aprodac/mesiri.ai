@@ -235,11 +235,25 @@ def question_as_text(spec: ReplySpec) -> ReplySpec:
     return replace(spec, text=f"{spec.text}\n\n{lines}", buttons=None, list_rows=None, list_button_label=None)
 
 
-def tap_reply(action: str, settled: Any) -> str:
+def saved_line(card: Any | None, facts: list[tuple[str, uuid.UUID]]) -> str:
+    """"✅ Saved · Green Villa, Kakkanad: Plastering 50 sq ft (completed)":
+    what the tap saved, from the card's own lines (request 116). The bare
+    "✅ Saved." when the card is gone or does not hold these entries."""
+    wanted = set(facts)
+    items = [i for i in (card.items if card else []) if i.fact in wanted and i.summary]
+    if not items:
+        return SAVED_DONE
+    what = "; ".join(i.summary for i in items)
+    site = getattr(card, "site", "") or ""
+    head = f"{SAVED_DONE[:-1]} · {site}: " if site else f"{SAVED_DONE[:-1]} · "
+    return head + what
+
+
+def tap_reply(action: str, settled: Any, card: Any | None = None, facts: list | None = None) -> str:
     """What the sender hears after tapping Save or Cancel."""
     lines = []
     if settled.done:
-        lines.append(SAVED_DONE if action == SAVE else CANCELLED_DONE)
+        lines.append((saved_line(card, facts or []) if facts else SAVED_DONE) if action == SAVE else CANCELLED_DONE)
     elif not settled.refused:
         lines.append(ALREADY_DONE)
     if settled.refused and not settled.done and len(settled.refused) == 1 and settled.refused[0] in REFUSED_ONE:
@@ -300,7 +314,7 @@ async def handle_tap(
         )
         if settled is None:
             return ReplySpec(text=EXPIRED)
-        lines.append(tap_reply(action, settled))
+        lines.append(tap_reply(action, settled, card, drafts))
     ran = not drafts
     for _kind, action_id in pending:
         if actions is None:

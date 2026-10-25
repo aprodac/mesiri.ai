@@ -724,7 +724,8 @@ def build_message_handlers(
                 items = [*gateway.carry_before, *gateway.card_items, *gateway.carry_after]
                 try:
                     if open_card and items:
-                        await cards.put(ctx, new_card(OPEN, items))
+                        site = _card_site(list(getattr(gateway, "handled", [])), always=True)
+                        await cards.put(ctx, new_card(OPEN, items, site or ""))
                     else:
                         await cards.put(ctx, new_card(LEGACY, []))
                 except Exception:  # noqa: BLE001 -- the card only enables undo and edit
@@ -735,6 +736,15 @@ def build_message_handlers(
                 folded in (buttons for the photo / undo) instead of sent as
                 further messages."""
                 handled_list = list(getattr(gateway, "handled", []))
+                if (
+                    getattr(gateway, "code_shared", False) is True
+                    and not handled_list
+                    and not getattr(gateway, "action_items", ())
+                    and not (reply.buttons or reply.list_rows)
+                ):
+                    # Request 116 H: the code and the message to forward are
+                    # already sent; a third line ("Sheri, join code ...") adds nothing.
+                    return
                 receipt_image = reply.header_image
                 entries = save_button.entries_of(handled_list)
                 action_items = list(getattr(gateway, "action_items", ()))
@@ -804,12 +814,13 @@ def build_message_handlers(
                 await work_site.set_today(ctx, project_id=project_id, site_id=site_id)
                 return site_label(ctx, site_id) or "that site"
 
-            def _card_site(handled_list):  # type: ignore[no-untyped-def]
+            def _card_site(handled_list, *, always=False):  # type: ignore[no-untyped-def]
                 """SIT-11: the one site every entry of a card is for, named only
-                for a sender who has several."""
+                for a sender who has several (``always``: for the "✅ Saved"
+                line, which names it for everyone, request 116)."""
                 from runtime.agent.work_site import short_site_label
 
-                if len(getattr(ctx, "sites", None) or []) < 2:
+                if not always and len(getattr(ctx, "sites", None) or []) < 2:
                     return None
                 site_ids = {
                     str(getattr(getattr(getattr(h.result, "confirmed_action", None), "draft_action", None), "site_id", "") or "")
