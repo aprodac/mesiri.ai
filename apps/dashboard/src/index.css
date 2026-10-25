@@ -198,3 +198,14 @@
 .sidebar-scrollbar-light::-webkit-scrollbar { width: 5px; height: 5px; }
 .sidebar-scrollbar-light::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 99px; }
 .sidebar-scrollbar-light::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.22); }
+
+/* The Live report's thread from a message to where it lands (WEB-37). */
+@keyframes live-draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes live-glow {
+  0% { background-color: color-mix(in srgb, var(--primary) 16%, transparent); }
+  100% { background-color: transparent; }
+}
+

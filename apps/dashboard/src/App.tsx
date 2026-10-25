@@ -4,6 +4,7 @@ import { RequireModule } from '@/components/require-module'
 import Login from '@/pages/Login'
 import Signup from '@/pages/Signup'
 import WelcomePage from '@/pages/WelcomePage'
+import LivePage from '@/pages/LivePage'
 import { RequireAuth } from '@/lib/AuthContext'
 import TodayPage from '@/pages/TodayPage'
 import SiteDayPage from '@/pages/SiteDayPage'
@@ -71,6 +72,8 @@ export default function App() {
         <Route path="/signup" element={<Signup />} />
         {/* After signup (SS-18): full screen, outside the sidebar layout. */}
         <Route path="/welcome" element={<RequireAuth><WelcomePage /></RequireAuth>} />
+        {/* The report writing itself as messages arrive (WEB-37): full screen, for demos too. */}
+        <Route path="/live" element={<RequireAuth><LivePage /></RequireAuth>} />
         <Route path="/" element={<AppLayout />}>
           <Route index element={<Moved to="/today" />} />
 

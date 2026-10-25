@@ -1943,6 +1943,8 @@ export interface FactSources {
     received_at: string | null
     sender_name: string | null
     sender_number: string | null
+    /** Where it came in: 'whatsapp', or 'dashboard' for Tell Mesiri (WEB-36). */
+    source?: string
   }[]
   readings: {
     provider: string | null

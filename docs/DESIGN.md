@@ -34,6 +34,7 @@ a view switch (`Segmented`), not several sidebar entries.
 | **Company** | `/company` | details, letterhead |
 | **WhatsApp** | `/whatsapp` (`?view=messages`, `?view=automations`) | Conversations · All messages · Automations (module) (was WhatsApp Inbox, Automations, Company > messages) |
 | Finance | `/finance/...` | only when the company has the module |
+| *(no sidebar)* | `/live` | the Live report: the day writing itself as messages come in; Replay the day; Tell Mesiri |
 | *(no sidebar)* | `/login`, `/signup`, `/welcome` | sign-in and signup with the intro conversation on the left on desktop (sign-in shows only the form below desktop width); the first-update screen after signup (SS-18) |
 
 Rules:

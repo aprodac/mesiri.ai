@@ -4,7 +4,7 @@ import { Mic, Send, Square } from 'lucide-react'
 import { sendToMesiri, sendVoiceToMesiri, type AssistantReply, type AssistantResponse } from '@/lib/api'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { canRecord, MAX_SECONDS, startRecording, type Recording } from '@/lib/voice-recorder'
-import { Conversation, Exchange, Label } from '@/components/onboarding/conversation'
+import { Conversation, Exchange, Label, WordsIn } from '@/components/onboarding/conversation'
 import { cn } from '@/lib/utils'
 
 // Tell Mesiri from the dashboard (WEB-36): speak or type an update and Mesiri
@@ -35,25 +35,6 @@ function clock(d: Date): string {
 function duration(seconds: number): string {
   const s = Math.max(0, Math.round(seconds))
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-}
-
-/** Words arriving one by one, with CSS only (no clock needed here). */
-function WordsIn({ text, className, lang }: { text: string; className?: string; lang?: string }) {
-  return (
-    <p className={cn('m-0', className)} lang={lang}>
-      {text.split(' ').map((word, i) => (
-        <React.Fragment key={i}>
-          {i > 0 && ' '}
-          <span
-            className="inline-block animate-in fade-in slide-in-from-bottom-1 fill-mode-both duration-300 motion-reduce:animate-none"
-            style={{ animationDelay: `${Math.min(i, 40) * 40}ms` }}
-          >
-            {word}
-          </span>
-        </React.Fragment>
-      ))}
-    </p>
-  )
 }
 
 function LiveBars({ levels }: { levels: number[] }) {

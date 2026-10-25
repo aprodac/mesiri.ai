@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Building2, ChevronLeft, ChevronRight, CircleCheck, CircleDashed, CircleDot, RefreshCw, Send, TriangleAlert } from 'lucide-react'
+import { Building2, ChevronLeft, ChevronRight, CircleCheck, CircleDashed, CircleDot, Radio, RefreshCw, Send, TriangleAlert } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
 import {
   fetchSiteDaysApi,
@@ -305,6 +305,13 @@ export default function TodayPage() {
         }
         actions={
           <>
+            {isToday && projects.length > 0 && (
+              <Button asChild variant="outline" size="sm" className="h-8 gap-1.5">
+                <Link to="/live" title="Watch today's report write itself as updates come in">
+                  <Radio className="size-4 text-primary" /> Live
+                </Link>
+              </Button>
+            )}
             <div className="flex items-center rounded-lg border">
               <Button variant="ghost" size="icon" className="size-8" onClick={() => shiftDay(-1)} title="Previous day" aria-label="Previous day">
                 <ChevronLeft className="size-4" />

@@ -304,7 +304,9 @@ class PostgresFactReviewRepository:
                 await self._conn.execute(
                     text(
                         "SELECT im.id, im.message_type, im.body_text, im.media_object_key, "
-                        "im.received_at, im.sender_wa_id, u.full_name AS sender_name "
+                        "im.received_at, im.sender_wa_id, u.full_name AS sender_name, "
+                        # Where it came in: "dashboard" for Tell Mesiri (WEB-36), else WhatsApp.
+                        "COALESCE(im.raw_payload::jsonb ->> 'source', 'whatsapp') AS source "
                         "FROM inbound_messages im "
                         "LEFT JOIN users u ON u.organization_id = im.organization_id "
                         "  AND u.whatsapp_number IS NOT NULL "
@@ -346,6 +348,7 @@ class PostgresFactReviewRepository:
                     "received_at": when(m["received_at"]),
                     "sender_name": m["sender_name"],
                     "sender_number": m["sender_wa_id"],
+                    "source": m.get("source") or "whatsapp",
                 }
                 for m in messages
             ],
