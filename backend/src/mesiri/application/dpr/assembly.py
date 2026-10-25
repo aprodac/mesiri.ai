@@ -134,6 +134,15 @@ def _material_summary(
     ]
 
 
+def _quantities_of(row: dict[str, Any], quantities_by_activity: dict[Any, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    """The activity's quantities; a continued activity shows the quantity of
+    the day's update only (the start day's belong to that day)."""
+    if row.get("continued"):
+        said = row.get("quantity")
+        return [{"work_type": row.get("work_type"), **said}] if said else []
+    return quantities_by_activity.get(row["id"], [])
+
+
 def _normalised(text: Any) -> str:
     """Case, spacing and punctuation folded, so "Plastering, 2nd floor" and
     "plastering 2nd floor" compare equal."""
@@ -152,6 +161,9 @@ def _flag_possible_duplicates(activities: list[dict[str, Any]], rows: list[dict[
     rejects the day's drafts; nothing is merged or removed here."""
     seen: set[tuple[Any, ...]] = set()
     for activity, row in zip(activities, rows, strict=True):
+        if row.get("continued"):
+            activity["possible_duplicate"] = False  # an update, not a second entry
+            continue
         work_type = _normalised(row.get("work_type"))
         quantities = tuple(
             sorted(
@@ -210,9 +222,15 @@ def build_site_report_payload(
             "narrative": row.get("narrative"),
             "status": row.get("status"),
             "contractor": row.get("contractor"),
-            "quantities": quantities_by_activity.get(row["id"], []),
+            "quantities": _quantities_of(row, quantities_by_activity),
             "evidence_count": evidence_count_by_activity.get(row["id"], 0),
-            "review": review_of(fact_review.ACTIVITY, row["id"]),
+            # WRK-01: work started on an earlier day, updated on this one.
+            # Its review stays with the activity (the day it was started).
+            "continued": bool(row.get("continued")),
+            "started_on": str(row["started_on"]) if row.get("continued") else None,
+            "review": fact_review.CONFIRMED
+            if row.get("continued")
+            else review_of(fact_review.ACTIVITY, row["id"]),
         }
         for row in activity_rows
     ]
@@ -314,6 +332,8 @@ def build_review_items(
 
     items: list[dict[str, Any]] = []
     for activity, row in zip(payload["activities"], activity_rows, strict=True):
+        if activity.get("continued"):
+            continue  # an update on an earlier day's work: confirmed with that work
         items.append(
             {
                 "fact_type": fact_review.ACTIVITY,

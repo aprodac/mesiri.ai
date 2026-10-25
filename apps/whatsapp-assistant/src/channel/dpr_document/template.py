@@ -105,6 +105,7 @@ _DOCUMENT_TEMPLATE_SRC = """
   .severity-medium { color: #B45309; font-weight: 600; }
   .severity-low { color: {{ sub }}; font-weight: 600; }
   .stock-flag { color: {{ warn }}; font-size: 10px; margin: 3px 0 0; }
+  .cont { font-size: 10px; margin: 3px 0 0; opacity: 0.7; }
   .note { margin-top: 6px; padding: 7px 10px; border-radius: 6px; background: #FDECEA; color: #8C1D16; font-size: 10.5px; }
   .plan { padding: 9px 12px; border: 1px solid {{ line }}; border-radius: 6px; white-space: pre-line; font-size: 11.5px; }
 
@@ -202,7 +203,7 @@ _DOCUMENT_TEMPLATE_SRC = """
         <th style="width:14%">Quantity</th><th class="num" style="width:6%">Photos</th></tr></thead>
       <tbody>
         {% for a in data.activities %}
-        <tr><td class="strong">{{ a.work_type }}{% if a.possible_duplicate %}<div class="stock-flag">Possible duplicate</div>{% endif %}</td>
+        <tr><td class="strong">{{ a.work_type }}{% if a.continued_from %}<div class="cont">Continued from {{ a.continued_from }}</div>{% endif %}{% if a.possible_duplicate %}<div class="stock-flag">Possible duplicate</div>{% endif %}</td>
           <td>{{ a.narrative }}</td>
           <td><span class="pill st-{{ a.status|lower|replace(' ', '-') }}">{{ a.status }}</span></td>
           <td>{{ a.contractor }}</td><td>{{ a.quantities }}</td><td class="num">{{ a.evidence_count or "—" }}</td></tr>

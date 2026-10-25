@@ -329,3 +329,27 @@ def test_late_entries_section_lists_earlier_days_escaped():
 def test_no_late_entries_section_when_there_are_none():
     html = render_html(build_document_data(code="DPR-3", payload=_payload()))
     assert "Late entries for earlier days" not in html
+
+
+def test_wrk01_continued_work_says_where_it_started():
+    payload = _payload(
+        activities=[
+            {"work_type": "brickwork", "narrative": "Brickwork 60% done", "status": "IN_PROGRESS",
+             "contractor": None, "quantities": [], "evidence_count": 0,
+             "continued": True, "started_on": "2026-07-20"},
+            {"work_type": "slab", "narrative": "Slab", "status": "IN_PROGRESS",
+             "contractor": None, "quantities": [], "evidence_count": 0},
+        ],
+        activity_count=2,
+    )
+    data = build_document_data(code="DPR-1", payload=payload)
+    assert [a.continued_from for a in data.activities] == ["20 Jul", ""]
+    html = render_html(data)
+    assert "Continued from 20 Jul" in html
+    assert html.count("Continued from") == 1
+
+
+def test_dpr06_labour_cost_of_zero_is_not_shown():
+    labour = {"headcount": 5, "trades": [{"trade": "mason", "headcount": 5}], "total_cost": "0"}
+    html = render_html(build_document_data(code="DPR-1", payload=_payload(labour=labour)))
+    assert "Total cost" not in html and "Labour cost" not in html

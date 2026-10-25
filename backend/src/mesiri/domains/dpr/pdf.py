@@ -266,7 +266,9 @@ def render_dpr_pdf_bytes(
 
     # Labour table
     pdf.set_font("Helvetica", "B", 12)
-    labour_subtitle = f" (Total cost: {labour.get('total_cost', '0')})" if labour.get("headcount") else ""
+    # DPR-06: V1 records no wages, so the cost is 0 on every report -- say nothing then.
+    has_cost = labour.get("headcount") and float(labour.get("total_cost") or 0) > 0
+    labour_subtitle = f" (Total cost: {labour.get('total_cost')})" if has_cost else ""
     pdf.cell(0, 8, f"Labour{labour_subtitle}", new_x="LMARGIN", new_y="NEXT")
     trade_col_widths = [80, 40]
     trade_headers = ["Trade", "Headcount"]

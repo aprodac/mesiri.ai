@@ -23,6 +23,9 @@ class DprActivityRow:
     evidence_count: int
     # BE-11: repeats an earlier work item of the day. Absent before BE-11.
     possible_duplicate: bool = False
+    #: WRK-01: work started on an earlier day and updated on this one -- the
+    #: day it was started, "20 Oct". Empty for the day's own work.
+    continued_from: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,6 +210,7 @@ def build_document_data(
             quantities=_quantities_text(a.get("quantities") or []),
             evidence_count=int(a.get("evidence_count") or 0),
             possible_duplicate=bool(a.get("possible_duplicate")),
+            continued_from=_short_day(a.get("started_on")) if a.get("continued") else "",
         )
         for a in payload.get("activities", [])
     ]

@@ -38,6 +38,27 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from mesiri.application.dpr import site_day
 
 
+_STATUS_BY_UPDATE_KIND = {"COMPLETED": "COMPLETED", "PAUSED": "STOPPED"}
+
+
+def _continued_activity_row(row: Any) -> dict[str, Any]:
+    """An earlier day's activity, as a row of the report day: the day's
+    update stands in for the activity's own narrative, quantity and status."""
+    quantity = row["update_quantity"]
+    return {
+        "id": row["id"],
+        "work_type": row["work_type"],
+        "contractor": row["contractor"],
+        "location_id": row["location_id"],
+        "narrative": row["update_narrative"] or row["work_type"],
+        "status": _STATUS_BY_UPDATE_KIND.get(str(row["update_kind"]), "IN_PROGRESS"),
+        "continued": True,
+        "started_on": row["started_on"],
+        "created_at": row["created_at"],
+        "quantity": None if quantity is None else {"quantity": str(quantity), "unit": row["update_unit"]},
+    }
+
+
 class PostgresDprRepository:
     def __init__(self, conn: AsyncConnection) -> None:
         self._conn = conn
@@ -474,6 +495,53 @@ class PostgresDprRepository:
         ).mappings().all()
 
         activity_ids = [row["id"] for row in activity_rows]
+
+        # WRK-01: work started on an earlier day and updated on this one
+        # ("brickwork 60% done") belongs on this day's report, showing this
+        # day's update. Appended after the day's own activities.
+        continued_rows = (
+            await self._conn.execute(
+                text(
+                    """
+                    SELECT DISTINCT ON (a.id)
+                           a.id, a.work_type, a.contractor, a.location_id,
+                           a.activity_date AS started_on, a.status AS activity_status,
+                           pu.id AS update_id, pu.update_kind, pu.narrative AS update_narrative,
+                           pu.quantity AS update_quantity, u.code AS update_unit,
+                           pu.created_at
+                    FROM progress_updates pu
+                    JOIN activities a ON a.id = pu.activity_id
+                    LEFT JOIN units_of_measure u ON u.id = pu.unit_id
+                    WHERE a.organization_id = :org_id
+                      AND a.project_id = :project_id
+                      AND a.site_id = :site_id
+                      AND a.activity_date <> :report_date
+                      AND pu.occurred_at::date = :report_date
+                      AND pu.deleted_at IS NULL AND a.deleted_at IS NULL
+                      AND NOT EXISTS (
+                          SELECT 1 FROM progress_updates newer
+                          WHERE newer.supersedes_id = pu.id AND newer.deleted_at IS NULL
+                      )
+                    ORDER BY a.id, pu.created_at DESC
+                    """
+                ),
+                {
+                    "org_id": organization_id,
+                    "project_id": project_id,
+                    "site_id": site_id,
+                    "report_date": report_date,
+                },
+            )
+        ).mappings().all()
+        activity_rows = [
+            *activity_rows,
+            *sorted(
+                (_continued_activity_row(row) for row in continued_rows),
+                key=lambda row: row["created_at"],
+            ),
+        ]
+        # Reviews, quantities and evidence below are the day's own activities'.
+        activity_ids = [row["id"] for row in activity_rows if not row.get("continued")]
 
         quantities_by_activity: dict[Any, list[dict[str, Any]]] = {}
         evidence_count_by_activity: dict[Any, int] = {}
@@ -1363,10 +1431,23 @@ class PostgresDprRepository:
                 text(
                     f"""
                     WITH acts AS (
-                        SELECT site_id, count(*) AS work_items, max(created_at) AS last_at
-                        FROM activities
-                        WHERE organization_id = :org_id AND activity_date = :report_date
-                          AND deleted_at IS NULL
+                        -- WRK-01: the day's own work, and earlier work with an
+                        -- update today (the DPR lists both), each once.
+                        SELECT site_id, count(DISTINCT id) AS work_items, max(at) AS last_at
+                        FROM (
+                            SELECT site_id, id, created_at AS at
+                            FROM activities
+                            WHERE organization_id = :org_id AND activity_date = :report_date
+                              AND deleted_at IS NULL
+                            UNION ALL
+                            SELECT a.site_id, a.id, pu.created_at
+                            FROM progress_updates pu
+                            JOIN activities a ON a.id = pu.activity_id
+                            WHERE a.organization_id = :org_id
+                              AND a.activity_date <> :report_date
+                              AND pu.occurred_at::date = :report_date
+                              AND pu.deleted_at IS NULL AND a.deleted_at IS NULL
+                        ) worked
                         GROUP BY site_id
                     ), latest_act AS (
                         SELECT DISTINCT ON (a.site_id) a.site_id, a.narrative,
