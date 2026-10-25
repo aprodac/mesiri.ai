@@ -52,9 +52,8 @@ async def render_and_store_version(
     import json
 
     from channel.dpr_document.data import build_document_data
-    from channel.dpr_document.template import render_html
-
     from channel.dpr_document.photos import embed_photos
+    from channel.dpr_document.template import render_html
 
     if isinstance(payload, str):
         payload = json.loads(payload)

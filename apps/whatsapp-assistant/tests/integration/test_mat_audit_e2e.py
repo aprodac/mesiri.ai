@@ -12,6 +12,7 @@ import pytest
 from tests.integration.test_wa103_transfer_opening_e2e import (  # noqa: F401 -- the fixture
     MESSAGE,
     _send,
+    _stock,
     _Understanding,
     world,
 )
@@ -103,3 +104,26 @@ async def test_mat06_once_the_conversion_is_stored_an_engineer_is_never_asked(wo
     assert isinstance(ready, Ready), ready
     assert ready.event.fields["quantity"] == 8 and ready.event.fields["unit"] == stock_unit["code"]
     assert ready.event.fields["reported_quantity"] == 2
+
+
+async def test_pho03_the_bill_photo_stays_with_the_material_receipt(world):
+    from sqlalchemy import text
+
+    saved = await _send(world, direction="received", quantity=50, supplier="Sharma Traders",
+                        media_object_key="media/wamid.bill/1")
+    assert saved is not None and saved.saved_draft
+    async with world.db.transaction() as conn:
+        row = (await conn.execute(text(
+            "SELECT r.invoice_id, i.supplier_name, i.source, a.media_object_key, a.attachment_type"
+            " FROM material_receipts r JOIN material_invoices i ON i.id = r.invoice_id"
+            " JOIN material_invoice_attachments a ON a.invoice_id = i.id"
+            " WHERE r.organization_id = :o"), {"o": world.org})).one()
+    assert row[1:] == ("Sharma Traders", "whatsapp", "media/wamid.bill/1", "bill")
+    assert await _stock(world, 0) == 50  # inventory does not care how it arrived
+
+    # a delivery typed in, with no photo, makes no invoice
+    await _send(world, direction="received", quantity=10)
+    async with world.db.transaction() as conn:
+        n = (await conn.execute(text("SELECT count(*) FROM material_invoices WHERE organization_id = :o"),
+                                {"o": world.org})).scalar_one()
+    assert n == 1

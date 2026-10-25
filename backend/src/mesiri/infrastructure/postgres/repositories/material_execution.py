@@ -58,6 +58,51 @@ def _optional_uuid(value: str | None) -> uuid.UUID | None:
     return uuid.UUID(value) if value is not None else None
 
 
+async def _keep_bill_with_receipt(
+    conn: AsyncConnection,
+    cmd: RecordMaterialReceiptCommand,
+    *,
+    receipt_id: uuid.UUID,
+    project_id: uuid.UUID,
+    site_id: uuid.UUID | None,
+) -> None:
+    """PHO-03: the photo of the bill the delivery was read from stays with the
+    receipt: one invoice record (source "whatsapp", no total -- the photo is the
+    document) holding the attachment, and the receipt points at it. The same
+    tables and the same ``/invoices/{id}/attachment`` link the dashboard already
+    uses for a bill uploaded there; the object itself is not copied."""
+    from sqlalchemy import text
+
+    from mesiri.domains.materials.invoices import attach_invoice_document, insert_invoice
+
+    invoice_id = uuid.uuid4()
+    created_by = uuid.UUID(cmd.created_by)
+    await insert_invoice(
+        conn,
+        invoice_id=invoice_id,
+        organization_id=uuid.UUID(cmd.organization_id),
+        project_id=project_id,
+        site_id=site_id,
+        vendor_id=None,
+        supplier_name=cmd.supplier,
+        invoice_number=None,
+        invoice_date=cmd.occurred_date,
+        invoice_total=None,
+        currency="INR",
+        source="whatsapp",
+        correlation_id=cmd.correlation_id,
+        notes=None,
+        created_by=created_by,
+    )
+    await attach_invoice_document(
+        conn, invoice_id=invoice_id, media_object_key=cmd.media_object_key or "", created_by=created_by
+    )
+    await conn.execute(
+        text("UPDATE material_receipts SET invoice_id = :invoice WHERE id = :id"),
+        {"invoice": invoice_id, "id": receipt_id},
+    )
+
+
 class PostgresMaterialExecutionRepository(MaterialExecutionRepository):
     async def check_idempotency(self, conn: AsyncConnection, key: str) -> ExecutionResult | None:
         from sqlalchemy import text
@@ -154,6 +199,8 @@ class PostgresMaterialExecutionRepository(MaterialExecutionRepository):
                     "created_by": uuid.UUID(cmd.created_by),
                 },
             )
+            if cmd.media_object_key and project_id is not None:
+                await _keep_bill_with_receipt(conn, cmd, receipt_id=row_id, project_id=project_id, site_id=site_id)
             aggregate_type, event_type = "material_receipt", "MaterialReceived"
             movement_type, source_type = "RECEIPT", "material_receipt"
         else:
