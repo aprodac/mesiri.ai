@@ -354,6 +354,28 @@ pass the same.
 | Finance, Login / Signup | No — old template look (Signup: SS-18 intro) |
 | Dialogs (project, site, person, access, WhatsApp number, record delivery / use / move, correction) | Yes (WEB-29): sentence case, plain words, no fake buttons |
 
+### Side panels (WEB-36)
+
+Every side panel is built from `components/detail-sheet.tsx`, so they read
+alike:
+
+- **`SheetHero`**: a tinted head. A small kicker says what it is
+  ("Delivery", "Used", "Stock book", "Critical · Open", "In progress"), then
+  the big line (the quantity, amount or headcount; green for in, red for
+  out), the title, and the facts under it (site, day). Tone: `in` green,
+  `out` red, `warn` amber, `neutral` grey.
+- **`SheetSection`**: short titled sections in a column (no tabs); empty
+  ones are left out.
+- **`Facts` / `Fact`**: label/value rows; a missing value shows muted with
+  a reason ("Not named", "Not recorded").
+- **`ByLine`**: who recorded it, how and when.
+- Actions sit in a footer, the main one first; "copy reference" is an icon.
+
+A stock entry also shows what it did to the site's stock (before → after,
+and now), links to the invoice it came from and, for admins, to the
+sender's WhatsApp chat. Used by: entry, stock history and invoice
+(Materials), attendance (Labour), issue (Issues), work item (Site log).
+
 ### WhatsApp chat and Automations (WEB-35)
 
 - **Conversations** is a chat, not a monitoring console: the person's

@@ -5,17 +5,13 @@ import {
   Search,
   RefreshCw,
   Calendar,
-  Paperclip,
   ChevronRight,
   Bot,
-  Scale,
-  History,
   Image as ImageIcon,
   Download,
   X,
   Pencil,
   Trash2,
-  ShieldAlert,
   CircleCheck,
   CirclePlay,
   CircleDashed,
@@ -35,19 +31,17 @@ import {
   type ActivityDetailResponse,
   type ActivityCorrection,
 } from '@/lib/api'
-import { Badge } from '@/components/ui/badge'
 import { Callout, PageHeader, StatStrip } from '@/components/dpr-page'
 import { useSiteNames } from '@/lib/site-names'
 import { useUrlState } from '@/lib/url-state'
 import { downloadTextFile, toCsv } from '@/lib/export'
-import { CHIP, longDate, plural, qty, siteDayPath } from '@/lib/site-day'
+import { longDate, plural, qty, siteDayPath } from '@/lib/site-day'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { Fact, Facts, SheetHero, SheetSection } from '@/components/detail-sheet'
 import {
   Dialog,
   DialogContent,
@@ -72,11 +66,6 @@ const STATUS: Record<string, { label: string; icon: React.ComponentType<{ classN
 
 function statusOf(status: string) {
   return STATUS[status.toLowerCase()] ?? { label: status, icon: CircleDashed, className: 'text-muted-foreground', chip: 'bg-muted text-muted-foreground' }
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const st = statusOf(status)
-  return <span className={cn(CHIP, st.chip)}>{st.label}</span>
 }
 
 function humanize(value: string | null | undefined): string {
@@ -616,23 +605,45 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
         </>
       )}
 
-      {/* Activity Detail Sheet */}
+      {/* Activity Detail Sheet (WEB-36: the side-panel layout, detail-sheet.tsx;
+          sections in a column instead of tabs, empty ones left out) */}
       <Sheet open={!!selectedActivityId} onOpenChange={(open) => !open && setSelectedActivityId(null)}>
-        <SheetContent className="sm:max-w-xl overflow-y-auto w-full p-0">
-          <SheetHeader className="shrink-0 border-b px-6 pt-5 pb-4">
-            <div className="flex items-start justify-between gap-3 pr-8">
-              <div className="min-w-0">
-                <SheetTitle className="text-base font-semibold">{humanize(detailData?.work_type) || 'Work item'}</SheetTitle>
-                <SheetDescription className="mt-0.5 text-xs">
-                  {detailData
-                    ? [longDate(detailData.activity_date), names.get(detailData.site_id)?.name].filter(Boolean).join(' · ')
-                    : 'Quantities, updates and photos'}
-                </SheetDescription>
-              </div>
-              {detailData && <StatusBadge status={detailData.status} />}
+        <SheetContent className="w-full gap-0 overflow-y-auto p-0 sm:max-w-xl">
+          {detailLoading ? (
+            <div className="flex flex-col gap-4 p-6">
+              <SheetTitle className="sr-only">Loading</SheetTitle>
+              <Skeleton className="h-8 w-3/4" />
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-36 w-full" />
             </div>
-            {detailData && (
-              <div className="flex items-center gap-2 mt-3">
+          ) : detailError ? (
+            <div className="flex flex-col items-center gap-2 py-16 text-center">
+              <SheetTitle className="sr-only">Could not load</SheetTitle>
+              <TriangleAlert className="size-5 text-destructive" />
+              <p className="text-sm font-medium">{detailError}</p>
+            </div>
+          ) : detailData ? (
+            <>
+              <SheetHero
+                tone={
+                  detailData.status.toLowerCase() === 'completed' ? 'in' : detailData.status.toLowerCase() === 'stopped' ? 'warn' : 'neutral'
+                }
+                kicker={statusOf(detailData.status).label}
+                lead={
+                  detailData.quantities?.length ? (
+                    <>
+                      {qty(String(detailData.quantities[0].quantity))}{' '}
+                      <span className="text-xl font-medium text-muted-foreground">{detailData.quantities[0].unit || ''}</span>
+                    </>
+                  ) : undefined
+                }
+                title={humanize(detailData.work_type) || 'Work item'}
+              >
+                <span>{[names.get(detailData.site_id)?.name, names.get(detailData.site_id)?.project].filter(Boolean).join(' · ') || 'Site'}</span>
+                <span>{longDate(detailData.activity_date)}</span>
+              </SheetHero>
+
+              <div className="flex items-center gap-2 border-b px-5 py-2.5">
                 <Button size="sm" variant="outline" className="gap-1.5" onClick={openEdit}>
                   <Pencil className="size-3.5" /> Correct
                 </Button>
@@ -650,225 +661,143 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
                   </Link>
                 </Button>
               </div>
-            )}
-          </SheetHeader>
 
-          <div className="px-6 py-4">
-            {detailLoading ? (
-              <div className="space-y-4">
-                <Skeleton className="h-5 w-3/4" />
-                <Skeleton className="h-24 w-full" />
-                <Skeleton className="h-36 w-full" />
-              </div>
-            ) : detailError ? (
-              <div className="py-10 text-center flex flex-col items-center gap-2">
-                <TriangleAlert className="size-5 text-destructive" />
-                <p className="text-xs font-semibold text-foreground">{detailError}</p>
-              </div>
-            ) : detailData ? (
-              <div className="space-y-5 text-xs">
-                {/* Metadata Grid */}
-                <div className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg bg-muted/50 p-4">
-                  <div>
-                    <p className="mb-0.5 text-muted-foreground">Project</p>
-                    <p className="font-medium">{names.get(detailData.site_id)?.project || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="mb-0.5 text-muted-foreground">Site</p>
-                    <p className="font-medium">{names.get(detailData.site_id)?.name || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="mb-0.5 text-muted-foreground">Contractor</p>
-                    <p className="font-medium">{detailData.contractor || 'Own workers'}</p>
-                  </div>
-                  <div>
-                    <p className="mb-0.5 text-muted-foreground">Sent by</p>
-                    <p className="font-medium">{detailData.source?.toLowerCase() === 'whatsapp' ? 'WhatsApp' : humanize(detailData.source)}</p>
-                  </div>
+              {detailData.narrative && detailData.narrative.trim().toLowerCase() !== (detailData.work_type ?? '').trim().toLowerCase() && (
+                <SheetSection title="What was done">
+                  <p className="text-sm leading-relaxed">{detailData.narrative}</p>
+                </SheetSection>
+              )}
+
+              <SheetSection title="Details" className="border-t first:border-t-0">
+                <Facts>
+                  <Fact label="Contractor">{detailData.contractor || 'Own workers'}</Fact>
                   {detailData.started_at && (
-                    <div className="col-span-2">
-                      <p className="mb-0.5 text-muted-foreground">Time</p>
-                      <p className="font-medium">
-                        {clock(detailData.started_at)}{detailData.ended_at ? ` – ${clock(detailData.ended_at)}` : ''}
-                      </p>
-                    </div>
+                    <Fact label="Time">
+                      {clock(detailData.started_at)}{detailData.ended_at ? ` – ${clock(detailData.ended_at)}` : ''}
+                    </Fact>
                   )}
-                </div>
+                  <Fact label="Sent">{detailData.source?.toLowerCase() === 'whatsapp' ? 'On WhatsApp' : humanize(detailData.source) || 'On the dashboard'}</Fact>
+                </Facts>
+              </SheetSection>
 
-                {/* Narrative */}
-                {detailData.narrative && detailData.narrative.trim().toLowerCase() !== (detailData.work_type ?? '').trim().toLowerCase() && (
-                  <div className="space-y-1.5">
-                    <p className="font-medium">Description</p>
-                    <div className="leading-relaxed text-muted-foreground">
-                      {detailData.narrative}
-                    </div>
-                  </div>
-                )}
+              {detailData.quantities && detailData.quantities.length > 0 && (
+                <SheetSection title="Quantities" className="border-t">
+                  <table className="w-full text-sm">
+                    <tbody className="divide-y">
+                      {detailData.quantities.map((q) => (
+                        <tr key={q.id}>
+                          <td className="py-2 pr-2 font-medium">{humanize(q.work_type) || 'Work'}</td>
+                          <td className="py-2 pr-2 text-muted-foreground">{humanize(q.measurement_type?.toLowerCase())}</td>
+                          <td className="py-2 text-right font-semibold tabular-nums">{qty(String(q.quantity))} {q.unit || ''}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </SheetSection>
+              )}
 
-                {/* Tabs */}
-                <Tabs defaultValue="quantities" className="w-full">
-                  <TabsList className="grid grid-cols-4 w-full h-9">
-                    <TabsTrigger value="quantities" className="text-xs gap-1.5">
-                      <Scale className="size-3.5" />Quantities ({detailData.quantities?.length || 0})
-                    </TabsTrigger>
-                    <TabsTrigger value="updates" className="text-xs gap-1.5">
-                      <History className="size-3.5" />Updates ({detailData.progress_updates?.length || 0})
-                    </TabsTrigger>
-                    <TabsTrigger value="attachments" className="text-xs gap-1.5">
-                      <Paperclip className="size-3.5" />Photos ({detailData.attachments?.length || 0})
-                    </TabsTrigger>
-                    <TabsTrigger value="corrections" className="text-xs gap-1.5">
-                      <ShieldAlert className="size-3.5" />History ({corrections.length})
-                    </TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="quantities" className="pt-3">
-                    {!detailData.quantities || detailData.quantities.length === 0 ? (
-                      <div className="text-center py-8 text-muted-foreground">
-                        <Scale className="size-7 mx-auto mb-2 opacity-30" />
-                        <p className="text-[11px]">No quantity measurements logged for this activity.</p>
-                      </div>
-                    ) : (
-                      <div className="rounded-lg border border-border/70 overflow-hidden">
-                        <Table>
-                          <TableHeader className="bg-muted/30 text-[11px]">
-                            <TableRow>
-                              <TableHead>Type</TableHead>
-                              <TableHead>Measurement</TableHead>
-                              <TableHead className="text-right">Quantity</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody className="text-xs">
-                            {detailData.quantities.map((q) => (
-                              <TableRow key={q.id}>
-                                <TableCell className="font-medium">{humanize(q.work_type) || 'Work'}</TableCell>
-                                <TableCell className="text-muted-foreground">{humanize(q.measurement_type?.toLowerCase())}</TableCell>
-                                <TableCell className="text-right font-semibold">{qty(String(q.quantity))} {q.unit || ''}</TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    )}
-                  </TabsContent>
-
-                  <TabsContent value="updates" className="pt-3">
-                    {!detailData.progress_updates || detailData.progress_updates.length === 0 ? (
-                      <div className="text-center py-8 text-muted-foreground">
-                        <History className="size-7 mx-auto mb-2 opacity-30" />
-                        <p className="text-[11px]">No incremental progress updates recorded yet.</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3 border-l-2 border-border pl-4 py-1 ml-2">
-                        {detailData.progress_updates.map((upd) => {
-                          const superseded = detailData.progress_updates.some((other) => other.supersedes_id === upd.id)
-                          return (
-                            <div key={upd.id} className={cn('relative space-y-1', superseded && 'opacity-50')}>
-                              <div className="absolute -left-[21px] top-1 size-2.5 rounded-full bg-info" />
-                              <div className="flex items-center justify-between text-[11px] gap-2">
-                                <span className="font-semibold text-foreground capitalize">{upd.update_kind}</span>
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <span className="text-muted-foreground">{new Date(upd.occurred_at).toLocaleString()}</span>
-                                  {!superseded && (
-                                    <>
-                                      <button
-                                        type="button"
-                                        className="text-muted-foreground hover:text-foreground"
-                                        title="Correct this quantity"
-                                        onClick={() => openCorrectUpdate(upd.id, upd.quantity)}
-                                      >
-                                        <Pencil className="size-3" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="text-muted-foreground hover:text-destructive"
-                                        title="Remove this update"
-                                        onClick={() => { setVoidUpdateId(upd.id); setVoidUpdateReason(''); setVoidUpdateError(null) }}
-                                      >
-                                        <Trash2 className="size-3" />
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                              {upd.narrative && <p className="text-muted-foreground">{upd.narrative}</p>}
-                              {upd.quantity != null && (
-                                <Badge variant="outline" className="font-semibold text-[10px]">+{upd.quantity} {upd.unit || ''}</Badge>
-                              )}
-                              {upd.supersedes_id && (
-                                <p className="text-[10px] text-draft">Corrects a previous entry</p>
-                              )}
-                              {superseded && (
-                                <p className="text-[10px] text-muted-foreground italic">Superseded by a correction below</p>
+              {detailData.progress_updates && detailData.progress_updates.length > 0 && (
+                <SheetSection title={`Updates · ${detailData.progress_updates.length}`} className="border-t">
+                  <ol className="ml-1.5 flex flex-col gap-3 border-l-2 py-1 pl-4">
+                    {detailData.progress_updates.map((upd) => {
+                      const superseded = detailData.progress_updates.some((other) => other.supersedes_id === upd.id)
+                      return (
+                        <li key={upd.id} className={cn('relative flex flex-col gap-1 text-sm', superseded && 'opacity-50')}>
+                          <span className="absolute top-1.5 -left-[22px] size-2.5 rounded-full bg-info" aria-hidden="true" />
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium capitalize">
+                              {upd.update_kind}
+                              {upd.quantity != null && <span className="ml-2 font-semibold text-success tabular-nums">+{upd.quantity} {upd.unit || ''}</span>}
+                            </span>
+                            <div className="flex shrink-0 items-center gap-2">
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(upd.occurred_at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
+                              </span>
+                              {!superseded && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="text-muted-foreground hover:text-foreground"
+                                    title="Correct this quantity"
+                                    onClick={() => openCorrectUpdate(upd.id, upd.quantity)}
+                                  >
+                                    <Pencil className="size-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="text-muted-foreground hover:text-destructive"
+                                    title="Remove this update"
+                                    onClick={() => { setVoidUpdateId(upd.id); setVoidUpdateReason(''); setVoidUpdateError(null) }}
+                                  >
+                                    <Trash2 className="size-3.5" />
+                                  </button>
+                                </>
                               )}
                             </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </TabsContent>
+                          </div>
+                          {upd.narrative && <p className="text-muted-foreground">{upd.narrative}</p>}
+                          {upd.supersedes_id && <p className="text-xs text-draft">Corrects an earlier entry</p>}
+                          {superseded && <p className="text-xs text-muted-foreground italic">Replaced by a correction</p>}
+                        </li>
+                      )
+                    })}
+                  </ol>
+                </SheetSection>
+              )}
 
-                  <TabsContent value="corrections" className="pt-3">
-                    {correctionsLoading ? (
-                      <div className="space-y-2">
-                        <Skeleton className="h-10 w-full" />
-                        <Skeleton className="h-10 w-full" />
-                      </div>
-                    ) : corrections.length === 0 ? (
-                      <div className="text-center py-8 text-muted-foreground">
-                        <ShieldAlert className="size-7 mx-auto mb-2 opacity-30" />
-                        <p className="text-[11px]">No corrections or removals recorded for this activity.</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {corrections.map((c) => (
-                          <div key={c.id} className="rounded-lg border border-border/70 p-3 space-y-1 text-[11px]">
-                            <div className="flex items-center justify-between">
-                              <span className="font-semibold text-foreground">{c.field_name}</span>
-                              <span className="text-muted-foreground">{new Date(c.created_at).toLocaleString()}</span>
-                            </div>
-                            <p className="text-muted-foreground">
-                              <span className="line-through">{JSON.stringify(c.old_value)}</span>
-                              {' → '}
-                              <span className="font-semibold text-foreground">{JSON.stringify(c.new_value)}</span>
+              {detailData.attachments && detailData.attachments.length > 0 && (
+                <SheetSection title={`Photos · ${detailData.attachments.length}`} className="border-t">
+                  <div className="grid grid-cols-2 gap-3">
+                    {detailData.attachments.map((att) => (
+                      <div key={att.id} className="overflow-hidden rounded-lg border">
+                        <div className="flex aspect-video items-center justify-center border-b bg-muted/40 text-muted-foreground">
+                          <ImageIcon className="size-8 opacity-30" />
+                        </div>
+                        <div className="flex flex-col gap-0.5 p-2.5">
+                          <p className="truncate text-sm font-medium">{att.caption || 'Site photo'}</p>
+                          {att.ai_caption && (
+                            <p className="line-clamp-2 text-xs text-muted-foreground">
+                              <Bot className="mr-0.5 inline size-3" />
+                              {att.ai_caption}
                             </p>
-                            {c.reason && <p className="text-muted-foreground italic">"{c.reason}"</p>}
-                          </div>
-                        ))}
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </TabsContent>
+                    ))}
+                  </div>
+                </SheetSection>
+              )}
 
-                  <TabsContent value="attachments" className="pt-3">
-                    {!detailData.attachments || detailData.attachments.length === 0 ? (
-                      <div className="text-center py-8 text-muted-foreground">
-                        <ImageIcon className="size-7 mx-auto mb-2 opacity-30" />
-                        <p className="text-[11px]">No media evidence or photo attachments uploaded.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-3">
-                        {detailData.attachments.map((att) => (
-                          <div key={att.id} className="rounded-lg border border-border/70 overflow-hidden">
-                            <div className="aspect-video bg-muted/40 flex items-center justify-center text-muted-foreground border-b border-border/40">
-                              <ImageIcon className="size-8 opacity-30" />
-                            </div>
-                            <div className="p-2.5 space-y-0.5">
-                              <p className="font-semibold text-foreground truncate text-[11px]">{att.caption || att.attachment_type || 'Site Photo'}</p>
-                              {att.ai_caption && (
-                                <p className="text-[10px] text-muted-foreground line-clamp-2">
-                                  <Bot className="size-2.5 inline mr-0.5" />{att.ai_caption}
-                                </p>
-                              )}
-                            </div>
+              {(correctionsLoading || corrections.length > 0) && (
+                <SheetSection title="Changes" className="border-t">
+                  {correctionsLoading ? (
+                    <Skeleton className="h-10 w-full" />
+                  ) : (
+                    <ul className="flex flex-col gap-2">
+                      {corrections.map((c) => (
+                        <li key={c.id} className="flex flex-col gap-1 rounded-lg border p-3 text-sm">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium">{humanize(c.field_name)}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(c.created_at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
+                            </span>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </TabsContent>
-                </Tabs>
-              </div>
-            ) : null}
-          </div>
+                          <p className="text-muted-foreground">
+                            <span className="line-through">{JSON.stringify(c.old_value)}</span>
+                            {' → '}
+                            <span className="font-medium text-foreground">{JSON.stringify(c.new_value)}</span>
+                          </p>
+                          {c.reason && <p className="text-muted-foreground italic">"{c.reason}"</p>}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </SheetSection>
+              )}
+            </>
+          ) : (
+            <SheetTitle className="sr-only">Work item</SheetTitle>
+          )}
         </SheetContent>
       </Sheet>
 

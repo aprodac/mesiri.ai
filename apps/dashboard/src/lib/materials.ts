@@ -158,6 +158,8 @@ export interface MaterialStock {
 
 export interface LedgerEntry {
   id: string
+  // The delivery / use behind this entry (its inflow or outflow id).
+  source_id?: string | null
   direction: 'IN' | 'OUT'
   movement_reason: string
   quantity: string

@@ -124,6 +124,8 @@ class MaterialCatalogListResponse(BaseModel):
 
 class MaterialLedgerEntryResponse(BaseModel):
     id: uuid.UUID
+    # WEB-36: the material_receipts / material_usage row this movement came from.
+    source_id: uuid.UUID | None = None
     direction: str
     movement_reason: str
     quantity: Decimal

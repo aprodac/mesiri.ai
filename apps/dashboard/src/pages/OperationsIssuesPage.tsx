@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { ShieldAlert, Search, Plus, RefreshCw, CheckCircle2, Check, TriangleAlert } from 'lucide-react'
+import { Search, Plus, RefreshCw, CheckCircle2, Check, TriangleAlert } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
 import {
   fetchSiteIssuesApi,
@@ -7,6 +7,7 @@ import {
   resolveSiteIssueApi,
   acknowledgeSiteIssueApi,
   wontFixSiteIssueApi,
+  fetchUsers,
   type SiteIssueItem,
 } from '@/lib/api'
 import { useToast } from '@/components/ui/toast-notification'
@@ -14,7 +15,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+import { useQuery } from '@tanstack/react-query'
+import { Sheet, SheetContent, SheetFooter, SheetTitle } from '@/components/ui/sheet'
+import { ByLine, Fact, Facts, SheetHero, SheetSection } from '@/components/detail-sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Callout, PageHeader, StatStrip } from '@/components/dpr-page'
 import { useSiteNames } from '@/lib/site-names'
@@ -626,39 +629,106 @@ export default function OperationsIssuesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Inspection Sheet ── */}
+      {/* ── Inspection Sheet (WEB-36: the side-panel layout, detail-sheet.tsx) ── */}
       <Sheet open={inspectSheetOpen} onOpenChange={setInspectSheetOpen}>
-        <SheetContent className="sm:max-w-md overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle className="text-sm font-semibold flex items-center gap-2">
-              <ShieldAlert className="size-4 text-draft" />
-              {selectedIssue ? humanizeIssueType(selectedIssue.issue_type) : null}
-            </SheetTitle>
-            <SheetDescription className="text-xs">
-              {selectedIssue
-                ? [
-                    siteLabel(selectedIssue),
-                    new Date(selectedIssue.occurred_at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }),
-                  ].join(' · ')
-                : ''}
-            </SheetDescription>
-          </SheetHeader>
-
-          <div className="space-y-4 pt-4 text-xs">
-            <div className="p-3 rounded-lg border bg-muted/10 space-y-1">
-              <span className="font-semibold block">Description</span>
-              <p className="text-muted-foreground leading-relaxed">{selectedIssue?.narrative || 'No description'}</p>
-            </div>
-
-            {selectedIssue?.resolution_notes && (
-              <div className="p-3 rounded-lg bg-success-soft space-y-1">
-                <span className="font-semibold text-success block">How it was fixed</span>
-                <p className="text-foreground">{selectedIssue.resolution_notes}</p>
-              </div>
-            )}
-          </div>
+        <SheetContent className="w-full gap-0 overflow-y-auto p-0 sm:max-w-md">
+          {selectedIssue ? (
+            <IssuePanel
+              issue={selectedIssue}
+              site={siteLabel(selectedIssue)}
+              // Each closes the panel: the list reloads with the new status.
+              onAcknowledge={() => {
+                setInspectSheetOpen(false)
+                handleAcknowledgeIssue(selectedIssue)
+              }}
+              onResolve={() => {
+                setInspectSheetOpen(false)
+                setResolveDialogOpen(true)
+              }}
+              onWontFix={() => {
+                setInspectSheetOpen(false)
+                setWontFixDialogOpen(true)
+              }}
+            />
+          ) : (
+            <SheetTitle className="sr-only">Issue</SheetTitle>
+          )}
         </SheetContent>
       </Sheet>
     </div>
+  )
+}
+
+const SEVERITY_WORDS: Record<string, string> = { CRITICAL: 'Critical', HIGH: 'High', MEDIUM: 'Medium', LOW: 'Low' }
+const STATUS_WORDS: Record<string, string> = { OPEN: 'Open', ACKNOWLEDGED: 'Acknowledged', RESOLVED: 'Resolved', WONT_FIX: "Won't fix", CANCELLED: 'Withdrawn' }
+
+function IssuePanel({
+  issue,
+  site,
+  onAcknowledge,
+  onResolve,
+  onWontFix,
+}: {
+  issue: SiteIssueItem
+  site: string
+  onAcknowledge: () => void
+  onResolve: () => void
+  onWontFix: () => void
+}) {
+  const severity = issue.severity.toUpperCase()
+  const status = issue.status.toUpperCase()
+  const closed = isClosed(status)
+  const users = useQuery({ queryKey: ['users-list'], queryFn: fetchUsers, retry: false, staleTime: 5 * 60_000 })
+  const reporter = issue.reported_by_user_id ? users.data?.find((u) => u.id === issue.reported_by_user_id)?.full_name : undefined
+  const at = (iso: string) => new Date(iso).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+  const tone = closed ? (status === 'RESOLVED' ? 'in' : 'neutral') : severity === 'CRITICAL' ? 'out' : severity === 'HIGH' ? 'warn' : 'neutral'
+
+  return (
+    <>
+      <SheetHero tone={tone} kicker={closed ? STATUS_WORDS[status] ?? status : `${SEVERITY_WORDS[severity] ?? severity} · ${STATUS_WORDS[status] ?? status}`} title={humanizeIssueType(issue.issue_type)}>
+        <span>{site}</span>
+        <span>{at(issue.occurred_at)}</span>
+        {!closed && <span className="font-medium text-foreground">Open {openFor(issue.occurred_at).toLowerCase()}</span>}
+      </SheetHero>
+
+      <SheetSection title="What happened">
+        <p className={cn('text-sm leading-relaxed', !issue.narrative && 'text-muted-foreground')}>{issue.narrative || 'No description was given.'}</p>
+      </SheetSection>
+
+      <SheetSection title="Details" className="border-t">
+        <Facts>
+          <Fact label="Severity">{getSeverityBadge(issue.severity)}</Fact>
+          <Fact label="Status">{getStatusBadge(issue.status)}</Fact>
+          {issue.delay_duration_minutes ? <Fact label="Time lost">{formatDuration(issue.delay_duration_minutes)}</Fact> : null}
+          {issue.resolved_at && <Fact label="Closed">{at(issue.resolved_at)}</Fact>}
+        </Facts>
+      </SheetSection>
+
+      {issue.resolution_notes && (
+        <SheetSection title={status === 'RESOLVED' ? 'How it was fixed' : 'Why it was closed'} className="border-t">
+          <p className="rounded-lg bg-success-soft/60 px-3 py-2 text-sm">{issue.resolution_notes}</p>
+        </SheetSection>
+      )}
+
+      <SheetSection title="Reported by" className="border-t">
+        <ByLine name={reporter} detail={at(issue.created_at)} />
+      </SheetSection>
+
+      {!closed && (
+        <SheetFooter className="flex-row flex-wrap items-center gap-2 border-t px-5 py-3">
+          <Button size="sm" className="gap-1.5" onClick={onResolve}>
+            <Check className="size-3.5" /> Resolve
+          </Button>
+          {status === 'OPEN' && (
+            <Button size="sm" variant="outline" onClick={onAcknowledge}>
+              Acknowledge
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" className="ml-auto text-muted-foreground" onClick={onWontFix}>
+            Won't fix
+          </Button>
+        </SheetFooter>
+      )}
+    </>
   )
 }

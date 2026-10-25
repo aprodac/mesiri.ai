@@ -1,13 +1,8 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2, AlertTriangle, FileText, ExternalLink, Receipt } from 'lucide-react'
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { Fact, Facts, SheetHero, SheetSection } from '@/components/detail-sheet'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/dpr-page'
 import { useSiteNames } from '@/lib/site-names'
@@ -34,6 +29,7 @@ interface InvoiceDetailsSheetProps {
  *
  * WEB-35: restyled like the other Materials panels -- supplier and number
  * first, plain labels, a light table with a total row, no internal id.
+ * WEB-36: the side-panel layout (detail-sheet.tsx), total in the head.
  */
 export function InvoiceDetailsSheet({ invoiceId, open, onOpenChange }: InvoiceDetailsSheetProps) {
   const siteNames = useSiteNames()
@@ -72,15 +68,11 @@ export function InvoiceDetailsSheet({ invoiceId, open, onOpenChange }: InvoiceDe
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
-        <SheetHeader>
-          <SheetTitle>Supplier invoice</SheetTitle>
-          <SheetDescription>Every material on it, and the original document.</SheetDescription>
-        </SheetHeader>
-
-        <div className="flex-1 px-4 pb-4 text-sm">
+      <SheetContent className="w-full gap-0 overflow-y-auto p-0 sm:max-w-lg">
+        {!invoice && <SheetTitle className="sr-only">Supplier invoice</SheetTitle>}
+        <div className="flex-1 text-sm">
           {isLoading && (
-            <div className="flex items-center justify-center gap-2 py-10 text-muted-foreground">
+            <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
               Loading…
             </div>
@@ -97,45 +89,35 @@ export function InvoiceDetailsSheet({ invoiceId, open, onOpenChange }: InvoiceDe
           )}
 
           {invoice && (
-            <div className="flex flex-col gap-5">
-              <div>
-                <p className="text-lg">
-                  <strong className="font-semibold">{supplier ?? 'Supplier not named'}</strong>
-                </p>
-                <p className="text-muted-foreground">
-                  {[invoice.invoice_number && `No. ${invoice.invoice_number}`, invoice.invoice_date && longDate(invoice.invoice_date)]
-                    .filter(Boolean)
-                    .join(' · ') || 'No number or date on it'}
-                </p>
-              </div>
+            <div className="flex flex-col">
+              <SheetHero
+                kicker="Supplier invoice"
+                lead={formatMoney(invoice.invoice_total)}
+                title={supplier ?? 'Supplier not named'}
+              >
+                {invoice.invoice_number && <span>No. {invoice.invoice_number}</span>}
+                {invoice.invoice_date && <span>{longDate(invoice.invoice_date)}</span>}
+                {site && <span>{site.name}</span>}
+              </SheetHero>
 
-              <dl className="grid grid-cols-[96px_1fr] gap-x-3 gap-y-1.5">
-                <dt className="text-muted-foreground">Total</dt>
-                <dd className="font-semibold tabular-nums">{formatMoney(invoice.invoice_total)}</dd>
-                <dt className="text-muted-foreground">Site</dt>
-                <dd>{site ? `${site.name} · ${site.project}` : '—'}</dd>
-                {invoice.vendor_name && invoice.supplier_name && invoice.vendor_name !== invoice.supplier_name && (
-                  // The document's own words are kept even when a vendor
-                  // record matched, so a later rename can't rewrite history.
-                  <>
-                    <dt className="text-muted-foreground">On the paper</dt>
-                    <dd>{invoice.supplier_name}</dd>
-                  </>
-                )}
-                <dt className="text-muted-foreground">Recorded</dt>
-                <dd>{new Date(invoice.created_at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</dd>
-                {invoice.notes && (
-                  <>
-                    <dt className="text-muted-foreground">Note</dt>
-                    <dd className="whitespace-pre-line">{invoice.notes}</dd>
-                  </>
-                )}
-              </dl>
+              <SheetSection title="Details">
+                <Facts>
+                  <Fact label="Site">{site ? `${site.name} · ${site.project}` : null}</Fact>
+                  {invoice.vendor_name && invoice.supplier_name && invoice.vendor_name !== invoice.supplier_name && (
+                    // The document's own words are kept even when a vendor
+                    // record matched, so a later rename can't rewrite history.
+                    <Fact label="On the paper">{invoice.supplier_name}</Fact>
+                  )}
+                  <Fact label="Recorded">{new Date(invoice.created_at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</Fact>
+                  {invoice.notes && (
+                    <Fact label="Note">
+                      <span className="whitespace-pre-line">{invoice.notes}</span>
+                    </Fact>
+                  )}
+                </Facts>
+              </SheetSection>
 
-              <section className="flex flex-col gap-1.5">
-                <h3 className="text-sm font-semibold">
-                  Materials <span className="font-normal text-muted-foreground">{invoice.lines.length}</span>
-                </h3>
+              <SheetSection title={`Materials · ${invoice.lines.length}`} className="border-t">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b text-left text-xs text-muted-foreground">
@@ -176,16 +158,17 @@ export function InvoiceDetailsSheet({ invoiceId, open, onOpenChange }: InvoiceDe
                 {linesTotal !== null && invoice.invoice_total && Math.abs(Number(invoice.invoice_total) - linesTotal) > 0.5 && (
                   <p className="text-xs text-muted-foreground">The invoice total is higher by tax and delivery, which aren't split out.</p>
                 )}
-              </section>
+              </SheetSection>
 
               {invoice.expense_id && (
-                <Callout tone="success" icon={Receipt}>
-                  <strong className="font-semibold">In Finance as an unpaid bill.</strong> Nobody needs to enter it again.
-                </Callout>
+                <div className="px-5 pb-2">
+                  <Callout tone="success" icon={Receipt}>
+                    <strong className="font-semibold">In Finance as an unpaid bill.</strong> Nobody needs to enter it again.
+                  </Callout>
+                </div>
               )}
 
-              <section className="flex flex-col gap-1.5">
-                <h3 className="text-sm font-semibold">Original</h3>
+              <SheetSection title="Original" className="border-t">
                 {!invoice.has_attachment ? (
                   <p className="text-muted-foreground">No photo or PDF was attached.</p>
                 ) : attachmentLoading ? (
@@ -207,7 +190,7 @@ export function InvoiceDetailsSheet({ invoiceId, open, onOpenChange }: InvoiceDe
                     {attachmentError ? 'Attached, but it cannot be opened right now.' : 'Attached.'}
                   </p>
                 )}
-              </section>
+              </SheetSection>
             </div>
           )}
         </div>

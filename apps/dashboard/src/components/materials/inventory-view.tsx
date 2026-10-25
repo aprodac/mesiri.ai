@@ -145,7 +145,8 @@ export function InventoryView({ projectId, siteId }: InventoryViewProps) {
         <MaterialLedgerSheet
           siteId={selected.site_id}
           materialId={selected.material_id}
-          materialName={`${selected.material_name} · ${siteNames.get(selected.site_id)?.name ?? 'Site'}`}
+          materialName={selected.material_name}
+          siteName={siteNames.get(selected.site_id)?.name}
           stockState={selected.stock_state}
           open={selected !== null}
           onOpenChange={(open) => !open && setSelected(null)}

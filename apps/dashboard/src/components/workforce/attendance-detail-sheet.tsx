@@ -7,6 +7,7 @@ import { fetchAttendanceReportDetailApi, type LabourAttendanceDetailItem, type L
 import { useSiteNames } from '@/lib/site-names'
 import { CHIP, longDate } from '@/lib/site-day'
 import { cn } from '@/lib/utils'
+import { SheetHero } from '@/components/detail-sheet'
 import { AddWorkerDialog } from './add-worker-dialog'
 
 interface AttendanceDetailSheetProps {
@@ -59,19 +60,29 @@ export function AttendanceDetailSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full flex-col overflow-y-auto sm:max-w-[520px]">
-        <SheetHeader>
-          <SheetTitle>Attendance</SheetTitle>
-          <SheetDescription>
-            {detail
-              ? [longDate(detail.occurred_date), site && `${site.name} · ${site.project}`, detail.recorded_via?.includes('whatsapp') ? 'sent on WhatsApp' : 'entered on the dashboard']
-                  .filter(Boolean)
-                  .join(' · ')
-              : 'Who was on site that day.'}
-          </SheetDescription>
-        </SheetHeader>
+      <SheetContent className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-[520px]">
+        {detail ? (
+          <SheetHero
+            kicker="Attendance"
+            lead={
+              <>
+                {detail.total_headcount} <span className="text-xl font-medium text-muted-foreground">workers</span>
+              </>
+            }
+            title={site ? `${site.name} · ${site.project}` : 'Site'}
+          >
+            <span>{longDate(detail.occurred_date)}</span>
+            {detail.total_cost > 0 && <span>Labour cost ₹{detail.total_cost.toLocaleString('en-IN')}</span>}
+            <span>{detail.recorded_via?.includes('whatsapp') ? 'Sent on WhatsApp' : 'Entered on the dashboard'}</span>
+          </SheetHero>
+        ) : (
+          <SheetHeader className="border-b px-5 pt-5 pb-4">
+            <SheetTitle>Attendance</SheetTitle>
+            <SheetDescription>Who was on site that day.</SheetDescription>
+          </SheetHeader>
+        )}
 
-        <div className="flex flex-1 flex-col gap-4 px-4 pb-6 text-sm">
+        <div className="flex flex-1 flex-col gap-4 px-5 py-4 pb-6 text-sm">
           {loading ? (
             <div className="flex flex-col gap-2">
               <Skeleton className="h-10 w-40" />
@@ -85,15 +96,7 @@ export function AttendanceDetailSheet({
             <p className="text-muted-foreground">This report could not be found.</p>
           ) : (
             <>
-              <p>
-                <span className="text-2xl font-semibold tabular-nums">{detail.total_headcount}</span>{' '}
-                <span className="text-muted-foreground">workers</span>
-                {detail.total_cost > 0 && (
-                  <span className="ml-3 text-muted-foreground">
-                    · labour cost <strong className="font-semibold text-foreground">₹{detail.total_cost.toLocaleString('en-IN')}</strong>
-                  </span>
-                )}
-              </p>
+              <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Who was there</h3>
               {detail.notes && detail.notes !== 'Daily site attendance log' && <p className="text-muted-foreground">{detail.notes}</p>}
 
               {!detail.lines || detail.lines.length === 0 ? (
@@ -143,7 +146,7 @@ export function AttendanceDetailSheet({
 
               {detail.attachments && detail.attachments.length > 0 && (
                 <div className="flex flex-col gap-2">
-                  <h3 className="font-semibold">Photos</h3>
+                  <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Photos</h3>
                   <div className="grid grid-cols-2 gap-2">
                     {detail.attachments.map((att, idx) =>
                       att.url ? (

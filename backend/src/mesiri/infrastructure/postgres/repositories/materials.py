@@ -536,6 +536,9 @@ class PostgresMaterialReadRepository:
         stmt_base = (
             sa.select(
                 _material_movements.c.id,
+                # WEB-36: the receipt/usage row behind this movement, so a
+                # movement's panel can find its own place in the ledger.
+                _material_movements.c.source_id,
                 sa.case(
                     (_material_movements.c.movement_type == "RECEIPT", "IN"),
                     else_="OUT"
