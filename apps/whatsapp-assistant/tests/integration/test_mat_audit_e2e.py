@@ -66,3 +66,40 @@ async def test_mat03_a_day_without_movements_says_so_with_the_stock(world):
     await _send(world, direction="opening_stock", quantity=500)
     said = await _ask(world, date="2020-01-01")
     assert "no cement was used or received" in said.lower() and "left now" in said
+
+
+async def test_mat06_once_the_conversion_is_stored_an_engineer_is_never_asked(world):
+    """"2 loads sand came" for sand counted in cum: the admin's stored
+    "1 load = 4 cum" is used for the engineer's report, with no question."""
+    from runtime.agent.entry_base import Say
+    from runtime.material_catalog_query import MaterialCatalogQueryService
+
+    catalog = MaterialCatalogQueryService(world.db)
+    org = str(world.org)
+    [sand] = await catalog.find_materials(organization_id=org, name="Sand")
+    stock_unit = await catalog.get_unit(str(sand["default_unit_id"]))
+
+    async def report(role: str):
+        world.entry.actor.role = role
+        candidate = Candidate(
+            semantic_type=SemanticType.MATERIAL_UPDATE,
+            fields={"material_name": "sand", "quantity": 2, "unit": "loads", "direction": "received"},
+        )
+        return await world.entry.prepare(MESSAGE, _Understanding(candidate), candidate)
+
+    before = await report("SITE_ENGINEER")
+    if stock_unit["code"] == "load":
+        pytest.skip("the starter catalogue counts sand in loads")
+    assert isinstance(before, Say), "no conversion yet: the engineer is asked for the amount"
+    assert "cum" in before.text and "Cubic Meters" not in before.text
+
+    saved = await catalog.set_conversion(
+        organization_id=org, role="PROJECT_MANAGER", user_id=str(world.user),
+        material_name="sand", unit_text="loads", count=0.25,  # 0.25 load per cum: 1 load = 4 cum
+    )
+    assert "Saved" in saved, saved
+
+    ready = await report("SITE_ENGINEER")
+    assert isinstance(ready, Ready), ready
+    assert ready.event.fields["quantity"] == 8 and ready.event.fields["unit"] == stock_unit["code"]
+    assert ready.event.fields["reported_quantity"] == 2

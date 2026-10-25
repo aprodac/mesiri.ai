@@ -30,6 +30,7 @@ from . import later
 from .left_it import LEFT_IT, is_drop_word, question_is_open
 from .prompt import AgentContext, Turn
 from .runner import AgentResult, AgentRunner, default_now
+from .stale_questions import close_stale_questions
 from .stock_question import is_stock_question
 from .tools import QUERY_MATERIALS, ScopeLookup
 
@@ -118,8 +119,12 @@ def _context_of(
         now=deps.now(),
         projects=tuple((p.name, p.location) for p in actor.projects),
         sites=tuple((s.name, project_names.get(s.project_id or "")) for s in actor.sites),
-        turns=tuple(
-            Turn(t.user_text, t.assistant_reply) for t in (getattr(pack, "recent_turns", ()) or ())
+        turns=close_stale_questions(
+            tuple(
+                Turn(t.user_text, t.assistant_reply, getattr(t, "at", 0.0))
+                for t in (getattr(pack, "recent_turns", ()) or ())
+            ),
+            deps.now().timestamp(),
         ),
         last_language=language,
         last_script=script,

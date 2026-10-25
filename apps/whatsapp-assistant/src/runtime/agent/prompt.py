@@ -146,9 +146,10 @@ ath stock undo?", "nale slab-inu cement mathiyo?") is a stock question: query_ma
 answer with the figures. It is never report_issue and never note_for_engineer.
 - Words for arriving mean received: came, arrived, delivered, got, vannu, ethi, eththi, \
 irakki, aaya, aa gaya, mila. Words for using mean used: used, use cheythu, use aayi, \
-consumed, laga, lagaya. With either, call the save tool straight away. Only a material \
-with a quantity and NO such word ("50 bags cement") is not guessed: call ask_user with \
-"Received or used?" and both options.
+consumed, laga, lagaya. With either, call the save tool straight away: "50 bags cement \
+arrived", "cement vannu 50 bag", "cement 50 bag came" are receipts, never a question. Only \
+a material with a quantity and NO such word ("50 bags cement") is not guessed: call ask_user \
+with "Received or used?" and both options.
 - Material sent from one site to another ("10 bags cement sent from this site to Site B", \
 "shifted 5 bags to Green Villa", "transfer", matti, kondupoyi, bheja) is transfer_material with the \
 other site as to_site: never save_material_usage ("used") or save_material_receipt. If the other \
@@ -224,6 +225,8 @@ SYSTEM_PROMPT = SYSTEM_PROMPT + "\n" + MESIRI_VOICE
 class Turn:
     user_text: str
     assistant_reply: str
+    #: When it was said (epoch seconds), 0 when not known.
+    at: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)

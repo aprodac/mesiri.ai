@@ -27,6 +27,7 @@ from .cards import CardItem, merge_changes
 from .equipment import EQUIPMENT_LINE, is_equipment_only
 from .gateway import StepResult, WorkflowGateway
 from .later import LaterItem, held_item
+from .material_direction import asks_direction, default_options, says_received
 from .site_match import short_title
 from .tools import (
     ASK_USER,
@@ -35,6 +36,7 @@ from .tools import (
     REPORT_ISSUE,
     REQUEST_DPR,
     SAVE_LABOUR,
+    SAVE_MATERIAL_USAGE,
     SAVE_WORK_DONE,
     SET_UNIT_CONVERSION,
     SET_WORK_SITE,
@@ -268,10 +270,11 @@ def rejoin_names(options: list[Any], known: list[str]) -> list[str]:
 _BUTTON_TITLE_MAX = 20
 
 
-def site_reply(question: str, options: list[str]) -> ReplySpec:
-    """The site question ([111]): the site's name alone when it fits a button;
-    otherwise a list, whose rows carry a title cut only between words and the
-    full name underneath."""
+def _choice_reply(question: str, options: list[str], list_label: str) -> ReplySpec:
+    """The one question as a message. Up to three options that all fit a
+    button (20 characters) are buttons; anything else is a list, whose rows
+    carry a title cut only between words and the full option underneath --
+    never a button cut mid-sentence ("The amount in cubic", live 24 Oct)."""
     labels = [" ".join(str(o).split()) for o in options if str(o).strip()][:MAX_LIST_ROWS]
     if 0 < len(labels) <= MAX_BUTTONS and all(len(o) <= _BUTTON_TITLE_MAX for o in labels):
         return ReplySpec(text=question, buttons=tuple(ListRow(f"agent_opt_{i}", o) for i, o in enumerate(labels, 1)))
@@ -279,21 +282,20 @@ def site_reply(question: str, options: list[str]) -> ReplySpec:
     for i, label in enumerate(labels, 1):
         title = short_title(label, _TITLE_MAX)
         rows.append(ListRow(f"agent_opt_{i}", title, label[:72] if title != label else ""))
-    return ReplySpec(text=question, list_button_label="Choose site", list_rows=tuple(rows)) if rows else ReplySpec(text=question)
+    return ReplySpec(text=question, list_button_label=list_label, list_rows=tuple(rows)) if rows else ReplySpec(text=question)
+
+
+def site_reply(question: str, options: list[str]) -> ReplySpec:
+    """The site question ([111])."""
+    return _choice_reply(question, options, "Choose site")
 
 
 def question_reply(question: str, options: list[str], *, awaiting: str = "") -> ReplySpec:
-    """The one question as a message: buttons for up to three options, a list
-    for up to ten, plain text otherwise."""
+    """The one question as a message: buttons when the options are short
+    (up to three), a list otherwise (up to ten), plain text with none."""
     if awaiting == "site":
         return site_reply(question, options)
-    options = [o for o in (str(o).strip() for o in options) if o][:MAX_LIST_ROWS]
-    rows = tuple(ListRow(f"agent_opt_{i}", _title(o)) for i, o in enumerate(options, 1))
-    if 0 < len(rows) <= MAX_BUTTONS:
-        return ReplySpec(text=question, buttons=rows)
-    if rows:
-        return ReplySpec(text=question, list_button_label="Choose one", list_rows=rows)
-    return ReplySpec(text=question)
+    return _choice_reply(question, options, "Choose one")
 
 
 @dataclass(slots=True)
@@ -350,6 +352,9 @@ class AgentToolbox:
     _action_summaries: list[str] = field(default_factory=list)
     #: Request 104, D2: the hours-lost question was the last thing asked.
     hours_asked: bool = False
+    #: MAT-07: a "used" save for a message that says the material arrived was
+    #: sent back once (to save_material_receipt).
+    direction_redirected: bool = False
     #: Request 104: every tool the model called this message (even a refused one).
     called: set[str] = field(default_factory=set)
     #: Request 104: the message is only about equipment, which WhatsApp does not
@@ -438,6 +443,29 @@ class AgentToolbox:
         if self.calls > MAX_CALLS:
             return ToolOutcome(
                 content={"status": "skipped", "reason": "too many actions in one message"}
+            )
+        if name == ASK_USER and asks_direction(str(args.get("question") or "")) and says_received(self.user_text):
+            # MAT-07: it says the material came; that is a receipt, not a question.
+            _log.warning("agent.direction_question_refused")
+            return ToolOutcome(
+                content={
+                    "status": "not_asked",
+                    "reason": "the message says the material arrived, so it was received",
+                    "instruction": (
+                        "Do not ask 'Received or used?'. Call save_material_receipt now with the "
+                        "material, quantity and unit from the message."
+                    ),
+                }
+            )
+        if name == SAVE_MATERIAL_USAGE and says_received(self.user_text) and not self.direction_redirected:
+            # The same words, the wrong tool: arrived material is not a usage.
+            self.direction_redirected = True
+            return ToolOutcome(
+                content={
+                    "status": "not_saved",
+                    "reason": "the message says the material arrived, so it was received, not used",
+                    "instruction": "Nothing was saved. Call save_material_receipt with the same material, quantity and unit.",
+                }
             )
         if name == ASK_USER:
             return self._ask(args)
@@ -724,6 +752,9 @@ class AgentToolbox:
             )
         options = args.get("options") or []
         options = rejoin_names(options if isinstance(options, list) else [], self._known_names())
+        if not options:
+            # MAT-08: "cement vannu" -> "How many?" came with no buttons.
+            options = list(default_options(question, self.user_text))
         self.parked = question_reply(question, options)
         self.parked_by = "ask"
         # WA-58: what the question leaves aside is taken up next.

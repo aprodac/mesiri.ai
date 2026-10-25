@@ -12,6 +12,7 @@ Key layout (the client prepends the ``mesiri`` namespace):
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -35,6 +36,8 @@ class ConversationTurn:
     user_text: str
     assistant_reply: str
     correlation_id: str
+    #: When it was said (epoch seconds); 0 for a turn stored before this existed.
+    at: float = 0.0
 
 
 class RecentTurnsStore:
@@ -69,6 +72,7 @@ class RecentTurnsStore:
                 "user_text": turn.user_text,
                 "assistant_reply": turn.assistant_reply,
                 "correlation_id": turn.correlation_id,
+                "at": turn.at or time.time(),
             }
         )
         # Keep only the most recent entries -- oldest-first list, so trim
@@ -85,6 +89,7 @@ class RecentTurnsStore:
                 user_text=str(entry.get("user_text") or ""),
                 assistant_reply=str(entry.get("assistant_reply") or ""),
                 correlation_id=str(entry.get("correlation_id") or ""),
+                at=float(entry.get("at") or 0.0),
             )
             for entry in raw
             if isinstance(entry, dict)

@@ -35,9 +35,9 @@ class FakeGateway:
         return None
 
 
-def _box(*results, delay=0.0):
+def _box(*results, delay=0.0, user_text="the note"):
     gateway = FakeGateway(*results, delay=delay)
-    return tb.AgentToolbox(gateway, ScopeLookup(), "the note"), gateway
+    return tb.AgentToolbox(gateway, ScopeLookup(), user_text), gateway
 
 
 async def test_a_saved_record_is_remembered_and_reported_to_the_model():
@@ -111,7 +111,21 @@ def test_up_to_three_options_become_buttons_more_become_a_list():
 
 def test_long_option_titles_fit_whatsapp():
     reply = tb.question_reply("Which?", ["A very long site name that WhatsApp would refuse"])
-    assert len(reply.buttons[0].title) <= 24
+    assert not reply.buttons  # too long for a button: a list row, title cut between words
+    assert len(reply.list_rows[0].title) <= 24
+    assert reply.list_rows[0].description.startswith("A very long site name")
+
+
+def test_mat_stale_button_a_long_answer_is_never_cut_in_the_middle():
+    """Live 24 Oct: the option "The amount in cubic meters" came out as the button
+    "The amount in cubic". Short options stay buttons; the rest become a list
+    that keeps the whole option."""
+    short = tb.question_reply("Which?", ["2", "3", "Other"])
+    assert [b.title for b in short.buttons] == ["2", "3", "Other"]
+    long_ = tb.question_reply("How much?", ["The amount in cubic meters", "1 load = how many cum"])
+    assert not long_.buttons and len(long_.list_rows) == 2
+    assert long_.list_rows[0].description == "The amount in cubic meters"
+    assert all(len(row.title) <= 24 for row in long_.list_rows)
 
 
 async def test_a_query_answer_is_kept_for_the_reply():
@@ -213,3 +227,54 @@ async def test_a_yes_to_the_offer_to_ask_the_engineer_passes_it_on():
     box = tb.AgentToolbox(gateway=gateway, scope=ScopeLookup(), user_text="yes", engineer_offered=True)
     out = await box.handle("note_for_engineer", {"question": "nale slab cheyyamo?"})
     assert out.content["status"] == "saved" and "Nothing is sent yet" in out.content["instruction"]
+
+
+async def test_mat07_a_message_that_says_it_arrived_is_never_asked_received_or_used():
+    box, _ = _box(StepResult("saved", text="Saved"), user_text="50 bags cement arrived")
+    out = await box.handle("ask_user", {"question": "Received or used?", "options": ["Received", "Used"]})
+    assert out.content["status"] == "not_asked" and "save_material_receipt" in out.content["instruction"]
+    assert box.parked is None
+    # a "used" save for the same words is sent back once, to the receipt tool
+    out = await box.handle("save_material_usage", {"material": "cement", "quantity": 50, "unit": "bags"})
+    assert out.content["status"] == "not_saved" and "save_material_receipt" in out.content["instruction"]
+    assert box.attempted_writes == 0
+
+
+@pytest.mark.parametrize(
+    "text,received,used",
+    [
+        ("50 bags cement arrived", True, False),
+        ("cement vannu 50 bag", True, False),
+        ("50 bag cement came", True, False),
+        ("20 bags cement used for slab", False, True),
+        ("cement 20 bag use aayi", False, True),
+        ("sand came, 2 loads used already", False, False),
+        ("50 bags cement", False, False),
+    ],
+)
+def test_mat07_the_words_that_settle_the_direction(text, received, used):
+    from runtime.agent.material_direction import says_received, says_used
+
+    assert (says_received(text), says_used(text)) == (received, used)
+
+
+async def test_mat07_a_message_with_no_direction_word_is_still_asked():
+    box, _ = _box(StepResult("saved", text="Saved"), user_text="50 bags cement")
+    out = await box.handle("ask_user", {"question": "Received or used?", "options": ["Received", "Used"]})
+    assert out.content["status"] != "not_asked"
+
+
+async def test_mat08_a_material_question_without_options_gets_buttons():
+    box, _ = _box(user_text="cement vannu")
+    await box.handle("ask_user", {"question": "How many bags of cement came?"})
+    assert [r.title for r in box.parked.list_rows] == ["10", "25", "50", "Other"]
+    box, _ = _box(user_text="50 bags cement")
+    await box.handle("ask_user", {"question": "Received or used?"})
+    assert [b.title for b in box.parked.buttons] == ["Received", "Used"]
+    # the model's own options are kept; a question that is not about material gets none
+    box, _ = _box(user_text="cement vannu")
+    await box.handle("ask_user", {"question": "How many?", "options": ["5", "6"]})
+    assert [b.title for b in box.parked.buttons] == ["5", "6"]
+    box, _ = _box(user_text="5 workers today")
+    await box.handle("ask_user", {"question": "How many were masons?"})
+    assert not box.parked.buttons and not box.parked.list_rows
