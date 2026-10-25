@@ -12,7 +12,8 @@ import { BrandingTab } from './company/BrandingTab'
 // WEB-28: the company on one page -- its details and the DPR letterhead
 // they print on -- instead of five tabs. The Team tab (a copy of the Team
 // page) and the overview boxes (role counts, "integration coverage") are
-// gone; the company-wide WhatsApp message log moved to /company/messages.
+// gone; the company-wide WhatsApp message log is the WhatsApp page's
+// "All messages" view.
 
 export default function CompanyDetails() {
   usePageTitle('Company')
@@ -71,7 +72,7 @@ export default function CompanyDetails() {
             title="WhatsApp"
             meta={s ? `${s.wa_mapped_users} of ${s.total_users} people have a number` : undefined}
             action={
-              <Link to="/company/messages" className="text-sm font-medium text-muted-foreground hover:text-foreground hover:underline">
+              <Link to="/whatsapp?view=messages" className="text-sm font-medium text-muted-foreground hover:text-foreground hover:underline">
                 All messages →
               </Link>
             }

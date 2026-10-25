@@ -365,7 +365,7 @@ function ContactMetadataPanel({ conversation }: { conversation: Conversation }) 
 
 type FilterTab = 'all' | 'errors' | 'unmapped'
 
-export default function WhatsAppInboxPage() {
+export default function WhatsAppInboxPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [search, setSearch] = React.useState('')
   const [selectedWaId, setSelectedWaId] = React.useState<string | null>(null)
   const [filterTab, setFilterTab] = React.useState<FilterTab>('all')
@@ -414,9 +414,10 @@ export default function WhatsAppInboxPage() {
   }, [messages, selectedWaId])
 
   return (
-    <div className="flex flex-col h-[calc(100vh-57px)] min-h-0 -m-4">
+    <div className={embedded ? 'flex min-h-0 flex-1 flex-col' : 'flex flex-col h-[calc(100vh-57px)] min-h-0 -m-4'}>
 
-      {/* ── Top Header Bar ───────────────────────────────────── */}
+      {/* ── Top Header Bar (the WhatsApp page has its own) ───── */}
+      {!embedded && (
       <div className="px-5 py-3.5 border-b shrink-0 flex items-center justify-between gap-4 bg-card">
         <div className="flex items-center gap-3">
           <div className="size-9 rounded-lg bg-[#008069]/10 border border-[#008069]/30 flex items-center justify-center shrink-0">
@@ -446,6 +447,7 @@ export default function WhatsAppInboxPage() {
           Refresh
         </Button>
       </div>
+      )}
 
       {/* ── Body ─────────────────────────────────────────────── */}
       <div className="flex flex-1 min-h-0">
