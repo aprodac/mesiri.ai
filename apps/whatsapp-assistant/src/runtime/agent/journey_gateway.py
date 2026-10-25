@@ -187,6 +187,8 @@ class JourneyGateway:
     handled: list[Any] = field(default_factory=list)
     #: WA-41: ``(material, unit, count) -> line to say``; None when not wired.
     set_conversion: Callable[[str, str, Any], Awaitable[str]] | None = None
+    #: SET-07: sends the join code and the message to forward (join_journey.share_code).
+    share_code: Callable[[], Awaitable[str]] | None = None
     #: ARCH-01: material receipts/usage straight to the workflow
     #: (runtime/agent/material_entry.py).
     material_entry: Any | None = None
@@ -515,6 +517,20 @@ class JourneyGateway:
         return ReplySpec(
             text=render_saved([summary], header),
             buttons=(ListRow("confirm_yes", SAVE_TITLE), ListRow("confirm_no", CANCEL_TITLE)),
+        )
+
+    async def share_join_code(self) -> StepResult:
+        if self.share_code is None:
+            return StepResult("info", text="I can't share the join code here.")
+        refusal = await self.share_code()
+        if refusal:
+            return StepResult("info", text=refusal)
+        return StepResult(
+            "info",
+            text=(
+                "The join code and a message to forward were already sent as separate messages. "
+                "Reply with one short line at most; do not repeat the code."
+            ),
         )
 
     async def set_unit_conversion(self, *, material: str, unit: str, count: Any) -> StepResult:

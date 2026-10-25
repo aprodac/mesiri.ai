@@ -1037,8 +1037,8 @@ async def simulate_message(
     from context.live_identity import (
         NO_ORG_MESSAGE,
         ORG_SUSPENDED_MESSAGE,
-        UNREGISTERED_MESSAGE,
         resolve_sender,
+        unregistered_message,
     )
     from mesiri_contracts.assistant.enums import InputModality
     from mesiri_contracts.assistant.normalized_message import NormalizedMessage, SenderInfo
@@ -1139,7 +1139,7 @@ async def simulate_message(
     # --- Identity gate (M4) — same check the real webhook path runs first. ---
     ctx = await resolve_sender(container.actor_reader, wa_id)
     if ctx is None:
-        await _capture_text(wa_id, UNREGISTERED_MESSAGE)
+        await _capture_text(wa_id, unregistered_message(wa_id))
         return _build_response("identity_gate")
     if ctx.organization_id is None:
         await _capture_text(wa_id, NO_ORG_MESSAGE.format(name=ctx.full_name))

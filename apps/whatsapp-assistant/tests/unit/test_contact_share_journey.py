@@ -254,3 +254,30 @@ async def test_invite_without_business_number_has_no_link(journey) -> None:
         action_type=DraftActionType.ADD_PROJECT_MEMBER, member_name="Biju", actor=actor
     )
     assert "wa.me" not in texts[1] and "Save this number" in texts[1]
+
+
+async def test_typed_add_gets_the_same_invite_as_a_shared_contact(journey) -> None:
+    """SET-04: "add Rajesh 98... as engineer" ends with ADDED + the invite link."""
+    actor = _actor()
+    texts = await journey.j.invite_after_member_added(
+        action_type=DraftActionType.ADD_PROJECT_MEMBER,
+        member_name="Rajesh",
+        actor=actor,
+        project_id=P1.id,
+        business_number="+1 555 000 1111",
+    )
+    assert "*Rajesh* can now report on *Green Villa*" in texts[0]
+    assert "Hi Rajesh, Suresh Builders uses Mesiri" in texts[1]
+    assert "https://wa.me/15550001111?text=Hi" in texts[1]
+
+
+async def test_typed_add_without_a_known_project_sends_nothing(journey) -> None:
+    assert (
+        await journey.j.invite_after_member_added(
+            action_type=DraftActionType.ADD_PROJECT_MEMBER,
+            member_name="Rajesh",
+            actor=_actor(),
+            project_id="not-a-project",
+        )
+        == []
+    )

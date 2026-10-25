@@ -62,6 +62,27 @@ _log = logging.getLogger("mesiri.signup")
 
 START_TRIAL_ID = "signup:start_trial"
 IN_COMPANY_ID = "signup:in_company"
+CONFIRM_ID = "signup:confirm"
+EDIT_ID = "signup:edit"
+
+#: Typed stand-ins for the welcome buttons (SET-03): people type instead of tapping.
+_START_WORDS = frozenset(
+    {"yes", "y", "ok", "okay", "start", "start free trial", "free trial", "start trial", "try", "trial"}
+)
+_START_FIRST_WORDS = frozenset({"start free trial", "free trial", "start trial"})
+_IN_COMPANY_WORDS = frozenset({"i'm in a company", "im in a company", "in a company", "join"})
+_CONFIRM_WORDS = frozenset({"yes", "y", "ok", "okay", "confirm", "correct", "looks good", "create"})
+_EDIT_WORDS = frozenset({"edit", "change", "no", "wrong", "redo"})
+#: Greetings, answers and commands that are never a company or site name.
+_NOT_A_NAME = frozenset(
+    {
+        "hi", "hii", "hello", "hey", "hai", "namaste", "namaskaram", "ok", "okay", "yes", "no",
+        "y", "n", "start", "help", "test", "testing", "thanks", "thank you", "menu", "stop",
+        "start free trial", "free trial", "trial", "join", "what", "why", "how", "who", "none",
+        "na", "n/a", "nil", "company", "site", "my company", "my site", "name", "skip",
+    }
+)  # fmt: skip
+_NAME_MAX_WORDS = 8
 
 _CANCEL_WORDS = frozenset({"cancel", "stop", "exit", "quit"})
 _NAME_MAX = 120
@@ -81,6 +102,14 @@ IN_COMPANY_MESSAGE = (
     "Ask your company's Mesiri admin for their *join code*, then send it here, e.g. "
     "*JOIN ACME-4821*. Or ask them to add your number *+{wa_id}*."
 )
+NOT_A_NAME_MESSAGE = (
+    "That doesn't look like a {what} name. Please send just the name, e.g. *{example}*. {question}"
+)
+CONFIRM_MESSAGE = (
+    "Please check:\n*Company:* {company}\n*Site:* {site}\n\nShall I set this up?"
+)
+CONFIRM_REMINDER = "Tap *Looks good* to set this up, or *Edit* to change the names."
+EDIT_MESSAGE = "No problem, let's redo it."
 TYPE_IT_MESSAGE = "Please type the answer as a message. {question}"
 TOO_LONG_MESSAGE = "That's a bit long. Please keep it under {limit} characters. {question}"
 CANCELLED_MESSAGE = "No problem, nothing was set up. Message *Hi* any time to start again."
@@ -98,7 +127,23 @@ DONE_MESSAGE = (
 
 TRIAL_CAPTION = "Your free trial runs until *{trial_end}*."
 
-_QUESTION = {"company": ASK_COMPANY, "site": ASK_SITE, "owner_name": ASK_OWNER_NAME}
+_QUESTION = {"company": ASK_COMPANY, "site": ASK_SITE, "owner_name": ASK_OWNER_NAME, "confirm": ""}
+_NAME_KIND = {
+    "company": ("company", "Suresh Builders"),
+    "site": ("site", "Green Villa, Kakkanad"),
+    "owner_name": ("person", "Suresh Kumar"),
+}
+
+
+def _not_a_name(text: str) -> bool:
+    """SET-03: a greeting, a command, a question or a sentence is not a name."""
+    plain = " ".join(text.lower().strip(" .!,;:-").split())
+    return (
+        sum(ch.isalpha() for ch in text) < 2
+        or plain in _NOT_A_NAME
+        or "?" in text
+        or len(text.split()) > _NAME_MAX_WORDS
+    )
 
 
 class SignupJourney:
@@ -144,6 +189,19 @@ class SignupJourney:
         )
         state = await self._store.get(wa_id)
 
+        if not tap and (state is None or state.stage == "welcome"):
+            lowered = text.lower().strip(" .!")
+            if lowered in (_START_WORDS if state is not None else _START_FIRST_WORDS):
+                tap = START_TRIAL_ID
+            elif lowered in _IN_COMPANY_WORDS:
+                tap = IN_COMPANY_ID
+        if not tap and state is not None and state.stage == "confirm":
+            lowered = text.lower().strip(" .!")
+            if lowered in _CONFIRM_WORDS:
+                tap = CONFIRM_ID
+            elif lowered in _EDIT_WORDS:
+                tap = EDIT_ID
+
         if tap == START_TRIAL_ID:
             # SS-09: refuse up front (an earlier trial, a foreign number, the
             # daily limit) rather than after three questions.
@@ -157,12 +215,24 @@ class SignupJourney:
             await self._store.clear(wa_id)
             return await self._say(wa_id, IN_COMPANY_MESSAGE.format(wa_id=wa_id))
 
+        if tap in (CONFIRM_ID, EDIT_ID):
+            if state is None or state.stage != "confirm":
+                return await self._welcome(wa_id, message.sender.profile_name)
+            if tap == EDIT_ID:
+                await self._store.set(wa_id, SignupState(stage="company"))
+                await self._say(wa_id, EDIT_MESSAGE)
+                return await self._say(wa_id, ASK_COMPANY)
+            return await self._create(wa_id, state, state.owner_name or "")
+
         if state is None or state.stage == "welcome":
             return await self._welcome(wa_id, message.sender.profile_name)
 
         if text.lower() in _CANCEL_WORDS:
             await self._store.clear(wa_id)
             return await self._say(wa_id, CANCELLED_MESSAGE)
+
+        if state.stage == "confirm":
+            return await self._confirm_prompt(wa_id, state, reminder=True)
 
         question = _QUESTION[state.stage]
         if not text:
@@ -172,12 +242,18 @@ class SignupJourney:
                 wa_id, TOO_LONG_MESSAGE.format(limit=_NAME_MAX, question=question)
             )
 
+        what, example = _NAME_KIND[state.stage]
+        if _not_a_name(text):
+            return await self._say(
+                wa_id,
+                NOT_A_NAME_MESSAGE.format(what=what, example=example, question=question),
+            )
+
         if state.stage == "company":
             await self._store.set(wa_id, SignupState(stage="site", company_name=text))
             return await self._say(wa_id, ASK_SITE)
 
         if state.stage == "site":
-            state = SignupState(stage="site", company_name=state.company_name, site_name=text)
             owner_name = _clean_profile_name(message.sender.profile_name)
             if owner_name is None:
                 await self._store.set(
@@ -187,10 +263,35 @@ class SignupJourney:
                     ),
                 )
                 return await self._say(wa_id, ASK_OWNER_NAME)
-            return await self._create(wa_id, state, owner_name)
+        else:  # owner_name
+            owner_name = text
+        return await self._confirm_prompt(
+            wa_id,
+            SignupState(
+                stage="confirm",
+                company_name=state.company_name,
+                site_name=state.site_name if state.stage == "owner_name" else text,
+                owner_name=owner_name,
+            ),
+        )
 
-        # owner_name
-        return await self._create(wa_id, state, text)
+    async def _confirm_prompt(
+        self, wa_id: str, state: SignupState, *, reminder: bool = False
+    ) -> str:
+        """SET-03: show what will be created and let them fix it before it is."""
+        await self._store.set(wa_id, state)
+        body = CONFIRM_MESSAGE.format(company=state.company_name, site=state.site_name)
+        if reminder:
+            body = f"{CONFIRM_REMINDER}\n\n{body}"
+        await self._sender.send_button(
+            wa_id,
+            body=body,
+            buttons=[
+                ListRow(id=CONFIRM_ID, title="Looks good"),
+                ListRow(id=EDIT_ID, title="Edit"),
+            ],
+        )
+        return body
 
     async def _refusal(self, wa_id: str) -> str | None:
         """The guardrails' refusal message for this number, or None to go

@@ -32,6 +32,7 @@ from .save_button import SAVE_TITLE
 from .site_match import short_title
 from .tools import (
     ASK_USER,
+    GET_JOIN_CODE,
     NOTE_FOR_ENGINEER,
     QUERY_MATERIALS,
     REPORT_ISSUE,
@@ -816,6 +817,8 @@ class AgentToolbox:
             return await self._undo(args)
         if name == UPDATE_PENDING_CARD:
             return await self._update_card(args)
+        if name == GET_JOIN_CODE:
+            return await self.gateway.share_join_code()
         if name == SET_UNIT_CONVERSION:
             return await self.gateway.set_unit_conversion(
                 material=str(args.get("material") or ""),
