@@ -144,7 +144,7 @@ const ROOT_MANAGEMENT_ITEMS: NavItem[] = [
   { title: 'Projects & Sites', url: '/projects', icon: Building2, requiredRole: 'ADMIN', tone: 'teal' },
   { title: 'Team', url: '/team', icon: Users, requiredRole: 'ADMIN', tone: 'violet' },
   { title: 'Company', url: '/company', icon: Building, requiredRole: 'ADMIN', tone: 'indigo' },
-  { title: 'WhatsApp Inbox', url: '/whatsapp/inbox', icon: MessageSquare, tone: 'green' },
+  { title: 'WhatsApp Inbox', url: '/whatsapp/inbox', icon: MessageSquare, requiredRole: 'ADMIN', tone: 'green' },
   { title: 'Automations', url: '/automations', icon: Clock, module: 'automations', tone: 'sky' },
 ]
 

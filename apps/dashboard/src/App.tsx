@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import { AppLayout } from '@/components/app-layout'
-import { RequireModule } from '@/components/require-module'
+import { RequireAdmin, RequireModule } from '@/components/require-module'
 import Login from '@/pages/Login'
 import Signup from '@/pages/Signup'
 import TodayPage from '@/pages/TodayPage'
@@ -111,7 +111,7 @@ export default function App() {
           <Route path="team/:id" element={<UserDetails />} />
           <Route path="company" element={<CompanyDetails />} />
           <Route path="company/messages" element={<CompanyMessagesPage />} />
-          <Route path="whatsapp/inbox" element={<WhatsAppInboxPage />} />
+          <Route path="whatsapp/inbox" element={<RequireAdmin><WhatsAppInboxPage /></RequireAdmin>} />
           <Route path="automations" element={<RequireModule module="automations"><AutomationsPage /></RequireModule>} />
 
           {/* Finance (module; not in V1 by default) */}
