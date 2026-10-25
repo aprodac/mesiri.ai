@@ -28,6 +28,34 @@ MATERIAL_USAGE = "material_usage"
 FACT_TYPES = frozenset({ACTIVITY, SITE_ISSUE, LABOUR_REPORT, MATERIAL_RECEIPT, MATERIAL_USAGE})
 
 
+def counted_sql(fact_type: str, fact_id_sql: str) -> str:
+    """WA-77 (Alan, 25 Oct): an entry counts only once it is saved. SQL that
+    is true unless the fact's latest review is a draft (sent, Save not yet
+    tapped). A fact with no review row counts, as `state_of` says.
+    `fact_type` is one of FACT_TYPES (a constant, never user input);
+    `fact_id_sql` is the column holding the fact's id. Uses
+    ix_fact_reviews_fact (fact_type, fact_id, created_at)."""
+    if fact_type not in FACT_TYPES:
+        raise ValueError(f"unknown fact type: {fact_type}")
+    return counted_sql_by_column(f"'{fact_type}'", fact_id_sql)
+
+
+def counted_sql_by_column(fact_type_sql: str, fact_id_sql: str) -> str:
+    """`counted_sql` for rows that carry their fact type in a column (late
+    entries): both arguments are SQL expressions from code, never input."""
+    return (
+        "COALESCE((SELECT fr_c.state FROM fact_reviews fr_c "
+        f"WHERE fr_c.fact_type = {fact_type_sql} AND fr_c.fact_id = {fact_id_sql} "
+        f"ORDER BY fr_c.created_at DESC LIMIT 1), '{CONFIRMED}') <> '{DRAFT}'"
+    )
+
+
+def counts(state: str | None) -> bool:
+    """WA-77: whether a fact in this review state is part of the record
+    (stock, attendance, the report). A draft is not, until it is saved."""
+    return state_of(state) != DRAFT
+
+
 class FactReviewError(ValueError):
     """A review action that cannot happen (unknown fact, wrong state, frozen day)."""
 

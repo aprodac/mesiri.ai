@@ -316,6 +316,38 @@ def _conditions(conditions: dict[str, Any], issues: list[dict[str, Any]]) -> dic
     }
 
 
+def saved_rows_only(
+    rows: dict[str, list[dict[str, Any]]], review_states: dict[str, dict[Any, str]]
+) -> dict[str, list[dict[str, Any]]]:
+    """WA-77 (Alan, 25 Oct): the day's rows without the drafts (sent, Save
+    not yet tapped), for the report itself. `rows` has `activities`,
+    `issues`, `labour` (lines, keyed by `report_id`) and `materials`
+    (movements, keyed by `source_type`/`source_id`). Work continued from an
+    earlier day is reviewed with that work, so it always stays."""
+    from mesiri.application.dpr import fact_review
+
+    def saved(fact_type: str, fact_id: Any) -> bool:
+        return fact_review.counts((review_states.get(fact_type) or {}).get(fact_id))
+
+    material_type = {
+        "material_receipt": fact_review.MATERIAL_RECEIPT,
+        "material_usage": fact_review.MATERIAL_USAGE,
+    }
+    return {
+        "activities": [
+            r for r in rows["activities"] if r.get("continued") or saved(fact_review.ACTIVITY, r["id"])
+        ],
+        "issues": [r for r in rows["issues"] if saved(fact_review.SITE_ISSUE, r.get("id"))],
+        "labour": [r for r in rows["labour"] if saved(fact_review.LABOUR_REPORT, r["report_id"])],
+        "materials": [
+            r
+            for r in rows["materials"]
+            if (r.get("source_type") or "") not in material_type
+            or saved(material_type[r["source_type"]], r["source_id"])
+        ],
+    }
+
+
 def build_review_items(
     *,
     payload: dict[str, Any],

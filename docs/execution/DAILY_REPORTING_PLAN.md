@@ -283,6 +283,17 @@ AI Extraction → Save as DRAFT (+ reply "Saved as a draft… Reply UNDO")
   (expenses, transfers), creating users, admin actions -- still confirms before
   saving. The company setting `capture_mode = confirm_first` (Mesiri team only)
   restores the old behaviour for capture too.
+- **Nothing counts until it is saved (WA-77, Alan, 25 Oct):** a draft (sent
+  on WhatsApp, ✅ Save not yet tapped, not kept in the evening review) is
+  written but not counted. The site report's payload, and so the PDF, is
+  built from saved entries only (`assembly.saved_rows_only`); drafts are only
+  listed for the engineer (`items`, and `drafts` in the payload). Approving a
+  day (dashboard, or "Confirm all" on WhatsApp) no longer confirms its drafts,
+  and late entries are listed and claimed once saved. The evening message
+  says how many were not saved and to keep them under "Fix something". The
+  SQL rule is one helper, `fact_review.counted_sql` (latest review state is
+  not a draft; no review row counts). Stock and attendance follow in later
+  slices of WA-77.
 - **Site DPR page reads (WEB-04):** `GET /dpr/site-days/{site_id}?date=` (the
   day, the report as it stands, `items` = every confirmable item with its fact
   type, id, draft/confirmed and flags, and the versions);

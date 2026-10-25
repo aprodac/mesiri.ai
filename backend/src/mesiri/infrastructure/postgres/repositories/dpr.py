@@ -300,10 +300,11 @@ class PostgresDprRepository:
         user is looked up rather than trusted, so an id with no users row
         leaves the field empty instead of failing the confirmation.
 
-        A site day's drafts are confirmed with it (BE-09, approved 13 Oct:
-        the engineer has just looked at them; anything wrong is rejected
-        first), and the version is rebuilt so the frozen DPR shows them as
-        confirmed."""
+        WA-77 (Alan, 25 Oct): only saved entries go in. A draft nobody has
+        saved (Save not tapped, not kept in the evening review) is no longer
+        confirmed with the day: it stays out of the frozen DPR, listed for
+        the engineer, and saving it later makes it a late entry (BE-13). The
+        version is rebuilt here so the frozen DPR is what was saved now."""
         await self._confirm_drafts_before_approval(
             organization_id=organization_id, user_id=user_id, report_id=report_id
         )
@@ -352,21 +353,13 @@ class PostgresDprRepository:
         ):
             return
 
-        from mesiri.infrastructure.postgres.repositories.fact_reviews import (
-            PostgresFactReviewRepository,
-        )
-
-        confirmed = await PostgresFactReviewRepository(self._conn).confirm_drafts_for_day(
-            organization_id=organization_id,
-            site_id=scope["site_id"],
-            report_date=scope["report_date"],
-            actor_user_id=user_id,
-        )
+        # WA-77: the day's drafts are not confirmed with it any more (see
+        # approve_report); only saved entries are in the version built below.
         # BE-13: earlier days' late entries listed in this report are now
-        # shown here (once) and confirmed with it.
+        # shown here (once); saved ones only.
         from mesiri.application.dpr.late_entries import claim_for_report
 
-        confirmed += await claim_for_report(
+        await claim_for_report(
             self._conn,
             organization_id=organization_id,
             site_id=scope["site_id"],
@@ -374,19 +367,16 @@ class PostgresDprRepository:
             report_id=report_id,
             actor_user_id=user_id,
         )
-        # BE-41: a day with no version yet is built now, too. The cutoff only
-        # builds versions for sites with work items or issues, so a site that
-        # sent only labour or materials (or "no work today") was confirmed
-        # with nothing frozen: the project DPR showed it "Not reported" and
-        # left its workers out.
-        if confirmed or scope["current_version_id"] is None:
-            payload = await self.assemble_site_report_payload(
-                organization_id=organization_id,
-                project_id=scope["project_id"],
-                site_id=scope["site_id"],
-                report_date=scope["report_date"],
-            )
-            await self.create_version(daily_report_id=report_id, payload=payload)
+        # Always rebuilt (WA-77): the frozen version holds what is saved now,
+        # never a draft from an earlier build. This also covers BE-41, a day
+        # with no version yet (a site that sent only labour or materials).
+        payload = await self.assemble_site_report_payload(
+            organization_id=organization_id,
+            project_id=scope["project_id"],
+            site_id=scope["site_id"],
+            report_date=scope["report_date"],
+        )
+        await self.create_version(daily_report_id=report_id, payload=payload)
 
     async def publish_report(
         self, organization_id: uuid.UUID, report_id: uuid.UUID
@@ -851,31 +841,47 @@ class PostgresDprRepository:
             report_id=this_report.id if this_report else None,
         )
 
-        from mesiri.application.dpr.assembly import build_review_items, build_site_report_payload
-
-        payload = build_site_report_payload(
-            review_states=review_states,
-            late_entries=late_entries,
-            conditions=dict(conditions_row) if conditions_row else None,
-            project_name=header["project_name"] if header else None,
-            site_name=header["site_name"] if header else None,
-            report_date=report_date,
-            activity_rows=[dict(row) for row in activity_rows],
-            quantities_by_activity=quantities_by_activity,
-            evidence_count_by_activity=evidence_count_by_activity,
-            photos_by_activity=photos_by_activity,
-            issue_rows=[dict(row) for row in issue_rows],
-            carried_issue_rows=[dict(row) for row in carried_rows],
-            labour_lines=[dict(row) for row in labour_rows],
-            material_movement_rows=[dict(row) for row in material_rows],
-            material_stock_rows=[dict(row) for row in stock_rows],
+        from mesiri.application.dpr.assembly import (
+            build_review_items,
+            build_site_report_payload,
+            saved_rows_only,
         )
+
+        def build(rows: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+            return build_site_report_payload(
+                review_states=review_states,
+                late_entries=late_entries,
+                conditions=dict(conditions_row) if conditions_row else None,
+                project_name=header["project_name"] if header else None,
+                site_name=header["site_name"] if header else None,
+                report_date=report_date,
+                activity_rows=rows["activities"],
+                quantities_by_activity=quantities_by_activity,
+                evidence_count_by_activity=evidence_count_by_activity,
+                photos_by_activity=photos_by_activity,
+                issue_rows=rows["issues"],
+                carried_issue_rows=[dict(row) for row in carried_rows],
+                labour_lines=rows["labour"],
+                material_movement_rows=rows["materials"],
+                material_stock_rows=[dict(row) for row in stock_rows],
+            )
+
+        every_row = {
+            "activities": [dict(row) for row in activity_rows],
+            "issues": [dict(row) for row in issue_rows],
+            "labour": [dict(row) for row in labour_rows],
+            "materials": [dict(row) for row in material_rows],
+        }
+        # WA-77 (Alan, 25 Oct): the report is made of saved entries only; a
+        # draft (Save not yet tapped) is left out of it and only listed for
+        # the engineer to save (`items`, and `drafts` in the payload).
+        payload = build(saved_rows_only(every_row, review_states))
         items = build_review_items(
-            payload=payload,
-            activity_rows=[dict(row) for row in activity_rows],
-            issue_rows=[dict(row) for row in issue_rows],
-            labour_lines=[dict(row) for row in labour_rows],
-            material_movement_rows=[dict(row) for row in material_rows],
+            payload=build(every_row),
+            activity_rows=every_row["activities"],
+            issue_rows=every_row["issues"],
+            labour_lines=every_row["labour"],
+            material_movement_rows=every_row["materials"],
             review_states=review_states,
         )
         return payload, items
