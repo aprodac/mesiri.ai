@@ -8,6 +8,9 @@ wrong site or lose the message.
   (WA-45): `apps/whatsapp-assistant/src/runtime/agent/work_site.py`; scope rules:
   `apps/whatsapp-assistant/src/runtime/agent/entry_base.py` (`settle`, `_scope`).
 - **Not verified:** the live AI's wording.
+- **Fixed 25 Oct 2026** (request log 108, tracker WA-69): all 15 rows, one scenario test each in
+  `apps/whatsapp-assistant/tests/unit/test_sites_audit.py`. The "Actual" lines below are what
+  the audit found *before* the fix.
 
 ## Summary
 
@@ -156,18 +159,18 @@ closed sites don't appear in lists; Admins aren't asked every morning.
 
 | ID | Problem | Result | What Mesiri replied |
 | --- | --- | --- | --- |
-| SIT-01 | Unmatched site name goes to today's site | Not tested | |
-| SIT-02 | Second message drops the first | Not tested | |
-| SIT-03 | Typed site name loses the message | Not tested | |
-| SIT-04 | Late tap loses the message | Not tested | |
-| SIT-05 | One entry moves the whole day | Not tested | |
-| SIT-06 | Identical "Site A" buttons | Not tested | |
-| SIT-07 | "Good morning" at night | Not tested | |
-| SIT-08 | Site question only in English | Not tested | |
-| SIT-09 | Only 10 sites shown | Not tested | |
-| SIT-10 | No stock context for multi-site | Not tested | |
-| SIT-11 | Text card names no site | Not tested | |
-| SIT-12 | Tip names a site they lack | Not tested | |
-| SIT-13 | Loose site-name spotting | Not tested | |
-| SIT-14 | PMs asked every morning | Not tested | |
-| SIT-15 | Asked again after midnight | Not tested | |
+| SIT-01 | Unmatched site name goes to today's site | Fixed, scenario test passes | Fixed: a named site is used only if it is one of theirs (whole words); no match or several -> "Which site?" with their sites (`entry_base._named_site`). Typos are never taken as a match. |
+| SIT-02 | Second message drops the first | Fixed, scenario test passes | Fixed: every message sent while the question is open waits (per sender, in Redis, until the day ends) and all run, in order, after the answer. |
+| SIT-03 | Typed site name loses the message | Fixed, scenario test passes | Fixed: typing a site name answers the question like the tap (`WorkSite.answer_by_name`); a name two projects share asks again. |
+| SIT-04 | Late tap loses the message | Fixed, scenario test passes | Fixed: waiting messages are kept for the whole working day; a message from an earlier day is named in the next reply ("were not saved ... send them again"). |
+| SIT-05 | One entry moves the whole day | Fixed, scenario test passes | Fixed: today's site changes only on "now at ..." or the list answer; a save at another site leaves it. |
+| SIT-06 | Identical "Site A" buttons | Fixed, scenario test passes | Fixed: buttons read "Site A · Project A" when two of their sites share a name; the label can be typed back. |
+| SIT-07 | "Good morning" at night | Fixed, scenario test passes | Fixed: greeting follows the project clock (morning / afternoon / evening); none at night. |
+| SIT-08 | Site question only in English | Fixed, scenario test passes | Fixed: the question, button and confirmation follow the message language (English, Manglish, Malayalam, Hindi). |
+| SIT-09 | Only 10 sites shown | Fixed, scenario test passes | Fixed: past ten sites, nine (closest first) plus "Something else", then they type the name. |
+| SIT-10 | No stock context for multi-site | Fixed, scenario test passes | Fixed: the today / stock lines are read for the site a multi-site sender chose. |
+| SIT-11 | Text card names no site | Fixed, scenario test passes | Fixed: "📝 To save · Site B:" for a sender with several sites. |
+| SIT-12 | Tip names a site they lack | Fixed, scenario test passes | Fixed: the tip names another site they have, and is left out if there is none. |
+| SIT-13 | Loose site-name spotting | Fixed, scenario test passes | Fixed: whole words only ("main" is not in "maintenance"). |
+| SIT-14 | PMs asked every morning | Fixed, scenario test passes | Fixed: only Site Engineers get the morning question; PMs, Finance and owners are asked "which site?" only when an entry needs one. |
+| SIT-15 | Asked again after midnight | Fixed, scenario test passes | Fixed: the working day turns over in the project time zone, and a night shift keeps its site until 04:00. |
