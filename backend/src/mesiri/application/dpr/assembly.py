@@ -251,11 +251,16 @@ def build_site_report_payload(
 def _conditions(conditions: dict[str, Any], issues: list[dict[str, Any]]) -> dict[str, Any]:
     """The site day's conditions. Hours lost the engineer entered win; when
     nobody entered a figure it is the day's issue delays added up, marked
-    `hours_lost_source: "issues"` so the report can say where it came from."""
+    `hours_lost_source: "issues"` so the report can say where it came from.
+    BE-48: never more than a day (the dashboard's own limit), however long
+    each issue said it lasted -- "no work for 2 days" is not 48 h on one day."""
+    from mesiri.application.dpr.site_day import MAX_HOURS_LOST
+
     hours_lost = conditions.get("hours_lost")
     source = "entered"
     if hours_lost is None:
-        minutes = sum(int(i.get("delay_duration_minutes") or 0) for i in issues)
+        minutes = sum(max(int(i.get("delay_duration_minutes") or 0), 0) for i in issues)
+        minutes = min(minutes, MAX_HOURS_LOST * 60)
         hours_lost = round(minutes / 60, 1) if minutes else None
         source = "issues" if minutes else None
     return {

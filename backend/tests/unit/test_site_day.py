@@ -413,6 +413,25 @@ def test_hours_lost_defaults_to_the_days_issue_delays():
     assert payload["conditions"]["hours_lost_source"] == "issues"
 
 
+def test_hours_lost_from_issues_is_never_more_than_a_day():
+    from mesiri.application.dpr.assembly import build_site_report_payload
+
+    payload = build_site_report_payload(
+        project_name="P",
+        site_name="S",
+        report_date=datetime.date(2026, 10, 13),
+        activity_rows=[],
+        quantities_by_activity={},
+        evidence_count_by_activity={},
+        issue_rows=[
+            {"issue_type": "WEATHER", "status": "OPEN", "delay_duration_minutes": 2880},
+            {"issue_type": "ACCESS", "status": "OPEN", "delay_duration_minutes": 240},
+        ],
+    )
+
+    assert payload["conditions"]["hours_lost"] == "24.0"
+
+
 def test_no_conditions_and_no_delays_leave_everything_unset():
     from mesiri.application.dpr.assembly import build_site_report_payload
 

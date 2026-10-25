@@ -173,13 +173,21 @@ def build_correct_activity_quantity_command(
     )
 
 
+#: BE-48: an issue's delay is at most one day, the dashboard's own limit
+#: (site_day.MAX_HOURS_LOST); "no work for 2 days" is saved as a full day.
+_MAX_DELAY_MINUTES = 24 * 60
+
+
 def _delay_minutes(value: object) -> int | None:
     if value is None:
         return None
     try:
-        return int(value)
+        minutes = int(value)
     except (TypeError, ValueError):
         return None
+    if minutes <= 0:
+        return None
+    return min(minutes, _MAX_DELAY_MINUTES)
 
 
 def build_report_site_issue_command(confirmed: ConfirmedActionV2) -> ReportSiteIssueCommand:
