@@ -213,6 +213,9 @@ class JourneyGateway:
     #: WA-45: ``(project_id, site_id) -> label``: today's site is this one
     #: (runtime/agent/work_site.py); None when not wired.
     set_today_site: Callable[[str | None, str], Awaitable[str]] | None = None
+    #: ``() -> site id`` the sender works at today, if set (SIT-05: a save at
+    #: another site does not move it).
+    get_today_site: Callable[[], Awaitable[str | None]] | None = None
     #: Request 88: the sender's latest card (runtime/agent/cards.py), who they
     #: are, and ``(facts) -> FactsUndone | None``: withdraw exactly those entries.
     cards: Any | None = None
@@ -303,6 +306,10 @@ class JourneyGateway:
             draft = confirmed.draft_action if confirmed is not None else None
             site_id = getattr(draft, "site_id", None)
             if site_id:
+                if self.get_today_site is not None:
+                    current = await self.get_today_site()
+                    if current and str(current) != str(site_id):
+                        return
                 await self.set_today_site(getattr(draft, "project_id", None), str(site_id))
         except Exception:  # noqa: BLE001 -- a missed hint only costs one question
             _log.warning("agent.remember_site_failed", exc_info=True)

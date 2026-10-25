@@ -178,6 +178,11 @@ class EntryScope:
             if not names:
                 return Say("info", f"{no} you are not on any project yet. Your admin can add you.")
             return choose("Which project is this for?", names, "project")
+        asked = self._named_site(candidate, picked_project, picked_site)
+        if isinstance(asked, Say):
+            return asked
+        if asked is not None:
+            project_id, site_id = asked.project_id, asked.id
         if site_id is None:
             sites = [s for s in getattr(self.actor, "sites", None) or [] if str(s.project_id) == str(project_id)]
             said = " ".join(str(candidate.fields.get("site_name") or "").casefold().split())
@@ -265,6 +270,38 @@ class EntryScope:
             scope=(ctx.context_organization_id, ctx.context_user_id, scoped.context_project, scoped.context_site),
         )
 
+    def _named_site(self, candidate: Any, picked_project: Any, picked_site: Any) -> Any | Say | None:
+        """V1 audit SIT-01: a site the message names is used only when it is
+        one of the sender's sites, by whole words. One site -> that site (not
+        today's); none or several -> they are asked, never moved to today's
+        site. None when no site was named (or it was already an id)."""
+        said = " ".join(str(candidate.fields.get("site_name") or "").split())
+        if not said or picked_site is not None:
+            return None
+        from .site_match import SOMETHING_ELSE, find_sites, options
+
+        own = [s for s in getattr(self.actor, "sites", None) or [] if getattr(s, "id", None)]
+        projects = {str(p.id): p.name for p in getattr(self.actor, "projects", None) or []}
+        pool = [s for s in own if picked_project is None or str(s.project_id) == str(picked_project)] or own
+        hits = find_sites(pool, said, projects)
+        if len(hits) == 1:
+            return hits[0]
+        offered = hits if len(hits) > 1 else pool
+        if not offered:
+            return None
+        labels, cut = options(offered, projects, said)
+        if hits:
+            question = f'Which "{said}" is this for?'
+        else:
+            question = f'I don\'t have a site called "{said}". Which site is this for?'
+        note = ""
+        if cut:
+            note = (
+                f' If they pick "{SOMETHING_ELSE}", ask them to type the site name (ask_user, no options), '
+                "then call this tool again with what they typed."
+            )
+        return choose(question, labels, "site", note=note)
+
     def _has_site_in(self, ctx: Any, project_id: Any) -> bool:
         """Whether the sender may report on any site of the project, in either
         of its ids (the context layer's or the canonical one; the same in
@@ -335,6 +372,19 @@ class EntryScope:
             return
         organization_id, user_id, project_id, site_id = ready.scope
         try:
+            # V1 audit SIT-05: one entry for another site must not move the
+            # day. Today's site changes only on "now at ..." or the morning
+            # tap (work_site.py), never because one entry went elsewhere.
+            current = await self.active_context.get_active_context(
+                organization_id=organization_id, user_id=user_id
+            )
+            if (
+                current is not None
+                and current.site_id
+                and str(current.site_id) != str(site_id)
+                and any(str(s.id) == str(current.site_id) for s in getattr(self.actor, "sites", None) or [])
+            ):
+                return
             await self.active_context.set_active_context(
                 organization_id=organization_id,
                 user_id=user_id,
@@ -361,9 +411,9 @@ def _until_midnight(timezone: str | None) -> int:
 
     from channel.receipt.data import company_zone
 
-    from .work_site import seconds_until_midnight
+    from .work_site import NIGHT_GRACE_HOURS, seconds_until_midnight
 
-    return seconds_until_midnight(datetime.now(UTC), str(company_zone(timezone)))
+    return seconds_until_midnight(datetime.now(UTC), str(company_zone(timezone)), grace_hours=NIGHT_GRACE_HOURS)
 
 
 def choose(question: str, options: list[str], arg: str, *, note: str = "") -> Say:

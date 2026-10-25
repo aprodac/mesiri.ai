@@ -45,18 +45,25 @@ def render_line(name: str, site: str | None, results: dict[str, Any] | None) -> 
     return f"Today so far: {who}. Saved today: {', '.join(work)}."
 
 
+def _chosen(sites: list[Any], site_id: str | None) -> Any | None:
+    """The one of several sites the sender is working at today, if any."""
+    return next((s for s in sites if site_id and str(s.id) == str(site_id)), None)
+
+
 async def build_today_line(
     activity_search_service: Any | None,
     actor: Any,
     *,
     timezone_name: str | None = None,
     timeout: float = TIMEOUT_SECONDS,
+    site_id: str | None = None,
 ) -> str | None:
-    """Never raises; None when the service is missing, slow or fails."""
+    """Never raises; None when the service is missing, slow or fails.
+    ``site_id``: the site a sender with several chose for today (SIT-10)."""
     if activity_search_service is None or actor is None or not getattr(actor, "organization_id", None):
         return None
     sites = list(getattr(actor, "sites", None) or [])
-    site = sites[0] if len(sites) == 1 else None
+    site = sites[0] if len(sites) == 1 else _chosen(sites, site_id)
     try:
         today = today_for(timezone_name)
         results = await asyncio.wait_for(
@@ -104,17 +111,18 @@ async def build_stock_line(
     actor: Any,
     *,
     timeout: float = TIMEOUT_SECONDS,
+    site_id: str | None = None,
 ) -> str | None:
     """WA-36: the sender's site stock for the agent's prompt, so a material
     message or question is read against what is actually there. Read-only;
-    only for a sender with one site; never raises, None when missing, slow
-    or failing."""
+    for a sender with one site, or the site a sender with several chose for
+    today (SIT-10); never raises, None when missing, slow or failing."""
     if inventory_query is None or actor is None or not getattr(actor, "organization_id", None):
         return None
     sites = list(getattr(actor, "sites", None) or [])
-    if len(sites) != 1:
+    site = sites[0] if len(sites) == 1 else _chosen(sites, site_id)
+    if site is None:
         return None
-    site = sites[0]
     try:
         levels = await asyncio.wait_for(
             inventory_query.query(

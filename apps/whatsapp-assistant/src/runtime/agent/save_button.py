@@ -196,17 +196,24 @@ def parse_tap(value: str) -> tuple[str, list[tuple[str, uuid.UUID]]] | None:
 
 
 def with_save_buttons(
-    spec: ReplySpec, facts: list[tuple[str, uuid.UUID]], *, save_title: str = SAVE_TITLE
+    spec: ReplySpec,
+    facts: list[tuple[str, uuid.UUID]],
+    *,
+    save_title: str = SAVE_TITLE,
+    site: str | None = None,
 ) -> ReplySpec:
     """The composed reply with Save / Cancel in place of Undo, and its
-    "Saved:" header saying the records still wait on the tap. Any other
+    "Saved:" header saying the records still wait on the tap (naming the
+    site when ``site`` is given). Any other
     choice it carried (the team-photo offer) stays after them."""
     # The system's line sits under the model's own words (WA-37), so the
     # header is the last one in the text, at the start of its line.
     before, found, after = spec.text.rpartition(SAVED_HEADER)
     text = spec.text
     if found and (not before or before.endswith("\n")):
-        text = before + TO_SAVE_HEADER + after
+        # SIT-11: a sender with several sites sees which one the entries are for.
+        header = f"{TO_SAVE_HEADER[:-1]} · {site}:" if site else TO_SAVE_HEADER
+        text = before + header + after
     others = [row for row in (spec.buttons or spec.list_rows or ()) if row.id != UNDO_ROW.id]
     rows = [
         ListRow(tap_id(SAVE, facts), save_title),

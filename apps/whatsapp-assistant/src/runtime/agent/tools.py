@@ -857,8 +857,15 @@ class ScopeLookup:
         return self._match([(pid, pname) for pid, pname in self.projects], name)
 
     def site_id(self, name: str, project_id: str | None = None) -> str | None:
-        rows = [(sid, sname) for sid, sname, pid in self.sites if project_id in (None, pid)]
-        return self._match(rows, name)
+        """The one site ``name`` says, whole words only (V1 audit SIT-13); None
+        when it matches none or several, so the sender is asked."""
+        from types import SimpleNamespace
+
+        from .site_match import find_sites
+
+        rows = [SimpleNamespace(id=sid, name=sname, project_id=pid) for sid, sname, pid in self.sites if project_id in (None, pid)]
+        hits = find_sites(rows, name, {pid: pname for pid, pname in self.projects})
+        return str(hits[0].id) if len(hits) == 1 else None
 
 
 def _clean(fields: dict[str, Any]) -> dict[str, Any]:

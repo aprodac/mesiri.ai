@@ -770,6 +770,7 @@ def build_message_handlers(
                         composed,
                         facts,
                         save_title=save_button.SEND_TITLE if only_questions else save_button.SAVE_TITLE,
+                        site=_card_site(handled_list),
                     )
                     await _remember_card(gateway, open_card=True)
                 elif plan == "blocked":
@@ -797,6 +798,41 @@ def build_message_handlers(
             async def _set_today_site(project_id, site_id):  # type: ignore[no-untyped-def]
                 await work_site.set_today(ctx, project_id=project_id, site_id=site_id)
                 return site_label(ctx, site_id) or "that site"
+
+            def _card_site(handled_list):  # type: ignore[no-untyped-def]
+                """SIT-11: the one site every entry of a card is for, named only
+                for a sender who has several."""
+                from runtime.agent.work_site import short_site_label
+
+                if len(getattr(ctx, "sites", None) or []) < 2:
+                    return None
+                site_ids = {
+                    str(getattr(getattr(getattr(h.result, "confirmed_action", None), "draft_action", None), "site_id", "") or "")
+                    for h in handled_list
+                    if getattr(h, "saved_draft", False)
+                }
+                site_ids.discard("")
+                return short_site_label(ctx, next(iter(site_ids))) if len(site_ids) == 1 else None
+
+            async def _get_today_site():  # type: ignore[no-untyped-def]
+                today = await work_site.today(ctx)
+                return today[1] if today else None
+
+            async def _today_site_id(actor):  # type: ignore[no-untyped-def]
+                """SIT-10: the site a multi-site sender chose for today."""
+                today = await work_site.today(actor) if work_site is not None else None
+                return today[1] if today else None
+
+            async def _today_context_line(actor):  # type: ignore[no-untyped-def]
+                return await build_today_line(
+                    activity_search_service,
+                    actor,
+                    timezone_name=project_zone_name(getattr(actor, "timezone", None)),
+                    site_id=await _today_site_id(actor),
+                )
+
+            async def _stock_context_line(actor):  # type: ignore[no-untyped-def]
+                return await build_stock_line(inventory_query, actor, site_id=await _today_site_id(actor))
 
             async def _work_site_line(actor):  # type: ignore[no-untyped-def]
                 today = await work_site.today(actor)
@@ -864,6 +900,7 @@ def build_message_handlers(
                         else None
                     ),
                     set_today_site=_set_today_site if work_site is not None else None,
+                    get_today_site=_get_today_site if work_site is not None else None,
                     set_conversion=(
                         (
                             lambda material, unit, count: catalog_query.set_conversion(
@@ -967,10 +1004,8 @@ def build_message_handlers(
                 reply_composer=reply_composer,
                 lap=timer.lap,
                 after_tool=_after_tool,
-                today_line=lambda actor: build_today_line(
-                    activity_search_service, actor, timezone_name=project_zone_name(getattr(actor, "timezone", None))
-                ),
-                stock_line=lambda actor: build_stock_line(inventory_query, actor),
+                today_line=_today_context_line,
+                stock_line=_stock_context_line,
                 work_site_line=_work_site_line if work_site is not None else None,
                 open_work_line=_open_work_line if activity_query is not None else None,
                 card_line=_card_line if cards is not None else None,
@@ -1442,14 +1477,15 @@ def build_message_handlers(
                 picked = await work_site.handle_tap(message, ctx)
             except Exception:  # noqa: BLE001 — a tap must always get some reply
                 _log.exception("work_site.tap_failed user=%s", ctx.user_id)
-                picked = (ReplySpec(text="Sorry, that didn't work — please try again."), None)
+                picked = (ReplySpec(text="Sorry, that didn't work — please try again."), [])
             if picked is not None:
-                confirm, parked = picked
+                confirm, waiting = picked
                 await _send_spec(confirm, wa_id)
                 await message_logger.log_reply(correlation_id=message.correlation_id, reply=confirm.text)
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
-                if parked is not None:
-                    await _run_journey_steps(parked, {}, None, timer)
+                # SIT-02/04: every message that waited runs now, in order.
+                for held in waiting:
+                    await _run_journey_steps(held, {}, None, timer)
                 return
 
         # WA-35: Save / Cancel on the agent's reply keeps or drops its drafts.
@@ -2419,6 +2455,21 @@ def build_message_handlers(
             # waits for "Where are you working today?".
             morning = None
             if work_site is not None and category_hint is None:
+                try:
+                    # SIT-03: while the question is open, typing the site's
+                    # name answers it like the tap does.
+                    typed = await work_site.answer_by_name(message, ctx)
+                except Exception:  # noqa: BLE001 — the question is a nicety
+                    _log.exception("work_site.typed_failed user=%s", ctx.user_id)
+                    typed = None
+                if typed is not None:
+                    confirm, waiting = typed
+                    await _send_spec(confirm, wa_id)
+                    await message_logger.log_reply(correlation_id=message.correlation_id, reply=confirm.text)
+                    await message_logger.mark_completed(correlation_id=message.correlation_id)
+                    for held in waiting:
+                        await _run_journey_steps(held, {}, None, timer)
+                    return
                 try:
                     morning = await work_site.morning_question(message, ctx)
                 except Exception:  # noqa: BLE001 — the question is a nicety

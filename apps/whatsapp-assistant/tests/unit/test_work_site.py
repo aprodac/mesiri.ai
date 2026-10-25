@@ -83,8 +83,8 @@ async def test_the_first_message_of_the_day_asks_where_they_work_and_waits():
     assert question.list_button_label == "Choose site"
     # Same site name under two projects: the project tells them apart.
     assert [(r.id, r.title, r.description) for r in question.list_rows] == [
-        ("today_site:a1", "Site A", "Project A"),
-        ("today_site:b1", "Site A", "Project B"),
+        ("today_site:a1", "Site A · Project A", "Project A"),
+        ("today_site:b1", "Site A · Project B", "Project B"),
         ("today_site:b2", "Site B", "Project B"),
     ]
 
@@ -142,18 +142,18 @@ async def test_the_tap_sets_today_and_hands_back_the_waiting_message():
     reply, parked = await work_site.handle_tap(_message("Site B", tap="today_site:b2"), actor)
 
     assert reply.text.startswith("👍 Site B (Project B) for today.")
-    assert parked is not None and parked.text == "50 bags cement arrived"
+    assert [m.text for m in parked] == ["50 bags cement arrived"]
     active = await store.get_active_context(organization_id=ORG, user_id=USER)
     assert (active.project_id, active.site_id) == ("pb", "b2")
     # The waiting message runs once: a second tap has nothing to run.
     _, again = await work_site.handle_tap(_message("Site B", tap="today_site:b2"), actor)
-    assert again is None
+    assert again == []
 
 
 async def test_a_tap_on_a_site_they_lost_access_to_changes_nothing():
     work_site, store = _work_site()
     reply, parked = await work_site.handle_tap(_message("Site X", tap="today_site:gone"), _actor(A1, B2))
-    assert "isn't one of yours" in reply.text and parked is None
+    assert "isn't one of yours" in reply.text and parked == []
     assert await store.get_active_context(organization_id=ORG, user_id=USER) is None
 
 
