@@ -22,7 +22,8 @@ def generate_inventory_reply(state: WorkflowGraphState) -> dict:
 
     period = fields.get("inventory_period")
     if period:
-        return {"pending_prompt": _period_reply(period["label"], levels, material_name)}
+        asking = fields.get("asking")
+        return {"pending_prompt": _period_reply(period["label"], levels, material_name, asking)}
 
     if material_name and len(levels) == 1:
         level = levels[0]
@@ -54,7 +55,7 @@ def _moved(level: dict) -> str:
     return ", ".join(parts)
 
 
-def _period_reply(label: str, levels: list[dict], material_name: str | None) -> str:
+def _period_reply(label: str, levels: list[dict], material_name: str | None, asking: str | None = None) -> str:
     """MAT-03: a day's or period's received/used from the movements, with the
     stock now: "Yesterday (24 Oct): 10 bags cement used. 495 bags left now." """
     head = label[:1].upper() + label[1:]
@@ -63,6 +64,18 @@ def _period_reply(label: str, levels: list[dict], material_name: str | None) -> 
         name = level["material_name"].lower()
         moved = _moved(level)
         left = f"{_fmt(level['current_stock'])} {level['unit']} left now."
+        if asking in ("used", "received"):
+            # Request 114: "cement used yesterday?" leads with what was used,
+            # and says so when it was nothing, never only what arrived.
+            other = "received" if asking == "used" else "used"
+            first, second = f"period_{asking}", f"period_{other}"
+            lead = (
+                f"{_fmt(level[first])} {level['unit']} {name} {asking}."
+                if level.get(first)
+                else f"No {name} {asking}."
+            )
+            more = f" {_fmt(level[second])} {level['unit']} {other}." if level.get(second) else ""
+            return f"{head}: {lead}{more} {left}"
         if not moved:
             return f"{head}: no {name} was used or received. {left}"
         words = []

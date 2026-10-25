@@ -24,6 +24,7 @@ from channel.replies import (
 from interactions.saved_summary import summarise_draft
 from mesiri_contracts.application.results.execution_result import ExecutionStatus
 from mesiri_contracts.assistant.candidates import Candidate
+from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.enums import InputModality, SemanticType
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage
 from workflows import WorkflowRunStatus
@@ -452,6 +453,9 @@ class JourneyGateway:
                 )
             # Confirm-first (expenses, transfers) or the save failed: the
             # prompt the sender must answer.
+            card = self._work_card(run)
+            if card is not None:
+                return StepResult("needs_confirmation", text=card.text, reply=card, workflow_key=key)
             prompt = self.held_prompt(journey)
             return StepResult("needs_confirmation", text=prompt.text, reply=prompt, workflow_key=key)
 
@@ -481,6 +485,37 @@ class JourneyGateway:
 
         # FAILED / NO_GRAPH, or nothing started.
         return StepResult("error", text="Sorry, that didn't go through. Please try again.", workflow_key=key)
+
+    def _work_card(self, run: Any) -> ReplySpec | None:
+        """Request 114: work done on an open activity is held for its answer
+        (the review log has no place for a progress update, so it cannot be
+        saved first). It is shown as the same "To save" card as everything
+        else, with Save / Cancel (the Yes / No ids, so the answer is the same
+        confirmation), never a bare Yes / No under words that say "Saved"."""
+        draft = run.draft_action
+        if draft is None or draft.action_type is not DraftActionType.ADD_PROGRESS_UPDATE:
+            return None
+        from canonicalization.occurred_date import today_for
+        from channel.receipt.data import company_zone
+        from interactions.saved_summary import render_saved
+
+        from .save_button import CANCEL_TITLE, SAVE_TITLE, TO_SAVE_HEADER
+        from .work_site import short_site_label
+
+        try:
+            today = today_for(str(company_zone(getattr(self.actor, "timezone", None))))
+            summary = summarise_draft(draft, today=today)
+        except Exception:  # noqa: BLE001 -- the card is wording only
+            _log.warning("agent.work_card_failed", exc_info=True)
+            return None
+        if not summary:
+            return None
+        site = short_site_label(self.actor, draft.site_id) if len(getattr(self.actor, "sites", None) or []) > 1 else None
+        header = f"{TO_SAVE_HEADER[:-1]} · {site}:" if site else TO_SAVE_HEADER
+        return ReplySpec(
+            text=render_saved([summary], header),
+            buttons=(ListRow("confirm_yes", SAVE_TITLE), ListRow("confirm_no", CANCEL_TITLE)),
+        )
 
     async def set_unit_conversion(self, *, material: str, unit: str, count: Any) -> StepResult:
         if self.set_conversion is None:

@@ -143,6 +143,8 @@ class World:
     direct: bool = True
     #: The change entry's lookups (member_resolver, activity_query, ...).
     change: dict = field(default_factory=dict)
+    #: The site entry's lookups (activity_query, ...).
+    site: dict = field(default_factory=dict)
     #: Request 104: cards for what is not a record (an ``ActionService``), and
     #: the site's open issues for closing.
     actions: Any = None
@@ -193,7 +195,9 @@ class World:
                 else None
             ),
             site_entry=(
-                SiteEntry(ContextResolver(self.deps), None, self.actor, active_context=self.deps.active_context)
+                SiteEntry(
+                    ContextResolver(self.deps), None, self.actor, active_context=self.deps.active_context, **self.site
+                )
                 if self.direct
                 else None
             ),
