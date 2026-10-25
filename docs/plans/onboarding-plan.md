@@ -568,4 +568,23 @@ Since then (25 Oct, approved by Alan):
   Save writes the first project's send time and auto-send (`PUT /projects/{id}`, as its
   Reporting tab does) and records the question answered (`report-time-ok`), so keeping
   9 pm counts too.
+- **The first report going out** gets a one-time note on Today ("Your first daily report
+  is out.", `components/first-report-moment.tsx`) for 3 days after `first_dpr_sent_at`,
+  with *See the report* and *Send it to your client too* (the project's recipients).
+  Closing it is remembered in that browser.
+- **Not built: "Send it to my WhatsApp"** from the welcome screen, logged as WA-74. *Send
+  now* publishes to every recipient, "send me today's DPR" needs the evening report
+  (`not_generated` on day 0), and a dashboard-side sender would duplicate the WhatsApp
+  sending path. The welcome screen's live report has *Print* (save as PDF) meanwhile.
+- **Time saved on Today** (`components/time-saved.tsx`): "This week Mesiri sent 5 daily
+  reports for you: about 2 h 5 min of writing saved." The count is real (project DPRs
+  `PUBLISHED` in the last 7 days, the history API's total); the **25 minutes per report
+  is an assumption**, stated in the line's tooltip and kept in one constant
+  (`MINUTES_PER_REPORT`). Hidden until a report has gone out.
+- **Two more intro scenes** (six in all): **03 Photo**, the site photo as a line drawing
+  (a two-storey frame, brickwork drawing itself in on the second floor's east bay) and
+  "Read from the photo: 2nd floor · Brickwork, east wall"; **04 Any language**, the same
+  update in Hindi, Tamil and English giving the same report. Devanagari and Tamil fonts
+  load from Google Fonts by unicode range, only when used. The Hindi and Tamil (like the
+  Malayalam) have not been read by native speakers.
 

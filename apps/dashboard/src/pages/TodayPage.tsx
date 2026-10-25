@@ -14,6 +14,8 @@ import {
 } from '@/lib/api'
 import { useToast } from '@/components/ui/toast-notification'
 import { GettingStartedCard } from '@/components/getting-started-card'
+import { FirstReportMoment } from '@/components/first-report-moment'
+import { TimeSaved } from '@/components/time-saved'
 import { useReadOnly } from '@/lib/trial'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -322,6 +324,8 @@ export default function TodayPage() {
         }
       />
 
+      {isToday && <TimeSaved />}
+      {isToday && <FirstReportMoment />}
       {isToday && <GettingStartedCard />}
 
       {daysQuery.isError ? (

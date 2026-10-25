@@ -6,7 +6,7 @@ import { progress, useScenes } from '@/lib/timeline'
 import { Exchange, ExchangeHeads, Fact, Label, Reveal, Rule, Waveform, Words } from './conversation'
 import { SceneStage, SceneSteps, type SceneStep } from './scenes'
 
-// The signup intro (SS-18): an example site's evening as four scenes that
+// The signup intro (SS-18): an example site's evening as six scenes that
 // change by themselves, in one frame. A Malayalam voice note comes in on the
 // left; Mesiri's reading, then the finished daily report, go out on the
 // right; the last scene is the promise and the button. It loops; choosing a
@@ -18,11 +18,37 @@ const TRANSLATION = "Six masons and four helpers today. First-floor slab shutter
 const STEPS: SceneStep[] = [
   { key: 'voice', label: 'Voice note' },
   { key: 'understood', label: 'Understood' },
+  { key: 'photo', label: 'Photo' },
+  { key: 'language', label: 'Any language' },
   { key: 'report', label: 'Report' },
   { key: 'yours', label: 'Your site' },
 ]
 /** How long each scene runs before the next, reading time included. */
-const DURATIONS = [6_200, 5_200, 6_400, 8_000]
+const DURATIONS = [6_200, 5_200, 5_600, 6_000, 6_400, 8_000]
+const LAST = STEPS.length - 1
+
+// The same update as the voice note, typed in other languages (not yet read
+// by native speakers, like the Malayalam).
+const SAME_UPDATE: { lang: string; label: string; text: string; font: string }[] = [
+  {
+    lang: 'hi',
+    label: 'Hindi',
+    text: 'आज 6 मिस्त्री और 4 हेल्पर थे। पहली मंज़िल की स्लैब शटरिंग पूरी हो गई। सीमेंट खत्म हो गया।',
+    font: 'font-[Noto_Sans_Devanagari,var(--font-sans)]',
+  },
+  {
+    lang: 'ta',
+    label: 'Tamil',
+    text: 'இன்று 6 மேசன்களும் 4 உதவியாளர்களும் வந்தனர். முதல் மாடி ஸ்லாப் ஷட்டரிங் முடிந்தது. சிமெண்ட் தீர்ந்துவிட்டது.',
+    font: 'font-[Noto_Sans_Tamil,var(--font-sans)]',
+  },
+  {
+    lang: 'en',
+    label: 'English',
+    text: 'Today 6 masons, 4 helpers. First floor slab shuttering done. Cement finished.',
+    font: '',
+  },
+]
 
 const REPORT_ROWS: [string, React.ReactNode][] = [
   ['Manpower', <>Mason 6 · Helper 4 · <b className="font-semibold">Total 10</b></>],
@@ -76,6 +102,100 @@ function UnderstoodScene({ now }: { now: number }) {
           <Fact at={300} big value={Math.round(10 * progress(now, 350, 900))} title="Workers" detail="6 masons, 4 helpers" />
           <Fact at={900} value="1st floor" title="Slab shuttering" detail="Completed today" />
           <Fact at={1400} value="1 issue" title="Cement stock out" detail="Logged · needed before casting" />
+        </div>
+      }
+    />
+  )
+}
+
+/** A hairline that draws itself from `at` over `ms`. */
+function Stroke({ now, at, ms = 500, ...line }: { now: number; at: number; ms?: number } & React.SVGProps<SVGLineElement>) {
+  return <line {...line} pathLength={1} strokeDasharray={1} strokeDashoffset={1 - progress(now, at, ms)} />
+}
+
+/** The site photo, drawn as an elevation: a two-storey frame, and brickwork
+ * going up on the second floor's east bay -- what Mesiri reads from it. */
+function SitePhoto({ now }: { now: number }) {
+  const courses = Array.from({ length: 9 }, (_, i) => 70 + i * 8)
+  return (
+    <svg viewBox="0 0 440 240" className="block w-full max-w-[440px] border border-foreground" role="img" aria-label="Site photo: brickwork on the second floor, east side">
+      <g className="stroke-foreground" strokeWidth={1.5} fill="none">
+        <Stroke now={now} at={100} x1={20} y1={222} x2={420} y2={222} />
+        {[60, 220, 380].map((x, i) => (
+          <Stroke key={x} now={now} at={250 + i * 120} x1={x} y1={222} x2={x} y2={58} />
+        ))}
+        <Stroke now={now} at={700} x1={40} y1={142} x2={400} y2={142} />
+        <Stroke now={now} at={700} x1={40} y1={148} x2={400} y2={148} />
+        <Stroke now={now} at={900} x1={40} y1={58} x2={400} y2={58} />
+        <Stroke now={now} at={900} x1={40} y1={64} x2={400} y2={64} />
+      </g>
+      <g className="stroke-foreground" strokeWidth={0.9}>
+        {courses.map((y, i) => (
+          <React.Fragment key={y}>
+            <Stroke now={now} at={1300 + i * 90} ms={300} x1={222} y1={y + 8} x2={378} y2={y + 8} />
+            {Array.from({ length: 6 }, (_, k) => 230 + k * 26 + (i % 2) * 13).map((x) => (
+              <Stroke key={x} now={now} at={1300 + i * 90} ms={300} x1={x} y1={y} x2={x} y2={y + 8} />
+            ))}
+          </React.Fragment>
+        ))}
+      </g>
+      <rect
+        x={214}
+        y={66}
+        width={172}
+        height={82}
+        fill="none"
+        strokeWidth={1.5}
+        strokeDasharray="5 4"
+        className={'stroke-primary transition-opacity duration-500 motion-reduce:transition-none ' + (now >= 2600 ? 'opacity-100' : 'opacity-0')}
+      />
+    </svg>
+  )
+}
+
+function PhotoScene({ now }: { now: number }) {
+  return (
+    <Exchange
+      time={<Reveal at={0}><Label>18:41</Label></Reveal>}
+      site={
+        <div className="grid max-w-[440px] gap-3">
+          <Reveal at={0}><Label>Photo · IMG_2041</Label></Reveal>
+          <SitePhoto now={now} />
+        </div>
+      }
+      mesiri={
+        <div>
+          <Reveal at={2800} className="mb-3"><Label>18:41 · Read from the photo</Label></Reveal>
+          <Rule at={2900} strong />
+          <Fact at={3100} value="2nd floor" title="Brickwork, east wall" detail="In progress · photo kept with today's work" />
+        </div>
+      }
+    />
+  )
+}
+
+function LanguageScene({ now }: { now: number }) {
+  return (
+    <Exchange
+      time={<Reveal at={0}><Label>18:41</Label></Reveal>}
+      site={
+        <div className="grid max-w-[440px] gap-4">
+          {SAME_UPDATE.map((u, i) => (
+            <Reveal key={u.lang} at={i * 700}>
+              <div className="grid gap-1">
+                <Label>{u.label}</Label>
+                <p lang={u.lang} className={'m-0 text-[17px] leading-relaxed ' + u.font}>{u.text}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      }
+      mesiri={
+        <div>
+          <Reveal at={2400} className="mb-3"><Label>18:41 · The same report</Label></Reveal>
+          <Rule at={2500} strong />
+          <Fact at={2700} big value={Math.round(10 * progress(now, 2750, 900))} title="Workers" detail="6 masons, 4 helpers" />
+          <Fact at={3200} value="1st floor" title="Slab shuttering" detail="Completed today" />
         </div>
       }
     />
@@ -174,7 +294,7 @@ export function IntroConversation({ onStart, headerAction }: { onStart: () => vo
       <Rule strong />
       <SceneSteps steps={STEPS} index={scenes.index} progress={scenes.progress} onSelect={scenes.select} />
       {/* The column heads belong to the exchanges, not the closing scene. */}
-      <div className={cn('transition-opacity duration-500 motion-reduce:transition-none', scenes.index === 3 && 'opacity-0')}>
+      <div className={cn('transition-opacity duration-500 motion-reduce:transition-none', scenes.index === LAST && 'opacity-0')}>
         <ExchangeHeads />
         <Rule />
       </div>
@@ -184,7 +304,9 @@ export function IntroConversation({ onStart, headerAction }: { onStart: () => vo
         scenes={[
           <VoiceScene key="voice" now={scenes.index === 0 ? scenes.now : Infinity} />,
           <UnderstoodScene key="understood" now={scenes.index === 1 ? scenes.now : Infinity} />,
-          <ReportScene key="report" now={scenes.index === 2 ? scenes.now : Infinity} />,
+          <PhotoScene key="photo" now={scenes.index === 2 ? scenes.now : Infinity} />,
+          <LanguageScene key="language" now={scenes.index === 3 ? scenes.now : Infinity} />,
+          <ReportScene key="report" now={scenes.index === 4 ? scenes.now : Infinity} />,
           <PromiseScene key="yours" onStart={onStart} />,
         ]}
       />
