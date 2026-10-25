@@ -246,6 +246,28 @@ def _site_denied(
     return not scope.grants_all_sites and site_id not in scope.site_ids
 
 
+def _report_denied(auth_context: AuthorizationContext, scope: dict[str, Any]) -> bool:
+    """BE-49 (audit DSH-02): one report's project/site rule. A report with
+    no project (an old manual entry) is for company-wide roles only."""
+    if scope["project_id"] is None:
+        return not auth_context.project_scope.grants_all_org_projects
+    return _site_denied(auth_context, scope["project_id"], scope["site_id"])
+
+
+async def _report_in_scope(
+    repo: PostgresDprRepository, auth_context: AuthorizationContext, report_id: uuid.UUID
+) -> dict[str, Any]:
+    """The report's scope, or 404 -- for a report in another company and one
+    whose project or site this user can't see alike, so neither is revealed.
+    Every /daily-reports/{id} route reads or changes the report through this."""
+    scope = await repo.get_report_scope(
+        organization_id=auth_context.organization_id, report_id=report_id
+    )
+    if scope is None or _report_denied(auth_context, scope):
+        raise HTTPException(status_code=404, detail="Daily report not found")
+    return scope
+
+
 @router.get("/site-days/{site_id}")
 async def get_site_day(
     site_id: uuid.UUID,
@@ -827,6 +849,7 @@ async def get_daily_report_detail(
     conn: AsyncConnection = Depends(get_db_conn),
 ):
     repo = PostgresDprRepository(conn)
+    await _report_in_scope(repo, auth_context, report_id)
     report = await repo.get_report(
         organization_id=auth_context.organization_id,
         report_id=report_id,
@@ -842,6 +865,12 @@ async def create_daily_report(
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
+    if req.project_id is None:
+        denied = not auth_context.project_scope.grants_all_org_projects
+    else:
+        denied = _site_denied(auth_context, req.project_id, req.site_id)
+    if denied:
+        raise HTTPException(status_code=403, detail="You don't have access to this project or site")
     repo = PostgresDprRepository(conn)
     created = await repo.create_report(
         organization_id=auth_context.organization_id,
@@ -859,6 +888,7 @@ async def submit_daily_report_for_review(
 ):
     """DRAFT -> IN_REVIEW."""
     repo = PostgresDprRepository(conn)
+    await _report_in_scope(repo, auth_context, report_id)
     success = await repo.submit_for_review(
         organization_id=auth_context.organization_id,
         report_id=report_id,
@@ -876,6 +906,7 @@ async def approve_daily_report(
     conn: AsyncConnection = Depends(get_db_conn),
 ):
     repo = PostgresDprRepository(conn)
+    await _report_in_scope(repo, auth_context, report_id)
     success = await repo.approve_report(
         organization_id=auth_context.organization_id,
         user_id=auth_context.user_id,
@@ -895,6 +926,7 @@ async def publish_daily_report(
 ):
     """APPROVED -> PUBLISHED."""
     repo = PostgresDprRepository(conn)
+    await _report_in_scope(repo, auth_context, report_id)
     success = await repo.publish_report(
         organization_id=auth_context.organization_id,
         report_id=report_id,
@@ -931,11 +963,7 @@ async def revise_daily_report(
         raise HTTPException(status_code=400, detail="revision_reason is required")
 
     repo = PostgresDprRepository(conn)
-    scope = await repo.get_report_scope(
-        organization_id=auth_context.organization_id, report_id=report_id
-    )
-    if scope is None:
-        raise HTTPException(status_code=404, detail="Daily report not found")
+    scope = await _report_in_scope(repo, auth_context, report_id)
 
     sources: list[tuple[uuid.UUID, uuid.UUID | None]] | None = None
     if scope["level"] == "SITE" and scope["site_id"] is not None:
@@ -981,11 +1009,7 @@ async def list_daily_report_versions(
 ):
     """Every version of one report, newest first (WEB-04)."""
     repo = PostgresDprRepository(conn)
-    scope = await repo.get_report_scope(
-        organization_id=auth_context.organization_id, report_id=report_id
-    )
-    if scope is None or _site_denied(auth_context, scope["project_id"], scope["site_id"]):
-        raise HTTPException(status_code=404, detail="Daily report not found")
+    await _report_in_scope(repo, auth_context, report_id)
     return {
         "items": await repo.list_versions(
             organization_id=auth_context.organization_id, report_id=report_id
@@ -1016,6 +1040,7 @@ async def get_daily_report_pdf(
     activities behind it) has nothing real to render.
     """
     repo = PostgresDprRepository(conn)
+    await _report_in_scope(repo, auth_context, report_id)
     report = await repo.get_report_for_pdf(
         organization_id=auth_context.organization_id, report_id=report_id, version_id=version_id
     )
