@@ -303,3 +303,50 @@ def test_the_open_work_line_names_each_activity_once():
     assert line.startswith("Open work at Tower A (Hospital Project) (started, not finished): ")
     assert "Plastering (2nd floor plastering); Plastering (3rd floor plastering)." in line
     assert render_open_work_line("Tower A", []) is None
+
+
+class _Units:
+    """The units list: only these spellings are known."""
+
+    KNOWN = {"sq ft": "sqft", "sqft": "sqft", "meters": "m"}
+
+    def __init__(self) -> None:
+        self.asked: list[str] = []
+
+    async def resolve_unit(self, text: str) -> dict[str, Any] | None:
+        self.asked.append(text)
+        code = self.KNOWN.get(text.strip().lower())
+        return {"code": code} if code else None
+
+
+async def test_wrk02_a_unit_the_list_does_not_know_is_asked_not_lost():
+    entry = _entry(catalog_query=_Units())
+    said = await _prepare(
+        entry, SemanticType.GENERAL_SITE_UPDATE,
+        narrative="plastering done", work_type="plastering", quantity=50, unit="furlongs",
+    )
+    assert isinstance(said, Say) and said.status == "choose" and said.awaiting == "unit"
+    assert "furlongs" in said.question and "sq ft" in said.options
+    # every option is itself a unit the list knows or resolves (they come back as the answer)
+    assert len(said.options) <= 10
+
+
+async def test_wrk02_a_known_unit_goes_straight_through_and_no_quantity_asks_nothing():
+    units = _Units()
+    ready = await _prepare(
+        _entry(catalog_query=units), SemanticType.GENERAL_SITE_UPDATE,
+        narrative="tiling", work_type="tiling", quantities=[{"work_type": "tiling", "quantity": 200, "unit": "sq ft"}],
+    )
+    assert isinstance(ready, Ready) and units.asked == ["sq ft"]
+    ready = await _prepare(_entry(catalog_query=units), SemanticType.GENERAL_SITE_UPDATE, narrative="tiling done", work_type="tiling")
+    assert isinstance(ready, Ready) and units.asked == ["sq ft"]
+
+
+async def test_wrk02_every_quantity_of_a_message_is_checked():
+    said = await _prepare(
+        _entry(catalog_query=_Units()), SemanticType.GENERAL_SITE_UPDATE,
+        narrative="tiling and wiring", work_type="tiling",
+        quantities=[{"work_type": "tiling", "quantity": 200, "unit": "sq ft"},
+                    {"work_type": "wiring", "quantity": 50, "unit": "reels"}],
+    )
+    assert isinstance(said, Say) and "reels" in said.question and "wiring" in said.question

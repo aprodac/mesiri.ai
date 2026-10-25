@@ -854,21 +854,48 @@ class UnitsOfMeasureRepository:
         return [dict(r) for r in res.mappings().all()]
 
     async def resolve_alias(self, text_value: str) -> dict | None:
-        """Resolve free text (exact code or known alias, case/whitespace-insensitive)
-        to its active canonical unit. No unit conversion — spelling only."""
+        """Resolve free text (exact code, known alias or display name,
+        case/whitespace-insensitive) to its active canonical unit. No unit
+        conversion -- spelling only.
+
+        WRK-02: spacing, dots and the superscript digits do not matter either
+        ("sq.ft", "sq ft", "sft"; "m²", "m3"): the text is tried as typed,
+        then folded (``fold_unit_text``) against the aliases folded the same
+        way. The exact spelling wins."""
         needle = text_value.strip().lower()
         if not needle:
             return None
-        stmt = (
+        base = (
             sa.select(_units_of_measure)
             .select_from(
                 _unit_aliases.join(_units_of_measure, _units_of_measure.c.id == _unit_aliases.c.unit_id)
             )
-            .where(_unit_aliases.c.alias_text == needle, _units_of_measure.c.is_active.is_(True))
+            .where(_units_of_measure.c.is_active.is_(True))
         )
-        res = await self.conn.execute(stmt)
-        row = res.mappings().first()
+        row = (await self.conn.execute(base.where(_unit_aliases.c.alias_text == needle))).mappings().first()
+        if row is None:
+            folded = fold_unit_text(needle)
+            column = sa.func.regexp_replace(
+                sa.func.translate(sa.func.lower(_unit_aliases.c.alias_text), "²³", "23"),
+                "[^[:alnum:]%]", "", "g",
+            )
+            row = (
+                await self.conn.execute(base.where(column == folded).order_by(_unit_aliases.c.created_at))
+            ).mappings().first()
+        if row is None:
+            by_name = sa.select(_units_of_measure).where(
+                sa.func.lower(_units_of_measure.c.display_name) == needle,
+                _units_of_measure.c.is_active.is_(True),
+            )
+            row = (await self.conn.execute(by_name)).mappings().first()
         return dict(row) if row else None
+
+
+def fold_unit_text(text_value: str) -> str:
+    """"Sq. Ft" / "sq ft" / "SQFT" -> "sqft"; "m²" -> "m2": letters, digits and
+    "%" only (SQL side: the same fold in ``resolve_alias``)."""
+    translated = text_value.lower().translate(str.maketrans("²³", "23"))
+    return "".join(ch for ch in translated if ch.isalnum() or ch == "%")
 
 
 class MaterialMovementsRepository:

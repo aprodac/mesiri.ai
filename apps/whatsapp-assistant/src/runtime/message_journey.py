@@ -962,6 +962,7 @@ def build_message_handlers(
                         actor=ctx,
                         active_context=getattr(context_resolver, "active_context", None),
                         activity_query=activity_query,
+                        catalog_query=catalog_query,
                         money_account_query=money_account_query,
                         duplicate_expense_query=duplicate_expense_query,
                         vendor_query=vendor_query,
