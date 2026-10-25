@@ -576,4 +576,9 @@ Since then (25 Oct, approved by Alan):
   now* publishes to every recipient, "send me today's DPR" needs the evening report
   (`not_generated` on day 0), and a dashboard-side sender would duplicate the WhatsApp
   sending path. The welcome screen's live report has *Print* (save as PDF) meanwhile.
+- **Time saved on Today** (`components/time-saved.tsx`): "This week Mesiri sent 5 daily
+  reports for you: about 2 h 5 min of writing saved." The count is real (project DPRs
+  `PUBLISHED` in the last 7 days, the history API's total); the **25 minutes per report
+  is an assumption**, stated in the line's tooltip and kept in one constant
+  (`MINUTES_PER_REPORT`). Hidden until a report has gone out.
 
