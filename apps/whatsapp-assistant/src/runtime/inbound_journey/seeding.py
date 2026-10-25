@@ -509,6 +509,41 @@ def _dpr_scope(event: CanonicalEventV2, actor: ActorIdentity) -> tuple[str | Non
     return project_id, site_id
 
 
+async def _project_preview(
+    dpr_request_query: DprRequestQueryService,
+    actor: ActorIdentity,
+    *,
+    project_id: str,
+    report_date: Any,
+    event: CanonicalEventV2,
+) -> str:
+    """The day so far at each of the project's sites the sender can see, a
+    site name over its lines; sites with nothing yet are left out. Empty
+    when no site has anything."""
+    blocks = []
+    for site in getattr(actor, "sites", None) or []:
+        if str(getattr(site, "project_id", None)) != str(project_id):
+            continue
+        try:
+            lines = await dpr_request_query.preview_lines(
+                organization_id=actor.organization_id,
+                project_id=project_id,
+                site_id=site.id,
+                report_date=report_date,
+            )
+        except Exception:  # noqa: BLE001 -- the other sites still answer
+            _log.warning(
+                "dpr_request.site_preview_failed correlation_id=%s site=%s",
+                event.correlation_id,
+                site.id,
+                exc_info=True,
+            )
+            continue
+        if lines:
+            blocks.append("\n".join([f"*{site.name}*", *lines]))
+    return "\n".join(blocks)
+
+
 async def _seed_dpr_request(
     event: CanonicalEventV2,
     decision: PlannerDecisionV2,
@@ -596,6 +631,24 @@ async def _seed_dpr_request(
             result = {**result, "status": "waiting" if waiting else "preview"}
             event.fields["dpr_preview"] = "\n".join(lines)
             event.fields["dpr_missing"] = list(result.get("missing") or [])
+    elif (
+        result["status"] in ("not_generated", "pending_confirmation")
+        and report_date == today
+        and project_id
+        and not site_id
+    ):
+        # WA-66 (audit DPR-05): an owner/PM whose project has several sites
+        # asks during the day. The project roll-up is only made at the
+        # cutoff, so this used to say "Nothing's been logged" while the
+        # sites had entries. Each of their sites' day so far instead.
+        preview = await _project_preview(
+            dpr_request_query, actor, project_id=project_id, report_date=today, event=event
+        )
+        if preview:
+            waiting = result["status"] == "pending_confirmation"
+            result = {**result, "status": "waiting" if waiting else "preview"}
+            event.fields["dpr_preview"] = preview
+            event.fields["dpr_missing"] = []
     event.fields["dpr_status"] = result["status"]
     event.fields["dpr_object_key"] = result["object_key"]
     event.fields["dpr_code"] = result["code"]

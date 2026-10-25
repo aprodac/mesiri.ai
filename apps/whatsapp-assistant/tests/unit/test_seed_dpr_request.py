@@ -172,6 +172,56 @@ async def test_with_several_sites_nothing_is_guessed_and_the_project_report_is_a
     assert service.calls[0]["site_id"] is None
 
 
+class _PreviewService(_FakeDprRequestQueryService):
+    def __init__(self, result: dict, lines_by_site: dict):
+        super().__init__(result)
+        self.lines_by_site = lines_by_site
+
+    async def preview_lines(self, *, site_id, **_):
+        return list(self.lines_by_site.get(site_id, []))
+
+
+async def test_several_sites_during_the_day_show_each_sites_day_so_far():
+    # WA-66 (audit DPR-05): not "Nothing's been logged" while sites have entries.
+    from workflows.dpr_request.nodes import generate_dpr_request_reply
+
+    other, quiet = "55555555-5555-4555-8555-555555555555", "66666666-6666-4666-8666-666666666666"
+    a, b, c = _Site(SITE, PRJ), _Site(other, PRJ), _Site(quiet, PRJ)
+    a.name, b.name, c.name = "Tower A", "Tower B", "Tower C"
+    service = _PreviewService(
+        {"status": "not_generated", "object_key": None, "code": None},
+        {SITE: ["• Work: 2 items"], other: ["• Labour: 8 workers"]},
+    )
+    actor = _ScopedActor([_Project(PRJ)], [a, b, c])
+    event = _bare_event()
+
+    await _seed_dpr_request(
+        event, _decision(WorkflowKey.DPR_REQUEST, CanonicalEventType.DPR_REQUESTED), service, actor, "Asia/Kolkata"
+    )
+
+    assert event.fields["dpr_status"] == "preview"
+    reply = generate_dpr_request_reply({"collected_fields": event.fields})["pending_prompt"]
+    assert "*Tower A*\n• Work: 2 items\n*Tower B*\n• Labour: 8 workers" in reply
+    assert "Tower C" not in reply and "Nothing's been logged" not in reply
+
+
+async def test_several_sites_with_nothing_yet_still_say_nothing_logged():
+    service = _PreviewService({"status": "not_generated", "object_key": None, "code": None}, {})
+    site = _Site(SITE, PRJ)
+    site.name = "Tower A"
+    event = _bare_event()
+
+    await _seed_dpr_request(
+        event,
+        _decision(WorkflowKey.DPR_REQUEST, CanonicalEventType.DPR_REQUESTED),
+        service,
+        _ScopedActor([_Project(PRJ)], [site, _Site("55555555-5555-4555-8555-555555555555", PRJ)]),
+        "Asia/Kolkata",
+    )
+
+    assert event.fields["dpr_status"] == "not_generated"
+
+
 async def test_a_failed_lookup_says_unavailable_not_not_generated():
     class _Broken:
         async def find_report(self, **kwargs):
