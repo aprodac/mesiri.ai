@@ -9,7 +9,12 @@ Per company:
                        lifecycle rule (a trial past its end reads expired)
     trial_days_left    whole days, for a company that is still on trial
     setup              how far the company got with Mesiri:
-                         has_team           someone active besides the owner
+                         has_team           someone who can report from site:
+                                            active, with a WhatsApp number, a
+                                            site engineer or project manager,
+                                            on a project (SS-19; was any
+                                            second active user, so an
+                                            accountant ticked it)
                          has_site           at least one site
                          first_update_at    first confirmed site record: work
                                             reported (activities) or a material
@@ -93,6 +98,11 @@ _SELECT = """
            (SELECT count(*) FROM users u
              WHERE u.organization_id = o.id AND lower(u.status) = 'active') AS active_users,
            EXISTS (SELECT 1 FROM sites s WHERE s.organization_id = o.id) AS has_site,
+           EXISTS (SELECT 1 FROM users u
+             JOIN project_members pm ON pm.user_id = u.id
+             WHERE u.organization_id = o.id AND lower(u.status) = 'active'
+               AND u.whatsapp_number IS NOT NULL
+               AND upper(u.role) IN ('SITE_ENGINEER', 'PROJECT_MANAGER')) AS has_reporter,
            LEAST(
              (SELECT min(a.created_at) FROM activities a
                WHERE a.organization_id = o.id AND a.deleted_at IS NULL),
@@ -147,6 +157,8 @@ async def _retention_days(conn: AsyncConnection) -> int:
         return int((policy or {}).get("retention_days_after_expiry") or DEFAULT_RETENTION_DAYS)
     except (TypeError, ValueError):
         return DEFAULT_RETENTION_DAYS
+
+
 _QUERY = sa.text(_SELECT + "ORDER BY o.created_at DESC NULLS LAST, o.name")
 _ONE_QUERY = sa.text(_SELECT + "WHERE o.id = :organization_id")
 
@@ -186,8 +198,8 @@ def to_overview(
         continue_requested_at=row.get("continue_requested_at"),
         eligible_for_deletion=eligible,
         setup=SetupProgress(
-            # The owner alone isn't a team.
-            has_team=(row["active_users"] or 0) >= 2,
+            # Someone who reports from site, not just a second login.
+            has_team=bool(row.get("has_reporter")),
             has_site=bool(row["has_site"]),
             first_update_at=row["first_update_at"],
             first_dpr_sent_at=row["first_dpr_sent_at"],
