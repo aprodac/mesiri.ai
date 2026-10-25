@@ -24,6 +24,7 @@ from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
 from mesiri_contracts.common.ids import new_id
 
+from ..role_words import ROLE_DISPLAY, normalize_role, role_not_allowed_reply
 from ..state import WorkflowGraphState
 
 _MISSING_NAME_PROMPT = "What's this person's name?"
@@ -33,18 +34,6 @@ _INVALID_NUMBER_PROMPT = (
     "country code, e.g. 9198765xxxxx."
 )
 
-_DEFAULT_ROLE = "SITE_ENGINEER"
-
-_ROLE_ALIASES: tuple[tuple[str, str], ...] = (
-    ("project manager", "PROJECT_MANAGER"),
-    ("site engineer", "SITE_ENGINEER"),
-    ("engineer", "SITE_ENGINEER"),
-    ("finance", "FINANCE"),
-    ("admin", "ADMIN"),
-    ("manager", "PROJECT_MANAGER"),
-)
-
-_KNOWN_ROLES = frozenset({"ADMIN", "PROJECT_MANAGER", "SITE_ENGINEER", "FINANCE"})
 
 # A WhatsApp number is always at least a 10-digit local number; most will
 # carry a country code too. This is a sanity floor, not format validation --
@@ -60,21 +49,6 @@ _MIN_DIGITS = 10
 #: 20-digit reference number mentioned nearby must not be mistaken for a
 #: phone number just because it also happens to be all digits.
 _MAX_DIGITS = 15
-
-
-def _normalize_role(role_hint: object) -> str:
-    """Mirrors workflows/add_project_member/nodes.py's _normalize_role
-    exactly -- kept as a separate copy rather than a shared import, since
-    the two workflows' role vocabularies are free to diverge later (e.g. if
-    CREATE_USER ever needs a role add_project_member doesn't)."""
-    text = str(role_hint or "").strip().upper()
-    if text in _KNOWN_ROLES:
-        return text
-    lowered = text.lower()
-    for phrase, role in _ROLE_ALIASES:
-        if phrase in lowered:
-            return role
-    return _DEFAULT_ROLE
 
 
 def _normalize_phone(number_hint: object) -> str | None:
@@ -212,6 +186,10 @@ def build_draft(state: WorkflowGraphState) -> dict:
     phone = _normalize_phone(raw_number)
     if phone is None:
         return {"pending_prompt": _INVALID_NUMBER_PROMPT}
+    role = normalize_role(fields.get("role"))
+    refused = role_not_allowed_reply(fields.get("created_by_role"), role)
+    if refused:
+        return {"pending_prompt": refused}
     draft = DraftActionV2(
         draft_id=new_id("draft"),
         correlation_id=state["correlation_id"],
@@ -224,19 +202,11 @@ def build_draft(state: WorkflowGraphState) -> dict:
         fields={
             "full_name": full_name,
             "whatsapp_number": phone,
-            "role": _normalize_role(fields.get("role")),
+            "role": role,
             "created_by_role": fields.get("created_by_role"),
         },
     )
     return {"draft_action": draft}
-
-
-_ROLE_DISPLAY = {
-    "ADMIN": "Admin",
-    "PROJECT_MANAGER": "Project Manager",
-    "SITE_ENGINEER": "Site Engineer",
-    "FINANCE": "Finance",
-}
 
 
 def request_confirmation(state: WorkflowGraphState) -> dict:
@@ -249,7 +219,7 @@ def request_confirmation(state: WorkflowGraphState) -> dict:
     draft: DraftActionV2 = state["draft_action"]
     full_name = draft.fields.get("full_name")
     phone = draft.fields.get("whatsapp_number")
-    role = _ROLE_DISPLAY.get(str(draft.fields.get("role") or ""), "Site Engineer")
+    role = ROLE_DISPLAY.get(str(draft.fields.get("role") or ""), "Site Engineer")
     lines = [
         "*Confirm this action?*",
         "",

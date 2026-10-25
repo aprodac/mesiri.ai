@@ -27,42 +27,11 @@ from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
 from mesiri_contracts.common.ids import new_id
 
+from ..role_words import ROLE_DISPLAY, normalize_role, role_not_allowed_reply
 from ..state import WorkflowGraphState
 
 _MISSING_PROJECT_PROMPT = "Which project should I add this member to?"
 _MISSING_NAME_PROMPT = "Who should I add to this project?"
-
-_DEFAULT_ROLE = "SITE_ENGINEER"
-
-# Longest/most-specific phrase first within each entry so "project manager"
-# doesn't get caught by a looser "manager" alias also meaning PROJECT_MANAGER
-# (harmless here since both map the same, but keeps the intent obvious).
-_ROLE_ALIASES: tuple[tuple[str, str], ...] = (
-    ("project manager", "PROJECT_MANAGER"),
-    ("site engineer", "SITE_ENGINEER"),
-    ("engineer", "SITE_ENGINEER"),
-    ("finance", "FINANCE"),
-    ("admin", "ADMIN"),
-    ("manager", "PROJECT_MANAGER"),
-)
-
-_KNOWN_ROLES = frozenset({"ADMIN", "PROJECT_MANAGER", "SITE_ENGINEER", "FINANCE"})
-
-
-def _normalize_role(role_hint: object) -> str:
-    """Best-effort mapping of a free-text role hint to the closed role
-    vocabulary. Falls back to the default rather than rejecting an
-    unrecognized word -- an unmatched role hint ("supervisor") is far more
-    likely to mean "give them the standard access" than "abort the whole
-    add"."""
-    text = str(role_hint or "").strip().upper()
-    if text in _KNOWN_ROLES:
-        return text
-    lowered = text.lower()
-    for phrase, role in _ROLE_ALIASES:
-        if phrase in lowered:
-            return role
-    return _DEFAULT_ROLE
 
 
 def build_draft(state: WorkflowGraphState) -> dict:
@@ -79,6 +48,10 @@ def build_draft(state: WorkflowGraphState) -> dict:
     member_name = str(fields.get("member_name") or "").strip()
     if not member_name:
         return {"pending_prompt": _MISSING_NAME_PROMPT}
+    role = normalize_role(fields.get("role"))
+    refused = role_not_allowed_reply(fields.get("created_by_role"), role)
+    if refused:
+        return {"pending_prompt": refused}
     draft = DraftActionV2(
         draft_id=new_id("draft"),
         correlation_id=state["correlation_id"],
@@ -90,19 +63,11 @@ def build_draft(state: WorkflowGraphState) -> dict:
         site_id=None,
         fields={
             "member_name": member_name,
-            "role": _normalize_role(fields.get("role")),
+            "role": role,
             "created_by_role": fields.get("created_by_role"),
         },
     )
     return {"draft_action": draft}
-
-
-_ROLE_DISPLAY = {
-    "ADMIN": "Admin",
-    "PROJECT_MANAGER": "Project Manager",
-    "SITE_ENGINEER": "Site Engineer",
-    "FINANCE": "Finance",
-}
 
 
 def request_confirmation(state: WorkflowGraphState) -> dict:
@@ -110,7 +75,7 @@ def request_confirmation(state: WorkflowGraphState) -> dict:
     localization/templates/AI generation here (see workflows/material/nodes.py)."""
     draft: DraftActionV2 = state["draft_action"]
     member_name = draft.fields.get("member_name")
-    role = _ROLE_DISPLAY.get(str(draft.fields.get("role") or ""), "Site Engineer")
+    role = ROLE_DISPLAY.get(str(draft.fields.get("role") or ""), "Site Engineer")
     lines = [
         "*Confirm this action?*",
         "",
