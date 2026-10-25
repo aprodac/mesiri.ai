@@ -17,7 +17,7 @@ import { useAuth } from '@/lib/AuthContext'
 import { localIsoDate, longDate, siteDayPath } from '@/lib/site-day'
 import { prefersReducedMotion } from '@/lib/timeline'
 import { cn, formatClock } from '@/lib/utils'
-import { DUST_MS, inkDuration, SNAP_MS, THREAD_MS } from '@/lib/ink'
+import { inkDuration, SNAP_MS, THREAD_MS } from '@/lib/ink'
 import { keyValue, readingLines, rowLines } from '@/lib/live-reading'
 import { MesiriWordmark } from '@/components/brand/mesiri-logo'
 import { WhatsAppIcon } from '@/components/brand/whatsapp-icon'
@@ -29,6 +29,7 @@ import { LIVE_MODULES, ModuleRail, moduleOf, useCinematicGo, type LiveModule, ty
 import { useModuleEnabled } from '@/lib/modules'
 import { AnswerSheet, answerTitle, questionChip, type AnswerTarget } from '@/components/live/answer'
 import { Finale } from '@/components/live/finale'
+import { SPOT_MS, Spotlight, type SpotlightFact } from '@/components/live/spotlight'
 
 // The Live report (WEB-37): the day's report writing itself as the site's
 // messages come in, and Mesiri seen reading each one. Left, a message
@@ -41,7 +42,8 @@ import { Finale } from '@/components/live/finale'
 // messages, in order. Then each fact travels on along a second thread to
 // the module that keeps it (Labour, Site log, Materials, Issues, on the
 // right); a line, the manpower block or a module opens that module with a
-// cinematic cut. A question asked on WhatsApp ("stock at Tower A?") is read
+// cinematic cut. Each update first comes up full size in the middle of the
+// screen, the page dimmed behind it, then shrinks into its place (WEB-41). A question asked on WhatsApp ("stock at Tower A?") is read
 // the same way, then the sheet turns over to the answer, from the same
 // records, with Mesiri's reply under the question. Above the sheet: what the
 // report is still waiting for, ticking off as lines land, and the time left
@@ -56,7 +58,6 @@ const POLL_MS = 3_000
 const FLY_MS = 750
 /** How long a landed number keeps its highlight. */
 const LANDED_MS = 7_000
-const SUB_LAG_MS = 350
 /** How long an answer stays turned over before the report comes back. */
 const ANSWER_MS = 12_000
 const FLIP_MS = 1_100
@@ -143,6 +144,20 @@ function noticeOf(item: ReviewItem, report: SiteDayDetail['report'] | undefined)
   }
   if (item.flags?.includes('possible_duplicate')) return 'This looks like a repeat of an earlier message. Check it before confirming.'
   return null
+}
+
+const KINDS: Record<string, string> = { labour: 'Manpower', work: 'Work done', materials: 'Materials', issues: 'Issue' }
+
+/** What the spotlight shows for one fact: its number big, its words under it, its photo if it has one. */
+function spotFact(item: ReviewItem, labour: SiteDayDetail['report']['labour'] | undefined, image: string | null): SpotlightFact {
+  const warn = (item.flags?.length ?? 0) > 0
+  if (item.section === 'labour') {
+    const n = labour?.headcount ?? 0
+    const trades = (labour?.trades ?? []).map((t) => `${t.headcount} ${t.trade}`).join(' · ')
+    return { kind: 'Manpower', value: n ? String(n) : null, main: n === 1 ? 'worker on site' : 'workers on site', sub: trades || null, warn }
+  }
+  const { main, sub } = rowLines(item)
+  return { kind: KINDS[item.section] ?? 'Update', value: image ? null : keyValue(item), main, sub, image, warn }
 }
 
 function chipLabel(item: ReviewItem, headcount: number | undefined): string {
@@ -323,7 +338,8 @@ function Row({
 }) {
   const { main, sub } = rowLines(item)
   const value = keyValue(item)
-  const mode = snapping ? 'scatter' : writing ? 'gather' : 'still'
+  // New lines arrive by the spotlight (WEB-41); dust is only for the replay's snap.
+  const mode = snapping ? 'scatter' : 'still'
   const open = (el: HTMLElement) => onOpen?.(el)
   return (
     <li
@@ -334,7 +350,8 @@ function Row({
       onClick={onOpen ? (e) => open(e.currentTarget) : undefined}
       onKeyDown={onOpen ? (e) => e.key === 'Enter' && open(e.currentTarget) : undefined}
       className={cn(
-        'group relative grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 border-b border-black/10 py-3 last:border-b-0',
+        'group relative grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 border-b border-black/10 py-3 transition-opacity duration-300 last:border-b-0',
+        writing && !landed && 'opacity-0',
         onOpen && 'cursor-pointer outline-none hover:bg-black/[0.025] focus-visible:bg-black/[0.04]',
       )}
       style={
@@ -353,12 +370,12 @@ function Row({
         </span>
       )}
       <span className="min-w-0">
-        <DustText text={main} mode={mode} delay={writing ? THREAD_MS : 0} className="block text-[15px] font-semibold" />
+        <DustText text={main} mode={mode} className="block text-[15px] font-semibold" />
         {sub && (
           <DustText
             text={sub}
             mode={mode}
-            delay={writing ? THREAD_MS + SUB_LAG_MS : 80}
+            delay={80}
             className="block text-[12.5px] text-black/55"
           />
         )}
@@ -536,6 +553,7 @@ export default function LivePage() {
   const [labour, setLabour] = React.useState<SiteDayDetail['report']['labour'] | null>(null)
   const [feed, setFeed] = React.useState<FeedMessage[]>([])
   const [thread, setThread] = React.useState<{ chip: string; target: string } | null>(null)
+  const [spot, setSpot] = React.useState<{ id: number; fact: SpotlightFact; from: DOMRect; to: DOMRect } | null>(null)
   const [flyer, setFlyer] = React.useState<{ id: number; label: string; from: DOMRect; to: DOMRect; image?: string | null } | null>(null)
   const [, redraw] = React.useReducer((n: number) => n + 1, 0)
   // Tell Mesiri right here; what's saved writes itself in like any message.
@@ -743,14 +761,19 @@ export default function LivePage() {
         setWriting(key)
         if (!still) {
           await sleep(80)
+          // Full size first, the page dimmed behind it; then into its place.
           const chip = chipEls.current.get(key)
-          const target = targetEls.current.get(isLabour ? 'labour-total' : `${key}:value`) ?? targetEls.current.get(key)
+          const target = targetEls.current.get(isLabour ? 'labour' : key)
           if (chip && target) {
             const image = (await sourceOf(item)).photos.find((p) => p.url)?.url ?? null
-            setFlyer({ id: Date.now(), label: chipLabel(item, headcount), from: chip.getBoundingClientRect(), to: target.getBoundingClientRect(), image })
-            setThread({ chip: key, target: isLabour ? 'labour-total' : key })
-            await sleep(FLY_MS)
-            setFlyer(null)
+            setSpot({
+              id: Date.now(),
+              fact: spotFact(item, latest.current?.report.labour, image),
+              from: chip.getBoundingClientRect(),
+              to: target.getBoundingClientRect(),
+            })
+            await sleep(SPOT_MS)
+            setSpot(null)
           }
         }
         if (isLabour) setLabour(latest.current?.report.labour ?? null)
@@ -759,15 +782,13 @@ export default function LivePage() {
         if (itemPhotos.length) landPhotos(key, itemPhotos)
         if (!still && noticeOf(item, latest.current?.report)) {
           // Mesiri points it out before moving on.
-          const { sub } = rowLines(item)
-          await sleep(DUST_MS + (sub ? SUB_LAG_MS : 0))
+          await sleep(400)
           setNoticing(key)
           await sleep(2600)
         }
         if (msg) think(msg.id, (t) => ({ ...t, chips: t.chips.map((c) => (c.key === key ? { ...c, flown: true } : c)) }))
         if (!still) {
-          const { sub } = rowLines(item)
-          await sleep(isLabour ? 1600 : DUST_MS + (sub ? SUB_LAG_MS : 0) + 700)
+          await sleep(1200)
           setThread(null)
           if (!live()) return
           // On to the module that keeps it.
@@ -824,10 +845,14 @@ export default function LivePage() {
       const chip = chipEls.current.get(chipKey)
       const target = targetEls.current.get(key)
       if (!still && chip && target) {
-        setFlyer({ id: Date.now(), label, from: chip.getBoundingClientRect(), to: target.getBoundingClientRect(), image: photo.url })
-        setThread({ chip: chipKey, target: key })
-        await sleep(FLY_MS)
-        setFlyer(null)
+        setSpot({
+          id: Date.now(),
+          fact: { kind: 'Photo', main: photo.caption || 'Site photo', sub: `Evidence for ${line}`, image: photo.url },
+          from: chip.getBoundingClientRect(),
+          to: target.getBoundingClientRect(),
+        })
+        await sleep(SPOT_MS)
+        setSpot(null)
       }
       landPhotos(key, [photo])
       think(id, (t) => ({ ...t, chips: t.chips.map((c) => ({ ...c, flown: true })) }))
@@ -1070,6 +1095,7 @@ export default function LivePage() {
     setLabour(null)
     setThread(null)
     setFlyer(null)
+    setSpot(null)
     setWriting(null)
     setLanded(new Set())
     setRelay(null)
@@ -1593,6 +1619,7 @@ export default function LivePage() {
           </div>
         )}
       </div>
+      {spot && <Spotlight key={spot.id} fact={spot.fact} from={spot.from} to={spot.to} />}
       {flyer && <Flyer key={flyer.id} label={flyer.label} from={flyer.from} to={flyer.to} image={flyer.image} />}
       {cinematic.overlay}
       {finale && (
