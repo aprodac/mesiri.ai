@@ -25,6 +25,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.application.organizations.companies_overview import company_setup
+from mesiri.bootstrap.settings import get_settings
 from mesiri.domains.organizations import settings as org_settings
 from mesiri.domains.organizations import setup_questions
 from mesiri.domains.shared.auth import require_admin
@@ -56,6 +57,15 @@ class SetupProgressResponse(BaseModel):
     first_project: FirstProject | None
     effective_status: str
     trial_days_left: int | None
+    # Mesiri's own WhatsApp number, for the welcome screen's "send your first
+    # update" invite; None when the deployment hasn't set one.
+    whatsapp_number: str | None = None
+
+
+def mesiri_whatsapp_number() -> str | None:
+    """The number people message, as set (MESIRI_WHATSAPP__DISPLAY_NUMBER)."""
+    number = (get_settings().whatsapp.display_number or "").strip()
+    return number or None
 
 
 def _org_id(admin: dict) -> uuid.UUID:
@@ -110,6 +120,7 @@ async def get_setup_progress(
         ),
         effective_status=company.effective_status,
         trial_days_left=company.trial_days_left,
+        whatsapp_number=mesiri_whatsapp_number(),
     )
 
 

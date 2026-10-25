@@ -28,6 +28,7 @@ from .equipment import EQUIPMENT_LINE, is_equipment_only
 from .gateway import StepResult, WorkflowGateway
 from .later import LaterItem, held_item
 from .material_direction import asks_direction, default_options, says_received
+from .save_button import SAVE_TITLE
 from .site_match import short_title
 from .tools import (
     ASK_USER,
@@ -963,6 +964,20 @@ class AgentToolbox:
                 self.parked = question
                 self.parked_by = "gate"
                 self.parked_confirm = step.status == "needs_confirmation"
+            if any(row.title == SAVE_TITLE for row in question.buttons or ()):
+                # Request 114: a Save / Cancel card, not a question. Nothing is kept yet.
+                return ToolOutcome(
+                    content={
+                        "status": "waiting_for_save",
+                        "to_save": question.text,
+                        "instruction": (
+                            "Nothing is saved yet: a Save / Cancel card is shown under your words. Say in "
+                            "one short line what you understood, in the language of their message, and "
+                            "ask them to check it and tap Save. Never say it is saved, written or noted. "
+                            "Do not copy the card."
+                        ),
+                    }
+                )
             return ToolOutcome(
                 content={
                     "status": "waiting_for_user",

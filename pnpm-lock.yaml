@@ -138,6 +138,9 @@ importers:
       tw-animate-css:
         specifier: ^1.2.5
         version: 1.4.0
+      uqr:
+        specifier: 0.1.2
+        version: 0.1.2
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.1.16
@@ -9455,6 +9458,10 @@ packages:
       browserslist: 4.28.5
       escalade: 3.2.0
       picocolors: 1.1.1
+    dev: false
+
+  /uqr@0.1.2:
+    resolution: {integrity: sha512-MJu7ypHq6QasgF5YRTjqscSzQp/W11zoUk6kvmlH+fmWEs63Y0Eib13hYFwAzagRJcVY8WVnlV+eBDUGMJ5IbA==}
     dev: false
 
   /uri-js@4.4.1:

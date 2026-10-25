@@ -7,6 +7,7 @@ import { apiErrorMessage } from '@/lib/logo-upload'
 import { useAuth } from '@/lib/AuthContext'
 import { useTrial } from '@/lib/trial'
 import { Button } from '@/components/ui/button'
+import { useToast } from '@/components/ui/toast-notification'
 import { cn, formatClock } from '@/lib/utils'
 
 const HIDE_KEY = 'mesiri_getting_started_hidden'
@@ -38,7 +39,7 @@ interface Item {
   action?: React.ReactNode
 }
 
-function items(p: SetupProgress, onTimeOk: () => void, savingTime: boolean): Item[] {
+function items(p: SetupProgress, onTimeOk: () => void, savingTime: boolean, invite: (() => void) | null): Item[] {
   const sendTime = formatClock(p.first_project?.send_time) ?? '9:00 pm'
   const linkClass = 'font-medium text-foreground underline underline-offset-2'
   return [
@@ -59,16 +60,28 @@ function items(p: SetupProgress, onTimeOk: () => void, savingTime: boolean): Ite
       title: 'Add your site supervisor',
       detail: 'On WhatsApp, share their contact with Mesiri, or add them on the Team page.',
       action: (
-        <Link to="/team" className={linkClass}>
-          Team
-        </Link>
+        <span className="flex items-center gap-3">
+          {invite && (
+            <button type="button" className={linkClass} onClick={invite}>
+              Copy invite
+            </button>
+          )}
+          <Link to="/team" className={linkClass}>
+            Team
+          </Link>
+        </span>
       ),
     },
     {
       key: 'update',
       done: p.first_update_at !== null,
       title: 'Get the first update from site',
-      detail: "Your supervisor sends today's work to Mesiri on WhatsApp: a text, a voice note or photos.",
+      detail: "You or your supervisor send today's work to Mesiri on WhatsApp: a text, a voice note or photos.",
+      action: (
+        <Link to="/welcome" className={linkClass}>
+          Send it now
+        </Link>
+      ),
     },
     {
       key: 'time',
@@ -103,7 +116,7 @@ function items(p: SetupProgress, onTimeOk: () => void, savingTime: boolean): Ite
       detail: 'It goes at the top of every daily report.',
       action: (
         <Link to="/company?tab=letterhead" className={linkClass}>
-          Letterhead
+          Add logo
         </Link>
       ),
     },
@@ -143,6 +156,7 @@ export function GettingStartedCard() {
     refetchInterval: 60_000,
   })
   const trial = useTrial()
+  const toast = useToast()
   const continueAsk = useMutation({ mutationFn: requestContinue })
   const timeOk = useMutation({
     mutationFn: confirmReportTime,
@@ -151,7 +165,24 @@ export function GettingStartedCard() {
 
   // Once the trial has ended the banner (trial-banner.tsx) takes over.
   if (!isCompanyAdmin || hidden || trial.readOnly || !progress.data) return null
-  const list = items(progress.data, () => timeOk.mutate(), timeOk.isPending)
+  const number = progress.data.whatsapp_number
+  const site = progress.data.first_project?.name
+  // A message the owner forwards to their supervisor (SS-18): Mesiri's
+  // number and what to send, so nobody has to explain it.
+  const invite = number
+    ? async () => {
+        const text =
+          `Please send today's site work${site ? ` for ${site}` : ''} to Mesiri on WhatsApp: ${number}. ` +
+          'A voice note is fine, in any language: who worked, what got done, anything that held you up.'
+        try {
+          await navigator.clipboard.writeText(text)
+          toast.success('Invite copied', 'Paste it to your supervisor on WhatsApp.')
+        } catch {
+          toast.error('Could not copy', text)
+        }
+      }
+    : null
+  const list = items(progress.data, () => timeOk.mutate(), timeOk.isPending, invite)
   const doneCount = list.filter((i) => i.done).length
   if (doneCount === list.length) return null
   const daysLeft = progress.data.effective_status === 'trial' ? progress.data.trial_days_left : null

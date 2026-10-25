@@ -44,14 +44,18 @@ class RecordReceiptBuilder:
         #: an empty result leaves the card in English.
         self._localize = localize
 
-    async def build(self, confirmed: ConfirmedActionV2, execution: ExecutionResult, actor) -> bytes | None:
-        return await self.build_combined([(confirmed, execution)], actor)
+    async def build(
+        self, confirmed: ConfirmedActionV2, execution: ExecutionResult, actor, *, saved: bool = False
+    ) -> bytes | None:
+        return await self.build_combined([(confirmed, execution)], actor, kept=saved)
 
     async def build_combined(
-        self, saved: list[tuple[ConfirmedActionV2, ExecutionResult]], actor
+        self, saved: list[tuple[ConfirmedActionV2, ExecutionResult]], actor, *, kept: bool = False
     ) -> bytes | None:
         """One card for one or several records saved from the same message:
-        a single record gets its full card, several get a row each."""
+        a single record gets its full card, several get a row each. ``kept``:
+        the sender already tapped Save, so the card says SAVED, not TO SAVE
+        (request 115)."""
         parts: list[ReceiptData] = []
         now = datetime.now(UTC)
         for confirmed, execution in saved:
@@ -60,7 +64,7 @@ class RecordReceiptBuilder:
             if execution.material_row_id is None:
                 continue
             try:
-                parts.append(self._data(confirmed, execution, actor, now))
+                parts.append(self._data(confirmed, execution, actor, now, kept))
             except Exception:
                 logger.exception(
                     "receipt.render_failed correlation_id=%s workflow_instance_id=%s",
@@ -89,7 +93,7 @@ class RecordReceiptBuilder:
 
     @staticmethod
     def _data(
-        confirmed: ConfirmedActionV2, execution: ExecutionResult, actor: Any, now: datetime
+        confirmed: ConfirmedActionV2, execution: ExecutionResult, actor: Any, now: datetime, kept: bool = False
     ) -> ReceiptData:
         return build_receipt_data(
             confirmed.draft_action,
@@ -99,4 +103,5 @@ class RecordReceiptBuilder:
             sites=actor.sites if actor else [],
             confirmed_at=now,
             timezone=getattr(actor, "timezone", None),
+            saved=kept,
         )

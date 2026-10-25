@@ -674,6 +674,14 @@ def tool_specs() -> list[ToolSpec]:
                     "material": {"type": "string"},
                     "date": _DATE,
                     "date_range": _PERIOD,
+                    "asking": {
+                        "type": "string",
+                        "enum": ["used", "received"],
+                        "description": (
+                            "Which side the question is about: 'used' for 'cement used yesterday?', "
+                            "'received' for 'what came in today?'. Omit for stock or both."
+                        ),
+                    },
                     "as_pdf": _AS_PDF,
                     "project": _PROJECT,
                     "site": _SITE,
@@ -1056,6 +1064,7 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             "material_name": args.get("material"),
             "date": date,
             "date_range": args.get("date_range"),
+            "asking": args.get("asking") if args.get("asking") in ("used", "received") else None,
             **_pdf(args),
             **sc,
         }

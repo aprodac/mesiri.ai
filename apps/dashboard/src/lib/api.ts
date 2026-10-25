@@ -2067,6 +2067,8 @@ export interface SetupProgress {
   first_project: { id: string; name: string; send_time: string; auto_dpr?: boolean } | null
   effective_status: string
   trial_days_left: number | null
+  /** Mesiri's own WhatsApp number, for inviting people to send updates (SS-18). */
+  whatsapp_number?: string | null
 }
 
 export async function fetchSetupProgress(): Promise<SetupProgress> {

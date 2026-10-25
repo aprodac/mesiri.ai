@@ -214,6 +214,14 @@ def _progress_percent(fields: dict) -> str:
     return f"{int(pct)}%" if pct.is_integer() else f"{pct:g}%"
 
 
+def _quantity_said(fields: dict) -> tuple[str, str] | None:
+    """(number, unit) of the first quantity a work update states, else None."""
+    quantities = fields.get("quantities")
+    first = quantities[0] if isinstance(quantities, list) and quantities and isinstance(quantities[0], dict) else fields
+    number = _number(first.get("quantity")) if _present(first.get("quantity")) else ""
+    return (number, str(first.get("unit") or "").strip()) if number else None
+
+
 def _work_line(work_type: str, fields: dict, pct: str) -> str:
     """"Plastering · 2nd floor · 40%": what was done, where, how far."""
     return " · ".join(p for p in (work_type, _present(fields.get("location")), pct) if p)
@@ -274,6 +282,7 @@ def build_receipt_data(
     confirmed_at: datetime,
     late_entry: bool = False,
     timezone: str | None = None,
+    saved: bool = False,
 ) -> ReceiptData:
     """Build the generic receipt shape for a confirmed DraftAction.
 
@@ -484,12 +493,21 @@ def build_receipt_data(
         kind = ReceiptKind.WORK
         category = "Progress update"
         pct = _progress_percent(fields)
+        amount = None if pct else _quantity_said(fields)
         if pct:
             hero_number, hero_unit = pct.rstrip("%"), "% done"
             rows = _rows(
                 kind,
                 ("Activity", fields.get("activity_summary")),
                 ("Progress", pct),
+            )
+        elif amount:
+            # Request 114: "50 sq ft plastering done" shows the 50 sq ft.
+            hero_number, hero_unit = amount
+            rows = _rows(
+                kind,
+                ("Activity", fields.get("activity_summary") or fields.get("work_type")),
+                ("Status", update_kind),
             )
         else:
             hero_title = update_kind
@@ -500,7 +518,7 @@ def build_receipt_data(
             )
         id_prefix = "PU"
         summary_text = str(fields.get("activity_summary") or "Progress update")
-        summary_value = pct or update_kind
+        summary_value = pct or (" ".join(amount) if amount else update_kind)
     elif draft.action_type is DraftActionType.CORRECT_ACTIVITY_QUANTITY:
         # ADR-D14: old_quantity/old_unit are seeded straight from a real DB
         # read (runtime/inbound_journey/seeding.py), never an unresolved AI
@@ -595,7 +613,7 @@ def build_receipt_data(
         status, footer = STATUS_UNDONE, FOOTER_UNDONE
     elif late_entry:
         status, footer = STATUS_LATE, FOOTER_LATE
-    elif draft.action_type in _DRAFT_TYPES:
+    elif draft.action_type in _DRAFT_TYPES and not saved:
         status, footer = STATUS_DRAFT, FOOTER_DRAFT
     else:
         status, footer = STATUS_SAVED, ""

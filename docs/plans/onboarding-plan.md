@@ -505,3 +505,53 @@ Rendered examples (partial progress, EN and ML): [docs/product/onboarding-cards/
 Rollback: `git revert` the commits; signup is the text flow it was. No migration, no new tables.
 
 Not built / known: the first-update, materials, logo and site-engineer NEXT messages are suggestions (`add material: TMT steel 12mm` is not a tested command); Malayalam wording has not been read by a native speaker; the live run below.
+
+## Web intro and first-update screen (SS-18, built 25 Oct)
+
+The web signup's first minutes, in the Swiss style the WhatsApp onboarding cards
+(SS-17) use: white ground, a narrow time column, **what the site sent on the left,
+what Mesiri made of it on the right**, hairlines between exchanges, black type and
+site orange only for the report's rule and the one button.
+
+- **One scene at a time, not one long page.** Both screens play as a slideshow in a
+  single frame (`components/onboarding/scenes.tsx`): a numbered step bar on top
+  (`01 · Voice note`, …) whose current step fills as the scene runs; each step is a
+  button, and choosing one stops the automatic changes. On signup every scene sits in
+  the same grid cell, so the frame keeps one height and nothing jumps.
+- **`/signup`** plays an example evening beside the form
+  (`components/onboarding/intro-conversation.tsx`), four scenes on a loop:
+  01 Voice note (waveform inks in, Malayalam words arrive, English below) → 02
+  Understood (10 workers counting up, the work, the issue) → 03 Report ("Send today's
+  report." and the sheet drawing in) → 04 Your site ("One voice note in. A finished
+  daily report out." and the button). The company and site are labelled an example.
+  Narrow, the intro comes first and its button jumps to the form.
+- **`/welcome`** is where signup now lands (`pages/WelcomePage.tsx`), full screen and
+  skippable at every point. It shows Mesiri's WhatsApp number, a QR code and an
+  "Open WhatsApp" link with the text pre-filled, then polls the owner's site day every
+  3 s. Its steps are 01 Send · 02 Understood · 03 Report; it rests on Send until the
+  first update arrives, then plays through with the owner's own data (their words,
+  what Mesiri understood, the live report from WEB-27) and stops on the report, with
+  "Looks right" (confirms the drafts through the existing confirm API) and "Change
+  something" (the site's day page). After 10 minutes of nothing it stops polling and
+  points at Today.
+- **No demo mode.** Signup links the owner's number and makes the first site, so the
+  first message is a real update on the real site (a one-site project files it with
+  no "which site?" question). Nothing to clean up, and the checklist ticks for real.
+- **Mesiri's number** comes from `MESIRI_WHATSAPP__DISPLAY_NUMBER` and is returned on
+  `GET /company/setup-progress` as `whatsapp_number`. Unset, the welcome screen tells
+  the owner to use the chat their sign-in code came from, and the checklist's "Copy
+  invite" is hidden.
+- **Checklist (SS-07) changes:** "Get the first update" links to `/welcome`; "Add your
+  site supervisor" gains **Copy invite** (a message to forward with Mesiri's number and
+  what to send); the logo link reads "Add logo".
+- **Motion:** one clock per scene (`lib/timeline.ts`, `useScenes`) drives every reveal,
+  the waveform and the count-ups; CSS transitions only, no animation library. With
+  reduced motion nothing changes by itself and every scene shows complete.
+
+Rollback: revert `navigate('/welcome')` in `Signup.tsx` and signup lands on Today as
+before; everything else is additive. No migration.
+
+Not built / known: the supervisor's own welcome message and adding people by WhatsApp
+number only (WEB-17, needs approval); counting "site supervisor" only for a reporting
+role; "Hide for now" kept on the server; a "time saved" figure on Today.
+
