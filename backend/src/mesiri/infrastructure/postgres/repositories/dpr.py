@@ -37,7 +37,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.application.dpr import site_day
 
-
 _STATUS_BY_UPDATE_KIND = {"COMPLETED": "COMPLETED", "PAUSED": "STOPPED"}
 
 
