@@ -581,4 +581,10 @@ Since then (25 Oct, approved by Alan):
   `PUBLISHED` in the last 7 days, the history API's total); the **25 minutes per report
   is an assumption**, stated in the line's tooltip and kept in one constant
   (`MINUTES_PER_REPORT`). Hidden until a report has gone out.
+- **Two more intro scenes** (six in all): **03 Photo**, the site photo as a line drawing
+  (a two-storey frame, brickwork drawing itself in on the second floor's east bay) and
+  "Read from the photo: 2nd floor · Brickwork, east wall"; **04 Any language**, the same
+  update in Hindi, Tamil and English giving the same report. Devanagari and Tamil fonts
+  load from Google Fonts by unicode range, only when used. The Hindi and Tamil (like the
+  Malayalam) have not been read by native speakers.
 
