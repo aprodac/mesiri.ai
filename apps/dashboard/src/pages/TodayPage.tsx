@@ -153,6 +153,22 @@ function SiteRow({
   )
 }
 
+// DSH-10: every open issue, not just the latest 100 of all statuses: the server
+// filters by status, and each status is read page by page (the API caps a page
+// at 100) so the most severe ones are ranked from the whole list.
+const ISSUE_PAGE = 100
+async function fetchAllOpenIssues(projectId: string | undefined): Promise<SiteIssueItem[]> {
+  const all: SiteIssueItem[] = []
+  for (const status of ['OPEN', 'ACKNOWLEDGED']) {
+    for (let offset = 0; ; offset += ISSUE_PAGE) {
+      const page = await fetchSiteIssuesApi({ projectId, status, limit: ISSUE_PAGE, offset })
+      all.push(...page.items)
+      if (page.items.length < ISSUE_PAGE || offset + ISSUE_PAGE >= page.total) break
+    }
+  }
+  return all
+}
+
 export default function TodayPage() {
   const toast = useToast()
   const queryClient = useQueryClient()
@@ -173,7 +189,7 @@ export default function TodayPage() {
   })
   const issuesQuery = useQuery({
     queryKey: ['today-open-issues', projectFilter],
-    queryFn: () => fetchSiteIssuesApi({ projectId: projectFilter, limit: 100 }),
+    queryFn: () => fetchAllOpenIssues(projectFilter),
     refetchInterval: 120_000,
   })
 
@@ -192,9 +208,8 @@ export default function TodayPage() {
   )
 
   const openIssues = React.useMemo(() => {
-    const items: SiteIssueItem[] = issuesQuery.data?.items ?? []
+    const items: SiteIssueItem[] = issuesQuery.data ?? []
     return items
-      .filter((i) => ['OPEN', 'ACKNOWLEDGED'].includes(i.status.toUpperCase()))
       .sort(
         (a, b) =>
           (SEVERITY_RANK[a.severity.toUpperCase()] ?? 9) - (SEVERITY_RANK[b.severity.toUpperCase()] ?? 9) ||

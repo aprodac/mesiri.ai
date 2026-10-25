@@ -110,14 +110,14 @@ const FINANCE_CATEGORY: NavCategory = {
 // Labour is one page since WEB-22 (Attendance | Workers).
 const NON_ADMIN_ROLES = ['PROJECT_MANAGER', 'SITE_ENGINEER', 'FINANCE'] as const
 
-const LABOUR_ITEM: NavItem = { title: 'Labour', url: '/labour', icon: HardHat, module: 'labour', tone: 'amber' }
+const LABOUR_ITEM: NavItem = { title: 'Attendance', url: '/labour', icon: HardHat, module: 'labour', tone: 'amber' }
 
 // V1 navigation (WEB-21, docs/DESIGN.md "Pages and routes"): the daily
 // pages, then setup. No "More": pages outside V1 were removed, and modules a
 // company has not switched on (WEB-02) are hidden.
 const PRIMARY_ITEMS: NavItem[] = [
   { title: 'Today', url: '/today', icon: CalendarDays, tone: 'orange', badge: 'drafts' },
-  { title: 'Reports', url: '/reports', icon: FileText, tone: 'sky' },
+  { title: 'Daily Reports', url: '/reports', icon: FileText, tone: 'sky' },
   { title: 'Issues', url: '/issues', icon: AlertCircle, tone: 'rose', badge: 'issues' },
 ]
 

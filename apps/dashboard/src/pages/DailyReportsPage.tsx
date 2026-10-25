@@ -200,7 +200,7 @@ export default function DailyReportsPage() {
   const exportRows = () =>
     exportCsv(
       `daily-reports-${dateFrom || 'start'}-to-${dateTo || 'today'}.csv`,
-      ['Date', 'DPR', 'Project', 'Site', 'Status', 'Workers', 'Work items', 'Open issues', 'Photos', 'Labour cost', 'Confirmed by'],
+      ['Date', 'DPR', 'Project', 'Site', 'Status', 'Workers', 'Work items', 'Open issues', 'Photos', 'Confirmed by'],
       items.map((i) => [
         i.report_date,
         i.dpr_number,
@@ -211,7 +211,6 @@ export default function DailyReportsPage() {
         i.work_items,
         i.open_issues,
         i.photos,
-        Number(i.labour_cost) || 0,
         i.approved_by,
       ]),
     )

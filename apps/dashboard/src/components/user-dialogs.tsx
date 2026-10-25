@@ -40,7 +40,9 @@ import { fetchProjects, fetchSites } from '@/lib/projects'
 import type { ProjectItem, SiteItem } from '@/lib/scope-types'
 import { ROLE_LABELS, type Role } from '@/lib/permissions'
 
-const ROLES = (Object.keys(ROLE_LABELS) as Role[]).map((value) => ({ value, label: ROLE_LABELS[value] }))
+// DSH-08: Finance is not a V1 role, so it is not offered. A person who already
+// has it keeps it, shown as a fixed label below.
+const ROLES = (Object.keys(ROLE_LABELS) as Role[]).filter((r) => r !== 'FINANCE').map((value) => ({ value, label: ROLE_LABELS[value] }))
 
 interface AddEditUserDialogProps {
   open: boolean
@@ -296,6 +298,11 @@ export function AddEditUserDialog({
                     {opt.label}
                   </SelectItem>
                 ))}
+                {role === 'FINANCE' && (
+                  <SelectItem value="FINANCE" disabled>
+                    {ROLE_LABELS.FINANCE} (current)
+                  </SelectItem>
+                )}
               </SelectContent>
             </Select>
           </div>
