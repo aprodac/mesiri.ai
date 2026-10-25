@@ -86,6 +86,71 @@ class MaterialInventoryQueryService:
 
         return levels
 
+    async def period_totals(
+        self,
+        *,
+        organization_id: str,
+        project_id: str | None,
+        site_id: str | None,
+        start_date: datetime.date,
+        end_date: datetime.date,
+        timezone_name: str,
+        material_id: str | None = None,
+    ) -> dict[tuple[str, str], dict[str, float]]:
+        """MAT-03: what was received and used between two project-zone days,
+        per (lower-cased material name, unit) -- from ``material_movements``,
+        counted as the DPR counts a day (``application.dpr.assembly``: a
+        corrected entry and its correction cancel out, receipts by reason).
+        Read-only. The keys match ``query``'s rows."""
+        import sqlalchemy as sa
+
+        from mesiri.application.dpr.assembly import _material_summary
+
+        scope = ""
+        params: dict[str, Any] = {
+            "org": uuid.UUID(organization_id), "start": start_date, "end": end_date, "tz": timezone_name,
+        }
+        if project_id:
+            scope += " AND mm.project_id = :project"
+            params["project"] = uuid.UUID(project_id)
+        if site_id:
+            scope += " AND mm.site_id = :site"
+            params["site"] = uuid.UUID(site_id)
+        if material_id:
+            scope += " AND mm.material_id = :material"
+            params["material"] = uuid.UUID(material_id)
+        sql = sa.text(
+            """
+            SELECT mm.material_id, mc.name AS material_name, u.code AS unit,
+                   mm.movement_type, mm.quantity,
+                   COALESCE(mr.movement_reason, mu.movement_reason) AS movement_reason
+            FROM material_movements mm
+            JOIN materials_catalog mc ON mc.id = mm.material_id
+            JOIN units_of_measure u ON u.id = mm.unit_id
+            LEFT JOIN material_receipts mr
+                   ON mm.source_type = 'material_receipt' AND mr.id = mm.source_id
+            LEFT JOIN material_usage mu
+                   ON mm.source_type = 'material_usage' AND mu.id = mm.source_id
+            WHERE mm.organization_id = :org
+              AND (mm.occurred_at AT TIME ZONE :tz)::date BETWEEN :start AND :end
+              AND mm.reversal_of_movement_id IS NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM material_movements r WHERE r.reversal_of_movement_id = mm.id
+              )
+            """
+            + scope
+        )
+        async with self._db.transaction() as conn:
+            rows = [dict(r) for r in (await conn.execute(sql, params)).mappings().all()]
+        totals: dict[tuple[str, str], dict[str, float]] = {}
+        # One summary per site would double-count nothing: rows are added up per material and unit.
+        for entry in _material_summary(rows):
+            key = (str(entry["material_name"]).lower(), str(entry["unit"]))
+            total = totals.setdefault(key, {"received": 0.0, "used": 0.0})
+            total["received"] += float(entry["received"])
+            total["used"] += float(entry["used"])
+        return totals
+
     async def usage_last_days(
         self,
         *,

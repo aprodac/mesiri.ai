@@ -127,8 +127,41 @@ AUDIENCE_PENDING_NAME_FIELD = "_audience_pending_name"
 
 
 
+async def _add_period(
+    event: CanonicalEventV2,
+    inventory_query: MaterialInventoryQueryService,
+    timezone_name: str | None,
+) -> None:
+    """MAT-03: "cement used today?", "received yesterday?", "this week?" are
+    answered from the movements of that period (project zone), not from the
+    all-time totals: each stock row gets ``period_received`` / ``period_used``
+    and the event ``inventory_period`` (its label)."""
+    from runtime.agent.project_day import project_zone_name, resolve_period
+
+    zone = project_zone_name(timezone_name)
+    period = resolve_period(event.fields.get("date_range"), event.fields.get("date"), zone)
+    if period is None or not hasattr(inventory_query, "period_totals"):
+        return
+    start, end, label = period
+    totals = await inventory_query.period_totals(
+        organization_id=event.organization_id,
+        project_id=event.project_id,
+        site_id=event.site_id,
+        start_date=start,
+        end_date=end,
+        timezone_name=zone,
+    )
+    for level in event.fields.get("inventory_levels") or []:
+        moved = totals.pop((str(level["material_name"]).lower(), str(level["unit"])), None) or {}
+        level["period_received"] = moved.get("received", 0.0)
+        level["period_used"] = moved.get("used", 0.0)
+    event.fields["inventory_period"] = {"label": label, "start": start.isoformat(), "end": end.isoformat()}
+
+
 async def _inject_inventory_context(
-    event: CanonicalEventV2, inventory_query: MaterialInventoryQueryService | None
+    event: CanonicalEventV2,
+    inventory_query: MaterialInventoryQueryService | None,
+    timezone_name: str | None = None,
 ) -> None:
     """Populate inventory_levels (for INVENTORY_QUERY_ASKED) / available_stock
     (for MATERIAL_USAGE_REQUESTED's low-stock warning) on the event's fields.
@@ -151,6 +184,7 @@ async def _inject_inventory_context(
             site_id=event.site_id,
             material_name=event.fields.get("material_name"),
         )
+        await _add_period(event, inventory_query, timezone_name)
     elif (
         event.event_type is CanonicalEventType.MATERIAL_USAGE_REQUESTED
         and event.fields.get("material_name")

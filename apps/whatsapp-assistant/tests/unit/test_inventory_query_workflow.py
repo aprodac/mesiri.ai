@@ -93,3 +93,20 @@ def test_fractional_quantity_formats_without_trailing_zero():
     assert "In stock: 10 kg" in prompt
     assert "Received  12.5 kg" in prompt
     assert "Used      2.5 kg" in prompt
+
+
+def test_mat03_a_periods_reply_names_what_moved_and_the_stock_now():
+    from workflows.material_inventory_query.nodes import _period_reply
+
+    levels = [
+        {"material_name": "cement", "unit": "bags", "current_stock": 495.0, "period_used": 10.0, "period_received": 0.0},
+        {"material_name": "sand", "unit": "cum", "current_stock": 12.0, "period_used": 0.0, "period_received": 0.0},
+        {"material_name": "steel", "unit": "kg", "current_stock": 900.0, "period_used": 0.0, "period_received": 400.0},
+    ]
+    one = _period_reply("yesterday (24 Oct)", levels[:1], "cement")
+    assert one == "Yesterday (24 Oct): 10 bags cement used. 495 bags left now."
+    many = _period_reply("this week", levels, None)
+    assert "Cement — 10 bags used · 495 bags now" in many and "Steel — 400 kg received" in many
+    assert "Sand" not in many  # nothing moved
+    assert _period_reply("today", levels[1:2], None) == "Nothing was received or used today."
+    assert "no sand was used or received" in _period_reply("today", levels[1:2], "sand")

@@ -281,7 +281,7 @@ class QueryEntry(EntryScope):
 
         event, decision, actor, key = ready.event, ready.decision, self.actor, ready.decision.workflow_key
         if key is K.MATERIAL_INVENTORY_QUERY:
-            seeds = [s._inject_inventory_context(event, self.inventory_query)]
+            seeds = [s._inject_inventory_context(event, self.inventory_query, timezone)]
         elif key is K.LABOUR_QUERY:
             seeds = [s._seed_labour_query(event, decision, self.labour_query_service, actor, timezone)]
         elif key is K.ACTIVITY_QUERY:
