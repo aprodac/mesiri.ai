@@ -19,8 +19,8 @@ from typing import Any, Literal, Protocol
 #: A day: an owner may start on a site and finish in the evening.
 _DEFAULT_TTL_SECONDS = 24 * 60 * 60
 
-SignupStage = Literal["welcome", "company", "site", "owner_name"]
-_STAGES: frozenset[str] = frozenset({"welcome", "company", "site", "owner_name"})
+SignupStage = Literal["welcome", "company", "site", "owner_name", "confirm"]
+_STAGES: frozenset[str] = frozenset({"welcome", "company", "site", "owner_name", "confirm"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +28,8 @@ class SignupState:
     stage: SignupStage
     company_name: str | None = None
     site_name: str | None = None
+    #: Set at the confirm stage (SET-03): the name the company will be created with.
+    owner_name: str | None = None
 
 
 class _RedisLike(Protocol):
@@ -51,6 +53,7 @@ class SignupStateStore:
             stage=raw["stage"],
             company_name=raw.get("company_name"),
             site_name=raw.get("site_name"),
+            owner_name=raw.get("owner_name"),
         )
 
     async def set(

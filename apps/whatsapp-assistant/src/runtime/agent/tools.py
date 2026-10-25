@@ -43,6 +43,8 @@ CREATE_SITE = "create_site"
 CREATE_PROJECT = "create_project"
 # 22 Oct: back from the classic pipeline.
 ADD_MEMBER = "add_member"
+# SET-07: the company join code, asked in any words.
+GET_JOIN_CODE = "get_join_code"
 CORRECT_WORK_QUANTITY = "correct_work_quantity"
 UPDATE_ISSUE = "update_issue"
 # Request 88: change one item of the card that is still open.
@@ -793,6 +795,16 @@ def tool_specs() -> list[ToolSpec]:
                 },
                 ["name"],
             ),
+        ),
+        ToolSpec(
+            name=GET_JOIN_CODE,
+            description=(
+                "Send the company's join code and a message to forward to the team, when an admin "
+                "or project manager asks for it in any words ('code entha?', 'how do people "
+                "join?', 'invite link', 'how do I add my team?'). Not for adding one named "
+                "person (add_member). The system sends the code itself; do not repeat it."
+            ),
+            parameters=_obj({}),
         ),
         ToolSpec(
             name=CORRECT_WORK_QUANTITY,

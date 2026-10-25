@@ -252,15 +252,34 @@ class ContactShareJourney:
         return await self._begin(actor, {**pending, "role": role})
 
     async def invite_after_member_added(
-        self, *, action_type: object, member_name: object, actor: ActorIdentity
+        self,
+        *,
+        action_type: object,
+        member_name: object,
+        actor: ActorIdentity,
+        project_id: object = None,
+        business_number: object = None,
     ) -> list[str]:
         """The messages to send once ADD_PROJECT_MEMBER has succeeded for the
-        person whose contact was shared; [] for any other confirmation."""
+        person whose contact was shared, or (SET-04) who was added by typing
+        "add Rajesh 98... as engineer": the same ADDED + INVITE either way.
+        [] for any other confirmation."""
         if action_type is not DraftActionType.ADD_PROJECT_MEMBER:
             return []
         invite = await self._redis.get_json(_key(actor.user_id, "invite"))
         if not isinstance(invite, dict):
-            return []
+            # Typed add: no contact card set the invite up, so build it from
+            # what the confirmed action and the message carry.
+            project = next(
+                (p for p in actor.projects or [] if str(p.id) == str(project_id or "")), None
+            )
+            if project is None or not member_name:
+                return []
+            invite = {
+                "name": str(member_name),
+                "project_name": project.name,
+                "business_number": _digits(business_number),
+            }
         wanted = " ".join(str(invite.get("name") or "").lower().split())
         added = " ".join(str(member_name or "").lower().split())
         if wanted and wanted != added:

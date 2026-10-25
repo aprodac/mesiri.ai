@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from interactions.signup_state import SignupStateStore
+from interactions.signup_state import SignupState, SignupStateStore
 from mesiri.application.organizations.create_company import (
     CompanyCreationError,
     CreatedCompany,
@@ -154,7 +154,8 @@ async def test_full_signup_creates_a_trial_company(journey) -> None:
 
     assert await journey.j.handle(_tap(sj.START_TRIAL_ID)) == sj.ASK_COMPANY
     assert await journey.j.handle(_text("  Suresh   Builders ")) == sj.ASK_SITE
-    done = await journey.j.handle(_text("Green Villa, Kakkanad"))
+    await journey.j.handle(_text("Green Villa, Kakkanad"))
+    done = await journey.j.handle(_tap(sj.CONFIRM_ID))
 
     new = journey.created_with[0]
     assert new.name == "Suresh Builders"
@@ -168,7 +169,7 @@ async def test_full_signup_creates_a_trial_company(journey) -> None:
     # The signup is over: a further message starts afresh, not a second company.
     await journey.j.handle(_text("Hi"))
     assert len(journey.created_with) == 1
-    assert len(journey.sender.buttons) == 2
+    assert len(journey.sender.buttons) == 3  # welcome, the confirm card, welcome again
 
 
 async def test_no_profile_name_asks_for_it(journey) -> None:
@@ -176,6 +177,7 @@ async def test_no_profile_name_asks_for_it(journey) -> None:
     await journey.j.handle(_text("Acme", profile=None))
     assert await journey.j.handle(_text("Site 1", profile=None)) == sj.ASK_OWNER_NAME
     await journey.j.handle(_text("Asha", profile=None))
+    await journey.j.handle(_tap(sj.CONFIRM_ID))
     assert journey.created_with[0].owner_name == "Asha"
 
 
@@ -212,14 +214,16 @@ async def test_refused_creation(journey, conflict, expected) -> None:
     journey.outcome["error"] = CompanyCreationError("nope", conflict=conflict)
     await journey.j.handle(_tap(sj.START_TRIAL_ID))
     await journey.j.handle(_text("Acme"))
-    assert await journey.j.handle(_text("Site 1")) == expected
+    await journey.j.handle(_text("Site 1"))
+    assert await journey.j.handle(_tap(sj.CONFIRM_ID)) == expected
 
 
 async def test_database_failure_says_sorry(journey) -> None:
     journey.outcome["error"] = RuntimeError("db down")
     await journey.j.handle(_tap(sj.START_TRIAL_ID))
     await journey.j.handle(_text("Acme"))
-    assert await journey.j.handle(_text("Site 1")) == sj.FAILED_MESSAGE
+    await journey.j.handle(_text("Site 1"))
+    assert await journey.j.handle(_tap(sj.CONFIRM_ID)) == sj.FAILED_MESSAGE
 
 
 # --- SS-09 guardrails ---------------------------------------------------------
@@ -229,6 +233,7 @@ async def test_guardrails_are_checked_on_tap_and_before_creating(journey) -> Non
     await journey.j.handle(_tap(sj.START_TRIAL_ID))
     await journey.j.handle(_text("Suresh Builders"))
     await journey.j.handle(_text("Green Villa, Kakkanad"))
+    await journey.j.handle(_tap(sj.CONFIRM_ID))
     assert [(a.phone, a.signup_source, a.ip_address) for a in journey.guard["calls"]] == [
         (WA_ID, "whatsapp", None),
         (WA_ID, "whatsapp", None),
@@ -249,7 +254,8 @@ async def test_refused_at_create_creates_nothing(journey) -> None:
     await journey.j.handle(_tap(sj.START_TRIAL_ID))
     await journey.j.handle(_text("Suresh Builders"))
     journey.guard["refuse"] = "We're getting a lot of sign-ups right now."
-    reply = await journey.j.handle(_text("Green Villa, Kakkanad"))
+    await journey.j.handle(_text("Green Villa, Kakkanad"))
+    reply = await journey.j.handle(_tap(sj.CONFIRM_ID))
     assert reply == "We're getting a lot of sign-ups right now."
     assert journey.created_with == []
 
@@ -289,6 +295,7 @@ async def test_site_ready_card_replaces_the_text(journey) -> None:
     await journey.j.handle(_tap(sj.START_TRIAL_ID))
     await journey.j.handle(_text("Suresh Builders"))
     await journey.j.handle(_text("Green Villa, Kakkanad"))
+    await journey.j.handle(_tap(sj.CONFIRM_ID))
     assert journey.sender.images == [(b"png", "Your free trial runs until *22 Oct*.")]
     assert journey.sender.texts == [sj.ASK_COMPANY, sj.ASK_SITE]  # no plain done-text
     assert "Green Villa is live." in renderer.html[0]
@@ -300,6 +307,7 @@ async def test_malayalam_names_get_the_malayalam_ready_card(journey) -> None:
     await journey.j.handle(_tap(sj.START_TRIAL_ID))
     await journey.j.handle(_text("സുരേഷ് ബിൽഡേഴ്സ്"))
     await journey.j.handle(_text("Green Villa"))
+    await journey.j.handle(_tap(sj.CONFIRM_ID))
     assert "തയ്യാറായി" in renderer.html[0]
 
 
@@ -309,7 +317,8 @@ async def test_signup_falls_back_to_text_when_the_renderer_raises(journey) -> No
     assert journey.sender.headers == [None]  # same buttons, no image
     await journey.j.handle(_tap(sj.START_TRIAL_ID))
     await journey.j.handle(_text("Suresh Builders"))
-    done = await journey.j.handle(_text("Green Villa, Kakkanad"))
+    await journey.j.handle(_text("Green Villa, Kakkanad"))
+    done = await journey.j.handle(_tap(sj.CONFIRM_ID))
     assert journey.sender.images == []
     assert journey.sender.texts[-1] == done and "Suresh Builders" in done and "22 Oct" in done
     assert len(journey.created_with) == 1  # signup was never blocked
@@ -324,5 +333,66 @@ async def test_signup_falls_back_to_text_when_the_image_send_fails(journey) -> N
     journey.sender.send_image = refuse
     await journey.j.handle(_tap(sj.START_TRIAL_ID))
     await journey.j.handle(_text("Acme"))
-    done = await journey.j.handle(_text("Site 1"))
+    await journey.j.handle(_text("Site 1"))
+    done = await journey.j.handle(_tap(sj.CONFIRM_ID))
     assert journey.sender.texts[-1] == done
+
+
+# --- SET-03: names are checked, then confirmed ---------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad", ["ok", "hi", "Hello", "what is this?", "start free trial", "x", "123", "yes",
+            "this is a very long sentence that is clearly not a company name at all"]
+)  # fmt: skip
+async def test_set03_a_non_name_is_not_taken_as_the_company(journey, bad) -> None:
+    await journey.j.handle(_tap(sj.START_TRIAL_ID))
+    reply = await journey.j.handle(_text(bad))
+    assert reply.startswith("That doesn't look like a company name")
+    assert sj.ASK_COMPANY in reply
+    assert await journey.j._store.get(WA_ID) == SignupState(stage="company")
+    assert await journey.j.handle(_text("Suresh Builders")) == sj.ASK_SITE
+
+
+async def test_set03_a_non_name_is_not_taken_as_the_site(journey) -> None:
+    await journey.j.handle(_tap(sj.START_TRIAL_ID))
+    await journey.j.handle(_text("Suresh Builders"))
+    reply = await journey.j.handle(_text("ok"))
+    assert reply.startswith("That doesn't look like a site name")
+    assert journey.created_with == []
+
+
+async def test_set03_typed_words_stand_in_for_the_welcome_buttons(journey) -> None:
+    await journey.j.handle(_text("Hi"))
+    assert await journey.j.handle(_text("yes")) == sj.ASK_COMPANY  # not the welcome again
+    await journey.j.handle(_text("cancel"))
+    assert await journey.j.handle(_text("start free trial")) == sj.ASK_COMPANY
+
+
+async def test_set03_the_names_are_confirmed_before_anything_is_created(journey) -> None:
+    await journey.j.handle(_tap(sj.START_TRIAL_ID))
+    await journey.j.handle(_text("Suresh Builders"))
+    body = await journey.j.handle(_text("Green Villa, Kakkanad"))
+    assert "*Company:* Suresh Builders" in body and "*Site:* Green Villa, Kakkanad" in body
+    assert journey.sender.buttons[-1][1] == [sj.CONFIRM_ID, sj.EDIT_ID]
+    assert journey.created_with == []
+
+
+async def test_set03_edit_starts_the_names_again(journey) -> None:
+    await journey.j.handle(_tap(sj.START_TRIAL_ID))
+    await journey.j.handle(_text("Suresh Buildrs"))
+    await journey.j.handle(_text("Green Villa"))
+    assert await journey.j.handle(_tap(sj.EDIT_ID)) == sj.ASK_COMPANY
+    await journey.j.handle(_text("Suresh Builders"))
+    await journey.j.handle(_text("Green Villa"))
+    await journey.j.handle(_text("yes"))  # typed Looks good
+    assert [n.name for n in journey.created_with] == ["Suresh Builders"]
+
+
+async def test_set03_other_text_at_the_confirm_card_asks_again(journey) -> None:
+    await journey.j.handle(_tap(sj.START_TRIAL_ID))
+    await journey.j.handle(_text("Suresh Builders"))
+    await journey.j.handle(_text("Green Villa"))
+    reply = await journey.j.handle(_text("what is this?"))
+    assert reply.startswith(sj.CONFIRM_REMINDER)
+    assert journey.created_with == []
