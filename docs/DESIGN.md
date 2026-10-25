@@ -350,11 +350,10 @@ pass the same.
 | Site log (Work, Photos, Everything), WhatsApp (Conversations, All messages, Automations) | Yes (WEB-33, WEB-35): Conversations and Automations redone; All messages keeps its older look |
 | Labour (one page: Attendance, Workers) | Yes (WEB-22) |
 | Materials (Ledger, Catalogue, Stock now, sheets) | Yes (WEB-29, WEB-30, invoice sheet WEB-35) |
-| Sign in, Start a free trial | Yes (WEB-35): `components/auth/auth-shell.tsx` |
-| Finance | No — old template look (module, off by default) |
+| Finance, Login / Signup | No — old template look (Signup: SS-18 intro) |
 | Dialogs (project, site, person, access, WhatsApp number, record delivery / use / move, correction) | Yes (WEB-29): sentence case, plain words, no fake buttons |
 
-### WhatsApp chat, Automations, sign in (WEB-35)
+### WhatsApp chat and Automations (WEB-35)
 
 - **Conversations** is a chat, not a monitoring console: the person's
   messages on the left (white), Mesiri's replies on the right (green, headed
@@ -368,10 +367,6 @@ pass the same.
   me"), with On / Paused, the site and when it last ran, and words for
   buttons (History, Pause, Delete). The form picks people and roles from
   lists; History is a side panel with skip reasons in words.
-- **Sign in / Start a free trial** share `AuthShell`: on wide screens a dark
-  panel (the sidebar colour) shows a WhatsApp message turning into a DPR
-  line; the form sits on white. Signup says "Step 1 of 2". Only the look
-  changed; the forms and their calls are the same.
 
 ### Setup pages (WEB-28)
 
