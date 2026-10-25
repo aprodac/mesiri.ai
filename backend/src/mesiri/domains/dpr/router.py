@@ -376,6 +376,16 @@ QUESTION_KINDS: dict[str, str] = {
     "project.detail_query": "project",
     "dpr.request": "report",
 }
+#: WEB-46: the agent's lookup tools -> the same kinds (its lookups leave no
+#: workflow row; the turn's traced tool calls say what answered).
+#: `query_expenses` is left out, as finance questions are above.
+QUESTION_TOOLS: dict[str, str] = {
+    "query_labour": "manpower",
+    "query_materials": "stock",
+    "query_work_log": "work",
+    "query_project": "project",
+    "request_dpr": "report",
+}
 
 
 @router.get("/site-days/{site_id}/questions")
@@ -405,11 +415,17 @@ async def list_site_day_questions(
         since=since,
         until=until,
         workflow_keys=list(QUESTION_KINDS),
+        tool_names=list(QUESTION_TOOLS),
     )
     items = []
     for row in rows:
-        kind = QUESTION_KINDS[row.pop("workflow_key")]
-        items.append({**row, "kind": kind})
+        key = row.pop("workflow_key")
+        tools = row.pop("tools", None) or []
+        kind = QUESTION_KINDS.get(key or "") or next(
+            (QUESTION_TOOLS[t] for t in tools if t in QUESTION_TOOLS), None
+        )
+        if kind is not None:
+            items.append({**row, "kind": kind})
     return {"items": items}
 
 

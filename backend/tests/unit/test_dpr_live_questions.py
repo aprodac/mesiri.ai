@@ -54,6 +54,9 @@ class _Questions:
         return [
             {"id": "m1", "text": "stock at tower a?", "reply": "Cement 40 bags", "workflow_key": "material.inventory_query"},
             {"id": "m2", "text": "how many came?", "reply": "5 workers", "workflow_key": "labour.query"},
+            # WEB-46: the agent's lookups leave no workflow row; the traced tool tells.
+            {"id": "m3", "text": "ആരൊക്കെ വന്നു?", "reply": "ഇന്ന് 4 പേർ", "workflow_key": None, "tools": ["query_labour"]},
+            {"id": "m4", "text": "expenses?", "reply": "500", "workflow_key": None, "tools": ["query_expenses"]},
         ]
 
 
@@ -66,8 +69,8 @@ def _fakes(monkeypatch):
 async def test_questions_come_with_what_they_were_about():
     res = await dpr_router.list_site_day_questions(S1, SINCE, UNTIL, auth_context=ONLY_S1, conn=None)
 
-    assert [(q["id"], q["kind"]) for q in res["items"]] == [("m1", "stock"), ("m2", "manpower")]
-    assert all("workflow_key" not in q for q in res["items"])
+    assert [(q["id"], q["kind"]) for q in res["items"]] == [("m1", "stock"), ("m2", "manpower"), ("m3", "manpower")]
+    assert all("workflow_key" not in q and "tools" not in q for q in res["items"])
     assert _Questions.asked["site_id"] == S1 and _Questions.asked["project_id"] == P1
 
 
@@ -76,6 +79,7 @@ async def test_finance_questions_are_never_asked_for():
 
     keys = set(_Questions.asked["workflow_keys"])
     assert "expense.query" not in keys and "finance.account_query" not in keys
+    assert "query_expenses" not in _Questions.asked["tool_names"]
     assert "material.inventory_query" in keys
 
 

@@ -400,13 +400,17 @@ class PostgresFactReviewRepository:
         since: datetime.datetime,
         until: datetime.datetime,
         workflow_keys: list[str],
+        tool_names: list[str] | None = None,
         limit: int = 30,
     ) -> list[dict[str, Any]]:
         """Questions asked about one site (or its whole project) in a window,
         with Mesiri's reply (WEB-37's Live report). A message is a question
-        when the workflow it started is one of ``workflow_keys``; its
-        workflow resolves as the message log does (directly, or through the
-        interaction group)."""
+        when the workflow it started is one of ``workflow_keys`` (resolved as
+        the message log does), or when the agent answered it with one of
+        ``tool_names`` (WEB-46: the agent's lookups finish without a workflow
+        row, so its traced tool calls are what tell). A message with no
+        project or site recorded counts when its sender wrote about this site
+        or project in the same window."""
         rows = (
             await self._conn.execute(
                 text(
@@ -414,7 +418,10 @@ class PostgresFactReviewRepository:
                     " SELECT im.id, im.message_type, im.body_text, im.body_text_en, "
                     " im.assistant_reply, im.received_at, im.site_id, su.full_name AS sender_name, "
                     " COALESCE(im.raw_payload::jsonb ->> 'source', 'whatsapp') AS source, "
-                    " COALESCE(wi.workflow_key, wi_origin.workflow_key) AS workflow_key "
+                    " COALESCE(wi.workflow_key, wi_origin.workflow_key) AS workflow_key, "
+                    " (SELECT array_agg(c ->> 'tool') FROM journey_traces jt, "
+                    "   jsonb_array_elements(jt.stage_payload::jsonb -> 'calls') c "
+                    "   WHERE jt.correlation_id = im.correlation_id AND jt.stage = 'agent_tools') AS tools "
                     " FROM inbound_messages im "
                     # One name per message, even if two people share a number.
                     " LEFT JOIN LATERAL (SELECT u.full_name FROM users u "
@@ -426,8 +433,13 @@ class PostgresFactReviewRepository:
                     "   ON wi_origin.correlation_id = im.interaction_group_id "
                     " WHERE im.organization_id = :org "
                     " AND im.received_at >= :since AND im.received_at < :until "
-                    " AND (im.site_id = :site OR (im.site_id IS NULL AND im.project_id = :project))"
-                    ") q WHERE q.workflow_key = ANY(:keys) "
+                    " AND (im.site_id = :site OR (im.site_id IS NULL AND im.project_id = :project)"
+                    "   OR (im.site_id IS NULL AND im.project_id IS NULL AND EXISTS ("
+                    "     SELECT 1 FROM inbound_messages im2 WHERE im2.organization_id = im.organization_id"
+                    "     AND im2.sender_wa_id = im.sender_wa_id"
+                    "     AND im2.received_at >= :since AND im2.received_at < :until"
+                    "     AND (im2.site_id = :site OR im2.project_id = :project))))"
+                    ") q WHERE q.workflow_key = ANY(:keys) OR q.tools && CAST(:tools AS text[]) "
                     "ORDER BY q.received_at, q.id LIMIT :limit"
                 ),
                 {
@@ -437,6 +449,7 @@ class PostgresFactReviewRepository:
                     "since": since,
                     "until": until,
                     "keys": workflow_keys,
+                    "tools": list(tool_names or []),
                     "limit": limit,
                 },
             )
@@ -452,6 +465,7 @@ class PostgresFactReviewRepository:
                 "sender_name": r["sender_name"],
                 "source": r["source"] or "whatsapp",
                 "workflow_key": r["workflow_key"],
+                "tools": [t for t in (r["tools"] or []) if t],
                 "whole_project": r["site_id"] is None,
             }
             for r in rows

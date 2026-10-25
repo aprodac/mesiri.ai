@@ -576,7 +576,8 @@ async def _audit(
     # WEB-38: a question answered by a lookup is tied to it too, with the
     # project and site it was about, so the Live page can show it.
     for instance, project_id, site_id in getattr(gateway, "answered", []) or []:
-        tasks.append(log.link_workflow_instance(correlation_id=correlation_id, workflow_instance_id=instance))
+        if instance:
+            tasks.append(log.link_workflow_instance(correlation_id=correlation_id, workflow_instance_id=instance))
         tasks.append(log.update_context(correlation_id=correlation_id, project_id=project_id, site_id=site_id))
     tasks.append(log.mark_completed(correlation_id=correlation_id))
     await asyncio.gather(*tasks, return_exceptions=True)
