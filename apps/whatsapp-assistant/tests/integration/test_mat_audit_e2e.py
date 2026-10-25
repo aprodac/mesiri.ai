@@ -29,7 +29,7 @@ def _today() -> dt.date:
     return dt.datetime.now(ZoneInfo("Asia/Kolkata")).date()
 
 
-async def _ask(world, **fields):
+async def _ask(world, **fields):  # noqa: F811 -- pytest fixture imported from the shared e2e module
     entry = QueryEntry(
         context_resolver=world.entry.context_resolver, org_settings_query=None, actor=world.entry.actor,
         inventory_query=world.entry.inventory_query,
@@ -41,7 +41,7 @@ async def _ask(world, **fields):
     return run.pending_prompt
 
 
-async def test_mat03_used_and_received_by_day_are_not_the_all_time_totals(world):
+async def test_mat03_used_and_received_by_day_are_not_the_all_time_totals(world):  # noqa: F811 -- pytest fixture imported from the shared e2e module
     yesterday = (_today() - dt.timedelta(days=1)).isoformat()
     await _send(world, direction="opening_stock", quantity=500)
     await _send(world, direction="used", quantity=10, occurred_on=yesterday)
@@ -63,13 +63,13 @@ async def test_mat03_used_and_received_by_day_are_not_the_all_time_totals(world)
     assert "In stock" in await _ask(world)
 
 
-async def test_mat03_a_day_without_movements_says_so_with_the_stock(world):
+async def test_mat03_a_day_without_movements_says_so_with_the_stock(world):  # noqa: F811 -- pytest fixture imported from the shared e2e module
     await _send(world, direction="opening_stock", quantity=500)
     said = await _ask(world, date="2020-01-01")
     assert "no cement was used or received" in said.lower() and "left now" in said
 
 
-async def test_mat06_once_the_conversion_is_stored_an_engineer_is_never_asked(world):
+async def test_mat06_once_the_conversion_is_stored_an_engineer_is_never_asked(world):  # noqa: F811 -- pytest fixture imported from the shared e2e module
     """"2 loads sand came" for sand counted in cum: the admin's stored
     "1 load = 4 cum" is used for the engineer's report, with no question."""
     from runtime.agent.entry_base import Say
@@ -106,7 +106,7 @@ async def test_mat06_once_the_conversion_is_stored_an_engineer_is_never_asked(wo
     assert ready.event.fields["reported_quantity"] == 2
 
 
-async def test_pho03_the_bill_photo_stays_with_the_material_receipt(world):
+async def test_pho03_the_bill_photo_stays_with_the_material_receipt(world):  # noqa: F811 -- pytest fixture imported from the shared e2e module
     from sqlalchemy import text
 
     saved = await _send(world, direction="received", quantity=50, supplier="Sharma Traders",

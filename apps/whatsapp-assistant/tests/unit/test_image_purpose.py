@@ -159,7 +159,11 @@ HOUR = 3600.0
 
 
 async def test_pho06_untapped_photos_are_reminded_about_once_then_said_to_be_dropped():
-    from interactions.image_purpose import DROP_AFTER_SECONDS, REMIND_AFTER_SECONDS, photo_wait_notice
+    from interactions.image_purpose import (
+        DROP_AFTER_SECONDS,
+        REMIND_AFTER_SECONDS,
+        photo_wait_notice,
+    )
 
     store = PendingMediaStore(_FakeRedis())
     t0 = 1_000_000.0

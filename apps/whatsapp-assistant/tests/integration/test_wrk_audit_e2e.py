@@ -33,8 +33,8 @@ from mesiri.infrastructure.postgres.repositories.progress_execution import (
     PostgresProgressExecutionRepository,
 )
 from mesiri_contracts.assistant.candidates import Candidate
-from mesiri_contracts.assistant.enums import SemanticType
 from mesiri_contracts.assistant.draft_action import DraftActionType
+from mesiri_contracts.assistant.enums import SemanticType
 from mesiri_contracts.common.result import Result
 from runtime.activity_query import ActivityQueryService
 from runtime.agent.entry_base import Ready, Say

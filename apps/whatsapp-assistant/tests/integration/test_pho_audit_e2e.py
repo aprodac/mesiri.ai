@@ -8,7 +8,13 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import text
-from tests.integration.test_wrk_audit_e2e import DAY1, DAY2, _day, _send, world  # noqa: F401 -- the fixture
+from tests.integration.test_wrk_audit_e2e import (  # noqa: F401 -- the fixture
+    DAY1,
+    DAY2,
+    _day,
+    _send,
+    world,
+)
 
 from runtime.activity_query import ActivityQueryService
 from runtime.evidence_query import EvidenceAttachService
@@ -21,7 +27,7 @@ def _photo(key: str, caption: str | None = None):
     return SimpleNamespace(media=SimpleNamespace(object_key=key), text=caption)
 
 
-async def _tap_site_update(world, photos):
+async def _tap_site_update(world, photos):  # noqa: F811 -- pytest fixture imported from the shared e2e module
     ctx = SimpleNamespace(
         organization_id=str(world.org), user_id=world.user,
         sites=[SimpleNamespace(id=str(world.site), name="Green Villa", project_id=str(world.project))],
@@ -32,7 +38,7 @@ async def _tap_site_update(world, photos):
     )
 
 
-async def test_pho01_site_update_photos_reach_the_work_with_their_captions(world):
+async def test_pho01_site_update_photos_reach_the_work_with_their_captions(world):  # noqa: F811 -- pytest fixture imported from the shared e2e module
     saved = await _send(world, "ph1", narrative="Started plastering 2nd floor", work_type="plastering",
                         occurred_on=DAY2.isoformat())
     assert saved is not None and saved.execution_result is not None
@@ -55,19 +61,19 @@ async def test_pho01_site_update_photos_reach_the_work_with_their_captions(world
     assert work["photos"][0]["caption"] == "2nd floor plastering"
 
 
-async def test_pho01_finished_work_still_takes_its_photos(world):
+async def test_pho01_finished_work_still_takes_its_photos(world):  # noqa: F811 -- pytest fixture imported from the shared e2e module
     await _send(world, "ph2", narrative="plastering 2nd floor finished", work_type="plastering",
                 status="completed", occurred_on=DAY2.isoformat())
     reply = await _tap_site_update(world, [_photo("media/b/1")])
     assert reply.startswith("📷 1 photo attached"), reply
 
 
-async def test_pho01_nothing_reported_says_so_instead_of_losing_the_photos(world):
+async def test_pho01_nothing_reported_says_so_instead_of_losing_the_photos(world):  # noqa: F811 -- pytest fixture imported from the shared e2e module
     reply = await _tap_site_update(world, [_photo("media/c/1")])
     assert "no activity" in reply
 
 
-async def test_pho02_photos_added_today_to_earlier_work_are_on_todays_report(world):
+async def test_pho02_photos_added_today_to_earlier_work_are_on_todays_report(world):  # noqa: F811 -- pytest fixture imported from the shared e2e module
     await _send(world, "ph3", narrative="started brickwork", work_type="brickwork", occurred_on=DAY1.isoformat())
     await _send(world, "ph4", narrative="brickwork 60%", work_type="brickwork", progress_percent=60,
                 occurred_on=DAY2.isoformat(), continues="brickwork")
