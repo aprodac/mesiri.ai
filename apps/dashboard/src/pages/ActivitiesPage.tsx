@@ -352,6 +352,9 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
     return [...byDay.entries()].sort(([a], [b]) => b.localeCompare(a))
   }, [filteredActivities])
 
+  // The Details column only when some item says more than its work type.
+  const hasDetails = filteredActivities.some((a) => a.narrative && a.narrative.trim().toLowerCase() !== (a.work_type ?? '').trim().toLowerCase())
+
   const hasActiveFilters = statusFilter !== 'ALL' || datePreset !== 'ALL' || !!searchQuery
 
   // One address update: several setters in the same tick would overwrite
@@ -475,7 +478,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
         </span>
       </div>
 
-      {/* List: by day, then by site */}
+      {/* List: a ledger table (desktop), by day then site (phones) */}
       {error ? (
         <Callout tone="draft" icon={TriangleAlert} action={<Button variant="outline" size="sm" className="bg-background" onClick={fetchList}>Try again</Button>}>
           Activities could not be loaded. {error}
@@ -492,7 +495,69 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
           {hasActiveFilters && <Button variant="outline" size="sm" onClick={resetFilters}>Clear filters</Button>}
         </div>
       ) : (
-        <div className="flex flex-col gap-5">
+        <>
+        {/* Desktop: one ledger table, newest first (WEB-32). */}
+        <div className="hidden overflow-x-auto rounded-lg border sm:block">
+          <table className="w-full min-w-[820px] text-sm">
+            <thead className="sticky top-0 bg-muted/60 text-xs text-muted-foreground">
+              <tr className="text-left">
+                <th className="px-3 py-2 font-medium">Date</th>
+                <th className="px-3 py-2 font-medium">Site</th>
+                <th className="px-3 py-2 font-medium">Work</th>
+                {hasDetails && <th className="px-3 py-2 font-medium">Details</th>}
+                <th className="px-3 py-2 font-medium">Contractor</th>
+                <th className="px-3 py-2 font-medium">Status</th>
+                <th className="px-3 py-2 font-medium">Time</th>
+                <th className="px-3 py-2 font-medium">From</th>
+              </tr>
+            </thead>
+            <tbody>
+              {days.flatMap(([day, sites], di) =>
+                [...sites.entries()].flatMap(([siteId, acts], si) =>
+                  acts.map((act, ai) => {
+                    const st = statusOf(act.status)
+                    const site = names.get(siteId)
+                    const firstOfDay = si === 0 && ai === 0
+                    const detail = act.narrative && act.narrative.trim().toLowerCase() !== (act.work_type ?? '').trim().toLowerCase() ? act.narrative : ''
+                    return (
+                      <tr
+                        key={act.id}
+                        onClick={() => setSelectedActivityId(act.id)}
+                        className={cn('cursor-pointer border-t hover:bg-muted/40', firstOfDay && di > 0 && 'border-t-foreground/15')}
+                      >
+                        <td className={cn('whitespace-nowrap px-3 py-1.5', !firstOfDay && 'text-transparent')}>
+                          {new Date(`${day}T00:00:00`).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-1.5">
+                          {ai === 0 ? (
+                            <Link to={siteDayPath(siteId, day)} onClick={(e) => e.stopPropagation()} className="hover:underline" title="Open the site report">
+                              {site?.name ?? 'Site'}
+                              {scope.mode === 'portfolio' && site?.project && <span className="text-xs text-muted-foreground"> · {site.project}</span>}
+                            </Link>
+                          ) : (
+                            <span className="text-transparent">{site?.name}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-1.5 font-medium">{humanize(act.work_type) || 'Work'}</td>
+                        {hasDetails && <td className="max-w-[260px] truncate px-3 py-1.5 text-muted-foreground">{detail}</td>}
+                        <td className="whitespace-nowrap px-3 py-1.5 text-muted-foreground">{act.contractor ?? ''}</td>
+                        <td className={cn('whitespace-nowrap px-3 py-1.5 font-medium', st.className)}>
+                          <span className="inline-flex items-center gap-1.5">
+                            <st.icon className="size-3.5" /> {st.label}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-muted-foreground">{clock(act.started_at) ?? ''}</td>
+                        <td className="whitespace-nowrap px-3 py-1.5 text-muted-foreground">{act.source?.toLowerCase() === 'whatsapp' ? 'WhatsApp' : humanize(act.source)}</td>
+                      </tr>
+                    )
+                  }),
+                ),
+              )}
+            </tbody>
+          </table>
+        </div>
+        {/* Phones: by day, then by site. */}
+        <div className="flex flex-col gap-5 sm:hidden">
           {days.map(([day, sites]) => (
             <section key={day} className="flex flex-col">
               <h2 className="sticky top-[60px] z-10 -mx-1 flex items-baseline gap-2 bg-background/95 px-1 py-1.5 text-sm font-semibold backdrop-blur">
@@ -548,6 +613,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
             </section>
           ))}
         </div>
+        </>
       )}
 
       {/* Activity Detail Sheet */}

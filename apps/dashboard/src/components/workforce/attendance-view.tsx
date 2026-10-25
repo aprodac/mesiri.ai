@@ -5,23 +5,26 @@ import { ChevronRight, Download, HardHat, MessageSquare, TriangleAlert } from 'l
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/components/ui/toast-notification'
 import { Callout, DprSection, Segmented, StatStrip } from '@/components/dpr-page'
 import { fetchLabourStatementApi } from '@/lib/api'
 import { downloadTextFile, toCsv } from '@/lib/export'
-import { downloadStatement, fetchAllAttendance, rangeName, STATEMENTS } from '@/lib/labour'
+import { downloadStatement, fetchAllAttendance, fetchAttendanceLines, rangeName, STATEMENTS } from '@/lib/labour'
 import { PERIOD_OPTIONS, periodRange, type Period } from '@/lib/period'
 import { useSiteNames } from '@/lib/site-names'
 import { longDate, plural } from '@/lib/site-day'
 import { useUrlState } from '@/lib/url-state'
 import { apiErrorMessage } from '@/lib/logo-upload'
+import { cn } from '@/lib/utils'
 import { AttendanceDetailSheet } from './attendance-detail-sheet'
 
 // WEB-22: who was on site, from the attendance reports (mostly sent on
 // WhatsApp). One view instead of Overview, Attendance, Analytics and
-// Reports: the figures, a daily chart, the trades, every report by day and
-// site, and the four statements as exports.
+// Reports. WEB-32: it opens on the attendance ledger -- one row per trade or
+// named worker on each report, filterable by site and trade, with totals --
+// and the daily chart and trades follow as Trends.
 
 const SERIES = 'var(--chart-2)'
 const shortDay = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString([], { day: 'numeric', month: 'short' })
@@ -38,6 +41,8 @@ export function AttendanceView({ projectId, siteId }: { projectId: string | null
   const [from, setFrom] = useUrlState<string>('from', '')
   const [to, setTo] = useUrlState<string>('to', '')
   const [openId, setOpenId] = React.useState<string | null>(null)
+  const [siteFilter, setSiteFilter] = useUrlState<string>('at', 'all')
+  const [tradeFilter, setTradeFilter] = useUrlState<string>('trade', 'all')
   const range = periodRange(period, from, to)
   const params = { project_id: projectId ?? undefined, site_id: siteId ?? undefined, date_from: range.from, date_to: range.to }
 
@@ -50,6 +55,21 @@ export function AttendanceView({ projectId, siteId }: { projectId: string | null
   })
 
   const items = React.useMemo(() => reports.data?.items ?? [], [reports.data])
+  const lines = useQuery({
+    queryKey: ['labour', 'attendance-lines', items.map((r) => r.id).join(',')],
+    queryFn: () => fetchAttendanceLines(items),
+    enabled: items.length > 0,
+  })
+  const allRows = React.useMemo(() => lines.data?.rows ?? [], [lines.data])
+  const ledgerRows = allRows.filter(
+    (r) => (siteFilter === 'all' || r.report.site_id === siteFilter) && (tradeFilter === 'all' || (r.line.trade ?? '') === tradeFilter),
+  )
+  const ledgerTotal = ledgerRows.reduce(
+    (t, { line }) => ({ workers: t.workers + (line.headcount || 0), cost: t.cost + (line.daily_wage ? line.daily_wage * (line.headcount || 1) : 0) }),
+    { workers: 0, cost: 0 },
+  )
+  const sitesInView = [...new Map(allRows.filter((r) => r.report.site_id).map((r) => [r.report.site_id!, siteNames.get(r.report.site_id!)?.name ?? 'Site'])).entries()].sort(([, a], [, b]) => a.localeCompare(b))
+  const tradesInView = [...new Set(allRows.map((r) => r.line.trade ?? ''))].filter(Boolean).sort()
   const days = React.useMemo(() => {
     const byDay = new Map<string, typeof items>()
     for (const r of items) byDay.set(r.occurred_date, [...(byDay.get(r.occurred_date) ?? []), r])
@@ -158,7 +178,175 @@ export function AttendanceView({ projectId, siteId }: { projectId: string | null
             </Callout>
           )}
 
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+          {/* The ledger: one row per trade or named worker on each report
+              (WEB-32). Desktop; phones keep the reports by day below. */}
+          <DprSection
+            icon={HardHat}
+            title="Attendance ledger"
+            meta={lines.data ? plural(ledgerRows.length, 'line') : 'Loading…'}
+            className="hidden sm:flex"
+            action={
+              <div className="flex items-center gap-2">
+                {sitesInView.length > 1 && !siteId && (
+                  <Select value={siteFilter} onValueChange={setSiteFilter}>
+                    <SelectTrigger className="h-8 w-[170px]" aria-label="Site">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All sites</SelectItem>
+                      {sitesInView.map(([id, n]) => (
+                        <SelectItem key={id} value={id}>
+                          {n}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {tradesInView.length > 1 && (
+                  <Select value={tradeFilter} onValueChange={setTradeFilter}>
+                    <SelectTrigger className="h-8 w-[150px]" aria-label="Trade">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All trades</SelectItem>
+                      {tradesInView.map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {trade(t)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            }
+          >
+            {lines.isLoading ? (
+              <div className="flex flex-col gap-1.5">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <Skeleton key={i} className="h-8 rounded-md" />
+                ))}
+              </div>
+            ) : lines.isError ? (
+              <Callout tone="draft" icon={TriangleAlert} action={<Button variant="outline" size="sm" className="bg-background" onClick={() => lines.refetch()}>Try again</Button>}>
+                The attendance lines could not be loaded.
+              </Callout>
+            ) : (
+              <>
+                {lines.data?.truncated && (
+                  <p className="text-sm text-muted-foreground">The ledger shows the newest 400 reports; the figures above cover the whole period.</p>
+                )}
+                <div className="overflow-x-auto rounded-lg border">
+                  <table className="w-full min-w-[760px] text-sm">
+                    <thead className="bg-muted/60 text-xs text-muted-foreground">
+                      <tr className="text-left">
+                        <th className="px-3 py-2 font-medium">Date</th>
+                        {!siteId && <th className="px-3 py-2 font-medium">Site</th>}
+                        <th className="px-3 py-2 font-medium">Trade / worker</th>
+                        <th className="px-3 py-2 font-medium">Contractor</th>
+                        <th className="bg-success-soft/60 px-3 py-2 text-right font-medium text-success">Workers</th>
+                        <th className="px-3 py-2 text-right font-medium">Wage / day</th>
+                        <th className="px-3 py-2 text-right font-medium">Cost</th>
+                        <th className="px-3 py-2 font-medium">From</th>
+                      </tr>
+                    </thead>
+                    <tbody className="tabular-nums">
+                      {ledgerRows.map(({ report, line }, i) => {
+                        const prev = ledgerRows[i - 1]
+                        const newDay = i === 0 || prev.report.occurred_date !== report.occurred_date
+                        const newReport = i === 0 || prev.report.id !== report.id
+                        const s = report.site_id ? siteNames.get(report.site_id) : undefined
+                        const cost = line.daily_wage ? line.daily_wage * (line.headcount || 1) : 0
+                        return (
+                          <tr
+                            key={`${report.id}-${line.id}`}
+                            onClick={() => setOpenId(report.id)}
+                            className={cn('cursor-pointer border-t hover:bg-muted/40', newDay && i > 0 && 'border-t-foreground/15')}
+                          >
+                            <td className={cn('whitespace-nowrap px-3 py-1.5', !newDay && 'text-transparent')}>{shortDay(report.occurred_date)}</td>
+                            {!siteId && (
+                              <td className="whitespace-nowrap px-3 py-1.5">
+                                {newReport && (
+                                  <>
+                                    {s?.name ?? '—'}
+                                    {!projectId && s && <span className="text-xs text-muted-foreground"> · {s.project}</span>}
+                                  </>
+                                )}
+                              </td>
+                            )}
+                            <td className="px-3 py-1.5">
+                              {line.worker_name ? (
+                                <>
+                                  <span className="font-medium">{line.worker_name}</span>
+                                  {line.trade && <span className="text-muted-foreground"> · {trade(line.trade)}</span>}
+                                </>
+                              ) : (
+                                <span className="font-medium">{trade(line.trade)}</span>
+                              )}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-1.5 text-muted-foreground">{line.contractor ?? ''}</td>
+                            <td className="bg-success-soft/40 whitespace-nowrap px-3 py-1.5 text-right font-semibold text-success">{line.headcount}</td>
+                            <td className="whitespace-nowrap px-3 py-1.5 text-right">{line.daily_wage ? `₹${line.daily_wage.toLocaleString('en-IN')}` : ''}</td>
+                            <td className="whitespace-nowrap px-3 py-1.5 text-right">{cost ? `₹${cost.toLocaleString('en-IN')}` : ''}</td>
+                            <td className="whitespace-nowrap px-3 py-1.5 text-muted-foreground">
+                              {newReport ? (report.recorded_via?.includes('whatsapp') ? 'WhatsApp' : 'Dashboard') : ''}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot className="border-t-2 bg-muted/40 font-semibold tabular-nums">
+                      <tr>
+                        <td className="px-3 py-2" colSpan={siteId ? 3 : 4}>
+                          Total · {plural(new Set(ledgerRows.map((r) => r.report.occurred_date)).size, 'day')}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right text-success">{ledgerTotal.workers.toLocaleString('en-IN')} man-days</td>
+                        <td />
+                        <td className="whitespace-nowrap px-3 py-2 text-right">{ledgerTotal.cost ? `₹${ledgerTotal.cost.toLocaleString('en-IN')}` : ''}</td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </>
+            )}
+          </DprSection>
+          <DprSection icon={MessageSquare} title="Attendance reports" meta={plural(items.length, 'report')} className="sm:hidden">
+            <div className="flex flex-col gap-3">
+              {days.map(([day, list]) => (
+                <section key={day} className="flex flex-col gap-1.5">
+                  <h3 className="flex items-baseline gap-2 text-sm">
+                    <span className="font-semibold">{longDate(day)}</span>
+                    <span className="text-muted-foreground">{plural(list.reduce((s, r) => s + (r.total_headcount || 0), 0), 'worker')}</span>
+                  </h3>
+                  <ul className="divide-y rounded-lg border">
+                    {list.map((r) => {
+                      const s = r.site_id ? siteNames.get(r.site_id) : undefined
+                      return (
+                        <li key={r.id}>
+                          <button type="button" onClick={() => setOpenId(r.id)} className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted/40">
+                            <div className="flex min-w-0 flex-1 flex-col">
+                              <span className="truncate">
+                                <strong className="font-semibold tabular-nums">{r.total_headcount}</strong> workers
+                                <span className="text-muted-foreground"> · {plural(r.line_count, 'trade')}</span>
+                              </span>
+                              <span className="truncate text-xs text-muted-foreground">
+                                {[!siteId && s?.name, !projectId && s?.project, r.notes && r.notes !== 'Daily site attendance log' ? r.notes : null].filter(Boolean).join(' · ') || '—'}
+                              </span>
+                            </div>
+                            {r.total_cost > 0 && <span className="text-sm tabular-nums">₹{r.total_cost.toLocaleString('en-IN')}</span>}
+                            {r.recorded_via?.includes('whatsapp') && <MessageSquare className="size-3.5 shrink-0 text-muted-foreground" aria-label="Sent on WhatsApp" />}
+                            <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </section>
+              ))}
+            </div>
+          </DprSection>
+
+          <div className="grid gap-6 border-t pt-4 lg:grid-cols-[minmax(0,1fr)_300px]">
             <DprSection icon={HardHat} title="Workers a day" meta={`${chart.length} days`}>
               <div className="h-52 w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -211,41 +399,6 @@ export function AttendanceView({ projectId, siteId }: { projectId: string | null
             </section>
           </div>
 
-          <DprSection icon={MessageSquare} title="Attendance reports" meta={plural(items.length, 'report')}>
-            <div className="flex flex-col gap-3">
-              {days.map(([day, list]) => (
-                <section key={day} className="flex flex-col gap-1.5">
-                  <h3 className="flex items-baseline gap-2 text-sm">
-                    <span className="font-semibold">{longDate(day)}</span>
-                    <span className="text-muted-foreground">{plural(list.reduce((s, r) => s + (r.total_headcount || 0), 0), 'worker')}</span>
-                  </h3>
-                  <ul className="divide-y rounded-lg border">
-                    {list.map((r) => {
-                      const s = r.site_id ? siteNames.get(r.site_id) : undefined
-                      return (
-                        <li key={r.id}>
-                          <button type="button" onClick={() => setOpenId(r.id)} className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted/40">
-                            <div className="flex min-w-0 flex-1 flex-col">
-                              <span className="truncate">
-                                <strong className="font-semibold tabular-nums">{r.total_headcount}</strong> workers
-                                <span className="text-muted-foreground"> · {plural(r.line_count, 'trade')}</span>
-                              </span>
-                              <span className="truncate text-xs text-muted-foreground">
-                                {[!siteId && s?.name, !projectId && s?.project, r.notes && r.notes !== 'Daily site attendance log' ? r.notes : null].filter(Boolean).join(' · ') || '—'}
-                              </span>
-                            </div>
-                            {r.total_cost > 0 && <span className="text-sm tabular-nums">₹{r.total_cost.toLocaleString('en-IN')}</span>}
-                            {r.recorded_via?.includes('whatsapp') && <MessageSquare className="size-3.5 shrink-0 text-muted-foreground" aria-label="Sent on WhatsApp" />}
-                            <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                          </button>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </section>
-              ))}
-            </div>
-          </DprSection>
         </>
       )}
 

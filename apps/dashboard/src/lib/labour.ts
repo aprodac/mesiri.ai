@@ -1,5 +1,7 @@
 import {
+  fetchAttendanceReportDetailApi,
   fetchAttendanceReportsApi,
+  type LabourAttendanceLineItem,
   fetchLabourStatementApi,
   type LabourAttendanceSummaryItem,
   type LabourStatement,
@@ -71,4 +73,35 @@ export function rangeName(from?: string, to?: string): string {
   if (from) return `from-${from}`
   if (to) return `to-${to}`
   return 'all-time'
+}
+
+/** One attendance line with the report it came from: a row of the labour
+ * ledger. */
+export interface AttendanceLedgerRow {
+  report: LabourAttendanceSummaryItem
+  line: LabourAttendanceLineItem
+}
+
+/**
+ * Every line (trade or named worker) of `reports`, newest first. The list
+ * endpoint returns only totals, so each report's detail is read -- six at a
+ * time, the newest `cap` reports (`truncated` when there were more).
+ */
+export async function fetchAttendanceLines(
+  reports: LabourAttendanceSummaryItem[],
+  cap = 400,
+): Promise<{ rows: AttendanceLedgerRow[]; truncated: boolean }> {
+  const wanted = reports.slice(0, cap)
+  const byReport = new Map<string, LabourAttendanceLineItem[]>()
+  let next = 0
+  const worker = async () => {
+    while (next < wanted.length) {
+      const r = wanted[next++]
+      const detail = await fetchAttendanceReportDetailApi(r.id)
+      byReport.set(r.id, detail.lines ?? [])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(6, wanted.length) }, worker))
+  const rows = wanted.flatMap((report) => (byReport.get(report.id) ?? []).map((line) => ({ report, line })))
+  return { rows, truncated: reports.length > cap }
 }

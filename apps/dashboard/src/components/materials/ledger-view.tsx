@@ -36,7 +36,7 @@ const dayLabel = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString
 export function LedgerView({ projectId, siteId: scopeSiteId }: { projectId: string | null; siteId: string | null }) {
   const siteNames = useSiteNames()
   const [materialId, setMaterialId] = useUrlState<string>('material', 'all')
-  const [pickedSite, setPickedSite] = useUrlState<string>('site', 'all')
+  const [pickedSite, setPickedSite] = useUrlState<string>('at', 'all')
   const [period, setPeriod] = useUrlState<Period>('period', '30d')
   const [from, setFrom] = useUrlState<string>('from', '')
   const [to, setTo] = useUrlState<string>('to', '')
