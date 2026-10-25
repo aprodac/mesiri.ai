@@ -387,3 +387,21 @@ async def test_wrk04_the_seventh_job_is_continued_not_started_again():
     entry.actor.organization_id = ORG
     ready = await _prepare(entry, SemanticType.GENERAL_SITE_UPDATE, narrative="job7 finished", continues="job7")
     assert ready.event.fields["activity_id"] == "a7"
+
+
+async def test_an_owner_with_one_site_is_never_asked_which_site():
+    """SS-18: the welcome screen waits for a new owner's first update. Signup
+    made one project with one site, so the update must land on it straight
+    away -- a "which site?" there would leave the screen waiting -- even when
+    the context layer resolved no site for the message."""
+    entry = _entry(context=_Context(site_id=None))
+    entry.actor.role = "ADMIN"
+    entry.actor.sites = [SimpleNamespace(id=SITE, name="Green Villa", project_id=PRJ)]
+
+    work = await _prepare(entry, SemanticType.GENERAL_SITE_UPDATE, narrative="slab shuttering done")
+    assert isinstance(work, Ready)
+    assert str(work.event.site_id) == SITE
+
+    issue = await _prepare(entry, SemanticType.SITE_ISSUE, issue_type="MATERIAL_SHORTAGE")
+    assert isinstance(issue, Ready)
+    assert str(issue.event.site_id) == SITE
