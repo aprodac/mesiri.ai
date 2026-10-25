@@ -169,3 +169,23 @@ def test_a_report_with_no_version_is_not_found(setup):
     setup.state.report = None
 
     assert setup.client.get(f"/dpr/daily-reports/{REPORT}/document.pdf").status_code == 404
+
+
+def test_an_issue_from_an_earlier_day_says_when_it_was_reported():
+    # BE-51 (audit ISS-04): still-open issues stay on the next day's DPR.
+    from channel.dpr_document.data import build_document_data
+    from channel.dpr_document.template import render_html
+
+    payload = {
+        **PAYLOAD,
+        "issues": [],
+        "carried_issues": [
+            {"issue_type": "EQUIPMENT_BREAKDOWN", "severity": "HIGH", "narrative": "Crane breakdown",
+             "status": "OPEN", "reported_on": "2026-10-20"},
+        ],
+        "open_issue_count": 1,
+    }
+    html = render_html(build_document_data(code="DPR-1", payload=payload), None)
+
+    assert "Crane breakdown" in html and "reported 20 Oct" in html
+    assert "No issues reported for this date" not in html

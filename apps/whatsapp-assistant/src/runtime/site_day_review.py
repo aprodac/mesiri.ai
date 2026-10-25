@@ -313,8 +313,17 @@ def day_lines(payload: dict[str, Any]) -> list[str]:
         if not shown:
             shown = _count(len(payload["materials"]), "entry", "entries")
         lines.append(f"• Materials: {shown}")
-    if payload.get("open_issue_count"):
-        lines.append(f"• Issues: {payload['open_issue_count']} open")
+    # The day's own issues only: an issue still open from an earlier day
+    # (BE-51's carried_issues) is not something the day holds, and an empty
+    # list here means "nothing logged today".
+    if "issues" in payload:
+        day_open = sum(
+            1 for i in payload["issues"] or [] if i.get("status") in ("OPEN", "ACKNOWLEDGED")
+        )
+    else:  # a summary without the issue list
+        day_open = int(payload.get("open_issue_count") or 0)
+    if day_open:
+        lines.append(f"• Issues: {day_open} open")
     if payload.get("evidence_count"):
         lines.append(f"• Photos: {payload['evidence_count']}")
     return lines

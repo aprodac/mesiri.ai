@@ -543,6 +543,43 @@ class PostgresDprRepository:
             )
         ).mappings().all()
 
+        # BE-51 (audit ISS-04): issues reported on an earlier day that were
+        # still open on this one, and those closed on it. They used to drop
+        # out of the next day's DPR while the Today page still counted them.
+        # Open "on this day": not resolved before it (resolved_at), and not
+        # withdrawn. A later resolution reads as still open here.
+        carried_rows = (
+            await self._conn.execute(
+                text(
+                    """
+                    SELECT id, issue_type, severity, narrative,
+                           CASE WHEN resolved_at IS NOT NULL
+                                 AND resolved_at::date > :report_date
+                                THEN 'OPEN' ELSE status::text END AS status,
+                           occurred_at::date AS reported_on
+                    FROM site_issues
+                    WHERE organization_id = :org_id
+                      AND project_id = :project_id
+                      AND site_id = :site_id
+                      AND occurred_at::date < :report_date
+                      AND status != 'CANCELLED'
+                      AND COALESCE(narrative, '') NOT LIKE 'Question for your engineer:%'
+                      AND (
+                          (resolved_at IS NULL AND status IN ('OPEN', 'ACKNOWLEDGED'))
+                          OR resolved_at::date >= :report_date
+                      )
+                    ORDER BY occurred_at
+                    """
+                ),
+                {
+                    "org_id": organization_id,
+                    "project_id": project_id,
+                    "site_id": site_id,
+                    "report_date": report_date,
+                },
+            )
+        ).mappings().all()
+
         # Superseded and voided reports are excluded here, which they were
         # not before: this query counted every row for the day, so a
         # supervisor who re-sent the list and chose "Replace it" put both
@@ -731,6 +768,7 @@ class PostgresDprRepository:
             quantities_by_activity=quantities_by_activity,
             evidence_count_by_activity=evidence_count_by_activity,
             issue_rows=[dict(row) for row in issue_rows],
+            carried_issue_rows=[dict(row) for row in carried_rows],
             labour_lines=[dict(row) for row in labour_rows],
             material_movement_rows=[dict(row) for row in material_rows],
             material_stock_rows=[dict(row) for row in stock_rows],

@@ -180,6 +180,7 @@ def build_site_report_payload(
     conditions: dict[str, Any] | None = None,
     review_states: dict[str, dict[Any, str]] | None = None,
     late_entries: list[dict[str, Any]] | None = None,
+    carried_issue_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Compose the payload dict. `activity_rows`/`issue_rows`/`labour_lines`/
     `material_movement_rows` are already scoped to the one site+date by the
@@ -227,6 +228,20 @@ def build_site_report_payload(
         }
         for row in issue_rows
     ]
+    # BE-51: earlier days' issues still open on this day (or closed on it),
+    # each with the day it was reported. Kept apart from `issues`: they are
+    # not this day's entries, so they add no hours lost, no review item and
+    # no draft; they count towards the open issues, as the Today page does.
+    carried_issues = [
+        {
+            "issue_type": row.get("issue_type"),
+            "severity": row.get("severity"),
+            "narrative": row.get("narrative"),
+            "status": row.get("status"),
+            "reported_on": str(row.get("reported_on") or ""),
+        }
+        for row in carried_issue_rows or []
+    ]
     materials = _material_summary(material_movement_rows or [], material_stock_rows)
     return {
         "level": "SITE",
@@ -237,7 +252,11 @@ def build_site_report_payload(
         "activity_count": len(activities),
         "possible_duplicates": sum(1 for a in activities if a["possible_duplicate"]),
         "issues": issues,
-        "open_issue_count": sum(1 for i in issues if i["status"] == "OPEN"),
+        "carried_issues": carried_issues,
+        # Open and acknowledged, the Today page's own rule (list_site_days).
+        "open_issue_count": sum(
+            1 for i in [*issues, *carried_issues] if i["status"] in ("OPEN", "ACKNOWLEDGED")
+        ),
         "evidence_count": sum(a["evidence_count"] for a in activities),
         "labour": _labour_summary(labour_lines or []),
         "materials": materials,
@@ -452,7 +471,7 @@ def build_project_report_payload(
             entry["received"] += Decimal(str(material.get("received") or 0))
             entry["used"] += Decimal(str(material.get("used") or 0))
 
-        for issue in payload.get("issues", []):
+        for issue in [*payload.get("issues", []), *payload.get("carried_issues", [])]:
             issues.append({**issue, "site_name": site_name})
 
     return {

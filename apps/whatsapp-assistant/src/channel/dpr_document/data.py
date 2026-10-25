@@ -35,6 +35,10 @@ class DprIssueRow:
     # with the site it came from); "—" for a SITE report, where it's
     # already implied by the whole document.
     site_name: str = "—"
+    #: BE-51: an issue reported on an earlier day and still open (or closed
+    #: on this one) -- the day it was reported, "12 Oct". Empty for the day's
+    #: own issues.
+    since: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,6 +180,17 @@ def _date_label(value: object) -> str:
     return f"{day:%A}, {day.day} {day:%B %Y}"
 
 
+def _short_day(value: object) -> str:
+    """"2026-10-12" -> "12 Oct"; empty when there is no day."""
+    import datetime
+
+    try:
+        day = datetime.date.fromisoformat(str(value or ""))
+    except ValueError:
+        return ""
+    return f"{day.day} {day:%b}"
+
+
 def build_document_data(
     *, code: str, payload: dict[str, Any], summary: str | None = None
 ) -> DprDocumentData:
@@ -203,8 +218,11 @@ def build_document_data(
             narrative=i.get("narrative") or "—",
             status=_pretty(i.get("status")),
             site_name=_pretty(i.get("site_name")) if is_project else "—",
+            since=_short_day(i.get("reported_on")),
         )
-        for i in payload.get("issues", [])
+        # A project payload already holds its sites' earlier issues in
+        # `issues` (assembly.build_project_report_payload).
+        for i in [*payload.get("issues", []), *payload.get("carried_issues", [])]
     ]
     labour = payload.get("labour") or {}
     trades = [

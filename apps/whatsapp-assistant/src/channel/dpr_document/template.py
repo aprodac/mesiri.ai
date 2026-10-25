@@ -266,7 +266,7 @@ _DOCUMENT_TEMPLATE_SRC = """
           {% if data.is_project %}<td>{{ i.site_name }}</td>{% endif %}
           <td class="strong">{{ i.issue_type }}</td>
           <td class="severity-{{ i.severity|lower }}">{{ i.severity }}</td>
-          <td>{{ i.narrative }}</td>
+          <td>{{ i.narrative }}{% if i.since %}<span class="muted"> · reported {{ i.since }}</span>{% endif %}</td>
           <td><span class="pill st-{{ i.status|lower|replace(' ', '-') }}">{{ i.status }}</span></td></tr>
         {% else %}
         <tr><td colspan="{{ 5 if data.is_project else 4 }}" class="empty">No issues reported for this date.</td></tr>
