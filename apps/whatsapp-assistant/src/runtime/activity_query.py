@@ -425,3 +425,51 @@ class ActivityQueryService:
         key = "progress_update_id" if row["kind"] == "update" else "activity_quantity_id"
         target[key] = str(row["target_id"])
         return target
+
+    async def find_activity_for_photos(
+        self,
+        *,
+        organization_id: str,
+        reported_by_user_id: str | None,
+        site_ids: list[str],
+        recent_hours: int = 48,
+    ) -> dict[str, Any] | None:
+        """PHO-01: the activity a "Site Update" photo belongs to. The sender's
+        open work at those sites first (most recently touched), else the work
+        they reported in the last ``recent_hours`` even if it is finished --
+        "finished plastering", then its photos. None when they have reported
+        nothing to attach to."""
+        import sqlalchemy as sa
+
+        if not reported_by_user_id or not site_ids:
+            return None
+        try:
+            org_id = uuid.UUID(organization_id)
+            reporter = uuid.UUID(reported_by_user_id)
+            sites = [uuid.UUID(s) for s in site_ids]
+        except (TypeError, ValueError):
+            return None
+        async with self._db.transaction() as conn:
+            row = (
+                await conn.execute(
+                    sa.text(
+                        "SELECT id, site_id, work_type, narrative, status::text AS status FROM activities"
+                        " WHERE organization_id = :org AND reported_by_user_id = :user"
+                        "   AND site_id = ANY(:sites) AND deleted_at IS NULL"
+                        "   AND (status::text = ANY(:open)"
+                        "        OR updated_at >= now() - make_interval(hours => :hours))"
+                        " ORDER BY (status::text = ANY(:open)) DESC, updated_at DESC LIMIT 1"
+                    ),
+                    {"org": org_id, "user": reporter, "sites": sites, "open": list(_OPEN_STATUSES),
+                     "hours": recent_hours},
+                )
+            ).mappings().first()
+        if row is None:
+            return None
+        return {
+            "activity_id": str(row["id"]),
+            "site_id": str(row["site_id"]),
+            "work_type": row["work_type"],
+            "narrative": row["narrative"],
+            "status": row["status"],
+        }

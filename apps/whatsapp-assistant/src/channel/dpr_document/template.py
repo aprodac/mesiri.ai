@@ -105,6 +105,10 @@ _DOCUMENT_TEMPLATE_SRC = """
   .severity-medium { color: #B45309; font-weight: 600; }
   .severity-low { color: {{ sub }}; font-weight: 600; }
   .stock-flag { color: {{ warn }}; font-size: 10px; margin: 3px 0 0; }
+  .photos { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 2px 0 4px; }
+  .photos img { width: 30%; max-width: 190px; height: 120px; object-fit: cover; border-radius: 3px; }
+  .photos .more { font-size: 11px; opacity: 0.7; }
+  tr.photo-row td { border-top: none; }
   .cont { font-size: 10px; margin: 3px 0 0; opacity: 0.7; }
   .note { margin-top: 6px; padding: 7px 10px; border-radius: 6px; background: #FDECEA; color: #8C1D16; font-size: 10.5px; }
   .plan { padding: 9px 12px; border: 1px solid {{ line }}; border-radius: 6px; white-space: pre-line; font-size: 11.5px; }
@@ -207,6 +211,12 @@ _DOCUMENT_TEMPLATE_SRC = """
           <td>{{ a.narrative }}</td>
           <td><span class="pill st-{{ a.status|lower|replace(' ', '-') }}">{{ a.status }}</span></td>
           <td>{{ a.contractor }}</td><td>{{ a.quantities }}</td><td class="num">{{ a.evidence_count or "—" }}</td></tr>
+        {% if a.thumbs %}
+        <tr class="photo-row"><td colspan="6"><div class="photos">
+          {% for t in a.thumbs %}<img src="{{ t }}" alt="Site photo">{% endfor %}
+          {% if a.photos_more %}<span class="more">+ {{ a.photos_more }} more</span>{% endif %}
+        </div></td></tr>
+        {% endif %}
         {% else %}
         <tr><td colspan="6" class="empty">No activities logged for this date.</td></tr>
         {% endfor %}

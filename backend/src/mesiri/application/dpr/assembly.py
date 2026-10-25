@@ -134,6 +134,10 @@ def _material_summary(
     ]
 
 
+#: Photos per work item kept in the payload (the document prints a few, "N more").
+MAX_PHOTOS_KEPT = 12
+
+
 def _quantities_of(row: dict[str, Any], quantities_by_activity: dict[Any, list[dict[str, Any]]]) -> list[dict[str, Any]]:
     """The activity's quantities; a continued activity shows the quantity of
     the day's update only (the start day's belong to that day)."""
@@ -186,6 +190,7 @@ def build_site_report_payload(
     quantities_by_activity: dict[Any, list[dict[str, Any]]],
     evidence_count_by_activity: dict[Any, int],
     issue_rows: list[dict[str, Any]],
+    photos_by_activity: dict[Any, list[dict[str, Any]]] | None = None,
     labour_lines: list[dict[str, Any]] | None = None,
     material_movement_rows: list[dict[str, Any]] | None = None,
     material_stock_rows: list[dict[str, Any]] | None = None,
@@ -224,6 +229,8 @@ def build_site_report_payload(
             "contractor": row.get("contractor"),
             "quantities": _quantities_of(row, quantities_by_activity),
             "evidence_count": evidence_count_by_activity.get(row["id"], 0),
+            # PHO-02: the photos' storage keys (the document embeds the pictures).
+            "photos": list((photos_by_activity or {}).get(row["id"], []))[:MAX_PHOTOS_KEPT],
             # WRK-01: work started on an earlier day, updated on this one.
             # Its review stays with the activity (the day it was started).
             "continued": bool(row.get("continued")),

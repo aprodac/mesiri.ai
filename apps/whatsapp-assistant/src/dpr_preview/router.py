@@ -86,13 +86,11 @@ async def site_day_document(
         conn, object_storage, auth_context.organization_id, project_id, report
     )
 
+    from channel.dpr_document.photos import embed_photos
+
+    document = await embed_photos(object_storage, for_document(only_kept(payload, items)))
     return _document(
-        render_html(
-            build_document_data(
-                code=code, payload=for_document(only_kept(payload, items)), summary=summary
-            ),
-            letterhead,
-        )
+        render_html(build_document_data(code=code, payload=document, summary=summary), letterhead)
     )
 
 
@@ -190,8 +188,12 @@ async def daily_report_document_pdf(
     confirmed = (report["workflow_status"] or "").lower() in FROZEN
     code = (report["code"] if confirmed else None) or DRAFT_CODE
     letterhead = await load_letterhead(conn, object_storage, report_id)
+    from channel.dpr_document.photos import embed_photos
+
     html = render_html(
-        build_document_data(code=code, payload=payload, summary=report.get("narrative_summary")),
+        build_document_data(
+            code=code, payload=await embed_photos(object_storage, payload), summary=report.get("narrative_summary")
+        ),
         letterhead,
     )
     pdf = await shared_renderer().render_pdf(html)

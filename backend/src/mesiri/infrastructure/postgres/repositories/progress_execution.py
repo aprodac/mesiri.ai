@@ -754,9 +754,11 @@ class PostgresProgressExecutionRepository(ProgressExecutionRepository):
                 text(
                     "INSERT INTO progress_attachments "
                     "(id, parent_type, parent_id, media_object_key, attachment_type, "
-                    "mime_type, caption, uploaded_by_user_id) "
+                    "mime_type, caption, uploaded_by_user_id, created_at) "
+                    # clock_timestamp(), not the transaction's now(): a batch keeps
+                    # the order the photos were sent in.
                     "VALUES (:id, 'ACTIVITY', :parent_id, :media_object_key, "
-                    "'site_photo', :mime_type, :caption, :uploaded_by)"
+                    "'site_photo', :mime_type, :caption, :uploaded_by, clock_timestamp())"
                 ),
                 {
                     "id": attachment_id,

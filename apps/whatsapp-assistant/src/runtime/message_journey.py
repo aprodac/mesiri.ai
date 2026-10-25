@@ -2163,8 +2163,6 @@ def build_message_handlers(
             from channel.replies import (
                 IMAGE_PURPOSE_SEMANTIC_HINT,
                 render_batch_overflow_reply,
-                render_evidence_attached_reply,
-                render_no_open_activity_for_evidence_reply,
             )
 
             held_batch = await pending_media_store.pop_batch(user_id=ctx.user_id)
@@ -2183,29 +2181,16 @@ def build_message_handlers(
                 # workflow (see AttachEvidenceCommand's docstring) -- no
                 # single-active-invariant concern, so the WHOLE batch
                 # attaches in one shot regardless of size.
-                found = await activity_query.find_open_activity(
-                    organization_id=ctx.organization_id,
-                    site_id=None,
-                    reported_by_user_id=ctx.user_id,
+                from runtime.site_photos import attach_site_update_photos
+
+                reply_text = await attach_site_update_photos(
+                    held_batch,
+                    ctx=ctx,
+                    work_site=work_site,
+                    activity_query=activity_query,
+                    evidence_query=evidence_query,
+                    correlation_id=message.correlation_id,
                 )
-                if found is None:
-                    reply_text = render_no_open_activity_for_evidence_reply()
-                else:
-                    media_keys = [m.media.object_key for m in held_batch if m.media is not None]
-                    created_ids = await evidence_query.attach_photos(
-                        organization_id=ctx.organization_id,
-                        activity_id=found["activity_id"],
-                        media_object_keys=media_keys,
-                        uploaded_by=ctx.user_id,
-                        correlation_id=message.correlation_id,
-                    )
-                    summary_bits = [
-                        b for b in (found.get("work_type"), found.get("narrative")) if b
-                    ]
-                    activity_summary = " — ".join(summary_bits) if summary_bits else None
-                    reply_text = render_evidence_attached_reply(
-                        count=len(created_ids), activity_summary=activity_summary
-                    )
                 await sender.send_text(wa_id, reply_text)
                 await message_logger.log_reply(
                     correlation_id=message.correlation_id, reply=reply_text

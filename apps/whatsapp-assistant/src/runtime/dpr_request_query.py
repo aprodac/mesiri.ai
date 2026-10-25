@@ -165,7 +165,10 @@ class DprRequestQueryService:
             except Exception:  # noqa: BLE001 -- the draft goes with the plain header
                 letterhead = None
         try:
-            html = render_html(build_document_data(code=DRAFT_CODE, payload=for_document(kept)), letterhead)
+            from channel.dpr_document.photos import embed_photos
+
+            document = await embed_photos(object_storage, for_document(kept))
+            html = render_html(build_document_data(code=DRAFT_CODE, payload=document), letterhead)
             return lines, await (renderer or shared_renderer()).render_pdf(html)
         except Exception:  # noqa: BLE001 -- the lines still answer
             return lines, None

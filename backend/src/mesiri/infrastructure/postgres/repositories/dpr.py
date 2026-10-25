@@ -578,6 +578,35 @@ class PostgresDprRepository:
             ).mappings().all():
                 evidence_count_by_activity[row["activity_id"]] = int(row["n"])
 
+        # PHO-02: the photos themselves (their storage keys and captions) for
+        # the document to print. An earlier day's activity shows only the
+        # photos added on this day (PHO-01 attaches to the work, whenever it began).
+        photos_by_activity: dict[Any, list[dict[str, Any]]] = {}
+        all_activity_ids = [row["id"] for row in activity_rows]
+        if all_activity_ids:
+            photo_rows = (
+                await self._conn.execute(
+                    text(
+                        """
+                        SELECT parent_id AS activity_id, media_object_key, caption, mime_type
+                        FROM progress_attachments
+                        WHERE parent_type = 'ACTIVITY' AND parent_id = ANY(:ids)
+                          AND (parent_id = ANY(:own) OR created_at::date = :report_date)
+                        ORDER BY created_at, id
+                        """
+                    ),
+                    {"ids": all_activity_ids, "own": activity_ids, "report_date": report_date},
+                )
+            ).mappings().all()
+            for row in photo_rows:
+                photos_by_activity.setdefault(row["activity_id"], []).append(
+                    {"object_key": row["media_object_key"], "caption": row["caption"],
+                     "mime_type": row["mime_type"]}
+                )
+            for row in activity_rows:
+                if row.get("continued"):
+                    evidence_count_by_activity[row["id"]] = len(photos_by_activity.get(row["id"], []))
+
         issues_query = text(
             """
             SELECT id, issue_type, severity, narrative, status, delay_duration_minutes
@@ -834,6 +863,7 @@ class PostgresDprRepository:
             activity_rows=[dict(row) for row in activity_rows],
             quantities_by_activity=quantities_by_activity,
             evidence_count_by_activity=evidence_count_by_activity,
+            photos_by_activity=photos_by_activity,
             issue_rows=[dict(row) for row in issue_rows],
             carried_issue_rows=[dict(row) for row in carried_rows],
             labour_lines=[dict(row) for row in labour_rows],

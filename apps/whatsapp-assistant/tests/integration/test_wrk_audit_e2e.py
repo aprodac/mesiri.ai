@@ -116,6 +116,7 @@ async def world():
         for sql in (
             "DELETE FROM fact_reviews WHERE organization_id = :o",
             "DELETE FROM activity_corrections WHERE activity_id IN (SELECT id FROM activities WHERE organization_id = :o)",
+            "DELETE FROM progress_attachments WHERE parent_id IN (SELECT id FROM activities WHERE organization_id = :o)",
             "DELETE FROM progress_updates WHERE activity_id IN (SELECT id FROM activities WHERE organization_id = :o)",
             "DELETE FROM activity_quantities WHERE activity_id IN (SELECT id FROM activities WHERE organization_id = :o)",
             "DELETE FROM activity_links WHERE activity_id IN (SELECT id FROM activities WHERE organization_id = :o)",

@@ -353,3 +353,70 @@ def test_dpr06_labour_cost_of_zero_is_not_shown():
     labour = {"headcount": 5, "trades": [{"trade": "mason", "headcount": 5}], "total_cost": "0"}
     html = render_html(build_document_data(code="DPR-1", payload=_payload(labour=labour)))
     assert "Total cost" not in html and "Labour cost" not in html
+
+
+class _Stored:
+    def __init__(self, data: bytes, content_type: str = "image/jpeg") -> None:
+        self.data, self.content_type = data, content_type
+
+
+class _Storage:
+    def __init__(self, files: dict) -> None:
+        self.files = files
+
+    async def get_object(self, key: str):
+        if key not in self.files:
+            raise KeyError(key)
+        return self.files[key]
+
+
+def _jpeg(side: int = 800) -> bytes:
+    import io
+
+    from PIL import Image
+
+    out = io.BytesIO()
+    Image.new("RGB", (side, side), (200, 120, 40)).save(out, "JPEG")
+    return out.getvalue()
+
+
+async def test_pho02_the_document_prints_the_photos_not_just_their_number():
+    from channel.dpr_document.photos import MAX_THUMBS, embed_photos
+
+    pytest.importorskip("PIL")
+    photos = [{"object_key": f"media/{i}", "caption": None, "mime_type": "image/jpeg"} for i in range(9)]
+    storage = _Storage({f"media/{i}": _Stored(_jpeg()) for i in range(8)})  # media/8 is lost
+    payload = _payload(
+        activities=[
+            {"work_type": "plastering", "narrative": "2nd floor", "status": "IN_PROGRESS", "contractor": None,
+             "quantities": [], "evidence_count": 9, "photos": photos},
+            {"work_type": "slab", "narrative": "slab", "status": "IN_PROGRESS", "contractor": None,
+             "quantities": [], "evidence_count": 0, "photos": []},
+        ],
+        activity_count=2, evidence_count=9,
+    )
+    embedded = await embed_photos(storage, payload)
+    first, second = embedded["activities"]
+    assert len(first["thumbs"]) == MAX_THUMBS and first["photos_more"] == 9 - MAX_THUMBS
+    assert all(t.startswith("data:image/jpeg;base64,") for t in first["thumbs"])
+    assert second["thumbs"] == [] and second["photos_more"] == 0
+    assert "thumbs" not in payload["activities"][0]  # the stored payload is not changed
+
+    html = render_html(build_document_data(code="DPR-1", payload=embedded))
+    assert html.count('<img src="data:image/jpeg') == MAX_THUMBS
+    assert "+ 3 more" in html
+
+
+async def test_pho02_a_lost_or_unreadable_photo_never_stops_the_report():
+    from channel.dpr_document.photos import embed_photos
+
+    payload = _payload(
+        activities=[{"work_type": "slab", "narrative": "slab", "status": "COMPLETED", "contractor": None,
+                     "quantities": [], "evidence_count": 2,
+                     "photos": [{"object_key": "gone"}, {"object_key": "text", "mime_type": "text/plain"}]}],
+        activity_count=1,
+    )
+    embedded = await embed_photos(_Storage({"text": _Stored(b"x", "text/plain")}), payload)
+    assert embedded["activities"][0]["thumbs"] == []
+    assert embedded["activities"][0]["photos_more"] == 2
+    assert await embed_photos(None, payload) is payload
