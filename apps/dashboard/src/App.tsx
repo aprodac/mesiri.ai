@@ -3,6 +3,8 @@ import { AppLayout } from '@/components/app-layout'
 import { RequireModule } from '@/components/require-module'
 import Login from '@/pages/Login'
 import Signup from '@/pages/Signup'
+import WelcomePage from '@/pages/WelcomePage'
+import { RequireAuth } from '@/lib/AuthContext'
 import TodayPage from '@/pages/TodayPage'
 import SiteDayPage from '@/pages/SiteDayPage'
 import ProjectDayPage from '@/pages/ProjectDayPage'
@@ -67,6 +69,8 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        {/* After signup (SS-18): full screen, outside the sidebar layout. */}
+        <Route path="/welcome" element={<RequireAuth><WelcomePage /></RequireAuth>} />
         <Route path="/" element={<AppLayout />}>
           <Route index element={<Moved to="/today" />} />
 

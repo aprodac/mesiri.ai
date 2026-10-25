@@ -34,6 +34,7 @@ a view switch (`Segmented`), not several sidebar entries.
 | **Company** | `/company` | details, letterhead |
 | **WhatsApp** | `/whatsapp` (`?view=messages`, `?view=automations`) | Conversations · All messages · Automations (module) (was WhatsApp Inbox, Automations, Company > messages) |
 | Finance | `/finance/...` | only when the company has the module |
+| *(no sidebar)* | `/signup`, `/welcome` | signup with the intro conversation; the first-update screen after it (SS-18) |
 
 Rules:
 - One address per thing, named as the sidebar names it. No section prefixes
