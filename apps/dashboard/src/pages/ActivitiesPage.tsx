@@ -496,7 +496,7 @@ export default function ActivitiesPage({ embedded = false }: { embedded?: boolea
         </div>
       ) : (
         <>
-        {/* Desktop: one ledger table, newest first (WEB-32). */}
+        {/* Desktop: one ledger table, newest first (WEB-34). */}
         <div className="hidden overflow-x-auto rounded-lg border sm:block">
           <table className="w-full min-w-[820px] text-sm">
             <thead className="sticky top-0 bg-muted/60 text-xs text-muted-foreground">

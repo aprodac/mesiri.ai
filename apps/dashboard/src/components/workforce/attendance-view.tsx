@@ -22,7 +22,7 @@ import { AttendanceDetailSheet } from './attendance-detail-sheet'
 
 // WEB-22: who was on site, from the attendance reports (mostly sent on
 // WhatsApp). One view instead of Overview, Attendance, Analytics and
-// Reports. WEB-32: it opens on the attendance ledger -- one row per trade or
+// Reports. WEB-34: it opens on the attendance ledger -- one row per trade or
 // named worker on each report, filterable by site and trade, with totals --
 // and the daily chart and trades follow as Trends.
 
@@ -179,7 +179,7 @@ export function AttendanceView({ projectId, siteId }: { projectId: string | null
           )}
 
           {/* The ledger: one row per trade or named worker on each report
-              (WEB-32). Desktop; phones keep the reports by day below. */}
+              (WEB-34). Desktop; phones keep the reports by day below. */}
           <DprSection
             icon={HardHat}
             title="Attendance ledger"

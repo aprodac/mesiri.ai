@@ -11,7 +11,7 @@
 
 ---
 
-## 0. Pages and routes (V1, WEB-21; sorted to 11 entries, WEB-31)
+## 0. Pages and routes (V1, WEB-21; sorted to 11 entries, WEB-33)
 
 V1 is one loop — sites send updates on WhatsApp, the engineer confirms, the
 owner gets the DPR — plus setup. The sidebar has no "More", and **one entry
@@ -347,7 +347,7 @@ pass the same.
 | Today, Reports, Issues | Yes (WEB-25 step 3) |
 | Activities, Gallery, Timeline, Analytics | Yes (WEB-24, WEB-26) |
 | Projects & Sites, a project, Team, a person, Company | Yes (WEB-28): one page each, sections instead of tabs |
-| Site log (Work, Photos, Everything), WhatsApp (Conversations, All messages, Automations) | Views yes (WEB-31); the Inbox and Automations insides keep their older look |
+| Site log (Work, Photos, Everything), WhatsApp (Conversations, All messages, Automations) | Views yes (WEB-33); the Inbox and Automations insides keep their older look |
 | Labour (one page: Attendance, Workers) | Yes (WEB-22) |
 | Materials (Ledger, Catalogue, Stock now, sheets) | Yes (WEB-29, WEB-30); invoice detail sheet not yet |
 | Finance, Login / Signup | No — old template look |
