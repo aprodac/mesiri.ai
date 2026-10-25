@@ -1947,8 +1947,9 @@ export default function LivePage() {
                     title={answerTitle(answer, site?.site_name ?? 'site', site?.project_name ?? 'the project')}
                     projectId={site?.project_id}
                     siteId={siteId}
-                    labour={labour}
-                    workRows={shown('work')}
+                    // What Mesiri answered from: saved entries (WA-77), not drafts.
+                    labour={detail.data?.report.labour ?? null}
+                    workRows={shown('work').filter((i) => i.review !== 'draft')}
                     stockOn={moduleEnabled('materials')}
                     target={answerTarget}
                     onOpen={(el) =>
