@@ -314,16 +314,22 @@ def render_project_site_offer(project_name: str | None) -> ReplySpec:
     )
 
 
-def render_project_member_offer() -> ReplySpec:
+def render_project_member_offer(alone: bool | None = None) -> ReplySpec:
     """Offered once a new Site is confirmed and saved -- the next gap in the
     same chain render_project_site_offer starts: a project with a site but
     no team still can't have anything logged against it by anyone but its
     creator (project_execution.py's persist_success only auto-adds the
-    creator, and only when their role isn't org-wide)."""
-    return ReplySpec(
-        text="👤 This project doesn't have a team yet.\n\nWant to add a teammate now?",
-        buttons=PROJECT_MEMBER_OFFER_BUTTONS,
+    creator, and only when their role isn't org-wide).
+
+    ``alone``: True when nobody but the sender is on the project (counted
+    before the offer, [111]); None when it could not be counted, so no claim
+    is made about the team."""
+    text = (
+        "👤 Only you are on this project so far.\n\nWant to add a teammate now?"
+        if alone
+        else "👤 Want to add a teammate to this project now?"
     )
+    return ReplySpec(text=text, buttons=PROJECT_MEMBER_OFFER_BUTTONS)
 
 
 def render_setup_offer_skipped_reply() -> str:

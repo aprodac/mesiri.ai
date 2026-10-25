@@ -93,6 +93,9 @@ class AgentTurnDeps:
     #: WA-57: the sender's parts still to do (runtime/agent/later.py's
     #: LaterStore); None keeps no list.
     later: Any | None = None
+    #: [111]: saves waiting on the site answer (runtime/agent/site_wait.py's
+    #: SiteWaitStore); None keeps none.
+    site_wait: Any | None = None
 
 
 def _scope_of(actor: ActorIdentity) -> ScopeLookup:
@@ -308,12 +311,14 @@ async def run_agent_turn(
     if later_line:
         context = replace(context, notes=[*context.notes, later_line])
     _lap(deps, "agent_context")
+    site_queue = await deps.site_wait.get(actor) if deps.site_wait is not None else []
     result = await deps.runner.run(
         ctx=context,
         user_text=user_text,
         gateway=gateway,
         scope=_scope_of(actor),
         correlation_id=correlation_id,
+        **({"site_queue": site_queue} if site_queue else {}),
         **({"lap": deps.lap} if deps.lap is not None else {}),
         **({"after_tool": deps.after_tool} if deps.after_tool is not None else {}),
     )
@@ -329,6 +334,7 @@ async def run_agent_turn(
             gateway=gateway,
             scope=_scope_of(actor),
             correlation_id=correlation_id,
+            **({"site_queue": site_queue} if site_queue else {}),
             **({"lap": deps.lap} if deps.lap is not None else {}),
             **({"after_tool": deps.after_tool} if deps.after_tool is not None else {}),
         )
@@ -355,6 +361,10 @@ async def run_agent_turn(
     _lap(deps, "agent_send")
     await _audit(message, gateway, reply, deps)
     await _trace_tools(message.correlation_id, result, deps)
+    if deps.site_wait is not None and hasattr(result.toolbox, "site_queue_after"):
+        waiting = result.toolbox.site_queue_after()
+        if waiting != site_queue:
+            await _safe(deps.site_wait.put(actor, waiting))
     if deps.later is not None:
         box = result.toolbox
         after = later.merged(

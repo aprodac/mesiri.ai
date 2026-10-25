@@ -44,6 +44,8 @@ class StepResult:
     #: Replies the pipeline produced beyond ``reply`` (documents are sent by the
     #: pipeline itself and are not captured).
     extra: list[ReplySpec] = field(default_factory=list)
+    #: ``choose`` only: what the answer fills in ("site", "material"...).
+    awaiting: str = ""
 
 
 class WorkflowGateway(Protocol):

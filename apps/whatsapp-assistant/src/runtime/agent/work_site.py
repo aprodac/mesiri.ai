@@ -129,6 +129,9 @@ def short_site_label(actor: Any, site_id: str | None) -> str | None:
 _WORDS: dict[str, dict[str, str]] = {
     "english": {
         "question": "Where are you working today?",
+        "site_q": "Which site is this for?",
+        "no_site": "I don't have a site called \"{said}\". Which site?",
+        "dropped": "Not saved, because no site was picked: {items}. Please send them again.",
         "button": "Choose site",
         "hold": "Got it 👍 I'm holding {n} message(s) until you pick the site.",
         "set": "👍 {label} for today.",
@@ -149,6 +152,9 @@ _WORDS: dict[str, dict[str, str]] = {
     },
     "manglish": {
         "question": "Innu ethu site-il aanu work cheyyunnath?",
+        "site_q": "Ee update ethu site-inte aanu?",
+        "no_site": "\"{said}\" ennoru site ente kayyil illa. Ethu site?",
+        "dropped": "Site select cheyyaathathu kondu save cheythilla: {items}. Onnu koodi ayakkuka.",
         "button": "Site select cheyyuka",
         "hold": "Sheri 👍 site select cheyyunnath vare {n} message njan pidichu vachittund.",
         "set": "👍 Innu {label}.",
@@ -166,6 +172,9 @@ _WORDS: dict[str, dict[str, str]] = {
     },
     "malayalam": {
         "question": "ഇന്ന് ഏത് സൈറ്റിലാണ് ജോലി ചെയ്യുന്നത്?",
+        "site_q": "ഈ അപ്ഡേറ്റ് ഏത് സൈറ്റിനാണ്?",
+        "no_site": "\"{said}\" എന്ന സൈറ്റ് എന്റെ കൈവശമില്ല. ഏത് സൈറ്റ്?",
+        "dropped": "സൈറ്റ് തിരഞ്ഞെടുക്കാത്തതിനാൽ സേവ് ചെയ്തില്ല: {items}. വീണ്ടും അയയ്ക്കൂ.",
         "button": "സൈറ്റ് തിരഞ്ഞെടുക്കൂ",
         "hold": "ശരി 👍 സൈറ്റ് തിരഞ്ഞെടുക്കുന്നതുവരെ {n} സന്ദേശം ഞാൻ സൂക്ഷിക്കുന്നു.",
         "set": "👍 ഇന്ന് {label}.",
@@ -183,6 +192,9 @@ _WORDS: dict[str, dict[str, str]] = {
     },
     "hindi": {
         "question": "आज आप किस साइट पर काम कर रहे हैं?",
+        "site_q": "यह अपडेट किस साइट के लिए है?",
+        "no_site": "\"{said}\" नाम की कोई साइट मेरे पास नहीं है। कौन सी साइट?",
+        "dropped": "साइट न चुनने के कारण सेव नहीं हुआ: {items}. कृपया फिर से भेजें।",
         "button": "साइट चुनें",
         "hold": "ठीक है 👍 साइट चुनने तक मैं {n} संदेश रोककर रख रहा हूँ।",
         "set": "👍 आज {label}।",

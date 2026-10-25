@@ -21,11 +21,13 @@ from channel.replies import ListRow, ReplySpec
 from mesiri_ai.models import ToolOutcome
 from runtime.save_first import DRAFT_NOTE
 
+from . import site_wait
 from .actions import CLOSE_ISSUES, ENGINEER_QUESTION, SITE_CONDITIONS
 from .cards import CardItem, merge_changes
 from .equipment import EQUIPMENT_LINE, is_equipment_only
 from .gateway import StepResult, WorkflowGateway
 from .later import LaterItem, held_item
+from .site_match import short_title
 from .tools import (
     ASK_USER,
     NOTE_FOR_ENGINEER,
@@ -262,9 +264,29 @@ def rejoin_names(options: list[Any], known: list[str]) -> list[str]:
     return out
 
 
-def question_reply(question: str, options: list[str]) -> ReplySpec:
+#: WhatsApp cuts a reply button's title at 20 characters (a list row's at 24).
+_BUTTON_TITLE_MAX = 20
+
+
+def site_reply(question: str, options: list[str]) -> ReplySpec:
+    """The site question ([111]): the site's name alone when it fits a button;
+    otherwise a list, whose rows carry a title cut only between words and the
+    full name underneath."""
+    labels = [" ".join(str(o).split()) for o in options if str(o).strip()][:MAX_LIST_ROWS]
+    if 0 < len(labels) <= MAX_BUTTONS and all(len(o) <= _BUTTON_TITLE_MAX for o in labels):
+        return ReplySpec(text=question, buttons=tuple(ListRow(f"agent_opt_{i}", o) for i, o in enumerate(labels, 1)))
+    rows = []
+    for i, label in enumerate(labels, 1):
+        title = short_title(label, _TITLE_MAX)
+        rows.append(ListRow(f"agent_opt_{i}", title, label[:72] if title != label else ""))
+    return ReplySpec(text=question, list_button_label="Choose site", list_rows=tuple(rows)) if rows else ReplySpec(text=question)
+
+
+def question_reply(question: str, options: list[str], *, awaiting: str = "") -> ReplySpec:
     """The one question as a message: buttons for up to three options, a list
     for up to ten, plain text otherwise."""
+    if awaiting == "site":
+        return site_reply(question, options)
     options = [o for o in (str(o).strip() for o in options) if o][:MAX_LIST_ROWS]
     rows = tuple(ListRow(f"agent_opt_{i}", _title(o)) for i, o in enumerate(options, 1))
     if 0 < len(rows) <= MAX_BUTTONS:
@@ -341,6 +363,16 @@ class AgentToolbox:
     #: Request 88: items of the open card that follow the one being changed.
     _carry_after: list[SavedItem] = field(default_factory=list)
     _seen: set[str] = field(default_factory=set)
+    #: [111] (runtime/agent/site_wait.py): save calls from earlier messages that
+    #: are waiting on the site answer, oldest first, as loaded for this turn...
+    site_queue: list[dict[str, Any]] = field(default_factory=list)
+    #: ...and the ones this turn's own site question now holds.
+    site_new: list[dict[str, Any]] = field(default_factory=list)
+    #: The waiting calls were released (saved at the answered site) this turn.
+    site_released: bool = False
+    #: The parked question is the code's own site question: it is sent as
+    #: worded in code, in the sender's language, whatever the model wrote.
+    parked_site: bool = False
     #: WA-52: what the stock lookup answered this message, if it ran.
     _stock_answer: str | None = None
     _inflight: set[asyncio.Task[Any]] = field(default_factory=set)
@@ -498,13 +530,134 @@ class AgentToolbox:
         self._seen.add(signature)
         if name in WRITE_TOOLS:
             self.attempted_writes += 1
+        earlier: list[str] = []
+        behind: list[dict[str, Any]] = []
+        site = None
+        if name in WRITE_TOOLS and self.site_queue and not self.site_released:
+            site = self._answered_site(args)
+            if site:
+                ahead, behind = self._split_site_queue(name, args)
+                earlier = await self._replay_site(ahead, site, args.get("project"))
         try:
             step = await self._run(name, args)
         except Exception:  # noqa: BLE001 — the model is told; the trace keeps the cause
             _log.exception("agent.tool_failed tool=%s", name)
             self.failed += 1
             return ToolOutcome(content={"status": "error", "message": "that action failed"})
-        return self._outcome(name, step)
+        if step.status == "choose" and step.awaiting == "site" and name in WRITE_TOOLS:
+            self._hold_for_site(name, args)
+        outcome = self._outcome(name, step)
+        if behind and site:
+            earlier += await self._replay_site(behind, site, args.get("project"))
+        if earlier:
+            outcome.content["also_saved_from_earlier_messages"] = earlier
+            outcome.content["instruction"] = (
+                "These earlier messages were waiting for the site and are now on the same card. "
+                "Do not save them again and do not ask about them."
+            )
+        return outcome
+
+    # -- [111] saves waiting on the site answer ---------------------------------
+
+    @staticmethod
+    def _bare(args: dict[str, Any]) -> str:
+        return json.dumps({k: v for k, v in args.items() if k not in ("site", "project")}, sort_keys=True, default=str)
+
+    def _hold_for_site(self, name: str, args: dict[str, Any]) -> None:
+        """This save ended in the site question: keep it, so the answer saves it
+        (and the ones before it) instead of the newest question replacing them."""
+        bare = self._bare(args)
+        if any(i["tool"] == name and self._bare(i["args"]) == bare for i in [*self.site_queue, *self.site_new]):
+            return
+        note = " ".join(self.user_text.split())[:120]
+        self.site_new.append({"tool": name, "args": dict(args), "note": note})
+
+    def _answered_site(self, args: dict[str, Any]) -> str | None:
+        """The site a save names when it is one of the sender's own: the answer
+        to the site question (a tap or a typed name, passed on by the model)."""
+        site = str(args.get("site") or "").strip()
+        if not site:
+            return None
+        project = str(args.get("project") or "").strip()
+        project_id = self.scope.project_id(project) if project else None
+        return site if self.scope.site_id(site, project_id) is not None else None
+
+    def _split_site_queue(self, name: str, args: dict[str, Any]) -> tuple[list[dict], list[dict]]:
+        """The waiting calls before and after the one being made now (which
+        covers its own entry), so the card keeps the order they came in. A call
+        that is none of them leaves everything ahead of it."""
+        queue, self.site_queue = self.site_queue, []
+        self.site_released = True
+        bare = self._bare(args)
+        for n, item in enumerate(queue):
+            if item["tool"] == name and self._bare(item["args"]) == bare:
+                return queue[:n], queue[n + 1 :]
+        return queue, []
+
+    async def _replay_site(self, items: list[dict[str, Any]], site: str, project: Any) -> list[str]:
+        """Save each waiting call at ``site``, in order. They land on the same
+        card; what cannot be saved is said, never dropped."""
+        done: list[str] = []
+        for item in items:
+            args = {k: v for k, v in item["args"].items() if k not in ("site", "project")}
+            args["site"] = site
+            if project:
+                args["project"] = project
+            signature = f"{item['tool']}:{json.dumps(args, sort_keys=True, default=str)}"
+            if signature in self._seen:
+                continue
+            self._seen.add(signature)
+            self.attempted_writes += 1
+            try:
+                step = await self._run(item["tool"], args)
+            except Exception:  # noqa: BLE001 -- said below; the trace keeps the cause
+                _log.exception("agent.site_release_failed tool=%s", item["tool"])
+                self.failed += 1
+                step = StepResult("error", text="That action failed.")
+            if step.status == "saved":
+                self._outcome(item["tool"], step)
+                done.append(step.summary or step.text)
+            else:
+                self.system_lines.append(f"Not saved ({item.get('note') or item['tool']}): {step.text}".strip())
+        return done
+
+    async def finish_site_queue(self) -> None:
+        """End of the turn: waiting calls the model did not release. A reply that
+        is just a site's name still releases them; any other message that did
+        not ask the site again leaves them unsaved, and the sender is told."""
+        if not self.site_queue or self.site_released or self.parked is not None:
+            return
+        typed = " ".join(self.user_text.split())
+        site = typed if 0 < len(typed.split()) <= 6 and self.scope.site_id(typed) is not None else None
+        if site:
+            ahead, _ = self._split_site_queue("", {})
+            await self._replay_site(ahead, site, None)
+            return
+        from .work_site import _language_of, _say
+
+        items = ", ".join(f"“{i['note'][:40]}”" if i.get("note") else i["tool"] for i in self.site_queue)
+        self.system_lines.append(_say(_language_of(self.user_text), "dropped", items=items))
+        self.site_queue = []
+
+    def site_queue_after(self) -> list[dict[str, Any]]:
+        """What still waits on the site answer after this turn."""
+        out = list(self.site_queue)
+        for item in self.site_new:
+            if len(out) >= site_wait.MAX_WAITING:
+                line = "I'm already holding too many updates. Please pick the site first, then send the rest."
+                if line not in self.system_lines:
+                    self.system_lines.append(line)
+                break
+            out.append(item)
+        return out
+
+    def site_hold_line(self) -> str | None:
+        waiting = len(self.site_queue_after())
+        if waiting < 2:
+            return None
+        from .work_site import _language_of, _say
+
+        return _say(_language_of(self.user_text), "hold", n=waiting)
 
     async def _stock_for_question(self) -> str | None:
         """WA-52: the stock answer for a message asking whether a material is
@@ -790,7 +943,13 @@ class AgentToolbox:
             # ARCH-04: the sender must pick (material, project, site, add it?).
             # The options go out as buttons whatever the model writes; its
             # own ask_user, if it also calls one, is the one question.
-            if self.parked is None:
+            if step.awaiting == "site" and self.parked_by != "gate":
+                # [111]: the code's own site question, with only real sites; it
+                # replaces any site question the model wrote.
+                self.parked = step.reply
+                self.parked_by = "ask"
+                self.parked_site = True
+            elif self.parked is None:
                 self.parked = step.reply
                 self.parked_by = "ask"
             return ToolOutcome(

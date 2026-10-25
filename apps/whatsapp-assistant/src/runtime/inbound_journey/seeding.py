@@ -1245,6 +1245,7 @@ async def _offer_project_setup(
     actor: Any,
     wa_id: str,
     send_reply: Callable[..., Awaitable[Any]],
+    team_query: Any | None = None,
 ) -> bool:
     """After a confirmed CREATE_PROJECT or CREATE_SITE execution, send the
     chained setup offer (tappable "Add a Site now?" / "Add a Teammate
@@ -1264,6 +1265,14 @@ async def _offer_project_setup(
     user_id = str(getattr(actor, "user_id", None) or "")
     if not user_id:
         return False
+    alone: bool | None = None
+    if stage == "member" and team_query is not None:
+        # [111]: count who is on the project before saying anything about its
+        # team; with someone besides the sender there is nothing to offer.
+        others = await team_query.count_other_members(project_id=project_id, user_id=user_id)
+        if others:
+            return False
+        alone = True if others == 0 else None
     try:
         await project_setup_offer_store.set_offer(
             user_id=user_id, stage=stage, project_id=project_id
@@ -1276,7 +1285,7 @@ async def _offer_project_setup(
     spec = (
         render_project_site_offer(project_name)
         if stage == "site"
-        else render_project_member_offer()
+        else render_project_member_offer(alone)
     )
     _log.info("project_setup.offered user=%s stage=%s project=%s", user_id, stage, project_id)
     await _safe(send_reply(spec, wa_id))

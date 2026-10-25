@@ -295,6 +295,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     from runtime.agent.actions import ActionService, ActionStore
     from runtime.agent.cards import CardStore
     from runtime.agent.later import LaterStore
+    from runtime.agent.site_wait import SiteWaitStore
     from runtime.agent.work_site import WorkSite
     # WorkflowRegistry compiles each graph once and caches it — constructed
     # once here, never per message.
@@ -982,6 +983,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         cards=CardStore(redis_client),
         # WA-57: the parts of a message still to do, per sender.
         later=LaterStore(redis_client),
+        site_wait=SiteWaitStore(redis_client),
         # Request 104: cards for what is not a record (engineer question,
         # the day's conditions, issues to close).
         actions=ActionService(

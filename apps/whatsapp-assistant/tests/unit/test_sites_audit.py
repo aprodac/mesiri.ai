@@ -110,7 +110,8 @@ async def _issue(entry: SiteEntry, **fields: Any):
 async def test_sit01_a_site_it_cannot_match_is_asked_never_saved_to_todays_site(said):
     out = await _issue(_entry(U_ALL), site_name=said)
     assert isinstance(out, Say) and out.status == "choose"
-    assert out.question == f'I don\'t have a site called "{said}". Which site is this for?'
+    assert out.question == f'I don\'t have a site called "{said}". Which site?'  # [111]
+    assert out.awaiting == "site"
     assert set(out.options) == {"Site A · Project A", "Tower 1", "Site A · Project B", "Site B"}
 
 

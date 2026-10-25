@@ -171,6 +171,7 @@ def build_message_handlers(
     work_site: Any | None = None,
     cards: Any | None = None,
     later: Any | None = None,
+    site_wait: Any | None = None,
     card_renderer: Any | None = None,
     ops_alerts: Any | None = None,
     actions: Any | None = None,
@@ -1012,6 +1013,7 @@ def build_message_handlers(
                 on_conversational=lambda: _conversational.add(message.correlation_id),
                 trace_logger=trace_logger,
                 later=later,
+                site_wait=site_wait,
             )
             timer.lap("agent_setup")
             result = await run_agent_turn(message, ctx, deps, menu_hint=hint)
@@ -1770,7 +1772,7 @@ def build_message_handlers(
             # CREATE_SITE, mutually exclusive with the attendance offers.
             try:
                 await _offer_project_setup(
-                    handled, project_setup_offer_store, ctx, wa_id, _collect_spec
+                    handled, project_setup_offer_store, ctx, wa_id, _collect_spec, team_query=project_detail_query
                 )
             except Exception:  # noqa: BLE001 — offer never disturbs the saved project/site
                 _log.exception("project_setup.offer_failed user=%s", ctx.user_id)

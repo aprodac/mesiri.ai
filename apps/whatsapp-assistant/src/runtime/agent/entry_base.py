@@ -77,6 +77,8 @@ class Say:
     #: text and the options never appeared).
     question: str | None = None
     options: tuple[str, ...] = ()
+    #: "choose" only: what the answer fills in ("site", "project", "material"...).
+    awaiting: str = ""
 
 
 @dataclass(slots=True)
@@ -178,7 +180,7 @@ class EntryScope:
             if not names:
                 return Say("info", f"{no} you are not on any project yet. Your admin can add you.")
             return choose("Which project is this for?", names, "project")
-        asked = self._named_site(candidate, picked_project, picked_site)
+        asked = self._named_site(candidate, picked_project, picked_site, message)
         if isinstance(asked, Say):
             return asked
         if asked is not None:
@@ -194,7 +196,9 @@ class EntryScope:
             if len(sites) > 1 and not ask_site:
                 sites = []  # the whole project
             if len(sites) > 1:
-                return choose("Which site is this for?", [s.name for s in sites], "site")
+                projects = {str(p.id): p.name for p in getattr(self.actor, "projects", None) or []}
+                labels = [label for _site, label in site_labels(sites, projects)]
+                return choose(site_words(message, "site_q"), labels, "site")
             site_id = sites[0].id if sites else None
             if site_id is None and (site_required or site_prompt) and not self._has_site_in(ctx, project_id):
                 # Without a site the save refuses it, and the model asked
@@ -270,7 +274,7 @@ class EntryScope:
             scope=(ctx.context_organization_id, ctx.context_user_id, scoped.context_project, scoped.context_site),
         )
 
-    def _named_site(self, candidate: Any, picked_project: Any, picked_site: Any) -> Any | Say | None:
+    def _named_site(self, candidate: Any, picked_project: Any, picked_site: Any, message: Any = None) -> Any | Say | None:
         """V1 audit SIT-01: a site the message names is used only when it is
         one of the sender's sites, by whole words. One site -> that site (not
         today's); none or several -> they are asked, never moved to today's
@@ -286,14 +290,16 @@ class EntryScope:
         hits = find_sites(pool, said, projects)
         if len(hits) == 1:
             return hits[0]
-        offered = hits if len(hits) > 1 else pool
+        # A name that is no site of theirs offers all of their sites, never the
+        # name itself and never only the ones of one project (SIT-01, [111]).
+        offered = hits if len(hits) > 1 else own
         if not offered:
             return None
         labels, cut = options(offered, projects, said)
         if hits:
             question = f'Which "{said}" is this for?'
         else:
-            question = f'I don\'t have a site called "{said}". Which site is this for?'
+            question = site_words(message, "no_site", said=said)
         note = ""
         if cut:
             note = (
@@ -416,6 +422,20 @@ def _until_midnight(timezone: str | None) -> int:
     return seconds_until_midnight(datetime.now(UTC), str(company_zone(timezone)), grace_hours=NIGHT_GRACE_HOURS)
 
 
+def site_words(message: Any, key: str, **fields: Any) -> str:
+    """The code's fixed site-question wording, in the language of the sender's
+    message (English when it has none of its own)."""
+    from .work_site import _language_of, _say
+
+    return _say(_language_of(getattr(message, "text", None)), key, **fields)
+
+
+def site_labels(sites: Any, projects: dict[str, str]) -> list[tuple[Any, str]]:
+    from .site_match import labelled
+
+    return labelled(list(sites), projects)
+
+
 def choose(question: str, options: list[str], arg: str, *, note: str = "") -> Say:
     """The sender must choose (ARCH-04): the model is told, and the options
     go out as buttons under its question."""
@@ -429,6 +449,7 @@ def choose(question: str, options: list[str], arg: str, *, note: str = "") -> Sa
         f"when they answer, call this tool again with that exact {arg}.{note}",
         question=question,
         options=tuple(shown),
+        awaiting=arg,
     )
 
 

@@ -27,6 +27,31 @@ class ProjectDetailQueryService:
     def __init__(self, db: PostgresDatabase) -> None:
         self._db = db
 
+    async def count_other_members(self, *, project_id: str, user_id: str) -> int | None:
+        """Explicit project_members rows other than ``user_id``, to know whether
+        anyone besides the sender is on the project ([111]: "doesn't have a team
+        yet" was said to an admin who was on it). None when it cannot be read."""
+        import sqlalchemy as sa
+
+        try:
+            proj_uuid, user_uuid = uuid.UUID(project_id), uuid.UUID(user_id)
+        except (TypeError, ValueError):
+            return None
+        try:
+            async with self._db.transaction() as conn:
+                count = (
+                    await conn.execute(
+                        sa.text(
+                            "SELECT count(*) FROM project_members "
+                            "WHERE project_id = :project_id AND user_id <> :user_id"
+                        ),
+                        {"project_id": proj_uuid, "user_id": user_uuid},
+                    )
+                ).scalar_one()
+        except Exception:  # noqa: BLE001 -- the offer is only a nudge
+            return None
+        return int(count)
+
     async def count_members(self, *, project_id: str) -> int:
         """Explicit project_members rows for this project. Deliberately NOT
         the same as "everyone who can reach this project" -- an org-wide

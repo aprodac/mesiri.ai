@@ -109,9 +109,15 @@ class AgentRunner:
         correlation_id: str | None = None,
         lap: Callable[[str], None] | None = None,
         after_tool: Callable[[], None] | None = None,
+        site_queue: list[dict] | None = None,
     ) -> AgentResult:
         toolbox = AgentToolbox(
-            gateway=gateway, scope=scope, user_text=user_text, lap=lap, after_tool=after_tool
+            gateway=gateway,
+            scope=scope,
+            user_text=user_text,
+            lap=lap,
+            after_tool=after_tool,
+            site_queue=[dict(i) for i in site_queue or []],
         )
         # WA-52: only a reply that OFFERED to ask counts ("Shall I ask your
         # engineer?"), not one that merely named the engineer.
@@ -141,6 +147,7 @@ class AgentRunner:
             )
         await toolbox.settle()
         await self._tomorrow_plan(toolbox, user_text)
+        await toolbox.finish_site_queue()
         run = await self._in_manglish(run, messages, user_text, correlation_id)
         run = await self._one_script(run, messages, user_text, correlation_id)
         run = await self._answer_in_language(run, messages, toolbox, user_text, correlation_id)
@@ -357,6 +364,14 @@ class AgentRunner:
         if toolbox.parked is not None:
             toolbox.drop_actions()
         text = (run.text or "").strip()
+        if toolbox.parked_site:
+            # [111]: the site question is the code's, in the sender's language;
+            # the model's words around it ("Ethra per vannu Site B-il?") went
+            # out as a different question.
+            text = ""
+            hold = toolbox.site_hold_line()
+            if hold and hold not in toolbox.system_lines:
+                toolbox.system_lines.append(hold)
         if toolbox.equipment_noted and not _entries(toolbox):
             # Request 104: the one plain line, whatever the model wrote.
             from .equipment import EQUIPMENT_LINE

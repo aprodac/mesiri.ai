@@ -119,3 +119,33 @@ def options(
     shown = ordered[:LIST_SITES] if cut else ordered
     names = [label_of[id(s)] for s in shown]
     return (names + [SOMETHING_ELSE] if cut else names), cut
+
+
+def short_title(label: str, limit: int) -> str:
+    """``label`` as a button or row title of at most ``limit`` characters,
+    never cut inside a word: "Green Villa, Kakkanad" whole when it fits; a
+    "Name · Project" label keeps its name and shortens the project (whole
+    words, then initials); anything else drops trailing words and ends in "…".
+    The full label goes in the row description."""
+    label = " ".join(str(label).split())
+    if len(label) <= limit:
+        return label
+    name, joined, project = label.rpartition(JOIN)[0], JOIN, label.rpartition(JOIN)[2]
+    if name and len(name) + len(joined) + 1 <= limit:
+        project_words = project.split()
+        for n in range(len(project_words) - 1, 0, -1):
+            tight = f"{name}{joined}{' '.join(project_words[:n])}…"
+            if len(tight) <= limit:
+                return tight
+        initials = f"{name}{joined}{''.join(w[0] for w in project_words).upper()}"
+        if len(initials) <= limit:
+            return initials
+    base = name or label
+    kept: list[str] = []
+    for word in base.split():
+        if len(" ".join([*kept, word])) + 1 > limit:
+            break
+        kept.append(word)
+    if kept:
+        return " ".join(kept).rstrip(",;:-") + "…"
+    return base[: limit - 1] + "…"  # one word longer than the limit: nothing else to keep

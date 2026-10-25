@@ -349,8 +349,8 @@ class JourneyGateway:
         if isinstance(prepared, Say):
             from .toolbox import question_reply
 
-            reply = question_reply(prepared.question, list(prepared.options)) if prepared.question else None
-            return StepResult(prepared.status, text=prepared.text, reply=reply)
+            reply = question_reply(prepared.question, list(prepared.options), awaiting=prepared.awaiting) if prepared.question else None
+            return StepResult(prepared.status, text=prepared.text, reply=reply, awaiting=prepared.awaiting)
         prepared_list = prepared if isinstance(prepared, list) else [prepared]
         tool = self.current_call[0] if self.current_call else prepared_list[0].kind
         args = dict(self.current_call[1]) if self.current_call else {}
@@ -409,8 +409,8 @@ class JourneyGateway:
         if isinstance(prepared, Say):
             from .toolbox import question_reply
 
-            reply = question_reply(prepared.question, list(prepared.options)) if prepared.question else None
-            return StepResult(prepared.status, text=prepared.text, reply=reply)
+            reply = question_reply(prepared.question, list(prepared.options), awaiting=prepared.awaiting) if prepared.question else None
+            return StepResult(prepared.status, text=prepared.text, reply=reply, awaiting=prepared.awaiting)
         run = await self.start_workflow(prepared.decision, prepared.event)
         _log.info("agent.direct correlation_id=%s kind=%s route=direct", message.correlation_id, kind)
         journey = SimpleNamespace(workflow_run=run, planner_decision=prepared.decision)
