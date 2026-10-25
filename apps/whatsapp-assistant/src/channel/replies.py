@@ -207,11 +207,25 @@ IMAGE_PURPOSE_SEMANTIC_HINT: dict[str, str] = {
 }
 
 
+#: WA-65: the module a photo purpose belongs to. A row whose module is off
+#: for the company is not offered -- tapping it could only answer "not
+#: switched on" (audit PHO-08). Site Update is the DPR, always on.
+IMAGE_PURPOSE_MODULE: dict[str, str] = {
+    "img_material_invoice": "materials",
+    "img_expense": "finance",
+    "img_attendance": "labour",
+}
+
+
 def render_image_purpose_picker() -> ReplySpec:
+    from workflows.registry import module_is_enabled
+
     return ReplySpec(
         text="📷 What is this photo for?",
         list_button_label="Choose one",
-        list_rows=IMAGE_PURPOSE_ROWS,
+        list_rows=tuple(
+            row for row in IMAGE_PURPOSE_ROWS if module_is_enabled(IMAGE_PURPOSE_MODULE.get(row.id))
+        ),
     )
 
 

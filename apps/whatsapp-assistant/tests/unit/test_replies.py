@@ -220,6 +220,20 @@ def test_image_purpose_picker_offers_every_kind_of_photo_a_site_sends():
     ]
 
 
+def test_image_purpose_picker_leaves_out_switched_off_modules():
+    # WA-65 (audit PHO-08): Expense is not offered when Finance is off.
+    from workflows.registry import set_enabled_modules
+
+    set_enabled_modules(["dpr", "materials", "labour"])
+    try:
+        row_ids = [row.id for row in render_image_purpose_picker().list_rows]
+        assert row_ids == ["img_material_invoice", "img_attendance", "img_site_update"]
+        set_enabled_modules(["dpr"])
+        assert [row.id for row in render_image_purpose_picker().list_rows] == ["img_site_update"]
+    finally:
+        set_enabled_modules(None)
+
+
 def test_expense_and_material_rows_are_told_apart_by_their_descriptions():
     """Both are pieces of paper from a supplier, so the titles alone cannot
     separate them. Getting this wrong double-counts spend."""
