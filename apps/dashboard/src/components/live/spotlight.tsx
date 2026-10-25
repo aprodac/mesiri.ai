@@ -13,6 +13,8 @@ export interface SpotlightFact {
   main: string
   sub?: string | null
   value?: string | null
+  /** A correction: what it said before, struck out above the new value. */
+  was?: string | null
   image?: string | null
   warn?: boolean
 }
@@ -85,6 +87,13 @@ export function Spotlight({ fact, from, to }: { fact: SpotlightFact; from: DOMRe
             <img src={fact.image} alt="" className="max-h-[52vh] w-full object-cover" />
           ) : (
             fact.value && (
+              <>
+              {fact.was && (
+                <span className="flex items-baseline gap-3 text-[clamp(22px,3vw,34px)] text-black/45">
+                  <span className="font-mono text-[12px] uppercase tracking-[0.12em]">was</span>
+                  <s className="decoration-red-700 decoration-[3px]">{fact.was}</s>
+                </span>
+              )}
               <span
                 className={cn('inline-block justify-self-start font-brand text-[clamp(64px,11vw,132px)] leading-[0.9] tabular-nums tracking-[-0.02em]', fact.warn && 'text-red-700')}
                 style={{
@@ -96,6 +105,7 @@ export function Spotlight({ fact, from, to }: { fact: SpotlightFact; from: DOMRe
               >
                 {fact.value}
               </span>
+              </>
             )
           )}
           <span className="text-[clamp(24px,3.4vw,40px)] font-semibold leading-tight">{fact.main}</span>

@@ -53,6 +53,8 @@ import { SPOT_MS, Spotlight, type SpotlightFact } from '@/components/live/spotli
 // saved and said. A photo is looked at too: it develops out of a blur, a
 // scan sweeps it, Mesiri's caption types in, and the photo flies onto the
 // work line it is evidence for, landing in that line's strip of photos.
+// A correction ("6 not 5") plays the same way with the old value struck out
+// (WEB-42); a line taken back crumbles away; a draft confirmed flips green.
 
 const POLL_MS = 3_000
 const FLY_MS = 750
@@ -74,9 +76,23 @@ type Reading = FactSources['readings'][number]
 type Photo = FactSources['photos'][number]
 interface Source {
   message: Message | null
+  /** The newest message on it: for a corrected line, the one that corrected it. */
+  latest: Message | null
   reading: Reading | null
   photos: Photo[]
 }
+
+/** A line whose value changed after it was on the report: what it said, and says now. */
+interface Fix {
+  item: ReviewItem
+  was: string
+  now: string
+  /** The manpower total, rather than a line. */
+  labour?: boolean
+}
+
+/** What a line says, for telling a correction: its number or tag, else its words. */
+const said = (item: ReviewItem) => keyValue(item) ?? rowLines(item).main
 
 const isImage = (type: string) => type.includes('image') || type.includes('photo')
 
@@ -319,6 +335,8 @@ function Row({
   noticing,
   photos,
   newPhotos,
+  was,
+  confirmedNow,
 }: {
   item: ReviewItem
   writing: boolean
@@ -335,6 +353,10 @@ function Row({
   /** The photos this line has landed with so far, and the ones just landed. */
   photos?: Photo[]
   newPhotos?: Set<string>
+  /** Just corrected: what it said before, struck out beside the new value. */
+  was?: string | null
+  /** Just confirmed by the engineer: the draft tag flips green. */
+  confirmedNow?: boolean
 }) {
   const { main, sub } = rowLines(item)
   const value = keyValue(item)
@@ -409,6 +431,11 @@ function Row({
           writing && !landed && 'opacity-0',
         )}
       >
+        {was && (
+          <span className="text-[12px] text-black/45 animate-in fade-in duration-500 motion-reduce:animate-none">
+            was <s className="decoration-red-700 decoration-2">{was}</s>
+          </span>
+        )}
         {value && (
           <span ref={valueRef}>
             <Landed active={landed} className={cn('text-[18px] font-semibold tabular-nums', notice && 'text-red-700')}>
@@ -416,8 +443,14 @@ function Row({
             </Landed>
           </span>
         )}
-        {item.review === 'draft' && (
+        {item.review === 'draft' ? (
           <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-primary">Draft</span>
+        ) : (
+          confirmedNow && (
+            <span className="bg-emerald-700 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-white animate-in zoom-in-50 fade-in duration-300 motion-reduce:animate-none">
+              ✓ Confirmed
+            </span>
+          )
         )}
       </span>
       {notice && (!writing || noticing) && !snapping && (
@@ -580,6 +613,14 @@ export default function LivePage() {
   const [newPhotos, setNewPhotos] = React.useState<Set<string>>(new Set())
   const photoQueue = React.useRef<{ item: ReviewItem; photo: Photo }[]>([])
   const evidence = React.useRef(new Map<string, number>())
+  // Corrections, take-backs and confirmations, found by comparing each read of the day with the last.
+  const lastSeen = React.useRef(new Map<string, ReviewItem>())
+  const lastHeadcount = React.useRef<number | null>(null)
+  const fixQueue = React.useRef<Fix[]>([])
+  const [held, setHeld] = React.useState<Record<string, ReviewItem>>({})
+  const [ghosts, setGhosts] = React.useState<ReviewItem[]>([])
+  const [corrected, setCorrected] = React.useState<Record<string, string>>({})
+  const [confirmedNow, setConfirmedNow] = React.useState<Set<string>>(new Set())
   const wasSent = React.useRef<boolean | null>(null)
 
   const known = React.useRef<Set<string> | null>(null)
@@ -617,9 +658,14 @@ export default function LivePage() {
     if (!sources.current.has(key)) {
       try {
         const res = await fetchFactSourcesApi(item.fact_type, item.id)
-        sources.current.set(key, { message: res.messages[0] ?? null, reading: res.readings[0] ?? null, photos: res.photos ?? [] })
+        sources.current.set(key, {
+          message: res.messages[0] ?? null,
+          latest: res.messages[res.messages.length - 1] ?? null,
+          reading: res.readings[0] ?? null,
+          photos: res.photos ?? [],
+        })
       } catch {
-        sources.current.set(key, { message: null, reading: null, photos: [] })
+        sources.current.set(key, { message: null, latest: null, reading: null, photos: [] })
       }
     }
     return sources.current.get(key)!
@@ -957,15 +1003,104 @@ export default function LivePage() {
     }
   }, [site?.site_name, site?.project_name])
 
+  /** A correction: the message that changed it read, the new value full size over the old one struck out, then into its place. */
+  const playFix = React.useCallback(
+    async (fix: Fix, gen: number) => {
+      const still = prefersReducedMotion()
+      const live = () => alive.current && gen === generation.current
+      const key = fix.labour ? 'labour' : factKey(fix.item)
+      const chipKey = `${key}:fix`
+      const what = fix.labour ? 'workers' : rowLines(fix.item).main
+      const label = fix.labour ? `${fix.now} workers (was ${fix.was})` : `${what} · ${fix.now} (was ${fix.was})`
+      // The message that corrected it, if it is linked to the line.
+      const src = await refreshSource(fix.item)
+      const msg = src.latest && !feedIds.current.has(src.latest.id) ? src.latest : null
+      if (msg) {
+        feedIds.current.add(msg.id)
+        setFeed((all) => [...all, toFeed(msg, true)])
+        if (!still) {
+          await sleep(Math.min(2600, 900 + (msg.text ?? '').length * 10))
+          think(msg.id, (t) => ({ ...t, step: 'reading' }))
+          await sleep(1100)
+          if (!live()) return
+          const english = msg.translated_text?.trim() || null
+          if (english) {
+            think(msg.id, (t) => ({ ...t, step: 'english', english }))
+            await sleep(inkDuration(`“${english}”`) + 400)
+          }
+          think(msg.id, (t) => ({ ...t, step: 'fields' }))
+          for (const text of ['→ a correction', `${fix.labour ? 'headcount' : what}: ${fix.was} → ${fix.now}`]) {
+            think(msg.id, (t) => ({ ...t, lines: [...t.lines, text] }))
+            await sleep(400)
+          }
+        }
+        think(msg.id, (t) => ({ ...t, step: 'chips', chips: [{ key: chipKey, label, flown: false }] }))
+        if (!still) await sleep(800)
+      }
+      if (!live()) return
+      const target = targetEls.current.get(key)
+      if (!still && target) {
+        const from = chipEls.current.get(chipKey)?.getBoundingClientRect() ?? target.getBoundingClientRect()
+        setSpot({
+          id: Date.now(),
+          fact: {
+            kind: `Correction · ${KINDS[fix.item.section] ?? 'Update'}`,
+            was: fix.was,
+            value: fix.now,
+            main: fix.labour ? 'workers on site' : what,
+          },
+          from,
+          to: target.getBoundingClientRect(),
+        })
+        await sleep(SPOT_MS)
+        setSpot(null)
+      }
+      // The new value takes the line; the old one stays struck out beside it a while.
+      if (fix.labour) setLabour(latest.current?.report.labour ?? null)
+      setHeld((all) => {
+        const next = { ...all }
+        delete next[factKey(fix.item)]
+        return next
+      })
+      setCorrected((all) => ({ ...all, [key]: fix.was }))
+      window.setTimeout(() => {
+        setCorrected((all) => {
+          const next = { ...all }
+          delete next[key]
+          return next
+        })
+      }, LANDED_MS)
+      land(fix.labour ? 'labour:fix' : factKey(fix.item))
+      if (msg) think(msg.id, (t) => ({ ...t, chips: t.chips.map((c) => ({ ...c, flown: true })), step: 'done' }))
+      setModuleLast((all) => ({ ...all, [fix.item.section]: `${fix.labour ? `${fix.now} workers` : `${what} · ${fix.now}`} (corrected)` }))
+      pulse(fix.item.section)
+      if (!still) await sleep(1200)
+    },
+    // land, think, toFeed and pulse only set state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [refreshSource],
+  )
+
   // Plays the queue a message at a time: every fact a message gave lands together.
   const play = React.useCallback(async () => {
     if (running.current) return
     running.current = true
     const gen = generation.current
-    while ((queue.current.length || qQueue.current.length || photoQueue.current.length) && alive.current && gen === generation.current) {
+    while (
+      (queue.current.length || qQueue.current.length || photoQueue.current.length || fixQueue.current.length) &&
+      alive.current &&
+      gen === generation.current
+    ) {
       await Promise.all(queue.current.map(sourceOf))
       if (gen !== generation.current) break
-      // Photos added to lines already on the report go first: they are the newest thing on a line people are reading.
+      // Corrections, then photos added to lines already on the report: they change lines people are reading.
+      if (fixQueue.current.length) {
+        const next = fixQueue.current[0]
+        fixQueue.current = fixQueue.current.slice(1)
+        await playFix(next, gen)
+        if (!prefersReducedMotion()) await sleep(600)
+        continue
+      }
       if (photoQueue.current.length) {
         const next = photoQueue.current[0]
         photoQueue.current = photoQueue.current.slice(1)
@@ -998,7 +1133,7 @@ export default function LivePage() {
       running.current = false
       if (finaleDue.current && alive.current) startFinale()
     }
-  }, [sourceOf, playMessage, playQuestion, playPhoto, startFinale])
+  }, [sourceOf, playMessage, playQuestion, playPhoto, playFix, startFinale])
 
   // New facts from the day's re-read join the queue; the first read is
   // taken as already written (with its messages in the feed, unanimated).
@@ -1008,6 +1143,8 @@ export default function LivePage() {
     if (known.current === null) {
       known.current = new Set(data.items.map(factKey))
       evidence.current = new Map(data.items.map((item) => [factKey(item), item.evidence_count ?? 0]))
+      lastSeen.current = new Map(data.items.map((item) => [factKey(item), item]))
+      lastHeadcount.current = data.report.labour.headcount
       setWritten(new Set(known.current))
       setLabour(data.report.labour)
       void Promise.all(data.items.map(sourceOf)).then((all) => {
@@ -1028,6 +1165,39 @@ export default function LivePage() {
       })
       return
     }
+    const before = lastSeen.current
+    const now = new Map(data.items.map((item) => [factKey(item), item]))
+    const freshLabour = data.items.some((item) => item.section === 'labour' && !known.current!.has(factKey(item)))
+    // Confirmed by the engineer since the last read: the tag flips green a while.
+    const confirmed = data.items.filter((item) => before.get(factKey(item))?.review === 'draft' && item.review === 'confirmed').map(factKey)
+    if (confirmed.length) {
+      setConfirmedNow((all) => new Set([...all, ...confirmed]))
+      window.setTimeout(() => setConfirmedNow((all) => new Set([...all].filter((k) => !confirmed.includes(k)))), LANDED_MS)
+    }
+    // A line whose value changed: held as it was until its correction plays.
+    for (const item of data.items) {
+      const old = before.get(factKey(item))
+      if (!old || item.section === 'labour' || !known.current!.has(factKey(item)) || said(old) === said(item)) continue
+      setHeld((all) => ({ ...all, [factKey(item)]: all[factKey(item)] ?? old }))
+      fixQueue.current.push({ item, was: said(old), now: said(item) })
+    }
+    // The manpower total changed with no new manpower line: corrected.
+    const headcount = data.report.labour.headcount
+    if (lastHeadcount.current !== null && headcount !== lastHeadcount.current && !freshLabour) {
+      const line = data.items.find((item) => item.section === 'labour')
+      if (line) fixQueue.current.push({ item: line, was: String(lastHeadcount.current), now: String(headcount), labour: true })
+      else setLabour(data.report.labour)
+    }
+    lastHeadcount.current = headcount
+    // A line taken back (undone or removed): it crumbles away.
+    const gone = [...before.values()].filter((item) => !now.has(factKey(item)) && written.has(factKey(item)))
+    if (gone.length) {
+      gone.forEach((item) => known.current!.delete(factKey(item)))
+      setGhosts((all) => [...all, ...gone])
+      window.setTimeout(() => setGhosts((all) => all.filter((g) => !gone.includes(g))), SNAP_MS + 300)
+    }
+    lastSeen.current = now
+    if (fixQueue.current.length) void play()
     // A photo added to a line already shown: its new photos play on their own.
     const grown = data.items.filter(
       (item) => known.current!.has(factKey(item)) && (item.evidence_count ?? 0) > (evidence.current.get(factKey(item)) ?? 0),
@@ -1047,6 +1217,8 @@ export default function LivePage() {
     fresh.forEach((item) => known.current!.add(factKey(item)))
     queue.current.push(...fresh)
     void play()
+    // `written` is read only to tell a line that was on the report.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail.data, play, sourceOf, refreshSource])
 
   // Questions: the first read goes in the feed as already answered; new ones play.
@@ -1111,6 +1283,12 @@ export default function LivePage() {
     wasSent.current = null
     setRowPhotos({})
     photoQueue.current = []
+    fixQueue.current = []
+    lastSeen.current = new Map()
+    lastHeadcount.current = null
+    setHeld({})
+    setGhosts([])
+    setCorrected({})
   }, [siteId, date])
 
   /** The demo: the report snaps to dust, then every line comes back from its message, in order. */
@@ -1131,6 +1309,9 @@ export default function LivePage() {
     setNoticing(null)
     setFinale(null)
     photoQueue.current = []
+    fixQueue.current = []
+    setHeld({})
+    setCorrected({})
     if (!prefersReducedMotion() && written.size > 0) {
       setSnapping(true)
       await sleep(SNAP_MS + 500)
@@ -1180,7 +1361,11 @@ export default function LivePage() {
   const rel = (r: DOMRect) => new DOMRect(r.x - (box?.x ?? 0), r.y - (box?.y ?? 0), r.width, r.height)
 
   const items = detail.data?.items ?? []
-  const shown = (section: Section) => items.filter((i) => i.section === section && written.has(factKey(i)))
+  // Lines as the report shows them: one awaiting its correction as it was, and lines just taken back still crumbling.
+  const shown = (section: Section) => [
+    ...items.map((i) => held[factKey(i)] ?? i).filter((i) => i.section === section && written.has(factKey(i))),
+    ...ghosts.filter((g) => g.section === section),
+  ]
   const company = branding.data?.letterhead_name || branding.data?.company_name || me?.org_name || me?.organization_name || 'Your company'
   const frozen = ['approved', 'published'].includes(detail.data?.day?.status ?? '')
   const lastRead = detail.dataUpdatedAt ? new Date(detail.dataUpdatedAt).toLocaleTimeString('en-GB') : null
@@ -1473,6 +1658,9 @@ export default function LivePage() {
                         className="inline-block rounded-full"
                         style={labourLanding && !prefersReducedMotion() ? { animation: 'live-ring 900ms 300ms ease-out 2' } : undefined}
                       >
+                        {corrected.labour && (
+                          <s className="mr-1.5 text-[16px] text-black/40 decoration-red-700 decoration-2">{corrected.labour}</s>
+                        )}
                         <Landed active={labourLanding} className="text-[26px] font-semibold leading-none">
                           <CountTo value={labour?.headcount ?? 0} />
                         </Landed>
@@ -1518,7 +1706,7 @@ export default function LivePage() {
                                 key={k}
                                 item={item}
                                 writing={writing === k}
-                                snapping={snapping}
+                                snapping={snapping || ghosts.some((g) => factKey(g) === k)}
                                 landed={landed.has(k)}
                                 innerRef={(el) => {
                                   if (el) targetEls.current.set(k, el)
@@ -1531,6 +1719,8 @@ export default function LivePage() {
                                 notice={noticeOf(item, detail.data?.report)}
                                 photos={rowPhotos[k]}
                                 newPhotos={newPhotos}
+                                was={corrected[k]}
+                                confirmedNow={confirmedNow.has(k)}
                                 noticing={noticing === k}
                                 opensIn={moduleOf(key).name}
                                 onOpen={
