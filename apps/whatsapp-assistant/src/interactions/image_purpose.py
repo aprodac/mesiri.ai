@@ -117,8 +117,11 @@ async def photo_wait_notice(
     again is not told."""
     import time
 
-    count, meta = await pending_media_store.waiting(user_id=user_id)
-    if not count:
+    try:
+        count, meta = await pending_media_store.waiting(user_id=user_id)
+    except Exception:  # noqa: BLE001 -- a reminder is a nicety: never in the way of the message
+        return None
+    if not count or not isinstance(meta, dict):
         return None
     moment = time.time() if now is None else now
     noun = "photo" if count == 1 else "photos"

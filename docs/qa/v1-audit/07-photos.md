@@ -142,13 +142,13 @@ expired list says so plainly; a PDF bill goes straight to reading without the ph
 
 | ID | Problem | Result | What Mesiri replied |
 | --- | --- | --- | --- |
-| PHO-01 | Site Update photos never attached | Not tested | |
-| PHO-02 | DPR shows a photo count, no photos | Not tested | |
-| PHO-03 | Bill photo not kept with the receipt | Not tested | |
+| PHO-01 | Site Update photos never attached | Fixed (tests) | Real-Postgres + journey: Site Update tap attaches the batch to today's work with each caption; finished work still takes photos. |
+| PHO-02 | DPR shows a photo count, no photos | Fixed (tests) | DPR prints up to 6 thumbnails per work item and "+ N more" (rendered and looked at in Chromium). |
+| PHO-03 | Bill photo not kept with the receipt | Fixed (test) | A received bill photo creates one invoice (source whatsapp) + attachment linked to the receipt; stock unchanged. |
 | PHO-04 | Only page 1 of a bill or register read | Not tested | |
 | PHO-05 | Photos lost on server restart | Not tested | |
-| PHO-06 | Untapped photos vanish after 10 minutes | Not tested | |
-| PHO-07 | Caption ignored, question still asked | Not tested | |
+| PHO-06 | Untapped photos vanish after 10 minutes | Fixed (tests) | Reminder once after 5 min, "not kept" notice 30 min after it; both on the sender's next message. Silent if they never write again. |
+| PHO-07 | Caption ignored, question still asked | Fixed (tests) | "cement bill 50 bags" / "2nd floor plastering" skip the question; rest of the burst (25 s) too. |
 | PHO-08 | Expense offered though it is off | Not tested | |
-| PHO-09 | "20 photos held" repeats, extras dropped | Not tested | |
+| PHO-09 | "20 photos held" repeats, extras dropped | Fixed (tests) | 25 photos: one picker, one "not kept" note, 20 held. |
 | PHO-10 | Next photo after a save skips the question | Not tested | |

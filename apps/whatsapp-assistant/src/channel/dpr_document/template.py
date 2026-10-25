@@ -106,7 +106,7 @@ _DOCUMENT_TEMPLATE_SRC = """
   .severity-low { color: {{ sub }}; font-weight: 600; }
   .stock-flag { color: {{ warn }}; font-size: 10px; margin: 3px 0 0; }
   .photos { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 2px 0 4px; }
-  .photos img { width: 30%; max-width: 190px; height: 120px; object-fit: cover; border-radius: 3px; }
+  .photos img { width: 15%; max-width: 110px; height: 80px; object-fit: cover; border-radius: 3px; }
   .photos .more { font-size: 11px; opacity: 0.7; }
   tr.photo-row td { border-top: none; }
   .cont { font-size: 10px; margin: 3px 0 0; opacity: 0.7; }

@@ -420,3 +420,19 @@ async def test_pho02_a_lost_or_unreadable_photo_never_stops_the_report():
     assert embedded["activities"][0]["thumbs"] == []
     assert embedded["activities"][0]["photos_more"] == 2
     assert await embed_photos(None, payload) is payload
+
+
+def test_dpr07_confirm_all_lists_what_is_being_confirmed():
+    from runtime.site_day_review import day_lines
+
+    lines = day_lines({
+        "activity_count": 2,
+        "activities": [{"work_type": "plastering"}, {"work_type": "brick_work"}],
+        "labour": {"headcount": 13, "trades": [{"trade": "mason", "headcount": 5}, {"trade": "helper", "headcount": 8}]},
+        "materials": [{"material_name": "Cement"}],
+    })
+    assert lines[:3] == [
+        "• Work: Plastering, Brick work (2 items)",
+        "• Labour: 13 workers (5 mason, 8 helper)",
+        "• Materials: Cement",
+    ]

@@ -298,10 +298,27 @@ def day_lines(payload: dict[str, Any]) -> list[str]:
         return ["• Site closed today, no work"]
     lines = []
     if payload.get("activity_count"):
-        lines.append(f"• Work: {_count(int(payload['activity_count']), 'item', 'items')}")
-    headcount = (payload.get("labour") or {}).get("headcount")
+        # DPR-07: what is being confirmed, not just how many ("Confirm all" on
+        # "Work: 2 items" was a tap on something unseen).
+        works = [
+            str(a.get("work_type") or "").replace("_", " ").strip().capitalize()
+            for a in payload.get("activities") or []
+            if a.get("review") != "rejected"
+        ]
+        works = list(dict.fromkeys(w for w in works if w))
+        count = _count(int(payload["activity_count"]), "item", "items")
+        shown = ", ".join(works[:4]) + (f" and {len(works) - 4} more" if len(works) > 4 else "")
+        lines.append(f"• Work: {shown} ({count})" if shown else f"• Work: {count}")
+    labour = payload.get("labour") or {}
+    headcount = labour.get("headcount")
     if headcount:
-        lines.append(f"• Labour: {_count(int(headcount), 'worker', 'workers')}")
+        trades = ", ".join(
+            f"{t['headcount']} {str(t['trade']).replace('_', ' ').lower()}"
+            for t in (labour.get("trades") or [])[:4]
+            if t.get("trade") and t.get("headcount")
+        )
+        workers = _count(int(headcount), "worker", "workers")
+        lines.append(f"• Labour: {workers} ({trades})" if trades else f"• Labour: {workers}")
     if payload.get("materials"):
         # The names, not a count: "2 entries" read as two saves when it was
         # two materials (round 3, 21 Oct).

@@ -90,10 +90,10 @@ finished; the same work reported twice on one day is flagged in the DPR for the 
 
 | ID | Problem | Result | What Mesiri replied, or what the DPR showed |
 | --- | --- | --- | --- |
-| WRK-01 | Later-day work missing from DPR | Not tested | |
-| WRK-02 | Common units refused | Not tested | |
-| WRK-03 | "Yesterday" answers today | Not tested | |
-| WRK-04 | Only 6 open jobs tracked | Not tested | |
-| WRK-05 | Multi-site loses open-work link | Not tested | |
-| WRK-06 | Correction only same session | Not tested | |
-| WRK-07 | Work photos lost on restart | Not tested | |
+| WRK-01 | Later-day work missing from DPR | Fixed (tests) | Real-Postgres: day 1 "started brickwork", day 2 "60%" then "finished" -> day 2 DPR lists brickwork, continued from day 1, Completed; Today page work_items counts it. Live: not run. |
+| WRK-02 | Common units refused | Fixed (tests) | 50 meter, 120 rft, 200 sq ft, 20 m3, 50 sq ft (plastering), 80 sq.m all save to the right unit through the real graph; an unknown unit asks with unit buttons, nothing lost. Migration 0489. Live: not run. |
+| WRK-03 | "Yesterday" answers today | Fixed (tests) | The tool had no "yesterday" at all (the labour resolver answered today). query_work_log takes date/date_range in the project zone; regression test in two zones. |
+| WRK-04 | Only 6 open jobs tracked | Fixed (tests) | 12 open jobs: finishing the oldest continues it (was a second entry); context line names 6 + "N more". |
+| WRK-05 | Multi-site loses open-work link | Fixed (tests) | No site chosen: open work of all the sender's sites shown under each site name (unit test; two-site live run not done). |
+| WRK-06 | Correction only same session | Fixed (tests) | After a session gap "correction, 150" finds the sender's latest quantity: a progress update, or the quantity the activity started with (corrected in place + activity_corrections audit). |
+| WRK-07 | Work photos lost on restart | Ops (INF-09) | Not in this plan. |

@@ -102,10 +102,10 @@ above stock is saved and flagged rather than refused.
 | --- | --- | --- | --- |
 | MAT-01 | No transfer between sites | Not tested | |
 | MAT-02 | Zero-stock warning every time | Not tested | |
-| MAT-03 | Day questions unanswered | Not tested | |
+| MAT-03 | Day questions unanswered | Fixed (tests) | "Yesterday (24 Oct): 10 bags cement used. 535 bags left now." from material_movements by project-zone day; today / this week too. |
 | MAT-04 | Only 10 material choices | Not tested | |
 | MAT-05 | New material units incomplete | Not tested | |
-| MAT-06 | Engineers convert units | Not tested | |
-| MAT-07 | Extra "Received or used?" | Not tested | |
-| MAT-08 | Question without buttons | Not tested | |
+| MAT-06 | Engineers convert units | Fixed (test) | Admin stores 1 load = 4 cum; engineer's "2 loads sand" saves 8 cum with no question; before it, the question says "cum". Long buttons no longer cut ("The amount in cubic"); old questions close. |
+| MAT-07 | Extra "Received or used?" | Fixed (tests, prompt part not run live) | Code refuses "Received or used?" and a "used" save for arrived/came/vannu messages. |
+| MAT-08 | Question without buttons | Fixed (tests) | ask_user with no options gets Received/Used or 10/25/50/Other. |
 | MAT-09 | Bill photos lost on restart | Not tested | |

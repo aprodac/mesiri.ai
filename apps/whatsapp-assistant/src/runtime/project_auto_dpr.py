@@ -136,7 +136,15 @@ async def _unconfirmed_updates(
                 sa.text(
                     """
                     SELECT s.name AS site_name,
-                           COALESCE((v.payload ->> 'activity_count')::int, 0) AS updates
+                           -- DPR-08: a site that sent only workers, materials or issues
+                           -- has reported too, not only one with work done.
+                           COALESCE((v.payload ->> 'activity_count')::int, 0)
+                           + CASE WHEN COALESCE((v.payload -> 'labour' ->> 'headcount')::int, 0) > 0
+                                  THEN 1 ELSE 0 END
+                           + CASE WHEN jsonb_typeof(v.payload -> 'materials') = 'array'
+                                  THEN jsonb_array_length(v.payload -> 'materials') ELSE 0 END
+                           + CASE WHEN jsonb_typeof(v.payload -> 'issues') = 'array'
+                                  THEN jsonb_array_length(v.payload -> 'issues') ELSE 0 END AS updates
                     FROM daily_reports r
                     JOIN sites s ON s.id = r.site_id
                     JOIN daily_report_versions v ON v.id = r.current_version_id

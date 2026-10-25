@@ -135,4 +135,5 @@ async def test_progress_on_earlier_work_counts(conn, company) -> None:
     day = await _day(conn, company)
 
     assert day["progress_updates"] == 1
-    assert day["work_items"] == 0
+    # WRK-01: earlier work updated today is on today's report, so it is a work item of the day.
+    assert day["work_items"] == 1
