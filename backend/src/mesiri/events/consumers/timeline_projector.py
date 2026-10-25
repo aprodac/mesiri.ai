@@ -199,6 +199,7 @@ EVENT_SUMMARY_BUILDERS: dict[str, Callable[[dict[str, Any]], str]] = {
         f"Material movement corrected ({p.get('movement_reason')})"
     ),
     "LabourAttendanceRecorded": _labour_attendance_summary,
+    "LabourAttendanceVoided": lambda p: "Attendance withdrawn",
     "ActivityCreated": lambda p: (
         f"{p.get('work_type')} activity started" if p.get("work_type") else "Activity started"
     ),

@@ -15,6 +15,7 @@ connection and never commits.
 from __future__ import annotations
 
 import datetime
+import json
 import uuid
 from decimal import Decimal
 from typing import Any
@@ -831,6 +832,23 @@ class PostgresWorkforceReadRepository:
         )
         if res.rowcount == 0:
             return "that attendance report no longer exists or was already withdrawn"
+        # BE-37: tell the timeline, as every other withdrawal does (an issue's
+        # SiteIssueCancelled, an expense's ExpenseVoided). Without it the
+        # dashboard timeline kept "N workers recorded" with nothing after it.
+        # Same transaction as the stamp, so one never lands without the other.
+        await self._conn.execute(
+            sa.text(
+                "INSERT INTO outbox_events "
+                "(id, aggregate_type, aggregate_id, event_type, payload) "
+                "VALUES (:id, 'labour_attendance_report', :aggregate_id, "
+                "'LabourAttendanceVoided', CAST(:payload AS jsonb))"
+            ),
+            {
+                "id": uuid.uuid4(),
+                "aggregate_id": report_id,
+                "payload": json.dumps({"reason": reason.strip()}),
+            },
+        )
         return None
 
     async def get_report(
