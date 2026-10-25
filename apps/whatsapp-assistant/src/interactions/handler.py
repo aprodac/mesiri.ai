@@ -196,7 +196,7 @@ class InteractionHandler:
             return None
 
         result, reply_text, execution_result, receipt_coro, next_segment_reply = await self._resume_and_render(
-            user_id, loaded, ResumeAction.CONFIRM, log_prefix="save_first", actor=actor
+            user_id, loaded, ResumeAction.CONFIRM, log_prefix="save_first", actor=actor, as_draft=True
         )
         if (
             execution_result is not None
@@ -309,7 +309,14 @@ class InteractionHandler:
         )
 
     async def _resume_and_render(
-        self, user_id: str, loaded, resume_action, *, log_prefix: str, actor: ActorIdentity | None = None
+        self,
+        user_id: str,
+        loaded,
+        resume_action,
+        *,
+        log_prefix: str,
+        actor: ActorIdentity | None = None,
+        as_draft: bool = False,
     ) -> tuple[
         WorkflowResumeResult,
         str,
@@ -423,8 +430,14 @@ class InteractionHandler:
                 # Return the coroutine without awaiting it — the caller sends
                 # reply_text first so the user sees confirmation immediately,
                 # then awaits this to get the image bytes.
-                receipt_coro = self._receipt_builder.build(
-                    result.confirmed_action, execution_result, actor
+                # Request 115: a save-first draft still waits on the Save tap
+                # (TO SAVE); any other confirmation was tapped, so SAVED.
+                receipt_coro = (
+                    self._receipt_builder.build(result.confirmed_action, execution_result, actor)
+                    if as_draft
+                    else self._receipt_builder.build(
+                        result.confirmed_action, execution_result, actor, saved=True
+                    )
                 )
         else:
             reply_text = render_resume_reply(result)

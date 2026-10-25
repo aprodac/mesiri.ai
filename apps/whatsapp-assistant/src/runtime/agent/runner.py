@@ -383,7 +383,11 @@ class AgentRunner:
             # Before the Save tap nothing is kept (WA-37).
             text = without_saved_claims(text)
         if _save_card(toolbox.parked):
+            # Request 115: a held card is not saved. Whatever the model wrote
+            # as "✅ Saved: ..." over it, or as UNDO, goes; only entries that
+            # were really written keep the system's own block below.
             text = without_undo_prompt(text)
+            text = _without_pending_saved(text, toolbox)
         text = without_tool_talk(text)
         if not _questions_line(toolbox) and not _engineer_card(toolbox):
             # WA-52: nothing went to the engineer, so the reply never says it did.
@@ -774,6 +778,23 @@ def _save_card(parked: ReplySpec | None) -> bool:
     """Request 114: the question held for the sender is a Save / Cancel card
     (work done on an open activity), not a Yes / No."""
     return parked is not None and any(row.title == SAVE_TITLE for row in parked.buttons or ())
+
+
+def _without_pending_saved(text: str, toolbox: AgentToolbox) -> str:
+    """``text`` without a "✅ Saved: ..." header (and its bullets) the model put
+    over a card that waits on the Save tap (request 115). With no entry really
+    written, any such header goes; with some, only the ones that play back the
+    card's own items, since the system's block speaks for the written ones."""
+    if not _entries(toolbox):
+        return _without_saved_block(text)
+    pending = _normalized(_card_details(toolbox.parked.text if toolbox.parked else ""))
+    kept: list[str] = []
+    for line in text.split("\n"):
+        norm = _normalized(line)
+        if _SAVED_HEAD.match(line) and norm and norm.split(" ", 1)[-1] in pending:
+            continue
+        kept.append(line)
+    return "\n".join(kept).strip()
 
 
 def _card_details(card: str) -> str:
