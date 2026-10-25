@@ -8,9 +8,10 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Callout } from '@/components/dpr-page'
+import { useSiteNames } from '@/lib/site-names'
+import { longDate, qty } from '@/lib/site-day'
 import {
   fetchInvoice,
   fetchInvoiceAttachment,
@@ -30,8 +31,12 @@ interface InvoiceDetailsSheetProps {
  *
  * The document is the point. When a delivery is disputed weeks later, the
  * answer is the piece of paper the supplier sent, not our retyping of it.
+ *
+ * WEB-35: restyled like the other Materials panels -- supplier and number
+ * first, plain labels, a light table with a total row, no internal id.
  */
 export function InvoiceDetailsSheet({ invoiceId, open, onOpenChange }: InvoiceDetailsSheetProps) {
+  const siteNames = useSiteNames()
   const {
     data: invoice,
     isLoading,
@@ -62,129 +67,134 @@ export function InvoiceDetailsSheet({ invoiceId, open, onOpenChange }: InvoiceDe
     return sum > 0 ? sum : null
   }, [invoice])
 
+  const site = invoice?.site_id ? siteNames.get(invoice.site_id) : undefined
+  const supplier = invoice?.vendor_name ?? invoice?.supplier_name
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+      <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
-          <SheetTitle>Supplier Invoice</SheetTitle>
-          <SheetDescription>Every material on this document, and the original.</SheetDescription>
+          <SheetTitle>Supplier invoice</SheetTitle>
+          <SheetDescription>Every material on it, and the original document.</SheetDescription>
         </SheetHeader>
 
-        <div className="px-4 pb-4 text-xs space-y-4">
+        <div className="flex-1 px-4 pb-4 text-sm">
           {isLoading && (
-            <div className="flex items-center justify-center py-10 gap-2 text-muted-foreground">
-              <Loader2 className="size-4 animate-spin text-primary" />
-              Loading invoice...
+            <div className="flex items-center justify-center gap-2 py-10 text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
+              Loading…
             </div>
           )}
 
           {isError && (
             <div className="flex flex-col items-center gap-3 py-10 text-center">
-              <AlertTriangle className="size-6 text-rose-500" />
-              <p className="text-muted-foreground">Failed to load this invoice.</p>
+              <AlertTriangle className="size-6 text-destructive" />
+              <p className="text-muted-foreground">This invoice could not be loaded.</p>
               <Button size="sm" variant="outline" onClick={() => refetch()}>
-                Retry
+                Try again
               </Button>
             </div>
           )}
 
           {invoice && (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Supplier">
-                  <span className="font-semibold text-foreground">
-                    {invoice.vendor_name ?? invoice.supplier_name ?? '—'}
-                  </span>
-                  {invoice.vendor_name && invoice.supplier_name &&
-                    invoice.vendor_name !== invoice.supplier_name && (
-                      // The document's own words are kept even when a vendor
-                      // record matched, so a later rename can't rewrite history.
-                      <span className="block text-[10px] text-muted-foreground">
-                        on document: {invoice.supplier_name}
-                      </span>
-                    )}
-                </Field>
-                <Field label="Invoice Date">{invoice.invoice_date ?? '—'}</Field>
-                <Field label="Invoice No.">{invoice.invoice_number ?? '—'}</Field>
-                <Field label="Invoice Total">
-                  <span className="font-mono font-bold text-foreground">
-                    {formatMoney(invoice.invoice_total)}
-                  </span>
-                </Field>
+            <div className="flex flex-col gap-5">
+              <div>
+                <p className="text-lg">
+                  <strong className="font-semibold">{supplier ?? 'Supplier not named'}</strong>
+                </p>
+                <p className="text-muted-foreground">
+                  {[invoice.invoice_number && `No. ${invoice.invoice_number}`, invoice.invoice_date && longDate(invoice.invoice_date)]
+                    .filter(Boolean)
+                    .join(' · ') || 'No number or date on it'}
+                </p>
               </div>
 
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
-                  Materials ({invoice.lines.length})
-                </div>
-                <div className="rounded-md border overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-xs">Material</TableHead>
-                        <TableHead className="text-xs text-right">Qty</TableHead>
-                        <TableHead className="text-xs text-right">Rate</TableHead>
-                        <TableHead className="text-xs text-right">Total</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {invoice.lines.map((line) => (
-                        <TableRow key={line.id} className="text-xs">
-                          <TableCell className="font-medium">{line.material_name}</TableCell>
-                          <TableCell className="text-right font-mono tabular-nums">
-                            {line.quantity} {line.unit}
-                          </TableCell>
-                          <TableCell className="text-right font-mono tabular-nums text-muted-foreground">
-                            {formatMoney(line.unit_cost)}
-                          </TableCell>
-                          <TableCell className="text-right font-mono tabular-nums">
-                            {formatMoney(line.total_cost)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+              <dl className="grid grid-cols-[96px_1fr] gap-x-3 gap-y-1.5">
+                <dt className="text-muted-foreground">Total</dt>
+                <dd className="font-semibold tabular-nums">{formatMoney(invoice.invoice_total)}</dd>
+                <dt className="text-muted-foreground">Site</dt>
+                <dd>{site ? `${site.name} · ${site.project}` : '—'}</dd>
+                {invoice.vendor_name && invoice.supplier_name && invoice.vendor_name !== invoice.supplier_name && (
+                  // The document's own words are kept even when a vendor
+                  // record matched, so a later rename can't rewrite history.
+                  <>
+                    <dt className="text-muted-foreground">On the paper</dt>
+                    <dd>{invoice.supplier_name}</dd>
+                  </>
+                )}
+                <dt className="text-muted-foreground">Recorded</dt>
+                <dd>{new Date(invoice.created_at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</dd>
+                {invoice.notes && (
+                  <>
+                    <dt className="text-muted-foreground">Note</dt>
+                    <dd className="whitespace-pre-line">{invoice.notes}</dd>
+                  </>
+                )}
+              </dl>
+
+              <section className="flex flex-col gap-1.5">
+                <h3 className="text-sm font-semibold">
+                  Materials <span className="font-normal text-muted-foreground">{invoice.lines.length}</span>
+                </h3>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs text-muted-foreground">
+                      <th className="py-1.5 pr-2 font-medium">Material</th>
+                      <th className="py-1.5 pr-2 text-right font-medium">Qty</th>
+                      <th className="hidden py-1.5 pr-2 text-right font-medium sm:table-cell">Rate</th>
+                      <th className="py-1.5 text-right font-medium">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {invoice.lines.map((line) => (
+                      <tr key={line.id}>
+                        <td className="py-2 pr-2 font-medium">{line.material_name}</td>
+                        <td className="py-2 pr-2 text-right tabular-nums text-emerald-700 dark:text-emerald-400">
+                          +{qty(line.quantity)} <span className="text-muted-foreground">{line.unit}</span>
+                        </td>
+                        <td className="hidden py-2 pr-2 text-right tabular-nums text-muted-foreground sm:table-cell">{formatMoney(line.unit_cost)}</td>
+                        <td className="py-2 text-right tabular-nums">{formatMoney(line.total_cost)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {linesTotal !== null && (
+                    <tfoot>
+                      <tr className="border-t font-semibold">
+                        <td className="py-2" colSpan={2}>
+                          Lines add up to
+                        </td>
+                        <td className="hidden sm:table-cell" />
+                        <td className="py-2 text-right tabular-nums">{formatMoney(String(linesTotal))}</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
                 {/* Tax and freight are deliberately not extracted, so the
                     printed total is normally higher than the lines add up to.
                     Stated plainly rather than flagged as a discrepancy — the
                     gap is expected on almost every real invoice. */}
-                {linesTotal !== null && invoice.invoice_total &&
-                  Math.abs(Number(invoice.invoice_total) - linesTotal) > 0.5 && (
-                    <p className="mt-1.5 text-[10px] text-muted-foreground">
-                      Lines add up to {formatMoney(String(linesTotal))}. The difference from the
-                      invoice total is normally tax and delivery, which aren't recorded separately.
-                    </p>
-                  )}
-              </div>
+                {linesTotal !== null && invoice.invoice_total && Math.abs(Number(invoice.invoice_total) - linesTotal) > 0.5 && (
+                  <p className="text-xs text-muted-foreground">The invoice total is higher by tax and delivery, which aren't split out.</p>
+                )}
+              </section>
 
               {invoice.expense_id && (
-                <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2.5 flex items-start gap-2">
-                  <Receipt className="size-3.5 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
-                  <div>
-                    <p className="font-semibold text-emerald-700 dark:text-emerald-400">
-                      Recorded in Finance as an unpaid expense
-                    </p>
-                    <p className="text-muted-foreground text-[10px]">
-                      Nobody needs to enter this invoice again.
-                    </p>
-                  </div>
-                </div>
+                <Callout tone="success" icon={Receipt}>
+                  <strong className="font-semibold">In Finance as an unpaid bill.</strong> Nobody needs to enter it again.
+                </Callout>
               )}
 
-              <div className="space-y-1.5 pt-2 border-t">
-                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                  Original Document
-                </span>
+              <section className="flex flex-col gap-1.5">
+                <h3 className="text-sm font-semibold">Original</h3>
                 {!invoice.has_attachment ? (
-                  <p className="text-muted-foreground">No document was attached to this invoice.</p>
+                  <p className="text-muted-foreground">No photo or PDF was attached.</p>
                 ) : attachmentLoading ? (
-                  <p className="text-muted-foreground">Preparing link...</p>
+                  <p className="text-muted-foreground">Getting the link…</p>
                 ) : attachment ? (
-                  <Button asChild size="sm" variant="outline" className="h-8 gap-1.5 text-xs">
+                  <Button asChild size="sm" variant="outline" className="w-fit gap-1.5">
                     <a href={attachment.url} target="_blank" rel="noreferrer">
                       <FileText className="size-3.5" />
-                      View original
+                      Open the original
                       <ExternalLink className="size-3" />
                     </a>
                   </Button>
@@ -192,46 +202,16 @@ export function InvoiceDetailsSheet({ invoiceId, open, onOpenChange }: InvoiceDe
                   // The reference is stored and correct; only the storage
                   // provider is unreachable. Say that, rather than implying the
                   // document was lost.
-                  <div className="flex items-center gap-2 text-muted-foreground">
+                  <p className="flex items-center gap-2 text-muted-foreground">
                     <FileText className="size-3.5" />
-                    <span>
-                      {attachmentError
-                        ? 'Document attached — viewing is not available yet.'
-                        : 'Document attached.'}
-                    </span>
-                  </div>
+                    {attachmentError ? 'Attached, but it cannot be opened right now.' : 'Attached.'}
+                  </p>
                 )}
-              </div>
-
-              {invoice.notes && (
-                <div className="space-y-1">
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                    Notes
-                  </span>
-                  <p className="text-foreground leading-relaxed">{invoice.notes}</p>
-                </div>
-              )}
-
-              <div className="pt-1">
-                <Badge variant="outline" className="text-[10px] font-mono">
-                  {invoice.id}
-                </Badge>
-              </div>
-            </>
+              </section>
+            </div>
           )}
         </div>
       </SheetContent>
     </Sheet>
-  )
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold block">
-        {label}
-      </span>
-      <div className="text-foreground">{children}</div>
-    </div>
   )
 }
