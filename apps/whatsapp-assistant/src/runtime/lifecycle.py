@@ -327,6 +327,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Trial router not loaded: %s", exc)
 
+    # WEB-36: Tell Mesiri from the dashboard (the same handler as WhatsApp).
+    try:
+        from web_assistant.router import router as web_assistant_router
+
+        app.include_router(web_assistant_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Web assistant router not loaded: %s", exc)
+
     # Users routes (tenant management)
     try:
         from users.router import router as users_router

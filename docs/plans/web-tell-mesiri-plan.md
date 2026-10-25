@@ -1,6 +1,8 @@
 # Tell Mesiri from the dashboard (voice or text) — plan
 
-**Status:** proposed 25 Oct 2026, **waiting for Alan's approval** (tracker WEB-36).
+**Status:** approved by Alan 25 Oct 2026 (relayed in session), with the recommended answers to the three decisions below. In progress (tracker WEB-36).
+
+**Built so far:** push 1, `POST /assistant/messages` (text and button taps) in `apps/whatsapp-assistant/src/web_assistant/router.py`, sharing `runtime/reply_capture.py` with the control panel's `simulate`. The panel (push 3) comes after voice (push 2), so it is built once with both.
 **Why approval:** it adds a way for a signed-in dashboard user to make Mesiri act on their
 behalf (a new authenticated entry into the assistant). CLAUDE.md stop rule 5:
 security-sensitive (auth, permissions).
