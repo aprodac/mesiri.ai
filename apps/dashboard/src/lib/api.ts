@@ -1955,7 +1955,15 @@ export interface FactSources {
     extracted: Record<string, unknown>
     created_at: string | null
   }[]
-  photos: { url: string | null; mime_type: string | null; caption: string | null }[]
+  photos: {
+    /** id, when and who sent it (WEB-40); older APIs leave them out. */
+    id?: string
+    url: string | null
+    mime_type: string | null
+    caption: string | null
+    at?: string | null
+    by?: string | null
+  }[]
   history: { state: string; note: string | null; at: string | null; by: string | null }[]
 }
 

@@ -48,7 +48,9 @@ import { Finale } from '@/components/live/finale'
 // before it sends. A line Mesiri flagged (more used than in stock, a likely
 // repeat) shudders and says so. When the report goes out, it folds into its
 // PDF and drops into WhatsApp (the finale). Read-only: it shows what Mesiri
-// saved and said.
+// saved and said. A photo is looked at too: it develops out of a blur, a
+// scan sweeps it, Mesiri's caption types in, and the photo flies onto the
+// work line it is evidence for, landing in that line's strip of photos.
 
 const POLL_MS = 3_000
 const FLY_MS = 750
@@ -68,10 +70,14 @@ const SECTIONS: { key: Exclude<Section, 'labour'>; title: string }[] = [
 
 type Message = FactSources['messages'][number]
 type Reading = FactSources['readings'][number]
+type Photo = FactSources['photos'][number]
 interface Source {
   message: Message | null
   reading: Reading | null
+  photos: Photo[]
 }
+
+const isImage = (type: string) => type.includes('image') || type.includes('photo')
 
 interface Chip {
   key: string
@@ -99,6 +105,8 @@ interface FeedMessage {
   /** Arrived while watching (animates), rather than already there. */
   fresh: boolean
   think: Thinking | null
+  /** A photo's link, shown with the message. */
+  image?: string | null
   /** A question's answer, as Mesiri sent it; shown once given. */
   reply?: string | null
   replied?: boolean
@@ -193,7 +201,7 @@ function Thread({ from, to, travel = false, className = 'lg:block' }: { from: DO
 }
 
 /** A copy of a chip flying from the message to the report. */
-function Flyer({ label, from, to }: { label: string; from: DOMRect; to: DOMRect }) {
+function Flyer({ label, from, to, image }: { label: string; from: DOMRect; to: DOMRect; image?: string | null }) {
   const [go, setGo] = React.useState(false)
   React.useLayoutEffect(() => {
     const frame = requestAnimationFrame(() => setGo(true))
@@ -204,7 +212,7 @@ function Flyer({ label, from, to }: { label: string; from: DOMRect; to: DOMRect 
   return (
     <span
       aria-hidden="true"
-      className="pointer-events-none fixed z-50 whitespace-nowrap bg-primary px-2.5 py-1 text-[12.5px] font-semibold text-primary-foreground shadow-lg"
+      className="pointer-events-none fixed z-50 flex items-center gap-2 whitespace-nowrap bg-primary px-2.5 py-1 text-[12.5px] font-semibold text-primary-foreground shadow-lg"
       style={{
         left: from.left,
         top: from.top,
@@ -213,6 +221,7 @@ function Flyer({ label, from, to }: { label: string; from: DOMRect; to: DOMRect 
         transition: `transform ${FLY_MS}ms cubic-bezier(.6,0,.2,1), opacity ${FLY_MS}ms ease-in`,
       }}
     >
+      {image && <img src={image} alt="" className="-my-0.5 -ml-1 size-9 object-cover" />}
       {label}
     </span>
   )
@@ -221,16 +230,19 @@ function Flyer({ label, from, to }: { label: string; from: DOMRect; to: DOMRect 
 function ThinkingPanel({
   think,
   chipRef,
+  looking = false,
 }: {
   think: Thinking
   chipRef: (key: string, el: HTMLElement | null) => void
+  /** A photo: Mesiri looks rather than reads. */
+  looking?: boolean
 }) {
   const reading = think.step === 'reading'
   return (
     <div className="mt-3 grid gap-2 border-l-2 border-primary/50 pl-3 animate-in fade-in duration-500 motion-reduce:animate-none">
       <Label className="flex items-center gap-2 text-primary">
         <span className={cn('size-1.5 rounded-full bg-primary', reading && 'animate-ping')} aria-hidden="true" />
-        Mesiri · {reading ? 'reading' : think.step === 'done' ? 'understood' : 'understanding'}
+        Mesiri · {reading ? (looking ? 'looking at the photo' : 'reading') : think.step === 'done' ? 'understood' : 'understanding'}
         {reading && <span className="animate-pulse">…</span>}
       </Label>
       {think.english && think.step !== 'reading' && (
@@ -290,6 +302,8 @@ function Row({
   onOpen,
   notice,
   noticing,
+  photos,
+  newPhotos,
 }: {
   item: ReviewItem
   writing: boolean
@@ -303,6 +317,9 @@ function Row({
   /** What Mesiri noticed about this line, and whether it's being said now. */
   notice?: string | null
   noticing?: boolean
+  /** The photos this line has landed with so far, and the ones just landed. */
+  photos?: Photo[]
+  newPhotos?: Set<string>
 }) {
   const { main, sub } = rowLines(item)
   const value = keyValue(item)
@@ -344,6 +361,28 @@ function Row({
             delay={writing ? THREAD_MS + SUB_LAG_MS : 80}
             className="block text-[12.5px] text-black/55"
           />
+        )}
+        {photos && photos.length > 0 && !snapping && (
+          // The line's evidence: each photo lands here when it arrives.
+          <span className="mt-2 flex flex-wrap gap-1.5">
+            {photos.slice(-6).map((photo, i) => {
+              const fresh = !!photo.id && !!newPhotos?.has(photo.id)
+              return photo.url ? (
+                <img
+                  key={photo.id ?? i}
+                  src={photo.url}
+                  alt={photo.caption ?? 'Site photo'}
+                  title={photo.caption ?? undefined}
+                  className="size-11 border border-black/15 object-cover"
+                  style={
+                    fresh && !prefersReducedMotion()
+                      ? { animation: 'live-slam 700ms cubic-bezier(.2,.9,.3,1.2) both, live-ring 900ms 300ms ease-out 2' }
+                      : undefined
+                  }
+                />
+              ) : null
+            })}
+          </span>
         )}
       </span>
       <span
@@ -497,7 +536,7 @@ export default function LivePage() {
   const [labour, setLabour] = React.useState<SiteDayDetail['report']['labour'] | null>(null)
   const [feed, setFeed] = React.useState<FeedMessage[]>([])
   const [thread, setThread] = React.useState<{ chip: string; target: string } | null>(null)
-  const [flyer, setFlyer] = React.useState<{ id: number; label: string; from: DOMRect; to: DOMRect } | null>(null)
+  const [flyer, setFlyer] = React.useState<{ id: number; label: string; from: DOMRect; to: DOMRect; image?: string | null } | null>(null)
   const [, redraw] = React.useReducer((n: number) => n + 1, 0)
   // Tell Mesiri right here; what's saved writes itself in like any message.
   const [telling, setTelling] = React.useState(params.get('tell') === '1')
@@ -518,6 +557,11 @@ export default function LivePage() {
   const [noticing, setNoticing] = React.useState<string | null>(null)
   const [finale, setFinale] = React.useState<DOMRect | null>(null)
   const finaleDue = React.useRef(false)
+  // Photos on each work line, the ones just landed, and photos still to play (added to a line already shown).
+  const [rowPhotos, setRowPhotos] = React.useState<Record<string, Photo[]>>({})
+  const [newPhotos, setNewPhotos] = React.useState<Set<string>>(new Set())
+  const photoQueue = React.useRef<{ item: ReviewItem; photo: Photo }[]>([])
+  const evidence = React.useRef(new Map<string, number>())
   const wasSent = React.useRef<boolean | null>(null)
 
   const known = React.useRef<Set<string> | null>(null)
@@ -555,13 +599,22 @@ export default function LivePage() {
     if (!sources.current.has(key)) {
       try {
         const res = await fetchFactSourcesApi(item.fact_type, item.id)
-        sources.current.set(key, { message: res.messages[0] ?? null, reading: res.readings[0] ?? null })
+        sources.current.set(key, { message: res.messages[0] ?? null, reading: res.readings[0] ?? null, photos: res.photos ?? [] })
       } catch {
-        sources.current.set(key, { message: null, reading: null })
+        sources.current.set(key, { message: null, reading: null, photos: [] })
       }
     }
     return sources.current.get(key)!
   }, [])
+
+  /** Read an item's sources again (a photo was added to it); photo links are short-lived anyway. */
+  const refreshSource = React.useCallback(
+    async (item: ReviewItem): Promise<Source> => {
+      sources.current.delete(factKey(item))
+      return sourceOf(item)
+    },
+    [sourceOf],
+  )
 
   const questionFeed = (q: SiteQuestion, fresh: boolean): FeedMessage => ({
     id: q.id,
@@ -577,6 +630,7 @@ export default function LivePage() {
   })
 
   const toFeed = (msg: Message, fresh: boolean): FeedMessage => ({
+    image: isImage(msg.type) ? msg.media_url : null,
     id: msg.id,
     type: msg.type,
     text: (msg.text || '').trim() || kindLabel(msg.type),
@@ -616,6 +670,19 @@ export default function LivePage() {
     }, 2400)
   }
 
+  const landPhotos = (key: string, photos: Photo[]) => {
+    const ids = photos.map((p) => p.id).filter((id): id is string => !!id)
+    setRowPhotos((all) => {
+      const had = all[key] ?? []
+      const fresh = photos.filter((p) => !had.some((h) => (h.id && h.id === p.id) || h.url === p.url))
+      return fresh.length ? { ...all, [key]: [...had, ...fresh] } : all
+    })
+    setNewPhotos((all) => new Set([...all, ...ids]))
+    window.setTimeout(() => {
+      setNewPhotos((all) => new Set([...all].filter((id) => !ids.includes(id))))
+    }, LANDED_MS)
+  }
+
   /** One message and the facts taken from it: read, understood, landed, passed on to its module. */
   const playMessage = React.useCallback(
     async (group: ReviewItem[], gen: number) => {
@@ -648,6 +715,8 @@ export default function LivePage() {
             const reading = (await sourceOf(item)).reading
             for (const line of readingLines(reading?.extracted)) if (!lines.includes(line)) lines.push(line)
           }
+          const captions = (await Promise.all(group.map(sourceOf))).flatMap((x) => x.photos.map((p) => p.caption).filter(Boolean))
+          if (captions.length) lines.unshift(`sees: ${captions[0]}`)
           for (const item of group) {
             if (item.flags?.includes('beyond_stock')) lines.push('⚠ more used than in stock')
             else if (item.flags?.includes('possible_duplicate')) lines.push('⚠ looks like a repeat')
@@ -677,7 +746,8 @@ export default function LivePage() {
           const chip = chipEls.current.get(key)
           const target = targetEls.current.get(isLabour ? 'labour-total' : `${key}:value`) ?? targetEls.current.get(key)
           if (chip && target) {
-            setFlyer({ id: Date.now(), label: chipLabel(item, headcount), from: chip.getBoundingClientRect(), to: target.getBoundingClientRect() })
+            const image = (await sourceOf(item)).photos.find((p) => p.url)?.url ?? null
+            setFlyer({ id: Date.now(), label: chipLabel(item, headcount), from: chip.getBoundingClientRect(), to: target.getBoundingClientRect(), image })
             setThread({ chip: key, target: isLabour ? 'labour-total' : key })
             await sleep(FLY_MS)
             setFlyer(null)
@@ -685,6 +755,8 @@ export default function LivePage() {
         }
         if (isLabour) setLabour(latest.current?.report.labour ?? null)
         land(key)
+        const itemPhotos = (await sourceOf(item)).photos
+        if (itemPhotos.length) landPhotos(key, itemPhotos)
         if (!still && noticeOf(item, latest.current?.report)) {
           // Mesiri points it out before moving on.
           const { sub } = rowLines(item)
@@ -713,7 +785,70 @@ export default function LivePage() {
       }
       if (msg) think(msg.id, (t) => ({ ...t, step: 'done' }))
     },
+    // land, landPhotos, think and pulse only set state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [sourceOf],
+  )
+
+  /** A photo added to a line already on the report: looked at, captioned, flown onto that line. */
+  const playPhoto = React.useCallback(
+    async ({ item, photo }: { item: ReviewItem; photo: Photo }, gen: number) => {
+      const still = prefersReducedMotion()
+      const live = () => alive.current && gen === generation.current
+      const key = factKey(item)
+      const id = `photo:${photo.id ?? photo.url}`
+      const chipKey = `${key}:${id}`
+      const line = rowLines(item).main
+      const label = `Photo → ${line}`
+      if (!feedIds.current.has(id)) {
+        feedIds.current.add(id)
+        setFeed((all) => [
+          ...all,
+          { id, type: 'image', text: 'Photo', at: photo.at ?? null, sender: photo.by ?? null, source: 'whatsapp', fresh: true, think: null, image: photo.url },
+        ])
+      }
+      if (!still) {
+        await sleep(1400)
+        think(id, (t) => ({ ...t, step: 'reading' }))
+        await sleep(1900)
+        if (!live()) return
+        think(id, (t) => ({ ...t, step: 'fields' }))
+        for (const text of [photo.caption ? `sees: ${photo.caption}` : 'sees: site work', `→ evidence for: ${line}`]) {
+          think(id, (t) => ({ ...t, lines: [...t.lines, text] }))
+          await sleep(500)
+        }
+      }
+      think(id, (t) => ({ ...t, step: 'chips', chips: [{ key: chipKey, label, flown: false }] }))
+      if (!still) await sleep(800)
+      if (!live()) return
+      const chip = chipEls.current.get(chipKey)
+      const target = targetEls.current.get(key)
+      if (!still && chip && target) {
+        setFlyer({ id: Date.now(), label, from: chip.getBoundingClientRect(), to: target.getBoundingClientRect(), image: photo.url })
+        setThread({ chip: chipKey, target: key })
+        await sleep(FLY_MS)
+        setFlyer(null)
+      }
+      landPhotos(key, [photo])
+      think(id, (t) => ({ ...t, chips: t.chips.map((c) => ({ ...c, flown: true })) }))
+      if (!still) {
+        await sleep(1400)
+        setThread(null)
+        if (!live()) return
+        setRelay({ from: key, to: item.section })
+        await sleep(THREAD_MS)
+      }
+      setModuleLast((all) => ({ ...all, [item.section]: `photo · ${line}` }))
+      pulse(item.section)
+      if (!still) {
+        await sleep(450)
+        setRelay(null)
+      }
+      think(id, (t) => ({ ...t, step: 'done' }))
+    },
+    // landPhotos, think and pulse only set state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
   )
 
   /** The report went out: the sheet folds into its PDF and drops into WhatsApp. */
@@ -802,9 +937,17 @@ export default function LivePage() {
     if (running.current) return
     running.current = true
     const gen = generation.current
-    while ((queue.current.length || qQueue.current.length) && alive.current && gen === generation.current) {
+    while ((queue.current.length || qQueue.current.length || photoQueue.current.length) && alive.current && gen === generation.current) {
       await Promise.all(queue.current.map(sourceOf))
       if (gen !== generation.current) break
+      // Photos added to lines already on the report go first: they are the newest thing on a line people are reading.
+      if (photoQueue.current.length) {
+        const next = photoQueue.current[0]
+        photoQueue.current = photoQueue.current.slice(1)
+        await playPhoto(next, gen)
+        if (!prefersReducedMotion()) await sleep(600)
+        continue
+      }
       // Whichever came in first, a question or a message with facts.
       const nextQuestion = qQueue.current[0]
       const factAt = queue.current.length ? (sources.current.get(factKey(queue.current[0]))?.message?.received_at ?? '9') : null
@@ -830,7 +973,7 @@ export default function LivePage() {
       running.current = false
       if (finaleDue.current && alive.current) startFinale()
     }
-  }, [sourceOf, playMessage, playQuestion, startFinale])
+  }, [sourceOf, playMessage, playQuestion, playPhoto, startFinale])
 
   // New facts from the day's re-read join the queue; the first read is
   // taken as already written (with its messages in the feed, unanimated).
@@ -839,9 +982,11 @@ export default function LivePage() {
     if (!data) return
     if (known.current === null) {
       known.current = new Set(data.items.map(factKey))
+      evidence.current = new Map(data.items.map((item) => [factKey(item), item.evidence_count ?? 0]))
       setWritten(new Set(known.current))
       setLabour(data.report.labour)
       void Promise.all(data.items.map(sourceOf)).then((all) => {
+        setRowPhotos(Object.fromEntries(data.items.map((item, i) => [factKey(item), all[i].photos])))
         const seen = new Map<string, FeedMessage>()
         for (const { message } of all) {
           if (!message || seen.has(message.id)) continue
@@ -858,12 +1003,26 @@ export default function LivePage() {
       })
       return
     }
+    // A photo added to a line already shown: its new photos play on their own.
+    const grown = data.items.filter(
+      (item) => known.current!.has(factKey(item)) && (item.evidence_count ?? 0) > (evidence.current.get(factKey(item)) ?? 0),
+    )
+    for (const item of data.items) evidence.current.set(factKey(item), item.evidence_count ?? 0)
+    for (const item of grown) {
+      const before = sources.current.get(factKey(item))?.photos ?? []
+      void refreshSource(item).then((src) => {
+        const added = src.photos.filter((p) => !before.some((b) => (b.id ?? b.url) === (p.id ?? p.url)))
+        if (!added.length) return
+        photoQueue.current.push(...added.map((photo) => ({ item, photo })))
+        void play()
+      })
+    }
     const fresh = data.items.filter((item) => !known.current!.has(factKey(item)))
     if (fresh.length === 0) return
     fresh.forEach((item) => known.current!.add(factKey(item)))
     queue.current.push(...fresh)
     void play()
-  }, [detail.data, play, sourceOf])
+  }, [detail.data, play, sourceOf, refreshSource])
 
   // Questions: the first read goes in the feed as already answered; new ones play.
   React.useEffect(() => {
@@ -924,6 +1083,8 @@ export default function LivePage() {
     setFinale(null)
     finaleDue.current = false
     wasSent.current = null
+    setRowPhotos({})
+    photoQueue.current = []
   }, [siteId, date])
 
   /** The demo: the report snaps to dust, then every line comes back from its message, in order. */
@@ -943,6 +1104,7 @@ export default function LivePage() {
     setStamped(false)
     setNoticing(null)
     setFinale(null)
+    photoQueue.current = []
     if (!prefersReducedMotion() && written.size > 0) {
       setSnapping(true)
       await sleep(SNAP_MS + 500)
@@ -951,6 +1113,7 @@ export default function LivePage() {
     setWritten(new Set())
     setLanded(new Set())
     setModuleLast({})
+    setRowPhotos({})
     feedIds.current = new Set()
     setFeed([])
     setLabour({ ...data.report.labour, headcount: 0, trades: [] })
@@ -1131,12 +1294,32 @@ export default function LivePage() {
                           .join(' · ')}
                       </span>
                     </Label>
-                    {m.fresh ? (
+                    {m.image && (
+                      // The photo develops out of a blur; while Mesiri looks, a scan sweeps it.
+                      <span className="relative block max-w-[320px] overflow-hidden border border-foreground/15">
+                        <img
+                          src={m.image}
+                          alt={m.text}
+                          className="block max-h-[200px] w-full object-cover"
+                          style={m.fresh && !prefersReducedMotion() ? { animation: 'live-develop 1400ms ease-out both' } : undefined}
+                        />
+                        {m.think?.step === 'reading' && !prefersReducedMotion() && (
+                          <span
+                            aria-hidden="true"
+                            className="absolute inset-x-0 h-[14%] bg-gradient-to-b from-transparent via-primary/45 to-transparent"
+                            style={{ animation: 'live-scan 950ms ease-in-out 2 both' }}
+                          />
+                        )}
+                      </span>
+                    )}
+                    {m.image && m.text === 'Photo' ? null : m.fresh ? (
                       <WordsIn text={m.text} className="text-[16px] leading-relaxed" />
                     ) : (
                       <p className="m-0 text-[16px] leading-relaxed text-foreground/80">{m.text}</p>
                     )}
-                    {m.think && (m.fresh || m.think.english) && <ThinkingPanel think={m.think} chipRef={setChipEl} />}
+                    {m.think && (m.fresh || m.think.english) && (
+                      <ThinkingPanel think={m.think} chipRef={setChipEl} looking={!!m.image || isImage(m.type)} />
+                    )}
                     {m.replied && m.reply && (
                       // A question's answer, as Mesiri sent it back.
                       <div className="mt-2 grid gap-1 border-l-2 border-foreground pl-3 animate-in fade-in slide-in-from-left-1 duration-500 motion-reduce:animate-none">
@@ -1172,7 +1355,7 @@ export default function LivePage() {
                   { label: 'Manpower', done: (labour?.headcount ?? 0) > 0, needed: true },
                   { label: 'Work done', done: shown('work').length > 0, needed: true },
                   { label: 'Materials', done: shown('materials').length > 0, needed: false },
-                  { label: 'Photos', done: (detail.data?.report.evidence_count ?? 0) > 0, needed: false },
+                  { label: 'Photos', done: Object.values(rowPhotos).some((photos) => photos.length > 0), needed: false },
                 ]}
                 project={detail.data?.project ?? null}
                 today={date === today}
@@ -1320,6 +1503,8 @@ export default function LivePage() {
                                   else targetEls.current.delete(`${k}:value`)
                                 }}
                                 notice={noticeOf(item, detail.data?.report)}
+                                photos={rowPhotos[k]}
+                                newPhotos={newPhotos}
                                 noticing={noticing === k}
                                 opensIn={moduleOf(key).name}
                                 onOpen={
@@ -1408,7 +1593,7 @@ export default function LivePage() {
           </div>
         )}
       </div>
-      {flyer && <Flyer key={flyer.id} label={flyer.label} from={flyer.from} to={flyer.to} />}
+      {flyer && <Flyer key={flyer.id} label={flyer.label} from={flyer.from} to={flyer.to} image={flyer.image} />}
       {cinematic.overlay}
       {finale && (
         <Finale

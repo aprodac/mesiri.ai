@@ -222,6 +222,15 @@
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent); }
   100% { box-shadow: 0 0 0 18px transparent; }
 }
+/* A photo arriving in the Live report develops out of a blur, and Mesiri's look sweeps over it. */
+@keyframes live-develop {
+  0% { filter: blur(14px) grayscale(1) brightness(1.4); opacity: 0.4; }
+  100% { filter: none; opacity: 1; }
+}
+@keyframes live-scan {
+  0% { top: -10%; }
+  100% { top: 100%; }
+}
 /* Mesiri noticing a mistake in the Live report: the line shudders once. */
 @keyframes live-shake {
   0%, 100% { transform: translateX(0); }

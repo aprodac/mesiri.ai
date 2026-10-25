@@ -287,7 +287,8 @@ AI Extraction → Save as DRAFT (+ reply "Saved as a draft… Reply UNDO")
   day, the report as it stands, `items` = every confirmable item with its fact
   type, id, draft/confirmed and flags, and the versions);
   `GET /dpr/facts/{type}/{id}/sources` (WhatsApp messages and sender, what the
-  AI read and its confidence, photos, review history);
+  AI read and its confidence, photos with their id, time and sender (WEB-40),
+  review history);
   `GET /dpr/daily-reports/{id}/versions`, and `.../pdf?version_id=` for an
   older version. `items` is built beside the payload, never stored in it, so
   versions and PDFs are unchanged. All of them 404 for a site outside the

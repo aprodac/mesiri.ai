@@ -325,9 +325,11 @@ class PostgresFactReviewRepository:
             photos = (
                 await self._conn.execute(
                     text(
-                        "SELECT pa.media_object_key, pa.mime_type, "
-                        "COALESCE(pa.caption, pa.ai_caption) AS caption, pa.created_at "
+                        "SELECT pa.id, pa.media_object_key, pa.mime_type, "
+                        "COALESCE(pa.caption, pa.ai_caption) AS caption, pa.created_at, "
+                        "u.full_name AS uploaded_by "
                         "FROM progress_attachments pa JOIN activities a ON a.id = pa.parent_id "
+                        "LEFT JOIN users u ON u.id = pa.uploaded_by_user_id "
                         "WHERE pa.parent_type = 'ACTIVITY' AND pa.parent_id = :id "
                         "AND a.organization_id = :org AND pa.media_object_key IS NOT NULL "
                         "ORDER BY pa.created_at"
@@ -368,9 +370,13 @@ class PostgresFactReviewRepository:
             ],
             "photos": [
                 {
+                    # id, when and who: the Live report tells a new photo from one it has shown (WEB-40).
+                    "id": str(p["id"]),
                     "media_object_key": p["media_object_key"],
                     "mime_type": p["mime_type"],
                     "caption": p["caption"],
+                    "at": when(p["created_at"]),
+                    "by": p["uploaded_by"],
                 }
                 for p in photos
             ],
