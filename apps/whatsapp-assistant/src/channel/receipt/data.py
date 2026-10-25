@@ -282,6 +282,7 @@ def build_receipt_data(
     confirmed_at: datetime,
     late_entry: bool = False,
     timezone: str | None = None,
+    saved: bool = False,
 ) -> ReceiptData:
     """Build the generic receipt shape for a confirmed DraftAction.
 
@@ -612,7 +613,7 @@ def build_receipt_data(
         status, footer = STATUS_UNDONE, FOOTER_UNDONE
     elif late_entry:
         status, footer = STATUS_LATE, FOOTER_LATE
-    elif draft.action_type in _DRAFT_TYPES:
+    elif draft.action_type in _DRAFT_TYPES and not saved:
         status, footer = STATUS_DRAFT, FOOTER_DRAFT
     else:
         status, footer = STATUS_SAVED, ""
