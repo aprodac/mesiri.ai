@@ -49,7 +49,9 @@ from .reply_text import (
     without_native_script,
     without_save_prompt,
     without_stray_sentences,
+    without_undo_prompt,
 )
+from .save_button import SAVE_TITLE
 from .toolbox import HOURS_QUESTION, AgentToolbox, SavedItem, offers_engineer, tomorrow_plan_text
 from .tools import NOTE_FOR_ENGINEER, SET_SITE_CONDITIONS, ScopeLookup, tool_specs
 
@@ -377,9 +379,11 @@ class AgentRunner:
             from .equipment import EQUIPMENT_LINE
 
             return ReplySpec(text=EQUIPMENT_LINE)
-        if _entries(toolbox):
+        if _entries(toolbox) or _save_card(toolbox.parked):
             # Before the Save tap nothing is kept (WA-37).
             text = without_saved_claims(text)
+        if _save_card(toolbox.parked):
+            text = without_undo_prompt(text)
         text = without_tool_talk(text)
         if not _questions_line(toolbox) and not _engineer_card(toolbox):
             # WA-52: nothing went to the engineer, so the reply never says it did.
@@ -481,7 +485,8 @@ class AgentRunner:
         say counts any entry as a card."""
         entries = _entries(toolbox)
         if not entries:
-            return False
+            # Request 114: a held work-done card has Save / Cancel under it too.
+            return _save_card(toolbox.parked)
         handled = getattr(toolbox.gateway, "handled", None)
         if handled is None:
             return True
@@ -763,6 +768,12 @@ def without_tool_talk(text: str) -> str:
     """``text`` without the sentences that repeat the system's notes to the model."""
     kept = [part for part in sentences(text) if part and not _TOOL_TALK.search(part)]
     return re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
+
+
+def _save_card(parked: ReplySpec | None) -> bool:
+    """Request 114: the question held for the sender is a Save / Cancel card
+    (work done on an open activity), not a Yes / No."""
+    return parked is not None and any(row.title == SAVE_TITLE for row in parked.buttons or ())
 
 
 def _card_details(card: str) -> str:
