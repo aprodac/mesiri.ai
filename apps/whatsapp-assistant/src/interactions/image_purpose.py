@@ -35,6 +35,45 @@ if TYPE_CHECKING:
     from .pending_media import PendingMediaStore
 
 
+#: PHO-07: caption words that name what a photo is. A caption that names more
+#: than one purpose ("cement bill for plastering") is not guessed: it is asked.
+_PURPOSE_WORDS: dict[str, tuple[str, ...]] = {
+    "img_material_invoice": (
+        "bill", "bills", "challan", "chalan", "invoice", "delivery note", "delivery challan",
+    ),
+    "img_attendance": ("attendance", "register", "hajari", "muster", "roll call"),
+    "img_expense": ("expense", "expenses"),
+    "img_site_update": (
+        "site update", "progress", "work done", "plastering", "brickwork", "bricks", "concreting",
+        "concrete", "slab", "shuttering", "centering", "painting", "tiling", "flooring", "wiring",
+        "plumbing", "excavation", "foundation", "waterproofing", "putty", "floor",
+    ),
+}
+
+
+def purpose_from_caption(caption: str | None) -> str | None:
+    """The picker row a photo's caption names ("cement bill 50 bags" ->
+    img_material_invoice, "2nd floor plastering" -> img_site_update), or None
+    when it names none or several, or the purpose's module is off."""
+    import re
+
+    from channel.replies import IMAGE_PURPOSE_MODULE
+    from workflows.registry import module_is_enabled
+
+    text = " ".join(re.sub(r"[^\w\s]", " ", (caption or "").casefold()).split())
+    if not text:
+        return None
+    named = [
+        row_id
+        for row_id, words in _PURPOSE_WORDS.items()
+        if any(re.search(rf"(?<!\w){re.escape(word)}(?!\w)", text) for word in words)
+    ]
+    if len(named) != 1:
+        return None
+    row_id = named[0]
+    return row_id if module_is_enabled(IMAGE_PURPOSE_MODULE.get(row_id)) else None
+
+
 async def try_hold_new_image_for_purpose_picker(
     message: NormalizedMessage, *, user_id: str, pending_media_store: PendingMediaStore
 ) -> ReplySpec | None:
@@ -47,12 +86,59 @@ async def try_hold_new_image_for_purpose_picker(
         return None
     result = await pending_media_store.add_pending(user_id=user_id, message=message)
     if result.capped:
+        # Said once per batch (PHO-09), for the first photo that did not fit.
         return ReplySpec(
             text=(
-                f"📷 That's {result.batch_size} photos held — that's as many as I can take "
-                "at once. Answer the question above for these, then send the rest."
+                f"📷 I'm holding {result.batch_size} photos, which is as many as I can take at "
+                "once, so the ones after them were not kept. Tell me what these are for, "
+                "then send the rest."
             )
         )
     if not result.is_new_batch:
         return None
     return render_image_purpose_picker()
+
+
+#: PHO-06: how long photos may wait for the question to be answered before the
+#: next message reminds the sender (once), and how long after the reminder
+#: before they are dropped and the sender is told.
+REMIND_AFTER_SECONDS = 5 * 60
+DROP_AFTER_SECONDS = 30 * 60
+
+
+async def photo_wait_notice(
+    *, user_id: str, pending_media_store: PendingMediaStore, now: float | None = None
+) -> ReplySpec | None:
+    """Photos nobody said the purpose of never vanish silently (PHO-06): the
+    first message from the sender 5 minutes or more after they were held gets a
+    reminder with the question again; once more than 30 minutes have passed
+    since the reminder, the next message is told they were not kept. Event
+    driven (it runs on the sender's next message), so a sender who never writes
+    again is not told."""
+    import time
+
+    count, meta = await pending_media_store.waiting(user_id=user_id)
+    if not count:
+        return None
+    moment = time.time() if now is None else now
+    noun = "photo" if count == 1 else "photos"
+    reminded_at = meta.get("reminded_at")
+    if reminded_at is None:
+        if moment - float(meta.get("held_at") or moment) < REMIND_AFTER_SECONDS:
+            return None
+        await pending_media_store.mark_reminded(user_id=user_id, now=moment)
+        picker = render_image_purpose_picker()
+        return ReplySpec(
+            text=f"📷 {count} {noun} you sent are still waiting. What {'is it' if count == 1 else 'are they'} for?",
+            list_button_label=picker.list_button_label,
+            list_rows=picker.list_rows,
+        )
+    if moment - float(reminded_at) >= DROP_AFTER_SECONDS:
+        await pending_media_store.pop_batch(user_id=user_id)
+        return ReplySpec(
+            text=(
+                f"📷 The {count} {noun} I was holding were not kept, because I never learned what "
+                "they were for. Please send them again if you still need them."
+            )
+        )
+    return None

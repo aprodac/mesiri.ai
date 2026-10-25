@@ -33,7 +33,11 @@ from context.live_identity import (
     UNREGISTERED_MESSAGE,
     resolve_sender,
 )
-from interactions.image_purpose import try_hold_new_image_for_purpose_picker
+from interactions.image_purpose import (
+    photo_wait_notice,
+    purpose_from_caption,
+    try_hold_new_image_for_purpose_picker,
+)
 from mesiri.infrastructure.postgres.tenant import bind_tenant, tenant_scope
 from mesiri_ai.undo_classifier import UNDO_SEMANTIC_HINT, is_undo_trigger
 from mesiri_contracts.assistant.enums import InputModality
@@ -2158,25 +2162,15 @@ def build_message_handlers(
         # open activity in one write, while "img_expense"/"img_attendance"
         # still only process the FIRST through the normal single-report
         # confirm flow (see render_batch_overflow_reply's docstring for why).
-        image_purpose_row_id = interaction_handler.handle_image_purpose_tap(message)
-        if image_purpose_row_id is not None:
+        async def _photos_for_purpose(row_id: str, held_batch: list[Any]) -> None:
+            """Act on a held batch of photos now that their purpose is known
+            (a tap on the picker, or a caption that says it, PHO-07)."""
             from channel.replies import (
                 IMAGE_PURPOSE_SEMANTIC_HINT,
                 render_batch_overflow_reply,
             )
 
-            held_batch = await pending_media_store.pop_batch(user_id=ctx.user_id)
-            timer.lap("pop_pending_media")
-            if not held_batch:
-                expired_reply = "That photo has expired — please resend it."
-                await sender.send_text(wa_id, expired_reply)
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=expired_reply
-                )
-                await message_logger.mark_completed(correlation_id=message.correlation_id)
-                return
-
-            if image_purpose_row_id == "img_site_update":
+            if row_id == "img_site_update":
                 # Evidence attach is a direct write, never a confirmable
                 # workflow (see AttachEvidenceCommand's docstring) -- no
                 # single-active-invariant concern, so the WHOLE batch
@@ -2204,7 +2198,7 @@ def build_message_handlers(
             from interactions.category_hint import CategoryHint
 
             await _run_agent(
-                held_message, ctx, CategoryHint(IMAGE_PURPOSE_SEMANTIC_HINT[image_purpose_row_id]), timer
+                held_message, ctx, CategoryHint(IMAGE_PURPOSE_SEMANTIC_HINT[row_id]), timer
             )
             if len(held_batch) > 1:
                 overflow_reply = render_batch_overflow_reply(
@@ -2213,6 +2207,30 @@ def build_message_handlers(
                 await sender.send_text(wa_id, overflow_reply)
                 await message_logger.log_reply(correlation_id=message.correlation_id, reply=overflow_reply)
             await message_logger.mark_completed(correlation_id=message.correlation_id)
+
+        image_purpose_row_id = interaction_handler.handle_image_purpose_tap(message)
+        if image_purpose_row_id is None:
+            # PHO-06: photos nobody has said the purpose of are reminded about
+            # once, then said to be dropped -- on the sender's next message.
+            wait_notice = await photo_wait_notice(user_id=ctx.user_id, pending_media_store=pending_media_store)
+            if wait_notice is not None:
+                await send_reply_spec(
+                    wait_notice, wa_id,
+                    send_text=sender.send_text, send_list=sender.send_list, send_button=sender.send_button,
+                )
+                await message_logger.log_reply(correlation_id=message.correlation_id, reply=wait_notice.text)
+        if image_purpose_row_id is not None:
+            held_batch = await pending_media_store.pop_batch(user_id=ctx.user_id)
+            timer.lap("pop_pending_media")
+            if not held_batch:
+                expired_reply = "That photo has expired — please resend it."
+                await sender.send_text(wa_id, expired_reply)
+                await message_logger.log_reply(
+                    correlation_id=message.correlation_id, reply=expired_reply
+                )
+                await message_logger.mark_completed(correlation_id=message.correlation_id)
+                return
+            await _photos_for_purpose(image_purpose_row_id, held_batch)
             return
 
         # Bare "hi"/"menu"/"help"/etc (see greeting_phrases.json): the AI
@@ -2355,6 +2373,20 @@ def build_message_handlers(
                 )
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
                 return
+
+        # PHO-07: a photo whose caption says what it is ("cement bill 50 bags",
+        # "2nd floor plastering", "attendance register") is not asked about, and
+        # neither are the rest of its burst (a caption sits on one photo of an
+        # album): the purpose is kept for a minute.
+        if message.modality is InputModality.IMAGE and message.media is not None:
+            if not await pending_media_store.has_pending(user_id=ctx.user_id):
+                said_purpose = purpose_from_caption(message.text) or await pending_media_store.recent_purpose(
+                    user_id=ctx.user_id
+                )
+                if said_purpose is not None:
+                    await pending_media_store.remember_purpose(user_id=ctx.user_id, row_id=said_purpose)
+                    await _photos_for_purpose(said_purpose, [message])
+                    return
 
         # A genuinely new image (not a tap answering the picker above) is
         # held while we ask "what is this photo for?" instead of running

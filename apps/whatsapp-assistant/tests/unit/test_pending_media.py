@@ -108,30 +108,27 @@ async def test_batch_accumulates_all_photos_until_popped():
     assert {m.media.object_key for m in batch} == {f"media/wamid.{i}/abc123" for i in range(5)}
 
 
-async def test_batch_is_capped_and_reports_capped_on_the_photo_that_fills_it():
+async def test_batch_is_capped_and_says_so_once_for_the_first_photo_over():
+    """PHO-09: the cap note was sent for every photo past the cap (6 times for
+    25 photos). It is said once, for the first one that did not fit."""
     store = PendingMediaStore(_FakeRedis())
-    for i in range(MAX_BATCH_SIZE - 1):
+    for i in range(MAX_BATCH_SIZE):
         result = await store.add_pending(user_id=USR, message=_image_message(f"wamid.{i}"))
-        assert result.capped is False
+        assert result.capped is False  # the 20th fits: nothing to say yet
+    assert result.batch_size == MAX_BATCH_SIZE
 
-    # The Nth photo (MAX_BATCH_SIZE-th overall) is the one that fills the
-    # batch -- it is still ACCEPTED (batch_size reaches the cap), but
-    # capped=True so the caller can warn this is the last one it'll take.
-    filling = await store.add_pending(
-        user_id=USR, message=_image_message(f"wamid.{MAX_BATCH_SIZE - 1}")
-    )
-    assert filling.capped is True
-    assert filling.batch_size == MAX_BATCH_SIZE
-
-    # A further photo beyond the cap is rejected outright -- batch_size
-    # does not grow past MAX_BATCH_SIZE.
-    overflow = await store.add_pending(user_id=USR, message=_image_message("wamid.overflow"))
-    assert overflow.capped is True
-    assert overflow.batch_size == MAX_BATCH_SIZE
+    first_over = await store.add_pending(user_id=USR, message=_image_message("wamid.over1"))
+    assert (first_over.capped, first_over.batch_size) == (True, MAX_BATCH_SIZE)
+    for i in range(2, 6):
+        again = await store.add_pending(user_id=USR, message=_image_message(f"wamid.over{i}"))
+        assert again.capped is False and again.batch_size == MAX_BATCH_SIZE
 
     batch = await store.pop_batch(user_id=USR)
-    # The overflow photo was dropped, not silently squeezed in past the cap.
-    assert len(batch) == MAX_BATCH_SIZE
+    assert len(batch) == MAX_BATCH_SIZE  # the extras were not squeezed in
+    # a new batch starts clean: its first overflow is announced again
+    for i in range(MAX_BATCH_SIZE + 1):
+        result = await store.add_pending(user_id=USR, message=_image_message(f"wamid.n{i}"))
+    assert result.capped is True
 
 
 async def test_has_pending_reflects_batch_presence():
