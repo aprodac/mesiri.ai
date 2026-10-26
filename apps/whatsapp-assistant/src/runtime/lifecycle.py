@@ -287,6 +287,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Costs admin router not loaded: %s", exc)
 
+    # Reply time and AI tokens per WhatsApp message (SA-17); like costs.
+    try:
+        from mesiri.domains.admin.replies_router import router as replies_admin_router
+
+        app.include_router(replies_admin_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Replies admin router not loaded: %s", exc)
+
     # The control panel's Database page (SA-15); the backend's router, like costs.
     try:
         from mesiri.domains.admin.database_router import router as database_admin_router
