@@ -29,6 +29,9 @@ name: Claude ops
 #                     access (read-only, names and counts only)
 #   vps-templates     infra/deploy/whatsapp_templates.sh: `text` = check | add:<name>[,<name>] -- list Meta-approved
 #                     templates in WHATSAPP_APPROVED_TEMPLATES, restart, /health (WA-10; asked by Ilan 24 Oct)
+#   vps-admin-password infra/deploy/reset_admin_password.py: `text` = a control-panel admin's email -> that
+#                     admin's password becomes the ADMIN_RESET_PASSWORD secret (stdin only; audit-logged; INF-16,
+#                     approved by Alan 26 Oct). `text` empty lists the admins, emails masked. Delete the secret after.
 #   golden-live       the agent golden sets on the real model (`pytest -m live`, ARCH-02 gate; `text` = site |
 #                     materials | empty for both). Uses TEAMMATE_GEMINI_API_KEY (approved by Ilan 22 Oct); no VPS.
 #
@@ -42,9 +45,9 @@ on:
         description: What to run
         required: true
         type: choice
-        options: [vps-check, vps-backup-now, vps-staging, vps-app-login, vps-smoke, vps-perf, vps-evening, bot-status, bot-chats, bot-test, bot-recent-test, bot-recent-team, bot-items, bot-label-test, golden-live, vps-agent-log, vps-agent-trace, vps-scope, vps-templates]
+        options: [vps-check, vps-backup-now, vps-staging, vps-app-login, vps-smoke, vps-perf, vps-evening, bot-status, bot-chats, bot-test, bot-recent-test, bot-recent-team, bot-items, bot-label-test, golden-live, vps-agent-log, vps-agent-trace, vps-scope, vps-templates, vps-admin-password]
       text:
-        description: "bot-test: the message (or choose:<n|title>); bot-label-test: the chat jid"
+        description: "bot-test: the message (or choose:<n|title>); bot-label-test: the chat jid; vps-admin-password: the admin's email"
         required: false
         default: ""
       hours:
@@ -101,6 +104,7 @@ jobs:
           TEAMMATE_TOKEN: ${{ secrets.TEAMMATE_API_TOKEN }}
           TEAMMATE_PROJECT: mesiri
           GEMINI_API_KEY: ${{ inputs.task == 'golden-live' && secrets.TEAMMATE_GEMINI_API_KEY || '' }}
+          ADMIN_RESET_PASSWORD: ${{ inputs.task == 'vps-admin-password' && secrets.ADMIN_RESET_PASSWORD || '' }}
         run: |
           set -o pipefail
           mask() { sed -E 's/[0-9]{6,}([0-9]{4})/…\1/g'; }
@@ -144,6 +148,25 @@ jobs:
               esac
               scp -i ~/.ssh/deploy_key infra/deploy/whatsapp_templates.sh "${VPS_USER}@${VPS_HOST}:/tmp/whatsapp_templates.sh"
               ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "bash /tmp/whatsapp_templates.sh ${ARGS}" 2>&1 | mask ;;
+            vps-admin-password)
+              # The app's venv and paths, as deploy.yml runs alembic; the script reads its database login from
+              # /opt/mesiri/.env. Run from a file, the password on stdin: never a command line or a log.
+              RUN='cd /tmp && PYTHONPATH=/opt/mesiri/shared/contracts/src:/opt/mesiri/platform/ai/src:/opt/mesiri/backend/src:/opt/mesiri/apps/whatsapp-assistant/src /opt/mesiri/.venv/bin/python /tmp/reset_admin_password.py'
+              scp -i ~/.ssh/deploy_key infra/deploy/reset_admin_password.py "${VPS_USER}@${VPS_HOST}:/tmp/reset_admin_password.py"
+              EMAIL="$(printf '%s' "$TEXT" | tr -dc 'A-Za-z0-9@._+-')"
+              WHO="$(printf '%s' "$GITHUB_ACTOR" | tr -dc 'A-Za-z0-9_-')"
+              set +e
+              if [ -z "$EMAIL" ]; then
+                ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "${RUN} --list" 2>&1 | mask
+              elif [ -z "$ADMIN_RESET_PASSWORD" ]; then
+                echo "Set the ADMIN_RESET_PASSWORD secret first (Settings > Environments > production). Nothing changed."
+                false
+              else
+                printf '%s' "$ADMIN_RESET_PASSWORD" | ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "${RUN} '${EMAIL}' '${WHO}'" 2>&1 | mask
+              fi
+              RC=$?
+              ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" 'rm -f /tmp/reset_admin_password.py'
+              exit $RC ;;
             vps-evening)
               ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "bash -s -- $(printf '%s' "$TEXT" | tr -dc 0-9-)" \
                 < infra/deploy/evening_report.sh 2>&1 | mask ;;
