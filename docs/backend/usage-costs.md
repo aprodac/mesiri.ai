@@ -1,7 +1,7 @@
 # What each AI call and WhatsApp message costs (BE-25)
 
 > Built 15 Oct 2026. Tracker: BE-25. Read by: SA-05 (costs view), SS-09 (trial caps),
-> SS-11 (cost per trial).
+> SS-11 (cost per trial), SA-17 (Reply Insights).
 
 Every AI provider response and every WhatsApp message the assistant sends leaves one row
 in `provider_executions` with `metered = true`. Each row records the company, the model or
@@ -76,6 +76,16 @@ Use `PostgresUsageCostRepository` (`infrastructure/postgres/repositories/usage_c
   (Indian calendar days), `costs_by_company`, and for one company `costs_by_inbound_message`
   and `whatsapp_messages_sent`. Rows with no price are counted as `unpriced`. WhatsApp rows
   have no `correlation_id`, so a reply's cost can't be tied to the message that caused it.
+- **The control panel's Reply Insights page (SA-17)**, `GET /admin/replies`,
+  `/admin/replies/messages` and `/admin/replies/messages/{correlation_id}/calls`, read through
+  `PostgresReplyUsageRepository` (`repositories/reply_usage.py`): each inbound message's reply
+  time (`received_at -> processed_at`, the Performance page's number) next to its metered AI
+  rows (tokens incl. cached, latency, cost). Scoped by when the *message* arrived (not the
+  call), optionally one company and message type. Gives the reply-time percentiles and speed
+  bands (under 5 s / 5-15 / 15-30 / 30-60 / over 1 min), a trend in Indian-time buckets
+  (`date_bin`, 12-30 points per window), tokens by model and by step (`purpose`, else
+  `operation`), and a sortable feed (newest / slowest / most tokens / most expensive). A
+  message with no AI rows was answered without the AI (`no_ai`). Read-only, platform admin.
 
 **How the company is found:** a row's own `organization_id`, else the company of the inbound
 message with the same `correlation_id`. A message resolved to its company after the AI call
