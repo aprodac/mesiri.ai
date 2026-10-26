@@ -298,7 +298,7 @@ async def get_site_day(
         project_ids={project_id},
         report_date=report_date,
     )
-    payload, items = await repo.assemble_site_day(
+    payload, with_drafts, items = await repo.assemble_site_day_with_drafts(
         organization_id=auth_context.organization_id,
         project_id=project_id,
         site_id=site_id,
@@ -325,6 +325,9 @@ async def get_site_day(
         "day": day,
         "project": projects[0] if projects else None,
         "report": payload,
+        # WA-77: the same report with unsaved entries in it, for the Live page
+        # (which shows a draft on the sheet, marked draft, until it is saved).
+        "report_with_drafts": with_drafts,
         "items": items,
         "drafts": sum(1 for i in items if i["review"] == "draft"),
         "versions": versions,
@@ -360,6 +363,70 @@ async def get_fact_sources(
     for photo in sources["photos"]:
         photo["url"] = await signed_media_url(object_storage, photo.pop("media_object_key"))
     return sources
+
+
+#: The questions the Live report shows (WEB-37): workflow -> what was asked
+#: about. Finance questions are left out: their answers are for admins,
+#: owners, finance and project managers only (SEC-01), and Live is open to
+#: everyone on the site.
+QUESTION_KINDS: dict[str, str] = {
+    "material.inventory_query": "stock",
+    "labour.query": "manpower",
+    "activity.query": "work",
+    "project.detail_query": "project",
+    "dpr.request": "report",
+}
+#: WEB-46: the agent's lookup tools -> the same kinds (its lookups leave no
+#: workflow row; the turn's traced tool calls say what answered).
+#: `query_expenses` is left out, as finance questions are above.
+QUESTION_TOOLS: dict[str, str] = {
+    "query_labour": "manpower",
+    "query_materials": "stock",
+    "query_work_log": "work",
+    "query_project": "project",
+    "request_dpr": "report",
+}
+
+
+@router.get("/site-days/{site_id}/questions")
+async def list_site_day_questions(
+    site_id: uuid.UUID,
+    since: datetime.datetime,
+    until: datetime.datetime,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """What was asked about this site (or its whole project) between
+    `since` and `until` (the viewer's day), and what Mesiri answered, for
+    the Live report (WEB-37). Read-only; the site rule is the site day's."""
+    site = await PostgresDprRepository(conn).find_site(
+        organization_id=auth_context.organization_id, site_id=site_id
+    )
+    if site is None or site["project_id"] is None:
+        raise HTTPException(status_code=404, detail="Site not found")
+    if _site_denied(auth_context, site["project_id"], site_id):
+        raise HTTPException(status_code=404, detail="Site not found")
+    if until <= since or until - since > datetime.timedelta(days=2):
+        raise HTTPException(status_code=422, detail="Ask for one day at a time")
+    rows = await PostgresFactReviewRepository(conn).questions(
+        organization_id=auth_context.organization_id,
+        project_id=site["project_id"],
+        site_id=site_id,
+        since=since,
+        until=until,
+        workflow_keys=list(QUESTION_KINDS),
+        tool_names=list(QUESTION_TOOLS),
+    )
+    items = []
+    for row in rows:
+        key = row.pop("workflow_key")
+        tools = row.pop("tools", None) or []
+        kind = QUESTION_KINDS.get(key or "") or next(
+            (QUESTION_TOOLS[t] for t in tools if t in QUESTION_TOOLS), None
+        )
+        if kind is not None:
+            items.append({**row, "kind": kind})
+    return {"items": items}
 
 
 class SiteDayConditionsRequest(BaseModel):

@@ -32,6 +32,7 @@ class MaterialInventoryQueryService:
         site_id: str | None,
         material_name: str | None,
         material_id: str | None = None,
+        include_unsaved: bool = False,
     ) -> list[dict[str, Any]]:
         """Stock levels for the given scope, optionally filtered to one material
         (substring match). Returns plain JSON-safe dicts: material_name, unit,
@@ -52,6 +53,7 @@ class MaterialInventoryQueryService:
                 organization_id=uuid.UUID(organization_id),
                 project_ids={uuid.UUID(project_id)} if project_id else None,
                 site_id=uuid.UUID(site_id) if site_id else None,
+                include_unsaved=include_unsaved,
             )
 
         # get_stock_levels groups by (org, project, site, material_id, unit_id)
@@ -119,6 +121,8 @@ class MaterialInventoryQueryService:
         if material_id:
             scope += " AND mm.material_id = :material"
             params["material"] = uuid.UUID(material_id)
+        from mesiri.application.dpr import fact_review
+
         sql = sa.text(
             """
             SELECT mm.material_id, mc.name AS material_name, u.code AS unit,
@@ -138,6 +142,8 @@ class MaterialInventoryQueryService:
                   SELECT 1 FROM material_movements r WHERE r.reversal_of_movement_id = mm.id
               )
             """
+            # WA-77: the period's totals are what was saved, as the stock is.
+            + f" AND {fact_review.movement_counted_sql('mm')}"
             + scope
         )
         async with self._db.transaction() as conn:
@@ -176,6 +182,8 @@ class MaterialInventoryQueryService:
         if site_id:
             scope += " AND m.site_id = :site"
             params["site"] = uuid.UUID(site_id)
+        from mesiri.application.dpr import fact_review
+
         sql = sa.text(
             """
             SELECT lower(c.name) AS name, u.code AS unit,
@@ -190,6 +198,7 @@ class MaterialInventoryQueryService:
             JOIN units_of_measure u ON u.id = m.unit_id
             WHERE m.organization_id = :org AND m.occurred_at >= :since
             """
+            + f" AND {fact_review.movement_counted_sql('m')}"
             + scope
             + " GROUP BY lower(c.name), u.code"
         )

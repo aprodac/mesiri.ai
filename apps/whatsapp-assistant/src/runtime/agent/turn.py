@@ -209,7 +209,15 @@ async def run_agent_turn(
             await _safe(deps.message_logger.log_reply(correlation_id=correlation_id, reply=CANT_HEAR_REPLY))
             await _safe(deps.message_logger.mark_completed(correlation_id=correlation_id))
             return None
-        await _safe(deps.message_logger.update_body_text(correlation_id=correlation_id, body_text=user_text))
+        # WEB-37: the English too, for the Live report (when it says something else).
+        english = (translated or "").strip()
+        await _safe(
+            deps.message_logger.update_body_text(
+                correlation_id=correlation_id,
+                body_text=user_text,
+                translated_text=english if english and english != user_text else None,
+            )
+        )
         if deps.user_language_store is not None and language:
             await _safe(
                 deps.user_language_store.remember(
@@ -565,5 +573,11 @@ async def _audit(
                 site_id=handled.site_id,
             )
         )
+    # WEB-38: a question answered by a lookup is tied to it too, with the
+    # project and site it was about, so the Live page can show it.
+    for instance, project_id, site_id in getattr(gateway, "answered", []) or []:
+        if instance:
+            tasks.append(log.link_workflow_instance(correlation_id=correlation_id, workflow_instance_id=instance))
+        tasks.append(log.update_context(correlation_id=correlation_id, project_id=project_id, site_id=site_id))
     tasks.append(log.mark_completed(correlation_id=correlation_id))
     await asyncio.gather(*tasks, return_exceptions=True)

@@ -199,6 +199,8 @@ async def _inject_inventory_context(
             project_id=event.project_id,
             site_id=event.site_id,
             material_name=event.fields.get("material_name"),
+            # WA-77: the hint compares with what was reported, saved or not.
+            include_unsaved=True,
         )
         if levels:
             event.fields["available_stock"] = levels[0]["current_stock"]

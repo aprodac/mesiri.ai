@@ -44,7 +44,9 @@ class NoopMessageLogger:
 
     async def log_reply(self, *, correlation_id: str, reply: str) -> None: ...
 
-    async def update_body_text(self, *, correlation_id: str, body_text: str) -> None: ...
+    async def update_body_text(
+        self, *, correlation_id: str, body_text: str, translated_text: str | None = None
+    ) -> None: ...
 
     async def link_workflow_instance(
         self, *, correlation_id: str, workflow_instance_id: str
@@ -109,6 +111,8 @@ class RecordingMessageLogger:
     failed: list[tuple[str, str]] = field(default_factory=list)
     replies: list[tuple[str, str]] = field(default_factory=list)
     transcriptions: list[tuple[str, str]] = field(default_factory=list)
+    #: Voice notes' English, when the speech step gave one (WEB-37).
+    translations: list[tuple[str, str]] = field(default_factory=list)
     workflow_links: list[tuple[str, str]] = field(default_factory=list)
     interaction_groups: list[tuple[str, str]] = field(default_factory=list)
     reply_wamids: list[tuple[str, str]] = field(default_factory=list)
@@ -168,8 +172,12 @@ class RecordingMessageLogger:
     async def log_reply(self, *, correlation_id: str, reply: str) -> None:
         self.replies.append((correlation_id, reply))
 
-    async def update_body_text(self, *, correlation_id: str, body_text: str) -> None:
+    async def update_body_text(
+        self, *, correlation_id: str, body_text: str, translated_text: str | None = None
+    ) -> None:
         self.transcriptions.append((correlation_id, body_text))
+        if translated_text:
+            self.translations.append((correlation_id, translated_text))
         for r in self.received:
             if r.correlation_id == correlation_id:
                 r.body_text = body_text

@@ -191,3 +191,22 @@ export function Waveform({ played, className }: { played: number; className?: st
     </div>
   )
 }
+
+/** Words arriving one by one, with CSS only (no clock needed here). */
+export function WordsIn({ text, className, lang }: { text: string; className?: string; lang?: string }) {
+  return (
+    <p className={cn('m-0', className)} lang={lang}>
+      {text.split(' ').map((word, i) => (
+        <React.Fragment key={i}>
+          {i > 0 && ' '}
+          <span
+            className="inline-block animate-in fade-in slide-in-from-bottom-1 fill-mode-both duration-300 motion-reduce:animate-none"
+            style={{ animationDelay: `${Math.min(i, 40) * 40}ms` }}
+          >
+            {word}
+          </span>
+        </React.Fragment>
+      ))}
+    </p>
+  )
+}

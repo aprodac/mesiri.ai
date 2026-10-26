@@ -29,6 +29,7 @@ from mesiri_contracts.assistant.enums import SemanticType
 from mesiri_contracts.assistant.planner_decision import WorkflowKey
 from runtime.agent.entry_base import Ready, Say
 from runtime.agent.site_entry import SiteEntry
+from runtime.agent.work_site import NIGHT_GRACE_HOURS
 
 
 class _Accounts:
@@ -226,7 +227,8 @@ async def test_a_site_less_entry_never_overwrites_todays_site():
     ready = await _prepare(entry, SemanticType.EXPENSE, amount=500, description="tea")
     await entry.remember(ready)
     (write,) = entry.active_context.writes
-    assert write["site_id"] == SITE and 60 <= write["ttl_seconds"] <= 24 * 3600
+    # Until the company's midnight plus the night grace, whatever the hour now.
+    assert write["site_id"] == SITE and 60 <= write["ttl_seconds"] <= (24 + NIGHT_GRACE_HOURS) * 3600
 
 
 async def test_todays_site_does_not_override_a_reply_to_another_record():

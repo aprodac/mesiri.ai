@@ -185,6 +185,10 @@ class JourneyGateway:
     held_prompt: HeldPromptFn
     language: str | None = None
     handled: list[Any] = field(default_factory=list)
+    #: WEB-38: the lookups this turn answered, as (workflow instance, project,
+    #: site), so the message log ties the question to what answered it (the
+    #: Live page shows questions and Mesiri's answers from that link).
+    answered: list[tuple[str | None, str | None, str | None]] = field(default_factory=list)
     #: WA-41: ``(material, unit, count) -> line to say``; None when not wired.
     set_conversion: Callable[[str, str, Any], Awaitable[str]] | None = None
     #: SET-07: sends the join code and the message to forward (join_journey.share_code).
@@ -421,6 +425,16 @@ class JourneyGateway:
         _log.info("agent.direct correlation_id=%s kind=%s route=direct", message.correlation_id, kind)
         journey = SimpleNamespace(workflow_run=run, planner_decision=prepared.decision)
         step = await self._after_run(journey, candidate)
+        if step.status == "answer":
+            # A lookup usually finishes without a workflow row (WEB-46): its
+            # project and site are still recorded on the message.
+            instance = getattr(run, "workflow_instance_id", None)
+            event = prepared.event
+            project = getattr(event, "project_id", None)
+            site = getattr(event, "site_id", None)
+            self.answered.append(
+                (str(instance) if instance else None, str(project) if project else None, str(site) if site else None)
+            )
         if step.status in ("saved", "needs_confirmation"):
             await entry.remember(prepared, correlation_id=message.correlation_id)
         deliver = getattr(entry, "deliver", None)

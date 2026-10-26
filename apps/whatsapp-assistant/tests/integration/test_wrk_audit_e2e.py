@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 from sqlalchemy import text
+from tests.integration._tap_save import tap_save
 
 from interactions import InteractionHandler
 from interactions.execution_router import ActionTypeRoutingDispatcher
@@ -159,6 +160,7 @@ async def test_wrk01_work_started_on_day_one_is_on_day_twos_report_with_its_upda
                        status="completed", occurred_on=DAY2.isoformat(), continues="brickwork")
     assert done is not None and done.execution_result is not None, done
 
+    await tap_save(world.db, world.org)  # WA-77: counted once saved
     payload, _ = await _day(world, DAY2)
     names = [(a["work_type"], a["continued"], a["status"]) for a in payload["activities"]]
     assert names == [("brickwork", True, "COMPLETED")], payload["activities"]
@@ -230,6 +232,7 @@ async def test_wrk06_a_correction_after_a_session_gap_changes_the_starting_quant
             "SELECT field_name FROM activity_corrections c JOIN activities a ON a.id = c.activity_id"
             " WHERE a.organization_id = :o"), {"o": world.org})).scalars().all()
     assert float(quantity) == 150 and audit == ["activity_quantity.quantity"]
+    await tap_save(world.db, world.org)  # WA-77: counted once saved
     payload, _ = await _day(world, DAY2)
     assert payload["activities"][0]["quantities"][0]["quantity"] == "150.000"
 
@@ -242,6 +245,7 @@ async def test_wrk06_a_correction_after_a_gap_changes_the_latest_progress_update
     corrected = await _correct(world, "p3", new_quantity=30, unit="sqm")
     assert corrected is not None and corrected.execution_result is not None, corrected
     assert corrected.execution_result.status.value.lower() == "succeeded", corrected.reply_text
+    await tap_save(world.db, world.org)  # WA-77: counted once saved
     payload, _ = await _day(world, DAY2)
     assert [q["quantity"] for q in payload["activities"][0]["quantities"]] == ["30.000"]
 
@@ -275,6 +279,7 @@ async def test_wrk03_the_work_log_for_yesterday_and_today_follow_the_dates(world
         return sorted(a["work_type"] for a in result["activities"])
 
     kwargs = {"organization_id": str(world.org), "project_id": str(world.project), "site_id": str(world.site)}
+    await tap_save(world.db, world.org)  # WA-77: the work log is what was saved
     assert names(await search.search(start_date=DAY1, end_date=DAY1, **kwargs)) == ["brickwork"]
     # today: the new job and the earlier one that was updated today
     assert names(await search.search(start_date=DAY2, end_date=DAY2, **kwargs)) == ["brickwork", "wiring"]

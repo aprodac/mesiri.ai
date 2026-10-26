@@ -1822,6 +1822,8 @@ export interface SiteDayDetail {
   day: SiteDayItem | null
   project: ProjectDayItem | null
   report: SiteDayReport
+  /** WA-77: the same report with unsaved entries in it (the Live page shows them as drafts). */
+  report_with_drafts?: SiteDayReport
   items: ReviewItem[]
   drafts: number
   versions: DprVersion[]
@@ -1943,6 +1945,10 @@ export interface FactSources {
     received_at: string | null
     sender_name: string | null
     sender_number: string | null
+    /** Where it came in: 'whatsapp', or 'dashboard' for Tell Mesiri (WEB-36). */
+    source?: string
+    /** A voice note's English, from the speech step (WEB-37); null for text. */
+    translated_text?: string | null
   }[]
   readings: {
     provider: string | null
@@ -1951,13 +1957,44 @@ export interface FactSources {
     extracted: Record<string, unknown>
     created_at: string | null
   }[]
-  photos: { url: string | null; mime_type: string | null; caption: string | null }[]
+  photos: {
+    /** id, when and who sent it (WEB-40); older APIs leave them out. */
+    id?: string
+    url: string | null
+    mime_type: string | null
+    caption: string | null
+    at?: string | null
+    by?: string | null
+  }[]
   history: { state: string; note: string | null; at: string | null; by: string | null }[]
 }
 
 export async function fetchFactSourcesApi(factType: FactType, factId: string): Promise<FactSources> {
   const res = await api.get<FactSources>(`/dpr/facts/${factType}/${factId}/sources`)
   return res.data
+}
+
+/** A question asked about a site and what Mesiri answered (WEB-37's Live report). */
+export interface SiteQuestion {
+  id: string
+  type: string
+  text: string | null
+  translated_text: string | null
+  reply: string | null
+  received_at: string | null
+  sender_name: string | null
+  source: string
+  /** What was asked about. Finance questions are never listed. */
+  kind: 'stock' | 'manpower' | 'work' | 'project' | 'report'
+  /** Asked about the whole project rather than this site. */
+  whole_project: boolean
+}
+
+export async function fetchSiteQuestionsApi(siteId: string, since: Date, until: Date): Promise<SiteQuestion[]> {
+  const res = await api.get<{ items: SiteQuestion[] }>(`/dpr/site-days/${siteId}/questions`, {
+    params: { since: since.toISOString(), until: until.toISOString() },
+  })
+  return res.data.items
 }
 
 /** Confirm one draft (BE-09). */
@@ -2152,3 +2189,45 @@ export async function fetchProjectDayDocumentApi(projectId: string, date: string
   const res = await api.get<string>(`/dpr/project-days/${projectId}/document`, { params: { date }, responseType: 'text' })
   return res.data
 }
+
+// ─── Tell Mesiri from the dashboard (WEB-36) ─────────────────────────────────
+// apps/whatsapp-assistant/src/web_assistant/router.py: the same handler as a
+// WhatsApp message, as the signed-in user; Mesiri's replies come back here.
+
+export interface AssistantReplyOption {
+  id: string
+  title: string
+  description?: string | null
+}
+
+export interface AssistantReply {
+  type: 'text' | 'buttons' | 'list'
+  text: string
+  buttons: AssistantReplyOption[]
+  list_rows: AssistantReplyOption[]
+  button_label?: string | null
+}
+
+export interface AssistantResponse {
+  message_id: string
+  replies: AssistantReply[]
+  /** A voice note's words, as Mesiri heard them. */
+  transcript: string | null
+}
+
+/** Mesiri can take up to a minute (voice + model); the request waits for it. */
+const ASSISTANT_TIMEOUT_MS = 90_000
+
+export async function sendToMesiri(body: { text?: string; interactive_reply_id?: string }): Promise<AssistantResponse> {
+  const res = await api.post<AssistantResponse>('/assistant/messages', body, { timeout: ASSISTANT_TIMEOUT_MS })
+  return res.data
+}
+
+export async function sendVoiceToMesiri(audio: Blob): Promise<AssistantResponse> {
+  const res = await api.post<AssistantResponse>('/assistant/messages/voice', audio, {
+    headers: { 'Content-Type': 'audio/ogg' },
+    timeout: ASSISTANT_TIMEOUT_MS,
+  })
+  return res.data
+}
+

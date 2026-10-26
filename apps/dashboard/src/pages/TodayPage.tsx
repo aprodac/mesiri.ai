@@ -2,7 +2,7 @@ import * as React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchAllOpenIssues } from '@/lib/issues'
-import { Building2, ChevronLeft, ChevronRight, CircleCheck, CircleDashed, CircleDot, RefreshCw, Send, TriangleAlert } from 'lucide-react'
+import { Building2, ChevronLeft, ChevronRight, CircleCheck, CircleDashed, CircleDot, Radio, RefreshCw, Send, TriangleAlert } from 'lucide-react'
 import { MapPin as IcMapPin, HardHat as IcHardHat, Hammer as IcHammer, TriangleAlert as IcTriangleAlert } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
 import {
@@ -17,6 +17,7 @@ import { useToast } from '@/components/ui/toast-notification'
 import { GettingStartedCard } from '@/components/getting-started-card'
 import { FirstReportMoment } from '@/components/first-report-moment'
 import { TimeSaved } from '@/components/time-saved'
+import { TellMesiri } from '@/components/tell-mesiri/tell-mesiri'
 import { useReadOnly } from '@/lib/trial'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -303,6 +304,13 @@ export default function TodayPage() {
         }
         actions={
           <>
+            {isToday && projects.length > 0 && (
+              <Button asChild variant="outline" size="sm" className="h-8 gap-1.5">
+                <Link to="/live" title="Watch today's report write itself as updates come in">
+                  <Radio className="size-4 text-primary" /> Live
+                </Link>
+              </Button>
+            )}
             <div className="flex items-center rounded-lg border">
               <Button variant="ghost" size="icon" className="size-8" onClick={() => shiftDay(-1)} title="Previous day" aria-label="Previous day">
                 <ChevronLeft className="size-4" />
@@ -326,6 +334,7 @@ export default function TodayPage() {
       {isToday && <TimeSaved />}
       {isToday && <FirstReportMoment />}
       {isToday && <GettingStartedCard />}
+      {isToday && <TellMesiri className="rounded-xl border px-4 py-3" />}
 
       {daysQuery.isError ? (
         <Callout tone="draft" icon={TriangleAlert} action={<Button variant="outline" size="sm" className="bg-background" onClick={refresh}>Try again</Button>}>

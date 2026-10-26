@@ -188,7 +188,14 @@ async def test_the_day_lists_every_item_with_its_id_and_state(conn) -> None:
     assert [v["version_no"] for v in day["versions"]] == [1]
     # The stored payload is unchanged: no ids leak into versions or PDFs.
     assert "items" not in day["report"]
-    assert "id" not in day["report"]["activities"][0]
+    # WA-77 (Alan, 25 Oct): the report is made of saved entries; the draft
+    # work item is only listed for review, and the saved labour is in it.
+    assert day["report"]["activities"] == []
+    assert day["report"]["labour"]["headcount"] == 8
+    assert day["report"]["drafts"]["total"] == 2
+    # The Live page's copy has the draft in it (shown there marked draft), still without ids.
+    assert [a["work_type"] for a in day["report_with_drafts"]["activities"]] == ["plastering"]
+    assert "id" not in day["report_with_drafts"]["activities"][0]
 
 
 async def test_sources_show_the_message_sender_and_what_the_ai_read(conn) -> None:

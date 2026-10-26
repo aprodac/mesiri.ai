@@ -393,6 +393,16 @@ def confirm_message(
         f" ({project_name})" if site_label(site_name, project_name) != site_name else ""
     )
     lines = [f"📋 {site}: today's report is ready.", *day_lines(payload)]
+    # WA-77 (Alan, 25 Oct): entries nobody saved are not in the report; the
+    # engineer decides on them under "Fix something".
+    unsaved = int(((payload.get("drafts") or {}).get("total")) or 0)
+    if unsaved:
+        lines.append(
+            "📝 "
+            + _count(unsaved, "entry was", "entries were")
+            + " not saved (Save wasn't tapped). They stay out of the report unless you keep them:"
+            " tap *Fix something*."
+        )
     stock = int(payload.get("stock_flags") or 0)
     if stock:
         lines.append(

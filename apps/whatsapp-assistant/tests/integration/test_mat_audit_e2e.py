@@ -9,6 +9,7 @@ import datetime as dt
 from zoneinfo import ZoneInfo
 
 import pytest
+from tests.integration._tap_save import tap_save
 from tests.integration.test_wa103_transfer_opening_e2e import (  # noqa: F401 -- the fixture
     MESSAGE,
     _send,
@@ -47,6 +48,7 @@ async def test_mat03_used_and_received_by_day_are_not_the_all_time_totals(world)
     await _send(world, direction="used", quantity=10, occurred_on=yesterday)
     await _send(world, direction="received", quantity=50)
     await _send(world, direction="used", quantity=5)
+    await tap_save(world.db, world.org)  # WA-77: counted once saved
 
     said = await _ask(world, date_range="yesterday")
     assert "10 bags cement used" in said and "received" not in said.split(".")[0]
@@ -65,6 +67,7 @@ async def test_mat03_used_and_received_by_day_are_not_the_all_time_totals(world)
 
 async def test_mat03_a_day_without_movements_says_so_with_the_stock(world):  # noqa: F811 -- pytest fixture imported from the shared e2e module
     await _send(world, direction="opening_stock", quantity=500)
+    await tap_save(world.db, world.org)  # WA-77: counted once saved
     said = await _ask(world, date="2020-01-01")
     assert "no cement was used or received" in said.lower() and "left now" in said
 

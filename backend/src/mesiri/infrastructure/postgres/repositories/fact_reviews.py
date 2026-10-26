@@ -303,8 +303,11 @@ class PostgresFactReviewRepository:
             messages = (
                 await self._conn.execute(
                     text(
-                        "SELECT im.id, im.message_type, im.body_text, im.media_object_key, "
-                        "im.received_at, im.sender_wa_id, u.full_name AS sender_name "
+                        "SELECT im.id, im.message_type, im.body_text, im.body_text_en, "
+                        "im.media_object_key, "
+                        "im.received_at, im.sender_wa_id, u.full_name AS sender_name, "
+                        # Where it came in: "dashboard" for Tell Mesiri (WEB-36), else WhatsApp.
+                        "COALESCE(im.raw_payload::jsonb ->> 'source', 'whatsapp') AS source "
                         "FROM inbound_messages im "
                         "LEFT JOIN users u ON u.organization_id = im.organization_id "
                         "  AND u.whatsapp_number IS NOT NULL "
@@ -322,9 +325,11 @@ class PostgresFactReviewRepository:
             photos = (
                 await self._conn.execute(
                     text(
-                        "SELECT pa.media_object_key, pa.mime_type, "
-                        "COALESCE(pa.caption, pa.ai_caption) AS caption, pa.created_at "
+                        "SELECT pa.id, pa.media_object_key, pa.mime_type, "
+                        "COALESCE(pa.caption, pa.ai_caption) AS caption, pa.created_at, "
+                        "u.full_name AS uploaded_by "
                         "FROM progress_attachments pa JOIN activities a ON a.id = pa.parent_id "
+                        "LEFT JOIN users u ON u.id = pa.uploaded_by_user_id "
                         "WHERE pa.parent_type = 'ACTIVITY' AND pa.parent_id = :id "
                         "AND a.organization_id = :org AND pa.media_object_key IS NOT NULL "
                         "ORDER BY pa.created_at"
@@ -342,10 +347,13 @@ class PostgresFactReviewRepository:
                     "id": str(m["id"]),
                     "type": m["message_type"],
                     "text": m["body_text"],
+                    # A voice note's English, from the speech step (WEB-37); None for text.
+                    "translated_text": m.get("body_text_en"),
                     "media_object_key": m["media_object_key"],
                     "received_at": when(m["received_at"]),
                     "sender_name": m["sender_name"],
                     "sender_number": m["sender_wa_id"],
+                    "source": m.get("source") or "whatsapp",
                 }
                 for m in messages
             ],
@@ -362,9 +370,13 @@ class PostgresFactReviewRepository:
             ],
             "photos": [
                 {
+                    # id, when and who: the Live report tells a new photo from one it has shown (WEB-40).
+                    "id": str(p["id"]),
                     "media_object_key": p["media_object_key"],
                     "mime_type": p["mime_type"],
                     "caption": p["caption"],
+                    "at": when(p["created_at"]),
+                    "by": p["uploaded_by"],
                 }
                 for p in photos
             ],
@@ -378,6 +390,86 @@ class PostgresFactReviewRepository:
                 for h in history
             ],
         }
+
+    async def questions(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        project_id: uuid.UUID,
+        site_id: uuid.UUID,
+        since: datetime.datetime,
+        until: datetime.datetime,
+        workflow_keys: list[str],
+        tool_names: list[str] | None = None,
+        limit: int = 30,
+    ) -> list[dict[str, Any]]:
+        """Questions asked about one site (or its whole project) in a window,
+        with Mesiri's reply (WEB-37's Live report). A message is a question
+        when the workflow it started is one of ``workflow_keys`` (resolved as
+        the message log does), or when the agent answered it with one of
+        ``tool_names`` (WEB-46: the agent's lookups finish without a workflow
+        row, so its traced tool calls are what tell). A message with no
+        project or site recorded counts when its sender wrote about this site
+        or project in the same window."""
+        rows = (
+            await self._conn.execute(
+                text(
+                    "SELECT * FROM ("
+                    " SELECT im.id, im.message_type, im.body_text, im.body_text_en, "
+                    " im.assistant_reply, im.received_at, im.site_id, su.full_name AS sender_name, "
+                    " COALESCE(im.raw_payload::jsonb ->> 'source', 'whatsapp') AS source, "
+                    " COALESCE(wi.workflow_key, wi_origin.workflow_key) AS workflow_key, "
+                    " (SELECT array_agg(c ->> 'tool') FROM journey_traces jt, "
+                    "   jsonb_array_elements(jt.stage_payload::jsonb -> 'calls') c "
+                    "   WHERE jt.correlation_id = im.correlation_id AND jt.stage = 'agent_tools') AS tools "
+                    " FROM inbound_messages im "
+                    # One name per message, even if two people share a number.
+                    " LEFT JOIN LATERAL (SELECT u.full_name FROM users u "
+                    "   WHERE u.organization_id = im.organization_id "
+                    "   AND regexp_replace(u.whatsapp_number, '\\D', '', 'g') "
+                    "       = regexp_replace(im.sender_wa_id, '\\D', '', 'g') LIMIT 1) su ON true "
+                    " LEFT JOIN workflow_instances wi ON wi.id = im.workflow_instance_id "
+                    " LEFT JOIN workflow_instances wi_origin "
+                    "   ON wi_origin.correlation_id = im.interaction_group_id "
+                    " WHERE im.organization_id = :org "
+                    " AND im.received_at >= :since AND im.received_at < :until "
+                    " AND (im.site_id = :site OR (im.site_id IS NULL AND im.project_id = :project)"
+                    "   OR (im.site_id IS NULL AND im.project_id IS NULL AND EXISTS ("
+                    "     SELECT 1 FROM inbound_messages im2 WHERE im2.organization_id = im.organization_id"
+                    "     AND im2.sender_wa_id = im.sender_wa_id"
+                    "     AND im2.received_at >= :since AND im2.received_at < :until"
+                    "     AND (im2.site_id = :site OR im2.project_id = :project))))"
+                    ") q WHERE q.workflow_key = ANY(:keys) OR q.tools && CAST(:tools AS text[]) "
+                    "ORDER BY q.received_at, q.id LIMIT :limit"
+                ),
+                {
+                    "org": organization_id,
+                    "project": project_id,
+                    "site": site_id,
+                    "since": since,
+                    "until": until,
+                    "keys": workflow_keys,
+                    "tools": list(tool_names or []),
+                    "limit": limit,
+                },
+            )
+        ).mappings().all()
+        return [
+            {
+                "id": str(r["id"]),
+                "type": r["message_type"],
+                "text": r["body_text"],
+                "translated_text": r["body_text_en"],
+                "reply": r["assistant_reply"],
+                "received_at": r["received_at"].isoformat() if r["received_at"] else None,
+                "sender_name": r["sender_name"],
+                "source": r["source"] or "whatsapp",
+                "workflow_key": r["workflow_key"],
+                "tools": [t for t in (r["tools"] or []) if t],
+                "whole_project": r["site_id"] is None,
+            }
+            for r in rows
+        ]
 
     async def locate(
         self, organization_id: uuid.UUID, fact_type: str, fact_id: uuid.UUID

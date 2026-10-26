@@ -198,3 +198,46 @@
 .sidebar-scrollbar-light::-webkit-scrollbar { width: 5px; height: 5px; }
 .sidebar-scrollbar-light::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 99px; }
 .sidebar-scrollbar-light::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.22); }
+
+/* The Live report's thread from a message to where it lands (WEB-37). */
+@keyframes live-draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes live-glow {
+  0% { background-color: color-mix(in srgb, var(--primary) 16%, transparent); }
+  100% { background-color: transparent; }
+}
+/* A number landing in the Live report: it slams in, then a highlighter sweeps under it. */
+@keyframes live-slam {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.9); color: var(--primary); }
+  100% { transform: scale(1); }
+}
+@keyframes live-marker {
+  from { background-size: 0% 100%; }
+  to { background-size: 100% 100%; }
+}
+@keyframes live-ring {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent); }
+  100% { box-shadow: 0 0 0 18px transparent; }
+}
+/* A photo arriving in the Live report develops out of a blur, and Mesiri's look sweeps over it. */
+@keyframes live-develop {
+  0% { filter: blur(14px) grayscale(1) brightness(1.4); opacity: 0.4; }
+  100% { filter: none; opacity: 1; }
+}
+@keyframes live-scan {
+  0% { top: -10%; }
+  100% { top: 100%; }
+}
+/* Mesiri noticing a mistake in the Live report: the line shudders once. */
+@keyframes live-shake {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-6px); }
+  30% { transform: translateX(5px); }
+  45% { transform: translateX(-4px); }
+  60% { transform: translateX(3px); }
+  75% { transform: translateX(-1px); }
+}
+

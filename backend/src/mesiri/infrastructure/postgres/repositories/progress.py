@@ -36,6 +36,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from mesiri.application.dpr import fact_review
+
 # site_issue_type / site_issue_status enum members (migration 0430) — kept
 # here rather than in domains/progress/validation.py because that file only
 # validates the WhatsApp-confirmed command path (CreateActivityCommand /
@@ -75,7 +77,12 @@ class PostgresProgressReadRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[dict[str, Any]], int]:
-        where = ["organization_id = :organization_id", "deleted_at IS NULL"]
+        # WA-77: the site log is what is saved; an unsaved entry isn't in it yet.
+        where = [
+            "organization_id = :organization_id",
+            "deleted_at IS NULL",
+            fact_review.counted_sql(fact_review.ACTIVITY, "activities.id"),
+        ]
         params: dict[str, Any] = {"organization_id": organization_id, "limit": limit, "offset": offset}
 
         if project_ids is not None:
@@ -210,7 +217,11 @@ class PostgresProgressReadRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[dict[str, Any]], int]:
-        where = ["organization_id = :organization_id"]
+        # WA-77: an issue counts once it is saved.
+        where = [
+            "organization_id = :organization_id",
+            fact_review.counted_sql(fact_review.SITE_ISSUE, "site_issues.id"),
+        ]
         params: dict[str, Any] = {"organization_id": organization_id, "limit": limit, "offset": offset}
 
         if project_ids is not None:

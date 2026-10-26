@@ -73,6 +73,8 @@ async def build_today_line(
                 site_id=getattr(site, "id", None),
                 start_date=today,
                 end_date=today,
+                # WA-77: the agent sees what was sent, saved or not.
+                include_unsaved=True,
             ),
             timeout=timeout,
         )

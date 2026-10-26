@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import text
+from tests.integration._tap_save import tap_save
 from tests.integration.test_wrk_audit_e2e import (  # noqa: F401 -- the fixture
     DAY1,
     DAY2,
@@ -54,6 +55,7 @@ async def test_pho01_site_update_photos_reach_the_work_with_their_captions(world
             {"o": world.org})).all()
     assert rows == [("media/a/1", "2nd floor plastering"), ("media/a/2", None), ("media/a/3", None)]
 
+    await tap_save(world.db, world.org)  # WA-77: counted once saved
     payload, _ = await _day(world, DAY2)
     work = payload["activities"][0]
     assert work["evidence_count"] == 3 and payload["evidence_count"] == 3
@@ -78,6 +80,7 @@ async def test_pho02_photos_added_today_to_earlier_work_are_on_todays_report(wor
     await _send(world, "ph4", narrative="brickwork 60%", work_type="brickwork", progress_percent=60,
                 occurred_on=DAY2.isoformat(), continues="brickwork")
     await _tap_site_update(world, [_photo("media/d/1", "brickwork today")])
+    await tap_save(world.db, world.org)  # WA-77: counted once saved
     payload, _ = await _day(world, DAY2)
     work = payload["activities"][0]
     assert work["continued"] and work["evidence_count"] == 1 and work["photos"][0]["caption"] == "brickwork today"

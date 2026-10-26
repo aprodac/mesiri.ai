@@ -15,6 +15,7 @@ import {
   Trash2,
   TriangleAlert,
   Users,
+  Radio,
 } from 'lucide-react'
 import { HardHat as IcHardHat, Hammer as IcHammer, Camera as IcCamera, TriangleAlert as IcTriangleAlert } from 'lucide-react'
 import {
@@ -728,6 +729,11 @@ export default function SiteDayPage() {
           date={longDate(date)}
           action={
             <div className="flex flex-wrap items-center gap-2">
+              <Button asChild variant="outline" className="h-10 gap-1.5">
+                <Link to={`/live?site=${siteId}&date=${date}`} title="Watch this report write itself as updates come in">
+                  <Radio className="size-4 text-primary" /> Watch live
+                </Link>
+              </Button>
               <DprViewToggle value={view} onChange={setView} />
               {!frozen && reportId && (
                 <Button className="h-10 px-4 font-semibold" disabled={busy} onClick={() => setApproving(true)}>

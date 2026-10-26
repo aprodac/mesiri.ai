@@ -278,13 +278,24 @@ function PromiseScene({ onStart }: { onStart: () => void }) {
   )
 }
 
-export function IntroConversation({ onStart, headerAction }: { onStart: () => void; headerAction?: React.ReactNode }) {
+export function IntroConversation({
+  onStart,
+  headerAction,
+  belowForm,
+}: {
+  onStart: () => void
+  headerAction?: React.ReactNode
+  /** Narrow screens put the form first and this under it: the wordmark
+   * header is then the form's, and this one reads "How it works". */
+  belowForm?: boolean
+}) {
   const scenes = useScenes(DURATIONS, (i) => (i + 1) % STEPS.length)
   const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })
 
   return (
     <div className="@container">
-      <header className="flex flex-wrap items-baseline justify-between gap-4 pt-7 pb-4">
+      {belowForm && <Label className="block pt-10 pb-4 lg:hidden">How it works · an example site</Label>}
+      <header className={cn('flex-wrap items-baseline justify-between gap-4 pt-7 pb-4', belowForm ? 'hidden lg:flex' : 'flex')}>
         <MesiriWordmark className="text-lg" />
         <div className="flex items-baseline gap-5">
           <Label className="hidden normal-case tracking-normal sm:inline">{today} · Example site</Label>

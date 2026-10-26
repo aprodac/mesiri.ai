@@ -283,15 +283,39 @@ AI Extraction → Save as DRAFT (+ reply "Saved as a draft… Reply UNDO")
   (expenses, transfers), creating users, admin actions -- still confirms before
   saving. The company setting `capture_mode = confirm_first` (Mesiri team only)
   restores the old behaviour for capture too.
+- **Nothing counts until it is saved (WA-77, Alan, 25 Oct):** a draft (sent
+  on WhatsApp, ✅ Save not yet tapped, not kept in the evening review) is
+  written but not counted. The site report's payload, and so the PDF, is
+  built from saved entries only (`assembly.saved_rows_only`); drafts are only
+  listed for the engineer (`items`, and `drafts` in the payload). Approving a
+  day (dashboard, or "Confirm all" on WhatsApp) no longer confirms its drafts,
+  and late entries are listed and claimed once saved. The evening message
+  says how many were not saved and to keep them under "Fix something". The
+  SQL rule is one helper, `fact_review.counted_sql` (latest review state is
+  not a draft; no review row counts). Stock: `fact_review.movement_counted_sql`
+  on `material_movements` (stock levels, ledger, the DPR's opening/closing);
+  the over-stock hint while capturing still counts unsaved entries.
+  Attendance: `workforce.COUNTED_LINE_SQL` (a line counts once its report is
+  saved; an unsaved later report replaces nothing). Site log, issues and
+  analytics leave out unsaved entries; the agent's own picture of today still
+  sees them. A day whose only entries are unsaved is not "missing" a section
+  (`site_day.missing_sections`): the engineer is asked to keep them.
 - **Site DPR page reads (WEB-04):** `GET /dpr/site-days/{site_id}?date=` (the
   day, the report as it stands, `items` = every confirmable item with its fact
   type, id, draft/confirmed and flags, and the versions);
   `GET /dpr/facts/{type}/{id}/sources` (WhatsApp messages and sender, what the
-  AI read and its confidence, photos, review history);
+  AI read and its confidence, photos with their id, time and sender (WEB-40),
+  review history);
   `GET /dpr/daily-reports/{id}/versions`, and `.../pdf?version_id=` for an
   older version. `items` is built beside the payload, never stored in it, so
   versions and PDFs are unchanged. All of them 404 for a site outside the
   caller's site access (custom sites, BE-34).
+- **Live report questions (WEB-38):** `GET /dpr/site-days/{site_id}/questions?since=&until=`
+  (at most two days): the messages about this site, or its whole project,
+  whose workflow was a lookup (stock, manpower, work, project, report), with
+  Mesiri's reply and the voice note's English. Finance lookups are never
+  listed (SEC-01). Read-only, from `inbound_messages` joined to
+  `workflow_instances` as the message log does; the site rule is the site day's.
 
 *Previously:* "Nothing is persisted before an explicit confirmation." That
 made every site update a two-message exchange, which supervisors skipped.

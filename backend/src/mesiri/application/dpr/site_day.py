@@ -97,9 +97,12 @@ def missing_sections(payload: dict[str, Any] | None) -> dict[str, list[str]]:
         return {"blocking": [], "optional": []}
     blocking: list[str] = []
     optional: list[str] = []
-    if not payload.get("activity_count"):
+    # WA-77: an entry waiting for its Save is reported but not counted; the
+    # engineer is asked to keep it, not to send the section again.
+    drafts = payload.get("drafts") or {}
+    if not payload.get("activity_count") and not drafts.get("activities"):
         blocking.append("work_done")
-    if not (payload.get("labour") or {}).get("headcount"):
+    if not (payload.get("labour") or {}).get("headcount") and not drafts.get("labour_reports"):
         blocking.append("labour")
     if not payload.get("evidence_count"):
         optional.append("photos")

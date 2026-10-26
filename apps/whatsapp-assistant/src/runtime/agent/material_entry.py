@@ -393,6 +393,8 @@ class MaterialEntry(EntryScope):
                 site_id=str(site_id) if site_id else None,
                 material_name=None,
                 material_id=material_id,
+                # WA-77: the hint compares with what was reported, saved or not.
+                include_unsaved=True,
             )
         except Exception:  # noqa: BLE001 -- the stock note is a hint, never a block
             _log.warning("material_entry.stock_failed correlation_id=%s", message.correlation_id, exc_info=True)
