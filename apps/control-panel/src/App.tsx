@@ -19,7 +19,8 @@ import {
   Stamp,
   IndianRupee,
   Funnel,
-  Database as DatabaseIcon
+  Database as DatabaseIcon,
+  MessageSquareReply
 } from 'lucide-react';
 import { RequireAuth } from './AuthContext';
 import Login from './Login';
@@ -37,6 +38,7 @@ import BrandingRequests from './BrandingRequests';
 import Costs from './Costs';
 import Trials from './Trials';
 import Perf from './Perf';
+import Replies from './Replies';
 import QueueHealth from './QueueHealth';
 import Database from './Database';
 
@@ -81,6 +83,10 @@ const Sidebar = () => (
       <NavLink to="/providers" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
         <Cpu size={16} />
         AI Providers
+      </NavLink>
+      <NavLink to="/replies" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <MessageSquareReply size={16} />
+        Reply Insights
       </NavLink>
       <NavLink to="/perf" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
         <Timer size={16} />
@@ -192,6 +198,7 @@ function AppLayout() {
             <Route path="/logs" element={<Logs />} />
             <Route path="/database" element={<Database />} />
             <Route path="/providers" element={<Providers />} />
+            <Route path="/replies" element={<Replies />} />
             <Route path="/perf" element={<Perf />} />
             <Route path="/queue-health" element={<QueueHealth />} />
             <Route path="/system-graph" element={<SystemGraph />} />

@@ -431,3 +431,17 @@ tr:hover td {
   padding-top: var(--space-4);
   border-top: 1px solid var(--border-subtle);
 }
+
+/* Reply Insights (SA-17): a wide chart beside a narrow panel, stacked when narrow. */
+.replies-split {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+@media (max-width: 1024px) {
+  .replies-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
