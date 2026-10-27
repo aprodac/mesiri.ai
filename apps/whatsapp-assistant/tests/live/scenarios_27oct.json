@@ -1,0 +1,284 @@
+{
+  "about": "Every mark (❌ / ⚠️) of the 27 Oct 2026 live rounds (docs/qa/runs/2026-10-27-whatsapp-live-tests) as a WhatsApp scenario, run against the REAL assistant in the TEST company by teammate/scenarios.py (claude-ops task bot-scenarios). A fix counts as done only when its marks pass in 3 runs out of 3 (WA-80). Scenarios make their own preconditions and undo what they save, so they run on any day. Checks look at the card lines and buttons the code draws, not at the model's free wording, except the language checks.",
+  "patterns": {
+    "SITE_Q": "which site|ethu site|ഏത് സൈറ്റ|kaun si site|kis site",
+    "SAVED": "✅ Saved",
+    "CANCELLED": "nothing saved",
+    "MANGLISH": "\\b(aanu|undu|und|illa|cheyy\\w*|tharaam|pattilla|pattum|ayakk\\w*|aakk\\w*|vannu|sheri|ningal\\w*|ippo|innu|njan|kazhinj\\w*)\\b",
+    "HINDI_LATIN": "\\b(hai|hain|aaye|karein|kijiye|dabayein|dabaiye|theek|gaye|kar|ho)\\b",
+    "EXAMPLE": "vannu|e\\.g\\.|example|udaharan|ഉദാഹരണ|like:|ingane"
+  },
+  "reset": [
+    {"send": "no"},
+    {"send": "cancel"}
+  ],
+  "marks": {
+    "M01": {"shot": "01", "group": "C", "what": "correction after Save says 'changed' with no card"},
+    "M02": {"shot": "01", "group": "C", "what": "correction after Save is not saved (still 8 mason)"},
+    "M03": {"shot": "02", "group": "A", "w": "W1", "what": "'holding 2 messages' when one was sent"},
+    "M04": {"shot": "02", "group": "A", "w": "W2", "what": "'20 rod steel used' silently dropped"},
+    "M05": {"shot": "02", "group": "E", "what": "cement stock figure jumps (207 vs 690 / 545)"},
+    "M06": {"shot": "03", "group": "C", "what": "'120 rft skirting' dropped"},
+    "M07": {"shot": "03", "group": "A", "w": "W5", "what": "typo 'Nooki'"},
+    "M08": {"shot": "03", "group": "A", "w": "W4", "what": "Cancel wording differs between paths"},
+    "M09": {"shot": "04", "group": "C", "what": "labour saved without a tap"},
+    "M10": {"shot": "04", "group": "A", "w": "W3", "what": "cement + mixer breakdown dropped from the 4-part note (regressed in 18)"},
+    "M11": {"shot": "04", "group": "C", "what": "Cancel says nothing recorded while labour stayed"},
+    "M12": {"shot": "04", "group": "C", "what": "earlier count replaced with no question"},
+    "M13": {"shot": "05", "group": "C", "what": "'mixer breakdown aayi' saves nothing"},
+    "M14": {"shot": "05", "group": "C", "what": "mixer breakdown missing from 'open issues'"},
+    "M15": {"shot": "06", "group": "C", "what": "'what was done today' forgets today's labour"},
+    "M16": {"shot": "06", "group": "A", "w": "W5", "what": "'Inn ... innu' doubled"},
+    "M17": {"shot": "06", "group": "C", "what": "'yesterday' answered with today's figure"},
+    "M18": {"shot": "06", "group": "C", "what": "report and 'innu ethra labour?' disagree (13 vs 8)"},
+    "M19": {"shot": "06", "group": "E", "what": "no draft PDF for today's report (one came on 25 Oct)"},
+    "M20": {"shot": "07", "group": "D", "w": "W8", "what": "report time cannot be set"},
+    "M21": {"shot": "07", "group": "A", "w": "W5", "what": "English reply to Manglish (report time)"},
+    "M22": {"shot": "07", "group": "D", "w": "W8", "what": "cannot list the team"},
+    "M23": {"shot": "07", "group": "D", "w": "W8", "what": "'supervisor at Site B' becomes Site Engineer of 'this project'"},
+    "M24": {"shot": "07", "group": "D", "w": "W8", "what": "old 'Reply YES' card"},
+    "M25": {"shot": "08", "group": "A", "w": "W4", "what": "'couldn't understand' gives no example"},
+    "M26": {"shot": "08", "group": "C", "what": "'I only give join codes' canned line"},
+    "M27": {"shot": "08", "group": "A", "w": "W5", "what": "English reply to Manglish (expense switched off)"},
+    "M28": {"shot": "10", "group": "C", "what": "Replace / Add question printed twice"},
+    "M29": {"shot": "10", "group": "A", "w": "W2", "what": "steel asked in text but not on the card"},
+    "M30": {"shot": "11", "group": "C", "what": "'tap Cancel' advice on a card already saved"},
+    "M31": {"shot": "11", "group": "C", "what": "report says 1 open issue, there are 2"},
+    "M32": {"shot": "11", "group": "C", "what": "'what was done today' leaves out today's workers"},
+    "M33": {"shot": "11", "group": "C", "what": "Site B taken from the Rajesh message without asking"},
+    "M34": {"shot": "12", "group": "B", "what": "'maatti ... aakki' (changed) said before Save"},
+    "M35": {"shot": "12", "group": "C", "what": "English Yes/No note inside a Malayalam reply"},
+    "M36": {"shot": "13", "group": "A", "w": "W3", "what": "'Green Villa' in the message, still asks which site"},
+    "M37": {"shot": "13", "group": "B", "what": "stray 'Not saved (...):' line"},
+    "M38": {"shot": "14", "group": "B", "what": "'10 sheets in nos?' question; plywood not on the card"},
+    "M39": {"shot": "14", "group": "C", "what": "Hindi message gets English / Manglish and a fake 'select'"},
+    "M40": {"shot": "14", "group": "C", "what": "holiday card names no site"},
+    "M41": {"shot": "15", "group": "B", "what": "rain issue from 24 Oct called 'rain today'"},
+    "M42": {"shot": "15", "group": "A", "w": "W4", "what": "help offers expenses, which are switched off"},
+    "M43": {"shot": "15", "group": "A", "w": "W4", "what": "help has no examples to copy"},
+    "M44": {"shot": "16", "group": "A", "w": "W2", "what": "placeholder button '1 rod = X kg'"},
+    "M45": {"shot": "16", "group": "A", "w": "W2", "what": "steel line: no Save button, 'Unknown purpose'"},
+    "M46": {"shot": "16", "group": "B", "what": "internal note '(closed: not to be asked again...)' leaked"},
+    "M47": {"shot": "16", "group": "A", "w": "W2", "what": "the 12 kg answer is forgotten"},
+    "M48": {"shot": "16", "group": "A", "w": "W2", "what": "typed 'save' -> 'I don't know the unit rod'"},
+    "M49": {"shot": "17", "group": "A", "w": "W7", "what": "replies through the AI take ~8 s"},
+    "M50": {"shot": "18", "group": "A", "w": "W3", "what": "mixer breakdown missing from the 4-part note (regression)"},
+    "M51": {"shot": "18", "group": "A", "w": "W1", "what": "'which site?' inside a card that already says Green Villa"},
+    "M52": {"shot": "18", "group": "A", "w": "W1", "what": "the whole card thrown away by the stray site question"},
+    "M53": {"shot": "19", "group": "A", "w": "W1", "what": "a card told 'not saved' comes back 30 min later"},
+    "M54": {"shot": "19", "group": "A", "w": "W1", "what": "no 'already N, replace or add?' on the revived card"},
+    "M55": {"shot": "19", "group": "A", "w": "W3", "what": "'tiling 70% aayi' treated as an edit of no card; nothing saved"},
+    "M56": {"shot": "19", "group": "A", "w": "W2", "what": "steel line: 'Sorry, couldn't', no answer buttons, no Save, no site"},
+    "M57": {"shot": "19", "group": "A", "w": "W2", "what": "12 kg answer ignored, steel line doubled"},
+    "M58": {"shot": "19", "group": "A", "w": "W4", "what": "bare 'help' shows the old menu with Money / Reminders"}
+  },
+  "scenarios": [
+    {
+      "id": "S01",
+      "title": "Labour, Save, correction after Save (shot 01, 11, 12)",
+      "steps": [
+        {"send": "Green Villa: 8 mason 5 helper vannu",
+         "checks": [{"mark": "M09", "lacks": ["{SAVED}"]}, {"mark": "M09", "buttons_has": ["✅ Save"]}]},
+        {"tap_if": "Replace"},
+        {"tap": "✅ Save", "checks": [{"mark": "M09", "has": ["{SAVED}"]}]},
+        {"send": "alla, 6 mason aanu",
+         "checks": [
+           {"mark": "M01", "has": ["To save"]},
+           {"mark": "M01", "buttons_has": ["✅ Save"]},
+           {"mark": "M30", "lacks_re": ["cancel tap"]},
+           {"mark": "M34", "lacks_re": ["\\baakki\\b", "\\bmaatti\\b(?!\\w)"]}
+         ]},
+        {"tap": "✅ Save", "checks": [{"mark": "M02", "has": ["{SAVED}"]}]},
+        {"send": "innu Green Villa-il ethra labour?",
+         "checks": [{"mark": "M02", "has_re": ["6\\s*mason|mason\\W{0,3}6"]}]}
+      ],
+      "cleanup": [{"send": "undo"}, {"tap_if": "All of them"}]
+    },
+    {
+      "id": "S02",
+      "title": "Steel in rods and cement, the kg answer, typed save (shots 02, 10, 16, 19)",
+      "steps": [
+        {"send": "20 rod steel use cheythu, 100 bags cement vannu",
+         "checks": [{"mark": "M03", "lacks_re": ["2 message"]}]},
+        {"tap_if": "Green Villa"},
+        {"expect_card": true,
+         "checks": [
+           {"mark": "M04", "has_re": ["steel used: 20"]},
+           {"mark": "M29", "has_re": ["steel used: 20"]},
+           {"mark": "M04", "has_re": ["cement in: 100"]},
+           {"mark": "M44", "buttons_lacks_re": ["x kg"]},
+           {"mark": "M56", "lacks_re": ["sorry"]},
+           {"mark": "M46", "lacks_re": ["\\(closed:"]}
+         ]},
+        {"send": "oru rod 12 kg",
+         "checks": [
+           {"mark": "M47", "has_re": ["240\\s*kg"]},
+           {"mark": "M57", "no_duplicate_lines": true},
+           {"mark": "M57", "lacks_re": ["{SITE_Q}"]},
+           {"mark": "M56", "lacks_re": ["{SITE_Q}"]},
+           {"mark": "M45", "buttons_has": ["✅ Save"]},
+           {"mark": "M45", "lacks_re": ["unknown purpose"]},
+           {"mark": "M46", "lacks_re": ["\\(closed:"]},
+           {"mark": "M49", "max_seconds": 5}
+         ]},
+        {"send": "save",
+         "checks": [{"mark": "M48", "has": ["{SAVED}"]}, {"mark": "M48", "has_re": ["steel"]}]}
+      ],
+      "cleanup": [{"send": "undo"}, {"tap_if": "All of them"}]
+    },
+    {
+      "id": "S03",
+      "title": "Plastering + skirting, Cancel (shots 03, 09)",
+      "steps": [
+        {"send": "Green Villa 2nd floor plastering 60% aayi, 120 rft skirting theernnu",
+         "checks": [
+           {"mark": "M06", "has_re": ["plastering, 2nd floor: 60%"]},
+           {"mark": "M06", "has_re": ["skirting: 120 rft"]},
+           {"mark": "M07", "lacks_re": ["\\bnooki\\b"]}
+         ]},
+        {"tap": "❌ Cancel", "checks": [{"mark": "M08", "has": ["❌ Okay, nothing saved."]}, {"mark": "M49", "max_seconds": 4}]}
+      ]
+    },
+    {
+      "id": "S04",
+      "title": "The 4-part site note on top of a saved count (shots 04, 09, 18)",
+      "steps": [
+        {"send": "Green Villa 7 mason vannu"},
+        {"tap_if": "Replace"},
+        {"tap": "✅ Save"},
+        {"send": "Green Villa innathe update: 5 mason 3 helper, ground floor tiling 60% aayi, 30 bags cement use cheythu, mixer breakdown aayi pani 2 hour ninnu",
+         "checks": [
+           {"mark": "M09", "lacks": ["{SAVED}"]},
+           {"mark": "M10", "has_re": ["tiling, ground floor: 60%"]},
+           {"mark": "M10", "has_re": ["cement used: 30"]},
+           {"mark": "M10", "has_re": ["mixer|equipment breakdown"]},
+           {"mark": "M50", "has_re": ["mixer|equipment breakdown"]},
+           {"mark": "M12", "buttons_has": ["Replace"]},
+           {"mark": "M28", "body_count_max": {"Today already": 1}},
+           {"mark": "M51", "lacks_re": ["{SITE_Q}"]}
+         ]},
+        {"tap": "❌ Cancel", "checks": [{"mark": "M11", "has": ["nothing saved"]}]},
+        {"send": "innu Green Villa-il ethra labour?",
+         "checks": [{"mark": "M11", "has_re": ["\\b7\\b"]}, {"mark": "M09", "lacks_re": ["\\b8 (per|workers)"]}]},
+        {"send": "Green Villa 4 mason vannu",
+         "checks": [
+           {"mark": "M53", "lacks_re": ["tiling", "cement used"]},
+           {"mark": "M54", "buttons_has": ["Replace"]}
+         ]},
+        {"tap": "❌ Cancel"}
+      ],
+      "cleanup": [{"send": "undo"}, {"tap_if": "All of them"}]
+    },
+    {
+      "id": "S05",
+      "title": "A card dropped by the site question must stay dropped (shots 18, 19; transcript #4314, #4322)",
+      "steps": [
+        {"send": "ഇന്ന് 4 മേസൺ വന്നു"},
+        {"if_last_re": "{SITE_Q}", "send": "25 Oct report ayakku",
+         "checks": [{"mark": "M52", "lacks_re": ["save cheythilla", "not saved"]}]},
+        {"if_last_re": ".", "send": "Green Villa 2 helper vannu",
+         "checks": [{"mark": "M53", "lacks_re": ["4 mason"]}, {"mark": "M53", "no_duplicate_lines": true}]},
+        {"tap_if": "❌ Cancel"}
+      ]
+    },
+    {
+      "id": "S06",
+      "title": "Issue saved, listed, closed (shots 05, 10)",
+      "steps": [
+        {"send": "Green Villa mixer breakdown aayi",
+         "checks": [{"mark": "M13", "has_re": ["issue"]}, {"mark": "M13", "buttons_has": ["✅ Save"]}]},
+        {"tap": "✅ Save", "checks": [{"mark": "M13", "has": ["{SAVED}"]}]},
+        {"send": "open issues ethokke?", "checks": [{"mark": "M14", "has_re": ["mixer"]}]},
+        {"send": "Green Villa-il ethra open issues und? number mathram", "capture": {"issues": "(\\d+)"}},
+        {"send": "send today's report", "checks": [{"mark": "M31", "has_re": ["\\b{issues} open issue"]}]}
+      ],
+      "cleanup": [{"send": "undo"}, {"tap_if": "All of them"}]
+    },
+    {
+      "id": "S07",
+      "title": "Questions and reports agree (shots 02, 06, 11, 12, 15)",
+      "steps": [
+        {"send": "Green Villa 5 mason 2 helper vannu"},
+        {"tap_if": "Replace"},
+        {"tap": "✅ Save", "capture": {"workers": "(\\d+) workers"}},
+        {"send": "innu Green Villa-il enthokke cheythu?",
+         "checks": [{"mark": "M15", "has_re": ["\\b{workers}\\b"]}, {"mark": "M32", "has_re": ["\\b{workers}\\b"]},
+                    {"mark": "M16", "lacks_re": ["\\binn\\b[^.]*\\binnu\\b"]}]},
+        {"send": "innu ethra labour?", "checks": [{"mark": "M18", "has_re": ["\\b{workers}\\b"]}]},
+        {"send": "send today's report",
+         "checks": [{"mark": "M18", "has_re": ["\\b{workers}\\b"]}, {"mark": "M19", "observe": "kinds"}]},
+        {"send": "innale labour ethra undayirunnu?", "checks": [{"mark": "M17", "lacks_re": ["\\b{workers} per\\b.*innu"]}]},
+        {"send": "ee week Green Villa-il ethra pani nadannu? summary tharo",
+         "checks": [{"mark": "M41", "lacks_re": ["innu mazha", "rain today"]}]},
+        {"send": "cement stock ethra?", "capture": {"stock": "(\\d+) ba"}},
+        {"send": "cement stock ethra?", "checks": [{"mark": "M05", "has_re": ["\\b{stock}\\b"]}]}
+      ],
+      "cleanup": [{"send": "undo"}, {"tap_if": "All of them"}]
+    },
+    {
+      "id": "S08",
+      "title": "Team and setup (shots 07, 11) -- W8, needs its own approval; run to measure",
+      "steps": [
+        {"send": "report time 7 pm aakku",
+         "checks": [{"mark": "M20", "lacks_re": ["can't|cannot|pattilla|kazhiyilla"]}, {"mark": "M21", "has_re": ["{MANGLISH}"]}]},
+        {"send": "ente team-il aarokke und?", "checks": [{"mark": "M22", "lacks_re": ["join code", "pattilla", "can't"]}]},
+        {"send": "Site B-il Rajesh-ine supervisor aakku",
+         "checks": [{"mark": "M23", "lacks_re": ["site engineer", "this project"]}, {"mark": "M24", "lacks_re": ["reply yes"]}]},
+        {"tap_if": "No"},
+        {"tap_if": "❌ Cancel"}
+      ]
+    },
+    {
+      "id": "S09",
+      "title": "Edge cases, language, help (shots 08, 15, 19)",
+      "steps": [
+        {"send": "asdfgh kkkk", "checks": [{"mark": "M25", "has_re": ["{EXAMPLE}"]}]},
+        {"send": "india match score ethra?", "checks": [{"mark": "M26", "lacks_re": ["join code"]}]},
+        {"send": "diesel 500 rupees expense aakku", "checks": [{"mark": "M27", "has_re": ["{MANGLISH}"]}]},
+        {"send": "help",
+         "checks": [{"mark": "M58", "lacks_re": ["\\bmoney\\b", "reminders"]}, {"mark": "M42", "lacks_re": ["expense"]},
+                    {"mark": "M43", "has_re": ["{EXAMPLE}"]}]},
+        {"send": "enikku enthokke cheyyan pattum? help",
+         "checks": [{"mark": "M42", "lacks_re": ["expense"]}, {"mark": "M43", "has_re": ["{EXAMPLE}"]}]}
+      ]
+    },
+    {
+      "id": "S10",
+      "title": "Where a message goes: site named, team message, correction of nothing (shots 11, 12, 13, 16, 19)",
+      "steps": [
+        {"send": "Site B-il Rajesh-ine supervisor aakku"},
+        {"send": "ഇന്ന് 4 മേസൺ വന്നു",
+         "checks": [{"mark": "M33", "lacks_re": ["to save · site b"]},
+                    {"mark": "M35", "lacks_re": ["note: you still"]}]},
+        {"tap_if": "❌ Cancel"},
+        {"send": "no"},
+        {"send": "Green Villa first floor wall putty 200 sqft cheythu",
+         "checks": [{"mark": "M36", "lacks_re": ["{SITE_Q}"]}, {"mark": "M36", "has_re": ["to save · green villa"]}]},
+        {"send": "pinne 2 painter um vannu",
+         "checks": [{"mark": "M37", "lacks_re": ["not saved \\("]}, {"mark": "M37", "has_re": ["wall putty"]},
+                    {"mark": "M37", "has_re": ["painter"]}]},
+        {"tap_if": "❌ Cancel"},
+        {"send": "Green Villa ground floor tiling 60% aayi"},
+        {"tap_if": "❌ Cancel"},
+        {"send": "Green Villa ground floor tiling 70% aayi",
+         "checks": [{"mark": "M55", "has_re": ["tiling, ground floor: 70%"]}, {"mark": "M55", "buttons_has": ["✅ Save"]},
+                    {"mark": "M55", "lacks_re": ["open aayitilla", "no card"]}]},
+        {"tap_if": "❌ Cancel"}
+      ]
+    },
+    {
+      "id": "S11",
+      "title": "English note, Hinglish, holiday (shot 14)",
+      "steps": [
+        {"send": "Green Villa today: 4 carpenters, shuttering for 2nd floor slab 50% done, 10 sheets plywood received",
+         "checks": [{"mark": "M38", "lacks_re": ["in nos\\?"]}, {"mark": "M38", "has_re": ["plywood"]}]},
+        {"tap_if": "❌ Cancel"},
+        {"send": "aaj Green Villa mein 3 mistri aur 2 labour aaye",
+         "checks": [{"mark": "M39", "lacks_re": ["\\bselect\\b"]}, {"mark": "M39", "has_re": ["{HINDI_LATIN}"]}]},
+        {"tap_if": "❌ Cancel"},
+        {"send": "Site B innu pani illa, holiday aanu", "checks": [{"mark": "M40", "has_re": ["site b"]}]},
+        {"tap_if": "❌ Cancel"}
+      ]
+    }
+  ]
+}
