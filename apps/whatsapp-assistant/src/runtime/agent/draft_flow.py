@@ -308,6 +308,13 @@ async def add(gw: Any, candidate: Any, *, text: str) -> StepResult:
     if draft is not None:
         if (same := dr.duplicate_of(draft, item)) is not None:
             return _drafted(same, prepared, repeated=True)
+        if (older := dr.same_work(draft, item)) is not None and older.id not in gw.draft_new:
+            # WA-82: a new figure for the same work and place replaces its line.
+            draft.items[draft.items.index(older)] = item
+            gw.draft_new.append(item.id)
+            _keep(gw, draft)
+            await _persist(gw, draft)
+            return _drafted(item, prepared, note=await _pending_note(gw))
         if draft.full:
             await note_lost(gw, tool, args, "the card is full")
             return StepResult("error", text=TOO_MANY)

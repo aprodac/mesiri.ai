@@ -75,3 +75,26 @@ def is_problem_only(text: str) -> bool:
     rest = _BREAKDOWN.sub(" ", text.casefold())
     words = [w for w in re.findall(r"[^\W\d_]{2,}", rest) if w not in _SAID_OF_IT]
     return len(words) <= _MAX_NAMING_WORDS
+
+
+#: WA-82: where a site note splits into its parts ("5 mason 3 helper, tiling 60% aayi, mixer
+#: breakdown aayi pani 2 hour ninnu").
+_CLAUSE_SPLIT = re.compile(r"[,;\n]+|\s+(?:and|pinne|also|aur|phir)\s+", re.IGNORECASE)
+_HOURS_LOST = re.compile(r"(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|hr|manikkoor\w*|ghante|ghanta|മണിക്കൂർ)", re.IGNORECASE)
+
+
+def problem_clause(text: str) -> str | None:
+    """WA-82: the part of a longer message that says something broke ("mixer breakdown
+    aayi pani 2 hour ninnu" in a four-part site note), or None. Live 27 Oct (round 7) the
+    model left the breakdown of such a note off the card, though it saved the rest."""
+    for clause in _CLAUSE_SPLIT.split(text or ""):
+        clause = " ".join(clause.split())
+        if clause and _BREAKDOWN.search(clause) and not _RESOLVED.search(clause):
+            return clause
+    return None
+
+
+def hours_lost_minutes(text: str) -> int | None:
+    """"pani 2 hour ninnu" -> 120; None when no hours are said."""
+    found = _HOURS_LOST.search(text or "")
+    return int(float(found.group(1)) * 60) if found else None

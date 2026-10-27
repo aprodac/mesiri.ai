@@ -161,6 +161,7 @@ class AgentRunner:
         await toolbox.settle()
         await self._tomorrow_plan(toolbox, user_text)
         await self._problem_only(toolbox, user_text)
+        await self._problem_part(toolbox, user_text)
         await toolbox.finish_site_queue()
         run = await self._in_manglish(run, messages, user_text, correlation_id)
         run = await self._one_script(run, messages, user_text, correlation_id)
@@ -207,6 +208,32 @@ class AgentRunner:
         narrative = " ".join(user_text.split())[:160]
         kind = "EQUIPMENT_BREAKDOWN" if has_equipment(user_text) else "OTHER"
         await toolbox.handle(REPORT_ISSUE, {"issue_type": kind, "narrative": narrative})
+
+    @staticmethod
+    async def _problem_part(toolbox: AgentToolbox, user_text: str) -> None:
+        """WA-82: a breakdown inside a longer site note ("..., mixer breakdown aayi pani 2
+        hour ninnu") is an issue line of the card, even when the model saved the other parts
+        and called no ``report_issue`` (live 27 Oct, round 7: the card lost it). The line
+        is made from the message's own words; the card shows it before anything is saved.
+        Only for a company holding messages as a draft card."""
+        if not toolbox.draft_mode or REPORT_ISSUE in toolbox.called or toolbox.parked is not None:
+            return
+        if not toolbox.called & WRITE_TOOLS:
+            return  # a message that is only the problem is _problem_only's
+        from .equipment import has_equipment, hours_lost_minutes, problem_clause
+
+        clause = problem_clause(user_text)
+        if clause is None:
+            return
+        args: dict = {
+            "issue_type": "EQUIPMENT_BREAKDOWN" if has_equipment(clause) else "OTHER",
+            "narrative": clause[:160],
+        }
+        minutes = hours_lost_minutes(clause)
+        if minutes:
+            args["delay_duration_minutes"] = minutes
+        _log.warning("agent.problem_part_added correlation_id=%s", getattr(toolbox, "correlation_id", None))
+        await toolbox.handle(REPORT_ISSUE, args)
 
     async def _in_manglish(
         self,

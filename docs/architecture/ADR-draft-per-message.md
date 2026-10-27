@@ -534,3 +534,23 @@ for a text message while the sender has an open card; anything that is not such 
 - A sender's message held by the morning question before this change is not replayed (TEST company only).
 - The `to_site` question of a transfer is still the [111] queue.
 - Rollback: `git revert`, or flag `draft_v2` off.
+
+
+## 15. Phase 3 of the 27 Oct plan: the model extracts, code decides where it goes (WA-82)
+
+Draft mode only. The model still calls the save tools (its extraction); these rules decide in code what the call
+does to the card, so the model's choice between "new" and "correction" cannot lose a fact.
+
+- **Nothing to correct is new information.** `update_pending_card` with no open and no saved card, or a line that
+  is not on the card, returns `not_a_correction` (`toolbox.NOT_A_CORRECTION`): nothing is changed, and the model is
+  told in the same turn to save the fact with its tool. Live 27 Oct (#4335): "tiling 70% aayi" after a cancelled
+  card got "angane oru card ippol open aayitilla" and nothing was saved.
+- **A new percentage for the same work and place replaces its line** (`draft.same_work`): "Tiling, ground floor:
+  60%" on the open card from an earlier message becomes 70%, not a second line. Amounts of work done add up as
+  before; two parts of one message never replace each other (the property test of P1 holds).
+- **A breakdown inside a longer site note is on the card** (`runner._problem_part`, `equipment.problem_clause`):
+  when the model saved the other parts and called no `report_issue`, the issue line is made from the message's
+  own words ("mixer breakdown aayi pani 2 hour ninnu", 120 minutes lost). Not for a clause said to be fine or over,
+  or a question. Live 27 Oct (round 7): the card lost the breakdown.
+- Tests: `tests/replay/test_wa82_code_reconciles.py`. Not verified here: the live run (WA-80) is the gate.
+- Rollback: `git revert`, or flag `draft_v2` off.

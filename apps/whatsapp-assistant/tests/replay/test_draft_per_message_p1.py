@@ -199,8 +199,10 @@ async def test_repro_4_a_correction_claims_no_change_the_card_did_not_make(world
     )
     result = await world.say(provider, "alla, 6 mason aanu")
     (call,) = result.run.calls
-    assert call.outcome.content["status"] == "error"
-    assert "nothing was changed" in call.outcome.content["message"]
+    # WA-82: a line that is not on the card is nothing to correct: the model is told it is
+    # new information (to save with its tool), and the card is untouched.
+    assert call.outcome.content["status"] == "not_a_correction"
+    assert "Nothing was changed" in call.outcome.content["instruction"]
     assert (await open_items(world))[0].summary == "18 workers (6 mason, 12 helper)"  # untouched
 
 

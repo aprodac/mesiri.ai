@@ -517,6 +517,29 @@ def _day(item: DraftItem) -> str:
     return str(fields.get("occurred_date") or "")
 
 
+def _said(value: Any) -> str:
+    return " ".join(str(value or "").split()).casefold()
+
+
+def same_work(draft: MessageDraft, item: DraftItem) -> DraftItem | None:
+    """WA-82: the work line already on the card for the same work at the same place
+    and site, as a percentage ("Tiling, ground floor: 60%"); a new percentage for it
+    ("tiling 70% aayi") replaces that line rather than standing beside it."""
+    if item.kind != KIND_WORK or not _said(item.args.get("work_type")) or item.args.get("progress_percent") is None:
+        return None  # an amount of work done adds up; only a percentage is a state that moves
+    return next(
+        (
+            o
+            for o in draft.items
+            if o.kind == KIND_WORK and o.state != UNREADABLE and not o.pending_answer
+            and o.site_id == item.site_id and _day(o) == _day(item) and o.args.get("progress_percent") is not None
+            and _said(o.args.get("work_type")) == _said(item.args.get("work_type"))
+            and _said(o.args.get("location")) == _said(item.args.get("location"))
+        ),
+        None,
+    )
+
+
 def same_day_labour(draft: MessageDraft, item: DraftItem) -> DraftItem | None:
     """The labour item already on the draft for the same site and day: a later
     count merges into it (``cards.merge_changes``), as a card edit always did."""

@@ -70,6 +70,10 @@ _RECORDED = re.compile(
 )
 
 
+#: WA-82: update_pending_card with nothing to correct; the model saves it as new.
+NOT_A_CORRECTION = "not_a_correction"
+
+
 def per_stock_unit(args: dict[str, Any]) -> Decimal | None:
     """WA-61: set_unit_conversion's two amounts as the stored number -- how many
     of the unit make ONE stock unit. The model copies what was said ("1 load is
@@ -978,14 +982,17 @@ class AgentToolbox:
         # open card), else the open one.
         on_saved = saved is not None and (draft is None or wanted == saved.id)
         if draft is None and saved is None:
-            return StepResult("info", text="There is no card of theirs to change, so nothing was changed.")
+            # WA-82 (live 27 Oct, #4335): "tiling 70% aayi" after the card was cancelled
+            # was taken as a correction of nothing and dead-ended. Nothing to correct means
+            # it is new information.
+            return StepResult(NOT_A_CORRECTION, text="There is no card line to change.")
         lines = saved.items if on_saved else draft.items
         try:
             index = int(args.get("item_index"))
         except (TypeError, ValueError):
             index = 1 if len(lines) == 1 else 0
         if not 1 <= index <= len(lines):
-            return StepResult("error", text="That item is not on the card, so nothing was changed.")
+            return StepResult(NOT_A_CORRECTION, text="That item is not on the card.")
         target = lines[index - 1]
         refused = target.tool not in DRAFT_TOOLS or (
             target.fact_type == ACTION_FACT if on_saved else (target.pending_answer or not target.ready)
@@ -1006,6 +1013,19 @@ class AgentToolbox:
         self._carry_after = []
 
     def _outcome(self, name: str, step: StepResult) -> ToolOutcome:
+        if step.status == NOT_A_CORRECTION:
+            return ToolOutcome(
+                content={
+                    "status": NOT_A_CORRECTION,
+                    "reason": step.text,
+                    "instruction": (
+                        "Nothing was changed because there is nothing of theirs to correct: this is NEW "
+                        "information. Call the save tool for it now (save_work_done, save_labour, "
+                        "save_material_receipt, save_material_usage or report_issue) with the full details "
+                        "from their message. Do not tell them there is no card."
+                    ),
+                }
+            )
         if step.status == "saved" and step.workflow_key in ACTION_KINDS:
             self._action_summaries.extend(step.summaries or ([step.summary] if step.summary else []))
         if step.status == "info" and name == NOTE_FOR_ENGINEER and step.text not in self.system_lines:
