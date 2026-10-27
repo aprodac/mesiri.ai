@@ -44,3 +44,34 @@ def is_equipment_only(text: str) -> bool:
     rest = _EQUIPMENT.sub(" ", text.casefold())
     words = re.findall(r"[^\W\d_]{2,}", rest)
     return not [w for w in words if w not in _FILLER]
+
+
+#: Request 124, E: words that say it is over or fine, not broken.
+_RESOLVED = re.compile(
+    r"\bno\b|\bnot (?:a )?problem\b|\bsolved\b|\bfixed\b|\bresolved\b|\bok(?:ay)?\b|\bworking fine\b|\bnow working\b"
+    r"|\billa\b|\bila\b|\btheernnu\b|\bsheriyayi\b|\bsheri\b|\bclear(?:ed)?\b|\?",
+    re.IGNORECASE,
+)
+_BREAKDOWN = re.compile(r"break\s?down|\bbroke\b|\bbroken\b|\bproblem\b|kedayi|kedaayi|\bkedu\b|not working", re.IGNORECASE)
+_SAID_OF_IT = frozenset(
+    "aayi aayirunnu ayi ninnu nilachu vannu und undu innu today now again has have had is are was were "
+    "the a an in at on for to of and with since morning afternoon evening yesterday site".split()
+)
+#: "Green Villa mixer breakdown aayi": a site, a machine and the trouble, no more.
+_MAX_NAMING_WORDS = 3
+
+
+def has_equipment(text: str) -> bool:
+    return bool(_EQUIPMENT.search(text or ""))
+
+
+def is_problem_only(text: str) -> bool:
+    """Whether the whole message is "<equipment> breakdown" or "<something>
+    problem": a short note that something is broken, with nothing else in it
+    (no figures, no other work, no question, nothing said to be fixed)."""
+    text = " ".join((text or "").split())
+    if not text or re.search(r"\d", text) or _RESOLVED.search(text) or not _BREAKDOWN.search(text):
+        return False
+    rest = _BREAKDOWN.sub(" ", text.casefold())
+    words = [w for w in re.findall(r"[^\W\d_]{2,}", rest) if w not in _SAID_OF_IT]
+    return len(words) <= _MAX_NAMING_WORDS

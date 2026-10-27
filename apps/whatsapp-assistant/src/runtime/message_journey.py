@@ -179,6 +179,8 @@ def build_message_handlers(
     card_renderer: Any | None = None,
     ops_alerts: Any | None = None,
     actions: Any | None = None,
+    drafts: Any | None = None,
+    shared_transaction: Any | None = None,
 ) -> tuple[Any, Any]:
     """Build the `on_normalized`/`on_message_claimed` callbacks WhatsAppReceiver
     invokes for every inbound message, closing over the already-built services
@@ -427,9 +429,14 @@ def build_message_handlers(
 
         if later is None or agent_provider is None:
             return None
-        parsed = save_button.parse_tap(str((message.metadata or {}).get("interactive_reply_id") or ""))
+        tap = str((message.metadata or {}).get("interactive_reply_id") or "")
+        parsed = save_button.parse_tap(tap)
         if parsed is None or parsed[0] != save_button.SAVE:
-            return None
+            from runtime.agent import draft as draft_card
+
+            drafted = draft_card.parse_tap(tap)
+            if drafted is None or drafted[0] != draft_card.SAVE:
+                return None
         item = await later.ask_next(ctx)
         if item is None:
             return None
@@ -576,12 +583,33 @@ def build_message_handlers(
             (message.text or "").strip()
         )
 
+    async def _draft_v2_on(ctx) -> bool:  # type: ignore[no-untyped-def]
+        """Request 124: whether this sender's company holds messages as one draft
+        card (the ``draft_v2`` setting, off unless the Mesiri team switched it on)."""
+        if drafts is None or org_settings_query is None or not getattr(ctx, "organization_id", None):
+            return False
+        try:
+            from mesiri.domains.organizations import settings as settings_spec
+
+            stored = await org_settings_query.get(
+                organization_id=str(ctx.organization_id), key=settings_spec.DRAFT_V2
+            )
+            return settings_spec.draft_v2_enabled(stored)
+        except Exception:  # noqa: BLE001 -- unreadable means the current flow
+            _log.warning("draft_v2.setting_unreadable user=%s", ctx.user_id, exc_info=True)
+            return False
+
     async def _run_journey_steps(message, raw_payload, retry_of_id, timer) -> None:  # type: ignore[no-untyped-def]
         wa_id = message.sender.wa_id
 
-        async def _run_agent(message, ctx, category_hint, timer) -> None:  # type: ignore[no-untyped-def]
+        async def _run_agent(message, ctx, category_hint, timer, draft_tap=None):  # type: ignore[no-untyped-def]
             """The agent's turn. The pipeline it drives is the one below, with
-            the senders swapped for a capture so the model writes the one reply."""
+            the senders swapped for a capture so the model writes the one reply.
+
+            ``draft_tap`` (request 124): ``(action, draft, extra)`` of a tap on a
+            draft card; no model runs, and ``(reply, gateway)`` comes back for the
+            caller to send."""
+            from runtime.agent import draft as draft_card_mod
             from runtime.agent import save_button
             from runtime.agent.action_entry import ActionEntry
             from runtime.agent.change_entry import ChangeEntry
@@ -594,6 +622,8 @@ def build_message_handlers(
             from runtime.agent.turn import AgentTurnDeps, run_agent_turn
             from runtime.inbound_journey import render_workflow_run_reply_spec
             from runtime.today_context import build_stock_line, build_today_line
+
+            use_drafts = draft_tap is not None or await _draft_v2_on(ctx)
 
             hint = category_hint.semantic_hint if category_hint else None
             if hint and category_hint.direction:
@@ -870,6 +900,10 @@ def build_message_handlers(
                 may name in undo_last / update_pending_card."""
                 from runtime.agent.cards import context_line
 
+                if use_drafts:
+                    from runtime.agent import draft as draft_card
+
+                    return draft_card.context_line(await drafts.open_for(actor.organization_id, actor.user_id))
                 return context_line(await cards.get(actor))
 
             async def _open_issues(scoped):  # type: ignore[no-untyped-def]
@@ -1009,6 +1043,15 @@ def build_message_handlers(
                         create_member=_create_member,
                     ),
                     start_workflow=workflow_runtime.start,
+                    draft_v2=use_drafts,
+                    drafts=drafts if use_drafts else None,
+                    confirm_now=lambda: interaction_handler.confirm_now(ctx.user_id, actor=ctx),
+                    abandon_question=lambda: interaction_handler._close_question(ctx.user_id),
+                    settle_facts=lambda facts: interaction_handler.settle_drafts(
+                        organization_id=str(ctx.organization_id), user_id=ctx.user_id, facts=facts, keep=True
+                    ),
+                    transaction=shared_transaction,
+                    sender=sender,
                 )
                 return early["gateway"]
 
@@ -1038,11 +1081,41 @@ def build_message_handlers(
                 site_wait=site_wait,
             )
             timer.lap("agent_setup")
+            if draft_tap is not None:
+                action, draft, extra = draft_tap
+                gateway = _gateway(message, None)
+                if action == draft_card_mod.SAVE:
+                    reply = await gateway.save_draft(draft)
+                elif action == draft_card_mod.CANCEL:
+                    reply = await gateway.cancel_draft(draft)
+                else:
+                    reply = await gateway.answer_draft(draft, extra[0], int(extra[1]))
+                return reply, gateway
             result = await run_agent_turn(message, ctx, deps, menu_hint=hint)
             timer.lap("agent_turn")
             if result is not None and result.toolbox.parked is not None:
                 _agent_parked.add(message.correlation_id)
 
+        async def _draft_tap_reply(message, ctx, timer, tap_value):  # type: ignore[no-untyped-def]
+            """Request 124: the reply to a tap on a draft card (Save, Cancel, or
+            an answer on it) and the gateway that ran it (its follow-ups go out
+            after the reply). The draft is the sender's own, still open, and not
+            expired; anything else is said, never guessed."""
+            from runtime.agent import draft as draft_card
+
+            parsed = draft_card.parse_tap(tap_value)
+            if parsed is None:
+                return ReplySpec(text=draft_card.EXPIRED), None
+            action, draft_id, extra = parsed
+            draft = await drafts.get(draft_id, ctx.organization_id, ctx.user_id)
+            if draft is None:
+                return ReplySpec(text=draft_card.EXPIRED), None
+            if draft.status != draft_card.OPEN:
+                return ReplySpec(text=draft_card.ALREADY_DONE), None
+            if draft.expired():
+                await drafts.discard(draft.id)
+                return ReplySpec(text=draft_card.EXPIRED), None
+            return await _run_agent(message, ctx, None, timer, draft_tap=(action, draft, extra))
 
         # M4: resolve the sender before spending on understanding.
         try:
@@ -1515,10 +1588,15 @@ def build_message_handlers(
         # WA-35: Save / Cancel on the agent's reply keeps or drops its drafts.
         from runtime.agent import save_button
 
+        draft_gateway = None
+        draft_tap_value = str((message.metadata or {}).get("interactive_reply_id") or "")
         try:
-            save_reply = await save_button.handle_tap(
-                message, ctx, interaction_handler, cards, actions=actions, sender=sender
-            )
+            if drafts is not None and draft_tap_value.startswith("agd:"):
+                save_reply, draft_gateway = await _draft_tap_reply(message, ctx, timer, draft_tap_value)
+            else:
+                save_reply = await save_button.handle_tap(
+                    message, ctx, interaction_handler, cards, actions=actions, sender=sender
+                )
         except Exception:  # noqa: BLE001 — a tap must always get some reply
             _log.exception("save_button.tap_failed user=%s", ctx.user_id)
             save_reply = ReplySpec(text="Sorry, that didn't work — please try again.")
@@ -1536,6 +1614,13 @@ def build_message_handlers(
                 )
             except Exception:  # noqa: BLE001 -- memory is a hint
                 _log.warning("save_button.record_turn_failed user=%s", ctx.user_id, exc_info=True)
+            if draft_gateway is not None:
+                # Request 124: the follow-ups a save triggers (worker promotion,
+                # team-photo offer), after the "Saved" line, as after a message.
+                try:
+                    await draft_gateway.finish()
+                except Exception:  # noqa: BLE001 -- the Save went through
+                    _log.exception("draft.followups_failed user=%s", ctx.user_id)
             # WA-57: what their message also had and is not recorded yet is
             # taken up right after the Save, not left behind.
             try:

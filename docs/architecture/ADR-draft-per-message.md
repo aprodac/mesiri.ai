@@ -1,6 +1,8 @@
 # ADR: one draft per message, written only on the Save tap
 
-**Status:** proposed (request 123, phase P0: docs and tests only). Needs owner review before P1.
+**Status:** P0 done (request 123: docs and tests only). **P1 built** (request 124, 27 Oct 2026, approved by
+Ilan: "Yeah let's do it"), behind the company setting `draft_v2` (off for everyone; on only for the TEST company
+once the Mesiri team sets it). P2-P4 each need their own owner ok.
 **Supersedes:** the patch approach of request 122. **Completes:** the promises of
 [ADR-assistant-agent-wrap-not-rebuild](ADR-assistant-agent-wrap-not-rebuild.md) §10, §10b and the
 request-90 addendum ("nothing is kept until they tap Save", "one write path").
@@ -153,9 +155,108 @@ When a phase makes a test pass, strict xfail fails CI; remove the marker for tha
   root-cause map. Map each of 122's repros onto a test (or add one) before P1 starts.
 - No implementation, migration or flag exists yet.
 
-## 9. Open questions for the owners
+## 9. Open questions for the owners (answered, recorded by Ilan Pro on 27 Oct 2026; Ilan can correct them)
 
 1. Is one draft per **message** or per **open card** (several messages in a row → one card)? Proposal: per
    open card, closed on Save/Cancel or after the existing card expiry.
 2. Should Save with one `needs_answer` item save the `ok` ones and keep the card for the rest (proposal), or
    block until all are answered?
+
+Answers used by P1:
+
+1. **One draft per open card**: several messages in a row add to the same card until Save, Cancel or the existing
+   card expiry (6 hours without a new item).
+2. **Save with a `needs_answer` item saves the `ok` items and keeps the card for the rest**
+   ("✅ Saved 3 · still need: 6 workers (6 mason)", then the card with its question).
+3. Plus: an unsaved draft gets **one** reminder before the report time ("You have 1 card not saved: tap Save or
+   Cancel."), so a site does not report empty because nobody tapped.
+
+## 10. P1 as built (request 124)
+
+### 10.1 What exists
+
+| Piece | Where |
+|---|---|
+| Company setting `draft_v2` (default off; superadmin only) | `backend/.../domains/organizations/settings.py` |
+| Table `message_drafts` (additive, RLS, one open row per sender by a partial unique index) | migration `0491` |
+| Draft, items, card text/buttons, tap ids, labour "replace or add?" | `runtime/agent/draft.py` (no I/O) |
+| Stores: Postgres, and in-memory for tests | `runtime/agent/draft_store.py` |
+| Add / Save / Cancel / answer | `runtime/agent/draft_flow.py`, called from `JourneyGateway` |
+| One transaction for the Save | `PostgresDatabase.shared_transaction()` |
+| Confirm a waiting draft like a Yes (work on an open activity) | `InteractionHandler.confirm_now` |
+| The one reminder | `runtime/draft_reminder.py`, a step of the scheduler tick (`automation_runner.py`) |
+| "<equipment> breakdown / X problem" is an issue | `runtime/agent/equipment.py` `is_problem_only`, `AgentRunner._problem_only` |
+
+### 10.2 Behaviour with the flag on
+
+- `save_labour`, `save_work_done`, `save_material_receipt`, `save_material_usage`, `report_issue` keep their names
+  and arguments. Each call runs the entry's `prepare` (all its lookups and questions, unchanged) and then **adds an
+  item** to the sender's open draft. No workflow is started, nothing is written, no `save_now`.
+- The pending actions of request 104 (engineer question, the day's conditions, issues to close) are lines of the
+  same card; the Save tap runs them **after** the transaction has committed (a message that was sent cannot be
+  rolled back); Cancel drops them.
+- One card renders the whole draft. A call that cannot become a line is kept on the draft as `unreadable` and shows
+  as "Couldn't read: ..." (this covers the call limit, a failed tool, a refusal by `prepare`, a full card). The
+  property test `test_property_no_extracted_item_is_missing_from_the_card` checks it.
+- A second labour count for the same site and day, when the day already has a count that it repeats, is a question
+  on the card ("Today already 13 workers (8 mason, 5 helper). Replace it with 6 workers (6 mason), or add to
+  it?") with the buttons Replace / Add. Replace keeps BE-10's rule (latest figure per trade replaces); Add raises
+  the repeated trade by today's figure. A second crew that repeats nothing needs no question.
+- Labour sent again while a labour item for the same site and day is still on the card merges into it (the same
+  trade replaces, another trade adds) -- the rule a card edit always had.
+- Save: one `shared_transaction()`: claim the draft (`open -> saved`, once), then for each ready item start its
+  workflow, `save_now` (save-first) or, for work on an open activity, `confirm_now`, then `settle_drafts(keep)`.
+  Any failure rolls everything back, says which item failed ("Nothing was saved. Couldn't save X: reason"), marks
+  that item on the card and leaves the draft open. A second tap finds the draft taken and writes nothing.
+- Cancel marks the draft `discarded`. It never touches a domain table, and its words ("nothing saved") are true.
+- `update_pending_card` answers that a line cannot be changed yet (P2) and changes nothing; `undo_last` while a
+  draft is open cancels the whole draft. After a Save the saved card is kept as before, so "undo that" still works.
+
+### 10.3 What is a "validator" in P1 (and what is not)
+
+The checks the workflow graphs make at save time are **not** re-implemented as pure functions. P1 validates when
+the item is added with what already ran before the graph: the entry's `prepare` (context, module switch, site,
+material, unit, open activity, worker candidates, the day's existing count) plus two pure checks (the card line can
+be worded; the labour day-count question). The graphs themselves still run at Save, inside the transaction. If a
+graph then asks something it did not ask at add time, the Save rolls back, names the item and the card keeps it
+marked; the answer is to send it again. Moving those graph questions onto the card is later work (P2/P3).
+
+### 10.4 Shared components touched (Module Isolation)
+
+No Labour, Attendance, Payroll or Workforce code changed; no domain service signature changed. Instead of a
+caller-owned transaction parameter on each service, one shared mechanism: `PostgresDatabase.shared_transaction()`
+makes every `transaction()` opened inside the block (by this database object, in this task or one it starts) join
+one connection in a savepoint, taking turns on it; outside the block `transaction()` is byte-for-byte what it was.
+Services that join it today, all unchanged: the labour, material, activity / progress update and site issue
+handlers and their repositories, `SaveFirstService` (`record_draft`, `settle_drafts`). Not in the transaction (own
+engine): the workflow instance store (`workflow_instances`), so a rolled-back Save leaves its instances in state
+CONFIRMED / completed with no domain row -- harmless (no sweep runs them; every save mints new instances) but visible.
+
+Other shared changes, all additive: setting `draft_v2`; `InteractionHandler.confirm_now`; one reminder step in the
+scheduler tick; `JourneyGateway`, `AgentToolbox` and `AgentRunner` branches that exist only when the setting is on.
+
+### 10.5 Rollout, flag and rollback
+
+Turn on for one company: `PUT /admin/organizations/{org_id}/settings` with `{"key": "draft_v2", "value": true}` as a
+platform admin (the control panel's Settings tab shows the value but does not edit it). Turn off the same way with
+`false`. Off = today's behaviour; a test proves it (`test_with_the_flag_off_nothing_changes_even_with_a_store_attached`,
+and the whole existing replay suite is unchanged). A draft left open when the flag goes off can still be saved or
+cancelled by its buttons; it expires after 6 hours. The migration is additive; rollback is the flag.
+
+### 10.6 Known limits of P1
+
+- Report timing changes by design for a company with the flag on: an unsaved card counts nowhere (the reminder is
+  the mitigation). The reminder goes out only for projects with `auto_generate_dpr` on, and, outside the 24-hour
+  WhatsApp window, is skipped by the existing send rules (no approved template).
+- The receipt picture (the combined card image) is not drawn for a draft card.
+- The new card lines ("Couldn't read", the replace/add question) are English; the existing label swap for
+  Malayalam / Hindi senders does not know them yet.
+- A pending Yes/No of a confirm-first flow (expense, transfer) blocks a Save that needs to start a workflow
+  ("an earlier question is still waiting"): the item is marked and the card stays.
+- The reminder goes out in the half hour before the project's reporting cutoff (until the send deadline); a card
+  that would expire before that (6 hours without a new item) is reminded an hour before it expires, in the
+  daytime. One reminder per card (`reminded_at`).
+- Not verified: a live-model run (the live golden variant is written, marker `provider`, not run); the Save tap
+  through WhatsApp itself; delivery of the reminder message (its queueing is tested against a local Postgres, its
+  sending reuses the existing notification path). The real-database tests (`tests/integration/test_draft_save_postgres.py`,
+  `backend/tests/integration/test_shared_transaction_postgres.py`) were run on a local Postgres 16 and are not run in CI.

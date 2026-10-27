@@ -238,8 +238,33 @@ class JourneyGateway:
     code_shared: bool = False
     carry_before: list[CardItem] = field(default_factory=list)
     carry_after: list[CardItem] = field(default_factory=list)
+    #: Request 124 (P1), the company's ``draft_v2`` setting: the save tools add
+    #: to ONE open draft (``drafts``, runtime/agent/draft_store.py) instead of
+    #: starting a workflow, and the Save tap writes it (``save_draft``). Off:
+    #: none of the draft code below runs.
+    draft_v2: bool = False
+    drafts: Any | None = None
+    #: The sender's open draft, loaded on first use; ``draft_new`` are the item
+    #: ids this turn added.
+    draft: Any | None = None
+    draft_loaded: bool = False
+    draft_new: list[str] = field(default_factory=list)
+    #: ``() -> InteractionHandled | None``: confirm the waiting draft like a
+    #: Yes (work on an open activity cannot be saved first, so the Save tap is
+    #: its confirmation).
+    confirm_now: Callable[[], Awaitable[Any]] | None = None
+    #: ``() -> None``: drop the question a workflow was left asking.
+    abandon_question: Callable[[], Awaitable[Any]] | None = None
+    #: ``(facts) -> settled``: confirm the saved drafts (the Save tap's own step).
+    settle_facts: Callable[[list[Any]], Awaitable[Any]] | None = None
+    #: ``() -> async context manager``: one transaction for the whole Save.
+    transaction: Callable[[], Any] | None = None
+    #: The WhatsApp sender, for the pending actions a Save runs (actions.run).
+    sender: Any | None = None
 
     async def run(self, candidate: Candidate, *, text: str) -> StepResult:
+        if self.draft_mode and self._drafted(candidate):
+            return await self._draft_add(candidate, text=text)
         step = await self._run(candidate, text=text)
         if step.status == "saved" and self.handled and not (getattr(candidate, "fields", None) or {}).get("_action"):
             await self._remember_site(self.handled[-1])
@@ -274,6 +299,45 @@ class JourneyGateway:
 
     def carry_card_items(self, before: list[CardItem], after: list[CardItem]) -> None:
         self.carry_before, self.carry_after = list(before), list(after)
+
+    @property
+    def draft_mode(self) -> bool:
+        """Whether this sender's company holds messages as one draft card."""
+        return bool(self.draft_v2) and self.drafts is not None
+
+    def _drafted(self, candidate: Candidate) -> bool:
+        """A save tool whose call becomes a line on the card. What is not one
+        (an expense, a transfer, opening stock...) runs as it always did."""
+        from .draft import DRAFT_TOOLS
+
+        tool = self.current_call[0] if self.current_call else ""
+        return tool in DRAFT_TOOLS and not (getattr(candidate, "fields", None) or {}).get("_action")
+
+    async def _draft_add(self, candidate: Candidate, *, text: str) -> StepResult:
+        from . import draft_flow
+
+        return await draft_flow.add(self, candidate, text=text)
+
+    async def open_draft(self) -> Any | None:
+        from . import draft_flow
+
+        return await draft_flow.load(self) if self.draft_mode else None
+
+    async def save_draft(self, draft: Any) -> ReplySpec:
+        """The Save tap (runtime/agent/draft_flow.py): the draft written in one transaction."""
+        from . import draft_flow
+
+        return await draft_flow.save(self, draft)
+
+    async def cancel_draft(self, draft: Any) -> ReplySpec:
+        from . import draft_flow
+
+        return await draft_flow.cancel(self, draft)
+
+    async def answer_draft(self, draft: Any, item_id: str, choice: int) -> ReplySpec:
+        from . import draft_flow
+
+        return await draft_flow.answer(self, draft, item_id, choice)
 
     async def open_card(self) -> Card | None:
         """The sender's card that still waits on Save / Cancel, or None."""
@@ -367,10 +431,17 @@ class JourneyGateway:
         for action in prepared_list:
             if not await self.actions.store.put(self.actor, action):
                 return StepResult("error", text="Not done: the card could not be prepared. Please send it again.")
-        for action in prepared_list:
-            item = CardItem(tool, args, ACTION_FACT, str(uuid.UUID(action.id)), action.summary)
-            self.card_items.append(item)
-            self.action_items.append(item)
+        if self.draft_mode:
+            # One card for the whole message: the action is a line of the draft,
+            # and the one Save tap runs it (after everything else is written).
+            from . import draft_flow
+
+            await draft_flow.add_action(self, tool, args, prepared_list)
+        else:
+            for action in prepared_list:
+                item = CardItem(tool, args, ACTION_FACT, str(uuid.UUID(action.id)), action.summary)
+                self.card_items.append(item)
+                self.action_items.append(item)
         summaries = [a.summary for a in prepared_list]
         return StepResult(
             "saved",

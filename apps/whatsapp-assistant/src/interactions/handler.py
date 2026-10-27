@@ -265,6 +265,28 @@ class InteractionHandler:
             ),
         )
 
+    async def confirm_now(self, user_id: str, actor: ActorIdentity | None = None) -> InteractionHandled | None:
+        """Confirm the user's waiting draft as a "YES" would (request 124: the
+        Save tap of a draft card is the confirmation of what the card held,
+        including work on an open activity, which cannot be saved first).
+        None when nothing is waiting. The record is written, not kept as a draft."""
+        loaded = await self._runtime.get_awaiting_confirmation(user_id)
+        if loaded is None:
+            return None
+        result, reply_text, execution_result, receipt_coro, next_segment_reply = await self._resume_and_render(
+            user_id, loaded, ResumeAction.CONFIRM, log_prefix="draft_save", actor=actor
+        )
+        return InteractionHandled(
+            result=result,
+            reply_text=reply_text,
+            execution_result=execution_result,
+            receipt_coro=receipt_coro,
+            next_segment_reply=next_segment_reply,
+            project_id=str(loaded.state.project_id) if loaded.state.project_id else None,
+            site_id=str(loaded.state.site_id) if loaded.state.site_id else None,
+            saved_draft=False,
+        )
+
     async def build_combined_receipt(self, handled_list: list, actor: ActorIdentity | None) -> bytes | None:
         """One receipt card for everything a multi-part note saved (a row per
         record). None when no builder is wired or nothing was saved; never

@@ -294,6 +294,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     context_resolver = build_context_resolver(redis=redis_client)
     from runtime.agent.actions import ActionService, ActionStore
     from runtime.agent.cards import CardStore
+    from runtime.agent.draft_store import PostgresDraftStore
     from runtime.agent.later import LaterStore
     from runtime.agent.site_wait import SiteWaitStore
     from runtime.agent.work_site import WorkSite
@@ -981,6 +982,10 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         work_site=WorkSite(active_context=context_resolver.active_context, redis=redis_client),
         # Request 88: the latest card per sender, for undo and editing.
         cards=CardStore(redis_client),
+        # Request 124: one draft per open card, written on the Save tap in one
+        # transaction (only for a company with `draft_v2` on).
+        drafts=PostgresDraftStore(material_db),
+        shared_transaction=material_db.shared_transaction,
         # WA-57: the parts of a message still to do, per sender.
         later=LaterStore(redis_client),
         site_wait=SiteWaitStore(redis_client),

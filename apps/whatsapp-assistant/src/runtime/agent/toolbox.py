@@ -443,6 +443,7 @@ class AgentToolbox:
         self.called.add(name)
         self.calls += 1
         if self.calls > MAX_CALLS:
+            await self._note_lost(name, args, "too many in one message")
             return ToolOutcome(
                 content={"status": "skipped", "reason": "too many actions in one message"}
             )
@@ -573,6 +574,7 @@ class AgentToolbox:
         except Exception:  # noqa: BLE001 — the model is told; the trace keeps the cause
             _log.exception("agent.tool_failed tool=%s", name)
             self.failed += 1
+            await self._note_lost(name, args, "that action failed")
             return ToolOutcome(content={"status": "error", "message": "that action failed"})
         if step.status == "choose" and step.awaiting == "site" and name in WRITE_TOOLS:
             self._hold_for_site(name, args)
@@ -586,6 +588,25 @@ class AgentToolbox:
                 "Do not save them again and do not ask about them."
             )
         return outcome
+
+    @property
+    def draft_mode(self) -> bool:
+        """Request 124: the company holds messages as one draft card."""
+        return getattr(self.gateway, "draft_mode", False) is True
+
+    async def _note_lost(self, name: str, args: dict[str, Any], reason: str) -> None:
+        """A save call that will not become a line on the card is listed on it
+        as "Couldn't read: ...", never dropped silently (ADR section 2.6)."""
+        from .draft import DRAFT_TOOLS
+
+        if not (self.draft_mode and name in DRAFT_TOOLS):
+            return
+        try:
+            from . import draft_flow
+
+            await draft_flow.note_lost(self.gateway, name, args, reason)
+        except Exception:  # noqa: BLE001 -- the card then lacks the line; the call is still logged
+            _log.warning("agent.note_lost_failed tool=%s", name, exc_info=True)
 
     # -- [111] saves waiting on the site answer ---------------------------------
 
@@ -842,6 +863,18 @@ class AgentToolbox:
     async def _undo(self, args: dict[str, Any]) -> StepResult:
         """Request 88: undo the entries of the latest card. The model may only
         name ids the code listed; the gateway rejects any other."""
+        if self.draft_mode:
+            draft = await self.gateway.open_draft()
+            if draft is not None and draft.live:
+                # Request 124: the open card is a draft -- cancelling it removes
+                # it whole, and nothing was ever written.
+                from . import draft as dr
+
+                lines = "; ".join(i.line for i in draft.items if i.state != dr.UNREADABLE)
+                reply = await self.gateway.cancel_draft(draft)
+                if reply.text != dr.CANCELLED:
+                    return StepResult("info", text=reply.text)
+                return StepResult("undone", text=f"Removed from the card: {lines}. Nothing was saved.")
         undo_card = getattr(self.gateway, "undo_card", None)
         if undo_card is None:
             return StepResult("info", text="Nothing to undo from your last card.")
@@ -854,6 +887,15 @@ class AgentToolbox:
         withdrawn and the new one saved through the item's own save tool, so
         every check of that tool runs again; the card is then shown again."""
         gateway = self.gateway
+        if self.draft_mode:
+            # P2 builds the edit. Until then no change is claimed that was not made.
+            return StepResult(
+                "info",
+                text=(
+                    "Changing a line of the card is not possible yet, so nothing was changed. Tell them to "
+                    "tap Cancel on the card and send it again with the right figures."
+                ),
+            )
         open_card = getattr(gateway, "open_card", None)
         card = await open_card() if open_card is not None else None
         if card is None:
@@ -927,6 +969,36 @@ class AgentToolbox:
                         "Nothing is sent yet: a Send card is shown. Say in one short line what you "
                         "will send to their engineer and ask them to check it and tap Send. Never "
                         "say it was sent or passed on."
+                    ),
+                }
+            )
+        if step.status == "drafted":
+            # Request 124: the call became a line of the card, or a question on it.
+            # Nothing is written until the Save tap, and the reply must not say it was.
+            line = step.summary or ""
+            self.saved.append(SavedItem(name, line, line))
+            self._carry_after_flush()
+            if step.awaiting == "answer":
+                return ToolOutcome(
+                    content={
+                        "status": "waiting_for_answer",
+                        "on_card": line,
+                        "instruction": (
+                            "Nothing is saved. A question about this is on the card, with buttons. Say in "
+                            "one short line what you understood and ask them to answer it and tap Save. "
+                            "Never say it is saved, written or noted."
+                        ),
+                    }
+                )
+            return ToolOutcome(
+                content={
+                    "status": "waiting_for_save",
+                    "on_card": line,
+                    "instruction": (
+                        "Nothing is saved yet: it is a line on a Save / Cancel card shown under your words. "
+                        "Say in one short line what you understood, in the language of their message, and "
+                        "ask them to check it and tap Save. Never say it is saved, written or noted. Do "
+                        "not copy the card."
                     ),
                 }
             )

@@ -27,6 +27,8 @@ from mesiri_ai.models import ChatMessage, ToolOutcome, ToolRunResult
 from mesiri_ai.ports.tool_calling import ToolCallingProvider
 from runtime.reply_composer import BODY_MAX
 
+from . import draft as dr
+from .equipment import is_problem_only
 from .gateway import WorkflowGateway
 from .prompt import (
     _MANGLISH_WORDS,
@@ -53,7 +55,14 @@ from .reply_text import (
 )
 from .save_button import SAVE_TITLE
 from .toolbox import HOURS_QUESTION, AgentToolbox, SavedItem, offers_engineer, tomorrow_plan_text
-from .tools import NOTE_FOR_ENGINEER, SET_SITE_CONDITIONS, ScopeLookup, tool_specs
+from .tools import (
+    NOTE_FOR_ENGINEER,
+    REPORT_ISSUE,
+    SET_SITE_CONDITIONS,
+    WRITE_TOOLS,
+    ScopeLookup,
+    tool_specs,
+)
 
 _log = logging.getLogger("mesiri.agent")
 
@@ -149,6 +158,7 @@ class AgentRunner:
             )
         await toolbox.settle()
         await self._tomorrow_plan(toolbox, user_text)
+        await self._problem_only(toolbox, user_text)
         await toolbox.finish_site_queue()
         run = await self._in_manglish(run, messages, user_text, correlation_id)
         run = await self._one_script(run, messages, user_text, correlation_id)
@@ -175,6 +185,26 @@ class AgentRunner:
         plan = tomorrow_plan_text(user_text)
         if plan and SET_SITE_CONDITIONS not in toolbox.called and toolbox.parked is None:
             await toolbox.handle(SET_SITE_CONDITIONS, {"tomorrow_plan": plan})
+
+    @staticmethod
+    async def _problem_only(toolbox: AgentToolbox, user_text: str) -> None:
+        """Request 124, E: "mixer breakdown aayi" / "pump problem" with nothing
+        else in it is an issue to save. The model sometimes answered it in words
+        ("issue aayi kodukkaam") and called no tool, so nothing was saved and no
+        card came: the card is made here from the message's own words. Only for
+        a company holding messages as a draft card."""
+        if (
+            not toolbox.draft_mode
+            or toolbox.called & WRITE_TOOLS
+            or toolbox.parked is not None
+            or not is_problem_only(user_text)
+        ):
+            return
+        from .equipment import has_equipment
+
+        narrative = " ".join(user_text.split())[:160]
+        kind = "EQUIPMENT_BREAKDOWN" if has_equipment(user_text) else "OTHER"
+        await toolbox.handle(REPORT_ISSUE, {"issue_type": kind, "narrative": narrative})
 
     async def _in_manglish(
         self,
@@ -442,12 +472,20 @@ class AgentRunner:
                 tail.append(line)
         if not text and not tail:
             return self._fallback(toolbox, partial=run.stop_reason == "max_steps")
-        if _entries(toolbox) and "undo" not in (text + "\n".join(tail)).casefold():
+        if _entries(toolbox) and not _open_draft(toolbox) and "undo" not in (text + "\n".join(tail)).casefold():
             tail.append(UNDO_LINE)
         text = _within_cap(text, tail)
         parked = toolbox.parked
         if parked is None:
-            return ReplySpec(text=text)
+            return _with_card(ReplySpec(text=text), toolbox)
+        draft = _open_draft(toolbox)
+        if draft is not None and dr.card_rows(draft):
+            # Request 124: a question must not push the card out (as request 90 for
+            # the Save card): its options stay in the words, answered by typing.
+            from .save_button import question_as_text
+
+            asked = question_as_text(parked)
+            return _with_card(ReplySpec(text=f"{text}\n\n{asked.text}" if asked.text not in text else text), toolbox)
         if toolbox.parked_confirm:
             # Confirm-first: the record itself goes under the model's words,
             # so Yes confirms what they can see (22 Oct: only "Sheri aano?"
@@ -488,6 +526,8 @@ class AgentRunner:
         it): entries were prepared, and they fit one tap. A gateway that cannot
         say counts any entry as a card."""
         entries = _entries(toolbox)
+        if (draft := _open_draft(toolbox)) is not None:
+            return bool(dr.card_rows(draft))
         if not entries:
             # Request 114: a held work-done card has Save / Cancel under it too.
             return _save_card(toolbox.parked)
@@ -522,7 +562,7 @@ class AgentRunner:
             parts.append(CHECK_LINE)
         text = _unique_paragraphs("\n\n".join(p for p in parts if p))
         if parked is None:
-            return ReplySpec(text=text)
+            return _with_card(ReplySpec(text=text), toolbox)
         return ReplySpec(
             text=text,
             list_button_label=parked.list_button_label,
@@ -850,9 +890,43 @@ def _questions_line(toolbox: AgentToolbox) -> str:
     )
 
 
+def _open_draft(toolbox: AgentToolbox) -> dr.MessageDraft | None:
+    """Request 124: the sender's draft card, when this turn changed it (a turn
+    that only answers a question never repeats the card)."""
+    gateway = toolbox.gateway
+    if getattr(gateway, "draft_mode", False) is not True:
+        return None
+    draft = getattr(gateway, "draft", None)
+    if draft is None or not draft.items or not getattr(gateway, "draft_new", None):
+        return None
+    return draft
+
+
+def _draft_site(toolbox: AgentToolbox, draft: dr.MessageDraft) -> str | None:
+    names = {i.site for i in draft.items if i.state != dr.UNREADABLE and i.site}
+    return next(iter(names)) if len(names) == 1 else None
+
+
+def _with_card(spec: ReplySpec, toolbox: AgentToolbox) -> ReplySpec:
+    """``spec`` with the draft card's buttons under it (Save, Cancel, and the
+    options of an open question), when this turn put something on the card."""
+    draft = _open_draft(toolbox)
+    if draft is None:
+        return spec
+    rows = dr.card_rows(draft)
+    if not rows:
+        return spec
+    from runtime.reply_composer import pick_form
+
+    return pick_form(spec.text, rows)
+
+
 def _saved_block(toolbox: AgentToolbox) -> str:
     """The deterministic "Saved:" block, when every saved entry has a summary
     (else the model's own wording stands, as before)."""
+    if (draft := _open_draft(toolbox)) is not None:
+        # Request 124: one card for the whole draft, from the draft itself.
+        return dr.card_text(draft, site=_draft_site(toolbox, draft))
     entries = _entries(toolbox)
     if not entries or not all(item.summary for item in entries):
         return ""

@@ -207,6 +207,16 @@ async def run_tick(
 
             from .project_auto_dpr import queue_due_project_auto_dprs, send_due_project_dprs
 
+            # Request 124: the one reminder for a card nobody tapped, before the
+            # report time. In a savepoint: a failure here must not abort the tick.
+            try:
+                from .draft_reminder import queue_draft_reminders
+
+                async with conn.begin_nested():
+                    fired += await queue_draft_reminders(conn)
+            except Exception:  # noqa: BLE001
+                logger.exception("automation_runner.draft_reminders_failed")
+
             try:
                 fired += await queue_due_project_auto_dprs(conn, db=db)
             except Exception:  # noqa: BLE001

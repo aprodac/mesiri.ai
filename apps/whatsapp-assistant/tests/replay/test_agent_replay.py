@@ -149,6 +149,14 @@ class World:
     #: the site's open issues for closing.
     actions: Any = None
     open_issues: Any = None
+    #: Request 124: the company holds messages as one draft card
+    #: (runtime/agent/draft_store.py); the Save tap writes it.
+    draft_v2: bool = False
+    drafts: Any = None
+    #: What the confirmation of the saved drafts returns (None: not wired).
+    settle: Any = None
+    #: The labour entry's workforce reads (``find_existing_report_for_day``...).
+    workforce: Any = None
 
     def message(self, text: str, modality: InputModality = InputModality.TEXT) -> NormalizedMessage:
         media = None
@@ -190,7 +198,10 @@ class World:
                 else None
             ),
             labour_entry=(
-                LabourEntry(ContextResolver(self.deps), None, self.actor, active_context=self.deps.active_context)
+                LabourEntry(
+                    ContextResolver(self.deps), None, self.actor, active_context=self.deps.active_context,
+                    workforce_query=self.workforce,
+                )
                 if self.direct
                 else None
             ),
@@ -215,6 +226,11 @@ class World:
             ),
             actor=self.actor,
             start_workflow=self.runtime.start,
+            draft_v2=self.draft_v2,
+            drafts=self.drafts,
+            confirm_now=lambda: self.handler.confirm_now(self.actor.user_id, actor=self.actor),
+            settle_facts=self.settle,
+            transaction=getattr(self.drafts, "transaction", None),
         )
 
     def context(self, turns: tuple[Turn, ...] = (), **kw: Any) -> AgentContext:
