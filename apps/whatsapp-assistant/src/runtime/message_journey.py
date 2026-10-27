@@ -44,6 +44,7 @@ from mesiri_contracts.assistant.enums import InputModality
 from runtime import forward_batch
 from runtime.account_admin_journey import try_handle_account_admin_command
 from runtime.ai_outage import AIUnavailableError, retry_attempt
+from runtime.persona import is_what_can_you_do
 from runtime.reply_composer import (
     QUESTION,
     SETUP_OFFER,
@@ -2439,6 +2440,10 @@ def build_message_handlers(
         # nothing -- and keeps that database read off every message that
         # isn't a greeting, which is nearly all of them.
         greeting_reply = interaction_handler.handle_greeting_trigger(message)
+        if greeting_reply is not None and is_what_can_you_do(message.text or "") and await _draft_v2_on(ctx):
+            # WA-83: "help" is a question, answered by the one help (the company's own
+            # modules, examples to copy) in the agent's turn, not by the category menu.
+            greeting_reply = None
         if greeting_reply is not None:
             greeting_reply = interaction_handler.handle_greeting_trigger(
                 message,

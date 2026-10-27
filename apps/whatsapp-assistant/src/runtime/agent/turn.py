@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from typing import Any
@@ -35,6 +36,13 @@ from .stock_question import is_stock_question
 from .tools import QUERY_MATERIALS, ScopeLookup
 
 _log = logging.getLogger("mesiri.agent")
+
+#: A reply saying the message was not understood (English, Manglish, Malayalam, Hindi).
+_NOT_UNDERSTOOD = re.compile(
+    r"(?:could ?n[o']?t|did ?n[o']?t|do ?n[o']?t|cannot|can't) (?:quite )?understand|not sure what you mean"
+    r"|manass?ilaay?illa|manass?ilaay?ittilla|മനസ്സിലായില്ല|samajh nahi",
+    re.IGNORECASE,
+)
 
 CANT_HEAR_REPLY = "I couldn't hear that clearly. Could you send it again?"
 UNREADABLE_REPLY = "Sorry, I couldn't make out that message. Please type it or send a voice note."
@@ -388,6 +396,11 @@ async def run_agent_turn(
     reply = await _stock_lookup(result, user_text) or result.reply
     if _is_conversational(result):
         reply = await _guarded(reply, result, deps, message, user_text, context, gateway, actor, language, script)
+        if getattr(gateway, "draft_mode", False) is True and _NOT_UNDERSTOOD.search(reply.text or ""):
+            # WA-83 (live 27 Oct, M25): "I couldn't understand that" and nothing to copy.
+            # The one help follows it: the company's modules, examples in their language.
+            modules = await _context_line(deps.enabled_modules, actor)
+            reply = replace(reply, text=f"{reply.text}\n\n{what_can_you_do(language, script, user_text, modules)}")
         if deps.on_conversational is not None:
             deps.on_conversational()
     if deps.attach_receipt is not None:

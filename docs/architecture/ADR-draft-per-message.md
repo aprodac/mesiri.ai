@@ -554,3 +554,20 @@ does to the card, so the model's choice between "new" and "correction" cannot lo
   or a question. Live 27 Oct (round 7): the card lost the breakdown.
 - Tests: `tests/replay/test_wa82_code_reconciles.py`. Not verified here: the live run (WA-80) is the gate.
 - Rollback: `git revert`, or flag `draft_v2` off.
+
+
+## 16. Phase 4 of the 27 Oct plan: one way in for "help" and the menu (WA-83)
+
+- **The menu follows the company's modules, for every company** (`render_greeting_menu` builds its rows when it
+  is sent). It used `CATEGORY_ROWS`, built at import before any company is known, so "hi" offered Money and
+  Reminders to a company that has them switched off, though the WA-07 filter existed (live 27 Oct, screenshot 19).
+- **"help" is the one help** in draft mode: a bare "help" / "what can you do?" skips the category menu and gets
+  the fixed help of [132] (the company's modules, three examples to copy, in their language). "hi" / "menu" still
+  open the menu.
+- **"I couldn't understand that" carries the help** in draft mode: the same fixed help follows it (M25).
+- **Not done here: the wording catalogue (W5).** The language marks of 27 Oct (M07 "Nooki", M16 "Inn ... innu",
+  M21 / M27 English replies to Manglish) are the model's wording; a fixed catalogue in Malayalam and Manglish is
+  WA-76, which is blocked on the owners reviewing the wording. These marks are measured by the live suite (WA-80)
+  and reported, not fixed by invented translations.
+- Tests: `tests/unit/test_wa83_one_way_in.py`, two journey tests in `tests/unit/test_draft_tap_journey.py`.
+- Rollback: `git revert` (the menu rows apply to every company), or flag `draft_v2` off for the rest.

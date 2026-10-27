@@ -145,3 +145,41 @@ async def test_the_company_setting_decides_whether_messages_are_held_as_drafts(m
         message = _tap("not-a-draft", "hello").model_copy(update={"modality": InputModality.TEXT, "metadata": {}})
         await on_normalized(message, {})
         assert seen["gateway"].draft_mode is expected, stored
+
+
+def _text(text: str) -> NormalizedMessage:
+    return NormalizedMessage(
+        message_id="wamid.in.help",
+        sender=SenderInfo(wa_id="919876543210", profile_name="Ravi"),
+        timestamp=dt.datetime(2026, 10, 27, 6, tzinfo=dt.UTC),
+        modality=InputModality.TEXT,
+        text=text,
+    )
+
+
+async def test_help_with_draft_cards_is_the_one_help_not_the_category_menu(monkeypatch):
+    """WA-83 (live 27 Oct, screenshot 19): "help" got the old menu with switched-off
+    Money and Reminders. With draft cards it is the one help: the company's modules
+    and examples to copy."""
+    from channel.replies import render_greeting_menu
+
+    on_normalized, deps = _build(monkeypatch, drafts=MemoryDraftStore())
+    deps["interaction_handler"].handle_greeting_trigger.return_value = render_greeting_menu()
+
+    await on_normalized(_text("help"), {})
+
+    deps["sender"].send_list.assert_not_awaited()
+    said = " ".join(_said(deps))
+    assert "6 mason" in said or "example" in said.casefold()
+    assert "Money" not in said
+
+
+async def test_hi_still_opens_the_menu(monkeypatch):
+    from channel.replies import render_greeting_menu
+
+    on_normalized, deps = _build(monkeypatch, drafts=MemoryDraftStore())
+    deps["interaction_handler"].handle_greeting_trigger.return_value = render_greeting_menu()
+
+    await on_normalized(_text("hi"), {})
+
+    deps["sender"].send_list.assert_awaited()

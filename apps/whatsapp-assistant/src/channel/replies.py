@@ -935,7 +935,10 @@ def render_greeting_menu(
     return ReplySpec(
         text=body,
         list_button_label="Choose one",
-        list_rows=CATEGORY_ROWS,
+        # WA-83: built now, not at import: the rows follow the company's switched-on
+        # modules (WA-07). CATEGORY_ROWS is built before any company is known, so the
+        # menu offered Money and Reminders to a company without them (live 27 Oct).
+        list_rows=_category_rows(),
     )
 
 
