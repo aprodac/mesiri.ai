@@ -124,7 +124,7 @@ function Calls({ correlationId }: { correlationId: string }) {
 function Detail({ item }: { item: FeedItem }) {
   const bubble = { padding: '8px 12px', borderRadius: 'var(--radius-md)', fontSize: '13px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' } as const;
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) minmax(320px, 2fr)', gap: 'var(--space-6)', padding: 'var(--space-4) 0', alignItems: 'start' }}>
+    <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: 'minmax(min(220px, 100%), 1fr) minmax(320px, 2fr)', gap: 'var(--space-6)', padding: 'var(--space-4) 0', alignItems: 'start' }}>
       <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
         <div style={{ ...bubble, background: 'var(--surface-secondary)', justifySelf: 'start', maxWidth: '100%' }}>
           {item.text || <span style={muted}>({item.message_type})</span>}

@@ -71,7 +71,7 @@ export default function Companies() {
         ))}
       </div>
 
-      <div className="table-container">
+      <div className="table-container co-table">
         <table>
           <thead>
             <tr>
@@ -154,6 +154,40 @@ export default function Companies() {
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* SA-21: on a phone, one card per company instead of the table. */}
+      <div className="co-cards">
+        {loading && <p className="co-cards-note">Loading live data...</p>}
+        {!loading && error && <p className="co-cards-note" style={{ color: 'var(--error)' }}>{error}</p>}
+        {!loading && !error && shown.length === 0 && (
+          <p className="co-cards-note">
+            {companies.length === 0 ? 'No companies yet. Tap "Create company" to add one.' : `No ${FILTER_LABELS[filter].toLowerCase()} companies.`}
+          </p>
+        )}
+        {!loading &&
+          !error &&
+          shown.map((c) => (
+            <button key={c.id} className="co-card" onClick={() => navigate(`/organizations/${c.id}`)}>
+              <span className="co-card-top">
+                <span className="co-card-name">{c.name}</span>
+                <span className={`badge ${STATUS_BADGE[c.effective_status] ?? 'badge-warning'}`} style={{ whiteSpace: 'nowrap' }}>
+                  {statusText(c)}
+                </span>
+              </span>
+              {(!!c.open_continue_requests || !!c.open_branding_requests || c.eligible_for_deletion) && (
+                <span className="co-card-flags">
+                  {!!c.open_continue_requests && <span className="badge badge-success">Wants to continue</span>}
+                  {!!c.open_branding_requests && <span className="badge badge-warning">Letterhead photos</span>}
+                  {c.eligible_for_deletion && <span className="badge badge-error">Eligible for deletion</span>}
+                </span>
+              )}
+              <SetupSteps setup={c.setup} />
+              <span className="co-card-meta">
+                {SOURCE_LABELS[c.signup_source] ?? c.signup_source} · Created {shortDate(c.created_at)}
+              </span>
+            </button>
+          ))}
       </div>
 
       {creating && (

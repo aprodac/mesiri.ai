@@ -76,7 +76,7 @@ const SystemGraph = () => {
       ) : data ? (
         <>
           {/* --- Pipeline stages --- */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 'var(--space-4)', marginBottom: 'var(--space-8)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))', gap: 'var(--space-4)', marginBottom: 'var(--space-8)' }}>
             {data.stages.map((stage) => (
               <div key={stage.key} className="card">
                 <h2 style={{ fontSize: '15px', fontWeight: 600, margin: 0, marginBottom: 'var(--space-2)' }}>{stage.title}</h2>
@@ -100,7 +100,7 @@ const SystemGraph = () => {
           <p style={{ fontSize: '12px', color: 'var(--neutral-500)', marginTop: 0, marginBottom: 'var(--space-4)' }}>
             These run before the AI pipeline is ever touched — matched against static phrase lists, not model output. Click an example to test it.
           </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 'var(--space-4)', marginBottom: 'var(--space-8)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: 'var(--space-4)', marginBottom: 'var(--space-8)' }}>
             {data.fast_paths.map((fp) => (
               <div key={fp.key} className="card">
                 <div style={{ fontWeight: 600, fontSize: '14px', marginBottom: '4px' }}>{fp.title}</div>
@@ -138,7 +138,7 @@ const SystemGraph = () => {
                 style={r.flag ? { borderColor: 'var(--warning, #c98a1e)', borderWidth: '1px', borderStyle: 'solid' } : undefined}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--space-3)', marginBottom: 'var(--space-2)' }}>
-                  <div>
+                  <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                     <div style={{ fontWeight: 600, fontSize: '13px' }}>{r.title}</div>
                     <div style={{ fontFamily: 'monospace', fontSize: '11px', color: 'var(--neutral-500)' }}>{r.source}</div>
                   </div>
@@ -180,7 +180,7 @@ const SystemGraph = () => {
           </div>
 
           {/* --- Links to the pages that used to live here --- */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 'var(--space-4)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))', gap: 'var(--space-4)' }}>
             <Link to="/semantic-types" className="card" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', textDecoration: 'none', color: 'inherit' }}>
               <Tags size={20} style={{ color: 'var(--primary)' }} />
               <div>

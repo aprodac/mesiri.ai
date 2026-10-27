@@ -414,7 +414,7 @@ export default function Providers() {
           <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
             <Cpu size={20} /> AI Capability Routing
           </h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 'var(--space-4)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))', gap: 'var(--space-4)' }}>
             {CAPABILITY_DEFS.map((cap) => (
               <CapabilityCard
                 key={cap.key}
@@ -434,7 +434,7 @@ export default function Providers() {
           <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
             <Key size={20} /> Provider API Credentials
           </h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--space-6)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: 'var(--space-6)' }}>
             {providers.map((p) => {
               const result = results[p.id];
               return (

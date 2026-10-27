@@ -113,7 +113,7 @@ export default function PlanCard({ orgId, onStatus }: Props) {
           Eligible for deletion: the trial ended longer ago than its data is kept. Nothing is deleted automatically.
         </div>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'var(--space-4)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: 'var(--space-4)' }}>
         <div><div style={label}>Source</div><div style={value}>{SOURCE_LABELS[company.signup_source] ?? company.signup_source}</div></div>
         <div><div style={label}>Trial started</div><div style={value}>{shortDate(company.trial_started_at ?? null)}</div></div>
         <div><div style={label}>Trial ends</div><div style={value}>{shortDate(company.trial_ends_at)}</div></div>

@@ -120,7 +120,7 @@ export default function Trials() {
 
       {data && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 'var(--space-4)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(190px, 100%), 1fr))', gap: 'var(--space-4)' }}>
             {data.steps.map((step) => (
               <div key={step.key} className="card">
                 <div style={muted}>{step.label}</div>

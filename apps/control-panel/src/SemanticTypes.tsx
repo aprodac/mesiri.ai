@@ -56,7 +56,7 @@ const SemanticTypes = () => {
           <p style={{ fontSize: '12px', color: 'var(--neutral-500)', marginTop: 0, marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
             <Tags size={16} style={{ color: 'var(--primary)' }} /> Read each card as a flow: <strong>semantic type → canonical event → workflow</strong>.
           </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 'var(--space-5)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: 'var(--space-5)' }}>
             {data.semantic_types.map((st) => {
               const isDirectReply = st.workflow_keys.length === 0;
               const badge = isDirectReply

@@ -198,14 +198,16 @@ export const pillStyle: React.CSSProperties = {
   fontSize: '11px',
   fontFamily: 'monospace',
   color: 'var(--neutral-700, #444)',
-  whiteSpace: 'nowrap',
+  // Short labels stay on one line; a long one wraps inside the card.
+  maxWidth: '100%',
+  overflowWrap: 'anywhere',
 };
 
 /** One `pill → pill → …` chain, wrapping gracefully at narrow widths. */
 export const RoutingFlow = ({ steps }: { steps: { label: string; muted?: boolean }[] }) => (
   <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
     {steps.map((step, i) => (
-      <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+      <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', maxWidth: '100%' }}>
         <span style={step.muted ? { ...pillStyle, color: 'var(--neutral-500)', fontStyle: 'italic' } : pillStyle}>
           {step.label}
         </span>

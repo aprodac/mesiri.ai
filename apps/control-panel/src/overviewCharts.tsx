@@ -74,7 +74,7 @@ export function Sparkline({ values, width = 84, height = 30, color = INK }: { va
   const line = smoothPath(pts);
   const last = pts[pts.length - 1];
   return (
-    <svg width={width} height={height} aria-hidden="true" style={{ display: 'block', overflow: 'visible' }}>
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true" style={{ display: 'block', overflow: 'visible' }}>
       <defs>
         <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor={color} stopOpacity="0.14" />
@@ -82,7 +82,7 @@ export function Sparkline({ values, width = 84, height = 30, color = INK }: { va
         </linearGradient>
       </defs>
       <path d={`${line}L${last[0]},${height}L${pts[0][0]},${height}Z`} fill={`url(#${id})`} />
-      <path d={line} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+      <path d={line} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
       <circle cx={last[0]} cy={last[1]} r={2.5} fill={color} />
     </svg>
   );
@@ -103,7 +103,8 @@ export function AreaChart({ labels, values, format }: { labels: string[]; values
   const pts: [number, number][] = values.map((v, i) => [x(i), y(v)]);
   const line = smoothPath(pts);
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * top);
-  const every = Math.max(1, Math.ceil(n / 7));
+  // About one date label per 64px, whatever the width.
+  const every = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(plotW / 64))));
   const empty = values.every((v) => !v);
 
   const onMove = (e: React.PointerEvent<SVGRectElement>) => {

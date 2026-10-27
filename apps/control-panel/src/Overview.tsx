@@ -189,7 +189,7 @@ export default function Overview() {
               <Card
                 title="Activity"
                 meta={`${active.format(activeTotal)} ${active.unit} in 14 days`}
-                className="grow"
+                className="grow activity"
                 action={
                   <div className="seg" role="tablist">
                     {METRICS.map((m) => (
@@ -221,7 +221,7 @@ export default function Overview() {
             </div>
 
             <div className="board-side">
-              <Card title="Needs you" meta={attention.length ? `${attention.length} open` : undefined} className="grow">
+              <Card title="Needs you" meta={attention.length ? `${attention.length} open` : undefined} className="grow needs">
                 <div className="oc-scroll">
                   <Inbox items={attention} />
                 </div>
@@ -229,6 +229,7 @@ export default function Overview() {
               <Card
                 title="Onboarding"
                 meta="Trials started in 30 days"
+                className="onboarding"
                 action={
                   <Link to="/trials" className="oc-link">
                     Trials

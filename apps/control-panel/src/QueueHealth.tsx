@@ -115,7 +115,7 @@ export default function QueueHealth() {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(min(140px, 100%), 1fr))',
                 gap: 'var(--space-4)',
                 marginTop: 'var(--space-4)',
                 paddingTop: 'var(--space-4)',

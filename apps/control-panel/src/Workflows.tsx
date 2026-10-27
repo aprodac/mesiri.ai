@@ -52,7 +52,7 @@ const Workflows = () => {
       {loading && !data ? (
         <div className="card" style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>Loading workflows…</div>
       ) : data ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 'var(--space-5)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: 'var(--space-5)' }}>
           {data.workflows.map((wf) => {
             const open = !!expanded[wf.workflow_key];
             return (

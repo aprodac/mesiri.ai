@@ -188,7 +188,7 @@ export default function Costs() {
       {!error && !data && <p style={muted}>Loading…</p>}
 
       {totals && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: 'var(--space-4)' }}>
           <Stat label="Total" value={inr(totals.total_cost_inr)} note={totals.unpriced ? `${totals.unpriced} call(s) with no price, not included` : undefined} />
           <Stat label="AI" value={inr(totals.ai_cost_inr)} note={`${totals.ai_calls.toLocaleString('en-IN')} calls`} />
           <Stat label="WhatsApp" value={inr(totals.whatsapp_cost_inr)} note={`${totals.whatsapp_messages.toLocaleString('en-IN')} messages sent`} />

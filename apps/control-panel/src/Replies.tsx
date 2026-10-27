@@ -215,7 +215,7 @@ export default function Replies() {
       {overview && s && (
         <div style={{ opacity: loading ? 0.6 : 1, transition: 'opacity var(--transition-fast)' }}>
           {/* Headline numbers */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 'var(--space-4)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(160px, 100%), 1fr))', gap: 'var(--space-4)' }}>
             <div className="card-dark">
               <div style={{ fontSize: '13px', color: 'var(--neutral-400)' }}>Typical reply time</div>
               <div style={{ fontSize: '48px', fontWeight: 600, lineHeight: 1.1, marginTop: 'var(--space-2)', color: 'var(--white)' }}>{fmtMs(s.p50_ms)}</div>

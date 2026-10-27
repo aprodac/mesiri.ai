@@ -217,7 +217,7 @@ export default function BrandingPanel({ orgId }: { orgId: string }) {
   const shown = openRequest ?? data.requests[0];
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1fr) minmax(320px, 1.4fr)', gap: 'var(--space-6)', alignItems: 'start' }} data-testid="branding-panel">
+    <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: 'minmax(min(280px, 100%), 1fr) minmax(320px, 1.4fr)', gap: 'var(--space-6)', alignItems: 'start' }} data-testid="branding-panel">
       <div className="card">
         <h3 style={{ marginTop: 0, fontSize: '16px' }}>Photos from the owner</h3>
         {!shown ? (

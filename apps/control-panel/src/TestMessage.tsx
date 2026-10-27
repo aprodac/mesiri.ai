@@ -232,7 +232,7 @@ const TestMessage = () => {
 
       {/* Target User & Org Selection Bar */}
       <div className="card" style={{ marginBottom: 'var(--space-5)', padding: 'var(--space-4)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--space-4)', alignItems: 'center' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: 'var(--space-4)', alignItems: 'center' }}>
           <div className="form-group" style={{ margin: 0 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Building2 size={15} style={{ color: 'var(--neutral-500)' }} /> Organization
@@ -303,7 +303,7 @@ const TestMessage = () => {
         <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-2)', display: 'flex', alignItems: 'center', gap: '6px' }}>
           <Sparkles size={13} style={{ color: 'var(--primary)' }} /> Quick Test Scenarios
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-2)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(200px, 100%), 1fr))', gap: 'var(--space-2)' }}>
           {PRESET_SCENARIOS.map((scenario) => (
             <button
               key={scenario.id}

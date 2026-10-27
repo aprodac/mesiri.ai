@@ -400,7 +400,7 @@ export default function OrganizationDetail() {
       <PlanCard orgId={org.id} onStatus={showStatus} />
 
       <div className="card" style={{ marginBottom: 'var(--space-6)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: 'var(--space-4)' }}>
           <div>
             <div style={{ fontSize: '12px', color: 'var(--neutral-500)' }}>Database Route</div>
             <div style={{ fontFamily: 'monospace', fontSize: '13px' }}>{org.db_route}</div>
