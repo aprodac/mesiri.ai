@@ -38,6 +38,7 @@ from mesiri_contracts.assistant.v2.planner_decision import PlannerDecisionV2
 from workflows import WorkflowRunStatus
 
 from . import draft as dr
+from . import draft_site
 from .cards import SAVED as CARD_SAVED
 from .cards import CardItem, merge_changes, new_card
 from .entry_base import Ready, Say, tool_understanding
@@ -241,6 +242,7 @@ async def add(gw: Any, candidate: Any, *, text: str) -> StepResult:
     if entry is None:
         await note_lost(gw, tool, args, "that can't be done here yet")
         return StepResult("error", text="Not saved: that can't be done here yet.")
+    candidate = draft_site.with_named_site(gw.actor, candidate, text)
     prepared = await entry.prepare(message, tool_understanding(candidate, message, language=gw.language), candidate)
     if prepared is None:
         await note_lost(gw, tool, args, "it could not be looked up")

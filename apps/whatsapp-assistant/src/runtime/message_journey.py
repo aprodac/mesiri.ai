@@ -844,6 +844,10 @@ def build_message_handlers(
                 await work_site.set_today(ctx, project_id=project_id, site_id=site_id)
                 return site_label(ctx, site_id) or "that site"
 
+            async def _preselect_site(project_id, site_id):  # type: ignore[no-untyped-def]
+                await work_site.preselect(ctx, project_id=project_id, site_id=site_id)
+                return site_label(ctx, site_id) or "that site"
+
             async def _remember_saved_site(project_id, site_id):  # type: ignore[no-untyped-def]
                 await work_site.remember_saved(ctx, project_id=project_id, site_id=site_id)
 
@@ -897,6 +901,12 @@ def build_message_handlers(
                 )
                 return render_open_work_line(
                     site_label(actor, site_id) if site_id is not None else None, rows, site_names=names
+                )
+
+            async def _enabled_modules(actor):  # type: ignore[no-untyped-def]
+                """Request 132: what the help may list."""
+                return await asyncio.wait_for(
+                    org_settings_query.enabled_modules(organization_id=str(actor.organization_id)), timeout=0.5
                 )
 
             async def _card_line(actor):  # type: ignore[no-untyped-def]
@@ -973,6 +983,7 @@ def build_message_handlers(
                     set_today_site=_set_today_site if work_site is not None else None,
                     get_today_site=_get_today_site if work_site is not None else None,
                     remember_saved_site=_remember_saved_site if work_site is not None else None,
+                    preselect_site=_preselect_site if work_site is not None else None,
                     share_code=(
                         (lambda: _share_join_code(msg))
                         if join_journey is not None
@@ -1097,6 +1108,7 @@ def build_message_handlers(
                 work_site_line=_work_site_line if work_site is not None else None,
                 open_work_line=_open_work_line if activity_query is not None else None,
                 card_line=_card_line if cards is not None else None,
+                enabled_modules=_enabled_modules if org_settings_query is not None else None,
                 on_conversational=lambda: _conversational.add(message.correlation_id),
                 trace_logger=trace_logger,
                 later=later,

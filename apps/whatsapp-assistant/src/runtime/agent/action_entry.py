@@ -131,7 +131,9 @@ class ActionEntry(EntryScope):
             "report_date": report_date.isoformat(),
             "changes": changes,
         }
-        return new_action(SITE_CONDITIONS, payload, conditions_summary(changes, report_date, zone))
+        return new_action(
+            SITE_CONDITIONS, payload, conditions_summary(changes, report_date, zone, site=self._site_name(scoped))
+        )
 
     # -- issues to close ----------------------------------------------------------
 
@@ -184,15 +186,20 @@ def _iso_day(value: Any, zone: str) -> dt.date:
         return dt.datetime.now(ZoneInfo(zone)).date()
 
 
-def conditions_summary(changes: dict[str, Any], day: dt.date, zone: str) -> str:
+def conditions_summary(changes: dict[str, Any], day: dt.date, zone: str, *, site: str | None = None) -> str:
     """"Weather: Rainy · Site working: Half day" / "Tomorrow's plan: ..." --
     from the data, with the day when it is not today."""
     from zoneinfo import ZoneInfo
 
     parts = []
+    today = dt.datetime.now(ZoneInfo(zone)).date()
     if "weather" in changes:
         parts.append(f"Weather: {WEATHER_WORDS.get(changes['weather'], changes['weather'])}")
-    if "site_working" in changes:
+    if changes.get("site_working") == "none":
+        # Request 132: "Site B: Holiday, no work today", naming the site (it read
+        # "Site working: No work" with no site on the card).
+        parts.append("Holiday, no work today" if day == today else "Holiday, no work")
+    elif "site_working" in changes:
         parts.append(f"Site working: {WORKING_WORDS.get(changes['site_working'], changes['site_working'])}")
     if "hours_lost" in changes:
         hours = changes["hours_lost"]
@@ -201,7 +208,8 @@ def conditions_summary(changes: dict[str, Any], day: dt.date, zone: str) -> str:
     if "tomorrow_plan" in changes:
         plan = f"Tomorrow's plan: {changes['tomorrow_plan']}"
         line = f"{line}; {plan}" if line else plan
-    today = dt.datetime.now(ZoneInfo(zone)).date()
     if day != today:
         line += f" ({day.day} {day.strftime('%b')})"
+    if site and changes.get("site_working") == "none":
+        line = f"{site}: {line}"
     return line

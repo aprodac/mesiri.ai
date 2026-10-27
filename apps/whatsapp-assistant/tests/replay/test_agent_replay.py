@@ -162,6 +162,8 @@ class World:
     cards: Any = None
     undo_facts: Any = None
     pending_confirmation: Any = None
+    #: Request 132: ``(project_id, site_id) -> label``, "now at Site B" on a draft card.
+    preselect_site: Any = None
 
     def message(self, text: str, modality: InputModality = InputModality.TEXT) -> NormalizedMessage:
         media = None
@@ -239,6 +241,7 @@ class World:
             cards=self.cards,
             undo_facts=self.undo_facts,
             pending_confirmation=self.pending_confirmation,
+            preselect_site=self.preselect_site,
         )
 
     def context(self, turns: tuple[Turn, ...] = (), **kw: Any) -> AgentContext:

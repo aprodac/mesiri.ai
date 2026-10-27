@@ -413,3 +413,74 @@ is unchanged (status stays `info`).
 - "Change site" lists at most ten sites; no "Something else".
 - Not verified: a live-model run; the taps through real WhatsApp (Ilan Pro re-tests live).
 - Rollback: `git revert`.
+
+
+## 13. P2.5 as built: the understanding side follows the draft (request 132, replaces 131)
+
+P1/P2 moved the WRITE path onto `MessageDraft`. The 27 Oct re-test ([129]) showed the UNDERSTANDING side still kept its
+own state outside the draft, and the model still wrote card-like text. This section is what changed. The flag
+`draft_v2` gates the history, the reply filter and the "now at" rule; the site-name rule, `sheets = nos`, the
+"Not saved" fix, Hinglish, the holiday card, the help and "since <date>" apply to every company (a shared component:
+the agent prompt, the site context store and the history are also used by legacy paths, which keep their behaviour
+until P4). No Labour rule changed.
+
+### 13.1 The site is a field of the draft, set by one resolver (A)
+
+`agent/draft_site.py`: one order, in one place -- one site -> the site the message names (whole words, the matcher
+the site question uses, so "Green Villa ground floor wall putty 200 sqft" is Green Villa even when the model passed
+no site) -> the site of the last SAVED site update for 3 h (`work_site.SAVE_WINDOW_SECONDS`) -> ask.
+
+- Naming: `draft_flow.add` puts the one site the message names into the candidate as `site_name` when the model passed
+  none, so the entry treats the site as named and neither today's site nor the last save overrides it.
+- Nothing is pinned by a mention. The model's `set_work_site` ("Site B-il Rajesh-ine supervisor aakku") is refused on a
+  draft card (`not_a_move`) unless the message only says where the sender is (`is_location_statement`: the site's name,
+  filler such as "now at", and at most one other word). An accepted "now at Site B" preselects the site for the save
+  window (`WorkSite.preselect`), not until midnight. The morning list a sender taps still lasts the day.
+- A team / setup / question message never writes site context (unchanged from [127]; the entry only remembers after a
+  save of a site update).
+
+### 13.2 Questions are items (B)
+
+Already true since [127]/[129] for the unit question ("Steel used: 20 rod (❓ How many kg is 20 rod?)") and the
+labour Replace / Add: a `needs_answer` line with its own buttons, answered by tap (keyed to the item id) or by typing
+the answer. New here: the open questions are part of the state block the model is shown (13.4), so it never re-asks one
+from a past reply. `sheets / pcs / pieces / nos / numbers / rod` (`material_units.COUNT_WORDS`) against a material
+stocked in nos or pcs are the same count: no question, the line is on the card. A stored conversion is applied at once
+(unchanged, [103]). **Not done:** the "which site" question is still the [111] site queue, not an item of the draft.
+
+### 13.3 The code renders every card; the model's text is filtered (C)
+
+`agent/reply_clean.py`. In draft mode the model's words lose the card's headers and bullets ("📝 To save",
+"📝 To close", "✅ Saved"), "Reply YES / NO" lines, `[options: ...]` and parenthesised system notes; every mode loses
+`[options: ...]` and the "(closed: ...)" note. Above a draft card the model's words are its first sentence, at most 200
+characters. `leaks()` names what is left of a prompt or annotation constant. Tests: a leak guard (a reply never carries
+text of `stale_questions.CLOSED` etc.) and a property test (any reply with "To save" has the card's buttons).
+
+### 13.4 What the model is shown (D)
+
+`agent/history.py`. In draft mode the earlier turns are the sender's words plus a one-sentence gist of the answer (no
+card, no options, no note, no question); the state is one block (`draft.context_line`: the open card's lines and
+"Waiting for their answer (item n): ...", and the last saved card). Without the flag the turns are as before, with
+`stale_questions.CLOSED` on a question nobody answered.
+
+### 13.5 The polish of [130] (E)
+
+1. The site named at the start of a Manglish message is found (13.1).
+2. The stray "Not saved (<message>):" after a site pick is gone: a released call that became a draft line is a line.
+3. Sheets / pcs = nos (13.2).
+4. Hinglish ("aaj Green Villa mein 3 mistri aur 2 labour aaye") is its own reply language (`reply_language` ->
+   `hinglish`): the reply is Hindi in English letters, not English or Manglish; the prompt maps mistri -> mason and
+   majdoor / labour -> helper and forbids telling the sender to select a trade. The site question has Hinglish wording.
+5. The holiday card reads "Site B: Holiday, no work today".
+6. "enikku enthokke cheyyan pattum? help" is the fixed help; it lists only the company's enabled modules with up to three
+   examples to copy (English, Manglish, Malayalam; Hinglish and others get the English examples).
+7. An open issue from before the period's last day carries `since` ("24 Oct") for the model, which is told to say
+   "since 24 Oct", not "today".
+
+### 13.6 Known limits
+
+- Hindi (Devanagari) and Hinglish get the English help examples and wording in the fixed lines that have no Hinglish text.
+- The 200-character first sentence above a card can drop a useful second sentence; the card carries the facts.
+- The "which site" question is not yet an item (13.2).
+- Not verified: a live-model run; the taps through real WhatsApp (Ilan Pro re-tests live).
+- Rollback: flag `draft_v2` off (history, filter, "now at" rule) or `git revert`.

@@ -422,6 +422,10 @@ def context_line(draft: MessageDraft | None) -> str | None:
     if draft is None or not draft.live:
         return None
     listed = "; ".join(f"{n}. {i.line}" for n, i in enumerate(draft.items, 1) if i.state != UNREADABLE)
+    # Request 132: the questions waiting on the card belong to the state, so the model
+    # never re-asks one from a past reply (those are not shown to it).
+    waiting = " ".join(f"Waiting for their answer (item {n}): {i.question}" for n, i in enumerate(draft.items, 1) if i.state == NEEDS_ANSWER and i.question)
+    listed = f"{listed}. {waiting}" if waiting else listed
     return (
         f"Their open card {draft.id[:6]} (Save / Cancel not tapped yet, nothing is written): {listed}. What you "
         "save now is added to it. If they correct a figure on it ('alla, 8 mason aanu'), call "

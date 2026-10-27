@@ -97,6 +97,9 @@ class AgentTurnDeps:
     #: [111]: saves waiting on the site answer (runtime/agent/site_wait.py's
     #: SiteWaitStore); None keeps none.
     site_wait: Any | None = None
+    #: Request 132: ``(actor) -> the company's switched-on modules``, so the help
+    #: lists only what they have; None lists the general help.
+    enabled_modules: Callable[[ActorIdentity], Awaitable[list[str] | None]] | None = None
 
 
 def _scope_of(actor: ActorIdentity) -> ScopeLookup:
@@ -110,6 +113,7 @@ def _context_of(
     actor: ActorIdentity, deps: AgentTurnDeps, pack: Any | None, language: str | None,
     menu_hint: str | None,
     script: str | None = None,
+    draft_mode: bool = False,
 ) -> AgentContext:
     project_names = {p.id: p.name for p in actor.projects}
     return AgentContext(
@@ -119,18 +123,30 @@ def _context_of(
         now=deps.now(),
         projects=tuple((p.name, p.location) for p in actor.projects),
         sites=tuple((s.name, project_names.get(s.project_id or "")) for s in actor.sites),
-        turns=close_stale_questions(
+        turns=_turns_for_model(
             tuple(
                 Turn(t.user_text, t.assistant_reply, getattr(t, "at", 0.0))
                 for t in (getattr(pack, "recent_turns", ()) or ())
             ),
             deps.now().timestamp(),
+            draft_mode,
         ),
         last_language=language,
         last_script=script,
         has_pending_confirmation=bool(getattr(pack, "has_pending_confirmation", False)),
         menu_hint=menu_hint,
     )
+
+
+def _turns_for_model(turns: tuple[Turn, ...], now: float, draft_mode: bool) -> tuple[Turn, ...]:
+    """Request 132: on a draft card the model is shown the sender's words and a
+    short gist of each answer (the state is one block, ``card_line``); otherwise the
+    turns as they were, each stale question marked closed."""
+    if draft_mode:
+        from .history import for_model
+
+        return for_model(turns)
+    return close_stale_questions(turns, now)
 
 
 async def _outage(
@@ -255,7 +271,8 @@ async def run_agent_turn(
 
     if is_what_can_you_do(user_text):
         # [68]: the commonest question has a fixed 3-line answer, no model needed.
-        reply = ReplySpec(text=what_can_you_do(language, script, user_text))
+        modules = await _context_line(deps.enabled_modules, actor)
+        reply = ReplySpec(text=what_can_you_do(language, script, user_text, modules))
         await deps.send_spec(reply, wa_id)
         if deps.on_conversational is not None:
             deps.on_conversational()
@@ -301,7 +318,7 @@ async def run_agent_turn(
         return None
 
     gateway = deps.make_gateway(message, language)
-    context = _context_of(actor, deps, pack, language, menu_hint, script)
+    context = _context_of(actor, deps, pack, language, menu_hint, script, getattr(gateway, "draft_mode", False) is True)
     # [68] / WA-36: read-only context lines, fetched together; a failure leaves one out.
     lines = await asyncio.gather(
         *(
@@ -342,7 +359,9 @@ async def run_agent_turn(
         # the message again cannot double-write.
         await asyncio.sleep(QUICK_RETRY_PAUSE_SECONDS)
         result = await deps.runner.run(
-            ctx=_context_of(actor, deps, pack, language, menu_hint, script),
+            ctx=_context_of(
+                actor, deps, pack, language, menu_hint, script, getattr(gateway, "draft_mode", False) is True
+            ),
             user_text=user_text,
             gateway=gateway,
             scope=_scope_of(actor),

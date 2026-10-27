@@ -227,6 +227,9 @@ class JourneyGateway:
     #: site is preselected for the next unnamed update for a short window
     #: (work_site.remember_saved_site, request 129).
     remember_saved_site: Callable[[str | None, str], Awaitable[None]] | None = None
+    #: Request 132: ``(project_id, site_id) -> label``: "now at Site B" on a draft
+    #: card preselects that site for the save window only (work_site.WorkSite.preselect).
+    preselect_site: Callable[[str | None, str], Awaitable[str]] | None = None
     #: Request 88: the sender's latest card (runtime/agent/cards.py), who they
     #: are, and ``(facts) -> FactsUndone | None``: withdraw exactly those entries.
     cards: Any | None = None
@@ -430,6 +433,10 @@ class JourneyGateway:
             _log.warning("agent.remember_site_failed", exc_info=True)
 
     async def set_work_site(self, *, project_id: str | None, site_id: str) -> str:
+        if self.draft_mode and self.preselect_site is not None:
+            # Request 132: on a draft card "now at Site B" preselects for the save
+            # window (3 h), like a save does; it no longer pins the site until midnight.
+            return await self.preselect_site(project_id, site_id)
         if self.set_today_site is None:
             raise RuntimeError("today's site is not wired")
         return await self.set_today_site(project_id, site_id)

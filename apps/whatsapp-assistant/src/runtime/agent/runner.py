@@ -35,11 +35,13 @@ from .prompt import (
     SYSTEM_PROMPT,
     AgentContext,
     build_messages,
+    is_hinglish,
     is_manglish,
     letters_of,
     reply_language,
     reply_letters_rule,
 )
+from .reply_clean import clean_annotations, clean_model_text
 from .reply_text import (
     dpr_caption,
     manglish_word_count,
@@ -327,7 +329,7 @@ class AgentRunner:
         _log.warning("agent.script_fallback correlation_id=%s problems=%s", correlation_id, problems)
         if letters_of(user_text) == "latin" and any("English letters" in p for p in problems):
             return run.model_copy(update={"text": without_native_script(text)})
-        if reply_language(user_text) == "english" and any("Manglish" in p for p in problems):
+        if reply_language(user_text) in ("english", "hinglish") and any("Manglish" in p for p in problems):
             text = without_manglish(text, _MANGLISH_WORDS)
         broken = mixed_script_words(text)
         kept = "".join(p for p in sentences(text) if not any(w in p for w in broken))
@@ -396,6 +398,12 @@ class AgentRunner:
         if toolbox.parked is not None:
             toolbox.drop_actions()
         text = (run.text or "").strip()
+        draft_mode = getattr(toolbox.gateway, "draft_mode", False) is True
+        # Request 132: the card, its questions and its buttons are the code's; the
+        # model's own words never carry one, nor a note it read in its prompt.
+        text = clean_model_text(text) if draft_mode else clean_annotations(text)
+        if draft_mode and _open_draft(toolbox) is not None:
+            text = _one_sentence(text)
         if toolbox.parked_site:
             # [111]: the site question is the code's, in the sender's language;
             # the model's words around it ("Ethra per vannu Site B-il?") went
@@ -614,10 +622,10 @@ def script_problems(reply: str, user_text: str) -> list[str]:
         problems.append("it has a word that mixes English and Malayalam letters (" + ", ".join(mixed[:3]) + ")")
     language = reply_language(user_text)
     letters = letters_of(reply)
-    if language in ("english", "manglish") and letters == "native":
+    if language in ("english", "manglish", "hinglish") and letters == "native":
         problems.append("it uses Malayalam/Hindi script but the message is in English letters")
-    elif language == "english" and manglish_word_count(reply, _MANGLISH_WORDS):
-        problems.append("it is in Manglish but the message is in English")
+    elif language in ("english", "hinglish") and manglish_word_count(reply, _MANGLISH_WORDS):
+        problems.append(f"it is in Manglish but the message is in {'English' if language == 'english' else 'Hindi'}")
     elif language in ("malayalam", "hindi", "native") and letters == "latin" and len(re.findall(r"[A-Za-z]+", reply)) >= 3:
         problems.append("it is in English letters but the message is in its own script")
     return problems
@@ -684,6 +692,7 @@ _COVERING = {
     "manglish": "{items}. Nokki shariyenkil Save tap cheyyu.",
     "malayalam": "{items}. ശരിയാണെങ്കിൽ Save അമർത്തുക.",
     "hindi": "{items}. सही हो तो Save दबाएँ.",
+    "hinglish": "{items}. Sahi ho to Save dabayein.",
 }
 
 
@@ -693,6 +702,7 @@ _CHOOSE = {
     "manglish": "{options} tap cheyyu.",
     "malayalam": "{options} അമർത്തുക.",
     "hindi": "{options} दबाएँ.",
+    "hinglish": "{options} dabayein.",
 }
 
 
@@ -714,7 +724,9 @@ def _wording_language(user_text: str) -> str:
         return "malayalam"
     if re.search(r"[ऀ-ॿ]", user_text):
         return "hindi"
-    return "manglish" if is_manglish(user_text) else "english"
+    if is_manglish(user_text):
+        return "manglish"
+    return "hinglish" if is_hinglish(user_text) else "english"
 
 
 def covering_sentence(summaries: list[str], user_text: str) -> str:
@@ -966,6 +978,17 @@ def _saved_block(toolbox: AgentToolbox) -> str:
     if not entries or not all(item.summary for item in entries):
         return ""
     return render_saved([item.summary for item in entries if item.summary])
+
+
+#: Request 132: the longest the model's words above a draft card.
+ONE_SENTENCE_MAX = 200
+
+
+def _one_sentence(text: str) -> str:
+    """The model's words above a card: its first sentence, short. The card says the
+    rest (lines, questions, buttons), and a second sentence was where it invented one."""
+    first = next((s.strip() for s in sentences(text) if s.strip()), "")
+    return trim_at_sentence(first, ONE_SENTENCE_MAX)
 
 
 def _normalized(text: str) -> str:

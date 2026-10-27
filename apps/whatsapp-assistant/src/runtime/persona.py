@@ -118,7 +118,7 @@ _WHAT_CAN_YOU_DO: dict[str, str] = {
 }
 
 _WHAT_CAN_YOU_DO_ASK = re.compile(
-    r"^\W*(?:so\s+)?(?:"
+    r"^\W*(?:so\s+|enikku\s+|ente\s+)?(?:"
     r"what\s+(?:can|do|all\s+can)\s+(?:you|u)\s+do"
     r"|what\s+(?:are|r)\s+(?:you|u)\s+(?:for|good\s+for)"
     r"|what\s+is\s+this(?:\s+for)?"
@@ -130,7 +130,8 @@ _WHAT_CAN_YOU_DO_ASK = re.compile(
     r"|enthu\s+cheyyan\s+pattum"
     r"|എന്താ\s+ചെയ്യാൻ\s+പറ്റുക"
     r"|എന്തൊക്കെ\s+ചെയ്യാൻ\s+പറ്റും"
-    r")\W*$",
+    r"|(?:aap|tum)\s+kya(?:\s+kya)?\s+kar\s+sak(?:te|ta)\s+(?:ho|hain|hai)"
+    r")(?:\W+help(?:\s+me)?)?\W*$",
     re.IGNORECASE,
 )
 
@@ -153,8 +154,58 @@ def _flavour(language: object, script: object, text: str = "") -> str:
     return "manglish" if normalize_script(script) == "latin" else "malayalam"
 
 
-def what_can_you_do(language: object = None, script: object = None, text: str = "") -> str:
-    return _WHAT_CAN_YOU_DO[_flavour(language, script, text)]
+def what_can_you_do(
+    language: object = None, script: object = None, text: str = "", modules: Sequence[str] | None = None
+) -> str:
+    """The fixed answer. With ``modules`` (the company's switched-on modules, request
+    132) it lists only what they have, with three examples to copy in their language."""
+    flavour = _flavour(language, script, text)
+    if modules is None:
+        return _WHAT_CAN_YOU_DO[flavour]
+    return _help_for(flavour, text, set(modules))
+
+
+#: One copyable example per module, per wording: what to send. Order is the order shown.
+_HELP_EXAMPLES: dict[str, tuple[tuple[str, str, str], ...]] = {
+    "english": (
+        ("labour", "6 masons came", "Tell me who worked"),
+        ("materials", "50 bags cement received", "Tell me what arrived or was used"),
+        ("dpr", "plastering 2nd floor 60% done", "Tell me the work done"),
+        ("finance", "paid 5000 to Sharma Traders", "Tell me what was paid"),
+    ),
+    "manglish": (
+        ("labour", "6 mason vannu", "Aar vannu ennu parayu"),
+        ("materials", "50 bags cement vannu", "Enthu vannu / upayogichu ennu parayu"),
+        ("dpr", "plastering 2nd floor 60% aayi", "Cheytha pani parayu"),
+        ("finance", "Sharma Traders-inu 5000 koduthu", "Entha koduthath ennu parayu"),
+    ),
+    "malayalam": (
+        ("labour", "6 മേസൺ വന്നു", "ആരൊക്കെ വന്നു എന്ന് പറയൂ"),
+        ("materials", "50 ബാഗ് സിമന്റ് വന്നു", "എന്ത് വന്നു / ഉപയോഗിച്ചു എന്ന് പറയൂ"),
+        ("dpr", "പ്ലാസ്റ്ററിംഗ് 2nd ഫ്ലോർ 60% ആയി", "ചെയ്ത പണി പറയൂ"),
+        ("finance", "Sharma Traders-ന് 5000 കൊടുത്തു", "എന്ത് കൊടുത്തു എന്ന് പറയൂ"),
+    ),
+}
+_HELP_HEAD = {
+    "english": "I'm Mesiri's site assistant. Send a text or voice note, for example:",
+    "manglish": "Njan Mesiri-yude site assistant aanu. Type cheyyam allenkil voice note ayakkam, ex:",
+    "malayalam": "ഞാൻ മെസിരിയുടെ സൈറ്റ് അസിസ്റ്റന്റാണ്. ടൈപ്പ് ചെയ്യാം, അല്ലെങ്കിൽ വോയ്‌സ് നോട്ട് അയയ്ക്കാം, ഉദാ.",
+}
+_HELP_ASK = {
+    "english": "You can also ask for today's summary or the report.",
+    "manglish": "Innathe summary allenkil report-um chodikkam.",
+    "malayalam": "ഇന്നത്തെ സമ്മറിയോ റിപ്പോർട്ടോ ചോദിക്കാം.",
+}
+
+
+def _help_for(flavour: str, text: str, modules: set[str]) -> str:
+    rows = [row for row in _HELP_EXAMPLES[flavour] if row[0] in modules][:3]
+    if not rows:
+        return _WHAT_CAN_YOU_DO[flavour]
+    lines = [_HELP_HEAD[flavour], *(f"{n}. “{example}”" for n, (_m, example, _why) in enumerate(rows, 1))]
+    if "dpr" in modules:
+        lines.append(_HELP_ASK[flavour])
+    return "\n".join(lines)
 
 
 # --- guardrail --------------------------------------------------------------------

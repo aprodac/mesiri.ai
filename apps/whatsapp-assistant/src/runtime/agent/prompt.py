@@ -35,6 +35,11 @@ Site B", "innu Green Villa site-il"), call set_work_site; their entries follow i
 rest of the day. Only when they ask to create, add or start a NEW site or project, call \
 create_site or create_project: its Yes/No buttons ask for you. A site name that is not \
 in their list is never created unless they asked for a new one.
+- An open issue marked carried_over began on its "since" date: say "since 24 Oct", never "today" or "innu".
+- Hindi site words: mistri = mason, majdoor / mazdoor / labour = helper. Take them as those trades without \
+asking; there is no control on the card to pick a trade, so never tell them to select one.
+- The card, its lines, its questions and its buttons are drawn by the system, never by you: write at most one \
+short sentence, and never write "To save", "Saved", "Reply YES", an options list or a note about the system.
 - Only pass a project or site when the user named one. Never invent names, numbers, \
 quantities, units or dates. If a detail you need is missing and cannot be worked out, \
 or you cannot tell what they mean, call ask_user with ONE short question (and 2-3 \
@@ -348,6 +353,14 @@ _ENGLISH_WORDS = frozenset(
     cum cft sqm kg tonnes tons loads load trucks truck lorry only just also but or if so""".split()
 )
 
+#: Hindi typed in English letters ("aaj Green Villa mein 3 mistri aur 2 labour aaye").
+#: Two of these make a message Hinglish; words English or Malayalam also use are left out.
+_HINGLISH_WORDS = frozenset(
+    """aaj mein aur aaye aaya gaya gayi hai hain hua hue kiya kiye karna nahi nahin kaam mistri majdoor
+    mazdoor kal abhi bahut chahiye lagaya bheja mila mili wale tha thi raha rahe kaise kitna kitne
+    chhutti baarish""".split()
+)
+
 _MALAYALAM = re.compile(r"[\u0d00-\u0d7f]")
 _DEVANAGARI = re.compile(r"[\u0900-\u097f]")
 
@@ -372,6 +385,8 @@ def reply_language(text: str) -> str | None:
         return None
     if is_manglish(text):
         return "manglish"
+    if is_hinglish(text):
+        return "hinglish"
     words = re.findall(r"[a-z]+", (text or "").lower())
     if len(words) >= 2 and set(words) & _ENGLISH_WORDS:
         return "english"
@@ -385,7 +400,20 @@ def is_manglish(text: str) -> bool:
     return bool(words & _MANGLISH_WORDS) or bool(_MANGLISH_SUFFIX.search(lowered))
 
 
+def is_hinglish(text: str) -> bool:
+    """True for Hindi typed in English letters: two everyday Hindi words, no Malayalam."""
+    if is_manglish(text):
+        return False
+    words = set(re.findall(r"[a-z]+", (text or "").lower()))
+    return len(words & _HINGLISH_WORDS) >= 2
+
+
 _LANGUAGE_RULES = {
+    "hinglish": (
+        "This message is Hindi typed in English letters (Hinglish): reply in Hindi in English letters, the "
+        "way a site supervisor texts (\"ho gaya\", \"theek hai\"). Not English, not Manglish, and no Devanagari "
+        "or Malayalam script."
+    ),
     "manglish": (
         "This message is Manglish (Malayalam typed in English letters): reply in Manglish, "
         "in English letters, the way a site supervisor texts. Not English, and no Malayalam script."

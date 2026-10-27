@@ -665,10 +665,12 @@ class AgentToolbox:
                 _log.exception("agent.site_release_failed tool=%s", item["tool"])
                 self.failed += 1
                 step = StepResult("error", text="That action failed.")
-            if step.status == "saved":
+            if step.status in ("saved", "drafted"):
+                # Request 132: on a draft card the call became a line of the card; it
+                # was left as "Not saved (...):" with nothing after it, beside the line.
                 self._outcome(item["tool"], step)
                 done.append(step.summary or step.text)
-            else:
+            elif step.text:
                 self.system_lines.append(f"Not saved ({item.get('note') or item['tool']}): {step.text}".strip())
         return done
 
@@ -816,6 +818,23 @@ class AgentToolbox:
                     ),
                 }
             )
+        if getattr(self.gateway, "draft_mode", False) is True:
+            # Request 132: only a plain "now at Site B" moves the sender; a site named
+            # while setting up the team or asking something says where it IS.
+            from .draft_site import is_location_statement
+
+            site_name = next((name for sid, name, _pid in self.scope.sites if str(sid) == str(site_id)), "")
+            if not is_location_statement(self.gateway.actor, self.user_text, site_name):
+                return ToolOutcome(
+                    content={
+                        "status": "not_a_move",
+                        "message": "Their message names that site but does not say they are working there.",
+                        "instruction": (
+                            "Nothing was changed. Do not call set_work_site for this message; handle its "
+                            "parts with the other tools, naming the site in them where it matters."
+                        ),
+                    }
+                )
         try:
             label = await self.gateway.set_work_site(project_id=project_id, site_id=site_id)
         except Exception:  # noqa: BLE001 -- the model is told; the trace keeps the cause

@@ -112,6 +112,22 @@ def resolve_period(
     return period_for(date_range, today)
 
 
+def mark_carried_over(work: dict, last_day: dt.date) -> None:
+    """Request 132: an issue still open from before the period's last day says since
+    when ("since 24 Oct"), so a summary never calls the rain of 24 Oct "today's".
+    Marks each open issue with ``since`` (and ``carried_over``) in place."""
+    for issue in (work.get("open_issues") if isinstance(work, dict) else None) or []:
+        if not isinstance(issue, dict):
+            continue
+        try:
+            opened = dt.date.fromisoformat(str(issue.get("occurred_at"))[:10])
+        except ValueError:
+            continue
+        issue["carried_over"] = opened < last_day
+        if opened < last_day:
+            issue["since"] = f"{opened.day} {opened:%b}"
+
+
 async def read_period(
     *,
     organization_id: str,
@@ -138,6 +154,7 @@ async def read_period(
             **scope, start_date=start, end_date=end, work_type=work_type, **extra
         )
         work["date_range_label"] = label
+        mark_carried_over(work, end)
     labour = None
     if labour_query is not None:
         labour = await labour_query.summarize_attendance(  # type: ignore[attr-defined]

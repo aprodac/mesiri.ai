@@ -259,6 +259,17 @@ _WORDS: dict[str, dict[str, str]] = {
         "evening": "Good evening",
         "hello": "Hello",
     },
+    # Request 132: Hindi typed in English letters; a key left out reads in English.
+    "hinglish": {
+        "question": "Aaj aap kis site par kaam kar rahe hain?",
+        "site_q": "Yeh update kis site ka hai?",
+        "no_site": "\"{said}\" naam ki koi site mere paas nahi hai. Kaun si site?",
+        "dropped": "Site select nahi hui, isliye save nahi hua: {items}. Kripya dobara bhejein.",
+        "button": "Site chunein",
+        "hold": "Theek hai 👍 site chunne tak main {n} message rok kar rakh raha hoon.",
+        "set": "👍 Aaj {label}.",
+        "typed": "List mein nahi hai? Site ka naam likhein.",
+    },
     "malayalam": {
         "question": "ഇന്ന് ഏത് സൈറ്റിലാണ് ജോലി ചെയ്യുന്നത്?",
         "site_q": "ഈ അപ്ഡേറ്റ് ഏത് സൈറ്റിനാണ്?",
@@ -312,7 +323,8 @@ def _language_of(text: str | None) -> str:
 
 
 def _say(language: str, key: str, **fields: Any) -> str:
-    return _WORDS.get(language, _WORDS["english"])[key].format(**fields)
+    table = _WORDS.get(language, _WORDS["english"])
+    return (table.get(key) or _WORDS["english"][key]).format(**fields)
 
 
 def greeting(now: datetime, timezone: str | None, language: str = "english") -> str | None:
@@ -414,6 +426,32 @@ class WorkSite:
             )
         except Exception:  # noqa: BLE001 -- a missed hint only costs one question
             _log.warning("work_site.set_failed user=%s", ids[1], exc_info=True)
+
+    async def preselect(self, actor: Any, *, project_id: str | None, site_id: str) -> None:
+        """Request 132: "now at Site B" on a draft card. The site is preselected for
+        the save window (``SAVE_WINDOW_SECONDS``), exactly like after a save, so it
+        never silently outlives the sender's three hours there. Never raises."""
+        ids = _ids(actor)
+        if ids is None or not site_id:
+            return
+        if project_id is None:
+            project_id = next(
+                (str(s.project_id) for s in _sites(actor) if str(s.id) == str(site_id) and s.project_id),
+                None,
+            )
+        try:
+            await self._active.set_active_context(
+                organization_id=ids[0],
+                user_id=ids[1],
+                project_id=project_id,
+                site_id=site_id,
+                ttl_seconds=SAVE_WINDOW_SECONDS,
+            )
+            await self._redis.set_json(
+                self._key(*ids, "last"), {"site_id": site_id}, ttl_seconds=LAST_SITE_TTL_SECONDS
+            )
+        except Exception:  # noqa: BLE001 -- a missed hint only costs one question
+            _log.warning("work_site.preselect_failed user=%s", ids[1], exc_info=True)
 
     async def remember_saved(self, actor: Any, *, project_id: str | None, site_id: str) -> None:
         """A confirmed save of a site update (``remember_saved_site``). Never raises."""
