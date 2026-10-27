@@ -375,6 +375,14 @@ async def delete_organization(org_id: uuid.UUID, _admin: dict = Depends(require_
                 {"uids": user_ids},
             )
 
+        # BE-44: budgets (and, by their cascade, budget_allocations) first. In
+        # the one cascading delete below, an allocation still pointing at an
+        # expense category being swept blocks it (budget_allocations_category_id_fkey
+        # has no ON DELETE action).
+        await conn.execute(
+            sa.text("DELETE FROM budgets WHERE organization_id = :org"), {"org": org_id}
+        )
+
         # 3. Delete main organization row (ON DELETE CASCADE sweeps all domain tables)
         try:
             await conn.execute(
