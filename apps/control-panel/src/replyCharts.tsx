@@ -10,6 +10,7 @@ const GRID = 'var(--neutral-200)';
 const AXIS_TEXT = 'var(--neutral-500)';
 const PAD = { top: 12, right: 16, bottom: 28, left: 56 };
 const HEIGHT = 220;
+const FIXED_HEIGHT = HEIGHT;
 
 export interface Series {
   key: string;
@@ -18,18 +19,20 @@ export interface Series {
   values: (number | null)[];
 }
 
-/** The container's width, kept current, so text stays crisp (no viewBox scaling). */
-function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
+/** The container's size, kept current, so text stays crisp (no viewBox scaling). */
+function useSize<T extends HTMLElement>(): [React.RefObject<T | null>, number, number] {
   const ref = useRef<T>(null);
-  const [width, setWidth] = useState(0);
+  const [size, setSize] = useState({ width: 0, height: 0 });
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const observer = new ResizeObserver(([entry]) => setWidth(Math.floor(entry.contentRect.width)));
+    const observer = new ResizeObserver(([entry]) =>
+      setSize({ width: Math.floor(entry.contentRect.width), height: Math.floor(entry.contentRect.height) }),
+    );
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
-  return [ref, width];
+  return [ref, size.width, size.height];
 }
 
 /** Clean, rounded y ticks from 0 to just above `max`. */
@@ -120,13 +123,13 @@ function YAxis({ values, y, width, format }: { values: number[]; y: (v: number) 
   );
 }
 
-function XLabels({ labels, x }: { labels: string[]; x: (i: number) => number }) {
+function XLabels({ labels, x, height = HEIGHT }: { labels: string[]; x: (i: number) => number; height?: number }) {
   const every = labelEvery(labels.length);
   return (
     <g>
       {labels.map((l, i) =>
         i % every === 0 ? (
-          <text key={i} x={x(i)} y={HEIGHT - 8} textAnchor="middle" fontSize={11} fill={AXIS_TEXT}>
+          <text key={i} x={x(i)} y={height - 8} textAnchor="middle" fontSize={11} fill={AXIS_TEXT}>
             {l}
           </text>
         ) : null,
@@ -148,7 +151,7 @@ export function LineChart({
   format: (v: number) => string;
   empty: string;
 }) {
-  const [ref, width] = useWidth<HTMLDivElement>();
+  const [ref, width] = useSize<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const n = labels.length;
   const max = Math.max(0, ...series.flatMap((s) => s.values.map((v) => v ?? 0)));
@@ -241,13 +244,17 @@ export function StackedColumns({
   labels,
   format,
   empty,
+  fill,
 }: {
   series: Series[];
   labels: string[];
   format: (v: number) => string;
   empty: string;
+  /** Fill the container's height (it must have one) instead of the fixed 220px. */
+  fill?: boolean;
 }) {
-  const [ref, width] = useWidth<HTMLDivElement>();
+  const [ref, width, measured] = useSize<HTMLDivElement>();
+  const HEIGHT = fill ? Math.max(120, measured) : FIXED_HEIGHT;
   const [hover, setHover] = useState<number | null>(null);
   const n = labels.length;
   const totals = labels.map((_, i) => series.reduce((sum, s) => sum + (s.values[i] ?? 0), 0));
@@ -263,11 +270,11 @@ export function StackedColumns({
   const R = 4;
 
   return (
-    <div ref={ref} style={{ position: 'relative', height: HEIGHT }}>
+    <div ref={ref} style={{ position: 'relative', height: fill ? '100%' : HEIGHT, minHeight: fill ? 120 : undefined }}>
       {width > 0 && (
         <svg width={width} height={HEIGHT} role="img" aria-label={series.map((s) => s.label).join(', ')}>
           <YAxis values={yTicks} y={y} width={width} format={format} />
-          <XLabels labels={labels} x={cx} />
+          <XLabels labels={labels} x={cx} height={HEIGHT} />
           {labels.map((_, i) => {
             let base = 0;
             const visible = series.filter((s) => (s.values[i] ?? 0) > 0);
