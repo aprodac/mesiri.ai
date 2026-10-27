@@ -294,9 +294,12 @@ def test_e4_hindi_in_english_letters_is_replied_to_in_hindi():
 
 
 def test_e5_the_holiday_card_names_the_site():
+    from zoneinfo import ZoneInfo
+
     from runtime.agent.action_entry import conditions_summary
 
-    today = dt.datetime.now(dt.UTC).date()
+    # India's date, as the summary's: UTC's date is "yesterday" there from 18:30 UTC.
+    today = dt.datetime.now(ZoneInfo("Asia/Kolkata")).date()
     assert conditions_summary({"site_working": "none"}, today, "Asia/Kolkata", site="Site B").startswith("Site B: Holiday")
     line = conditions_summary({"site_working": "half"}, today, "Asia/Kolkata", site="Site B")
     assert line == "Site working: Half day"
