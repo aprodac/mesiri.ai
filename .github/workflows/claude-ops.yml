@@ -160,7 +160,7 @@ jobs:
             bot-label-test) inbox label "$TEXT" assistant-test --project mesiri ;;
             bot-scenarios)
               ONLY="$(printf '%s' "$TEXT" | sed -E 's/x[0-9]+//g' | tr -dc 'A-Za-z0-9,')"
-              REPEAT="$(printf '%s' "$TEXT" | grep -oE 'x[0-9]+' | tr -dc 0-9)"
+              REPEAT="$(printf '%s' "$TEXT" | { grep -oE 'x[0-9]+' || true; } | tr -dc 0-9)"
               python3 teammate/scenarios.py ${ONLY:+--only "$ONLY"} --repeat "${REPEAT:-1}" 2>&1 | mask ;;
             golden-live)
               T="$GITHUB_WORKSPACE/apps/whatsapp-assistant/tests/conversation"
