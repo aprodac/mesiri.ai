@@ -900,3 +900,10 @@ div.badge { border-radius: var(--radius-md); }
   .cost-tabs { overflow-x: auto; scrollbar-width: none; gap: 16px; }
   .cost-tabs button { white-space: nowrap; flex: none; }
 }
+
+/* Checkboxes in the brand colour; on a phone, big enough for a thumb (SA-21) */
+input[type='checkbox'], input[type='radio'] { accent-color: var(--neutral-900); }
+@media (max-width: 640px) {
+  .main-content input[type='checkbox'], .main-content input[type='radio'] { width: 22px !important; height: 22px !important; flex: none; }
+  .tap-link { display: inline-flex; align-items: center; min-height: 32px; }
+}

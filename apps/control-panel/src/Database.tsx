@@ -441,7 +441,7 @@ export default function Database() {
 
       {error && <p style={{ color: 'var(--error)', marginBottom: 'var(--space-4)' }}>{error}</p>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 280px) minmax(0, 1fr)', gap: 'var(--space-5)' }}>
+      <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 280px) minmax(0, 1fr)', gap: 'var(--space-5)' }}>
         <div className="card" style={{ padding: 'var(--space-3)', alignSelf: 'start' }}>
           <input
             className="form-input"

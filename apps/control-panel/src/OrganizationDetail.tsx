@@ -449,7 +449,7 @@ export default function OrganizationDetail() {
           </div>
           <div>
             <div style={{ fontSize: '12px', color: 'var(--neutral-500)' }}>WhatsApp messages</div>
-            <Link to={`/logs?org=${org.id}`} style={{ fontSize: '13px' }}>View messages →</Link>
+            <Link to={`/logs?org=${org.id}`} className="tap-link" style={{ fontSize: '13px' }}>View messages →</Link>
           </div>
         </div>
       </div>

@@ -167,7 +167,7 @@ const SystemGraph = () => {
           <div className="card" style={{ marginBottom: 'var(--space-8)' }}>
             <button
               onClick={() => setShowMap((s) => !s)}
-              style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '15px', fontWeight: 600, padding: 0, color: 'var(--neutral-900)' }}
+              style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '15px', fontWeight: 600, padding: 0, minHeight: 36, width: '100%', color: 'var(--neutral-900)' }}
             >
               {showMap ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
               <GitBranch size={16} style={{ color: 'var(--primary)' }} /> Full pipeline diagram
