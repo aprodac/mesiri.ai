@@ -316,10 +316,12 @@ export function StackedColumns({
           {[...series].reverse().map((s) => (
             <TipRow key={s.key} color={s.color} label={s.label} value={format(s.values[hover] ?? 0)} />
           ))}
-          <div style={{ borderTop: '1px solid var(--border-default)', marginTop: 6, paddingTop: 4 }}>
-            <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{format(totals[hover])}</strong>{' '}
-            <span style={{ color: 'var(--neutral-500)' }}>total</span>
-          </div>
+          {series.length > 1 && (
+            <div style={{ borderTop: '1px solid var(--border-default)', marginTop: 6, paddingTop: 4 }}>
+              <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{format(totals[hover])}</strong>{' '}
+              <span style={{ color: 'var(--neutral-500)' }}>total</span>
+            </div>
+          )}
         </Tooltip>
       )}
     </div>

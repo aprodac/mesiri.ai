@@ -1172,7 +1172,8 @@ export default function Logs() {
   const [messages, setMessages] = useState<InboundMessageSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [waIdFilter, setWaIdFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  // SA-18: the Overview links here pre-filtered (?status=failed / pending).
+  const [statusFilter, setStatusFilter] = useState(() => new URLSearchParams(window.location.search).get('status') || '');
   const [providerFilter, setProviderFilter] = useState('');
   // SA-04: per company (?org=<id>, so a company page can link here) and per user (?user=<id>).
   const [searchParams, setSearchParams] = useSearchParams();

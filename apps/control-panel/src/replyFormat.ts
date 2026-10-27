@@ -159,6 +159,18 @@ export function bucketLabel(bucket: string, stepMinutes: number): string {
   return time;
 }
 
+/** "just now" · "12 min ago" · "3 days ago" */
+export function ago(iso: string | null, now = Date.now()): string {
+  if (!iso) return 'never';
+  const mins = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60_000));
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} h ago`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+}
+
 /** Speed of a reply, for its pill: good under 5 s, slow from 15 s, very slow from 30 s. */
 export type Speed = 'fast' | 'ok' | 'slow' | 'very-slow' | 'none';
 
