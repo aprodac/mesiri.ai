@@ -12,6 +12,9 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+from tests.unit.test_agent_routing import _build, _message
+from tests.unit.test_request116_saved_line import _Redis
+
 from mesiri_ai.fakes import FakeToolCallingProvider
 from mesiri_contracts.application.results.execution_result import ExecutionStatus
 from mesiri_contracts.assistant.draft_action import DraftActionType
@@ -20,9 +23,6 @@ from runtime.agent import cards as c
 from runtime.agent import save_button as sb
 from runtime.reply_composer import UNDO_ROW
 from workflows.runtime import WorkflowRunResult, WorkflowRunStatus
-
-from .test_agent_routing import _build, _message
-from .test_request116_saved_line import _Redis
 
 ROW_ID = uuid.uuid4()
 
