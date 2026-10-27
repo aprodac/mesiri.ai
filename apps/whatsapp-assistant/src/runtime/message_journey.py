@@ -815,20 +815,7 @@ def build_message_handlers(
                 return site_label(ctx, site_id) or "that site"
 
             def _card_site(handled_list, *, always=False):  # type: ignore[no-untyped-def]
-                """SIT-11: the one site every entry of a card is for, named only
-                for a sender who has several (``always``: for the "✅ Saved"
-                line, which names it for everyone, request 116)."""
-                from runtime.agent.work_site import short_site_label
-
-                if not always and len(getattr(ctx, "sites", None) or []) < 2:
-                    return None
-                site_ids = {
-                    str(getattr(getattr(getattr(h.result, "confirmed_action", None), "draft_action", None), "site_id", "") or "")
-                    for h in handled_list
-                    if getattr(h, "saved_draft", False)
-                }
-                site_ids.discard("")
-                return short_site_label(ctx, next(iter(site_ids))) if len(site_ids) == 1 else None
+                return save_button.card_site(ctx, handled_list, always=always)
 
             async def _get_today_site():  # type: ignore[no-untyped-def]
                 today = await work_site.today(ctx)
@@ -1687,10 +1674,11 @@ def build_message_handlers(
             # The receipt card is rendered first (bounded) and sent inside
             # this one reply -- as the header of its button message.
             receipt_image = await _receipt_image(handled)
+            composed = compose(reply_text, gathered.offers, saved=handled.saved_draft)
             await _send_composed(
                 wa_id,
                 ctx.user_id,
-                compose(reply_text, gathered.offers, saved=handled.saved_draft),
+                await _with_save_card(handled, composed),
                 header_image=receipt_image,
             )
             if handled.next_segment_reply is not None:
@@ -1706,6 +1694,36 @@ def build_message_handlers(
                     send_button=sender.send_button,
                 )
             await _deliver_followups(handled)
+
+        async def _with_save_card(handled, composed):  # type: ignore[no-untyped-def]
+            """ARCH-04: an entry finished by answering the workflow's own
+            question (which worker? which activity? add to today's count?)
+            waits on Save / Cancel like every agent entry (WA-35), never
+            "Saved" with Undo: since WA-77 a draft nobody taps Save on is not
+            on the report, and this reply had no Save to tap."""
+            from runtime.agent import save_button
+
+            plan, facts = save_button.card_plan([handled])
+            if plan != "card":
+                return composed
+            composed = save_button.with_save_buttons(
+                composed, facts, site=save_button.card_site(ctx, [handled])
+            )
+            if cards is not None:
+                # The card "undo that" and the "✅ Saved · ..." line read. It has
+                # no tool arguments, so update_pending_card refuses to change
+                # it (nothing is withdrawn): Cancel and send again does.
+                from runtime.agent.cards import OPEN, CardItem, new_card
+                from runtime.agent.journey_gateway import _saved_summary
+
+                summary = _saved_summary(handled, getattr(ctx, "timezone", None)) or ""
+                items = [CardItem("", {}, kind, str(fact_id), summary) for kind, fact_id in facts]
+                site = save_button.card_site(ctx, [handled], always=True) or ""
+                try:
+                    await cards.put(ctx, new_card(OPEN, items, site))
+                except Exception:  # noqa: BLE001 -- the card only enables undo and edit
+                    _log.warning("save_card.remember_failed user=%s", ctx.user_id, exc_info=True)
+            return composed
 
         def _succeeded(handled) -> bool:  # type: ignore[no-untyped-def]
             from mesiri_contracts.application.results.execution_result import ExecutionStatus
