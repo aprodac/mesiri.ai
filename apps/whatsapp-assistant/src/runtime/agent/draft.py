@@ -118,6 +118,9 @@ class DraftItem:
     site: str = ""
     #: ``action`` only: the id of the pending action (runtime/agent/actions.py).
     action_id: str = ""
+    #: A line waiting on a question (request 127): what its answer fills in
+    #: (``material``, ``unit``, ``new_material``...), from the entry's ``Say``.
+    awaiting: str = ""
     #: ``change`` only: the saved entry it replaces (``fact_type``, ``fact_id``
     #: of its card item, and its tool arguments as saved).
     target: dict[str, Any] | None = None
@@ -131,8 +134,8 @@ class DraftItem:
     def pending_answer(self) -> bool:
         """A line that waits on a question and cannot be saved or edited until
         it is answered (its tool is called again with the answer): no prepared
-        event behind it and no buttons of its own."""
-        return self.state == NEEDS_ANSWER and self.ready is None and not self.options
+        event behind it, only what the answer fills in."""
+        return self.state == NEEDS_ANSWER and self.ready is None and bool(self.awaiting)
 
     def to_json(self) -> dict[str, Any]:
         return asdict(self)
@@ -155,6 +158,7 @@ class DraftItem:
                 site=str(raw.get("site") or ""),
                 action_id=str(raw.get("action_id") or ""),
                 target=raw.get("target") if isinstance(raw.get("target"), dict) else None,
+                awaiting=str(raw.get("awaiting") or ""),
                 id=str(raw.get("id") or uuid.uuid4().hex[:8]),
             )
         except Exception:  # noqa: BLE001 -- an unreadable item is no item
@@ -379,7 +383,7 @@ def card_rows(draft: MessageDraft) -> list[ListRow]:
         rows.append(ListRow(tap_id(SAVE, draft.id), SAVE_TITLE))
     if draft.live:
         rows.append(ListRow(tap_id(CANCEL, draft.id), CANCEL_TITLE))
-    asking = next((i for i in draft.waiting_items if not i.pending_answer), None)
+    asking = next(iter(draft.waiting_items), None)
     if asking is not None:
         rows.extend(
             ListRow(tap_id(ANSWER, draft.id, asking.id, str(n)), option)

@@ -31,13 +31,46 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from channel.replies import ListRow, ReplySpec
+from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage
+from mesiri_contracts.assistant.planner_decision import WorkflowKey
 
 from . import site_match
 from .project_day import project_now, project_zone
 
 _log = logging.getLogger("mesiri.agent")
+
+#: Request 127 (P2): what may make a site today's site. Only a report of what
+#: happened AT a site (labour, material, work, an issue, a site expense) does; a
+#: site named while setting up the team ("Site B-il Rajesh-ine supervisor
+#: aakku"), creating a site, correcting an old record or closing an issue says
+#: where something is, not where the sender is working (the next "4 mason vannu"
+#: was put on Site B without asking).
+SITE_UPDATE_WORKFLOWS = frozenset(
+    {
+        WorkflowKey.LABOUR_ATTENDANCE,
+        WorkflowKey.MATERIAL_RECEIPT,
+        WorkflowKey.MATERIAL_USAGE,
+        WorkflowKey.MATERIAL_TRANSFER,
+        WorkflowKey.SITE_UPDATE,
+        WorkflowKey.SITE_ISSUE_REPORT,
+        WorkflowKey.EXPENSE_SUBMIT,
+    }
+)
+#: The same, by the record a confirmed save wrote.
+SITE_UPDATE_ACTIONS = frozenset(
+    {
+        DraftActionType.RECORD_LABOUR_ATTENDANCE,
+        DraftActionType.RECORD_MATERIAL_RECEIPT,
+        DraftActionType.RECORD_MATERIAL_USAGE,
+        DraftActionType.TRANSFER_MATERIAL,
+        DraftActionType.CREATE_ACTIVITY,
+        DraftActionType.ADD_PROGRESS_UPDATE,
+        DraftActionType.RECORD_SITE_ISSUE,
+        DraftActionType.RECORD_EXPENSE,
+    }
+)
 
 #: Tap ids of the morning list: ``today_site:<site id>``.
 TAP_PREFIX = "today_site:"

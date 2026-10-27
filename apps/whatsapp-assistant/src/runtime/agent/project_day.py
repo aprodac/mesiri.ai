@@ -112,18 +112,6 @@ def resolve_period(
     return period_for(date_range, today)
 
 
-def open_issue_count(payload: dict) -> int:
-    """How many issues are open on a site's day payload (the DPR assembly's):
-    open or being handled, the day's own and those still open from earlier days
-    -- the rule "open issues?" lists by and the Today page counts. The draft
-    report line and the list must say the same number (request 127)."""
-    live = ("OPEN", "ACKNOWLEDGED")
-    rows = [*(payload.get("issues") or []), *(payload.get("carried_issues") or [])]
-    if not rows and "issues" not in payload:
-        return int(payload.get("open_issue_count") or 0)
-    return sum(1 for row in rows if row.get("status") in live)
-
-
 async def read_period(
     *,
     organization_id: str,

@@ -376,6 +376,11 @@ class EntryScope:
         if self.active_context is None or ready.scope is None or ready.scope[3] is None:
             # Without a site it would wipe today's site (review, 22 Oct).
             return
+        from .work_site import SITE_UPDATE_WORKFLOWS
+
+        if ready.decision.workflow_key not in SITE_UPDATE_WORKFLOWS:
+            # Request 127: only a report from a site makes it the sender's site.
+            return
         organization_id, user_id, project_id, site_id = ready.scope
         try:
             # V1 audit SIT-05: one entry for another site must not move the

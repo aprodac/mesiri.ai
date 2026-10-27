@@ -232,8 +232,9 @@ async def add(gw: Any, candidate: Any, *, text: str) -> StepResult:
 
         if prepared.status == "error":
             await note_lost(gw, tool, args, prepared.text)
-        elif prepared.question and prepared.awaiting not in _SCOPE_QUESTIONS and tool in dr.DRAFT_TOOLS:
-            await _add_waiting(gw, tool, args, prepared.question)
+        elif prepared.question and prepared.awaiting and prepared.awaiting not in _SCOPE_QUESTIONS:
+            # A line of the card with its question and the answers as buttons.
+            return await _add_waiting(gw, tool, args, prepared)
         reply = (
             question_reply(prepared.question, list(prepared.options), awaiting=prepared.awaiting)
             if prepared.question
@@ -282,10 +283,12 @@ async def add(gw: Any, candidate: Any, *, text: str) -> StepResult:
     return _drafted(item, prepared, note=await _pending_note(gw))
 
 
-async def _add_waiting(gw: Any, tool: str, args: dict[str, Any], question: str) -> None:
+async def _add_waiting(gw: Any, tool: str, args: dict[str, Any], asked: Say) -> StepResult:
     """The system asked something before this call could become a line (a unit,
-    which material): the line is on the card with its question beside it, so it
-    is not only in the words above. The same call asked again is the same line."""
+    which material, add it as new?): it is a line of the card all the same, with
+    the question beside it and the answers as the card's buttons. A tap answers
+    it (``answer``); a typed answer reaches the same tool again and the line
+    becomes the entry (``dr.waiting_for``). Asked again, it is the same line."""
     draft = await load(gw)
     item = dr.DraftItem(
         kind=dr.KIND_BY_TOOL[tool],
@@ -293,19 +296,30 @@ async def _add_waiting(gw: Any, tool: str, args: dict[str, Any], question: str) 
         args=dict(args),
         summary=dr.waiting_line(tool, args),
         state=dr.NEEDS_ANSWER,
-        question=" ".join(question.split()),
+        question=" ".join(str(asked.question or "").split()),
+        options=[str(o) for o in asked.options],
         label=dr.label_for(tool, args),
+        awaiting=asked.awaiting,
     )
-    if draft is not None:
-        if (same := dr.duplicate_of(draft, item)) is not None:
-            same.question = item.question
-            gw.draft_new.append(same.id)
-            _keep(gw, draft)
-            await _persist(gw, draft)
-            return
-        if draft.full:
-            return
-    await _add_item(gw, item, source=gw.message.message_id)
+    same = next((i for i in draft.items if i.pending_answer and i.tool == tool and i.args == item.args), None) if draft else None
+    if same is not None:
+        same.question, same.options, same.awaiting = item.question, item.options, item.awaiting
+        item = same
+        gw.draft_new.append(same.id)
+        _keep(gw, draft)
+        await _persist(gw, draft)
+    elif draft is not None and draft.full:
+        await note_lost(gw, tool, args, "the card is full")
+        return StepResult("error", text=TOO_MANY)
+    else:
+        await _add_item(gw, item, source=gw.message.message_id)
+    return StepResult(
+        "drafted",
+        text=await _pending_note(gw),
+        summary=item.line,
+        awaiting="answer",
+        hint=asked.text,
+    )
 
 
 def _drafted(item: dr.DraftItem, prepared: Ready, *, repeated: bool = False, note: str = "") -> StepResult:
@@ -477,10 +491,73 @@ async def cancel(gw: Any, draft: dr.MessageDraft) -> ReplySpec:
 
 async def answer(gw: Any, draft: dr.MessageDraft, item_id: str, choice: int) -> ReplySpec:
     item = draft.item(item_id)
+    if item is not None and item.pending_answer and 0 <= choice < len(item.options):
+        return await _answer_waiting(gw, draft, item, item.options[choice])
     if item is None or not dr.apply_answer(item, choice, today=_today(gw)):
         return ReplySpec(text=dr.ALREADY_DONE)
     await gw.drafts.put(draft)
     return dr.card_reply(draft, site=_card_site(gw, draft))
+
+
+#: The answers a tap cannot give: the sender types them.
+_TYPE_IT = {"Other": "Please type the number.", "Something else": "Please type the material name."}
+
+
+async def _answer_waiting(gw: Any, draft: dr.MessageDraft, item: dr.DraftItem, option: str) -> ReplySpec:
+    """A tap on the question of a waiting line: the answer is put into the
+    line's own tool arguments (a unit conversion is set for the company first,
+    as the typed answer does) and the entry is prepared again, with every check
+    it runs. Ready: the line becomes the entry. Asked again: the new question
+    replaces the old. Nothing is written to a domain table here."""
+    from .material_entry import ADD_IT, AWAIT_NEW_MATERIAL, AWAIT_UNIT
+    from .toolbox import per_stock_unit
+
+    site = _card_site(gw, draft)
+    if option in _TYPE_IT:
+        return dr.card_reply(draft, _TYPE_IT[option], site=site)
+    args = dict(item.args)
+    if item.awaiting == AWAIT_NEW_MATERIAL:
+        if option != ADD_IT:
+            draft.items.remove(item)
+            if draft.live:
+                await gw.drafts.put(draft)
+            else:
+                await gw.drafts.discard(draft.id)
+            words = f"Okay, {item.line} is off the card. Send it again with a material from your list."
+            return dr.card_reply(draft, words, site=site) if draft.live else ReplySpec(text=words)
+        args["new_material"] = True
+    elif item.awaiting == AWAIT_UNIT:
+        # "1 load = how many cum?" answered 3: one cum is a third of a load.
+        count = per_stock_unit({"unit_amount": 1, "stock_amount": option})
+        if count is None:
+            return dr.card_reply(draft, _TYPE_IT["Other"], site=site)
+        said = await gw.set_unit_conversion(
+            material=str(args.get("material") or ""), unit=str(args.get("unit") or ""), count=count
+        )
+        if said.status != "answer":
+            return dr.card_reply(draft, said.text, site=site)
+    else:
+        args[item.awaiting] = option
+    candidate = to_candidate(item.tool, args, _scope(gw))
+    entry = gw._entry_for(getattr(candidate, "semantic_type", None)) if candidate is not None else None
+    if entry is None:
+        return dr.card_reply(draft, "That can't be answered here; send it again.", site=site)
+    message = _message(gw, gw.message.text or option)
+    prepared = await entry.prepare(message, tool_understanding(candidate, message, language=gw.language), candidate)
+    if isinstance(prepared, Ready):
+        new = _item_for(gw, item.tool, args, prepared)
+    elif isinstance(prepared, Say) and prepared.question and prepared.awaiting not in _SCOPE_QUESTIONS:
+        item.args = args
+        item.question = " ".join(str(prepared.question).split())
+        item.options, item.awaiting = [str(o) for o in prepared.options], prepared.awaiting
+        new = item
+    else:
+        reason = prepared.text if isinstance(prepared, Say) else "it could not be looked up"
+        new = _unreadable(item.tool, args, _clean(reason))
+    draft.items[draft.items.index(item)] = new
+    await _persist(gw, draft)
+    _log.info("draft.waiting_answered draft=%s kind=%s state=%s", draft.id, new.kind, new.state)
+    return dr.card_reply(draft, site=site)
 
 
 def _card_site(gw: Any, draft: dr.MessageDraft) -> str | None:

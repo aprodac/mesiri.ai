@@ -1018,17 +1018,19 @@ class AgentToolbox:
                 # Request 127: an old-style Yes / No question still waits: said under the reply.
                 self.system_lines.append(step.text)
             if step.awaiting == "answer":
-                return ToolOutcome(
-                    content={
-                        "status": "waiting_for_answer",
-                        "on_card": line,
-                        "instruction": (
-                            "Nothing is saved. A question about this is on the card, with buttons. Say in "
-                            "one short line what you understood and ask them to answer it and tap Save. "
-                            "Never say it is saved, written or noted."
-                        ),
-                    }
-                )
+                content = {
+                    "status": "waiting_for_answer",
+                    "on_card": line,
+                    "instruction": (
+                        "Nothing is saved. A question about this is on the card, with buttons: do not "
+                        "write the question yourself. Say in one short line what you understood and ask "
+                        "them to answer it on the card, then tap Save. Never say it is saved, written or noted."
+                    ),
+                }
+                if step.hint:
+                    # How a typed answer is taken (the entry's own words).
+                    content["if_they_type_the_answer"] = step.hint
+                return ToolOutcome(content=content)
             return ToolOutcome(
                 content={
                     "status": "waiting_for_save",

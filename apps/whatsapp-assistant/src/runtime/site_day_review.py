@@ -43,7 +43,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from channel.replies import ListRow, ReplySpec
-from runtime.agent.project_day import open_issue_count
 
 if TYPE_CHECKING:
     from backend.ports import ActorIdentity
@@ -364,15 +363,15 @@ def day_lines(payload: dict[str, Any]) -> list[str]:
         if not shown:
             shown = _count(len(payload["materials"]), "entry", "entries")
         lines.append(f"• Materials: {shown}")
-    # Request 127 (P2): the open-issue rule is the one "open issues?" lists by
-    # (project_day.open_issue_count): open or being handled, the day's own and
-    # those still open from earlier days. The draft said "1 open issue" while
-    # the list had 2. A day holding nothing but an earlier day's open issue
-    # still reads as "nothing logged today" (no lines).
+    # Request 127 (P2): the assembly's count, by the one open-issue rule
+    # (backend application/dpr/open_issues.py) "open issues?" lists by: the
+    # day's own and those still open from earlier days. The draft said "1 open
+    # issue" while the list had 2. A day holding nothing but an earlier day's
+    # open issue still reads as "nothing logged today" (no lines).
     if "issues" in payload and not (payload["issues"] or lines):
         day_open = 0
     else:
-        day_open = open_issue_count(payload)
+        day_open = int(payload.get("open_issue_count") or 0)
     if day_open:
         lines.append(f"• Issues: {day_open} open")
     if payload.get("evidence_count"):

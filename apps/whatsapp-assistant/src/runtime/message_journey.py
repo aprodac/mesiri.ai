@@ -903,7 +903,6 @@ def build_message_handlers(
 
                 if use_drafts:
                     from runtime.agent import draft as draft_card
-
                     from runtime.agent.cards import SAVED as _SAVED
 
                     open_line = draft_card.context_line(await drafts.open_for(actor.organization_id, actor.user_id))

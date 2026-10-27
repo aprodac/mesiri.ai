@@ -8,7 +8,9 @@ company with ``draft_v2`` on), g4 and g5 in P2. The model is scripted
 (``FakeToolCallingProvider``); everything after it is the real journey, as in
 ``test_agent_replay``.
 
-Source: the root-cause map of request 123 (a, b, d, e, f; g4 is a placeholder) over the 25/27 Oct
+g4 and g5 were made to pass by P2 (request 127, ADR section 11).
+
+Source: the root-cause map of request 123 (a, b, d, e, f) over the 25/27 Oct
 live failures. Request 122's own repro list was not in the repository when this
 was written; map each of its repros onto a test here or add one (ADR section 9).
 """
@@ -89,8 +91,9 @@ async def test_g4_a_correction_never_claims_a_change_the_draft_did_not_make(worl
     model said it had changed. Now the reply is built from the draft's result: a
     correction on the open card edits its line, and one on a card already saved is
     a 'Change ...' card; either way what is claimed is what the card shows."""
-    from runtime.agent.cards import CardStore
     from tests.replay.test_agent_replay import _MemoryRedis
+
+    from runtime.agent.cards import CardStore
 
     world.cards = CardStore(_MemoryRedis())
     fix = ("update_pending_card", {"item_index": 1, "changes": {"workers": [{"trade": "mason", "headcount": 5}]}})

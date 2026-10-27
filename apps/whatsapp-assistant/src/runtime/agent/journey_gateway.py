@@ -396,10 +396,12 @@ class JourneyGateway:
         if self.set_today_site is None:
             return
         try:
+            from .work_site import SITE_UPDATE_ACTIONS
+
             confirmed = getattr(handled.result, "confirmed_action", None)
             draft = confirmed.draft_action if confirmed is not None else None
             site_id = getattr(draft, "site_id", None)
-            if site_id:
+            if site_id and getattr(draft, "action_type", None) in SITE_UPDATE_ACTIONS:
                 if self.get_today_site is not None:
                     current = await self.get_today_site()
                     if current and str(current) != str(site_id):

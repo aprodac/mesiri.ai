@@ -61,6 +61,12 @@ _BY_DIRECTION = {
 
 #: [103]: the last choice of a long material list: they type the name instead.
 SOMETHING_ELSE = "Something else"
+#: What an answer fills in (``Say.awaiting``), so a card line waiting on the
+#: question can take the answer from a tap (request 127): how many stock units
+#: one reported unit is, and whether to add a new material.
+AWAIT_UNIT = "unit"
+AWAIT_NEW_MATERIAL = "new_material"
+ADD_IT = "Yes, add it"
 #: WhatsApp lists hold ten rows: nine materials and "Something else".
 LIST_MATERIALS = 9
 
@@ -140,6 +146,7 @@ class MaterialEntry(EntryScope):
                 "amount and unit. If they pick Other, ask them the number (ask_user, no options).",
                 question=question,
                 options=options,
+                awaiting=AWAIT_UNIT,
             )
 
         site_name = self._site_name(site_id)
@@ -301,7 +308,8 @@ class MaterialEntry(EntryScope):
                 "as a new material. If yes, call this tool again with new_material true; if no, ask "
                 "which listed material they meant.",
                 question=f'"{name}" isn\'t in your material list yet. Add it as a new material?',
-                options=("Yes, add it", "No"),
+                options=(ADD_IT, "No"),
+                awaiting=AWAIT_NEW_MATERIAL,
             )
         return await self._pick_material(
             organization_id,

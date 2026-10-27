@@ -179,18 +179,29 @@ async def test_repro_3_a_second_tap_on_save_writes_nothing_more(world):
 
 async def test_repro_4_a_correction_claims_no_change_the_card_did_not_make(world):
     """"alla, 6 mason aanu" was answered "Sheri, 6 mason aakki." with nothing changed.
-    Corrections are P2; until then the tool says plainly it changed nothing."""
+    P2 (request 127): the line IS changed on the card, and what is claimed is the
+    tool's own result; a correction that names no line on the card changes nothing
+    and says so."""
     await world.say(FakeToolCallingProvider([[LABOUR], "Check it."]), "3 masons 12 helpers")
+    fix = {"workers": [{"trade": "mason", "headcount": 6}]}
     provider = FakeToolCallingProvider(
-        [[("update_pending_card", {"card_id": "x", "item_index": 1, "changes": {"workers": [{"trade": "mason", "headcount": 6}]}})],
-         "Sheri, 6 mason aakki."]
+        [[("update_pending_card", {"card_id": "x", "item_index": 1, "changes": fix})], "Sheri, 6 mason aakki."]
     )
     result = await world.say(provider, "alla, 6 mason aanu")
     (call,) = result.run.calls
-    assert call.outcome.content["status"] == "info"
-    assert "nothing was changed" in call.outcome.content["message"]
-    assert (await open_items(world))[0].summary == "15 workers (3 mason, 12 helper)"  # untouched
+    assert call.outcome.content["status"] == "waiting_for_save"
+    assert call.outcome.content["on_card"] == "18 workers (6 mason, 12 helper)"
+    assert (await open_items(world))[0].summary == "18 workers (6 mason, 12 helper)"
     assert world.dispatcher.dispatched == []
+
+    provider = FakeToolCallingProvider(
+        [[("update_pending_card", {"item_index": 4, "changes": fix})], "Sheri, 6 mason aakki."]
+    )
+    result = await world.say(provider, "alla, 6 mason aanu")
+    (call,) = result.run.calls
+    assert call.outcome.content["status"] == "error"
+    assert "nothing was changed" in call.outcome.content["message"]
+    assert (await open_items(world))[0].summary == "18 workers (6 mason, 12 helper)"  # untouched
 
 
 async def test_repro_5_mixer_breakdown_with_no_tool_call_still_makes_an_issue_card(world):

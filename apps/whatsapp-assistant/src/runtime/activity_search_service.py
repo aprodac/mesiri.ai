@@ -154,13 +154,13 @@ class ActivitySearchService:
             ),
             activities.c.deleted_at.is_(None),
         ]
+        from mesiri.application.dpr import open_issues
+
         issue_conditions = [
             site_issues.c.organization_id == org_id,
-            # Request 104, D4: what the dashboard counts as open -- open and
-            # acknowledged ("being handled").
-            site_issues.c.status.in_(["OPEN", "ACKNOWLEDGED"]),
-            # Not the "Question for your engineer" notes older versions saved as issues.
-            sa.func.coalesce(site_issues.c.narrative, "").notlike("Question for your engineer:%"),
+            # Request 127: the one open-issue rule, the DPR's too (open or being
+            # handled, a real site issue, saved unless ``include_unsaved``).
+            sa.text(open_issues.open_issue_sql("site_issues", counted=not include_unsaved)),
         ]
         # A null project/site on the caller's context means "don't narrow",
         # not "match rows with a null column" -- mirrors labour_query.
@@ -176,7 +176,6 @@ class ActivitySearchService:
             from mesiri.application.dpr import fact_review
 
             activity_conditions.append(sa.text(fact_review.counted_sql(fact_review.ACTIVITY, "activities.id")))
-            issue_conditions.append(sa.text(fact_review.counted_sql(fact_review.SITE_ISSUE, "site_issues.id")))
 
         activity_query = (
             sa.select(

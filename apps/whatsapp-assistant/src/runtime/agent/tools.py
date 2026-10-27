@@ -550,7 +550,8 @@ def tool_specs() -> list[ToolSpec]:
                 "yet): 'alla, 8 mason aanu', '30 bag alla 20', 'helper 10 aanu'. Pass the card id "
                 "and the item's number from the context, and only the fields that change, "
                 "named as the item's own save tool names them. A card they already saved is not "
-                "changed this way."
+                "changed this way, unless the context gives that saved card's id for it (then a "
+                "Change card is shown for them to save)."
             ),
             parameters=_obj(
                 {

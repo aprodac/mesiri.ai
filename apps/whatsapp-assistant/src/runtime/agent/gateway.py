@@ -46,6 +46,9 @@ class StepResult:
     extra: list[ReplySpec] = field(default_factory=list)
     #: ``choose`` only: what the answer fills in ("site", "material"...).
     awaiting: str = ""
+    #: ``drafted`` with a question on the card (request 127): how to take an
+    #: answer they type instead of tapping (the entry's own instruction).
+    hint: str = ""
 
 
 class WorkflowGateway(Protocol):
