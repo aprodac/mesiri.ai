@@ -222,10 +222,10 @@ export class WhatsAppListener {
   }
 
   /** Sends text (optionally @-mentioning people), or an image with an optional caption. Callers check the chat is a team chat. */
-  async send(jid, { text = null, image = null, caption = null, mentions = [], choose = null } = {}) {
+  async send(jid, { text = null, image = null, caption = null, mentions = [], choose = null, audio = null, audioMime = "audio/ogg; codecs=opus" } = {}) {
     if (this.state !== "connected" || !this.sock) throw new Error(`WhatsApp is ${this.state}, not connected`);
     if (choose) return this.choose(jid, choose);
-    const content = image ? { image, caption: caption || undefined } : { text, ...(mentions.length ? { mentions } : {}) };
+    const content = audio ? { audio, mimetype: audioMime, ptt: true } : image ? { image, caption: caption || undefined } : { text, ...(mentions.length ? { mentions } : {}) };
     const sent = await this.sock.sendMessage(jid, content);
     return sent?.key?.id || null;
   }

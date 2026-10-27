@@ -479,6 +479,7 @@ Structural drawings become the list of what has to be built (`location_nodes` + 
 | 2026-10-20 | WA-31 WA: real 'what can you do' overview + short smalltalk replies, no canned menu for chit-chat (request 65) | `dcf4aef` |
 | 2026-10-20 | QA-01 general-conversation scorecard for the auto loop (request 66) | `20e2c48` |
 | 2026-10-21 | TM bot upgrade: test_assistant limit 10 -> 120/h (request 78) | `4a30c28` |
+| 2026-10-27 | TM bot upgrade: test_assistant times every reply (+N s, first/last) and sends voice notes via `audio_path` (request 117) | see git log |
 | 2026-10-22 | SS-17 onboarding cards (Swiss): welcome, site ready, setup progress, wired into WhatsApp signup (request 87) | `c5a0fcd`, `0a9c798`, `f8c2561` |
 | 2026-10-22 | WA-49 agent: undo target, edit open card, summary/report, reply checks (request 88) | `480e399`, `20ab46f`, `3b1bc44` |
 | 2026-10-22 | WA-50 agent: past-day report + draft PDF, reply language in code, natural lines (request 89) | `6fb23fc`, `7ae7609`, `1d0f920` |

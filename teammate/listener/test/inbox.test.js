@@ -192,6 +192,35 @@ test("api: posts only into team chats, with size and rate limits", async () => {
   }
 });
 
+test("api: voice notes only in the assistant-test chat, 5 MB max, and sends return sent_at", async () => {
+  const store = seeded();
+  store.setRole("120363000000000002@g.us", "team", "mesiri");
+  store.upsertChat({ jid: "TEST@s.whatsapp.net", name: "Assistant test", is_group: false });
+  store.setRole("TEST@s.whatsapp.net", "assistant-test", "mesiri");
+  const sent = [];
+  const wa = { status: () => ({ state: "connected" }), send: async (jid, c) => (sent.push({ jid, ...c }), "id") };
+  const server = createApi({ store, wa, token: TOKEN });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  try {
+    const ogg = Buffer.from("OggS").toString("base64");
+    const ok = await call(server, "POST", "/send", { body: { chat: "TEST@s.whatsapp.net", project: "mesiri", audio_base64: ogg, audio_mime: "audio/mpeg" } });
+    assert.equal(ok.status, 200);
+    assert.ok(!Number.isNaN(Date.parse(ok.body.sent_at)));
+    assert.equal(sent[0].audioMime, "audio/mpeg");
+    assert.ok(Buffer.isBuffer(sent[0].audio));
+    const dflt = await call(server, "POST", "/send", { body: { chat: "TEST@s.whatsapp.net", project: "mesiri", audio_base64: ogg, audio_mime: "evil/x" } });
+    assert.equal(sent[1].audioMime, "audio/ogg; codecs=opus");
+    assert.equal(dflt.status, 200);
+    const team = await call(server, "POST", "/send", { body: { chat: "Mesiri team", project: "mesiri", audio_base64: ogg } });
+    assert.equal(team.status, 403);
+    const big = Buffer.alloc(5 * 1024 * 1024 + 1).toString("base64");
+    assert.equal((await call(server, "POST", "/send", { body: { chat: "TEST@s.whatsapp.net", project: "mesiri", audio_base64: big } })).status, 400);
+    assert.equal(sent.length, 2);
+  } finally {
+    server.close();
+  }
+});
+
 test("api: send rate limit and a disconnected WhatsApp", async () => {
   const store = seeded();
   process.env.TEAMMATE_SEND_PER_HOUR = "30";
