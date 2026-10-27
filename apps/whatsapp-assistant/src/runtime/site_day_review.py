@@ -363,14 +363,14 @@ def day_lines(payload: dict[str, Any]) -> list[str]:
         if not shown:
             shown = _count(len(payload["materials"]), "entry", "entries")
         lines.append(f"• Materials: {shown}")
-    # The day's own issues only: an issue still open from an earlier day
-    # (BE-51's carried_issues) is not something the day holds, and an empty
-    # list here means "nothing logged today".
-    if "issues" in payload:
-        day_open = sum(
-            1 for i in payload["issues"] or [] if i.get("status") in ("OPEN", "ACKNOWLEDGED")
-        )
-    else:  # a summary without the issue list
+    # Request 127 (P2): the assembly's count, by the one open-issue rule
+    # (backend application/dpr/open_issues.py) "open issues?" lists by: the
+    # day's own and those still open from earlier days. The draft said "1 open
+    # issue" while the list had 2. A day holding nothing but an earlier day's
+    # open issue still reads as "nothing logged today" (no lines).
+    if "issues" in payload and not (payload["issues"] or lines):
+        day_open = 0
+    else:
         day_open = int(payload.get("open_issue_count") or 0)
     if day_open:
         lines.append(f"• Issues: {day_open} open")

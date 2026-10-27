@@ -35,7 +35,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from mesiri.application.dpr import fact_review, site_day
+from mesiri.application.dpr import fact_review, open_issues, site_day
 
 _STATUS_BY_UPDATE_KIND = {"COMPLETED": "COMPLETED", "PAUSED": "STOPPED"}
 
@@ -620,7 +620,7 @@ class PostgresDprRepository:
                     evidence_count_by_activity[row["id"]] = len(photos_by_activity.get(row["id"], []))
 
         issues_query = text(
-            """
+            f"""
             SELECT id, issue_type, severity, narrative, status, delay_duration_minutes
             FROM site_issues
             WHERE organization_id = :org_id
@@ -632,7 +632,7 @@ class PostgresDprRepository:
               AND status != 'CANCELLED'
               -- A question noted for the engineer (before request 104 these
               -- were saved as low-severity issues) is not a site issue.
-              AND COALESCE(narrative, '') NOT LIKE 'Question for your engineer:%'
+              AND {open_issues.site_issue_sql()}
             ORDER BY
                 CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1
                               WHEN 'MEDIUM' THEN 2 ELSE 3 END,
@@ -659,7 +659,7 @@ class PostgresDprRepository:
         carried_rows = (
             await self._conn.execute(
                 text(
-                    """
+                    f"""
                     SELECT id, issue_type, severity, narrative,
                            CASE WHEN resolved_at IS NOT NULL
                                  AND resolved_at::date > :report_date
@@ -671,7 +671,10 @@ class PostgresDprRepository:
                       AND site_id = :site_id
                       AND occurred_at::date < :report_date
                       AND status != 'CANCELLED'
-                      AND COALESCE(narrative, '') NOT LIKE 'Question for your engineer:%'
+                      AND {open_issues.site_issue_sql()}
+                      -- Request 127: an earlier day's issue nobody saved is
+                      -- not open anywhere (the "open issues?" rule).
+                      AND {open_issues.counted_issue_sql()}
                       AND (
                           (resolved_at IS NULL AND status IN ('OPEN', 'ACKNOWLEDGED'))
                           OR resolved_at::date >= :report_date

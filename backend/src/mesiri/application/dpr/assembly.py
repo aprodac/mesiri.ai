@@ -267,6 +267,8 @@ def build_site_report_payload(
         }
         for row in carried_issue_rows or []
     ]
+    from mesiri.application.dpr import open_issues
+
     materials = _material_summary(material_movement_rows or [], material_stock_rows)
     return {
         "level": "SITE",
@@ -278,10 +280,9 @@ def build_site_report_payload(
         "possible_duplicates": sum(1 for a in activities if a["possible_duplicate"]),
         "issues": issues,
         "carried_issues": carried_issues,
-        # Open and acknowledged, the Today page's own rule (list_site_days).
-        "open_issue_count": sum(
-            1 for i in [*issues, *carried_issues] if i["status"] in ("OPEN", "ACKNOWLEDGED")
-        ),
+        # Request 127: the one open-issue rule (application/dpr/open_issues.py),
+        # the day's own and those still open from earlier days.
+        "open_issue_count": sum(1 for i in [*issues, *carried_issues] if open_issues.is_open(i["status"])),
         "evidence_count": sum(a["evidence_count"] for a in activities),
         "labour": _labour_summary(labour_lines or []),
         "materials": materials,
