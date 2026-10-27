@@ -1,22 +1,13 @@
-// SA-18: the Overview page's pieces -- the system status strip, the "needs
-// attention" list, today's dark card, the onboarding funnel and the
-// company tables. Shapes mirror GET /admin/overview
+// SA-18 / SA-19: the Overview page's pieces -- the "Right now" tiles, the
+// "Needs you" list grouped by urgency, the onboarding funnel and the
+// companies panel. Shapes mirror GET /admin/overview
 // (application/organizations/platform_overview.py).
 
-import { Link } from 'react-router-dom';
+import { useState } from 'react';
 import type { ReactNode } from 'react';
-import {
-  AlertOctagon,
-  AlertTriangle,
-  CheckCircle2,
-  ChevronRight,
-  Clock,
-  Info,
-  MessageSquare,
-  Server,
-  Timer,
-} from 'lucide-react';
-import { ago, fmtMs, full, inr, SERIES } from './replyFormat';
+import { Link } from 'react-router-dom';
+import { AlertOctagon, AlertTriangle, CheckCircle2, ChevronRight, Flame, Info, Moon } from 'lucide-react';
+import { ago, full, SERIES } from './replyFormat';
 
 export interface AttentionItem {
   key: string;
@@ -95,7 +86,7 @@ const TONE = {
   warning: { fg: '#b45309', bg: 'var(--warning-soft)', Icon: AlertTriangle },
   critical: { fg: 'var(--error)', bg: 'var(--error-soft)', Icon: AlertOctagon },
   info: { fg: 'var(--info)', bg: 'var(--info-soft)', Icon: Info },
-  neutral: { fg: 'var(--neutral-500)', bg: 'var(--neutral-100)', Icon: Info },
+  neutral: { fg: 'var(--neutral-400)', bg: 'var(--neutral-100)', Icon: Info },
 } as const;
 export type Tone = keyof typeof TONE;
 
@@ -109,172 +100,121 @@ export function TonePill({ tone, children }: { tone: Tone; children: ReactNode }
   );
 }
 
-// --- System status strip ----------------------------------------------------
-
-function StatusCell({ icon, label, value, note, tone }: { icon: ReactNode; label: string; value: string; note: string; tone: Tone }) {
-  const t = TONE[tone];
+/** A card with a title, a plain-language hint and a body; a long body
+ *  scrolls inside itself (the page never does). */
+export function Panel({ title, hint, aside, children, className }: { title: string; hint?: string; aside?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <div className="ov-status-cell">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--neutral-500)', fontSize: '12px' }}>
-        <span className="ov-icon-chip">{icon}</span>
+    <section className={`ov-panel ${className ?? ''}`}>
+      <header className="ov-panel-head">
+        <div style={{ minWidth: 0 }}>
+          <h2>{title}</h2>
+          {hint && <p>{hint}</p>}
+        </div>
+        {aside}
+      </header>
+      <div className="ov-panel-body">{children}</div>
+    </section>
+  );
+}
+
+// --- Right now ------------------------------------------------------------------
+
+export function Metric({
+  label,
+  value,
+  sub,
+  tone,
+  hint,
+  to,
+  progress,
+}: {
+  label: string;
+  value: string;
+  sub: ReactNode;
+  tone?: Tone;
+  hint: string;
+  to: string;
+  progress?: number;
+}) {
+  const t = tone ? TONE[tone] : null;
+  return (
+    <Link to={to} className="ov-metric" title={hint}>
+      <div className="ov-metric-label">
+        {t && <t.Icon size={13} strokeWidth={2.4} style={{ color: t.fg }} />}
         {label}
       </div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '2px 8px', flexWrap: 'wrap', marginTop: 10 }}>
-        <span style={{ fontSize: '20px', fontWeight: 600, color: 'var(--neutral-900)' }}>{value}</span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '12px', color: t.fg, fontWeight: 500 }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: t.fg }} />
-          {note}
-        </span>
+      <div className="ov-metric-value">{value}</div>
+      {progress !== undefined && (
+        <div className="ov-progress">
+          <span style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} />
+        </div>
+      )}
+      <div className="ov-metric-sub" style={t && (tone === 'critical' || tone === 'warning') ? { color: t.fg } : undefined}>
+        {sub}
       </div>
-    </div>
+    </Link>
   );
 }
 
-export function StatusStrip({ data, queue }: { data: OverviewData; queue: QueueHealth | null | 'unknown' }) {
-  const s = data.status;
-  const worker =
-    queue === null
-      ? { value: '…', note: 'checking', tone: 'neutral' as Tone }
-      : queue === 'unknown' || !queue.queue_enabled
-        ? { value: 'Unknown', note: 'not reported here', tone: 'neutral' as Tone }
-        : queue.worker_alive
-          ? { value: 'Running', note: `${full(queue.queue_depth ?? 0)} queued`, tone: (queue.queue_depth ?? 0) > 20 ? ('warning' as Tone) : ('good' as Tone) }
-          : { value: 'Down', note: 'messages are not handled', tone: 'critical' as Tone };
-  const speed = s.reply_p50_1h_ms ?? s.reply_p50_24h_ms;
-  const speedTone: Tone = speed === null ? 'neutral' : speed < 10_000 ? 'good' : speed < 30_000 ? 'warning' : 'critical';
-  return (
-    <div className="ov-status-strip">
-      <StatusCell icon={<Server size={14} />} label="Message worker" value={worker.value} note={worker.note} tone={worker.tone} />
-      <StatusCell
-        icon={<Timer size={14} />}
-        label={s.reply_p50_1h_ms !== null ? 'Typical reply, last hour' : 'Typical reply, last 24 h'}
-        value={fmtMs(speed)}
-        note={speed === null ? 'no replies yet' : speedTone === 'good' ? 'healthy' : 'slow'}
-        tone={speedTone}
-      />
-      <StatusCell
-        icon={<AlertOctagon size={14} />}
-        label="Failed, last 24 h"
-        value={full(s.failed_24h)}
-        note={s.failed_24h ? `of ${full(s.messages_24h)} messages` : 'none'}
-        tone={s.failed_24h ? 'critical' : 'good'}
-      />
-      <StatusCell
-        icon={<Clock size={14} />}
-        label="Waiting 10+ min for a reply"
-        value={full(s.unanswered)}
-        note={s.unanswered ? `oldest ${ago(s.unanswered_oldest)}` : 'none'}
-        tone={s.unanswered ? 'warning' : 'good'}
-      />
-    </div>
-  );
-}
+// --- Needs you --------------------------------------------------------------------
 
-// --- Needs attention ----------------------------------------------------------
+const GROUP_LABEL: Record<AttentionItem['severity'], string> = {
+  critical: 'Urgent',
+  warning: 'Follow up',
+  info: 'When you have time',
+};
 
 export function AttentionList({ items }: { items: AttentionItem[] }) {
   if (!items.length) {
     return (
-      <div style={{ display: 'grid', placeItems: 'center', textAlign: 'center', padding: 'var(--space-10) var(--space-4)', gap: 'var(--space-2)' }}>
+      <div className="ov-empty">
         <span className="ov-empty-check">
-          <CheckCircle2 size={26} />
+          <CheckCircle2 size={24} />
         </span>
-        <div style={{ fontWeight: 600, color: 'var(--neutral-900)', marginTop: 'var(--space-2)' }}>Nothing needs you right now</div>
-        <div style={{ color: 'var(--neutral-500)', fontSize: '13px' }}>No failures, late reports, waiting leads or stuck setups.</div>
+        <strong>Nothing needs you right now</strong>
+        <span>No failures, late reports, waiting buyers or stuck setups.</span>
       </div>
     );
   }
+  const groups = (['critical', 'warning', 'info'] as const)
+    .map((sev) => ({ sev, rows: items.filter((i) => i.severity === sev) }))
+    .filter((g) => g.rows.length);
   return (
-    <div style={{ display: 'grid' }}>
-      {items.map((item) => {
-        const t = TONE[item.severity];
-        return (
-          <Link key={item.key} to={item.link} className="ov-attention-row">
-            <span className="ov-sev" style={{ color: t.fg, background: t.bg }}>
-              <t.Icon size={16} strokeWidth={2.2} />
-            </span>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontWeight: 600, color: 'var(--neutral-900)', fontSize: '14px' }}>{item.title}</span>
-                <span className="ov-count" style={{ color: t.fg, background: t.bg }}>
-                  {full(item.count)}
+    <div>
+      {groups.map(({ sev, rows }) => (
+        <div key={sev} className="ov-att-group">
+          <div className="ov-att-label">
+            <span className="ov-dot" style={{ background: TONE[sev].fg }} />
+            {GROUP_LABEL[sev]}
+          </div>
+          {rows.map((item) => {
+            const t = TONE[item.severity];
+            const names = item.companies.map((c) => `${c.name} (${c.note})`);
+            return (
+              <Link key={item.key} to={item.link} className="ov-att-row" title={item.detail}>
+                <span className="ov-sev" style={{ color: t.fg, background: t.bg }}>
+                  <t.Icon size={15} strokeWidth={2.2} />
                 </span>
-                <span className="sr-only">{item.severity}</span>
-              </div>
-              <div style={{ color: 'var(--neutral-500)', fontSize: '12.5px', marginTop: 2 }}>{item.detail}</div>
-              {item.companies.length > 0 && (
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-                  {item.companies.slice(0, 3).map((c, i) => (
-                    <span key={`${c.id}-${i}`} className="ov-chip">
-                      <strong style={{ fontWeight: 500, color: 'var(--neutral-800)' }}>{c.name}</strong>
-                      <span style={{ color: 'var(--neutral-500)' }}>{c.note}</span>
-                    </span>
-                  ))}
-                  {item.count > 3 && <span className="ov-chip" style={{ color: 'var(--neutral-500)' }}>+{item.count - 3} more</span>}
-                </div>
-              )}
-            </div>
-            <ChevronRight size={18} className="ov-chevron" />
-          </Link>
-        );
-      })}
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <span className="ov-att-title">
+                    <span>{item.title}</span>
+                    <span className="ov-count" style={{ color: t.fg, background: t.bg }}>{full(item.count)}</span>
+                  </span>
+                  <span className="ov-att-sub">
+                    {names.length ? names.slice(0, 2).join(', ') + (item.count > 2 ? ` +${item.count - 2} more` : '') : item.detail}
+                  </span>
+                </span>
+                <ChevronRight size={16} className="ov-chevron" />
+              </Link>
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 }
 
-// --- Today --------------------------------------------------------------------
-
-export function TodayCard({ data }: { data: OverviewData }) {
-  const t = data.today;
-  const pct = t.dprs_due ? Math.min(100, Math.round((t.dprs_sent / t.dprs_due) * 100)) : 0;
-  const row = (label: string, value: ReactNode) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '10px 0', borderTop: '1px solid var(--border-dark)', fontSize: '13px' }}>
-      <span style={{ color: 'var(--neutral-400)' }}>{label}</span>
-      <span style={{ color: 'var(--white)', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
-    </div>
-  );
-  return (
-    <div className="card-dark ov-today">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: '13px', color: 'var(--neutral-400)' }}>Today</span>
-        <span style={{ fontSize: '12px', color: 'var(--neutral-500)' }}>
-          {new Date(`${t.day}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
-        </span>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 'var(--space-3)' }}>
-        <span style={{ fontSize: '48px', fontWeight: 600, lineHeight: 1, color: 'var(--white)' }}>{full(t.messages)}</span>
-        <span style={{ color: 'var(--neutral-400)', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <MessageSquare size={14} /> messages from site
-        </span>
-      </div>
-
-      <div style={{ marginTop: 'var(--space-6)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: 8 }}>
-          <span style={{ color: 'var(--neutral-400)' }}>DPRs sent</span>
-          <span style={{ color: 'var(--white)', fontWeight: 500 }}>
-            {full(t.dprs_sent)} <span style={{ color: 'var(--neutral-500)' }}>of {full(t.dprs_due)} due so far</span>
-          </span>
-        </div>
-        <div style={{ height: 8, borderRadius: 4, background: 'rgba(126,217,87,0.15)' }}>
-          <div style={{ width: `${pct}%`, height: '100%', borderRadius: 4, background: 'var(--primary)', transition: 'width var(--transition-default)' }} />
-        </div>
-        <div style={{ fontSize: '12px', marginTop: 8, color: t.dprs_late ? '#fca5a5' : 'var(--neutral-500)' }}>
-          {t.dprs_late
-            ? `${t.dprs_late} late — past the send time`
-            : `${full(t.dpr_projects)} project${t.dpr_projects === 1 ? '' : 's'} send a DPR every day`}
-        </div>
-      </div>
-
-      <div style={{ marginTop: 'var(--space-5)' }}>
-        {row('Companies reporting', full(t.active_companies))}
-        {row('People reporting', full(t.active_people))}
-        {row('Running cost', inr(t.cost_inr))}
-      </div>
-    </div>
-  );
-}
-
-// --- Onboarding funnel ----------------------------------------------------------
+// --- Onboarding funnel --------------------------------------------------------------
 
 const STEPS: { key: keyof OverviewData['funnel']; label: string }[] = [
   { key: 'started', label: 'Started a trial' },
@@ -286,6 +226,9 @@ const STEPS: { key: keyof OverviewData['funnel']; label: string }[] = [
 ];
 
 export function Funnel({ funnel }: { funnel: OverviewData['funnel'] }) {
+  if (!funnel.started) {
+    return <p className="ov-muted">No trials started in the last 30 days.</p>;
+  }
   const top = Math.max(1, funnel.started);
   // The step that loses the most companies is where to help.
   let worst = -1;
@@ -297,28 +240,23 @@ export function Funnel({ funnel }: { funnel: OverviewData['funnel'] }) {
       worst = i + 1;
     }
   });
-  if (!funnel.started) {
-    return <p style={{ color: 'var(--neutral-500)', fontSize: '13px' }}>No trials started in the last 30 days.</p>;
-  }
   return (
-    <div style={{ display: 'grid', gap: 12 }}>
+    <div className="ov-funnel">
       {STEPS.map((s, i) => {
         const n = funnel[s.key];
         const pct = Math.round((n / top) * 100);
         return (
-          <div key={s.key}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: 5 }}>
-              <span style={{ color: 'var(--neutral-700)' }}>
-                {s.label}
-                {i === worst && <span className="ov-chip" style={{ marginLeft: 8, color: '#b45309', background: 'var(--warning-soft)', border: 'none' }}>biggest drop</span>}
-              </span>
-              <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--neutral-900)', fontWeight: 500 }}>
-                {full(n)} <span style={{ color: 'var(--neutral-500)', fontWeight: 400 }}>· {pct}%</span>
-              </span>
-            </div>
-            <div style={{ height: 8, background: 'var(--neutral-100)', borderRadius: 4 }}>
-              <div style={{ width: `${pct}%`, minWidth: n ? 4 : 0, height: '100%', borderRadius: 4, background: SERIES.blue, opacity: 1 - i * 0.1 }} />
-            </div>
+          <div key={s.key} className="ov-funnel-row" title={`${n} of ${funnel.started} companies (${pct}%)`}>
+            <span className="ov-funnel-label">
+              {s.label}
+              {i === worst && <span className="ov-tag">biggest drop</span>}
+            </span>
+            <span className="ov-funnel-bar">
+              <span style={{ width: `${pct}%`, minWidth: n ? 4 : 0, background: SERIES.blue }} />
+            </span>
+            <span className="ov-funnel-num">
+              {full(n)} <span>{pct}%</span>
+            </span>
           </div>
         );
       })}
@@ -326,69 +264,94 @@ export function Funnel({ funnel }: { funnel: OverviewData['funnel'] }) {
   );
 }
 
-// --- Companies ------------------------------------------------------------------
+// --- Companies ----------------------------------------------------------------------
+
+const STATUS_SEGMENTS = [
+  { key: 'active', label: 'Paying', color: SERIES.aqua },
+  { key: 'trial', label: 'On trial', color: SERIES.blue },
+  { key: 'expired', label: 'Expired', color: 'var(--neutral-300)' },
+  { key: 'suspended', label: 'Suspended', color: SERIES.orange },
+] as const;
 
 function StatusBadge({ status, daysLeft }: { status: string; daysLeft: number | null }) {
   const cls = status === 'active' ? 'badge-success' : status === 'trial' ? 'badge-info' : status === 'suspended' ? 'badge-error' : 'badge-warning';
   return (
-    <span className={`badge ${cls}`} style={{ textTransform: 'capitalize' }}>
-      {status}
-      {status === 'trial' && daysLeft !== null ? ` · ${daysLeft}d` : ''}
+    <span className={`badge ${cls}`} style={{ height: 20, fontSize: 11, flex: 'none' }}>
+      {status === 'active' ? 'Paying' : status === 'trial' ? 'Trial' : status[0].toUpperCase() + status.slice(1)}
+      {status === 'trial' && daysLeft !== null ? ` · ${daysLeft}d left` : ''}
     </span>
   );
 }
 
-export function CompanyTable({ rows, quiet }: { rows: CompanyRow[]; quiet?: boolean }) {
-  const num = { textAlign: 'right', fontVariantNumeric: 'tabular-nums' } as const;
-  if (!rows.length) {
-    return (
-      <p style={{ color: 'var(--neutral-500)', fontSize: '13px', padding: 'var(--space-6)', textAlign: 'center', margin: 0 }}>
-        {quiet ? 'Every company has been in touch in the last 3 days.' : 'No messages from any company this week.'}
-      </p>
-    );
-  }
+export function CompaniesPanel({ data }: { data: OverviewData }) {
+  const c = data.companies;
+  const [tab, setTab] = useState<'quiet' | 'active'>(data.gone_quiet.length ? 'quiet' : 'active');
+  const rows = tab === 'quiet' ? data.gone_quiet : data.most_active;
+  const stats = [
+    { label: 'New trials', period: '7 days', value: c.new_trials_7d, hint: 'Trials started in the last 7 days', to: '/trials?days=7' },
+    { label: 'Converted', period: '30 days', value: c.converted_30d, hint: 'Trials that converted to paying in the last 30 days', to: '/trials?days=30' },
+    { label: 'Expired', period: 'now', value: c.expired, hint: 'Trials that ended without paying', to: '/organizations' },
+  ];
   return (
-    <table>
-      <thead>
-        <tr>
-          <th>Company</th>
-          <th>Status</th>
-          {quiet ? <th style={num}>Quiet for</th> : <th style={num}>Messages</th>}
-          {!quiet && <th style={num}>People</th>}
-          {!quiet && <th style={num}>DPRs</th>}
-          <th style={num}>Last message</th>
-          <th style={{ width: 28 }} />
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => (
-          <tr key={r.id} className="ov-link-row">
-            <td>
-              <Link to={`/organizations/${r.id}`} style={{ color: 'var(--neutral-900)', fontWeight: 500, textDecoration: 'none' }}>
-                {r.name}
-              </Link>
-            </td>
-            <td>
-              <StatusBadge status={r.status} daysLeft={r.trial_days_left} />
-            </td>
-            {quiet ? (
-              <td style={{ ...num, color: (r.quiet_days ?? 0) >= 7 ? 'var(--error)' : 'var(--neutral-800)' }}>{r.quiet_days} days</td>
-            ) : (
-              <>
-                <td style={num}>{full(r.messages_7d)}</td>
-                <td style={num}>{full(r.people_7d)}</td>
-                <td style={num}>{full(r.dprs_7d)}</td>
-              </>
-            )}
-            <td style={{ ...num, color: 'var(--neutral-500)', fontSize: '13px' }}>{r.last_message_at ? ago(r.last_message_at) : 'never'}</td>
-            <td>
-              <Link to={`/organizations/${r.id}`} aria-label={`Open ${r.name}`} style={{ color: 'var(--neutral-400)', display: 'inline-flex' }}>
-                <ChevronRight size={16} />
-              </Link>
-            </td>
-          </tr>
+    <>
+      <Link to="/organizations" className="ov-co-total" title="Open the companies list">
+        <span>
+          <strong>{full(c.total)}</strong> companies
+        </span>
+        <ChevronRight size={15} />
+      </Link>
+      <div className="ov-segbar">
+        {STATUS_SEGMENTS.map((s) => (c[s.key] ? <span key={s.key} title={`${s.label}: ${c[s.key]}`} style={{ flex: c[s.key], background: s.color }} /> : null))}
+      </div>
+      <div className="ov-legend">
+        {STATUS_SEGMENTS.filter((s) => c[s.key]).map((s) => (
+          <span key={s.key}>
+            <span style={{ background: s.color }} />
+            {c[s.key]} {s.label.toLowerCase()}
+          </span>
         ))}
-      </tbody>
-    </table>
+      </div>
+      <div className="ov-co-stats">
+        {stats.map((s) => (
+          <Link key={s.label} to={s.to} title={s.hint}>
+            <strong>{full(s.value)}</strong>
+            <span>{s.label}</span>
+            <em>{s.period}</em>
+          </Link>
+        ))}
+      </div>
+
+      <div className="ov-seg ov-seg-full" role="tablist">
+        <button role="tab" aria-selected={tab === 'quiet'} className={tab === 'quiet' ? 'on' : ''} onClick={() => setTab('quiet')}>
+          <Moon size={13} /> Gone quiet{data.gone_quiet.length ? ` · ${data.gone_quiet.length}` : ''}
+        </button>
+        <button role="tab" aria-selected={tab === 'active'} className={tab === 'active' ? 'on' : ''} onClick={() => setTab('active')}>
+          <Flame size={13} /> Most active
+        </button>
+      </div>
+      <p className="ov-muted" style={{ margin: '8px 0 2px' }}>
+        {tab === 'quiet' ? 'No message for 3+ days — worth a call.' : 'Most WhatsApp messages in the last 7 days.'}
+      </p>
+      <div className="ov-scroll">
+        {rows.length === 0 && (
+          <p className="ov-muted" style={{ padding: '16px 0', textAlign: 'center' }}>
+            {tab === 'quiet' ? 'Everyone has been in touch lately.' : 'No messages this week.'}
+          </p>
+        )}
+        {rows.map((r) => (
+          <Link key={r.id} to={`/organizations/${r.id}`} className="ov-co-row">
+            <span style={{ minWidth: 0, flex: 1 }}>
+              <span className="ov-co-name">{r.name}</span>
+              <span className="ov-co-meta">
+                {tab === 'quiet'
+                  ? `Quiet ${r.quiet_days} days · last message ${r.last_message_at ? ago(r.last_message_at) : 'never'}`
+                  : `${full(r.messages_7d)} messages · ${full(r.people_7d)} people · ${full(r.dprs_7d)} DPRs`}
+              </span>
+            </span>
+            <StatusBadge status={r.status} daysLeft={r.trial_days_left} />
+          </Link>
+        ))}
+      </div>
+    </>
   );
 }
