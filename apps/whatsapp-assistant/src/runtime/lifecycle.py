@@ -297,6 +297,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Replies admin router not loaded: %s", exc)
 
+    # The Overview, the super admin's morning screen (SA-18); like costs.
+    try:
+        from mesiri.domains.admin.overview_router import router as overview_admin_router
+
+        app.include_router(overview_admin_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Overview admin router not loaded: %s", exc)
+
     # The control panel's Database page (SA-15); the backend's router, like costs.
     try:
         from mesiri.domains.admin.database_router import router as database_admin_router

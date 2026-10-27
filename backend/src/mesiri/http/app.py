@@ -168,6 +168,13 @@ def create_app(lifecycle: AppLifecycle | None = None) -> FastAPI:
         _log.exception("replies admin router not loaded: %s", exc)
 
     try:
+        from mesiri.domains.admin.overview_router import router as overview_admin_router
+
+        app.include_router(overview_admin_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("overview admin router not loaded: %s", exc)
+
+    try:
         from mesiri.domains.admin.database_router import router as database_admin_router
 
         app.include_router(database_admin_router)
