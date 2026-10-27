@@ -54,6 +54,10 @@ CAPTURE_MODE = "capture_mode"
 CAPTURE_MODE_SAVE_FIRST = "save_first"
 CAPTURE_MODE_CONFIRM_FIRST = "confirm_first"
 CAPTURE_MODES: frozenset[str] = frozenset({CAPTURE_MODE_SAVE_FIRST, CAPTURE_MODE_CONFIRM_FIRST})
+# One draft per open card, written only on the Save tap (request 124, P1;
+# docs/architecture/ADR-draft-per-message.md). Off for every company until the
+# Mesiri team switches it on for one.
+DRAFT_V2 = "draft_v2"
 
 # Product modules a company can have switched on (V1 tracker BE-06). Each key
 # gates one or more API routers (domains/shared/modules.py's require_module)
@@ -91,7 +95,7 @@ DEFAULT_ENABLED_MODULES: list[str] = list(V1_MODULES)
 
 # Settings only a platform admin may change. Modules are tied to what a
 # customer pays for, so a company's own admin can read them but not edit them.
-SUPERADMIN_ONLY_KEYS: frozenset[str] = frozenset({ENABLED_MODULES, CAPTURE_MODE})
+SUPERADMIN_ONLY_KEYS: frozenset[str] = frozenset({ENABLED_MODULES, CAPTURE_MODE, DRAFT_V2})
 
 DEFAULT_FINANCE_SETTINGS = {
     "base_currency": "INR",
@@ -168,6 +172,15 @@ _SPECS: dict[str, SettingSpec] = {
             "How WhatsApp updates are saved: 'save_first' (saved straight away as a "
             "draft, confirmed with the evening DPR) or 'confirm_first' (asks "
             "'Confirm?' before saving). Changed by the Mesiri team only."
+        ),
+    ),
+    DRAFT_V2: SettingSpec(
+        key=DRAFT_V2,
+        default=False,
+        description=(
+            "true: a WhatsApp message is held as one draft card and written only when the "
+            "sender taps Save (Cancel writes nothing). false: the current flow. Changed by "
+            "the Mesiri team only."
         ),
     ),
     BRANDING: SettingSpec(
@@ -352,7 +365,17 @@ def validate(key: str, value: object) -> object:
         if mode not in CAPTURE_MODES:
             raise ValueError(f"capture_mode must be one of {sorted(CAPTURE_MODES)}")
         return mode
+    if key == DRAFT_V2:
+        if not isinstance(value, bool):
+            raise ValueError("draft_v2 must be true or false")
+        return value
     return value
+
+
+def draft_v2_enabled(stored: object) -> bool:
+    """True only when the company's setting is exactly ``true``. Anything
+    unset or unreadable is off, never an error."""
+    return stored is True
 
 
 def saves_first(stored: object) -> bool:
