@@ -108,3 +108,20 @@ def test_a_run_taps_by_title_captures_and_blocks_after_a_missing_tap():
     assert by_mark["M3"]["ok"] is False and by_mark["M3"]["why"].startswith("blocked")
     table, failing = scenarios.summarise(cat, [results])
     assert failing == 1 and "| M3 |" in table
+
+
+def test_the_trial_limit_stops_the_run_and_nothing_after_it_counts():
+    """27 Oct baseline: from S09 the assistant answered every message with the trial limit,
+    and checks on those refusals passed ("lacks join code") though nothing was measured."""
+    cat = {"patterns": {}, "marks": {"M1": {}, "M2": {}}, "reset": [], "scenarios": []}
+    sc = {"id": "S", "steps": [
+        {"send": "a", "checks": [{"mark": "M1", "lacks_re": ["join code"]}]},
+        {"send": "b", "checks": [{"mark": "M2", "has": ["x"]}]},
+    ]}
+    chat = _Chat([[_msg(1, "You've reached today's free-trial limit, so I can't read more updates today.")]])
+    with pytest.raises(scenarios.Refused) as stopped:
+        scenarios.run_scenario(chat, cat, sc, [])
+    results = stopped.value.results
+    assert {r["mark"]: r["ok"] for r in results} == {"M1": None, "M2": None}
+    table, failing = scenarios.summarise(cat, [results])
+    assert failing == 0 and "| M1 |" in table and "n/a" in table

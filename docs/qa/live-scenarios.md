@@ -14,8 +14,12 @@ model are still written, but they are not the gate: every fix of 27 Oct passed t
 
 ## How a scenario works
 
-- It runs in the `assistant-test` chat (TEST company only). Before each scenario the runner sends "no" and
-  "cancel", so a leftover Yes / No or card cannot leak into it.
+- It runs in the `assistant-test` chat (TEST company only). Before each scenario the runner sends "cancel", so
+  a leftover card cannot leak into it.
+- **The TEST company is on a free trial**, capped at 200 WhatsApp messages or ₹50 of AI a day (India time,
+  `trial_guardrails`). One full run is roughly 90 messages in and as many out, so three runs do not fit in one
+  day while it is a trial. When the assistant answers with the trial limit the runner stops; marks not reached
+  are `n/a`, never passed. Baseline: [`runs/2026-10-27-scenario-baseline.md`](runs/2026-10-27-scenario-baseline.md).
 - Steps are a message (`send`) or a tap on a button of the last reply (`tap`, by title). `tap_if` taps only when
   the button is offered (e.g. "Replace" when the day already has a count). A missing `tap` blocks the rest of
   the scenario, and its checks fail.

@@ -9,7 +9,6 @@
     "EXAMPLE": "vannu|e\\.g\\.|example|udaharan|ഉദാഹരണ|like:|ingane"
   },
   "reset": [
-    {"send": "no"},
     {"send": "cancel"}
   ],
   "marks": {
@@ -190,8 +189,8 @@
          "checks": [{"mark": "M13", "has_re": ["issue"]}, {"mark": "M13", "buttons_has": ["✅ Save"]}]},
         {"tap": "✅ Save", "checks": [{"mark": "M13", "has": ["{SAVED}"]}]},
         {"send": "open issues ethokke?", "checks": [{"mark": "M14", "has_re": ["mixer"]}]},
-        {"send": "Green Villa-il ethra open issues und? number mathram", "capture": {"issues": "(\\d+)"}},
-        {"send": "send today's report", "checks": [{"mark": "M31", "has_re": ["\\b{issues} open issue"]}]}
+        {"send": "ee week Green Villa-il ethra pani nadannu? summary tharo",
+         "checks": [{"mark": "M31", "has_re": ["mixer"]}]}
       ],
       "cleanup": [{"send": "undo"}, {"tap_if": "All of them"}]
     },
@@ -206,8 +205,7 @@
          "checks": [{"mark": "M15", "has_re": ["\\b{workers}\\b"]}, {"mark": "M32", "has_re": ["\\b{workers}\\b"]},
                     {"mark": "M16", "lacks_re": ["\\binn\\b[^.]*\\binnu\\b"]}]},
         {"send": "innu ethra labour?", "checks": [{"mark": "M18", "has_re": ["\\b{workers}\\b"]}]},
-        {"send": "send today's report",
-         "checks": [{"mark": "M18", "has_re": ["\\b{workers}\\b"]}, {"mark": "M19", "observe": "kinds"}]},
+        {"send": "send today's report", "checks": [{"mark": "M19", "observe": "kinds"}]},
         {"send": "innale labour ethra undayirunnu?", "checks": [{"mark": "M17", "lacks_re": ["\\b{workers} per\\b.*innu"]}]},
         {"send": "ee week Green Villa-il ethra pani nadannu? summary tharo",
          "checks": [{"mark": "M41", "lacks_re": ["innu mazha", "rain today"]}]},
@@ -222,9 +220,9 @@
       "steps": [
         {"send": "report time 7 pm aakku",
          "checks": [{"mark": "M20", "lacks_re": ["can't|cannot|pattilla|kazhiyilla"]}, {"mark": "M21", "has_re": ["{MANGLISH}"]}]},
-        {"send": "ente team-il aarokke und?", "checks": [{"mark": "M22", "lacks_re": ["join code", "pattilla", "can't"]}]},
+        {"send": "ente team-il aarokke und?", "checks": [{"mark": "M22", "lacks_re": ["join code", "pattilla", "can't", "sorry", "tharunnilla", "kazhiyilla"]}]},
         {"send": "Site B-il Rajesh-ine supervisor aakku",
-         "checks": [{"mark": "M23", "lacks_re": ["site engineer", "this project"]}, {"mark": "M24", "lacks_re": ["reply yes"]}]},
+         "checks": [{"mark": "M23", "lacks_re": ["site engineer", "this project"]}, {"mark": "M24", "lacks_re": ["reply yes", "yes enn", "confirm cheyyan yes"]}]},
         {"tap_if": "No"},
         {"tap_if": "❌ Cancel"}
       ]

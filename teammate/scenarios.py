@@ -39,6 +39,13 @@ CHECK_KEYS = {
 }
 STEP_KEYS = {"send", "tap", "tap_if", "if_last_re", "capture", "checks", "expect_card"}
 _OPTION_LINE = re.compile(r"^\s*\d+\)\s")
+#: The assistant refuses every message once the company's daily trial limit is reached:
+#: nothing after that measures anything (the 27 Oct baseline ran into it at S09).
+_REFUSED = re.compile(r"free-trial limit|trial limit", re.I)
+
+
+class Refused(Exception):
+    """The assistant stopped reading messages (the trial limit): the run cannot go on."""
 
 
 # -- the catalogue -----------------------------------------------------------------------------
@@ -252,6 +259,8 @@ def run_scenario(chat: Chat, cat: dict, sc: dict, log: list[str]) -> list[dict]:
             log.append(f"      (first reply {last_seconds:.1f} s)")
         if ("send" in step or "tap" in step or "tap_if" in step) and not last:
             log.append("      (no reply)")
+        if _REFUSED.search(_text(last)):
+            raise Refused(f"{sc['id']} step {n}: the assistant refused it (trial limit)")
         for var, rx in (step.get("capture") or {}).items():
             found = re.search(rx, _text(last), re.I)
             if found:
@@ -263,13 +272,29 @@ def run_scenario(chat: Chat, cat: dict, sc: dict, log: list[str]) -> list[dict]:
             log.append(f"      {'✓' if ok else '·' if ok is None else '✗'} {c['mark']} {why}".rstrip())
 
     log.append(f"\n== {sc['id']} {sc.get('title', '')}")
-    for n, step in enumerate(cat.get("reset") or [], 1):
-        do(step, n, cleanup=True)
-    last = []
-    for n, step in enumerate(sc.get("steps", []), 1):
-        do(step, n)
-    for n, step in enumerate(sc.get("cleanup", []), 1):
-        do(step, 100 + n, cleanup=True)
+    done = 0
+    try:
+        for n, step in enumerate(cat.get("reset") or [], 1):
+            do(step, n, cleanup=True)
+        last = []
+        for n, step in enumerate(sc.get("steps", []), 1):
+            done = n
+            do(step, n)
+        for n, step in enumerate(sc.get("cleanup", []), 1):
+            do(step, 100 + n, cleanup=True)
+    except Refused as why:
+        log.append(f"  !! {why}: the rest is not run")
+        judged = {(r["step"], r["mark"]) for r in results}
+        for n, step in enumerate(sc.get("steps", []), 1):
+            for c in step.get("checks", []):
+                if n >= done and (n, c["mark"]) not in judged:
+                    results.append({"scenario": sc["id"], "step": n, "mark": c["mark"], "ok": None, "why": str(why)})
+        # A check judged on the refusal itself measured nothing either.
+        for r in results:
+            if r["scenario"] == sc["id"] and r["step"] == done and r["ok"] is not None:
+                r["ok"], r["why"] = None, str(why)
+        why.results = results  # type: ignore[attr-defined]
+        raise
     return results
 
 
@@ -340,11 +365,25 @@ def main() -> None:
     for run in range(1, a.repeat + 1):
         log: list[str] = [f"\n#### Run {run} of {a.repeat}"]
         results: list[dict] = []
+        refused = None
         for sc in scenarios:
-            results += run_scenario(chat, cat, sc, log)
+            if refused is not None:
+                results += [{"scenario": sc["id"], "step": n, "mark": c["mark"], "ok": None, "why": refused}
+                            for n, step in enumerate(sc.get("steps", []), 1) for c in step.get("checks", [])]
+                continue
+            mine: list[dict] = []
+            try:
+                mine = run_scenario(chat, cat, sc, log)
+            except Refused as why:
+                refused = str(why)
+                mine = [r for r in getattr(why, "results", [])]
+            results += mine
             print("\n".join(log), flush=True)
             log = []
         runs.append(results)
+        if refused is not None:
+            print(f"\n!! Stopped: {refused}. Marks not reached are n/a, not passed.", flush=True)
+            break
     if a.only:
         keep = {r["mark"] for results in runs for r in results}
         cat = {**cat, "marks": {k: v for k, v in cat["marks"].items() if k in keep}}
