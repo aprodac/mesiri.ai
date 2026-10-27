@@ -852,3 +852,51 @@ div.badge { border-radius: var(--radius-md); }
   .cc-cols { display: none; }
   .cc-people-head { padding: 12px 14px 10px; }
 }
+
+/* Costs page filters (SA-23) */
+.cost-page { max-width: 1160px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.cost-head h1 { margin-bottom: 4px; }
+.cost-filters { position: sticky; top: -32px; z-index: 5; display: grid; gap: 10px; padding: 12px; background: rgba(255, 255, 255, 0.92); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); }
+.cost-filter-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cost-period button { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; font-size: 13px; }
+.cost-dates { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--neutral-500); }
+.cost-dates .form-input { height: 34px; width: auto; padding: 0 10px; font-size: 13px; }
+.cost-clear { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 10px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--neutral-600); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+.cost-clear:hover { background: var(--neutral-100); color: var(--neutral-900); }
+.cost-company { height: 36px; width: auto; min-width: 200px; max-width: 280px; font-size: 13.5px; }
+.cost-chips { display: inline-flex; gap: 6px; }
+.cost-chip { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 1px solid var(--border-default); border-radius: var(--radius-full); background: var(--white); color: var(--neutral-600); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast); }
+.cost-chip:hover { border-color: var(--border-strong); color: var(--neutral-900); }
+.cost-chip.on { background: var(--neutral-900); border-color: var(--neutral-900); color: var(--white); }
+.cost-search { flex: 1 1 220px; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--white); color: var(--neutral-400); }
+.cost-search:focus-within { border-color: var(--neutral-900); box-shadow: 0 0 0 3px rgba(28, 25, 23, 0.06); }
+.cost-search input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font: inherit; font-size: 13.5px; color: var(--neutral-900); }
+.cost-search button { display: grid; place-items: center; width: 22px; height: 22px; border: none; border-radius: 50%; background: var(--neutral-100); color: var(--neutral-600); cursor: pointer; }
+.cost-kpi { text-align: left; border: none; background: transparent; font: inherit; cursor: pointer; transition: background var(--transition-fast); }
+.cost-kpi:hover { background: var(--neutral-50); }
+.cost-kpi.on { box-shadow: inset 0 -2px 0 var(--neutral-900); }
+.cost-tabs { margin-top: 4px; }
+.cv-link { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: none; background: none; font: inherit; font-weight: 550; color: var(--neutral-900); cursor: pointer; text-align: left; }
+.cv-link:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--neutral-300); }
+.cv-link svg { color: var(--neutral-400); }
+.cv-person { font-weight: 550; color: var(--neutral-900); }
+.cv-sub { font-size: 12px; font-weight: 400; color: var(--neutral-500); }
+.cv-muted { color: var(--neutral-500); }
+.cv-unpriced { font-size: 11.5px; font-weight: 500; color: var(--warning); }
+.cv-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-bar { display: block; width: 90px; height: 4px; margin-top: 4px; border-radius: 2px; background: var(--neutral-100); overflow: hidden; }
+.cv-bar span { display: block; height: 100%; background: var(--neutral-800); border-radius: 2px; }
+.cost-page td { height: auto; padding-top: 10px; padding-bottom: 10px; }
+@media (max-width: 640px) {
+  .cost-filters { top: -16px; padding: 10px; }
+  .cost-period { display: flex; width: 100%; }
+  .cost-period button { flex: 1; padding: 6px 4px; font-size: 12.5px; }
+  .cost-company { flex: 1 1 100%; max-width: none; }
+  .cost-chips { flex: 1 1 100%; }
+  .cost-chip { flex: 1; justify-content: center; }
+  .cost-dates { flex: 1 1 100%; }
+  .cost-dates .form-input { flex: 1; }
+  .cost-clear { margin-left: 0; }
+  .cost-tabs { overflow-x: auto; scrollbar-width: none; gap: 16px; }
+  .cost-tabs button { white-space: nowrap; flex: none; }
+}

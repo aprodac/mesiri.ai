@@ -1,54 +1,31 @@
-import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { api } from './api';
-import { getErrorMessage } from './Toast';
-import { indianDay } from './replyFormat';
-
-// SA-05: what Mesiri costs to run -- AI calls and WhatsApp messages, in INR,
-// from the per-call cost rows BE-25 records. All companies: totals, per day
-// and per company. One company: the same, plus what handling each message it
-// sent cost and each WhatsApp message sent to its people. Reads GET
+// SA-05 / SA-23: what Mesiri costs to run -- AI calls and WhatsApp messages,
+// in rupees before GST, from the per-call cost rows BE-25 records. A filter
+// bar picks the period (today / 7 / 30 / 90 days / custom dates), one company
+// or all, the cost type (all / AI / WhatsApp) and a search; tabs pick the view:
+// Companies, People, Days, and for one company its Messages and WhatsApp
+// sent. Every filter lives in the URL, so a view can be shared. Reads GET
 // /admin/costs. Days are Indian calendar days.
 
-interface Totals {
-  ai_calls: number;
-  ai_cost_inr: string;
-  whatsapp_messages: number;
-  whatsapp_cost_inr: string;
-  total_cost_inr: string;
-  unpriced: number;
-}
-
-interface DayRow extends Totals {
-  day: string;
-}
-
-interface CompanyRow extends Totals {
-  organization_id: string | null;
-  organization_name: string | null;
-}
-
-interface MessageRow {
-  correlation_id: string;
-  received_at: string | null;
-  sender: string | null;
-  message_type: string | null;
-  text: string | null;
-  ai_calls: number;
-  input_tokens: number;
-  output_tokens: number;
-  ai_cost_inr: string;
-  unpriced: number;
-}
-
-interface SentRow {
-  sent_at: string;
-  recipient: string | null;
-  operation: string | null;
-  category: string | null;
-  billable: boolean | null;
-  cost_inr: string | null;
-}
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Bot, CalendarRange, MessageCircle, Search, Wallet, X } from 'lucide-react';
+import { api } from './api';
+import { getErrorMessage } from './Toast';
+import { full, indianDay, inr } from './replyFormat';
+import {
+  CompaniesView,
+  DaysView,
+  MessagesView,
+  PeopleView,
+  SentView,
+  type CompanyRow,
+  type CostType,
+  type DayRow,
+  type MessageRow,
+  type PersonRow,
+  type SentRow,
+  type Totals,
+} from './costViews';
 
 interface CostsResponse {
   from: string;
@@ -57,272 +34,255 @@ interface CostsResponse {
   totals: Totals;
   by_day: DayRow[];
   by_company?: CompanyRow[];
+  by_person?: PersonRow[];
   messages?: MessageRow[];
   sent?: SentRow[];
 }
 
-const RANGES = [
-  { days: 1, label: 'Today' },
-  { days: 7, label: 'Last 7 days' },
-  { days: 30, label: 'Last 30 days' },
-  { days: 90, label: 'Last 90 days' },
+interface CompanyOption {
+  id: string;
+  name: string;
+}
+
+const PERIODS = [
+  { key: '1', label: 'Today' },
+  { key: '7', label: '7 days' },
+  { key: '30', label: '30 days' },
+  { key: '90', label: '90 days' },
+  { key: 'custom', label: 'Custom' },
 ];
 
-/** ₹ with paise kept for the small amounts most rows are. */
-function inr(value: string | null | undefined): string {
-  if (value === null || value === undefined) return '—';
-  const n = Number(value);
-  if (!Number.isFinite(n)) return value;
-  return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: n < 1 ? 4 : 2 })}`;
+const TYPES: { key: CostType; label: string }[] = [
+  { key: 'all', label: 'All costs' },
+  { key: 'ai', label: 'AI' },
+  { key: 'whatsapp', label: 'WhatsApp' },
+];
+
+type View = 'companies' | 'people' | 'days' | 'messages' | 'sent';
+
+/** The money a row is ranked by for the chosen cost type. */
+function amount(row: Totals, type: CostType): number {
+  return Number(type === 'ai' ? row.ai_cost_inr : type === 'whatsapp' ? row.whatsapp_cost_inr : row.total_cost_inr);
 }
 
-function when(iso: string | null): string {
-  return iso
-    ? new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' })
-    : '—';
+/** Does a row have anything of the chosen cost type? */
+function has(row: Totals, type: CostType): boolean {
+  return type === 'ai' ? row.ai_calls > 0 : type === 'whatsapp' ? row.whatsapp_messages > 0 : true;
 }
 
-function dayLabel(iso: string): string {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
-}
-
-const muted = { color: 'var(--neutral-500)', fontSize: '13px' } as const;
-const right = { textAlign: 'right' } as const;
-
-function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
-  return (
-    <div className="card">
-      <div style={muted}>{label}</div>
-      <div style={{ fontSize: '26px', fontWeight: 600, marginTop: 'var(--space-2)', color: 'var(--neutral-900)' }}>{value}</div>
-      {note && <div style={{ ...muted, marginTop: 'var(--space-1)' }}>{note}</div>}
-    </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section style={{ marginTop: 'var(--space-8)' }}>
-      <h2 style={{ fontSize: '16px', marginBottom: 'var(--space-3)' }}>{title}</h2>
-      <div className="table-container">{children}</div>
-    </section>
-  );
-}
-
-function Empty({ cols, text }: { cols: number; text: string }) {
-  return (
-    <tr>
-      <td colSpan={cols} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>
-        {text}
-      </td>
-    </tr>
-  );
+function rank<T extends Totals>(rows: T[], type: CostType): T[] {
+  return rows.filter((r) => has(r, type)).sort((a, b) => amount(b, type) - amount(a, type));
 }
 
 export default function Costs() {
   const [params, setParams] = useSearchParams();
-  const days = Number(params.get('days') || 7);
-  const organizationId = params.get('company');
+  // `days` is the older link form (Overview, company page): keep honouring it.
+  const period = params.get('period') || params.get('days') || '7';
+  const company = params.get('company');
+  const type = (params.get('type') as CostType) || 'all';
+  const q = params.get('q') || '';
+  const view = (params.get('view') as View) || (company ? 'people' : 'companies');
+  const from = period === 'custom' ? params.get('from') || indianDay(6) : indianDay(Number(period) - 1);
+  const to = period === 'custom' ? params.get('to') || indianDay(0) : indianDay(0);
+
   const [data, setData] = useState<CostsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [companies, setCompanies] = useState<CompanyOption[]>([]);
+  const [search, setSearch] = useState(q);
+
+  useEffect(() => setSearch(q), [q]);
 
   useEffect(() => {
-    setData(null);
+    setLoading(true);
     setError(null);
     api
-      .get<CostsResponse>('/admin/costs', {
-        params: { from: indianDay(days - 1), to: indianDay(0), organization_id: organizationId || undefined },
-      })
+      .get<CostsResponse>('/admin/costs', { params: { from, to, organization_id: company || undefined } })
       .then((res) => setData(res.data))
-      .catch((err) => setError(getErrorMessage(err, 'Could not load costs')));
-  }, [days, organizationId]);
+      .catch((err) => setError(getErrorMessage(err, 'Could not load costs')))
+      .finally(() => setLoading(false));
+  }, [from, to, company]);
+
+  useEffect(() => {
+    api
+      .get<CompanyOption[]>('/admin/organizations')
+      .then((res) => setCompanies([...res.data].sort((a, b) => a.name.localeCompare(b.name))))
+      .catch(() => setCompanies([]));
+  }, []);
 
   const set = (changes: Record<string, string | null>) => {
     const next = new URLSearchParams(params);
     for (const [key, value] of Object.entries(changes)) {
-      if (value === null) next.delete(key);
+      if (value === null || value === '') next.delete(key);
       else next.set(key, value);
     }
+    next.delete('days');
     setParams(next);
   };
 
-  const companyName = organizationId
-    ? (data?.by_company?.find((c) => c.organization_id === organizationId)?.organization_name ?? params.get('name') ?? 'This company')
+  // Search is applied as you type, kept in the URL a moment later.
+  useEffect(() => {
+    if (search === q) return;
+    const t = setTimeout(() => set({ q: search || null }), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  const companyName = company
+    ? (companies.find((c) => c.id === company)?.name ?? params.get('name') ?? 'This company')
     : null;
-  const totals = data?.totals;
+  const needle = search.trim().toLowerCase();
+  const digits = needle.replace(/\D/g, '');
+  const matches = (...texts: (string | null | undefined)[]) =>
+    !needle || texts.some((t) => (t ?? '').toLowerCase().includes(needle)) || (digits.length >= 3 && texts.some((t) => (t ?? '').replace(/\D/g, '').includes(digits)));
+
+  const lists = useMemo(() => {
+    if (!data) return null;
+    return {
+      companies: rank(data.by_company ?? [], type).filter((c) => matches(c.organization_name)),
+      people: rank(data.by_person ?? [], type).filter((p) => matches(p.full_name, p.phone, p.organization_name, p.phone === null ? 'not tied to a person' : '')),
+      days: (data.by_day ?? []).filter((d) => has(d, type)),
+      messages: type === 'whatsapp' ? [] : (data.messages ?? []).filter((m) => matches(m.text, m.sender, m.message_type)),
+      sent: type === 'ai' ? [] : (data.sent ?? []).filter((s) => matches(s.recipient, s.category)),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, type, needle]);
+
+  const tabs: { key: View; label: string; count?: number }[] = [
+    ...(company ? [] : [{ key: 'companies' as View, label: 'Companies', count: lists?.companies.length }]),
+    { key: 'people', label: 'People', count: lists?.people.length },
+    { key: 'days', label: 'Days', count: lists?.days.length },
+    ...(company
+      ? [
+          { key: 'messages' as View, label: 'Messages', count: lists?.messages.length },
+          { key: 'sent' as View, label: 'WhatsApp sent', count: lists?.sent.length },
+        ]
+      : []),
+  ];
+  const shownView = tabs.some((t) => t.key === view) ? view : tabs[0].key;
+  const filtered = period !== '7' || !!company || type !== 'all' || !!q;
+  const t = data?.totals;
+  const openCompany = (id: string, name: string) => set({ company: id, name, view: 'people' });
 
   return (
-    <div className="animate-fade-in" style={{ maxWidth: '1100px' }}>
-      <header style={{ marginBottom: 'var(--space-6)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-4)', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+    <div className="animate-fade-in cost-page">
+      <header className="cost-head">
         <div>
           <h1>{companyName ? `Costs · ${companyName}` : 'Costs'}</h1>
-          <p className="subtitle">
-            AI calls and WhatsApp messages, in rupees, before GST. Days are Indian days.
-            {companyName && (
-              <>
-                {' '}
-                <button
-                  onClick={() => set({ company: null, name: null })}
-                  style={{ background: 'none', border: 'none', padding: 0, color: 'var(--info)', cursor: 'pointer', fontSize: '14px' }}
-                >
-                  All companies
-                </button>
-              </>
-            )}
-          </p>
+          <p className="subtitle">AI calls and WhatsApp messages, in rupees before GST. Days are Indian days.</p>
         </div>
-        <select className="form-input" style={{ height: '36px', width: 'auto' }} value={days} onChange={(e) => set({ days: e.target.value })}>
-          {RANGES.map((r) => (
-            <option key={r.days} value={r.days}>
-              {r.label}
-            </option>
-          ))}
-        </select>
       </header>
 
-      {error && <p style={{ color: 'var(--error)' }}>{error}</p>}
-      {!error && !data && <p style={muted}>Loading…</p>}
+      {/* Filters */}
+      <section className="cost-filters" aria-label="Filters">
+        <div className="cost-filter-row">
+          <div className="seg cost-period" role="tablist" aria-label="Period">
+            {PERIODS.map((p) => (
+              <button
+                key={p.key}
+                role="tab"
+                aria-selected={period === p.key}
+                className={period === p.key ? 'on' : ''}
+                onClick={() => set(p.key === 'custom' ? { period: 'custom', from, to } : { period: p.key, from: null, to: null })}
+              >
+                {p.key === 'custom' && <CalendarRange size={13} />}
+                {p.label}
+              </button>
+            ))}
+          </div>
+          {period === 'custom' && (
+            <div className="cost-dates">
+              <input type="date" className="form-input" value={from} max={to} onChange={(e) => set({ from: e.target.value })} aria-label="From" />
+              <span>to</span>
+              <input type="date" className="form-input" value={to} min={from} max={indianDay(0)} onChange={(e) => set({ to: e.target.value })} aria-label="To" />
+            </div>
+          )}
+          {filtered && (
+            <button className="cost-clear" onClick={() => setParams(new URLSearchParams())}>
+              <X size={13} /> Clear filters
+            </button>
+          )}
+        </div>
+        <div className="cost-filter-row">
+          <select className="form-input cost-company" value={company ?? ''} onChange={(e) => set({ company: e.target.value || null, name: null, view: null })} aria-label="Company">
+            <option value="">All companies</option>
+            {companies.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <div className="cost-chips" role="radiogroup" aria-label="Cost type">
+            {TYPES.map((ty) => (
+              <button key={ty.key} role="radio" aria-checked={type === ty.key} className={`cost-chip${type === ty.key ? ' on' : ''}`} onClick={() => set({ type: ty.key === 'all' ? null : ty.key })}>
+                {ty.key === 'ai' && <Bot size={13} />}
+                {ty.key === 'whatsapp' && <MessageCircle size={13} />}
+                {ty.label}
+              </button>
+            ))}
+          </div>
+          <label className="cost-search">
+            <Search size={14} />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search a person, number or company" aria-label="Search" />
+            {search && (
+              <button onClick={() => setSearch('')} aria-label="Clear search">
+                <X size={13} />
+              </button>
+            )}
+          </label>
+        </div>
+      </section>
 
-      {totals && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: 'var(--space-4)' }}>
-          <Stat label="Total" value={inr(totals.total_cost_inr)} note={totals.unpriced ? `${totals.unpriced} call(s) with no price, not included` : undefined} />
-          <Stat label="AI" value={inr(totals.ai_cost_inr)} note={`${totals.ai_calls.toLocaleString('en-IN')} calls`} />
-          <Stat label="WhatsApp" value={inr(totals.whatsapp_cost_inr)} note={`${totals.whatsapp_messages.toLocaleString('en-IN')} messages sent`} />
+      {error && <div className="ov-error">{error}</div>}
+
+      {t && (
+        <div className="cc-kpis" style={{ opacity: loading ? 0.6 : 1 }}>
+          <button className={`cc-kpi cost-kpi${type === 'all' ? ' on' : ''}`} onClick={() => set({ type: null })}>
+            <span className="cc-kpi-label">
+              <Wallet size={14} /> Total
+            </span>
+            <span className="cc-kpi-value">{inr(t.total_cost_inr)}</span>
+            <span className="cc-kpi-sub">{t.unpriced ? `${t.unpriced} unpriced, not included` : `${from === to ? from : `${from} → ${to}`}`}</span>
+          </button>
+          <button className={`cc-kpi cost-kpi${type === 'ai' ? ' on' : ''}`} onClick={() => set({ type: 'ai' })}>
+            <span className="cc-kpi-label">
+              <Bot size={14} /> AI
+            </span>
+            <span className="cc-kpi-value">{inr(t.ai_cost_inr)}</span>
+            <span className="cc-kpi-sub">{full(t.ai_calls)} calls</span>
+          </button>
+          <button className={`cc-kpi cost-kpi${type === 'whatsapp' ? ' on' : ''}`} onClick={() => set({ type: 'whatsapp' })}>
+            <span className="cc-kpi-label">
+              <MessageCircle size={14} /> WhatsApp
+            </span>
+            <span className="cc-kpi-value">{inr(t.whatsapp_cost_inr)}</span>
+            <span className="cc-kpi-sub">{full(t.whatsapp_messages)} messages sent</span>
+          </button>
         </div>
       )}
 
-      {data?.by_company && (
-        <Section title="By company">
-          <table>
-            <thead>
-              <tr>
-                <th>Company</th>
-                <th style={right}>AI calls</th>
-                <th style={right}>AI</th>
-                <th style={right}>Messages</th>
-                <th style={right}>WhatsApp</th>
-                <th style={right}>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.by_company.length === 0 && <Empty cols={6} text="No costs in this period." />}
-              {data.by_company.map((c) => (
-                <tr key={c.organization_id ?? 'none'}>
-                  <td>
-                    {c.organization_id ? (
-                      <button
-                        onClick={() => set({ company: c.organization_id, name: c.organization_name ?? 'Deleted company' })}
-                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontWeight: 500, color: 'var(--neutral-900)', fontSize: '14px', textAlign: 'left' }}
-                      >
-                        {c.organization_name ?? 'Deleted company'}
-                      </button>
-                    ) : (
-                      <span style={muted}>No company yet (signups)</span>
-                    )}
-                  </td>
-                  <td style={right}>{c.ai_calls}</td>
-                  <td style={right}>{inr(c.ai_cost_inr)}</td>
-                  <td style={right}>{c.whatsapp_messages}</td>
-                  <td style={right}>{inr(c.whatsapp_cost_inr)}</td>
-                  <td style={{ ...right, fontWeight: 600 }}>{inr(c.total_cost_inr)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Section>
-      )}
+      {/* Views */}
+      <div className="wl-tabs cost-tabs" role="tablist">
+        {tabs.map((tab) => (
+          <button key={tab.key} role="tab" aria-selected={shownView === tab.key} className={shownView === tab.key ? 'on' : ''} onClick={() => set({ view: tab.key })}>
+            {tab.label}
+            {tab.count !== undefined && <span>{full(tab.count)}</span>}
+          </button>
+        ))}
+      </div>
 
-      {data && (
-        <Section title="By day">
-          <table>
-            <thead>
-              <tr>
-                <th>Day</th>
-                <th style={right}>AI calls</th>
-                <th style={right}>AI</th>
-                <th style={right}>Messages</th>
-                <th style={right}>WhatsApp</th>
-                <th style={right}>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.by_day.length === 0 && <Empty cols={6} text="No costs in this period." />}
-              {data.by_day.map((d) => (
-                <tr key={d.day}>
-                  <td>{dayLabel(d.day)}</td>
-                  <td style={right}>{d.ai_calls}</td>
-                  <td style={right}>{inr(d.ai_cost_inr)}</td>
-                  <td style={right}>{d.whatsapp_messages}</td>
-                  <td style={right}>{inr(d.whatsapp_cost_inr)}</td>
-                  <td style={{ ...right, fontWeight: 600 }}>{inr(d.total_cost_inr)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Section>
-      )}
-
-      {data?.messages && (
-        <Section title="Messages from this company (AI cost of handling each, newest 200)">
-          <table>
-            <thead>
-              <tr>
-                <th>Received</th>
-                <th>Message</th>
-                <th style={right}>AI calls</th>
-                <th style={right}>Tokens in / out</th>
-                <th style={right}>AI cost</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.messages.length === 0 && <Empty cols={5} text="No AI calls in this period." />}
-              {data.messages.map((m) => (
-                <tr key={m.correlation_id}>
-                  <td style={{ whiteSpace: 'nowrap' }}>{when(m.received_at)}</td>
-                  <td style={{ maxWidth: '380px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.text ?? ''}>
-                    {m.text || <span style={muted}>({m.message_type ?? 'message'})</span>}
-                    {m.sender && <span style={{ ...muted, marginLeft: 'var(--space-2)' }}>+{m.sender}</span>}
-                  </td>
-                  <td style={right}>{m.ai_calls}</td>
-                  <td style={right}>
-                    {m.input_tokens.toLocaleString('en-IN')} / {m.output_tokens.toLocaleString('en-IN')}
-                  </td>
-                  <td style={right}>
-                    {inr(m.ai_cost_inr)}
-                    {m.unpriced > 0 && <span style={muted} title="Calls with no price are not included"> +{m.unpriced}?</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Section>
-      )}
-
-      {data?.sent && (
-        <Section title="WhatsApp messages sent to this company (newest 200)">
-          <table>
-            <thead>
-              <tr>
-                <th>Sent</th>
-                <th>To</th>
-                <th>Category</th>
-                <th>Billed</th>
-                <th style={right}>Cost</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.sent.length === 0 && <Empty cols={5} text="No WhatsApp messages in this period." />}
-              {data.sent.map((s, i) => (
-                <tr key={`${s.sent_at}-${i}`}>
-                  <td style={{ whiteSpace: 'nowrap' }}>{when(s.sent_at)}</td>
-                  <td>{s.recipient ? `+${s.recipient}` : '—'}</td>
-                  <td>{s.category ?? '—'}</td>
-                  <td>{s.billable === null ? <span style={muted}>Not known yet</span> : s.billable ? 'Yes' : 'No (free)'}</td>
-                  <td style={right}>{inr(s.cost_inr)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Section>
+      {!data && !error && <p className="oc-empty">Loading…</p>}
+      {lists && (
+        <div style={{ opacity: loading ? 0.6 : 1, transition: 'opacity var(--transition-fast)' }}>
+          {shownView === 'companies' && <CompaniesView rows={lists.companies} type={type} onOpen={openCompany} />}
+          {shownView === 'people' && <PeopleView rows={lists.people} type={type} showCompany={!company} onOpenCompany={openCompany} />}
+          {shownView === 'days' && <DaysView rows={lists.days} type={type} />}
+          {shownView === 'messages' && <MessagesView rows={lists.messages} />}
+          {shownView === 'sent' && <SentView rows={lists.sent} />}
+          {shownView === 'people' && !company && (data?.by_person?.length ?? 0) >= 500 && (
+            <p className="oc-empty">Showing the 500 most expensive people. Pick a company to see all of its people.</p>
+          )}
+        </div>
       )}
     </div>
   );
