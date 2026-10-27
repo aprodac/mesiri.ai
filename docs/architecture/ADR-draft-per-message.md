@@ -571,3 +571,30 @@ does to the card, so the model's choice between "new" and "correction" cannot lo
   and reported, not fixed by invented translations.
 - Tests: `tests/unit/test_wa83_one_way_in.py`, two journey tests in `tests/unit/test_draft_tap_journey.py`.
 - Rollback: `git revert` (the menu rows apply to every company), or flag `draft_v2` off for the rest.
+
+
+## 17. Team and setup on WhatsApp (WA-84, W8 of the 27 Oct plan)
+
+Approved by Ilan on 27 Oct ("do the rest"). Draft mode routes the first two; the wording changes apply to everyone.
+
+- **Report time:** "report time 7 pm aakku" (`team_setup.report_time_asked`) asks SS-14's report-time question now
+  (`SetupQuestions.offer_report_time`): its 7 / 8 / 9 pm buttons, and the existing tap handler changes the send
+  deadline (one project or all). Nothing changes without the tap. **Only the owner (ADMIN)**, the dashboard's rule;
+  anyone else is told who can.
+- **Team list:** "ente team-il aarokke und?" lists who is on the sender's own projects
+  (`ProjectDetailQueryService.list_members`: the sender's company, their projects, removed users left out), the
+  rows the dashboard's Members tab shows any member. Read only.
+- **"Supervisor":** Mesiri has **no Supervisor role** (WA-67: the roles are Admin, Project Manager, Site Engineer,
+  Finance), and adding a person gives access to **every site** of the project (`site_access_mode = all_sites`).
+  Neither is changed here: a new role or a site-limited membership is a permission-model change (needs Alan's
+  approval). The card now says so: it names the project, says "Mesiri has no Supervisor role; Site Engineer is
+  the nearest", and "They will see every site of <project>, not only Site B".
+- **Yes / No cards:** every workflow's "Reply YES to confirm or NO to cancel." reads "Tap *Yes* to confirm, or
+  *No* to cancel." under its buttons (`render_workflow_run_reply_spec`, all companies); the model's own Manglish
+  echo ("Confirm cheyyan YES ennu reply cheyyuka") is filtered in draft mode. Moving these flows onto the draft
+  card (Save / Cancel) is still P3 of this ADR.
+- **Module switched off:** when nothing else was saved, the reply is the code's one line (not the model's English
+  retelling), swapped into Manglish for a Manglish sender.
+- **Wording:** the new Manglish / Malayalam lines in `reply_language.py` were drafted by Claude and are marked
+  PENDING the native review of WA-76.
+- Tests: `tests/unit/test_wa84_team_setup.py`. Rollback: `git revert` (wording), flag `draft_v2` off (routing).

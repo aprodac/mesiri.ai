@@ -89,6 +89,11 @@ ASK_TIME_SCOPE = "Use *{time}* for which projects?"
 REPORT_TIME_SET_FOR = "✅ Done. *{project}*'s daily report will go out by *{time}*."
 NO_MORE_SITES = "👍 Got it. Tell me any time you start a new site."
 EXPIRED = "That question has expired."
+#: WA-84: "report time 7 pm aakku" from someone who may not change it (the dashboard's rule).
+REPORT_TIME_OWNER_ONLY = "Only the company owner can change the daily report time. Ask them, or they can do it from the dashboard."
+#: WA-84: the times a report can go out at, said before the buttons.
+REPORT_TIME_PICK = "Tap *{time}* below to change it."
+REPORT_TIME_CHOICES = "The report can go out at 7 pm, 8 pm or 9 pm."
 
 _TIME_LABEL = {"19:00": "7 pm", "20:00": "8 pm", "21:00": "9 pm"}
 
@@ -245,6 +250,24 @@ class SetupQuestions:
             self._hint_key(actor.user_id), {"question": question}, ttl_seconds=_ASKED_TTL_SECONDS
         )
         await send(spec)
+
+    async def offer_report_time(self, actor: ActorIdentity, wanted: str | None) -> ReplySpec:
+        """WA-84: "report time 7 pm aakku" asks the report-time question of SS-14 now,
+        with its buttons; the tap changes it (``handle_tap``), so nothing changes
+        without one. Only the owner, as on the dashboard."""
+        if str(getattr(actor, "role", "") or "").strip().upper() != _OWNER_ROLE:
+            return ReplySpec(text=REPORT_TIME_OWNER_ONLY)
+        async with self._db.transaction() as conn:
+            spec = await self._question_spec(conn, actor.organization_id, rules.REPORT_TIME)
+        await self._redis.set_json(
+            self._hint_key(actor.user_id), {"question": rules.REPORT_TIME}, ttl_seconds=_ASKED_TTL_SECONDS
+        )
+        lead = (
+            REPORT_TIME_PICK.format(time=_time_label(wanted))
+            if wanted in rules.REPORT_TIMES
+            else REPORT_TIME_CHOICES
+        )
+        return ReplySpec(text=f"{spec.text}\n{lead}", buttons=spec.buttons)
 
     # -- answers ----------------------------------------------------------------
 

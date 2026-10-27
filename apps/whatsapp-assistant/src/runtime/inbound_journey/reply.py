@@ -25,6 +25,11 @@ async def _safe(coro: Awaitable[None]) -> None:
         _log.warning("logger call failed", exc_info=True)
 
 
+#: The workflows' own confirm line, and what it reads under Yes / No buttons (WA-84).
+REPLY_YES_LINE = "Reply YES to confirm or NO to cancel."
+TAP_YES_LINE = "Tap *Yes* to confirm, or *No* to cancel."
+
+
 def render_workflow_run_reply_spec(workflow_run: WorkflowRunResult) -> ReplySpec:
     """Turn a WorkflowRunResult into the ReplySpec it should be sent as --
     the one place that decides plain-text vs Yes/No buttons vs a tappable
@@ -51,12 +56,9 @@ def render_workflow_run_reply_spec(workflow_run: WorkflowRunResult) -> ReplySpec
         WorkflowRunStatus.STARTED,
         WorkflowRunStatus.BLOCKED_PENDING_CONFIRMATION,
     ):
-        return ReplySpec(
-            text=render_workflow_run_reply(
-                workflow_run, pending_prompt=workflow_run.pending_prompt
-            ),
-            buttons=CONFIRM_BUTTONS,
-        )
+        text = render_workflow_run_reply(workflow_run, pending_prompt=workflow_run.pending_prompt)
+        # WA-84: the line matches the buttons under it ("Reply YES" read as "type YES").
+        return ReplySpec(text=text.replace(REPLY_YES_LINE, TAP_YES_LINE), buttons=CONFIRM_BUTTONS)
 
     if workflow_run.status is WorkflowRunStatus.AWAITING_INPUT:
         text = render_workflow_run_reply(workflow_run, pending_prompt=workflow_run.pending_prompt)

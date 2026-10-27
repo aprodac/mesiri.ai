@@ -75,3 +75,32 @@ class ProjectDetailQueryService:
                 )
             ).scalar_one()
         return int(count)
+
+    async def list_members(self, *, organization_id: str, project_ids: list[str]) -> list[tuple[str, str, str]]:
+        """(project_id, full name, role) of the people on ``project_ids`` (WA-84: "ente
+        team-il aarokke und?"), read only, for the sender's own projects in their own
+        company -- the dashboard's Members tab shows the same rows to any member."""
+        import sqlalchemy as sa
+
+        try:
+            org = uuid.UUID(str(organization_id))
+            ids = [uuid.UUID(str(p)) for p in project_ids]
+        except (TypeError, ValueError):
+            return []
+        if not ids:
+            return []
+        async with self._db.transaction() as conn:
+            rows = (
+                await conn.execute(
+                    sa.text(
+                        "SELECT pm.project_id, u.full_name, pm.role FROM project_members pm "
+                        "JOIN projects p ON p.id = pm.project_id "
+                        "JOIN users u ON u.id = pm.user_id "
+                        "WHERE p.organization_id = :org AND pm.project_id = ANY(:ids) "
+                        "AND coalesce(u.status, 'active') NOT IN ('deleted', 'removed', 'disabled', 'inactive') "
+                        "ORDER BY u.full_name"
+                    ),
+                    {"org": org, "ids": ids},
+                )
+            ).all()
+        return [(str(r[0]), str(r[1] or "").strip() or "(no name)", str(r[2] or "")) for r in rows]

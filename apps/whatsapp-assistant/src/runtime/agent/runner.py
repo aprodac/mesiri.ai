@@ -443,6 +443,9 @@ class AgentRunner:
             hold = toolbox.site_hold_line()
             if hold and hold not in toolbox.system_lines:
                 toolbox.system_lines.append(hold)
+        if toolbox.module_off_line and not _entries(toolbox):
+            # WA-84 (live 27 Oct, M27): the model retold it in English to a Manglish sender.
+            return ReplySpec(text=toolbox.module_off_line)
         if toolbox.equipment_noted and not _entries(toolbox):
             # Request 104: the one plain line, whatever the model wrote.
             from .equipment import EQUIPMENT_LINE

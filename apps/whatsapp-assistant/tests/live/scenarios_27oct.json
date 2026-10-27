@@ -34,7 +34,7 @@
     "M20": {"shot": "07", "group": "D", "w": "W8", "what": "report time cannot be set"},
     "M21": {"shot": "07", "group": "A", "w": "W5", "what": "English reply to Manglish (report time)"},
     "M22": {"shot": "07", "group": "D", "w": "W8", "what": "cannot list the team"},
-    "M23": {"shot": "07", "group": "D", "w": "W8", "what": "'supervisor at Site B' becomes Site Engineer of 'this project'"},
+    "M23": {"shot": "07", "group": "D", "w": "W8", "what": "'supervisor at Site B' becomes Site Engineer of 'this project' (no Supervisor role exists: the card must say so, name the project and say the site does not limit access)"},
     "M24": {"shot": "07", "group": "D", "w": "W8", "what": "old 'Reply YES' card"},
     "M25": {"shot": "08", "group": "A", "w": "W4", "what": "'couldn't understand' gives no example"},
     "M26": {"shot": "08", "group": "C", "what": "'I only give join codes' canned line"},
@@ -219,10 +219,12 @@
       "title": "Team and setup (shots 07, 11) -- W8, needs its own approval; run to measure",
       "steps": [
         {"send": "report time 7 pm aakku",
-         "checks": [{"mark": "M20", "lacks_re": ["can't|cannot|pattilla|kazhiyilla"]}, {"mark": "M21", "has_re": ["{MANGLISH}"]}]},
-        {"send": "ente team-il aarokke und?", "checks": [{"mark": "M22", "lacks_re": ["join code", "pattilla", "can't", "sorry", "tharunnilla", "kazhiyilla"]}]},
+         "checks": [{"mark": "M20", "lacks_re": ["can't|cannot|pattilla|kazhiyilla"]}, {"mark": "M20", "buttons_has": ["7 pm"]},
+                    {"mark": "M21", "has_re": ["{MANGLISH}"]}]},
+        {"send": "ente team-il aarokke und?", "checks": [{"mark": "M22", "lacks_re": ["join code", "pattilla", "can't", "sorry", "tharunnilla", "kazhiyilla"]},
+                                                                                  {"mark": "M22", "has_re": ["team|nobody|aareyum"]}]},
         {"send": "Site B-il Rajesh-ine supervisor aakku",
-         "checks": [{"mark": "M23", "lacks_re": ["site engineer", "this project"]}, {"mark": "M24", "lacks_re": ["reply yes", "yes enn", "confirm cheyyan yes"]}]},
+         "checks": [{"mark": "M23", "lacks_re": ["this project"]}, {"mark": "M23", "has_re": ["supervisor role"]}, {"mark": "M24", "lacks_re": ["reply yes", "yes enn", "confirm cheyyan yes"]}]},
         {"tap_if": "No"},
         {"tap_if": "❌ Cancel"}
       ]

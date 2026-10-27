@@ -26,7 +26,12 @@ from .stale_questions import CLOSED
 
 _HEADER = re.compile(r"^\s*(?:✅\s*Saved|📝\s*(?:To close|To save|Send to engineer))", re.IGNORECASE)
 _BULLET = re.compile(r"^\s*[•\-\*▫️]\s")
-_REPLY_YES = re.compile(r"\breply\s+(?:yes|no)\b", re.IGNORECASE)
+_REPLY_YES = re.compile(
+    r"\breply\s+(?:yes|no)\b"
+    # WA-84 (live 27 Oct): "Confirm cheyyan YES ennu reply cheyyuka" -- the buttons say it.
+    r"|\byes\s+enn?u?\s+(?:reply|ayakk|type|para)|\bconfirm\s+cheyy\w*\s+yes\b",
+    re.IGNORECASE,
+)
 _OPTIONS = re.compile(r"\[\s*options\s*:[^\]]*\]?", re.IGNORECASE)
 #: "(closed: ...)" and notes written to the model, in brackets.
 _NOTE = re.compile(

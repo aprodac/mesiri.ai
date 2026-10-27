@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from channel.replies import ListRow, ReplySpec
+from channel.replies import ListRow, ReplySpec, is_module_disabled_reply
 from mesiri_ai.models import ToolOutcome
 from runtime.save_first import DRAFT_NOTE
 
@@ -366,6 +366,9 @@ class AgentToolbox:
     #: Request 104: the message is only about equipment, which WhatsApp does not
     #: record yet; its reply is the one plain line, never a Save.
     equipment_noted: bool = False
+    #: WA-84: a request for a module the company has switched off: the code's one line
+    #: is the reply (in the sender's language), not the model's English retelling of it.
+    module_off_line: str = ""
     #: The last reply offered to ask their engineer, so a bare "yes" asks it.
     engineer_offered: bool = False
     #: Request 88: lines the system adds under the model's words, from the
@@ -1013,6 +1016,8 @@ class AgentToolbox:
         self._carry_after = []
 
     def _outcome(self, name: str, step: StepResult) -> ToolOutcome:
+        if step.status == "info" and is_module_disabled_reply(step.text or ""):
+            self.module_off_line = (step.text or "").split("\n\n", 1)[0]
         if step.status == NOT_A_CORRECTION:
             return ToolOutcome(
                 content={

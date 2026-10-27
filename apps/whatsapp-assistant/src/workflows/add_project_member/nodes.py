@@ -23,6 +23,8 @@ default applies when nothing is added via the dashboard either.
 
 from __future__ import annotations
 
+import re
+
 from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
 from mesiri_contracts.common.ids import new_id
@@ -75,12 +77,22 @@ def request_confirmation(state: WorkflowGraphState) -> dict:
     localization/templates/AI generation here (see workflows/material/nodes.py)."""
     draft: DraftActionV2 = state["draft_action"]
     member_name = draft.fields.get("member_name")
-    role = ROLE_DISPLAY.get(str(draft.fields.get("role") or ""), "Site Engineer")
+    code = str(draft.fields.get("role") or "")
+    role = ROLE_DISPLAY.get(code, "Site Engineer")
+    # WA-84 (live 27 Oct): "Site B-il Rajesh-ine supervisor aakku" read "Add Rajesh to this
+    # project as Site Engineer": which project, why that role, and that the site named
+    # does not limit what they see were all unsaid. Shown only; the draft is unchanged.
+    said = dict(state.get("collected_fields") or {})
+    project = str(said.get("project_label") or "").strip()
     lines = [
         "*Confirm this action?*",
         "",
-        f"👤 Add *{member_name}* to this project as *{role}*",
-        "",
-        "Reply YES to confirm or NO to cancel.",
+        f"👤 Add *{member_name}* to {f'*{project}*' if project else 'this project'} as *{role}*",
     ]
+    if code == "SITE_ENGINEER" and re.search(r"supervis|maistr|mestri|foreman", str(said.get("role_said") or ""), re.I):
+        lines.append("(Mesiri has no Supervisor role; Site Engineer is the nearest.)")
+    site = str(said.get("site_said") or "").strip()
+    if site:
+        lines.append(f"They will see every site of {project or 'the project'}, not only {site}.")
+    lines += ["", "Reply YES to confirm or NO to cancel."]
     return {"pending_prompt": "\n".join(lines)}

@@ -600,6 +600,22 @@ def build_message_handlers(
             _log.warning("draft_v2.setting_unreadable user=%s", ctx.user_id, exc_info=True)
             return False
 
+    async def _team_or_setup_reply(text: str, ctx):  # type: ignore[no-untyped-def]
+        """WA-84: a ReplySpec for "report time 7 pm aakku" / "ente team-il aarokke und?",
+        or None for anything else."""
+        from runtime import team_setup
+
+        asked, wanted = team_setup.report_time_asked(text)
+        if asked and setup_questions is not None:
+            return await setup_questions.offer_report_time(ctx, wanted)
+        if team_setup.is_team_question(text) and project_detail_query is not None:
+            projects = team_setup.project_names(ctx)
+            rows = await project_detail_query.list_members(
+                organization_id=str(ctx.organization_id), project_ids=list(projects)
+            )
+            return ReplySpec(text=team_setup.team_text(rows, projects))
+        return None
+
     async def _run_journey_steps(message, raw_payload, retry_of_id, timer) -> None:  # type: ignore[no-untyped-def]
         wa_id = message.sender.wa_id
 
@@ -2676,6 +2692,19 @@ def build_message_handlers(
         # the tool-calling model, which runs the workflows directly. Everything
         # above (taps, YES/NO, UNDO, menu, signup, slot answers) had its turn.
         if agent_provider is not None and _agent_reads(message):
+            if message.modality is InputModality.TEXT and await _draft_v2_on(ctx):
+                # WA-84: the report time and "who is on my team?" are answered by code
+                # (the setup question with its buttons; a read of the sender's projects).
+                try:
+                    setup_reply = await _team_or_setup_reply(message.text or "", ctx)
+                except Exception:  # noqa: BLE001 -- the model reads the message instead
+                    _log.exception("team_setup.failed user=%s", ctx.user_id)
+                    setup_reply = None
+                if setup_reply is not None:
+                    await _send_composed(wa_id, ctx.user_id, setup_reply)
+                    await message_logger.log_reply(correlation_id=message.correlation_id, reply=setup_reply.text)
+                    await message_logger.mark_completed(correlation_id=message.correlation_id)
+                    return
             # WA-45: the day's first message from someone with several sites
             # waits for "Where are you working today?".
             morning = None

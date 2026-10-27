@@ -103,9 +103,23 @@ class ChangeEntry(EntryScope):
             return scoped
         new_person = bool(fields.pop("new_person", False))
         phone = str(fields.pop("whatsapp_number", "") or "").strip() or None
+        # WA-84: shown on the card only (the workflow's draft keeps name, role and who
+        # asked): which project, the role word they used, the site they named.
+        site_said = str(fields.get("site_name") or "").strip()
         for key in SCOPE_KEYS:
             fields.pop(key, None)
         fields["created_by_role"] = role
+        fields["project_label"] = next(
+            (
+                str(p.name)
+                for p in getattr(self.actor, "projects", None) or []
+                if str(p.id) in (str(scoped.project_id), str(scoped.context_project or ""))
+            ),
+            "",
+        )
+        fields["role_said"] = str(fields.get("role") or "")
+        if site_said:
+            fields["site_said"] = site_said
         ready = self.ready(scoped, message, E.ADD_PROJECT_MEMBER_REQUESTED, K.ADD_PROJECT_MEMBER, fields)
 
         from workflows.entities import Ambiguous, Resolved

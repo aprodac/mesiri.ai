@@ -294,6 +294,11 @@ _FIXED_REPLIES: dict[str, dict[str, str]] = {
             "തെറ്റാണെങ്കിൽ UNDO എന്ന് മറുപടി നൽകൂ."
         ),
         "❌ Discarded. Nothing was recorded.": "❌ ഒഴിവാക്കി. ഒന്നും രേഖപ്പെടുത്തിയിട്ടില്ല.",
+        # WA-84 (27 Oct): drafted by Claude, PENDING the native review of WA-76.
+        "Want it at a different time?": "വേറെ സമയം വേണോ?",
+        "The report can go out at 7 pm, 8 pm or 9 pm.": "റിപ്പോർട്ട് 7 pm, 8 pm അല്ലെങ്കിൽ 9 pm-ന് അയയ്ക്കാം.",
+        "Your team:": "നിങ്ങളുടെ ടീം:",
+        "Tap *Yes* to confirm, or *No* to cancel.": "ശരിയാണെങ്കിൽ *Yes* തൊടൂ, വേണ്ടെങ്കിൽ *No*.",
         "Cancelled. Nothing was recorded.": "റദ്ദാക്കി. ഒന്നും രേഖപ്പെടുത്തിയിട്ടില്ല.",
         "That request was already handled.": "ഇത് നേരത്തെ തന്നെ കൈകാര്യം ചെയ്തു.",
         "⚠️ I couldn't save that just now, so nothing was recorded. Please send it again.": (
@@ -360,7 +365,41 @@ _FIXED_ALIASES = {"ml": "malayalam", "hi": "hindi"}
 #: (Manglish), who would not read the native-script tables above as easily.
 _MANGLISH_REPLIES: dict[str, str] = {
     "❌ Okay, nothing saved. Send it again whenever you're ready.": "❌ Sheri, onnum save cheythilla. Ready aakumbol veendum ayakku.",
+    # WA-84 (27 Oct): the team / setup lines. Drafted by Claude, PENDING the native review of WA-76.
+    "Want it at a different time?": "Vere samayam venamo?",
+    **{
+        f"Your daily report goes out by *{t}*.": f"Daily report *{t}*-inu munpu pokum."
+        for t in ("7 pm", "8 pm", "9 pm")
+    },
+    "The report can go out at 7 pm, 8 pm or 9 pm.": "Report 7 pm, 8 pm allenkil 9 pm-nu ayakkaam.",
+    **{f"Tap *{t}* below to change it.": f"Maattaan thazhe *{t}* tap cheyyu." for t in ("7 pm", "8 pm", "9 pm")},
+    "Only the company owner can change the daily report time. Ask them, or they can do it from the dashboard.": (
+        "Daily report samayam company owner-inu mathrame maattan pattoo. Avarodu parayu, allenkil "
+        "avarkku dashboard-il maattaam."
+    ),
+    "Your team:": "Ningalude team:",
+    "Nobody is added to your projects yet.": "Ningalude project-il ippo aareyum add cheythittilla.",
+    "Tap *Yes* to confirm, or *No* to cancel.": "Sheriyaanenkil *Yes* tap cheyyu, venda enkil *No*.",
+    "(Mesiri has no Supervisor role; Site Engineer is the nearest.)": (
+        "(Mesiri-il Supervisor role illa; athinu aduthathu Site Engineer aanu.)"
+    ),
 }
+
+
+#: WA-84: channel.replies.render_module_disabled_reply, for a Manglish sender (drafted by
+#: Claude 27 Oct, PENDING the native review of WA-76). The module's name stays as the app shows it.
+_MODULE_OFF = re.compile(
+    r"(?P<name>[A-Z][\w ]+?) (?:aren't|isn't) switched on for your company yet, so I didn't record this\. "
+    r"Ask (?P<who>the Mesiri team|your admin) to turn (?:them|it) on\."
+)
+
+
+def _module_off_manglish(found: re.Match) -> str:
+    who = "Mesiri team-inodu" if found.group("who") == "the Mesiri team" else "ningalude admin-inodu"
+    return (
+        f"{found.group('name')} ningalude company-kku ippo on cheythittilla, athukondu ithu record cheythilla. "
+        f"{who} on aakkan parayu."
+    )
 
 
 def _is_manglish_sender(language: str | None, script: str | None) -> bool:
@@ -431,7 +470,7 @@ def localize_fixed_reply(text: str, language: str | None, script: str | None = N
     if normalized and text and _is_manglish_sender(language, script):
         for english, manglish in _MANGLISH_REPLIES.items():
             text = text.replace(english, manglish)
-        return text
+        return _MODULE_OFF.sub(_module_off_manglish, text)
     if not normalized or not text or normalize_script(script) == "latin":
         return text
     key = normalized.lower()
