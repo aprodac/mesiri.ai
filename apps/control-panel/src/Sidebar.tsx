@@ -1,91 +1,38 @@
-// SA-19: the control panel's sidebar, grouped by the job each screen does,
-// with the signed-in admin and Sign out at the bottom.
+// SA-19 / SA-20: the control panel's sidebar -- the Mesiri logo, "Jump to"
+// (⌘K, see CommandPalette), the screens grouped by the job they do, and the
+// signed-in admin with Sign out.
 
+import { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import type { LucideIcon } from 'lucide-react';
-import {
-  Building2,
-  Cpu,
-  Database,
-  FlaskConical,
-  Funnel,
-  GitBranch,
-  IndianRupee,
-  LayoutDashboard,
-  ListChecks,
-  ListOrdered,
-  LogOut,
-  MessageSquareReply,
-  ScrollText,
-  Settings,
-  Stamp,
-  Tags,
-  Timer,
-  Users,
-} from 'lucide-react';
+import { LogOut, Search } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { clearToken } from './api';
-
-interface Item {
-  to: string;
-  label: string;
-  icon: LucideIcon;
-}
-
-const GROUPS: { label: string | null; items: Item[] }[] = [
-  { label: null, items: [{ to: '/', label: 'Overview', icon: LayoutDashboard }] },
-  {
-    label: 'Customers',
-    items: [
-      { to: '/organizations', label: 'Companies', icon: Building2 },
-      { to: '/trials', label: 'Trials', icon: Funnel },
-      { to: '/branding-requests', label: 'Branding requests', icon: Stamp },
-    ],
-  },
-  {
-    label: 'WhatsApp',
-    items: [
-      { to: '/logs', label: 'Assistant Logs', icon: ScrollText },
-      { to: '/replies', label: 'Reply Insights', icon: MessageSquareReply },
-      { to: '/test-message', label: 'Test Message', icon: FlaskConical },
-    ],
-  },
-  {
-    label: 'Money & speed',
-    items: [
-      { to: '/costs', label: 'Costs', icon: IndianRupee },
-      { to: '/perf', label: 'Performance', icon: Timer },
-      { to: '/queue-health', label: 'Queue Health', icon: ListOrdered },
-    ],
-  },
-  {
-    label: 'AI & data',
-    items: [
-      { to: '/providers', label: 'AI Providers', icon: Cpu },
-      { to: '/workflows', label: 'Workflows', icon: ListChecks },
-      { to: '/semantic-types', label: 'Semantic Types', icon: Tags },
-      { to: '/system-graph', label: 'System Graph', icon: GitBranch },
-      { to: '/database', label: 'Database', icon: Database },
-    ],
-  },
-  {
-    label: 'Admin',
-    items: [
-      { to: '/users', label: 'Superadmins', icon: Users },
-      { to: '/settings', label: 'Settings', icon: Settings },
-    ],
-  },
-];
+import CommandPalette from './CommandPalette';
+import { NAV_GROUPS } from './navigation';
+import mark from './assets/mesiri-mark.svg';
 
 export default function Sidebar() {
   const { me } = useAuth();
   const navigate = useNavigate();
-  const initials = (me?.name || 'Admin')
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const name = me?.name || 'Super admin';
+  const initials = name
     .split(' ')
     .map((w) => w[0])
     .join('')
     .slice(0, 2)
     .toUpperCase();
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const signOut = () => {
     clearToken();
@@ -94,24 +41,26 @@ export default function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="logo-container">
-        <div className="logo-icon">
-          <Building2 size={17} />
-        </div>
-        <div>
-          <div className="logo-text">Mesiri</div>
-          <div className="logo-sub">Control panel</div>
-        </div>
+      <div className="sb-brand">
+        <img src={mark} alt="" className="sb-mark" />
+        <span className="sb-word">mesiri</span>
+        <span className="sb-env">Control</span>
       </div>
 
+      <button className="sb-search" onClick={() => setPaletteOpen(true)}>
+        <Search size={14} />
+        <span>Jump to…</span>
+        <kbd>⌘K</kbd>
+      </button>
+
       <nav className="sb-nav" aria-label="Control panel">
-        {GROUPS.map((group) => (
+        {NAV_GROUPS.map((group) => (
           <div key={group.label ?? 'home'} className="sb-group">
             {group.label && <div className="sb-label">{group.label}</div>}
             {group.items.map(({ to, label, icon: Icon }) => (
               <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
-                <Icon size={16} strokeWidth={1.9} />
-                {label}
+                <Icon size={16} strokeWidth={1.75} />
+                <span>{label}</span>
               </NavLink>
             ))}
           </div>
@@ -120,14 +69,16 @@ export default function Sidebar() {
 
       <div className="sb-user">
         <span className="sb-avatar">{initials}</span>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div className="sb-user-name">{me?.name || 'Super admin'}</div>
+        <div className="sb-user-text">
+          <div className="sb-user-name">{name}</div>
           <div className="sb-user-role">Super admin</div>
         </div>
         <button className="sb-signout" onClick={signOut} title="Sign out" aria-label="Sign out">
-          <LogOut size={16} />
+          <LogOut size={15} />
         </button>
       </div>
+
+      {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
     </aside>
   );
 }
