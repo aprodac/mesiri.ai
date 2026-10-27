@@ -73,6 +73,15 @@ const ENABLED_MODULES_KEY = 'enabled_modules';
 // new setting shipped server-side can't silently render as the wrong control.
 const ROLE_LIST_SETTINGS = new Set(['whatsapp_material_create_roles']);
 
+// On/off switches. Same save-and-show-back pattern as the Modules card; the
+// backend enforces superadmin for draft_v2, this only exposes the control.
+const BOOLEAN_SETTINGS = new Set(['draft_v2']);
+
+const BOOLEAN_CONFIRM: Record<string, string> = {
+  draft_v2:
+    "Changes how this company's WhatsApp updates are saved. Turn on for test companies first.",
+};
+
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: 'Admin',
   PROJECT_MANAGER: 'Project manager',
@@ -225,6 +234,27 @@ export default function OrganizationDetail() {
           prev ? { ...prev, settings: { ...prev.settings, [key]: current } } : prev
         );
       })
+      .finally(() => setSavingSetting(null));
+  };
+
+  const handleToggleBoolean = (key: string, enabled: boolean) => {
+    if (!id || !orgSettings) return;
+    if (!window.confirm(`${BOOLEAN_CONFIRM[key] ?? 'Change this setting?'}\n\nTurn ${key} ${enabled ? 'ON' : 'OFF'}?`)) {
+      return;
+    }
+    setSavingSetting(key);
+    setSettingsError(null);
+    api
+      .put<{ key: string; value: boolean }>(`/admin/organizations/${id}/settings`, {
+        key,
+        value: enabled,
+      })
+      .then((res) =>
+        setOrgSettings((prev) =>
+          prev ? { ...prev, settings: { ...prev.settings, [key]: res.data.value } } : prev
+        )
+      )
+      .catch((err) => setSettingsError(err.response?.data?.detail || `Failed to save ${key}`))
       .finally(() => setSavingSetting(null));
   };
 
@@ -743,6 +773,24 @@ export default function OrganizationDetail() {
                         </label>
                       ))}
                     </div>
+                  ) : BOOLEAN_SETTINGS.has(spec.key) ? (
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '13px',
+                        cursor: savingSetting === spec.key ? 'wait' : 'pointer',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={(value ?? spec.default) === true}
+                        disabled={savingSetting === spec.key}
+                        onChange={(e) => handleToggleBoolean(spec.key, e.target.checked)}
+                      />
+                      {(value ?? spec.default) === true ? 'On' : 'Off'}
+                    </label>
                   ) : (
                     <code style={{ fontSize: '12px' }}>{JSON.stringify(value)}</code>
                   )}
