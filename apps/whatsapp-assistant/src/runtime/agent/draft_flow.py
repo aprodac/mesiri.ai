@@ -738,7 +738,9 @@ async def answer_typed(gw: Any, draft: dr.MessageDraft, text: str) -> ReplySpec 
         draft.items[draft.items.index(item)] = new
         await _persist(gw, draft)
         _log.info("draft.amount_answered draft=%s state=%s", draft.id, new.state)
-        said = f"{item.args.get('quantity')} {item.args.get('unit')} = {amount:g} {item.answer_unit}."
+        asked = draft_answer._number(str(item.args.get("quantity") or ""))
+        shown = lambda n: format(n.normalize(), "f")  # noqa: E731 -- 20.0 -> "20", 2.4E+2 -> "240"
+        said = f"{shown(asked)} {item.args.get('unit')} = {shown(amount)} {item.answer_unit}." if asked is not None else ""
         return dr.card_reply(draft, said if new.state == dr.OK else "", site=_card_site(gw, draft))
     return None
 

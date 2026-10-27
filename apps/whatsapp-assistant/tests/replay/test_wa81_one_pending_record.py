@@ -164,6 +164,7 @@ async def test_steel_in_rods_keeps_its_site_and_the_typed_kg_makes_it_a_line_to_
     assert card is not None
     (item,) = await open_items(two)
     assert item.state == dr.OK and "240 kg" in item.summary
+    assert card.text.startswith("20 rod = 240 kg.")
     lines = [ln for ln in card.text.splitlines() if ln.strip().startswith("•") or "Steel" in ln]
     assert len([ln for ln in lines if "Steel" in ln]) == 1
     assert "✅ Save" in titles(card)
