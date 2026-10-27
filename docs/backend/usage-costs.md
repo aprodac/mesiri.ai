@@ -76,6 +76,11 @@ Use `PostgresUsageCostRepository` (`infrastructure/postgres/repositories/usage_c
   (Indian calendar days), `costs_by_company`, and for one company `costs_by_inbound_message`
   and `whatsapp_messages_sent`. Rows with no price are counted as `unpriced`. WhatsApp rows
   have no `correlation_id`, so a reply's cost can't be tied to the message that caused it.
+- **What each person cost (SA-22)**, `costs_by_person` (`by_person` in `GET /admin/costs`
+  for one company, the company page's Costs tab): AI rows by the sender of the message they
+  handled, WhatsApp rows by recipient, matched on the last 10 digits of the number to the
+  company's users. Rows with no number are one "not tied to a person" row, so the rows add
+  up to the company's total.
 - **The control panel's Reply Insights page (SA-17)**, `GET /admin/replies`,
   `/admin/replies/messages` and `/admin/replies/messages/{correlation_id}/calls`, read through
   `PostgresReplyUsageRepository` (`repositories/reply_usage.py`): each inbound message's reply
