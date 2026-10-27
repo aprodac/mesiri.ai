@@ -888,14 +888,7 @@ class AgentToolbox:
         every check of that tool runs again; the card is then shown again."""
         gateway = self.gateway
         if self.draft_mode:
-            # P2 builds the edit. Until then no change is claimed that was not made.
-            return StepResult(
-                "info",
-                text=(
-                    "Changing a line of the card is not possible yet, so nothing was changed. Tell them to "
-                    "tap Cancel on the card and send it again with the right figures."
-                ),
-            )
+            return await self._update_draft(args)
         open_card = getattr(gateway, "open_card", None)
         card = await open_card() if open_card is not None else None
         if card is None:
@@ -946,6 +939,49 @@ class AgentToolbox:
             "error", text="The change did not go through and the old entry could not be put back: they need to send it again."
         )
 
+    async def _update_draft(self, args: dict[str, Any]) -> StepResult:
+        """Request 127 (P2): a correction under draft cards. On the open card the
+        line is edited in place; on a card they already saved it becomes a
+        'Change ...' line on a new card, saved by tap. The reply is built from
+        what this returns: a change is claimed only when it was made."""
+        gateway = self.gateway
+        changes = args.get("changes")
+        if not isinstance(changes, dict) or not [v for v in changes.values() if v is not None]:
+            return StepResult("error", text="No change was given, so nothing was changed.")
+        from .actions import ACTION_FACT
+        from .draft import DRAFT_TOOLS
+
+        draft = await gateway.open_draft()
+        draft = draft if draft is not None and draft.live else None
+        saved = await gateway.saved_card()
+        wanted = str(args.get("card_id") or "").strip().lower()
+        # Which card they mean: the saved one when its id was passed (or there is no
+        # open card), else the open one.
+        on_saved = saved is not None and (draft is None or wanted == saved.id)
+        if draft is None and saved is None:
+            return StepResult("info", text="There is no card of theirs to change, so nothing was changed.")
+        lines = saved.items if on_saved else draft.items
+        try:
+            index = int(args.get("item_index"))
+        except (TypeError, ValueError):
+            index = 1 if len(lines) == 1 else 0
+        if not 1 <= index <= len(lines):
+            return StepResult("error", text="That item is not on the card, so nothing was changed.")
+        target = lines[index - 1]
+        refused = target.tool not in DRAFT_TOOLS or (
+            target.fact_type == ACTION_FACT if on_saved else (target.pending_answer or not target.ready)
+        )
+        if refused:
+            return StepResult("error", text="That line cannot be changed this way, so nothing was changed.")
+        unknown = sorted(set(changes) - _tool_fields(target.tool))
+        if unknown:
+            return StepResult(
+                "error", text=f"{', '.join(unknown)} cannot be changed on this kind of entry, so nothing was changed."
+            )
+        if on_saved:
+            return await gateway.change_saved_item(target, changes)
+        return await gateway.edit_draft_item(draft, target, changes)
+
     def _carry_after_flush(self) -> None:
         self.saved.extend(self._carry_after)
         self._carry_after = []
@@ -978,18 +1014,23 @@ class AgentToolbox:
             line = step.summary or ""
             self.saved.append(SavedItem(name, line, line))
             self._carry_after_flush()
+            if step.text and step.text != "already on the card" and step.text not in self.system_lines:
+                # Request 127: an old-style Yes / No question still waits: said under the reply.
+                self.system_lines.append(step.text)
             if step.awaiting == "answer":
-                return ToolOutcome(
-                    content={
-                        "status": "waiting_for_answer",
-                        "on_card": line,
-                        "instruction": (
-                            "Nothing is saved. A question about this is on the card, with buttons. Say in "
-                            "one short line what you understood and ask them to answer it and tap Save. "
-                            "Never say it is saved, written or noted."
-                        ),
-                    }
-                )
+                content = {
+                    "status": "waiting_for_answer",
+                    "on_card": line,
+                    "instruction": (
+                        "Nothing is saved. A question about this is on the card, with buttons: do not "
+                        "write the question yourself. Say in one short line what you understood and ask "
+                        "them to answer it on the card, then tap Save. Never say it is saved, written or noted."
+                    ),
+                }
+                if step.hint:
+                    # How a typed answer is taken (the entry's own words).
+                    content["if_they_type_the_answer"] = step.hint
+                return ToolOutcome(content=content)
             return ToolOutcome(
                 content={
                     "status": "waiting_for_save",

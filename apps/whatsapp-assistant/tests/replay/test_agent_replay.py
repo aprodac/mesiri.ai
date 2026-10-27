@@ -157,6 +157,11 @@ class World:
     settle: Any = None
     #: The labour entry's workforce reads (``find_existing_report_for_day``...).
     workforce: Any = None
+    #: Request 127: the sender's latest card (``CardStore``), the undo of saved
+    #: entries (``undo_facts``) and a waiting old-style Yes / No question.
+    cards: Any = None
+    undo_facts: Any = None
+    pending_confirmation: Any = None
 
     def message(self, text: str, modality: InputModality = InputModality.TEXT) -> NormalizedMessage:
         media = None
@@ -231,6 +236,9 @@ class World:
             confirm_now=lambda: self.handler.confirm_now(self.actor.user_id, actor=self.actor),
             settle_facts=self.settle,
             transaction=getattr(self.drafts, "transaction", None),
+            cards=self.cards,
+            undo_facts=self.undo_facts,
+            pending_confirmation=self.pending_confirmation,
         )
 
     def context(self, turns: tuple[Turn, ...] = (), **kw: Any) -> AgentContext:

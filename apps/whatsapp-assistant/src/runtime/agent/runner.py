@@ -947,6 +947,10 @@ def _without_echoed_questions(text: str, toolbox: AgentToolbox, *, saved_list: b
         for item in toolbox.saved
         if item.summary and item.summary.startswith(QUESTION_PREFIX)
     }
+    if (draft := _open_draft(toolbox)) is not None:
+        # Request 127: a question the card shows (❓ ...) is said once: the model's
+        # own copy of it in the words above went out as the same sentence twice.
+        asked |= {_normalized(i.question) for i in draft.waiting_items if i.question}
     spoken = _normalized(toolbox.user_text)
     if not text:
         return text

@@ -27,8 +27,11 @@ def first_name(full_name: str | None) -> str:
     return parts[0] if parts else ""
 
 
-def render_line(name: str, site: str | None, results: dict[str, Any] | None) -> str | None:
-    """The line from search results, or None when there is nothing worth saying."""
+def render_line(
+    name: str, site: str | None, results: dict[str, Any] | None, labour: dict[str, Any] | None = None
+) -> str | None:
+    """The line from search results (and the day's labour count, request 127),
+    or None when there is nothing worth saying."""
     who = ", ".join(p for p in (name, site) if p)
     if not who:
         return None
@@ -40,6 +43,9 @@ def render_line(name: str, site: str | None, results: dict[str, Any] | None) -> 
             work.append(label)
         if len(work) == _MAX_ITEMS:
             break
+    headcount = int((labour or {}).get("headcount") or 0)
+    if headcount:
+        work.append(f"{headcount} {'worker' if headcount == 1 else 'workers'}")
     if not work:
         return f"Today so far: {who}. Nothing saved yet today."
     return f"Today so far: {who}. Saved today: {', '.join(work)}."
@@ -57,22 +63,29 @@ async def build_today_line(
     timezone_name: str | None = None,
     timeout: float = TIMEOUT_SECONDS,
     site_id: str | None = None,
+    labour_query_service: Any | None = None,
 ) -> str | None:
     """Never raises; None when the service is missing, slow or fails.
-    ``site_id``: the site a sender with several chose for today (SIT-10)."""
+    ``site_id``: the site a sender with several chose for today (SIT-10).
+    ``labour_query_service``: adds the day's saved headcount (request 127: the
+    line said "nothing saved" for a day with 8 workers counted)."""
     if activity_search_service is None or actor is None or not getattr(actor, "organization_id", None):
         return None
     sites = list(getattr(actor, "sites", None) or [])
     site = sites[0] if len(sites) == 1 else _chosen(sites, site_id)
     try:
-        today = today_for(timezone_name)
-        results = await asyncio.wait_for(
-            activity_search_service.search(
+        from runtime.agent.project_day import period_for, read_period
+
+        # The one read helper: the project's today, the same scope and rules as
+        # "what was done today?" and "how many workers today?".
+        read = await asyncio.wait_for(
+            read_period(
                 organization_id=actor.organization_id,
                 project_id=getattr(site, "project_id", None),
                 site_id=getattr(site, "id", None),
-                start_date=today,
-                end_date=today,
+                period=period_for("today", today_for(timezone_name)),  # type: ignore[arg-type]
+                activity_search=activity_search_service,
+                labour_query=labour_query_service,
                 # WA-77: the agent sees what was sent, saved or not.
                 include_unsaved=True,
             ),
@@ -81,7 +94,9 @@ async def build_today_line(
     except Exception:  # noqa: BLE001 -- context is a nicety, never load-bearing
         logger.debug("today_context.skipped", exc_info=True)
         return None
-    return render_line(first_name(getattr(actor, "full_name", None)), getattr(site, "name", None), results)
+    return render_line(
+        first_name(getattr(actor, "full_name", None)), getattr(site, "name", None), read["work"], read["labour"]
+    )
 
 
 #: At most this many materials in the stock line, largest stock first.

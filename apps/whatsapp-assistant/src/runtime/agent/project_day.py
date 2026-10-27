@@ -67,35 +67,81 @@ def day_label(day: dt.date, today: dt.date) -> str:
     return f"yesterday ({short})" if day == today - dt.timedelta(days=1) else short
 
 
-def resolve_period(
-    date_range: str | None,
-    day: object,
-    name: str | None,
-    now: dt.datetime | None = None,
-) -> tuple[dt.date, dt.date, str] | None:
-    """WRK-03 / MAT-03: the dates a work-log or material question is about, in
-    the project's own zone: (first day, last day, label). ``day`` is the
-    tool's ``date`` ("yesterday", "day before yesterday", an ISO date) and
-    wins over ``date_range``. None when the question names no period (the
-    caller answers as before: all-time stock, or today for the work log)."""
-    from canonicalization.occurred_date import parse_stated_date
-
-    today = project_today(name, now)
-    if day not in (None, ""):
-        stated = parse_stated_date(day, today=today)
-        if stated is not None:
-            return stated, stated, day_label(stated, today)
-    key = str(date_range or "").strip().lower()
+def period_for(bucket: str | None, today: dt.date) -> tuple[dt.date, dt.date, str] | None:
+    """(first day, last day, label) of a named period on the project's calendar,
+    from the project's ``today``; None for a bucket that names none. The ONE
+    place that says what "yesterday" or "last week" is (request 127, P2)."""
+    key = str(bucket or "").strip().lower()
+    monday = today - dt.timedelta(days=today.weekday())
     if key == "today":
         return today, today, "today"
     if key == "yesterday":
         yesterday = today - dt.timedelta(days=1)
         return yesterday, yesterday, day_label(yesterday, today)
     if key == "this_week":
-        return week_start(name, now), today, "this week"
+        return monday, today, "this week"
     if key == "last_week":
-        start = week_start(name, now) - dt.timedelta(days=7)
+        start = monday - dt.timedelta(days=7)
         return start, start + dt.timedelta(days=6), "last week"
     if key == "this_month":
         return today.replace(day=1), today, "this month"
     return None
+
+
+def resolve_period(
+    date_range: str | None,
+    day: object,
+    name: str | None,
+    now: dt.datetime | None = None,
+    *,
+    today: dt.date | None = None,
+) -> tuple[dt.date, dt.date, str] | None:
+    """WRK-03 / MAT-03: the dates a work-log, labour or material question is
+    about, in the project's own zone: (first day, last day, label). ``day`` is
+    the tool's ``date`` ("yesterday", "day before yesterday", an ISO date) and
+    wins over ``date_range``. None when the question names no period (the
+    caller answers as before: all-time stock, or today for the work log).
+    ``today`` is for a caller that already holds the sender's day."""
+    from canonicalization.occurred_date import parse_stated_date
+
+    today = today or project_today(name, now)
+    if day not in (None, ""):
+        stated = parse_stated_date(day, today=today)
+        if stated is not None:
+            return stated, stated, day_label(stated, today)
+    return period_for(date_range, today)
+
+
+async def read_period(
+    *,
+    organization_id: str,
+    project_id: str | None,
+    site_id: str | None,
+    period: tuple[dt.date, dt.date, str],
+    activity_search: object | None = None,
+    labour_query: object | None = None,
+    work_type: str | None = None,
+    trade: str | None = None,
+    include_unsaved: bool = False,
+) -> dict:
+    """The day's (or period's) figures for one site scope, read the one way:
+    the work log with its open issues, and the labour headcount, both for the
+    same dates and scope. Used by "how many workers today?", "what was done
+    today?", "yesterday ...", the "today so far" line. A part whose service is
+    missing is left out (None). Read-only."""
+    start, end, label = period
+    scope = {"organization_id": organization_id, "project_id": project_id, "site_id": site_id}
+    work = None
+    if activity_search is not None:
+        extra = {"include_unsaved": True} if include_unsaved else {}
+        work = await activity_search.search(  # type: ignore[attr-defined]
+            **scope, start_date=start, end_date=end, work_type=work_type, **extra
+        )
+        work["date_range_label"] = label
+    labour = None
+    if labour_query is not None:
+        labour = await labour_query.summarize_attendance(  # type: ignore[attr-defined]
+            **scope, start_date=start, end_date=end, trade=trade
+        )
+        labour["date_range_label"] = label
+    return {"label": label, "work": work, "labour": labour}

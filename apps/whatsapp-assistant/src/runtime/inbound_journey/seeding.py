@@ -32,9 +32,6 @@ from runtime.inventory_query import MaterialInventoryQueryService
 from runtime.labour_query_service import (
     LabourQueryService,
 )
-from runtime.labour_query_service import (
-    resolve_date_range as resolve_labour_date_range,
-)
 from runtime.money_account_query import MoneyAccountQueryService
 from runtime.org_settings_query import OrganizationSettingsQueryService
 from runtime.project_detail_query import ProjectDetailQueryService
@@ -472,20 +469,23 @@ async def _seed_labour_query(
     # canonicalization/occurred_date.py exists to close. Asking "how many
     # workers today" at 2am in India must not answer for yesterday. The
     # timezone comes from resolved context (ActorIdentity doesn't carry one).
+    # Request 127 (P2): the day or period is the project's own, and the figures
+    # come from the one read helper (runtime/agent/project_day.py), the same
+    # one "what was done today?" and the "today so far" line read through.
+    from runtime.agent.project_day import period_for, read_period, resolve_period
+
     today = today_for(timezone_name)
-    start_date, end_date, date_range_label = resolve_labour_date_range(
-        event.fields.get("date_range"), today=today
-    )
-    results = await labour_query_service.summarize_attendance(
+    period = resolve_period(event.fields.get("date_range"), event.fields.get("date"), timezone_name, today=today)
+    period = period or period_for("today", today)
+    read = await read_period(
         organization_id=actor.organization_id,
         project_id=event.project_id,
         site_id=event.site_id,
-        start_date=start_date,
-        end_date=end_date,
+        period=period,
+        labour_query=labour_query_service,
         trade=event.fields.get("trade"),
     )
-    results["date_range_label"] = date_range_label
-    event.fields["labour_results"] = results
+    event.fields["labour_results"] = read["labour"]
 
 
 async def _seed_activity_search(
@@ -494,6 +494,7 @@ async def _seed_activity_search(
     activity_search_service: ActivitySearchService | None,
     actor: ActorIdentity | None,
     timezone_name: str | None,
+    labour_query_service: LabourQueryService | None = None,
 ) -> None:
     """Answer #17 "what did I log / any open issues" before the graph runs --
     same shape and reasoning as _seed_labour_query above. Only ever runs for
@@ -508,27 +509,29 @@ async def _seed_activity_search(
     if decision.workflow_key is not WorkflowKey.ACTIVITY_QUERY:
         return
 
-    # WRK-03: a named day or period ("yesterday") is the project's own; the
-    # labour resolver below only knows today / this week / this month and
-    # would answer "yesterday" with today.
-    from runtime.agent.project_day import resolve_period
+    # WRK-03: a named day or period ("yesterday") is the project's own.
+    # Request 127 (P2): read through the one helper (project_day.read_period),
+    # which also brings the day's labour -- "what was done today?" left out
+    # the 8 workers counted for the day. Not when the question is about one
+    # kind of work: labour is not part of that answer.
+    from runtime.agent.project_day import period_for, read_period, resolve_period
 
-    period = resolve_period(event.fields.get("date_range"), event.fields.get("date"), timezone_name)
-    if period is not None:
-        start_date, end_date, date_range_label = period
-    else:
-        start_date, end_date, date_range_label = resolve_labour_date_range(
-            event.fields.get("date_range"), today=today_for(timezone_name)
-        )
-    results = await activity_search_service.search(
+    today = today_for(timezone_name)
+    period = resolve_period(event.fields.get("date_range"), event.fields.get("date"), timezone_name, today=today)
+    period = period or period_for("today", today)
+    work_type = event.fields.get("work_type")
+    read = await read_period(
         organization_id=actor.organization_id,
         project_id=event.project_id,
         site_id=event.site_id,
-        start_date=start_date,
-        end_date=end_date,
-        work_type=event.fields.get("work_type"),
+        period=period,
+        activity_search=activity_search_service,
+        labour_query=None if work_type else labour_query_service,
+        work_type=work_type,
     )
-    results["date_range_label"] = date_range_label
+    results = read["work"]
+    if read["labour"] and read["labour"].get("headcount"):
+        results["labour"] = read["labour"]
     event.fields["activity_search_results"] = results
 
 

@@ -862,6 +862,7 @@ def build_message_handlers(
                     actor,
                     timezone_name=project_zone_name(getattr(actor, "timezone", None)),
                     site_id=await _today_site_id(actor),
+                    labour_query_service=labour_query_service,
                 )
 
             async def _stock_context_line(actor):  # type: ignore[no-untyped-def]
@@ -902,8 +903,18 @@ def build_message_handlers(
 
                 if use_drafts:
                     from runtime.agent import draft as draft_card
+                    from runtime.agent.cards import SAVED as _SAVED
 
-                    return draft_card.context_line(await drafts.open_for(actor.organization_id, actor.user_id))
+                    open_line = draft_card.context_line(await drafts.open_for(actor.organization_id, actor.user_id))
+                    # Request 127: their latest SAVED card too, so a correction on it is
+                    # made as a change line, never answered with "can't change".
+                    saved = await cards.get(actor)
+                    saved_line = (
+                        draft_card.saved_context_line([i.summary for i in saved.items], saved.id)
+                        if saved is not None and saved.state == _SAVED
+                        else None
+                    )
+                    return "\n".join(line for line in (open_line, saved_line) if line) or None
                 return context_line(await cards.get(actor))
 
             async def _open_issues(scoped):  # type: ignore[no-untyped-def]
@@ -925,6 +936,12 @@ def build_message_handlers(
                     return spec.text
                 await _send_composed(msg.sender.wa_id, ctx.user_id, spec)
                 return ""
+
+            async def _pending_confirmation() -> str | None:
+                """The prompt of an old-style Yes / No question still waiting for
+                this sender (a member to add, an expense...), or None."""
+                waiting = await workflow_runtime.get_awaiting_confirmation(ctx.user_id)
+                return (waiting.state.pending_prompt or None) if waiting is not None else None
 
             def _gateway(msg, language):  # type: ignore[no-untyped-def]
                 early["gateway"] = JourneyGateway(
@@ -1051,6 +1068,7 @@ def build_message_handlers(
                         organization_id=str(ctx.organization_id), user_id=ctx.user_id, facts=facts, keep=True
                     ),
                     transaction=shared_transaction,
+                    pending_confirmation=_pending_confirmation,
                     sender=sender,
                 )
                 return early["gateway"]

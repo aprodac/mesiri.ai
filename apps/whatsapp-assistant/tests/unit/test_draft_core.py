@@ -98,9 +98,12 @@ def test_a_draft_expires_with_the_card():
     assert draft.expired(draft.updated + dr.DRAFT_TTL_SECONDS + 1)
 
 
-def test_the_model_is_told_nothing_is_written_and_a_card_edit_is_not_yet_possible():
-    line = dr.context_line(_draft(_item("Cement in: 50 bags")))
-    assert "nothing is written" in line and "1. Cement in: 50 bags" in line and "tap Cancel" in line
+def test_the_model_is_told_nothing_is_written_and_how_to_change_a_line():
+    draft = _draft(_item("Cement in: 50 bags"))
+    line = dr.context_line(draft)
+    assert "nothing is written" in line and "1. Cement in: 50 bags" in line
+    # Request 127 (P2): a line is changed through the tool, never by the model's own words.
+    assert f"update_pending_card with card_id {draft.id[:6]}" in line and "only when the tool says so" in line
     assert dr.context_line(None) is None
     assert dr.context_line(_draft(_item("", dr.UNREADABLE, label="x"))) is None
 

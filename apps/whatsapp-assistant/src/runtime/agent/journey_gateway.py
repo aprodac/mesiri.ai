@@ -259,6 +259,9 @@ class JourneyGateway:
     settle_facts: Callable[[list[Any]], Awaitable[Any]] | None = None
     #: ``() -> async context manager``: one transaction for the whole Save.
     transaction: Callable[[], Any] | None = None
+    #: ``() -> text | None``: the Yes / No question of an old-style workflow that
+    #: still waits for its answer (request 127: said, not silently ignored).
+    pending_confirmation: Callable[[], Awaitable[Any]] | None = None
     #: The WhatsApp sender, for the pending actions a Save runs (actions.run).
     sender: Any | None = None
 
@@ -334,6 +337,23 @@ class JourneyGateway:
 
         return await draft_flow.cancel(self, draft)
 
+    async def edit_draft_item(self, draft: Any, item: Any, changes: dict[str, Any]) -> StepResult:
+        """A correction of a line of the open card (request 127)."""
+        from . import draft_flow
+
+        return await draft_flow.edit_item(self, draft, item, changes, text=self.message.text or "")
+
+    async def change_saved_item(self, card_item: CardItem, changes: dict[str, Any]) -> StepResult:
+        """A correction of an entry already saved: a change line on the card."""
+        from . import draft_flow
+
+        return await draft_flow.change_saved(self, card_item, changes, text=self.message.text or "")
+
+    async def saved_card(self) -> Card | None:
+        from . import draft_flow
+
+        return await draft_flow.saved_card(self) if self.draft_mode else None
+
     async def answer_draft(self, draft: Any, item_id: str, choice: int) -> ReplySpec:
         from . import draft_flow
 
@@ -376,10 +396,12 @@ class JourneyGateway:
         if self.set_today_site is None:
             return
         try:
+            from .work_site import SITE_UPDATE_ACTIONS
+
             confirmed = getattr(handled.result, "confirmed_action", None)
             draft = confirmed.draft_action if confirmed is not None else None
             site_id = getattr(draft, "site_id", None)
-            if site_id:
+            if site_id and getattr(draft, "action_type", None) in SITE_UPDATE_ACTIONS:
                 if self.get_today_site is not None:
                     current = await self.get_today_site()
                     if current and str(current) != str(site_id):
