@@ -136,7 +136,7 @@ export default function CreateCompany({ onClose, onCreated, onOpen }: Props) {
             <label htmlFor="cc-name">Company name</label>
             <input id="cc-name" required className="form-input" placeholder="e.g. Skyline Builders" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+          <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
             <div className="form-group">
               <label htmlFor="cc-owner">Owner name</label>
               <input id="cc-owner" required className="form-input" placeholder="e.g. Ravi Kumar" value={ownerName} onChange={(e) => setOwnerName(e.target.value)} />
@@ -199,7 +199,7 @@ export default function CreateCompany({ onClose, onCreated, onOpen }: Props) {
             </button>
           </div>
           {showLogin && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginTop: 'var(--space-3)' }}>
+            <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginTop: 'var(--space-3)' }}>
               <div className="form-group">
                 <label htmlFor="cc-email">Owner email</label>
                 <input id="cc-email" type="email" className="form-input" placeholder="ravi@skyline.in" value={email} onChange={(e) => setEmail(e.target.value)} />

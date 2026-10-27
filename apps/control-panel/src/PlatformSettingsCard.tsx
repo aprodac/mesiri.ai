@@ -78,7 +78,7 @@ export default function PlatformSettingsCard() {
         Apply to every company. Changes are recorded in the audit log.
       </p>
       <form onSubmit={saveTrial}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+        <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
           <div className="form-group">
             <label htmlFor="trial-days">Free trial length (days)</label>
             <input id="trial-days" type="number" min={1} max={365} required className="form-input" value={trial.trial_days} onChange={(e) => setTrial({ ...trial, trial_days: Number(e.target.value) })} />

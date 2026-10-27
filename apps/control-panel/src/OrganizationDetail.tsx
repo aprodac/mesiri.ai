@@ -378,11 +378,11 @@ export default function OrganizationDetail() {
 
   return (
     <div className="animate-fade-in" style={{ maxWidth: '1200px' }}>
-      <Link to="/organizations" className="btn-secondary" style={{ display: 'inline-flex', marginBottom: 'var(--space-6)' }}>
+      <Link to="/organizations" className="btn-secondary od-back" style={{ display: 'inline-flex', marginBottom: 'var(--space-6)' }}>
         <ArrowLeft size={16} /> Back to Companies
       </Link>
 
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 'var(--space-6)' }}>
+      <header className="od-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 'var(--space-6)' }}>
         <div>
           <h1>{org.name}</h1>
           <p className="subtitle">
@@ -395,7 +395,7 @@ export default function OrganizationDetail() {
             </span>
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+        <div className="od-actions" style={{ display: 'flex', gap: 'var(--space-2)' }}>
           <button className="btn-secondary" onClick={() => setEditingDetails(true)}>
             <Pencil size={16} /> Edit details
           </button>
@@ -408,7 +408,7 @@ export default function OrganizationDetail() {
             <Sparkles size={16} /> {seeding ? 'Seeding…' : 'Seed Finance Data'}
           </button>
           <button
-            className="btn-secondary"
+            className="btn-secondary od-danger"
             style={{ color: 'var(--error)', borderColor: 'var(--error)' }}
             onClick={() => setShowDeleteModal(true)}
             disabled={deleting}
@@ -430,7 +430,7 @@ export default function OrganizationDetail() {
       <PlanCard orgId={org.id} onStatus={showStatus} />
 
       <div className="card" style={{ marginBottom: 'var(--space-6)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: 'var(--space-4)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(140px, 100%), 1fr))', gap: 'var(--space-4)' }}>
           <div>
             <div style={{ fontSize: '12px', color: 'var(--neutral-500)' }}>Database Route</div>
             <div style={{ fontFamily: 'monospace', fontSize: '13px' }}>{org.db_route}</div>
@@ -450,7 +450,7 @@ export default function OrganizationDetail() {
         </div>
       </div>
 
-      <nav style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)', borderBottom: '1px solid var(--border-strong)' }}>
+      <nav className="od-tabs" style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)', borderBottom: '1px solid var(--border-strong)' }}>
         {(['users', 'activity', 'settings', 'letterhead'] as Tab[]).map((t) => (
           <button
             key={t}
@@ -478,7 +478,7 @@ export default function OrganizationDetail() {
             <Plus size={16} /> Add user
           </button>
         </div>
-        <div className="table-container">
+        <div className="table-container od-wide">
           <table>
             <thead>
               <tr>
@@ -572,11 +572,68 @@ export default function OrganizationDetail() {
             </tbody>
           </table>
         </div>
+
+        {/* SA-21: on a phone, one card per user with every field and action. */}
+        <div className="od-cards">
+          {users.length === 0 && <p className="od-cards-empty">No users in this organization.</p>}
+          {users.map((u) => {
+            const isInactive = (u.status || 'active').toLowerCase() === 'inactive';
+            return (
+              <div key={u.id} className="od-card">
+                <div className="od-card-top">
+                  <div style={{ minWidth: 0 }}>
+                    <div className="od-card-name">{u.full_name || '—'}</div>
+                    <div className="od-card-sub" style={{ textTransform: 'capitalize' }}>{(u.role || '').toLowerCase().replace('_', ' ')}</div>
+                  </div>
+                  <span className={`badge ${statusBadgeClass(u.status || 'active')}`} style={{ textTransform: 'capitalize', whiteSpace: 'nowrap' }}>
+                    {u.status || 'active'}
+                  </span>
+                </div>
+                <dl className="od-card-fields">
+                  <dt>Email</dt>
+                  <dd>{u.email || '—'}</dd>
+                  <dt>WhatsApp</dt>
+                  <dd>{u.whatsapp_number || 'Not mapped'}</dd>
+                  <dt>Access</dt>
+                  <dd>
+                    {u.access_mode === 'all_projects'
+                      ? 'All projects'
+                      : u.project_access.length === 0
+                        ? 'No projects assigned'
+                        : u.project_access.map((g) => `${g.project_name} — ${g.site_access}`).join(', ')}
+                  </dd>
+                </dl>
+                <div className="od-card-actions">
+                  <button className="btn-secondary" onClick={() => setEditingUser(u)}>
+                    Edit access
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    onClick={() => handleUpdateUserStatus(u, isInactive ? 'active' : 'inactive')}
+                    disabled={updatingUserId === u.id}
+                  >
+                    {updatingUserId === u.id ? 'Updating…' : isInactive ? 'Reactivate' : 'Deactivate'}
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    style={{ color: 'var(--error)' }}
+                    onClick={() => handleDeleteUser(u)}
+                    disabled={deletingUserId === u.id}
+                    aria-label={`Remove ${u.full_name || u.email || 'user'}`}
+                  >
+                    <X size={14} /> {deletingUserId === u.id ? 'Removing…' : 'Remove'}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
         </>
       )}
 
       {tab === 'activity' && (
-        <div className="table-container">
+        <>
+        <div className="table-container od-wide">
           <table>
             <thead>
               <tr>
@@ -602,6 +659,19 @@ export default function OrganizationDetail() {
             </tbody>
           </table>
         </div>
+        <div className="od-cards">
+          {timeline.length === 0 && <p className="od-cards-empty">No activity recorded yet.</p>}
+          {timeline.map((entry) => (
+            <div key={entry.id} className="od-card od-card-compact">
+              <div className="od-card-top">
+                <span className="badge badge-info" style={{ whiteSpace: 'nowrap' }}>{entry.event_type}</span>
+                <span className="od-card-sub">{new Date(entry.occurred_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span>
+              </div>
+              <div className="od-card-text">{entry.summary}</div>
+            </div>
+          ))}
+        </div>
+        </>
       )}
 
       {tab === 'letterhead' && <BrandingPanel orgId={org.id} />}
@@ -792,7 +862,7 @@ export default function OrganizationDetail() {
                       {(value ?? spec.default) === true ? 'On' : 'Off'}
                     </label>
                   ) : (
-                    <code style={{ fontSize: '12px' }}>{JSON.stringify(value)}</code>
+                    <pre className="od-json">{JSON.stringify(value, null, 2)}</pre>
                   )}
                 </div>
               );

@@ -24,7 +24,8 @@ function Step({ label, done, title }: { label: string; done: boolean; title: str
 
 export default function SetupSteps({ setup }: { setup: Setup }) {
   return (
-    <span style={{ whiteSpace: 'nowrap' }}>
+    // Each tick stays whole; the row wraps when it runs out of room (phones).
+    <span style={{ display: 'inline-flex', flexWrap: 'wrap', rowGap: 4, whiteSpace: 'nowrap' }}>
       <Step label="Team" done={setup.has_team} title={setup.has_team ? 'Has people besides the owner' : 'Only the owner so far'} />
       <Step label="Site" done={setup.has_site} title={setup.has_site ? 'Has a site' : 'No site yet'} />
       <Step
