@@ -508,3 +508,4 @@ Structural drawings become the list of what has to be built (`location_nodes` + 
 | 2026-10-27 | SA-19 control panel look: dark grouped sidebar with Sign out; Overview on one screen | `a34ce2e6`, `5d6730df` |
 | 2026-10-27 | SA-20 control panel design system (logo, Geist, stone palette, inset canvas, ⌘K) and redrawn Overview | `9cf80494` |
 | 2026-10-27 | SA-21 control panel on phones (top bar, bottom tabs, slide-in menu, every screen fits 375px) | `c289bb69` |
+| 2026-10-27 | Request 126 control panel: draft_v2 On/Off switch on company Settings tab | `23580f5` |
