@@ -72,6 +72,9 @@ KIND_ISSUE_OPEN = "issue_open"
 #: A pending action of request 104 (engineer question, day's conditions, issues to
 #: close): it keeps its own store, the draft holds its id and runs it on Save.
 KIND_ACTION = "action"
+#: A correction of something already saved (request 127, P2): the Save tap takes
+#: the saved entry back and writes the corrected one, in the one transaction.
+KIND_CHANGE = "change"
 
 #: The tools that add to a draft, and what kind of item each makes.
 KIND_BY_TOOL = {
@@ -115,11 +118,21 @@ class DraftItem:
     site: str = ""
     #: ``action`` only: the id of the pending action (runtime/agent/actions.py).
     action_id: str = ""
+    #: ``change`` only: the saved entry it replaces (``fact_type``, ``fact_id``
+    #: of its card item, and its tool arguments as saved).
+    target: dict[str, Any] | None = None
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
 
     @property
     def line(self) -> str:
         return self.summary or self.label
+
+    @property
+    def pending_answer(self) -> bool:
+        """A line that waits on a question and cannot be saved or edited until
+        it is answered (its tool is called again with the answer): no prepared
+        event behind it and no buttons of its own."""
+        return self.state == NEEDS_ANSWER and self.ready is None and not self.options
 
     def to_json(self) -> dict[str, Any]:
         return asdict(self)
@@ -141,6 +154,7 @@ class DraftItem:
                 site_id=str(raw.get("site_id") or ""),
                 site=str(raw.get("site") or ""),
                 action_id=str(raw.get("action_id") or ""),
+                target=raw.get("target") if isinstance(raw.get("target"), dict) else None,
                 id=str(raw.get("id") or uuid.uuid4().hex[:8]),
             )
         except Exception:  # noqa: BLE001 -- an unreadable item is no item
@@ -340,13 +354,18 @@ def card_text(draft: MessageDraft, *, site: str | None = None) -> str:
     """The whole draft as one card: a line per ready item (under "To save:"),
     each open question, and what could not be read."""
     ready = draft.ready_items
+    asking = [i for i in draft.waiting_items if i.pending_answer]
     sites = {i.site_id or i.site for i in draft.items if i.state != UNREADABLE and (i.site_id or i.site)}
     show_site = len(sites) > 1
     parts: list[str] = []
-    if ready:
+    if ready or asking:
         header = f"{TO_SAVE_HEADER[:-1]} · {site}:" if site and not show_site else TO_SAVE_HEADER
-        parts.append(render_saved([_line(i, show_site=show_site) for i in ready], header))
-    parts.extend(f"❓ {i.question}" for i in draft.waiting_items)
+        # Request 127: an item waiting for its answer is a line of the card, with
+        # its question beside it ("Steel used: 20 rod (❓ how many kg?)").
+        lines = [_line(i, show_site=show_site) for i in ready]
+        lines += [f"{_line(i, show_site=show_site)} (❓ {i.question})" for i in asking]
+        parts.append(render_saved(lines, header))
+    parts.extend(f"❓ {i.question}" for i in draft.waiting_items if not i.pending_answer)
     if draft.unreadable_items:
         parts.append(CANT_READ + "; ".join(i.label or i.summary or i.tool for i in draft.unreadable_items))
     return "\n".join(parts)
@@ -360,7 +379,7 @@ def card_rows(draft: MessageDraft) -> list[ListRow]:
         rows.append(ListRow(tap_id(SAVE, draft.id), SAVE_TITLE))
     if draft.live:
         rows.append(ListRow(tap_id(CANCEL, draft.id), CANCEL_TITLE))
-    asking = next(iter(draft.waiting_items), None)
+    asking = next((i for i in draft.waiting_items if not i.pending_answer), None)
     if asking is not None:
         rows.extend(
             ListRow(tap_id(ANSWER, draft.id, asking.id, str(n)), option)
@@ -383,9 +402,25 @@ def context_line(draft: MessageDraft | None) -> str | None:
         return None
     listed = "; ".join(f"{n}. {i.line}" for n, i in enumerate(draft.items, 1) if i.state != UNREADABLE)
     return (
-        f"Their open card (Save / Cancel not tapped yet, nothing is written): {listed}. What you save now is "
-        "added to it. An item on it cannot be changed or removed by you yet: if they want a change, tell "
-        "them to tap Cancel on the card and send it again; undo_last cancels the whole card."
+        f"Their open card {draft.id[:6]} (Save / Cancel not tapped yet, nothing is written): {listed}. What you "
+        "save now is added to it. If they correct a figure on it ('alla, 8 mason aanu'), call "
+        f"update_pending_card with card_id {draft.id[:6]}, the item's number and only the fields that change: "
+        "the card is shown again with the change. Say a change was made only when the tool says so. "
+        "undo_last cancels the whole card."
+    )
+
+
+def saved_context_line(items: list[str], card_id: str) -> str | None:
+    """What the model is told about the sender's latest SAVED card (request 127):
+    its lines, and that a correction on one is a new card with a change line,
+    which they save by tap."""
+    if not items:
+        return None
+    listed = "; ".join(f"{n}. {text}" for n, text in enumerate(items, 1))
+    return (
+        f"Their latest saved card {card_id}: {listed}. If they correct a figure on it ('alla, 5 mason aanu'), call "
+        f"update_pending_card with card_id {card_id}, the item's number and only the fields that change: it shows a "
+        "'Change ...' card that they save by tap; nothing changes before that. undo_last removes the saved card."
     )
 
 
@@ -427,7 +462,7 @@ def duplicate_of(draft: MessageDraft, item: DraftItem) -> DraftItem | None:
     """The item already on the draft that this one repeats exactly (the same
     tool, scope and arguments): the model calling twice for one part."""
     for other in draft.items:
-        if other.tool == item.tool and other.site_id == item.site_id and other.args == item.args:
+        if other.kind == item.kind and other.tool == item.tool and other.site_id == item.site_id and other.args == item.args:
             return other
     return None
 
@@ -451,3 +486,84 @@ def same_day_labour(draft: MessageDraft, item: DraftItem) -> DraftItem | None:
         None,
     )
 
+
+
+# -- a correction of something already saved (request 127, P2) ------------------
+
+
+def _worker_label(line: dict[str, Any]) -> str:
+    return str(line.get("name") or "").strip() or trade_label(line.get("trade")).lower() or "worker"
+
+
+def _worker_key(line: dict[str, Any]) -> str:
+    from .cards import _worker_key as key
+
+    return key(line)
+
+
+def worker_moves(old: dict[str, Any], new: dict[str, Any]) -> str:
+    """"mason 6 → 5, electrician 0 → 2": the trades whose figure differs
+    between the saved entry's arguments and the corrected ones."""
+    before = {_worker_key(w): w for w in _lines(old.get("workers"))}
+    moves: list[str] = []
+    for line in _lines(new.get("workers")):
+        was = before.pop(_worker_key(line), None)
+        a, b = (_headcount(was) if was else 0), _headcount(line)
+        if a != b:
+            moves.append(f"{_worker_label(line)} {a} → {b}")
+    return ", ".join(moves)
+
+
+def change_line(
+    tool: str,
+    old_args: dict[str, Any],
+    new_args: dict[str, Any],
+    *,
+    old_summary: str,
+    new_summary: str,
+    site: str = "",
+    day: str = "today",
+) -> str:
+    """The one card line of a correction: "Change today's labour at Green Villa:
+    mason 6 → 5 (total 7)"; any other kind reads "Change <saved line> → <new line>"."""
+    where = f" at {site}" if site else ""
+    if tool == SAVE_LABOUR:
+        when = "today's labour" if day in ("", "today") else f"labour for {day}"
+        total = sum(_headcount(w) for w in _lines(new_args.get("workers")))
+        moves = worker_moves(old_args, new_args) or "details"
+        return f"Change {when}{where}: {moves} (total {total})"
+    return f"Change{where}: {old_summary} → {new_summary}"
+
+
+def change_for(draft: MessageDraft, fact_id: str) -> DraftItem | None:
+    """The correction already on the card for this saved entry, if any."""
+    return next(
+        (i for i in draft.items if i.kind == KIND_CHANGE and (i.target or {}).get("fact_id") == fact_id), None
+    )
+
+
+# -- a question that waits on its answer, as a line of the card (request 127) -----
+
+
+def waiting_line(tool: str, args: dict[str, Any]) -> str:
+    """The card line of a call that could not become an item yet because the
+    system asked something first: "Steel used: 20 rod", "Cement in: 50 bags"."""
+    what = label_for(tool, args)
+    material = str(args.get("material") or "").strip()
+    if tool in (SAVE_MATERIAL_RECEIPT, SAVE_MATERIAL_USAGE) and material:
+        rest = " ".join(
+            str(p) for p in (args.get("quantity"), args.get("unit")) if p not in (None, "")
+        )
+        word = "in" if tool == SAVE_MATERIAL_RECEIPT else "used"
+        return f"{material.capitalize()} {word}: {rest}".rstrip(": ") if rest else f"{material.capitalize()} {word}"
+    return what
+
+
+def waiting_for(draft: MessageDraft, item: DraftItem) -> DraftItem | None:
+    """The line waiting on an answer that this item answers: the same kind of
+    entry (and, for material, the same material)."""
+    material = str(item.args.get("material") or "").strip().casefold()
+    same = [i for i in draft.items if i.pending_answer and i.kind == item.kind]
+    named = [i for i in same if material and str(i.args.get("material") or "").strip().casefold() == material]
+    # "Which material?" is answered with another name: then the only waiting line of its kind is it.
+    return named[0] if named else (same[0] if len(same) == 1 else None)

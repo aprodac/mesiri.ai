@@ -285,7 +285,12 @@ class QueryEntry(EntryScope):
         elif key is K.LABOUR_QUERY:
             seeds = [s._seed_labour_query(event, decision, self.labour_query_service, actor, timezone)]
         elif key is K.ACTIVITY_QUERY:
-            seeds = [s._seed_activity_search(event, decision, self.activity_search_service, actor, timezone)]
+            seeds = [
+                s._seed_activity_search(
+                    event, decision, self.activity_search_service, actor, timezone,
+                    labour_query_service=self.labour_query_service,
+                )
+            ]
         elif key is K.DPR_REQUEST:
             seeds = [
                 s._seed_dpr_request(
@@ -323,6 +328,8 @@ class QueryEntry(EntryScope):
                 _log.warning("query_entry.seed_failed correlation_id=%s key=%s", message.correlation_id, key.value, exc_info=True)
         if key is K.LABOUR_QUERY:
             _one_name_per_trade(event.fields.get("labour_results"))
+        elif key is K.ACTIVITY_QUERY:
+            _one_name_per_trade((event.fields.get("activity_search_results") or {}).get("labour"))
 
     async def _stock_card(self, ready: Ready) -> None:
         """Request 91: for an all-materials question (no one material named,

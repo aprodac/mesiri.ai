@@ -182,14 +182,43 @@ async def note_lost(gw: Any, tool: str, args: dict[str, Any], reason: str) -> No
 # -- add ------------------------------------------------------------------------
 
 
-async def add(gw: Any, candidate: Any, *, text: str) -> StepResult:
-    tool, args = gw.current_call or ("", {})
+def _message(gw: Any, text: str) -> Any:
+    """The inbound message carrying the sender's words, as the entries read it."""
     update: dict[str, Any] = {"text": text}
     from mesiri_contracts.assistant.enums import InputModality
 
     if gw.message.modality not in (InputModality.IMAGE, InputModality.DOCUMENT):
         update["modality"] = InputModality.TEXT
-    message = gw.message.model_copy(update=update)
+    return gw.message.model_copy(update=update)
+
+
+#: What an answer fills in when the question is about WHERE (the site queue of
+#: [111] holds those calls): no line of the card waits for them.
+_SCOPE_QUESTIONS = ("site", "project", "to_site")
+
+#: The one note when an old-style Yes / No question is still waiting while the
+#: sender's message went onto a draft card (request 127).
+PENDING_YES_NO = (
+    "Note: an earlier Yes / No question of theirs is still waiting above. Answer it first; a card cannot be "
+    "saved while it waits."
+)
+
+
+async def _pending_note(gw: Any) -> str:
+    """``PENDING_YES_NO`` when a workflow still waits for its Yes / No (a team
+    member to add, an expense...): the new card is not made silently beside it."""
+    if gw.pending_confirmation is None:
+        return ""
+    try:
+        return PENDING_YES_NO if await gw.pending_confirmation() else ""
+    except Exception:  # noqa: BLE001 -- the note is wording only
+        _log.warning("draft.pending_check_failed", exc_info=True)
+        return ""
+
+
+async def add(gw: Any, candidate: Any, *, text: str) -> StepResult:
+    tool, args = gw.current_call or ("", {})
+    message = _message(gw, text)
     entry = gw._entry_for(getattr(candidate, "semantic_type", None))
     if entry is None:
         await note_lost(gw, tool, args, "that can't be done here yet")
@@ -203,6 +232,8 @@ async def add(gw: Any, candidate: Any, *, text: str) -> StepResult:
 
         if prepared.status == "error":
             await note_lost(gw, tool, args, prepared.text)
+        elif prepared.question and prepared.awaiting not in _SCOPE_QUESTIONS and tool in dr.DRAFT_TOOLS:
+            await _add_waiting(gw, tool, args, prepared.question)
         reply = (
             question_reply(prepared.question, list(prepared.options), awaiting=prepared.awaiting)
             if prepared.question
@@ -215,6 +246,13 @@ async def add(gw: Any, candidate: Any, *, text: str) -> StepResult:
     if item.state == dr.UNREADABLE:
         await _add_item(gw, item, source=message.message_id)
         return StepResult("error", text=f"Couldn't read it: {item.label}. Nothing was added to the card.")
+    if draft is not None and (waiting := dr.waiting_for(draft, item)) is not None:
+        # Its question was answered: the line that waited on it becomes this one.
+        draft.items[draft.items.index(waiting)] = item
+        gw.draft_new.append(item.id)
+        _keep(gw, draft)
+        await _persist(gw, draft)
+        return _drafted(item, prepared, note=await _pending_note(gw))
 
     # A later labour count for the same site and day merges into the one on the
     # card (the same trade replaces, another trade adds), as a card edit did.
@@ -233,7 +271,7 @@ async def add(gw: Any, candidate: Any, *, text: str) -> StepResult:
             gw.draft_new.append(item.id)
             _keep(gw, draft)
             await _persist(gw, draft)
-            return _drafted(item, prepared)
+            return _drafted(item, prepared, note=await _pending_note(gw))
     if draft is not None:
         if (same := dr.duplicate_of(draft, item)) is not None:
             return _drafted(same, prepared, repeated=True)
@@ -241,14 +279,40 @@ async def add(gw: Any, candidate: Any, *, text: str) -> StepResult:
             await note_lost(gw, tool, args, "the card is full")
             return StepResult("error", text=TOO_MANY)
     await _add_item(gw, item, source=message.message_id)
-    return _drafted(item, prepared)
+    return _drafted(item, prepared, note=await _pending_note(gw))
 
 
-def _drafted(item: dr.DraftItem, prepared: Ready, *, repeated: bool = False) -> StepResult:
+async def _add_waiting(gw: Any, tool: str, args: dict[str, Any], question: str) -> None:
+    """The system asked something before this call could become a line (a unit,
+    which material): the line is on the card with its question beside it, so it
+    is not only in the words above. The same call asked again is the same line."""
+    draft = await load(gw)
+    item = dr.DraftItem(
+        kind=dr.KIND_BY_TOOL[tool],
+        tool=tool,
+        args=dict(args),
+        summary=dr.waiting_line(tool, args),
+        state=dr.NEEDS_ANSWER,
+        question=" ".join(question.split()),
+        label=dr.label_for(tool, args),
+    )
+    if draft is not None:
+        if (same := dr.duplicate_of(draft, item)) is not None:
+            same.question = item.question
+            gw.draft_new.append(same.id)
+            _keep(gw, draft)
+            await _persist(gw, draft)
+            return
+        if draft.full:
+            return
+    await _add_item(gw, item, source=gw.message.message_id)
+
+
+def _drafted(item: dr.DraftItem, prepared: Ready, *, repeated: bool = False, note: str = "") -> StepResult:
     key = getattr(prepared.decision.workflow_key, "value", None)
     return StepResult(
         "drafted",
-        text="already on the card" if repeated else "",
+        text="already on the card" if repeated else note,
         workflow_key=key,
         summary=item.summary or item.label,
         awaiting="answer" if item.state == dr.NEEDS_ANSWER else "",
@@ -269,6 +333,130 @@ async def add_action(gw: Any, tool: str, args: dict[str, Any], prepared: list[An
             label=action.summary,
         )
         await _add_item(gw, item, source=gw.message.message_id)
+
+
+# -- corrections (request 127, P2) --------------------------------------------------
+
+
+def _as_change(
+    gw: Any, item: dr.DraftItem, *, target: dict[str, Any], old_args: dict[str, Any], old_summary: str, day: str
+) -> dr.DraftItem:
+    """``item`` (a prepared entry for the corrected figures) as the correction of
+    the saved entry ``target``: it asks nothing (a correction is the sender's
+    explicit replacement) and, written on Save, takes the saved one back first."""
+    item.kind = dr.KIND_CHANGE
+    item.target = {**target, "old_args": dict(old_args), "old_summary": old_summary, "day": day}
+    item.state, item.question, item.options = dr.OK, "", []
+    ready = dict(item.ready or {})
+    event = dict(ready.get("event") or {})
+    # The day's earlier count is what this replaces: it must not read as "already counted".
+    event["fields"] = {**(event.get("fields") or {}), "day_counted_lines": []}
+    item.ready = {**ready, "event": event}
+    from .work_site import short_site_label
+
+    site = (short_site_label(gw.actor, item.site_id) if item.site_id else "") or ""
+    item.summary = dr.change_line(
+        item.tool, old_args, item.args, old_summary=old_summary, new_summary=item.summary, site=site, day=day
+    )
+    return item
+
+
+async def _prepare_changed(gw: Any, tool: str, merged: dict[str, Any], candidate: Any, text: str) -> Ready | StepResult:
+    """The corrected figures, prepared as any entry is (the same lookups and
+    checks), or the StepResult that says why nothing changed."""
+    entry = gw._entry_for(getattr(candidate, "semantic_type", None))
+    if entry is None:
+        return StepResult("error", text="That can't be changed here, so nothing was changed.")
+    message = _message(gw, text)
+    prepared = await entry.prepare(message, tool_understanding(candidate, message, language=gw.language), candidate)
+    if prepared is None:
+        return StepResult("error", text="The system could not look this up just now, so nothing was changed.")
+    if isinstance(prepared, Say):
+        from .toolbox import question_reply
+
+        reply = (
+            question_reply(prepared.question, list(prepared.options), awaiting=prepared.awaiting)
+            if prepared.question
+            else None
+        )
+        return StepResult(prepared.status, text=prepared.text, reply=reply, awaiting=prepared.awaiting)
+    return prepared
+
+
+async def edit_item(
+    gw: Any, draft: dr.MessageDraft, item: dr.DraftItem, changes: dict[str, Any], *, text: str
+) -> StepResult:
+    """A correction on the open card ("alla, 5 mason aanu" before Save): the
+    line is redone with the changed figures, in place, and the card is shown
+    again. Nothing is written either way. A change is claimed only when this
+    says so."""
+    merged = merge_changes(item.tool, item.args, changes)
+    if merged == item.args:
+        return StepResult("info", text="That is already how it is on the card, so nothing was changed.")
+    candidate = to_candidate(item.tool, merged, _scope(gw))
+    if candidate is None:
+        return StepResult("error", text="That item cannot be changed here, so nothing was changed.")
+    prepared = await _prepare_changed(gw, item.tool, merged, candidate, text)
+    if isinstance(prepared, StepResult):
+        return prepared
+    new = _item_for(gw, item.tool, merged, prepared)
+    if new.state == dr.UNREADABLE:
+        return StepResult("error", text=f"Couldn't read it: {new.label}. The card is as it was.")
+    if item.kind == dr.KIND_CHANGE and item.target:
+        target = item.target
+        new = _as_change(
+            gw, new, target=target, old_args=dict(target.get("old_args") or {}),
+            old_summary=str(target.get("old_summary") or ""), day=str(target.get("day") or "today"),
+        )
+    draft.items[draft.items.index(item)] = new
+    gw.draft_new.append(new.id)
+    _keep(gw, draft)
+    await _persist(gw, draft)
+    _log.info("draft.item_edited draft=%s kind=%s state=%s", draft.id, new.kind, new.state)
+    return _drafted(new, prepared, note=await _pending_note(gw))
+
+
+async def change_saved(gw: Any, card_item: CardItem, changes: dict[str, Any], *, text: str) -> StepResult:
+    """A correction on an entry that is already saved: a new item on the open
+    card (made if there is none), "Change today's labour at Green Villa: mason
+    6 → 5 (total 7)", saved by tap like anything else. Until then the saved
+    entry stands. A second correction of the same entry edits that item."""
+    draft = await load(gw)
+    existing = dr.change_for(draft, card_item.fact_id) if draft is not None else None
+    if existing is not None:
+        # Corrections add up: the second one starts from the first's figures.
+        return await edit_item(gw, draft, existing, changes, text=text)
+    base = dict(card_item.args)
+    merged = merge_changes(card_item.tool, base, changes)
+    if merged == base:
+        return StepResult("info", text="That is already how it is saved, so nothing was changed.")
+    candidate = to_candidate(card_item.tool, merged, _scope(gw))
+    if candidate is None:
+        return StepResult("error", text="That item cannot be changed here, so nothing was changed.")
+    prepared = await _prepare_changed(gw, card_item.tool, merged, candidate, text)
+    if isinstance(prepared, StepResult):
+        return prepared
+    item = _item_for(gw, card_item.tool, merged, prepared)
+    if item.state == dr.UNREADABLE:
+        return StepResult("error", text=f"Couldn't read it: {item.label}. Nothing was changed.")
+    item = _as_change(
+        gw, item,
+        target={"fact_type": card_item.fact_type, "fact_id": card_item.fact_id},
+        old_args=base, old_summary=card_item.summary, day=card_item.day,
+    )
+    if draft is not None and draft.full:
+        await note_lost(gw, card_item.tool, merged, "the card is full")
+        return StepResult("error", text=TOO_MANY)
+    await _add_item(gw, item, source=gw.message.message_id)
+    return _drafted(item, prepared, note=await _pending_note(gw))
+
+
+async def saved_card(gw: Any) -> Any | None:
+    """The sender's latest card when it is saved (what a correction targets)."""
+    if gw.cards is None or gw.actor is None:
+        return None
+    card = await gw.cards.get(gw.actor)
+    return card if card is not None and card.state == CARD_SAVED and card.items else None
 
 
 # -- cancel / answer --------------------------------------------------------------
@@ -331,6 +519,8 @@ async def _write(gw: Any, item: dr.DraftItem) -> tuple[StepResult, tuple[str, uu
     entry = gw._entry_for(getattr(candidate, "semantic_type", None))
     if candidate is None or entry is None or gw.start_workflow is None:
         raise _Failed(item, "that can't be saved here yet")
+    if item.kind == dr.KIND_CHANGE:
+        await _take_back(gw, item)
     run = await gw.start_workflow(ready.decision, ready.event)
     if run is not None and run.status is WorkflowRunStatus.BLOCKED_PENDING_CONFIRMATION:
         raise _Failed(item, "an earlier question is still waiting for its answer")
@@ -358,6 +548,27 @@ async def _write(gw: Any, item: dr.DraftItem) -> tuple[StepResult, tuple[str, uu
         await gw._remember_site(gw.handled[-1])
     fact = fact_of(gw.handled[-1]) if gw.handled else None
     return step, fact
+
+
+async def _take_back(gw: Any, item: dr.DraftItem) -> None:
+    """The saved entry a correction replaces, taken back through its module's own
+    undo (the same one "undo that" uses), inside the Save's transaction: if it
+    cannot be taken back (its day was already confirmed) nothing is written."""
+    target = item.target or {}
+    try:
+        fact = (str(target["fact_type"]), uuid.UUID(str(target["fact_id"])))
+    except (KeyError, ValueError):
+        raise _Failed(item, "the saved entry it changes is not known any more") from None
+    if gw.undo_facts is None:
+        raise _Failed(item, "that can't be changed here yet")
+    undone = await gw.undo_facts([fact])
+    if undone is None or fact not in set(getattr(undone, "done", None) or []):
+        refused = list(getattr(undone, "refused", None) or [])
+        already = int(getattr(undone, "already", 0) or 0)
+        raise _Failed(
+            item,
+            _clean(refused[0]) if refused else "the saved entry was already removed" if already else "it could not be taken back",
+        )
 
 
 async def save(gw: Any, draft: dr.MessageDraft) -> ReplySpec:
@@ -447,9 +658,17 @@ async def _remember_saved(gw: Any, saved: list[tuple[dr.DraftItem, StepResult]],
         return
     items = []
     for (item, step), fact in zip(saved, facts, strict=False):
-        items.append(CardItem(item.tool, dict(item.args), fact[0], str(fact[1]), step.summary or item.summary))
+        line = step.summary or item.summary
+        items.append(CardItem(item.tool, dict(item.args), fact[0], str(fact[1]), line))
     try:
-        await gw.cards.put(gw.actor, new_card(CARD_SAVED, items))
+        kept: list[CardItem] = []
+        if saved and all(i.kind == dr.KIND_CHANGE for i, _s in saved):
+            # Only corrections: the rest of the card they correct still stands.
+            old = await gw.cards.get(gw.actor)
+            replaced = {str((i.target or {}).get("fact_id")) for i, _s in saved}
+            if old is not None and old.state == CARD_SAVED:
+                kept = [i for i in old.items if i.fact_id not in replaced]
+        await gw.cards.put(gw.actor, new_card(CARD_SAVED, [*kept, *items]))
     except Exception:  # noqa: BLE001 -- the card only enables undo
         _log.warning("agent.draft_card_remember_failed", exc_info=True)
 

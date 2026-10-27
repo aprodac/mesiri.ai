@@ -651,11 +651,13 @@ def tool_specs() -> list[ToolSpec]:
             name=QUERY_LABOUR,
             description=(
                 "Answer 'how many workers / who worked / labour cost' from saved records. "
-                "Leave trade out unless the question names one: a headcount counts every trade."
+                "Leave trade out unless the question names one: a headcount counts every trade. "
+                "Asked about another day ('yesterday?', 'last week?'), pass date or date_range."
             ),
             parameters=_obj(
                 {
-                    "date_range": _RANGE,
+                    "date": _DATE,
+                    "date_range": _PERIOD,
                     "trade": {"type": "string"},
                     "as_pdf": _AS_PDF,
                     "project": _PROJECT,
@@ -1069,7 +1071,13 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
         }
         return Candidate(semantic_type=SemanticType.TRANSFER, fields=_clean(fields))
     if name == QUERY_LABOUR:
-        fields = {"date_range": args.get("date_range"), "trade": args.get("trade"), **_pdf(args), **sc}
+        fields = {
+            "date": date,
+            "date_range": args.get("date_range"),
+            "trade": args.get("trade"),
+            **_pdf(args),
+            **sc,
+        }
         return Candidate(semantic_type=SemanticType.LABOUR_QUERY, fields=_clean(fields))
     if name == QUERY_MATERIALS:
         fields = {

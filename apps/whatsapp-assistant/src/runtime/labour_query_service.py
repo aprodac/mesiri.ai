@@ -39,6 +39,8 @@ def resolve_date_range(
     bucket: str | None, *, today: datetime.date | None = None
 ) -> tuple[datetime.date, datetime.date, str]:
     """Map an extracted `date_range` bucket to a concrete (start, end, label).
+    The buckets (today, yesterday, this/last week, this month) are
+    ``project_day.period_for``'s: one definition for every day figure.
 
     Defaults to **today** rather than expense's "this month": the question a
     supervisor actually asks is "how many workers today", and attendance is a
@@ -48,13 +50,10 @@ def resolve_date_range(
     than the server's — the same UTC-vs-site-timezone trap
     canonicalization/occurred_date.py exists to close.
     """
+    from runtime.agent.project_day import period_for
+
     today = today or datetime.date.today()
-    if bucket == "this_week":
-        start = today - datetime.timedelta(days=today.weekday())
-        return start, today, _DATE_RANGE_LABELS["this_week"]
-    if bucket == "this_month":
-        return today.replace(day=1), today, _DATE_RANGE_LABELS["this_month"]
-    return today, today, _DATE_RANGE_LABELS["today"]
+    return period_for(bucket, today) or (today, today, _DATE_RANGE_LABELS["today"])
 
 
 class LabourQueryService:

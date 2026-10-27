@@ -85,6 +85,16 @@ class ChangeEntry(EntryScope):
             return await self._correct(message, understanding, candidate, fields)
         return await self._issue(message, understanding, candidate, fields)
 
+    async def remember(self, ready: Ready, *, correlation_id: str | None = None) -> None:
+        """Request 127 (P2): a site named while setting up the team ("Site B-il
+        Rajesh-ine supervisor aakku") is where the person is added, not where the
+        sender is working: it never becomes today's site for the updates that
+        follow (they were put on Site B without asking). Corrections and issue
+        updates still keep the sender's site as before."""
+        if ready.decision.workflow_key is K.ADD_PROJECT_MEMBER:
+            return
+        await EntryScope.remember(self, ready, correlation_id=correlation_id)
+
     # -- add a team member -----------------------------------------------------
 
     async def _add_member(self, message: Any, understanding: Any, candidate: Any, fields: dict) -> Ready | Say:
