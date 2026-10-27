@@ -72,6 +72,62 @@ SITE_UPDATE_ACTIONS = frozenset(
     }
 )
 
+#: Request 129: a save makes its site the one the next unnamed update is
+#: PRESELECTED for (shown on the card, one tap to change) for this long, not for
+#: the rest of the day: remembering all day filed things silently on the wrong
+#: site. An explicit word ("now at Site B", the morning list) still lasts the day.
+SAVE_WINDOW_SECONDS = 3 * 60 * 60
+
+
+def from_a_save(active: Any) -> bool:
+    """Whether ``active`` was set by a save (it lasts exactly the save window),
+    not by the sender saying where they are (it lasts the day)."""
+    try:
+        selected = datetime.fromisoformat(str(active.selected_at))
+        expires = datetime.fromisoformat(str(active.expires_at))
+    except (TypeError, ValueError):
+        return False
+    return round((expires - selected).total_seconds()) == SAVE_WINDOW_SECONDS
+
+
+async def remember_saved_site(
+    store: Any,
+    *,
+    organization_id: str,
+    user_id: str,
+    project_id: str | None,
+    site_id: str,
+    own_site_ids: set[str],
+    timezone: str | None,
+    now: datetime | None = None,
+) -> None:
+    """After a confirmed save of a site update (the caller has already checked
+    that it IS one -- never a cancelled card, a team or setup message, a
+    question): this site is where their next unnamed update is preselected, for
+    ``SAVE_WINDOW_SECONDS`` from now.
+
+    - Nothing remembered, or the same site: remembered (the window restarts).
+    - A site the sender said ("now at ...", the morning list) for another site:
+      kept (V1 audit SIT-05: one entry elsewhere does not move the day).
+    - A save-made site and now a save at ANOTHER one: two sites inside the
+      window, so the next unnamed update is asked, not guessed."""
+    now = now or _now()
+    current = await store.get_active_context(organization_id=organization_id, user_id=user_id)
+    ttl = SAVE_WINDOW_SECONDS
+    if current is not None and current.site_id and str(current.site_id) in own_site_ids:
+        explicit = not from_a_save(current)
+        if str(current.site_id) != str(site_id):
+            if explicit:
+                return
+            await store.clear_active_context(organization_id=organization_id, user_id=user_id)
+            return
+        if explicit:
+            ttl = seconds_until_midnight(now, timezone, grace_hours=NIGHT_GRACE_HOURS)
+    await store.set_active_context(
+        organization_id=organization_id, user_id=user_id, project_id=project_id, site_id=site_id, ttl_seconds=ttl
+    )
+
+
 #: Tap ids of the morning list: ``today_site:<site id>``.
 TAP_PREFIX = "today_site:"
 #: The waiting messages are kept for the day (a late tap still runs them) and a
@@ -358,6 +414,28 @@ class WorkSite:
             )
         except Exception:  # noqa: BLE001 -- a missed hint only costs one question
             _log.warning("work_site.set_failed user=%s", ids[1], exc_info=True)
+
+    async def remember_saved(self, actor: Any, *, project_id: str | None, site_id: str) -> None:
+        """A confirmed save of a site update (``remember_saved_site``). Never raises."""
+        ids = _ids(actor)
+        if ids is None or not site_id:
+            return
+        try:
+            await remember_saved_site(
+                self._active,
+                organization_id=ids[0],
+                user_id=ids[1],
+                project_id=project_id,
+                site_id=site_id,
+                own_site_ids={str(s.id) for s in _sites(actor)},
+                timezone=getattr(actor, "timezone", None),
+                now=self._clock(),
+            )
+            await self._redis.set_json(
+                self._key(*ids, "last"), {"site_id": site_id}, ttl_seconds=LAST_SITE_TTL_SECONDS
+            )
+        except Exception:  # noqa: BLE001 -- a missed hint only costs one question
+            _log.warning("work_site.remember_saved_failed user=%s", ids[1], exc_info=True)
 
     # --- the waiting messages (SIT-02/03/04) ------------------------------------
 

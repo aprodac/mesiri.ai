@@ -223,6 +223,10 @@ class JourneyGateway:
     #: ``() -> site id`` the sender works at today, if set (SIT-05: a save at
     #: another site does not move it).
     get_today_site: Callable[[], Awaitable[str | None]] | None = None
+    #: ``(project_id, site_id)``: a confirmed site update was saved there; the
+    #: site is preselected for the next unnamed update for a short window
+    #: (work_site.remember_saved_site, request 129).
+    remember_saved_site: Callable[[str | None, str], Awaitable[None]] | None = None
     #: Request 88: the sender's latest card (runtime/agent/cards.py), who they
     #: are, and ``(facts) -> FactsUndone | None``: withdraw exactly those entries.
     cards: Any | None = None
@@ -354,6 +358,18 @@ class JourneyGateway:
 
         return await draft_flow.saved_card(self) if self.draft_mode else None
 
+    def change_site_draft(self, draft: Any) -> ReplySpec:
+        """The "📍 Change site" tap: the sites to pick from (request 129)."""
+        from . import draft_flow
+
+        return draft_flow.change_site_list(self, draft)
+
+    async def move_draft_site(self, draft: Any, site_id: str) -> ReplySpec:
+        """A site picked for the whole card (request 129)."""
+        from . import draft_flow
+
+        return await draft_flow.move_site(self, draft, site_id)
+
     async def answer_draft(self, draft: Any, item_id: str, choice: int) -> ReplySpec:
         from . import draft_flow
 
@@ -393,7 +409,7 @@ class JourneyGateway:
     async def _remember_site(self, handled: Any) -> None:
         """WA-45: a save at a site keeps the sender there for the rest of the
         day, whatever module it was. Never raises."""
-        if self.set_today_site is None:
+        if self.set_today_site is None and self.remember_saved_site is None:
             return
         try:
             from .work_site import SITE_UPDATE_ACTIONS
@@ -402,6 +418,9 @@ class JourneyGateway:
             draft = confirmed.draft_action if confirmed is not None else None
             site_id = getattr(draft, "site_id", None)
             if site_id and getattr(draft, "action_type", None) in SITE_UPDATE_ACTIONS:
+                if self.remember_saved_site is not None:
+                    await self.remember_saved_site(getattr(draft, "project_id", None), str(site_id))
+                    return
                 if self.get_today_site is not None:
                     current = await self.get_today_site()
                     if current and str(current) != str(site_id):

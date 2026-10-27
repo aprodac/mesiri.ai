@@ -383,25 +383,19 @@ class EntryScope:
             return
         organization_id, user_id, project_id, site_id = ready.scope
         try:
-            # V1 audit SIT-05: one entry for another site must not move the
-            # day. Today's site changes only on "now at ..." or the morning
-            # tap (work_site.py), never because one entry went elsewhere.
-            current = await self.active_context.get_active_context(
-                organization_id=organization_id, user_id=user_id
-            )
-            if (
-                current is not None
-                and current.site_id
-                and str(current.site_id) != str(site_id)
-                and any(str(s.id) == str(current.site_id) for s in getattr(self.actor, "sites", None) or [])
-            ):
-                return
-            await self.active_context.set_active_context(
+            # Request 129: the site is preselected for the next unnamed update for
+            # a short window only (work_site.SAVE_WINDOW_SECONDS); V1 audit
+            # SIT-05 still holds for a site the sender said ("now at ...").
+            from .work_site import remember_saved_site
+
+            await remember_saved_site(
+                self.active_context,
                 organization_id=organization_id,
                 user_id=user_id,
                 project_id=project_id,
                 site_id=site_id,
-                ttl_seconds=_until_midnight(getattr(self.actor, "timezone", None)),
+                own_site_ids={str(s.id) for s in getattr(self.actor, "sites", None) or []},
+                timezone=getattr(self.actor, "timezone", None),
             )
         except Exception:  # noqa: BLE001 -- a missed hint only costs one question
             _log.warning("entry.remember_failed correlation_id=%s", correlation_id, exc_info=True)
@@ -414,17 +408,6 @@ class EntryScope:
         except Exception:  # noqa: BLE001 -- the save path's own MODULE_DISABLED check is the backstop
             _log.warning("entry.modules_failed", exc_info=True)
             return True
-
-
-def _until_midnight(timezone: str | None) -> int:
-    """Today's site lasts the company's day (WA-45), not 12 hours past it."""
-    from datetime import UTC, datetime
-
-    from channel.receipt.data import company_zone
-
-    from .work_site import NIGHT_GRACE_HOURS, seconds_until_midnight
-
-    return seconds_until_midnight(datetime.now(UTC), str(company_zone(timezone)), grace_hours=NIGHT_GRACE_HOURS)
 
 
 def site_words(message: Any, key: str, **fields: Any) -> str:

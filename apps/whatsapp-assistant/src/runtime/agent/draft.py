@@ -63,6 +63,11 @@ TAP_PREFIX = "agd:"
 SAVE = "save"
 CANCEL = "cancel"
 ANSWER = "ans"
+#: Request 129: "📍 Change site" opens the sender's sites; a pick moves every
+#: item of the card there.
+CHANGE_SITE = "chsite"
+MOVE_SITE = "chto"
+CHANGE_SITE_TITLE = "📍 Change site"
 
 KIND_LABOUR = "labour"
 KIND_WORK = "work"
@@ -232,13 +237,15 @@ def parse_tap(value: str) -> tuple[str, str, tuple[str, ...]] | None:
         return None
     action, _, rest = value[len(TAP_PREFIX) :].partition(":")
     draft_id, *extra = rest.split(":")
-    if action not in (SAVE, CANCEL, ANSWER) or len(draft_id) != 32:
+    if action not in (SAVE, CANCEL, ANSWER, CHANGE_SITE, MOVE_SITE) or len(draft_id) != 32:
         return None
     try:
         uuid.UUID(hex=draft_id)
     except ValueError:
         return None
-    if action == ANSWER and len(extra) != 2:
+    if (action == ANSWER and len(extra) != 2) or (action == MOVE_SITE and len(extra) != 1):
+        return None
+    if action in (SAVE, CANCEL, CHANGE_SITE) and extra:
         return None
     return action, draft_id, tuple(extra)
 
@@ -375,9 +382,17 @@ def card_text(draft: MessageDraft, *, site: str | None = None) -> str:
     return "\n".join(parts)
 
 
+def movable_items(draft: MessageDraft) -> list[DraftItem]:
+    """The items "Change site" moves: new entries of a sender with several sites
+    (their line names the site). A pending action or a correction of a saved
+    entry stays where it is."""
+    return [i for i in draft.items if i.state != UNREADABLE and i.site and i.kind not in (KIND_ACTION, KIND_CHANGE)]
+
+
 def card_rows(draft: MessageDraft) -> list[ListRow]:
-    """Save (when something is ready), Cancel, and the options of the first
-    open question. The tap ids name the draft, so a tap can only act on it."""
+    """Save (when something is ready), Cancel, the options of the first open
+    question, and Change site (a sender with several sites, something to save).
+    The tap ids name the draft, so a tap can only act on it."""
     rows: list[ListRow] = []
     if draft.ready_items:
         rows.append(ListRow(tap_id(SAVE, draft.id), SAVE_TITLE))
@@ -389,6 +404,8 @@ def card_rows(draft: MessageDraft) -> list[ListRow]:
             ListRow(tap_id(ANSWER, draft.id, asking.id, str(n)), option)
             for n, option in enumerate(asking.options)
         )
+    if draft.ready_items and movable_items(draft):
+        rows.append(ListRow(tap_id(CHANGE_SITE, draft.id), CHANGE_SITE_TITLE))
     return rows
 
 

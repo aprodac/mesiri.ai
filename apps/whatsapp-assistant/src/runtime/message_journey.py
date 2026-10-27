@@ -844,6 +844,9 @@ def build_message_handlers(
                 await work_site.set_today(ctx, project_id=project_id, site_id=site_id)
                 return site_label(ctx, site_id) or "that site"
 
+            async def _remember_saved_site(project_id, site_id):  # type: ignore[no-untyped-def]
+                await work_site.remember_saved(ctx, project_id=project_id, site_id=site_id)
+
             def _card_site(handled_list, *, always=False):  # type: ignore[no-untyped-def]
                 return save_button.card_site(ctx, handled_list, always=always)
 
@@ -969,6 +972,7 @@ def build_message_handlers(
                     ),
                     set_today_site=_set_today_site if work_site is not None else None,
                     get_today_site=_get_today_site if work_site is not None else None,
+                    remember_saved_site=_remember_saved_site if work_site is not None else None,
                     share_code=(
                         (lambda: _share_join_code(msg))
                         if join_journey is not None
@@ -1106,6 +1110,10 @@ def build_message_handlers(
                     reply = await gateway.save_draft(draft)
                 elif action == draft_card_mod.CANCEL:
                     reply = await gateway.cancel_draft(draft)
+                elif action == draft_card_mod.CHANGE_SITE:
+                    reply = gateway.change_site_draft(draft)
+                elif action == draft_card_mod.MOVE_SITE:
+                    reply = await gateway.move_draft_site(draft, extra[0])
                 else:
                     reply = await gateway.answer_draft(draft, extra[0], int(extra[1]))
                 return reply, gateway

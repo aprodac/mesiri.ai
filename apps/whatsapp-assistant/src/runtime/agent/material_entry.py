@@ -35,7 +35,12 @@ from mesiri_contracts.assistant.canonical_event import CanonicalEventType
 from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.planner_decision import WorkflowKey
 from runtime.entity_resolution.material_resolution import classify_material_matches
-from runtime.material_units import ask_amount_text, conversion_question, fit_stock_unit
+from runtime.material_units import (
+    amount_question,
+    ask_amount_text,
+    conversion_question,
+    fit_stock_unit,
+)
 
 from .entry_base import (
     SCOPE_KEYS,
@@ -66,6 +71,9 @@ SOMETHING_ELSE = "Something else"
 #: one reported unit is, and whether to add a new material.
 AWAIT_UNIT = "unit"
 AWAIT_NEW_MATERIAL = "new_material"
+#: The amount in the stock unit, typed (no conversion to ask for): a card line
+#: waits on it (request 129).
+AWAIT_AMOUNT = "amount"
 ADD_IT = "Yes, add it"
 #: WhatsApp lists hold ten rows: nine materials and "Something else".
 LIST_MATERIALS = 9
@@ -135,7 +143,10 @@ class MaterialEntry(EntryScope):
             text = ask_amount_text(material, fields, fit, role=role)
             ask = conversion_question(material, fit, role=role)
             if ask is None:
-                return Say("info", text)
+                # Request 129: still a line of the draft card, with the question
+                # beside it ("Steel used: 20 rod (❓ How many kg is 20 rod?)"), not
+                # only the model's words; a typed amount in the stock unit fills it.
+                return Say("info", text, question=amount_question(fields, fit), awaiting=AWAIT_AMOUNT)
             question, options = ask
             return Say(
                 "choose",

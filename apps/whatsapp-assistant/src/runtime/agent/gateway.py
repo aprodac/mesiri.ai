@@ -49,6 +49,9 @@ class StepResult:
     #: ``drafted`` with a question on the card (request 127): how to take an
     #: answer they type instead of tapping (the entry's own instruction).
     hint: str = ""
+    #: ``drafted`` only: the line is a correction (of a line of the card, or of a
+    #: saved entry). It is a change they have not saved yet (request 129).
+    changed: bool = False
 
 
 class WorkflowGateway(Protocol):

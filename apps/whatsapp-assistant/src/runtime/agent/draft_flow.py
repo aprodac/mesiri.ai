@@ -26,12 +26,13 @@ from __future__ import annotations
 import contextlib
 import logging
 import uuid
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 
 from canonicalization.occurred_date import today_for
 from channel.receipt.data import company_zone
-from channel.replies import ReplySpec
+from channel.replies import ListRow, ReplySpec
 from mesiri_contracts.assistant.v2.canonical_event import CanonicalEventV2
 from mesiri_contracts.assistant.v2.planner_decision import PlannerDecisionV2
 from workflows import WorkflowRunStatus
@@ -199,9 +200,22 @@ _SCOPE_QUESTIONS = ("site", "project", "to_site")
 #: The one note when an old-style Yes / No question is still waiting while the
 #: sender's message went onto a draft card (request 127).
 PENDING_YES_NO = (
-    "Note: an earlier Yes / No question of theirs is still waiting above. Answer it first; a card cannot be "
-    "saved while it waits."
+    "Note: you still have a Yes / No question waiting above. Answer it first; a card cannot be saved while it waits."
 )
+#: The same, in the language of the sender's message (request 129: second person, not "of theirs").
+_PENDING_YES_NO_IN = {
+    "manglish": (
+        "Note: mukalil oru Yes / No question baakiyundu. Aadyam athinu answer cheyyuka; athu theerunnath vare "
+        "ee card save cheyyaan pattilla."
+    ),
+    "malayalam": (
+        "ശ്രദ്ധിക്കുക: മുകളിൽ ഒരു Yes / No ചോദ്യം ബാക്കിയുണ്ട്. ആദ്യം അതിന് ഉത്തരം നൽകൂ; "
+        "അത് തീരുന്നതുവരെ ഈ കാർഡ് സേവ് ചെയ്യാൻ കഴിയില്ല."
+    ),
+    "hindi": (
+        "ध्यान दें: ऊपर आपका एक Yes / No सवाल बाकी है। पहले उसका जवाब दें; जब तक वह बाकी है, यह कार्ड सेव नहीं हो सकता।"
+    ),
+}
 
 
 async def _pending_note(gw: Any) -> str:
@@ -210,7 +224,11 @@ async def _pending_note(gw: Any) -> str:
     if gw.pending_confirmation is None:
         return ""
     try:
-        return PENDING_YES_NO if await gw.pending_confirmation() else ""
+        if not await gw.pending_confirmation():
+            return ""
+        from .work_site import _language_of
+
+        return _PENDING_YES_NO_IN.get(_language_of(getattr(gw.message, "text", None)), PENDING_YES_NO)
     except Exception:  # noqa: BLE001 -- the note is wording only
         _log.warning("draft.pending_check_failed", exc_info=True)
         return ""
@@ -427,7 +445,7 @@ async def edit_item(
     _keep(gw, draft)
     await _persist(gw, draft)
     _log.info("draft.item_edited draft=%s kind=%s state=%s", draft.id, new.kind, new.state)
-    return _drafted(new, prepared, note=await _pending_note(gw))
+    return replace(_drafted(new, prepared, note=await _pending_note(gw)), changed=True)
 
 
 async def change_saved(gw: Any, card_item: CardItem, changes: dict[str, Any], *, text: str) -> StepResult:
@@ -462,7 +480,7 @@ async def change_saved(gw: Any, card_item: CardItem, changes: dict[str, Any], *,
         await note_lost(gw, card_item.tool, merged, "the card is full")
         return StepResult("error", text=TOO_MANY)
     await _add_item(gw, item, source=gw.message.message_id)
-    return _drafted(item, prepared, note=await _pending_note(gw))
+    return replace(_drafted(item, prepared, note=await _pending_note(gw)), changed=True)
 
 
 async def saved_card(gw: Any) -> Any | None:
@@ -558,6 +576,80 @@ async def _answer_waiting(gw: Any, draft: dr.MessageDraft, item: dr.DraftItem, o
     await _persist(gw, draft)
     _log.info("draft.waiting_answered draft=%s kind=%s state=%s", draft.id, new.kind, new.state)
     return dr.card_reply(draft, site=site)
+
+
+# -- change site (request 129) --------------------------------------------------------
+
+#: WhatsApp lists hold ten rows.
+_SITE_ROWS = 10
+
+
+def change_site_list(gw: Any, draft: dr.MessageDraft) -> ReplySpec:
+    """The "📍 Change site" tap: the sender's sites as a list. A pick moves every
+    item of the card (``move_site``)."""
+    from .site_match import labelled
+    from .work_site import _DESC_MAX, _TITLE_MAX, _cut, _project_names, _sites
+
+    current = {i.site for i in dr.movable_items(draft)}  # by label: the card's own words for a site
+    sites = _sites(gw.actor)
+    projects = _project_names(gw.actor)
+    rows = [
+        ListRow(
+            dr.tap_id(dr.MOVE_SITE, draft.id, str(site.id)),
+            _cut(label, _TITLE_MAX),
+            _cut(projects.get(str(site.project_id or ""), ""), _DESC_MAX),
+        )
+        for site, label in labelled(sites, projects)
+        if not (len(current) == 1 and label in current)
+    ][:_SITE_ROWS]
+    if not rows:
+        return dr.card_reply(draft, "You have no other site to move this to.", site=_card_site(gw, draft))
+    return ReplySpec(
+        text="Which site is this card for? Everything on it moves there.",
+        list_button_label="Choose site",
+        list_rows=tuple(rows),
+    )
+
+
+async def move_site(gw: Any, draft: dr.MessageDraft, site_id: str) -> ReplySpec:
+    """Every item of the card is prepared again for ``site_id`` (the same
+    lookups and checks as when it was added: the day's labour count, for one,
+    is that site's). All or none: an item that cannot be moved leaves the card
+    as it was, and the reply says which. Nothing is written."""
+    from .work_site import _project_names, _sites
+
+    site = next((s for s in _sites(gw.actor) if str(s.id) == str(site_id)), None)
+    if site is None:
+        return dr.card_reply(draft, "That site isn't one of yours.", site=_card_site(gw, draft))
+    movable = dr.movable_items(draft)
+    if not movable or all(i.site == _site_name(gw, site.id) for i in movable):
+        return dr.card_reply(draft, f"It is already for {site.name}.", site=_card_site(gw, draft))
+    project = _project_names(gw.actor).get(str(site.project_id or ""), "")
+    redone: list[tuple[dr.DraftItem, dr.DraftItem]] = []
+    for item in movable:
+        args = {**item.args, "site": site.name, **({"project": project} if project else {})}
+        candidate = to_candidate(item.tool, args, _scope(gw))
+        entry = gw._entry_for(getattr(candidate, "semantic_type", None)) if candidate is not None else None
+        if entry is None:
+            return dr.card_reply(draft, f"Couldn't move {item.label}: nothing was changed.", site=_card_site(gw, draft))
+        message = _message(gw, item.label or item.tool)
+        prepared = await entry.prepare(message, tool_understanding(candidate, message, language=gw.language), candidate)
+        if not isinstance(prepared, Ready):
+            why = _clean(prepared.text) if isinstance(prepared, Say) else "it could not be looked up"
+            return dr.card_reply(
+                draft, f"Couldn't move {item.label} to {site.name}: {why}. Nothing was changed.", site=_card_site(gw, draft)
+            )
+        new = _item_for(gw, item.tool, args, prepared)
+        if new.state == dr.UNREADABLE or new.site != _site_name(gw, site.id):
+            return dr.card_reply(
+                draft, f"Couldn't move {item.label} to {site.name}. Nothing was changed.", site=_card_site(gw, draft)
+            )
+        redone.append((item, new))
+    for old, new in redone:
+        draft.items[draft.items.index(old)] = new
+    await _persist(gw, draft)
+    _log.info("draft.site_changed draft=%s items=%s site=%s", draft.id, len(redone), site.id)
+    return dr.card_reply(draft, f"📍 Moved to {site.name}.", site=_card_site(gw, draft))
 
 
 def _card_site(gw: Any, draft: dr.MessageDraft) -> str | None:

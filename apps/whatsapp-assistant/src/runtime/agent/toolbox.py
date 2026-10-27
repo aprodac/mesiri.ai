@@ -1031,17 +1031,21 @@ class AgentToolbox:
                     # How a typed answer is taken (the entry's own words).
                     content["if_they_type_the_answer"] = step.hint
                 return ToolOutcome(content=content)
+            instruction = (
+                "Nothing is saved yet: it is a line on a Save / Cancel card shown under your words. "
+                "Say in one short line what you understood, in the language of their message, and "
+                "ask them to check it and tap Save. Never say it is saved, written or noted. Do "
+                "not copy the card."
+            )
+            if step.changed:
+                # Request 129: "labour maatti: mason 6 ninnu 5 aakki" said it was done.
+                instruction += (
+                    " This is a CHANGE that waits for their Save tap, not a change made: say it as pending "
+                    "('maattanam: mason 6 → 5. Save tap cheyyu', 'will change mason 6 → 5 once you save'), "
+                    "never in the past tense (not 'changed', 'maatti', 'aakki', 'updated', 'corrected')."
+                )
             return ToolOutcome(
-                content={
-                    "status": "waiting_for_save",
-                    "on_card": line,
-                    "instruction": (
-                        "Nothing is saved yet: it is a line on a Save / Cancel card shown under your words. "
-                        "Say in one short line what you understood, in the language of their message, and "
-                        "ask them to check it and tap Save. Never say it is saved, written or noted. Do "
-                        "not copy the card."
-                    ),
-                }
+                content={"status": "waiting_for_save", "on_card": line, "instruction": instruction}
             )
         if step.status == "undone":
             self.system_lines.append(step.text)

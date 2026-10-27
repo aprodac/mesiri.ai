@@ -451,9 +451,13 @@ class AgentRunner:
                 "agent.number_guard correlation_id=%s numbers=%s", correlation_id, sorted(unbacked)
             )
             text = without_numbers(text, unbacked)
-        if not self._card_attached(toolbox):
+        if not self._save_attached(toolbox):
             # Only a reply with a card under it may ask to tap Save (22 Oct).
             text = without_save_prompt(text)
+            if (waiting := _choice_line(toolbox)) is not None:
+                # Request 129: a card with only a question on it (labour Replace / Add)
+                # has no Save button; the sentence says what to tap.
+                text = f"{text}\n\n{waiting}".strip()
         tail: list[str] = []
         if block:
             if not text and run.stop_reason == "max_steps":
@@ -519,6 +523,14 @@ class AgentRunner:
             _log.warning("agent.natural_fallback bare=%s", bare)
             return covering_sentence(items, toolbox.user_text)
         return text
+
+    def _save_attached(self, toolbox: AgentToolbox) -> bool:
+        """Whether the reply goes out with a Save button: a draft card whose
+        every line still waits on an answer has Cancel and its answers only."""
+        draft = _open_draft(toolbox)
+        if draft is not None and dr.card_rows(draft):
+            return bool(draft.ready_items)
+        return self._card_attached(toolbox)
 
     @staticmethod
     def _card_attached(toolbox: AgentToolbox) -> bool:
@@ -675,6 +687,36 @@ _COVERING = {
 }
 
 
+#: What to tap when the card has no Save button yet, only the answers to its question.
+_CHOOSE = {
+    "english": "Please tap {options}.",
+    "manglish": "{options} tap cheyyu.",
+    "malayalam": "{options} അമർത്തുക.",
+    "hindi": "{options} दबाएँ.",
+}
+
+
+def _choice_line(toolbox: AgentToolbox) -> str | None:
+    """"Replace or Add tap cheyyu", in the sender's language, for an open draft
+    card that has answers to tap but nothing to Save yet; None otherwise."""
+    draft = _open_draft(toolbox)
+    if draft is None or draft.ready_items:
+        return None
+    asking = next(iter(draft.waiting_items), None)
+    options = [o for o in (asking.options if asking else ()) if len(o) <= 12]
+    if not options:
+        return None
+    return _CHOOSE[_wording_language(toolbox.user_text)].format(options=" or ".join(options))
+
+
+def _wording_language(user_text: str) -> str:
+    if re.search(r"[ഀ-ൿ]", user_text):
+        return "malayalam"
+    if re.search(r"[ऀ-ॿ]", user_text):
+        return "hindi"
+    return "manglish" if is_manglish(user_text) else "english"
+
+
 def covering_sentence(summaries: list[str], user_text: str) -> str:
     # The card header says "To close:" / "Send to engineer:" already (request 104):
     # the sentence above it says it as words, not the same label twice.
@@ -685,14 +727,7 @@ def covering_sentence(summaries: list[str], user_text: str) -> str:
     ]
     items = "; ".join(said)
     items = items[:1].upper() + items[1:]
-    if re.search(r"[ഀ-ൿ]", user_text):
-        language = "malayalam"
-    elif re.search(r"[ऀ-ॿ]", user_text):
-        language = "hindi"
-    elif is_manglish(user_text):
-        language = "manglish"
-    else:
-        language = "english"
+    language = _wording_language(user_text)
     return _COVERING[language].format(items=items)
 
 

@@ -124,6 +124,17 @@ def ask_amount_text(
     )
 
 
+def amount_question(fields: dict[str, Any], fit: UnitFit) -> str:
+    """Request 129: the question that goes on the card beside the line when no
+    conversion can be asked for (the unit is not one we know, or the sender may
+    not set conversions): "How many kg is 20 rod?". The sender types the amount."""
+    stock = _plain(fit.stock_unit) if fit.stock_unit else "the stock unit"
+    qty = fields.get("quantity")
+    shown = f"{qty:g}" if isinstance(qty, float) else str(qty) if qty is not None else ""
+    said = " ".join(p for p in (shown, str(fields.get("unit") or "")) if p)
+    return f"How many {stock} is {said}?" if said else f"How many {stock} is it?"
+
+
 def _plain(unit: dict[str, Any] | None) -> str:
     """A unit as a site says it: its short code ("cum", "load", "kg")."""
     return str((unit or {}).get("code") or (unit or {}).get("display_name") or "").lower()
