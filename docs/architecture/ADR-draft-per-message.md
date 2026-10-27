@@ -361,3 +361,55 @@ team-member message no longer moving today's site.
 - Card words are English (as in P1).
 - Not verified: a live-model run; the taps through real WhatsApp. Ilan Pro re-tests items 1-5 live.
 - Rollback: flag off (items 1, 3, 4 and the Yes / No note), or `git revert` (items 2 and 5 apply to everyone).
+
+## 12. P2 follow-up as built (request 129, replaces 128)
+
+Live re-test of P2 (27 Oct) left four items; Ilan questioned the "remember the last saved site" fix in 128, so 129
+replaces it. Applies to **all companies** (site resolution); no Labour rule changes.
+
+### 12.1 The site of an update that names none (rule, in order)
+
+1. The sender is on exactly one site: that site (unchanged).
+2. The message names a site (alias or unique part of its name): that site (unchanged, `entry_base._named_site`).
+3. A **site update was SAVED in the last 3 hours, on one site**: that site is preselected. The card's first line
+   shows it ("📍 To save · Site B:") and every card of a sender with several sites carries a "📍 Change site" button.
+4. Otherwise: "Which site?" with buttons, before any card (the morning list of WA-45, or `settle`'s question).
+
+Never taken from a cancelled card (nothing is remembered before Save), a team / setup message or a question (only
+`SITE_UPDATE_WORKFLOWS` / `SITE_UPDATE_ACTIONS` remember, as in P2).
+
+Built as: `work_site.remember_saved_site` writes the active context with a **3 hour** TTL (`SAVE_WINDOW_SECONDS`)
+instead of "until midnight". Used by both writers of the slot (`EntryScope.remember`, `JourneyGateway._remember_site`
+through `WorkSite.remember_saved`). A slot set by the sender (the morning list, "now at Site B") still lasts the day
+and is recognised by its length (`from_a_save`); a save at another site does not move it (SIT-05). A save at a
+**different** site while a save-made slot is open clears it, so two sites inside the window ask instead of guess.
+Single-site senders are not affected (they have one site).
+
+"📍 Change site" (`draft.CHANGE_SITE` / `MOVE_SITE` taps) lists the sender's sites; a pick re-prepares **every** item
+of the card for that site (`draft_flow.move_site`: same lookups and checks, e.g. the day's labour count is that
+site's), all or none. Corrections of saved entries and pending actions stay where they are. Nothing is written
+before Save.
+
+### 12.2 Steel unit (128 A)
+
+When no conversion can be asked for (a unit we do not know such as "rod", or a sender who may not set conversions)
+the material entry now returns the question "How many kg is 20 rod?" (`AWAIT_AMOUNT`), so the line is on the card as
+"• Steel used: 20 rod (❓ How many kg is 20 rod?)". Save writes the ready lines and keeps the card for steel
+(section 9, answer 2); a typed amount in the stock unit turns the line into the entry. The classic (non-draft) path
+is unchanged (status stays `info`).
+
+### 12.3 Wording (128 C)
+
+- A correction is told to the model as pending ("maattanam: mason 6 → 5. Save tap cheyyu"), never in the past tense.
+- The Yes / No note is in the sender's language and second person ("Mukalil oru Yes / No question baakiyundu…").
+- A card with no Save button (labour Replace / Add only) says "Replace or Add tap cheyyu", not "Save tap cheyyu".
+- Typed "cancel" / "venda" / "വേണ്ട" is the card's Cancel button (`reply_composer.resolve_choice`).
+
+### 12.4 Known limits
+
+- The morning question ("Where are you working today?") is still asked, wording unchanged, when no site is known;
+  a site chosen from it lasts the day (the sender said it).
+- The save window is 3 hours from the **last** save (each save at the same site restarts it).
+- "Change site" lists at most ten sites; no "Something else".
+- Not verified: a live-model run; the taps through real WhatsApp (Ilan Pro re-tests live).
+- Rollback: `git revert`.
