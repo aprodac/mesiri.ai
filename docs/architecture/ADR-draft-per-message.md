@@ -2,7 +2,8 @@
 
 **Status:** P0 done (request 123: docs and tests only). **P1 built** (request 124, 27 Oct 2026, approved by
 Ilan: "Yeah let's do it"), behind the company setting `draft_v2` (off for everyone; on only for the TEST company
-once the Mesiri team sets it). P2-P4 each need their own owner ok.
+once the Mesiri team sets it). **P2 built** (request 127, 27 Oct 2026, approved by Ilan in WhatsApp; section 11),
+same flag. P3-P4 each need their own owner ok.
 **Supersedes:** the patch approach of request 122. **Completes:** the promises of
 [ADR-assistant-agent-wrap-not-rebuild](ADR-assistant-agent-wrap-not-rebuild.md) §10, §10b and the
 request-90 addendum ("nothing is kept until they tap Save", "one write path").
@@ -260,3 +261,103 @@ cancelled by its buttons; it expires after 6 hours. The migration is additive; r
   through WhatsApp itself; delivery of the reminder message (its queueing is tested against a local Postgres, its
   sending reuses the existing notification path). The real-database tests (`tests/integration/test_draft_save_postgres.py`,
   `backend/tests/integration/test_shared_transaction_postgres.py`) were run on a local Postgres 16 and are not run in CI.
+
+
+## 11. P2 as built (request 127)
+
+From Ilan Pro's live re-test on 27 Oct (draft_v2 on). Ilan chose the proper solution over patches for every
+item ("do the proper solution"), so each item below says how its root cause is removed and what is still a limit.
+Flag-gated: with `draft_v2` off nothing below runs (item 2's read path and item 5's site rule apply to everyone,
+see 11.6).
+
+### 11.1 Corrections (ADR 2.5)
+
+- **Open card:** `update_pending_card` edits the line in place (`draft_flow.edit_item`): the change is merged into
+  the item's own tool arguments (`cards.merge_changes`), the entry's `prepare` runs again with every check, and the
+  line is redone. Nothing is written.
+- **Saved card:** the correction is a new item of kind `change` on the open card (made if there is none):
+  "Change today's labour at Green Villa: mason 6 → 5 (total 7)" (`draft.change_line`). It holds the saved entry it
+  replaces (`target`: fact type and id, the saved arguments). The Save tap, inside the one transaction, takes the
+  saved entry back through the undo "undo that" uses (`save_first.undo_facts`) and writes the corrected entry
+  through the entry's own workflow, exactly as an edit of today's open card does (withdraw, then save). If the
+  take-back is refused (the day is confirmed) or the write fails, nothing changes and the card says why. A second
+  correction before that Save edits the same change line. After the Save the saved card holds the corrected entry
+  (and the rest of the card it corrected), so another correction starts from the new figures.
+- **The reply comes from the result:** the tool returns `drafted` with the new line, or says "nothing was changed"
+  and why; the model is told about the open card (`draft.context_line`) and the latest saved card
+  (`draft.saved_context_line`), each with its id. The P1 answer "can't change a line, tap Cancel" is gone.
+- A change line asks no "replace or add?": a correction is the sender's explicit replacement.
+
+### 11.2 One read path for day and period figures (ADR 2.7)
+
+- `project_day.period_for(bucket, today)` is the one definition of today / yesterday / this week / last week /
+  this month; `resolve_period` (a stated day wins) and `labour_query_service.resolve_date_range` both use it.
+- `project_day.read_period(...)` reads a period's work log (with its open issues) and its labour headcount for one
+  scope and the same dates. Used by "how many workers?" (`_seed_labour_query`), "what was done today?"
+  (`_seed_activity_search`, which now lists the day's workers), and the "today so far" line (`build_today_line`,
+  now with the day's saved headcount).
+- `query_labour` takes `date` and `date_range` with "yesterday" / "last week" (it only knew today / this week /
+  this month, so "yesterday" was answered with today: g5).
+- **Open issues: one rule** in the backend, `mesiri/application/dpr/open_issues.py`: open or being handled, a real
+  site issue (not an old "Question for your engineer" note), and saved. The "open issues?" answer
+  (`activity_search_service`) and the DPR assembly (its day query, its carried-issues query and its
+  `open_issue_count`) all use it, and the DPR draft line (`site_day_review.day_lines`) shows the assembly's count
+  (the day's own and those still open from earlier days). On 27 Oct the draft said 1 while the list said 2.
+  The DPR's carried issues now leave out an earlier day's issue nobody saved, as every other count does.
+
+### 11.3 A question is said once
+
+The card shows a waiting question (❓ ...); the model is told not to write it, and a copy in its words is dropped
+(`runner._without_echoed_questions`).
+
+### 11.4 A line waiting on a question is on the card, and its buttons answer it (ADR 2.3)
+
+When an entry's `prepare` asks before the call can become a line (which material, add it as new, 1 load = how many
+cum?), the call is still a line of the card: `DraftItem` in state `needs_answer` with the question, its options as
+the card's buttons, and what the answer fills in (`awaiting`: `material`, `new_material`, `unit`; the entry sets
+it on its `Say`). "Steel used: 20 rod (❓ 1 rod = how many kg?)". A tap answers it (`draft_flow._answer_waiting`):
+the answer goes into the line's own tool arguments (a unit answer sets the company's conversion first, as the typed
+answer does, for those allowed to), `prepare` runs again, and the line becomes the entry, or carries the next
+question. A typed answer reaches the same tool again and replaces the waiting line (`draft.waiting_for`). Save
+saves the ready lines and keeps the waiting ones on the card (ADR section 9, answer 2). Questions about WHERE (site,
+project, the other site of a transfer) keep the [111] site queue, as before.
+
+### 11.5 Site carry-over and the old Yes / No
+
+- Only a report from a site makes it today's site: `work_site.SITE_UPDATE_WORKFLOWS` / `SITE_UPDATE_ACTIONS`
+  (labour, material, a transfer, work, an issue, a site expense), checked by both writers of today's site
+  (`EntryScope.remember` and `JourneyGateway._remember_site`). Adding a team member, creating a site or project,
+  correcting an old record and closing an issue no longer move it. Live: "Site B-il Rajesh-ine supervisor aakku"
+  then "ഇന്ന് 4 മേസൺ വന്നു" went to Site B without asking.
+- A new card made while an old-style Yes / No question still waits says so under the reply (`PENDING_YES_NO`,
+  from `WorkflowRuntime.get_awaiting_confirmation`). The Yes / No flows themselves move onto drafts in P3.
+
+### 11.6 Shared components touched (Module Isolation)
+
+No Labour, Attendance, Payroll or Workforce rule changed: labour is read through the same counted-line rule and
+written through the same workflow, undo and confirmation as before; only the order (take back, then write, on the
+tap) is new, and it is the order today's edit uses. Shared code changed, as the approved plan names it: the DPR
+assembly and its repository (the open-issue rule), the activity search, the labour date resolver (now the shared
+one), the "today so far" line, and the rule for today's site. These apply to every company, not only with the flag:
+"yesterday" on the labour question, the workers in "what was done today?", the draft line's open-issue count, and a
+team-member message no longer moving today's site.
+
+### 11.7 Tests
+
+- Golden g4 and g5 pass (markers removed); repro 4 of P1 now asserts the edit.
+- `tests/replay/test_draft_per_message_p2.py`: one or more per item 1-5.
+- Real Postgres (`tests/integration/test_draft_change_postgres.py`, run on a local Postgres 16, not in CI): the change
+  writes the labour rows an edit in today's flow writes and the labour answer counts the same; a failed change rolls
+  the take-back back too; "open issues?" and the DPR count the same issues (an earlier day's open one, today's,
+  not a resolved one, not an engineer note, not an unsaved one).
+
+### 11.8 Known limits of P2
+
+- The saved card a correction targets is still the Redis card (`cards.py`, 6 hours), as P1 keeps it for "undo
+  that"; it moves to `message_drafts` with P4.
+- "Other" / "Something else" on a waiting line's question cannot be answered by a tap: the sender types it.
+- The Today page of the dashboard counts open issues by its own query (out of scope: dashboard behaviour); it does
+  not leave out unsaved issues or engineer notes.
+- Card words are English (as in P1).
+- Not verified: a live-model run; the taps through real WhatsApp. Ilan Pro re-tests items 1-5 live.
+- Rollback: flag off (items 1, 3, 4 and the Yes / No note), or `git revert` (items 2 and 5 apply to everyone).
