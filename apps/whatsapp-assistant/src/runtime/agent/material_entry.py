@@ -40,6 +40,7 @@ from runtime.material_units import (
     ask_amount_text,
     conversion_question,
     fit_stock_unit,
+    stock_unit_code,
 )
 
 from .entry_base import (
@@ -146,7 +147,13 @@ class MaterialEntry(EntryScope):
                 # Request 129: still a line of the draft card, with the question
                 # beside it ("Steel used: 20 rod (❓ How many kg is 20 rod?)"), not
                 # only the model's words; a typed amount in the stock unit fills it.
-                return Say("info", text, question=amount_question(fields, fit), awaiting=AWAIT_AMOUNT)
+                return Say(
+                    "info",
+                    text,
+                    question=amount_question(fields, fit),
+                    awaiting=AWAIT_AMOUNT,
+                    answer_unit=stock_unit_code(fit),
+                )
             question, options = ask
             return Say(
                 "choose",

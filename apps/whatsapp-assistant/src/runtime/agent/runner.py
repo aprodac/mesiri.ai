@@ -402,8 +402,12 @@ class AgentRunner:
         # Request 132: the card, its questions and its buttons are the code's; the
         # model's own words never carry one, nor a note it read in its prompt.
         text = clean_model_text(text) if draft_mode else clean_annotations(text)
-        if draft_mode and _open_draft(toolbox) is not None:
+        if draft_mode and (open_draft := _open_draft(toolbox)) is not None:
             text = _one_sentence(text)
+            if _APOLOGY.match(text) and not _failed_this_turn(toolbox, open_draft):
+                # WA-81 (live 27 Oct, #4338): "Sorry, couldn't record it" above a card
+                # that HAS the line, waiting on its question. The card says what is so.
+                text = ""
         if toolbox.parked_site:
             # [111]: the site question is the code's, in the sender's language;
             # the model's words around it ("Ethra per vannu Site B-il?") went
@@ -978,6 +982,16 @@ def _saved_block(toolbox: AgentToolbox) -> str:
     if not entries or not all(item.summary for item in entries):
         return ""
     return render_saved([item.summary for item in entries if item.summary])
+
+
+#: An apology opening the model's words ("Sorry, ...", "ക്ഷമിക്കണം", "maaf kijiye").
+_APOLOGY = re.compile(r"^\W*(sorry|apolog|kshamikk|ക്ഷമ|maaf|माफ)", re.I)
+
+
+def _failed_this_turn(toolbox: AgentToolbox, draft: dr.MessageDraft) -> bool:
+    """Whether a line this message put on the card could not be read."""
+    new = set(getattr(toolbox.gateway, "draft_new", None) or [])
+    return toolbox.failed > 0 or any(i.state == dr.UNREADABLE and i.id in new for i in draft.items)
 
 
 #: Request 132: the longest the model's words above a draft card.

@@ -177,7 +177,8 @@
         {"if_last_re": "{SITE_Q}", "send": "25 Oct report ayakku",
          "checks": [{"mark": "M52", "lacks_re": ["save cheythilla", "not saved"]}]},
         {"if_last_re": ".", "send": "Green Villa 2 helper vannu",
-         "checks": [{"mark": "M53", "lacks_re": ["4 mason"]}, {"mark": "M53", "no_duplicate_lines": true}]},
+         "checks": [{"mark": "M53", "has_re": ["2 helper"]}, {"mark": "M53", "no_duplicate_lines": true},
+                    {"mark": "M53", "lacks_re": ["save cheythilla", "not saved"]}]},
         {"tap_if": "❌ Cancel"}
       ]
     },

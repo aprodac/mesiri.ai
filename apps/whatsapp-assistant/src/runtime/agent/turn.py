@@ -342,6 +342,16 @@ async def run_agent_turn(
         context = replace(context, notes=[*context.notes, later_line])
     _lap(deps, "agent_context")
     site_queue = await deps.site_wait.get(actor) if deps.site_wait is not None else []
+    if site_queue and getattr(gateway, "draft_mode", False) is True:
+        # WA-81: with draft cards "which site?" of a draft line is a question of the
+        # card; such a line is never held in the [111] queue (only what a card cannot
+        # hold, e.g. a transfer, still is), so nothing can be dropped there, or come back.
+        from .draft import DRAFT_TOOLS
+
+        kept = [item for item in site_queue if item.get("tool") not in DRAFT_TOOLS]
+        if kept != site_queue:
+            await _safe(deps.site_wait.put(actor, kept))
+            site_queue = kept
     result = await deps.runner.run(
         ctx=context,
         user_text=user_text,

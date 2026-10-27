@@ -484,3 +484,53 @@ card, no options, no note, no question); the state is one block (`draft.context_
 - The "which site" question is not yet an item (13.2).
 - Not verified: a live-model run; the taps through real WhatsApp (Ilan Pro re-tests live).
 - Rollback: flag `draft_v2` off (history, filter, "now at" rule) or `git revert`.
+
+
+## 14. Phase 2 of the 27 Oct plan: one pending record, code answers the card (WA-81)
+
+From the review of the 27 Oct live rounds (58 marks, [`docs/qa/live-scenarios.md`](../qa/live-scenarios.md)):
+most failures were two stores disagreeing about what is pending, and the model being asked to do the record
+keeping. This section removes the store that disagreed most (the [111] site queue, for draft lines) and moves
+answering the card's questions into code. Draft mode only (`draft_v2`); no Labour rule changed.
+
+### 14.1 "Which site?" is a question of the card (W1)
+
+- A draft tool whose entry asks WHERE (`site`, `project`: `draft.WHERE_QUESTIONS`) is a line of the card in state
+  `needs_answer` with `awaiting = site` (`DraftItem.needs_site`). The card shows the lines and, once, "📍 Which
+  site is this for?" with the sites as buttons (`card_rows` puts the site question first). Closes 13.2's "not done".
+- One answer (a tap, or the site's name typed) settles **every** line waiting for it (`draft_flow._answer_where`);
+  a labour line then joins the card's labour line of that site and day (the merge rule of `add`) and keeps the
+  "replace or add?" question when the day already has a count.
+- A card that is already for one site gives that site to a new line that names none (`_on_card_site`): the
+  "which site?" inside a card that said Green Villa (live 27 Oct, screenshot 18) cannot happen.
+- A site the message names stays in the line's arguments, also while it waits on another question (the steel
+  line kept no site, so its answer asked "which site?").
+- The [111] queue (`site_wait`) holds no draft-tool call in draft mode (`turn.py` clears such items), and the
+  WA-45 morning question does not hold the message: so no reply can say "not saved, send it again" about a line
+  the card still holds, and nothing comes back later (live #4314, #4322, #4331). Calls a card cannot hold (a
+  transfer) keep the queue.
+- A "next update of the same kind" never replaces a line waiting for its site (`waiting_for`); and the same call
+  asked again after its site is answered is the same line, not a second one (`_bare`: live, steel shown twice).
+
+### 14.2 Code reads a typed answer to the card (W2)
+
+`draft_answer.py` (pure) and `draft_flow.answer_typed`, run by `message_journey._run_agent` **before** the model
+for a text message while the sender has an open card; anything that is not such an answer goes to the model.
+
+- "Which site?": the site's name alone ("Green Villa", "Site B-il"), not an update that names it ("Green Villa 2
+  helper vannu").
+- "How many kg is 20 rod?": "oru rod 12 kg" / "1 rod = 12 kg" / "per rod 12 kg" -> 240 kg; "240 kg" / "240" ->
+  240 kg. The stock unit comes from the entry (`Say.answer_unit`). The line is prepared again with the amount in
+  the stock unit (every check of the entry runs) and the card shows Save.
+- An apology above a card ("Sorry, couldn't record it") is dropped when no line of this message failed: the card
+  has the line, waiting on its question (live #4338).
+
+### 14.3 Tests and limits
+
+- `tests/replay/test_wa81_one_pending_record.py`: the live sequences of rounds 7-8 (9 of its tests fail on the code
+  before this change). Tests that asserted "nothing on the card, ask the site" now assert "the line waits on the
+  card for its site".
+- Not verified here: the live run (`bot-scenarios`, WA-80) is the gate; see the tracker for its result.
+- A sender's message held by the morning question before this change is not replayed (TEST company only).
+- The `to_site` question of a transfer is still the [111] queue.
+- Rollback: `git revert`, or flag `draft_v2` off.

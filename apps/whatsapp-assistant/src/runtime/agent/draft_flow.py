@@ -243,10 +243,22 @@ async def add(gw: Any, candidate: Any, *, text: str) -> StepResult:
         await note_lost(gw, tool, args, "that can't be done here yet")
         return StepResult("error", text="Not saved: that can't be done here yet.")
     candidate = draft_site.with_named_site(gw.actor, candidate, text)
+    named = str((getattr(candidate, "fields", None) or {}).get("site_name") or "")
+    if named and not args.get("site"):
+        # WA-81: the site the message names stays with the line, also while it waits
+        # on a question ("Green Villa: 20 rod steel" kept no site, so its answer asked).
+        args = {**args, "site": named}
     prepared = await entry.prepare(message, tool_understanding(candidate, message, language=gw.language), candidate)
     if prepared is None:
         await note_lost(gw, tool, args, "it could not be looked up")
         return StepResult("error", text="Not saved: the system could not look this up just now. Send it again.")
+    if isinstance(prepared, Say) and prepared.question and prepared.awaiting in dr.WHERE_QUESTIONS:
+        # WA-81: "which site?" is a question of the card, not of a separate queue that
+        # could later drop the line. A card that is already for one site settles it.
+        settled = await _on_card_site(gw, tool, args, message)
+        if settled is None:
+            return await _add_waiting(gw, tool, args, prepared)
+        args, prepared = settled
     if isinstance(prepared, Say):
         from .toolbox import question_reply
 
@@ -303,6 +315,44 @@ async def add(gw: Any, candidate: Any, *, text: str) -> StepResult:
     return _drafted(item, prepared, note=await _pending_note(gw))
 
 
+async def _on_card_site(gw: Any, tool: str, args: dict[str, Any], message: Any) -> tuple[dict[str, Any], Any] | None:
+    """WA-81: the open card is for one site: a line that asks WHERE is for that site
+    too, prepared again with it. None when the card has no one site or the entry
+    still cannot be prepared for it (then the card asks)."""
+    draft = await load(gw)
+    site = _card_site(gw, draft) if draft is not None else None
+    if not site:
+        return None
+    sited = {**args, "site": site}
+    candidate = to_candidate(tool, sited, _scope(gw))
+    entry = gw._entry_for(getattr(candidate, "semantic_type", None)) if candidate is not None else None
+    if entry is None:
+        return None
+    prepared = await entry.prepare(message, tool_understanding(candidate, message, language=gw.language), candidate)
+    return (sited, prepared) if isinstance(prepared, (Ready, Say)) and not _asks_where(prepared) else None
+
+
+def _asks_where(prepared: Any) -> bool:
+    return isinstance(prepared, Say) and bool(prepared.question) and prepared.awaiting in dr.WHERE_QUESTIONS
+
+
+def _bare(args: dict[str, Any]) -> dict[str, Any]:
+    """A call's arguments without where it is for: the same call asked again after
+    its site was answered is the same line, not a second one (live 27 Oct: the
+    steel line was shown twice)."""
+    return {k: v for k, v in args.items() if k not in ("site", "project")}
+
+
+def _place(gw: Any, item: dr.DraftItem) -> None:
+    """The line's site, from the site its arguments name (one of the sender's)."""
+    name = str(item.args.get("site") or "").strip()
+    if not name or item.site_id:
+        return
+    site_id = _scope(gw).site_id(name)
+    if site_id:
+        item.site_id, item.site = site_id, _site_name(gw, site_id)
+
+
 async def _add_waiting(gw: Any, tool: str, args: dict[str, Any], asked: Say) -> StepResult:
     """The system asked something before this call could become a line (a unit,
     which material, add it as new?): it is a line of the card all the same, with
@@ -320,10 +370,19 @@ async def _add_waiting(gw: Any, tool: str, args: dict[str, Any], asked: Say) -> 
         options=[str(o) for o in asked.options],
         label=dr.label_for(tool, args),
         awaiting=asked.awaiting,
+        answer_unit=asked.answer_unit,
     )
-    same = next((i for i in draft.items if i.pending_answer and i.tool == tool and i.args == item.args), None) if draft else None
+    _place(gw, item)
+    same = (
+        next((i for i in draft.items if i.pending_answer and i.tool == tool and _bare(i.args) == _bare(item.args)), None)
+        if draft
+        else None
+    )
     if same is not None:
         same.question, same.options, same.awaiting = item.question, item.options, item.awaiting
+        same.answer_unit = item.answer_unit or same.answer_unit
+        if item.args.get("site") and not same.args.get("site"):
+            same.args, same.site_id, same.site = item.args, item.site_id, item.site
         item = same
         gw.draft_new.append(same.id)
         _keep(gw, draft)
@@ -333,12 +392,17 @@ async def _add_waiting(gw: Any, tool: str, args: dict[str, Any], asked: Say) -> 
         return StepResult("error", text=TOO_MANY)
     else:
         await _add_item(gw, item, source=gw.message.message_id)
+    hint = (
+        "It is on their card; the card asks which site with buttons. Do not ask it yourself."
+        if item.needs_site
+        else asked.text
+    )
     return StepResult(
         "drafted",
         text=await _pending_note(gw),
         summary=item.line,
         awaiting="answer",
-        hint=asked.text,
+        hint=hint,
     )
 
 
@@ -535,6 +599,8 @@ async def _answer_waiting(gw: Any, draft: dr.MessageDraft, item: dr.DraftItem, o
     site = _card_site(gw, draft)
     if option in _TYPE_IT:
         return dr.card_reply(draft, _TYPE_IT[option], site=site)
+    if item.needs_site:
+        return await _answer_where(gw, draft, item.awaiting, option)
     args = dict(item.args)
     if item.awaiting == AWAIT_NEW_MATERIAL:
         if option != ADD_IT:
@@ -578,6 +644,96 @@ async def _answer_waiting(gw: Any, draft: dr.MessageDraft, item: dr.DraftItem, o
     await _persist(gw, draft)
     _log.info("draft.waiting_answered draft=%s kind=%s state=%s", draft.id, new.kind, new.state)
     return dr.card_reply(draft, site=site)
+
+
+async def _prepare_line(gw: Any, item: dr.DraftItem, args: dict[str, Any]) -> dr.DraftItem:
+    """``item`` prepared again with ``args``: the entry, a line still waiting on a
+    question, or unreadable with the reason. Nothing is written."""
+    candidate = to_candidate(item.tool, args, _scope(gw))
+    entry = gw._entry_for(getattr(candidate, "semantic_type", None)) if candidate is not None else None
+    if entry is None:
+        return _unreadable(item.tool, args, "that can't be answered here; send it again")
+    message = _message(gw, item.label or item.tool)
+    prepared = await entry.prepare(message, tool_understanding(candidate, message, language=gw.language), candidate)
+    if isinstance(prepared, Ready):
+        return _item_for(gw, item.tool, args, prepared)
+    if isinstance(prepared, Say) and prepared.question and prepared.awaiting not in _SCOPE_QUESTIONS:
+        waiting = replace(
+            item,
+            args=args,
+            question=" ".join(str(prepared.question).split()),
+            options=[str(o) for o in prepared.options],
+            awaiting=prepared.awaiting,
+            answer_unit=prepared.answer_unit,
+            site_id="",
+            site="",
+        )
+        _place(gw, waiting)
+        return waiting
+    reason = prepared.text if isinstance(prepared, Say) else "it could not be looked up"
+    return _unreadable(item.tool, args, _clean(reason))
+
+
+def _labour_line_for(draft: dr.MessageDraft, new: dr.DraftItem, skip: dr.DraftItem) -> dr.DraftItem | None:
+    """The card's labour line for the same site and day as ``new`` (a labour line
+    that has just got its site), which it joins, as ``add`` merges a later count."""
+    if new.kind != dr.KIND_LABOUR or not new.ready or new.pending_answer:
+        return None
+    return next(
+        (
+            o
+            for o in draft.items
+            if o is not skip and o.kind == dr.KIND_LABOUR and o.ready and not o.pending_answer
+            and o.site_id == new.site_id and dr._day(o) == dr._day(new)
+        ),
+        None,
+    )
+
+
+async def _answer_where(gw: Any, draft: dr.MessageDraft, awaiting: str, option: str) -> ReplySpec:
+    """WA-81: the answer to the card's "which site?" (a tap, or the site's name
+    typed): EVERY line waiting for it is prepared again for that site, in order.
+    Labour joins the card's labour line of that site and day. Nothing is written."""
+    waiting = [i for i in draft.items if i.needs_site and i.awaiting == awaiting]
+    for item in waiting:
+        new = await _prepare_line(gw, item, {**item.args, awaiting: option})
+        old = _labour_line_for(draft, new, item)
+        if old is not None:
+            draft.items[draft.items.index(old)] = await _prepare_line(gw, old, merge_changes(old.tool, old.args, new.args))
+            draft.items.remove(item)
+            continue
+        draft.items[draft.items.index(item)] = new
+    await _persist(gw, draft)
+    _log.info("draft.site_answered draft=%s lines=%s", draft.id, len(waiting))
+    return dr.card_reply(draft, site=_card_site(gw, draft))
+
+
+async def answer_typed(gw: Any, draft: dr.MessageDraft, text: str) -> ReplySpec | None:
+    """WA-81: a typed answer to a question on the open card, read by code before the
+    model runs: the site's name for "which site?", the amount for "How many kg is 20
+    rod?" ("oru rod 12 kg", "240 kg"). None when the message is not such an answer
+    (then the model reads it as usual)."""
+    from . import draft_answer
+
+    where = next((i for i in draft.items if i.needs_site), None)
+    if where is not None:
+        picked = draft_answer.site_answer(gw.actor, text, where.options)
+        if picked is not None:
+            return await _answer_where(gw, draft, where.awaiting, picked)
+    from .material_entry import AWAIT_AMOUNT
+
+    for item in [i for i in draft.items if i.pending_answer and i.awaiting == AWAIT_AMOUNT]:
+        amount = draft_answer.amount_answer(text, item.args, item.answer_unit)
+        if amount is None:
+            continue
+        plain = int(amount) if amount == amount.to_integral_value() else float(amount)
+        new = await _prepare_line(gw, item, {**item.args, "quantity": plain, "unit": item.answer_unit})
+        draft.items[draft.items.index(item)] = new
+        await _persist(gw, draft)
+        _log.info("draft.amount_answered draft=%s state=%s", draft.id, new.state)
+        said = f"{item.args.get('quantity')} {item.args.get('unit')} = {amount:g} {item.answer_unit}."
+        return dr.card_reply(draft, said if new.state == dr.OK else "", site=_card_site(gw, draft))
+    return None
 
 
 # -- change site (request 129) --------------------------------------------------------

@@ -79,6 +79,9 @@ class Say:
     options: tuple[str, ...] = ()
     #: "choose" only: what the answer fills in ("site", "project", "material"...).
     awaiting: str = ""
+    #: ``awaiting == "amount"`` only (request 129): the stock unit the typed amount is
+    #: in ("kg" for "How many kg is 20 rod?"), so code can read "oru rod 12 kg" (WA-81).
+    answer_unit: str = ""
 
 
 @dataclass(slots=True)

@@ -155,6 +155,11 @@ def amount_question(fields: dict[str, Any], fit: UnitFit) -> str:
     return f"How many {stock} is {said}?" if said else f"How many {stock} is it?"
 
 
+def stock_unit_code(fit: UnitFit) -> str:
+    """The stock unit of ``fit`` as the amount question says it ("kg"), or ""."""
+    return _plain(fit.stock_unit) if fit.stock_unit else ""
+
+
 def _plain(unit: dict[str, Any] | None) -> str:
     """A unit as a site says it: its short code ("cum", "load", "kg")."""
     return str((unit or {}).get("code") or (unit or {}).get("display_name") or "").lower()

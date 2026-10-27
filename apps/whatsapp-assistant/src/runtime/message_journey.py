@@ -1129,6 +1129,33 @@ def build_message_handlers(
                 else:
                     reply = await gateway.answer_draft(draft, extra[0], int(extra[1]))
                 return reply, gateway
+            if use_drafts and message.modality is InputModality.TEXT and (message.text or "").strip():
+                # WA-81: a typed answer to the open card's question ("Green Villa" for
+                # "which site?", "oru rod 12 kg" for "how many kg?") is read by code,
+                # as a tap is; no model runs. Anything else goes to the model below.
+                try:
+                    open_draft = await drafts.open_for(ctx.organization_id, ctx.user_id)
+                    typed = None
+                    if open_draft is not None and open_draft.live and not open_draft.expired():
+                        typed = await _gateway(message, None).answer_draft_typed(open_draft, message.text or "")
+                except Exception:  # noqa: BLE001 -- the model reads the message instead
+                    _log.exception("draft.typed_answer_failed user=%s", ctx.user_id)
+                    typed = None
+                if typed is not None:
+                    timer.lap("draft_typed_answer")
+                    await _send_composed(wa_id, ctx.user_id, typed)
+                    await message_logger.log_reply(correlation_id=message.correlation_id, reply=typed.text)
+                    await message_logger.mark_completed(correlation_id=message.correlation_id)
+                    try:
+                        await memory_coordinator.record_turn(
+                            user_id=ctx.user_id,
+                            user_text=str(message.text or "").strip(),
+                            assistant_reply=typed.text,
+                            correlation_id=message.correlation_id,
+                        )
+                    except Exception:  # noqa: BLE001 -- memory is a hint
+                        _log.warning("draft.typed_record_turn_failed user=%s", ctx.user_id, exc_info=True)
+                    return None
             result = await run_agent_turn(message, ctx, deps, menu_hint=hint)
             timer.lap("agent_turn")
             if result is not None and result.toolbox.parked is not None:
@@ -2647,7 +2674,9 @@ def build_message_handlers(
             # WA-45: the day's first message from someone with several sites
             # waits for "Where are you working today?".
             morning = None
-            if work_site is not None and category_hint is None:
+            # WA-81: with draft cards the site is a question of the card, so the
+            # morning question does not hold the message in a store of its own.
+            if work_site is not None and category_hint is None and not await _draft_v2_on(ctx):
                 try:
                     # SIT-03: while the question is open, typing the site's
                     # name answers it like the tap does.

@@ -373,6 +373,13 @@ class JourneyGateway:
 
         return await draft_flow.move_site(self, draft, site_id)
 
+    async def answer_draft_typed(self, draft: Any, text: str) -> ReplySpec | None:
+        """WA-81: a typed answer to the open card's question, read by code; None when
+        the message is not one (the model reads it)."""
+        from . import draft_flow
+
+        return await draft_flow.answer_typed(self, draft, text)
+
     async def answer_draft(self, draft: Any, item_id: str, choice: int) -> ReplySpec:
         from . import draft_flow
 

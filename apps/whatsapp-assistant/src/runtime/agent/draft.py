@@ -91,6 +91,10 @@ KIND_BY_TOOL = {
 }
 DRAFT_TOOLS = frozenset(KIND_BY_TOOL)
 
+#: WA-81: what a "where" question fills in. With draft cards it is a question
+#: of the card (the [111] site queue is not used), answered once for all lines.
+WHERE_QUESTIONS = ("site", "project")
+
 REPLACE = "Replace"
 ADD = "Add"
 
@@ -129,11 +133,19 @@ class DraftItem:
     #: ``change`` only: the saved entry it replaces (``fact_type``, ``fact_id``
     #: of its card item, and its tool arguments as saved).
     target: dict[str, Any] | None = None
+    #: ``awaiting == "amount"`` only: the stock unit the typed answer is in (WA-81).
+    answer_unit: str = ""
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
 
     @property
     def line(self) -> str:
         return self.summary or self.label
+
+    @property
+    def needs_site(self) -> bool:
+        """WA-81: a line waiting for WHERE (its site or project): the card asks
+        once for all of them, and one answer settles every such line."""
+        return self.pending_answer and self.awaiting in WHERE_QUESTIONS
 
     @property
     def pending_answer(self) -> bool:
@@ -164,6 +176,7 @@ class DraftItem:
                 action_id=str(raw.get("action_id") or ""),
                 target=raw.get("target") if isinstance(raw.get("target"), dict) else None,
                 awaiting=str(raw.get("awaiting") or ""),
+                answer_unit=str(raw.get("answer_unit") or ""),
                 id=str(raw.get("id") or uuid.uuid4().hex[:8]),
             )
         except Exception:  # noqa: BLE001 -- an unreadable item is no item
@@ -374,8 +387,13 @@ def card_text(draft: MessageDraft, *, site: str | None = None) -> str:
         # Request 127: an item waiting for its answer is a line of the card, with
         # its question beside it ("Steel used: 20 rod (❓ how many kg?)").
         lines = [_line(i, show_site=show_site) for i in ready]
-        lines += [f"{_line(i, show_site=show_site)} (❓ {i.question})" for i in asking]
+        lines += [f"{_line(i, show_site=show_site)} (❓ {i.question})" for i in asking if not i.needs_site]
+        lines += [_line(i, show_site=False) for i in asking if i.needs_site]
         parts.append(render_saved(lines, header))
+    # WA-81: the "which site?" of lines waiting for it, once, under them.
+    where = next((i.question for i in asking if i.needs_site and i.question), "")
+    if where:
+        parts.append(f"📍 {where}")
     parts.extend(f"❓ {i.question}" for i in draft.waiting_items if not i.pending_answer)
     if draft.unreadable_items:
         parts.append(CANT_READ + "; ".join(i.label or i.summary or i.tool for i in draft.unreadable_items))
@@ -398,7 +416,9 @@ def card_rows(draft: MessageDraft) -> list[ListRow]:
         rows.append(ListRow(tap_id(SAVE, draft.id), SAVE_TITLE))
     if draft.live:
         rows.append(ListRow(tap_id(CANCEL, draft.id), CANCEL_TITLE))
-    asking = next(iter(draft.waiting_items), None)
+    # WA-81: the site question first (it settles every line that waits for it).
+    waiting = draft.waiting_items
+    asking = next((i for i in waiting if i.needs_site), None) or next(iter(waiting), None)
     if asking is not None:
         rows.extend(
             ListRow(tap_id(ANSWER, draft.id, asking.id, str(n)), option)
@@ -588,7 +608,9 @@ def waiting_for(draft: MessageDraft, item: DraftItem) -> DraftItem | None:
     """The line waiting on an answer that this item answers: the same kind of
     entry (and, for material, the same material)."""
     material = str(item.args.get("material") or "").strip().casefold()
-    same = [i for i in draft.items if i.pending_answer and i.kind == item.kind]
+    # WA-81: a line waiting for its SITE is answered by the site, never replaced by
+    # the next update of the same kind ("Green Villa 2 helper" is not "which site?").
+    same = [i for i in draft.items if i.pending_answer and not i.needs_site and i.kind == item.kind]
     named = [i for i in same if material and str(i.args.get("material") or "").strip().casefold() == material]
     # "Which material?" is answered with another name: then the only waiting line of its kind is it.
     return named[0] if named else (same[0] if len(same) == 1 else None)

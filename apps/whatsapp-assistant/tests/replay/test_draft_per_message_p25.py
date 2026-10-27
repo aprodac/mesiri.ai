@@ -29,6 +29,7 @@ from tests.replay.test_draft_per_message_p3 import (  # noqa: F401  (fixtures)
     _active,
     _remember,
     _SteelCatalog,
+    only_waiting_for_site,
     tap,
     two,
     world,
@@ -103,7 +104,7 @@ async def test_a_site_named_while_setting_up_the_team_pins_nothing(two):
     assert await _active(two) is None
 
     asked = await two.say(FakeToolCallingProvider([[MASONS], "Which site?"]), "4 mason")
-    assert await open_items(two) == []
+    assert await only_waiting_for_site(two)  # WA-81: on the card, asking where
     assert {"Site A1", "Site A2"} <= set(titles(asked.reply))
 
 
@@ -235,13 +236,14 @@ async def test_e2_an_item_released_onto_the_card_is_not_also_listed_as_not_saved
     """27 Oct: after the site pick merged two messages into one card, it ended with
     "Not saved (Green Villa first floor wall putty 200 sqft cheythu):" and nothing after it,
     although that item IS on the card (the call came back "drafted", not "saved")."""
+    # WA-81: the line waits on the card for its site; the site's button settles it there
+    # (the [111] queue and its "Not saved (...)" lines are not used with draft cards).
     first = await two.say(FakeToolCallingProvider([[MASONS], "Which site?"]), "4 mason")
-    box = first.toolbox
-    waiting = [{"tool": "save_labour", "args": dict(MASONS[1]), "note": "Green Villa first floor wall putty 200 sqft cheythu"}]
-    done = await box._replay_site(waiting, "Site A2", None)
-    assert done and not [line for line in box.system_lines if line.startswith("Not saved")]
+    assert not [line for line in first.toolbox.system_lines if line.startswith("Not saved")]
+    picked = await tap(two, first.reply, "Site A2")
+    assert "Not saved" not in picked.text
     (item,) = await open_items(two)
-    assert item.site == "Site A2"
+    assert item.site == "Site A2" and item.state == dr.OK
 
 
 class _CountCatalog(_Catalog):

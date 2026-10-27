@@ -70,6 +70,13 @@ async def tap(world, reply, title: str, drafts=True):  # noqa: ANN001, ANN201
     return await gateway.answer_draft(draft, extra[0], int(extra[1]))
 
 
+async def only_waiting_for_site(world) -> bool:  # noqa: ANN001
+    """WA-81: what asks "which site?" is a line of the card waiting for it (nothing
+    ready to save yet), not a call held in a queue of its own."""
+    items = await open_items(world)
+    return bool(items) and all(i.needs_site for i in items)
+
+
 @pytest.fixture
 async def world():
     world = await _make_world(site_keys=(seed.SITE_A1,))
@@ -174,13 +181,13 @@ async def test_b3_after_three_hours_the_site_is_asked_again(two):
     await _remember(two, SITE_A2)
     _clock(two, dt.timedelta(hours=3, minutes=1))
     result = await two.say(FakeToolCallingProvider([[CEMENT], "Which site?"]), "cement vannu")
-    assert await open_items(two) == []
+    assert await only_waiting_for_site(two)  # WA-81: on the card, asking where
     assert {"Site A1", "Site A2"} <= set(titles(result.reply))  # the sites to pick from
 
 
 async def test_b4_nothing_saved_yet_asks_which_site_before_any_card(two):
     result = await two.say(FakeToolCallingProvider([[CEMENT], "Which site?"]), "cement vannu")
-    assert await open_items(two) == []
+    assert await only_waiting_for_site(two)  # WA-81: on the card, asking where
     assert {"Site A1", "Site A2"} <= set(titles(result.reply))
 
 
@@ -189,7 +196,7 @@ async def test_b_saves_on_two_sites_inside_the_window_ask_again(two):
     await _remember(two, SITE_A1)
     assert await _active(two) is None
     result = await two.say(FakeToolCallingProvider([[MASONS], "Which site?"]), "4 mason")
-    assert await open_items(two) == []
+    assert await only_waiting_for_site(two)  # WA-81: on the card, asking where
     assert {"Site A1", "Site A2"} <= set(titles(result.reply))
 
 
@@ -206,7 +213,7 @@ async def test_b_a_cancelled_card_never_makes_its_site_the_default(two):
     await tap(two, result.reply, "Cancel")
     assert await _active(two) is None
     again = await two.say(FakeToolCallingProvider([[CEMENT], "Which site?"]), "cement vannu")
-    assert await open_items(two) == []
+    assert await only_waiting_for_site(two)  # WA-81: on the card, asking where
     assert {"Site A1", "Site A2"} <= set(titles(again.reply))
 
 
@@ -223,7 +230,7 @@ async def test_b_a_team_or_setup_message_never_makes_its_site_the_default(two, k
     await entry.remember(ready)
     assert await _active(two) is None
     result = await two.say(FakeToolCallingProvider([[MASONS], "Which site?"]), "4 mason")
-    assert await open_items(two) == []
+    assert await only_waiting_for_site(two)  # WA-81: on the card, asking where
     assert {"Site A1", "Site A2"} <= set(titles(result.reply))
 
 
