@@ -65,6 +65,23 @@ async def test_mat03_used_and_received_by_day_are_not_the_all_time_totals(world)
     assert "In stock" in await _ask(world)
 
 
+async def test_wa42_an_entry_not_yet_saved_is_not_in_the_days_figures(world):  # noqa: F811 -- pytest fixture imported from the shared e2e module
+    """WA-42 + WA-77: today's used / received and the stock left are what was
+    saved; an entry still waiting for ✅ Save is in neither."""
+    await _send(world, direction="opening_stock", quantity=500)
+    await _send(world, direction="used", quantity=5)
+    await tap_save(world.db, world.org)
+    await _send(world, direction="used", quantity=7)  # not saved yet
+
+    said = await _ask(world, date_range="today")
+    assert "5 bags cement used" in said and "12 bags" not in said and "7 bags" not in said
+    assert "495 bags left now" in said
+
+    await tap_save(world.db, world.org)
+    said = await _ask(world, date_range="today")
+    assert "12 bags cement used" in said and "488 bags left now" in said
+
+
 async def test_mat03_a_day_without_movements_says_so_with_the_stock(world):  # noqa: F811 -- pytest fixture imported from the shared e2e module
     await _send(world, direction="opening_stock", quantity=500)
     await tap_save(world.db, world.org)  # WA-77: counted once saved
