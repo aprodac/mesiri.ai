@@ -37,7 +37,8 @@ CHECK_KEYS = {
     "mark", "has", "lacks", "has_re", "lacks_re", "buttons_has", "buttons_lacks_re",
     "body_count_max", "no_duplicate_lines", "max_seconds", "observe",
 }
-STEP_KEYS = {"send", "tap", "tap_if", "if_last_re", "capture", "checks", "expect_card"}
+STEP_KEYS = {"send", "send_image", "send_voice", "tap", "tap_if", "if_last_re", "capture", "checks", "expect_card"}
+_ACTIONS = ("send", "send_image", "send_voice", "tap", "tap_if")
 _OPTION_LINE = re.compile(r"^\s*\d+\)\s")
 #: The assistant refuses every message once the company's daily trial limit is reached:
 #: nothing after that measures anything (the 27 Oct baseline ran into it at S09).
@@ -53,7 +54,9 @@ class Refused(Exception):
 
 def load(path: Path) -> dict:
     with open(path, encoding="utf-8") as fh:
-        return json.load(fh)
+        cat = json.load(fh)
+    cat["_dir"] = str(path.parent)  # media files are named relative to the catalogue
+    return cat
 
 
 def validate(cat: dict) -> list[str]:
@@ -70,8 +73,11 @@ def validate(cat: dict) -> list[str]:
             where = f"{sc['id']} step {n}"
             if set(step) - STEP_KEYS:
                 problems.append(f"{where}: unknown keys {sorted(set(step) - STEP_KEYS)}")
-            if sum(k in step for k in ("send", "tap", "tap_if")) > 1:
-                problems.append(f"{where}: one of send / tap / tap_if")
+            if sum(k in step for k in _ACTIONS) > 1:
+                problems.append(f"{where}: one of {' / '.join(_ACTIONS)}")
+            for key in ("send_image", "send_voice"):
+                if key in step and not (Path(cat.get("_dir", ".")) / step[key]["file"]).is_file():
+                    problems.append(f"{where}: no file {step[key]['file']}")
             for check in step.get("checks", []):
                 if set(check) - CHECK_KEYS:
                     problems.append(f"{where}: unknown check keys {sorted(set(check) - CHECK_KEYS)}")
@@ -121,11 +127,17 @@ class Chat:
             sys.exit("no chat is labelled assistant-test for this project")
         self.jid = tests[0]["jid"]
 
-    def act(self, *, text: str | None = None, choose: dict | None = None) -> tuple[list[dict], float | None]:
-        """Send, then collect the assistant's replies until it has been quiet for a while."""
+    def act(
+        self, *, text: str | None = None, choose: dict | None = None, media: dict | None = None
+    ) -> tuple[list[dict], float | None]:
+        """Send, then collect the assistant's replies until it has been quiet for a while.
+        ``media``: {"image_base64", "caption"} or {"audio_base64", "audio_mime"} (the
+        listener's /send, assistant-test chat only)."""
         body: dict = {"chat": self.jid, "project": self.inbox.PROJECT}
         if choose is not None:
             body["choose"] = choose
+        elif media is not None:
+            body.update(media)
         else:
             body["text"] = text
         started = self.inbox._since(seconds=2)  # WhatsApp stamps whole seconds
@@ -238,6 +250,17 @@ def run_scenario(chat: Chat, cat: dict, sc: dict, log: list[str]) -> list[dict]:
         if "send" in step:
             log.append(f"  {n:>2}. > {step['send']}")
             last, last_seconds = chat.act(text=step["send"])
+        elif "send_image" in step or "send_voice" in step:
+            import base64
+
+            media = step.get("send_image") or step.get("send_voice")
+            raw = base64.b64encode((Path(cat.get("_dir", ".")) / media["file"]).read_bytes()).decode()
+            if "send_image" in step:
+                payload = {"image_base64": raw, "caption": media.get("caption") or ""}
+            else:
+                payload = {"audio_base64": raw, "audio_mime": media.get("mime") or "audio/ogg; codecs=opus"}
+            log.append(f"  {n:>2}. > [{'image' if 'send_image' in step else 'voice'}] {media['file']}")
+            last, last_seconds = chat.act(media=payload)
         elif "tap" in step or "tap_if" in step:
             title = step.get("tap") or step.get("tap_if")
             option = _find_option(last, title)
@@ -252,12 +275,13 @@ def run_scenario(chat: Chat, cat: dict, sc: dict, log: list[str]) -> list[dict]:
                 return
             log.append(f"  {n:>2}. > tap {option['title']!r}")
             last, last_seconds = chat.act(choose={"message_n": option["message_n"], "option": option["n"]})
-        for m in last if ("send" in step or "tap" in step or "tap_if" in step) else []:
+        acted = any(k in step for k in _ACTIONS)
+        for m in last if acted else []:
             shown = (m.get("text") or "").replace("\n", " ⏎ ")
             log.append(f"      < [{m.get('kind')}] {shown}")
-        if ("send" in step or "tap" in step or "tap_if" in step) and last_seconds is not None:
+        if acted and last_seconds is not None:
             log.append(f"      (first reply {last_seconds:.1f} s)")
-        if ("send" in step or "tap" in step or "tap_if" in step) and not last:
+        if acted and not last:
             log.append("      (no reply)")
         if _REFUSED.search(_text(last)):
             raise Refused(f"{sc['id']} step {n}: the assistant refused it (trial limit)")
