@@ -352,6 +352,59 @@ class PostgresUsageCostRepository:
         ).mappings().all()
         return [dict(r) for r in rows]
 
+    async def costs_by_person(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        since: dt.datetime,
+        until: dt.datetime | None,
+    ) -> list[dict[str, object]]:
+        """What each person in one company cost, most expensive first: the AI
+        calls made handling the messages they sent (by the message's sender)
+        and the WhatsApp messages sent to them (by recipient). A person is
+        their WhatsApp number's last 10 digits -- numbers are stored as
+        "+91 98765 00081" on users and "919876500081" on messages -- matched
+        to the company's user with that number; a number with no user keeps
+        `user_id` None. Rows tied to no number (a scheduled report, a
+        reminder template) are one row with `phone` None."""
+        rows = (
+            await self._conn.execute(
+                sa.text(
+                    "WITH c AS ("
+                    " SELECT pe.provider, pe.cost_inr, pe.correlation_id,"
+                    "  pe.input_tokens, pe.output_tokens,"
+                    "  right(regexp_replace(CASE WHEN pe.provider = :wa THEN pe.recipient ELSE"
+                    "   (SELECT im.sender_wa_id FROM inbound_messages im"
+                    "    WHERE im.correlation_id = pe.correlation_id LIMIT 1) END,"
+                    "   '\\D', '', 'g'), 10) AS phone"
+                    f" FROM provider_executions pe WHERE {self._RANGE}"
+                    ") "
+                    "SELECT NULLIF(c.phone, '') AS phone, u.id AS user_id, u.full_name, u.role, "
+                    "count(DISTINCT c.correlation_id) FILTER (WHERE c.provider <> :wa) "
+                    "AS messages_handled, "
+                    "count(*) FILTER (WHERE c.provider <> :wa) AS ai_calls, "
+                    "COALESCE(sum(c.input_tokens) FILTER (WHERE c.provider <> :wa), 0) "
+                    "AS input_tokens, "
+                    "COALESCE(sum(c.output_tokens) FILTER (WHERE c.provider <> :wa), 0) "
+                    "AS output_tokens, "
+                    "COALESCE(sum(c.cost_inr) FILTER (WHERE c.provider <> :wa), 0) AS ai_cost_inr, "
+                    "count(*) FILTER (WHERE c.provider = :wa) AS whatsapp_messages, "
+                    "COALESCE(sum(c.cost_inr) FILTER (WHERE c.provider = :wa), 0) "
+                    "AS whatsapp_cost_inr, "
+                    "COALESCE(sum(c.cost_inr), 0) AS total_cost_inr, "
+                    "count(*) FILTER (WHERE c.cost_inr IS NULL) AS unpriced "
+                    "FROM c LEFT JOIN LATERAL (SELECT us.id, us.full_name, us.role FROM users us "
+                    " WHERE us.organization_id = CAST(:org AS uuid) AND c.phone <> '' "
+                    " AND right(regexp_replace(us.whatsapp_number, '\\D', '', 'g'), 10) = c.phone "
+                    " LIMIT 1) u ON true "
+                    "GROUP BY NULLIF(c.phone, ''), u.id, u.full_name, u.role "
+                    "ORDER BY total_cost_inr DESC, ai_calls DESC"
+                ),
+                {"wa": WHATSAPP, "since": since, "until": until, "org": organization_id},
+            )
+        ).mappings().all()
+        return [dict(r) for r in rows]
+
     async def whatsapp_messages_sent(
         self,
         *,

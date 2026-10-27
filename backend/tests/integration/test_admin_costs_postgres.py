@@ -142,6 +142,44 @@ async def test_one_company_lists_its_messages_and_whatsapp_sent(conn) -> None:
     assert costs["sent"][0]["sent_at"] > costs["sent"][1]["sent_at"]  # newest first
 
 
+async def test_one_company_costs_by_person(conn) -> None:
+    """SA-22: the AI calls for Ravi's message and the WhatsApp replies sent to
+    him are his, matched by the last 10 digits whatever the number's format;
+    a call tied to no message is its own row."""
+    acme, _ = await _costs(conn)
+    await conn.execute(
+        text(
+            "INSERT INTO users (id, organization_id, email, hashed_password, full_name, role,"
+            " status, whatsapp_number, created_at) VALUES (gen_random_uuid(), :org,"
+            " :email, 'x', 'Ravi Kumar', 'SITE_ENGINEER', 'active', '+91 98765 00061', now())"
+        ),
+        {"org": acme, "email": f"ravi-{acme}@example.in"},
+    )
+    await PostgresUsageCostRepository(conn).insert(
+        CostRow(provider="gemini", operation="dpr", organization_id=acme,
+                cost_inr=Decimal("0.0500"), created_at=_utc(18, 12))
+    )
+
+    costs = await costs_router.get_costs(
+        date_from=FROM, date_to=TO, organization_id=acme, _admin={}, conn=conn
+    )
+
+    people = {p["full_name"]: p for p in costs["by_person"]}
+    ravi = people["Ravi Kumar"]
+    assert ravi["phone"] == "9876500061"
+    assert (ravi["ai_calls"], ravi["messages_handled"], ravi["whatsapp_messages"]) == (2, 1, 2)
+    assert ravi["input_tokens"] == 1700 and ravi["unpriced"] == 1
+    assert Decimal(ravi["ai_cost_inr"]) == Decimal("0.0900")
+    assert Decimal(ravi["whatsapp_cost_inr"]) == Decimal("0.2300")
+    assert Decimal(ravi["total_cost_inr"]) == Decimal("0.3200")
+    [system] = [p for p in costs["by_person"] if p["phone"] is None]
+    assert system["user_id"] is None and Decimal(system["ai_cost_inr"]) == Decimal("0.0500")
+    # Every rupee is somebody's or the system's: the rows add up to the total.
+    assert sum(Decimal(p["total_cost_inr"]) for p in costs["by_person"]) == Decimal(
+        costs["totals"]["total_cost_inr"]
+    )
+
+
 async def test_a_bad_range_is_refused(conn) -> None:
     with pytest.raises(HTTPException) as backwards:
         await costs_router.get_costs(
