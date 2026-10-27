@@ -112,6 +112,12 @@ export interface CallRow {
   ai_cost_inr: string | null;
 }
 
+/** An Indian calendar day, `daysAgo` before today, as YYYY-MM-DD (the cost rows' days). */
+export function indianDay(daysAgo: number): string {
+  const d = new Date(Date.now() - daysAgo * 86_400_000);
+  return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+}
+
 /** 850 ms · 3.4 s · 2m 05s */
 export function fmtMs(ms: number | null | undefined): string {
   if (ms === null || ms === undefined) return '—';

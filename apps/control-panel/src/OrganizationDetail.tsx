@@ -6,6 +6,7 @@ import UserAccessEditor, { type OrgProject } from './UserAccessEditor';
 import AddUserDialog from './AddUserDialog';
 import PlanCard from './PlanCard';
 import BrandingPanel from './BrandingPanel';
+import CompanyCosts from './CompanyCosts';
 import { useToast, getErrorMessage } from './Toast';
 import CompanyDetailsDialog from './CompanyDetailsDialog';
 
@@ -89,7 +90,7 @@ const ROLE_LABELS: Record<string, string> = {
   FINANCE: 'Finance',
 };
 
-type Tab = 'users' | 'activity' | 'settings' | 'letterhead';
+type Tab = 'users' | 'costs' | 'activity' | 'settings' | 'letterhead';
 
 const statusBadgeClass = (status: string) =>
   (status || '').toLowerCase() === 'active' ? 'badge-success' : 'badge-warning';
@@ -104,7 +105,10 @@ export default function OrganizationDetail() {
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   // ?tab=letterhead opens the Letterhead tab (from Branding requests, SA-09).
   const [searchParams] = useSearchParams();
-  const [tab, setTab] = useState<Tab>(searchParams.get('tab') === 'letterhead' ? 'letterhead' : 'users');
+  const [tab, setTab] = useState<Tab>(() => {
+    const asked = searchParams.get('tab');
+    return asked === 'letterhead' || asked === 'costs' ? asked : 'users';
+  });
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -451,7 +455,7 @@ export default function OrganizationDetail() {
       </div>
 
       <nav className="od-tabs" style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)', borderBottom: '1px solid var(--border-strong)' }}>
-        {(['users', 'activity', 'settings', 'letterhead'] as Tab[]).map((t) => (
+        {(['users', 'costs', 'activity', 'settings', 'letterhead'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -466,7 +470,7 @@ export default function OrganizationDetail() {
               cursor: 'pointer',
             }}
           >
-            {t === 'users' ? 'Users & Roles' : t === 'activity' ? 'Activity' : t === 'settings' ? 'Settings' : 'Letterhead'}
+            {t === 'users' ? 'Users & Roles' : t === 'costs' ? 'Costs' : t === 'activity' ? 'Activity' : t === 'settings' ? 'Settings' : 'Letterhead'}
           </button>
         ))}
       </nav>
@@ -673,6 +677,8 @@ export default function OrganizationDetail() {
         </div>
         </>
       )}
+
+      {tab === 'costs' && <CompanyCosts orgId={org.id} orgName={org.name} />}
 
       {tab === 'letterhead' && <BrandingPanel orgId={org.id} />}
 

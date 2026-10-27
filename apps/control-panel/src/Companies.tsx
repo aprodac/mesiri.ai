@@ -14,6 +14,7 @@ import {
   type Filter,
 } from './companyStatus';
 import SetupSteps from './SetupSteps';
+import { indianDay, inr } from './replyFormat';
 
 // SA-02: every company with its real status (a trial past its end reads
 // expired) and how far it got with setup, so stuck trials stand out. The
@@ -26,6 +27,8 @@ export default function Companies() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
   const [creating, setCreating] = useState(false);
+  // SA-22: each company's cost over the last 30 days (AI + WhatsApp), by id.
+  const [cost30, setCost30] = useState<Record<string, string>>({});
 
   const load = useCallback(() => {
     api
@@ -36,6 +39,14 @@ export default function Companies() {
       })
       .catch(() => setError('Could not load companies.'))
       .finally(() => setLoading(false));
+    api
+      .get<{ by_company?: { organization_id: string | null; total_cost_inr: string }[] }>('/admin/costs', {
+        params: { from: indianDay(29), to: indianDay(0) },
+      })
+      .then((res) =>
+        setCost30(Object.fromEntries((res.data.by_company ?? []).filter((r) => r.organization_id).map((r) => [r.organization_id as string, r.total_cost_inr]))),
+      )
+      .catch(() => setCost30({}));
   }, []);
 
   useEffect(load, [load]);
@@ -80,15 +91,16 @@ export default function Companies() {
               <th>Source</th>
               <th>Setup</th>
               <th>Created</th>
+              <th style={{ textAlign: 'right' }} title="AI and WhatsApp, last 30 days, before GST">Cost · 30d</th>
               <th style={{ textAlign: 'right' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>Loading live data...</td></tr>
+              <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>Loading live data...</td></tr>
             )}
             {!loading && error && (
-              <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--error)' }}>{error}</td></tr>
+              <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--error)' }}>{error}</td></tr>
             )}
             {!loading && !error && shown.map((c) => (
               <tr key={c.id}>
@@ -135,6 +147,15 @@ export default function Companies() {
                 <td style={{ fontSize: '13px', color: 'var(--neutral-600)' }}>{SOURCE_LABELS[c.signup_source] ?? c.signup_source}</td>
                 <td><SetupSteps setup={c.setup} /></td>
                 <td style={{ fontSize: '13px', color: 'var(--neutral-500)', whiteSpace: 'nowrap' }}>{shortDate(c.created_at)}</td>
+                <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                  <button
+                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit', fontSize: '13px', fontWeight: 500, color: 'var(--neutral-900)' }}
+                    title="Open this company's costs"
+                    onClick={() => navigate(`/organizations/${c.id}?tab=costs`)}
+                  >
+                    {inr(cost30[c.id] ?? '0')}
+                  </button>
+                </td>
                 <td style={{ textAlign: 'right' }}>
                   <button
                     style={{ background: 'none', border: 'none', color: 'var(--neutral-600)', fontWeight: 500, cursor: 'pointer', fontSize: '13px' }}
@@ -147,7 +168,7 @@ export default function Companies() {
             ))}
             {!loading && !error && shown.length === 0 && (
               <tr>
-                <td colSpan={6} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>
+                <td colSpan={7} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>
                   {companies.length === 0 ? 'No companies yet. Click "Create company" to add one.' : `No ${FILTER_LABELS[filter].toLowerCase()} companies.`}
                 </td>
               </tr>
@@ -184,7 +205,7 @@ export default function Companies() {
               )}
               <SetupSteps setup={c.setup} />
               <span className="co-card-meta">
-                {SOURCE_LABELS[c.signup_source] ?? c.signup_source} · Created {shortDate(c.created_at)}
+                {SOURCE_LABELS[c.signup_source] ?? c.signup_source} · Created {shortDate(c.created_at)} · {inr(cost30[c.id] ?? '0')} in 30 days
               </span>
             </button>
           ))}

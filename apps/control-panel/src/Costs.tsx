@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from './api';
 import { getErrorMessage } from './Toast';
+import { indianDay } from './replyFormat';
 
 // SA-05: what Mesiri costs to run -- AI calls and WhatsApp messages, in INR,
 // from the per-call cost rows BE-25 records. All companies: totals, per day
@@ -66,12 +67,6 @@ const RANGES = [
   { days: 30, label: 'Last 30 days' },
   { days: 90, label: 'Last 90 days' },
 ];
-
-/** An Indian calendar day, `daysAgo` before today, as YYYY-MM-DD. */
-function indianDay(daysAgo: number): string {
-  const d = new Date(Date.now() - daysAgo * 86_400_000);
-  return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-}
 
 /** ₹ with paise kept for the small amounts most rows are. */
 function inr(value: string | null | undefined): string {
