@@ -180,6 +180,36 @@ async def test_one_company_costs_by_person(conn) -> None:
     )
 
 
+async def test_people_across_every_company(conn) -> None:
+    """SA-23: without a company, each person comes with their company, and a
+    company's people (and its no-person row) add up to its own total."""
+    acme, bharat = await _costs(conn)
+    await conn.execute(
+        text(
+            "INSERT INTO users (id, organization_id, email, hashed_password, full_name, role,"
+            " status, whatsapp_number, created_at) VALUES (gen_random_uuid(), :org,"
+            " :email, 'x', 'Ravi Kumar', 'SITE_ENGINEER', 'active', '9876500061', now())"
+        ),
+        {"org": acme, "email": f"ravi-{acme}@example.in"},
+    )
+
+    costs = await costs_router.get_costs(
+        date_from=FROM, date_to=TO, organization_id=None, _admin={}, conn=conn
+    )
+
+    [ravi] = [p for p in costs["by_person"] if p["full_name"] == "Ravi Kumar"]
+    assert ravi["organization_name"] == "Acme Builders"
+    assert ravi["organization_id"] == str(acme)
+    for company in (acme, bharat):
+        people = [p for p in costs["by_person"] if p["organization_id"] == str(company)]
+        [row] = [c for c in costs["by_company"] if c["organization_id"] == str(company)]
+        assert sum(Decimal(p["total_cost_inr"]) for p in people) == Decimal(row["total_cost_inr"])
+    [bharat_system] = [
+        p for p in costs["by_person"] if p["organization_id"] == str(bharat) and p["phone"] is None
+    ]
+    assert Decimal(bharat_system["ai_cost_inr"]) == Decimal("0.0400")
+
+
 async def test_a_bad_range_is_refused(conn) -> None:
     with pytest.raises(HTTPException) as backwards:
         await costs_router.get_costs(

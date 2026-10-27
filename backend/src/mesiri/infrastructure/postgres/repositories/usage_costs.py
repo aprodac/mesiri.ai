@@ -355,24 +355,28 @@ class PostgresUsageCostRepository:
     async def costs_by_person(
         self,
         *,
-        organization_id: uuid.UUID,
+        organization_id: uuid.UUID | None,
         since: dt.datetime,
         until: dt.datetime | None,
+        limit: int = 500,
     ) -> list[dict[str, object]]:
-        """What each person in one company cost, most expensive first: the AI
-        calls made handling the messages they sent (by the message's sender)
-        and the WhatsApp messages sent to them (by recipient). A person is
-        their WhatsApp number's last 10 digits -- numbers are stored as
-        "+91 98765 00081" on users and "919876500081" on messages -- matched
-        to the company's user with that number; a number with no user keeps
-        `user_id` None. Rows tied to no number (a scheduled report, a
-        reminder template) are one row with `phone` None."""
+        """What each person cost, most expensive first -- in one company, or
+        across every company when `organization_id` is None: the AI calls
+        made handling the messages they sent (by the message's sender) and
+        the WhatsApp messages sent to them (by recipient). A person is their
+        WhatsApp number's last 10 digits -- numbers are stored as
+        "+91 98765 00081" on users and "919876500081" on messages -- in the
+        cost row's company (`_ORG`), named from that company's user with the
+        number; a number with no user keeps `user_id` None. Rows tied to no
+        number (a scheduled report, a reminder template) are one row per
+        company with `phone` None, so a company's rows add up to its total."""
         rows = (
             await self._conn.execute(
                 sa.text(
                     "WITH c AS ("
                     " SELECT pe.provider, pe.cost_inr, pe.correlation_id,"
                     "  pe.input_tokens, pe.output_tokens,"
+                    f"  {_ORG} AS org,"
                     "  right(regexp_replace(CASE WHEN pe.provider = :wa THEN pe.recipient ELSE"
                     "   (SELECT im.sender_wa_id FROM inbound_messages im"
                     "    WHERE im.correlation_id = pe.correlation_id LIMIT 1) END,"
@@ -380,6 +384,7 @@ class PostgresUsageCostRepository:
                     f" FROM provider_executions pe WHERE {self._RANGE}"
                     ") "
                     "SELECT NULLIF(c.phone, '') AS phone, u.id AS user_id, u.full_name, u.role, "
+                    "c.org AS organization_id, o.name AS organization_name, "
                     "count(DISTINCT c.correlation_id) FILTER (WHERE c.provider <> :wa) "
                     "AS messages_handled, "
                     "count(*) FILTER (WHERE c.provider <> :wa) AS ai_calls, "
@@ -393,14 +398,21 @@ class PostgresUsageCostRepository:
                     "AS whatsapp_cost_inr, "
                     "COALESCE(sum(c.cost_inr), 0) AS total_cost_inr, "
                     "count(*) FILTER (WHERE c.cost_inr IS NULL) AS unpriced "
-                    "FROM c LEFT JOIN LATERAL (SELECT us.id, us.full_name, us.role FROM users us "
-                    " WHERE us.organization_id = CAST(:org AS uuid) AND c.phone <> '' "
+                    "FROM c LEFT JOIN organizations o ON o.id = c.org "
+                    "LEFT JOIN LATERAL (SELECT us.id, us.full_name, us.role FROM users us "
+                    " WHERE us.organization_id = c.org AND c.phone <> '' "
                     " AND right(regexp_replace(us.whatsapp_number, '\\D', '', 'g'), 10) = c.phone "
                     " LIMIT 1) u ON true "
-                    "GROUP BY NULLIF(c.phone, ''), u.id, u.full_name, u.role "
-                    "ORDER BY total_cost_inr DESC, ai_calls DESC"
+                    "GROUP BY NULLIF(c.phone, ''), u.id, u.full_name, u.role, c.org, o.name "
+                    "ORDER BY total_cost_inr DESC, ai_calls DESC LIMIT :limit"
                 ),
-                {"wa": WHATSAPP, "since": since, "until": until, "org": organization_id},
+                {
+                    "wa": WHATSAPP,
+                    "since": since,
+                    "until": until,
+                    "org": organization_id,
+                    "limit": limit,
+                },
             )
         ).mappings().all()
         return [dict(r) for r in rows]

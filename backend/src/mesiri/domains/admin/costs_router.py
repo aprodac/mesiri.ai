@@ -65,7 +65,8 @@ async def get_costs(
     conn: AsyncConnection = Depends(get_db_conn),
 ):
     """Costs for [from, to] (Indian days, both included). Without a company:
-    totals, per day and per company. With one: totals and per day for it,
+    totals, per day, per company and per person across companies (SA-23,
+    the most expensive 500). With one: totals and per day for it,
     plus its messages (`messages`: AI cost per message it sent), the
     WhatsApp messages sent to its people (`sent`), newest 200 of each, and
     what each person cost (`by_person`, SA-22)."""
@@ -87,6 +88,10 @@ async def get_costs(
     if organization_id is None:
         result["by_company"] = [
             _plain(r) for r in await repo.costs_by_company(since=since, until=until)
+        ]
+        result["by_person"] = [
+            _plain(r)
+            for r in await repo.costs_by_person(organization_id=None, since=since, until=until)
         ]
     else:
         result["messages"] = [
