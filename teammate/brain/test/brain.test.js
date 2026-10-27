@@ -466,7 +466,7 @@ test("tools (assistant test): sends to the project's assistant-test chat and ret
 
   const r = await call("test_assistant", { text: "5 bags cement used" });
   assert.deepEqual(sent[0], { chat: "A@s.whatsapp.net", project: "mesiri", text: "5 bags cement used" });
-  assert.match(r.content[0].text, /Assistant: Saved: 5 bags cement\.\nAssistant: Anything else\?/);
+  assert.match(r.content[0].text, /Assistant: Saved: 5 bags cement\.\n\[\+\? s\] Assistant: Anything else\?/);
   assert.doesNotMatch(r.content[0].text, /Assistant: 5 bags/); // its own message isn't a reply
 
   assert.equal((await call("test_assistant", {})).isError, true);
@@ -480,6 +480,60 @@ test("tools (assistant test): sends to the project's assistant-test chat and ret
   listener.chats = async (project) => ({ chats: [{ jid: "A@s.whatsapp.net", role: "assistant-test", project }] });
   listener.sendStrict = async () => Promise.reject(new Error("limit of 10 test messages per hour reached"));
   assert.match((await call("test_assistant", { text: "x" })).content[0].text, /limit of 10/);
+});
+
+test("tools (assistant test): replies are timed from the send ack, and voice notes go as audio", async () => {
+  const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpAudio, afterSeconds } = await import("../src/tools.js");
+  const dir = mkdtempSync("/tmp/audio-test-");
+  try {
+    writeFileSync(`${dir}/v.ogg`, Buffer.from("OggS"));
+    writeFileSync(`${dir}/v.mp3`, Buffer.from("ID3"));
+    writeFileSync(`${dir}/v.wav`, Buffer.from("RIFF"));
+    writeFileSync(`${dir}/big.m4a`, Buffer.alloc(5 * 1024 * 1024 + 1));
+    assert.equal((await tmpAudio(`${dir}/v.ogg`)).mime, "audio/ogg; codecs=opus");
+    assert.equal((await tmpAudio(`${dir}/v.mp3`)).mime, "audio/mpeg");
+    assert.match((await tmpAudio(`${dir}/v.wav`)).error, /Only/);
+    assert.match((await tmpAudio(`${dir}/big.m4a`)).error, /over 5 MB/);
+    assert.match((await tmpAudio("/etc/hostname")).error, /Only/);
+    assert.match((await tmpAudio(`${dir}/none.ogg`)).error, /No file/);
+
+    assert.equal(afterSeconds(1_000, new Date(13_400).toISOString()), "+12.4 s");
+    assert.equal(afterSeconds(5_000, new Date(1_000).toISOString()), "+0.0 s");
+
+    const ackAt = Date.now() - 20_000;
+    const sent = [];
+    const listener = {
+      send: async () => null,
+      sendStrict: async (b) => (sent.push(b), { ok: true, sent_at: new Date(ackAt).toISOString() }),
+      chats: async (project) => ({ chats: [{ jid: "A@s.whatsapp.net", role: "assistant-test", project }] }),
+      messages: async () => ({ messages: [
+        { n: 2, from_me: false, kind: "text", text: "Got it", at: new Date(ackAt + 4_000).toISOString() },
+        { n: 3, from_me: false, kind: "text", text: "Saved", at: new Date(ackAt + 12_400).toISOString() },
+      ] }),
+      media: async () => Promise.reject(new Error("none")),
+    };
+    const ctx = { project: "mesiri", chat: "T@g.us", chat_name: "Mesiri team", reply_chat: "T@g.us", sender: "Ilan" };
+    const server = brainTools({ ctx, listener, render: null, plans: { save: (p) => p }, screenshotHosts: [], wait: async () => {} });
+    const tools = Object.fromEntries(Object.entries(server.instance._registeredTools));
+    const call = (name, args) => (tools[name].callback || tools[name].handler)(args, {});
+
+    const r = await call("test_assistant", { audio_path: `${dir}/v.ogg` });
+    assert.equal(sent[0].audio_mime, "audio/ogg; codecs=opus");
+    assert.equal(Buffer.from(sent[0].audio_base64, "base64").toString(), "OggS");
+    const text = r.content[0].text;
+    assert.match(text, /Sent: \(voice note\) \[voice note\]/);
+    assert.match(text, /\[\+4\.0 s\] Assistant: Got it/);
+    assert.match(text, /\[\+12\.4 s\] Assistant: Saved/);
+    assert.match(text, /First reply after 4\.0 s, last reply after 12\.4 s/);
+
+    assert.equal((await call("test_assistant", { audio_path: `${dir}/v.wav` })).isError, true);
+    assert.equal((await call("test_assistant", { audio_path: "/etc/hostname" })).isError, true);
+    assert.equal((await call("test_assistant", { audio_path: `${dir}/v.ogg`, text: "x" })).isError, true);
+    assert.equal(sent.length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("tools (assistant test): choose taps the latest menu and returns the reply with its options", async () => {

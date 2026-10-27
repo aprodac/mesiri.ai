@@ -45,6 +45,29 @@ async function tmpImage(path) {
   return { data: readFileSync(real) };
 }
 
+const AUDIO_MIMES = { ogg: "audio/ogg; codecs=opus", opus: "audio/ogg; codecs=opus", mp3: "audio/mpeg", m4a: "audio/mp4" };
+
+/** A voice-note file under /tmp (.ogg opus / .mp3 / .m4a, up to 5 MB): { data, mime } or { error }. */
+export async function tmpAudio(path) {
+  const { realpathSync, readFileSync, statSync } = await import("node:fs");
+  let real;
+  try {
+    real = realpathSync(path);
+  } catch {
+    return { error: `No file at ${path}.` };
+  }
+  const ext = /\.(ogg|opus|mp3|m4a)$/i.exec(real)?.[1]?.toLowerCase();
+  if (!real.startsWith("/tmp/") || !ext) return { error: "Only .ogg/.opus/.mp3/.m4a files under /tmp/ can be sent as voice notes." };
+  if (statSync(real).size > 5 * 1024 * 1024) return { error: "That audio file is over 5 MB." };
+  return { data: readFileSync(real), mime: AUDIO_MIMES[ext] };
+}
+
+/** "+12.4 s" from the send to a reply (seconds, one decimal; never negative). */
+export const afterSeconds = (sentMs, atIso) => {
+  const ms = new Date(atIso).getTime() - sentMs;
+  return Number.isFinite(ms) ? `+${(Math.max(0, ms) / 1000).toFixed(1)} s` : "+? s";
+};
+
 /**
  * @param {{
  *   ctx: { project: string, chat: string, chat_name: string, reply_chat: string, sender: string },
@@ -177,15 +200,17 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
     ),
     tool(
       "test_assistant",
-      "Try the Mesiri assistant the way a worker would: send a text (or an image from /tmp, with optional text as caption) to the project's assistant-test WhatsApp chat, wait up to ~90 s, and get back what it replied. The assistant answers many steps with a menu or buttons: its reply then lists numbered options, and you tap one by calling again with choose (number or exact title) instead of text. Talks only to that test chat. Up to 120 sends an hour. Afterwards show the conversation with preview_html.",
+      "Try the Mesiri assistant the way a worker would: send a text (or an image from /tmp, with optional text as caption, or a voice note from /tmp via audio_path) to the project's assistant-test WhatsApp chat, wait up to ~90 s, and get back what it replied. The assistant answers many steps with a menu or buttons: its reply then lists numbered options, and you tap one by calling again with choose (number or exact title) instead of text. Talks only to that test chat. Each reply is timed (+12.4 s after the send was acknowledged), with first and last reply times. Up to 120 sends an hour. Afterwards show the conversation with preview_html.",
       {
         text: z.string().min(1).max(2000).optional().describe("What the worker says (or the image caption)"),
         image_path: z.string().optional().describe("Absolute path under /tmp/ to a .png, .jpg, .jpeg or .webp file to send"),
+        audio_path: z.string().optional().describe("Absolute path under /tmp/ to a .ogg (opus), .mp3 or .m4a file (up to 5 MB) to send as a voice note"),
         choose: z.union([z.number().int().min(1), z.string().min(1).max(200)]).optional().describe("Instead of typing: tap an option of the assistant's latest menu/button message, by its number (1, 2, ...) or exact title. Replies show their options as numbered lines."),
       },
-      async ({ text, image_path, choose }) => {
-        if (choose != null && (text || image_path)) return fail("Give either choose (to tap an option) or text/image_path, not both.");
-        if (!text && !image_path && choose == null) return fail("Give text, an image_path, choose, or a combination of text and image.");
+      async ({ text, image_path, audio_path, choose }) => {
+        if (choose != null && (text || image_path || audio_path)) return fail("Give either choose (to tap an option) or text/image_path/audio_path, not both.");
+        if (audio_path && (text || image_path)) return fail("A voice note can't be combined with text or an image.");
+        if (!text && !image_path && !audio_path && choose == null) return fail("Give text, an image_path, choose, or a combination of text and image.");
         if (!listener.chats || !listener.messages || !listener.sendStrict) return fail("Testing the assistant isn't available here.");
         let chat;
         try {
@@ -201,6 +226,11 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
           image = await tmpImage(image_path);
           if (image.error) return fail(image.error);
         }
+        let audio = null;
+        if (audio_path) {
+          audio = await tmpAudio(audio_path);
+          if (audio.error) return fail(audio.error);
+        }
         let tapped = null;
         if (choose != null) {
           try {
@@ -211,18 +241,23 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
           }
           if (!tapped) return fail("The assistant hasn't sent a menu or buttons recently, so there is nothing to tap. Send text first and read the options in its reply.");
         }
-        const sentLabel = tapped ? `Tapped: ${choose} (message ${tapped.n})` : `Sent: ${text || "(image)"}${image ? " [image]" : ""}`;
+        const sentLabel = tapped ? `Tapped: ${choose} (message ${tapped.n})` : `Sent: ${text || (audio ? "(voice note)" : "(image)")}${image ? " [image]" : ""}${audio ? " [voice note]" : ""}`;
         const startedAt = new Date(Date.now() - 2000).toISOString(); // WhatsApp stamps whole seconds
+        let sentMs = Date.now();
+        let ack = null;
         try {
-          await listener.sendStrict({
+          ack = await listener.sendStrict({
             chat: chat.jid, project: chatProject,
             ...(tapped
               ? { choose: { message_n: tapped.n, option: choose } }
+              : audio ? { audio_base64: audio.data.toString("base64"), audio_mime: audio.mime }
               : image ? { image_base64: image.data.toString("base64"), caption: text || undefined } : { text }),
           });
         } catch (e) {
           return fail(`Couldn't send to the test chat: ${e.message}`);
         }
+        const ackedMs = Date.parse(ack?.sent_at);
+        if (Number.isFinite(ackedMs)) sentMs = ackedMs;
         // The listener stores the assistant's replies as they arrive; read them until they go quiet.
         const replies = new Map();
         let waited = 0;
@@ -245,12 +280,14 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
           if (replies.size && waited - lastNewAt >= TEST_QUIET_MS) break;
         }
         const ordered = [...replies.values()].sort((a, b) => a.n - b.n);
-        const lines = ordered.map((m) =>
+        const lines = ordered.map((m) => `[${afterSeconds(sentMs, m.at)}] ` + (
           m.options?.length
             ? `Assistant: ${m.text || `(${m.kind})`}\n  [menu: tap with choose = 1..${m.options.length} or the exact title]`
-            : `Assistant: ${m.text || m.transcript || `(${m.kind})`}${m.kind !== "text" && m.text ? ` (${m.kind})` : ""}`);
+            : `Assistant: ${m.text || m.transcript || `(${m.kind})`}${m.kind !== "text" && m.text ? ` (${m.kind})` : ""}`));
+        const times = ordered.map((m) => Math.max(0, new Date(m.at).getTime() - sentMs) / 1000).filter(Number.isFinite);
+        const timing = times.length ? `\n\nFirst reply after ${Math.min(...times).toFixed(1)} s, last reply after ${Math.max(...times).toFixed(1)} s (WhatsApp stamps whole seconds).` : "";
         const summary = ordered.length
-          ? `${sentLabel}\n\n${lines.join("\n")}`
+          ? `${sentLabel}\n\n${lines.join("\n")}${timing}`
           : `${sentLabel}\n\nNo reply within ${Math.round(TEST_WAIT_MS / 1000)} s. The assistant may be slow, or the test chat isn't linked to it.`;
         const content = [{ type: "text", text: summary }];
         for (const m of ordered.filter((r) => r.kind === "image").slice(0, 3)) {
