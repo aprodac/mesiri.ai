@@ -1,8 +1,62 @@
 # Mesiri inside WhatsApp groups — plan (WA-87)
 
-> Status: **approved 28 Oct 2026 (Ilan), including the creation / invite flow.** Mesiri's
-> number is an Official Business Account. Step 1 (the gate) built; step 0 (Meta spike) waits
-> on someone with Meta Business Manager access.
+> Status: **approved 28 Oct 2026 (Ilan); code built 28 Oct, switched OFF.** Mesiri's number
+> is an Official Business Account. What is left is on Meta's side and a live test: see
+> *Switching it on*. Nothing reaches a customer until `WHATSAPP_GROUPS_ENABLED=true`.
+
+## Built (28 Oct 2026)
+
+| Piece | Where |
+| --- | --- |
+| Tables `whatsapp_groups`, `whatsapp_group_join_requests` (additive, row-level security) | `backend/migrations/versions/0492_whatsapp_groups.py` |
+| Reads/writes of those tables | `apps/whatsapp-assistant/src/runtime/whatsapp_group_query.py` |
+| Meta Groups API calls (create, invite link, approve / reject join requests) | `channel/whatsapp/groups.py` |
+| Posting into a group: any send target `group:<id>` | `channel/whatsapp/outbound.py` |
+| Everything else: creating, Meta's group webhooks, joining, the 1-on-1 command and Allow taps, reading group messages, the reply wrapper | `runtime/group_chat.py` |
+| Group messages and `group_*` webhooks through ingress | `ingress/receiver.py`, `ingress/normalization.py` |
+| Wiring + switch `WHATSAPP_GROUPS_ENABLED` | `runtime/dependencies.py`, `runtime/message_journey.py` (one hook, next to the super-admin alert replies) |
+| Evening DPR into the project's site groups | `runtime/project_auto_dpr.py`, `runtime/send_pending_notifications.py` |
+| Invite template `mesiri_group_invite` (4 body values, link in the body) | `channel/whatsapp/templates.py`, `docs/ops/whatsapp-templates.md` |
+| Dashboard: `GET`/`POST /projects/{p}/sites/{s}/whatsapp-group`, admins only | `whatsapp_groups/router.py`; button in each site row: `apps/dashboard/src/components/site-whatsapp-group.tsx` |
+
+How it behaves, as built:
+
+- **Making a group:** dashboard button (company admin), or on WhatsApp 1-on-1: a company
+  admin sends "make a group for Block A"; a super admin sends "make a group for Acme, Block A"
+  (or "Acme Block A"). Anyone else in a company is told only the owner or an admin can; a
+  stranger gets the usual unknown-sender reply. One group per site at a time.
+- **When Meta says the group exists:** a welcome line in the group; each person on the site
+  team (site members, project members with every site, company admins) gets the invite 1-on-1
+  (the template outside 24 h); the creator gets the link to forward to the client. All through
+  the notification queue, so opt-outs, the 24 h window and templates are handled as for the DPR.
+- **Joining:** approval required. Site team: approved at once. Anyone else: the creator (else
+  the company's admins) gets "+91… wants to join" with Allow / Don't allow, 1-on-1.
+- **In the group:** a message from someone on the site team gets 👍 at once, is handled exactly
+  like their 1-on-1 message with the group's site preselected, and the 👍 turns ✅ when it is
+  saved. Everyone else is ignored (nothing saved, no reply, no 👍).
+- **Private by default (stricter than point 3 below):** every reply, card and question,
+  answers to questions included, goes to the sender 1-on-1. Only 👍/✅, the welcome line and
+  the evening DPR go into the group. Reason: an answer can carry money or wages, and the client
+  is in the group. If Meta refuses a private reply (no open chat with that person), one line in
+  the group asks them to say hi to Mesiri.
+- **Evening DPR:** the project DPR (PDF, card, text) also goes into each of the project's
+  active site groups, at the same time as to the owner.
+
+Not verified (no Meta access from the build session): the real webhook payloads, the
+create-call answer, whether reactions and documents work in groups, whether a group message
+opens the sender's 24 h window, the size limit. The parsing is deliberately tolerant and logs
+every event it does not recognise (`group.event_ignored`), so the live test shows the truth.
+
+## Switching it on
+
+1. Meta (WhatsApp Manager / App dashboard): subscribe the app to `group_lifecycle_update`,
+   `group_participants_update`, `group_settings_update`, `group_status_update`. Submit the
+   `mesiri_group_invite` template (text in `docs/ops/whatsapp-templates.md`).
+2. Server: `WHATSAPP_GROUPS_ENABLED=true` in the app's environment (web + worker), restart.
+   When the template is approved, add `mesiri_group_invite` to `WHATSAPP_APPROVED_TEMPLATES`.
+3. Live test with our own numbers only: make a group for a test site, join, send "8 masons
+   today" and a photo, check the ✅, the site DPR, and that an outsider's message is ignored.
+   Read `group.*` lines in the app log; fix any payload field the logs show differently.
 
 ## Objective
 
@@ -101,6 +155,7 @@ Proposed flow, so the owner has as little to do as possible:
 6. **Welcome.** When the group is ready, Mesiri posts one line in it: "Send today's work,
    photos and workers here. I'll save them to Kakkanad site."
 
+## Scope
 
 In: the gate, group ↔ site mapping, group reply routing, quiet mode, group creation + invite
 link, DPR posted to the group, flag.
@@ -109,16 +164,9 @@ existing group, groups larger than Meta's limit.
 
 ## Files expected to change
 
-| Area | Files |
-| --- | --- |
-| Ingress | `ingress/receiver.py` (read group id; lane key = group + sender), `ingress/normalization.py` (`metadata.chat_kind`, `metadata.group_id`), new `ingress/group_gate.py` |
-| Replies | new `runtime/group_reply.py` (sender wrapper + context variable + allowlist), `channel/whatsapp/outbound.py` (`recipient_type` from the target), `runtime/dependencies.py` (wrap the sender) |
-| Context | `context/resolver.py` (a group pins the site) |
-| Groups | new `groups/` (Meta Groups API client, lifecycle webhook handler, create command) |
-| DPR | the existing DPR send path: also post to the site's group |
-| Backend | additive migration `0492_whatsapp_groups` (group id, company, site, invite link, status, created by/at); model + repository |
-| Dashboard | site page: "Create WhatsApp group" button, invite link, status |
-| Tests | unit tests per new module, replay cases for group payloads, migration test |
+Planned layout before the build; see *Built* above for where things ended up (the site is
+preselected through `WorkSite.preselect` instead of a resolver change; one module,
+`runtime/group_chat.py`, instead of three).
 
 ## Backend / database / API work
 
@@ -152,8 +200,8 @@ existing group, groups larger than Meta's limit.
 
 ## Rollback
 
-- Everything behind `MESIRI_WHATSAPP_GROUPS` (default `off`). Off = group messages ignored
-  (still the gate, so they never reach the 1-on-1 path).
+- Everything behind `WHATSAPP_GROUPS_ENABLED` (default off). Off = group messages dropped at
+  ingress (they never reach the 1-on-1 path), no group can be made, no DPR goes to a group.
 - Revert the commits; the migration is additive, so the table can stay.
 - On Meta's side, unsubscribe the group webhook fields; Mesiri can leave the groups it made.
 
@@ -170,10 +218,10 @@ replies 1-on-1. This still changes where labour messages *come from*, so it need
    the inbound payload shape, whether buttons, lists, reactions and documents work, and pricing.
    Result goes into this doc.
 1. Gate: group messages never go down the 1-on-1 path. **Done** (`ingress/receiver.py`: a message with `group_id` is dropped before it is claimed, so no read receipt, no save, no reply). The normalizer + flag move to step 3, where they are first needed.
-2. Table, group creation, invite link, lifecycle webhook.
-3. Group reply routing + allowlist + quiet mode + group pins site.
-4. Dashboard button; DPR posted to the group.
-5. Live test in our own test group, then the first customer trial.
+2. Table, group creation, invite link, lifecycle webhook. **Done 28 Oct.**
+3. Group reply routing + private-by-default + quiet mode + group pins site. **Done 28 Oct.**
+4. Dashboard button; DPR posted to the group. **Done 28 Oct.**
+5. Live test in our own test group, then the first customer trial. **Waiting on step 0.**
 
 ## Success criteria
 

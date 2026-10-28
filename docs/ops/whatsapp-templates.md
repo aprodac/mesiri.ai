@@ -250,7 +250,7 @@ To switch it on: add `mesiri_ops_alert` to `WHATSAPP_APPROVED_TEMPLATES`.
 
 Sent to each team member of a site when Mesiri creates the site's WhatsApp group, if they
 haven't messaged Mesiri in the last 24 hours (inside the window the invite goes as a normal
-message). The button opens the group's invite link.
+message). It ends with the group's invite link.
 
 | Field | Value |
 | --- | --- |
@@ -258,12 +258,12 @@ message). The button opens the group's invite link.
 | Category | Utility |
 | Language | English (`en`) |
 | Header | None |
-| Body | `Hi {{1}}, {{2}} has a WhatsApp group with Mesiri for {{3}}. Send the day's work, photos and workers there and Mesiri saves them to the site.` |
+| Body | `Hi {{1}}, {{2}} has a WhatsApp group with Mesiri for {{3}}. Send the day's work, photos and workers there and Mesiri saves them to the site. Join: {{4}}` |
 | Footer | `Sent by Mesiri` |
-| Buttons | URL, dynamic: text `Join the group`, URL `https://chat.whatsapp.com/{{1}}` |
+| Buttons | None (the invite link is `{{4}}`; our template sender has no link buttons) |
 
-Sample values: `{{1}}` = `Ravi`, `{{2}}` = `Skyline Builders`, `{{3}}` = `Kakkanad site`;
-button `{{1}}` = `AbCdEfGhIjK1234567890` (the code at the end of the invite link).
+Sample values: `{{1}}` = `Ravi`, `{{2}}` = `Skyline Builders`, `{{3}}` = `Kakkanad site`,
+`{{4}}` = `https://chat.whatsapp.com/AbCdEfGhIjK1234567890`.
 
 To switch it on: add `mesiri_group_invite` to `WHATSAPP_APPROVED_TEMPLATES`.
 
