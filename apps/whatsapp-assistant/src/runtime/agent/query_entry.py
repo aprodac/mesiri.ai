@@ -33,7 +33,7 @@ from mesiri_contracts.assistant.enums import SemanticType as T
 from mesiri_contracts.assistant.planner_decision import WorkflowKey as K
 from workflows.registry import module_for_event
 
-from .entry_base import SCOPE_KEYS, EntryScope, Ready, Say, number
+from .entry_base import ALL_SITES, SCOPE_KEYS, EntryScope, Ready, Say, number
 from .project_day import project_today, project_zone_name
 
 _log = logging.getLogger("mesiri.agent")
@@ -163,7 +163,7 @@ class QueryEntry(EntryScope):
         )
         if isinstance(scoped, Say):
             return scoped
-        for key in SCOPE_KEYS:
+        for key in (*SCOPE_KEYS, ALL_SITES):
             fields.pop(key, None)
         ready = self.ready(scoped, message, event_type, workflow_key, fields)
         timezone = project_zone_name(scoped.ctx.timezone)
@@ -289,6 +289,7 @@ class QueryEntry(EntryScope):
                 s._seed_activity_search(
                     event, decision, self.activity_search_service, actor, timezone,
                     labour_query_service=self.labour_query_service,
+                    inventory_query=self.inventory_query,
                 )
             ]
         elif key is K.DPR_REQUEST:

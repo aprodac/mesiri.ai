@@ -242,7 +242,19 @@ class World:
             undo_facts=self.undo_facts,
             pending_confirmation=self.pending_confirmation,
             preselect_site=self.preselect_site,
+            get_today_site=self._saved_site,
         )
+
+    async def _saved_site(self) -> str | None:
+        """What production's ``work_site.WorkSite.today`` reads (request 136: the site
+        resolver's "saved in the window" step): the active context, if one of theirs."""
+        active_context = getattr(self.deps, "active_context", None)
+        if active_context is None:
+            return None
+        active = await active_context.get_active_context(organization_id=seed.ORG_A, user_id=seed.USER_ENGINEER)
+        if active is None or not any(str(s.id) == str(active.site_id) for s in self.actor.sites):
+            return None
+        return str(active.site_id)
 
     def context(self, turns: tuple[Turn, ...] = (), **kw: Any) -> AgentContext:
         return AgentContext(

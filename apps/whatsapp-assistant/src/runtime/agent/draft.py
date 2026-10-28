@@ -90,6 +90,17 @@ KIND_BY_TOOL = {
     REPORT_ISSUE: KIND_ISSUE_OPEN,
 }
 DRAFT_TOOLS = frozenset(KIND_BY_TOOL)
+#: Request 136 (B): the workflows the draft tools write through. For a draft_v2
+#: sender, one of these waiting for a Yes / No or an answer is from the old path.
+DRAFT_WORKFLOWS = frozenset(
+    {
+        WorkflowKey.LABOUR_ATTENDANCE,
+        WorkflowKey.MATERIAL_RECEIPT,
+        WorkflowKey.MATERIAL_USAGE,
+        WorkflowKey.SITE_UPDATE,
+        WorkflowKey.SITE_ISSUE_REPORT,
+    }
+)
 
 #: WA-81: what a "where" question fills in. With draft cards it is a question
 #: of the card (the [111] site queue is not used), answered once for all lines.

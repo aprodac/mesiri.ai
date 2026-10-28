@@ -495,6 +495,7 @@ async def _seed_activity_search(
     actor: ActorIdentity | None,
     timezone_name: str | None,
     labour_query_service: LabourQueryService | None = None,
+    inventory_query: MaterialInventoryQueryService | None = None,
 ) -> None:
     """Answer #17 "what did I log / any open issues" before the graph runs --
     same shape and reasoning as _seed_labour_query above. Only ever runs for
@@ -514,7 +515,7 @@ async def _seed_activity_search(
     # which also brings the day's labour -- "what was done today?" left out
     # the 8 workers counted for the day. Not when the question is about one
     # kind of work: labour is not part of that answer.
-    from runtime.agent.project_day import period_for, read_period, resolve_period
+    from runtime.agent.project_day import period_for, project_zone_name, read_period, resolve_period
 
     today = today_for(timezone_name)
     period = resolve_period(event.fields.get("date_range"), event.fields.get("date"), timezone_name, today=today)
@@ -532,6 +533,30 @@ async def _seed_activity_search(
     results = read["work"]
     if read["labour"] and read["labour"].get("headcount"):
         results["labour"] = read["labour"]
+    if not work_type and inventory_query is not None and hasattr(inventory_query, "period_totals"):
+        # Request 136: the day's materials too, counted as the DPR counts them
+        # (``period_totals``): "innu enthokke cheythu?" said "no work" over a card
+        # that saved 30 bags of cement used.
+        start, end, _label = period
+        try:
+            moved = await inventory_query.period_totals(
+                organization_id=actor.organization_id,
+                project_id=event.project_id,
+                site_id=event.site_id,
+                start_date=start,
+                end_date=end,
+                timezone_name=project_zone_name(timezone_name),
+            )
+        except Exception:  # noqa: BLE001 -- the answer stands without them
+            _log.warning("activity_search.materials_failed", exc_info=True)
+            moved = {}
+        materials = [
+            {"material": name, "unit": unit, "received": totals.get("received", 0.0), "used": totals.get("used", 0.0)}
+            for (name, unit), totals in sorted(moved.items())
+            if totals.get("received") or totals.get("used")
+        ]
+        if materials:
+            results["materials"] = materials
     event.fields["activity_search_results"] = results
 
 

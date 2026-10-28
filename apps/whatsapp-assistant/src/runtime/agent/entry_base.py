@@ -35,6 +35,10 @@ from mesiri_contracts.common.ids import new_id
 _log = logging.getLogger("mesiri.agent")
 
 SCOPE_KEYS = ("project_id", "site_id", "project_name", "site_name")
+#: Request 136: a draft-mode read whose site the site resolver left open (none named,
+#: none saved to in the window) is about every site of the project, never about the
+#: site the context layer would default to (``JourneyGateway._reading_site``).
+ALL_SITES = "_all_sites"
 
 
 def tool_understanding(candidate: Any, message: Any, *, language: str | None = None) -> Any:
@@ -171,9 +175,12 @@ class EntryScope:
         # Only when the context layer refused the pick does their own list
         # decide it; otherwise its resolved ids stand, as before.
         named = any(candidate.fields.get(k) for k in SCOPE_KEYS)
+        all_sites = bool(candidate.fields.get(ALL_SITES))
         project_id, site_id = await self._scope(
-            ctx, picked_project if retried else None, picked_site if retried else None, named=named
+            ctx, picked_project if retried else None, picked_site if retried else None, named=named or all_sites
         )
+        if all_sites:
+            site_id = None
         if project == "none":
             return Scoped(ctx, organization_id, None, None, None, None)
         if project_id is None and project == "optional":

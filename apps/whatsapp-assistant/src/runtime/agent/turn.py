@@ -344,7 +344,10 @@ async def run_agent_turn(
         open_work_line=lines[3],
         card_line=lines[4],
     )
-    later_items = await deps.later.get(actor) if deps.later is not None else []
+    # Request 136 (B): with draft cards what is still to do is a waiting line of the
+    # card, so the old "later" list is neither shown nor kept.
+    keeps_later = deps.later is not None and getattr(gateway, "draft_mode", False) is not True
+    later_items = await deps.later.get(actor) if keeps_later else []
     later_line = later.context_line(later_items)
     if later_line:
         context = replace(context, notes=[*context.notes, later_line])
@@ -416,11 +419,12 @@ async def run_agent_turn(
     _lap(deps, "agent_send")
     await _audit(message, gateway, reply, deps)
     await _trace_tools(message.correlation_id, result, deps)
+    await _trace_decisions(message.correlation_id, gateway, deps)
     if deps.site_wait is not None and hasattr(result.toolbox, "site_queue_after"):
         waiting = result.toolbox.site_queue_after()
         if waiting != site_queue:
             await _safe(deps.site_wait.put(actor, waiting))
-    if deps.later is not None:
+    if keeps_later:
         box = result.toolbox
         after = later.merged(
             later_items,
@@ -585,6 +589,24 @@ async def _trace_tools(correlation_id: str, result: AgentResult, deps: AgentTurn
             },
             duration_ms=None,
             succeeded=result.outcome == "ok",
+        )
+    )
+
+
+async def _trace_decisions(correlation_id: str, gateway: Any, deps: AgentTurnDeps) -> None:
+    """Request 136 (C): for a draft_v2 turn, which component decided each line's
+    site, the lines and the reply (``JourneyGateway.decisions``), so a turn whose
+    site did not come from the site resolver, or whose words above a card were not
+    the code's, shows in `vps-agent-trace`. Names only, no message text."""
+    if deps.trace_logger is None or getattr(gateway, "draft_mode", False) is not True:
+        return
+    await _safe(
+        deps.trace_logger.log_stage(
+            correlation_id=correlation_id,
+            stage="draft_decisions",
+            stage_payload={"pipeline": "draft_v2", "decisions": list(getattr(gateway, "decisions", []) or [])},
+            duration_ms=None,
+            succeeded=True,
         )
     )
 

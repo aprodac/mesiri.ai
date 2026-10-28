@@ -242,23 +242,27 @@ async def add(gw: Any, candidate: Any, *, text: str) -> StepResult:
     if entry is None:
         await note_lost(gw, tool, args, "that can't be done here yet")
         return StepResult("error", text="Not saved: that can't be done here yet.")
-    candidate = draft_site.with_named_site(gw.actor, candidate, text)
-    named = str((getattr(candidate, "fields", None) or {}).get("site_name") or "")
-    if named and not args.get("site"):
-        # WA-81: the site the message names stays with the line, also while it waits
-        # on a question ("Green Villa: 20 rod steel" kept no site, so its answer asked).
-        args = {**args, "site": named}
+    decided(gw, "item", ITEM_FROM_TOOL, tool)
+    # Request 136: THE site resolver decides the line's site before the entry runs, so
+    # the entry's own fallbacks (today's site, the context layer's default) never do.
+    choice = await _resolve_site(gw, args, text)
+    if choice.kind == draft_site.ASK:
+        return await _add_waiting(gw, tool, args, _site_question(gw, message, choice))
+    args = {**args, "site": draft_site.label(gw.actor, choice.site)}
+    candidate = to_candidate(tool, args, _scope(gw)) or candidate
     prepared = await entry.prepare(message, tool_understanding(candidate, message, language=gw.language), candidate)
     if prepared is None:
         await note_lost(gw, tool, args, "it could not be looked up")
         return StepResult("error", text="Not saved: the system could not look this up just now. Send it again.")
-    if isinstance(prepared, Say) and prepared.question and prepared.awaiting in dr.WHERE_QUESTIONS:
-        # WA-81: "which site?" is a question of the card, not of a separate queue that
-        # could later drop the line. A card that is already for one site settles it.
-        settled = await _on_card_site(gw, tool, args, message)
-        if settled is None:
-            return await _add_waiting(gw, tool, args, prepared)
-        args, prepared = settled
+    if _asks_where(prepared):
+        # The entry could not place the site the resolver gave (no longer theirs):
+        # "which site?" is a question of the card (WA-81), never of a separate queue.
+        return await _add_waiting(gw, tool, args, prepared)
+    if isinstance(prepared, Ready) and str(prepared.event.site_id or "") != str(choice.site.id):
+        _log.warning(
+            "draft.site_mismatch decided=%s entry=%s correlation_id=%s",
+            choice.site.id, prepared.event.site_id, getattr(gw.message, "correlation_id", None),
+        )
     if isinstance(prepared, Say):
         from .toolbox import question_reply
 
@@ -322,21 +326,58 @@ async def add(gw: Any, candidate: Any, *, text: str) -> StepResult:
     return _drafted(item, prepared, note=await _pending_note(gw))
 
 
-async def _on_card_site(gw: Any, tool: str, args: dict[str, Any], message: Any) -> tuple[dict[str, Any], Any] | None:
-    """WA-81: the open card is for one site: a line that asks WHERE is for that site
-    too, prepared again with it. None when the card has no one site or the entry
-    still cannot be prepared for it (then the card asks)."""
-    draft = await load(gw)
-    site = _card_site(gw, draft) if draft is not None else None
-    if not site:
-        return None
-    sited = {**args, "site": site}
-    candidate = to_candidate(tool, sited, _scope(gw))
-    entry = gw._entry_for(getattr(candidate, "semantic_type", None)) if candidate is not None else None
-    if entry is None:
-        return None
-    prepared = await entry.prepare(message, tool_understanding(candidate, message, language=gw.language), candidate)
-    return (sited, prepared) if isinstance(prepared, (Ready, Say)) and not _asks_where(prepared) else None
+#: Request 136 (C): a line made from a save tool call (the model's extraction, or the
+#: code's own call from the message's words: ``runner._problem_part`` and the like).
+ITEM_FROM_TOOL = "tool_call"
+
+
+def decided(gw: Any, what: str, by: str, kind: str = "") -> None:
+    """Request 136 (C): note which component decided ``what`` (the site, the items,
+    the reply) this turn; the journey writes the list as the "draft_decisions" stage."""
+    decisions = getattr(gw, "decisions", None)
+    if isinstance(decisions, list):
+        decisions.append({"what": what, "by": by, **({"kind": kind} if kind else {})})
+
+
+def _card_site_id(draft: dr.MessageDraft | None) -> str | None:
+    ids = {i.site_id for i in (draft.items if draft else []) if i.state != dr.UNREADABLE and i.site_id}
+    return next(iter(ids)) if len(ids) == 1 else None
+
+
+async def _resolve_site(gw: Any, args: dict[str, Any], text: str) -> draft_site.SiteChoice:
+    """The line's site by ``draft_site.resolve``: the one site, the one the call or
+    the message names, the open card's, the one saved to in the window, else ask."""
+    saved = None
+    if getattr(gw, "get_today_site", None) is not None:
+        try:
+            saved = await gw.get_today_site()
+        except Exception:  # noqa: BLE001 -- without it the card asks
+            _log.warning("draft.saved_site_unreadable", exc_info=True)
+    project = str(args.get("project") or "").strip()
+    choice = draft_site.resolve(
+        gw.actor,
+        text,
+        said=str(args.get("site") or ""),
+        project_id=_scope(gw).project_id(project) if project else None,
+        card_site_id=_card_site_id(await load(gw)),
+        saved_site_id=saved,
+    )
+    decided(gw, "site", draft_site.DECIDER, choice.kind)
+    return choice
+
+
+def _site_question(gw: Any, message: Any, choice: draft_site.SiteChoice) -> Say:
+    """The card's "which site?" with the sites the resolver left to choose from."""
+    from .entry_base import choose, site_words
+    from .site_match import options
+
+    projects = {str(p.id): p.name for p in getattr(gw.actor, "projects", None) or []}
+    labels, _cut = options(list(choice.options), projects, choice.unknown)
+    if choice.unknown:
+        question = site_words(message, "no_site", said=choice.unknown)
+    else:
+        question = site_words(message, "site_q")
+    return choose(question, labels, "site")
 
 
 def _asks_where(prepared: Any) -> bool:

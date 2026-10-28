@@ -187,6 +187,7 @@ class AgentRunner:
         here from the message's own words."""
         plan = tomorrow_plan_text(user_text)
         if plan and SET_SITE_CONDITIONS not in toolbox.called and toolbox.parked is None:
+            _decided(toolbox, "item_source", "code:tomorrow_plan")
             await toolbox.handle(SET_SITE_CONDITIONS, {"tomorrow_plan": plan})
 
     @staticmethod
@@ -207,6 +208,7 @@ class AgentRunner:
 
         narrative = " ".join(user_text.split())[:160]
         kind = "EQUIPMENT_BREAKDOWN" if has_equipment(user_text) else "OTHER"
+        _decided(toolbox, "item_source", "code:problem_only")
         await toolbox.handle(REPORT_ISSUE, {"issue_type": kind, "narrative": narrative})
 
     @staticmethod
@@ -233,6 +235,7 @@ class AgentRunner:
         if minutes:
             args["delay_duration_minutes"] = minutes
         _log.warning("agent.problem_part_added correlation_id=%s", getattr(toolbox, "correlation_id", None))
+        _decided(toolbox, "item_source", "code:problem_part")
         await toolbox.handle(REPORT_ISSUE, args)
 
     async def _in_manglish(
@@ -429,7 +432,10 @@ class AgentRunner:
         # Request 132: the card, its questions and its buttons are the code's; the
         # model's own words never carry one, nor a note it read in its prompt.
         text = clean_model_text(text) if draft_mode else clean_annotations(text)
+        if (code_made := self._code_card(toolbox)) is not None:
+            return code_made
         if draft_mode and (open_draft := _open_draft(toolbox)) is not None:
+            _decided(toolbox, "reply", MODEL_FILTERED)
             text = _one_sentence(text)
             if _APOLOGY.match(text) and not _failed_this_turn(toolbox, open_draft):
                 # WA-81 (live 27 Oct, #4338): "Sorry, couldn't record it" above a card
@@ -548,6 +554,27 @@ class AgentRunner:
             list_rows=parked.list_rows,
             buttons=parked.buttons,
         )
+
+    @staticmethod
+    def _code_card(toolbox: AgentToolbox) -> ReplySpec | None:
+        """Request 136: above a draft card this turn changed, every word is the code's:
+        one sentence from ``card_sentence`` (the sender's language), the card, its
+        questions and the system's own lines. The model's text is not used, so it
+        cannot contradict the card ("Site B tap cheyyu" while the buttons ask). A turn
+        that also answered a lookup keeps the model's (filtered) words for the answer;
+        None then, and for anything that is not a draft card."""
+        draft = _open_draft(toolbox)
+        if draft is None or toolbox.answers or toolbox.parked is not None:
+            return None
+        if toolbox.module_off_line or toolbox.equipment_noted:
+            return None
+        tail = [_saved_block(toolbox)]
+        if asked := _questions_line(toolbox):
+            tail.append(asked)
+        tail.extend(line for line in toolbox.system_lines if line not in tail)
+        text = _within_cap(card_sentence(draft, toolbox.user_text), [t for t in tail if t])
+        _decided(toolbox, "reply", TEMPLATE)
+        return _with_card(ReplySpec(text=text), toolbox)
 
     def _natural(self, text: str, toolbox: AgentToolbox) -> str:
         """Request 89: after every strip, the words above a Save card must
@@ -731,6 +758,8 @@ _COVERING = {
 
 
 #: What to tap when the card has no Save button yet, only the answers to its question.
+#: Named only when every answer is this short ("Replace" / "Add"); else the card asks.
+_SHORT_OPTION = 12
 _CHOOSE = {
     "english": "Please tap {options}.",
     "manglish": "{options} tap cheyyu.",
@@ -747,10 +776,63 @@ def _choice_line(toolbox: AgentToolbox) -> str | None:
     if draft is None or draft.ready_items:
         return None
     asking = next(iter(draft.waiting_items), None)
-    options = [o for o in (asking.options if asking else ()) if len(o) <= 12]
-    if not options:
+    options = list(asking.options if asking else ())
+    if not options or any(len(o) > _SHORT_OPTION for o in options):
+        # Request 136: naming only the short ones told them to tap "Site B" while the
+        # card asked between "Green Villa, Kakkanad" and "Site B" (28 Oct).
         return None
     return _CHOOSE[_wording_language(toolbox.user_text)].format(options=" or ".join(options))
+
+
+#: Request 136: the one sentence above a draft card, by what the card needs next.
+#: The Malayalam, Hindi and Hinglish lines (and Manglish "_ASKS") are Claude's
+#: drafts, PENDING the native review of WA-76.
+_CARD_CHECK = {
+    "english": "Please check the card and tap Save.",
+    "manglish": "Card nokki shariyenkil Save tap cheyyu.",
+    "malayalam": "കാർഡ് നോക്കി ശരിയാണെങ്കിൽ Save അമർത്തുക.",
+    "hindi": "कार्ड देखें, सही हो तो Save दबाएँ.",
+    "hinglish": "Card dekhein, sahi ho to Save dabayein.",
+}
+_CARD_ASKS = {
+    "english": "Please answer the question on the card.",
+    "manglish": "Card-ile chodyathinu answer cheyyu.",
+    "malayalam": "കാർഡിലെ ചോദ്യത്തിന് ഉത്തരം നൽകുക.",
+    "hindi": "कार्ड पर पूछे गए सवाल का जवाब दें.",
+    "hinglish": "Card par pooche gaye sawal ka jawab dein.",
+}
+_CARD_BOTH = {
+    "english": "Please answer the question on the card, then tap Save.",
+    "manglish": "Card-ile chodyathinu answer cheythittu Save tap cheyyu.",
+    "malayalam": "കാർഡിലെ ചോദ്യത്തിന് ഉത്തരം നൽകി Save അമർത്തുക.",
+    "hindi": "कार्ड पर पूछे गए सवाल का जवाब दें, फिर Save दबाएँ.",
+    "hinglish": "Card par pooche gaye sawal ka jawab dein, phir Save dabayein.",
+}
+#: Code ids of who wrote a reply (request 136, C): ``TEMPLATE`` = ``card_sentence``.
+TEMPLATE = "template"
+MODEL_FILTERED = "model_filtered"
+
+
+def card_sentence(draft: dr.MessageDraft, user_text: str) -> str:
+    """The sentence above a draft card, in the sender's language: tap Save; answer
+    the question (or tap its short answers); or both. Empty when nothing on the card
+    can be saved or answered (the card says what could not be read)."""
+    language = _wording_language(user_text)
+    waiting, ready = draft.waiting_items, draft.ready_items
+    if waiting and not ready:
+        options = list(waiting[0].options)
+        if options and len(waiting) == 1 and all(len(o) <= _SHORT_OPTION for o in options):
+            return _CHOOSE[language].format(options=" or ".join(options))
+        return _CARD_ASKS[language]
+    if waiting:
+        return _CARD_BOTH[language]
+    return _CARD_CHECK[language] if ready else ""
+
+
+def _decided(toolbox: AgentToolbox, what: str, by: str) -> None:
+    from .draft_flow import decided
+
+    decided(toolbox.gateway, what, by)
 
 
 def _wording_language(user_text: str) -> str:

@@ -47,6 +47,9 @@ _LOOKUPS = frozenset(
 )
 
 
+#: Request 136: the reads of a day's figures whose site comes from the site resolver.
+_DAY_READS = frozenset({SemanticType.ACTIVITY_QUERY, SemanticType.LABOUR_QUERY, SemanticType.INVENTORY_QUERY})
+
 #: A WhatsApp list row: title 24, description 72; ids 200 (so "all of them" is
 #: offered for up to five entries only).
 _ROW_TITLE = 24
@@ -256,6 +259,9 @@ class JourneyGateway:
     draft: Any | None = None
     draft_loaded: bool = False
     draft_new: list[str] = field(default_factory=list)
+    #: Request 136 (C): which component decided the site, the items and the reply
+    #: of this turn (``draft_flow.decided``), written as the "draft_decisions" stage.
+    decisions: list[dict[str, str]] = field(default_factory=list)
     #: ``() -> InteractionHandled | None``: confirm the waiting draft like a
     #: Yes (work on an open activity cannot be saved first, so the Save tap is
     #: its confirmation).
@@ -275,6 +281,8 @@ class JourneyGateway:
     async def run(self, candidate: Candidate, *, text: str) -> StepResult:
         if self.draft_mode and self._drafted(candidate):
             return await self._draft_add(candidate, text=text)
+        if self.draft_mode and getattr(candidate, "semantic_type", None) in _DAY_READS:
+            candidate = await self._reading_site(candidate, text)
         step = await self._run(candidate, text=text)
         if step.status == "saved" and self.handled and not (getattr(candidate, "fields", None) or {}).get("_action"):
             await self._remember_site(self.handled[-1])
@@ -309,6 +317,39 @@ class JourneyGateway:
 
     def carry_card_items(self, before: list[CardItem], after: list[CardItem]) -> None:
         self.carry_before, self.carry_after = list(before), list(after)
+
+    async def _reading_site(self, candidate: Candidate, text: str) -> Candidate:
+        """Request 136: a question about the day's figures ("innu enthokke cheythu?",
+        "innu ethra labour?") reads the site the site resolver gives (the one named, the
+        one saved to in the window), else every site of theirs: never the site the
+        context layer defaults to, which is how a saved Green Villa update read as
+        "no work recorded"."""
+        from . import draft_site
+        from .draft_flow import decided
+        from .entry_base import ALL_SITES
+
+        fields = dict(getattr(candidate, "fields", None) or {})
+        said = str(fields.get("site_name") or "")
+        if fields.get("site_id"):
+            decided(self, "read_site", draft_site.DECIDER, draft_site.NAMED)
+            return candidate
+        saved = None
+        if self.get_today_site is not None:
+            try:
+                saved = await self.get_today_site()
+            except Exception:  # noqa: BLE001 -- then every site is read
+                _log.warning("agent.saved_site_unreadable", exc_info=True)
+        choice = draft_site.resolve(self.actor, text, said=said, saved_site_id=saved)
+        site = choice.site if choice.kind != draft_site.ASK else None
+        if site is None and said:
+            return candidate  # a name that is none of theirs: the entry asks, as before
+        decided(self, "read_site", draft_site.DECIDER, choice.kind if site is not None else ALL_SITES)
+        if site is None:
+            fields[ALL_SITES] = True
+        else:
+            fields.pop("site_name", None)
+            fields["site_id"] = str(site.id)
+        return candidate.model_copy(update={"fields": fields})
 
     @property
     def draft_mode(self) -> bool:

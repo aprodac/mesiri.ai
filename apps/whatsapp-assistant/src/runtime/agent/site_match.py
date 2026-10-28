@@ -75,6 +75,46 @@ def find_sites(
     return [s for s in sites if name_matches(s.name, text, part=part)]
 
 
+#: Request 136: what a site's name may be cut to in a sentence: the part before
+#: the first of these ("Green Villa" of "Green Villa, Kakkanad").
+_HEAD_END = re.compile(r",|\(|\s[-–·]\s|\s/\s")
+#: A head made only of these words names no one site ("Site" of "Site, Block A").
+_GENERIC = frozenset({"site", "sites", "project", "block", "tower", "phase", "the", "new", "old", "main"})
+
+
+def head_words(site_name: str) -> list[str]:
+    """The words a sentence may name the site by when it leaves the rest out: the
+    name before its first comma, bracket or " - " ("Green Villa" for "Green Villa,
+    Kakkanad"). Empty when there is no such cut or it is only generic words."""
+    head = _HEAD_END.split(str(site_name or ""), maxsplit=1)[0]
+    cut = words(head)
+    if not cut or cut == words(site_name) or len(" ".join(cut)) < 3 or set(cut) <= _GENERIC:
+        return []
+    return cut
+
+
+def mentioned_sites(sites: Iterable[Any], text: str) -> list[Any]:
+    """Request 136: the sender's sites a whole sentence names, whole words only: the
+    site's full name in a row, or its head ("Green Villa ground floor wall putty 200
+    sqft" names "Green Villa, Kakkanad"). Several hits are for the sender to choose
+    from, never guessed between. A head that is part of a full name said is that
+    site's ("Green Villa, Aluva" said does not also name "Green Villa, Kakkanad")."""
+    said = words(text)
+    if not said:
+        return []
+    sites = list(sites)
+    full = [s for s in sites if len(" ".join(words(s.name))) >= 3 and _has_run(said, words(s.name))]
+    by_head = [
+        s
+        for s in sites
+        if s not in full
+        and (head := head_words(s.name))
+        and _has_run(said, head)
+        and not any(_has_run(words(f.name), head) for f in full)
+    ]
+    return full + by_head
+
+
 def names_a_site(sites: Iterable[Any], text: str) -> bool:
     """The message names at least one of the sender's sites (whole words)."""
     return bool(find_sites(sites, text, part=False))

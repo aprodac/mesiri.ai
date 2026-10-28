@@ -438,6 +438,9 @@ def build_message_handlers(
             drafted = draft_card.parse_tap(tap)
             if drafted is None or drafted[0] != draft_card.SAVE:
                 return None
+            # Request 136 (B): a draft card keeps what is still to do as its own
+            # waiting lines; the "later" list is the old path's and is not asked from.
+            return None
         item = await later.ask_next(ctx)
         if item is None:
             return None
@@ -599,6 +602,28 @@ def build_message_handlers(
         except Exception:  # noqa: BLE001 -- unreadable means the current flow
             _log.warning("draft_v2.setting_unreadable user=%s", ctx.user_id, exc_info=True)
             return False
+
+    async def _legacy_site_update_waiting(ctx) -> bool:  # type: ignore[no-untyped-def]
+        """Request 136 (B): a site-update workflow of the OLD path (labour, material,
+        work, an issue) still waits for this draft_v2 sender's Yes / No or answer.
+        The draft pipeline never leaves one (its Save writes in one transaction), so
+        it is from before the switch: the message is not taken as its answer."""
+        from runtime.agent.draft import DRAFT_WORKFLOWS
+
+        try:
+            waiting = await workflow_runtime.get_awaiting_confirmation(ctx.user_id)
+            if waiting is None:
+                waiting = await workflow_runtime.get_awaiting_input(ctx.user_id)
+        except Exception:  # noqa: BLE001 -- unknown: the usual paths run
+            _log.warning("journey.pending_unreadable user=%s", ctx.user_id, exc_info=True)
+            return False
+        if waiting is None or waiting.state.workflow_key not in DRAFT_WORKFLOWS:
+            return False
+        _log.warning(
+            "journey.legacy_site_update_routed_out user=%s workflow=%s instance=%s",
+            ctx.user_id, waiting.state.workflow_key.value, waiting.state.workflow_instance_id,
+        )
+        return True
 
     async def _team_or_setup_reply(text: str, ctx):  # type: ignore[no-untyped-def]
         """WA-84: a ReplySpec for "report time 7 pm aakku" / "ente team-il aarokke und?",
@@ -2169,11 +2194,27 @@ def build_message_handlers(
             await _deliver_handled(saved, fold_plan_reply=True)
             return True
 
+        # Request 136 (B): ONE guard for the draft pipeline. A draft_v2 sender's site
+        # updates (labour, materials, work, issues) take one way: the agent's tool
+        # calls, the site resolver, the code-made card, the Save tap. The old ways in
+        # for those (a Yes / No or slot answer resuming a site-update workflow, the
+        # morning site question, the "later" list) are routed out below.
+        pipeline_v2 = await _draft_v2_on(ctx)
+        _log.info(
+            "journey.pipeline pipeline=%s user=%s correlation_id=%s",
+            "draft_v2" if pipeline_v2 else "legacy", ctx.user_id, message.correlation_id,
+        )
+        legacy_site_update = pipeline_v2 and await _legacy_site_update_waiting(ctx)
+
         # M7: if the user has a workflow awaiting confirmation and this message
         # is a confirmation reply, resume it and stop — the AI pipeline (and its
         # token cost) is never touched. A plain "yes" ends here.
         try:
-            handled = await interaction_handler.handle_fast_path(ctx.user_id, message, actor=ctx)
+            handled = (
+                None
+                if legacy_site_update
+                else await interaction_handler.handle_fast_path(ctx.user_id, message, actor=ctx)
+            )
             timer.lap("handle_fast_path")
         except Exception:  # noqa: BLE001 — a resume error must not drop the message
             _log.exception("interaction.handle_failed user=%s", ctx.user_id)
@@ -2188,7 +2229,9 @@ def build_message_handlers(
         # resume it and stop, same principle and same priority as the
         # confirmation fast path above.
         try:
-            slot_handled = await interaction_handler.handle_slot_answer(ctx.user_id, message)
+            slot_handled = (
+                None if legacy_site_update else await interaction_handler.handle_slot_answer(ctx.user_id, message)
+            )
             timer.lap("handle_slot_answer")
         except Exception:  # noqa: BLE001 — a resume error must not drop the message
             _log.exception("interaction.slot_answer_failed user=%s", ctx.user_id)
@@ -2456,7 +2499,7 @@ def build_message_handlers(
         # nothing -- and keeps that database read off every message that
         # isn't a greeting, which is nearly all of them.
         greeting_reply = interaction_handler.handle_greeting_trigger(message)
-        if greeting_reply is not None and is_what_can_you_do(message.text or "") and await _draft_v2_on(ctx):
+        if greeting_reply is not None and is_what_can_you_do(message.text or "") and pipeline_v2:
             # WA-83: "help" is a question, answered by the one help (the company's own
             # modules, examples to copy) in the agent's turn, not by the category menu.
             greeting_reply = None
@@ -2692,7 +2735,7 @@ def build_message_handlers(
         # the tool-calling model, which runs the workflows directly. Everything
         # above (taps, YES/NO, UNDO, menu, signup, slot answers) had its turn.
         if agent_provider is not None and _agent_reads(message):
-            if message.modality is InputModality.TEXT and await _draft_v2_on(ctx):
+            if message.modality is InputModality.TEXT and pipeline_v2:
                 # WA-84: the report time and "who is on my team?" are answered by code
                 # (the setup question with its buttons; a read of the sender's projects).
                 try:
@@ -2710,7 +2753,7 @@ def build_message_handlers(
             morning = None
             # WA-81: with draft cards the site is a question of the card, so the
             # morning question does not hold the message in a store of its own.
-            if work_site is not None and category_hint is None and not await _draft_v2_on(ctx):
+            if work_site is not None and category_hint is None and not pipeline_v2:
                 try:
                     # SIT-03: while the question is open, typing the site's
                     # name answers it like the tap does.

@@ -111,7 +111,11 @@ async def test_1_the_change_writes_what_saving_the_corrected_figures_writes():
     result = await world.say(FakeToolCallingProvider([[fix(5)], "Sheri."]), "alla, 5 mason aanu")
     await press(world, result.reply, "✅ Save")
 
-    assert _written(world)[-1] == _written(legacy)[0]
+    new, old = _written(world)[-1], _written(legacy)[0]
+    # Request 136: the one site of the sender is on the record (the fixture's legacy
+    # path places none: see test_draft_per_message_p1._same_records).
+    assert old["site"] is None and new["site"] == world.site_ids.get(world.actor.sites[0].id, world.actor.sites[0].id)
+    assert {**new, "site": None} == old
 
 
 async def test_1_a_second_correction_before_its_save_edits_the_same_change_line(world):

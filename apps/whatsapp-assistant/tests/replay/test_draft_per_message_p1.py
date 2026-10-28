@@ -260,7 +260,7 @@ async def test_the_same_work_on_an_open_activity_writes_what_todays_confirmation
     result = await drafted.say(FakeToolCallingProvider([[OPEN_WORK], "Check it."]), "plastering 50 sq ft done")
     await press(drafted, result.reply, "✅ Save")
 
-    assert _written(drafted) == _written(legacy) and len(_written(legacy)) == 1
+    assert _same_records(drafted, legacy) and len(_written(legacy)) == 1
 
 
 async def test_the_card_lines_are_the_lines_the_saved_records_are_worded_with(world):
@@ -537,6 +537,26 @@ def _written(world) -> list[dict[str, Any]]:
     return out
 
 
+def _same_records(drafted, legacy) -> bool:  # noqa: ANN001
+    """The drafted world wrote what the legacy one did. Request 136: a sender with one
+    site gets that site from the site resolver; this fixture's legacy path places no
+    site (its context-layer project id is not the canonical one, unlike production),
+    so a legacy ``None`` site must be the sender's only site on the drafted record."""
+    # (the seed's readable site id, or its canonical one the record carries)
+    only = {str(drafted.site_ids.get(s.id, s.id)) for s in drafted.actor.sites}
+    mine, theirs = _written(drafted), _written(legacy)
+    if len(mine) != len(theirs):
+        return False
+    for new, old in zip(mine, theirs, strict=True):
+        if old["site"] is None:
+            if len(only) != 1 or str(new["site"]) not in only:
+                return False
+            new = {**new, "site": None}
+        if new != old:
+            return False
+    return True
+
+
 @pytest.mark.parametrize("name", list(SAME_MESSAGES))
 async def test_the_same_message_saved_by_tap_writes_what_todays_flow_writes(name):
     calls = SAME_MESSAGES[name]
@@ -550,7 +570,7 @@ async def test_the_same_message_saved_by_tap_writes_what_todays_flow_writes(name
     assert drafted.dispatcher.dispatched == []
     await press(drafted, result.reply, "✅ Save")
 
-    assert _written(drafted) == _written(legacy)
+    assert _same_records(drafted, legacy)
     assert len(_written(legacy)) == len(calls)
 
 
