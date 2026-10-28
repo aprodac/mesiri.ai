@@ -16,6 +16,7 @@
 //   TEAMMATE_BRAIN_MODEL       default claude-opus-5-5
 //   TEAMMATE_BRAIN_SCREENSHOT_HOSTS   hosts screenshot_url may open, comma-separated
 //   TEAMMATE_OWNER             default Ilan
+//   TEAMMATE_WATCH_MINUTES     how often running cloud jobs are checked (commits, deploys, silence), default 10, 0 = off
 //   TEAMMATE_BOARD_MINUTES     how often the shared board (docs/agents/BOARD.md) is checked, default 30, 0 = off
 //   TEAMMATE_PARTNER_<P>_URL / _TOKEN   fire the routine bound to Ilan Usman's cloud session (TM-12)
 //   CLAUDE_CODE_OAUTH_TOKEN    from `claude setup-token`
@@ -34,6 +35,7 @@ import { Brain } from "./brain.js";
 import { Accounts, parseAccounts } from "./accounts.js";
 import { brainTools } from "./tools.js";
 import { createRenderer } from "./render.js";
+import { commitPatterns, formatWorkStatus } from "./work_status.js";
 
 const log = (m) => console.log(`[brain] ${m}`);
 const token = process.env.TEAMMATE_API_TOKEN || "";
@@ -195,26 +197,56 @@ async function fireRoutine({ url, token: rtoken }, text) {
   return data;
 }
 
-// Is a plan's work on the project's branch? A commit since the approval that names the request ("request 61" or "[61]").
-async function landed(plan, sinceIso) {
+// Request 139: what the project's branch and GitHub show about a plan's work. A commit since the start that names the
+// request ("request 61", "[61]") or any tracker id in the plan / its notes (WA-86) is the plan's.
+async function planCommits(plan, sinceIso, item = null) {
   const { cwd, branch, ghToken } = projects[plan.project];
   const git = gitAs(ghToken);
   git(cwd, "fetch", "--quiet", "origin");
-  const id = String(plan.id);
-  return git(cwd, "log", `origin/${branch}`, `--since=${sinceIso}`, "-E", `--grep=request ${id}([^0-9]|$)|\\[${id}\\]`, "--format=%h").length > 0;
+  const greps = commitPatterns(plan, item).map((p) => `--grep=${p}`);
+  const out = git(cwd, "log", `origin/${branch}`, `--since=${sinceIso}`, "--reverse", "-E", ...greps, "--format=%H%x09%cI%x09%s");
+  return out ? out.split("\n").map((l) => { const [sha, at, ...subject] = l.split("\t"); return { sha, at, subject: subject.join("\t") }; }) : [];
+}
+
+/** Workflow runs (CI, "Deploy to Production") of those commits: GitHub REST, read-only, with the project's own token. */
+async function planRuns(shas, plan) {
+  const { repo, branch, ghToken } = projects[plan.project];
+  const res = await fetch(`https://api.github.com/repos/${repo}/actions/runs?branch=${encodeURIComponent(branch)}&per_page=60`, {
+    headers: { accept: "application/vnd.github+json", "user-agent": "teammate-brain", ...(ghToken ? { authorization: `Bearer ${ghToken}` } : {}) },
+  });
+  if (!res.ok) throw new Error(`GitHub runs HTTP ${res.status}`);
+  const data = await res.json();
+  return (data.workflow_runs || [])
+    .filter((r) => shas.includes(r.head_sha))
+    .map((r) => ({ sha: r.head_sha, name: r.name, status: r.status, conclusion: r.conclusion, at: r.updated_at, url: r.html_url }));
+}
+
+async function landed(plan, sinceIso) {
+  let item = null;
+  if (typeof plan.id === "number") item = (await listener.getItem(plan.id, plan.reply_project || plan.chat_project || plan.project).catch(() => null))?.item || null;
+  return (await planCommits(plan, sinceIso, item)).length > 0;
 }
 
 const brain = new Brain({
   accounts,
   fireFn: fireRoutine,
   landed,
+  work: { commits: planCommits, runs: planRuns },
   queryFn: query,
   projects,
   dir,
   listener,
   tools: (ctx, plans) => {
     const p = brain.partnerFor(ctx.chat, ctx.chat_project || ctx.project); // on this group's account, at the time of the turn
-    return brainTools({ ctx, listener, render, plans, screenshotHosts, partner: p ? (text) => fireRoutine(p, text) : null });
+    return brainTools({
+      ctx, listener, render, plans, screenshotHosts, partner: p ? (text) => fireRoutine(p, text) : null,
+      workStatus: async (id) => {
+        const plan = brain.planStore.plans[id];
+        return plan ? formatWorkStatus(await brain.workStatus(plan), Date.now()) : `No plan [${id}].`;
+      },
+      tellJob: ({ id, message, scope }) =>
+        brain.tellFromBot({ id, message, scope, reply_chat: ctx.reply_chat, project: ctx.chat_project || ctx.project, say: (text) => listener.send({ chat: ctx.reply_chat, project: ctx.chat_project || ctx.project, text }) }),
+    });
   },
   prepare,
   owner: process.env.TEAMMATE_OWNER || "Ilan",
@@ -266,5 +298,13 @@ if (boardMinutes > 0) {
   setTimeout(check, 120_000); // after start-up settles
   setInterval(check, boardMinutes * 60_000);
   log(`board: every ${boardMinutes} min; partner ${Object.keys(projects).filter((p) => accounts.list.some((a) => a.partners[p])).join(", ") || "none"}`);
+}
+// Request 139: the watchdog over cloud jobs (commits, deploys, silence); TEAMMATE_WATCH_MINUTES, default 10, 0 = off.
+const watchMinutes = Number(process.env.TEAMMATE_WATCH_MINUTES ?? 10);
+if (watchMinutes > 0) {
+  const watch = () => brain.watchdog.tick().catch((e) => log(`watchdog: ${e.message}`));
+  setTimeout(watch, 180_000);
+  setInterval(watch, watchMinutes * 60_000);
+  log(`watchdog: every ${watchMinutes} min`);
 }
 setInterval(() => brain.auto.tick().catch((e) => log(`auto: ${e.message}`)), 60_000); // the auto loop (request 61)

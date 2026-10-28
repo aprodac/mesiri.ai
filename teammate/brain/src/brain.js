@@ -16,6 +16,8 @@ import { join } from "node:path";
 import { BRAIN_TOOL_NAMES } from "./tools.js";
 import { AutoLoop, usageLimit, clock } from "./auto.js";
 import { Accounts } from "./accounts.js";
+import { collectWorkStatus, formatWorkStatus } from "./work_status.js";
+import { Watchdog } from "./watchdog.js";
 
 const MAX_CHUNK = 3800; // the listener refuses posts over 4,000 characters
 const TURN_TIMEOUT_MS = Number(process.env.TEAMMATE_BRAIN_TURN_TIMEOUT_MS || 60 * 60_000);
@@ -57,6 +59,8 @@ const READ = [
   "Bash(gh workflow run testflight-feedback.yml *)", "Bash(gh workflow run testflight-feedback.yml)",
   "Bash(gh run watch *)", "Bash(gh run download * -D /tmp/*)", "Bash(gh run download * --dir /tmp/*)",
   "Bash(gh pr view *)", "Bash(gh pr list *)", "Bash(gh pr checks *)", "Bash(gh run list *)", "Bash(gh run view *)",
+  // Request 139: read-only look at a repo's commits (the write flags are denied below, so it stays a GET).
+  "Bash(gh api repos/*/commits*)",
   ...BRAIN_TOOL_NAMES,
 ];
 const WORK = [
@@ -72,13 +76,46 @@ const WORK = [
 const DENY = [
   "Bash(git push --force*)", "Bash(git push -f*)", "Bash(git push * --force*)", "Bash(git push * -f *)",
   "Bash(* --no-verify*)", "Bash(git config *)", "Bash(git -c *)", "Bash(git remote *)",
-  "Bash(env)", "Bash(env *)", "Bash(printenv*)", "Bash(gh auth *)", "Bash(gh secret *)", "Bash(gh api *)",
+  "Bash(env)", "Bash(env *)", "Bash(printenv*)", "Bash(gh auth *)", "Bash(gh secret *)",
+  // gh api is only open for repos/*/commits (READ); anything that could write is refused, any other endpoint is not allowed.
+  "Bash(gh api *-X*)", "Bash(gh api *--method*)", "Bash(gh api * -f*)", "Bash(gh api * -F*)", "Bash(gh api *--field*)", "Bash(gh api *--raw-field*)", "Bash(gh api *--input*)",
   "Read(**/.env)", "Read(**/.env.*)", "Bash(cat *.env*)",
   "Edit(**/.git/**)", "Write(**/.git/**)",
   // Plan 25: the deploy pipeline / CI and secrets stay human-only.
   "Edit(**/.github/**)", "Write(**/.github/**)", "Edit(**/.env*)", "Write(**/.env*)",
   "Edit(infra/**/secrets*)", "Write(infra/**/secrets*)",
 ];
+
+/** The fixed footer of every cloud payload (request 139): how the session reports, so the bot can see it from outside. */
+export function reportingFooter(plan, reply_chat) {
+  const id = plan.id;
+  return [
+    "",
+    "REPORTING (fixed rules for every job started from WhatsApp):",
+    typeof plan.id === "number"
+      ? `- At each step run: python3 teammate/inbox.py item note ${id} "<what you are doing / just finished>"  (the bot watches these as heartbeats).`
+      : "- This plan has no request-log item: post short progress to the reply group instead.",
+    `- Put "[${id}]" in every commit message.`,
+    `- When it is pushed and verified, finish with: python3 teammate/inbox.py item done ${id} --ref <commit sha>, then post the result: python3 teammate/inbox.py post --chat "${reply_chat}" "<short update>".`,
+    "- If you stop early or are blocked, say so with an item note and a group post; never go silent.",
+  ].join("\n");
+}
+
+/** The payload of a follow-up session: the plan, the work so far, the earlier link and the message. */
+export function followUpSection({ message, by, status, earlierUrl }) {
+  const commits = (status?.commits || []).map((c) => `  - ${c.short} ${c.subject} (deploy ${c.deploy.state}, CI ${c.ci})`);
+  return [
+    "",
+    `FOLLOW-UP: this plan was already started${earlierUrl ? ` in an earlier session (${earlierUrl})` : ""}. Do NOT restart it.`,
+    "Pull main, read the earlier commits below, and continue from there; keep the same request id, notes and rules (CLAUDE.md applies).",
+    `Message from ${by === "bot" ? "the bot (a live re-test)" : by}: ${message}`,
+    "",
+    "Work so far:",
+    ...(commits.length ? commits : ["  - no commit on main yet"]),
+    `  - request-log status: ${status?.item?.status || "unknown"}${status?.heartbeat ? `; last note: ${status.heartbeat.note}` : ""}`,
+    ...(status?.followups?.length ? [`  - earlier follow-ups: ${status.followups.map((f) => f.url).join(", ")}`] : []),
+  ].join("\n");
+}
 
 export function systemAppend({ project, flow, owner, dm = false, partner = false }) {
   return [
@@ -142,6 +179,12 @@ export function systemAppend({ project, flow, owner, dm = false, partner = false
         ]
       : ["tell_ilan_usman isn't set up on this server yet: post your findings in the group, and say so once."]),
     "",
+    "Cloud jobs (after an ok the work runs in a Claude Code cloud session): status_of_work(id) shows its commits, deploy results,",
+    "last note and links; use it to answer \"how is it going\" or to check a job before re-testing it. After a live re-test finds a",
+    "problem that is INSIDE a job's plan while that job is still running, tell_job(id, message, scope) starts a follow-up session",
+    "for it (scope = a passage copied from the plan that covers the problem, so a new request is never smuggled in). Anything",
+    "outside the plan, or a job that has finished: propose_plan instead. Owners can also say \"@bot tell <n> <message>\".",
+    "",
     "When the owner has to do something you can't (a permission you were denied, something only visible in Claude",
     "Code or on the server, a credential, a decision), call needs_attention and say plainly what they should check.",
     "",
@@ -185,7 +228,7 @@ export class Brain {
    *   owner?: string, model?: string, env?: Record<string, string>, log?: (m: string) => void, now?: () => Date,
    * }} opts
    */
-  constructor({ queryFn, projects, dir, listener, tools, prepare = () => {}, owner = "Ilan", model, env = process.env, log = () => {}, now = () => new Date(), routines = {}, fireFn = null, partners = {}, landed, accounts = null }) {
+  constructor({ queryFn, projects, dir, listener, tools, prepare = () => {}, owner = "Ilan", model, env = process.env, log = () => {}, now = () => new Date(), routines = {}, fireFn = null, partners = {}, landed, accounts = null, work = null }) {
     // routines: { project: { url, token } } -- approved work runs as a cloud routine session the owner can
     // watch in Claude Code (hybrid, TM-03b); projects without one run the working turn here.
     // partners: { project: { url, token } } -- the routine bound to Ilan Usman's cloud session (TM-12).
@@ -211,6 +254,82 @@ export class Brain {
     this.today = { day: "", turns: 0 };
     // The auto loop (request 61): "@bot auto on [hours]"; see auto.js. landed(plan, sinceIso): is that work on main?
     this.auto = new AutoLoop(this, { dir, ...(landed ? { landed } : {}) });
+    // Request 139: work = { commits(plan, sinceIso, item), runs(shas) } (git / GitHub, main.js); without it a job's status
+    // is what the request log says. The watchdog posts when a cloud job pushes, goes quiet or lands unreported.
+    this.work = work || { commits: async () => [], runs: async () => [] };
+    this.watchdog = new Watchdog(this, { dir });
+  }
+
+  /** What is known about a plan's work: commits, deploys, heartbeat, links (work_status.js). */
+  async workStatus(plan) {
+    let item = null;
+    if (typeof plan.id === "number") {
+      try {
+        item = (await this.listener.getItem(plan.id, plan.reply_project || plan.chat_project || plan.project))?.item || null;
+      } catch {
+        // the request log is a convenience
+      }
+    }
+    return collectWorkStatus({ plan, item, commits: this.work.commits, runs: this.work.runs });
+  }
+
+  /** "@bot status" / "@bot status <n>", answered by code (no AI turn, so it works under a usage limit). undefined when not that command. */
+  async statusCommand(req) {
+    const m = String(req.text || "").trim().match(/^(?:status|jobs)(?:\s+(?:of\s+)?\[?#?(\d+)\]?)?\s*\??$/i);
+    if (!m) return undefined;
+    const project = req.reply_project || req.project;
+    const mine = (p) => (p.chat_project || p.project) === project;
+    const now = this.now().getTime();
+    if (m[1]) {
+      const plan = this.planStore.plans[m[1]];
+      if (!plan || !mine(plan)) return `I have no plan [${m[1]}].`;
+      if (plan.status === "proposed") return `[${plan.id}] ${plan.title} is a plan waiting for @bot ok ${plan.id}.`;
+      return formatWorkStatus(await this.workStatus(plan), now);
+    }
+    const running = Object.values(this.planStore.plans).filter((p) => mine(p) && p.status === "running_in_cloud");
+    if (!running.length) return "No job is running in the cloud. @bot status <n> shows any earlier one.";
+    const parts = [];
+    for (const p of running) parts.push(formatWorkStatus(await this.workStatus(p), now, { short: true }));
+    return `${running.length} job${running.length > 1 ? "s" : ""} running in the cloud:\n\n${parts.join("\n\n")}`;
+  }
+
+  /**
+   * "@bot tell <n> <message>" (owners): the routine API can't type into a running session, so this starts a FOLLOW-UP
+   * session on the same routine and account, carrying the plan, the work so far and the message. Returns the reply
+   * ("" when already posted), or undefined when the text isn't a tell.
+   */
+  async tellCommand(req, say) {
+    const m = String(req.text || "").trim().match(/^tell\s+\[?#?(\d+)\]?[\s:,-]+([\s\S]+)$/i);
+    if (!m) return undefined;
+    if (req.sender_role !== "owner") return "Only an owner can send a message to a job.";
+    const project = req.reply_project || req.project;
+    const plan = this.planStore.plans[m[1]];
+    if (!plan || (plan.chat_project || plan.project) !== project) return `I have no plan [${m[1]}].`;
+    if (!plan.session_url) return `Plan [${plan.id}] has not been started in the cloud, so there is no job to follow up.`;
+    const r = await this.followUp(plan, { message: m[2].trim(), by: req.sender, reply_chat: req.reply_chat, project, say });
+    return r.ok ? "" : `⚠️ Couldn't start the follow-up for [${plan.id}] (${String(r.error).slice(0, 150)}).`;
+  }
+
+  /**
+   * The bot's own tell (a live re-test found something). Only while the original plan is still in progress and the
+   * message is inside the plan: `scope` must be a passage copied from the plan. Otherwise: propose a new plan.
+   */
+  async tellFromBot({ id, message, scope, reply_chat, project, say }) {
+    const plan = this.planStore.plans[id];
+    if (!plan) return { ok: false, text: `No plan [${id}].` };
+    const norm = (t) => String(t || "").toLowerCase().replace(/\s+/g, " ").trim();
+    const covered = norm(scope).length >= 20 && norm(plan.plan).includes(norm(scope));
+    if (plan.status !== "running_in_cloud") return { ok: false, text: `Plan [${id}] is ${plan.status}, not in progress: propose a new plan instead.` };
+    if (!covered) return { ok: false, text: `That isn't inside plan [${id}]'s scope (scope must quote the plan). Propose a new plan instead.` };
+    if ((plan.followups || []).filter((f) => f.by === "bot").length >= 3) return { ok: false, text: `Plan [${id}] already had 3 follow-ups from the bot. Ask an owner.` };
+    const r = await this.followUp(plan, { message, by: "bot", reply_chat, project, say });
+    return r.ok ? { ok: true, text: `Follow-up started: ${plan.followups.at(-1).url}` } : { ok: false, text: `Couldn't start it: ${r.error}` };
+  }
+
+  /** Starts a follow-up session for a plan: the status so far goes into its payload. */
+  async followUp(plan, { message, by, reply_chat, project, say }) {
+    const status = await this.workStatus(plan);
+    return this.runInCloud(plan, { project, by: by === "bot" ? plan.approved_by || "an owner" : by, reply_chat, say, followUp: { message, by, status, earlierUrl: plan.followups?.at(-1)?.url || plan.session_url } });
   }
 
   /** Does any Claude account have a cloud routine for this project? */
@@ -397,7 +516,7 @@ export class Brain {
   }
 
   /** Starts the approved plan as a cloud routine session and posts its link, so the owner can watch it. */
-  async runInCloud(plan, { project, by, reply_chat, say, quiet = false }) {
+  async runInCloud(plan, { project, by, reply_chat, say, quiet = false, followUp = null }) {
     const payload = [
       `Project: ${project}`,
       by === "auto"
@@ -408,7 +527,10 @@ export class Brain {
       `Plan [${plan.id}]: ${plan.title}`,
       "",
       plan.plan,
+      ...(followUp ? [followUpSection(followUp)] : []),
+      reportingFooter(plan, reply_chat),
     ].join("\n");
+    const before = plan.status;
     try {
       const routine = this.routineFor(plan.chat, plan.project);
       if (!routine) throw new Error("no cloud routine on any Claude account for this project");
@@ -416,11 +538,25 @@ export class Brain {
       plan.status = "running_in_cloud";
       // The fire API can return the id in its cse_ form; the web address needs session_.
       const sid = r?.claude_code_session_id || String(r?.claude_code_session_url || "").split("/").pop() || "";
-      plan.session_url = sid ? `https://claude.ai/code/${sid.replace(/^cse_/, "session_")}` : r?.claude_code_session_url || null;
+      const url = sid ? `https://claude.ai/code/${sid.replace(/^cse_/, "session_")}` : r?.claude_code_session_url || null;
+      const at = this.now().toISOString();
+      // The watchdog and "@bot status" need to know where to post and when the job started.
+      Object.assign(plan, { reply_chat, reply_project: project, approved_by: plan.approved_by || by });
+      if (followUp) {
+        (plan.followups ||= []).push({ url, at, by: followUp.by, message: followUp.message.slice(0, 300) });
+        plan.fired_at = at; // the quiet-time clock restarts with the follow-up
+      } else {
+        plan.session_url = url;
+        plan.fired_at = at;
+      }
       writeJson(this.plansFile, this.planStore);
-      this.log(`brain: plan [${plan.id}] started in the cloud: ${plan.session_url}`);
-      if (typeof plan.id === "number" && plan.session_url) {
-        this.listener.updateItem(plan.id, { note: `cloud session ${plan.session_url}`, project }).catch(() => {});
+      this.log(`brain: plan [${plan.id}] ${followUp ? "follow-up" : "started"} in the cloud: ${url}`);
+      if (typeof plan.id === "number" && url) {
+        this.listener.updateItem(plan.id, { ...(followUp && before === "done" ? { status: "in_progress" } : {}), note: `cloud session${followUp ? " (follow-up)" : ""} ${url}`, project }).catch(() => {});
+      }
+      if (followUp) {
+        await say(`💬 [${plan.id}] follow-up started: ${url || "(link not returned)"}`);
+        return { ok: true };
       }
       if (quiet) return { ok: true };
       await say(`▶️ Working on [${plan.id}] ${plan.title}\nWatch it live in Claude Code: ${plan.session_url || "(link not returned)"}\nI'll post progress and the result here.`);
@@ -429,12 +565,12 @@ export class Brain {
       const limit = usageLimit(e.message, { now: this.now().getTime() });
       // The routine's account is out of usage: fire the same plan on the next free account that has one (TM-14).
       if (limit && (await this.switchAccount(limit, plan.chat, say, (a) => a.routines[plan.project]))) {
-        return this.runInCloud(plan, { project, by, reply_chat, say, quiet });
+        return this.runInCloud(plan, { project, by, reply_chat, say, quiet, followUp });
       }
-      plan.status = quiet ? "approved" : "proposed"; // a human can retry the ok; the auto loop re-fires the same plan itself
+      plan.status = followUp ? before : quiet ? "approved" : "proposed"; // a human can retry the ok; the auto loop re-fires the same plan itself
       writeJson(this.plansFile, this.planStore);
       this.log(`brain: cloud start failed for [${plan.id}]: ${e.message}`);
-      if (quiet) return { ok: false, error: e.message, limit: Boolean(limit) };
+      if (quiet || followUp) return { ok: false, error: e.message, limit: Boolean(limit) };
       await say(`⚠️ Couldn't start the cloud session for [${plan.id}] (${String(e.message).slice(0, 150)}). Reply @bot ok ${plan.id} to try again.`);
       return { ok: false, error: e.message, limit: Boolean(limit) };
     }
@@ -509,6 +645,11 @@ export class Brain {
     if (!project) return say(`I'm not set up for the ${req.project} project yet.`);
 
     if (mode === "planning" && !req.auto) {
+      // Request 139: answered by code, no AI turn.
+      const status = await this.statusCommand(req).catch((e) => `⚠️ Couldn't read the job status (${String(e.message).slice(0, 100)}).`);
+      if (status !== undefined) return say(status);
+      const told = await this.tellCommand(req, say);
+      if (told !== undefined) return told ? say(told) : undefined;
       const auto = this.auto.command(req);
       if (auto !== undefined) return auto ? say(auto) : undefined;
       const answer = this.accounts.command(req) || this.settingsCommand(req) || this.sessionCommand(req);

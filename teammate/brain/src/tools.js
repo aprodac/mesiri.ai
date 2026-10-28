@@ -6,6 +6,8 @@
 //   propose_plan        record a plan for approval; the team replies "@bot ok <n>"
 //   test_assistant      message the Mesiri assistant's test chat as a worker and read its replies
 //   tell_ilan_usman     report to Ilan Usman, the partner Claude Code session in the cloud (TM-12), when set up
+//   status_of_work      a cloud job's commits, deploys, notes and links (request 139)
+//   tell_job            start a follow-up session for a running plan, inside its scope (request 139)
 //   needs_attention     tell the owner something needs them (a permission, a check in Claude Code, a decision)
 // Everything goes to the team group (or the 1-on-1 chat being answered) and the project's assistant-test
 // chat; customer groups are never reachable.
@@ -82,7 +84,7 @@ export const afterSeconds = (sentMs, atIso) => {
 const PARTNER_PER_HOUR = Number(process.env.TEAMMATE_PARTNER_PER_HOUR || 12);
 const partnerSent = [];
 
-export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait = sleep, partner = null }) {
+export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait = sleep, partner = null, workStatus = null, tellJob = null }) {
   // Group-side calls use the group's project; ctx.project is the repo this conversation works in.
   const chatProject = ctx.chat_project || ctx.project;
   const post = (body) => listener.send({ chat: ctx.reply_chat, project: chatProject, ...body });
@@ -338,6 +340,29 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
       },
     ),
   ];
+  if (workStatus) {
+    tools.push(
+      tool(
+        "status_of_work",
+        "A cloud job's progress by plan number: its commits on the branch, CI / deploy results, the session's last note and the session links. Read-only.",
+        { id: z.number().int() },
+        async ({ id }) => ({ content: [{ type: "text", text: await workStatus(id) }] }),
+      ),
+    );
+  }
+  if (tellJob) {
+    tools.push(
+      tool(
+        "tell_job",
+        "Start a follow-up cloud session for a plan that is still running, with a message (e.g. what a live re-test found). Only for a problem INSIDE that plan: scope must be a passage copied from the plan covering it. Otherwise it is refused; use propose_plan.",
+        { id: z.number().int(), message: z.string().min(5).max(1500), scope: z.string().min(20).max(600) },
+        async ({ id, message, scope }) => {
+          const r = await tellJob({ id, message, scope });
+          return r.ok ? { content: [{ type: "text", text: r.text }] } : fail(r.text);
+        },
+      ),
+    );
+  }
   if (ctx.auto_cycle) {
     // Only in unattended auto cycles: the structured end of the cycle, read by the auto loop (auto.js).
     tools.push(
@@ -356,4 +381,4 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
   return createSdkMcpServer({ name: "whatsapp", version: "1.0.0", tools });
 }
 
-export const BRAIN_TOOL_NAMES = ["post_message", "post_image", "preview_html", "screenshot_url", "view_media", "translate_message", "propose_plan", "test_assistant", "tell_ilan_usman", "needs_attention", "cycle_report"].map((t) => `mcp__whatsapp__${t}`);
+export const BRAIN_TOOL_NAMES = ["post_message", "post_image", "preview_html", "screenshot_url", "view_media", "translate_message", "propose_plan", "test_assistant", "tell_ilan_usman", "needs_attention", "cycle_report", "status_of_work", "tell_job"].map((t) => `mcp__whatsapp__${t}`);
