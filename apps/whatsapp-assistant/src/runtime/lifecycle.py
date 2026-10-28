@@ -377,6 +377,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Projects router not loaded: %s", exc)
 
+    # WA-87: a site's WhatsApp group (dashboard site page)
+    try:
+        from whatsapp_groups.router import router as whatsapp_groups_router
+
+        app.include_router(whatsapp_groups_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("WhatsApp groups router not loaded: %s", exc)
+
     # Materials routes (tenant-scoped materials log)
     try:
         from mesiri.domains.materials.router import router as materials_router

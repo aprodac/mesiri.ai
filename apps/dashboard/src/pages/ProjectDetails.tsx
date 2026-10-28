@@ -12,6 +12,7 @@ import { AddEditProjectDialog, AddEditSiteDialog, ProjectMemberDialog } from '@/
 import { ProjectReportingTab } from '@/components/project-reporting-tab'
 import { ProjectRecipientsTab } from '@/components/project-recipients-tab'
 import { ProjectClientLogoCard } from '@/components/project-client-logo-card'
+import { SiteWhatsAppGroupButton } from '@/components/site-whatsapp-group'
 import {
   archiveProject,
   archiveSite,
@@ -227,6 +228,7 @@ export default function ProjectDetails() {
                       <span className="font-medium">{site.name}</span>
                       {site.status !== 'active' && <span className={cn(CHIP, 'bg-muted text-muted-foreground')}>{site.status}</span>}
                     </div>
+                    {!readOnly && site.status === 'active' && <SiteWhatsAppGroupButton projectId={id} siteId={site.id} />}
                     <Button asChild variant="ghost" size="sm" className="gap-1.5">
                       <Link to={siteDayPath(site.id, today)}>
                         <FileText className="size-3.5" /> Today's DPR

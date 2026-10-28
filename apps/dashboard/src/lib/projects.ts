@@ -265,3 +265,22 @@ export async function removeClientLogo(projectId: string): Promise<ClientLogo> {
   const res = await api.delete<ClientLogo>(`/projects/${projectId}/client-logo`)
   return res.data
 }
+
+/** WA-87: a site's WhatsApp group with Mesiri in it. `status` is none | creating | active | failed. */
+export interface SiteWhatsAppGroup {
+  enabled: boolean
+  status: string
+  inviteLink: string | null
+  name: string | null
+  message: string | null
+}
+
+export async function fetchSiteWhatsAppGroup(projectId: string, siteId: string): Promise<SiteWhatsAppGroup> {
+  const res = await api.get<SiteWhatsAppGroup>(`/projects/${projectId}/sites/${siteId}/whatsapp-group`)
+  return res.data
+}
+
+export async function createSiteWhatsAppGroup(projectId: string, siteId: string): Promise<SiteWhatsAppGroup> {
+  const res = await api.post<SiteWhatsAppGroup>(`/projects/${projectId}/sites/${siteId}/whatsapp-group`)
+  return res.data
+}
