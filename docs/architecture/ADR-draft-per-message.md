@@ -598,3 +598,91 @@ Approved by Ilan on 27 Oct ("do the rest"). Draft mode routes the first two; the
 - **Wording:** the new Manglish / Malayalam lines in `reply_language.py` were drafted by Claude and are marked
   PENDING the native review of WA-76.
 - Tests: `tests/unit/test_wa84_team_setup.py`. Rollback: `git revert` (wording), flag `draft_v2` off (routing).
+
+
+## 18. One pipeline for site updates (request 136, replaces [135]'s patches)
+
+Approved by Ilan in WhatsApp on 28 Oct (#4797: "I need them sorted, not patched"). Draft mode (`draft_v2`) only;
+legacy is unchanged for every other company until P4. No Labour rule changed (labour is saved through the same
+services). No migration. Phases of the plan: **A+B** (this section, one push), **C** (wiring proof: the recording
+part is in this push, see 18.4), **D** (the live gate, not built: 18.6), **E** (deleting what B made unreachable,
+needs its own ok once P4 flips everyone).
+
+### 18.1 Why the same bugs came back (code facts of 28 Oct)
+
+1. Two systems ran side by side. [132]'s resolver `draft_site.resolve()` was never called; the "Ee update ethu
+   site-inte aanu?" question came from the entry's old site path (`EntryScope.settle`: today's site, the context
+   layer's default site, `_named_site`). Fixes landed in the new code while the old code kept answering.
+2. `named_in()` matched whole names only, so "Green Villa" did not name "Green Villa, Kakkanad".
+3. The model's sentence went out above the code's card and could contradict it. One contradiction was the code's
+   own: `_choice_line` named only the options of 12 characters or less, so a card asking between "Green Villa,
+   Kakkanad" and "Site B" said "Site B tap cheyyu."
+4. "innu enthokke cheythu?" took its site from the context layer (another site than the one just saved to) and
+   listed no materials.
+5. Scripted-model tests passed while the resolver was dead code.
+
+### 18.2 A: one pipeline per site message
+
+- **The site** of every draft line is decided by `draft_site.resolve` in `draft_flow.add`, **before** the entry
+  runs, in one order: the sender's only site -> the site the model's call names (whole words, a part such as
+  "Green Villa" counts) or the message names (`site_match.mentioned_sites`: the full name, or its head before the
+  comma; two hits ask between those two) -> a name that is none of theirs asks among all (never a fallback) -> the
+  open card's one site (WA-81, now a step of the resolver) -> the site saved to within 3 h (`work_site.today`) ->
+  the card asks. The entry gets the decided site as an explicit pick, so its own fallbacks never decide a draft
+  line. `with_named_site` and `_on_card_site` are gone (folded into the resolver).
+- **The words above a draft card are the code's** (`runner._code_card`, `card_sentence`): "Card nokki shariyenkil
+  Save tap cheyyu." / "Card-ile chodyathinu answer cheyyu." / both, in the sender's language (English, Manglish,
+  Malayalam, Hindi, Hinglish), then the card, its questions and the system's own lines. The model's text is not
+  used. Exception (limit): a turn that also answered a lookup ("5 mason vannu, cement stock ethra?") keeps the
+  model's filtered sentence for the answer, as before.
+- **The "tap X" line** names the options only when every option is short (Replace / Add); otherwise the card asks.
+- **Readers**: in draft mode a question about the day's figures (`query_work_log`, `query_labour`,
+  `query_materials`) takes its site from the same resolver (named -> saved within 3 h), else **every site of the
+  project** (`entry_base.ALL_SITES`), never the context layer's default site. "What was done" also lists the
+  period's materials (`period_totals`, counted as the DPR's assembly counts them) under "🧱 Materials". The reads
+  stay on `project_day.read_period` over the same tables the DPR reads.
+
+### 18.3 B: the old paths are not reachable for draft_v2 senders
+
+One guard in `message_journey._run_journey_steps`: `pipeline_v2` is read once per message and logged
+(`journey.pipeline pipeline=draft_v2|legacy`). For a draft_v2 sender:
+
+- a labour / material / work / issue workflow still waiting for a Yes / No or a slot answer (only possible from
+  before the switch: a Save writes in one transaction) is **not resumed** by the message
+  (`journey.legacy_site_update_routed_out`); the message goes to the draft pipeline. Other workflows (add a member,
+  expenses, accounts) keep their Yes / No until P3.
+- the morning "where are you working today?" question (already off since WA-81) uses the same guard;
+- the WA-57 "later" list is neither shown to the model nor kept, and a draft Save does not ask from it (a card
+  keeps what is still to do as its own waiting lines);
+- the [111] site queue already holds no draft-tool call (WA-81); save-first and the legacy `card_plan` never see a
+  draft tool call (nothing is written before the Save tap).
+
+### 18.4 C: wiring proof (recording part)
+
+Every draft turn records who decided what (`JourneyGateway.decisions`, written as the trace stage
+**`draft_decisions`**, names only): `site` by `draft_site.resolve` with its kind (single / named / card / saved /
+ask), `item` by `tool_call` (+ `item_source` `code:problem_part` etc. for a line the code made from the message),
+`reply` by `template` (or `model_filtered` for the lookup exception), `read_site` for the readers.
+`tests/replay/test_request136_one_pipeline.py` fails if a draft turn's site came from anything but the resolver
+(a spy proves it runs once per line), or if the words above a card are not the template's.
+
+### 18.5 Tests
+
+`tests/replay/test_request136_one_pipeline.py` (19 tests: the matcher, the resolver order, Green Villa by its
+head, the model's part name, saved within / after 3 h, two Green Villas, a site that is not theirs, the spy, the
+template in Manglish and English, never "Site B tap cheyyu", a golden 4-part note + a line on the same card + Save,
+the reader's site and the materials). Changed: the P1/P2 data-identity tests now expect the one-site sender's site
+on the record (the fixture's legacy path places none because its context-layer project id is not the canonical
+one; in production they are the same). The replay World now wires `get_today_site` as production does.
+
+### 18.6 Not done here (needs the owner)
+
+- **D, the live gate in CI** (golden conversations against the live model, blocking the deploy): it needs a change
+  under `.github/` (deploy.yml) and the model key in CI, which this routine may not touch. Asked for in the report.
+- **The live test-chat run**: not possible from this session (no teammate token here). Ilan Pro re-tests live.
+- [135]'s own repros are not in the repo (the bot's request log was not readable here); the 27 Oct transcripts and
+  the plan's listed cases are the acceptance tests instead.
+- Button titles are cut at 20 characters ("Green Villa, Kakkana"), not at a word (`site_match.short_title` is not
+  used by the draft card's buttons). Small, separate.
+- Rollback: flag `draft_v2` off for the TEST company, or `git revert`. The template wording (Malayalam, Hindi,
+  Hinglish, and the new Manglish "answer the question" line) is PENDING the native review of WA-76.
