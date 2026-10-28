@@ -19,6 +19,8 @@
 //   TEAMMATE_BOARD_MINUTES     how often the shared board (docs/agents/BOARD.md) is checked, default 30, 0 = off
 //   TEAMMATE_PARTNER_<P>_URL / _TOKEN   fire the routine bound to Ilan Usman's cloud session (TM-12)
 //   CLAUDE_CODE_OAUTH_TOKEN    from `claude setup-token`
+//   CLAUDE_CODE_OAUTH_TOKEN_<X>, TEAMMATE_ROUTINE_<P>_URL_<X> / _TOKEN_<X>, TEAMMATE_PARTNER_<P>_URL_<X> / _TOKEN_<X>
+//                              more Claude accounts B, C, … (TM-14); the unsuffixed set is account A
 //   GH_TOKEN                   GitHub token for clone / push / PRs
 
 import { execFileSync } from "node:child_process";
@@ -29,6 +31,7 @@ import { fileURLToPath } from "node:url";
 import { timingSafeEqual } from "node:crypto";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { Brain } from "./brain.js";
+import { Accounts, parseAccounts } from "./accounts.js";
 import { brainTools } from "./tools.js";
 import { createRenderer } from "./render.js";
 
@@ -94,7 +97,7 @@ function prepare({ name, cwd, branch, ghToken }) {
   git(cwd, "fetch", "--quiet", "origin");
   // With a cloud routine (hybrid), all changes happen in the cloud, so this copy only mirrors GitHub:
   // set aside anything unpushed or uncommitted on a backup branch (kept, never deleted), then follow origin.
-  if (routines[name]) {
+  if (brain.hasRoutine(name)) { // on any Claude account (TM-14)
     const ahead = git(cwd, "rev-list", "--count", `origin/${branch}..HEAD`);
     const dirty = git(cwd, "status", "--porcelain");
     if (ahead !== "0" || dirty) {
@@ -169,20 +172,12 @@ const screenshotHosts = (process.env.TEAMMATE_BRAIN_SCREENSHOT_HOSTS || "").spli
 
 // Hybrid (TM-03b): a project with a cloud routine runs approved work there, where the owner can watch it in
 // Claude Code. Per project: TEAMMATE_ROUTINE_<PROJECT>_URL (the routine's /fire URL) and _TOKEN (its API token).
-const routines = {};
-for (const name of Object.keys(projects)) {
-  const url = process.env[`TEAMMATE_ROUTINE_${name.toUpperCase()}_URL`];
-  const rtoken = process.env[`TEAMMATE_ROUTINE_${name.toUpperCase()}_TOKEN`];
-  if (url && rtoken) routines[name] = { url, token: rtoken };
-}
 // The pair (TM-12): TEAMMATE_PARTNER_<PROJECT>_URL / _TOKEN fire the routine bound to Ilan Usman's cloud session,
-// so Ilan Pro (this bot) can report to it. TEAMMATE_BOARD_MINUTES: how often the shared board is checked (0 = off).
-const partners = {};
-for (const name of Object.keys(projects)) {
-  const url = process.env[`TEAMMATE_PARTNER_${name.toUpperCase()}_URL`];
-  const ptoken = process.env[`TEAMMATE_PARTNER_${name.toUpperCase()}_TOKEN`];
-  if (url && ptoken) partners[name] = { url, token: ptoken };
-}
+// so Ilan Pro (this bot) can report to it. Both belong to a Claude account; with several accounts (TM-14) each
+// has its own set, and each WhatsApp group uses its own account's (accounts.js).
+const accounts = new Accounts({ list: parseAccounts(process.env, Object.keys(projects)), file: join(dir, "accounts.json"), log });
+log(`claude accounts: ${accounts.list.map((a) => a.id.toUpperCase()).join(", ")}; default ${accounts.state.default.toUpperCase()}`);
+// TEAMMATE_BOARD_MINUTES: how often the shared board is checked (0 = off).
 const boardMinutes = Number(process.env.TEAMMATE_BOARD_MINUTES ?? 30);
 async function fireRoutine({ url, token: rtoken }, text) {
   const res = await fetch(url, {
@@ -210,24 +205,24 @@ async function landed(plan, sinceIso) {
 }
 
 const brain = new Brain({
-  routines,
+  accounts,
   fireFn: fireRoutine,
   landed,
-  partners,
   queryFn: query,
   projects,
   dir,
   listener,
   tools: (ctx, plans) => {
-    const p = partners[ctx.chat_project || ctx.project];
+    const p = brain.partnerFor(ctx.chat, ctx.chat_project || ctx.project); // on this group's account, at the time of the turn
     return brainTools({ ctx, listener, render, plans, screenshotHosts, partner: p ? (text) => fireRoutine(p, text) : null });
   },
   prepare,
   owner: process.env.TEAMMATE_OWNER || "Ilan",
   model: process.env.TEAMMATE_BRAIN_MODEL || "claude-opus-5-5",
-  // What Claude Code (and anything it runs) sees: never the dev-site password or the routine token.
+  // What Claude Code (and anything it runs) sees: never the dev-site password, a routine token, or a Claude
+  // login; the brain adds only the login of the account each turn runs on (TM-14).
   env: {
-    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^TEAMMATE_(DEV_LOGIN|ROUTINE|PARTNER|GITHUB_TOKEN)_/.test(k))),
+    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^TEAMMATE_(DEV_LOGIN|ROUTINE|PARTNER|GITHUB_TOKEN)_|^CLAUDE_CODE_OAUTH_TOKEN/.test(k))),
     TEAMMATE_TOKEN: token,
     TEAMMATE_API: api,
   },
@@ -270,6 +265,6 @@ if (boardMinutes > 0) {
   const check = () => brain.checkBoard().catch((e) => log(`board: ${e.message}`));
   setTimeout(check, 120_000); // after start-up settles
   setInterval(check, boardMinutes * 60_000);
-  log(`board: every ${boardMinutes} min; partner ${Object.keys(partners).join(", ") || "none"}`);
+  log(`board: every ${boardMinutes} min; partner ${Object.keys(projects).filter((p) => accounts.list.some((a) => a.partners[p])).join(", ") || "none"}`);
 }
 setInterval(() => brain.auto.tick().catch((e) => log(`auto: ${e.message}`)), 60_000); // the auto loop (request 61)

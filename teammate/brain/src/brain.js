@@ -15,6 +15,7 @@ import { readFileSync, writeFileSync, renameSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { BRAIN_TOOL_NAMES } from "./tools.js";
 import { AutoLoop, usageLimit, clock } from "./auto.js";
+import { Accounts } from "./accounts.js";
 
 const MAX_CHUNK = 3800; // the listener refuses posts over 4,000 characters
 const TURN_TIMEOUT_MS = Number(process.env.TEAMMATE_BRAIN_TURN_TIMEOUT_MS || 60 * 60_000);
@@ -184,11 +185,14 @@ export class Brain {
    *   owner?: string, model?: string, env?: Record<string, string>, log?: (m: string) => void, now?: () => Date,
    * }} opts
    */
-  constructor({ queryFn, projects, dir, listener, tools, prepare = () => {}, owner = "Ilan", model, env = process.env, log = () => {}, now = () => new Date(), routines = {}, fireFn = null, partners = {}, landed }) {
+  constructor({ queryFn, projects, dir, listener, tools, prepare = () => {}, owner = "Ilan", model, env = process.env, log = () => {}, now = () => new Date(), routines = {}, fireFn = null, partners = {}, landed, accounts = null }) {
     // routines: { project: { url, token } } -- approved work runs as a cloud routine session the owner can
     // watch in Claude Code (hybrid, TM-03b); projects without one run the working turn here.
     // partners: { project: { url, token } } -- the routine bound to Ilan Usman's cloud session (TM-12).
-    Object.assign(this, { queryFn, projects, listener, tools, prepare, owner, model, env, log, now, routines, fireFn, partners });
+    // accounts: several Claude accounts, each with its own login, routines and partners (TM-14); without it,
+    // one account made of `routines` / `partners` and whatever login `env` carries.
+    Object.assign(this, { queryFn, projects, listener, tools, prepare, owner, model, env, log, now, fireFn });
+    this.accounts = accounts || new Accounts({ list: [{ id: "a", token: null, routines, partners }], now: () => this.now().getTime() });
     this.boardFile = `${dir}/board.json`;
     this.sessionsFile = `${dir}/sessions.json`;
     this.plansFile = `${dir}/plans.json`;
@@ -207,6 +211,33 @@ export class Brain {
     this.today = { day: "", turns: 0 };
     // The auto loop (request 61): "@bot auto on [hours]"; see auto.js. landed(plan, sinceIso): is that work on main?
     this.auto = new AutoLoop(this, { dir, ...(landed ? { landed } : {}) });
+  }
+
+  /** Does any Claude account have a cloud routine for this project? */
+  hasRoutine(project) {
+    return this.accounts.list.some((a) => a.routines[project]);
+  }
+
+  /** The cloud routine approved work from this group fires: on the group's account (TM-14), else null. */
+  routineFor(chat, project) {
+    return this.accounts.for(chat, (a) => a.routines[project]).routines[project] || null;
+  }
+
+  /** The partner routine (TM-12) on this group's account, else null. */
+  partnerFor(chat, project) {
+    return this.accounts.for(chat).partners[project] || null;
+  }
+
+  /**
+   * This group's account hit its usage limit: move the group to the next free account (that `fits`) and say so.
+   * True when it moved, so the caller runs the same thing again there.
+   */
+  async switchAccount(limit, chat, say, fits) {
+    const sw = this.accounts.failover(limit, chat, fits);
+    if (!sw) return false;
+    const until = this.accounts.limitedUntil(sw.from);
+    await say(`🔁 Claude account *${sw.from.toUpperCase()}* hit its usage limit; this group uses *${sw.to.toUpperCase()}*${until ? ` until it resets (~${clock(until)})` : ""}.`);
+    return true;
   }
 
   savePlans() {
@@ -357,7 +388,7 @@ export class Brain {
     plan.approved_at = this.now().toISOString();
     writeJson(this.plansFile, this.planStore);
     if (typeof plan.id === "number") this.listener.updateItem(plan.id, { status: "in_progress", note: `OK from ${by} in WhatsApp`, project }).catch(() => {});
-    if (this.routines[plan.project] && this.fireFn) return this.runInCloud(plan, { project, by, reply_chat, say: sayPlan });
+    if (this.routineFor(plan.chat, plan.project) && this.fireFn) return this.runInCloud(plan, { project, by, reply_chat, say: sayPlan });
     const text =
       `${by} approved plan [${plan.id}] "${plan.title}". Go ahead with exactly this plan now.\n\nThe plan:\n${plan.plan}`;
     return this.enqueue(key, () =>
@@ -379,7 +410,9 @@ export class Brain {
       plan.plan,
     ].join("\n");
     try {
-      const r = await this.fireFn(this.routines[plan.project], payload);
+      const routine = this.routineFor(plan.chat, plan.project);
+      if (!routine) throw new Error("no cloud routine on any Claude account for this project");
+      const r = await this.fireFn(routine, payload);
       plan.status = "running_in_cloud";
       // The fire API can return the id in its cse_ form; the web address needs session_.
       const sid = r?.claude_code_session_id || String(r?.claude_code_session_url || "").split("/").pop() || "";
@@ -394,6 +427,10 @@ export class Brain {
       return { ok: true };
     } catch (e) {
       const limit = usageLimit(e.message, { now: this.now().getTime() });
+      // The routine's account is out of usage: fire the same plan on the next free account that has one (TM-14).
+      if (limit && (await this.switchAccount(limit, plan.chat, say, (a) => a.routines[plan.project]))) {
+        return this.runInCloud(plan, { project, by, reply_chat, say, quiet });
+      }
       plan.status = quiet ? "approved" : "proposed"; // a human can retry the ok; the auto loop re-fires the same plan itself
       writeJson(this.plansFile, this.planStore);
       this.log(`brain: cloud start failed for [${plan.id}]: ${e.message}`);
@@ -474,7 +511,7 @@ export class Brain {
     if (mode === "planning" && !req.auto) {
       const auto = this.auto.command(req);
       if (auto !== undefined) return auto ? say(auto) : undefined;
-      const answer = this.settingsCommand(req) || this.sessionCommand(req);
+      const answer = this.accounts.command(req) || this.settingsCommand(req) || this.sessionCommand(req);
       if (answer) return say(answer);
     }
     // Auto cycles have their own caps (pushes and cycles a day), so they don't use the daily turn allowance.
@@ -513,8 +550,8 @@ export class Brain {
           mcpServers: { whatsapp: this.tools(ctx, this.plans) },
           maxBudgetUsd: req.budget || BUDGET[mode],
           settingSources: ["project"],
-          systemPrompt: { type: "preset", preset: "claude_code", append: systemAppend({ project: req.project, flow: project.flow, owner: this.owner, dm: Boolean(req.dm), partner: Boolean(this.partners[req.reply_project || req.project]) }) },
-          env: { ...this.env, TEAMMATE_PROJECT: req.reply_project || req.project, ...(project.ghToken ? { GH_TOKEN: project.ghToken } : {}) },
+          systemPrompt: { type: "preset", preset: "claude_code", append: systemAppend({ project: req.project, flow: project.flow, owner: this.owner, dm: Boolean(req.dm), partner: Boolean(this.partnerFor(req.chat, req.reply_project || req.project)) }) },
+          env: { ...this.env, ...this.accounts.env(req.chat), TEAMMATE_PROJECT: req.reply_project || req.project, ...(project.ghToken ? { GH_TOKEN: project.ghToken } : {}) },
           abortController: abort,
         },
       });
@@ -538,6 +575,10 @@ export class Brain {
       this.log(`brain: ${req.chat_name} #${req.n}: ${e.message || e}`);
       outcome.error = String(e.message || e);
       outcome.limit = usageLimit(outcome.error, { resetsAt: limitSeen?.resetsAt, flagged: Boolean(limitSeen), now: this.now().getTime() });
+      if (outcome.limit && (await this.switchAccount(outcome.limit, req.chat, say))) {
+        if (!req.auto) this.today.turns--;
+        return this.turn(req, mode, plan);
+      }
       if (req.auto) return outcome;
       if (outcome.limit) return say(this.limitText(outcome.limit));
       return say(abort.signal.aborted ? "⏱️ That took too long and was stopped. Ask again, or split it up." : "⚠️ I hit an error on that one; check the logs.");
@@ -548,16 +589,23 @@ export class Brain {
       (this.sessions.repo ||= {})[key] = req.project; // replies to this conversation continue in the same repo
       this.saveSessions();
     }
+    const failed = !result || result.subtype !== "success";
+    const limit = failed ? usageLimit([result?.subtype, ...(result?.errors || []), result?.result].join(" "), { resetsAt: limitSeen?.resetsAt, flagged: Boolean(limitSeen), now: this.now().getTime() }) : null;
+    // A usage limit with another Claude account free (TM-14): the same message again there, same conversation.
+    if (limit && (await this.switchAccount(limit, req.chat, say))) {
+      if (!req.auto) this.today.turns--;
+      return this.turn(req, mode, plan);
+    }
     if (plan) {
       plan.status = result?.subtype === "success" ? "done" : "failed";
       writeJson(this.plansFile, this.planStore);
     }
     outcome.denied = result?.permission_denials || [];
-    if (!result || result.subtype !== "success") {
+    if (failed) {
       this.log(`brain: ${req.chat_name}: ${result?.subtype || "no result"} ${(result?.errors || []).join("; ")}`);
       outcome.budget = result?.subtype === "error_max_budget_usd";
       outcome.error = result?.subtype || "no result";
-      outcome.limit = usageLimit([result?.subtype, ...(result?.errors || []), result?.result].join(" "), { resetsAt: limitSeen?.resetsAt, flagged: Boolean(limitSeen), now: this.now().getTime() });
+      outcome.limit = limit;
       const why = outcome.budget ? " (it reached this turn's spending cap)" : "";
       if (outcome.limit) {
         if (!req.auto) await say(this.limitText(outcome.limit));
@@ -586,6 +634,10 @@ export class Brain {
 
   /** What a human sees when their own message hits the usage limit. */
   limitText(limit) {
-    return limit?.resetAt ? `⏸ Claude's usage limit is reached; it resets ~${clock(limit.resetAt)}. Ask again then.` : "⏸ Claude's usage limit is reached. Ask again in a while.";
+    // Several accounts with automatic switching (TM-14): only reached once no other account is free.
+    const all = this.accounts.list.length > 1 && this.accounts.state.auto;
+    const resetAt = (all && this.accounts.earliestReset()) || limit?.resetAt;
+    const what = all ? "Every Claude account this group can use is at its usage limit" : "Claude's usage limit is reached";
+    return resetAt ? `⏸ ${what}; it resets ~${clock(resetAt)}. Ask again then.` : `⏸ ${what}. Ask again in a while.`;
   }
 }
