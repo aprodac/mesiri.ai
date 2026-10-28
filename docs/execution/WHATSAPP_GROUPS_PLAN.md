@@ -1,7 +1,8 @@
 # Mesiri inside WhatsApp groups — plan (WA-87)
 
-> Status: **plan, waiting for approval** (asked 28 Oct 2026; Mesiri's number is an
-> Official Business Account, confirmed the same day). No product code written yet.
+> Status: **approved 28 Oct 2026 (Ilan), except the group creation / invite flow**, which is
+> proposed below in *Creating a group and inviting people* and waits for a yes. Mesiri's
+> number is an Official Business Account. No product code written yet.
 
 ## Objective
 
@@ -70,7 +71,32 @@ Teammate stays read-only, as it is today.
    plus a WhatsApp command for the owner ("make a group for Kakkanad site"). Both return the
    invite link to share.
 
-## Scope
+## Creating a group and inviting people (proposed, waiting for a yes)
+
+What Meta allows: Mesiri calls `POST /<phone-number-id>/groups` with a name (`subject`, max
+128 characters), an optional description and `join_approval_mode` (`auto_approve` or
+`approval_required`). Meta answers with a `group_lifecycle_update` webhook carrying the group
+id and an **invite link**. **There is no way to add a person directly**: everyone joins by
+tapping the link. With `approval_required`, each tap becomes a join request that Mesiri
+approves or rejects (`/<group-id>/join_requests`). Mesiri created the group, so it is its admin.
+
+Proposed flow, so the owner has as little to do as possible:
+
+1. **Start.** The owner taps *Create WhatsApp group* on the site page in the dashboard, or
+   writes to Mesiri "make a group for Kakkanad site".
+2. **Mesiri creates it** as "Kakkanad site · Mesiri", with `approval_required`.
+3. **Mesiri invites the team itself.** It already has the numbers of the people on that
+   site, so it sends each of them the link 1-on-1 ("Join the Kakkanad site group: <link>").
+   Outside the 24-hour window this needs a new template, `mesiri_group_invite`, approved by Meta.
+4. **The owner gets the link too**, as a ready-to-forward message, to send to the client and
+   our team.
+5. **Joining.** A team member's tap is approved at once. Anyone else (the client, our team)
+   is approved when the owner taps *Allow* on a card Mesiri sends them 1-on-1, so a forwarded
+   link can't bring a stranger in. The 8-person limit is checked first; when full, the owner
+   is told.
+6. **Welcome.** When the group is ready, Mesiri posts one line in it: "Send today's work,
+   photos and workers here. I'll save them to Kakkanad site."
+
 
 In: the gate, group ↔ site mapping, group reply routing, quiet mode, group creation + invite
 link, DPR posted to the group, flag.
@@ -153,14 +179,14 @@ replies 1-on-1. This still changes where labour messages *come from*, so it need
 - A message from a person who is not on the team: nothing saved, no reply.
 - With the flag off, the 1-on-1 suite is unchanged and group messages are ignored.
 
-## Decisions needed
+## Decisions
 
-1. Is a group size of about 8 enough for trials? (Confirmed in step 0.)
-2. Quiet mode (✅ + reply only when asked) or a confirmation for every update?
-3. One group = one site, or one group per project?
-4. Should the evening DPR be posted into the group for the client?
-5. Approval: identity / tenant isolation (security-sensitive) and labour messages arriving
-   from groups (Module Isolation).
+Approved 28 Oct (Ilan): ~8-person limit, quiet mode, one group = one site, evening DPR posted
+to the group, identity / tenant isolation as planned, labour messages arriving from groups
+(replies stay 1-on-1).
+
+Still open: the creation / invite flow above (Mesiri invites the team itself, owner approves
+outsiders).
 
 ## Sources
 
