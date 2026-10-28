@@ -45,6 +45,10 @@ class MessageNormalizer:
             "display_phone_number": display_phone_number,
             "raw_type": message.get("type"),
         }
+        if message.get("group_id"):
+            # WA-87: sent in a WhatsApp group Mesiri is in; `from` is the
+            # person who wrote it (runtime/group_chat.py).
+            metadata["group_id"] = str(message["group_id"])
         forwarded, frequently_forwarded = self._resolve_forwarding(message)
         if forwarded:
             metadata["forwarded"] = True

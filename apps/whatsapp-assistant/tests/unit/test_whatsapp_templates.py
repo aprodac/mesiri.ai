@@ -646,3 +646,16 @@ async def test_the_evening_review_is_not_held_by_quiet_hours(queue, monkeypatch)
 
     assert await _drain(sender) == {"sent": 1, "skipped": 0}
     assert queue["sent"] == ["n1"]  # the other row waits for the morning
+
+
+@pytest.mark.asyncio
+async def test_a_post_into_a_site_group_skips_the_per_person_checks(queue):
+    """WA-87: the evening DPR into a site's WhatsApp group: no opt-in or 24 h
+    window of a person applies, so it goes as the free-form message + PDF."""
+    queue["rows"] = [_row({**_template_payload(), "to_wa_id": "group:120363000000000001"}, recipient_user_id=None)]
+    queue["last_inbound"] = None  # would be "outside the window" for a person
+    sender = _FakeSender()
+
+    assert await _drain(sender) == {"sent": 1, "skipped": 0}
+    assert sender.templates == []
+    assert sender.texts[0][0] == "group:120363000000000001"

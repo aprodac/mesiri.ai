@@ -220,6 +220,7 @@ async def drain_and_send(
     ``only_ids`` (request 104): drain just these rows, for a message the sender
     is waiting to hear the result of; ``outcomes`` is then filled with
     ``{id: "sent" | the skip reason | "held"}`` so the reply can say who got it."""
+    from channel.whatsapp.outbound import group_id_of
     from channel.whatsapp.templates import choose_template
     from mesiri.application.automations.scheduling import local_now
     from mesiri.application.dpr.recipients import may_message
@@ -252,34 +253,38 @@ async def drain_and_send(
             counts["skipped"] += 1
             continue
 
-        # BE-15: an opt-out stops everything; an outside contact also needs
-        # an opt-in on record (application/dpr/recipients.py).
-        allowed, consent_reason = may_message(
-            consent_state=await queue.consent_state(
-                organization_id=row.get("organization_id"), wa_id=wa_id
-            ),
-            requires_opt_in=bool(payload.get("requires_opt_in")),
-        )
-        if not allowed:
-            await queue.mark_skipped(notification_id=notification_id, reason=consent_reason or "no_opt_in")
-            outcomes[notification_id] = consent_reason or "no_opt_in"
-            counts["skipped"] += 1
-            continue
-
-        last_inbound = await queue.last_inbound_at(wa_id)
-        now = now_utc or datetime.now(tz=UTC)
+        # WA-87: a post into a site's WhatsApp group (the evening DPR). Its
+        # people joined the group themselves, and a group has no 24 h
+        # window of its own to check: only quiet hours apply.
         template_choice = None
-        if not is_within_whatsapp_session_window(last_inbound_at=last_inbound, now=now):
-            # Outside Meta's free-form window -- a free-form send would be
-            # silently rejected. Only an approved template can go (WA-12);
-            # with none, skip with the reason rather than pretend.
-            template_choice = choose_template(row.get("payload"), approved_templates)
-            if template_choice.spec is None:
-                reason = template_choice.skip_reason or "outside_whatsapp_session_window_needs_template"
-                await queue.mark_skipped(notification_id=notification_id, reason=reason)
-                outcomes[notification_id] = reason
+        now = now_utc or datetime.now(tz=UTC)
+        if group_id_of(wa_id) is None:
+            # BE-15: an opt-out stops everything; an outside contact also needs
+            # an opt-in on record (application/dpr/recipients.py).
+            allowed, consent_reason = may_message(
+                consent_state=await queue.consent_state(
+                    organization_id=row.get("organization_id"), wa_id=wa_id
+                ),
+                requires_opt_in=bool(payload.get("requires_opt_in")),
+            )
+            if not allowed:
+                await queue.mark_skipped(notification_id=notification_id, reason=consent_reason or "no_opt_in")
+                outcomes[notification_id] = consent_reason or "no_opt_in"
                 counts["skipped"] += 1
                 continue
+
+            last_inbound = await queue.last_inbound_at(wa_id)
+            if not is_within_whatsapp_session_window(last_inbound_at=last_inbound, now=now):
+                # Outside Meta's free-form window -- a free-form send would be
+                # silently rejected. Only an approved template can go (WA-12);
+                # with none, skip with the reason rather than pretend.
+                template_choice = choose_template(row.get("payload"), approved_templates)
+                if template_choice.spec is None:
+                    reason = template_choice.skip_reason or "outside_whatsapp_session_window_needs_template"
+                    await queue.mark_skipped(notification_id=notification_id, reason=reason)
+                    outcomes[notification_id] = reason
+                    counts["skipped"] += 1
+                    continue
 
         if not str(row.get("rule_key") or "").startswith(_QUIET_HOURS_EXEMPT_PREFIXES):
             # BE-38: in the row's local time, never server UTC.

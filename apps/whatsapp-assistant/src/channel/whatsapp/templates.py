@@ -148,11 +148,24 @@ OPS_ALERT = TemplateSpec(
     body_param_count=2,
 )
 
+#: WA-87: the invite to a site's WhatsApp group, for a team member who has
+#: not messaged in 24 h. Body (submitted text, docs/ops/whatsapp-templates.md):
+#:   "Hi {{1}}, {{2}} has a WhatsApp group with Mesiri for {{3}}. Send the
+#:    day's work, photos and workers there and Mesiri saves them to the site.
+#:    Join: {{4}}"
+GROUP_INVITE = TemplateSpec(
+    name="mesiri_group_invite",
+    language="en",
+    category="UTILITY",
+    body_param_count=4,
+)
+
 TEMPLATES: dict[str, TemplateSpec] = {
     spec.name: spec
     for spec in (
         DPR_DELIVERY,
         DPR_OPT_IN,
+        GROUP_INVITE,
         JOIN_REQUEST,
         LOGIN_CODE,
         OPS_ALERT,

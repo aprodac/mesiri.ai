@@ -183,6 +183,7 @@ def build_message_handlers(
     drafts: Any | None = None,
     shared_transaction: Any | None = None,
     day_facts: Any | None = None,
+    group_chat: Any | None = None,
 ) -> tuple[Any, Any]:
     """Build the `on_normalized`/`on_message_claimed` callbacks WhatsAppReceiver
     invokes for every inbound message, closing over the already-built services
@@ -1293,6 +1294,20 @@ def build_message_handlers(
             if alert_reply is not None:
                 await sender.send_text(wa_id, alert_reply)
                 await message_logger.log_reply(correlation_id=message.correlation_id, reply=alert_reply)
+                await message_logger.mark_completed(correlation_id=message.correlation_id)
+                return
+
+        # WA-87: "make a group for <site>" from a company admin or a super
+        # admin, and the Allow / Don't allow taps on a group join request.
+        if group_chat is not None:
+            try:
+                group_reply = await group_chat.handle_private(message, ctx)
+            except Exception:  # noqa: BLE001 -- carry on with the message as usual
+                _log.exception("group_chat.private_failed wa_id=%s", wa_id)
+                group_reply = None
+            if group_reply is not None:
+                await sender.send_text(wa_id, group_reply)
+                await message_logger.log_reply(correlation_id=message.correlation_id, reply=group_reply)
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
                 return
 

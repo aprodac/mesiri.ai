@@ -156,6 +156,8 @@ class WhatsAppReceiver:
         on_message_claimed: Callable[[str], Awaitable[None]] | None = None,
         trace_logger: TraceLogger | None = None,
         enqueue: Callable[[MessageIngressContext], Awaitable[None]] | None = None,
+        groups_enabled: bool = False,
+        on_group_event: Callable[[str, Mapping[str, Any]], Awaitable[None]] | None = None,
     ) -> None:
         self._deduplication_store = deduplication_store
         self._media_downloader = media_downloader
@@ -191,6 +193,12 @@ class WhatsAppReceiver:
         self._trace_logger: TraceLogger = trace_logger or NoopTraceLogger()
         self._background_tasks: set[asyncio.Task[None]] = set()
         self._serializer = _SenderSerializer()
+        # WA-87: with groups off, a group message never gets past ingress
+        # (see _iter_message_contexts); with them on it is processed and
+        # runtime/group_chat.py decides who it is from. `on_group_event`
+        # takes Meta's group_* webhooks (group made, join requests, ...).
+        self._groups_enabled = groups_enabled
+        self._on_group_event = on_group_event
 
     async def handle_payload(self, payload: Mapping[str, Any]) -> int:
         """Schedule ingress work for all messages in a verified webhook payload.
@@ -205,6 +213,12 @@ class WhatsAppReceiver:
         _log_failed_statuses(payload)
         # BE-25: Meta's pricing for messages we sent (billable, category).
         message_usage.report_pricing(payload)
+
+        if self._on_group_event is not None:
+            for field_name, value in _iter_group_changes(payload):
+                task = asyncio.create_task(self._on_group_event(field_name, value))
+                self._background_tasks.add(task)
+                task.add_done_callback(self._background_tasks.discard)
 
         for context in sorted(self._extract_message_contexts(payload), key=_sort_key):
             message_id = str(context.message["id"])
@@ -449,7 +463,16 @@ class WhatsAppReceiver:
         self,
         payload: Mapping[str, Any],
     ) -> Iterator[MessageIngressContext]:
-        return _iter_message_contexts(payload)
+        return _iter_message_contexts(payload, groups_enabled=self._groups_enabled)
+
+
+def _iter_group_changes(payload: Mapping[str, Any]) -> Iterator[tuple[str, Mapping[str, Any]]]:
+    """WA-87: the `group_*` changes of a webhook (Meta's Groups API)."""
+    for entry in payload.get("entry") or []:
+        for change in entry.get("changes") or []:
+            field_name = str(change.get("field") or "")
+            if field_name.startswith("group_"):
+                yield field_name, change.get("value") or {}
 
 
 def _log_failed_statuses(payload: Mapping[str, Any]) -> None:
@@ -475,7 +498,9 @@ def _log_failed_statuses(payload: Mapping[str, Any]) -> None:
                 )
 
 
-def _iter_message_contexts(payload: Mapping[str, Any]) -> Iterator[MessageIngressContext]:
+def _iter_message_contexts(
+    payload: Mapping[str, Any], *, groups_enabled: bool = False
+) -> Iterator[MessageIngressContext]:
     entries = payload.get("entry") or []
     for entry in entries:
         changes = entry.get("changes") or []
@@ -491,9 +516,9 @@ def _iter_message_contexts(payload: Mapping[str, Any]) -> Iterator[MessageIngres
             display_phone_number = metadata.get("display_phone_number")
 
             for message in messages:
-                if message.get("group_id"):
+                if message.get("group_id") and not groups_enabled:
                     # WA-87: a message sent in a WhatsApp group Mesiri is a
-                    # member of. Until group routing exists, it must not reach
+                    # member of, with groups switched off. It must not reach
                     # the 1-on-1 path: that would save it under the sender and
                     # answer them privately. Not claimed, so no read receipt.
                     logger.info(
