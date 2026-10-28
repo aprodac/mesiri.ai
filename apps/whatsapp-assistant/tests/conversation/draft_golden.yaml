@@ -1,0 +1,23 @@
+# Request 136 (D): the golden conversations of the draft pipeline (one pipeline for site updates).
+# One JSON object per line (valid YAML flow mapping, parsed without a YAML dependency).
+#
+#   message  what the site sends (the sender has two sites: "Green Villa, Kakkanad" and "Site B")
+#   calls    the tool calls a good model makes (CI scripts these; live, the real model decides)
+#   before   earlier turns of the same conversation, each {message, calls}
+#   saved    "Site B" / "Green Villa, Kakkanad": a site update was saved there in the last 3 hours
+#   site     the site every line is on, or "ask" (the card asks which site)
+#   kinds    the kinds of the card's lines, in any order (labour, work, material_in, material_out, issue_open)
+#   has      words the card's lines must hold
+#   waiting  a line waits on a question of the card (a unit, the site)
+#   read     a question about the day's figures: no card; the read's site came from the site resolver
+#   lang     manglish | en: the sentence above the card is the template of that language
+#
+- {"id": 1, "message": "Green Villa innathe update: 5 mason 3 helper, ground floor tiling 40% aayi, 30 bags cement use cheythu, mixer breakdown aayi pani 2 hour ninnu", "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 5}, {"trade": "helper", "headcount": 3}]}], ["save_work_done", {"narrative": "ground floor tiling 40%", "work_type": "tiling", "location": "ground floor", "progress_percent": 40}], ["save_material_usage", {"material": "cement", "quantity": 30, "unit": "bags"}], ["report_issue", {"issue_type": "EQUIPMENT_BREAKDOWN", "narrative": "mixer breakdown, work stopped 2 hours", "delay_duration_minutes": 120}]], "site": "Green Villa, Kakkanad", "kinds": ["labour", "work", "material_out", "issue_open"], "has": ["5 mason", "40%", "30 bags"], "lang": "manglish"}
+- {"id": 2, "message": "Green Villa ground floor wall putty 200 sqft", "calls": [["save_work_done", {"narrative": "ground floor wall putty 200 sqft", "work_type": "putty", "location": "ground floor", "quantities": [{"work_type": "putty", "quantity": 200, "unit": "sqft"}]}]], "site": "Green Villa, Kakkanad", "kinds": ["work"], "has": ["200"], "lang": "en"}
+- {"id": 3, "message": "Site B-il innu 4 mason vannu", "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 4}], "site": "Site B"}]], "site": "Site B", "kinds": ["labour"], "has": ["4 mason"], "lang": "manglish"}
+- {"id": 4, "message": "100 bags cement vannu", "saved": "Site B", "calls": [["save_material_receipt", {"material": "cement", "quantity": 100, "unit": "bags"}]], "site": "Site B", "kinds": ["material_in"], "has": ["100 bags"], "lang": "manglish"}
+- {"id": 5, "message": "innu 6 mason 2 helper vannu", "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 6}, {"trade": "helper", "headcount": 2}]}]], "site": "ask", "kinds": ["labour"], "waiting": true, "lang": "manglish"}
+- {"id": 6, "message": "Green Villa 20 rod steel use cheythu", "calls": [["save_material_usage", {"material": "steel", "quantity": 20, "unit": "rod"}]], "site": "Green Villa, Kakkanad", "kinds": ["material_out"], "waiting": true, "lang": "manglish"}
+- {"id": 7, "message": "alla, 6 mason aanu", "before": [{"message": "Green Villa 5 mason 3 helper vannu", "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 5}, {"trade": "helper", "headcount": 3}]}]]}], "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 6}]}]], "site": "Green Villa, Kakkanad", "kinds": ["labour"], "has": ["6 mason", "3 helper"], "lang": "manglish"}
+- {"id": 8, "message": "innu enthokke cheythu?", "saved": "Green Villa, Kakkanad", "calls": [["query_work_log", {"date_range": "today"}]], "read": true, "lang": "manglish"}
+- {"id": 9, "message": "Green Villa 2 helper vannu, tiling 70% aayi", "calls": [["save_labour", {"workers": [{"trade": "helper", "headcount": 2}]}], ["save_work_done", {"narrative": "tiling 70%", "work_type": "tiling", "progress_percent": 70}]], "site": "Green Villa, Kakkanad", "kinds": ["labour", "work"], "has": ["2 helper", "70%"], "lang": "manglish"}

@@ -677,8 +677,7 @@ one; in production they are the same). The replay World now wires `get_today_sit
 
 ### 18.6 Not done here (needs the owner)
 
-- **D, the live gate in CI** (golden conversations against the live model, blocking the deploy): it needs a change
-  under `.github/` (deploy.yml) and the model key in CI, which this routine may not touch. Asked for in the report.
+- ~~D, the live gate in CI~~: built on 28 Oct once Ilan approved everything (18.8).
 - **The live test-chat run**: not possible from this session (no teammate token here). Ilan Pro re-tests live.
 - [135]'s own repros are not in the repo (the bot's request log was not readable here); the 27 Oct transcripts and
   the plan's listed cases are the acceptance tests instead.
@@ -695,3 +694,20 @@ Approved by Ilan on 28 Oct ("I approve everything, make it live for everything")
 pipeline. An explicit `false`, set by the Mesiri team on the control panel, is the per-company off switch and the
 rollback (no deploy needed); `git revert` of `a093789` puts the old default back. No data changed, no migration.
 Phase E (deleting the old paths) waits for a burn-in with no company switched off, because it removes that switch.
+
+
+### 18.8 D: the live gate (28 Oct)
+
+`tests/conversation/draft_golden.yaml` holds the draft pipeline's golden conversations (the 4-part note, Green
+Villa by its head, Site B named, saved within 3 h, no site -> the card asks, steel in rods, a correction of the
+open card, "innu enthokke cheythu?", a two-part note). `test_draft_golden.py` runs them twice:
+
+- **scripted, in every CI run**: the card must be exactly the case (site or question, kinds of lines, their words,
+  the template sentence, every site decided by `draft_site.resolve`); the model's scripted words are deliberately
+  wrong ("Site B tap cheyyu. Saved!") and must never show;
+- **live, as the deploy gate**: `deploy.yml` job `live-gate` runs `-m live` with `TEAMMATE_GEMINI_API_KEY`
+  (gemini-2.5-flash, the settings default) before `deploy`; a case that fails twice in a row stops the deploy; a
+  miss followed by a pass is printed as flaky. Fails closed without the key.
+
+Limits: production chooses its model at runtime (`DynamicAIProviderResolver`); the gate tests the default Gemini
+model. Each deploy spends a few model calls (about 20).
