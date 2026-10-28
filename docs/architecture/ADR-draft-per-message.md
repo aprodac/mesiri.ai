@@ -774,4 +774,18 @@ Built and tested against a real Postgres (local cluster at head 0491; `tests/int
   deploy. The same messages are covered by replay tests and the real-database tests above.
 - Not checked against production data (no access from this session).
 
+### 19.4 Third part: the project's date of an update (29 Oct re-test)
+
+Root cause of "innale enthokke cheythu" missing the corrected tiling: a progress update was placed on a day by
+`CAST(occurred_at AS date)`, the **UTC** date, while its activity is dated in the **project's** zone. Anything
+saved between 00:00 and 05:30 IST sat on the day before for the readers, so a day read for the new day (or for
+"yesterday" the next morning) left it out and the work-log line fell back to the activity's first note. The fix is
+at the Day Facts level: `day_facts.project_date_sql` (company zone, India when unset or "UTC") is the one date rule
+used by `DayFactsReader.work`, `latest_note_sql` and `ActivitySearchService`. Regression test:
+`test_save_continue_continue_correct_then_the_day_reads_the_last_figure` (70 -> 80 -> 85 -> "alla, 82%", saved at
+00:30 IST; fails before, passes after). No migration.
+
+Not changed (shared, backend): the DPR assembly (`dpr.py`) still uses `pu.occurred_at::date = :report_date`, the same
+UTC rule; a DPR for a day would miss an update made 00:00-05:30 IST. Needs approval to touch (shared component).
+
 Rollback: revert the commits; no migration, no data change.

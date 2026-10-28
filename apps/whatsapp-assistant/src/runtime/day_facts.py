@@ -271,15 +271,31 @@ def date_sql(day: Any) -> str:
     return f"DATE '{day.isoformat()}'"
 
 
+def project_date_sql(timestamp_column: str, organization_sql: str) -> str:
+    """SQL for the project's calendar date of a moment: the company's zone, India
+    when unset or the untouched "UTC" (as ``channel.receipt.data.company_zone``).
+    A bare ``CAST(occurred_at AS date)`` is the UTC date, so an update saved after
+    midnight IST (before 05:30) counted on the day before, while its activity was
+    already dated today (29 Oct re-test: tiling 82% missing from "innale").
+    Both arguments are SQL from code, never input."""
+    return (
+        f"CAST(({timestamp_column} AT TIME ZONE COALESCE(NULLIF((SELECT o_z.timezone FROM organizations o_z "
+        f"WHERE o_z.id = {organization_sql}), 'UTC'), 'Asia/Kolkata')) AS date)"
+    )
+
+
 def latest_note_sql(activity_column: str, end_date_param: str = ":day_facts_end") -> str:
     """SQL for what a work item says NOW: the note of its latest progress update up
     to the period's last day, else the activity's own note. ``activity_column`` is
     from code; the end date is a bound parameter. Used by every day reader, so
     "tiling 70%" then "tiling 80%" reads 80% everywhere."""
+    update_day = project_date_sql(
+        "pu_l.occurred_at", "(SELECT a_o.organization_id FROM activities a_o WHERE a_o.id = pu_l.activity_id)"
+    )
     return (
         "COALESCE((SELECT pu_l.narrative FROM progress_updates pu_l "
         f"WHERE pu_l.activity_id = {activity_column} AND pu_l.deleted_at IS NULL "
-        f"AND pu_l.narrative IS NOT NULL AND CAST(pu_l.occurred_at AS date) <= {end_date_param} "
+        f"AND pu_l.narrative IS NOT NULL AND {update_day} <= {end_date_param} "
         "ORDER BY pu_l.occurred_at DESC, pu_l.created_at DESC LIMIT 1), "
         "(SELECT a_l.narrative FROM activities a_l WHERE a_l.id = " + activity_column + "))"
     )
@@ -381,7 +397,7 @@ class DayFactsReader:
             " FROM progress_updates pu JOIN activities a ON a.id = pu.activity_id"
             " LEFT JOIN units_of_measure u ON u.id = pu.unit_id"
             " WHERE a.organization_id = :org AND a.deleted_at IS NULL AND pu.deleted_at IS NULL"
-            "   AND CAST(pu.occurred_at AS date) BETWEEN :start AND :end" + scope + pending +
+            f"   AND {project_date_sql('pu.occurred_at', 'a.organization_id')} BETWEEN :start AND :end" + scope + pending +
             ") f ORDER BY created_at"
         )
         async with self._db.transaction() as conn:

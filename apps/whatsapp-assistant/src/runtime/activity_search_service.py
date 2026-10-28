@@ -140,11 +140,15 @@ class ActivitySearchService:
             sa.column("occurred_at", sa.DateTime(timezone=True)),
             sa.column("deleted_at"),
         )
+        from runtime.day_facts import project_date_sql
+
+        # The project's date of the update, not the UTC one (see project_date_sql).
+        update_day = sa.literal_column(project_date_sql("progress_updates.occurred_at", f"'{org_id}'::uuid"))
         updated_in_period = sa.exists().where(
             updates.c.activity_id == activities.c.id,
             updates.c.deleted_at.is_(None),
-            sa.cast(updates.c.occurred_at, sa.Date) >= start_date,
-            sa.cast(updates.c.occurred_at, sa.Date) <= end_date,
+            update_day >= start_date,
+            update_day <= end_date,
         )
         activity_conditions = [
             activities.c.organization_id == org_id,

@@ -7,7 +7,9 @@ Run with a live database:
 
 from __future__ import annotations
 
+import datetime as dt
 import uuid
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import text
@@ -181,3 +183,25 @@ async def test_day_facts_count_only_saved_work(world, cards):  # noqa: F811
     (fact,) = await reader.work(organization_id=str(world.org), start=day, end=day)
     assert (fact.fact_type, fact.value, fact.location, fact.saved) == ("activity", 30.0, "ground floor", True)
     assert uuid.UUID(fact.fact_id)
+
+
+async def test_save_continue_continue_correct_then_the_day_reads_the_last_figure(world, cards):  # noqa: F811
+    """29 Oct re-test: 70% -> 80% -> 85%, then "alla, 82%", all saved, the work done
+    at 00:30 IST (still the day before in UTC): the day read listed no tiling at all,
+    because an update's date was its UTC date while its activity's was the project's."""
+    await _say_and_save(world, cards, 70)
+    await _say_and_save(world, cards, 80, continues="tiling")
+    await _say_and_save(world, cards, 85, continues="tiling")
+    step = await _correct(world, cards, "alla, 82%", new_quantity=82, unit="%")
+    assert step.status == "drafted", step
+    await _save(world, cards)
+    day = project_today_for(world.actor)
+    just_after_midnight_ist = dt.datetime.combine(day, dt.time(0, 30), tzinfo=ZoneInfo("Asia/Kolkata"))
+    assert just_after_midnight_ist.astimezone(dt.UTC).date() < day  # the UTC date is the day before
+    async with world.db.transaction() as conn:
+        await conn.execute(text(
+            "UPDATE progress_updates SET occurred_at = :at WHERE activity_id IN "
+            "(SELECT id FROM activities WHERE organization_id = :o)"), {"at": just_after_midnight_ist, "o": world.org})
+    assert await _today_notes(world) == ["Tiling, ground floor: 82%"]
+    facts = await DayFactsReader(world.db).work(organization_id=str(world.org), start=day, end=day)
+    assert [(f.fact_type, f.value) for f in facts][-1] == (PROGRESS_UPDATE, 82.0)

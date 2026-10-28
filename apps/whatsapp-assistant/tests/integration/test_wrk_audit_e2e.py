@@ -8,6 +8,7 @@ import datetime as dt
 import uuid
 from types import SimpleNamespace
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import text
@@ -270,10 +271,14 @@ async def test_wrk04_more_than_six_open_jobs_are_all_tracked(world):
 async def test_wrk03_the_work_log_for_yesterday_and_today_follow_the_dates(world):
     from runtime.activity_search_service import ActivitySearchService
 
-    await _send(world, "l1", narrative="started brickwork", work_type="brickwork", occurred_on=DAY1.isoformat())
+    # The work log reads the project's calendar (India), the DPR below the UTC one:
+    # a progress update sent now is on today's project day.
+    day2 = dt.datetime.now(ZoneInfo("Asia/Kolkata")).date()
+    day1 = day2 - dt.timedelta(days=1)
+    await _send(world, "l1", narrative="started brickwork", work_type="brickwork", occurred_on=day1.isoformat())
     await _send(world, "l2", narrative="brickwork 60%", work_type="brickwork", progress_percent=60,
-                occurred_on=DAY2.isoformat(), continues="brickwork")
-    await _send(world, "l3", narrative="started wiring", work_type="wiring", occurred_on=DAY2.isoformat())
+                occurred_on=day2.isoformat(), continues="brickwork")
+    await _send(world, "l3", narrative="started wiring", work_type="wiring", occurred_on=day2.isoformat())
     search = ActivitySearchService(world.db)
 
     def names(result):
@@ -281,6 +286,6 @@ async def test_wrk03_the_work_log_for_yesterday_and_today_follow_the_dates(world
 
     kwargs = {"organization_id": str(world.org), "project_id": str(world.project), "site_id": str(world.site)}
     await tap_save(world.db, world.org)  # WA-77: the work log is what was saved
-    assert names(await search.search(start_date=DAY1, end_date=DAY1, **kwargs)) == ["brickwork"]
+    assert names(await search.search(start_date=day1, end_date=day1, **kwargs)) == ["brickwork"]
     # today: the new job and the earlier one that was updated today
-    assert names(await search.search(start_date=DAY2, end_date=DAY2, **kwargs)) == ["brickwork", "wiring"]
+    assert names(await search.search(start_date=day2, end_date=day2, **kwargs)) == ["brickwork", "wiring"]
