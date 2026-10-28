@@ -182,6 +182,7 @@ def build_message_handlers(
     actions: Any | None = None,
     drafts: Any | None = None,
     shared_transaction: Any | None = None,
+    day_facts: Any | None = None,
 ) -> tuple[Any, Any]:
     """Build the `on_normalized`/`on_message_claimed` callbacks WhatsAppReceiver
     invokes for every inbound message, closing over the already-built services
@@ -1109,6 +1110,7 @@ def build_message_handlers(
                         member_resolver=member_resolver,
                         activity_query=activity_query,
                         site_issue_query=site_issue_query,
+                        day_facts=day_facts,
                         remembered_activity=(
                             (lambda: memory_loader.current_activity_id(user_id=ctx.user_id))
                             if hasattr(memory_loader, "current_activity_id")
@@ -1125,6 +1127,7 @@ def build_message_handlers(
                         organization_id=str(ctx.organization_id), user_id=ctx.user_id, facts=facts, keep=True
                     ),
                     transaction=shared_transaction,
+                    day_facts=day_facts,
                     pending_confirmation=_pending_confirmation,
                     sender=sender,
                 )

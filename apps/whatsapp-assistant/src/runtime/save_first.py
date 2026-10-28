@@ -461,7 +461,12 @@ class SaveFirstService:
         )
 
         reason = "Undone on WhatsApp by the sender"
+        from runtime.day_facts import PROGRESS_UPDATE
+
         for fact_type, fact_id in facts:
+            if fact_type == PROGRESS_UPDATE:
+                await self._void_update(org_uuid, actor_uuid, fact_id, reason, undone)
+                continue
             try:
                 async with self._db.transaction() as conn:
                     latest = (
@@ -518,6 +523,48 @@ class SaveFirstService:
                 _log.exception("save_first.undo_facts_failed fact_type=%s fact_id=%s", fact_type, fact_id)
                 undone.refused.append("something went wrong")
         return undone
+
+    async def _void_update(
+        self, org_uuid: uuid.UUID, actor_uuid: uuid.UUID, update_id: uuid.UUID, reason: str, undone: FactsUndone
+    ) -> None:
+        """Request 137: one progress update (continued work) taken back through the
+        progress module's own void -- the sender's own, refused once its day is in
+        an approved report. The activity and its earlier updates stay."""
+        from sqlalchemy import text
+
+        from mesiri.infrastructure.postgres.repositories.progress import (
+            PostgresProgressReadRepository,
+        )
+        from runtime.day_facts import PROGRESS_UPDATE
+
+        try:
+            async with self._db.transaction() as conn:
+                row = (
+                    await conn.execute(
+                        text(
+                            "SELECT pu.reported_by_user_id, pu.deleted_at FROM progress_updates pu"
+                            " JOIN activities a ON a.id = pu.activity_id"
+                            " WHERE pu.id = :id AND a.organization_id = :org"
+                        ),
+                        {"id": update_id, "org": org_uuid},
+                    )
+                ).mappings().first()
+                if row is None or canonical_uuid(row["reported_by_user_id"]) != actor_uuid:
+                    undone.refused.append("not your entry")
+                    return
+                if row["deleted_at"] is not None:
+                    undone.already += 1
+                    return
+                refused = await PostgresProgressReadRepository(conn).void_progress_update(
+                    organization_id=org_uuid, update_id=update_id, reason=reason, corrected_by_user_id=actor_uuid
+                )
+                if refused:
+                    undone.refused.append(refused)
+                    return
+                undone.done.append((PROGRESS_UPDATE, update_id))
+        except Exception:  # noqa: BLE001 -- the sender is told; the log keeps the cause
+            _log.exception("save_first.void_update_failed update_id=%s", update_id)
+            undone.refused.append("something went wrong")
 
     async def settle_drafts(
         self,

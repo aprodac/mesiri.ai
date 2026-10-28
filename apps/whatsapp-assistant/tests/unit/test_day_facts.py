@@ -66,6 +66,6 @@ def test_nothing_saved_means_a_new_line_and_several_works_are_never_guessed():
     assert df.resolve_percent(two, 75, "alla, 75%").action == df.NOTHING
 
 
-def test_open_work_leaves_out_drafts_and_cancelled_activities():
+def test_open_work_leaves_out_only_cancelled_activities():
     sql = df.open_work_sql("activities.id")
-    assert "fact_type = 'activity'" in sql and "= 'confirmed'" in sql and "activities.id" in sql
+    assert "fact_type = 'activity'" in sql and "<> 'rejected'" in sql and "activities.id" in sql

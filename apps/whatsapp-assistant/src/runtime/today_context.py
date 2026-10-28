@@ -36,19 +36,30 @@ def render_line(
     if not who:
         return None
     activities = (results or {}).get("activities") or []
-    work: list[str] = []
+    # Request 137 (D): saved and still waiting for Save are told apart; the work
+    # says where it is now ("tiling 80%", its latest update).
+    saved: list[str] = []
+    pending: list[str] = []
     for row in activities:
-        label = str(row.get("work_type") or "").strip()
-        if label and label.lower() not in (w.lower() for w in work):
-            work.append(label)
-        if len(work) == _MAX_ITEMS:
-            break
+        label = _work_label(row)
+        into = saved if row.get("saved", True) else pending
+        if label and label.lower() not in (w.lower() for w in into) and len(into) < _MAX_ITEMS:
+            into.append(label)
     headcount = int((labour or {}).get("headcount") or 0)
     if headcount:
-        work.append(f"{headcount} {'worker' if headcount == 1 else 'workers'}")
-    if not work:
-        return f"Today so far: {who}. Nothing saved yet today."
-    return f"Today so far: {who}. Saved today: {', '.join(work)}."
+        saved.append(f"{headcount} {'worker' if headcount == 1 else 'workers'}")
+    waiting = f" Waiting for Save: {', '.join(pending)}." if pending else ""
+    if not saved:
+        return f"Today so far: {who}. Nothing saved yet today.{waiting}"
+    return f"Today so far: {who}. Saved today: {', '.join(saved)}.{waiting}"
+
+
+def _work_label(row: dict[str, Any]) -> str:
+    from canonicalization.progress import find_percent, percent_text
+
+    label = str(row.get("work_type") or "").strip()
+    percent = find_percent(str(row.get("narrative") or ""))
+    return f"{label} {percent_text(percent)}" if label and percent is not None else label
 
 
 def _chosen(sites: list[Any], site_id: str | None) -> Any | None:

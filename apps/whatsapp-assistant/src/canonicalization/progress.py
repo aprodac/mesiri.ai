@@ -108,6 +108,12 @@ def _floor_name(match: re.Match[str]) -> str:
     return f"{number}{_suffix(number)} floor"
 
 
+def find_place(text: str) -> str | None:
+    """The floor or place named in ``text`` ("ground floor", "2nd floor", "terrace")."""
+    match = _FLOOR.search(text or "")
+    return _floor_name(match) if match else None
+
+
 def settle_place_and_status(fields: dict[str, Any]) -> dict[str, Any]:
     """The floor and the finished/in-progress status of a work-done entry, kept
     whatever the model left out (request 83: "3rd floor slab concreting

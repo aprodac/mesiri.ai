@@ -201,10 +201,11 @@ async def test_wrk02_an_unknown_unit_asks_with_unit_buttons_and_saves_nothing(wo
 
 async def _correct(world, message_id: str, **fields: Any):
     from runtime.agent.change_entry import ChangeEntry
+    from runtime.day_facts import DayFactsReader
 
     entry = ChangeEntry(
         context_resolver=world.entry.context_resolver, org_settings_query=None, actor=world.entry.actor,
-        activity_query=ActivityQueryService(world.db), remembered_activity=None,
+        activity_query=ActivityQueryService(world.db), day_facts=DayFactsReader(world.db), remembered_activity=None,
     )
     message = SimpleNamespace(correlation_id=f"cor_{message_id}", message_id=message_id, modality=None, text="", metadata={})
     candidate = Candidate(semantic_type=SemanticType.ACTIVITY_CORRECTION, fields=fields)

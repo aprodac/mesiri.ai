@@ -9,7 +9,7 @@ import pytest
 pytest.importorskip("langgraph", reason="needs the `workflow` extra (LangGraph)")
 
 from tests.replay.test_agent_replay import _make_world  # noqa: E402
-from tests.unit.test_change_entry import _Activities, _Members  # noqa: E402
+from tests.unit.test_change_entry import _DayFacts, _fact, _Members  # noqa: E402
 
 from context import seed  # noqa: E402
 from mesiri_ai.fakes import FakeToolCallingProvider  # noqa: E402
@@ -40,7 +40,7 @@ async def test_a_correction_with_its_target_asks_for_yes():
     async def remembered() -> str:
         return "a1"
 
-    world.change = {"activity_query": _Activities(), "remembered_activity": remembered}
+    world.change = {"day_facts": _DayFacts([_fact("progress_update", "p9", "a1", 180)]), "remembered_activity": remembered}
     result, step = await _say(world, ("correct_work_quantity", {"new_quantity": 150}))
     assert step["status"] == "waiting_for_user", step
     assert "150" in result.reply.text and world.dispatcher.dispatched == []
@@ -48,7 +48,7 @@ async def test_a_correction_with_its_target_asks_for_yes():
 
 async def test_nothing_to_correct_is_said_plainly():
     world = await _make_world(site_keys=(seed.SITE_A1,))
-    world.change = {"activity_query": _Activities()}
+    world.change = {"day_facts": _DayFacts()}
     _, step = await _say(world, ("correct_work_quantity", {"new_quantity": 150}))
     assert step["status"] == "answer" and step["text"], step
 

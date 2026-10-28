@@ -272,6 +272,11 @@ class JourneyGateway:
     settle_facts: Callable[[list[Any]], Awaitable[Any]] | None = None
     #: ``() -> async context manager``: one transaction for the whole Save.
     transaction: Callable[[], Any] | None = None
+    #: Request 137: the day's saved work (runtime/day_facts.DayFactsReader): the
+    #: fact a continued activity's Save wrote, and what a correction targets.
+    day_facts: Any | None = None
+    #: Progress update id -> its activity id, for the updates this Save wrote.
+    continued: dict[str, Any] = field(default_factory=dict)
     #: ``() -> text | None``: the Yes / No question of an old-style workflow that
     #: still waits for its answer (request 127: said, not silently ignored).
     pending_confirmation: Callable[[], Awaitable[Any]] | None = None
@@ -401,6 +406,13 @@ class JourneyGateway:
         from . import draft_flow
 
         return await draft_flow.saved_card(self) if self.draft_mode else None
+
+    async def saved_work_today(self) -> list[Any]:
+        """Request 137 (C): the sender's own saved work facts of today, from the
+        database (runtime/day_facts.py), oldest first. Empty when not wired."""
+        from . import draft_flow
+
+        return await draft_flow.saved_work_today(self) if self.draft_mode else []
 
     def change_site_draft(self, draft: Any) -> ReplySpec:
         """The "📍 Change site" tap: the sites to pick from (request 129)."""

@@ -177,12 +177,21 @@ class ActivitySearchService:
 
             activity_conditions.append(sa.text(fact_review.counted_sql(fact_review.ACTIVITY, "activities.id")))
 
+        from mesiri.application.dpr import fact_review
+        from runtime.day_facts import date_sql, latest_note_sql
+
+        # Request 137 (D): what the work says now (its latest update in the period:
+        # "tiling 80%", not the 70% it started with), and whether it is saved, read
+        # the Day Facts way.
+        note_now = sa.literal_column(latest_note_sql("activities.id", date_sql(end_date)))
+        saved = sa.literal_column(fact_review.counted_sql(fact_review.ACTIVITY, "activities.id"))
         activity_query = (
             sa.select(
                 activities.c.work_type,
-                activities.c.narrative,
+                note_now.label("narrative"),
                 activities.c.status,
                 activities.c.activity_date,
+                saved.label("saved"),
             )
             .where(*activity_conditions)
             .order_by(activities.c.activity_date.desc(), activities.c.updated_at.desc())
@@ -219,6 +228,7 @@ class ActivitySearchService:
                     "work_type": row["work_type"],
                     "narrative": row["narrative"],
                     "status": row["status"],
+                    "saved": bool(row["saved"]),
                     # Selected above only for ORDER BY until this was added --
                     # a tabular export (PDF) needs the date on every row, not
                     # just the query's own sort order.

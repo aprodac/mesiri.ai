@@ -866,9 +866,7 @@ class AgentToolbox:
         if name == UPDATE_PENDING_CARD:
             return await self._update_card(args)
         if name == CORRECT_WORK_QUANTITY and self.draft_mode:
-            routed = await self._correct_percent(args)
-            if routed is not None:
-                return routed
+            return await self._correct_work(args)
         if name == GET_JOIN_CODE:
             return await self.gateway.share_join_code()
         if name == SET_UNIT_CONVERSION:
@@ -970,29 +968,40 @@ class AgentToolbox:
             "error", text="The change did not go through and the old entry could not be put back: they need to send it again."
         )
 
-    async def _correct_percent(self, args: dict[str, Any]) -> StepResult | None:
-        """Request 137 (C): "tiling 80% aayi" is not a quantity, so the old correction
-        (which looks for a quantity) found nothing and the model apologised. A percent
-        is resolved against the saved work (``day_facts``): an explicit correction edits
-        the saved line by its fact id; any other percent is progress, a new line. None
-        for a figure that is not a percent: the quantity correction runs as before."""
+    async def _correct_work(self, args: dict[str, Any]) -> StepResult:
+        """Request 137 (C): a correction of saved work, resolved in code against the
+        day's saved facts (``day_facts``: the database, with the saved card on top).
+        A percent that is not a correction ("tiling 80% aayi") is progress, a new
+        line; an explicit one ("alla, 75%") or a corrected amount ("it was 150 not
+        180") becomes a "Change ..." line for the saved entry, found by its fact id.
+        For draft_v2 senders this replaces the old lookup (``find_correction_target``),
+        which needed a quantity and only knew the last one logged."""
         from runtime import day_facts as df
 
-        value = args.get("new_quantity")
-        if not df.is_percent(value, args.get("unit"), self.user_text):
-            return None
+        value, unit = args.get("new_quantity"), args.get("unit")
         gateway = self.gateway
         saved = await gateway.saved_card()
-        draft = await gateway.open_draft()
-        draft = draft if draft is not None and draft.live else None
-        facts = df.work_facts(saved.items) if saved is not None else []
-        resolved = df.resolve_percent(facts, value, self.user_text)
-        if resolved.action == df.NOTHING:
-            return StepResult("error", text=f"Nothing was changed: {resolved.reason}.")
+        card_items = list(saved.items) if saved is not None else []
+        facts = df.merged(df.work_facts(card_items), await gateway.saved_work_today())
+        if df.is_percent(value, unit, self.user_text):
+            resolved = df.resolve_percent(facts, value, self.user_text)
+            changes: dict[str, Any] = {"progress_percent": value}
+        else:
+            resolved = df.resolve_quantity(facts, value, unit, self.user_text)
+            changes = {}
         if resolved.action == df.NEW_LINE:
             return StepResult(NOT_A_CORRECTION, text="A new percentage for the work is progress, not a correction.")
-        target = next(i for i in saved.items if i.fact_id == resolved.fact.fact_id)
-        return await gateway.change_saved_item(target, {"progress_percent": value})
+        if resolved.action == df.NOTHING or resolved.fact is None:
+            return StepResult("error", text=f"Nothing was changed: {resolved.reason}.")
+        target = df.card_item_for(resolved.fact, card_items)
+        if not changes:
+            fact = resolved.fact
+            changes = {
+                "quantities": [{"work_type": fact.work_type, "quantity": value, "unit": unit or fact.unit}],
+                # The old note carried the old figure ("plastering 50 sq ft").
+                "narrative": ", ".join(p for p in (fact.work_type, fact.location) if p),
+            }
+        return await gateway.change_saved_item(target, changes)
 
     async def _update_draft(self, args: dict[str, Any]) -> StepResult:
         """Request 127 (P2): a correction under draft cards. On the open card the

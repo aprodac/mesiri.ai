@@ -11,9 +11,11 @@ looked up before the graph by the same rules, now here:
   are a question, and a new person is offered -- to a role that may create
   users -- through the existing CREATE_USER -> ADD_PROJECT_MEMBER plan
   (``runtime/member_create_plan.py``). Only an admin or project manager adds.
-- correct_work_quantity: the last quantity this conversation logged on the
-  activity it last touched (ADR-D14, same-session only); nothing to correct
-  is said plainly by the workflow.
+- correct_work_quantity: the newest amount on the activity this conversation
+  last touched, else the sender's own newest amount of the last two days, read
+  from the Day Facts (runtime/day_facts.py, request 137 -- the one reader of
+  saved work); nothing to correct is said plainly by the workflow. draft_v2
+  senders never reach this: their correction is resolved in the toolbox.
 - update_issue: the latest site issue in a status the action may change
   (the executor re-checks it at Yes).
 
@@ -68,6 +70,8 @@ class ChangeEntry(EntryScope):
     member_resolver: Any | None = None
     activity_query: Any | None = None
     site_issue_query: Any | None = None
+    #: Request 137: the day's work facts (runtime/day_facts.DayFactsReader).
+    day_facts: Any | None = None
     #: ``() -> activity id | None``: the activity this conversation last touched.
     remembered_activity: Callable[[], Awaitable[str | None]] | None = None
     #: ``(name, event, phone) -> ReplySpec | None``: starts CREATE_USER and holds
@@ -177,15 +181,24 @@ class ChangeEntry(EntryScope):
                 remembered = await self.remembered_activity()
             except Exception:  # noqa: BLE001 -- the workflow says there is nothing to correct
                 _log.warning("change_entry.remembered_failed correlation_id=%s", message.correlation_id, exc_info=True)
-        if self.activity_query is not None:
+        if self.day_facts is not None:
             try:
-                # The activity this conversation touched, else (after a gap,
-                # a new session) the sender's own latest quantity (WRK-06).
-                target = await self.activity_query.find_correction_target(
+                # The activity this conversation touched, else (after a gap, a new
+                # session) the sender's own newest amount (WRK-06): saved or still a
+                # draft, as the old lookup did.
+                import datetime as dt
+
+                from runtime import day_facts as df
+
+                today = df.project_today_for(self.actor)
+                facts = await self.day_facts.work(
                     organization_id=str(self.actor.organization_id),
+                    start=today - dt.timedelta(days=2),
+                    end=today,
                     reported_by_user_id=str(getattr(self.actor, "user_id", "") or "") or None,
-                    remembered_activity_id=remembered,
+                    include_pending=True,
                 )
+                target = df.correction_target(facts, remembered)
             except Exception:  # noqa: BLE001
                 _log.warning("change_entry.correction_lookup_failed correlation_id=%s", message.correlation_id, exc_info=True)
                 target = None
@@ -194,7 +207,8 @@ class ChangeEntry(EntryScope):
                 for key in ("progress_update_id", "activity_quantity_id"):
                     if target.get(key):
                         f[key] = target[key]
-                f["old_quantity"] = str(target["quantity"])
+                old = target["quantity"]
+                f["old_quantity"] = f"{old:g}" if isinstance(old, float) else str(old)
                 f["old_unit_id"] = target.get("unit_id")
                 f["old_unit"] = target.get("unit")
                 summary = [b for b in (target.get("work_type"), target.get("narrative")) if b]

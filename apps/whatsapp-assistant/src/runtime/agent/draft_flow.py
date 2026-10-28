@@ -35,6 +35,7 @@ from channel.receipt.data import company_zone
 from channel.replies import ListRow, ReplySpec
 from mesiri_contracts.assistant.v2.canonical_event import CanonicalEventV2
 from mesiri_contracts.assistant.v2.planner_decision import PlannerDecisionV2
+from runtime.day_facts import PROGRESS_UPDATE
 from workflows import WorkflowRunStatus
 
 from . import draft as dr
@@ -582,6 +583,7 @@ async def change_saved(gw: Any, card_item: CardItem, changes: dict[str, Any], *,
     prepared = await _prepare_changed(gw, card_item.tool, merged, candidate, text)
     if isinstance(prepared, StepResult):
         return prepared
+    _not_continuing_replaced(prepared, card_item)
     item = _item_for(gw, card_item.tool, merged, prepared)
     if item.state == dr.UNREADABLE:
         return StepResult("error", text=f"Couldn't read it: {item.label}. Nothing was changed.")
@@ -595,6 +597,38 @@ async def change_saved(gw: Any, card_item: CardItem, changes: dict[str, Any], *,
         return StepResult("error", text=TOO_MANY)
     await _add_item(gw, item, source=gw.message.message_id)
     return replace(_drafted(item, prepared, note=await _pending_note(gw)), changed=True)
+
+
+def _not_continuing_replaced(prepared: Ready, card_item: CardItem) -> None:
+    """Request 137: a correction of the activity itself (its first entry) takes that
+    activity back on Save, so the corrected entry must not continue it: it was
+    found as open work while preparing, before the take-back (the corrected
+    amount was written onto the removed activity)."""
+    if card_item.fact_type != "activity":
+        return
+    fields = prepared.event.fields
+    replaced = str(card_item.fact_id)
+    if str(fields.get("activity_id") or "") == replaced:
+        fields.pop("activity_id", None)
+        fields.pop("activity_summary", None)
+    candidates = fields.get("_open_activity_candidates")
+    if isinstance(candidates, list):
+        fields["_open_activity_candidates"] = [c for c in candidates if str(c.get("activity_id")) != replaced]
+
+
+async def saved_work_today(gw: Any) -> list[Any]:
+    """The sender's own saved work facts of their project's today (Day Facts)."""
+    day = _today(gw)
+    if gw.day_facts is None or gw.actor is None or day is None:
+        return []
+    try:
+        return await gw.day_facts.work(
+            organization_id=str(gw.actor.organization_id), start=day, end=day,
+            reported_by_user_id=str(gw.actor.user_id),
+        )
+    except Exception:  # noqa: BLE001 -- a correction then resolves against the saved card only
+        _log.warning("agent.day_facts_failed", exc_info=True)
+        return []
 
 
 async def saved_card(gw: Any) -> Any | None:
@@ -924,7 +958,44 @@ async def _write(gw: Any, item: dr.DraftItem) -> tuple[StepResult, tuple[str, uu
     if gw.handled:
         await gw._remember_site(gw.handled[-1])
     fact = fact_of(gw.handled[-1]) if gw.handled else None
+    if fact is None and gw.handled:
+        fact = await _continued_fact(gw, gw.handled[-1])
     return step, fact
+
+
+async def _settle_continued(gw: Any, facts: list[tuple[str, uuid.UUID]]) -> None:
+    """Request 137 (F2): work continued on the sender's own activity that is still a
+    draft (saved first by the old flow, not confirmed yet) counts once this Save
+    confirms it: readers count an update through its activity. Best effort: an
+    activity that is not the sender's draft is left as it is (``already`` / refused)."""
+    parents = [p for f in facts if f[0] == PROGRESS_UPDATE and (p := gw.continued.get(str(f[1]))) is not None]
+    if not parents or gw.settle_facts is None:
+        return
+    settled = await gw.settle_facts([("activity", p) for p in dict.fromkeys(parents)])
+    if refused := list(getattr(settled, "refused", None) or []):
+        _log.info("draft.continued_parent_not_settled reasons=%s", refused)
+
+
+async def _continued_fact(gw: Any, handled: Any) -> tuple[str, uuid.UUID] | None:
+    """Request 137 (B): work continuing an open activity is confirmed by the Save
+    (its Yes), not saved first, so the review log has no fact for it. Its own
+    progress update is its fact, read in the Save's transaction: the card keeps it,
+    and "undo" or a correction targets that update, not the whole activity."""
+    from mesiri_contracts.assistant.draft_action import DraftActionType
+
+    confirmed = getattr(getattr(handled, "result", None), "confirmed_action", None)
+    draft = getattr(confirmed, "draft_action", None)
+    if gw.day_facts is None or draft is None or draft.action_type is not DraftActionType.ADD_PROGRESS_UPDATE:
+        return None
+    activity_id = draft.fields.get("activity_id") or getattr(getattr(handled, "execution_result", None), "material_row_id", None)
+    update_id = await gw.day_facts.latest_update(str(activity_id)) if activity_id else None
+    try:
+        fact = (PROGRESS_UPDATE, uuid.UUID(str(update_id))) if update_id else None
+        if fact is not None:
+            gw.continued[str(fact[1])] = uuid.UUID(str(activity_id))
+        return fact
+    except ValueError:
+        return None
 
 
 async def _take_back(gw: Any, item: dr.DraftItem) -> None:
@@ -976,11 +1047,14 @@ async def save(gw: Any, draft: dr.MessageDraft) -> ReplySpec:
                 fact_of_item.append(fact)
                 if fact is not None:
                     facts.append(fact)
-            if facts and gw.settle_facts is not None:
-                settled = await gw.settle_facts(facts)
+            # A progress update has no review of its own: its activity's is confirmed.
+            reviewed = [f for f in facts if f[0] != PROGRESS_UPDATE]
+            if reviewed and gw.settle_facts is not None:
+                settled = await gw.settle_facts(reviewed)
                 refused = list(getattr(settled, "refused", None) or [])
                 if settled is None or refused:
                     raise _Failed(None, f"the entries could not be confirmed ({refused[0] if refused else 'not wired'})")
+            await _settle_continued(gw, facts)
             if waiting:
                 rest = dr.MessageDraft.new(
                     organization_id=draft.organization_id,
