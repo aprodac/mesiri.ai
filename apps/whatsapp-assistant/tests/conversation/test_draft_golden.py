@@ -104,8 +104,11 @@ def mismatch(case: dict[str, Any], world: Any, result: Any, items: list[dr.Draft
     kinds = sorted(i.kind for i in lines)
     if kinds != sorted(case["kinds"]):
         return f"lines {kinds} != {sorted(case['kinds'])} ({[i.line for i in items]})"
+    # Every line this turn ADDED got its site from the resolver. A correction that edits a
+    # line already on the card (update_pending_card) adds none: its site was decided then.
+    added = [d for d in decisions if d["what"] == "item"]
     sites = [d for d in decisions if d["what"] == "site"]
-    if not sites or any(d["by"] != draft_site.DECIDER for d in sites):
+    if len(sites) < len(added) or any(d["by"] != draft_site.DECIDER for d in sites):
         return f"a site was not decided by the resolver: {decisions}"
     if case["site"] == "ask":
         if not any(i.needs_site for i in lines):
