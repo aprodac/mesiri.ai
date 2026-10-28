@@ -188,6 +188,7 @@ unit issue Suresh mentioned". The `whatsapp-inbox` skill makes the session look 
 | Data | `/var/lib/teammate/` (`inbox.db`, `auth/` = the WhatsApp session, `media/`); survives redeploys. Backed up nightly to `/var/backups/teammate` (see Backups) |
 | Unlink / relink | Remove the linked device on the phone; the service clears its session; run `pair` again |
 | Rotate the token | Change both secrets, re-run the workflow |
+| Add / remove a Claude account for the bot (TM-14) | Lines in the `TEAMMATE_CLAUDE_ACCOUNTS` secret, re-run the workflow; `@bot account` to check. See `brain/README.md` |
 | Remove entirely | `systemctl disable --now teammate`, delete the `/teammate/` block from the nginx config, `rm -rf /opt/teammate /var/lib/teammate` |
 
 ## Several projects, one listener (TM-05)
