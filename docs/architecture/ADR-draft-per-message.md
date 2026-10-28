@@ -736,14 +736,42 @@ ignored review state, so an update could hang off a draft or cancelled parent th
 - Replies (E): a draft-mode turn whose write failed (or that ends in the model's apology) with no card, saved line,
   answer or question is answered by `runner._FAILED`, in the sender's language. Prompt: a percentage is progress.
 
-### 19.2 Not done (follow-up)
+### 19.2 Second part: B, C, D and the old lookup (28 Oct, same request)
 
-- The old `ChangeEntry._correct` path and `confirm_now` for draft_v2 are still there (quantity corrections use them);
-  a single write path for continuing work (B) and readers built on one DayFacts object (D, prompt "saved / pending")
-  are not done. Corrections resolve against the latest saved card, not the whole day from the database.
-- The golden conversations for the live gate (`draft_golden.yaml`) are not added: they could not be run against the
-  live model here, and a failing gate stops the deploy. Replay tests cover the same messages
-  (`tests/replay/test_day_facts_137.py`).
-- Whether F2 is fixed on live data is unconfirmed: updates already saved under a draft parent stay hidden to the readers.
+Built and tested against a real Postgres (local cluster at head 0491; `tests/integration/test_day_facts_postgres.py`).
 
-Rollback: revert the commit; no migration, no data change.
+- **D, readers.** `DayFactsReader.work` is the one query for a period's work: every activity and every progress
+  update on it, each with its own fact id, oldest first, saved-only unless asked. `latest_note_sql` makes every day
+  reader say what the work says now: "what was done today" showed "Tiling, ground floor: 70%" after 80% was saved
+  (reproduced on the real database: the reader printed the activity's first note, never its updates). The
+  "today so far" prompt line lists saved and waiting-for-Save work separately ("Saved today: tiling 80%. Waiting for
+  Save: ...").
+- **B, the write path.** A Save that continues open work still confirms through the workflow (`confirm_now`: a
+  progress update has no review of its own), but it now records a fact like every other line:
+  `("progress_update", update id)`, read in the Save's transaction. The card keeps it, so "undo" and a correction
+  take back that one update (`SaveFirstService` voids it through the progress module's `void_progress_update`),
+  never the whole activity. The positional pairing is gone.
+- **F2's draft parent.** An activity the old flow saved first (still a draft) stays continuable (skipping drafts, as
+  section 19.1 first did, made a second activity in the save-first flow: caught by the WRK-04/WRK-01 real-database
+  tests and reverted to "skip only cancelled"). The draft_v2 Save that continues the sender's own draft activity
+  confirms it, so the update counts in every reader.
+- **C, corrections from the day.** `correct_work_quantity` for draft_v2 senders resolves against the day's facts from
+  the database with the saved card on top (`day_facts.merged`), not the last card only: a newer percent is a new
+  line; "alla, 75%" or "it was 40 not 50" becomes a "Change ..." line for the newest saved entry of the work it names
+  (or the only one), found by fact id. A correction of an activity's first entry no longer continues the activity
+  it replaces (the corrected amount was written onto the removed activity: fixed in `draft_flow.change_saved`).
+- **The old lookup is gone.** `ActivityQueryService.find_correction_target` and `get_latest_quantity_update` are
+  deleted. The classic Yes / No correction (companies with `draft_v2` switched off) reads the same `DayFactsReader`
+  (`day_facts.correction_target`, the last two project days, drafts included), so the off switch still works.
+
+### 19.3 Not done
+
+- `confirm_now` stays as the mechanism that writes a continuation: removing it needs a review type for progress
+  updates (a migration widening `ck_fact_reviews_fact_type` and the backend's locate / undo / DPR rules for it).
+  Every line now leaves the Save with a fact id, which was the point of B.
+- The DPR assembly (backend) is unchanged: it already reads progress updates through their activity.
+- Golden conversations for the live gate are not added: they need the live model, and a failing case stops the
+  deploy. The same messages are covered by replay tests and the real-database tests above.
+- Not checked against production data (no access from this session).
+
+Rollback: revert the commits; no migration, no data change.
