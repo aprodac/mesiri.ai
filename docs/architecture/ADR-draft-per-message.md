@@ -686,3 +686,12 @@ one; in production they are the same). The replay World now wires `get_today_sit
   used by the draft card's buttons). Small, separate.
 - Rollback: flag `draft_v2` off for the TEST company, or `git revert`. The template wording (Malayalam, Hindi,
   Hinglish, and the new Manglish "answer the question" line) is PENDING the native review of WA-76.
+
+
+### 18.7 P4: on for every company (28 Oct)
+
+Approved by Ilan on 28 Oct ("I approve everything, make it live for everything"). `draft_v2` now defaults to
+**true** (`settings.draft_v2_enabled`: anything but an explicit `false` is on), so every company takes the one
+pipeline. An explicit `false`, set by the Mesiri team on the control panel, is the per-company off switch and the
+rollback (no deploy needed); `git revert` of `a093789` puts the old default back. No data changed, no migration.
+Phase E (deleting the old paths) waits for a burn-in with no company switched off, because it removes that switch.
