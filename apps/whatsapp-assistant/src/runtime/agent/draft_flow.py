@@ -962,6 +962,9 @@ async def save(gw: Any, draft: dr.MessageDraft) -> ReplySpec:
     transaction = gw.transaction or _no_transaction
     saved: list[tuple[dr.DraftItem, StepResult]] = []
     facts: list[tuple[str, uuid.UUID]] = []
+    #: One slot per saved item (request 137): work on an open activity records no
+    #: fact, and pairing by position then shifted every later line onto the wrong fact.
+    fact_of_item: list[tuple[str, uuid.UUID] | None] = []
     gw.handled = []
     try:
         async with transaction():
@@ -970,6 +973,7 @@ async def save(gw: Any, draft: dr.MessageDraft) -> ReplySpec:
             for item in work:
                 step, fact = await _write(gw, item)
                 saved.append((item, step))
+                fact_of_item.append(fact)
                 if fact is not None:
                     facts.append(fact)
             if facts and gw.settle_facts is not None:
@@ -1003,7 +1007,7 @@ async def save(gw: Any, draft: dr.MessageDraft) -> ReplySpec:
     )
     lines = [step.summary or item.summary for item, step in saved]
     notes = [n for n in (_note(step) for _item, step in saved) if n]
-    await _remember_saved(gw, saved, facts)
+    await _remember_saved(gw, saved, fact_of_item)
     ran: list[str] = []
     for item in actions:
         ran.append(await _run_action(gw, item))
@@ -1028,13 +1032,19 @@ async def _run_action(gw: Any, item: dr.DraftItem) -> str:
     return await gw.actions.run(waiting, gw.actor, gw.sender)
 
 
-async def _remember_saved(gw: Any, saved: list[tuple[dr.DraftItem, StepResult]], facts: list[Any]) -> None:
+async def _remember_saved(
+    gw: Any, saved: list[tuple[dr.DraftItem, StepResult]], facts: list[tuple[str, uuid.UUID] | None]
+) -> None:
     """Keep the saved card where "undo that" looks for it (runtime/agent/cards.py),
-    so an undo after the Save works as it did."""
-    if gw.cards is None or gw.actor is None or not facts:
+    so an undo after the Save works as it did. ``facts`` has one slot per saved
+    item (None where the write recorded no fact), so a line is never paired with
+    another line's fact id."""
+    if gw.cards is None or gw.actor is None or not any(f is not None for f in facts):
         return
     items = []
-    for (item, step), fact in zip(saved, facts, strict=False):
+    for (item, step), fact in zip(saved, facts, strict=True):
+        if fact is None:
+            continue
         line = step.summary or item.summary
         items.append(CardItem(item.tool, dict(item.args), fact[0], str(fact[1]), line))
     try:

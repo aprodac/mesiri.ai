@@ -711,3 +711,39 @@ open card, "innu enthokke cheythu?", a two-part note). `test_draft_golden.py` ru
 
 Limits: production chooses its model at runtime (`DynamicAIProviderResolver`); the gate tests the default Gemini
 model. Each deploy spends a few model calls (about 20).
+
+## 19. Day facts: one rule for saved work (request 137, 28 Oct)
+
+Live re-test of section 18 (test chat, 28 Oct). **F1:** "Green Villa ground floor tiling 80% aayi" after 70% was saved
+got the model's "Sorry, ... maattan kazhinjilla" and no card. **F2:** "innu Green Villa-il enthokke cheythu?" said nothing was
+recorded though 70% and 80% were saved. Cause (code reading; not confirmed on live data): the correction lookup
+(`find_correction_target`) wants a quantity and a percentage has none; Save of work continuing an open activity
+(`confirm_now`) records no fact, so `_remember_saved` paired lines with the wrong facts by position; `find_open_activity`
+ignored review state, so an update could hang off a draft or cancelled parent that the readers hide.
+
+### 19.1 What is built (`runtime/day_facts.py`)
+
+- `counted(state)`: one definition of "saved" (not a draft), delegated to `fact_review.counts`.
+- `WorkFact`: a saved work item with its fact id, site, work key (work + place) and value (percent or quantity), read
+  from the saved card items (each carries its fact id). No new table, no migration.
+- `resolve_percent`: a newer percent for the same work is a **new line**; only an explicit correction ("alla, 75%")
+  edits the saved line, found **by fact id**; with several works saved nothing is guessed.
+- `open_work_sql`: open-work matching (`find_open_activity`, `list_open_activities`, by-id lookup) skips activities
+  whose latest review is a draft or rejected.
+- Toolbox: in draft mode `correct_work_quantity` with a percent, and `update_pending_card` with only `progress_percent`
+  on a saved card, go through `resolve_percent`. A quantity correction runs the old path unchanged.
+- `_remember_saved` keeps one fact slot per saved item (no positional shift).
+- Replies (E): a draft-mode turn whose write failed (or that ends in the model's apology) with no card, saved line,
+  answer or question is answered by `runner._FAILED`, in the sender's language. Prompt: a percentage is progress.
+
+### 19.2 Not done (follow-up)
+
+- The old `ChangeEntry._correct` path and `confirm_now` for draft_v2 are still there (quantity corrections use them);
+  a single write path for continuing work (B) and readers built on one DayFacts object (D, prompt "saved / pending")
+  are not done. Corrections resolve against the latest saved card, not the whole day from the database.
+- The golden conversations for the live gate (`draft_golden.yaml`) are not added: they could not be run against the
+  live model here, and a failing gate stops the deploy. Replay tests cover the same messages
+  (`tests/replay/test_day_facts_137.py`).
+- Whether F2 is fixed on live data is unconfirmed: updates already saved under a draft parent stay hidden to the readers.
+
+Rollback: revert the commit; no migration, no data change.

@@ -42,6 +42,8 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
 
+from runtime.day_facts import open_work_sql
+
 if TYPE_CHECKING:
     from mesiri.infrastructure.postgres.database import PostgresDatabase
 
@@ -118,6 +120,7 @@ class ActivityQueryService:
                 activities.c.reported_by_user_id == reporter_uuid,
                 activities.c.status.in_(_OPEN_STATUSES),
                 activities.c.deleted_at.is_(None),
+                sa.text(open_work_sql("activities.id")),
             )
             .order_by(activities.c.updated_at.desc())
             .limit(1)
@@ -192,6 +195,7 @@ class ActivityQueryService:
                 activities.c.reported_by_user_id == reporter_uuid,
                 activities.c.status.in_(_OPEN_STATUSES),
                 activities.c.deleted_at.is_(None),
+                sa.text(open_work_sql("activities.id")),
             )
             .order_by(activities.c.updated_at.desc())
             .limit(limit)
@@ -248,6 +252,7 @@ class ActivityQueryService:
             activities.c.organization_id == org_id,
             activities.c.status.in_(_OPEN_STATUSES),
             activities.c.deleted_at.is_(None),
+            sa.text(open_work_sql("activities.id")),
         )
 
         async with self._db.transaction() as conn:

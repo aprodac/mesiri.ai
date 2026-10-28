@@ -441,6 +441,8 @@ class AgentRunner:
                 # WA-81 (live 27 Oct, #4338): "Sorry, couldn't record it" above a card
                 # that HAS the line, waiting on its question. The card says what is so.
                 text = ""
+        if (failed := self._code_failure(toolbox, text)) is not None:
+            return failed
         if toolbox.parked_site:
             # [111]: the site question is the code's, in the sender's language;
             # the model's words around it ("Ethra per vannu Site B-il?") went
@@ -575,6 +577,27 @@ class AgentRunner:
         text = _within_cap(card_sentence(draft, toolbox.user_text), [t for t in tail if t])
         _decided(toolbox, "reply", TEMPLATE)
         return _with_card(ReplySpec(text=text), toolbox)
+
+    @staticmethod
+    def _code_failure(toolbox: AgentToolbox, text: str) -> ReplySpec | None:
+        """Request 137 (E): a failed write or correction with no card, no saved line, no
+        answer and no question to show for the turn is answered by the code's template."""
+        if getattr(toolbox.gateway, "draft_mode", False) is not True or toolbox.attempted_writes <= 0:
+            return None
+        if toolbox.failed <= 0 and not _APOLOGY.match(text):
+            return None  # a write that came back with a question or a redirect is the model's to continue
+        if (
+            _entries(toolbox)
+            or toolbox.answers
+            or toolbox.parked is not None
+            or toolbox.parked_site
+            or toolbox.module_off_line
+            or toolbox.equipment_noted
+            or _open_draft(toolbox) is not None
+        ):
+            return None
+        _decided(toolbox, "reply", TEMPLATE)
+        return ReplySpec(text=_FAILED[_wording_language(toolbox.user_text)])
 
     def _natural(self, text: str, toolbox: AgentToolbox) -> str:
         """Request 89: after every strip, the words above a Save card must
@@ -793,6 +816,17 @@ _CARD_CHECK = {
     "malayalam": "കാർഡ് നോക്കി ശരിയാണെങ്കിൽ Save അമർത്തുക.",
     "hindi": "कार्ड देखें, सही हो तो Save दबाएँ.",
     "hinglish": "Card dekhein, sahi ho to Save dabayein.",
+}
+#: Request 137 (E): a write or correction that failed with nothing on screen to show
+#: for it. The words are the code's, in the sender's language, with a next step; the
+#: model never writes free text on a failure ("Sorry, couldn't change it" went out
+#: for a percentage on 28 Oct).
+_FAILED = {
+    "english": "That wasn't saved or changed. Please send it again in one line: the work, the place and the figure.",
+    "manglish": "Athu save/maattan pattiyilla. Work, sthalam, figure ennivayode oru line-il veendum ayakku.",
+    "malayalam": "അത് സേവ് ചെയ്യാനോ മാറ്റാനോ കഴിഞ്ഞില്ല. പണി, സ്ഥലം, കണക്ക് എന്നിവ ഒരു വരിയിൽ വീണ്ടും അയക്കുക.",
+    "hindi": "वह सेव या बदला नहीं जा सका. कृपया काम, जगह और आँकड़ा एक लाइन में फिर भेजें.",
+    "hinglish": "Woh save ya change nahi hua. Kaam, jagah aur figure ek line mein dobara bhejein.",
 }
 _CARD_ASKS = {
     "english": "Please answer the question on the card.",
