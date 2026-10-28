@@ -210,3 +210,33 @@ async def test_receiver_normalizes_interactive_reply_without_downloading_media()
     assert normalized.modality is InputModality.INTERACTIVE
     assert normalized.text == "Material"
     assert normalized.metadata["interactive_reply_id"] == "cat_material"
+
+
+@pytest.mark.asyncio
+async def test_group_message_is_not_handled_as_one_on_one() -> None:
+    """WA-87: a message in a WhatsApp group carries `group_id` next to the
+    participant's `from`. It must never be processed as that participant's
+    1-on-1 message (saved under them, answered privately) -- nor get a read
+    receipt -- while the 1-on-1 message in the same webhook still is."""
+    message_store = InMemoryNormalizedMessageStore()
+    on_message_claimed = AsyncMock()
+    receiver = WhatsAppReceiver(
+        deduplication_store=InMemoryDeduplicationStore(),
+        media_downloader=AsyncMock(),
+        message_store=message_store,
+        object_storage=FakeObjectStorage(),
+        on_message_claimed=on_message_claimed,
+    )
+    payload = text_webhook_payload()
+    value = payload["entry"][0]["changes"][0]["value"]
+    group_message = dict(value["messages"][0], id="wamid.group", group_id="120363000000000001")
+    value["messages"] = [*value["messages"], group_message]
+
+    scheduled = await receiver.handle_payload(payload)
+    await receiver.wait_until_idle()
+
+    assert scheduled == 1
+    assert await message_store.get("wamid.group") is None
+    assert await message_store.get("wamid.text") is not None
+    claimed = [call.args[0] for call in on_message_claimed.await_args_list]
+    assert "wamid.group" not in claimed

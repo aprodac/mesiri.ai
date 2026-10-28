@@ -1,8 +1,8 @@
 # Mesiri inside WhatsApp groups — plan (WA-87)
 
-> Status: **approved 28 Oct 2026 (Ilan), except the group creation / invite flow**, which is
-> proposed below in *Creating a group and inviting people* and waits for a yes. Mesiri's
-> number is an Official Business Account. No product code written yet.
+> Status: **approved 28 Oct 2026 (Ilan), including the creation / invite flow.** Mesiri's
+> number is an Official Business Account. Step 1 (the gate) built; step 0 (Meta spike) waits
+> on someone with Meta Business Manager access.
 
 ## Objective
 
@@ -71,7 +71,7 @@ Teammate stays read-only, as it is today.
    plus a WhatsApp command for the owner ("make a group for Kakkanad site"). Both return the
    invite link to share.
 
-## Creating a group and inviting people (proposed, waiting for a yes)
+## Creating a group and inviting people (approved 28 Oct)
 
 What Meta allows: Mesiri calls `POST /<phone-number-id>/groups` with a name (`subject`, max
 128 characters), an optional description and `join_approval_mode` (`auto_approve` or
@@ -82,8 +82,12 @@ approves or rejects (`/<group-id>/join_requests`). Mesiri created the group, so 
 
 Proposed flow, so the owner has as little to do as possible:
 
-1. **Start.** The owner taps *Create WhatsApp group* on the site page in the dashboard, or
-   writes to Mesiri "make a group for Kakkanad site".
+1. **Start.** Any of:
+   - the owner taps *Create WhatsApp group* on the site page in the dashboard;
+   - a company owner or admin writes to Mesiri 1-on-1: "make a group for Kakkanad site";
+   - a Mesiri super admin writes to Mesiri 1-on-1, naming the company:
+     "make a group for Acme, Kakkanad site" (for trials our team sets up).
+   Only these roles can create a group; anyone else is told to ask their owner.
 2. **Mesiri creates it** as "Kakkanad site · Mesiri", with `approval_required`.
 3. **Mesiri invites the team itself.** It already has the numbers of the people on that
    site, so it sends each of them the link 1-on-1 ("Join the Kakkanad site group: <link>").
@@ -165,7 +169,7 @@ replies 1-on-1. This still changes where labour messages *come from*, so it need
    group webhook fields, create one test group through the API, and record: the size limit,
    the inbound payload shape, whether buttons, lists, reactions and documents work, and pricing.
    Result goes into this doc.
-1. Gate + normalizer + flag (group messages never go down the 1-on-1 path).
+1. Gate: group messages never go down the 1-on-1 path. **Done** (`ingress/receiver.py`: a message with `group_id` is dropped before it is claimed, so no read receipt, no save, no reply). The normalizer + flag move to step 3, where they are first needed.
 2. Table, group creation, invite link, lifecycle webhook.
 3. Group reply routing + allowlist + quiet mode + group pins site.
 4. Dashboard button; DPR posted to the group.
@@ -185,8 +189,8 @@ Approved 28 Oct (Ilan): ~8-person limit, quiet mode, one group = one site, eveni
 to the group, identity / tenant isolation as planned, labour messages arriving from groups
 (replies stay 1-on-1).
 
-Still open: the creation / invite flow above (Mesiri invites the team itself, owner approves
-outsiders).
+Approved 28 Oct (Ilan): the creation / invite flow above, plus creation by a company admin or
+a super admin messaging Mesiri directly.
 
 ## Sources
 

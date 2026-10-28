@@ -491,6 +491,17 @@ def _iter_message_contexts(payload: Mapping[str, Any]) -> Iterator[MessageIngres
             display_phone_number = metadata.get("display_phone_number")
 
             for message in messages:
+                if message.get("group_id"):
+                    # WA-87: a message sent in a WhatsApp group Mesiri is a
+                    # member of. Until group routing exists, it must not reach
+                    # the 1-on-1 path: that would save it under the sender and
+                    # answer them privately. Not claimed, so no read receipt.
+                    logger.info(
+                        "whatsapp.group_message_ignored wamid=%s group_id=%s",
+                        message.get("id"),
+                        message.get("group_id"),
+                    )
+                    continue
                 yield MessageIngressContext(
                     message=message,
                     contacts=contacts,
