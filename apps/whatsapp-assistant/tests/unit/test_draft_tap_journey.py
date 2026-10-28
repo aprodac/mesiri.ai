@@ -131,7 +131,8 @@ async def test_an_expired_card_is_discarded_not_saved(monkeypatch):
 
 
 async def test_the_company_setting_decides_whether_messages_are_held_as_drafts(monkeypatch):
-    for stored, expected in ((True, True), (False, False), (None, False), ("true", False)):
+    # Request 136: on for every company; an explicit false is the per-company off switch.
+    for stored, expected in ((True, True), (False, False), (None, True), ("true", True)):
         on_normalized, deps = _build(monkeypatch, drafts=MemoryDraftStore(), setting=stored)
         seen = {}
         original = jg.JourneyGateway

@@ -176,11 +176,12 @@ _SPECS: dict[str, SettingSpec] = {
     ),
     DRAFT_V2: SettingSpec(
         key=DRAFT_V2,
-        default=False,
+        default=True,
         description=(
-            "true: a WhatsApp message is held as one draft card and written only when the "
-            "sender taps Save (Cancel writes nothing). false: the current flow. Changed by "
-            "the Mesiri team only."
+            "true (the default for every company since request 136, 28 Oct): a WhatsApp "
+            "message is held as one draft card and written only when the sender taps Save "
+            "(Cancel writes nothing). false: the old flow, kept only as the per-company off "
+            "switch. Changed by the Mesiri team only."
         ),
     ),
     BRANDING: SettingSpec(
@@ -373,9 +374,9 @@ def validate(key: str, value: object) -> object:
 
 
 def draft_v2_enabled(stored: object) -> bool:
-    """True only when the company's setting is exactly ``true``. Anything
-    unset or unreadable is off, never an error."""
-    return stored is True
+    """On for every company (request 136) unless its setting is exactly ``false``,
+    the Mesiri team's per-company off switch. Unset or unreadable is on."""
+    return stored is not False
 
 
 def saves_first(stored: object) -> bool:

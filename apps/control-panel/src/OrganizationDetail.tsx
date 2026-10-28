@@ -80,7 +80,7 @@ const BOOLEAN_SETTINGS = new Set(['draft_v2']);
 
 const BOOLEAN_CONFIRM: Record<string, string> = {
   draft_v2:
-    "Changes how this company's WhatsApp updates are saved. Turn on for test companies first.",
+    "On for every company: WhatsApp updates are held as one card and saved on the Save tap. Turn off only to put this company back on the old flow.",
 };
 
 const ROLE_LABELS: Record<string, string> = {

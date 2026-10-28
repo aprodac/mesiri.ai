@@ -1,4 +1,5 @@
-"""Request 124: the `draft_v2` company setting is off unless the Mesiri team turns it on."""
+"""Request 136: the `draft_v2` company setting is on for every company; only the
+Mesiri team turns it off, per company (an explicit false)."""
 
 from __future__ import annotations
 
@@ -7,9 +8,9 @@ import pytest
 from mesiri.domains.organizations import settings
 
 
-def test_draft_v2_is_off_by_default_and_only_the_team_changes_it():
+def test_draft_v2_is_on_by_default_and_only_the_team_changes_it():
     assert settings.is_known_key(settings.DRAFT_V2)
-    assert settings.default_for(settings.DRAFT_V2) is False
+    assert settings.default_for(settings.DRAFT_V2) is True
     assert settings.DRAFT_V2 in settings.SUPERADMIN_ONLY_KEYS
     assert settings.DRAFT_V2 not in settings.DEDICATED_ENDPOINT_KEYS
 
@@ -27,7 +28,7 @@ def test_anything_but_a_boolean_is_refused(value):
 
 @pytest.mark.parametrize(
     ("stored", "expected"),
-    [(True, True), (False, False), (None, False), ("true", False), (1, False), ({}, False)],
+    [(True, True), (None, True), ("true", True), ({}, True), (False, False)],
 )
-def test_only_an_explicit_true_turns_it_on(stored, expected):
+def test_only_an_explicit_false_turns_it_off(stored, expected):
     assert settings.draft_v2_enabled(stored) is expected
