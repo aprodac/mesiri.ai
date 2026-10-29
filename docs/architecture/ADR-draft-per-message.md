@@ -1063,6 +1063,16 @@ code.
   the agent reads documents through the vision path, because ingress maps `document` to UNKNOWN and never
   downloads it; a sticker gets the "can't read stickers" reply where a thumbs-up sticker usually means "ok".
 
+### 23.7 A swipe-reply to a message whose words are not kept (live 29 Oct, screenshots)
+
+The words of sent messages are kept from the WA-89 deploy on (29 Oct, about 14:15 IST), for a week. A swipe-reply
+to an older message found nothing and was read as a plain message: the model answered "Yes, I can see your message"
+and then asked them to swipe the message, which they had done. `turn._replying_to` now returns `("", "unknown")`
+for a quote it cannot read, and the model is told so (`prompt.SWIPED_UNKNOWN`): say plainly it cannot see that
+older message, ask what they want to know, never claim to see it or ask for a swipe again. A template's filled-in
+body values are kept as its words (`sent_text.text_of_fields`). `inbound_messages.reply_wamid` exists but is never
+written (`set_reply_wamid` has no caller), so it is no fallback for older messages.
+
 ## 24. Request 143, phase 4 (F): fewer and smaller model calls per message
 
 Approved by Ilan in WhatsApp (29 Oct, request 143). Live before: taps 2.5-7.9 s, messages 6-11 s (a transfer

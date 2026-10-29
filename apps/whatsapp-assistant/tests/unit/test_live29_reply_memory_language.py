@@ -26,6 +26,7 @@ from runtime.agent import history, wording
 from runtime.agent import runner as r
 from runtime.agent.gateway import StepResult
 from runtime.agent.prompt import (
+    SWIPED_UNKNOWN,
     AgentContext,
     build_messages,
     preferred_language,
@@ -84,6 +85,18 @@ def test_the_words_of_each_kind_of_sent_message():
     assert sent_text.text_of_fields(interactive) == "Stock\nCement 86 bags"
     assert sent_text.text_of_fields({"type": "image", "image": {"caption": "Saved"}}) == "Saved"
     assert sent_text.text_of_fields({"type": "template", "template": {"name": "x"}}) == ""
+    # A template's filled-in values are what it said (a summary sent outside the 24 h window).
+    template = {
+        "type": "template",
+        "template": {
+            "name": "daily_summary",
+            "components": [
+                {"type": "header", "parameters": [{"type": "document", "document": {"id": "m"}}]},
+                {"type": "body", "parameters": [{"type": "text", "text": "Green Villa"}, {"type": "text", "text": "10 bags cement"}]},
+            ],
+        },
+    }
+    assert sent_text.text_of_fields(template) == "Green Villa\n10 bags cement"
 
 
 async def test_what_mesiri_sent_is_read_back_by_its_id(store):
@@ -150,9 +163,21 @@ async def test_a_turn_passes_the_quoted_words_and_keeps_its_own(store):
     assert await sent_text.text_of("wamid.in") == ("What is this message then?", "sender")
 
 
-async def test_a_quote_that_is_not_known_is_a_plain_message(store):
+async def test_a_quote_whose_words_are_not_kept_is_said_so(store):
+    """Live 29 Oct (screenshots): a swipe-reply to a message sent before its words were
+    kept got "Yes, I can see your message" and then "swipe it and reply". The model is
+    told that they swiped one and that its words are not available."""
     seen: list = []
     await run_agent_turn(_message("ithu entha?", quoted="wamid.old"), _ACTOR, _deps(seen))
+    assert seen[0]["ctx"].replying_to == ("", sent_text.UNKNOWN)
+    last = build_messages(seen[0]["ctx"], "Ennit ee message kanindo?")[-1][1]
+    assert SWIPED_UNKNOWN in last and "They are replying to" not in last
+    assert "never ask them to swipe it again" in SWIPED_UNKNOWN
+
+
+async def test_a_message_that_quotes_nothing_has_no_quote(store):
+    seen: list = []
+    await run_agent_turn(_message("ithu entha?"), _ACTOR, _deps(seen))
     assert seen[0]["ctx"].replying_to is None
 
 

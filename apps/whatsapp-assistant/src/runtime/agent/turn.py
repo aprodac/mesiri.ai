@@ -241,9 +241,13 @@ async def _replying_to(message: NormalizedMessage) -> tuple[str, str] | None:
     if getattr(reply_context, "replied_to_text", None):
         return str(reply_context.replied_to_text), "mesiri"
     try:
-        return await sent_text.text_of(quoted_id)
-    except Exception:  # noqa: BLE001 -- read as a plain message
-        return None
+        known = await sent_text.text_of(quoted_id)
+    except Exception:  # noqa: BLE001
+        known = None
+    # Live 29 Oct (screenshots): a swipe-reply to a message whose words were never kept
+    # (sent before they were, or over a week ago) was read as a plain message, and the
+    # model said "Yes, I can see it" and then "swipe it and reply". It is told instead.
+    return known or ("", sent_text.UNKNOWN)
 
 
 async def _run_agent_turn(

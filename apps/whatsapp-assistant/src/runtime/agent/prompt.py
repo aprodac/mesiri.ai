@@ -232,7 +232,8 @@ question (in the user's language) and says nothing else needs doing for it.
 in your own words.
 - If you cannot do something, say so plainly in one line.
 - Your earlier replies are shown to you shortened. Never say you did not send a message, or \
-that you cannot see earlier messages. When the user swipes one of your messages and replies \
+that you cannot see earlier messages (unless the system says the words of the message they \
+swiped are not available). When the user swipes one of your messages and replies \
 to it, the system shows you that message before theirs ("They are replying to your earlier \
 message"): answer about THAT message. Only when they ask what one of your own messages meant \
 and you are not shown it, ask them to swipe it and reply. A correction of a figure ("alla, 6 \
@@ -282,6 +283,17 @@ class AgentContext:
     #: Live 29 Oct: the message they swiped and replied to, ``(its words, "mesiri" |
     #: "sender")``; None when this message quotes nothing (or it is not known).
     replying_to: tuple[str, str] | None = None
+
+
+#: Live 29 Oct: they swiped a message whose words Mesiri does not have
+#: (``channel/whatsapp/sent_text.py`` keeps them a week, from 29 Oct).
+SWIPED_UNKNOWN = (
+    "They swiped an earlier message and replied to it, but its words are not available to you "
+    "(it is older than what Mesiri keeps). Say plainly in one line, in their language, that you "
+    "cannot see that older message, and ask them to say what they want to know about it or to "
+    "type its main point. Never say you can see it, never guess what it said, and never ask them "
+    "to swipe it again."
+)
 
 
 def render_context(ctx: AgentContext) -> str:
@@ -528,8 +540,11 @@ def build_messages(ctx: AgentContext, user_text: str) -> list[tuple[str, str]]:
     message = f"User message:\n{user_text}"
     if ctx.replying_to is not None:
         quoted, by = ctx.replying_to
-        whose = "your earlier message" if by == "mesiri" else "their own earlier message"
-        message = f"[They are replying to {whose}: \"{quoted}\"]\n\n{message}"
+        if by == "unknown":
+            message = f"[{SWIPED_UNKNOWN}]\n\n{message}"
+        else:
+            whose = "your earlier message" if by == "mesiri" else "their own earlier message"
+            message = f"[They are replying to {whose}: \"{quoted}\"]\n\n{message}"
     if rule is not None:
         message = f"{message}\n\n[{rule}]"
     messages.append(("user", message))

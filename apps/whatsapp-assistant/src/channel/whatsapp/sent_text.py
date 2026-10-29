@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 TTL_SECONDS = 7 * 24 * 3600
 #: The longest text kept (a WhatsApp body is at most 4096 characters).
 MAX_CHARS = 1500
+#: ``text_of``'s "by" for a swiped message whose words are not kept (agent/turn.py).
+UNKNOWN = "unknown"
 
 
 class _RedisLike(Protocol):
@@ -50,7 +52,7 @@ def _key(wamid: str) -> str:
 
 def text_of_fields(message_fields: Mapping[str, Any]) -> str:
     """The words a sent message shows: a text's body, an interactive message's
-    header and body, a photo's or document's caption; empty for a template."""
+    header and body, a photo's or document's caption, a template's filled-in values."""
     kind = message_fields.get("type")
     payload = message_fields.get(str(kind)) if kind else None
     if not isinstance(payload, Mapping):
@@ -67,6 +69,17 @@ def text_of_fields(message_fields: Mapping[str, Any]) -> str:
         return "\n".join(p for p in parts if p)
     if kind in ("image", "document", "video"):
         return str(payload.get("caption") or "")
+    if kind == "template":
+        # The template's own wording lives at Meta; its filled-in values are what
+        # this message said (a reminder's site, a summary's figures).
+        values = [
+            str(parameter.get("text") or "")
+            for component in payload.get("components") or []
+            if isinstance(component, Mapping) and component.get("type") == "body"
+            for parameter in component.get("parameters") or []
+            if isinstance(parameter, Mapping) and parameter.get("type") == "text"
+        ]
+        return "\n".join(v for v in values if v)
     return ""
 
 
