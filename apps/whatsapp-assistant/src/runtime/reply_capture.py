@@ -96,7 +96,7 @@ class ReplyCapture:
                 return True
 
             async def send_image(
-                self, _to: str, _data: bytes, *, caption: str | None = None, filename: str = ""
+                self, _to: str, _data: bytes, *, caption: str | None = None, filename: str = "", **kwargs: object
             ) -> bool:
                 capture.text(f"[image]{' ' + caption if caption else ''}")
                 return True

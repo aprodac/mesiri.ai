@@ -149,7 +149,7 @@ class _Sender:
         self.sent = []
         self.image_ok = image_ok
 
-    async def send_button(self, wa_id, *, body, buttons, header_image=None):
+    async def send_button(self, wa_id, *, body, buttons, header_image=None, shows=None):
         self.sent.append(("button", body, [b.id for b in buttons], header_image))
         return header_image is None or self.image_ok
 
@@ -157,7 +157,7 @@ class _Sender:
         self.sent.append(("text", text))
         return True
 
-    async def send_image(self, wa_id, image, *, caption=None, filename="receipt.png"):
+    async def send_image(self, wa_id, image, *, caption=None, filename="receipt.png", shows=None):
         self.sent.append(("image", caption, filename))
         return self.image_ok
 
@@ -273,7 +273,7 @@ async def test_send_image_names_the_upload_receipt_png_unless_told_otherwise(mon
         uploads.append(filename)
         return "media-1"
 
-    async def send(to, body):
+    async def send(to, body, **kwargs):
         posts.append(body)
         return "wamid"
 
@@ -403,7 +403,7 @@ class _Out:
         self.calls.append(("text", body))
         return "w"
 
-    async def image(self, wa_id, image, *, caption=None, filename="receipt.png"):
+    async def image(self, wa_id, image, *, caption=None, filename="receipt.png", shows=None):
         self.calls.append(("image", caption, filename))
         return self.image_ok
 
@@ -618,7 +618,7 @@ async def _joined(monkeypatch, *, renderer, send_image):
 async def test_the_joiner_gets_the_welcome_card_with_the_joined_text_as_caption(monkeypatch):
     images = []
 
-    async def send_image(to, png, *, caption=None, filename="receipt.png"):
+    async def send_image(to, png, *, caption=None, filename="receipt.png", shows=None):
         images.append((to, png, caption, filename))
         return True
 
@@ -632,7 +632,7 @@ async def test_the_joiner_gets_the_welcome_card_with_the_joined_text_as_caption(
 
 @pytest.mark.parametrize("why", ["render", "upload"])
 async def test_the_joined_text_goes_alone_when_the_card_cannot(monkeypatch, why):
-    async def send_image(to, png, *, caption=None, filename="receipt.png"):
+    async def send_image(to, png, *, caption=None, filename="receipt.png", shows=None):
         return why != "upload"
 
     to_owner, texts = await _joined(

@@ -91,7 +91,7 @@ async def test_a_lookup_asked_for_as_a_pdf_is_sent_as_one():
 
     sent: list[tuple[str, bytes]] = []
 
-    async def send_document(wa_id: str, data: bytes, *, filename: str, caption: Any) -> bool:
+    async def send_document(wa_id: str, data: bytes, *, filename: str, caption: Any, shows=None) -> bool:
         sent.append((filename, data[:4]))
         return True
 

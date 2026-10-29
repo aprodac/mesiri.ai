@@ -202,6 +202,7 @@ class WhatsAppSender:
         body: str,
         buttons: list[ListRow],
         header_image: bytes | None = None,
+        shows: str | None = None,
     ) -> bool:
         """Send up to 3 tappable quick-reply buttons (e.g. Yes/No confirmation).
 
@@ -251,7 +252,7 @@ class WhatsAppSender:
                 return False
             interactive["header"] = {"type": "image", "image": {"id": media_id}}
         sent = (
-            await self._send(to_wa_id, {"type": "interactive", "interactive": interactive})
+            await self._send(to_wa_id, {"type": "interactive", "interactive": interactive}, shows=shows)
         ) is not None
         if header_image is not None and sent:
             # Greppable proof in the server log that the card went out as the
@@ -266,6 +267,7 @@ class WhatsAppSender:
         *,
         caption: str | None = None,
         filename: str = "receipt.png",
+        shows: str | None = None,
     ) -> bool:
         """Upload an image and send it. Returns True on success.
 
@@ -274,6 +276,9 @@ class WhatsAppSender:
         media id, then referenced in the message. Two HTTP calls, not one;
         a failure at either step degrades to False rather than raising, same
         as every other send_* method here.
+
+        ``shows`` says in a few words what the picture is ("Workers list card,
+        29 Oct"); Mesiri keeps it so it knows what it sent (sent_text.py).
         """
         if not self.enabled:
             logger.warning("WhatsApp sender disabled (missing phone_number_id/access_token)")
@@ -286,7 +291,9 @@ class WhatsAppSender:
         image_fields: dict = {"id": media_id}
         if caption:
             image_fields["caption"] = caption
-        sent = (await self._send(to_wa_id, {"type": "image", "image": image_fields})) is not None
+        sent = (
+            await self._send(to_wa_id, {"type": "image", "image": image_fields}, shows=shows)
+        ) is not None
         if sent:
             logger.info("receipt.sent as=image media_id=%s to=%s", media_id, to_wa_id)
         return sent
@@ -299,6 +306,7 @@ class WhatsAppSender:
         filename: str,
         caption: str | None = None,
         mime_type: str = "application/pdf",
+        shows: str | None = None,
     ) -> bool:
         """Upload a document (e.g. a DPR PDF, #16 Daily Report Generation)
         and send it. Same two-step upload-then-reference flow as
@@ -315,7 +323,7 @@ class WhatsAppSender:
         if caption:
             document_fields["caption"] = caption
         return (
-            await self._send(to_wa_id, {"type": "document", "document": document_fields})
+            await self._send(to_wa_id, {"type": "document", "document": document_fields}, shows=shows)
         ) is not None
 
     async def send_template(
@@ -451,7 +459,7 @@ class WhatsAppSender:
             return None
         return media_id
 
-    async def _send(self, to_wa_id: str, message_fields: dict) -> str | None:
+    async def _send(self, to_wa_id: str, message_fields: dict, *, shows: str | None = None) -> str | None:
         """POST one message to the Cloud API. `message_fields` supplies the
         `type` key and its matching payload (`text`, `interactive`, ...).
 
@@ -524,5 +532,7 @@ class WhatsAppSender:
                 wamid=wamid, recipient=to_wa_id, message_fields=message_fields
             )
             # Its words, so a swipe-reply to it can be read (sent_text.py).
-            sent_text.report_sent(wamid=wamid, message_fields=message_fields, recipient=to_wa_id)
+            sent_text.report_sent(
+                wamid=wamid, message_fields=message_fields, recipient=to_wa_id, shows=shows
+            )
         return wamid

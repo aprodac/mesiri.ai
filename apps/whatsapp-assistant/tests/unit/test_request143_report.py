@@ -107,7 +107,7 @@ def _entry(
 ) -> tuple[ReportEntry, list[tuple[str, bytes]]]:
     sent: list[tuple[str, bytes]] = []
 
-    async def send_document(wa_id: str, data: bytes, *, filename: str, caption: Any) -> bool:
+    async def send_document(wa_id: str, data: bytes, *, filename: str, caption: Any, shows=None) -> bool:
         sent.append((filename, data))
         return send_ok
 

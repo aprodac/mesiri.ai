@@ -224,7 +224,9 @@ class ReportEntry(EntryScope):
                 data = doc.data
                 if data is None:
                     data = (await self.object_storage.get_object(doc.object_key)).data
-                sent = await self.send_document(message.sender.wa_id, data, filename=doc.filename, caption=None)
+                sent = await self.send_document(
+                    message.sender.wa_id, data, filename=doc.filename, caption=None, shows=f"Report PDF: {doc.filename}"
+                )
                 if sent is False:
                     raise RuntimeError("send_document returned False")
 

@@ -206,7 +206,7 @@ class _FakeSender:
         self.texts.append((wa_id, body))
         return True
 
-    async def send_document(self, wa_id, data, *, filename, mime_type):
+    async def send_document(self, wa_id, data, *, filename, mime_type, shows=None):
         self.documents.append((wa_id, filename))
         return True
 
@@ -214,7 +214,7 @@ class _FakeSender:
         self.templates.append((wa_id, kwargs))
         return True
 
-    async def send_button(self, wa_id, *, body, buttons):
+    async def send_button(self, wa_id, *, body, buttons, shows=None):
         self.buttons = getattr(self, "buttons", [])
         self.buttons.append((wa_id, body, [(b.id, b.title) for b in buttons]))
         return True

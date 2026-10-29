@@ -83,6 +83,29 @@ def text_of_fields(message_fields: Mapping[str, Any]) -> str:
     return ""
 
 
+def media_label_of_fields(message_fields: Mapping[str, Any], shows: str | None = None) -> str:
+    """What a sent picture / PDF / video shows, as a short bracketed label
+    ("[picture: Workers list card, 29 Oct]"), or "" for a message with no media.
+    Live 29 Oct: Mesiri kept only a caption, so a captionless card was "not sent"
+    to it. ``shows`` is the sender's own description; without one the label still
+    says a picture or file went out (a document names its file)."""
+    kind = message_fields.get("type")
+    payload = message_fields.get(str(kind)) if kind else None
+    if not isinstance(payload, Mapping):
+        return ""
+    noun = {"image": "picture", "document": "PDF", "video": "video"}.get(str(kind))
+    if kind == "interactive":
+        header = payload.get("header")
+        if isinstance(header, Mapping) and header.get("type") == "image":
+            noun = "picture"
+    if noun is None:
+        return ""
+    detail = (shows or "").strip()
+    if not detail and kind == "document":
+        detail = str(payload.get("filename") or "").strip()
+    return f"[{noun}: {detail[:200]}]" if detail else f"[{noun}]"
+
+
 async def remember(*, wamid: str, text: str, by: str = "mesiri") -> None:
     """Keep ``text`` under ``wamid``; ``by`` is "mesiri" or "sender". Never raises."""
     store = _store
@@ -107,15 +130,64 @@ async def _remember_last(recipient: str, text: str) -> None:
         logger.warning("sent_text.remember_last_failed")
 
 
-def report_sent(*, wamid: str, message_fields: Mapping[str, Any], recipient: str | None = None) -> None:
+#: How many recently sent pictures / files are kept per recipient, and for how long.
+MEDIA_KEPT = 8
+MEDIA_TTL_SECONDS = 24 * 3600
+
+
+async def _remember_media(recipient: str, label: str) -> None:
+    store = _store
+    if store is None or not recipient:
+        return
+    try:
+        kept = await store.get_json(f"sent_media:{recipient}")
+        items = [i for i in kept if isinstance(i, dict)] if isinstance(kept, list) else []
+        items.append({"label": label[:MAX_CHARS], "at": time.time()})
+        await store.set_json(f"sent_media:{recipient}", items[-MEDIA_KEPT:], ttl_seconds=MEDIA_TTL_SECONDS)
+    except Exception:  # noqa: BLE001
+        logger.warning("sent_text.remember_media_failed")
+
+
+async def recent_media_to(recipient: str | None) -> list[tuple[str, float]]:
+    """``(label, sent at)`` of the pictures and files sent to ``recipient`` in the
+    last day, oldest first. Never raises."""
+    store = _store
+    if store is None or not recipient:
+        return []
+    try:
+        kept = await store.get_json(f"sent_media:{recipient}")
+    except Exception:  # noqa: BLE001
+        return []
+    if not isinstance(kept, list):
+        return []
+    return [
+        (str(i["label"]), float(i.get("at") or 0.0))
+        for i in kept
+        if isinstance(i, dict) and str(i.get("label") or "").strip()
+    ]
+
+
+def report_sent(
+    *,
+    wamid: str,
+    message_fields: Mapping[str, Any],
+    recipient: str | None = None,
+    shows: str | None = None,
+) -> None:
     """Called by the sender for every message it sent (channel/whatsapp/outbound.py).
-    The latest one per ``recipient`` is kept too (``last_sent_to``)."""
+    The latest one per ``recipient`` is kept too (``last_sent_to``). A picture or
+    file is kept as its label (``shows``) plus its caption, caption or not."""
     if _store is None:
         return
-    text = text_of_fields(message_fields).strip()
+    words = text_of_fields(message_fields).strip()
+    label = media_label_of_fields(message_fields, shows)
+    text = "\n".join(p for p in (label, words) if p)
     if not text:
         return
-    for job in (remember(wamid=wamid, text=text), _remember_last(recipient or "", text)):
+    jobs = [remember(wamid=wamid, text=text), _remember_last(recipient or "", text)]
+    if label:
+        jobs.append(_remember_media(recipient or "", label))
+    for job in jobs:
         task = asyncio.ensure_future(job)
         _pending.add(task)
         task.add_done_callback(_pending.discard)

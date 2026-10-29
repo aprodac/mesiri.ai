@@ -1,4 +1,28 @@
 {
   "_doc": "TM-16: see src/runtime/release_notes.py. One entry per shipped fix or feature that someone hit: id (kebab-case), date (YYYY-MM-DD, the deploy day), for (the correlation ids of their production messages, from the watch report), message (in their language: it works now, and how to try it). Sent once per person, inside the 24-hour window.",
-  "notes": []
+  "notes": [
+    {
+      "id": "lookup-as-image",
+      "date": "2026-10-29",
+      "for": [
+        "cor_29d0d102a8b64c66822e06c020a2573c",
+        "cor_0164c257441a48d1b8a9a40ee352a189"
+      ],
+      "message": "Ippo list image aayittum ayakkam 👍 Try cheyyan: \"innathe workers list image aayittu ayakku\""
+    },
+    {
+      "id": "mesiri-knows-its-pictures",
+      "date": "2026-10-29",
+      "for": [
+        "cor_9c01a47408054fba9f3662ef4ea1744d",
+        "cor_8fcce79b47674bf681f6250dc7685053",
+        "cor_a692189390ca44e0983f98077fdd77c9",
+        "cor_2a01cb70dbf247baab05b18bf7c043fa",
+        "cor_19aabd5eec824b4a9db5f68f7ad989cf",
+        "cor_8cb758d1ab304650a0347493685e6210",
+        "cor_2c645e5dd6a743e3b3fccae6e3a4c5c7"
+      ],
+      "message": "Mesiri ayacha photo-yum PDF-um ippo Mesiri-kku ormayundu 👍 Try cheyyan: oru card-il swipe cheythu \"ithenthaa?\" ennu chodikku"
+    }
+  ]
 }

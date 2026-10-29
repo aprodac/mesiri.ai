@@ -34,6 +34,7 @@ from context.live_identity import (
     unregistered_message,
 )
 from interactions.image_purpose import (
+    has_caption_words,
     photo_wait_notice,
     purpose_from_caption,
     try_hold_new_image_for_purpose_picker,
@@ -764,7 +765,9 @@ def build_message_handlers(
                     and not reply.buttons
                     and not reply.list_rows
                 ):
-                    return dataclasses.replace(reply, header_image=stock_card, caption_image=True)
+                    return dataclasses.replace(
+                        reply, header_image=stock_card, caption_image=True, shows="Stock card: material stock on site"
+                    )
                 if getattr(gateway, "carry_before", None) or getattr(gateway, "carry_after", None):
                     # Request 88: a changed card shows all its items in the text;
                     # a picture of the one new entry would show only part of it.
@@ -1098,6 +1101,7 @@ def build_message_handlers(
                         reversal_query=reversal_query,
                         object_storage=object_storage,
                         send_document=sender.send_document,
+                        send_image=sender.send_image,
                         card_renderer=card_renderer,
                     ),
                     # Request 143: the day's report, from Day Facts.
@@ -1571,7 +1575,9 @@ def build_message_handlers(
                     interaction_handler.build_combined_receipt(parts, actor, kept=True), timeout=RECEIPT_TIMEOUT_S
                 )
                 if image:
-                    await sender.send_image(target_wa_id, image)
+                    await sender.send_image(
+                        target_wa_id, image, shows="Saved card: what was just saved (green SAVED card)"
+                    )
             except Exception:  # noqa: BLE001 -- the Save and its line went through
                 _log.exception("receipt.render_failed user=%s", getattr(actor, "user_id", None))
 
@@ -2739,6 +2745,15 @@ def build_message_handlers(
                 if said_purpose is not None:
                     await pending_media_store.remember_purpose(user_id=ctx.user_id, row_id=said_purpose)
                     await _photos_for_purpose(said_purpose, [message])
+                    return
+                # Request 145: a photo with words of its own ("Pinne ithenentha Manda?", "This .")
+                # is answered from those words, in the sender's language -- never the
+                # English "What is this photo for?". The agent reads the caption and the
+                # photo (and knows the pictures Mesiri sent); a bare photo is still asked.
+                if has_caption_words(message.text):
+                    _fire_processing_ack(message, wa_id)
+                    await _run_agent(message, ctx, None, timer)
+                    await message_logger.mark_completed(correlation_id=message.correlation_id)
                     return
 
         # A genuinely new image (not a tap answering the picker above) is

@@ -209,7 +209,9 @@ class OnboardingProgress:
             lang = language_to_lang(language)
         card = build_progress_card(site_name=_site_name(actor), facts=facts, lang=lang)
         png = await render_card_png(self._renderer, card)
-        if png is None or not await send_image(wa_id, png, caption=None):
+        if png is None or not await send_image(
+            wa_id, png, caption=None, shows=f"Setup progress card for {_site_name(actor)}"
+        ):
             return False
         today = self._today(actor.timezone).isoformat()
         previous = await self._state(actor.user_id)

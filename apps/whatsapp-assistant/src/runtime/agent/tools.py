@@ -113,7 +113,16 @@ _SITE = {
     "description": "Site name, ONLY if the user names one. Omit to use their usual site.",
 }
 #: The classic "send it as a PDF" of a lookup (stock, labour, work log, money).
-_AS_PDF = {"type": "boolean", "description": "True only when they ask for it as a PDF or a file."}
+_AS_PDF = {"type": "boolean", "description": "Old way of asking for a PDF; use send_as."}
+_SEND_AS = {
+    "type": "string",
+    "enum": ["text", "pdf", "image"],
+    "description": (
+        "How to send the answer. 'text' (default): a normal reply. 'pdf': they ask for a PDF or a "
+        "file. 'image': they ask for it as an image, photo, picture or screenshot ('image aayittu', "
+        "'photo aayittu', 'padam'). Lookups can always go as text, PDF or image: never say otherwise."
+    ),
+}
 #: A bill names "Cement OPC 53 grade" or "TMT steel bars 12mm": the material is
 #: the plain name (live photo set, 22 Oct: the full trade name matched nothing).
 _MATERIAL = {
@@ -717,6 +726,7 @@ def tool_specs() -> list[ToolSpec]:
                     "date_range": _PERIOD,
                     "trade": {"type": "string"},
                     "as_pdf": _AS_PDF,
+                    "send_as": _SEND_AS,
                     "project": _PROJECT,
                     "site": _SITE,
                 }
@@ -744,6 +754,7 @@ def tool_specs() -> list[ToolSpec]:
                         ),
                     },
                     "as_pdf": _AS_PDF,
+                    "send_as": _SEND_AS,
                     "project": _PROJECT,
                     "site": _SITE,
                 }
@@ -761,6 +772,7 @@ def tool_specs() -> list[ToolSpec]:
                     "date_range": _PERIOD,
                     "work_type": {"type": "string"},
                     "as_pdf": _AS_PDF,
+                    "send_as": _SEND_AS,
                     "project": _PROJECT,
                     "site": _SITE,
                 }
@@ -785,6 +797,7 @@ def tool_specs() -> list[ToolSpec]:
                         "description": "True only when asking which expenses lack a receipt.",
                     },
                     "as_pdf": _AS_PDF,
+                    "send_as": _SEND_AS,
                     "project": _PROJECT,
                 },
                 ["kind"],
@@ -1016,7 +1029,12 @@ def _scope(args: dict[str, Any], scope: ScopeLookup) -> dict[str, Any]:
     return out
 
 
-def _pdf(args: dict[str, Any]) -> dict[str, str]:
+def _output_format(args: dict[str, Any]) -> dict[str, str]:
+    """``send_as`` "pdf" or "image" becomes the workflow's ``output_format``;
+    the old ``as_pdf=true`` still means pdf. Text (the default) sets nothing."""
+    send_as = args.get("send_as")
+    if send_as in ("pdf", "image"):
+        return {"output_format": send_as}
     return {"output_format": "pdf"} if args.get("as_pdf") is True else {}
 
 
@@ -1175,7 +1193,7 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             "date": date,
             "date_range": args.get("date_range"),
             "trade": args.get("trade"),
-            **_pdf(args),
+            **_output_format(args),
             **sc,
         }
         return Candidate(semantic_type=SemanticType.LABOUR_QUERY, fields=_clean(fields))
@@ -1185,7 +1203,7 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             "date": date,
             "date_range": args.get("date_range"),
             "asking": args.get("asking") if args.get("asking") in ("used", "received") else None,
-            **_pdf(args),
+            **_output_format(args),
             **sc,
         }
         return Candidate(semantic_type=SemanticType.INVENTORY_QUERY, fields=_clean(fields))
@@ -1194,7 +1212,7 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             "date": date,
             "date_range": args.get("date_range"),
             "work_type": args.get("work_type"),
-            **_pdf(args),
+            **_output_format(args),
             **sc,
         }
         return Candidate(semantic_type=SemanticType.ACTIVITY_QUERY, fields=_clean(fields))
@@ -1207,7 +1225,7 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             "category_name": args.get("category"),
             "date_range": args.get("date_range"),
             "missing_receipts": True if args.get("missing_receipts") else None,
-            **_pdf(args),
+            **_output_format(args),
             **sc,
         }
         return Candidate(semantic_type=SemanticType.FINANCE_QUERY, fields=_clean(fields))

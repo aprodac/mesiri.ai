@@ -398,6 +398,9 @@ async def _run_agent_turn(
     system_note = await _last_system_message(message, pack, deps)
     if system_note:
         context = replace(context, notes=[*context.notes, system_note])
+    media_note = await _media_sent_note(message, deps)
+    if media_note:
+        context = replace(context, notes=[*context.notes, media_note])
     setter = _language_setter(deps, actor)
     # Request 136 (B): with draft cards what is still to do is a waiting line of the
     # card, so the old "later" list is neither shown nor kept.
@@ -543,6 +546,28 @@ async def _last_system_message(message: NormalizedMessage, pack: Any | None, dep
     return (
         f'The last message the system sent them (at {when:%H:%M}, after your last reply; '
         f'this message may answer it): "{text}"'
+    )
+
+
+async def _media_sent_note(message: NormalizedMessage, deps: AgentTurnDeps) -> str | None:
+    """Request 145: the pictures and files Mesiri sent this sender in the last day.
+    Live 29 Oct: a captionless card was in nobody's history, so Mesiri said "I did
+    not send an image" three times about one it had sent. None when there are none."""
+    from channel.whatsapp import sent_text
+
+    try:
+        sent = await sent_text.recent_media_to(getattr(getattr(message, "sender", None), "wa_id", None))
+    except Exception:  # noqa: BLE001
+        return None
+    if not sent:
+        return None
+    zone = deps.now().tzinfo or UTC
+    lines = [
+        f"{label} at {datetime.fromtimestamp(at, tz=UTC).astimezone(zone):%H:%M}" for label, at in sent[-5:]
+    ]
+    return (
+        "Mesiri also sent this person these pictures/files (they DID go out; never say you did not send "
+        "them, and a swipe-reply to one is about it): " + "; ".join(lines)
     )
 
 

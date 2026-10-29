@@ -12,7 +12,7 @@ import datetime as dt
 import inspect
 import uuid
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
 
@@ -570,7 +570,7 @@ async def test_a_reply_without_buttons_sends_the_receipt_right_after_the_text(mo
     sender = deps["sender"]
     sender.send_button.assert_not_awaited()
     sender.send_text.assert_awaited_once()
-    sender.send_image.assert_awaited_once_with("919876543210", PNG, caption=None)
+    sender.send_image.assert_awaited_once_with("919876543210", PNG, caption=None, shows=ANY)
 
 
 async def test_a_failed_render_still_sends_the_reply_once_and_logs_an_error(monkeypatch, caplog):
@@ -740,7 +740,7 @@ async def test_a_failed_header_send_falls_back_to_text_buttons_then_the_image():
 
     assert send_button.await_args_list[0].kwargs["header_image"] == PNG
     assert "header_image" not in send_button.await_args_list[1].kwargs
-    send_image.assert_awaited_once_with("wa", PNG, caption=None)
+    send_image.assert_awaited_once_with("wa", PNG, caption=None, shows=ANY)
     send_text.assert_not_awaited()
 
 

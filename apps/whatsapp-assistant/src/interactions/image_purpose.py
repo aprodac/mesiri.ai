@@ -51,6 +51,14 @@ _PURPOSE_WORDS: dict[str, tuple[str, ...]] = {
 }
 
 
+def has_caption_words(caption: str | None) -> bool:
+    """True when a photo's caption is words the sender wrote (not empty, not just
+    punctuation or a stray character): the agent reads it as the message."""
+    import re
+
+    return len(re.findall(r"\w", caption or "")) >= 3
+
+
 def purpose_from_caption(caption: str | None) -> str | None:
     """The picker row a photo's caption names ("cement bill 50 bags" ->
     img_material_invoice, "2nd floor plastering" -> img_site_update), or None
