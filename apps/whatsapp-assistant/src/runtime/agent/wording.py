@@ -15,13 +15,16 @@ from __future__ import annotations
 
 import re
 
-from .prompt import is_hinglish, is_manglish, reply_language
+from .prompt import is_hinglish, is_manglish, preferred_language, reply_language
 
 LANGUAGES = ("english", "manglish", "malayalam", "hindi", "hinglish")
 
 
 def language_of(text: str, usual: str | None = None) -> str:
-    """The language of the reply to ``text``: one of ``LANGUAGES``."""
+    """The language of the reply to ``text``: one of ``LANGUAGES``; the one the
+    sender set (``set_reply_language``) whatever ``text`` is in."""
+    if preferred_language.get() in LANGUAGES:
+        return str(preferred_language.get())
     if re.search(r"[ഀ-ൿ]", text or ""):
         return "malayalam"
     if re.search(r"[ऀ-ॿ]", text or ""):

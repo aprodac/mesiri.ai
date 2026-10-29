@@ -915,3 +915,62 @@ live model (the live gate runs on deploy), a real Chromium render inside this se
 
 Revert the phase commit. No migration, no data change. The date rule moves an entry saved 00:00-05:30 IST from the
 day before to its own day in every DPR read; reverting moves it back.
+
+## 22. Swipe-replies, what the model remembers, "today" vs earlier days, a set reply language (WA-89, live 29 Oct)
+
+Live chat of 29 Oct (screenshots): the sender swiped Mesiri's own site-log reply and asked "what is this message
+then?"; Mesiri answered "I did not send any message about rain or cement" and "I can only see what you type". The
+same log had listed an issue open since an earlier day as one of today's. The sender also asked to set the reply
+language ("I type Manglish, answer in Malayalam") whatever they type in.
+
+### 22.1 Causes found
+
+1. **A swipe-reply was never seen.** `MessageNormalizer._resolve_reply_context` read `context.message_id`; Meta's
+   inbound webhook names the quoted message `context.id` (`message_id` is the outbound field). `reply_context` was
+   always None in production, and even when set it carried only an id: nothing kept the words of what Mesiri sent
+   (`inbound_messages.reply_wamid` exists but `set_reply_wamid` is never called).
+2. **The model forgot what it said.** In draft mode (`history.for_model`) each earlier reply was shown as its FIRST
+   sentence only: of "No work saved today. Materials: 10 bags cement in. 2 issues: ..." the model saw "No work saved
+   today." and then denied the rest.
+3. **Earlier days read as today.** `query_work_log` lists every open issue in scope; `project_day.mark_carried_over`
+   marks the old ones with `since`, but the code's site-log text (`workflows/activity_query/nodes.py`) did not print
+   it, so the model retold a 24 Oct issue as today's.
+4. **No reply language setting.** The language was always the message's own (`prompt.reply_language`).
+
+### 22.2 Decisions
+
+- `channel/whatsapp/sent_text.py`: the sender records the words of every message it sends (text, interactive
+  header + body, caption) under its wamid, beside `usage.report_sent`; the agent turn records the sender's own words
+  under their message id. Redis, 7 days, fire-and-forget. Not a table: it is a reading aid for one week, like
+  `recent_turns`, and adds no migration.
+- The normalizer reads `context.id` (falls back to `message_id`); a button / list tap is never a swipe-reply.
+- `turn.py` reads the quoted words and passes them as `AgentContext.replying_to`; `build_messages` puts
+  `[They are replying to your earlier message: "..."]` before the sender's message. The language rule is still
+  decided from their own words only.
+- `history.gist` keeps every plain sentence of an earlier reply (400 characters), still never a card line, an
+  option list, a note or a question. System prompt: never deny one of its own messages; ask them to swipe it.
+- The site log prints `(open since 24 Oct)` on a carried-over issue; prompt rule: a fact open since an earlier day
+  is not today's.
+- `set_reply_language` tool (english / manglish / malayalam / hindi / hinglish / auto), kept with no expiry in
+  `UserLanguageStore` (`set_preference` / `get_preference`); `get_profile` returns it, so the composer and the
+  localized fixed texts follow it. Per turn it is the `prompt.preferred_language` context variable, read by every
+  language decision in code (`reply_language`, `reply_letters_rule`, `wording.language_of`, the runner's wording
+  and script checks), so the very reply that sets it is already in it.
+
+### 22.3 Not changed
+
+The scope rule of a reply (`MainReplyContextProvider`) is unchanged: it still looks up `dedup_key` / `reply_wamid`,
+so quoting Mesiri's message resolves no scope, as before; quoting one's own earlier message now resolves to that
+message's project / site (the M4 design, which never ran because the id was never read). `recent_turns` keeps its
+30-minute window. No migration, no Labour / Attendance / Payroll / Workforce change.
+
+### 22.4 Verified / not verified
+
+`tests/unit/test_live29_reply_memory_language.py` (19 tests) and the full assistant suite. Not verified: the live
+model with a real swipe-reply payload (the `context.id` key is Meta's documented inbound shape), production data
+(no ops token in this session), the Malayalam wording of the model's language-set confirmation.
+
+### 22.5 Rollback
+
+Revert the commit. Redis keys `sent_text:*` expire in 7 days; `reply_language_pref:*` keys are ignored by the old
+code.

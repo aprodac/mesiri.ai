@@ -12,7 +12,7 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -42,6 +42,7 @@ from .tools import (
     SAVE_LABOUR,
     SAVE_MATERIAL_USAGE,
     SAVE_WORK_DONE,
+    SET_REPLY_LANGUAGE,
     SET_UNIT_CONVERSION,
     SET_WORK_SITE,
     STILL_TO_DO,
@@ -393,6 +394,12 @@ class AgentToolbox:
     #: The parked question is the code's own site question: it is sent as
     #: worded in code, in the sender's language, whatever the model wrote.
     parked_site: bool = False
+    #: Live 29 Oct: ``(language | None) -> kept?``, keeps the sender's reply
+    #: language (runtime/agent/turn.py); None: ``set_reply_language`` is refused.
+    reply_language_setter: Callable[[str | None], Awaitable[bool]] | None = None
+    #: ``set_reply_language`` ran this message, and what it set (None: auto).
+    language_changed: bool = False
+    language_choice: str | None = None
     #: WA-52: what the stock lookup answered this message, if it ran.
     _stock_answer: str | None = None
     _inflight: set[asyncio.Task[Any]] = field(default_factory=set)
@@ -487,6 +494,8 @@ class AgentToolbox:
             return self._ask(args)
         if name == SET_WORK_SITE:
             return await self._set_work_site(args)
+        if name == SET_REPLY_LANGUAGE:
+            return await self._set_reply_language(args)
         if name == NOTE_FOR_ENGINEER and not (self.engineer_offered or asks_for_engineer(self.user_text)):
             # Ilan, 21 Oct: a question goes to the engineer ONLY when the
             # sender asks for that. The live model passed "is there enough
@@ -808,6 +817,31 @@ class AgentToolbox:
         """Their project and site names that hold a comma."""
         names = [name for _pid, name in self.scope.projects] + [name for _sid, name, _pid in self.scope.sites]
         return [name for name in names if "," in name]
+
+    async def _set_reply_language(self, args: dict[str, Any]) -> ToolOutcome:
+        """Live 29 Oct: the sender sets the language every reply is in ("type
+        Manglish, answer in Malayalam"). Kept by the turn's ``reply_language_setter``;
+        this message's own reply follows it at once."""
+        from .prompt import PREFERRED_LANGUAGES
+
+        choice = str(args.get("language") or "").strip().lower()
+        preference = choice if choice in PREFERRED_LANGUAGES else None
+        if choice not in (*PREFERRED_LANGUAGES, "auto"):
+            return ToolOutcome(content={"status": "error", "reason": f"unknown language {choice!r}"})
+        if self.reply_language_setter is None or not await self.reply_language_setter(preference):
+            return ToolOutcome(
+                content={"status": "not_saved", "instruction": "Say in one line that the language could not be changed now."}
+            )
+        # The tool runs in its own task (``handle``): the runner applies it to the turn.
+        self.language_changed, self.language_choice = True, preference
+        said = (
+            f"Every reply is now in {preference.title()}, whatever language they type in."
+            if preference
+            else "Replies now follow the language of each message again."
+        )
+        return ToolOutcome(
+            content={"status": "done", "result": said, "instruction": "Confirm it in one short line, in that language."}
+        )
 
     async def _set_work_site(self, args: dict[str, Any]) -> ToolOutcome:
         """WA-45: "now at Site B". One of their sites -> today's site; anything

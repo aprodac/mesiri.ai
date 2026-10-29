@@ -294,6 +294,11 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     from mesiri.application.usage.recorder import install_usage_recorder
 
     message_usage.set_sink(install_usage_recorder(material_db))
+    # Live 29 Oct: the words of every sent message, so a swipe-reply is read
+    # against the message it quotes (channel/whatsapp/sent_text.py).
+    from channel.whatsapp import sent_text
+
+    sent_text.set_store(redis_client)
 
     pipeline = build_pipeline(object_storage, material_db, redis_client)
     context_resolver = build_context_resolver(redis=redis_client)

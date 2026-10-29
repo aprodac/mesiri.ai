@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -32,12 +32,14 @@ from .equipment import is_problem_only
 from .gateway import WorkflowGateway
 from .prompt import (
     _MANGLISH_WORDS,
+    PREFERRED_LANGUAGES,
     SYSTEM_PROMPT,
     AgentContext,
     build_messages,
     is_hinglish,
     is_manglish,
     letters_of,
+    preferred_language,
     reply_language,
     reply_letters_rule,
 )
@@ -123,6 +125,7 @@ class AgentRunner:
         lap: Callable[[str], None] | None = None,
         after_tool: Callable[[], None] | None = None,
         site_queue: list[dict] | None = None,
+        reply_language_setter: Callable[[str | None], Awaitable[bool]] | None = None,
     ) -> AgentResult:
         toolbox = AgentToolbox(
             gateway=gateway,
@@ -131,6 +134,7 @@ class AgentRunner:
             lap=lap,
             after_tool=after_tool,
             site_queue=[dict(i) for i in site_queue or []],
+            reply_language_setter=reply_language_setter,
         )
         # WA-52: only a reply that OFFERED to ask counts ("Shall I ask your
         # engineer?"), not one that merely named the engineer.
@@ -159,6 +163,9 @@ class AgentRunner:
                 "degraded", self._fallback(toolbox, partial=True), toolbox, error=exc
             )
         await toolbox.settle()
+        if toolbox.language_changed:
+            # Live 29 Oct: this very reply is in the language they just set.
+            preferred_language.set(toolbox.language_choice)
         await self._tomorrow_plan(toolbox, user_text)
         await self._problem_only(toolbox, user_text)
         await self._problem_part(toolbox, user_text)
@@ -356,7 +363,11 @@ class AgentRunner:
         if retried and not script_problems(retried, user_text):
             return run.model_copy(update={"text": retried})
         _log.warning("agent.script_fallback correlation_id=%s problems=%s", correlation_id, problems)
-        if letters_of(user_text) == "latin" and any("English letters" in p for p in problems):
+        if (
+            letters_of(user_text) == "latin"
+            and reply_language(user_text) not in ("malayalam", "hindi", "native")
+            and any("English letters" in p for p in problems)
+        ):
             return run.model_copy(update={"text": without_native_script(text)})
         if reply_language(user_text) in ("english", "hinglish") and any("Manglish" in p for p in problems):
             text = without_manglish(text, _MANGLISH_WORDS)
@@ -871,6 +882,8 @@ def _decided(toolbox: AgentToolbox, what: str, by: str) -> None:
 
 
 def _wording_language(user_text: str) -> str:
+    if preferred_language.get() in PREFERRED_LANGUAGES:
+        return str(preferred_language.get())
     if re.search(r"[ഀ-ൿ]", user_text):
         return "malayalam"
     if re.search(r"[ऀ-ॿ]", user_text):

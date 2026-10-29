@@ -39,7 +39,10 @@ class MessageNormalizer:
         modality = self._resolve_modality(message)
         sender = self._resolve_sender(message, contacts)
         text = self._resolve_text(message, modality)
-        reply_context = self._resolve_reply_context(message)
+        # A button / list tap also carries the id of the message it was on;
+        # that is not the sender quoting something, so only typed, spoken or
+        # photo messages are read as a swipe-reply.
+        reply_context = None if modality is InputModality.INTERACTIVE else self._resolve_reply_context(message)
         metadata: dict[str, Any] = {
             "phone_number_id": phone_number_id,
             "display_phone_number": display_phone_number,
@@ -213,7 +216,10 @@ class MessageNormalizer:
 
     def _resolve_reply_context(self, message: Mapping[str, Any]) -> ReplyContext | None:
         context = message.get("context") or {}
-        reply_to = context.get("message_id")
+        # Meta's inbound webhook names the quoted message ``context.id``
+        # (``message_id`` is the OUTBOUND reply field). Reading only
+        # ``message_id`` meant no swipe-reply was ever seen (live 29 Oct).
+        reply_to = context.get("id") or context.get("message_id")
         if not reply_to:
             return None
         return ReplyContext(replied_to_message_id=str(reply_to))
