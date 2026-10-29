@@ -58,7 +58,7 @@ Submitted on the **Mesiri** WhatsApp account (named Paraclete until 24 Oct) (ID 
 | `mesiri_site_day_review` | In review |
 | `mesiri_join_request` | In review |
 | `mesiri_ops_alert` | In review |
-| `mesiri_group_invite` | **Not submitted yet** (WA-87, 28 Oct): text below |
+| `mesiri_group_invite` | In review (submitted 29 Oct, WA-87; reworded to pass as Utility, see below) |
 | `mesiri_dpr_delivery` | In review |
 | `mesiri_dpr_optin` | In review (reworded, see above) |
 | `mesiri_login_code` | **Approved (Active)**. Refused at first ("does not have permission") because the business portfolio (StarShape, renamed Aprodac on 24 Oct) was not verified; verified as **APRODAC PRIVATE LIMITED** on 24 Oct (public-records match, director Mohammed Sahel), then submitted and approved at once. **Switched on 24 Oct**: `WHATSAPP_APPROVED_TEMPLATES=mesiri_login_code` on the server (sender: whatsapp) |
@@ -249,8 +249,9 @@ To switch it on: add `mesiri_ops_alert` to `WHATSAPP_APPROVED_TEMPLATES`.
 ### `mesiri_group_invite` — invite to a site's WhatsApp group (WA-87)
 
 Sent to each team member of a site when Mesiri creates the site's WhatsApp group, if they
-haven't messaged Mesiri in the last 24 hours (inside the window the invite goes as a normal
-message). It ends with the group's invite link.
+haven't messaged Mesiri in the last 24 hours (inside the window the invite goes as the plain
+`INVITE_TEXT` message in `runtime/group_chat.py`, worded as an invite). It ends with the
+group's invite link.
 
 | Field | Value |
 | --- | --- |
@@ -258,12 +259,23 @@ message). It ends with the group's invite link.
 | Category | Utility |
 | Language | English (`en`) |
 | Header | None |
-| Body | `Hi {{1}}, {{2}} has a WhatsApp group with Mesiri for {{3}}. Send the day's work, photos and workers there and Mesiri saves them to the site. Join: {{4}}` |
+| Body | `Site group access: {{2}} added a WhatsApp group with Mesiri for {{3}}. Send the day's work, photos and workers there and Mesiri saves them to the site. Group link for {{1}}: {{4}} - open it to join` |
 | Footer | `Sent by Mesiri` |
 | Buttons | None (the invite link is `{{4}}`; our template sender has no link buttons) |
 
 Sample values: `{{1}}` = `Ravi`, `{{2}}` = `Skyline Builders`, `{{3}}` = `Kakkanad site`,
 `{{4}}` = `https://chat.whatsapp.com/AbCdEfGhIjK1234567890`.
+
+**Reworded 29 Oct** (same pattern as `mesiri_dpr_optin`/`mesiri_join_request`, see above):
+Meta's classifier flagged the straightforward "Hi {{1}}, ... has a WhatsApp group ... Join:
+{{4}}" wording as Marketing (an invitation reads as promotional); the "Site group access: ..."
+operational-notice wording, with the variables reordered in the sentence but unchanged in
+number and meaning, passed as Utility. Also found live: Meta refuses a body (or a button) that
+ends on a bare variable — `{{4}}` needed real words after it ("- open it to join"), not just
+trailing punctuation. `templates.py`'s `body_param_count=4` and `group_chat.py`'s
+`body_params=[name, company, site, link]` order are unchanged; Meta only cares about each
+`{{n}}`'s position number, not where it falls in the approved sentence, so no code change was
+needed.
 
 To switch it on: add `mesiri_group_invite` to `WHATSAPP_APPROVED_TEMPLATES`.
 

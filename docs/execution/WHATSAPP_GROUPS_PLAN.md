@@ -49,9 +49,9 @@ every event it does not recognise (`group.event_ignored`), so the live test show
 
 ## Switching it on
 
-1. Meta (WhatsApp Manager / App dashboard): subscribe the app to `group_lifecycle_update`,
-   `group_participants_update`, `group_settings_update`, `group_status_update`. Submit the
-   `mesiri_group_invite` template (text in `docs/ops/whatsapp-templates.md`).
+1. **Done 29 Oct:** the 4 `group_*` webhook fields are subscribed and `mesiri_group_invite` is
+   submitted (In review) — reworded to pass Meta's Utility classifier; current text in
+   `docs/ops/whatsapp-templates.md`.
 2. Server: `WHATSAPP_GROUPS_ENABLED=true` in the app's environment (web + worker), restart.
    When the template is approved, add `mesiri_group_invite` to `WHATSAPP_APPROVED_TEMPLATES`.
 3. Live test with our own numbers only: make a group for a test site, join, send "8 masons
