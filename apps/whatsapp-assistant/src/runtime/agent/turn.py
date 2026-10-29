@@ -404,6 +404,7 @@ async def _run_agent_turn(
     media_note = await _media_sent_note(message, deps)
     if media_note:
         context = replace(context, notes=[*context.notes, media_note])
+    context = await _with_media_in_turns(context, message)
     held = await _held_photos(actor, deps)
     if held:
         context = replace(
@@ -586,6 +587,31 @@ def _photo_looker(held: list[Any], deps: AgentTurnDeps) -> Callable[[], Awaitabl
         return await describe(held[0], None)
 
     return _look
+
+
+async def _with_media_in_turns(context: AgentContext, message: NormalizedMessage) -> AgentContext:
+    """Request 146: each earlier turn shows the pictures and files sent with it
+    ("[sent: picture: Today's workers list, 29 Oct]"), because a lookup's image or PDF
+    goes out after the run and the stored reply is only its words. Live 29 Oct: after
+    "Ithaa, innu vanna workkarsinte list." Mesiri said it could not send pictures."""
+    from channel.whatsapp import sent_text
+
+    try:
+        sent = await sent_text.recent_media_to(getattr(getattr(message, "sender", None), "wa_id", None))
+    except Exception:  # noqa: BLE001
+        return context
+    if not sent or not context.turns:
+        return context
+    turns = list(context.turns)
+    for label, at in sent:
+        # The turn it went out with: the latest one begun before the picture (a
+        # minute of slack: the turn may be recorded just after the send).
+        owner = max((i for i, t in enumerate(turns) if (t.at or 0.0) <= at + 60), default=None)
+        if owner is None:
+            continue
+        turn = turns[owner]
+        turns[owner] = replace(turn, assistant_reply=f"{turn.assistant_reply}\n[Mesiri also sent: {label}]".strip())
+    return replace(context, turns=tuple(turns))
 
 
 async def _media_sent_note(message: NormalizedMessage, deps: AgentTurnDeps) -> str | None:

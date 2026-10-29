@@ -105,6 +105,19 @@ def _one_name_per_trade(results: Any) -> None:
         results["trade_counts"] = [[trade, count] for trade, count in counts.items()]
 
 
+def _asked_label(message: Any, what: str, rows: int | None) -> str:
+    """Request 146: what a lookup's picture / PDF is, in the words the sender asked
+    with ("Account Balances list card (1 of 1), 30 rows, asked: 'send workers list as
+    image'"), so "is that the list I asked for?" is answered from it."""
+    ask = " ".join(str(getattr(message, "text", "") or "").split())[:80]
+    parts = [what]
+    if rows is not None:
+        parts.append(f"{rows} rows")
+    if ask:
+        parts.append(f"asked: '{ask}'")
+    return ", ".join(parts)
+
+
 @dataclass(slots=True)
 class QueryEntry(EntryScope):
     context_resolver: Any
@@ -283,7 +296,11 @@ class QueryEntry(EntryScope):
 
             async def _send_pdf() -> None:
                 sent = await self.send_document(
-                    message.sender.wa_id, data, filename=filename, caption=None, shows=f"PDF list: {filename}"
+                    message.sender.wa_id,
+                    data,
+                    filename=filename,
+                    caption=None,
+                    shows=_asked_label(message, f"PDF list {filename}", None),
                 )
                 if sent is False:
                     raise RuntimeError("send_document returned False")
@@ -331,7 +348,7 @@ class QueryEntry(EntryScope):
         for page, png in enumerate(pngs, start=1):
             name = f"{stem}.png" if len(pngs) == 1 else f"{stem}_{page}.png"
 
-            shows = f"{title}, list card ({page} of {len(pngs)})"
+            shows = _asked_label(message, f"{title} list card ({page} of {len(pngs)})", len(rows))
 
             async def _send_png(png: bytes = png, name: str = name, shows: str = shows) -> None:
                 sent = await self.send_image(
