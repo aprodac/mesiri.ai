@@ -78,8 +78,9 @@ def _build(monkeypatch, provider, work_site):
 
 def _work_site():
     redis = FakeRedis()
-    store = RedisActiveContextStore(redis)
-    return WorkSite(active_context=store, redis=redis), store
+    now = dt.datetime(2026, 10, 22, 1, tzinfo=dt.UTC)  # 06:30 India time
+    store = RedisActiveContextStore(redis, clock=lambda: now)
+    return WorkSite(active_context=store, redis=redis, clock=lambda: now), store
 
 
 async def test_the_days_first_message_waits_for_where_and_runs_after_the_tap(monkeypatch):
@@ -149,3 +150,24 @@ async def test_now_at_site_a_switches_mid_day(monkeypatch):
     assert (active.project_id, active.site_id) == ("pa", "a1")
     reply = deps["sender"].send_text.await_args.args[1]
     assert reply == "OK 👍 Site A (Project A) for the rest of today."
+
+
+async def test_sit02_sit03_two_waiting_messages_both_run_when_the_site_is_typed(monkeypatch):
+    """V1 audit: the second message does not replace the first, and typing the
+    site name answers the question like the tap."""
+    work_site, store = _work_site()
+    model = FakeToolCallingProvider(["Noted cement 👍", "Noted masons 👍"])
+    on_normalized, deps = _build(monkeypatch, model, work_site)
+
+    await on_normalized(_message("50 bags cement arrived", n=1), {})
+    await on_normalized(_message("12 masons today", n=2), {})
+    assert model.calls == 0  # both wait; the model has seen neither
+    assert deps["sender"].send_list.await_count == 2
+
+    await on_normalized(_message("Site B", n=3), {})
+
+    active = await store.get_active_context(organization_id=ORG, user_id=USER)
+    assert active.site_id == "b2"
+    assert model.calls == 2  # one turn per waiting message, in order
+    texts = [c.args[1] for c in deps["sender"].send_text.await_args_list]
+    assert any(t.startswith("👍 Site B (Project B) for today.") for t in texts)

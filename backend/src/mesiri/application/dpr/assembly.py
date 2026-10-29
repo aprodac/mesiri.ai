@@ -134,6 +134,19 @@ def _material_summary(
     ]
 
 
+#: Photos per work item kept in the payload (the document prints a few, "N more").
+MAX_PHOTOS_KEPT = 12
+
+
+def _quantities_of(row: dict[str, Any], quantities_by_activity: dict[Any, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    """The activity's quantities; a continued activity shows the quantity of
+    the day's update only (the start day's belong to that day)."""
+    if row.get("continued"):
+        said = row.get("quantity")
+        return [{"work_type": row.get("work_type"), **said}] if said else []
+    return quantities_by_activity.get(row["id"], [])
+
+
 def _normalised(text: Any) -> str:
     """Case, spacing and punctuation folded, so "Plastering, 2nd floor" and
     "plastering 2nd floor" compare equal."""
@@ -152,6 +165,9 @@ def _flag_possible_duplicates(activities: list[dict[str, Any]], rows: list[dict[
     rejects the day's drafts; nothing is merged or removed here."""
     seen: set[tuple[Any, ...]] = set()
     for activity, row in zip(activities, rows, strict=True):
+        if row.get("continued"):
+            activity["possible_duplicate"] = False  # an update, not a second entry
+            continue
         work_type = _normalised(row.get("work_type"))
         quantities = tuple(
             sorted(
@@ -174,12 +190,14 @@ def build_site_report_payload(
     quantities_by_activity: dict[Any, list[dict[str, Any]]],
     evidence_count_by_activity: dict[Any, int],
     issue_rows: list[dict[str, Any]],
+    photos_by_activity: dict[Any, list[dict[str, Any]]] | None = None,
     labour_lines: list[dict[str, Any]] | None = None,
     material_movement_rows: list[dict[str, Any]] | None = None,
     material_stock_rows: list[dict[str, Any]] | None = None,
     conditions: dict[str, Any] | None = None,
     review_states: dict[str, dict[Any, str]] | None = None,
     late_entries: list[dict[str, Any]] | None = None,
+    carried_issue_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Compose the payload dict. `activity_rows`/`issue_rows`/`labour_lines`/
     `material_movement_rows` are already scoped to the one site+date by the
@@ -209,9 +227,17 @@ def build_site_report_payload(
             "narrative": row.get("narrative"),
             "status": row.get("status"),
             "contractor": row.get("contractor"),
-            "quantities": quantities_by_activity.get(row["id"], []),
+            "quantities": _quantities_of(row, quantities_by_activity),
             "evidence_count": evidence_count_by_activity.get(row["id"], 0),
-            "review": review_of(fact_review.ACTIVITY, row["id"]),
+            # PHO-02: the photos' storage keys (the document embeds the pictures).
+            "photos": list((photos_by_activity or {}).get(row["id"], []))[:MAX_PHOTOS_KEPT],
+            # WRK-01: work started on an earlier day, updated on this one.
+            # Its review stays with the activity (the day it was started).
+            "continued": bool(row.get("continued")),
+            "started_on": str(row["started_on"]) if row.get("continued") else None,
+            "review": fact_review.CONFIRMED
+            if row.get("continued")
+            else review_of(fact_review.ACTIVITY, row["id"]),
         }
         for row in activity_rows
     ]
@@ -227,6 +253,22 @@ def build_site_report_payload(
         }
         for row in issue_rows
     ]
+    # BE-51: earlier days' issues still open on this day (or closed on it),
+    # each with the day it was reported. Kept apart from `issues`: they are
+    # not this day's entries, so they add no hours lost, no review item and
+    # no draft; they count towards the open issues, as the Today page does.
+    carried_issues = [
+        {
+            "issue_type": row.get("issue_type"),
+            "severity": row.get("severity"),
+            "narrative": row.get("narrative"),
+            "status": row.get("status"),
+            "reported_on": str(row.get("reported_on") or ""),
+        }
+        for row in carried_issue_rows or []
+    ]
+    from mesiri.application.dpr import open_issues
+
     materials = _material_summary(material_movement_rows or [], material_stock_rows)
     return {
         "level": "SITE",
@@ -237,7 +279,10 @@ def build_site_report_payload(
         "activity_count": len(activities),
         "possible_duplicates": sum(1 for a in activities if a["possible_duplicate"]),
         "issues": issues,
-        "open_issue_count": sum(1 for i in issues if i["status"] == "OPEN"),
+        "carried_issues": carried_issues,
+        # Request 127: the one open-issue rule (application/dpr/open_issues.py),
+        # the day's own and those still open from earlier days.
+        "open_issue_count": sum(1 for i in [*issues, *carried_issues] if open_issues.is_open(i["status"])),
         "evidence_count": sum(a["evidence_count"] for a in activities),
         "labour": _labour_summary(labour_lines or []),
         "materials": materials,
@@ -251,11 +296,16 @@ def build_site_report_payload(
 def _conditions(conditions: dict[str, Any], issues: list[dict[str, Any]]) -> dict[str, Any]:
     """The site day's conditions. Hours lost the engineer entered win; when
     nobody entered a figure it is the day's issue delays added up, marked
-    `hours_lost_source: "issues"` so the report can say where it came from."""
+    `hours_lost_source: "issues"` so the report can say where it came from.
+    BE-48: never more than a day (the dashboard's own limit), however long
+    each issue said it lasted -- "no work for 2 days" is not 48 h on one day."""
+    from mesiri.application.dpr.site_day import MAX_HOURS_LOST
+
     hours_lost = conditions.get("hours_lost")
     source = "entered"
     if hours_lost is None:
-        minutes = sum(int(i.get("delay_duration_minutes") or 0) for i in issues)
+        minutes = sum(max(int(i.get("delay_duration_minutes") or 0), 0) for i in issues)
+        minutes = min(minutes, MAX_HOURS_LOST * 60)
         hours_lost = round(minutes / 60, 1) if minutes else None
         source = "issues" if minutes else None
     return {
@@ -264,6 +314,38 @@ def _conditions(conditions: dict[str, Any], issues: list[dict[str, Any]]) -> dic
         "tomorrow_plan": conditions.get("tomorrow_plan"),
         "hours_lost": str(hours_lost) if hours_lost is not None else None,
         "hours_lost_source": source,
+    }
+
+
+def saved_rows_only(
+    rows: dict[str, list[dict[str, Any]]], review_states: dict[str, dict[Any, str]]
+) -> dict[str, list[dict[str, Any]]]:
+    """WA-77 (Alan, 25 Oct): the day's rows without the drafts (sent, Save
+    not yet tapped), for the report itself. `rows` has `activities`,
+    `issues`, `labour` (lines, keyed by `report_id`) and `materials`
+    (movements, keyed by `source_type`/`source_id`). Work continued from an
+    earlier day is reviewed with that work, so it always stays."""
+    from mesiri.application.dpr import fact_review
+
+    def saved(fact_type: str, fact_id: Any) -> bool:
+        return fact_review.counts((review_states.get(fact_type) or {}).get(fact_id))
+
+    material_type = {
+        "material_receipt": fact_review.MATERIAL_RECEIPT,
+        "material_usage": fact_review.MATERIAL_USAGE,
+    }
+    return {
+        "activities": [
+            r for r in rows["activities"] if r.get("continued") or saved(fact_review.ACTIVITY, r["id"])
+        ],
+        "issues": [r for r in rows["issues"] if saved(fact_review.SITE_ISSUE, r.get("id"))],
+        "labour": [r for r in rows["labour"] if saved(fact_review.LABOUR_REPORT, r["report_id"])],
+        "materials": [
+            r
+            for r in rows["materials"]
+            if (r.get("source_type") or "") not in material_type
+            or saved(material_type[r["source_type"]], r["source_id"])
+        ],
     }
 
 
@@ -290,6 +372,8 @@ def build_review_items(
 
     items: list[dict[str, Any]] = []
     for activity, row in zip(payload["activities"], activity_rows, strict=True):
+        if activity.get("continued"):
+            continue  # an update on an earlier day's work: confirmed with that work
         items.append(
             {
                 "fact_type": fact_review.ACTIVITY,
@@ -447,7 +531,7 @@ def build_project_report_payload(
             entry["received"] += Decimal(str(material.get("received") or 0))
             entry["used"] += Decimal(str(material.get("used") or 0))
 
-        for issue in payload.get("issues", []):
+        for issue in [*payload.get("issues", []), *payload.get("carried_issues", [])]:
             issues.append({**issue, "site_name": site_name})
 
     return {

@@ -92,7 +92,8 @@ async def test_ask_user_gives_one_button_for_a_comma_project():
     box = tb.AgentToolbox(SimpleNamespace(), scope, "text")
     await box.handle("ask_user", {"question": "Which project is Site B part of?", "options": ["Green Villa", "Kakkanad", "Tower A"], "other_parts": []})
     assert isinstance(box.parked, ReplySpec)
-    assert [b.title for b in box.parked.buttons] == ["Green Villa, Kakkanad", "Tower A"]
+    # 21 characters: too long for a 20-character button, so a list (never a cut button)
+    assert [r.title for r in box.parked.list_rows] == ["Green Villa, Kakkanad", "Tower A"]
 
 
 def test_choose_lists_names_in_quotes_so_a_comma_is_not_a_separator():

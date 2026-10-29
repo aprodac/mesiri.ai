@@ -1,30 +1,26 @@
 import * as React from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
-  Activity,
+  Activity as ActivityIcon,
   Search,
-  Filter,
   RefreshCw,
   Calendar,
-  Clock,
-  Paperclip,
-  CheckCircle2,
-  AlertTriangle,
-  PlayCircle,
-  XCircle,
-  HelpCircle,
   ChevronRight,
   Bot,
-  MessageSquare,
-  Scale,
-  History,
   Image as ImageIcon,
   Download,
-  Layers,
   X,
   Pencil,
   Trash2,
-  ShieldAlert,
+  CircleCheck,
+  CirclePlay,
+  CircleDashed,
+  CirclePause,
+  TriangleAlert,
+  TrendingUp,
+  StickyNote,
 } from 'lucide-react'
+import { ListChecks as IcListChecks, CirclePlay as IcCirclePlay, CircleCheck as IcCircleCheck, CirclePause as IcCirclePause } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
 import {
   fetchActivitiesApi,
@@ -38,15 +34,18 @@ import {
   type ActivityDetailResponse,
   type ActivityCorrection,
 } from '@/lib/api'
-import { KpiCard } from '@/components/ui/kpi-card'
-import { Badge } from '@/components/ui/badge'
+import { Callout, PageHeader, StatStrip } from '@/components/dpr-page'
+import { dayBand } from '@/lib/cues'
+import { useSiteNames } from '@/lib/site-names'
+import { useUrlState } from '@/lib/url-state'
+import { downloadTextFile, toCsv } from '@/lib/export'
+import { longDate, plural, qty, siteDayPath } from '@/lib/site-day'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { Fact, Facts, SheetHero, SheetSection } from '@/components/detail-sheet'
 import {
   Dialog,
   DialogContent,
@@ -58,84 +57,61 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn, toLocalISODate } from '@/lib/utils'
 
-// --- Status Badge ---
+// --- Status ---
+// The backend's activity statuses are PLANNED, IN_PROGRESS, STOPPED and
+// COMPLETED (activity_status enum). One icon + colour each (docs/DESIGN.md).
 
-function StatusBadge({ status }: { status: string }) {
-  const s = status.toLowerCase()
-  switch (s) {
-    case 'completed':
-      return (
-        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1 font-semibold text-[11px]">
-          <CheckCircle2 className="size-3" />Completed
-        </Badge>
-      )
-    case 'in_progress':
-      return (
-        <Badge variant="outline" className="bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30 gap-1 font-semibold text-[11px]">
-          <PlayCircle className="size-3" />In Progress
-        </Badge>
-      )
-    case 'planned':
-      return (
-        <Badge variant="outline" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 gap-1 font-semibold text-[11px]">
-          <Clock className="size-3" />Planned
-        </Badge>
-      )
-    case 'blocked':
-    case 'issue':
-      return (
-        <Badge variant="outline" className="bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30 gap-1 font-semibold text-[11px]">
-          <AlertTriangle className="size-3" />Blocked
-        </Badge>
-      )
-    case 'cancelled':
-      return (
-        <Badge variant="outline" className="bg-zinc-500/10 text-zinc-600 dark:text-zinc-400 border-zinc-500/30 gap-1 font-semibold text-[11px]">
-          <XCircle className="size-3" />Cancelled
-        </Badge>
-      )
-    default:
-      return (
-        <Badge variant="outline" className="bg-muted text-muted-foreground gap-1 font-semibold text-[11px]">
-          <HelpCircle className="size-3" />{status}
-        </Badge>
-      )
-  }
+const STATUS: Record<string, { label: string; icon: React.ComponentType<{ className?: string }>; className: string; chip: string }> = {
+  completed: { label: 'Completed', icon: CircleCheck, className: 'text-success', chip: 'bg-success-soft text-success' },
+  in_progress: { label: 'In progress', icon: CirclePlay, className: 'text-info', chip: 'bg-info-soft text-info' },
+  planned: { label: 'Planned', icon: CircleDashed, className: 'text-muted-foreground', chip: 'bg-muted text-muted-foreground' },
+  stopped: { label: 'Stopped', icon: CirclePause, className: 'text-draft', chip: 'bg-draft-soft text-draft' },
 }
 
-// --- Source Badge ---
-
-function SourceBadge({ source }: { source: string | null | undefined }) {
-  const isWa = source?.toLowerCase() === 'whatsapp'
-  return (
-    <Badge variant="secondary" className="text-[11px] font-medium border border-border/50 gap-1 bg-muted/30">
-      {isWa ? (
-        <><MessageSquare className="size-3 text-[#008069]" />WhatsApp</>
-      ) : (
-        <><Bot className="size-3 text-primary" />{source || 'Web'}</>
-      )}
-    </Badge>
-  )
+function statusOf(status: string) {
+  return STATUS[status.toLowerCase()] ?? { label: status, icon: CircleDashed, className: 'text-muted-foreground', chip: 'bg-muted text-muted-foreground' }
 }
 
-// --- Table Row Skeleton ---
+// WEB-39: how each kind of progress update looks in a work item's timeline
+// (progress_update_kind: STARTED, PROGRESS, PAUSED, RESUMED, COMPLETED, NOTE).
+const UPDATE_KINDS: Record<string, { label: string; icon: React.ComponentType<{ className?: string }>; dot: string; text: string }> = {
+  STARTED: { label: 'Started', icon: CirclePlay, dot: 'bg-info-soft text-info', text: 'text-info' },
+  PROGRESS: { label: 'Progress', icon: TrendingUp, dot: 'bg-info-soft text-info', text: '' },
+  PAUSED: { label: 'Paused', icon: CirclePause, dot: 'bg-draft-soft text-draft', text: 'text-draft' },
+  RESUMED: { label: 'Resumed', icon: CirclePlay, dot: 'bg-info-soft text-info', text: 'text-info' },
+  COMPLETED: { label: 'Completed', icon: CircleCheck, dot: 'bg-success-soft text-success', text: 'text-success' },
+  NOTE: { label: 'Note', icon: StickyNote, dot: 'bg-muted text-muted-foreground', text: '' },
+}
 
-function TableRowSkeleton() {
+function humanize(value: string | null | undefined): string {
+  if (!value) return ''
+  const text = value.replace(/_/g, ' ').trim()
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+/** "09:00:00" -> "9:00 am"; times arrive as plain clock strings. */
+function clock(value: string | null | undefined): string {
+  if (!value) return ''
+  const [h, m] = value.split(':').map(Number)
+  if (Number.isNaN(h)) return value
+  return new Date(2000, 0, 1, h, m || 0).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
+
+function RowSkeleton() {
   return (
-    <TableRow>
-      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-      <TableCell><div className="flex flex-col gap-1.5"><Skeleton className="h-4 w-40" /><Skeleton className="h-3 w-56" /></div></TableCell>
-      <TableCell><Skeleton className="h-4 w-28" /></TableCell>
-      <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
-      <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
-      <TableCell className="text-right"><Skeleton className="h-6 w-16 ml-auto" /></TableCell>
-    </TableRow>
+    <div className="flex items-center gap-3 py-3">
+      <Skeleton className="size-5 rounded-full" />
+      <div className="flex flex-1 flex-col gap-1.5">
+        <Skeleton className="h-4 w-56" />
+        <Skeleton className="h-3 w-40" />
+      </div>
+    </div>
   )
 }
 
 // --- Main Page ---
 
-export default function ActivitiesPage() {
+export default function ActivitiesPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { scope } = useScope()
 
   const [activities, setActivities] = React.useState<ActivitySummary[]>([])
@@ -143,12 +119,22 @@ export default function ActivitiesPage() {
   const [loading, setLoading] = React.useState<boolean>(true)
   const [error, setError] = React.useState<string | null>(null)
 
-  // Filters
-  const [statusFilter, setStatusFilter] = React.useState<string>('ALL')
-  const [searchQuery, setSearchQuery] = React.useState<string>('')
-  const [datePreset, setDatePreset] = React.useState<string>('ALL')
-  const [dateFrom, setDateFrom] = React.useState<string>('')
-  const [dateTo, setDateTo] = React.useState<string>('')
+  // Filters live in the address (survive Back/refresh, shareable). The date
+  // range is derived from the preset; only "Pick dates" stores from/to.
+  const [, setParams] = useSearchParams()
+  const [statusFilter, setStatusFilter] = useUrlState<string>('status', 'ALL')
+  const [searchQuery, setSearchQuery] = useUrlState<string>('q', '')
+  const [datePreset, setDatePreset] = useUrlState<string>('date', 'ALL')
+  const [customFrom, setDateFrom] = useUrlState<string>('from', '')
+  const [customTo, setDateTo] = useUrlState<string>('to', '')
+  const [dateFrom, dateTo] = React.useMemo(() => {
+    const now = new Date()
+    if (datePreset === 'TODAY') return [toLocalISODate(now), toLocalISODate(now)]
+    if (datePreset === 'THIS_WEEK') return [toLocalISODate(new Date(now.getTime() - 6 * 86_400_000)), toLocalISODate(now)]
+    if (datePreset === 'THIS_MONTH') return [toLocalISODate(new Date(now.getFullYear(), now.getMonth(), 1)), toLocalISODate(now)]
+    if (datePreset === 'CUSTOM') return [customFrom, customTo]
+    return ['', '']
+  }, [datePreset, customFrom, customTo])
 
   // Detail sheet
   const [selectedActivityId, setSelectedActivityId] = React.useState<string | null>(null)
@@ -289,26 +275,7 @@ export default function ActivitiesPage() {
     }
   }
 
-  const handleDatePresetChange = (val: string) => {
-    setDatePreset(val)
-    const now = new Date()
-    if (val === 'ALL') {
-      setDateFrom('')
-      setDateTo('')
-    } else if (val === 'TODAY') {
-      const todayStr = toLocalISODate(now)
-      setDateFrom(todayStr)
-      setDateTo(todayStr)
-    } else if (val === 'THIS_WEEK') {
-      const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-      setDateFrom(toLocalISODate(lastWeek))
-      setDateTo(toLocalISODate(now))
-    } else if (val === 'THIS_MONTH') {
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
-      setDateFrom(toLocalISODate(firstDay))
-      setDateTo(toLocalISODate(now))
-    }
-  }
+  const handleDatePresetChange = (val: string) => setDatePreset(val)
 
   const fetchList = React.useCallback(async () => {
     setLoading(true)
@@ -370,537 +337,508 @@ export default function ActivitiesPage() {
     totalCount: activities.length,
     inProgress: activities.filter((a) => a.status.toLowerCase() === 'in_progress').length,
     completed: activities.filter((a) => a.status.toLowerCase() === 'completed').length,
-    blocked: activities.filter((a) => ['blocked', 'issue'].includes(a.status.toLowerCase())).length,
-    planned: activities.filter((a) => a.status.toLowerCase() === 'planned').length,
+    stopped: activities.filter((a) => a.status.toLowerCase() === 'stopped').length,
   }), [activities])
 
-  const scopeLabel = React.useMemo(() => {
-    if (scope.mode === 'portfolio') return 'Portfolio Scope (All Projects)'
-    if (scope.mode === 'project') return `Project Scope: ${scope.projectName}`
-    return `Site Scope: ${scope.projectName} / ${scope.siteName}`
-  }, [scope])
+  const scopeLabel =
+    scope.mode === 'portfolio' ? 'All projects' : scope.mode === 'project' ? scope.projectName : `${scope.projectName} / ${scope.siteName}`
 
-  const hasActiveFilters = statusFilter !== 'ALL' || datePreset !== 'ALL' || !!dateFrom || !!dateTo || !!searchQuery
+  const names = useSiteNames()
 
-  const resetFilters = () => {
-    setStatusFilter('ALL')
-    setDatePreset('ALL')
-    setDateFrom('')
-    setDateTo('')
-    setSearchQuery('')
+  // Newest day first; within a day, one block per site.
+  const days = React.useMemo(() => {
+    const byDay = new Map<string, Map<string, ActivitySummary[]>>()
+    for (const act of filteredActivities) {
+      const day = byDay.get(act.activity_date) ?? new Map<string, ActivitySummary[]>()
+      day.set(act.site_id, [...(day.get(act.site_id) ?? []), act])
+      byDay.set(act.activity_date, day)
+    }
+    return [...byDay.entries()].sort(([a], [b]) => b.localeCompare(a))
+  }, [filteredActivities])
+
+  // The Details column only when some item says more than its work type.
+  const hasDetails = filteredActivities.some((a) => a.narrative && a.narrative.trim().toLowerCase() !== (a.work_type ?? '').trim().toLowerCase())
+
+  const hasActiveFilters = statusFilter !== 'ALL' || datePreset !== 'ALL' || !!searchQuery
+
+  // One address update: several setters in the same tick would overwrite
+  // each other.
+  const resetFilters = () =>
+    setParams(
+      (prev) => {
+        for (const key of ['status', 'q', 'date', 'from', 'to']) prev.delete(key)
+        return prev
+      },
+      { replace: true },
+    )
+
+  const exportCsv = () => {
+    const rows = filteredActivities.map((a) => [
+      a.activity_date,
+      names.get(a.site_id)?.project ?? '',
+      names.get(a.site_id)?.name ?? '',
+      a.work_type ?? '',
+      a.narrative ?? '',
+      a.contractor ?? '',
+      statusOf(a.status).label,
+      a.started_at ?? '',
+      a.source,
+    ])
+    downloadTextFile(
+      `activities-${toLocalISODate(new Date())}.csv`,
+      toCsv(['Date', 'Project', 'Site', 'Work', 'Description', 'Contractor', 'Status', 'Started', 'Source'], rows),
+    )
   }
 
   return (
-    <div className="flex flex-col gap-4 w-full max-w-full relative pb-12">
-
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3.5">
-        <div className="flex items-center gap-3">
-          <div className="size-10 rounded-lg border border-violet-500/30 bg-violet-500/10 flex items-center justify-center text-violet-600 dark:text-violet-400 shrink-0 shadow-2xs">
-            <Activity className="size-5" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              Site Activities
-              <Badge variant="outline" className="text-[10px] font-mono border-violet-500/30 text-violet-600 dark:text-violet-400">
-                Operations Module
-              </Badge>
-            </h1>
-            <p className="text-xs text-muted-foreground font-medium">{scopeLabel}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs font-medium" onClick={() => alert('Exporting Activities as CSV...')}>
-            <Download className="size-3.5" />Export CSV
-          </Button>
-          <Button variant="outline" size="sm" onClick={fetchList} disabled={loading} className="h-8 gap-1.5 text-xs">
-            <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} />Refresh
-          </Button>
-        </div>
-      </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard
-          title="Total Activities"
-          value={<span className="text-violet-600 dark:text-violet-400">{stats.totalCount}</span>}
-          trend="neutral"
-          trendValue={`${stats.planned} Planned`}
-          description="Logged site activities"
-          icon={<Activity className="text-violet-500" />}
-          chartData={[4, 8, 6, 12, 10, 15, 18, 20]}
-        />
-        <KpiCard
-          title="In Progress"
-          value={<span className="text-sky-600 dark:text-sky-400">{stats.inProgress}</span>}
-          trend="up"
-          trendValue="Active Now"
-          description="Currently running work"
-          icon={<PlayCircle className="text-sky-500" />}
-          chartData={[2, 4, 3, 6, 5, 8, 7, 9]}
-        />
-        <KpiCard
-          title="Completed"
-          value={<span className="text-emerald-600 dark:text-emerald-400">{stats.completed}</span>}
-          trend="up"
-          trendValue={stats.totalCount > 0 ? `${Math.round((stats.completed / stats.totalCount) * 100)}% Done` : '0% Done'}
-          description="Successfully finished tasks"
-          icon={<CheckCircle2 className="text-emerald-500" />}
-          chartData={[1, 3, 5, 7, 9, 11, 14, 16]}
-        />
-        <KpiCard
-          title="Blocked / Issues"
-          value={<span className="text-rose-600 dark:text-rose-400">{stats.blocked}</span>}
-          trend={stats.blocked > 0 ? 'down' : 'neutral'}
-          trendValue={stats.blocked > 0 ? 'Needs Attention' : 'All Clear'}
-          description="Requiring management review"
-          icon={<AlertTriangle className="text-rose-500" />}
-          chartData={[1, 2, 1, 3, 2, 4, 2, 3]}
-        />
-      </div>
-
-      {/* Filter Toolbar */}
-      <div className="flex flex-col sm:flex-row gap-2.5 items-center justify-between border border-border/80 p-2.5 rounded-lg bg-card/40">
-        <div className="flex flex-wrap gap-2 w-full sm:w-auto flex-1 items-center">
-          {/* Search */}
-          <div className="relative w-full sm:w-60">
-            <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-            <Input
-              placeholder="Search work type, contractor..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 h-9 text-xs"
-            />
-          </div>
-
-          {/* Status filter */}
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-9 text-xs w-full sm:w-36">
-              <Filter className="size-3.5 mr-1.5 text-muted-foreground shrink-0" />
-              <SelectValue placeholder="All Statuses" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All Statuses</SelectItem>
-              <SelectItem value="PLANNED">Planned</SelectItem>
-              <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-              <SelectItem value="COMPLETED">Completed</SelectItem>
-              <SelectItem value="BLOCKED">Blocked</SelectItem>
-              <SelectItem value="CANCELLED">Cancelled</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {/* Date Preset Dropdown */}
-          <Select value={datePreset} onValueChange={handleDatePresetChange}>
-            <SelectTrigger className="h-9 text-xs w-full sm:w-36">
-              <Calendar className="size-3.5 mr-1.5 text-muted-foreground shrink-0" />
-              <SelectValue placeholder="All Dates" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All Dates</SelectItem>
-              <SelectItem value="TODAY">Today</SelectItem>
-              <SelectItem value="THIS_WEEK">This Week</SelectItem>
-              <SelectItem value="THIS_MONTH">This Month</SelectItem>
-              <SelectItem value="CUSTOM">Custom Range</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {/* Custom Date Range Inputs - Clean aligned pill box */}
-          {(datePreset === 'CUSTOM' || (dateFrom && datePreset !== 'TODAY' && datePreset !== 'THIS_WEEK' && datePreset !== 'THIS_MONTH')) && (
-            <div className="flex items-center gap-1.5 bg-muted/40 p-1 px-2.5 rounded-md border border-border/80 h-9">
-              <span className="text-[11px] text-muted-foreground font-semibold shrink-0">From</span>
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => {
-                  setDateFrom(e.target.value)
-                  setDatePreset('CUSTOM')
-                }}
-                className="w-36 h-7 text-xs bg-background font-mono dark:[color-scheme:dark] px-2 py-0 border-border/80 shadow-2xs"
-              />
-              <span className="text-[11px] text-muted-foreground font-semibold shrink-0">To</span>
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={(e) => {
-                  setDateTo(e.target.value)
-                  setDatePreset('CUSTOM')
-                }}
-                className="w-36 h-7 text-xs bg-background font-mono dark:[color-scheme:dark] px-2 py-0 border-border/80 shadow-2xs"
-              />
-            </div>
-          )}
-
-          {hasActiveFilters && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={resetFilters}
-              className="h-9 text-xs text-muted-foreground hover:text-foreground gap-1 px-2"
-            >
-              <X className="size-3.5" />
-              Clear
+    <div className={embedded ? 'flex flex-col gap-4' : 'mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2'}>
+      {embedded ? (
+        <div className="flex justify-end gap-2 sm:-mt-[52px] sm:self-end">
+          <>
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={exportCsv} disabled={loading || filteredActivities.length === 0}>
+              <Download className="size-4" /> Export CSV
             </Button>
-          )}
+            <Button variant="ghost" size="icon" className="size-8" onClick={fetchList} disabled={loading} title="Refresh" aria-label="Refresh">
+              <RefreshCw className={cn('size-4', loading && 'animate-spin')} />
+            </Button>
+          </>
         </div>
+      ) : (
+        <PageHeader
+          title="Activities"
+          subtitle={<>Every work item the sites sent, newest first · {scopeLabel}</>}
+          actions={
+            <>
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={exportCsv} disabled={loading || filteredActivities.length === 0}>
+                <Download className="size-4" /> Export CSV
+              </Button>
+              <Button variant="ghost" size="icon" className="size-8" onClick={fetchList} disabled={loading} title="Refresh" aria-label="Refresh">
+                <RefreshCw className={cn('size-4', loading && 'animate-spin')} />
+              </Button>
+            </>
+          }
+        />
+      )}
 
-        <p className="text-xs text-muted-foreground shrink-0 font-medium">
-          {filteredActivities.length} of {total} activities
-        </p>
-      </div>
+      <StatStrip
+        stats={[
+          { label: 'Work items', value: stats.totalCount || '—', icon: IcListChecks },
+          { label: 'In progress', value: stats.inProgress || '—', tone: stats.inProgress ? 'info' : 'default', icon: IcCirclePlay },
+          { label: 'Completed', value: stats.completed || '—', tone: stats.completed ? 'good' : 'default', icon: IcCircleCheck },
+          { label: 'Stopped', value: stats.stopped || '—', tone: stats.stopped > 0 ? 'warn' : 'default', icon: IcCirclePause, hint: stats.stopped ? 'needs a look' : undefined },
+        ]}
+      />
 
-      {/* Main Table */}
-      <div className="rounded-lg border border-border/80 overflow-hidden bg-card">
-        <div className="flex items-center justify-between px-4 py-2.5 border-b bg-muted/20">
-          <div className="flex items-center gap-2">
-            <Layers className="size-4 text-muted-foreground" />
-            <span className="text-xs font-semibold text-foreground">Activity Records</span>
-          </div>
-          {!loading && !error && (
-            <span className="text-[11px] text-muted-foreground font-mono">{filteredActivities.length} records</span>
-          )}
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:w-64">
+          <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+          <Input
+            placeholder="Search work, contractor…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-9 pl-8"
+          />
         </div>
-
-        {error ? (
-          <div className="p-12 text-center flex flex-col items-center justify-center gap-3">
-            <div className="size-12 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
-              <AlertTriangle className="size-5 text-rose-500" />
-            </div>
-            <div>
-              <h3 className="font-bold text-foreground text-sm">Failed to load activities</h3>
-              <p className="text-xs text-muted-foreground mt-1 max-w-md">{error}</p>
-            </div>
-            <Button variant="outline" size="sm" onClick={fetchList} className="mt-1 text-xs h-8">Try Again</Button>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="h-9 w-[150px]">
+            <SelectValue placeholder="Any status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Any status</SelectItem>
+            <SelectItem value="IN_PROGRESS">In progress</SelectItem>
+            <SelectItem value="COMPLETED">Completed</SelectItem>
+            <SelectItem value="STOPPED">Stopped</SelectItem>
+            <SelectItem value="PLANNED">Planned</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={datePreset} onValueChange={handleDatePresetChange}>
+          <SelectTrigger className="h-9 w-[150px]">
+            <Calendar className="mr-1 size-4 text-muted-foreground" />
+            <SelectValue placeholder="Any date" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Any date</SelectItem>
+            <SelectItem value="TODAY">Today</SelectItem>
+            <SelectItem value="THIS_WEEK">Last 7 days</SelectItem>
+            <SelectItem value="THIS_MONTH">This month</SelectItem>
+            <SelectItem value="CUSTOM">Pick dates</SelectItem>
+          </SelectContent>
+        </Select>
+        {datePreset === 'CUSTOM' && (
+          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Input type="date" value={customFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 w-[150px] dark:[color-scheme:dark]" />
+            to
+            <Input type="date" value={customTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 w-[150px] dark:[color-scheme:dark]" />
           </div>
-        ) : (
-          <Table>
-            <TableHeader className="bg-muted/40 text-xs">
-              <TableRow>
-                <TableHead className="w-[120px] font-semibold">Date</TableHead>
-                <TableHead className="font-semibold">Work Type / Package</TableHead>
-                <TableHead className="font-semibold">Contractor</TableHead>
-                <TableHead className="w-[130px] font-semibold">Status</TableHead>
-                <TableHead className="w-[110px] font-semibold">Source</TableHead>
-                <TableHead className="w-[90px] text-right font-semibold">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody className="text-xs">
-              {loading ? (
-                Array.from({ length: 6 }).map((_, i) => <TableRowSkeleton key={i} />)
-              ) : filteredActivities.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6}>
-                    <div className="py-16 text-center flex flex-col items-center justify-center gap-3">
-                      <div className="size-12 rounded-full bg-muted border border-border flex items-center justify-center">
-                        <Activity className="size-5 text-muted-foreground/40" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">No activities found</p>
-                        <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-                          {hasActiveFilters ? 'No records match your current filters. Try clearing them.' : 'No activity records have been logged for this scope yet.'}
-                        </p>
-                      </div>
-                      {hasActiveFilters && (
-                        <Button variant="outline" size="sm" onClick={resetFilters} className="text-xs h-8 mt-1">Clear filters</Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredActivities.map((act) => (
-                  <TableRow key={act.id} className="hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => setSelectedActivityId(act.id)}>
-                    <TableCell className="font-medium whitespace-nowrap">
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-foreground">{act.activity_date}</span>
-                        {act.started_at && (
-                          <span className="text-[11px] text-muted-foreground font-mono">
-                            {act.started_at}{act.ended_at ? ` \u2013 ${act.ended_at}` : ''}
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-0.5">
-                        <span className="font-bold text-foreground">{act.work_type || 'General Work Activity'}</span>
-                        {act.narrative && <p className="text-muted-foreground line-clamp-1 text-[11px]">{act.narrative}</p>}
-                      </div>
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap font-medium text-foreground">
-                      {act.contractor || <span className="text-muted-foreground italic">Direct Labour</span>}
-                    </TableCell>
-                    <TableCell><StatusBadge status={act.status} /></TableCell>
-                    <TableCell><SourceBadge source={act.source} /></TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" className="h-7 text-xs font-semibold gap-1 text-violet-600 hover:text-violet-700 hover:bg-violet-500/10" onClick={(e) => { e.stopPropagation(); setSelectedActivityId(act.id) }}>
-                        Details<ChevronRight className="size-3" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
         )}
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" onClick={resetFilters} className="gap-1 text-muted-foreground">
+            <X className="size-4" /> Clear
+          </Button>
+        )}
+        <span className="ml-auto text-sm text-muted-foreground">
+          {filteredActivities.length === total ? plural(total, 'work item') : `${filteredActivities.length} of ${total}`}
+        </span>
       </div>
 
-      {/* Activity Detail Sheet */}
-      <Sheet open={!!selectedActivityId} onOpenChange={(open) => !open && setSelectedActivityId(null)}>
-        <SheetContent className="sm:max-w-xl overflow-y-auto w-full p-0">
-          <SheetHeader className="px-6 pt-5 pb-4 border-b bg-muted/20 shrink-0">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className="size-9 rounded-lg bg-violet-500/10 border border-violet-500/30 flex items-center justify-center shrink-0">
-                  <Activity className="size-4 text-violet-600 dark:text-violet-400" />
-                </div>
-                <div>
-                  <SheetTitle className="text-sm font-bold">Activity Detail</SheetTitle>
-                  <SheetDescription className="text-[11px] mt-0.5">Quantities, progress updates, and evidence</SheetDescription>
-                </div>
+      {/* List: a ledger table (desktop), by day then site (phones) */}
+      {error ? (
+        <Callout tone="draft" icon={TriangleAlert} action={<Button variant="outline" size="sm" className="bg-background" onClick={fetchList}>Try again</Button>}>
+          Activities could not be loaded. {error}
+        </Callout>
+      ) : loading ? (
+        <div className="flex flex-col divide-y">{Array.from({ length: 6 }).map((_, i) => <RowSkeleton key={i} />)}</div>
+      ) : days.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
+          <ActivityIcon className="size-6 text-muted-foreground" />
+          <p className="text-sm font-medium">{hasActiveFilters ? 'Nothing matches these filters' : 'No work reported yet'}</p>
+          <p className="text-sm text-muted-foreground">
+            {hasActiveFilters ? 'Try clearing them.' : 'Work the sites send on WhatsApp shows here.'}
+          </p>
+          {hasActiveFilters && <Button variant="outline" size="sm" onClick={resetFilters}>Clear filters</Button>}
+        </div>
+      ) : (
+        <>
+        {/* Desktop: one ledger table, newest first (WEB-34). */}
+        <div className="hidden overflow-x-auto rounded-lg border sm:block">
+          <table className="w-full min-w-[820px] text-sm">
+            <thead className="sticky top-0 bg-muted/60 text-xs text-muted-foreground">
+              <tr className="text-left">
+                <th className="px-3 py-2 font-medium">Date</th>
+                <th className="px-3 py-2 font-medium">Site</th>
+                <th className="px-3 py-2 font-medium">Work</th>
+                {hasDetails && <th className="px-3 py-2 font-medium">Details</th>}
+                <th className="px-3 py-2 font-medium">Contractor</th>
+                <th className="px-3 py-2 font-medium">Status</th>
+                <th className="px-3 py-2 font-medium">Time</th>
+                <th className="px-3 py-2 font-medium">From</th>
+              </tr>
+            </thead>
+            <tbody>
+              {days.flatMap(([day, sites], di) =>
+                [...sites.entries()].flatMap(([siteId, acts], si) =>
+                  acts.map((act, ai) => {
+                    const st = statusOf(act.status)
+                    const site = names.get(siteId)
+                    const firstOfDay = si === 0 && ai === 0
+                    const detail = act.narrative && act.narrative.trim().toLowerCase() !== (act.work_type ?? '').trim().toLowerCase() ? act.narrative : ''
+                    return (
+                      <tr
+                        key={act.id}
+                        onClick={() => setSelectedActivityId(act.id)}
+                        // WEB-37: alternate days shaded, each day a block.
+                        className={cn('cursor-pointer border-t hover:bg-muted/40', dayBand(di), firstOfDay && di > 0 && 'border-t-foreground/15')}
+                      >
+                        <td className={cn('whitespace-nowrap px-3 py-1.5 font-medium', !firstOfDay && 'text-transparent')}>
+                          {new Date(`${day}T00:00:00`).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-1.5">
+                          {ai === 0 ? (
+                            <Link to={siteDayPath(siteId, day)} onClick={(e) => e.stopPropagation()} className="hover:underline" title="Open the site report">
+                              {site?.name ?? 'Site'}
+                              {scope.mode === 'portfolio' && site?.project && <span className="text-xs text-muted-foreground"> · {site.project}</span>}
+                            </Link>
+                          ) : (
+                            <span className="text-transparent">{site?.name}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-1.5 font-medium">{humanize(act.work_type) || 'Work'}</td>
+                        {hasDetails && <td className="max-w-[260px] truncate px-3 py-1.5 text-muted-foreground">{detail}</td>}
+                        <td className="whitespace-nowrap px-3 py-1.5 text-muted-foreground">{act.contractor ?? ''}</td>
+                        <td className={cn('whitespace-nowrap px-3 py-1.5 font-medium', st.className)}>
+                          <span className="inline-flex items-center gap-1.5">
+                            <st.icon className="size-3.5" /> {st.label}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-muted-foreground">{clock(act.started_at) ?? ''}</td>
+                        <td className="whitespace-nowrap px-3 py-1.5 text-muted-foreground">{act.source?.toLowerCase() === 'whatsapp' ? 'WhatsApp' : humanize(act.source)}</td>
+                      </tr>
+                    )
+                  }),
+                ),
+              )}
+            </tbody>
+          </table>
+        </div>
+        {/* Phones: by day, then by site. */}
+        <div className="flex flex-col gap-5 sm:hidden">
+          {days.map(([day, sites]) => (
+            <section key={day} className="flex flex-col">
+              <h2 className="sticky top-[60px] z-10 -mx-1 flex items-baseline gap-2 bg-background/95 px-1 py-1.5 text-sm font-semibold backdrop-blur">
+                {longDate(day)}
+                <span className="font-normal text-muted-foreground">{plural([...sites.values()].flat().length, 'work item')}</span>
+              </h2>
+              <div className="flex flex-col gap-3">
+                {[...sites.entries()].map(([siteId, acts]) => {
+                  const site = names.get(siteId)
+                  return (
+                    <div key={siteId} className="rounded-xl border">
+                      <div className="flex items-center justify-between gap-2 border-b bg-muted/40 px-4 py-2">
+                        <span className="min-w-0 truncate text-sm">
+                          <span className="font-medium">{site?.name ?? 'Site'}</span>
+                          {site?.project && <span className="text-muted-foreground"> · {site.project}</span>}
+                        </span>
+                        <Link to={siteDayPath(siteId, day)} className="inline-flex shrink-0 items-center gap-0.5 text-xs font-medium text-primary hover:underline">
+                          Site report <ChevronRight className="size-3.5" />
+                        </Link>
+                      </div>
+                      <ul className="flex flex-col divide-y">
+                        {acts.map((act) => {
+                          const st = statusOf(act.status)
+                          const title = humanize(act.work_type) || 'Work'
+                          const detail = act.narrative && act.narrative.trim().toLowerCase() !== (act.work_type ?? '').trim().toLowerCase() ? act.narrative : null
+                          return (
+                            <li key={act.id}>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedActivityId(act.id)}
+                                className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/50"
+                              >
+                                <st.icon className={cn('size-5 shrink-0', st.className)} />
+                                <div className="flex min-w-0 flex-1 flex-col">
+                                  <span className="truncate font-medium">{title}</span>
+                                  <span className="truncate text-xs text-muted-foreground">
+                                    {[detail, act.contractor, clock(act.started_at), act.source?.toLowerCase() === 'whatsapp' ? 'WhatsApp' : act.source]
+                                      .filter(Boolean)
+                                      .join(' · ')}
+                                  </span>
+                                </div>
+                                <span className={cn('hidden text-xs font-medium sm:inline', st.className)}>{st.label}</span>
+                                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                              </button>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </div>
+                  )
+                })}
               </div>
-              {detailData && <StatusBadge status={detailData.status} />}
+            </section>
+          ))}
+        </div>
+        </>
+      )}
+
+      {/* Activity Detail Sheet (WEB-36: the side-panel layout, detail-sheet.tsx;
+          sections in a column instead of tabs, empty ones left out) */}
+      <Sheet open={!!selectedActivityId} onOpenChange={(open) => !open && setSelectedActivityId(null)}>
+        <SheetContent className="w-full gap-0 overflow-y-auto p-0 sm:max-w-xl">
+          {detailLoading ? (
+            <div className="flex flex-col gap-4 p-6">
+              <SheetTitle className="sr-only">Loading</SheetTitle>
+              <Skeleton className="h-8 w-3/4" />
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-36 w-full" />
             </div>
-            {detailData && (
-              <div className="flex items-center gap-2 mt-3">
-                <Button size="sm" variant="outline" className="h-7 gap-1.5 text-[11px]" onClick={openEdit}>
-                  <Pencil className="size-3" />Correct Details
+          ) : detailError ? (
+            <div className="flex flex-col items-center gap-2 py-16 text-center">
+              <SheetTitle className="sr-only">Could not load</SheetTitle>
+              <TriangleAlert className="size-5 text-destructive" />
+              <p className="text-sm font-medium">{detailError}</p>
+            </div>
+          ) : detailData ? (
+            <>
+              <SheetHero
+                tone={
+                  detailData.status.toLowerCase() === 'completed' ? 'in' : detailData.status.toLowerCase() === 'stopped' ? 'warn' : 'neutral'
+                }
+                kicker={statusOf(detailData.status).label}
+                lead={
+                  detailData.quantities?.length ? (
+                    <>
+                      {qty(String(detailData.quantities[0].quantity))}{' '}
+                      <span className="text-xl font-medium text-muted-foreground">{detailData.quantities[0].unit || ''}</span>
+                    </>
+                  ) : undefined
+                }
+                title={humanize(detailData.work_type) || 'Work item'}
+              >
+                <span>{[names.get(detailData.site_id)?.name, names.get(detailData.site_id)?.project].filter(Boolean).join(' · ') || 'Site'}</span>
+                <span>{longDate(detailData.activity_date)}</span>
+              </SheetHero>
+
+              <div className="flex items-center gap-2 border-b px-5 py-2.5">
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={openEdit}>
+                  <Pencil className="size-3.5" /> Correct
                 </Button>
                 <Button
                   size="sm"
-                  variant="outline"
-                  className="h-7 gap-1.5 text-[11px] text-rose-600 dark:text-rose-400 border-rose-500/30 hover:bg-rose-500/10"
+                  variant="ghost"
+                  className="gap-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                   onClick={() => { setVoidReason(''); setVoidError(null); setVoidActivityOpen(true) }}
                 >
-                  <Trash2 className="size-3" />Remove Activity
+                  <Trash2 className="size-3.5" /> Remove
+                </Button>
+                <Button asChild size="sm" variant="ghost" className="ml-auto gap-1 text-primary">
+                  <Link to={siteDayPath(detailData.site_id, detailData.activity_date)}>
+                    Site report <ChevronRight className="size-3.5" />
+                  </Link>
                 </Button>
               </div>
-            )}
-          </SheetHeader>
 
-          <div className="p-6">
-            {detailLoading ? (
-              <div className="space-y-4">
-                <Skeleton className="h-5 w-3/4" />
-                <Skeleton className="h-24 w-full" />
-                <Skeleton className="h-36 w-full" />
-              </div>
-            ) : detailError ? (
-              <div className="py-10 text-center flex flex-col items-center gap-2">
-                <div className="size-10 rounded-full bg-rose-500/10 flex items-center justify-center">
-                  <AlertTriangle className="size-5 text-rose-500" />
-                </div>
-                <p className="text-xs font-semibold text-foreground">{detailError}</p>
-              </div>
-            ) : detailData ? (
-              <div className="space-y-5 text-xs">
-                {/* Metadata Grid */}
-                <div className="grid grid-cols-2 gap-x-4 gap-y-3 p-4 rounded-lg border border-border/70 bg-muted/10">
-                  <div>
-                    <p className="text-muted-foreground font-medium mb-0.5">Work Type</p>
-                    <p className="font-bold text-foreground">{detailData.work_type || 'General Activity'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground font-medium mb-0.5">Activity Date</p>
-                    <p className="font-bold text-foreground">{detailData.activity_date}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground font-medium mb-0.5">Contractor / Sub</p>
-                    <p className="font-semibold text-foreground">{detailData.contractor || 'Direct Payroll'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground font-medium mb-0.5">Reporting Source</p>
-                    <p className="font-semibold text-foreground capitalize">{detailData.source}</p>
-                  </div>
+              {detailData.narrative && detailData.narrative.trim().toLowerCase() !== (detailData.work_type ?? '').trim().toLowerCase() && (
+                <SheetSection title="What was done">
+                  <p className="text-sm leading-relaxed">{detailData.narrative}</p>
+                </SheetSection>
+              )}
+
+              <SheetSection title="Details" className="border-t first:border-t-0">
+                <Facts>
+                  <Fact label="Contractor">{detailData.contractor || 'Own workers'}</Fact>
                   {detailData.started_at && (
-                    <div className="col-span-2">
-                      <p className="text-muted-foreground font-medium mb-0.5">Time Window</p>
-                      <p className="font-semibold text-foreground font-mono">
-                        {detailData.started_at}{detailData.ended_at ? ` \u2013 ${detailData.ended_at}` : ''}
-                      </p>
-                    </div>
+                    <Fact label="Time">
+                      {clock(detailData.started_at)}{detailData.ended_at ? ` – ${clock(detailData.ended_at)}` : ''}
+                    </Fact>
                   )}
-                </div>
+                  <Fact label="Sent">{detailData.source?.toLowerCase() === 'whatsapp' ? 'On WhatsApp' : humanize(detailData.source) || 'On the dashboard'}</Fact>
+                </Facts>
+              </SheetSection>
 
-                {/* Narrative */}
-                {detailData.narrative && (
-                  <div className="space-y-1.5">
-                    <p className="font-bold text-foreground">Activity Narrative</p>
-                    <div className="p-3.5 rounded-lg border border-border/60 bg-background leading-relaxed text-muted-foreground">
-                      {detailData.narrative}
-                    </div>
-                  </div>
-                )}
+              {detailData.quantities && detailData.quantities.length > 0 && (
+                <SheetSection title="Quantities" className="border-t">
+                  <table className="w-full text-sm">
+                    <tbody className="divide-y">
+                      {detailData.quantities.map((q) => (
+                        <tr key={q.id}>
+                          <td className="py-2 pr-2 font-medium">{humanize(q.work_type) || 'Work'}</td>
+                          <td className="py-2 pr-2 text-muted-foreground">{humanize(q.measurement_type?.toLowerCase())}</td>
+                          <td className="py-2 text-right font-semibold tabular-nums">{qty(String(q.quantity))} {q.unit || ''}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </SheetSection>
+              )}
 
-                {/* Tabs */}
-                <Tabs defaultValue="quantities" className="w-full">
-                  <TabsList className="grid grid-cols-4 w-full h-9">
-                    <TabsTrigger value="quantities" className="text-xs gap-1.5">
-                      <Scale className="size-3.5" />Quantities ({detailData.quantities?.length || 0})
-                    </TabsTrigger>
-                    <TabsTrigger value="updates" className="text-xs gap-1.5">
-                      <History className="size-3.5" />Updates ({detailData.progress_updates?.length || 0})
-                    </TabsTrigger>
-                    <TabsTrigger value="attachments" className="text-xs gap-1.5">
-                      <Paperclip className="size-3.5" />Evidence ({detailData.attachments?.length || 0})
-                    </TabsTrigger>
-                    <TabsTrigger value="corrections" className="text-xs gap-1.5">
-                      <ShieldAlert className="size-3.5" />Trail ({corrections.length})
-                    </TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="quantities" className="pt-3">
-                    {!detailData.quantities || detailData.quantities.length === 0 ? (
-                      <div className="text-center py-8 text-muted-foreground">
-                        <Scale className="size-7 mx-auto mb-2 opacity-30" />
-                        <p className="text-[11px]">No quantity measurements logged for this activity.</p>
-                      </div>
-                    ) : (
-                      <div className="rounded-lg border border-border/70 overflow-hidden">
-                        <Table>
-                          <TableHeader className="bg-muted/30 text-[11px]">
-                            <TableRow>
-                              <TableHead>Type</TableHead>
-                              <TableHead>Measurement</TableHead>
-                              <TableHead className="text-right">Quantity</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody className="text-xs">
-                            {detailData.quantities.map((q) => (
-                              <TableRow key={q.id}>
-                                <TableCell className="font-semibold">{q.work_type || 'Main Work'}</TableCell>
-                                <TableCell className="capitalize text-muted-foreground">{q.measurement_type}</TableCell>
-                                <TableCell className="text-right font-bold font-mono">{q.quantity} {q.unit || ''}</TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    )}
-                  </TabsContent>
-
-                  <TabsContent value="updates" className="pt-3">
-                    {!detailData.progress_updates || detailData.progress_updates.length === 0 ? (
-                      <div className="text-center py-8 text-muted-foreground">
-                        <History className="size-7 mx-auto mb-2 opacity-30" />
-                        <p className="text-[11px]">No incremental progress updates recorded yet.</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3 border-l-2 border-violet-500/30 pl-4 py-1 ml-2">
-                        {detailData.progress_updates.map((upd) => {
-                          const superseded = detailData.progress_updates.some((other) => other.supersedes_id === upd.id)
-                          return (
-                            <div key={upd.id} className={cn('relative space-y-1', superseded && 'opacity-50')}>
-                              <div className="absolute -left-[21px] top-1 size-2.5 rounded-full bg-violet-500" />
-                              <div className="flex items-center justify-between text-[11px] gap-2">
-                                <span className="font-bold text-foreground capitalize">{upd.update_kind}</span>
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <span className="text-muted-foreground font-mono">{new Date(upd.occurred_at).toLocaleString()}</span>
-                                  {!superseded && (
-                                    <>
-                                      <button
-                                        type="button"
-                                        className="text-muted-foreground hover:text-foreground"
-                                        title="Correct this quantity"
-                                        onClick={() => openCorrectUpdate(upd.id, upd.quantity)}
-                                      >
-                                        <Pencil className="size-3" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="text-muted-foreground hover:text-rose-500"
-                                        title="Remove this update"
-                                        onClick={() => { setVoidUpdateId(upd.id); setVoidUpdateReason(''); setVoidUpdateError(null) }}
-                                      >
-                                        <Trash2 className="size-3" />
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                              {upd.narrative && <p className="text-muted-foreground">{upd.narrative}</p>}
-                              {upd.quantity != null && (
-                                <Badge variant="outline" className="font-mono font-semibold text-[10px]">+{upd.quantity} {upd.unit || ''}</Badge>
-                              )}
-                              {upd.supersedes_id && (
-                                <p className="text-[10px] text-amber-600 dark:text-amber-400">Corrects a previous entry</p>
-                              )}
-                              {superseded && (
-                                <p className="text-[10px] text-muted-foreground italic">Superseded by a correction below</p>
-                              )}
+              {detailData.progress_updates && detailData.progress_updates.length > 0 && (
+                <SheetSection title={`Updates · ${detailData.progress_updates.length}`} className="border-t">
+                  {/* WEB-39: each kind of update has its own icon and colour --
+                      started/progress blue, paused amber, resumed blue,
+                      completed green, note grey -- with the quantity added
+                      and the time in plain words. */}
+                  <ol className="relative flex flex-col">
+                    {detailData.progress_updates.map((upd, idx) => {
+                      const superseded = detailData.progress_updates.some((other) => other.supersedes_id === upd.id)
+                      const kind = UPDATE_KINDS[upd.update_kind?.toUpperCase()] ?? UPDATE_KINDS.NOTE
+                      const last = idx === detailData.progress_updates.length - 1
+                      return (
+                        <li key={upd.id} className={cn('relative flex gap-3 pb-4 text-sm', last && 'pb-0', superseded && 'opacity-50')}>
+                          {!last && <span className="absolute top-7 bottom-0 left-[13px] w-px bg-border" aria-hidden="true" />}
+                          <span className={cn('relative z-10 flex size-7 shrink-0 items-center justify-center rounded-full', kind.dot)} aria-hidden="true">
+                            <kind.icon className="size-3.5" />
+                          </span>
+                          <div className="flex min-w-0 flex-1 flex-col gap-0.5 pt-0.5">
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                <span className={cn('font-semibold', kind.text)}>{kind.label}</span>
+                                {upd.quantity != null && Number(upd.quantity) !== 0 && (
+                                  <span className="rounded-full bg-success-soft px-2 py-0.5 text-xs font-semibold text-success tabular-nums">
+                                    +{qty(String(upd.quantity))} {upd.unit || ''}
+                                  </span>
+                                )}
+                              </span>
+                              <span className="flex shrink-0 items-center gap-1.5">
+                                <span className="text-xs text-muted-foreground tabular-nums">
+                                  {new Date(upd.occurred_at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
+                                </span>
+                                {!superseded && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                      title="Correct this quantity"
+                                      aria-label="Correct this update"
+                                      onClick={() => openCorrectUpdate(upd.id, upd.quantity)}
+                                    >
+                                      <Pencil className="size-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="rounded p-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                      title="Remove this update"
+                                      aria-label="Remove this update"
+                                      onClick={() => { setVoidUpdateId(upd.id); setVoidUpdateReason(''); setVoidUpdateError(null) }}
+                                    >
+                                      <Trash2 className="size-3.5" />
+                                    </button>
+                                  </>
+                                )}
+                              </span>
                             </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </TabsContent>
+                            {upd.narrative && <p className="text-muted-foreground">{upd.narrative}</p>}
+                            {upd.supersedes_id && <p className="text-xs text-draft">Corrects an earlier entry</p>}
+                            {superseded && <p className="text-xs text-muted-foreground italic">Replaced by a correction</p>}
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ol>
+                </SheetSection>
+              )}
 
-                  <TabsContent value="corrections" className="pt-3">
-                    {correctionsLoading ? (
-                      <div className="space-y-2">
-                        <Skeleton className="h-10 w-full" />
-                        <Skeleton className="h-10 w-full" />
-                      </div>
-                    ) : corrections.length === 0 ? (
-                      <div className="text-center py-8 text-muted-foreground">
-                        <ShieldAlert className="size-7 mx-auto mb-2 opacity-30" />
-                        <p className="text-[11px]">No corrections or removals recorded for this activity.</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {corrections.map((c) => (
-                          <div key={c.id} className="rounded-lg border border-border/70 p-3 space-y-1 text-[11px]">
-                            <div className="flex items-center justify-between">
-                              <span className="font-bold text-foreground">{c.field_name}</span>
-                              <span className="text-muted-foreground font-mono">{new Date(c.created_at).toLocaleString()}</span>
-                            </div>
-                            <p className="text-muted-foreground">
-                              <span className="line-through">{JSON.stringify(c.old_value)}</span>
-                              {' → '}
-                              <span className="font-semibold text-foreground">{JSON.stringify(c.new_value)}</span>
+              {detailData.attachments && detailData.attachments.length > 0 && (
+                <SheetSection title={`Photos · ${detailData.attachments.length}`} className="border-t">
+                  <div className="grid grid-cols-2 gap-3">
+                    {detailData.attachments.map((att) => (
+                      <div key={att.id} className="overflow-hidden rounded-lg border">
+                        <div className="flex aspect-video items-center justify-center border-b bg-muted/40 text-muted-foreground">
+                          <ImageIcon className="size-8 opacity-30" />
+                        </div>
+                        <div className="flex flex-col gap-0.5 p-2.5">
+                          <p className="truncate text-sm font-medium">{att.caption || 'Site photo'}</p>
+                          {att.ai_caption && (
+                            <p className="line-clamp-2 text-xs text-muted-foreground">
+                              <Bot className="mr-0.5 inline size-3" />
+                              {att.ai_caption}
                             </p>
-                            {c.reason && <p className="text-muted-foreground italic">"{c.reason}"</p>}
-                          </div>
-                        ))}
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </TabsContent>
+                    ))}
+                  </div>
+                </SheetSection>
+              )}
 
-                  <TabsContent value="attachments" className="pt-3">
-                    {!detailData.attachments || detailData.attachments.length === 0 ? (
-                      <div className="text-center py-8 text-muted-foreground">
-                        <ImageIcon className="size-7 mx-auto mb-2 opacity-30" />
-                        <p className="text-[11px]">No media evidence or photo attachments uploaded.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-3">
-                        {detailData.attachments.map((att) => (
-                          <div key={att.id} className="rounded-lg border border-border/70 overflow-hidden">
-                            <div className="aspect-video bg-muted/40 flex items-center justify-center text-muted-foreground border-b border-border/40">
-                              <ImageIcon className="size-8 opacity-30" />
-                            </div>
-                            <div className="p-2.5 space-y-0.5">
-                              <p className="font-semibold text-foreground truncate text-[11px]">{att.caption || att.attachment_type || 'Site Photo'}</p>
-                              {att.ai_caption && (
-                                <p className="text-[10px] text-muted-foreground line-clamp-2">
-                                  <Bot className="size-2.5 inline mr-0.5" />{att.ai_caption}
-                                </p>
-                              )}
-                            </div>
+              {(correctionsLoading || corrections.length > 0) && (
+                <SheetSection title="Changes" className="border-t">
+                  {correctionsLoading ? (
+                    <Skeleton className="h-10 w-full" />
+                  ) : (
+                    <ul className="flex flex-col gap-2">
+                      {corrections.map((c) => (
+                        <li key={c.id} className="flex flex-col gap-1 rounded-lg border p-3 text-sm">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium">{humanize(c.field_name)}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(c.created_at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
+                            </span>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </TabsContent>
-                </Tabs>
-              </div>
-            ) : null}
-          </div>
+                          <p className="text-muted-foreground">
+                            <span className="line-through">{JSON.stringify(c.old_value)}</span>
+                            {' → '}
+                            <span className="font-medium text-foreground">{JSON.stringify(c.new_value)}</span>
+                          </p>
+                          {c.reason && <p className="text-muted-foreground italic">"{c.reason}"</p>}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </SheetSection>
+              )}
+            </>
+          ) : (
+            <SheetTitle className="sr-only">Work item</SheetTitle>
+          )}
         </SheetContent>
       </Sheet>
 
-      {/* Correct Activity Details */}
+      {/* Correct this work item */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="sm:max-w-[480px] gap-4">
           <DialogHeader>
-            <DialogTitle className="text-sm font-bold">Correct Activity Details</DialogTitle>
+            <DialogTitle className="text-sm font-semibold">Correct this work item</DialogTitle>
             <DialogDescription className="text-xs">
               Header fields only -- allowed even if this day is part of an approved daily report.
             </DialogDescription>
@@ -948,14 +886,14 @@ export default function ActivitiesPage() {
                 className="h-8 text-xs"
               />
             </div>
-            {editError && <p className="text-[11px] text-rose-500">{editError}</p>}
+            {editError && <p className="text-[11px] text-destructive">{editError}</p>}
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setEditOpen(false)} disabled={editSaving}>
               Cancel
             </Button>
             <Button size="sm" onClick={saveEdit} disabled={editSaving}>
-              {editSaving ? 'Saving…' : 'Save Correction'}
+              {editSaving ? 'Saving…' : 'Save'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -965,7 +903,7 @@ export default function ActivitiesPage() {
       <Dialog open={voidActivityOpen} onOpenChange={setVoidActivityOpen}>
         <DialogContent className="sm:max-w-[440px] gap-4">
           <DialogHeader>
-            <DialogTitle className="text-sm font-bold text-rose-600 dark:text-rose-400">Remove This Activity?</DialogTitle>
+            <DialogTitle className="text-sm font-semibold text-destructive">Remove this work item?</DialogTitle>
             <DialogDescription className="text-xs">
               Soft-deleted, never a hard delete. Refused if this day is already part of an approved daily report --
               a correction is used instead in that case.
@@ -979,7 +917,7 @@ export default function ActivitiesPage() {
               onChange={(e) => setVoidReason(e.target.value)}
               className="h-8 text-xs"
             />
-            {voidError && <p className="text-[11px] text-rose-500 mt-1">{voidError}</p>}
+            {voidError && <p className="text-[11px] text-destructive mt-1">{voidError}</p>}
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setVoidActivityOpen(false)} disabled={voidBusy}>
@@ -991,7 +929,7 @@ export default function ActivitiesPage() {
               onClick={confirmVoidActivity}
               disabled={voidBusy || !voidReason.trim()}
             >
-              {voidBusy ? 'Removing…' : 'Remove Activity'}
+              {voidBusy ? 'Removing…' : 'Remove'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1001,7 +939,7 @@ export default function ActivitiesPage() {
       <Dialog open={!!correctUpdateId} onOpenChange={(open) => !open && setCorrectUpdateId(null)}>
         <DialogContent className="sm:max-w-[420px] gap-4">
           <DialogHeader>
-            <DialogTitle className="text-sm font-bold">Correct This Update</DialogTitle>
+            <DialogTitle className="text-sm font-semibold">Correct this update</DialogTitle>
             <DialogDescription className="text-xs">
               Appends a corrected entry -- the original is kept for the audit trail, never edited or deleted.
             </DialogDescription>
@@ -1025,14 +963,14 @@ export default function ActivitiesPage() {
                 className="h-8 text-xs"
               />
             </div>
-            {correctUpdateError && <p className="text-[11px] text-rose-500">{correctUpdateError}</p>}
+            {correctUpdateError && <p className="text-[11px] text-destructive">{correctUpdateError}</p>}
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setCorrectUpdateId(null)} disabled={correctUpdateBusy}>
               Cancel
             </Button>
             <Button size="sm" onClick={saveCorrectUpdate} disabled={correctUpdateBusy}>
-              {correctUpdateBusy ? 'Saving…' : 'Save Correction'}
+              {correctUpdateBusy ? 'Saving…' : 'Save'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1042,7 +980,7 @@ export default function ActivitiesPage() {
       <Dialog open={!!voidUpdateId} onOpenChange={(open) => !open && setVoidUpdateId(null)}>
         <DialogContent className="sm:max-w-[420px] gap-4">
           <DialogHeader>
-            <DialogTitle className="text-sm font-bold text-rose-600 dark:text-rose-400">Remove This Update?</DialogTitle>
+            <DialogTitle className="text-sm font-semibold text-destructive">Remove this update?</DialogTitle>
             <DialogDescription className="text-xs">
               Soft-deleted, never a hard delete. Refused if this day is already part of an approved daily report.
             </DialogDescription>
@@ -1055,7 +993,7 @@ export default function ActivitiesPage() {
               onChange={(e) => setVoidUpdateReason(e.target.value)}
               className="h-8 text-xs"
             />
-            {voidUpdateError && <p className="text-[11px] text-rose-500 mt-1">{voidUpdateError}</p>}
+            {voidUpdateError && <p className="text-[11px] text-destructive mt-1">{voidUpdateError}</p>}
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setVoidUpdateId(null)} disabled={voidUpdateBusy}>
@@ -1067,7 +1005,7 @@ export default function ActivitiesPage() {
               onClick={confirmVoidUpdate}
               disabled={voidUpdateBusy || !voidUpdateReason.trim()}
             >
-              {voidUpdateBusy ? 'Removing…' : 'Remove Update'}
+              {voidUpdateBusy ? 'Removing…' : 'Remove'}
             </Button>
           </DialogFooter>
         </DialogContent>

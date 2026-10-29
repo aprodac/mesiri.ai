@@ -43,6 +43,8 @@ CREATE_SITE = "create_site"
 CREATE_PROJECT = "create_project"
 # 22 Oct: back from the classic pipeline.
 ADD_MEMBER = "add_member"
+# SET-07: the company join code, asked in any words.
+GET_JOIN_CODE = "get_join_code"
 CORRECT_WORK_QUANTITY = "correct_work_quantity"
 UPDATE_ISSUE = "update_issue"
 # Request 88: change one item of the card that is still open.
@@ -119,6 +121,13 @@ _RANGE = {
     "type": "string",
     "enum": ["today", "this_week", "this_month"],
     "description": "The period asked about; omit if none is stated.",
+}
+
+
+_PERIOD = {
+    "type": "string",
+    "enum": ["today", "yesterday", "this_week", "last_week", "this_month"],
+    "description": "The period asked about ('yesterday', 'this week'); omit if none is stated.",
 }
 
 
@@ -541,7 +550,8 @@ def tool_specs() -> list[ToolSpec]:
                 "yet): 'alla, 8 mason aanu', '30 bag alla 20', 'helper 10 aanu'. Pass the card id "
                 "and the item's number from the context, and only the fields that change, "
                 "named as the item's own save tool names them. A card they already saved is not "
-                "changed this way."
+                "changed this way, unless the context gives that saved card's id for it (then a "
+                "Change card is shown for them to save)."
             ),
             parameters=_obj(
                 {
@@ -642,11 +652,13 @@ def tool_specs() -> list[ToolSpec]:
             name=QUERY_LABOUR,
             description=(
                 "Answer 'how many workers / who worked / labour cost' from saved records. "
-                "Leave trade out unless the question names one: a headcount counts every trade."
+                "Leave trade out unless the question names one: a headcount counts every trade. "
+                "Asked about another day ('yesterday?', 'last week?'), pass date or date_range."
             ),
             parameters=_obj(
                 {
-                    "date_range": _RANGE,
+                    "date": _DATE,
+                    "date_range": _PERIOD,
                     "trade": {"type": "string"},
                     "as_pdf": _AS_PDF,
                     "project": _PROJECT,
@@ -657,20 +669,40 @@ def tool_specs() -> list[ToolSpec]:
         ToolSpec(
             name=QUERY_MATERIALS,
             description=(
-                "How much of a material is in stock now, with all-time received and used "
-                "totals (all materials if none named). It has NO per-day figures: asked how "
-                "much was used or received on one day, say you can only see the totals so far."
+                "How much of a material is in stock now (all materials if none named). Asked how "
+                "much was used or received on a day or in a period ('cement used today?', 'received "
+                "yesterday?', 'this week?'), pass date or date_range: the answer then gives that "
+                "period's received and used from the records, with the stock now."
             ),
             parameters=_obj(
-                {"material": {"type": "string"}, "as_pdf": _AS_PDF, "project": _PROJECT, "site": _SITE}
+                {
+                    "material": {"type": "string"},
+                    "date": _DATE,
+                    "date_range": _PERIOD,
+                    "asking": {
+                        "type": "string",
+                        "enum": ["used", "received"],
+                        "description": (
+                            "Which side the question is about: 'used' for 'cement used yesterday?', "
+                            "'received' for 'what came in today?'. Omit for stock or both."
+                        ),
+                    },
+                    "as_pdf": _AS_PDF,
+                    "project": _PROJECT,
+                    "site": _SITE,
+                }
             ),
         ),
         ToolSpec(
             name=QUERY_WORK_LOG,
-            description="Answer what was logged / open site issues (the site log).",
+            description=(
+                "Answer what was logged / open site issues (the site log). Asked about a day "
+                "('what was done yesterday?'), pass date or date_range."
+            ),
             parameters=_obj(
                 {
-                    "date_range": _RANGE,
+                    "date": _DATE,
+                    "date_range": _PERIOD,
                     "work_type": {"type": "string"},
                     "as_pdf": _AS_PDF,
                     "project": _PROJECT,
@@ -768,6 +800,16 @@ def tool_specs() -> list[ToolSpec]:
             ),
         ),
         ToolSpec(
+            name=GET_JOIN_CODE,
+            description=(
+                "Send the company's join code and a message to forward to the team, when an admin "
+                "or project manager asks for it in any words ('code entha?', 'how do people "
+                "join?', 'invite link', 'how do I add my team?'). Not for adding one named "
+                "person (add_member). The system sends the code itself; do not repeat it."
+            ),
+            parameters=_obj({}),
+        ),
+        ToolSpec(
             name=CORRECT_WORK_QUANTITY,
             description=(
                 "Change the quantity of the work just logged in this chat, when they say a "
@@ -857,8 +899,15 @@ class ScopeLookup:
         return self._match([(pid, pname) for pid, pname in self.projects], name)
 
     def site_id(self, name: str, project_id: str | None = None) -> str | None:
-        rows = [(sid, sname) for sid, sname, pid in self.sites if project_id in (None, pid)]
-        return self._match(rows, name)
+        """The one site ``name`` says, whole words only (V1 audit SIT-13); None
+        when it matches none or several, so the sender is asked."""
+        from types import SimpleNamespace
+
+        from .site_match import find_sites
+
+        rows = [SimpleNamespace(id=sid, name=sname, project_id=pid) for sid, sname, pid in self.sites if project_id in (None, pid)]
+        hits = find_sites(rows, name, {pid: pname for pid, pname in self.projects})
+        return str(hits[0].id) if len(hits) == 1 else None
 
 
 def _clean(fields: dict[str, Any]) -> dict[str, Any]:
@@ -1023,13 +1072,32 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
         }
         return Candidate(semantic_type=SemanticType.TRANSFER, fields=_clean(fields))
     if name == QUERY_LABOUR:
-        fields = {"date_range": args.get("date_range"), "trade": args.get("trade"), **_pdf(args), **sc}
+        fields = {
+            "date": date,
+            "date_range": args.get("date_range"),
+            "trade": args.get("trade"),
+            **_pdf(args),
+            **sc,
+        }
         return Candidate(semantic_type=SemanticType.LABOUR_QUERY, fields=_clean(fields))
     if name == QUERY_MATERIALS:
-        fields = {"material_name": args.get("material"), **_pdf(args), **sc}
+        fields = {
+            "material_name": args.get("material"),
+            "date": date,
+            "date_range": args.get("date_range"),
+            "asking": args.get("asking") if args.get("asking") in ("used", "received") else None,
+            **_pdf(args),
+            **sc,
+        }
         return Candidate(semantic_type=SemanticType.INVENTORY_QUERY, fields=_clean(fields))
     if name == QUERY_WORK_LOG:
-        fields = {"date_range": args.get("date_range"), "work_type": args.get("work_type"), **_pdf(args), **sc}
+        fields = {
+            "date": date,
+            "date_range": args.get("date_range"),
+            "work_type": args.get("work_type"),
+            **_pdf(args),
+            **sc,
+        }
         return Candidate(semantic_type=SemanticType.ACTIVITY_QUERY, fields=_clean(fields))
     if name == QUERY_PROJECT:
         return Candidate(semantic_type=SemanticType.PROJECT_DETAIL_QUERY, fields=_clean(dict(sc)))

@@ -6,7 +6,10 @@ here, as for materials and site entries, its arguments become the workflow's
 event:
 
 - context, module switch ("labour"), project/site: ``entry_base.EntryScope``;
-  a site is not required (the save needs only the project, as before);
+  a sender on none of the project's sites is told so instead of the save
+  going through site-less (BE-50, audit ATT-09: such labour reached no
+  site's DPR, and the project DPR is built only from the site DPRs), as for
+  an issue or the day's conditions (``site_prompt``);
 - the lines, by the pipeline's own normaliser (``_normalize_labour_fields``)
   and the date (``resolve_occurred_date``, the company's day);
 - the two lookups the pipeline ran before the graph, the same functions: the
@@ -52,7 +55,11 @@ class LabourEntry(EntryScope):
 
         fields = {**candidate.fields, **candidate.unknown_fields}
         scoped = await self.settle(
-            message, understanding, candidate, module=module_for_workflow(WorkflowKey.LABOUR_ATTENDANCE)
+            message,
+            understanding,
+            candidate,
+            module=module_for_workflow(WorkflowKey.LABOUR_ATTENDANCE),
+            site_prompt=True,
         )
         if isinstance(scoped, Say):
             return scoped

@@ -30,16 +30,21 @@ from channel.replies import (
 from context.live_identity import (
     NO_ORG_MESSAGE,
     ORG_SUSPENDED_MESSAGE,
-    UNREGISTERED_MESSAGE,
     resolve_sender,
+    unregistered_message,
 )
-from interactions.image_purpose import try_hold_new_image_for_purpose_picker
+from interactions.image_purpose import (
+    photo_wait_notice,
+    purpose_from_caption,
+    try_hold_new_image_for_purpose_picker,
+)
 from mesiri.infrastructure.postgres.tenant import bind_tenant, tenant_scope
 from mesiri_ai.undo_classifier import UNDO_SEMANTIC_HINT, is_undo_trigger
 from mesiri_contracts.assistant.enums import InputModality
 from runtime import forward_batch
 from runtime.account_admin_journey import try_handle_account_admin_command
 from runtime.ai_outage import AIUnavailableError, retry_attempt
+from runtime.persona import is_what_can_you_do
 from runtime.reply_composer import (
     QUESTION,
     SETUP_OFFER,
@@ -171,9 +176,14 @@ def build_message_handlers(
     work_site: Any | None = None,
     cards: Any | None = None,
     later: Any | None = None,
+    site_wait: Any | None = None,
     card_renderer: Any | None = None,
     ops_alerts: Any | None = None,
     actions: Any | None = None,
+    drafts: Any | None = None,
+    shared_transaction: Any | None = None,
+    day_facts: Any | None = None,
+    group_chat: Any | None = None,
 ) -> tuple[Any, Any]:
     """Build the `on_normalized`/`on_message_claimed` callbacks WhatsAppReceiver
     invokes for every inbound message, closing over the already-built services
@@ -422,8 +432,16 @@ def build_message_handlers(
 
         if later is None or agent_provider is None:
             return None
-        parsed = save_button.parse_tap(str((message.metadata or {}).get("interactive_reply_id") or ""))
+        tap = str((message.metadata or {}).get("interactive_reply_id") or "")
+        parsed = save_button.parse_tap(tap)
         if parsed is None or parsed[0] != save_button.SAVE:
+            from runtime.agent import draft as draft_card
+
+            drafted = draft_card.parse_tap(tap)
+            if drafted is None or drafted[0] != draft_card.SAVE:
+                return None
+            # Request 136 (B): a draft card keeps what is still to do as its own
+            # waiting lines; the "later" list is the old path's and is not asked from.
             return None
         item = await later.ask_next(ctx)
         if item is None:
@@ -571,12 +589,71 @@ def build_message_handlers(
             (message.text or "").strip()
         )
 
+    async def _draft_v2_on(ctx) -> bool:  # type: ignore[no-untyped-def]
+        """Request 124: whether this sender's company holds messages as one draft
+        card (the ``draft_v2`` setting, off unless the Mesiri team switched it on)."""
+        if drafts is None or org_settings_query is None or not getattr(ctx, "organization_id", None):
+            return False
+        try:
+            from mesiri.domains.organizations import settings as settings_spec
+
+            stored = await org_settings_query.get(
+                organization_id=str(ctx.organization_id), key=settings_spec.DRAFT_V2
+            )
+            return settings_spec.draft_v2_enabled(stored)
+        except Exception:  # noqa: BLE001 -- unreadable means the current flow
+            _log.warning("draft_v2.setting_unreadable user=%s", ctx.user_id, exc_info=True)
+            return False
+
+    async def _legacy_site_update_waiting(ctx) -> bool:  # type: ignore[no-untyped-def]
+        """Request 136 (B): a site-update workflow of the OLD path (labour, material,
+        work, an issue) still waits for this draft_v2 sender's Yes / No or answer.
+        The draft pipeline never leaves one (its Save writes in one transaction), so
+        it is from before the switch: the message is not taken as its answer."""
+        from runtime.agent.draft import DRAFT_WORKFLOWS
+
+        try:
+            waiting = await workflow_runtime.get_awaiting_confirmation(ctx.user_id)
+            if waiting is None:
+                waiting = await workflow_runtime.get_awaiting_input(ctx.user_id)
+        except Exception:  # noqa: BLE001 -- unknown: the usual paths run
+            _log.warning("journey.pending_unreadable user=%s", ctx.user_id, exc_info=True)
+            return False
+        if waiting is None or waiting.state.workflow_key not in DRAFT_WORKFLOWS:
+            return False
+        _log.warning(
+            "journey.legacy_site_update_routed_out user=%s workflow=%s instance=%s",
+            ctx.user_id, waiting.state.workflow_key.value, waiting.state.workflow_instance_id,
+        )
+        return True
+
+    async def _team_or_setup_reply(text: str, ctx):  # type: ignore[no-untyped-def]
+        """WA-84: a ReplySpec for "report time 7 pm aakku" / "ente team-il aarokke und?",
+        or None for anything else."""
+        from runtime import team_setup
+
+        asked, wanted = team_setup.report_time_asked(text)
+        if asked and setup_questions is not None:
+            return await setup_questions.offer_report_time(ctx, wanted)
+        if team_setup.is_team_question(text) and project_detail_query is not None:
+            projects = team_setup.project_names(ctx)
+            rows = await project_detail_query.list_members(
+                organization_id=str(ctx.organization_id), project_ids=list(projects)
+            )
+            return ReplySpec(text=team_setup.team_text(rows, projects))
+        return None
+
     async def _run_journey_steps(message, raw_payload, retry_of_id, timer) -> None:  # type: ignore[no-untyped-def]
         wa_id = message.sender.wa_id
 
-        async def _run_agent(message, ctx, category_hint, timer) -> None:  # type: ignore[no-untyped-def]
+        async def _run_agent(message, ctx, category_hint, timer, draft_tap=None):  # type: ignore[no-untyped-def]
             """The agent's turn. The pipeline it drives is the one below, with
-            the senders swapped for a capture so the model writes the one reply."""
+            the senders swapped for a capture so the model writes the one reply.
+
+            ``draft_tap`` (request 124): ``(action, draft, extra)`` of a tap on a
+            draft card; no model runs, and ``(reply, gateway)`` comes back for the
+            caller to send."""
+            from runtime.agent import draft as draft_card_mod
             from runtime.agent import save_button
             from runtime.agent.action_entry import ActionEntry
             from runtime.agent.change_entry import ChangeEntry
@@ -589,6 +666,8 @@ def build_message_handlers(
             from runtime.agent.turn import AgentTurnDeps, run_agent_turn
             from runtime.inbound_journey import render_workflow_run_reply_spec
             from runtime.today_context import build_stock_line, build_today_line
+
+            use_drafts = draft_tap is not None or await _draft_v2_on(ctx)
 
             hint = category_hint.semantic_hint if category_hint else None
             if hint and category_hint.direction:
@@ -719,7 +798,8 @@ def build_message_handlers(
                 items = [*gateway.carry_before, *gateway.card_items, *gateway.carry_after]
                 try:
                     if open_card and items:
-                        await cards.put(ctx, new_card(OPEN, items))
+                        site = _card_site(list(getattr(gateway, "handled", [])), always=True)
+                        await cards.put(ctx, new_card(OPEN, items, site or ""))
                     else:
                         await cards.put(ctx, new_card(LEGACY, []))
                 except Exception:  # noqa: BLE001 -- the card only enables undo and edit
@@ -730,6 +810,15 @@ def build_message_handlers(
                 folded in (buttons for the photo / undo) instead of sent as
                 further messages."""
                 handled_list = list(getattr(gateway, "handled", []))
+                if (
+                    getattr(gateway, "code_shared", False) is True
+                    and not handled_list
+                    and not getattr(gateway, "action_items", ())
+                    and not (reply.buttons or reply.list_rows)
+                ):
+                    # Request 116 H: the code and the message to forward are
+                    # already sent; a third line ("Sheri, join code ...") adds nothing.
+                    return
                 receipt_image = reply.header_image
                 entries = save_button.entries_of(handled_list)
                 action_items = list(getattr(gateway, "action_items", ()))
@@ -770,6 +859,7 @@ def build_message_handlers(
                         composed,
                         facts,
                         save_title=save_button.SEND_TITLE if only_questions else save_button.SAVE_TITLE,
+                        site=_card_site(handled_list),
                     )
                     await _remember_card(gateway, open_card=True)
                 elif plan == "blocked":
@@ -798,35 +888,90 @@ def build_message_handlers(
                 await work_site.set_today(ctx, project_id=project_id, site_id=site_id)
                 return site_label(ctx, site_id) or "that site"
 
+            async def _preselect_site(project_id, site_id):  # type: ignore[no-untyped-def]
+                await work_site.preselect(ctx, project_id=project_id, site_id=site_id)
+                return site_label(ctx, site_id) or "that site"
+
+            async def _remember_saved_site(project_id, site_id):  # type: ignore[no-untyped-def]
+                await work_site.remember_saved(ctx, project_id=project_id, site_id=site_id)
+
+            def _card_site(handled_list, *, always=False):  # type: ignore[no-untyped-def]
+                return save_button.card_site(ctx, handled_list, always=always)
+
+            async def _get_today_site():  # type: ignore[no-untyped-def]
+                today = await work_site.today(ctx)
+                return today[1] if today else None
+
+            async def _today_site_id(actor):  # type: ignore[no-untyped-def]
+                """SIT-10: the site a multi-site sender chose for today."""
+                today = await work_site.today(actor) if work_site is not None else None
+                return today[1] if today else None
+
+            async def _today_context_line(actor):  # type: ignore[no-untyped-def]
+                return await build_today_line(
+                    activity_search_service,
+                    actor,
+                    timezone_name=project_zone_name(getattr(actor, "timezone", None)),
+                    site_id=await _today_site_id(actor),
+                    labour_query_service=labour_query_service,
+                )
+
+            async def _stock_context_line(actor):  # type: ignore[no-untyped-def]
+                return await build_stock_line(inventory_query, actor, site_id=await _today_site_id(actor))
+
             async def _work_site_line(actor):  # type: ignore[no-untyped-def]
                 today = await work_site.today(actor)
                 return site_label(actor, today[1]) if today else None
 
             async def _open_work_line(actor):  # type: ignore[no-untyped-def]
-                """The open activities at today's site (or their only site)."""
+                """The open activities at today's site (or their only site); with
+                several sites and none chosen yet, at all of them (WRK-05)."""
                 from runtime.today_context import render_open_work_line
 
                 today = await work_site.today(actor) if work_site is not None else None
                 sites = list(getattr(actor, "sites", None) or [])
                 site_id = today[1] if today else (str(sites[0].id) if len(sites) == 1 else None)
-                if site_id is None:
+                if site_id is None and not sites:
                     return None
+                names = {str(s.id): site_label(actor, str(s.id)) for s in sites} if site_id is None else None
                 rows = await asyncio.wait_for(
                     activity_query.find_open_activities(
                         organization_id=str(actor.organization_id),
-                        site_id=str(site_id),
+                        site_id=str(site_id) if site_id is not None else None,
+                        site_ids=[str(s.id) for s in sites] if site_id is None else None,
                         reported_by_user_id=str(actor.user_id),
-                        limit=6,
                     ),
                     timeout=0.5,
                 )
-                return render_open_work_line(site_label(actor, site_id), rows)
+                return render_open_work_line(
+                    site_label(actor, site_id) if site_id is not None else None, rows, site_names=names
+                )
+
+            async def _enabled_modules(actor):  # type: ignore[no-untyped-def]
+                """Request 132: what the help may list."""
+                return await asyncio.wait_for(
+                    org_settings_query.enabled_modules(organization_id=str(actor.organization_id)), timeout=0.5
+                )
 
             async def _card_line(actor):  # type: ignore[no-untyped-def]
                 """Request 88: the sender's latest card, with the ids the model
                 may name in undo_last / update_pending_card."""
                 from runtime.agent.cards import context_line
 
+                if use_drafts:
+                    from runtime.agent import draft as draft_card
+                    from runtime.agent.cards import SAVED as _SAVED
+
+                    open_line = draft_card.context_line(await drafts.open_for(actor.organization_id, actor.user_id))
+                    # Request 127: their latest SAVED card too, so a correction on it is
+                    # made as a change line, never answered with "can't change".
+                    saved = await cards.get(actor)
+                    saved_line = (
+                        draft_card.saved_context_line([i.summary for i in saved.items], saved.id)
+                        if saved is not None and saved.state == _SAVED
+                        else None
+                    )
+                    return "\n".join(line for line in (open_line, saved_line) if line) or None
                 return context_line(await cards.get(actor))
 
             async def _open_issues(scoped):  # type: ignore[no-untyped-def]
@@ -838,6 +983,22 @@ def build_message_handlers(
                     project_id=str(scoped.project_id) if scoped.project_id else None,
                     site_id=str(scoped.site_id) if scoped.site_id else None,
                 )
+
+            async def _share_join_code(msg) -> str:  # type: ignore[no-untyped-def]
+                """SET-07: the join-code tool. "" once sent; else why not."""
+                from runtime.join_journey import NOT_ALLOWED_TO_SHARE
+
+                spec = await join_journey.share_code(msg, ctx)
+                if spec.text == NOT_ALLOWED_TO_SHARE:
+                    return spec.text
+                await _send_composed(msg.sender.wa_id, ctx.user_id, spec)
+                return ""
+
+            async def _pending_confirmation() -> str | None:
+                """The prompt of an old-style Yes / No question still waiting for
+                this sender (a member to add, an expense...), or None."""
+                waiting = await workflow_runtime.get_awaiting_confirmation(ctx.user_id)
+                return (waiting.state.pending_prompt or None) if waiting is not None else None
 
             def _gateway(msg, language):  # type: ignore[no-untyped-def]
                 early["gateway"] = JourneyGateway(
@@ -864,6 +1025,14 @@ def build_message_handlers(
                         else None
                     ),
                     set_today_site=_set_today_site if work_site is not None else None,
+                    get_today_site=_get_today_site if work_site is not None else None,
+                    remember_saved_site=_remember_saved_site if work_site is not None else None,
+                    preselect_site=_preselect_site if work_site is not None else None,
+                    share_code=(
+                        (lambda: _share_join_code(msg))
+                        if join_journey is not None
+                        else None
+                    ),
                     set_conversion=(
                         (
                             lambda material, unit, count: catalog_query.set_conversion(
@@ -924,6 +1093,7 @@ def build_message_handlers(
                         actor=ctx,
                         active_context=getattr(context_resolver, "active_context", None),
                         activity_query=activity_query,
+                        catalog_query=catalog_query,
                         money_account_query=money_account_query,
                         duplicate_expense_query=duplicate_expense_query,
                         vendor_query=vendor_query,
@@ -941,6 +1111,7 @@ def build_message_handlers(
                         member_resolver=member_resolver,
                         activity_query=activity_query,
                         site_issue_query=site_issue_query,
+                        day_facts=day_facts,
                         remembered_activity=(
                             (lambda: memory_loader.current_activity_id(user_id=ctx.user_id))
                             if hasattr(memory_loader, "current_activity_id")
@@ -949,6 +1120,17 @@ def build_message_handlers(
                         create_member=_create_member,
                     ),
                     start_workflow=workflow_runtime.start,
+                    draft_v2=use_drafts,
+                    drafts=drafts if use_drafts else None,
+                    confirm_now=lambda: interaction_handler.confirm_now(ctx.user_id, actor=ctx),
+                    abandon_question=lambda: interaction_handler._close_question(ctx.user_id),
+                    settle_facts=lambda facts: interaction_handler.settle_drafts(
+                        organization_id=str(ctx.organization_id), user_id=ctx.user_id, facts=facts, keep=True
+                    ),
+                    transaction=shared_transaction,
+                    day_facts=day_facts,
+                    pending_confirmation=_pending_confirmation,
+                    sender=sender,
                 )
                 return early["gateway"]
 
@@ -967,23 +1149,84 @@ def build_message_handlers(
                 reply_composer=reply_composer,
                 lap=timer.lap,
                 after_tool=_after_tool,
-                today_line=lambda actor: build_today_line(
-                    activity_search_service, actor, timezone_name=project_zone_name(getattr(actor, "timezone", None))
-                ),
-                stock_line=lambda actor: build_stock_line(inventory_query, actor),
+                today_line=_today_context_line,
+                stock_line=_stock_context_line,
                 work_site_line=_work_site_line if work_site is not None else None,
                 open_work_line=_open_work_line if activity_query is not None else None,
                 card_line=_card_line if cards is not None else None,
+                enabled_modules=_enabled_modules if org_settings_query is not None else None,
                 on_conversational=lambda: _conversational.add(message.correlation_id),
                 trace_logger=trace_logger,
                 later=later,
+                site_wait=site_wait,
             )
             timer.lap("agent_setup")
+            if draft_tap is not None:
+                action, draft, extra = draft_tap
+                gateway = _gateway(message, None)
+                if action == draft_card_mod.SAVE:
+                    reply = await gateway.save_draft(draft)
+                elif action == draft_card_mod.CANCEL:
+                    reply = await gateway.cancel_draft(draft)
+                elif action == draft_card_mod.CHANGE_SITE:
+                    reply = gateway.change_site_draft(draft)
+                elif action == draft_card_mod.MOVE_SITE:
+                    reply = await gateway.move_draft_site(draft, extra[0])
+                else:
+                    reply = await gateway.answer_draft(draft, extra[0], int(extra[1]))
+                return reply, gateway
+            if use_drafts and message.modality is InputModality.TEXT and (message.text or "").strip():
+                # WA-81: a typed answer to the open card's question ("Green Villa" for
+                # "which site?", "oru rod 12 kg" for "how many kg?") is read by code,
+                # as a tap is; no model runs. Anything else goes to the model below.
+                try:
+                    open_draft = await drafts.open_for(ctx.organization_id, ctx.user_id)
+                    typed = None
+                    if open_draft is not None and open_draft.live and not open_draft.expired():
+                        typed = await _gateway(message, None).answer_draft_typed(open_draft, message.text or "")
+                except Exception:  # noqa: BLE001 -- the model reads the message instead
+                    _log.exception("draft.typed_answer_failed user=%s", ctx.user_id)
+                    typed = None
+                if typed is not None:
+                    timer.lap("draft_typed_answer")
+                    await _send_composed(wa_id, ctx.user_id, typed)
+                    await message_logger.log_reply(correlation_id=message.correlation_id, reply=typed.text)
+                    await message_logger.mark_completed(correlation_id=message.correlation_id)
+                    try:
+                        await memory_coordinator.record_turn(
+                            user_id=ctx.user_id,
+                            user_text=str(message.text or "").strip(),
+                            assistant_reply=typed.text,
+                            correlation_id=message.correlation_id,
+                        )
+                    except Exception:  # noqa: BLE001 -- memory is a hint
+                        _log.warning("draft.typed_record_turn_failed user=%s", ctx.user_id, exc_info=True)
+                    return None
             result = await run_agent_turn(message, ctx, deps, menu_hint=hint)
             timer.lap("agent_turn")
             if result is not None and result.toolbox.parked is not None:
                 _agent_parked.add(message.correlation_id)
 
+        async def _draft_tap_reply(message, ctx, timer, tap_value):  # type: ignore[no-untyped-def]
+            """Request 124: the reply to a tap on a draft card (Save, Cancel, or
+            an answer on it) and the gateway that ran it (its follow-ups go out
+            after the reply). The draft is the sender's own, still open, and not
+            expired; anything else is said, never guessed."""
+            from runtime.agent import draft as draft_card
+
+            parsed = draft_card.parse_tap(tap_value)
+            if parsed is None:
+                return ReplySpec(text=draft_card.EXPIRED), None
+            action, draft_id, extra = parsed
+            draft = await drafts.get(draft_id, ctx.organization_id, ctx.user_id)
+            if draft is None:
+                return ReplySpec(text=draft_card.EXPIRED), None
+            if draft.status != draft_card.OPEN:
+                return ReplySpec(text=draft_card.ALREADY_DONE), None
+            if draft.expired():
+                await drafts.discard(draft.id)
+                return ReplySpec(text=draft_card.EXPIRED), None
+            return await _run_agent(message, ctx, None, timer, draft_tap=(action, draft, extra))
 
         # M4: resolve the sender before spending on understanding.
         try:
@@ -1054,6 +1297,20 @@ def build_message_handlers(
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
                 return
 
+        # WA-87: "make a group for <site>" from a company admin or a super
+        # admin, and the Allow / Don't allow taps on a group join request.
+        if group_chat is not None:
+            try:
+                group_reply = await group_chat.handle_private(message, ctx)
+            except Exception:  # noqa: BLE001 -- carry on with the message as usual
+                _log.exception("group_chat.private_failed wa_id=%s", wa_id)
+                group_reply = None
+            if group_reply is not None:
+                await sender.send_text(wa_id, group_reply)
+                await message_logger.log_reply(correlation_id=message.correlation_id, reply=group_reply)
+                await message_logger.mark_completed(correlation_id=message.correlation_id)
+                return
+
         if ctx is None:
             _log.info("context.sender_unregistered wa_id=%s", wa_id)
             # SS-05: "JOIN ACME-4821" asks a company's admins to let them in.
@@ -1078,7 +1335,7 @@ def build_message_handlers(
             # a free trial instead of hitting a dead end.
             reply = await signup_journey.handle(message) if signup_journey else None
             if reply is None:
-                reply = UNREGISTERED_MESSAGE
+                reply = unregistered_message(wa_id)
                 await sender.send_text(wa_id, reply)
             await message_logger.log_reply(correlation_id=message.correlation_id, reply=reply)
             await message_logger.mark_completed(correlation_id=message.correlation_id)
@@ -1442,23 +1699,29 @@ def build_message_handlers(
                 picked = await work_site.handle_tap(message, ctx)
             except Exception:  # noqa: BLE001 — a tap must always get some reply
                 _log.exception("work_site.tap_failed user=%s", ctx.user_id)
-                picked = (ReplySpec(text="Sorry, that didn't work — please try again."), None)
+                picked = (ReplySpec(text="Sorry, that didn't work — please try again."), [])
             if picked is not None:
-                confirm, parked = picked
+                confirm, waiting = picked
                 await _send_spec(confirm, wa_id)
                 await message_logger.log_reply(correlation_id=message.correlation_id, reply=confirm.text)
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
-                if parked is not None:
-                    await _run_journey_steps(parked, {}, None, timer)
+                # SIT-02/04: every message that waited runs now, in order.
+                for held in waiting:
+                    await _run_journey_steps(held, {}, None, timer)
                 return
 
         # WA-35: Save / Cancel on the agent's reply keeps or drops its drafts.
         from runtime.agent import save_button
 
+        draft_gateway = None
+        draft_tap_value = str((message.metadata or {}).get("interactive_reply_id") or "")
         try:
-            save_reply = await save_button.handle_tap(
-                message, ctx, interaction_handler, cards, actions=actions, sender=sender
-            )
+            if drafts is not None and draft_tap_value.startswith("agd:"):
+                save_reply, draft_gateway = await _draft_tap_reply(message, ctx, timer, draft_tap_value)
+            else:
+                save_reply = await save_button.handle_tap(
+                    message, ctx, interaction_handler, cards, actions=actions, sender=sender
+                )
         except Exception:  # noqa: BLE001 — a tap must always get some reply
             _log.exception("save_button.tap_failed user=%s", ctx.user_id)
             save_reply = ReplySpec(text="Sorry, that didn't work — please try again.")
@@ -1476,6 +1739,13 @@ def build_message_handlers(
                 )
             except Exception:  # noqa: BLE001 -- memory is a hint
                 _log.warning("save_button.record_turn_failed user=%s", ctx.user_id, exc_info=True)
+            if draft_gateway is not None:
+                # Request 124: the follow-ups a save triggers (worker promotion,
+                # team-photo offer), after the "Saved" line, as after a message.
+                try:
+                    await draft_gateway.finish()
+                except Exception:  # noqa: BLE001 -- the Save went through
+                    _log.exception("draft.followups_failed user=%s", ctx.user_id)
             # WA-57: what their message also had and is not recorded yet is
             # taken up right after the Save, not left behind.
             try:
@@ -1614,10 +1884,11 @@ def build_message_handlers(
             # The receipt card is rendered first (bounded) and sent inside
             # this one reply -- as the header of its button message.
             receipt_image = await _receipt_image(handled)
+            composed = compose(reply_text, gathered.offers, saved=handled.saved_draft)
             await _send_composed(
                 wa_id,
                 ctx.user_id,
-                compose(reply_text, gathered.offers, saved=handled.saved_draft),
+                await _with_save_card(handled, composed),
                 header_image=receipt_image,
             )
             if handled.next_segment_reply is not None:
@@ -1633,6 +1904,36 @@ def build_message_handlers(
                     send_button=sender.send_button,
                 )
             await _deliver_followups(handled)
+
+        async def _with_save_card(handled, composed):  # type: ignore[no-untyped-def]
+            """ARCH-04: an entry finished by answering the workflow's own
+            question (which worker? which activity? add to today's count?)
+            waits on Save / Cancel like every agent entry (WA-35), never
+            "Saved" with Undo: since WA-77 a draft nobody taps Save on is not
+            on the report, and this reply had no Save to tap."""
+            from runtime.agent import save_button
+
+            plan, facts = save_button.card_plan([handled])
+            if plan != "card":
+                return composed
+            composed = save_button.with_save_buttons(
+                composed, facts, site=save_button.card_site(ctx, [handled])
+            )
+            if cards is not None:
+                # The card "undo that" and the "✅ Saved · ..." line read. It has
+                # no tool arguments, so update_pending_card refuses to change
+                # it (nothing is withdrawn): Cancel and send again does.
+                from runtime.agent.cards import OPEN, CardItem, new_card
+                from runtime.agent.journey_gateway import _saved_summary
+
+                summary = _saved_summary(handled, getattr(ctx, "timezone", None)) or ""
+                items = [CardItem("", {}, kind, str(fact_id), summary) for kind, fact_id in facts]
+                site = save_button.card_site(ctx, [handled], always=True) or ""
+                try:
+                    await cards.put(ctx, new_card(OPEN, items, site))
+                except Exception:  # noqa: BLE001 -- the card only enables undo and edit
+                    _log.warning("save_card.remember_failed user=%s", ctx.user_id, exc_info=True)
+            return composed
 
         def _succeeded(handled) -> bool:  # type: ignore[no-untyped-def]
             from mesiri_contracts.application.results.execution_result import ExecutionStatus
@@ -1734,7 +2035,7 @@ def build_message_handlers(
             # CREATE_SITE, mutually exclusive with the attendance offers.
             try:
                 await _offer_project_setup(
-                    handled, project_setup_offer_store, ctx, wa_id, _collect_spec
+                    handled, project_setup_offer_store, ctx, wa_id, _collect_spec, team_query=project_detail_query
                 )
             except Exception:  # noqa: BLE001 — offer never disturbs the saved project/site
                 _log.exception("project_setup.offer_failed user=%s", ctx.user_id)
@@ -1862,6 +2163,8 @@ def build_message_handlers(
                             action_type=confirmed.draft_action.action_type,
                             member_name=confirmed.draft_action.fields.get("member_name"),
                             actor=ctx,
+                            project_id=confirmed.draft_action.project_id,
+                            business_number=(message.metadata or {}).get("display_phone_number"),
                         ):
                             await sender.send_text(wa_id, text)
                 except Exception:  # noqa: BLE001 — the member is already added
@@ -1909,11 +2212,27 @@ def build_message_handlers(
             await _deliver_handled(saved, fold_plan_reply=True)
             return True
 
+        # Request 136 (B): ONE guard for the draft pipeline. A draft_v2 sender's site
+        # updates (labour, materials, work, issues) take one way: the agent's tool
+        # calls, the site resolver, the code-made card, the Save tap. The old ways in
+        # for those (a Yes / No or slot answer resuming a site-update workflow, the
+        # morning site question, the "later" list) are routed out below.
+        pipeline_v2 = await _draft_v2_on(ctx)
+        _log.info(
+            "journey.pipeline pipeline=%s user=%s correlation_id=%s",
+            "draft_v2" if pipeline_v2 else "legacy", ctx.user_id, message.correlation_id,
+        )
+        legacy_site_update = pipeline_v2 and await _legacy_site_update_waiting(ctx)
+
         # M7: if the user has a workflow awaiting confirmation and this message
         # is a confirmation reply, resume it and stop — the AI pipeline (and its
         # token cost) is never touched. A plain "yes" ends here.
         try:
-            handled = await interaction_handler.handle_fast_path(ctx.user_id, message, actor=ctx)
+            handled = (
+                None
+                if legacy_site_update
+                else await interaction_handler.handle_fast_path(ctx.user_id, message, actor=ctx)
+            )
             timer.lap("handle_fast_path")
         except Exception:  # noqa: BLE001 — a resume error must not drop the message
             _log.exception("interaction.handle_failed user=%s", ctx.user_id)
@@ -1928,7 +2247,9 @@ def build_message_handlers(
         # resume it and stop, same principle and same priority as the
         # confirmation fast path above.
         try:
-            slot_handled = await interaction_handler.handle_slot_answer(ctx.user_id, message)
+            slot_handled = (
+                None if legacy_site_update else await interaction_handler.handle_slot_answer(ctx.user_id, message)
+            )
             timer.lap("handle_slot_answer")
         except Exception:  # noqa: BLE001 — a resume error must not drop the message
             _log.exception("interaction.slot_answer_failed user=%s", ctx.user_id)
@@ -2115,54 +2436,29 @@ def build_message_handlers(
         # open activity in one write, while "img_expense"/"img_attendance"
         # still only process the FIRST through the normal single-report
         # confirm flow (see render_batch_overflow_reply's docstring for why).
-        image_purpose_row_id = interaction_handler.handle_image_purpose_tap(message)
-        if image_purpose_row_id is not None:
+        async def _photos_for_purpose(row_id: str, held_batch: list[Any]) -> None:
+            """Act on a held batch of photos now that their purpose is known
+            (a tap on the picker, or a caption that says it, PHO-07)."""
             from channel.replies import (
                 IMAGE_PURPOSE_SEMANTIC_HINT,
                 render_batch_overflow_reply,
-                render_evidence_attached_reply,
-                render_no_open_activity_for_evidence_reply,
             )
 
-            held_batch = await pending_media_store.pop_batch(user_id=ctx.user_id)
-            timer.lap("pop_pending_media")
-            if not held_batch:
-                expired_reply = "That photo has expired — please resend it."
-                await sender.send_text(wa_id, expired_reply)
-                await message_logger.log_reply(
-                    correlation_id=message.correlation_id, reply=expired_reply
-                )
-                await message_logger.mark_completed(correlation_id=message.correlation_id)
-                return
-
-            if image_purpose_row_id == "img_site_update":
+            if row_id == "img_site_update":
                 # Evidence attach is a direct write, never a confirmable
                 # workflow (see AttachEvidenceCommand's docstring) -- no
                 # single-active-invariant concern, so the WHOLE batch
                 # attaches in one shot regardless of size.
-                found = await activity_query.find_open_activity(
-                    organization_id=ctx.organization_id,
-                    site_id=None,
-                    reported_by_user_id=ctx.user_id,
+                from runtime.site_photos import attach_site_update_photos
+
+                reply_text = await attach_site_update_photos(
+                    held_batch,
+                    ctx=ctx,
+                    work_site=work_site,
+                    activity_query=activity_query,
+                    evidence_query=evidence_query,
+                    correlation_id=message.correlation_id,
                 )
-                if found is None:
-                    reply_text = render_no_open_activity_for_evidence_reply()
-                else:
-                    media_keys = [m.media.object_key for m in held_batch if m.media is not None]
-                    created_ids = await evidence_query.attach_photos(
-                        organization_id=ctx.organization_id,
-                        activity_id=found["activity_id"],
-                        media_object_keys=media_keys,
-                        uploaded_by=ctx.user_id,
-                        correlation_id=message.correlation_id,
-                    )
-                    summary_bits = [
-                        b for b in (found.get("work_type"), found.get("narrative")) if b
-                    ]
-                    activity_summary = " — ".join(summary_bits) if summary_bits else None
-                    reply_text = render_evidence_attached_reply(
-                        count=len(created_ids), activity_summary=activity_summary
-                    )
                 await sender.send_text(wa_id, reply_text)
                 await message_logger.log_reply(
                     correlation_id=message.correlation_id, reply=reply_text
@@ -2176,7 +2472,7 @@ def build_message_handlers(
             from interactions.category_hint import CategoryHint
 
             await _run_agent(
-                held_message, ctx, CategoryHint(IMAGE_PURPOSE_SEMANTIC_HINT[image_purpose_row_id]), timer
+                held_message, ctx, CategoryHint(IMAGE_PURPOSE_SEMANTIC_HINT[row_id]), timer
             )
             if len(held_batch) > 1:
                 overflow_reply = render_batch_overflow_reply(
@@ -2185,6 +2481,30 @@ def build_message_handlers(
                 await sender.send_text(wa_id, overflow_reply)
                 await message_logger.log_reply(correlation_id=message.correlation_id, reply=overflow_reply)
             await message_logger.mark_completed(correlation_id=message.correlation_id)
+
+        image_purpose_row_id = interaction_handler.handle_image_purpose_tap(message)
+        if image_purpose_row_id is None:
+            # PHO-06: photos nobody has said the purpose of are reminded about
+            # once, then said to be dropped -- on the sender's next message.
+            wait_notice = await photo_wait_notice(user_id=ctx.user_id, pending_media_store=pending_media_store)
+            if wait_notice is not None:
+                await send_reply_spec(
+                    wait_notice, wa_id,
+                    send_text=sender.send_text, send_list=sender.send_list, send_button=sender.send_button,
+                )
+                await message_logger.log_reply(correlation_id=message.correlation_id, reply=wait_notice.text)
+        if image_purpose_row_id is not None:
+            held_batch = await pending_media_store.pop_batch(user_id=ctx.user_id)
+            timer.lap("pop_pending_media")
+            if not held_batch:
+                expired_reply = "That photo has expired — please resend it."
+                await sender.send_text(wa_id, expired_reply)
+                await message_logger.log_reply(
+                    correlation_id=message.correlation_id, reply=expired_reply
+                )
+                await message_logger.mark_completed(correlation_id=message.correlation_id)
+                return
+            await _photos_for_purpose(image_purpose_row_id, held_batch)
             return
 
         # Bare "hi"/"menu"/"help"/etc (see greeting_phrases.json): the AI
@@ -2197,6 +2517,10 @@ def build_message_handlers(
         # nothing -- and keeps that database read off every message that
         # isn't a greeting, which is nearly all of them.
         greeting_reply = interaction_handler.handle_greeting_trigger(message)
+        if greeting_reply is not None and is_what_can_you_do(message.text or "") and pipeline_v2:
+            # WA-83: "help" is a question, answered by the one help (the company's own
+            # modules, examples to copy) in the agent's turn, not by the category menu.
+            greeting_reply = None
         if greeting_reply is not None:
             greeting_reply = interaction_handler.handle_greeting_trigger(
                 message,
@@ -2328,6 +2652,20 @@ def build_message_handlers(
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
                 return
 
+        # PHO-07: a photo whose caption says what it is ("cement bill 50 bags",
+        # "2nd floor plastering", "attendance register") is not asked about, and
+        # neither are the rest of its burst (a caption sits on one photo of an
+        # album): the purpose is kept for a minute.
+        if message.modality is InputModality.IMAGE and message.media is not None:
+            if not await pending_media_store.has_pending(user_id=ctx.user_id):
+                said_purpose = purpose_from_caption(message.text) or await pending_media_store.recent_purpose(
+                    user_id=ctx.user_id
+                )
+                if said_purpose is not None:
+                    await pending_media_store.remember_purpose(user_id=ctx.user_id, row_id=said_purpose)
+                    await _photos_for_purpose(said_purpose, [message])
+                    return
+
         # A genuinely new image (not a tap answering the picker above) is
         # held while we ask "what is this photo for?" instead of running
         # understanding/vision straight away -- a bare photo often arrives
@@ -2415,10 +2753,40 @@ def build_message_handlers(
         # the tool-calling model, which runs the workflows directly. Everything
         # above (taps, YES/NO, UNDO, menu, signup, slot answers) had its turn.
         if agent_provider is not None and _agent_reads(message):
+            if message.modality is InputModality.TEXT and pipeline_v2:
+                # WA-84: the report time and "who is on my team?" are answered by code
+                # (the setup question with its buttons; a read of the sender's projects).
+                try:
+                    setup_reply = await _team_or_setup_reply(message.text or "", ctx)
+                except Exception:  # noqa: BLE001 -- the model reads the message instead
+                    _log.exception("team_setup.failed user=%s", ctx.user_id)
+                    setup_reply = None
+                if setup_reply is not None:
+                    await _send_composed(wa_id, ctx.user_id, setup_reply)
+                    await message_logger.log_reply(correlation_id=message.correlation_id, reply=setup_reply.text)
+                    await message_logger.mark_completed(correlation_id=message.correlation_id)
+                    return
             # WA-45: the day's first message from someone with several sites
             # waits for "Where are you working today?".
             morning = None
-            if work_site is not None and category_hint is None:
+            # WA-81: with draft cards the site is a question of the card, so the
+            # morning question does not hold the message in a store of its own.
+            if work_site is not None and category_hint is None and not pipeline_v2:
+                try:
+                    # SIT-03: while the question is open, typing the site's
+                    # name answers it like the tap does.
+                    typed = await work_site.answer_by_name(message, ctx)
+                except Exception:  # noqa: BLE001 — the question is a nicety
+                    _log.exception("work_site.typed_failed user=%s", ctx.user_id)
+                    typed = None
+                if typed is not None:
+                    confirm, waiting = typed
+                    await _send_spec(confirm, wa_id)
+                    await message_logger.log_reply(correlation_id=message.correlation_id, reply=confirm.text)
+                    await message_logger.mark_completed(correlation_id=message.correlation_id)
+                    for held in waiting:
+                        await _run_journey_steps(held, {}, None, timer)
+                    return
                 try:
                     morning = await work_site.morning_question(message, ctx)
                 except Exception:  # noqa: BLE001 — the question is a nicety

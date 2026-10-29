@@ -92,3 +92,20 @@ UNIT_CONVERSION_ROLES: frozenset[str] = frozenset({"ADMIN", "OWNER", "SUPER_ADMI
 def may_set_unit_conversions(role: str | None) -> bool:
     """True if `role` may set a company-wide unit conversion."""
     return str(role or "").strip().upper() in UNIT_CONVERSION_ROLES
+
+
+# Who may give which role when adding a person (WA-67, audit SET-01). An
+# admin may give any role; a project manager only their own level or below,
+# as the dashboard (Team page, admins only) never lets anyone else make an
+# admin. The WhatsApp add-person flows check this before asking to confirm;
+# the backend validations check it again when the change is saved.
+GRANTABLE_ROLES: dict[str, frozenset[str]] = {
+    "ADMIN": frozenset({"ADMIN", "PROJECT_MANAGER", "SITE_ENGINEER", "FINANCE"}),
+    "PROJECT_MANAGER": frozenset({"PROJECT_MANAGER", "SITE_ENGINEER"}),
+}
+
+
+def may_grant_role(creator_role: str | None, role: str | None) -> bool:
+    """True if someone with `creator_role` may give a person `role`."""
+    creator = str(creator_role or "").strip().upper()
+    return str(role or "").strip().upper() in GRANTABLE_ROLES.get(creator, frozenset())

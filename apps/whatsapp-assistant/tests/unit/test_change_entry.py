@@ -22,6 +22,7 @@ from runtime.agent.tools import (
     ScopeLookup,
     to_candidate,
 )
+from runtime.day_facts import WorkFact
 from workflows.entities import Ambiguous, Candidate, Missing, Resolved
 
 
@@ -89,18 +90,32 @@ async def test_a_new_person_is_offered_then_created_through_the_plan():
 # -- correct the last quantity logged ---------------------------------------------
 
 
-class _Activities:
-    async def get_latest_quantity_update(self, *, organization_id: str, activity_id: str) -> dict | None:
-        if activity_id != "a1":
-            return None
-        return {"progress_update_id": "p9", "quantity": 180, "unit": "sqm", "unit_id": "u-sqm", "work_type": "plastering", "narrative": "2nd floor"}
+def _fact(fact_type: str, fact_id: str, activity: str, quantity: float, quantity_id: str = "") -> WorkFact:
+    return WorkFact(
+        fact_id=fact_id, fact_type=fact_type, site_id=SITE, key="plastering|2nd floor", field="quantity",
+        value=quantity, work_type="plastering", note="2nd floor", unit="sqm", activity_id=activity,
+        quantity=quantity, unit_id="u-sqm", quantity_id=quantity_id,
+    )
+
+
+class _DayFacts:
+    """The Day Facts reader (runtime/day_facts.py): the sender's facts, oldest first."""
+
+    def __init__(self, facts: list[WorkFact] | None = None) -> None:
+        self.facts = facts or []
+        self.asked: list[dict] = []
+
+    async def work(self, **kwargs: Any) -> list[WorkFact]:
+        self.asked.append(kwargs)
+        return self.facts
 
 
 async def test_a_correction_targets_the_last_quantity_this_chat_logged():
     async def remembered() -> str:
         return "a1"
 
-    entry = _entry(activity_query=_Activities(), remembered_activity=remembered)
+    facts = [_fact("progress_update", "p9", "a1", 180), _fact("activity", "a2", "a2", 90, quantity_id="q2")]
+    entry = _entry(day_facts=_DayFacts(facts), remembered_activity=remembered)
     ready = await _prepare(entry, CORRECT_WORK_QUANTITY, new_quantity=150)
     assert ready.decision.workflow_key is WorkflowKey.ACTIVITY_CORRECTION
     f = ready.event.fields
@@ -108,10 +123,21 @@ async def test_a_correction_targets_the_last_quantity_this_chat_logged():
     assert f["correction_activity_summary"] == "plastering — 2nd floor"
 
 
-async def test_with_nothing_logged_in_this_chat_the_workflow_says_so():
-    entry = _entry(activity_query=_Activities(), remembered_activity=None)
+async def test_with_nothing_logged_at_all_the_workflow_says_so():
+    entry = _entry(day_facts=_DayFacts(), remembered_activity=None)
     ready = await _prepare(entry, CORRECT_WORK_QUANTITY, new_quantity=150)
-    assert "progress_update_id" not in ready.event.fields  # the workflow answers "nothing to correct"
+    fields = ready.event.fields
+    assert "progress_update_id" not in fields and "activity_quantity_id" not in fields
+
+
+async def test_wrk06_after_a_session_gap_the_senders_latest_quantity_is_the_target():
+    day = _DayFacts([_fact("progress_update", "p1", "a1", 60), _fact("activity", "a3", "a3", 180, quantity_id="q3")])
+    entry = _entry(day_facts=day, remembered_activity=None)
+    ready = await _prepare(entry, CORRECT_WORK_QUANTITY, new_quantity=150)
+    f = ready.event.fields
+    assert (f["activity_quantity_id"], f["old_quantity"], f["old_unit"]) == ("q3", "180", "sqm")
+    assert "progress_update_id" not in f
+    assert day.asked[0]["include_pending"] is True  # a draft entry can be corrected too
 
 
 # -- close, reopen or withdraw a site issue -----------------------------------------

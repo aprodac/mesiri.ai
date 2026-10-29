@@ -207,7 +207,7 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[480px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Record Material Inflow</DialogTitle>
+          <DialogTitle>Record a delivery</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-2 text-xs">
           {error && (
@@ -231,7 +231,7 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
               ) : (
                 <Select value={projectId} onValueChange={(v) => { setProjectId(v); setSiteId('') }}>
                   <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Select project" />
+                    <SelectValue placeholder="Choose project" />
                   </SelectTrigger>
                   <SelectContent>
                     {projects.map((p) => (
@@ -251,7 +251,7 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
               ) : (
                 <Select value={siteId} onValueChange={setSiteId} disabled={!projectId}>
                   <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Optional site" />
+                    <SelectValue placeholder="Choose site" />
                   </SelectTrigger>
                   <SelectContent>
                     {sites.map((s) => (
@@ -271,7 +271,7 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
               options={materialOptions}
               value={materialId}
               onValueChange={setMaterialId}
-              placeholder="Select material from catalog"
+              placeholder="Choose material"
               searchPlaceholder="Search materials..."
               emptyText="No materials found."
             />
@@ -300,13 +300,13 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
               {/* Read-only: a material's Stock Unit is fixed (no conversion) —
                   see materials_catalog.default_unit_id. Selecting the material
                   determines the unit, not the other way around. */}
-              <Input value={selectedMaterial?.default_unit ?? ''} disabled placeholder="Select a material" />
+              <Input value={selectedMaterial?.default_unit ?? ''} disabled placeholder="Set by the material" />
             </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="grid gap-1.5">
-              <Label>Movement Reason</Label>
+              <Label>What kind</Label>
               <Select value={reason} onValueChange={(v) => setReason(v as InflowReason)}>
                 <SelectTrigger className="h-9">
                   <SelectValue />
@@ -321,7 +321,7 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
               </Select>
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="occurredDate">Occurred At</Label>
+              <Label htmlFor="occurredDate">Day</Label>
               <Input
                 id="occurredDate"
                 type="date"
@@ -340,7 +340,7 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
           )}
 
           <div className="grid gap-1.5">
-            <Label htmlFor="supplier">Supplier / Vendor</Label>
+            <Label htmlFor="supplier">Supplier</Label>
             <Input id="supplier" value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Optional" />
           </div>
 
@@ -368,7 +368,7 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
             </div>
             <div className="grid gap-1.5">
               <div className="flex items-baseline justify-between gap-2">
-                <Label htmlFor="totalCost">Line Total</Label>
+                <Label htmlFor="totalCost">Total cost</Label>
                 {totalCostEdited && (
                   <button
                     type="button"
@@ -413,7 +413,7 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               className="flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-xs shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-              placeholder="Optional context..."
+              placeholder="Optional"
             />
           </div>
 
@@ -422,7 +422,7 @@ export function RecordInflowDialog({ open, onOpenChange, scope }: RecordInflowDi
               Cancel
             </Button>
             <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? 'Recording...' : 'Record Inflow'}
+              {mutation.isPending ? 'Saving…' : 'Record delivery'}
             </Button>
           </DialogFooter>
         </form>

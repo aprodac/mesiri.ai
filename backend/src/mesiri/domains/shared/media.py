@@ -18,6 +18,8 @@ import logging
 
 from fastapi import HTTPException
 
+from mesiri_contracts.common.storage import ObjectStoragePort
+
 logger = logging.getLogger(__name__)
 
 
@@ -33,3 +35,21 @@ def assert_downloadable_url(url: str) -> str:
             detail="Media storage is not configured for this environment.",
         )
     return url
+
+
+MEDIA_URL_TTL_SECONDS = 600
+
+
+async def signed_media_url(object_storage: ObjectStoragePort, key: str | None) -> str | None:
+    """A short-lived link to a stored photo/voice note, or None when storage
+    can't give one (the caller then shows the item without it). Shared by the
+    DPR sources panel and the site gallery (WEB-24)."""
+    if not key:
+        return None
+    try:
+        return assert_downloadable_url(
+            await object_storage.generate_presigned_url(key, expires_in_seconds=MEDIA_URL_TTL_SECONDS)
+        )
+    except Exception:  # noqa: BLE001 -- one missing photo must not hide the rest
+        logger.warning("media.url_unavailable key=%s", key)
+        return None

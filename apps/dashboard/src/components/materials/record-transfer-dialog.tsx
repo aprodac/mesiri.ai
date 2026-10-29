@@ -178,7 +178,7 @@ export function RecordTransferDialog({ open, onOpenChange, scope }: RecordTransf
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[520px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Transfer Material Between Sites</DialogTitle>
+          <DialogTitle>Move material between sites</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-2 text-xs">
           {error && (
@@ -270,7 +270,7 @@ export function RecordTransferDialog({ open, onOpenChange, scope }: RecordTransf
               options={materialOptions}
               value={materialId}
               onValueChange={setMaterialId}
-              placeholder="Select material from catalog"
+              placeholder="Choose material"
               searchPlaceholder="Search materials..."
               emptyText="No materials found."
             />
@@ -296,7 +296,7 @@ export function RecordTransferDialog({ open, onOpenChange, scope }: RecordTransf
             </div>
             <div className="grid gap-1.5">
               <Label>Unit</Label>
-              <Input value={selectedMaterial?.default_unit ?? ''} disabled placeholder="Select a material" />
+              <Input value={selectedMaterial?.default_unit ?? ''} disabled placeholder="Set by the material" />
             </div>
           </div>
 
@@ -329,7 +329,7 @@ export function RecordTransferDialog({ open, onOpenChange, scope }: RecordTransf
               </p>
               <p className="text-muted-foreground">
                 Sending {overStock.requested} {overStock.unit} leaves it at{' '}
-                <span className="font-mono tabular-nums">
+                <span className="tabular-nums">
                   {Number(overStock.available) - Number(overStock.requested)} {overStock.unit}
                 </span>
                 . A delivery or opening stock may be missing there.
@@ -363,7 +363,7 @@ export function RecordTransferDialog({ open, onOpenChange, scope }: RecordTransf
               Cancel
             </Button>
             <Button type="submit" disabled={mutation.isPending || !!overStock}>
-              {mutation.isPending ? 'Recording...' : 'Record Transfer'}
+              {mutation.isPending ? 'Saving…' : 'Move it'}
             </Button>
           </DialogFooter>
         </form>

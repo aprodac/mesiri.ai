@@ -6,6 +6,7 @@ import UserAccessEditor, { type OrgProject } from './UserAccessEditor';
 import AddUserDialog from './AddUserDialog';
 import PlanCard from './PlanCard';
 import BrandingPanel from './BrandingPanel';
+import CompanyCosts from './CompanyCosts';
 import { useToast, getErrorMessage } from './Toast';
 import CompanyDetailsDialog from './CompanyDetailsDialog';
 
@@ -73,6 +74,15 @@ const ENABLED_MODULES_KEY = 'enabled_modules';
 // new setting shipped server-side can't silently render as the wrong control.
 const ROLE_LIST_SETTINGS = new Set(['whatsapp_material_create_roles']);
 
+// On/off switches. Same save-and-show-back pattern as the Modules card; the
+// backend enforces superadmin for draft_v2, this only exposes the control.
+const BOOLEAN_SETTINGS = new Set(['draft_v2']);
+
+const BOOLEAN_CONFIRM: Record<string, string> = {
+  draft_v2:
+    "On for every company: WhatsApp updates are held as one card and saved on the Save tap. Turn off only to put this company back on the old flow.",
+};
+
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: 'Admin',
   PROJECT_MANAGER: 'Project manager',
@@ -80,7 +90,7 @@ const ROLE_LABELS: Record<string, string> = {
   FINANCE: 'Finance',
 };
 
-type Tab = 'users' | 'activity' | 'settings' | 'letterhead';
+type Tab = 'users' | 'costs' | 'activity' | 'settings' | 'letterhead';
 
 const statusBadgeClass = (status: string) =>
   (status || '').toLowerCase() === 'active' ? 'badge-success' : 'badge-warning';
@@ -95,7 +105,10 @@ export default function OrganizationDetail() {
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   // ?tab=letterhead opens the Letterhead tab (from Branding requests, SA-09).
   const [searchParams] = useSearchParams();
-  const [tab, setTab] = useState<Tab>(searchParams.get('tab') === 'letterhead' ? 'letterhead' : 'users');
+  const [tab, setTab] = useState<Tab>(() => {
+    const asked = searchParams.get('tab');
+    return asked === 'letterhead' || asked === 'costs' ? asked : 'users';
+  });
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -228,6 +241,27 @@ export default function OrganizationDetail() {
       .finally(() => setSavingSetting(null));
   };
 
+  const handleToggleBoolean = (key: string, enabled: boolean) => {
+    if (!id || !orgSettings) return;
+    if (!window.confirm(`${BOOLEAN_CONFIRM[key] ?? 'Change this setting?'}\n\nTurn ${key} ${enabled ? 'ON' : 'OFF'}?`)) {
+      return;
+    }
+    setSavingSetting(key);
+    setSettingsError(null);
+    api
+      .put<{ key: string; value: boolean }>(`/admin/organizations/${id}/settings`, {
+        key,
+        value: enabled,
+      })
+      .then((res) =>
+        setOrgSettings((prev) =>
+          prev ? { ...prev, settings: { ...prev.settings, [key]: res.data.value } } : prev
+        )
+      )
+      .catch((err) => setSettingsError(err.response?.data?.detail || `Failed to save ${key}`))
+      .finally(() => setSavingSetting(null));
+  };
+
   const handleToggleModule = (moduleKey: string, enabled: boolean) => {
     if (!id || !orgSettings) return;
     const stored = orgSettings.settings[ENABLED_MODULES_KEY];
@@ -348,11 +382,11 @@ export default function OrganizationDetail() {
 
   return (
     <div className="animate-fade-in" style={{ maxWidth: '1200px' }}>
-      <Link to="/organizations" className="btn-secondary" style={{ display: 'inline-flex', marginBottom: 'var(--space-6)' }}>
+      <Link to="/organizations" className="btn-secondary od-back" style={{ display: 'inline-flex', marginBottom: 'var(--space-6)' }}>
         <ArrowLeft size={16} /> Back to Companies
       </Link>
 
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 'var(--space-6)' }}>
+      <header className="od-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 'var(--space-6)' }}>
         <div>
           <h1>{org.name}</h1>
           <p className="subtitle">
@@ -365,7 +399,7 @@ export default function OrganizationDetail() {
             </span>
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+        <div className="od-actions" style={{ display: 'flex', gap: 'var(--space-2)' }}>
           <button className="btn-secondary" onClick={() => setEditingDetails(true)}>
             <Pencil size={16} /> Edit details
           </button>
@@ -378,7 +412,7 @@ export default function OrganizationDetail() {
             <Sparkles size={16} /> {seeding ? 'Seeding…' : 'Seed Finance Data'}
           </button>
           <button
-            className="btn-secondary"
+            className="btn-secondary od-danger"
             style={{ color: 'var(--error)', borderColor: 'var(--error)' }}
             onClick={() => setShowDeleteModal(true)}
             disabled={deleting}
@@ -400,7 +434,7 @@ export default function OrganizationDetail() {
       <PlanCard orgId={org.id} onStatus={showStatus} />
 
       <div className="card" style={{ marginBottom: 'var(--space-6)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(140px, 100%), 1fr))', gap: 'var(--space-4)' }}>
           <div>
             <div style={{ fontSize: '12px', color: 'var(--neutral-500)' }}>Database Route</div>
             <div style={{ fontFamily: 'monospace', fontSize: '13px' }}>{org.db_route}</div>
@@ -415,13 +449,13 @@ export default function OrganizationDetail() {
           </div>
           <div>
             <div style={{ fontSize: '12px', color: 'var(--neutral-500)' }}>WhatsApp messages</div>
-            <Link to={`/logs?org=${org.id}`} style={{ fontSize: '13px' }}>View messages →</Link>
+            <Link to={`/logs?org=${org.id}`} className="tap-link" style={{ fontSize: '13px' }}>View messages →</Link>
           </div>
         </div>
       </div>
 
-      <nav style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)', borderBottom: '1px solid var(--border-strong)' }}>
-        {(['users', 'activity', 'settings', 'letterhead'] as Tab[]).map((t) => (
+      <nav className="od-tabs" style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)', borderBottom: '1px solid var(--border-strong)' }}>
+        {(['users', 'costs', 'activity', 'settings', 'letterhead'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -436,7 +470,7 @@ export default function OrganizationDetail() {
               cursor: 'pointer',
             }}
           >
-            {t === 'users' ? 'Users & Roles' : t === 'activity' ? 'Activity' : t === 'settings' ? 'Settings' : 'Letterhead'}
+            {t === 'users' ? 'Users & Roles' : t === 'costs' ? 'Costs' : t === 'activity' ? 'Activity' : t === 'settings' ? 'Settings' : 'Letterhead'}
           </button>
         ))}
       </nav>
@@ -448,7 +482,7 @@ export default function OrganizationDetail() {
             <Plus size={16} /> Add user
           </button>
         </div>
-        <div className="table-container">
+        <div className="table-container od-wide">
           <table>
             <thead>
               <tr>
@@ -542,11 +576,68 @@ export default function OrganizationDetail() {
             </tbody>
           </table>
         </div>
+
+        {/* SA-21: on a phone, one card per user with every field and action. */}
+        <div className="od-cards">
+          {users.length === 0 && <p className="od-cards-empty">No users in this organization.</p>}
+          {users.map((u) => {
+            const isInactive = (u.status || 'active').toLowerCase() === 'inactive';
+            return (
+              <div key={u.id} className="od-card">
+                <div className="od-card-top">
+                  <div style={{ minWidth: 0 }}>
+                    <div className="od-card-name">{u.full_name || '—'}</div>
+                    <div className="od-card-sub" style={{ textTransform: 'capitalize' }}>{(u.role || '').toLowerCase().replace('_', ' ')}</div>
+                  </div>
+                  <span className={`badge ${statusBadgeClass(u.status || 'active')}`} style={{ textTransform: 'capitalize', whiteSpace: 'nowrap' }}>
+                    {u.status || 'active'}
+                  </span>
+                </div>
+                <dl className="od-card-fields">
+                  <dt>Email</dt>
+                  <dd>{u.email || '—'}</dd>
+                  <dt>WhatsApp</dt>
+                  <dd>{u.whatsapp_number || 'Not mapped'}</dd>
+                  <dt>Access</dt>
+                  <dd>
+                    {u.access_mode === 'all_projects'
+                      ? 'All projects'
+                      : u.project_access.length === 0
+                        ? 'No projects assigned'
+                        : u.project_access.map((g) => `${g.project_name} — ${g.site_access}`).join(', ')}
+                  </dd>
+                </dl>
+                <div className="od-card-actions">
+                  <button className="btn-secondary" onClick={() => setEditingUser(u)}>
+                    Edit access
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    onClick={() => handleUpdateUserStatus(u, isInactive ? 'active' : 'inactive')}
+                    disabled={updatingUserId === u.id}
+                  >
+                    {updatingUserId === u.id ? 'Updating…' : isInactive ? 'Reactivate' : 'Deactivate'}
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    style={{ color: 'var(--error)' }}
+                    onClick={() => handleDeleteUser(u)}
+                    disabled={deletingUserId === u.id}
+                    aria-label={`Remove ${u.full_name || u.email || 'user'}`}
+                  >
+                    <X size={14} /> {deletingUserId === u.id ? 'Removing…' : 'Remove'}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
         </>
       )}
 
       {tab === 'activity' && (
-        <div className="table-container">
+        <>
+        <div className="table-container od-wide">
           <table>
             <thead>
               <tr>
@@ -572,7 +663,22 @@ export default function OrganizationDetail() {
             </tbody>
           </table>
         </div>
+        <div className="od-cards">
+          {timeline.length === 0 && <p className="od-cards-empty">No activity recorded yet.</p>}
+          {timeline.map((entry) => (
+            <div key={entry.id} className="od-card od-card-compact">
+              <div className="od-card-top">
+                <span className="badge badge-info" style={{ whiteSpace: 'nowrap' }}>{entry.event_type}</span>
+                <span className="od-card-sub">{new Date(entry.occurred_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span>
+              </div>
+              <div className="od-card-text">{entry.summary}</div>
+            </div>
+          ))}
+        </div>
+        </>
       )}
+
+      {tab === 'costs' && <CompanyCosts orgId={org.id} orgName={org.name} />}
 
       {tab === 'letterhead' && <BrandingPanel orgId={org.id} />}
 
@@ -743,8 +849,26 @@ export default function OrganizationDetail() {
                         </label>
                       ))}
                     </div>
+                  ) : BOOLEAN_SETTINGS.has(spec.key) ? (
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '13px',
+                        cursor: savingSetting === spec.key ? 'wait' : 'pointer',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={(value ?? spec.default) === true}
+                        disabled={savingSetting === spec.key}
+                        onChange={(e) => handleToggleBoolean(spec.key, e.target.checked)}
+                      />
+                      {(value ?? spec.default) === true ? 'On' : 'Off'}
+                    </label>
                   ) : (
-                    <code style={{ fontSize: '12px' }}>{JSON.stringify(value)}</code>
+                    <pre className="od-json">{JSON.stringify(value, null, 2)}</pre>
                   )}
                 </div>
               );

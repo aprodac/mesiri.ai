@@ -17,22 +17,29 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from channel.replies import ListRow, ReplySpec
+from channel.replies import ListRow, ReplySpec, is_module_disabled_reply
 from mesiri_ai.models import ToolOutcome
 from runtime.save_first import DRAFT_NOTE
 
+from . import site_wait
 from .actions import CLOSE_ISSUES, ENGINEER_QUESTION, SITE_CONDITIONS
 from .cards import CardItem, merge_changes
 from .equipment import EQUIPMENT_LINE, is_equipment_only
 from .gateway import StepResult, WorkflowGateway
 from .later import LaterItem, held_item
+from .material_direction import asks_direction, default_options, says_received
+from .save_button import SAVE_TITLE
+from .site_match import short_title
 from .tools import (
     ASK_USER,
+    CORRECT_WORK_QUANTITY,
+    GET_JOIN_CODE,
     NOTE_FOR_ENGINEER,
     QUERY_MATERIALS,
     REPORT_ISSUE,
     REQUEST_DPR,
     SAVE_LABOUR,
+    SAVE_MATERIAL_USAGE,
     SAVE_WORK_DONE,
     SET_UNIT_CONVERSION,
     SET_WORK_SITE,
@@ -62,6 +69,10 @@ _TITLE_MAX = 24  # WhatsApp button/row title limit
 _RECORDED = re.compile(
     r"^\W*(?:recorded\.?(?:\s+thank you\.?)?|saved\s*:.*)\s*$", re.IGNORECASE | re.DOTALL
 )
+
+
+#: WA-82: update_pending_card with nothing to correct; the model saves it as new.
+NOT_A_CORRECTION = "not_a_correction"
 
 
 def per_stock_unit(args: dict[str, Any]) -> Decimal | None:
@@ -262,16 +273,36 @@ def rejoin_names(options: list[Any], known: list[str]) -> list[str]:
     return out
 
 
-def question_reply(question: str, options: list[str]) -> ReplySpec:
-    """The one question as a message: buttons for up to three options, a list
-    for up to ten, plain text otherwise."""
-    options = [o for o in (str(o).strip() for o in options) if o][:MAX_LIST_ROWS]
-    rows = tuple(ListRow(f"agent_opt_{i}", _title(o)) for i, o in enumerate(options, 1))
-    if 0 < len(rows) <= MAX_BUTTONS:
-        return ReplySpec(text=question, buttons=rows)
-    if rows:
-        return ReplySpec(text=question, list_button_label="Choose one", list_rows=rows)
-    return ReplySpec(text=question)
+#: WhatsApp cuts a reply button's title at 20 characters (a list row's at 24).
+_BUTTON_TITLE_MAX = 20
+
+
+def _choice_reply(question: str, options: list[str], list_label: str) -> ReplySpec:
+    """The one question as a message. Up to three options that all fit a
+    button (20 characters) are buttons; anything else is a list, whose rows
+    carry a title cut only between words and the full option underneath --
+    never a button cut mid-sentence ("The amount in cubic", live 24 Oct)."""
+    labels = [" ".join(str(o).split()) for o in options if str(o).strip()][:MAX_LIST_ROWS]
+    if 0 < len(labels) <= MAX_BUTTONS and all(len(o) <= _BUTTON_TITLE_MAX for o in labels):
+        return ReplySpec(text=question, buttons=tuple(ListRow(f"agent_opt_{i}", o) for i, o in enumerate(labels, 1)))
+    rows = []
+    for i, label in enumerate(labels, 1):
+        title = short_title(label, _TITLE_MAX)
+        rows.append(ListRow(f"agent_opt_{i}", title, label[:72] if title != label else ""))
+    return ReplySpec(text=question, list_button_label=list_label, list_rows=tuple(rows)) if rows else ReplySpec(text=question)
+
+
+def site_reply(question: str, options: list[str]) -> ReplySpec:
+    """The site question ([111])."""
+    return _choice_reply(question, options, "Choose site")
+
+
+def question_reply(question: str, options: list[str], *, awaiting: str = "") -> ReplySpec:
+    """The one question as a message: buttons when the options are short
+    (up to three), a list otherwise (up to ten), plain text with none."""
+    if awaiting == "site":
+        return site_reply(question, options)
+    return _choice_reply(question, options, "Choose one")
 
 
 @dataclass(slots=True)
@@ -328,11 +359,17 @@ class AgentToolbox:
     _action_summaries: list[str] = field(default_factory=list)
     #: Request 104, D2: the hours-lost question was the last thing asked.
     hours_asked: bool = False
+    #: MAT-07: a "used" save for a message that says the material arrived was
+    #: sent back once (to save_material_receipt).
+    direction_redirected: bool = False
     #: Request 104: every tool the model called this message (even a refused one).
     called: set[str] = field(default_factory=set)
     #: Request 104: the message is only about equipment, which WhatsApp does not
     #: record yet; its reply is the one plain line, never a Save.
     equipment_noted: bool = False
+    #: WA-84: a request for a module the company has switched off: the code's one line
+    #: is the reply (in the sender's language), not the model's English retelling of it.
+    module_off_line: str = ""
     #: The last reply offered to ask their engineer, so a bare "yes" asks it.
     engineer_offered: bool = False
     #: Request 88: lines the system adds under the model's words, from the
@@ -341,6 +378,16 @@ class AgentToolbox:
     #: Request 88: items of the open card that follow the one being changed.
     _carry_after: list[SavedItem] = field(default_factory=list)
     _seen: set[str] = field(default_factory=set)
+    #: [111] (runtime/agent/site_wait.py): save calls from earlier messages that
+    #: are waiting on the site answer, oldest first, as loaded for this turn...
+    site_queue: list[dict[str, Any]] = field(default_factory=list)
+    #: ...and the ones this turn's own site question now holds.
+    site_new: list[dict[str, Any]] = field(default_factory=list)
+    #: The waiting calls were released (saved at the answered site) this turn.
+    site_released: bool = False
+    #: The parked question is the code's own site question: it is sent as
+    #: worded in code, in the sender's language, whatever the model wrote.
+    parked_site: bool = False
     #: WA-52: what the stock lookup answered this message, if it ran.
     _stock_answer: str | None = None
     _inflight: set[asyncio.Task[Any]] = field(default_factory=set)
@@ -404,8 +451,32 @@ class AgentToolbox:
         self.called.add(name)
         self.calls += 1
         if self.calls > MAX_CALLS:
+            await self._note_lost(name, args, "too many in one message")
             return ToolOutcome(
                 content={"status": "skipped", "reason": "too many actions in one message"}
+            )
+        if name == ASK_USER and asks_direction(str(args.get("question") or "")) and says_received(self.user_text):
+            # MAT-07: it says the material came; that is a receipt, not a question.
+            _log.warning("agent.direction_question_refused")
+            return ToolOutcome(
+                content={
+                    "status": "not_asked",
+                    "reason": "the message says the material arrived, so it was received",
+                    "instruction": (
+                        "Do not ask 'Received or used?'. Call save_material_receipt now with the "
+                        "material, quantity and unit from the message."
+                    ),
+                }
+            )
+        if name == SAVE_MATERIAL_USAGE and says_received(self.user_text) and not self.direction_redirected:
+            # The same words, the wrong tool: arrived material is not a usage.
+            self.direction_redirected = True
+            return ToolOutcome(
+                content={
+                    "status": "not_saved",
+                    "reason": "the message says the material arrived, so it was received, not used",
+                    "instruction": "Nothing was saved. Call save_material_receipt with the same material, quantity and unit.",
+                }
             )
         if name == ASK_USER:
             return self._ask(args)
@@ -498,13 +569,156 @@ class AgentToolbox:
         self._seen.add(signature)
         if name in WRITE_TOOLS:
             self.attempted_writes += 1
+        earlier: list[str] = []
+        behind: list[dict[str, Any]] = []
+        site = None
+        if name in WRITE_TOOLS and self.site_queue and not self.site_released:
+            site = self._answered_site(args)
+            if site:
+                ahead, behind = self._split_site_queue(name, args)
+                earlier = await self._replay_site(ahead, site, args.get("project"))
         try:
             step = await self._run(name, args)
         except Exception:  # noqa: BLE001 — the model is told; the trace keeps the cause
             _log.exception("agent.tool_failed tool=%s", name)
             self.failed += 1
+            await self._note_lost(name, args, "that action failed")
             return ToolOutcome(content={"status": "error", "message": "that action failed"})
-        return self._outcome(name, step)
+        if step.status == "choose" and step.awaiting == "site" and name in WRITE_TOOLS:
+            self._hold_for_site(name, args)
+        outcome = self._outcome(name, step)
+        if behind and site:
+            earlier += await self._replay_site(behind, site, args.get("project"))
+        if earlier:
+            outcome.content["also_saved_from_earlier_messages"] = earlier
+            outcome.content["instruction"] = (
+                "These earlier messages were waiting for the site and are now on the same card. "
+                "Do not save them again and do not ask about them."
+            )
+        return outcome
+
+    @property
+    def draft_mode(self) -> bool:
+        """Request 124: the company holds messages as one draft card."""
+        return getattr(self.gateway, "draft_mode", False) is True
+
+    async def _note_lost(self, name: str, args: dict[str, Any], reason: str) -> None:
+        """A save call that will not become a line on the card is listed on it
+        as "Couldn't read: ...", never dropped silently (ADR section 2.6)."""
+        from .draft import DRAFT_TOOLS
+
+        if not (self.draft_mode and name in DRAFT_TOOLS):
+            return
+        try:
+            from . import draft_flow
+
+            await draft_flow.note_lost(self.gateway, name, args, reason)
+        except Exception:  # noqa: BLE001 -- the card then lacks the line; the call is still logged
+            _log.warning("agent.note_lost_failed tool=%s", name, exc_info=True)
+
+    # -- [111] saves waiting on the site answer ---------------------------------
+
+    @staticmethod
+    def _bare(args: dict[str, Any]) -> str:
+        return json.dumps({k: v for k, v in args.items() if k not in ("site", "project")}, sort_keys=True, default=str)
+
+    def _hold_for_site(self, name: str, args: dict[str, Any]) -> None:
+        """This save ended in the site question: keep it, so the answer saves it
+        (and the ones before it) instead of the newest question replacing them."""
+        bare = self._bare(args)
+        if any(i["tool"] == name and self._bare(i["args"]) == bare for i in [*self.site_queue, *self.site_new]):
+            return
+        note = " ".join(self.user_text.split())[:120]
+        self.site_new.append({"tool": name, "args": dict(args), "note": note})
+
+    def _answered_site(self, args: dict[str, Any]) -> str | None:
+        """The site a save names when it is one of the sender's own: the answer
+        to the site question (a tap or a typed name, passed on by the model)."""
+        site = str(args.get("site") or "").strip()
+        if not site:
+            return None
+        project = str(args.get("project") or "").strip()
+        project_id = self.scope.project_id(project) if project else None
+        return site if self.scope.site_id(site, project_id) is not None else None
+
+    def _split_site_queue(self, name: str, args: dict[str, Any]) -> tuple[list[dict], list[dict]]:
+        """The waiting calls before and after the one being made now (which
+        covers its own entry), so the card keeps the order they came in. A call
+        that is none of them leaves everything ahead of it."""
+        queue, self.site_queue = self.site_queue, []
+        self.site_released = True
+        bare = self._bare(args)
+        for n, item in enumerate(queue):
+            if item["tool"] == name and self._bare(item["args"]) == bare:
+                return queue[:n], queue[n + 1 :]
+        return queue, []
+
+    async def _replay_site(self, items: list[dict[str, Any]], site: str, project: Any) -> list[str]:
+        """Save each waiting call at ``site``, in order. They land on the same
+        card; what cannot be saved is said, never dropped."""
+        done: list[str] = []
+        for item in items:
+            args = {k: v for k, v in item["args"].items() if k not in ("site", "project")}
+            args["site"] = site
+            if project:
+                args["project"] = project
+            signature = f"{item['tool']}:{json.dumps(args, sort_keys=True, default=str)}"
+            if signature in self._seen:
+                continue
+            self._seen.add(signature)
+            self.attempted_writes += 1
+            try:
+                step = await self._run(item["tool"], args)
+            except Exception:  # noqa: BLE001 -- said below; the trace keeps the cause
+                _log.exception("agent.site_release_failed tool=%s", item["tool"])
+                self.failed += 1
+                step = StepResult("error", text="That action failed.")
+            if step.status in ("saved", "drafted"):
+                # Request 132: on a draft card the call became a line of the card; it
+                # was left as "Not saved (...):" with nothing after it, beside the line.
+                self._outcome(item["tool"], step)
+                done.append(step.summary or step.text)
+            elif step.text:
+                self.system_lines.append(f"Not saved ({item.get('note') or item['tool']}): {step.text}".strip())
+        return done
+
+    async def finish_site_queue(self) -> None:
+        """End of the turn: waiting calls the model did not release. A reply that
+        is just a site's name still releases them; any other message that did
+        not ask the site again leaves them unsaved, and the sender is told."""
+        if not self.site_queue or self.site_released or self.parked is not None:
+            return
+        typed = " ".join(self.user_text.split())
+        site = typed if 0 < len(typed.split()) <= 6 and self.scope.site_id(typed) is not None else None
+        if site:
+            ahead, _ = self._split_site_queue("", {})
+            await self._replay_site(ahead, site, None)
+            return
+        from .work_site import _language_of, _say
+
+        items = ", ".join(f"“{i['note'][:40]}”" if i.get("note") else i["tool"] for i in self.site_queue)
+        self.system_lines.append(_say(_language_of(self.user_text), "dropped", items=items))
+        self.site_queue = []
+
+    def site_queue_after(self) -> list[dict[str, Any]]:
+        """What still waits on the site answer after this turn."""
+        out = list(self.site_queue)
+        for item in self.site_new:
+            if len(out) >= site_wait.MAX_WAITING:
+                line = "I'm already holding too many updates. Please pick the site first, then send the rest."
+                if line not in self.system_lines:
+                    self.system_lines.append(line)
+                break
+            out.append(item)
+        return out
+
+    def site_hold_line(self) -> str | None:
+        waiting = len(self.site_queue_after())
+        if waiting < 2:
+            return None
+        from .work_site import _language_of, _say
+
+        return _say(_language_of(self.user_text), "hold", n=waiting)
 
     async def _stock_for_question(self) -> str | None:
         """WA-52: the stock answer for a message asking whether a material is
@@ -571,6 +785,9 @@ class AgentToolbox:
             )
         options = args.get("options") or []
         options = rejoin_names(options if isinstance(options, list) else [], self._known_names())
+        if not options:
+            # MAT-08: "cement vannu" -> "How many?" came with no buttons.
+            options = list(default_options(question, self.user_text))
         self.parked = question_reply(question, options)
         self.parked_by = "ask"
         # WA-58: what the question leaves aside is taken up next.
@@ -609,6 +826,23 @@ class AgentToolbox:
                     ),
                 }
             )
+        if getattr(self.gateway, "draft_mode", False) is True:
+            # Request 132: only a plain "now at Site B" moves the sender; a site named
+            # while setting up the team or asking something says where it IS.
+            from .draft_site import is_location_statement
+
+            site_name = next((name for sid, name, _pid in self.scope.sites if str(sid) == str(site_id)), "")
+            if not is_location_statement(self.gateway.actor, self.user_text, site_name):
+                return ToolOutcome(
+                    content={
+                        "status": "not_a_move",
+                        "message": "Their message names that site but does not say they are working there.",
+                        "instruction": (
+                            "Nothing was changed. Do not call set_work_site for this message; handle its "
+                            "parts with the other tools, naming the site in them where it matters."
+                        ),
+                    }
+                )
         try:
             label = await self.gateway.set_work_site(project_id=project_id, site_id=site_id)
         except Exception:  # noqa: BLE001 -- the model is told; the trace keeps the cause
@@ -631,6 +865,10 @@ class AgentToolbox:
             return await self._undo(args)
         if name == UPDATE_PENDING_CARD:
             return await self._update_card(args)
+        if name == CORRECT_WORK_QUANTITY and self.draft_mode:
+            return await self._correct_work(args)
+        if name == GET_JOIN_CODE:
+            return await self.gateway.share_join_code()
         if name == SET_UNIT_CONVERSION:
             return await self.gateway.set_unit_conversion(
                 material=str(args.get("material") or ""),
@@ -654,6 +892,18 @@ class AgentToolbox:
     async def _undo(self, args: dict[str, Any]) -> StepResult:
         """Request 88: undo the entries of the latest card. The model may only
         name ids the code listed; the gateway rejects any other."""
+        if self.draft_mode:
+            draft = await self.gateway.open_draft()
+            if draft is not None and draft.live:
+                # Request 124: the open card is a draft -- cancelling it removes
+                # it whole, and nothing was ever written.
+                from . import draft as dr
+
+                lines = "; ".join(i.line for i in draft.items if i.state != dr.UNREADABLE)
+                reply = await self.gateway.cancel_draft(draft)
+                if reply.text != dr.CANCELLED:
+                    return StepResult("info", text=reply.text)
+                return StepResult("undone", text=f"Removed from the card: {lines}. Nothing was saved.")
         undo_card = getattr(self.gateway, "undo_card", None)
         if undo_card is None:
             return StepResult("info", text="Nothing to undo from your last card.")
@@ -666,6 +916,8 @@ class AgentToolbox:
         withdrawn and the new one saved through the item's own save tool, so
         every check of that tool runs again; the card is then shown again."""
         gateway = self.gateway
+        if self.draft_mode:
+            return await self._update_draft(args)
         open_card = getattr(gateway, "open_card", None)
         card = await open_card() if open_card is not None else None
         if card is None:
@@ -716,11 +968,114 @@ class AgentToolbox:
             "error", text="The change did not go through and the old entry could not be put back: they need to send it again."
         )
 
+    async def _correct_work(self, args: dict[str, Any]) -> StepResult:
+        """Request 137 (C): a correction of saved work, resolved in code against the
+        day's saved facts (``day_facts``: the database, with the saved card on top).
+        A percent that is not a correction ("tiling 80% aayi") is progress, a new
+        line; an explicit one ("alla, 75%") or a corrected amount ("it was 150 not
+        180") becomes a "Change ..." line for the saved entry, found by its fact id.
+        For draft_v2 senders this replaces the old lookup (``find_correction_target``),
+        which needed a quantity and only knew the last one logged."""
+        from runtime import day_facts as df
+
+        value, unit = args.get("new_quantity"), args.get("unit")
+        gateway = self.gateway
+        saved = await gateway.saved_card()
+        card_items = list(saved.items) if saved is not None else []
+        facts = df.merged(df.work_facts(card_items), await gateway.saved_work_today())
+        if df.is_percent(value, unit, self.user_text):
+            resolved = df.resolve_percent(facts, value, self.user_text)
+            changes: dict[str, Any] = {"progress_percent": value}
+        else:
+            resolved = df.resolve_quantity(facts, value, unit, self.user_text)
+            changes = {}
+        if resolved.action == df.NEW_LINE:
+            return StepResult(NOT_A_CORRECTION, text="A new percentage for the work is progress, not a correction.")
+        if resolved.action == df.NOTHING or resolved.fact is None:
+            return StepResult("error", text=f"Nothing was changed: {resolved.reason}.")
+        target = df.card_item_for(resolved.fact, card_items)
+        if not changes:
+            fact = resolved.fact
+            changes = {
+                "quantities": [{"work_type": fact.work_type, "quantity": value, "unit": unit or fact.unit}],
+                # The old note carried the old figure ("plastering 50 sq ft").
+                "narrative": ", ".join(p for p in (fact.work_type, fact.location) if p),
+            }
+        return await gateway.change_saved_item(target, changes)
+
+    async def _update_draft(self, args: dict[str, Any]) -> StepResult:
+        """Request 127 (P2): a correction under draft cards. On the open card the
+        line is edited in place; on a card they already saved it becomes a
+        'Change ...' line on a new card, saved by tap. The reply is built from
+        what this returns: a change is claimed only when it was made."""
+        gateway = self.gateway
+        changes = args.get("changes")
+        if not isinstance(changes, dict) or not [v for v in changes.values() if v is not None]:
+            return StepResult("error", text="No change was given, so nothing was changed.")
+        from .actions import ACTION_FACT
+        from .draft import DRAFT_TOOLS
+
+        draft = await gateway.open_draft()
+        draft = draft if draft is not None and draft.live else None
+        saved = await gateway.saved_card()
+        wanted = str(args.get("card_id") or "").strip().lower()
+        # Which card they mean: the saved one when its id was passed (or there is no
+        # open card), else the open one.
+        on_saved = saved is not None and (draft is None or wanted == saved.id)
+        if draft is None and saved is None:
+            # WA-82 (live 27 Oct, #4335): "tiling 70% aayi" after the card was cancelled
+            # was taken as a correction of nothing and dead-ended. Nothing to correct means
+            # it is new information.
+            return StepResult(NOT_A_CORRECTION, text="There is no card line to change.")
+        lines = saved.items if on_saved else draft.items
+        try:
+            index = int(args.get("item_index"))
+        except (TypeError, ValueError):
+            index = 1 if len(lines) == 1 else 0
+        if not 1 <= index <= len(lines):
+            return StepResult(NOT_A_CORRECTION, text="That item is not on the card.")
+        target = lines[index - 1]
+        refused = target.tool not in DRAFT_TOOLS or (
+            target.fact_type == ACTION_FACT if on_saved else (target.pending_answer or not target.ready)
+        )
+        if refused:
+            return StepResult("error", text="That line cannot be changed this way, so nothing was changed.")
+        unknown = sorted(set(changes) - _tool_fields(target.tool))
+        if unknown:
+            return StepResult(
+                "error", text=f"{', '.join(unknown)} cannot be changed on this kind of entry, so nothing was changed."
+            )
+        if on_saved:
+            from runtime import day_facts as df
+
+            if set(changes) == {"progress_percent"} and df.work_fact_of(target) is not None and not df.is_correction(
+                self.user_text
+            ):
+                # Request 137: a newer percentage for saved work is progress, a new line.
+                return StepResult(NOT_A_CORRECTION, text="A new percentage for the work is progress, not a correction.")
+            return await gateway.change_saved_item(target, changes)
+        return await gateway.edit_draft_item(draft, target, changes)
+
     def _carry_after_flush(self) -> None:
         self.saved.extend(self._carry_after)
         self._carry_after = []
 
     def _outcome(self, name: str, step: StepResult) -> ToolOutcome:
+        if step.status == "info" and is_module_disabled_reply(step.text or ""):
+            self.module_off_line = (step.text or "").split("\n\n", 1)[0]
+        if step.status == NOT_A_CORRECTION:
+            return ToolOutcome(
+                content={
+                    "status": NOT_A_CORRECTION,
+                    "reason": step.text,
+                    "instruction": (
+                        "Nothing was changed because there is nothing of theirs to correct: this is NEW "
+                        "information. Call the save tool for it now (save_work_done, save_labour, "
+                        "save_material_receipt, save_material_usage or report_issue) with the full details "
+                        "from their message. Do not tell them there is no card."
+                    ),
+                }
+            )
         if step.status == "saved" and step.workflow_key in ACTION_KINDS:
             self._action_summaries.extend(step.summaries or ([step.summary] if step.summary else []))
         if step.status == "info" and name == NOTE_FOR_ENGINEER and step.text not in self.system_lines:
@@ -741,6 +1096,45 @@ class AgentToolbox:
                         "say it was sent or passed on."
                     ),
                 }
+            )
+        if step.status == "drafted":
+            # Request 124: the call became a line of the card, or a question on it.
+            # Nothing is written until the Save tap, and the reply must not say it was.
+            line = step.summary or ""
+            self.saved.append(SavedItem(name, line, line))
+            self._carry_after_flush()
+            if step.text and step.text != "already on the card" and step.text not in self.system_lines:
+                # Request 127: an old-style Yes / No question still waits: said under the reply.
+                self.system_lines.append(step.text)
+            if step.awaiting == "answer":
+                content = {
+                    "status": "waiting_for_answer",
+                    "on_card": line,
+                    "instruction": (
+                        "Nothing is saved. A question about this is on the card, with buttons: do not "
+                        "write the question yourself. Say in one short line what you understood and ask "
+                        "them to answer it on the card, then tap Save. Never say it is saved, written or noted."
+                    ),
+                }
+                if step.hint:
+                    # How a typed answer is taken (the entry's own words).
+                    content["if_they_type_the_answer"] = step.hint
+                return ToolOutcome(content=content)
+            instruction = (
+                "Nothing is saved yet: it is a line on a Save / Cancel card shown under your words. "
+                "Say in one short line what you understood, in the language of their message, and "
+                "ask them to check it and tap Save. Never say it is saved, written or noted. Do "
+                "not copy the card."
+            )
+            if step.changed:
+                # Request 129: "labour maatti: mason 6 ninnu 5 aakki" said it was done.
+                instruction += (
+                    " This is a CHANGE that waits for their Save tap, not a change made: say it as pending "
+                    "('maattanam: mason 6 → 5. Save tap cheyyu', 'will change mason 6 → 5 once you save'), "
+                    "never in the past tense (not 'changed', 'maatti', 'aakki', 'updated', 'corrected')."
+                )
+            return ToolOutcome(
+                content={"status": "waiting_for_save", "on_card": line, "instruction": instruction}
             )
         if step.status == "undone":
             self.system_lines.append(step.text)
@@ -779,6 +1173,20 @@ class AgentToolbox:
                 self.parked = question
                 self.parked_by = "gate"
                 self.parked_confirm = step.status == "needs_confirmation"
+            if any(row.title == SAVE_TITLE for row in question.buttons or ()):
+                # Request 114: a Save / Cancel card, not a question. Nothing is kept yet.
+                return ToolOutcome(
+                    content={
+                        "status": "waiting_for_save",
+                        "to_save": question.text,
+                        "instruction": (
+                            "Nothing is saved yet: a Save / Cancel card is shown under your words. Say in "
+                            "one short line what you understood, in the language of their message, and "
+                            "ask them to check it and tap Save. Never say it is saved, written or noted. "
+                            "Do not copy the card."
+                        ),
+                    }
+                )
             return ToolOutcome(
                 content={
                     "status": "waiting_for_user",
@@ -790,7 +1198,13 @@ class AgentToolbox:
             # ARCH-04: the sender must pick (material, project, site, add it?).
             # The options go out as buttons whatever the model writes; its
             # own ask_user, if it also calls one, is the one question.
-            if self.parked is None:
+            if step.awaiting == "site" and self.parked_by != "gate":
+                # [111]: the code's own site question, with only real sites; it
+                # replaces any site question the model wrote.
+                self.parked = step.reply
+                self.parked_by = "ask"
+                self.parked_site = True
+            elif self.parked is None:
                 self.parked = step.reply
                 self.parked_by = "ask"
             return ToolOutcome(

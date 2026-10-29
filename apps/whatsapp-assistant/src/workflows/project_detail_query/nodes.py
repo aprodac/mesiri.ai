@@ -92,7 +92,10 @@ def generate_project_detail_reply(state: WorkflowGraphState) -> dict:
     for issue in (results.get("open_issues") or [])[:_MAX_ENTRIES_SHOWN]:
         lines.append(f"   • {_pretty(issue.get('issue_type'))} ({_pretty(issue.get('severity'))})")
 
-    lines.append(f"👷 {results.get('headcount', 0)} workers (cost: {results.get('labour_cost', '0')})")
+    # DPR-06: V1 records no wages; a cost of 0 is not shown.
+    cost = results.get("labour_cost", "0")
+    shown_cost = f" (cost: {cost})" if str(cost).strip() not in ("", "0", "0.0", "0.00") else ""
+    lines.append(f"👷 {results.get('headcount', 0)} workers{shown_cost}")
 
     finance = results.get("finance")
     if finance is not None:

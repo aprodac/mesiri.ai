@@ -53,6 +53,45 @@ jobs:
             --import-mode=importlib \
             -o asyncio_mode=auto
 
+  # ── Live gate (request 136, D) ─────────────────────────────────────────────
+  # The draft pipeline's golden conversations on the REAL model
+  # (apps/whatsapp-assistant/tests/conversation/test_draft_golden.py, `-m live`).
+  # A case that fails twice in a row stops the deploy. Fails closed: without the
+  # model key the gate is red, never silently skipped.
+  live-gate:
+    name: Live gate (draft golden, real model)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONSAFEPATH: "1"
+      TEST_PYTHONPATH: >-
+        ${{ github.workspace }}/shared/contracts/src:${{ github.workspace }}/platform/ai/src:${{ github.workspace }}/backend/src:${{ github.workspace }}/apps/whatsapp-assistant/src:${{ github.workspace }}/apps/whatsapp-assistant
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.11'
+          enable-cache: true
+      - run: uv venv --python 3.11 --clear
+      - run: uv pip install -e ".[dev,infra,providers,reports,workflow,receipt]"
+      - name: Draft golden set on the live model
+        env:
+          PYTHONPATH: ${{ env.TEST_PYTHONPATH }}
+          MESIRI_ENVIRONMENT: test
+          MESIRI_OBJECT_STORAGE__PROVIDER: fake
+          GEMINI_API_KEY: ${{ secrets.TEAMMATE_GEMINI_API_KEY }}
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "::error::TEAMMATE_GEMINI_API_KEY is not set: the live gate cannot run"
+            exit 1
+          fi
+          cd /tmp
+          "$GITHUB_WORKSPACE/.venv/bin/python" -P -m pytest \
+            "$GITHUB_WORKSPACE/apps/whatsapp-assistant/tests/conversation/test_draft_golden.py" \
+            --rootdir=/tmp -s -ra -m live \
+            --import-mode=importlib \
+            -o asyncio_mode=auto
+
   # ── Build control-panel static assets ──────────────────────────────────────
   build-frontend:
     name: Build control panel
@@ -110,7 +149,7 @@ jobs:
   deploy:
     name: Deploy to VPS
     runs-on: ubuntu-latest
-    needs: [test, build-frontend, build-dashboard]
+    needs: [test, live-gate, build-frontend, build-dashboard]
     environment: production
     steps:
       - uses: actions/checkout@v4

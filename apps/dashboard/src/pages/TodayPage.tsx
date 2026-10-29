@@ -1,11 +1,12 @@
 import * as React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { RefreshCw, Send } from 'lucide-react'
+import { fetchAllOpenIssues } from '@/lib/issues'
+import { Building2, ChevronLeft, ChevronRight, CircleCheck, CircleDashed, CircleDot, Radio, RefreshCw, Send, TriangleAlert } from 'lucide-react'
+import { MapPin as IcMapPin, HardHat as IcHardHat, Hammer as IcHammer, TriangleAlert as IcTriangleAlert } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
 import {
   fetchSiteDaysApi,
-  fetchSiteIssuesApi,
   sendProjectDprNowApi,
   setSiteDayConditionsApi,
   type ProjectDayItem,
@@ -14,9 +15,14 @@ import {
 } from '@/lib/api'
 import { useToast } from '@/components/ui/toast-notification'
 import { GettingStartedCard } from '@/components/getting-started-card'
+import { FirstReportMoment } from '@/components/first-report-moment'
+import { TimeSaved } from '@/components/time-saved'
+import { TellMesiri } from '@/components/tell-mesiri/tell-mesiri'
 import { useReadOnly } from '@/lib/trial'
 import { Button } from '@/components/ui/button'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Callout, DprAside, DprSection, PageHeader, StatStrip } from '@/components/dpr-page'
+import { ROW_ACCENT } from '@/lib/cues'
 import { cn, formatClock } from '@/lib/utils'
 import {
   CHIP,
@@ -25,9 +31,12 @@ import {
   errorDetail,
   hasUpdates,
   localIsoDate,
+  longDate,
   missingText,
+  plural,
   projectDayPath,
   siteDayPath,
+  severityChip,
   siteStatus,
 } from '@/lib/site-day'
 
@@ -65,90 +74,100 @@ function timeLost(minutes: number | null | undefined): string {
   return `${hours} hr${hours === 1 ? '' : 's'}`
 }
 
-function Stat({ value, label }: { value: number; label: string }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className={cn('text-xl font-bold', value === 0 && 'text-muted-foreground')}>{value || '—'}</span>
-      <span className="text-xs text-muted-foreground">{label}</span>
-    </div>
-  )
+// An open issue turns amber after a day and red after three (WEB-37).
+function issueAgeClass(occurredAt: string): string {
+  const days = (Date.now() - new Date(occurredAt).getTime()) / 86_400_000
+  return days >= 3 ? 'font-medium text-destructive' : days >= 1 ? 'font-medium text-draft' : ''
 }
 
-function SiteCard({
+function SiteRow({
   site,
   date,
-  singleSite,
   busy,
   onNoWork,
 }: {
   site: SiteDayItem
   date: string
-  singleSite: boolean
   busy: boolean
   onNoWork: (site: SiteDayItem) => void
 }) {
   const status = siteStatus(site)
   const missing = missingText(site)
   const lastAt = formatTime(site.last_update_at)
+  const drafts = site.drafts ?? 0
   // Hidden once the free trial has ended: the save would be refused (SS-15).
   const readOnly = useReadOnly()
   const canMarkNoWork =
     !readOnly && !hasUpdates(site) && !FROZEN.includes(site.status) && site.status !== 'in_review'
+  const done = FROZEN.includes(site.status)
+  const quiet = !hasUpdates(site)
 
   return (
-    <article className="rounded-2xl border bg-card p-5 flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex flex-col gap-0.5 min-w-0">
-          <span className="text-base font-semibold truncate">{site.site_name}</span>
-          <span className="text-sm text-muted-foreground truncate">
-            {singleSite ? 'Whole project' : site.project_name}
-          </span>
+    // WEB-37: the left stripe is the site's state -- green done, blue with
+    // the engineer, amber details missing, none while nothing has come in.
+    <li
+      className={cn(
+        'flex flex-col gap-2 py-3 pl-3 sm:flex-row sm:items-center sm:gap-4',
+        done ? ROW_ACCENT.good : site.status === 'needs_details' ? ROW_ACCENT.warn : quiet ? ROW_ACCENT.none : ROW_ACCENT.info,
+      )}
+    >
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        <span className="mt-0.5 shrink-0" title={status.label}>
+          {done ? (
+            <CircleCheck className="size-5 text-success" />
+          ) : drafts > 0 || site.status === 'needs_details' ? (
+            <CircleDashed className="size-5 text-draft" />
+          ) : quiet ? (
+            <CircleDashed className="size-5 text-muted-foreground" />
+          ) : (
+            <CircleDot className="size-5 text-info" />
+          )}
+        </span>
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <Link to={siteDayPath(site.site_id, date)} className="font-medium hover:underline">
+              {site.site_name}
+            </Link>
+            <span className={cn(CHIP, status.className)}>{status.label}</span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {[
+              site.workers ? plural(site.workers, 'worker') : null,
+              site.work_items ? plural(site.work_items, 'work item') : null,
+              site.progress_updates ? plural(site.progress_updates, 'progress update') : null,
+              site.materials ? plural(site.materials, 'material entry', 'material entries') : null,
+              site.photos ? plural(site.photos, 'photo') : null,
+              site.open_issues ? plural(site.open_issues, 'open issue') : null,
+            ]
+              .filter(Boolean)
+              .join(' · ') || 'Nothing received yet'}
+            {lastAt && ` · last ${lastAt}${site.last_update_by ? ` by ${site.last_update_by}` : ''}`}
+          </p>
+          {site.site_working === 'none' ? (
+            <p className="text-xs text-muted-foreground">Marked as no work today.</p>
+          ) : drafts > 0 ? (
+            <p className="text-xs font-semibold text-draft">{plural(drafts, 'item')} still to confirm</p>
+          ) : missing && !done ? (
+            // Orange only when something the report needs is missing; optional gaps stay quiet.
+            <p className={cn('text-xs', site.missing_sections?.blocking.length ? 'text-draft' : 'text-muted-foreground')}>{missing}</p>
+          ) : site.latest_update ? (
+            <p className="line-clamp-1 text-xs text-foreground/70">“{site.latest_update}”</p>
+          ) : null}
         </div>
-        <span className={cn(CHIP, status.className)}>{status.label}</span>
       </div>
-
-      <div className="grid grid-cols-3 gap-2 border-y py-3">
-        <Stat value={site.workers} label="workers" />
-        <Stat value={site.work_items} label="work items" />
-        <Stat value={site.photos} label="photos" />
-      </div>
-
-      {site.site_working === 'none' ? (
-        <p className="text-sm text-muted-foreground">Marked as no work today.</p>
-      ) : missing ? (
-        <p className="text-sm rounded-lg bg-draft-soft text-draft px-3 py-2">{missing}</p>
-      ) : site.latest_update ? (
-        <p className="text-sm text-foreground/80 line-clamp-3">{site.latest_update}</p>
-      ) : (
-        <p className="text-sm text-muted-foreground">Nothing received today.</p>
-      )}
-
-      <p className="text-xs text-muted-foreground">
-        {lastAt
-          ? `Last update ${lastAt}${site.last_update_by ? ` · ${site.last_update_by}` : ''}`
-          : 'No updates yet today'}
-        {site.open_issues > 0 && ` · ${site.open_issues} open issue${site.open_issues === 1 ? '' : 's'}`}
-      </p>
-
-      {(site.drafts ?? 0) > 0 && (
-        <p className="text-xs font-semibold text-draft">
-          {site.drafts} item{site.drafts === 1 ? '' : 's'} still to confirm
-        </p>
-      )}
-
-      <div className="mt-auto flex flex-col gap-2">
+      <div className="flex shrink-0 items-center gap-2 pl-8 sm:pl-0">
         {canMarkNoWork && (
-          <Button variant="outline" className="h-11 font-semibold" disabled={busy} onClick={() => onNoWork(site)}>
-            Mark as no work today
+          <Button variant="ghost" size="sm" className="text-muted-foreground" disabled={busy} onClick={() => onNoWork(site)}>
+            No work today
           </Button>
         )}
-        <Button asChild variant="outline" className="h-11 font-semibold">
+        <Button asChild size="sm" variant={drafts > 0 ? 'default' : 'outline'} className="min-w-[96px]">
           <Link to={siteDayPath(site.site_id, date)}>
-            {(site.drafts ?? 0) > 0 ? 'Review and confirm' : 'Open site DPR'}
+            {drafts > 0 ? 'Review' : 'Open'} <ChevronRight />
           </Link>
         </Button>
       </div>
-    </article>
+    </li>
   )
 }
 
@@ -156,8 +175,10 @@ export default function TodayPage() {
   const toast = useToast()
   const queryClient = useQueryClient()
   const { scope } = useScope()
-  const [searchParams] = useSearchParams()
-  const date = searchParams.get('date') || localIsoDate(new Date())
+  const [searchParams, setSearchParams] = useSearchParams()
+  // Read the clock once (a lazy initial state), not on every render.
+  const [today] = React.useState(() => localIsoDate(new Date()))
+  const date = searchParams.get('date') || today
   const projectFilter = scope.mode === 'portfolio' ? undefined : scope.projectId
   const [busySite, setBusySite] = React.useState<string | null>(null)
   const [busyProject, setBusyProject] = React.useState<string | null>(null)
@@ -170,7 +191,7 @@ export default function TodayPage() {
   })
   const issuesQuery = useQuery({
     queryKey: ['today-open-issues', projectFilter],
-    queryFn: () => fetchSiteIssuesApi({ projectId: projectFilter, limit: 100 }),
+    queryFn: () => fetchAllOpenIssues(projectFilter),
     refetchInterval: 120_000,
   })
 
@@ -189,9 +210,8 @@ export default function TodayPage() {
   )
 
   const openIssues = React.useMemo(() => {
-    const items: SiteIssueItem[] = issuesQuery.data?.items ?? []
+    const items: SiteIssueItem[] = issuesQuery.data ?? []
     return items
-      .filter((i) => ['OPEN', 'ACKNOWLEDGED'].includes(i.status.toUpperCase()))
       .sort(
         (a, b) =>
           (SEVERITY_RANK[a.severity.toUpperCase()] ?? 9) - (SEVERITY_RANK[b.severity.toUpperCase()] ?? 9) ||
@@ -255,182 +275,219 @@ export default function TodayPage() {
     }
   }
 
-  const dateLabel = new Date(`${date}T00:00:00`).toLocaleDateString([], {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
+  const isToday = date === today
+  const shiftDay = (delta: number) => {
+    const d = new Date(`${date}T00:00:00`)
+    d.setDate(d.getDate() + delta)
+    const next = localIsoDate(d)
+    setSearchParams(
+      (prev) => {
+        if (next === today) prev.delete('date')
+        else prev.set('date', next)
+        return prev
+      },
+      { replace: true },
+    )
+  }
   const cutoffs = [...new Set(projects.map((p) => p.reporting_cutoff_time).filter(Boolean))]
   const cutoffLabel = cutoffs.length === 1 ? ` · Cutoff ${formatClock(cutoffs[0])}` : ''
 
   return (
-    <div className="flex flex-col gap-7 w-full max-w-6xl mx-auto pb-12">
-      <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <p className="text-sm text-muted-foreground">
-            {dateLabel}
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 pb-8 sm:px-2">
+      <PageHeader
+        title={isToday ? 'Today' : longDate(date)}
+        subtitle={
+          <>
+            {isToday ? longDate(date) : 'A past day'}
             {cutoffLabel}
-          </p>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Today across your sites</h1>
-        </div>
-        <Button variant="outline" size="sm" onClick={refresh} className="h-9 gap-1.5 self-start sm:self-auto">
-          <RefreshCw className={cn('size-4', daysQuery.isFetching && 'animate-spin')} />
-          Refresh
-        </Button>
-      </header>
-
-      <GettingStartedCard />
-
-      <section aria-label="Summary" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="rounded-xl border bg-card px-5 py-4 flex flex-col gap-1">
-          <span className="text-sm text-muted-foreground">Sites reported</span>
-          <span className="text-3xl font-bold">
-            {totals.reported} <span className="text-base font-medium text-muted-foreground">of {sites.length}</span>
-          </span>
-        </div>
-        <div className="rounded-xl border bg-card px-5 py-4 flex flex-col gap-1">
-          <span className="text-sm text-muted-foreground">Workers on site</span>
-          <span className="text-3xl font-bold">{totals.workers}</span>
-        </div>
-        <div className="rounded-xl border bg-card px-5 py-4 flex flex-col gap-1">
-          <span className="text-sm text-muted-foreground">Work items logged</span>
-          <span className="text-3xl font-bold">{totals.workItems}</span>
-        </div>
-        <div className="rounded-xl border bg-card px-5 py-4 flex flex-col gap-1">
-          <span className="text-sm text-muted-foreground">Open issues</span>
-          <span className={cn('text-3xl font-bold', totals.openIssues > 0 && 'text-draft')}>{totals.openIssues}</span>
-        </div>
-      </section>
-
-      {daysQuery.isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading today's sites…</p>
-      ) : daysQuery.isError ? (
-        <p className="text-sm text-destructive">Could not load today's sites. Try Refresh.</p>
-      ) : projects.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No active sites yet. Add a project and its sites to see them here.</p>
-      ) : (
-        <section aria-label="Projects" className="flex flex-col gap-8">
-          {projects.map((project) => {
-            const projectSites = sites.filter((s) => s.project_id === project.project_id)
-            const confirmed = projectSites.filter((s) => FROZEN.includes(s.status)).length
-            const workers = projectSites.reduce((n, s) => n + s.workers, 0)
-            const singleSite = projectSites.length === 1
-            const canSend = !project.sent && !project.send_requested
-            return (
-              <div key={project.project_id} className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
-                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <h2 className="text-lg font-bold">
-                      <Link to={projectDayPath(project.project_id, date)} className="hover:underline">
-                        {project.project_name}
-                      </Link>
-                    </h2>
-                    <span className="text-sm text-muted-foreground">
-                      {singleSite
-                        ? 'Single-site project · its site DPR is the project DPR'
-                        : `${projectSites.length} sites · ${confirmed} of ${projectSites.length} confirmed · ${workers} workers`}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button asChild variant="ghost" size="sm" className="h-9 font-semibold">
-                      <Link to={projectDayPath(project.project_id, date)}>Project DPR</Link>
-                    </Button>
-                    <span className={cn(CHIP, project.sent ? 'bg-success-soft text-success' : 'bg-muted text-muted-foreground')}>
-                      {projectDprLabel(project, projectSites)}
-                    </span>
-                    {canSend && !readOnly && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-9 gap-1.5 font-semibold"
-                        disabled={busyProject === project.project_id}
-                        onClick={() => sendNow(project)}
-                      >
-                        <Send className="size-3.5" />
-                        Send now
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {projectSites.map((site) => (
-                    <SiteCard
-                      key={site.site_id}
-                      site={site}
-                      date={date}
-                      singleSite={singleSite}
-                      busy={busySite === site.site_id}
-                      onNoWork={markNoWork}
-                    />
-                  ))}
-                </div>
-              </div>
-            )
-          })}
-        </section>
-      )}
-
-      <div className="flex flex-col lg:flex-row gap-4 items-start">
-        <section aria-labelledby="attention-h" className="w-full lg:flex-1 rounded-2xl border bg-card p-5 flex flex-col gap-3">
-          <h2 id="attention-h" className="text-base font-semibold">Needs your attention</h2>
-          {attention.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nothing waiting on you right now.</p>
-          ) : (
-            attention.map((line) => (
-              <div key={line.key} className="flex justify-between gap-3 rounded-lg bg-muted/40 px-3 py-2.5 text-sm">
-                <span>{line.text}</span>
-                <span className="text-muted-foreground shrink-0">{line.note}</span>
-              </div>
-            ))
-          )}
-        </section>
-
-        <section aria-labelledby="issues-h" className="w-full lg:flex-[1.4] rounded-2xl border bg-card p-5 flex flex-col gap-3 min-w-0">
-          <div className="flex items-center justify-between gap-2">
-            <h2 id="issues-h" className="text-base font-semibold">Open issues</h2>
-            <Link to="/operations/issues" className="text-sm font-semibold text-primary hover:underline">
-              All issues
-            </Link>
-          </div>
-          {openIssues.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No open issues.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table className="min-w-[420px]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Issue</TableHead>
-                    <TableHead>Site</TableHead>
-                    <TableHead>Severity</TableHead>
-                    <TableHead>Open for</TableHead>
-                    <TableHead>Time lost</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {openIssues.map((issue) => (
-                    <TableRow key={issue.id}>
-                      <TableCell className="max-w-[220px] truncate">
-                        {issue.narrative || issue.issue_type.toLowerCase().replace(/_/g, ' ')}
-                      </TableCell>
-                      <TableCell>{siteNames.get(issue.site_id) ?? '—'}</TableCell>
-                      <TableCell
-                        className={cn(
-                          ['CRITICAL', 'HIGH'].includes(issue.severity.toUpperCase()) && 'font-semibold text-draft',
-                        )}
-                      >
-                        {issue.severity.charAt(0) + issue.severity.slice(1).toLowerCase()}
-                      </TableCell>
-                      <TableCell>{openFor(issue.occurred_at)}</TableCell>
-                      <TableCell>{timeLost(issue.delay_duration_minutes)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+          </>
+        }
+        actions={
+          <>
+            {isToday && projects.length > 0 && (
+              <Button asChild variant="outline" size="sm" className="h-8 gap-1.5">
+                <Link to="/live" title="Watch today's report write itself as updates come in">
+                  <Radio className="size-4 text-primary" /> Live
+                </Link>
+              </Button>
+            )}
+            <div className="flex items-center rounded-lg border">
+              <Button variant="ghost" size="icon" className="size-8" onClick={() => shiftDay(-1)} title="Previous day" aria-label="Previous day">
+                <ChevronLeft className="size-4" />
+              </Button>
+              {!isToday && (
+                <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => shiftDay(Math.round((new Date(`${today}T00:00:00`).getTime() - new Date(`${date}T00:00:00`).getTime()) / 86_400_000))}>
+                  Today
+                </Button>
+              )}
+              <Button variant="ghost" size="icon" className="size-8" onClick={() => shiftDay(1)} disabled={isToday} title="Next day" aria-label="Next day">
+                <ChevronRight className="size-4" />
+              </Button>
             </div>
+            <Button variant="ghost" size="icon" className="size-8" onClick={refresh} disabled={daysQuery.isFetching} title="Refresh" aria-label="Refresh">
+              <RefreshCw className={cn('size-4', daysQuery.isFetching && 'animate-spin')} />
+            </Button>
+          </>
+        }
+      />
+
+      {isToday && <TimeSaved />}
+      {isToday && <FirstReportMoment />}
+      {isToday && <GettingStartedCard />}
+      {isToday && <TellMesiri className="rounded-xl border px-4 py-3" />}
+
+      {daysQuery.isError ? (
+        <Callout tone="draft" icon={TriangleAlert} action={<Button variant="outline" size="sm" className="bg-background" onClick={refresh}>Try again</Button>}>
+          Today's sites could not be loaded.
+        </Callout>
+      ) : daysQuery.isLoading ? (
+        <div className="flex flex-col gap-3">
+          <Skeleton className="h-16 rounded-xl" />
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-14 rounded-lg" />
+          ))}
+        </div>
+      ) : projects.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
+          <p className="text-sm font-medium">No active sites yet</p>
+          <p className="text-sm text-muted-foreground">Add a project and its sites, and each day's updates show here.</p>
+          <Button asChild variant="outline" size="sm">
+            <Link to="/projects">Projects & Sites</Link>
+          </Button>
+        </div>
+      ) : (
+        <>
+          {attention.length > 0 && (
+            <Callout tone="draft" icon={TriangleAlert}>
+              <p className="font-semibold">Needs your attention</p>
+              <ul className="mt-1 flex flex-col gap-0.5">
+                {attention.map((line) => (
+                  <li key={line.key}>
+                    {line.text}
+                    {line.note && <span className="opacity-75"> · {line.note}</span>}
+                  </li>
+                ))}
+              </ul>
+            </Callout>
           )}
-        </section>
-      </div>
+
+          <StatStrip
+            stats={[
+              {
+                label: 'Reported',
+                value: (
+                  <>
+                    {totals.reported}
+                    <span className="text-sm font-normal text-muted-foreground"> of {sites.length}</span>
+                  </>
+                ),
+                tone: totals.reported < sites.length ? 'warn' : sites.length ? 'good' : 'default',
+                icon: IcMapPin,
+                hint: totals.reported < sites.length ? `${sites.length - totals.reported} still to report` : sites.length ? 'All sites in' : undefined,
+              },
+              { label: 'Workers', value: totals.workers || '—', icon: IcHardHat, hint: totals.workers ? 'on site today' : 'none reported yet' },
+              { label: 'Work items', value: totals.workItems || '—', icon: IcHammer, hint: totals.workItems ? 'reported today' : 'none reported yet' },
+              { label: 'Open issues', value: totals.openIssues || '—', tone: totals.openIssues > 0 ? 'warn' : 'good', icon: IcTriangleAlert, hint: totals.openIssues > 0 ? 'waiting on someone' : 'nothing stuck' },
+            ]}
+          />
+
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="flex min-w-0 flex-col">
+              {projects.map((project) => {
+                const projectSites = sites.filter((s) => s.project_id === project.project_id)
+                const confirmed = projectSites.filter((s) => FROZEN.includes(s.status)).length
+                const singleSite = projectSites.length === 1
+                const canSend = !project.sent && !project.send_requested && !readOnly
+                return (
+                  <DprSection
+                    key={project.project_id}
+                    icon={Building2}
+                    title={project.project_name}
+                    meta={singleSite ? '1 site' : `${confirmed} of ${projectSites.length} sites confirmed`}
+                    action={
+                      <div className="flex items-center gap-2">
+                        <span className={cn(CHIP, 'hidden sm:inline-flex', project.sent ? 'bg-success-soft text-success' : 'bg-muted text-muted-foreground')}>
+                          {projectDprLabel(project, projectSites)}
+                        </span>
+                        <Button asChild variant="ghost" size="sm" className="gap-1 text-primary">
+                          <Link to={projectDayPath(project.project_id, date)}>
+                            Project DPR <ChevronRight />
+                          </Link>
+                        </Button>
+                        {canSend && (
+                          <Button variant="outline" size="sm" className="gap-1.5" disabled={busyProject === project.project_id} onClick={() => sendNow(project)}>
+                            <Send className="size-3.5" /> Send now
+                          </Button>
+                        )}
+                      </div>
+                    }
+                  >
+                    <ul className="flex flex-col divide-y">
+                      {projectSites.map((site) => (
+                        <SiteRow
+                          key={site.site_id}
+                          site={site}
+                          date={date}
+                          busy={busySite === site.site_id}
+                          onNoWork={markNoWork}
+                        />
+                      ))}
+                    </ul>
+                  </DprSection>
+                )
+              })}
+            </div>
+
+            <DprAside>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-sm font-semibold">Open issues</h2>
+                  <Link to="/issues" className="inline-flex items-center gap-0.5 text-xs font-medium text-primary hover:underline">
+                    All issues <ChevronRight className="size-3.5" />
+                  </Link>
+                </div>
+                {issuesQuery.isError ? (
+                  <p className="text-sm text-muted-foreground">
+                    Could not load issues.{' '}
+                    <button type="button" className="font-medium text-primary hover:underline" onClick={() => issuesQuery.refetch()}>
+                      Try again
+                    </button>
+                  </p>
+                ) : openIssues.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">{issuesQuery.isLoading ? 'Loading…' : 'No open issues.'}</p>
+                ) : (
+                  <ul className="flex flex-col divide-y">
+                    {openIssues.map((issue) => {
+                      const sev = severityChip(issue.severity)
+                      return (
+                        <li
+                          key={issue.id}
+                          className={cn(
+                            'flex items-start justify-between gap-3 py-2 pl-3',
+                            ['CRITICAL'].includes(issue.severity.toUpperCase()) ? ROW_ACCENT.bad : issue.severity.toUpperCase() === 'HIGH' ? ROW_ACCENT.warn : ROW_ACCENT.none,
+                          )}
+                        >
+                          <div className="flex min-w-0 flex-col">
+                            <span className="line-clamp-2 text-sm">
+                              {issue.narrative || issue.issue_type.toLowerCase().replace(/_/g, ' ')}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {siteNames.get(issue.site_id) ?? '—'} ·{' '}
+                              <span className={issueAgeClass(issue.occurred_at)}>open {openFor(issue.occurred_at).toLowerCase()}</span>
+                              {issue.delay_duration_minutes ? ` · ${timeLost(issue.delay_duration_minutes)} lost` : ''}
+                            </span>
+                          </div>
+                          {sev && <span className={cn(CHIP, 'shrink-0', sev.className)}>{sev.label}</span>}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </div>
+            </DprAside>
+          </div>
+        </>
+      )}
     </div>
   )
 }

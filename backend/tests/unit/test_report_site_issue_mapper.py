@@ -79,6 +79,13 @@ def test_delay_duration_minutes_ignores_unparseable_values():
     assert cmd.delay_duration_minutes is None
 
 
+def test_delay_is_at_most_one_day_and_never_negative():
+    # BE-48: "no work for 2 days" is a full day, as the dashboard allows.
+    assert build_report_site_issue_command(_confirmed({"delay_duration_minutes": 2880})).delay_duration_minutes == 1440
+    assert build_report_site_issue_command(_confirmed({"delay_duration_minutes": -30})).delay_duration_minutes is None
+    assert build_report_site_issue_command(_confirmed({"delay_duration_minutes": 0})).delay_duration_minutes is None
+
+
 def test_occurred_date_falls_back_to_today_when_absent():
     cmd = build_report_site_issue_command(_confirmed({}))
     assert cmd.occurred_date == datetime.date.today()

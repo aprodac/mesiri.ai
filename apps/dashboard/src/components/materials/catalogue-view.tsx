@@ -1,20 +1,14 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, ChevronDown, CircleSlash2, ShieldAlert, Plus, Pencil, Trash2, X } from 'lucide-react'
+import { CheckCircle2, CircleSlash2, MoreHorizontal, Pencil, Plus, Search, ShieldAlert, Trash2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { CHIP } from '@/lib/site-day'
+import { cn } from '@/lib/utils'
 import {
   fetchMaterials,
   fetchUnitsOfMeasure,
@@ -23,7 +17,6 @@ import {
   updateMaterial,
   type MaterialCatalog,
 } from '@/lib/materials'
-import { BulkActionBar } from '@/components/ui/bulk-action-bar'
 
 // Admin-only Materials Catalog management -- a tab on the Materials page
 // (see MaterialsPage.tsx) alongside Inventory/Inflows/Outflows, not a modal:
@@ -34,6 +27,9 @@ import { BulkActionBar } from '@/components/ui/bulk-action-bar'
 // recorded movement (backend PATCH /materials/{id} enforces this) -- the
 // unit select is disabled for such rows rather than letting the user pick a
 // value the save will just reject.
+// WEB-29: grouped by category, search, form folded away until needed,
+// delete confirmed in a dialog; bulk select (activate / deactivate /
+// delete) removed.
 export function CatalogueView() {
   const queryClient = useQueryClient()
 
@@ -43,7 +39,6 @@ export function CatalogueView() {
   const [category, setCategory] = React.useState('')
   const [sku, setSku] = React.useState('')
   const [error, setError] = React.useState('')
-  const [selectedIds, setSelectedIds] = React.useState<string[]>([])
 
   const { data: catalog } = useQuery({
     queryKey: ['materials', 'catalog', 'manage'],
@@ -154,305 +149,175 @@ export function CatalogueView() {
     setError('')
   }
 
-  // Row selection helpers
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedIds((catalog?.items ?? []).map((m) => m.id))
-    } else {
-      setSelectedIds([])
+  const [deleting, setDeleting] = React.useState<MaterialCatalog | null>(null)
+  const [formOpen, setFormOpen] = React.useState(false)
+  const [search, setSearch] = React.useState('')
+  const unitName = (m: MaterialCatalog) => units?.items.find((u) => u.id === m.default_unit_id)?.display_name ?? m.default_unit ?? '—'
+  const groups = React.useMemo(() => {
+    const q = search.trim().toLowerCase()
+    const byCat = new Map<string, MaterialCatalog[]>()
+    for (const m of catalog?.items ?? []) {
+      if (q && !`${m.name} ${m.category ?? ''} ${m.sku ?? ''}`.toLowerCase().includes(q)) continue
+      const c = m.category?.trim() || 'Other'
+      byCat.set(c, [...(byCat.get(c) ?? []), m])
     }
-  }
+    return [...byCat.entries()].sort(([a], [b]) => (a === 'Other' ? 1 : b === 'Other' ? -1 : a.localeCompare(b)))
+  }, [catalog, search])
 
-  const handleSelectRow = (id: string, checked: boolean) => {
-    if (checked) {
-      setSelectedIds((prev) => [...prev, id])
-    } else {
-      setSelectedIds((prev) => prev.filter((item) => item !== id))
-    }
-  }
-
-  const handleBulkStatus = async (isActive: boolean) => {
-    const actionLabel = isActive ? 'activate' : 'deactivate'
-    if (confirm(`Are you sure you want to ${actionLabel} ${selectedIds.length} selected materials?`)) {
-      setError('')
-      try {
-        for (const id of selectedIds) {
-          await toggleActiveMutation.mutateAsync({ id, isActive })
-        }
-        setSelectedIds([])
-      } catch (err: any) {
-        setError(err.response?.data?.detail || `Failed to bulk ${actionLabel} materials.`)
-      }
-    }
-  }
-
-  const handleDelete = async (material: MaterialCatalog) => {
-    if (
-      confirm(
-        `Delete "${material.name}" from the materials catalog? This only works for materials with no recorded movements.`
-      )
-    ) {
-      setError('')
-      try {
-        await deleteMutation.mutateAsync(material.id)
-      } catch {
-        // React Query onError already surfaces the API message in the view.
-      }
-    }
-  }
-
-  const handleBulkDelete = async () => {
-    if (
-      confirm(
-        `Delete ${selectedIds.length} selected materials? Materials with recorded movements must be deactivated instead.`
-      )
-    ) {
-      setError('')
-      try {
-        for (const id of selectedIds) {
-          await deleteMutation.mutateAsync(id)
-        }
-        setSelectedIds([])
-      } catch (err: any) {
-        setError(err.response?.data?.detail || 'Failed to delete selected materials.')
-      }
-    }
-  }
+  const editing = editingMaterial !== null
+  const showForm = formOpen || editing
 
   return (
-    <div className="space-y-4">
-      <Card className="rounded-md border-border/70 shadow-xs">
-        <CardContent className="p-4">
-          <form onSubmit={handleSubmit} className="space-y-3 text-xs">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-foreground">
-                {editingMaterial ? 'Edit Material' : 'Add Material'}
-                {editingMaterial && (
-                  <span className="text-xs font-normal text-muted-foreground ml-2">
-                    (Editing: {editingMaterial.name})
-                  </span>
-                )}
-              </h2>
-            </div>
-            {error && (
-              <div className="bg-destructive/10 border border-destructive text-destructive p-2.5 rounded flex items-center gap-2">
-                <ShieldAlert className="size-4 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-            <div className="grid gap-3 sm:grid-cols-4">
-              <div className="grid gap-1.5 sm:col-span-2">
-                <Label htmlFor="newMaterialName">Name</Label>
-                <Input
-                  id="newMaterialName"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. OPC Cement"
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label>Stock Unit</Label>
-                <Select value={unitId} onValueChange={setUnitId}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Unit" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {units?.items.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {u.display_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="newMaterialCategory">Category</Label>
-                <Input
-                  id="newMaterialCategory"
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  placeholder="Optional"
-                />
-              </div>
-            </div>
-            <div className="grid gap-1.5 sm:w-1/2">
-              <Label htmlFor="newMaterialSku">SKU</Label>
-              <Input id="newMaterialSku" value={sku} onChange={(e) => setSku(e.target.value)} placeholder="Optional" />
-            </div>
-            <div className="flex gap-2">
-              <Button
-                type="submit"
-                size="sm"
-                className="gap-1.5 text-xs font-bold"
-                disabled={createMutation.isPending || updateMutation.isPending}
-              >
-                {editingMaterial ? (
-                  <>
-                    <Pencil className="size-3.5" />
-                    {updateMutation.isPending ? 'Updating...' : 'Update Material'}
-                  </>
-                ) : (
-                  <>
-                    <Plus className="size-3.5" />
-                    {createMutation.isPending ? 'Adding...' : 'Add Material'}
-                  </>
-                )}
-              </Button>
-              {editingMaterial && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 text-xs font-bold"
-                  onClick={handleCancelEdit}
-                >
-                  <X className="size-3.5" />
-                  Cancel Edit
-                </Button>
-              )}
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:w-64">
+          <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+          <Input placeholder="Search materials…" aria-label="Search materials" value={search} onChange={(e) => setSearch(e.target.value)} className="h-9 pl-8" />
+        </div>
+        <span className="text-sm text-muted-foreground">{catalog ? `${catalog.items.length} materials` : 'Loading…'}</span>
+        {!showForm && (
+          <Button size="sm" variant="outline" className="ml-auto gap-1.5" onClick={() => setFormOpen(true)}>
+            <Plus className="size-3.5" /> Add material
+          </Button>
+        )}
+      </div>
 
-      <Card className="rounded-md border-border/70 shadow-xs overflow-hidden">
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12 px-4">
-                    <input
-                      type="checkbox"
-                      checked={catalog && catalog.items.length > 0 && selectedIds.length === catalog.items.length}
-                      onChange={(e) => handleSelectAll(e.target.checked)}
-                      className="rounded border-border/80 text-primary focus:ring-primary size-4"
-                    />
-                  </TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Stock Unit</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {catalog?.items.map((m: MaterialCatalog) => {
-                  const isSelected = selectedIds.includes(m.id)
-                  return (
-                    <TableRow key={m.id} data-state={isSelected ? 'selected' : undefined}>
-                      <TableCell className="px-4">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={(e) => handleSelectRow(m.id, e.target.checked)}
-                          className="rounded border-border/80 text-primary focus:ring-primary size-4"
-                        />
-                      </TableCell>
-                      <TableCell className="font-semibold">{m.name}</TableCell>
-                      <TableCell>
-                        {units?.items.find((u) => u.id === m.default_unit_id)?.display_name ?? m.default_unit ?? '—'}
-                      </TableCell>
-                      <TableCell>{m.category ?? '—'}</TableCell>
-                      <TableCell>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            toggleActiveMutation.mutate({ id: m.id, isActive: !m.is_active })
-                          }
-                          disabled={toggleActiveMutation.isPending}
-                        >
-                          <Badge variant={m.is_active ? 'default' : 'outline'}>
-                            {m.is_active ? 'Active' : 'Inactive'}
-                          </Badge>
-                        </button>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button type="button" variant="ghost" size="icon" className="size-7 hover:bg-muted">
-                              <ChevronDown className="size-3.5 text-muted-foreground" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-44">
-                            <DropdownMenuItem onClick={() => handleEditClick(m)}>
-                              <Pencil className="size-3.5 mr-2" />
-                              Edit Material
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() =>
-                                toggleActiveMutation.mutate({ id: m.id, isActive: !m.is_active })
-                              }
-                            >
-                              {m.is_active ? (
-                                <>
-                                  <CircleSlash2 className="size-3.5 mr-2 text-rose-500" />
-                                  Deactivate
-                                </>
-                              ) : (
-                                <>
-                                  <CheckCircle2 className="size-3.5 mr-2 text-emerald-500" />
-                                  Activate
-                                </>
-                              )}
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => handleDelete(m)}
-                              className="text-destructive hover:bg-destructive/10"
-                            >
-                              <Trash2 className="size-3.5 mr-2" />
-                              Delete Material
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-                {catalog && catalog.items.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground">
-                      No materials yet — add one above.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+      {showForm && (
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3 rounded-lg border p-4 text-sm">
+          <h3 className="font-semibold">{editing ? `Edit ${editingMaterial.name}` : 'Add a material'}</h3>
+          {error && (
+            <p className="flex items-center gap-2 text-destructive">
+              <ShieldAlert className="size-4 shrink-0" /> {error}
+            </p>
+          )}
+          <div className="grid gap-3 sm:grid-cols-4">
+            <div className="grid gap-1.5 sm:col-span-2">
+              <Label htmlFor="newMaterialName">Name</Label>
+              <Input id="newMaterialName" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. OPC Cement" autoFocus />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Counted in</Label>
+              <Select value={unitId} onValueChange={setUnitId}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {units?.items.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.display_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="newMaterialCategory">Group (optional)</Label>
+              <Input id="newMaterialCategory" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Masonry" />
+            </div>
+            <div className="grid gap-1.5 sm:col-span-2">
+              <Label htmlFor="newMaterialSku">Item code (optional)</Label>
+              <Input id="newMaterialSku" value={sku} onChange={(e) => setSku(e.target.value)} />
+            </div>
           </div>
-        </CardContent>
-      </Card>
+          <div className="flex gap-2">
+            <Button type="submit" size="sm" className="font-semibold" disabled={createMutation.isPending || updateMutation.isPending}>
+              {editing ? (updateMutation.isPending ? 'Saving…' : 'Save') : createMutation.isPending ? 'Adding…' : 'Add material'}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                handleCancelEdit()
+                setFormOpen(false)
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
+      )}
 
-      <BulkActionBar selectedCount={selectedIds.length} onClear={() => setSelectedIds([])}>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => handleBulkStatus(true)}
-          className="h-8 text-xs text-emerald-600 dark:text-emerald-400 gap-1 font-bold"
-        >
-          <CheckCircle2 className="size-3.5" />
-          Activate Selected
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => handleBulkStatus(false)}
-          className="h-8 text-xs text-rose-600 dark:text-rose-400 gap-1 font-bold"
-        >
-          <CircleSlash2 className="size-3.5" />
-          Deactivate Selected
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleBulkDelete}
-          className="h-8 text-xs text-destructive hover:bg-destructive/10 gap-1 font-bold"
-          disabled={deleteMutation.isPending}
-        >
-          <Trash2 className="size-3.5" />
-          Delete Selected
-        </Button>
-      </BulkActionBar>
+      {catalog && catalog.items.length === 0 ? (
+        <p className="rounded-xl border border-dashed py-10 text-center text-sm text-muted-foreground">No materials yet.</p>
+      ) : groups.length === 0 ? (
+        <p className="rounded-xl border border-dashed py-10 text-center text-sm text-muted-foreground">No materials match.</p>
+      ) : (
+        groups.map(([cat, list]) => (
+          <section key={cat} className="flex flex-col gap-1.5">
+            <h3 className="text-sm font-semibold">
+              {cat} <span className="font-normal text-muted-foreground">{list.length}</span>
+            </h3>
+            <ul className="divide-y rounded-lg border">
+              {list.map((m) => (
+                <li key={m.id} className={cn('flex items-center gap-3 px-3 py-2', !m.is_active && 'text-muted-foreground')}>
+                  <span className="min-w-0 flex-1 truncate font-medium">
+                    {m.name}
+                    {m.sku && <span className="ml-2 text-xs font-normal text-muted-foreground">{m.sku}</span>}
+                  </span>
+                  {!m.is_active && <span className={cn(CHIP, 'bg-muted text-muted-foreground')}>Not used</span>}
+                  <span className="w-28 text-right text-sm text-muted-foreground">{unitName(m)}</span>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button type="button" variant="ghost" size="icon" className="size-8" aria-label={`More for ${m.name}`}>
+                        <MoreHorizontal className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-52">
+                      <DropdownMenuItem
+                        onClick={() => {
+                          handleEditClick(m)
+                          window.scrollTo({ top: 0, behavior: 'smooth' })
+                        }}
+                      >
+                        <Pencil className="mr-2 size-3.5" /> Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => toggleActiveMutation.mutate({ id: m.id, isActive: !m.is_active })}>
+                        {m.is_active ? <CircleSlash2 className="mr-2 size-3.5" /> : <CheckCircle2 className="mr-2 size-3.5" />}
+                        {m.is_active ? 'Stop offering it' : 'Offer it again'}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleting(m)}>
+                        <Trash2 className="mr-2 size-3.5" /> Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))
+      )}
+
+      <Dialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">Delete {deleting?.name}?</DialogTitle>
+            <DialogDescription>
+              Only possible while nothing has been recorded for it. Once it has deliveries or use, choose "Stop offering it" instead: its
+              records stay, and it is no longer offered.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleting(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteMutation.isPending}
+              onClick={() =>
+                deleting &&
+                deleteMutation.mutate(deleting.id, {
+                  onSuccess: () => setDeleting(null),
+                  onError: () => setDeleting(null),
+                })
+              }
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

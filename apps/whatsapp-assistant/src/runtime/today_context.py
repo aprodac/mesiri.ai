@@ -27,22 +27,44 @@ def first_name(full_name: str | None) -> str:
     return parts[0] if parts else ""
 
 
-def render_line(name: str, site: str | None, results: dict[str, Any] | None) -> str | None:
-    """The line from search results, or None when there is nothing worth saying."""
+def render_line(
+    name: str, site: str | None, results: dict[str, Any] | None, labour: dict[str, Any] | None = None
+) -> str | None:
+    """The line from search results (and the day's labour count, request 127),
+    or None when there is nothing worth saying."""
     who = ", ".join(p for p in (name, site) if p)
     if not who:
         return None
     activities = (results or {}).get("activities") or []
-    work: list[str] = []
+    # Request 137 (D): saved and still waiting for Save are told apart; the work
+    # says where it is now ("tiling 80%", its latest update).
+    saved: list[str] = []
+    pending: list[str] = []
     for row in activities:
-        label = str(row.get("work_type") or "").strip()
-        if label and label.lower() not in (w.lower() for w in work):
-            work.append(label)
-        if len(work) == _MAX_ITEMS:
-            break
-    if not work:
-        return f"Today so far: {who}. Nothing saved yet today."
-    return f"Today so far: {who}. Saved today: {', '.join(work)}."
+        label = _work_label(row)
+        into = saved if row.get("saved", True) else pending
+        if label and label.lower() not in (w.lower() for w in into) and len(into) < _MAX_ITEMS:
+            into.append(label)
+    headcount = int((labour or {}).get("headcount") or 0)
+    if headcount:
+        saved.append(f"{headcount} {'worker' if headcount == 1 else 'workers'}")
+    waiting = f" Waiting for Save: {', '.join(pending)}." if pending else ""
+    if not saved:
+        return f"Today so far: {who}. Nothing saved yet today.{waiting}"
+    return f"Today so far: {who}. Saved today: {', '.join(saved)}.{waiting}"
+
+
+def _work_label(row: dict[str, Any]) -> str:
+    from canonicalization.progress import find_percent, percent_text
+
+    label = str(row.get("work_type") or "").strip()
+    percent = find_percent(str(row.get("narrative") or ""))
+    return f"{label} {percent_text(percent)}" if label and percent is not None else label
+
+
+def _chosen(sites: list[Any], site_id: str | None) -> Any | None:
+    """The one of several sites the sender is working at today, if any."""
+    return next((s for s in sites if site_id and str(s.id) == str(site_id)), None)
 
 
 async def build_today_line(
@@ -51,28 +73,41 @@ async def build_today_line(
     *,
     timezone_name: str | None = None,
     timeout: float = TIMEOUT_SECONDS,
+    site_id: str | None = None,
+    labour_query_service: Any | None = None,
 ) -> str | None:
-    """Never raises; None when the service is missing, slow or fails."""
+    """Never raises; None when the service is missing, slow or fails.
+    ``site_id``: the site a sender with several chose for today (SIT-10).
+    ``labour_query_service``: adds the day's saved headcount (request 127: the
+    line said "nothing saved" for a day with 8 workers counted)."""
     if activity_search_service is None or actor is None or not getattr(actor, "organization_id", None):
         return None
     sites = list(getattr(actor, "sites", None) or [])
-    site = sites[0] if len(sites) == 1 else None
+    site = sites[0] if len(sites) == 1 else _chosen(sites, site_id)
     try:
-        today = today_for(timezone_name)
-        results = await asyncio.wait_for(
-            activity_search_service.search(
+        from runtime.agent.project_day import period_for, read_period
+
+        # The one read helper: the project's today, the same scope and rules as
+        # "what was done today?" and "how many workers today?".
+        read = await asyncio.wait_for(
+            read_period(
                 organization_id=actor.organization_id,
                 project_id=getattr(site, "project_id", None),
                 site_id=getattr(site, "id", None),
-                start_date=today,
-                end_date=today,
+                period=period_for("today", today_for(timezone_name)),  # type: ignore[arg-type]
+                activity_search=activity_search_service,
+                labour_query=labour_query_service,
+                # WA-77: the agent sees what was sent, saved or not.
+                include_unsaved=True,
             ),
             timeout=timeout,
         )
     except Exception:  # noqa: BLE001 -- context is a nicety, never load-bearing
         logger.debug("today_context.skipped", exc_info=True)
         return None
-    return render_line(first_name(getattr(actor, "full_name", None)), getattr(site, "name", None), results)
+    return render_line(
+        first_name(getattr(actor, "full_name", None)), getattr(site, "name", None), read["work"], read["labour"]
+    )
 
 
 #: At most this many materials in the stock line, largest stock first.
@@ -104,17 +139,18 @@ async def build_stock_line(
     actor: Any,
     *,
     timeout: float = TIMEOUT_SECONDS,
+    site_id: str | None = None,
 ) -> str | None:
     """WA-36: the sender's site stock for the agent's prompt, so a material
     message or question is read against what is actually there. Read-only;
-    only for a sender with one site; never raises, None when missing, slow
-    or failing."""
+    for a sender with one site, or the site a sender with several chose for
+    today (SIT-10); never raises, None when missing, slow or failing."""
     if inventory_query is None or actor is None or not getattr(actor, "organization_id", None):
         return None
     sites = list(getattr(actor, "sites", None) or [])
-    if len(sites) != 1:
+    site = sites[0] if len(sites) == 1 else _chosen(sites, site_id)
+    if site is None:
         return None
-    site = sites[0]
     try:
         levels = await asyncio.wait_for(
             inventory_query.query(
@@ -145,15 +181,33 @@ def open_work_label(row: dict[str, Any]) -> str:
     return work or narrative or "Work"
 
 
-def render_open_work_line(site: str | None, rows: list[dict[str, Any]] | None) -> str | None:
+def render_open_work_line(
+    site: str | None, rows: list[dict[str, Any]] | None, *, site_names: dict[str, str] | None = None
+) -> str | None:
     """The sender's open activities, so a "finished" or a new quantity can
-    name the one it continues (save_work_done's ``continues``)."""
-    labels = [open_work_label(r) for r in (rows or [])[:_MAX_OPEN]]
-    if not labels:
+    name the one it continues (save_work_done's ``continues``).
+
+    WRK-04: the first ``_MAX_OPEN`` are named and the rest counted; the code
+    still matches any open job by its work type, so a 7th job named in a
+    message is continued, not started again. WRK-05: with no site chosen the
+    rows come from all the sender's sites (``site_names`` maps site id to
+    name) and each is shown under its site."""
+    rows = rows or []
+    if not rows:
         return None
-    where = f" at {site}" if site else ""
+    shown, more = rows[:_MAX_OPEN], max(len(rows) - _MAX_OPEN, 0)
+    if site_names:
+        by_site: dict[str, list[str]] = {}
+        for row in shown:
+            by_site.setdefault(site_names.get(str(row.get("site_id")), "another site"), []).append(open_work_label(row))
+        listed = "; ".join(f"{name}: " + ", ".join(labels) for name, labels in by_site.items())
+        where = ""
+    else:
+        listed = "; ".join(open_work_label(r) for r in shown)
+        where = f" at {site}" if site else ""
+    tail = f"; and {more} more open (name the work as the message does)" if more else ""
     return (
-        f"Open work{where} (started, not finished): " + "; ".join(labels) + ". When a message "
+        f"Open work{where} (started, not finished): {listed}{tail}. When a message "
         "continues or finishes one of these, call save_work_done with continues set to its name "
         "exactly as written here; leave continues out for new work."
     )

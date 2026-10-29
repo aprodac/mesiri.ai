@@ -98,3 +98,29 @@ async def test_an_attendance_register_photo_is_attached_and_recorded_as_a_photo(
     assert isinstance(ready, Ready)
     assert ready.event.fields["media_object_key"] == "media/register.jpg"
     assert ready.event.fields["recorded_via"] == "whatsapp_image"
+
+
+async def test_a_sender_on_none_of_the_projects_sites_is_told_not_saved():
+    # BE-50 (audit ATT-09): such labour used to save site-less and reached no DPR.
+    actor = _actor()  # on the project, on none of its sites
+    actor.organization_id = ORG
+    entry = LabourEntry(
+        context_resolver=_Context(site_id=None), org_settings_query=None, actor=actor, workforce_query=None
+    )
+
+    said = await _prepare(entry, workers=[{"trade": "mason", "headcount": 6}])
+
+    assert isinstance(said, Say) and said.status == "info"
+    assert "not on any site of this project" in said.text
+
+
+async def test_a_sender_with_several_sites_is_asked_which():
+    actor = _actor(SITE, "site-2")
+    actor.organization_id = ORG
+    entry = LabourEntry(
+        context_resolver=_Context(site_id=None), org_settings_query=None, actor=actor, workforce_query=None
+    )
+
+    said = await _prepare(entry, workers=[{"trade": "mason", "headcount": 6}])
+
+    assert isinstance(said, Say) and "Which site" in (said.question or said.text)

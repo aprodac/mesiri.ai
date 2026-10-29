@@ -32,9 +32,6 @@ from runtime.inventory_query import MaterialInventoryQueryService
 from runtime.labour_query_service import (
     LabourQueryService,
 )
-from runtime.labour_query_service import (
-    resolve_date_range as resolve_labour_date_range,
-)
 from runtime.money_account_query import MoneyAccountQueryService
 from runtime.org_settings_query import OrganizationSettingsQueryService
 from runtime.project_detail_query import ProjectDetailQueryService
@@ -127,8 +124,41 @@ AUDIENCE_PENDING_NAME_FIELD = "_audience_pending_name"
 
 
 
+async def _add_period(
+    event: CanonicalEventV2,
+    inventory_query: MaterialInventoryQueryService,
+    timezone_name: str | None,
+) -> None:
+    """MAT-03: "cement used today?", "received yesterday?", "this week?" are
+    answered from the movements of that period (project zone), not from the
+    all-time totals: each stock row gets ``period_received`` / ``period_used``
+    and the event ``inventory_period`` (its label)."""
+    from runtime.agent.project_day import project_zone_name, resolve_period
+
+    zone = project_zone_name(timezone_name)
+    period = resolve_period(event.fields.get("date_range"), event.fields.get("date"), zone)
+    if period is None or not hasattr(inventory_query, "period_totals"):
+        return
+    start, end, label = period
+    totals = await inventory_query.period_totals(
+        organization_id=event.organization_id,
+        project_id=event.project_id,
+        site_id=event.site_id,
+        start_date=start,
+        end_date=end,
+        timezone_name=zone,
+    )
+    for level in event.fields.get("inventory_levels") or []:
+        moved = totals.pop((str(level["material_name"]).lower(), str(level["unit"])), None) or {}
+        level["period_received"] = moved.get("received", 0.0)
+        level["period_used"] = moved.get("used", 0.0)
+    event.fields["inventory_period"] = {"label": label, "start": start.isoformat(), "end": end.isoformat()}
+
+
 async def _inject_inventory_context(
-    event: CanonicalEventV2, inventory_query: MaterialInventoryQueryService | None
+    event: CanonicalEventV2,
+    inventory_query: MaterialInventoryQueryService | None,
+    timezone_name: str | None = None,
 ) -> None:
     """Populate inventory_levels (for INVENTORY_QUERY_ASKED) / available_stock
     (for MATERIAL_USAGE_REQUESTED's low-stock warning) on the event's fields.
@@ -151,6 +181,7 @@ async def _inject_inventory_context(
             site_id=event.site_id,
             material_name=event.fields.get("material_name"),
         )
+        await _add_period(event, inventory_query, timezone_name)
     elif (
         event.event_type is CanonicalEventType.MATERIAL_USAGE_REQUESTED
         and event.fields.get("material_name")
@@ -165,6 +196,8 @@ async def _inject_inventory_context(
             project_id=event.project_id,
             site_id=event.site_id,
             material_name=event.fields.get("material_name"),
+            # WA-77: the hint compares with what was reported, saved or not.
+            include_unsaved=True,
         )
         if levels:
             event.fields["available_stock"] = levels[0]["current_stock"]
@@ -436,20 +469,23 @@ async def _seed_labour_query(
     # canonicalization/occurred_date.py exists to close. Asking "how many
     # workers today" at 2am in India must not answer for yesterday. The
     # timezone comes from resolved context (ActorIdentity doesn't carry one).
+    # Request 127 (P2): the day or period is the project's own, and the figures
+    # come from the one read helper (runtime/agent/project_day.py), the same
+    # one "what was done today?" and the "today so far" line read through.
+    from runtime.agent.project_day import period_for, read_period, resolve_period
+
     today = today_for(timezone_name)
-    start_date, end_date, date_range_label = resolve_labour_date_range(
-        event.fields.get("date_range"), today=today
-    )
-    results = await labour_query_service.summarize_attendance(
+    period = resolve_period(event.fields.get("date_range"), event.fields.get("date"), timezone_name, today=today)
+    period = period or period_for("today", today)
+    read = await read_period(
         organization_id=actor.organization_id,
         project_id=event.project_id,
         site_id=event.site_id,
-        start_date=start_date,
-        end_date=end_date,
+        period=period,
+        labour_query=labour_query_service,
         trade=event.fields.get("trade"),
     )
-    results["date_range_label"] = date_range_label
-    event.fields["labour_results"] = results
+    event.fields["labour_results"] = read["labour"]
 
 
 async def _seed_activity_search(
@@ -458,6 +494,8 @@ async def _seed_activity_search(
     activity_search_service: ActivitySearchService | None,
     actor: ActorIdentity | None,
     timezone_name: str | None,
+    labour_query_service: LabourQueryService | None = None,
+    inventory_query: MaterialInventoryQueryService | None = None,
 ) -> None:
     """Answer #17 "what did I log / any open issues" before the graph runs --
     same shape and reasoning as _seed_labour_query above. Only ever runs for
@@ -472,19 +510,53 @@ async def _seed_activity_search(
     if decision.workflow_key is not WorkflowKey.ACTIVITY_QUERY:
         return
 
+    # WRK-03: a named day or period ("yesterday") is the project's own.
+    # Request 127 (P2): read through the one helper (project_day.read_period),
+    # which also brings the day's labour -- "what was done today?" left out
+    # the 8 workers counted for the day. Not when the question is about one
+    # kind of work: labour is not part of that answer.
+    from runtime.agent.project_day import period_for, project_zone_name, read_period, resolve_period
+
     today = today_for(timezone_name)
-    start_date, end_date, date_range_label = resolve_labour_date_range(
-        event.fields.get("date_range"), today=today
-    )
-    results = await activity_search_service.search(
+    period = resolve_period(event.fields.get("date_range"), event.fields.get("date"), timezone_name, today=today)
+    period = period or period_for("today", today)
+    work_type = event.fields.get("work_type")
+    read = await read_period(
         organization_id=actor.organization_id,
         project_id=event.project_id,
         site_id=event.site_id,
-        start_date=start_date,
-        end_date=end_date,
-        work_type=event.fields.get("work_type"),
+        period=period,
+        activity_search=activity_search_service,
+        labour_query=None if work_type else labour_query_service,
+        work_type=work_type,
     )
-    results["date_range_label"] = date_range_label
+    results = read["work"]
+    if read["labour"] and read["labour"].get("headcount"):
+        results["labour"] = read["labour"]
+    if not work_type and inventory_query is not None and hasattr(inventory_query, "period_totals"):
+        # Request 136: the day's materials too, counted as the DPR counts them
+        # (``period_totals``): "innu enthokke cheythu?" said "no work" over a card
+        # that saved 30 bags of cement used.
+        start, end, _label = period
+        try:
+            moved = await inventory_query.period_totals(
+                organization_id=actor.organization_id,
+                project_id=event.project_id,
+                site_id=event.site_id,
+                start_date=start,
+                end_date=end,
+                timezone_name=project_zone_name(timezone_name),
+            )
+        except Exception:  # noqa: BLE001 -- the answer stands without them
+            _log.warning("activity_search.materials_failed", exc_info=True)
+            moved = {}
+        materials = [
+            {"material": name, "unit": unit, "received": totals.get("received", 0.0), "used": totals.get("used", 0.0)}
+            for (name, unit), totals in sorted(moved.items())
+            if totals.get("received") or totals.get("used")
+        ]
+        if materials:
+            results["materials"] = materials
     event.fields["activity_search_results"] = results
 
 
@@ -507,6 +579,41 @@ def _dpr_scope(event: CanonicalEventV2, actor: ActorIdentity) -> tuple[str | Non
             if project_id is None:
                 project_id = under[0].project_id
     return project_id, site_id
+
+
+async def _project_preview(
+    dpr_request_query: DprRequestQueryService,
+    actor: ActorIdentity,
+    *,
+    project_id: str,
+    report_date: Any,
+    event: CanonicalEventV2,
+) -> str:
+    """The day so far at each of the project's sites the sender can see, a
+    site name over its lines; sites with nothing yet are left out. Empty
+    when no site has anything."""
+    blocks = []
+    for site in getattr(actor, "sites", None) or []:
+        if str(getattr(site, "project_id", None)) != str(project_id):
+            continue
+        try:
+            lines = await dpr_request_query.preview_lines(
+                organization_id=actor.organization_id,
+                project_id=project_id,
+                site_id=site.id,
+                report_date=report_date,
+            )
+        except Exception:  # noqa: BLE001 -- the other sites still answer
+            _log.warning(
+                "dpr_request.site_preview_failed correlation_id=%s site=%s",
+                event.correlation_id,
+                site.id,
+                exc_info=True,
+            )
+            continue
+        if lines:
+            blocks.append("\n".join([f"*{site.name}*", *lines]))
+    return "\n".join(blocks)
 
 
 async def _seed_dpr_request(
@@ -596,6 +703,24 @@ async def _seed_dpr_request(
             result = {**result, "status": "waiting" if waiting else "preview"}
             event.fields["dpr_preview"] = "\n".join(lines)
             event.fields["dpr_missing"] = list(result.get("missing") or [])
+    elif (
+        result["status"] in ("not_generated", "pending_confirmation")
+        and report_date == today
+        and project_id
+        and not site_id
+    ):
+        # WA-66 (audit DPR-05): an owner/PM whose project has several sites
+        # asks during the day. The project roll-up is only made at the
+        # cutoff, so this used to say "Nothing's been logged" while the
+        # sites had entries. Each of their sites' day so far instead.
+        preview = await _project_preview(
+            dpr_request_query, actor, project_id=project_id, report_date=today, event=event
+        )
+        if preview:
+            waiting = result["status"] == "pending_confirmation"
+            result = {**result, "status": "waiting" if waiting else "preview"}
+            event.fields["dpr_preview"] = preview
+            event.fields["dpr_missing"] = []
     event.fields["dpr_status"] = result["status"]
     event.fields["dpr_object_key"] = result["object_key"]
     event.fields["dpr_code"] = result["code"]
@@ -1192,6 +1317,7 @@ async def _offer_project_setup(
     actor: Any,
     wa_id: str,
     send_reply: Callable[..., Awaitable[Any]],
+    team_query: Any | None = None,
 ) -> bool:
     """After a confirmed CREATE_PROJECT or CREATE_SITE execution, send the
     chained setup offer (tappable "Add a Site now?" / "Add a Teammate
@@ -1211,6 +1337,14 @@ async def _offer_project_setup(
     user_id = str(getattr(actor, "user_id", None) or "")
     if not user_id:
         return False
+    alone: bool | None = None
+    if stage == "member" and team_query is not None:
+        # [111]: count who is on the project before saying anything about its
+        # team; with someone besides the sender there is nothing to offer.
+        others = await team_query.count_other_members(project_id=project_id, user_id=user_id)
+        if others:
+            return False
+        alone = True if others == 0 else None
     try:
         await project_setup_offer_store.set_offer(
             user_id=user_id, stage=stage, project_id=project_id
@@ -1223,7 +1357,7 @@ async def _offer_project_setup(
     spec = (
         render_project_site_offer(project_name)
         if stage == "site"
-        else render_project_member_offer()
+        else render_project_member_offer(alone)
     )
     _log.info("project_setup.offered user=%s stage=%s project=%s", user_id, stage, project_id)
     await _safe(send_reply(spec, wa_id))

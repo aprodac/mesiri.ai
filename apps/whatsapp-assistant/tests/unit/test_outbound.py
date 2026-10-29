@@ -331,3 +331,25 @@ async def test_a_prepared_image_is_not_uploaded_again_by_the_send():
     )
     assert sent is True
     assert sum(p.endswith("/media") for p in calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_group_target_posts_into_the_group():
+    """WA-87: "group:<id>" sends to the WhatsApp group; a person's number
+    still goes as an individual message."""
+    from channel.whatsapp.outbound import group_id_of, group_target
+
+    captured: list[httpx.Request] = []
+    sender = _sender(captured)
+
+    assert await sender.send_reaction(group_target("120363000000000001"), "wamid.in", "✅")
+    assert await sender.send_text("919876543210", "hi")
+
+    group_payload, person_payload = (json.loads(r.content) for r in captured)
+    assert group_payload["recipient_type"] == "group"
+    assert group_payload["to"] == "120363000000000001"
+    assert group_payload["reaction"] == {"message_id": "wamid.in", "emoji": "✅"}
+    assert person_payload["recipient_type"] == "individual"
+    assert person_payload["to"] == "919876543210"
+    assert group_id_of("919876543210") is None
+    assert group_id_of("group:") is None

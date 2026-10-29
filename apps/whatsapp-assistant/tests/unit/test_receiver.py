@@ -210,3 +210,62 @@ async def test_receiver_normalizes_interactive_reply_without_downloading_media()
     assert normalized.modality is InputModality.INTERACTIVE
     assert normalized.text == "Material"
     assert normalized.metadata["interactive_reply_id"] == "cat_material"
+
+
+@pytest.mark.asyncio
+async def test_group_message_is_not_handled_as_one_on_one() -> None:
+    """WA-87: a message in a WhatsApp group carries `group_id` next to the
+    participant's `from`. It must never be processed as that participant's
+    1-on-1 message (saved under them, answered privately) -- nor get a read
+    receipt -- while the 1-on-1 message in the same webhook still is."""
+    message_store = InMemoryNormalizedMessageStore()
+    on_message_claimed = AsyncMock()
+    receiver = WhatsAppReceiver(
+        deduplication_store=InMemoryDeduplicationStore(),
+        media_downloader=AsyncMock(),
+        message_store=message_store,
+        object_storage=FakeObjectStorage(),
+        on_message_claimed=on_message_claimed,
+    )
+    payload = text_webhook_payload()
+    value = payload["entry"][0]["changes"][0]["value"]
+    group_message = dict(value["messages"][0], id="wamid.group", group_id="120363000000000001")
+    value["messages"] = [*value["messages"], group_message]
+
+    scheduled = await receiver.handle_payload(payload)
+    await receiver.wait_until_idle()
+
+    assert scheduled == 1
+    assert await message_store.get("wamid.group") is None
+    assert await message_store.get("wamid.text") is not None
+    claimed = [call.args[0] for call in on_message_claimed.await_args_list]
+    assert "wamid.group" not in claimed
+
+
+@pytest.mark.asyncio
+async def test_with_groups_on_a_group_message_is_processed_and_group_events_handed_on() -> None:
+    """WA-87: switched on, the group message goes on (runtime/group_chat.py
+    decides who it is from, with its group id in metadata), and Meta's
+    group_* webhooks reach on_group_event."""
+    message_store = InMemoryNormalizedMessageStore()
+    on_group_event = AsyncMock()
+    receiver = WhatsAppReceiver(
+        deduplication_store=InMemoryDeduplicationStore(),
+        media_downloader=AsyncMock(),
+        message_store=message_store,
+        object_storage=FakeObjectStorage(),
+        groups_enabled=True,
+        on_group_event=on_group_event,
+    )
+    payload = text_webhook_payload()
+    value = payload["entry"][0]["changes"][0]["value"]
+    value["messages"][0]["group_id"] = "120363000000000001"
+    lifecycle = {"groups": [{"type": "group_create", "group_id": "120363000000000001"}]}
+    payload["entry"][0]["changes"].append({"field": "group_lifecycle_update", "value": lifecycle})
+
+    assert await receiver.handle_payload(payload) == 1
+    await receiver.wait_until_idle()
+
+    normalized = await message_store.get("wamid.text")
+    assert normalized is not None and normalized.metadata["group_id"] == "120363000000000001"
+    on_group_event.assert_awaited_once_with("group_lifecycle_update", lifecycle)

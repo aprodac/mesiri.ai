@@ -55,6 +55,10 @@ class RecordMaterialReceiptCommand(BaseModel):
     occurred_date: date
     occurred_date_source: str = "inferred_at_confirmation"
 
+    #: PHO-03: the bill / challan photo the delivery was read from, kept with
+    #: the receipt (the object is already stored; only its key travels here).
+    media_object_key: str | None = None
+
     created_by: CanonicalUuid
 
     model_config = {"extra": "forbid"}

@@ -217,7 +217,7 @@ export default function BrandingPanel({ orgId }: { orgId: string }) {
   const shown = openRequest ?? data.requests[0];
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1fr) minmax(320px, 1.4fr)', gap: 'var(--space-6)', alignItems: 'start' }} data-testid="branding-panel">
+    <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: 'minmax(min(280px, 100%), 1fr) minmax(320px, 1.4fr)', gap: 'var(--space-6)', alignItems: 'start' }} data-testid="branding-panel">
       <div className="card">
         <h3 style={{ marginTop: 0, fontSize: '16px' }}>Photos from the owner</h3>
         {!shown ? (
@@ -267,7 +267,7 @@ export default function BrandingPanel({ orgId }: { orgId: string }) {
         </div>
         <div style={{ fontSize: '12px', color: 'var(--neutral-500)', marginTop: -8, marginBottom: 'var(--space-4)' }}>PNG, JPEG or WebP, up to 700 KB.</div>
         <form onSubmit={saveFields}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 var(--space-4)' }}>
+          <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 var(--space-4)' }}>
             {FIELDS.map((f) => (
               <div key={f.key} className="form-group" style={f.key === 'address' ? { gridColumn: '1 / -1' } : undefined}>
                 <label htmlFor={`lh-${f.key}`}>{f.label}</label>

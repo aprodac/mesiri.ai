@@ -35,6 +35,10 @@ from mesiri_contracts.common.ids import new_id
 _log = logging.getLogger("mesiri.agent")
 
 SCOPE_KEYS = ("project_id", "site_id", "project_name", "site_name")
+#: Request 136: a draft-mode read whose site the site resolver left open (none named,
+#: none saved to in the window) is about every site of the project, never about the
+#: site the context layer would default to (``JourneyGateway._reading_site``).
+ALL_SITES = "_all_sites"
 
 
 def tool_understanding(candidate: Any, message: Any, *, language: str | None = None) -> Any:
@@ -77,6 +81,11 @@ class Say:
     #: text and the options never appeared).
     question: str | None = None
     options: tuple[str, ...] = ()
+    #: "choose" only: what the answer fills in ("site", "project", "material"...).
+    awaiting: str = ""
+    #: ``awaiting == "amount"`` only (request 129): the stock unit the typed amount is
+    #: in ("kg" for "How many kg is 20 rod?"), so code can read "oru rod 12 kg" (WA-81).
+    answer_unit: str = ""
 
 
 @dataclass(slots=True)
@@ -166,9 +175,12 @@ class EntryScope:
         # Only when the context layer refused the pick does their own list
         # decide it; otherwise its resolved ids stand, as before.
         named = any(candidate.fields.get(k) for k in SCOPE_KEYS)
+        all_sites = bool(candidate.fields.get(ALL_SITES))
         project_id, site_id = await self._scope(
-            ctx, picked_project if retried else None, picked_site if retried else None, named=named
+            ctx, picked_project if retried else None, picked_site if retried else None, named=named or all_sites
         )
+        if all_sites:
+            site_id = None
         if project == "none":
             return Scoped(ctx, organization_id, None, None, None, None)
         if project_id is None and project == "optional":
@@ -178,6 +190,11 @@ class EntryScope:
             if not names:
                 return Say("info", f"{no} you are not on any project yet. Your admin can add you.")
             return choose("Which project is this for?", names, "project")
+        asked = self._named_site(candidate, picked_project, picked_site, message)
+        if isinstance(asked, Say):
+            return asked
+        if asked is not None:
+            project_id, site_id = asked.project_id, asked.id
         if site_id is None:
             sites = [s for s in getattr(self.actor, "sites", None) or [] if str(s.project_id) == str(project_id)]
             said = " ".join(str(candidate.fields.get("site_name") or "").casefold().split())
@@ -189,7 +206,9 @@ class EntryScope:
             if len(sites) > 1 and not ask_site:
                 sites = []  # the whole project
             if len(sites) > 1:
-                return choose("Which site is this for?", [s.name for s in sites], "site")
+                projects = {str(p.id): p.name for p in getattr(self.actor, "projects", None) or []}
+                labels = [label for _site, label in site_labels(sites, projects)]
+                return choose(site_words(message, "site_q"), labels, "site")
             site_id = sites[0].id if sites else None
             if site_id is None and (site_required or site_prompt) and not self._has_site_in(ctx, project_id):
                 # Without a site the save refuses it, and the model asked
@@ -265,6 +284,40 @@ class EntryScope:
             scope=(ctx.context_organization_id, ctx.context_user_id, scoped.context_project, scoped.context_site),
         )
 
+    def _named_site(self, candidate: Any, picked_project: Any, picked_site: Any, message: Any = None) -> Any | Say | None:
+        """V1 audit SIT-01: a site the message names is used only when it is
+        one of the sender's sites, by whole words. One site -> that site (not
+        today's); none or several -> they are asked, never moved to today's
+        site. None when no site was named (or it was already an id)."""
+        said = " ".join(str(candidate.fields.get("site_name") or "").split())
+        if not said or picked_site is not None:
+            return None
+        from .site_match import SOMETHING_ELSE, find_sites, options
+
+        own = [s for s in getattr(self.actor, "sites", None) or [] if getattr(s, "id", None)]
+        projects = {str(p.id): p.name for p in getattr(self.actor, "projects", None) or []}
+        pool = [s for s in own if picked_project is None or str(s.project_id) == str(picked_project)] or own
+        hits = find_sites(pool, said, projects)
+        if len(hits) == 1:
+            return hits[0]
+        # A name that is no site of theirs offers all of their sites, never the
+        # name itself and never only the ones of one project (SIT-01, [111]).
+        offered = hits if len(hits) > 1 else own
+        if not offered:
+            return None
+        labels, cut = options(offered, projects, said)
+        if hits:
+            question = f'Which "{said}" is this for?'
+        else:
+            question = site_words(message, "no_site", said=said)
+        note = ""
+        if cut:
+            note = (
+                f' If they pick "{SOMETHING_ELSE}", ask them to type the site name (ask_user, no options), '
+                "then call this tool again with what they typed."
+            )
+        return choose(question, labels, "site", note=note)
+
     def _has_site_in(self, ctx: Any, project_id: Any) -> bool:
         """Whether the sender may report on any site of the project, in either
         of its ids (the context layer's or the canonical one; the same in
@@ -333,14 +386,26 @@ class EntryScope:
         if self.active_context is None or ready.scope is None or ready.scope[3] is None:
             # Without a site it would wipe today's site (review, 22 Oct).
             return
+        from .work_site import SITE_UPDATE_WORKFLOWS
+
+        if ready.decision.workflow_key not in SITE_UPDATE_WORKFLOWS:
+            # Request 127: only a report from a site makes it the sender's site.
+            return
         organization_id, user_id, project_id, site_id = ready.scope
         try:
-            await self.active_context.set_active_context(
+            # Request 129: the site is preselected for the next unnamed update for
+            # a short window only (work_site.SAVE_WINDOW_SECONDS); V1 audit
+            # SIT-05 still holds for a site the sender said ("now at ...").
+            from .work_site import remember_saved_site
+
+            await remember_saved_site(
+                self.active_context,
                 organization_id=organization_id,
                 user_id=user_id,
                 project_id=project_id,
                 site_id=site_id,
-                ttl_seconds=_until_midnight(getattr(self.actor, "timezone", None)),
+                own_site_ids={str(s.id) for s in getattr(self.actor, "sites", None) or []},
+                timezone=getattr(self.actor, "timezone", None),
             )
         except Exception:  # noqa: BLE001 -- a missed hint only costs one question
             _log.warning("entry.remember_failed correlation_id=%s", correlation_id, exc_info=True)
@@ -355,15 +420,18 @@ class EntryScope:
             return True
 
 
-def _until_midnight(timezone: str | None) -> int:
-    """Today's site lasts the company's day (WA-45), not 12 hours past it."""
-    from datetime import UTC, datetime
+def site_words(message: Any, key: str, **fields: Any) -> str:
+    """The code's fixed site-question wording, in the language of the sender's
+    message (English when it has none of its own)."""
+    from .work_site import _language_of, _say
 
-    from channel.receipt.data import company_zone
+    return _say(_language_of(getattr(message, "text", None)), key, **fields)
 
-    from .work_site import seconds_until_midnight
 
-    return seconds_until_midnight(datetime.now(UTC), str(company_zone(timezone)))
+def site_labels(sites: Any, projects: dict[str, str]) -> list[tuple[Any, str]]:
+    from .site_match import labelled
+
+    return labelled(list(sites), projects)
 
 
 def choose(question: str, options: list[str], arg: str, *, note: str = "") -> Say:
@@ -379,6 +447,7 @@ def choose(question: str, options: list[str], arg: str, *, note: str = "") -> Sa
         f"when they answer, call this tool again with that exact {arg}.{note}",
         question=question,
         options=tuple(shown),
+        awaiting=arg,
     )
 
 

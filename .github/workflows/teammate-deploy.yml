@@ -76,6 +76,10 @@ jobs:
           # TM-12: the routine bound to Ilan Usman's cloud session (Ilan Pro reports to it).
           TEAMMATE_PARTNER_MESIRI_URL: ${{ secrets.TEAMMATE_PARTNER_MESIRI_URL }}
           TEAMMATE_PARTNER_MESIRI_TOKEN: ${{ secrets.TEAMMATE_PARTNER_MESIRI_TOKEN }}
+          # TM-14: more Claude accounts (B, C, …) the bot can switch to from WhatsApp. One secret, one
+          # KEY=value per line: the variables above with the account's letter added, e.g.
+          # CLAUDE_CODE_OAUTH_TOKEN_B=…, TEAMMATE_ROUTINE_MESIRI_URL_B=…, TEAMMATE_ROUTINE_MESIRI_TOKEN_B=…
+          TEAMMATE_CLAUDE_ACCOUNTS: ${{ secrets.TEAMMATE_CLAUDE_ACCOUNTS }}
           # Optional: a dev-only test account so the bot's screenshots of dev.mercon.tech are signed in.
           TEAMMATE_DEV_LOGIN_USER: ${{ secrets.TEAMMATE_DEV_LOGIN_USER }}
           TEAMMATE_DEV_LOGIN_PASSWORD: ${{ secrets.TEAMMATE_DEV_LOGIN_PASSWORD }}
@@ -83,8 +87,10 @@ jobs:
           TEAMMATE_DEV_LOGIN_MESIRI_USER: ${{ secrets.TEAMMATE_DEV_LOGIN_MESIRI_USER }}
           TEAMMATE_DEV_LOGIN_MESIRI_PASSWORD: ${{ secrets.TEAMMATE_DEV_LOGIN_MESIRI_PASSWORD }}
         run: |
+          # Several lines: sent encoded, so newlines and quotes survive the ssh command line.
+          TEAMMATE_CLAUDE_ACCOUNTS_B64="$(printf %s "${TEAMMATE_CLAUDE_ACCOUNTS:-}" | base64 -w0)"
           ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
-            "TEAMMATE_API_TOKEN='${TEAMMATE_API_TOKEN}' TEAMMATE_GEMINI_API_KEY='${TEAMMATE_GEMINI_API_KEY}' TEAMMATE_CLAUDE_TOKEN='${TEAMMATE_CLAUDE_TOKEN}' TEAMMATE_GITHUB_TOKEN='${TEAMMATE_GITHUB_TOKEN}' TEAMMATE_ROUTINE_MERCON_URL='${TEAMMATE_ROUTINE_MERCON_URL}' TEAMMATE_ROUTINE_MERCON_TOKEN='${TEAMMATE_ROUTINE_MERCON_TOKEN}' TEAMMATE_GITHUB_TOKEN_MESIRI='${TEAMMATE_GITHUB_TOKEN_MESIRI}' TEAMMATE_ROUTINE_MESIRI_URL='${TEAMMATE_ROUTINE_MESIRI_URL}' TEAMMATE_ROUTINE_MESIRI_TOKEN='${TEAMMATE_ROUTINE_MESIRI_TOKEN}' TEAMMATE_PARTNER_MESIRI_URL='${TEAMMATE_PARTNER_MESIRI_URL}' TEAMMATE_PARTNER_MESIRI_TOKEN='${TEAMMATE_PARTNER_MESIRI_TOKEN}' TEAMMATE_DEV_LOGIN_USER='${TEAMMATE_DEV_LOGIN_USER}' TEAMMATE_DEV_LOGIN_PASSWORD='${TEAMMATE_DEV_LOGIN_PASSWORD}' TEAMMATE_DEV_LOGIN_MESIRI_USER='${TEAMMATE_DEV_LOGIN_MESIRI_USER}' TEAMMATE_DEV_LOGIN_MESIRI_PASSWORD='${TEAMMATE_DEV_LOGIN_MESIRI_PASSWORD}' bash -s" << 'ENDSSH'
+            "TEAMMATE_CLAUDE_ACCOUNTS_B64='${TEAMMATE_CLAUDE_ACCOUNTS_B64}' TEAMMATE_API_TOKEN='${TEAMMATE_API_TOKEN}' TEAMMATE_GEMINI_API_KEY='${TEAMMATE_GEMINI_API_KEY}' TEAMMATE_CLAUDE_TOKEN='${TEAMMATE_CLAUDE_TOKEN}' TEAMMATE_GITHUB_TOKEN='${TEAMMATE_GITHUB_TOKEN}' TEAMMATE_ROUTINE_MERCON_URL='${TEAMMATE_ROUTINE_MERCON_URL}' TEAMMATE_ROUTINE_MERCON_TOKEN='${TEAMMATE_ROUTINE_MERCON_TOKEN}' TEAMMATE_GITHUB_TOKEN_MESIRI='${TEAMMATE_GITHUB_TOKEN_MESIRI}' TEAMMATE_ROUTINE_MESIRI_URL='${TEAMMATE_ROUTINE_MESIRI_URL}' TEAMMATE_ROUTINE_MESIRI_TOKEN='${TEAMMATE_ROUTINE_MESIRI_TOKEN}' TEAMMATE_PARTNER_MESIRI_URL='${TEAMMATE_PARTNER_MESIRI_URL}' TEAMMATE_PARTNER_MESIRI_TOKEN='${TEAMMATE_PARTNER_MESIRI_TOKEN}' TEAMMATE_DEV_LOGIN_USER='${TEAMMATE_DEV_LOGIN_USER}' TEAMMATE_DEV_LOGIN_PASSWORD='${TEAMMATE_DEV_LOGIN_PASSWORD}' TEAMMATE_DEV_LOGIN_MESIRI_USER='${TEAMMATE_DEV_LOGIN_MESIRI_USER}' TEAMMATE_DEV_LOGIN_MESIRI_PASSWORD='${TEAMMATE_DEV_LOGIN_MESIRI_PASSWORD}' bash -s" << 'ENDSSH'
           set -euo pipefail
 
           # Node >= 22.13 (node:sqlite). Install Node 22 from NodeSource if missing/older.
@@ -139,6 +145,22 @@ jobs:
               # Pasted secrets can carry stray spaces / newlines, which break the login.
               printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\nGH_TOKEN=%s\n' \
                 "$(printf %s "$TEAMMATE_CLAUDE_TOKEN" | tr -d '[:space:]')" "$(printf %s "$TEAMMATE_GITHUB_TOKEN" | tr -d '[:space:]')"
+              # TM-14: extra Claude accounts. Only the account variables are accepted (never anything that
+              # could change how the brain runs); a bad line is skipped and reported by number, never printed.
+              if [ -n "${TEAMMATE_CLAUDE_ACCOUNTS_B64:-}" ]; then
+                lineno=0
+                printf %s "$TEAMMATE_CLAUDE_ACCOUNTS_B64" | base64 -d | while IFS= read -r line || [ -n "$line" ]; do
+                  lineno=$((lineno + 1))
+                  line="$(printf %s "$line" | tr -d '[:space:]')"
+                  case "$line" in ''|'#'*) continue ;; esac
+                  if printf %s "$line" | grep -Eq '^(CLAUDE_CODE_OAUTH_TOKEN|TEAMMATE_(ROUTINE|PARTNER)_[A-Z0-9]+_(URL|TOKEN))_[A-Z0-9]+=[A-Za-z0-9._:/+=-]+$' \
+                    && ! printf %s "$line" | grep -Eq '^[A-Z0-9_]+_A='; then
+                    printf '%s\n' "$line"
+                  else
+                    echo "brain: skipped line ${lineno} of TEAMMATE_CLAUDE_ACCOUNTS (not an account variable)" >&2
+                  fi
+                done
+              fi
               printf 'GIT_AUTHOR_NAME=Teammate bot (Ilan)\nGIT_COMMITTER_NAME=Teammate bot (Ilan)\n'
               printf 'GIT_AUTHOR_EMAIL=ilan.usman.pro@gmail.com\nGIT_COMMITTER_EMAIL=ilan.usman.pro@gmail.com\n'
               clean() { printf %s "$1" | tr -d '[:space:]'; }

@@ -287,6 +287,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Costs admin router not loaded: %s", exc)
 
+    # Reply time and AI tokens per WhatsApp message (SA-17); like costs.
+    try:
+        from mesiri.domains.admin.replies_router import router as replies_admin_router
+
+        app.include_router(replies_admin_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Replies admin router not loaded: %s", exc)
+
+    # The Overview, the super admin's morning screen (SA-18); like costs.
+    try:
+        from mesiri.domains.admin.overview_router import router as overview_admin_router
+
+        app.include_router(overview_admin_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Overview admin router not loaded: %s", exc)
+
     # The control panel's Database page (SA-15); the backend's router, like costs.
     try:
         from mesiri.domains.admin.database_router import router as database_admin_router
@@ -327,6 +347,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Trial router not loaded: %s", exc)
 
+    # WEB-36: Tell Mesiri from the dashboard (the same handler as WhatsApp).
+    try:
+        from web_assistant.router import router as web_assistant_router
+
+        app.include_router(web_assistant_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Web assistant router not loaded: %s", exc)
+
     # Users routes (tenant management)
     try:
         from users.router import router as users_router
@@ -346,6 +376,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         import logging
 
         logging.getLogger(__name__).warning("Projects router not loaded: %s", exc)
+
+    # WA-87: a site's WhatsApp group (dashboard site page)
+    try:
+        from whatsapp_groups.router import router as whatsapp_groups_router
+
+        app.include_router(whatsapp_groups_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("WhatsApp groups router not loaded: %s", exc)
 
     # Materials routes (tenant-scoped materials log)
     try:
@@ -461,6 +501,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         import logging
 
         logging.getLogger(__name__).warning("DPR router not loaded: %s", exc)
+
+    # WEB-27: the site DPR as a live document (the PDF's own HTML).
+    try:
+        from dpr_preview.router import router as dpr_preview_router
+
+        app.include_router(dpr_preview_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("DPR preview router not loaded: %s", exc)
 
     # Signed download links for media kept on this server's disk (INF-09,
     # object storage provider "local"). Answers 404 under any other provider.

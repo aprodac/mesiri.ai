@@ -267,3 +267,33 @@ def test_no_summary_heading_without_a_summary():
         payload=_FULL_PAYLOAD,
     )
     assert "(Summary)" not in _pdf_text(pdf_bytes)
+
+
+def _render(payload):
+    return render_dpr_pdf_bytes(
+        code="DPR-001", report_date="2026-07-20", project_name="P", site_name="S",
+        workflow_status="approved", payload=payload,
+    )
+
+
+def test_dpr06_labour_heading_has_no_total_cost_of_zero(monkeypatch):
+    """DPR-06: V1 records no wages, so a cost of 0 is not printed."""
+    from fpdf import FPDF
+
+    cells: list[str] = []
+    real_cell = FPDF.cell
+
+    def spy(self, *args, **kwargs):
+        cells.append(str(kwargs.get("text", args[2] if len(args) > 2 else "")))
+        return real_cell(self, *args, **kwargs)
+
+    monkeypatch.setattr(FPDF, "cell", spy)
+    payload = {**_FULL_PAYLOAD, "labour": {"headcount": 13, "trades": [], "total_cost": "0"}}
+    _render(payload)
+    assert "Labour" in cells
+    assert not any("Total cost" in c for c in cells)
+
+    cells.clear()
+    payload["labour"]["total_cost"] = "8000"
+    _render(payload)
+    assert "Labour (Total cost: 8000)" in cells

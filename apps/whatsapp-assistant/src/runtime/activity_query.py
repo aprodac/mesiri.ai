@@ -42,6 +42,8 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
 
+from runtime.day_facts import open_work_sql
+
 if TYPE_CHECKING:
     from mesiri.infrastructure.postgres.database import PostgresDatabase
 
@@ -118,6 +120,7 @@ class ActivityQueryService:
                 activities.c.reported_by_user_id == reporter_uuid,
                 activities.c.status.in_(_OPEN_STATUSES),
                 activities.c.deleted_at.is_(None),
+                sa.text(open_work_sql("activities.id")),
             )
             .order_by(activities.c.updated_at.desc())
             .limit(1)
@@ -141,23 +144,26 @@ class ActivityQueryService:
         organization_id: str,
         site_id: str | None,
         reported_by_user_id: str | None,
-        limit: int = 10,
+        limit: int = 50,
+        site_ids: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Every open activity for this reporter on this site, most recently
         updated first. Empty list when there is nothing open -- a normal,
         common outcome (e.g. the first report of the day), not a failure.
 
-        `limit` is a sanity cap, not a real-world expectation -- one person
-        genuinely running ten simultaneous open activities on one site would
-        be unusual, but nothing here assumes it can't happen."""
-        if not site_id or not reported_by_user_id:
+        `limit` is a sanity cap, not a real-world expectation (WRK-04: it was
+        10, and a site running more open jobs than that lost the rest).
+        ``site_ids`` (WRK-05): the sender's open work across several sites, when
+        none is chosen yet; each row then says which site it is at."""
+        if (not site_id and not site_ids) or not reported_by_user_id:
             return []
 
         import sqlalchemy as sa
 
         try:
             org_id = uuid.UUID(organization_id)
-            site_uuid = uuid.UUID(site_id)
+            site_uuid = uuid.UUID(site_id) if site_id else None
+            many = [uuid.UUID(x) for x in site_ids or []]
             reporter_uuid = uuid.UUID(reported_by_user_id)
         except (TypeError, ValueError):
             return []
@@ -178,16 +184,18 @@ class ActivityQueryService:
         query = (
             sa.select(
                 activities.c.id,
+                activities.c.site_id,
                 activities.c.work_type,
                 activities.c.narrative,
                 activities.c.status,
             )
             .where(
                 activities.c.organization_id == org_id,
-                activities.c.site_id == site_uuid,
+                activities.c.site_id == site_uuid if site_uuid is not None else activities.c.site_id.in_(many),
                 activities.c.reported_by_user_id == reporter_uuid,
                 activities.c.status.in_(_OPEN_STATUSES),
                 activities.c.deleted_at.is_(None),
+                sa.text(open_work_sql("activities.id")),
             )
             .order_by(activities.c.updated_at.desc())
             .limit(limit)
@@ -199,6 +207,7 @@ class ActivityQueryService:
         return [
             {
                 "activity_id": str(row["id"]),
+                "site_id": str(row["site_id"]),
                 "work_type": row["work_type"],
                 "narrative": row["narrative"],
                 "status": row["status"],
@@ -243,6 +252,7 @@ class ActivityQueryService:
             activities.c.organization_id == org_id,
             activities.c.status.in_(_OPEN_STATUSES),
             activities.c.deleted_at.is_(None),
+            sa.text(open_work_sql("activities.id")),
         )
 
         async with self._db.transaction() as conn:
@@ -257,88 +267,50 @@ class ActivityQueryService:
             "status": row["status"],
         }
 
-    async def get_latest_quantity_update(
-        self, *, organization_id: str, activity_id: str
+    async def find_activity_for_photos(
+        self,
+        *,
+        organization_id: str,
+        reported_by_user_id: str | None,
+        site_ids: list[str],
+        recent_hours: int = 48,
     ) -> dict[str, Any] | None:
-        """ADR-D14's correction target: the most recently created,
-        quantity-bearing Progress Update on `activity_id` -- "make that 180"
-        always corrects the *last number stated*, never an older one, so
-        `created_at DESC LIMIT 1` (not `occurred_at`) is the right order:
-        two updates logged for the same moment must still resolve to
-        whichever one the user actually sent most recently.
-
-        A row already superseding an earlier correction is itself still a
-        valid target -- correcting a correction is just another correction
-        (application/progress/mapper.py's `build_correct_activity_quantity_
-        command` reads `supersedes_id` from whichever row this returns, so
-        the chain stays intact). None when the activity has no
-        quantity-bearing update at all (e.g. only a NOTE, or the very first
-        quantity was stated at CREATE_ACTIVITY time and lives in
-        activity_quantities instead -- out of scope for V1, see module
-        docstring)."""
-        if not activity_id:
-            return None
-
+        """PHO-01: the activity a "Site Update" photo belongs to. The sender's
+        open work at those sites first (most recently touched), else the work
+        they reported in the last ``recent_hours`` even if it is finished --
+        "finished plastering", then its photos. None when they have reported
+        nothing to attach to."""
         import sqlalchemy as sa
 
+        if not reported_by_user_id or not site_ids:
+            return None
         try:
             org_id = uuid.UUID(organization_id)
-            act_id = uuid.UUID(activity_id)
+            reporter = uuid.UUID(reported_by_user_id)
+            sites = [uuid.UUID(s) for s in site_ids]
         except (TypeError, ValueError):
             return None
-
-        activities = sa.table(
-            "activities",
-            sa.column("id"),
-            sa.column("organization_id"),
-            sa.column("work_type"),
-            sa.column("narrative"),
-        )
-        updates = sa.table(
-            "progress_updates",
-            sa.column("id"),
-            sa.column("activity_id"),
-            sa.column("quantity"),
-            sa.column("unit_id"),
-            sa.column("deleted_at"),
-            sa.column("created_at"),
-        )
-        units = sa.table("units_of_measure", sa.column("id"), sa.column("code"))
-
-        query = (
-            sa.select(
-                updates.c.id,
-                updates.c.quantity,
-                updates.c.unit_id,
-                units.c.code,
-                activities.c.work_type,
-                activities.c.narrative,
-            )
-            .select_from(
-                updates.join(activities, activities.c.id == updates.c.activity_id).join(
-                    units, units.c.id == updates.c.unit_id, isouter=True
-                )
-            )
-            .where(
-                activities.c.organization_id == org_id,
-                updates.c.activity_id == act_id,
-                updates.c.quantity.is_not(None),
-                updates.c.deleted_at.is_(None),
-            )
-            .order_by(updates.c.created_at.desc())
-            .limit(1)
-        )
-
         async with self._db.transaction() as conn:
-            row = (await conn.execute(query)).mappings().first()
-
+            row = (
+                await conn.execute(
+                    sa.text(
+                        "SELECT id, site_id, work_type, narrative, status::text AS status FROM activities"
+                        " WHERE organization_id = :org AND reported_by_user_id = :user"
+                        "   AND site_id = ANY(:sites) AND deleted_at IS NULL"
+                        "   AND (status::text = ANY(:open)"
+                        "        OR updated_at >= now() - make_interval(hours => :hours))"
+                        " ORDER BY (status::text = ANY(:open)) DESC, updated_at DESC LIMIT 1"
+                    ),
+                    {"org": org_id, "user": reporter, "sites": sites, "open": list(_OPEN_STATUSES),
+                     "hours": recent_hours},
+                )
+            ).mappings().first()
         if row is None:
             return None
         return {
-            "progress_update_id": str(row["id"]),
-            "quantity": row["quantity"],
-            "unit_id": str(row["unit_id"]) if row["unit_id"] else None,
-            "unit": row["code"],
+            "activity_id": str(row["id"]),
+            "site_id": str(row["site_id"]),
             "work_type": row["work_type"],
             "narrative": row["narrative"],
+            "status": row["status"],
         }

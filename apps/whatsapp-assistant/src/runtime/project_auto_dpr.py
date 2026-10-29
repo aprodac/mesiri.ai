@@ -26,7 +26,30 @@ import logging
 import uuid
 from typing import Any
 
+from channel.whatsapp.outbound import group_target
+
 logger = logging.getLogger("mesiri.project_auto_dpr")
+
+
+async def _site_groups(conn: Any, *, organization_id: Any, project_id: Any) -> list[dict[str, Any]]:
+    """WA-87: the project's active site WhatsApp groups, while groups are
+    switched on (WHATSAPP_GROUPS_ENABLED, runtime/group_chat.py)."""
+    from runtime.group_chat import groups_switched_on
+
+    if not groups_switched_on():
+        return []
+    from sqlalchemy import text
+
+    rows = (
+        await conn.execute(
+            text(
+                "SELECT id, wa_group_id, site_id FROM whatsapp_groups WHERE organization_id = :org "
+                "AND project_id = :project AND status = 'active' AND wa_group_id IS NOT NULL"
+            ),
+            {"org": organization_id, "project": project_id},
+        )
+    ).mappings().all()
+    return [dict(r) for r in rows]
 
 
 async def _project_dpr_recipients(
@@ -136,7 +159,15 @@ async def _unconfirmed_updates(
                 sa.text(
                     """
                     SELECT s.name AS site_name,
-                           COALESCE((v.payload ->> 'activity_count')::int, 0) AS updates
+                           -- DPR-08: a site that sent only workers, materials or issues
+                           -- has reported too, not only one with work done.
+                           COALESCE((v.payload ->> 'activity_count')::int, 0)
+                           + CASE WHEN COALESCE((v.payload -> 'labour' ->> 'headcount')::int, 0) > 0
+                                  THEN 1 ELSE 0 END
+                           + CASE WHEN jsonb_typeof(v.payload -> 'materials') = 'array'
+                                  THEN jsonb_array_length(v.payload -> 'materials') ELSE 0 END
+                           + CASE WHEN jsonb_typeof(v.payload -> 'issues') = 'array'
+                                  THEN jsonb_array_length(v.payload -> 'issues') ELSE 0 END AS updates
                     FROM daily_reports r
                     JOIN sites s ON s.id = r.site_id
                     JOIN daily_report_versions v ON v.id = r.current_version_id
@@ -432,6 +463,28 @@ async def send_due_project_dprs(
                             project_id=project["id"],
                             site_id=target["site_id"],
                             payload=payload,
+                        )
+                    # WA-87: the same DPR into each of the project's site
+                    # WhatsApp groups, for the client in them.
+                    for group in await _site_groups(
+                        conn, organization_id=project["organization_id"], project_id=project["id"]
+                    ):
+                        group_payload: dict[str, Any] = {
+                            "message": message,
+                            "document_object_key": object_key,
+                            "to_wa_id": group_target(group["wa_group_id"]),
+                        }
+                        if card:
+                            group_payload["card"] = card
+                        await notifications_repo.claim(
+                            organization_id=project["organization_id"],
+                            rule_key=f"project_dpr_send:{project_id}",
+                            subject_id=f"group:{group['id']}",
+                            occurred_on=project["report_date"],
+                            recipient_user_id=None,
+                            project_id=project["id"],
+                            site_id=group["site_id"],
+                            payload=group_payload,
                         )
                     await mark_project_dpr_sent(
                         conn,

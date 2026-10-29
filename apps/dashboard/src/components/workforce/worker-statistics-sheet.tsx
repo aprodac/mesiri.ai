@@ -1,23 +1,13 @@
 import * as React from 'react'
-import {
-  CalendarDays,
-  DollarSign,
-  HardHat,
-  Building,
-  AlertCircle,
-  UserCheck,
-  UserPlus,
-  ClipboardCheck,
-} from 'lucide-react'
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
-import { Badge } from '@/components/ui/badge'
+import { AlertCircle, ClipboardCheck, IndianRupee, TrendingUp } from 'lucide-react'
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
+import { Fact, Facts, SheetHero, SheetSection } from '@/components/detail-sheet'
+import { StatStrip } from '@/components/dpr-page'
+import { longDate } from '@/lib/site-day'
 import { fetchOneWorkerStatisticsApi, type WorkerStatistics } from '@/lib/api'
+
+// WEB-39: the side-panel layout (detail-sheet.tsx): days worked in the head,
+// money in a number strip, the calendar in green.
 
 interface WorkerStatisticsSheetProps {
   workerId: string | null
@@ -90,8 +80,8 @@ function MonthGrid({
               title={present ? `Present on ${iso}` : iso}
               className={`aspect-square rounded-sm flex items-center justify-center text-[9px] font-mono ${
                 present
-                  ? 'bg-emerald-500/80 text-white font-bold'
-                  : 'bg-muted/40 text-muted-foreground/50'
+                  ? 'bg-success text-background font-bold'
+                  : 'bg-muted/60 text-muted-foreground/60'
               }`}
             >
               {day}
@@ -99,29 +89,6 @@ function MonthGrid({
           )
         })}
       </div>
-    </div>
-  )
-}
-
-function Stat({
-  icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: React.ReactNode
-  hint?: string
-}) {
-  return (
-    <div className="border rounded-lg p-2.5 bg-card flex flex-col gap-1">
-      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-        {icon}
-        {label}
-      </div>
-      <div className="text-base font-mono font-bold text-foreground tabular-nums">{value}</div>
-      {hint && <div className="text-[10px] text-muted-foreground">{hint}</div>}
     </div>
   )
 }
@@ -173,181 +140,125 @@ export function WorkerStatisticsSheet({
   )
   const months = React.useMemo(() => buildMonths(stats?.dates_worked ?? []), [stats])
 
+  const money = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+  const day = (iso: string | null) => (iso ? longDate(iso) : null)
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            <HardHat className="size-4 text-amber-500" />
-            {stats?.name || workerName || 'Worker'}
-          </SheetTitle>
-          <SheetDescription>
-            Attendance history, calculated from recorded attendance. Not editable.
-          </SheetDescription>
-        </SheetHeader>
+      <SheetContent className="w-full gap-0 overflow-y-auto p-0 sm:max-w-lg">
+        {stats ? (
+          <SheetHero
+            tone={stats.is_registered ? 'neutral' : 'warn'}
+            kicker={stats.is_registered ? 'On the register' : 'Not on the register'}
+            lead={
+              <>
+                {stats.days_worked} <span className="text-xl font-medium text-muted-foreground">{stats.days_worked === 1 ? 'day' : 'days'} worked</span>
+              </>
+            }
+            title={stats.name || workerName || 'Worker'}
+          >
+            {stats.trades.length > 0 && <span>{stats.trades.join(', ')}</span>}
+            {stats.last_seen && <span>Last on site {day(stats.last_seen)}</span>}
+          </SheetHero>
+        ) : (
+          <div className="border-b px-5 pt-5 pb-4">
+            <SheetTitle>{workerName || 'Worker'}</SheetTitle>
+            <SheetDescription>Attendance history, from recorded attendance.</SheetDescription>
+          </div>
+        )}
 
-        <div className="px-4 pb-6 flex flex-col gap-4">
-          {loading && (
-            <div className="py-12 text-center text-xs text-muted-foreground">
-              Loading attendance history...
+        {loading && <p className="py-12 text-center text-sm text-muted-foreground">Loading…</p>}
+
+        {error && (
+          <p className="m-5 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            <AlertCircle className="size-4 shrink-0" />
+            {error}
+          </p>
+        )}
+
+        {notFound && (
+          <p className="m-5 flex items-start gap-2 rounded-lg bg-muted/50 px-3 py-3 text-sm text-muted-foreground">
+            <ClipboardCheck className="mt-0.5 size-4 shrink-0" />
+            On the register, but not in any attendance yet, so there is no history to show.
+          </p>
+        )}
+
+        {stats && (
+          <>
+            <div className="px-5 pt-4">
+              <StatStrip
+                phoneCols={2}
+                stats={[
+                  {
+                    label: 'Earned',
+                    value: stats.total_earnings > 0 ? money(stats.total_earnings) : '—',
+                    icon: IndianRupee,
+                    tone: stats.unpriced_man_days > 0 ? 'warn' : 'default',
+                    hint: stats.unpriced_man_days > 0 ? `${stats.unpriced_man_days} day${stats.unpriced_man_days === 1 ? '' : 's'} without a wage` : 'from recorded wages',
+                  },
+                  { label: 'Wage a day', value: stats.priced_man_days > 0 ? money(stats.avg_daily_wage) : '—', icon: TrendingUp, hint: 'average' },
+                  {
+                    label: 'Reports',
+                    value: stats.attendance_count,
+                    icon: ClipboardCheck,
+                    tone: stats.attendance_count > stats.days_worked ? 'info' : 'default',
+                    hint: stats.attendance_count > stats.days_worked ? 'some days on two sites' : 'they appear in',
+                  },
+                ]}
+              />
             </div>
-          )}
 
-          {error && (
-            <div className="flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-300">
-              <AlertCircle className="size-3.5 shrink-0" />
-              {error}
-            </div>
-          )}
-
-          {notFound && (
-            <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 px-3 py-3 text-xs text-muted-foreground">
-              <ClipboardCheck className="size-3.5 shrink-0 mt-0.5" />
-              <span>
-                This worker is on the register but has never appeared in an attendance
-                report, so there is no history to show.
-              </span>
-            </div>
-          )}
-
-          {stats && (
-            <>
-              <div className="flex items-center gap-2 flex-wrap">
-                {stats.is_registered ? (
-                  <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
-                    <UserCheck className="size-3 mr-1" />
-                    In register
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-600 dark:text-amber-400">
-                    <UserPlus className="size-3 mr-1" />
-                    Not yet in register
-                  </Badge>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <Stat
-                  icon={<CalendarDays className="size-3" />}
-                  label="Days worked"
-                  value={stats.days_worked}
-                  hint="Distinct days present"
-                />
-                <Stat
-                  icon={<ClipboardCheck className="size-3" />}
-                  label="Attendance records"
-                  value={stats.attendance_count}
-                  hint={
-                    stats.attendance_count > stats.days_worked
-                      ? 'More than days — recorded on multiple sites'
-                      : 'Reports they appear in'
-                  }
-                />
-                <Stat
-                  icon={<DollarSign className="size-3" />}
-                  label="Total earnings"
-                  value={`₹${stats.total_earnings.toLocaleString('en-IN')}`}
-                  hint={
-                    stats.unpriced_man_days > 0
-                      ? `Excludes ${stats.unpriced_man_days} day(s) with no wage recorded`
-                      : 'From recorded wages'
-                  }
-                />
-                <Stat
-                  icon={<DollarSign className="size-3" />}
-                  label="Average daily wage"
-                  value={
-                    stats.priced_man_days > 0
-                      ? `₹${stats.avg_daily_wage.toLocaleString('en-IN')}`
-                      : '—'
-                  }
-                  hint="Across days that had a wage"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="border rounded-lg p-2.5 bg-card">
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">
-                    First seen
-                  </div>
-                  <div className="font-mono text-foreground">{stats.first_seen || '—'}</div>
-                </div>
-                <div className="border rounded-lg p-2.5 bg-card">
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">
-                    Last seen
-                  </div>
-                  <div className="font-mono text-foreground">{stats.last_seen || '—'}</div>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-                  <HardHat className="size-3" />
-                  Trades worked
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {stats.trades.length === 0 ? (
-                    <span className="text-xs text-muted-foreground">No trade recorded</span>
-                  ) : (
-                    stats.trades.map((t) => (
-                      <Badge key={t} variant="outline" className="text-[10px]">
-                        {t}
-                      </Badge>
-                    ))
+            <SheetSection title="Details">
+              <Facts>
+                <Fact label="First seen">{day(stats.first_seen)}</Fact>
+                <Fact label="Last seen">{day(stats.last_seen)}</Fact>
+                <Fact label="Trades" missing="None recorded">
+                  {stats.trades.length > 0 && (
+                    <span className="flex flex-wrap gap-1.5">
+                      {stats.trades.map((t) => (
+                        <span key={t} className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
+                          {t}
+                        </span>
+                      ))}
+                    </span>
                   )}
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-                  <Building className="size-3" />
-                  Contractors worked under
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {stats.contractors.length === 0 ? (
-                    <span className="text-xs text-muted-foreground">No contractor recorded</span>
-                  ) : (
-                    stats.contractors.map((c) => (
-                      <Badge key={c} variant="outline" className="text-[10px]">
-                        {c}
-                      </Badge>
-                    ))
+                </Fact>
+                <Fact label="Contractors" missing="None recorded">
+                  {stats.contractors.length > 0 && (
+                    <span className="flex flex-wrap gap-1.5">
+                      {stats.contractors.map((c) => (
+                        <span key={c} className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
+                          {c}
+                        </span>
+                      ))}
+                    </span>
                   )}
-                </div>
-              </div>
+                </Fact>
+              </Facts>
+            </SheetSection>
 
-              {months.length > 0 && (
-                <div className="flex flex-col gap-3 border-t pt-4">
-                  <div className="flex items-center justify-between">
-                    <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-                      <CalendarDays className="size-3" />
-                      Attendance calendar
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                      <span className="size-2.5 rounded-sm bg-emerald-500/80 inline-block" />
-                      Present
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {months.map((m) => (
-                      <MonthGrid
-                        key={`${m.year}-${m.month}`}
-                        year={m.year}
-                        month={m.month}
-                        label={m.label}
-                        worked={worked}
-                      />
-                    ))}
-                  </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    Last {CALENDAR_MONTHS} months up to {stats.last_seen}. Earlier attendance is
-                    counted in the totals above but not drawn here.
-                  </p>
+            {months.length > 0 && (
+              <SheetSection
+                title="Days on site"
+                className="border-t"
+                action={
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span className="inline-block size-2.5 rounded-sm bg-success" /> Present
+                  </span>
+                }
+              >
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  {months.map((m) => (
+                    <MonthGrid key={`${m.year}-${m.month}`} year={m.year} month={m.month} label={m.label} worked={worked} />
+                  ))}
                 </div>
-              )}
-            </>
-          )}
-        </div>
+                <p className="text-xs text-muted-foreground">
+                  The {CALENDAR_MONTHS} months up to {day(stats.last_seen)}. Earlier days count in the totals above.
+                </p>
+              </SheetSection>
+            )}
+          </>
+        )}
       </SheetContent>
     </Sheet>
   )

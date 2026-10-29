@@ -117,6 +117,9 @@ importers:
       lucide-react:
         specifier: ^1.23.0
         version: 1.24.0(react@19.2.7)
+      opus-recorder:
+        specifier: 8.0.5
+        version: 8.0.5
       react:
         specifier: ^19.2.7
         version: 19.2.7
@@ -138,6 +141,9 @@ importers:
       tw-animate-css:
         specifier: ^1.2.5
         version: 1.4.0
+      uqr:
+        specifier: 0.1.2
+        version: 0.1.2
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.1.16
@@ -8020,6 +8026,10 @@ packages:
       word-wrap: 1.2.5
     dev: true
 
+  /opus-recorder@8.0.5:
+    resolution: {integrity: sha512-tBRXc9Btds7i3bVfA7d5rekAlyOcfsivt5vSIXHxRV1Oa+s6iXFW8omZ0Lm3ABWotVcEyKt96iIIUcgbV07YOw==}
+    dev: false
+
   /ora@3.4.0:
     resolution: {integrity: sha512-eNwHudNbO1folBP3JsZ19v9azXWtQZjICdr3Q0TDPIaeBQ3mXLrh54wM+er0+hSp+dWKf+Z8KM58CYzEyIYxYg==}
     engines: {node: '>=6'}
@@ -9455,6 +9465,10 @@ packages:
       browserslist: 4.28.5
       escalade: 3.2.0
       picocolors: 1.1.1
+    dev: false
+
+  /uqr@0.1.2:
+    resolution: {integrity: sha512-MJu7ypHq6QasgF5YRTjqscSzQp/W11zoUk6kvmlH+fmWEs63Y0Eib13hYFwAzagRJcVY8WVnlV+eBDUGMJ5IbA==}
     dev: false
 
   /uri-js@4.4.1:

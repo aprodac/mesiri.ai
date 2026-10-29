@@ -112,3 +112,8 @@ def test_a_domain_router_failing_to_import_does_not_crash_the_whole_app():
     settings = Settings(verify_token="x", app_secret="x", access_token="x")
     app = create_app(settings=settings)
     assert app is not None
+
+
+def test_site_whatsapp_group_route_is_mounted():
+    """WA-87: the site page's WhatsApp group button."""
+    assert "/projects/{project_id}/sites/{site_id}/whatsapp-group" in _production_app_paths()

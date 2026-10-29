@@ -137,3 +137,79 @@ async def test_exceeding_the_cap_replies_with_an_honest_note_once():
 
     held = await store.pop_batch(user_id=USR)
     assert len(held) == MAX_BATCH_SIZE
+
+
+async def test_pho09_twenty_five_photos_get_one_cap_note_not_six():
+    store = PendingMediaStore(_FakeRedis())
+    replies = []
+    for i in range(25):
+        replies.append(
+            await try_hold_new_image_for_purpose_picker(
+                _message(InputModality.IMAGE, message_id=f"wamid.{i}"), user_id=USR, pending_media_store=store
+            )
+        )
+    notes = [r for r in replies if r is not None and not r.list_rows]
+    pickers = [r for r in replies if r is not None and r.list_rows]
+    assert len(pickers) == 1 and len(notes) == 1
+    assert "not kept" in notes[0].text and str(MAX_BATCH_SIZE) in notes[0].text
+    assert len(await store.pop_batch(user_id=USR)) == MAX_BATCH_SIZE
+
+
+HOUR = 3600.0
+
+
+async def test_pho06_untapped_photos_are_reminded_about_once_then_said_to_be_dropped():
+    from interactions.image_purpose import (
+        DROP_AFTER_SECONDS,
+        REMIND_AFTER_SECONDS,
+        photo_wait_notice,
+    )
+
+    store = PendingMediaStore(_FakeRedis())
+    t0 = 1_000_000.0
+    await store.add_pending(user_id=USR, message=_message(InputModality.IMAGE, message_id="wamid.1"), now=t0)
+    await store.add_pending(user_id=USR, message=_message(InputModality.IMAGE, message_id="wamid.2"), now=t0 + 30)
+
+    async def notice(at: float):
+        return await photo_wait_notice(user_id=USR, pending_media_store=store, now=at)
+
+    assert await notice(t0 + 60) is None  # too soon: nothing to say
+    reminder = await notice(t0 + REMIND_AFTER_SECONDS + 1)
+    assert reminder is not None and "2 photos" in reminder.text and reminder.list_rows  # asked again, once
+    assert await notice(t0 + REMIND_AFTER_SECONDS + 60) is None  # not nagged again
+    dropped = await notice(t0 + REMIND_AFTER_SECONDS + 1 + DROP_AFTER_SECONDS)
+    assert dropped is not None and "were not kept" in dropped.text and "2 photos" in dropped.text
+    assert await store.pop_batch(user_id=USR) == []  # and they are gone
+    assert await notice(t0 + 10 * HOUR) is None  # nothing held, nothing said
+
+
+async def test_pho06_a_tap_in_time_still_gets_the_photos_and_clears_the_notice():
+    from interactions.image_purpose import photo_wait_notice
+
+    store = PendingMediaStore(_FakeRedis())
+    await store.add_pending(user_id=USR, message=_message(InputModality.IMAGE), now=0.0)
+    assert len(await store.pop_batch(user_id=USR)) == 1
+    assert await photo_wait_notice(user_id=USR, pending_media_store=store, now=99999.0) is None
+
+
+def test_pho07_a_caption_that_names_the_purpose_skips_the_question():
+    from interactions.image_purpose import purpose_from_caption
+
+    assert purpose_from_caption("cement bill 50 bags") == "img_material_invoice"
+    assert purpose_from_caption("Challan - Sharma Traders") == "img_material_invoice"
+    assert purpose_from_caption("attendance register today") == "img_attendance"
+    assert purpose_from_caption("2nd floor plastering") == "img_site_update"
+    assert purpose_from_caption("Slab shuttering done!") == "img_site_update"
+    # nothing named, or two things named: asked
+    assert purpose_from_caption(None) is None
+    assert purpose_from_caption("look at this") is None
+    assert purpose_from_caption("cement bill for plastering") is None
+    assert purpose_from_caption("the billing office") is None  # whole words only
+
+
+async def test_pho07_the_rest_of_a_captioned_burst_is_not_asked_either():
+    store = PendingMediaStore(_FakeRedis())
+    assert await store.recent_purpose(user_id=USR, now=100.0) is None
+    await store.remember_purpose(user_id=USR, row_id="img_site_update", now=100.0)
+    assert await store.recent_purpose(user_id=USR, now=110.0) == "img_site_update"
+    assert await store.recent_purpose(user_id=USR, now=200.0) is None  # a later photo is asked

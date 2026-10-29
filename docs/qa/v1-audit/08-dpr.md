@@ -152,7 +152,7 @@ single-site day sends the full site DPR; typed symbols like "<" don't break the 
 | DPR-03 | Multi-site DPR lists no work, labour table empty | Not tested | |
 | DPR-04 | Unconfirmed site sent as "Not reported" | Not tested | |
 | DPR-05 | Owner told "Nothing's been logged" | Not tested | |
-| DPR-06 | "Total cost: 0" on every DPR | Not tested | |
-| DPR-07 | Confirm all shows only counts | Not tested | |
-| DPR-08 | Labour-only site called "not reported" | Not tested | |
+| DPR-06 | "Total cost: 0" on every DPR | Fixed (tests) | WhatsApp template already hid it; fpdf fallback and project text no longer print a zero cost. |
+| DPR-07 | Confirm all shows only counts | Fixed (tests) | "Work: Plastering, Brick work (2 items)", "Labour: 13 workers (5 mason, 8 helper)". |
+| DPR-08 | Labour-only site called "not reported" | Fixed (test) | Workers/materials/issues count as updates: "Site 2: 2 updates, not confirmed yet". |
 | DPR-09 | Dashboard PDF plain, no letterhead | Not tested | |

@@ -27,17 +27,21 @@ from mesiri_ai.models import ChatMessage, ToolOutcome, ToolRunResult
 from mesiri_ai.ports.tool_calling import ToolCallingProvider
 from runtime.reply_composer import BODY_MAX
 
+from . import draft as dr
+from .equipment import is_problem_only
 from .gateway import WorkflowGateway
 from .prompt import (
     _MANGLISH_WORDS,
     SYSTEM_PROMPT,
     AgentContext,
     build_messages,
+    is_hinglish,
     is_manglish,
     letters_of,
     reply_language,
     reply_letters_rule,
 )
+from .reply_clean import clean_annotations, clean_model_text
 from .reply_text import (
     dpr_caption,
     manglish_word_count,
@@ -49,9 +53,18 @@ from .reply_text import (
     without_native_script,
     without_save_prompt,
     without_stray_sentences,
+    without_undo_prompt,
 )
+from .save_button import SAVE_TITLE
 from .toolbox import HOURS_QUESTION, AgentToolbox, SavedItem, offers_engineer, tomorrow_plan_text
-from .tools import NOTE_FOR_ENGINEER, SET_SITE_CONDITIONS, ScopeLookup, tool_specs
+from .tools import (
+    NOTE_FOR_ENGINEER,
+    REPORT_ISSUE,
+    SET_SITE_CONDITIONS,
+    WRITE_TOOLS,
+    ScopeLookup,
+    tool_specs,
+)
 
 _log = logging.getLogger("mesiri.agent")
 
@@ -109,9 +122,15 @@ class AgentRunner:
         correlation_id: str | None = None,
         lap: Callable[[str], None] | None = None,
         after_tool: Callable[[], None] | None = None,
+        site_queue: list[dict] | None = None,
     ) -> AgentResult:
         toolbox = AgentToolbox(
-            gateway=gateway, scope=scope, user_text=user_text, lap=lap, after_tool=after_tool
+            gateway=gateway,
+            scope=scope,
+            user_text=user_text,
+            lap=lap,
+            after_tool=after_tool,
+            site_queue=[dict(i) for i in site_queue or []],
         )
         # WA-52: only a reply that OFFERED to ask counts ("Shall I ask your
         # engineer?"), not one that merely named the engineer.
@@ -141,6 +160,9 @@ class AgentRunner:
             )
         await toolbox.settle()
         await self._tomorrow_plan(toolbox, user_text)
+        await self._problem_only(toolbox, user_text)
+        await self._problem_part(toolbox, user_text)
+        await toolbox.finish_site_queue()
         run = await self._in_manglish(run, messages, user_text, correlation_id)
         run = await self._one_script(run, messages, user_text, correlation_id)
         run = await self._answer_in_language(run, messages, toolbox, user_text, correlation_id)
@@ -165,7 +187,56 @@ class AgentRunner:
         here from the message's own words."""
         plan = tomorrow_plan_text(user_text)
         if plan and SET_SITE_CONDITIONS not in toolbox.called and toolbox.parked is None:
+            _decided(toolbox, "item_source", "code:tomorrow_plan")
             await toolbox.handle(SET_SITE_CONDITIONS, {"tomorrow_plan": plan})
+
+    @staticmethod
+    async def _problem_only(toolbox: AgentToolbox, user_text: str) -> None:
+        """Request 124, E: "mixer breakdown aayi" / "pump problem" with nothing
+        else in it is an issue to save. The model sometimes answered it in words
+        ("issue aayi kodukkaam") and called no tool, so nothing was saved and no
+        card came: the card is made here from the message's own words. Only for
+        a company holding messages as a draft card."""
+        if (
+            not toolbox.draft_mode
+            or toolbox.called & WRITE_TOOLS
+            or toolbox.parked is not None
+            or not is_problem_only(user_text)
+        ):
+            return
+        from .equipment import has_equipment
+
+        narrative = " ".join(user_text.split())[:160]
+        kind = "EQUIPMENT_BREAKDOWN" if has_equipment(user_text) else "OTHER"
+        _decided(toolbox, "item_source", "code:problem_only")
+        await toolbox.handle(REPORT_ISSUE, {"issue_type": kind, "narrative": narrative})
+
+    @staticmethod
+    async def _problem_part(toolbox: AgentToolbox, user_text: str) -> None:
+        """WA-82: a breakdown inside a longer site note ("..., mixer breakdown aayi pani 2
+        hour ninnu") is an issue line of the card, even when the model saved the other parts
+        and called no ``report_issue`` (live 27 Oct, round 7: the card lost it). The line
+        is made from the message's own words; the card shows it before anything is saved.
+        Only for a company holding messages as a draft card."""
+        if not toolbox.draft_mode or REPORT_ISSUE in toolbox.called or toolbox.parked is not None:
+            return
+        if not toolbox.called & WRITE_TOOLS:
+            return  # a message that is only the problem is _problem_only's
+        from .equipment import has_equipment, hours_lost_minutes, problem_clause
+
+        clause = problem_clause(user_text)
+        if clause is None:
+            return
+        args: dict = {
+            "issue_type": "EQUIPMENT_BREAKDOWN" if has_equipment(clause) else "OTHER",
+            "narrative": clause[:160],
+        }
+        minutes = hours_lost_minutes(clause)
+        if minutes:
+            args["delay_duration_minutes"] = minutes
+        _log.warning("agent.problem_part_added correlation_id=%s", getattr(toolbox, "correlation_id", None))
+        _decided(toolbox, "item_source", "code:problem_part")
+        await toolbox.handle(REPORT_ISSUE, args)
 
     async def _in_manglish(
         self,
@@ -288,7 +359,7 @@ class AgentRunner:
         _log.warning("agent.script_fallback correlation_id=%s problems=%s", correlation_id, problems)
         if letters_of(user_text) == "latin" and any("English letters" in p for p in problems):
             return run.model_copy(update={"text": without_native_script(text)})
-        if reply_language(user_text) == "english" and any("Manglish" in p for p in problems):
+        if reply_language(user_text) in ("english", "hinglish") and any("Manglish" in p for p in problems):
             text = without_manglish(text, _MANGLISH_WORDS)
         broken = mixed_script_words(text)
         kept = "".join(p for p in sentences(text) if not any(w in p for w in broken))
@@ -357,14 +428,46 @@ class AgentRunner:
         if toolbox.parked is not None:
             toolbox.drop_actions()
         text = (run.text or "").strip()
+        draft_mode = getattr(toolbox.gateway, "draft_mode", False) is True
+        # Request 132: the card, its questions and its buttons are the code's; the
+        # model's own words never carry one, nor a note it read in its prompt.
+        text = clean_model_text(text) if draft_mode else clean_annotations(text)
+        if (code_made := self._code_card(toolbox)) is not None:
+            return code_made
+        if draft_mode and (open_draft := _open_draft(toolbox)) is not None:
+            _decided(toolbox, "reply", MODEL_FILTERED)
+            text = _one_sentence(text)
+            if _APOLOGY.match(text) and not _failed_this_turn(toolbox, open_draft):
+                # WA-81 (live 27 Oct, #4338): "Sorry, couldn't record it" above a card
+                # that HAS the line, waiting on its question. The card says what is so.
+                text = ""
+        if (failed := self._code_failure(toolbox, text)) is not None:
+            return failed
+        if toolbox.parked_site:
+            # [111]: the site question is the code's, in the sender's language;
+            # the model's words around it ("Ethra per vannu Site B-il?") went
+            # out as a different question.
+            text = ""
+            hold = toolbox.site_hold_line()
+            if hold and hold not in toolbox.system_lines:
+                toolbox.system_lines.append(hold)
+        if toolbox.module_off_line and not _entries(toolbox):
+            # WA-84 (live 27 Oct, M27): the model retold it in English to a Manglish sender.
+            return ReplySpec(text=toolbox.module_off_line)
         if toolbox.equipment_noted and not _entries(toolbox):
             # Request 104: the one plain line, whatever the model wrote.
             from .equipment import EQUIPMENT_LINE
 
             return ReplySpec(text=EQUIPMENT_LINE)
-        if _entries(toolbox):
+        if _entries(toolbox) or _save_card(toolbox.parked):
             # Before the Save tap nothing is kept (WA-37).
             text = without_saved_claims(text)
+        if _save_card(toolbox.parked):
+            # Request 115: a held card is not saved. Whatever the model wrote
+            # as "✅ Saved: ..." over it, or as UNDO, goes; only entries that
+            # were really written keep the system's own block below.
+            text = without_undo_prompt(text)
+            text = _without_pending_saved(text, toolbox)
         text = without_tool_talk(text)
         if not _questions_line(toolbox) and not _engineer_card(toolbox):
             # WA-52: nothing went to the engineer, so the reply never says it did.
@@ -398,9 +501,13 @@ class AgentRunner:
                 "agent.number_guard correlation_id=%s numbers=%s", correlation_id, sorted(unbacked)
             )
             text = without_numbers(text, unbacked)
-        if not self._card_attached(toolbox):
+        if not self._save_attached(toolbox):
             # Only a reply with a card under it may ask to tap Save (22 Oct).
             text = without_save_prompt(text)
+            if (waiting := _choice_line(toolbox)) is not None:
+                # Request 129: a card with only a question on it (labour Replace / Add)
+                # has no Save button; the sentence says what to tap.
+                text = f"{text}\n\n{waiting}".strip()
         tail: list[str] = []
         if block:
             if not text and run.stop_reason == "max_steps":
@@ -419,12 +526,20 @@ class AgentRunner:
                 tail.append(line)
         if not text and not tail:
             return self._fallback(toolbox, partial=run.stop_reason == "max_steps")
-        if _entries(toolbox) and "undo" not in (text + "\n".join(tail)).casefold():
+        if _entries(toolbox) and not _open_draft(toolbox) and "undo" not in (text + "\n".join(tail)).casefold():
             tail.append(UNDO_LINE)
         text = _within_cap(text, tail)
         parked = toolbox.parked
         if parked is None:
-            return ReplySpec(text=text)
+            return _with_card(ReplySpec(text=text), toolbox)
+        draft = _open_draft(toolbox)
+        if draft is not None and dr.card_rows(draft):
+            # Request 124: a question must not push the card out (as request 90 for
+            # the Save card): its options stay in the words, answered by typing.
+            from .save_button import question_as_text
+
+            asked = question_as_text(parked)
+            return _with_card(ReplySpec(text=f"{text}\n\n{asked.text}" if asked.text not in text else text), toolbox)
         if toolbox.parked_confirm:
             # Confirm-first: the record itself goes under the model's words,
             # so Yes confirms what they can see (22 Oct: only "Sheri aano?"
@@ -441,6 +556,48 @@ class AgentRunner:
             list_rows=parked.list_rows,
             buttons=parked.buttons,
         )
+
+    @staticmethod
+    def _code_card(toolbox: AgentToolbox) -> ReplySpec | None:
+        """Request 136: above a draft card this turn changed, every word is the code's:
+        one sentence from ``card_sentence`` (the sender's language), the card, its
+        questions and the system's own lines. The model's text is not used, so it
+        cannot contradict the card ("Site B tap cheyyu" while the buttons ask). A turn
+        that also answered a lookup keeps the model's (filtered) words for the answer;
+        None then, and for anything that is not a draft card."""
+        draft = _open_draft(toolbox)
+        if draft is None or toolbox.answers or toolbox.parked is not None:
+            return None
+        if toolbox.module_off_line or toolbox.equipment_noted:
+            return None
+        tail = [_saved_block(toolbox)]
+        if asked := _questions_line(toolbox):
+            tail.append(asked)
+        tail.extend(line for line in toolbox.system_lines if line not in tail)
+        text = _within_cap(card_sentence(draft, toolbox.user_text), [t for t in tail if t])
+        _decided(toolbox, "reply", TEMPLATE)
+        return _with_card(ReplySpec(text=text), toolbox)
+
+    @staticmethod
+    def _code_failure(toolbox: AgentToolbox, text: str) -> ReplySpec | None:
+        """Request 137 (E): a failed write or correction with no card, no saved line, no
+        answer and no question to show for the turn is answered by the code's template."""
+        if getattr(toolbox.gateway, "draft_mode", False) is not True or toolbox.attempted_writes <= 0:
+            return None
+        if toolbox.failed <= 0 and not _APOLOGY.match(text):
+            return None  # a write that came back with a question or a redirect is the model's to continue
+        if (
+            _entries(toolbox)
+            or toolbox.answers
+            or toolbox.parked is not None
+            or toolbox.parked_site
+            or toolbox.module_off_line
+            or toolbox.equipment_noted
+            or _open_draft(toolbox) is not None
+        ):
+            return None
+        _decided(toolbox, "reply", TEMPLATE)
+        return ReplySpec(text=_FAILED[_wording_language(toolbox.user_text)])
 
     def _natural(self, text: str, toolbox: AgentToolbox) -> str:
         """Request 89: after every strip, the words above a Save card must
@@ -459,14 +616,25 @@ class AgentRunner:
             return covering_sentence(items, toolbox.user_text)
         return text
 
+    def _save_attached(self, toolbox: AgentToolbox) -> bool:
+        """Whether the reply goes out with a Save button: a draft card whose
+        every line still waits on an answer has Cancel and its answers only."""
+        draft = _open_draft(toolbox)
+        if draft is not None and dr.card_rows(draft):
+            return bool(draft.ready_items)
+        return self._card_attached(toolbox)
+
     @staticmethod
     def _card_attached(toolbox: AgentToolbox) -> bool:
         """Whether the reply goes out with a Save card (Save / Cancel under
         it): entries were prepared, and they fit one tap. A gateway that cannot
         say counts any entry as a card."""
         entries = _entries(toolbox)
+        if (draft := _open_draft(toolbox)) is not None:
+            return bool(dr.card_rows(draft))
         if not entries:
-            return False
+            # Request 114: a held work-done card has Save / Cancel under it too.
+            return _save_card(toolbox.parked)
         handled = getattr(toolbox.gateway, "handled", None)
         if handled is None:
             return True
@@ -498,7 +666,7 @@ class AgentRunner:
             parts.append(CHECK_LINE)
         text = _unique_paragraphs("\n\n".join(p for p in parts if p))
         if parked is None:
-            return ReplySpec(text=text)
+            return _with_card(ReplySpec(text=text), toolbox)
         return ReplySpec(
             text=text,
             list_button_label=parked.list_button_label,
@@ -538,10 +706,10 @@ def script_problems(reply: str, user_text: str) -> list[str]:
         problems.append("it has a word that mixes English and Malayalam letters (" + ", ".join(mixed[:3]) + ")")
     language = reply_language(user_text)
     letters = letters_of(reply)
-    if language in ("english", "manglish") and letters == "native":
+    if language in ("english", "manglish", "hinglish") and letters == "native":
         problems.append("it uses Malayalam/Hindi script but the message is in English letters")
-    elif language == "english" and manglish_word_count(reply, _MANGLISH_WORDS):
-        problems.append("it is in Manglish but the message is in English")
+    elif language in ("english", "hinglish") and manglish_word_count(reply, _MANGLISH_WORDS):
+        problems.append(f"it is in Manglish but the message is in {'English' if language == 'english' else 'Hindi'}")
     elif language in ("malayalam", "hindi", "native") and letters == "latin" and len(re.findall(r"[A-Za-z]+", reply)) >= 3:
         problems.append("it is in English letters but the message is in its own script")
     return problems
@@ -608,7 +776,107 @@ _COVERING = {
     "manglish": "{items}. Nokki shariyenkil Save tap cheyyu.",
     "malayalam": "{items}. ശരിയാണെങ്കിൽ Save അമർത്തുക.",
     "hindi": "{items}. सही हो तो Save दबाएँ.",
+    "hinglish": "{items}. Sahi ho to Save dabayein.",
 }
+
+
+#: What to tap when the card has no Save button yet, only the answers to its question.
+#: Named only when every answer is this short ("Replace" / "Add"); else the card asks.
+_SHORT_OPTION = 12
+_CHOOSE = {
+    "english": "Please tap {options}.",
+    "manglish": "{options} tap cheyyu.",
+    "malayalam": "{options} അമർത്തുക.",
+    "hindi": "{options} दबाएँ.",
+    "hinglish": "{options} dabayein.",
+}
+
+
+def _choice_line(toolbox: AgentToolbox) -> str | None:
+    """"Replace or Add tap cheyyu", in the sender's language, for an open draft
+    card that has answers to tap but nothing to Save yet; None otherwise."""
+    draft = _open_draft(toolbox)
+    if draft is None or draft.ready_items:
+        return None
+    asking = next(iter(draft.waiting_items), None)
+    options = list(asking.options if asking else ())
+    if not options or any(len(o) > _SHORT_OPTION for o in options):
+        # Request 136: naming only the short ones told them to tap "Site B" while the
+        # card asked between "Green Villa, Kakkanad" and "Site B" (28 Oct).
+        return None
+    return _CHOOSE[_wording_language(toolbox.user_text)].format(options=" or ".join(options))
+
+
+#: Request 136: the one sentence above a draft card, by what the card needs next.
+#: The Malayalam, Hindi and Hinglish lines (and Manglish "_ASKS") are Claude's
+#: drafts, PENDING the native review of WA-76.
+_CARD_CHECK = {
+    "english": "Please check the card and tap Save.",
+    "manglish": "Card nokki shariyenkil Save tap cheyyu.",
+    "malayalam": "കാർഡ് നോക്കി ശരിയാണെങ്കിൽ Save അമർത്തുക.",
+    "hindi": "कार्ड देखें, सही हो तो Save दबाएँ.",
+    "hinglish": "Card dekhein, sahi ho to Save dabayein.",
+}
+#: Request 137 (E): a write or correction that failed with nothing on screen to show
+#: for it. The words are the code's, in the sender's language, with a next step; the
+#: model never writes free text on a failure ("Sorry, couldn't change it" went out
+#: for a percentage on 28 Oct).
+_FAILED = {
+    "english": "That wasn't saved or changed. Please send it again in one line: the work, the place and the figure.",
+    "manglish": "Athu save/maattan pattiyilla. Work, sthalam, figure ennivayode oru line-il veendum ayakku.",
+    "malayalam": "അത് സേവ് ചെയ്യാനോ മാറ്റാനോ കഴിഞ്ഞില്ല. പണി, സ്ഥലം, കണക്ക് എന്നിവ ഒരു വരിയിൽ വീണ്ടും അയക്കുക.",
+    "hindi": "वह सेव या बदला नहीं जा सका. कृपया काम, जगह और आँकड़ा एक लाइन में फिर भेजें.",
+    "hinglish": "Woh save ya change nahi hua. Kaam, jagah aur figure ek line mein dobara bhejein.",
+}
+_CARD_ASKS = {
+    "english": "Please answer the question on the card.",
+    "manglish": "Card-ile chodyathinu answer cheyyu.",
+    "malayalam": "കാർഡിലെ ചോദ്യത്തിന് ഉത്തരം നൽകുക.",
+    "hindi": "कार्ड पर पूछे गए सवाल का जवाब दें.",
+    "hinglish": "Card par pooche gaye sawal ka jawab dein.",
+}
+_CARD_BOTH = {
+    "english": "Please answer the question on the card, then tap Save.",
+    "manglish": "Card-ile chodyathinu answer cheythittu Save tap cheyyu.",
+    "malayalam": "കാർഡിലെ ചോദ്യത്തിന് ഉത്തരം നൽകി Save അമർത്തുക.",
+    "hindi": "कार्ड पर पूछे गए सवाल का जवाब दें, फिर Save दबाएँ.",
+    "hinglish": "Card par pooche gaye sawal ka jawab dein, phir Save dabayein.",
+}
+#: Code ids of who wrote a reply (request 136, C): ``TEMPLATE`` = ``card_sentence``.
+TEMPLATE = "template"
+MODEL_FILTERED = "model_filtered"
+
+
+def card_sentence(draft: dr.MessageDraft, user_text: str) -> str:
+    """The sentence above a draft card, in the sender's language: tap Save; answer
+    the question (or tap its short answers); or both. Empty when nothing on the card
+    can be saved or answered (the card says what could not be read)."""
+    language = _wording_language(user_text)
+    waiting, ready = draft.waiting_items, draft.ready_items
+    if waiting and not ready:
+        options = list(waiting[0].options)
+        if options and len(waiting) == 1 and all(len(o) <= _SHORT_OPTION for o in options):
+            return _CHOOSE[language].format(options=" or ".join(options))
+        return _CARD_ASKS[language]
+    if waiting:
+        return _CARD_BOTH[language]
+    return _CARD_CHECK[language] if ready else ""
+
+
+def _decided(toolbox: AgentToolbox, what: str, by: str) -> None:
+    from .draft_flow import decided
+
+    decided(toolbox.gateway, what, by)
+
+
+def _wording_language(user_text: str) -> str:
+    if re.search(r"[ഀ-ൿ]", user_text):
+        return "malayalam"
+    if re.search(r"[ऀ-ॿ]", user_text):
+        return "hindi"
+    if is_manglish(user_text):
+        return "manglish"
+    return "hinglish" if is_hinglish(user_text) else "english"
 
 
 def covering_sentence(summaries: list[str], user_text: str) -> str:
@@ -621,14 +889,7 @@ def covering_sentence(summaries: list[str], user_text: str) -> str:
     ]
     items = "; ".join(said)
     items = items[:1].upper() + items[1:]
-    if re.search(r"[ഀ-ൿ]", user_text):
-        language = "malayalam"
-    elif re.search(r"[ऀ-ॿ]", user_text):
-        language = "hindi"
-    elif is_manglish(user_text):
-        language = "manglish"
-    else:
-        language = "english"
+    language = _wording_language(user_text)
     return _COVERING[language].format(items=items)
 
 
@@ -750,6 +1011,29 @@ def without_tool_talk(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
 
 
+def _save_card(parked: ReplySpec | None) -> bool:
+    """Request 114: the question held for the sender is a Save / Cancel card
+    (work done on an open activity), not a Yes / No."""
+    return parked is not None and any(row.title == SAVE_TITLE for row in parked.buttons or ())
+
+
+def _without_pending_saved(text: str, toolbox: AgentToolbox) -> str:
+    """``text`` without a "✅ Saved: ..." header (and its bullets) the model put
+    over a card that waits on the Save tap (request 115). With no entry really
+    written, any such header goes; with some, only the ones that play back the
+    card's own items, since the system's block speaks for the written ones."""
+    if not _entries(toolbox):
+        return _without_saved_block(text)
+    pending = _normalized(_card_details(toolbox.parked.text if toolbox.parked else ""))
+    kept: list[str] = []
+    for line in text.split("\n"):
+        norm = _normalized(line)
+        if _SAVED_HEAD.match(line) and norm and norm.split(" ", 1)[-1] in pending:
+            continue
+        kept.append(line)
+    return "\n".join(kept).strip()
+
+
 def _card_details(card: str) -> str:
     """A confirmation card without its header and its "Reply YES" line."""
     kept = [
@@ -803,13 +1087,68 @@ def _questions_line(toolbox: AgentToolbox) -> str:
     )
 
 
+def _open_draft(toolbox: AgentToolbox) -> dr.MessageDraft | None:
+    """Request 124: the sender's draft card, when this turn changed it (a turn
+    that only answers a question never repeats the card)."""
+    gateway = toolbox.gateway
+    if getattr(gateway, "draft_mode", False) is not True:
+        return None
+    draft = getattr(gateway, "draft", None)
+    if draft is None or not draft.items or not getattr(gateway, "draft_new", None):
+        return None
+    return draft
+
+
+def _draft_site(toolbox: AgentToolbox, draft: dr.MessageDraft) -> str | None:
+    names = {i.site for i in draft.items if i.state != dr.UNREADABLE and i.site}
+    return next(iter(names)) if len(names) == 1 else None
+
+
+def _with_card(spec: ReplySpec, toolbox: AgentToolbox) -> ReplySpec:
+    """``spec`` with the draft card's buttons under it (Save, Cancel, and the
+    options of an open question), when this turn put something on the card."""
+    draft = _open_draft(toolbox)
+    if draft is None:
+        return spec
+    rows = dr.card_rows(draft)
+    if not rows:
+        return spec
+    from runtime.reply_composer import pick_form
+
+    return pick_form(spec.text, rows)
+
+
 def _saved_block(toolbox: AgentToolbox) -> str:
     """The deterministic "Saved:" block, when every saved entry has a summary
     (else the model's own wording stands, as before)."""
+    if (draft := _open_draft(toolbox)) is not None:
+        # Request 124: one card for the whole draft, from the draft itself.
+        return dr.card_text(draft, site=_draft_site(toolbox, draft))
     entries = _entries(toolbox)
     if not entries or not all(item.summary for item in entries):
         return ""
     return render_saved([item.summary for item in entries if item.summary])
+
+
+#: An apology opening the model's words ("Sorry, ...", "ക്ഷമിക്കണം", "maaf kijiye").
+_APOLOGY = re.compile(r"^\W*(sorry|apolog|kshamikk|ക്ഷമ|maaf|माफ)", re.I)
+
+
+def _failed_this_turn(toolbox: AgentToolbox, draft: dr.MessageDraft) -> bool:
+    """Whether a line this message put on the card could not be read."""
+    new = set(getattr(toolbox.gateway, "draft_new", None) or [])
+    return toolbox.failed > 0 or any(i.state == dr.UNREADABLE and i.id in new for i in draft.items)
+
+
+#: Request 132: the longest the model's words above a draft card.
+ONE_SENTENCE_MAX = 200
+
+
+def _one_sentence(text: str) -> str:
+    """The model's words above a card: its first sentence, short. The card says the
+    rest (lines, questions, buttons), and a second sentence was where it invented one."""
+    first = next((s.strip() for s in sentences(text) if s.strip()), "")
+    return trim_at_sentence(first, ONE_SENTENCE_MAX)
 
 
 def _normalized(text: str) -> str:
@@ -826,6 +1165,10 @@ def _without_echoed_questions(text: str, toolbox: AgentToolbox, *, saved_list: b
         for item in toolbox.saved
         if item.summary and item.summary.startswith(QUESTION_PREFIX)
     }
+    if (draft := _open_draft(toolbox)) is not None:
+        # Request 127: a question the card shows (❓ ...) is said once: the model's
+        # own copy of it in the words above went out as the same sentence twice.
+        asked |= {_normalized(i.question) for i in draft.waiting_items if i.question}
     spoken = _normalized(toolbox.user_text)
     if not text:
         return text

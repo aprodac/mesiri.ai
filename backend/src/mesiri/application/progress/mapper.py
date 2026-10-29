@@ -164,6 +164,7 @@ def build_correct_activity_quantity_command(
         correlation_id=confirmed.correlation_id,
         organization_id=draft.organization_id,
         progress_update_id=fields.get("progress_update_id"),
+        activity_quantity_id=None if fields.get("progress_update_id") else fields.get("activity_quantity_id"),
         new_quantity=_decimal(fields.get("new_quantity")),
         new_unit=fields.get("unit"),
         new_unit_id=fields.get("unit_id"),
@@ -173,13 +174,21 @@ def build_correct_activity_quantity_command(
     )
 
 
+#: BE-48: an issue's delay is at most one day, the dashboard's own limit
+#: (site_day.MAX_HOURS_LOST); "no work for 2 days" is saved as a full day.
+_MAX_DELAY_MINUTES = 24 * 60
+
+
 def _delay_minutes(value: object) -> int | None:
     if value is None:
         return None
     try:
-        return int(value)
+        minutes = int(value)
     except (TypeError, ValueError):
         return None
+    if minutes <= 0:
+        return None
+    return min(minutes, _MAX_DELAY_MINUTES)
 
 
 def build_report_site_issue_command(confirmed: ConfirmedActionV2) -> ReportSiteIssueCommand:

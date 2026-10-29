@@ -45,6 +45,14 @@ def _tap(reply_id):
     return SimpleNamespace(metadata={"interactive_reply_id": reply_id})
 
 
+async def _share(j, card, actor, role="SITE_ENGINEER"):
+    """Share the card and answer the role question (WA-67)."""
+    asked = await j.handle_contacts(card, actor)
+    if not asked.buttons:
+        return asked
+    return await j.handle_project_tap(_tap(f"contact_role:{role}"), actor)
+
+
 @pytest.fixture
 def journey(monkeypatch):
     calls: dict = {"create_plan": [], "add_member": [], "existing": None}
@@ -98,7 +106,7 @@ def test_normalizer_keeps_name_and_whatsapp_id() -> None:
 
 async def test_new_number_starts_the_create_user_chain(journey) -> None:
     actor = _actor()
-    reply = await journey.j.handle_contacts(_card(("Biju Site", "98765 11122")), actor)
+    reply = await _share(journey.j, _card(("Biju Site", "98765 11122")), actor)
 
     assert "create user" in reply.text
     call = journey.calls["create_plan"][0]
@@ -114,7 +122,7 @@ async def test_existing_teammate_is_just_added_to_the_project(journey) -> None:
     journey.calls["existing"] = SimpleNamespace(
         id=uuid.uuid4(), organization_id=ORG, full_name="Biju S"
     )
-    reply = await journey.j.handle_contacts(_card(("Biju", "919876511122")), _actor())
+    reply = await _share(journey.j, _card(("Biju", "919876511122")), _actor())
     assert "add member" in reply.text
     assert journey.calls["create_plan"] == []
     assert journey.calls["add_member"][0].fields["member_name"] == "Biju S"
@@ -124,7 +132,7 @@ async def test_number_in_another_company_is_refused(journey) -> None:
     journey.calls["existing"] = SimpleNamespace(
         id=uuid.uuid4(), organization_id=str(uuid.uuid4()), full_name="X"
     )
-    reply = await journey.j.handle_contacts(_card(("Biju", "919876511122")), _actor())
+    reply = await _share(journey.j, _card(("Biju", "919876511122")), _actor())
     assert reply.text == cs.OTHER_COMPANY
     assert journey.calls["create_plan"] == [] and journey.calls["add_member"] == []
 
@@ -142,16 +150,14 @@ async def test_bad_number_and_no_project(journey) -> None:
 
 
 async def test_several_contacts_adds_the_first_and_says_so(journey) -> None:
-    reply = await journey.j.handle_contacts(
-        _card(("Biju", "9876511122"), ("Anil", "9876533344")), _actor()
-    )
+    reply = await _share(journey.j, _card(("Biju", "9876511122"), ("Anil", "9876533344")), _actor())
     assert "Share the others one at a time" in reply.text
     assert journey.calls["create_plan"][0]["whatsapp_number"] == "919876511122"
 
 
 async def test_several_projects_asks_which_then_starts(journey) -> None:
     actor = _actor(projects=(P1, P2))
-    picker = await journey.j.handle_contacts(_card(("Biju", "9876511122")), actor)
+    picker = await _share(journey.j, _card(("Biju", "9876511122")), actor)
     assert [r.id for r in picker.list_rows] == [
         f"contact_project:{P1.id}",
         f"contact_project:{P2.id}",
@@ -166,6 +172,37 @@ async def test_several_projects_asks_which_then_starts(journey) -> None:
     assert again.text == cs.EXPIRED
 
 
+async def test_the_role_question_offers_what_the_sender_may_give(journey) -> None:
+    # WA-67 (audit SET-06): a shared card is no longer always a Site Engineer.
+    admin_q = await journey.j.handle_contacts(_card(("Biju", "9876511122")), _actor())
+    assert [b.id for b in admin_q.buttons] == [
+        "contact_role:SITE_ENGINEER",
+        "contact_role:PROJECT_MANAGER",
+        "contact_role:ADMIN",
+    ]
+    assert journey.calls["create_plan"] == []
+    pm = _actor(role="PROJECT_MANAGER")
+    pm_q = await journey.j.handle_contacts(_card(("Biju", "9876511122")), pm)
+    assert [b.title for b in pm_q.buttons] == ["Site Engineer", "Project Manager"]
+
+
+async def test_the_chosen_role_is_what_the_person_gets(journey) -> None:
+    await _share(journey.j, _card(("Biju", "9876511122")), _actor(), role="PROJECT_MANAGER")
+    assert journey.calls["create_plan"][0]["original_event"].fields["role"] == "PROJECT_MANAGER"
+
+
+async def test_a_pm_cannot_tap_their_way_to_admin(journey) -> None:
+    pm = _actor(role="PROJECT_MANAGER")
+    reply = await _share(journey.j, _card(("Biju", "9876511122")), pm, role="ADMIN")
+    assert reply.text == cs.NOT_ALLOWED
+    assert journey.calls["create_plan"] == []
+
+
+async def test_a_late_role_tap_is_expired(journey) -> None:
+    reply = await journey.j.handle_project_tap(_tap("contact_role:SITE_ENGINEER"), _actor())
+    assert reply.text == cs.EXPIRED
+
+
 async def test_other_taps_are_not_ours(journey) -> None:
     assert await journey.j.handle_project_tap(_tap("setup_add_site"), _actor()) is None
 
@@ -175,7 +212,7 @@ async def test_other_taps_are_not_ours(journey) -> None:
 
 async def test_invite_after_the_member_is_added(journey) -> None:
     actor = _actor()
-    await journey.j.handle_contacts(_card(("Biju Site", "9876511122")), actor)
+    await _share(journey.j, _card(("Biju Site", "9876511122")), actor)
 
     texts = await journey.j.invite_after_member_added(
         action_type=DraftActionType.ADD_PROJECT_MEMBER, member_name="biju  site", actor=actor
@@ -195,7 +232,7 @@ async def test_invite_after_the_member_is_added(journey) -> None:
 
 async def test_no_invite_for_other_confirmations_or_people(journey) -> None:
     actor = _actor()
-    await journey.j.handle_contacts(_card(("Biju Site", "9876511122")), actor)
+    await _share(journey.j, _card(("Biju Site", "9876511122")), actor)
     assert (
         await journey.j.invite_after_member_added(
             action_type=DraftActionType.CREATE_USER, member_name="Biju Site", actor=actor
@@ -212,8 +249,35 @@ async def test_no_invite_for_other_confirmations_or_people(journey) -> None:
 
 async def test_invite_without_business_number_has_no_link(journey) -> None:
     actor = _actor()
-    await journey.j.handle_contacts(_card(("Biju", "9876511122"), business=None), actor)
+    await _share(journey.j, _card(("Biju", "9876511122"), business=None), actor)
     texts = await journey.j.invite_after_member_added(
         action_type=DraftActionType.ADD_PROJECT_MEMBER, member_name="Biju", actor=actor
     )
     assert "wa.me" not in texts[1] and "Save this number" in texts[1]
+
+
+async def test_typed_add_gets_the_same_invite_as_a_shared_contact(journey) -> None:
+    """SET-04: "add Rajesh 98... as engineer" ends with ADDED + the invite link."""
+    actor = _actor()
+    texts = await journey.j.invite_after_member_added(
+        action_type=DraftActionType.ADD_PROJECT_MEMBER,
+        member_name="Rajesh",
+        actor=actor,
+        project_id=P1.id,
+        business_number="+1 555 000 1111",
+    )
+    assert "*Rajesh* can now report on *Green Villa*" in texts[0]
+    assert "Hi Rajesh, Suresh Builders uses Mesiri" in texts[1]
+    assert "https://wa.me/15550001111?text=Hi" in texts[1]
+
+
+async def test_typed_add_without_a_known_project_sends_nothing(journey) -> None:
+    assert (
+        await journey.j.invite_after_member_added(
+            action_type=DraftActionType.ADD_PROJECT_MEMBER,
+            member_name="Rajesh",
+            actor=_actor(),
+            project_id="not-a-project",
+        )
+        == []
+    )

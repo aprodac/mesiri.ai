@@ -36,6 +36,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from mesiri.application.dpr import fact_review
+
 # site_issue_type / site_issue_status enum members (migration 0430) — kept
 # here rather than in domains/progress/validation.py because that file only
 # validates the WhatsApp-confirmed command path (CreateActivityCommand /
@@ -75,7 +77,12 @@ class PostgresProgressReadRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[dict[str, Any]], int]:
-        where = ["organization_id = :organization_id", "deleted_at IS NULL"]
+        # WA-77: the site log is what is saved; an unsaved entry isn't in it yet.
+        where = [
+            "organization_id = :organization_id",
+            "deleted_at IS NULL",
+            fact_review.counted_sql(fact_review.ACTIVITY, "activities.id"),
+        ]
         params: dict[str, Any] = {"organization_id": organization_id, "limit": limit, "offset": offset}
 
         if project_ids is not None:
@@ -210,7 +217,11 @@ class PostgresProgressReadRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[dict[str, Any]], int]:
-        where = ["organization_id = :organization_id"]
+        # WA-77: an issue counts once it is saved.
+        where = [
+            "organization_id = :organization_id",
+            fact_review.counted_sql(fact_review.SITE_ISSUE, "site_issues.id"),
+        ]
         params: dict[str, Any] = {"organization_id": organization_id, "limit": limit, "offset": offset}
 
         if project_ids is not None:
@@ -506,14 +517,26 @@ class PostgresProgressReadRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        where = ["pa.organization_id = :organization_id"]
+        # progress_attachments has no organization/project/site of its own
+        # (migration 0430): they come from the parent -- the work item, or the
+        # issue -- the same join the DPR photo counts use. The gallery query
+        # used to read pa.organization_id etc. directly and failed on every
+        # call (WEB-24). Photos of removed work items are left out.
+        source = """
+            FROM progress_attachments pa
+            LEFT JOIN activities a
+              ON pa.parent_type = 'ACTIVITY' AND a.id = pa.parent_id AND a.deleted_at IS NULL
+            LEFT JOIN site_issues si
+              ON pa.parent_type = 'SITE_ISSUE' AND si.id = pa.parent_id
+        """
+        where = ["COALESCE(a.organization_id, si.organization_id) = :organization_id"]
         params: dict[str, Any] = {"organization_id": organization_id, "limit": limit, "offset": offset}
 
         if project_ids is not None:
-            where.append("pa.project_id = ANY(:project_ids)")
+            where.append("COALESCE(a.project_id, si.project_id) = ANY(:project_ids)")
             params["project_ids"] = list(project_ids)
         if site_id is not None:
-            where.append("pa.site_id = :site_id")
+            where.append("COALESCE(a.site_id, si.site_id) = :site_id")
             params["site_id"] = site_id
         if attachment_type is not None:
             where.append("pa.attachment_type = :attachment_type")
@@ -522,18 +545,16 @@ class PostgresProgressReadRepository:
         where_clause = " AND ".join(where)
 
         total_row = (
-            await self._conn.execute(
-                text(f"SELECT COUNT(*) AS total FROM progress_attachments pa WHERE {where_clause}"), params
-            )
+            await self._conn.execute(text(f"SELECT COUNT(*) AS total {source} WHERE {where_clause}"), params)
         ).mappings().first()
         total = total_row["total"] if total_row else 0
 
         query = f"""
             SELECT
                 pa.id,
-                pa.organization_id,
-                pa.project_id,
-                pa.site_id,
+                COALESCE(a.organization_id, si.organization_id) AS organization_id,
+                COALESCE(a.project_id, si.project_id) AS project_id,
+                COALESCE(a.site_id, si.site_id) AS site_id,
                 pa.parent_type,
                 pa.parent_id,
                 pa.media_object_key,
@@ -543,10 +564,12 @@ class PostgresProgressReadRepository:
                 pa.ai_caption,
                 pa.role,
                 pa.captured_at,
-                pa.created_at
-            FROM progress_attachments pa
+                pa.created_at,
+                COALESCE(a.activity_date, (si.occurred_at AT TIME ZONE 'UTC')::date) AS work_date,
+                COALESCE(a.work_type, si.narrative) AS parent_title
+            {source}
             WHERE {where_clause}
-            ORDER BY pa.created_at DESC
+            ORDER BY work_date DESC NULLS LAST, pa.created_at DESC
             LIMIT :limit OFFSET :offset
         """
         rows = (await self._conn.execute(text(query), params)).mappings().all()
@@ -911,6 +934,66 @@ class PostgresProgressReadRepository:
             "unit_id": new_unit_id,
             "supersedes_id": update_id,
         }
+
+    async def correct_activity_quantity_row(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        quantity_id: uuid.UUID,
+        quantity: Any,
+        unit_id: uuid.UUID | None,
+        reason: str | None,
+        corrected_by_user_id: uuid.UUID | None,
+        correlation_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """WRK-06: correct the quantity an activity was started with
+        (``activity_quantities``; "180 sqm plastering", then "that was 150").
+        That row has no progress update of its own to supersede, so it is
+        changed in place with the old value kept in ``activity_corrections``
+        (the audit ADR-D14 describes for header edits), and a frozen DPR gets
+        a revision exactly as for a progress update. None when the row does
+        not exist, is not this organization's, or its activity is deleted."""
+        old = (
+            await self._conn.execute(
+                text(
+                    "SELECT aq.id, aq.activity_id, aq.quantity, aq.unit_id, a.organization_id, "
+                    "a.project_id, a.site_id, a.activity_date "
+                    "FROM activity_quantities aq JOIN activities a ON a.id = aq.activity_id "
+                    "WHERE aq.id = :id AND a.organization_id = :org_id AND a.deleted_at IS NULL"
+                ),
+                {"id": quantity_id, "org_id": organization_id},
+            )
+        ).mappings().first()
+        if old is None:
+            return None
+        new_unit_id = unit_id or old["unit_id"]
+        await self._conn.execute(
+            text("UPDATE activity_quantities SET quantity = :q, unit_id = :u WHERE id = :id"),
+            {"q": quantity, "u": new_unit_id, "id": quantity_id},
+        )
+        for field, old_value, new_value in (
+            ("quantity", old["quantity"], quantity),
+            ("unit_id", old["unit_id"], new_unit_id),
+        ):
+            if str(old_value) != str(new_value):
+                await self._record_correction(
+                    activity_id=old["activity_id"],
+                    field_name=f"activity_quantity.{field}",
+                    old_value=old_value,
+                    new_value=new_value,
+                    reason=reason,
+                    corrected_by_user_id=corrected_by_user_id,
+                    correlation_id=correlation_id,
+                )
+        await self._revise_dpr_if_frozen(
+            organization_id=old["organization_id"],
+            project_id=old["project_id"],
+            site_id=old["site_id"],
+            report_date=old["activity_date"],
+            reason=reason or "Activity quantity corrected",
+        )
+        return {"id": quantity_id, "activity_id": old["activity_id"], "quantity": quantity,
+                "unit_id": new_unit_id, "supersedes_id": None}
 
     async def void_progress_update(
         self,

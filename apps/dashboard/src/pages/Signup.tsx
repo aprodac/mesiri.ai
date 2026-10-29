@@ -3,15 +3,17 @@ import { Link, useNavigate } from 'react-router-dom'
 import { signup, verifySignupCode } from '@/lib/api'
 import { apiErrorMessage } from '@/lib/logo-upload'
 import { WhatsAppCodeForm } from '@/components/auth/whatsapp-code-form'
-import { MesiriLogo } from '@/components/brand/mesiri-logo'
+import { IntroConversation } from '@/components/onboarding/intro-conversation'
+import { MesiriWordmark } from '@/components/brand/mesiri-logo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 /**
  * Web signup (SS-06): WhatsApp number → code → the same questions as the
- * WhatsApp signup → a trial company and straight into the dashboard.
+ * WhatsApp signup → a trial company, then the welcome screen for the first
+ * update (SS-18). The intro conversation plays beside the form; narrow, it
+ * comes first and its button jumps down to the form.
  */
 export default function Signup() {
   const navigate = useNavigate()
@@ -34,26 +36,60 @@ export default function Signup() {
         company_name: companyName,
         site_name: siteName,
       })
-      navigate('/today', { replace: true })
+      navigate('/welcome', { replace: true })
     } catch (err) {
       setError(apiErrorMessage(err))
       setLoading(false)
     }
   }
 
+  const goToForm = () => {
+    // Narrow, the form is at the top: back up to it.
+    document.getElementById('start')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    document.getElementById(ticket ? 'owner-name' : 'phone')?.focus({ preventScroll: true })
+  }
+
   return (
-    <div className="flex h-svh items-center justify-center bg-muted/30 p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <MesiriLogo className="mb-3" />
-          <CardTitle>Start your free trial</CardTitle>
-          <CardDescription>
-            {ticket
-              ? 'Three quick questions and your daily reports are ready to go.'
-              : 'No password needed. We send a code to your WhatsApp.'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4">
+    // Narrow: the form first, the intro under it (nobody should have to
+    // scroll past a slideshow to sign up). Desktop: side by side.
+    <div className="flex min-h-svh flex-col bg-background lg:grid lg:grid-cols-[minmax(0,1fr)_400px]">
+      <section aria-label="How Mesiri works" className="border-t px-4 pb-14 sm:px-8 lg:border-t-0 lg:px-12">
+        <IntroConversation
+          belowForm
+          onStart={goToForm}
+          headerAction={
+            <Link to="/login" className="text-sm font-medium underline underline-offset-2">
+              Sign in
+            </Link>
+          }
+        />
+      </section>
+
+      <aside
+        id="start"
+        aria-label="Start your free trial"
+        className="order-first scroll-mt-4 px-4 pt-7 pb-10 sm:px-8 lg:order-none lg:sticky lg:top-0 lg:flex lg:h-svh lg:items-center lg:overflow-y-auto lg:border-l lg:py-12"
+      >
+        <div className="mx-auto grid w-full max-w-sm gap-6">
+          <div className="grid gap-6 lg:hidden">
+            <div className="flex items-baseline justify-between gap-4">
+              <MesiriWordmark className="text-lg" />
+              <Link to="/login" className="text-sm font-medium underline underline-offset-2">
+                Sign in
+              </Link>
+            </div>
+            <p className="m-0 text-[28px] leading-[1.05] font-semibold tracking-[-0.03em] text-balance">
+              One voice note in. <span className="text-muted-foreground">A finished daily report out.</span>
+            </p>
+          </div>
+          <div className="grid gap-1.5">
+            <h2 className="text-2xl font-semibold tracking-tight">Start your free trial</h2>
+            <p className="text-sm text-muted-foreground">
+              {ticket
+                ? 'Three quick questions and your daily reports are ready to go.'
+                : 'No password needed. We send a code to your WhatsApp.'}
+            </p>
+          </div>
           {!ticket ? (
             <WhatsAppCodeForm
               purpose="signup"
@@ -101,14 +137,14 @@ export default function Signup() {
               </Button>
             </form>
           )}
-          <p className="text-center text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Already using Mesiri?{' '}
             <Link to="/login" className="font-medium text-foreground underline underline-offset-2">
               Sign in
             </Link>
           </p>
-        </CardContent>
-      </Card>
+        </div>
+      </aside>
     </div>
   )
 }

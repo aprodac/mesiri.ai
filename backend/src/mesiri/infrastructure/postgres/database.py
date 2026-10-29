@@ -8,8 +8,10 @@ workflows, planners, understanding, and transports must never import it.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
 from ...bootstrap.settings import PostgresSettings
@@ -27,6 +29,58 @@ def _is_http_error(exc: BaseException) -> bool:
     except ImportError:  # pragma: no cover
         return False
     return isinstance(exc, HTTPException)
+
+
+def _is_database_error(exc: BaseException) -> bool:
+    """A failure of the database or the connection to it (SQLAlchemy, the
+    driver, the socket, a timeout) -- as opposed to the caller's own exception,
+    which a ``shared_transaction()`` block lets through unchanged after rolling
+    back (a Save's "this item could not be saved" must reach its caller as it is)."""
+    try:
+        from sqlalchemy.exc import SQLAlchemyError
+    except ImportError:  # pragma: no cover
+        return True
+    return isinstance(exc, (SQLAlchemyError, OSError, TimeoutError))
+
+
+class _SharedTransaction:
+    """The one open transaction of a ``shared_transaction()`` block.
+
+    A connection serves one statement at a time, so a block that joins it (a
+    nested ``transaction()``) takes the guard for its length. The guard is
+    re-entrant for the same task: a joined block that opens another one never
+    waits on itself."""
+
+    __slots__ = ("conn", "depth", "engine", "lock", "owner")
+
+    def __init__(self, engine: Any, conn: Any) -> None:
+        self.engine = engine
+        self.conn = conn
+        self.lock = asyncio.Lock()
+        self.owner: asyncio.Task[Any] | None = None
+        self.depth = 0
+
+    @asynccontextmanager
+    async def guard(self) -> AsyncIterator[None]:
+        task = asyncio.current_task()
+        if self.owner is task and self.depth:
+            self.depth += 1
+            try:
+                yield
+            finally:
+                self.depth -= 1
+            return
+        async with self.lock:
+            self.owner, self.depth = task, 1
+            try:
+                yield
+            finally:
+                self.owner, self.depth = None, 0
+
+
+#: Set only inside ``PostgresDatabase.shared_transaction()``; nothing sets it
+#: otherwise, so every other caller of ``transaction()`` is unchanged.
+_shared: ContextVar[_SharedTransaction | None] = ContextVar("mesiri_shared_transaction", default=None)
 
 
 class PostgresDatabase:
@@ -79,12 +133,63 @@ class PostgresDatabase:
         from mesiri.infrastructure.postgres.tenant import apply_tenant
 
         engine = self._require_engine
+        shared = _shared.get()
+        if shared is not None and shared.engine is engine:
+            async with self._join(shared) as conn:
+                yield conn
+            return
         try:
             async with engine.begin() as conn:
                 await apply_tenant(conn)
                 yield conn
         except Exception as exc:  # noqa: BLE001
             if _is_http_error(exc):
+                raise
+            raise map_postgres_error(exc) from exc
+
+    @asynccontextmanager
+    async def _join(self, shared: _SharedTransaction) -> AsyncIterator[AsyncConnection]:
+        """A ``transaction()`` inside ``shared_transaction()``: the same
+        connection, in a savepoint. Its own failure undoes only its own
+        statements (a caller that catches it can go on), and nothing commits
+        until the outer block ends."""
+        async with shared.guard():
+            try:
+                async with shared.conn.begin_nested():
+                    yield shared.conn
+            except Exception as exc:  # noqa: BLE001
+                if _is_http_error(exc):
+                    raise
+                raise map_postgres_error(exc) from exc
+
+    @asynccontextmanager
+    async def shared_transaction(self) -> AsyncIterator[None]:
+        """One transaction for everything run inside the block: every
+        ``transaction()`` opened meanwhile (by this database, in this task or
+        one it starts) joins it instead of committing on its own. It commits
+        when the block ends and rolls back on any error out of it, so a write
+        made by several services is all-or-nothing (request 124: the Save tap).
+        A database failure comes out mapped, as from ``transaction()``; the
+        caller's own exception comes out as it is.
+
+        Blocks nest: inside one, this joins it. Scoped to the bound company,
+        like ``transaction()``."""
+        from mesiri.infrastructure.postgres.tenant import apply_tenant
+
+        engine = self._require_engine
+        if (outer := _shared.get()) is not None and outer.engine is engine:
+            yield
+            return
+        try:
+            async with engine.begin() as conn:
+                await apply_tenant(conn)
+                token = _shared.set(_SharedTransaction(engine, conn))
+                try:
+                    yield
+                finally:
+                    _shared.reset(token)
+        except Exception as exc:  # noqa: BLE001
+            if _is_http_error(exc) or not _is_database_error(exc):
                 raise
             raise map_postgres_error(exc) from exc
 

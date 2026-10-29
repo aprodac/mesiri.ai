@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from mesiri.application.identity.add_by_number import MemberNotAdded, add_member_by_number
 from mesiri.application.identity.phone_numbers import NUMBER_TAKEN_MESSAGE, whatsapp_number_taken
 from mesiri.domains.identity.auth_service import ALGORITHM, SECRET_KEY
 from mesiri.infrastructure.postgres.tenant import TenantScopedEngine, bind_tenant, unscoped
@@ -126,8 +127,11 @@ class UserResponse(BaseModel):
 
 
 class UserCreate(BaseModel):
-    email: str
-    password: str
+    """With an email, a dashboard login (email + password). Without one, a
+    person who works on WhatsApp only: name, number and role (WEB-17)."""
+
+    email: str | None = None
+    password: str | None = None
     full_name: str
     role: str
     whatsapp_number: str | None = None
@@ -230,13 +234,41 @@ async def create_user(user_in: UserCreate, admin_payload: dict = Depends(get_cur
     if user_in.role not in valid_roles:
         raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of {valid_roles}")
 
+    email = (user_in.email or "").strip()
+    if not email:
+        # WhatsApp only (WEB-17): the same creation step WhatsApp uses.
+        if not (user_in.whatsapp_number or "").strip():
+            raise HTTPException(
+                status_code=400, detail="Add their WhatsApp number, or an email to sign in with"
+            )
+        async with engine.begin() as conn:
+            try:
+                user_id = await add_member_by_number(
+                    conn,
+                    organization_id=org_id,
+                    created_by=admin_payload.get("sub") or "",
+                    created_by_role=admin_payload.get("role") or "",
+                    full_name=user_in.full_name,
+                    whatsapp_number=user_in.whatsapp_number or "",
+                    role=user_in.role,
+                )
+            except MemberNotAdded as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+        async with engine.connect() as conn:
+            row = (
+                await conn.execute(sa.select(users_table).where(users_table.c.id == user_id))
+            ).first()
+        return _row_to_response(row)
+    if not user_in.password:
+        raise HTTPException(
+            status_code=400, detail="A password is required to sign in with an email"
+        )
+
     user_id = uuid.uuid4()
     async with engine.begin() as conn:
         # Check existing -- emails are unique across companies (BE-03 unscoped)
         async with unscoped(conn):
-            result = await conn.execute(
-                sa.select(users_table).where(users_table.c.email == user_in.email)
-            )
+            result = await conn.execute(sa.select(users_table).where(users_table.c.email == email))
         if result.first():
             raise HTTPException(status_code=400, detail="Email already registered")
         if user_in.whatsapp_number and await whatsapp_number_taken(conn, user_in.whatsapp_number):
@@ -247,7 +279,7 @@ async def create_user(user_in: UserCreate, admin_payload: dict = Depends(get_cur
             users_table.insert().values(
                 id=user_id,
                 organization_id=org_id,
-                email=user_in.email,
+                email=email,
                 hashed_password=hashed_pwd,
                 full_name=user_in.full_name,
                 role=user_in.role,

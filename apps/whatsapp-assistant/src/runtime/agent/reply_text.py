@@ -119,6 +119,16 @@ def without_save_prompt(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
 
 
+def without_undo_prompt(text: str) -> str:
+    """``text`` without the sentences about UNDO. Nothing is kept before the
+    Save tap, so there is nothing to undo (request 114)."""
+    kept = [
+        s for s in sentences(text)
+        if not re.search(r"\bundo\b", s, re.IGNORECASE) and not re.fullmatch(r"\s*wrong\s*\?\s*", s, re.IGNORECASE)
+    ]
+    return re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
+
+
 # -- scripts and language ------------------------------------------------------
 
 _NATIVE = re.compile(r"[ऀ-ൿ]")  # Devanagari .. Malayalam

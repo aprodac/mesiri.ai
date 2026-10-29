@@ -73,9 +73,14 @@ class ActivitySearchService:
         start_date: datetime.date,
         end_date: datetime.date,
         work_type: str | None = None,
+        include_unsaved: bool = False,
     ) -> dict[str, Any]:
         """Activities logged over [start_date, end_date] plus currently open
         site issues in scope.
+
+        WA-77 (Alan, 25 Oct): what was saved; an entry still waiting for its
+        Save is left out. `include_unsaved` keeps it, for the agent's own
+        picture of today (so it never logs the same thing twice).
 
         Returns a plain dict rather than a domain object because the only
         consumer is the reply node, which formats it -- the same choice
@@ -127,19 +132,39 @@ class ActivitySearchService:
             sa.column("occurred_at"),
         )
 
+        # WRK-01: work started earlier that has an update in the period is
+        # part of the period's log, as it is of the day's DPR.
+        updates = sa.table(
+            "progress_updates",
+            sa.column("activity_id"),
+            sa.column("occurred_at", sa.DateTime(timezone=True)),
+            sa.column("deleted_at"),
+        )
+        from runtime.day_facts import project_date_sql
+
+        # The project's date of the update, not the UTC one (see project_date_sql).
+        update_day = sa.literal_column(project_date_sql("progress_updates.occurred_at", f"'{org_id}'::uuid"))
+        updated_in_period = sa.exists().where(
+            updates.c.activity_id == activities.c.id,
+            updates.c.deleted_at.is_(None),
+            update_day >= start_date,
+            update_day <= end_date,
+        )
         activity_conditions = [
             activities.c.organization_id == org_id,
-            activities.c.activity_date >= start_date,
-            activities.c.activity_date <= end_date,
+            sa.or_(
+                sa.and_(activities.c.activity_date >= start_date, activities.c.activity_date <= end_date),
+                updated_in_period,
+            ),
             activities.c.deleted_at.is_(None),
         ]
+        from mesiri.application.dpr import open_issues
+
         issue_conditions = [
             site_issues.c.organization_id == org_id,
-            # Request 104, D4: what the dashboard counts as open -- open and
-            # acknowledged ("being handled").
-            site_issues.c.status.in_(["OPEN", "ACKNOWLEDGED"]),
-            # Not the "Question for your engineer" notes older versions saved as issues.
-            sa.func.coalesce(site_issues.c.narrative, "").notlike("Question for your engineer:%"),
+            # Request 127: the one open-issue rule, the DPR's too (open or being
+            # handled, a real site issue, saved unless ``include_unsaved``).
+            sa.text(open_issues.open_issue_sql("site_issues", counted=not include_unsaved)),
         ]
         # A null project/site on the caller's context means "don't narrow",
         # not "match rows with a null column" -- mirrors labour_query.
@@ -151,13 +176,26 @@ class ActivitySearchService:
             issue_conditions.append(site_issues.c.site_id == site_uuid)
         if work_type:
             activity_conditions.append(activities.c.work_type.ilike(f"%{work_type.strip()}%"))
+        if not include_unsaved:
+            from mesiri.application.dpr import fact_review
 
+            activity_conditions.append(sa.text(fact_review.counted_sql(fact_review.ACTIVITY, "activities.id")))
+
+        from mesiri.application.dpr import fact_review
+        from runtime.day_facts import date_sql, latest_note_sql
+
+        # Request 137 (D): what the work says now (its latest update in the period:
+        # "tiling 80%", not the 70% it started with), and whether it is saved, read
+        # the Day Facts way.
+        note_now = sa.literal_column(latest_note_sql("activities.id", date_sql(end_date)))
+        saved = sa.literal_column(fact_review.counted_sql(fact_review.ACTIVITY, "activities.id"))
         activity_query = (
             sa.select(
                 activities.c.work_type,
-                activities.c.narrative,
+                note_now.label("narrative"),
                 activities.c.status,
                 activities.c.activity_date,
+                saved.label("saved"),
             )
             .where(*activity_conditions)
             .order_by(activities.c.activity_date.desc(), activities.c.updated_at.desc())
@@ -194,6 +232,7 @@ class ActivitySearchService:
                     "work_type": row["work_type"],
                     "narrative": row["narrative"],
                     "status": row["status"],
+                    "saved": bool(row["saved"]),
                     # Selected above only for ORDER BY until this was added --
                     # a tabular export (PDF) needs the date on every row, not
                     # just the query's own sort order.

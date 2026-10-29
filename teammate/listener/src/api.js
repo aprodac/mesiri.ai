@@ -27,6 +27,8 @@
 //                                     - the chat labelled "assistant-test" for body.project (text / images, few per hour)
 //                                     body.choose {message_n, option} taps a menu/button of the assistant's
 //                                     message n (option = its number or exact title); assistant-test chats only
+//                                     body.audio_base64 (+ audio_mime) sends a voice note (ptt, up to 5 MB); assistant-test chats only
+//                                     the reply carries sent_at: when WhatsApp acknowledged the send
 //
 // Every route except /health needs `Authorization: Bearer <TEAMMATE_API_TOKEN>`.
 // `project` (TM-05) scopes a call to one repo's groups; without it, all are visible.
@@ -62,6 +64,8 @@ async function readJson(req, maxBytes = 10_000) {
 // 4,000 characters, and at most SEND_PER_HOUR posts per hour, so a runaway
 // session can't flood the group or get the number flagged.
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_AUDIO_BYTES = 5 * 1024 * 1024;
+const AUDIO_MIMES = ["audio/ogg; codecs=opus", "audio/mpeg", "audio/mp4"];
 const MAX_TEXT_CHARS = 4000;
 const SEND_PER_HOUR = Number(process.env.TEAMMATE_SEND_PER_HOUR || 30);
 // 120 an hour is no limit for real testing, but still stops a runaway loop from flooding the
@@ -234,7 +238,7 @@ export function createApi({ store, wa, token, ai = null }) {
         }
       }
       if (req.method === "POST" && path === "/send") {
-        const body = await readJson(req, Math.ceil(MAX_IMAGE_BYTES * 1.4) + 20_000);
+        const body = await readJson(req, Math.ceil(Math.max(MAX_IMAGE_BYTES, MAX_AUDIO_BYTES) * 1.4) + 20_000);
         const chat = store.findChat(String(body.chat || ""));
         if (!chat) return send(res, 404, { error: "no such chat; use the jid or a unique part of the name" });
         const isTest = chat.role === "assistant-test";
@@ -262,20 +266,27 @@ export function createApi({ store, wa, token, ai = null }) {
         }
         const text = body.text ? String(body.text) : null;
         const caption = body.caption ? String(body.caption) : null;
+        const audio = body.audio_base64 ? Buffer.from(String(body.audio_base64), "base64") : null;
+        if (audio && !isTest) {
+          return send(res, 403, { error: `refused: voice notes are only allowed in the assistant-test chat, not '${chat.name || chat.jid}'` });
+        }
+        const audioMime = AUDIO_MIMES.includes(body.audio_mime) ? body.audio_mime : "audio/ogg; codecs=opus";
         const image = body.image_base64 ? Buffer.from(String(body.image_base64), "base64") : null;
-        if (!text && !image && !choose) return send(res, 400, { error: "send text or image_base64" });
+        if (!text && !image && !choose && !audio) return send(res, 400, { error: "send text, image_base64 or audio_base64" });
         if ((text?.length || 0) > MAX_TEXT_CHARS || (caption?.length || 0) > MAX_TEXT_CHARS) {
           return send(res, 400, { error: `text is limited to ${MAX_TEXT_CHARS} characters` });
         }
         if (image && image.length > MAX_IMAGE_BYTES) return send(res, 400, { error: "image is over 5 MB" });
+        if (audio && audio.length > MAX_AUDIO_BYTES) return send(res, 400, { error: "audio is over 5 MB" });
         const hourAgo = Date.now() - 3_600_000;
         const [log, limit] = isTest ? [testSentAt, testSendsPerHour()] : [sentAt, SEND_PER_HOUR];
         while (log.length && log[0] < hourAgo) log.shift();
         if (log.length >= limit) return send(res, 429, { error: `limit of ${limit} ${isTest ? "test messages" : "posts"} per hour reached` });
         try {
-          const id = await wa.send(chat.jid, choose ? { choose } : { text, image, caption });
-          log.push(Date.now());
-          return send(res, 200, { ok: true, id, chat: chat.name || chat.jid });
+          const id = await wa.send(chat.jid, choose ? { choose } : audio ? { audio, audioMime } : { text, image, caption });
+          const sentAt = Date.now();
+          log.push(sentAt);
+          return send(res, 200, { ok: true, id, sent_at: new Date(sentAt).toISOString(), chat: chat.name || chat.jid });
         } catch (err) {
           return send(res, 503, { error: err.message });
         }

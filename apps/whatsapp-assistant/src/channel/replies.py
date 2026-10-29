@@ -207,11 +207,25 @@ IMAGE_PURPOSE_SEMANTIC_HINT: dict[str, str] = {
 }
 
 
+#: WA-65: the module a photo purpose belongs to. A row whose module is off
+#: for the company is not offered -- tapping it could only answer "not
+#: switched on" (audit PHO-08). Site Update is the DPR, always on.
+IMAGE_PURPOSE_MODULE: dict[str, str] = {
+    "img_material_invoice": "materials",
+    "img_expense": "finance",
+    "img_attendance": "labour",
+}
+
+
 def render_image_purpose_picker() -> ReplySpec:
+    from workflows.registry import module_is_enabled
+
     return ReplySpec(
         text="📷 What is this photo for?",
         list_button_label="Choose one",
-        list_rows=IMAGE_PURPOSE_ROWS,
+        list_rows=tuple(
+            row for row in IMAGE_PURPOSE_ROWS if module_is_enabled(IMAGE_PURPOSE_MODULE.get(row.id))
+        ),
     )
 
 
@@ -300,16 +314,22 @@ def render_project_site_offer(project_name: str | None) -> ReplySpec:
     )
 
 
-def render_project_member_offer() -> ReplySpec:
+def render_project_member_offer(alone: bool | None = None) -> ReplySpec:
     """Offered once a new Site is confirmed and saved -- the next gap in the
     same chain render_project_site_offer starts: a project with a site but
     no team still can't have anything logged against it by anyone but its
     creator (project_execution.py's persist_success only auto-adds the
-    creator, and only when their role isn't org-wide)."""
-    return ReplySpec(
-        text="👤 This project doesn't have a team yet.\n\nWant to add a teammate now?",
-        buttons=PROJECT_MEMBER_OFFER_BUTTONS,
+    creator, and only when their role isn't org-wide).
+
+    ``alone``: True when nobody but the sender is on the project (counted
+    before the offer, [111]); None when it could not be counted, so no claim
+    is made about the team."""
+    text = (
+        "👤 Only you are on this project so far.\n\nWant to add a teammate now?"
+        if alone
+        else "👤 Want to add a teammate to this project now?"
     )
+    return ReplySpec(text=text, buttons=PROJECT_MEMBER_OFFER_BUTTONS)
 
 
 def render_setup_offer_skipped_reply() -> str:
@@ -915,7 +935,10 @@ def render_greeting_menu(
     return ReplySpec(
         text=body,
         list_button_label="Choose one",
-        list_rows=CATEGORY_ROWS,
+        # WA-83: built now, not at import: the rows follow the company's switched-on
+        # modules (WA-07). CATEGORY_ROWS is built before any company is known, so the
+        # menu offered Money and Reminders to a company without them (live 27 Oct).
+        list_rows=_category_rows(),
     )
 
 

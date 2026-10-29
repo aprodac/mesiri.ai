@@ -13,6 +13,8 @@ disallowed role.
 
 from __future__ import annotations
 
+from mesiri.authorization.roles import may_grant_role
+
 from .create_user_commands import CreateUserCommand
 
 # Matches process.py's _PROJECT_CREATE_ROLES exactly -- provisioning a new
@@ -40,4 +42,7 @@ def validate(cmd: CreateUserCommand) -> list[str]:
         reasons.append("a valid WhatsApp number is required to create a user")
     if cmd.role.strip().upper() not in _KNOWN_USER_ROLES:
         reasons.append("unrecognized role")
+    elif cmd.created_by_role and not may_grant_role(cmd.created_by_role, cmd.role):
+        # WA-67 (audit SET-01): a project manager can't make an admin.
+        reasons.append("only an admin can give someone the admin or finance role")
     return reasons

@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     # WA-12: comma-separated names of templates Meta has approved; see
     # channel/whatsapp/templates.py. Empty = never send a template.
     approved_templates: str = ""
+    # WA-87: Mesiri inside site WhatsApp groups (runtime/group_chat.py). Off:
+    # group messages are dropped at ingress and no group can be created.
+    groups_enabled: bool = False
 
     model_config = SettingsConfigDict(
         env_prefix="WHATSAPP_",
@@ -125,6 +128,8 @@ class AppContainer:
     # SA-11: error alerts to the super admins on WhatsApp. Installed on the
     # root logger by the app and the worker (runtime/ops_alerts.py).
     ops_alerts: Any = None
+    # WA-87: site WhatsApp groups (whatsapp_groups/router.py reads it).
+    group_chat: Any = None
 
 
 def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppContainer:
@@ -294,7 +299,9 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     context_resolver = build_context_resolver(redis=redis_client)
     from runtime.agent.actions import ActionService, ActionStore
     from runtime.agent.cards import CardStore
+    from runtime.agent.draft_store import PostgresDraftStore
     from runtime.agent.later import LaterStore
+    from runtime.agent.site_wait import SiteWaitStore
     from runtime.agent.work_site import WorkSite
     # WorkflowRegistry compiles each graph once and caches it — constructed
     # once here, never per message.
@@ -646,6 +653,9 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     from runtime.activity_query import ActivityQueryService
 
     activity_query = ActivityQueryService(material_db)
+    from runtime.day_facts import DayFactsReader
+
+    day_facts = DayFactsReader(material_db)
     # Direct evidence attach for #2 Batch Media's "Site Update" photo
     # purpose -- never a workflow (see AttachEvidenceCommand's docstring).
     # Reuses the same pool; opens its own write transaction only when
@@ -813,6 +823,11 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         graph_base_url=settings.graph_base_url,
     )
     sender = BatchingSender(whatsapp_sender)
+    if settings.groups_enabled:
+        # WA-87: during a group message the ✅ goes into the group.
+        from runtime.group_chat import GroupReplySender
+
+        sender = GroupReplySender(sender)
     forward_window = float(os.environ.get("MESIRI_FORWARD_BATCH_SECONDS", "10") or 0)
     forward_batcher = (
         ForwardBatcher(redis=redis_client, sender=whatsapp_sender, window_seconds=forward_window)
@@ -936,6 +951,35 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
 
     from runtime.message_journey import build_message_handlers
 
+    # WA-45: today's site, on the resolver's own active-context slot.
+    work_site = WorkSite(active_context=context_resolver.active_context, redis=redis_client)
+
+    # WA-87: site WhatsApp groups.
+    from channel.whatsapp.groups import WhatsAppGroupsClient
+    from runtime.group_chat import GroupChat, NotificationOutbox
+    from runtime.whatsapp_group_query import WhatsAppGroupQueryService
+
+    group_chat = GroupChat(
+        groups=WhatsAppGroupQueryService(material_db),
+        client=WhatsAppGroupsClient(
+            client=http_client,
+            access_token=settings.access_token,
+            phone_number_id=settings.phone_number_id,
+            api_version=settings.api_version,
+            graph_base_url=settings.graph_base_url,
+        ),
+        sender=whatsapp_sender,
+        actor_reader=actor_reader,
+        outbox=NotificationOutbox(
+            db=material_db,
+            actor_reader=actor_reader,
+            sender=whatsapp_sender,
+            approved_templates=approved_template_names(settings.approved_templates),
+        ),
+        work_site=work_site,
+        enabled=settings.groups_enabled,
+    )
+
     handler_deps: dict[str, Any] = dict(
         settings=settings,
         actor_reader=actor_reader,
@@ -954,6 +998,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         duplicate_expense_query=duplicate_expense_query,
         workforce_query=workforce_query,
         activity_query=activity_query,
+        day_facts=day_facts,
         evidence_query=evidence_query,
         reply_composer=reply_composer,
         user_language_store=user_language_store,
@@ -976,12 +1021,16 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         completion_photo_hint_store=completion_photo_hint_store,
         team_photo_hint_store=team_photo_hint_store,
         offered_choices_store=offered_choices_store,
-        # WA-45: today's site, on the resolver's own active-context slot.
-        work_site=WorkSite(active_context=context_resolver.active_context, redis=redis_client),
+        work_site=work_site,
         # Request 88: the latest card per sender, for undo and editing.
         cards=CardStore(redis_client),
+        # Request 124: one draft per open card, written on the Save tap in one
+        # transaction (only for a company with `draft_v2` on).
+        drafts=PostgresDraftStore(material_db),
+        shared_transaction=material_db.shared_transaction,
         # WA-57: the parts of a message still to do, per sender.
         later=LaterStore(redis_client),
+        site_wait=SiteWaitStore(redis_client),
         # Request 104: cards for what is not a record (engineer question,
         # the day's conditions, issues to close).
         actions=ActionService(
@@ -1011,8 +1060,11 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         # SS-09: pause a trial company that runs past today's usage caps.
         trial_usage_guard=TrialUsageGuard(material_db),
         ops_alerts=ops_alerts,
+        group_chat=group_chat if settings.groups_enabled else None,
     )
     _on_normalized, _mark_read_on_claim = build_message_handlers(sender=sender, **handler_deps)
+    if settings.groups_enabled:
+        _on_normalized = group_chat.wrap(_on_normalized)
 
     def simulate_handler(capturing_sender: Any) -> Any:
         """The control panel's test message (admin/system_graph_router.py):
@@ -1028,6 +1080,8 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         on_message_claimed=_mark_read_on_claim,
         trace_logger=trace_logger,
         enqueue=message_enqueuer,
+        groups_enabled=settings.groups_enabled,
+        on_group_event=group_chat.handle_event if settings.groups_enabled else None,
     )
     return AppContainer(
         settings=settings,
@@ -1054,6 +1108,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         dpr_summary_writer=dpr_summary_writer,
         simulate_handler=simulate_handler,
         ops_alerts=ops_alerts,
+        group_chat=group_chat,
     )
 
 

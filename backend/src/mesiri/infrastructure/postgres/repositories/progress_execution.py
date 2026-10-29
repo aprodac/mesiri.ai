@@ -366,7 +366,6 @@ class PostgresProgressExecutionRepository(ProgressExecutionRepository):
 
         organization_id = uuid.UUID(cmd.organization_id)
         created_by = uuid.UUID(cmd.created_by)
-        progress_update_id = uuid.UUID(cmd.progress_update_id)
 
         changes: dict[str, object] = {"quantity": cmd.new_quantity}
         new_unit_id = _optional_uuid(cmd.new_unit_id)
@@ -374,15 +373,27 @@ class PostgresProgressExecutionRepository(ProgressExecutionRepository):
             changes["unit_id"] = new_unit_id
 
         repo = PostgresProgressReadRepository(conn)
-        corrected = await repo.correct_progress_update(
-            organization_id=organization_id,
-            update_id=progress_update_id,
-            changes=changes,
-            reason=cmd.reason,
-            corrected_by_user_id=created_by,
-            correlation_id=cmd.correlation_id,
-            source=cmd.source,
-        )
+        if cmd.progress_update_id is None:
+            # WRK-06: the quantity the activity was started with.
+            corrected = await repo.correct_activity_quantity_row(
+                organization_id=organization_id,
+                quantity_id=uuid.UUID(str(cmd.activity_quantity_id)),
+                quantity=cmd.new_quantity,
+                unit_id=new_unit_id,
+                reason=cmd.reason,
+                corrected_by_user_id=created_by,
+                correlation_id=cmd.correlation_id,
+            )
+        else:
+            corrected = await repo.correct_progress_update(
+                organization_id=organization_id,
+                update_id=uuid.UUID(str(cmd.progress_update_id)),
+                changes=changes,
+                reason=cmd.reason,
+                corrected_by_user_id=created_by,
+                correlation_id=cmd.correlation_id,
+                source=cmd.source,
+            )
 
         if corrected is None:
             # The target no longer exists (deleted/undone) by confirm time
@@ -419,7 +430,7 @@ class PostgresProgressExecutionRepository(ProgressExecutionRepository):
                 "payload": json.dumps(
                     {
                         "progress_update_id": str(corrected["id"]),
-                        "supersedes_id": str(corrected["supersedes_id"]),
+                        "supersedes_id": str(corrected["supersedes_id"] or ""),
                         "quantity": str(corrected["quantity"]),
                         "reason": cmd.reason,
                     },
@@ -743,9 +754,11 @@ class PostgresProgressExecutionRepository(ProgressExecutionRepository):
                 text(
                     "INSERT INTO progress_attachments "
                     "(id, parent_type, parent_id, media_object_key, attachment_type, "
-                    "mime_type, caption, uploaded_by_user_id) "
+                    "mime_type, caption, uploaded_by_user_id, created_at) "
+                    # clock_timestamp(), not the transaction's now(): a batch keeps
+                    # the order the photos were sent in.
                     "VALUES (:id, 'ACTIVITY', :parent_id, :media_object_key, "
-                    "'site_photo', :mime_type, :caption, :uploaded_by)"
+                    "'site_photo', :mime_type, :caption, :uploaded_by, clock_timestamp())"
                 ),
                 {
                     "id": attachment_id,

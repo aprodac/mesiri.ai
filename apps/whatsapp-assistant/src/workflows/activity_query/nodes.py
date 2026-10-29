@@ -12,6 +12,8 @@ different questions a supervisor asks.
 
 from __future__ import annotations
 
+from trade_label import trade_label
+
 from ..state import WorkflowGraphState
 
 #: Individual entries listed before the reply summarises. Mirrors labour_
@@ -25,6 +27,11 @@ _MAX_ISSUES_SHOWN = 20
 
 def _pretty(label: str) -> str:
     return label.replace("_", " ").title()
+
+
+def _amount(value: object) -> str:
+    number = float(value or 0)
+    return str(int(number)) if number == int(number) else f"{number:g}"
 
 
 def generate_activity_search_reply(state: WorkflowGraphState) -> dict:
@@ -41,8 +48,15 @@ def generate_activity_search_reply(state: WorkflowGraphState) -> dict:
     open_issue_count = results.get("open_issue_count", len(open_issues))
 
     scope = f" — {_pretty(work_type_filter)}" if work_type_filter else ""
+    # Request 127 (P2): the day's labour is part of "what was done"; the same
+    # figures "how many workers?" answers (runtime/agent/project_day.read_period).
+    labour: dict = results.get("labour") or {}
+    headcount = int(labour.get("headcount") or 0)
 
-    if not activity_count and not open_issue_count:
+    # Request 136: the day's materials, counted as the DPR counts them.
+    materials: list[dict] = results.get("materials") or []
+
+    if not activity_count and not open_issue_count and not headcount and not materials:
         return {"pending_prompt": f"Nothing logged for {date_range_label}{scope}."}
 
     lines = [f"📋 *Site log{scope} — {date_range_label}*", ""]
@@ -62,6 +76,25 @@ def generate_activity_search_reply(state: WorkflowGraphState) -> dict:
             lines.append(f"... and {activity_count - _MAX_ENTRIES_SHOWN} more")
     else:
         lines.append(f"No activity logged{scope}.")
+
+    if headcount:
+        counts = labour.get("trade_counts") or []
+        by_trade = f" ({', '.join(f'{c} {trade_label(t)}' for t, c in counts)})" if counts else ""
+        days = int(labour.get("days") or 0)
+        unit = "worker-days" if days > 1 else ("worker" if headcount == 1 else "workers")
+        lines.append("")
+        lines.append(f"👷 {headcount} {unit}{by_trade}")
+
+    if materials:
+        lines.append("")
+        lines.append("🧱 Materials")
+        for row in materials:
+            moved = [
+                f"{_amount(row.get(key))} {row.get('unit') or ''} {word}".replace("  ", " ")
+                for key, word in (("received", "received"), ("used", "used"))
+                if row.get(key)
+            ]
+            lines.append(f"• {str(row.get('material') or '').title()}: {', '.join(moved)}")
 
     if open_issue_count:
         lines.append("")

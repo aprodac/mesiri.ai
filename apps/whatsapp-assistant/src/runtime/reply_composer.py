@@ -156,6 +156,12 @@ def resolve_choice(text: str, options: list[ListRow]) -> ListRow | None:
     for row in options:
         if said == normalise(row.title) or said in TYPED_ALIASES.get(row.id, ()):
             return row
+    from runtime.agent.draft import CANCEL, TAP_PREFIX
+    from runtime.agent.left_it import is_drop_word
+
+    if is_drop_word(text):
+        # Request 129: typed "cancel" / "venda" is the Cancel button of a draft card.
+        return next((row for row in options if row.id.startswith(f"{TAP_PREFIX}{CANCEL}:")), None)
     return None
 
 

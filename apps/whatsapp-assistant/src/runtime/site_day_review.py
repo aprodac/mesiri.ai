@@ -292,16 +292,66 @@ def _count(n: int, one: str, many: str) -> str:
     return f"{n} {one if n == 1 else many}"
 
 
+#: Unit codes as a person says them (the rest are shown as stored).
+_UNIT_WORDS = {"sqft": "sq ft", "sqm": "sq m", "cum": "cu m", "nos": "nos"}
+
+
+def _amount(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
+def _works_with_amounts(activities: list[dict[str, Any]]) -> list[str]:
+    """Request 116 F: each kind of work with what was done, summed across the
+    day's entries ("Plastering 150 sq ft"), not just its name. Work with no
+    quantity keeps its bare name."""
+    from workflows.readable import format_quantity
+
+    order: dict[str, dict[str, float]] = {}
+    for activity in activities:
+        name = str(activity.get("work_type") or "").replace("_", " ").strip().capitalize()
+        if not name:
+            continue
+        totals = order.setdefault(name, {})
+        for q in activity.get("quantities") or []:
+            number = _amount(q.get("quantity"))
+            unit = str(q.get("unit") or "").strip()
+            if number is not None:
+                unit = _UNIT_WORDS.get(unit.lower(), unit)
+                totals[unit] = totals.get(unit, 0.0) + number
+    out = []
+    for name, totals in order.items():
+        amounts = " + ".join(f"{format_quantity(n)} {u}".strip() for u, n in totals.items())
+        out.append(f"{name} {amounts}" if amounts else name)
+    return out
+
+
 def day_lines(payload: dict[str, Any]) -> list[str]:
     """What the day holds, one short line per section."""
     if (payload.get("conditions") or {}).get("site_working") == "none":
         return ["• Site closed today, no work"]
     lines = []
     if payload.get("activity_count"):
-        lines.append(f"• Work: {_count(int(payload['activity_count']), 'item', 'items')}")
-    headcount = (payload.get("labour") or {}).get("headcount")
+        # DPR-07: what is being confirmed, not just how many ("Confirm all" on
+        # "Work: 2 items" was a tap on something unseen).
+        kept = [a for a in payload.get("activities") or [] if a.get("review") != "rejected"]
+        works = _works_with_amounts(kept)
+        count = _count(int(payload["activity_count"]), "item", "items")
+        shown = ", ".join(works[:4]) + (f" and {len(works) - 4} more" if len(works) > 4 else "")
+        lines.append(f"• Work: {shown} ({count})" if shown else f"• Work: {count}")
+    labour = payload.get("labour") or {}
+    headcount = labour.get("headcount")
     if headcount:
-        lines.append(f"• Labour: {_count(int(headcount), 'worker', 'workers')}")
+        trades = ", ".join(
+            f"{t['headcount']} {str(t['trade']).replace('_', ' ').lower()}"
+            for t in (labour.get("trades") or [])[:4]
+            if t.get("trade") and t.get("headcount")
+        )
+        workers = _count(int(headcount), "worker", "workers")
+        lines.append(f"• Labour: {workers} ({trades})" if trades else f"• Labour: {workers}")
     if payload.get("materials"):
         # The names, not a count: "2 entries" read as two saves when it was
         # two materials (round 3, 21 Oct).
@@ -313,8 +363,17 @@ def day_lines(payload: dict[str, Any]) -> list[str]:
         if not shown:
             shown = _count(len(payload["materials"]), "entry", "entries")
         lines.append(f"• Materials: {shown}")
-    if payload.get("open_issue_count"):
-        lines.append(f"• Issues: {payload['open_issue_count']} open")
+    # Request 127 (P2): the assembly's count, by the one open-issue rule
+    # (backend application/dpr/open_issues.py) "open issues?" lists by: the
+    # day's own and those still open from earlier days. The draft said "1 open
+    # issue" while the list had 2. A day holding nothing but an earlier day's
+    # open issue still reads as "nothing logged today" (no lines).
+    if "issues" in payload and not (payload["issues"] or lines):
+        day_open = 0
+    else:
+        day_open = int(payload.get("open_issue_count") or 0)
+    if day_open:
+        lines.append(f"• Issues: {day_open} open")
     if payload.get("evidence_count"):
         lines.append(f"• Photos: {payload['evidence_count']}")
     return lines
@@ -334,6 +393,16 @@ def confirm_message(
         f" ({project_name})" if site_label(site_name, project_name) != site_name else ""
     )
     lines = [f"📋 {site}: today's report is ready.", *day_lines(payload)]
+    # WA-77 (Alan, 25 Oct): entries nobody saved are not in the report; the
+    # engineer decides on them under "Fix something".
+    unsaved = int(((payload.get("drafts") or {}).get("total")) or 0)
+    if unsaved:
+        lines.append(
+            "📝 "
+            + _count(unsaved, "entry was", "entries were")
+            + " not saved (Save wasn't tapped). They stay out of the report unless you keep them:"
+            " tap *Fix something*."
+        )
     stock = int(payload.get("stock_flags") or 0)
     if stock:
         lines.append(

@@ -143,10 +143,27 @@ class World:
     direct: bool = True
     #: The change entry's lookups (member_resolver, activity_query, ...).
     change: dict = field(default_factory=dict)
+    #: The site entry's lookups (activity_query, ...).
+    site: dict = field(default_factory=dict)
     #: Request 104: cards for what is not a record (an ``ActionService``), and
     #: the site's open issues for closing.
     actions: Any = None
     open_issues: Any = None
+    #: Request 124: the company holds messages as one draft card
+    #: (runtime/agent/draft_store.py); the Save tap writes it.
+    draft_v2: bool = False
+    drafts: Any = None
+    #: What the confirmation of the saved drafts returns (None: not wired).
+    settle: Any = None
+    #: The labour entry's workforce reads (``find_existing_report_for_day``...).
+    workforce: Any = None
+    #: Request 127: the sender's latest card (``CardStore``), the undo of saved
+    #: entries (``undo_facts``) and a waiting old-style Yes / No question.
+    cards: Any = None
+    undo_facts: Any = None
+    pending_confirmation: Any = None
+    #: Request 132: ``(project_id, site_id) -> label``, "now at Site B" on a draft card.
+    preselect_site: Any = None
 
     def message(self, text: str, modality: InputModality = InputModality.TEXT) -> NormalizedMessage:
         media = None
@@ -188,12 +205,17 @@ class World:
                 else None
             ),
             labour_entry=(
-                LabourEntry(ContextResolver(self.deps), None, self.actor, active_context=self.deps.active_context)
+                LabourEntry(
+                    ContextResolver(self.deps), None, self.actor, active_context=self.deps.active_context,
+                    workforce_query=self.workforce,
+                )
                 if self.direct
                 else None
             ),
             site_entry=(
-                SiteEntry(ContextResolver(self.deps), None, self.actor, active_context=self.deps.active_context)
+                SiteEntry(
+                    ContextResolver(self.deps), None, self.actor, active_context=self.deps.active_context, **self.site
+                )
                 if self.direct
                 else None
             ),
@@ -211,7 +233,28 @@ class World:
             ),
             actor=self.actor,
             start_workflow=self.runtime.start,
+            draft_v2=self.draft_v2,
+            drafts=self.drafts,
+            confirm_now=lambda: self.handler.confirm_now(self.actor.user_id, actor=self.actor),
+            settle_facts=self.settle,
+            transaction=getattr(self.drafts, "transaction", None),
+            cards=self.cards,
+            undo_facts=self.undo_facts,
+            pending_confirmation=self.pending_confirmation,
+            preselect_site=self.preselect_site,
+            get_today_site=self._saved_site,
         )
+
+    async def _saved_site(self) -> str | None:
+        """What production's ``work_site.WorkSite.today`` reads (request 136: the site
+        resolver's "saved in the window" step): the active context, if one of theirs."""
+        active_context = getattr(self.deps, "active_context", None)
+        if active_context is None:
+            return None
+        active = await active_context.get_active_context(organization_id=seed.ORG_A, user_id=seed.USER_ENGINEER)
+        if active is None or not any(str(s.id) == str(active.site_id) for s in self.actor.sites):
+            return None
+        return str(active.site_id)
 
     def context(self, turns: tuple[Turn, ...] = (), **kw: Any) -> AgentContext:
         return AgentContext(

@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from '@/components/ui/dialog'
 import {
   Sheet,
@@ -16,7 +17,6 @@ import {
   SheetDescription,
   SheetFooter,
 } from '@/components/ui/sheet'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -30,15 +30,19 @@ import {
 import {
   type User,
   createUser,
+  fetchSetupProgress,
   updateUser,
   updateUserAccess,
   type AccessPolicy,
 } from '@/lib/api'
+import { inviteText, whatsappShareLink } from '@/lib/invite'
 import { fetchProjects, fetchSites } from '@/lib/projects'
 import type { ProjectItem, SiteItem } from '@/lib/scope-types'
 import { ROLE_LABELS, type Role } from '@/lib/permissions'
 
-const ROLES = (Object.keys(ROLE_LABELS) as Role[]).map((value) => ({ value, label: ROLE_LABELS[value] }))
+// DSH-08: Finance is not a V1 role, so it is not offered. A person who already
+// has it keeps it, shown as a fixed label below.
+const ROLES = (Object.keys(ROLE_LABELS) as Role[]).filter((r) => r !== 'FINANCE').map((value) => ({ value, label: ROLE_LABELS[value] }))
 
 interface AddEditUserDialogProps {
   open: boolean
@@ -47,6 +51,16 @@ interface AddEditUserDialogProps {
   onSuccess: () => void
 }
 
+/** Roles that work on site and usually never open the dashboard (WEB-17). */
+const WHATSAPP_ONLY_BY_DEFAULT = new Set(['SITE_ENGINEER'])
+
+/**
+ * Add or edit a person. Site staff are added with a name, a WhatsApp number
+ * and a project, nothing else (WEB-17): the backend creates them through the
+ * same step WhatsApp uses. A dashboard login (email + password) is opt-in.
+ * After adding, the owner gets a message to forward so the person knows
+ * where to report: Mesiri can't message them first (SS-12).
+ */
 export function AddEditUserDialog({
   open,
   onOpenChange,
@@ -58,10 +72,27 @@ export function AddEditUserDialog({
   const [email, setEmail] = React.useState('')
   const [role, setRole] = React.useState('SITE_ENGINEER')
   const [whatsapp, setWhatsapp] = React.useState('')
+  const [login, setLogin] = React.useState(false)
+  const [projectId, setProjectId] = React.useState('')
   const [password, setPassword] = React.useState('')
   const [confirmPassword, setConfirmPassword] = React.useState('')
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState('')
+  const [added, setAdded] = React.useState<{ name: string; number: string | null; project: string | null } | null>(null)
+  const [copied, setCopied] = React.useState(false)
+
+  const projects = useQuery({
+    queryKey: ['access-projects-list'],
+    queryFn: fetchProjects,
+    enabled: open && !isEdit,
+  })
+  const setup = useQuery({
+    queryKey: ['setup-progress'],
+    queryFn: fetchSetupProgress,
+    enabled: open && !isEdit,
+    retry: false,
+  })
+  const mesiriNumber = setup.data?.whatsapp_number ?? null
 
   React.useEffect(() => {
     if (open) {
@@ -70,19 +101,32 @@ export function AddEditUserDialog({
         setEmail(user.email || '')
         setRole(user.role || 'SITE_ENGINEER')
         setWhatsapp(user.whatsapp_number || '')
-        setPassword('')
-        setConfirmPassword('')
+        setLogin(!!user.email)
       } else {
         setFullName('')
         setEmail('')
         setRole('SITE_ENGINEER')
         setWhatsapp('')
-        setPassword('')
-        setConfirmPassword('')
+        setLogin(false)
+        setProjectId('')
       }
+      setPassword('')
+      setConfirmPassword('')
       setError('')
+      setAdded(null)
+      setCopied(false)
     }
   }, [open, user])
+
+  // One project: put them on it without asking.
+  React.useEffect(() => {
+    if (!isEdit && projects.data?.length === 1 && !projectId) setProjectId(projects.data[0].id)
+  }, [isEdit, projects.data, projectId])
+
+  const changeRole = (value: string) => {
+    setRole(value)
+    if (!isEdit) setLogin(!WHATSAPP_ONLY_BY_DEFAULT.has(value))
+  }
 
   const generatePassword = () => {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*'
@@ -98,16 +142,24 @@ export function AddEditUserDialog({
     e.preventDefault()
     setError('')
 
-    if (!fullName.trim() || !email.trim()) {
-      setError('Full Name and Email are required.')
+    if (!fullName.trim()) {
+      setError('Add their name.')
       return
     }
-
-    if (!isEdit && !password) {
-      setError('Password is required for new users.')
+    if (!isEdit && !login && !whatsapp.trim()) {
+      setError('Add their WhatsApp number: it is how they send updates.')
       return
     }
-
+    if (!isEdit && login) {
+      if (!email.trim()) {
+        setError('Add an email to sign in with, or turn off the dashboard login.')
+        return
+      }
+      if (!password) {
+        setError('Set a password for their dashboard login.')
+        return
+      }
+    }
     if (password && password !== confirmPassword) {
       setError('Passwords do not match.')
       return
@@ -122,17 +174,29 @@ export function AddEditUserDialog({
           whatsapp_number: whatsapp.trim() || null,
           password: password || undefined,
         })
-      } else {
-        await createUser({
-          full_name: fullName,
-          email: email.trim(),
-          password,
-          role,
-          whatsapp_number: whatsapp.trim() || null,
+        onSuccess()
+        onOpenChange(false)
+        return
+      }
+      const created = await createUser({
+        full_name: fullName.trim(),
+        role,
+        whatsapp_number: whatsapp.trim() || null,
+        ...(login ? { email: email.trim(), password } : {}),
+      })
+      const project = projects.data?.find((p) => p.id === projectId) ?? null
+      if (project) {
+        await updateUserAccess(created.id, {
+          mode: 'custom_projects',
+          projects: [{ projectId: project.id, siteAccess: { mode: 'all_sites' } }],
         })
       }
       onSuccess()
-      onOpenChange(false)
+      if (created.whatsapp_number && mesiriNumber) {
+        setAdded({ name: created.full_name, number: created.whatsapp_number, project: project?.name ?? null })
+      } else {
+        onOpenChange(false)
+      }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'An error occurred. Please try again.')
     } finally {
@@ -140,11 +204,54 @@ export function AddEditUserDialog({
     }
   }
 
+  if (added && mesiriNumber) {
+    const text = inviteText({ number: mesiriNumber, name: added.name, site: added.project ?? undefined })
+    const copy = async () => {
+      try {
+        await navigator.clipboard.writeText(text)
+        setCopied(true)
+      } catch {
+        setCopied(false)
+      }
+    }
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>{added.name} is added</DialogTitle>
+            <DialogDescription>
+              Send them this on WhatsApp so they know where to report{added.project ? ` for ${added.project}` : ''}.
+            </DialogDescription>
+          </DialogHeader>
+          <p className="rounded-md border bg-muted/40 p-3 text-sm select-all">{text}</p>
+          <DialogFooter className="gap-2 pt-2 sm:justify-between">
+            <Button type="button" variant="outline" onClick={copy}>
+              {copied ? 'Copied' : 'Copy message'}
+            </Button>
+            <div className="flex gap-2">
+              <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+                Done
+              </Button>
+              <Button asChild>
+                <a href={whatsappShareLink(text, added.number)} target="_blank" rel="noreferrer">
+                  Send on WhatsApp
+                </a>
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'Edit User' : 'Add User'}</DialogTitle>
+          <DialogTitle>{isEdit ? `Edit ${user?.full_name ?? 'person'}` : 'Add a person'}</DialogTitle>
+          {!isEdit && (
+            <DialogDescription>Site staff need only a name and their WhatsApp number.</DialogDescription>
+          )}
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           {error && (
@@ -155,33 +262,34 @@ export function AddEditUserDialog({
           )}
 
           <div className="grid gap-1.5">
-            <Label htmlFor="fullName">Full Name</Label>
+            <Label htmlFor="fullName">Name</Label>
             <Input
               id="fullName"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="John Doe"
+              placeholder="e.g. Ravi Menon"
               required
             />
           </div>
 
           <div className="grid gap-1.5">
-            <Label htmlFor="email">Email / Username</Label>
+            <Label htmlFor="whatsapp">WhatsApp number</Label>
             <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="john@example.com"
-              disabled={isEdit}
-              required
+              id="whatsapp"
+              type="tel"
+              inputMode="tel"
+              value={whatsapp}
+              onChange={(e) => setWhatsapp(e.target.value)}
+              placeholder="+91 98765 43210"
+              required={!isEdit && !login}
             />
+            <p className="text-xs text-muted-foreground">They send site updates to Mesiri from this number.</p>
           </div>
 
           <div className="grid gap-1.5">
-            <Label htmlFor="role">Organization Role</Label>
-            <Select value={role} onValueChange={setRole}>
-              <SelectTrigger className="h-9">
+            <Label htmlFor="role">Role</Label>
+            <Select value={role} onValueChange={changeRole}>
+              <SelectTrigger id="role" className="h-9">
                 <SelectValue placeholder="Select role" />
               </SelectTrigger>
               <SelectContent>
@@ -190,59 +298,105 @@ export function AddEditUserDialog({
                     {opt.label}
                   </SelectItem>
                 ))}
+                {role === 'FINANCE' && (
+                  <SelectItem value="FINANCE" disabled>
+                    {ROLE_LABELS.FINANCE} (current)
+                  </SelectItem>
+                )}
               </SelectContent>
             </Select>
           </div>
 
-          <div className="grid gap-1.5">
-            <Label htmlFor="whatsapp">WhatsApp Number (Optional)</Label>
-            <Input
-              id="whatsapp"
-              value={whatsapp}
-              onChange={(e) => setWhatsapp(e.target.value)}
-              placeholder="+919999999999"
-            />
-          </div>
+          {!isEdit && (projects.data?.length ?? 0) > 0 && (
+            <div className="grid gap-1.5">
+              <Label htmlFor="project">Project</Label>
+              <Select value={projectId} onValueChange={setProjectId}>
+                <SelectTrigger id="project" className="h-9">
+                  <SelectValue placeholder="Choose later" />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.data!.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Their updates go to this project's sites.</p>
+            </div>
+          )}
 
-          <div className="border-t pt-3 space-y-3">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="password">
-                {isEdit ? 'Reset Password (Optional)' : 'Account Password'}
-              </Label>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={generatePassword}
-                className="h-7 text-xs gap-1.5"
-              >
-                <Sparkles className="size-3" />
-                Generate
-              </Button>
+          {!isEdit && (
+            <label className="flex items-start gap-2.5 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 accent-primary"
+                checked={login}
+                onChange={(e) => setLogin(e.target.checked)}
+              />
+              <span>
+                Also give them a dashboard login
+                <span className="block text-xs text-muted-foreground">Only for people who will use the web dashboard.</span>
+              </span>
+            </label>
+          )}
+
+          {login && (
+            <div className="grid gap-1.5">
+              <Label htmlFor="email">Email (to sign in)</Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="ravi@company.in"
+                disabled={isEdit}
+                required={!isEdit}
+              />
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="grid gap-1">
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required={!isEdit}
-                />
+          )}
+
+          {login && (
+            <div className="border-t pt-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">
+                  {isEdit ? 'New password (leave empty to keep it)' : 'Password'}
+                </Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={generatePassword}
+                  className="h-7 text-xs gap-1.5"
+                >
+                  <Sparkles className="size-3" />
+                  Generate
+                </Button>
               </div>
-              <div className="grid gap-1">
-                <Input
-                  id="confirmPassword"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm Password"
-                  required={!!password}
-                />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-1">
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required={!isEdit}
+                  />
+                </div>
+                <div className="grid gap-1">
+                  <Input
+                    id="confirmPassword"
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Type it again"
+                    required={!!password}
+                  />
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <DialogFooter className="pt-2">
             <Button
@@ -254,7 +408,7 @@ export function AddEditUserDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? 'Processing...' : isEdit ? 'Save Changes' : 'Create User'}
+              {loading ? 'Saving…' : isEdit ? 'Save' : 'Add person'}
             </Button>
           </DialogFooter>
         </form>
@@ -406,9 +560,9 @@ export function AccessManagerDialog({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="sm:max-w-md flex flex-col h-full p-0">
         <SheetHeader className="p-6 pb-2 border-b">
-          <SheetTitle>Manage Access</SheetTitle>
+          <SheetTitle>Projects and sites</SheetTitle>
           <SheetDescription>
-            Configure project and site permissions for {user?.full_name}.
+            What {user?.full_name} can see and report on.
           </SheetDescription>
         </SheetHeader>
 
@@ -421,7 +575,7 @@ export function AccessManagerDialog({
           )}
 
           <div className="space-y-2">
-            <Label>Organization Access Mode</Label>
+            <Label>Reaches</Label>
             <div className="flex items-center gap-4">
               <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
                 <input
@@ -430,7 +584,7 @@ export function AccessManagerDialog({
                   onChange={() => setMode('all_projects')}
                   className="accent-primary"
                 />
-                All Projects (Org-Wide)
+                Every project, including new ones
               </label>
               <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
                 <input
@@ -439,7 +593,7 @@ export function AccessManagerDialog({
                   onChange={() => setMode('custom_projects')}
                   className="accent-primary"
                 />
-                Custom Projects
+                Only the ones ticked below
               </label>
             </div>
           </div>
@@ -447,7 +601,7 @@ export function AccessManagerDialog({
           {mode === 'custom_projects' && (
             <div className="space-y-4 border-t pt-4">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Projects and Sites Scope
+                Projects and sites
               </Label>
               <div className="space-y-3">
                 {projects.map((proj) => (
@@ -463,7 +617,7 @@ export function AccessManagerDialog({
                 ))}
                 {projects.length === 0 && (
                   <div className="text-sm text-muted-foreground text-center py-4">
-                    No projects found in the organization.
+                    No projects yet.
                   </div>
                 )}
               </div>
@@ -476,7 +630,7 @@ export function AccessManagerDialog({
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={loading}>
-            {loading ? 'Saving...' : 'Save Access Policy'}
+            {loading ? 'Saving…' : 'Save'}
           </Button>
         </SheetFooter>
       </SheetContent>
@@ -604,116 +758,71 @@ export function WhatsAppManagerDialog({
     }
   }
 
-  const handleActionGap = (actionName: string) => {
-    alert(
-      `Integration Gap: "${actionName}" is not supported by the backend router. The M1 backend table exposes only raw 'whatsapp_number' storage. Real-time verification, custom mapping states, and conversation logs are managed asynchronously by the whatsapp-assistant engine.`
-    )
+  const isMapped = !!user?.whatsapp_number
+  const [confirmRemove, setConfirmRemove] = React.useState(false)
+  const removeNumber = async () => {
+    if (!user) return
+    setLoading(true)
+    setError('')
+    try {
+      await updateUser(user.id, { whatsapp_number: null })
+      setWhatsapp('')
+      onSuccess()
+      onOpenChange(false)
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Could not remove the number.')
+    } finally {
+      setLoading(false)
+      setConfirmRemove(false)
+    }
   }
 
-  const isMapped = !!user?.whatsapp_number
-
+  // WEB-29: a number field, Save and Remove. The old "Send verification"
+  // and "Resolve duplicate conflicts" buttons only showed an "Integration
+  // Gap" alert; they are gone.
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[450px]">
+      <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
-          <DialogTitle>Manage WhatsApp Identity</DialogTitle>
+          <DialogTitle>WhatsApp number</DialogTitle>
+          <DialogDescription>
+            Messages from this number count as {user?.full_name ?? 'their'}'s site updates.
+          </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 py-2">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {error && (
-            <div className="bg-destructive/10 border border-destructive text-destructive text-xs p-2.5 rounded flex items-center gap-2">
-              <ShieldAlert className="size-4 shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          <div className="grid gap-1.5">
-            <Label htmlFor="mgrWhatsapp">Primary WhatsApp Number</Label>
-            <div className="flex gap-2">
-              <Input
-                id="mgrWhatsapp"
-                value={whatsapp}
-                onChange={(e) => setWhatsapp(e.target.value)}
-                placeholder="+919999999999"
-                className="flex-1 font-mono"
-              />
-              {whatsapp && whatsapp !== user?.whatsapp_number && (
-                <Button type="submit" disabled={loading}>
-                  Update
-                </Button>
-              )}
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              Always include country code (e.g. +91 for India, +1 for US).
+            <p className="flex items-center gap-2 text-sm text-destructive">
+              <ShieldAlert className="size-4 shrink-0" /> {error}
             </p>
+          )}
+          <div className="grid gap-1.5">
+            <Label htmlFor="mgrWhatsapp">Number, with country code</Label>
+            <Input id="mgrWhatsapp" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="+91 98765 43210" inputMode="tel" autoFocus />
           </div>
-
-          <div className="border border-border/80 bg-muted/10 p-3.5 space-y-3 rounded-md">
-            <div className="flex justify-between items-center text-xs">
-              <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">
-                Mapping Status
-              </span>
-              <Badge variant={isMapped ? 'default' : 'secondary'} className="rounded-sm px-1.5 py-0.5">
-                {isMapped ? 'Added' : 'Not added'}
-              </Badge>
-            </div>
-            {isMapped && (
-              <div className="text-[11px] text-muted-foreground space-y-1">
-                <div><strong>Verified Country Code:</strong> {user?.whatsapp_number?.startsWith('+') ? user.whatsapp_number.substring(0, 3) : 'Auto'}</div>
-                <div><strong>Verification Mode:</strong> Automatic (Direct Mapping)</div>
-              </div>
+          <DialogFooter className="flex-row items-center gap-2 sm:justify-between">
+            {isMapped ? (
+              confirmRemove ? (
+                <span className="flex items-center gap-2 text-sm">
+                  Remove it?
+                  <Button type="button" size="sm" variant="destructive" disabled={loading} onClick={removeNumber}>
+                    Remove
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmRemove(false)}>
+                    Keep
+                  </Button>
+                </span>
+              ) : (
+                <Button type="button" size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setConfirmRemove(true)}>
+                  Remove number
+                </Button>
+              )
+            ) : (
+              <span />
             )}
-          </div>
-
-          <div className="border-t pt-4 space-y-2">
-            <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Actions
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="text-xs"
-                disabled={!isMapped}
-                onClick={() => handleActionGap('Send Verification Code')}
-              >
-                Send Verification
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="text-xs text-destructive hover:bg-destructive/10"
-                disabled={!isMapped}
-                onClick={async () => {
-                  if (confirm('Are you sure you want to unmap this WhatsApp number?')) {
-                    setLoading(true)
-                    try {
-                      await updateUser(user!.id, { whatsapp_number: null })
-                      setWhatsapp('')
-                      onSuccess()
-                      onOpenChange(false)
-                    } catch (err: any) {
-                      setError(err.response?.data?.detail || 'Failed to unmap.')
-                    } finally {
-                      setLoading(false)
-                    }
-                  }
-                }}
-              >
-                Unmap Number
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="text-xs col-span-2"
-                onClick={() => handleActionGap('Resolve Mapping Conflicts')}
-              >
-                Resolve Duplicate Conflicts
-              </Button>
-            </div>
-          </div>
+            <Button type="submit" disabled={loading || !whatsapp.trim() || whatsapp === user?.whatsapp_number}>
+              {loading ? 'Saving…' : 'Save'}
+            </Button>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

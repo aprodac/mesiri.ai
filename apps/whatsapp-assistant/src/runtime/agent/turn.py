@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from typing import Any
@@ -30,10 +31,18 @@ from . import later
 from .left_it import LEFT_IT, is_drop_word, question_is_open
 from .prompt import AgentContext, Turn
 from .runner import AgentResult, AgentRunner, default_now
+from .stale_questions import close_stale_questions
 from .stock_question import is_stock_question
 from .tools import QUERY_MATERIALS, ScopeLookup
 
 _log = logging.getLogger("mesiri.agent")
+
+#: A reply saying the message was not understood (English, Manglish, Malayalam, Hindi).
+_NOT_UNDERSTOOD = re.compile(
+    r"(?:could ?n[o']?t|did ?n[o']?t|do ?n[o']?t|cannot|can't) (?:quite )?understand|not sure what you mean"
+    r"|manass?ilaay?illa|manass?ilaay?ittilla|മനസ്സിലായില്ല|samajh nahi",
+    re.IGNORECASE,
+)
 
 CANT_HEAR_REPLY = "I couldn't hear that clearly. Could you send it again?"
 UNREADABLE_REPLY = "Sorry, I couldn't make out that message. Please type it or send a voice note."
@@ -93,6 +102,12 @@ class AgentTurnDeps:
     #: WA-57: the sender's parts still to do (runtime/agent/later.py's
     #: LaterStore); None keeps no list.
     later: Any | None = None
+    #: [111]: saves waiting on the site answer (runtime/agent/site_wait.py's
+    #: SiteWaitStore); None keeps none.
+    site_wait: Any | None = None
+    #: Request 132: ``(actor) -> the company's switched-on modules``, so the help
+    #: lists only what they have; None lists the general help.
+    enabled_modules: Callable[[ActorIdentity], Awaitable[list[str] | None]] | None = None
 
 
 def _scope_of(actor: ActorIdentity) -> ScopeLookup:
@@ -106,6 +121,7 @@ def _context_of(
     actor: ActorIdentity, deps: AgentTurnDeps, pack: Any | None, language: str | None,
     menu_hint: str | None,
     script: str | None = None,
+    draft_mode: bool = False,
 ) -> AgentContext:
     project_names = {p.id: p.name for p in actor.projects}
     return AgentContext(
@@ -115,14 +131,30 @@ def _context_of(
         now=deps.now(),
         projects=tuple((p.name, p.location) for p in actor.projects),
         sites=tuple((s.name, project_names.get(s.project_id or "")) for s in actor.sites),
-        turns=tuple(
-            Turn(t.user_text, t.assistant_reply) for t in (getattr(pack, "recent_turns", ()) or ())
+        turns=_turns_for_model(
+            tuple(
+                Turn(t.user_text, t.assistant_reply, getattr(t, "at", 0.0))
+                for t in (getattr(pack, "recent_turns", ()) or ())
+            ),
+            deps.now().timestamp(),
+            draft_mode,
         ),
         last_language=language,
         last_script=script,
         has_pending_confirmation=bool(getattr(pack, "has_pending_confirmation", False)),
         menu_hint=menu_hint,
     )
+
+
+def _turns_for_model(turns: tuple[Turn, ...], now: float, draft_mode: bool) -> tuple[Turn, ...]:
+    """Request 132: on a draft card the model is shown the sender's words and a
+    short gist of each answer (the state is one block, ``card_line``); otherwise the
+    turns as they were, each stale question marked closed."""
+    if draft_mode:
+        from .history import for_model
+
+        return for_model(turns)
+    return close_stale_questions(turns, now)
 
 
 async def _outage(
@@ -201,7 +233,15 @@ async def run_agent_turn(
             await _safe(deps.message_logger.log_reply(correlation_id=correlation_id, reply=CANT_HEAR_REPLY))
             await _safe(deps.message_logger.mark_completed(correlation_id=correlation_id))
             return None
-        await _safe(deps.message_logger.update_body_text(correlation_id=correlation_id, body_text=user_text))
+        # WEB-37: the English too, for the Live report (when it says something else).
+        english = (translated or "").strip()
+        await _safe(
+            deps.message_logger.update_body_text(
+                correlation_id=correlation_id,
+                body_text=user_text,
+                translated_text=english if english and english != user_text else None,
+            )
+        )
         if deps.user_language_store is not None and language:
             await _safe(
                 deps.user_language_store.remember(
@@ -239,7 +279,8 @@ async def run_agent_turn(
 
     if is_what_can_you_do(user_text):
         # [68]: the commonest question has a fixed 3-line answer, no model needed.
-        reply = ReplySpec(text=what_can_you_do(language, script, user_text))
+        modules = await _context_line(deps.enabled_modules, actor)
+        reply = ReplySpec(text=what_can_you_do(language, script, user_text, modules))
         await deps.send_spec(reply, wa_id)
         if deps.on_conversational is not None:
             deps.on_conversational()
@@ -285,7 +326,7 @@ async def run_agent_turn(
         return None
 
     gateway = deps.make_gateway(message, language)
-    context = _context_of(actor, deps, pack, language, menu_hint, script)
+    context = _context_of(actor, deps, pack, language, menu_hint, script, getattr(gateway, "draft_mode", False) is True)
     # [68] / WA-36: read-only context lines, fetched together; a failure leaves one out.
     lines = await asyncio.gather(
         *(
@@ -303,17 +344,32 @@ async def run_agent_turn(
         open_work_line=lines[3],
         card_line=lines[4],
     )
-    later_items = await deps.later.get(actor) if deps.later is not None else []
+    # Request 136 (B): with draft cards what is still to do is a waiting line of the
+    # card, so the old "later" list is neither shown nor kept.
+    keeps_later = deps.later is not None and getattr(gateway, "draft_mode", False) is not True
+    later_items = await deps.later.get(actor) if keeps_later else []
     later_line = later.context_line(later_items)
     if later_line:
         context = replace(context, notes=[*context.notes, later_line])
     _lap(deps, "agent_context")
+    site_queue = await deps.site_wait.get(actor) if deps.site_wait is not None else []
+    if site_queue and getattr(gateway, "draft_mode", False) is True:
+        # WA-81: with draft cards "which site?" of a draft line is a question of the
+        # card; such a line is never held in the [111] queue (only what a card cannot
+        # hold, e.g. a transfer, still is), so nothing can be dropped there, or come back.
+        from .draft import DRAFT_TOOLS
+
+        kept = [item for item in site_queue if item.get("tool") not in DRAFT_TOOLS]
+        if kept != site_queue:
+            await _safe(deps.site_wait.put(actor, kept))
+            site_queue = kept
     result = await deps.runner.run(
         ctx=context,
         user_text=user_text,
         gateway=gateway,
         scope=_scope_of(actor),
         correlation_id=correlation_id,
+        **({"site_queue": site_queue} if site_queue else {}),
         **({"lap": deps.lap} if deps.lap is not None else {}),
         **({"after_tool": deps.after_tool} if deps.after_tool is not None else {}),
     )
@@ -324,11 +380,14 @@ async def run_agent_turn(
         # the message again cannot double-write.
         await asyncio.sleep(QUICK_RETRY_PAUSE_SECONDS)
         result = await deps.runner.run(
-            ctx=_context_of(actor, deps, pack, language, menu_hint, script),
+            ctx=_context_of(
+                actor, deps, pack, language, menu_hint, script, getattr(gateway, "draft_mode", False) is True
+            ),
             user_text=user_text,
             gateway=gateway,
             scope=_scope_of(actor),
             correlation_id=correlation_id,
+            **({"site_queue": site_queue} if site_queue else {}),
             **({"lap": deps.lap} if deps.lap is not None else {}),
             **({"after_tool": deps.after_tool} if deps.after_tool is not None else {}),
         )
@@ -340,6 +399,11 @@ async def run_agent_turn(
     reply = await _stock_lookup(result, user_text) or result.reply
     if _is_conversational(result):
         reply = await _guarded(reply, result, deps, message, user_text, context, gateway, actor, language, script)
+        if getattr(gateway, "draft_mode", False) is True and _NOT_UNDERSTOOD.search(reply.text or ""):
+            # WA-83 (live 27 Oct, M25): "I couldn't understand that" and nothing to copy.
+            # The one help follows it: the company's modules, examples in their language.
+            modules = await _context_line(deps.enabled_modules, actor)
+            reply = replace(reply, text=f"{reply.text}\n\n{what_can_you_do(language, script, user_text, modules)}")
         if deps.on_conversational is not None:
             deps.on_conversational()
     if deps.attach_receipt is not None:
@@ -355,7 +419,12 @@ async def run_agent_turn(
     _lap(deps, "agent_send")
     await _audit(message, gateway, reply, deps)
     await _trace_tools(message.correlation_id, result, deps)
-    if deps.later is not None:
+    await _trace_decisions(message.correlation_id, gateway, deps)
+    if deps.site_wait is not None and hasattr(result.toolbox, "site_queue_after"):
+        waiting = result.toolbox.site_queue_after()
+        if waiting != site_queue:
+            await _safe(deps.site_wait.put(actor, waiting))
+    if keeps_later:
         box = result.toolbox
         after = later.merged(
             later_items,
@@ -524,6 +593,24 @@ async def _trace_tools(correlation_id: str, result: AgentResult, deps: AgentTurn
     )
 
 
+async def _trace_decisions(correlation_id: str, gateway: Any, deps: AgentTurnDeps) -> None:
+    """Request 136 (C): for a draft_v2 turn, which component decided each line's
+    site, the lines and the reply (``JourneyGateway.decisions``), so a turn whose
+    site did not come from the site resolver, or whose words above a card were not
+    the code's, shows in `vps-agent-trace`. Names only, no message text."""
+    if deps.trace_logger is None or getattr(gateway, "draft_mode", False) is not True:
+        return
+    await _safe(
+        deps.trace_logger.log_stage(
+            correlation_id=correlation_id,
+            stage="draft_decisions",
+            stage_payload={"pipeline": "draft_v2", "decisions": list(getattr(gateway, "decisions", []) or [])},
+            duration_ms=None,
+            succeeded=True,
+        )
+    )
+
+
 def _lap(deps: AgentTurnDeps, name: str) -> None:
     if deps.lap is not None:
         deps.lap(name)
@@ -550,5 +637,11 @@ async def _audit(
                 site_id=handled.site_id,
             )
         )
+    # WEB-38: a question answered by a lookup is tied to it too, with the
+    # project and site it was about, so the Live page can show it.
+    for instance, project_id, site_id in getattr(gateway, "answered", []) or []:
+        if instance:
+            tasks.append(log.link_workflow_instance(correlation_id=correlation_id, workflow_instance_id=instance))
+        tasks.append(log.update_context(correlation_id=correlation_id, project_id=project_id, site_id=site_id))
     tasks.append(log.mark_completed(correlation_id=correlation_id))
     await asyncio.gather(*tasks, return_exceptions=True)

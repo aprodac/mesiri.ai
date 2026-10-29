@@ -115,6 +115,7 @@ async def world():
         await conn.execute(text("DELETE FROM fact_reviews WHERE organization_id = :o"), {"o": o})
         for table in ("material_movements", "material_receipts", "material_usage"):
             await conn.execute(text(f"DELETE FROM {table} WHERE organization_id = :o"), {"o": o})  # noqa: S608
+        await conn.execute(text("DELETE FROM material_invoices WHERE organization_id = :o"), {"o": o})
         await conn.execute(text("DELETE FROM organizations WHERE id = :o"), {"o": o})
     await db.disconnect()
 

@@ -1,681 +1,284 @@
 import * as React from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import {
-  Search,
-  Plus,
-  Trash2,
-  Edit2,
-  FolderLock,
-  MessageSquare,
-  SlidersHorizontal,
-  UserCheck,
-  UserX,
-  Building2,
-  ExternalLink,
-  ChevronDown,
-  Loader2,
-} from 'lucide-react'
+import { FolderLock, MessageSquare, MessageSquareOff, MoreHorizontal, Pencil, Plus, Search, Trash2, UserCheck, UserX, Users as UsersIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Avatar } from '@/components/ui/avatar'
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from '@/components/ui/table'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu'
-import {
-  fetchUsers,
-  deleteUser,
-  updateUserStatus,
-  updateUserAccess,
-  type User,
-  type AccessPolicy,
-} from '@/lib/api'
-import { fetchProjects } from '@/lib/projects'
-import { BulkActionBar } from '@/components/ui/bulk-action-bar'
-import {
-  AddEditUserDialog,
-  AccessManagerDialog,
-  WhatsAppManagerDialog,
-} from '@/components/user-dialogs'
-import type { ProjectItem } from '@/lib/scope-types'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { useToast } from '@/components/ui/toast-notification'
+import { Callout, PageError, PageHeader } from '@/components/dpr-page'
+import { AccessManagerDialog, AddEditUserDialog, WhatsAppManagerDialog } from '@/components/user-dialogs'
+import { deleteUser, fetchUsers, updateUserStatus, type User } from '@/lib/api'
+import { roleLabel, type Role } from '@/lib/permissions'
+import { CHIP } from '@/lib/site-day'
+import { apiErrorMessage } from '@/lib/logo-upload'
+import { usePageTitle } from '@/lib/page-title'
+import { useUrlState } from '@/lib/url-state'
+import { FilterSelect } from '@/components/filter-select'
 import { useReadOnly } from '@/lib/trial'
-import { roleLabel } from '@/lib/permissions'
+import { cn } from '@/lib/utils'
+import { initials, projectAccessText, useMemberships } from '@/lib/team'
 
-const ROLE_BADGES = {
-  ADMIN: 'destructive',
-  PROJECT_MANAGER: 'default',
-  SITE_ENGINEER: 'secondary',
-  FINANCE: 'outline',
-} as const
+// WEB-28: the team as rows that say, for each person, what matters for
+// Mesiri to work -- the projects they reach and whether they have a
+// WhatsApp number to report from. No count tiles, no bulk delete.
+
+const ROLES: Role[] = ['ADMIN', 'PROJECT_MANAGER', 'SITE_ENGINEER', 'FINANCE']
+const SHORT_ROLE: Record<Role, string> = { ADMIN: 'Admins', PROJECT_MANAGER: 'Managers', SITE_ENGINEER: 'Engineers', FINANCE: 'Finance' }
+
+type Dialogs =
+  | { kind: 'edit'; user: User | null }
+  | { kind: 'access'; user: User }
+  | { kind: 'whatsapp'; user: User }
+  | { kind: 'status'; user: User }
+  | { kind: 'delete'; user: User }
+  | null
 
 export default function Users() {
-  // Free trial over: saves are refused, so don't offer them (SS-15).
   const readOnly = useReadOnly()
+  const toast = useToast()
   const queryClient = useQueryClient()
-  const [search, setSearch] = React.useState('')
-  const [roleFilter, setRoleFilter] = React.useState('ALL')
-  const [statusFilter, setStatusFilter] = React.useState('ALL')
-  const [whatsappFilter, setWhatsappFilter] = React.useState('ALL')
-  const [projectFilter, setProjectFilter] = React.useState('ALL')
-  const [sortBy, setSortBy] = React.useState<'name' | 'role' | 'status'>('name')
-  const [selectedIds, setSelectedIds] = React.useState<string[]>([])
-  
-  // Dialog Open States
-  const [addEditOpen, setAddEditOpen] = React.useState(false)
-  const [selectedUserForEdit, setSelectedUserForEdit] = React.useState<User | null>(null)
-  
-  const [accessOpen, setAccessOpen] = React.useState(false)
-  const [selectedUserForAccess, setSelectedUserForAccess] = React.useState<User | null>(null)
+  usePageTitle('Team')
+  const [search, setSearch] = useUrlState<string>('q', '')
+  const [role, setRole] = useUrlState<string>('role', 'ALL')
+  const [show, setShow] = useUrlState<'active' | 'inactive'>('show', 'active')
+  const [dialog, setDialog] = React.useState<Dialogs>(null)
 
-  const [whatsappOpen, setWhatsappOpen] = React.useState(false)
-  const [selectedUserForWhatsapp, setSelectedUserForWhatsapp] = React.useState<User | null>(null)
-
-  // Advanced filters expansion
-  const [showAdvanced, setShowAdvanced] = React.useState(false)
-
-  // Fetch Users
-  const { data: users = [], isLoading, isError, error } = useQuery<User[]>({
-    queryKey: ['users-list'],
-    queryFn: fetchUsers,
-  })
-
-  // Fetch Projects for filtering
-  const { data: projects = [] } = useQuery<ProjectItem[]>({
-    queryKey: ['filter-projects-list'],
-    queryFn: fetchProjects,
-  })
-
-  // Mutations
-  const deleteMutation = useMutation({
-    mutationFn: deleteUser,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users-list'] })
-      setSelectedIds([])
-    },
-    onError: (err: any) => {
-      alert(err.response?.data?.detail || 'Failed to delete user.')
-    },
-  })
+  const query = useQuery<User[]>({ queryKey: ['users-list'], queryFn: fetchUsers })
+  const memberships = useMemberships()
+  const users = React.useMemo(() => query.data ?? [], [query.data])
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['users-list'] })
+    queryClient.invalidateQueries({ queryKey: ['project-members-count'] })
+  }
 
   const statusMutation = useMutation({
-    mutationFn: ({ userId, status }: { userId: string; status: string }) =>
-      updateUserStatus(userId, status),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users-list'] })
+    mutationFn: ({ user, status }: { user: User; status: string }) => updateUserStatus(user.id, status),
+    onSuccess: (_, { user, status }) => {
+      toast.success(status === 'active' ? 'Active again' : 'Deactivated', status === 'active' ? `${user.full_name} can use Mesiri again.` : `${user.full_name} can no longer use the dashboard or send updates.`)
+      setDialog(null)
+      refresh()
     },
-    onError: (err: any) => {
-      alert(err.response?.data?.detail || 'Failed to update user status.')
+    onError: (err) => toast.error('Could not change', apiErrorMessage(err)),
+  })
+  const deleteMutation = useMutation({
+    mutationFn: (user: User) => deleteUser(user.id),
+    onSuccess: (_, user) => {
+      toast.success('Deleted', `${user.full_name} is removed from the team.`)
+      setDialog(null)
+      refresh()
     },
+    onError: (err) => toast.error('Could not delete', apiErrorMessage(err)),
   })
 
-  const accessBulkMutation = useMutation({
-    mutationFn: ({ userId, policy }: { userId: string; policy: AccessPolicy }) =>
-      updateUserAccess(userId, policy),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users-list'] })
-    },
-  })
+  const isActive = (u: User) => u.status === 'active' || u.status === 'invited'
+  const active = users.filter(isActive)
+  const inactive = users.length - active.length
+  const noWhatsApp = active.filter((u) => !u.whatsapp_number)
+  const roleCounts = ROLES.map((r) => ({ r, n: users.filter((u) => u.role === r && (show === 'active') === isActive(u)).length })).filter((x) => x.n > 0)
+  const visible = users
+    .filter((u) => (show === 'active') === isActive(u))
+    .filter((u) => role === 'ALL' || u.role === role)
+    .filter((u) => {
+      const q = search.trim().toLowerCase()
+      return !q || [u.full_name, u.email, u.whatsapp_number].some((v) => v?.toLowerCase().includes(q))
+    })
+    .sort((a, b) => a.full_name.localeCompare(b.full_name))
 
-  // Filtered & Sorted list
-  const filteredUsers = React.useMemo(() => {
-    return users
-      .filter((u) => {
-        // Text search (name, email, whatsapp)
-        const matchText =
-          u.full_name.toLowerCase().includes(search.toLowerCase()) ||
-          u.email.toLowerCase().includes(search.toLowerCase()) ||
-          (u.whatsapp_number && u.whatsapp_number.includes(search))
-        if (!matchText) return false
-
-        // Role Filter
-        if (roleFilter !== 'ALL' && u.role !== roleFilter) return false
-
-        // Status Filter
-        if (statusFilter !== 'ALL' && u.status !== statusFilter) return false
-
-        // WhatsApp Filter
-        if (whatsappFilter !== 'ALL') {
-          const hasWhatsapp = !!u.whatsapp_number
-          if (whatsappFilter === 'MAPPED' && !hasWhatsapp) return false
-          if (whatsappFilter === 'UNMAPPED' && hasWhatsapp) return false
-        }
-
-        // Project Filter
-        if (projectFilter !== 'ALL') {
-          const policy = u.access_policy
-          if (!policy) return false
-          if (policy.mode === 'all_projects') return true
-          const hasProject = policy.projects?.some((p) => p.projectId === projectFilter)
-          if (!hasProject) return false
-        }
-
-        return true
-      })
-      .sort((a, b) => {
-        if (sortBy === 'name') return a.full_name.localeCompare(b.full_name)
-        if (sortBy === 'role') return a.role.localeCompare(b.role)
-        if (sortBy === 'status') return a.status.localeCompare(b.status)
-        return 0
-      })
-  }, [users, search, roleFilter, statusFilter, whatsappFilter, projectFilter, sortBy])
-
-  // Count summaries
-  const stats = React.useMemo(() => {
-    const total = users.length
-    const active = users.filter((u) => u.status === 'active').length
-    const inactive = users.filter((u) => u.status === 'inactive' || u.status === 'suspended').length
-    const withWa = users.filter((u) => !!u.whatsapp_number).length
-    const withoutWa = total - withWa
-
-    return { total, active, inactive, withWa, withoutWa }
-  }, [users])
-
-  // Selection handlers
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedIds(filteredUsers.map((u) => u.id))
-    } else {
-      setSelectedIds([])
-    }
-  }
-
-  const handleSelectRow = (userId: string, checked: boolean) => {
-    if (checked) {
-      setSelectedIds((prev) => [...prev, userId])
-    } else {
-      setSelectedIds((prev) => prev.filter((id) => id !== userId))
-    }
-  }
-
-  // Bulk operations
-  const handleBulkStatus = async (status: 'active' | 'inactive') => {
-    if (confirm(`Change status to ${status} for ${selectedIds.length} users?`)) {
-      for (const id of selectedIds) {
-        await statusMutation.mutateAsync({ userId: id, status })
-      }
-      setSelectedIds([])
-    }
-  }
-
-  const handleBulkDelete = async () => {
-    if (confirm(`Permanently delete ${selectedIds.length} selected users? This action is irreversible.`)) {
-      for (const id of selectedIds) {
-        await deleteMutation.mutateAsync(id)
-      }
-      setSelectedIds([])
-    }
-  }
-
-  const handleBulkAssignProject = async (projectId: string) => {
-    if (confirm(`Assign project to ${selectedIds.length} selected users?`)) {
-      for (const id of selectedIds) {
-        const targetUser = users.find((u) => u.id === id)
-        if (!targetUser) continue
-        const policy = targetUser.access_policy || { mode: 'custom_projects', projects: [] }
-        
-        // Skip if already assigned or in all_projects mode
-        if (policy.mode === 'all_projects') continue
-        const alreadyAssigned = policy.projects?.some((p) => p.projectId === projectId)
-        if (alreadyAssigned) continue
-
-        const updatedProjects = [...(policy.projects || []), { projectId, siteAccess: { mode: 'all_sites' as const } }]
-        await accessBulkMutation.mutateAsync({
-          userId: id,
-          policy: { ...policy, projects: updatedProjects } as AccessPolicy,
-        })
-      }
-      setSelectedIds([])
-    }
-  }
-
-  const clearFilters = () => {
-    setSearch('')
-    setRoleFilter('ALL')
-    setStatusFilter('ALL')
-    setWhatsappFilter('ALL')
-    setProjectFilter('ALL')
-    setSortBy('name')
+  if (query.isError) {
+    return <PageError message="The team could not be loaded." onRetry={() => query.refetch()} back={{ to: '/today', label: 'Back to Today' }} />
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Page Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">Team</h1>
-          <p className="text-xs text-muted-foreground">
-            Everyone in your company who uses Mesiri: their role, the projects they can see, and their WhatsApp number.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {!readOnly && (
-          <Button
-            size="sm"
-            onClick={() => {
-              setSelectedUserForEdit(null)
-              setAddEditOpen(true)
-            }}
-            className="h-8 gap-1.5"
-          >
-            <Plus className="size-4" />
-            Add User
-          </Button>
-          )}
-        </div>
-      </div>
-
-      {/* User Summary Widget */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5 border border-border/60 bg-muted/5 p-3 rounded">
-        <div>
-          <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Total Users
-          </span>
-          <span className="text-lg font-bold font-mono">{stats.total}</span>
-        </div>
-        <div>
-          <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Active Users
-          </span>
-          <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400 font-mono">
-            {stats.active}
-          </span>
-        </div>
-        <div>
-          <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Inactive / Suspended
-          </span>
-          <span className="text-lg font-bold text-rose-600 dark:text-rose-400 font-mono">
-            {stats.inactive}
-          </span>
-        </div>
-        <div>
-          <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            WhatsApp added
-          </span>
-          <span className="text-lg font-bold text-primary font-mono">{stats.withWa}</span>
-        </div>
-        <div>
-          <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            No WhatsApp yet
-          </span>
-          <span className="text-lg font-bold text-muted-foreground font-mono">{stats.withoutWa}</span>
-        </div>
-      </div>
-
-      {/* Search and Filters Toolbar */}
-      <div className="flex flex-col gap-3 border border-border/60 p-3 rounded">
-        <div className="flex flex-col md:flex-row gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search name, email, phone, or WhatsApp..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-9"
-            />
-          </div>
-          <div className="flex gap-2">
-            <Select value={roleFilter} onValueChange={setRoleFilter}>
-              <SelectTrigger className="w-[140px] h-9">
-                <SelectValue placeholder="All Roles" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Roles</SelectItem>
-                <SelectItem value="ADMIN">Admin / Director</SelectItem>
-                <SelectItem value="PROJECT_MANAGER">Project Manager</SelectItem>
-                <SelectItem value="SITE_ENGINEER">Site Engineer</SelectItem>
-                <SelectItem value="FINANCE">Finance</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[140px] h-9">
-                <SelectValue placeholder="All Statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Statuses</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
-                <SelectItem value="suspended">Suspended</SelectItem>
-                <SelectItem value="invited">Invited</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="h-9 text-xs gap-1.5"
-            >
-              <SlidersHorizontal className="size-3.5" />
-              Advanced
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8 sm:px-2">
+      <PageHeader
+        title="Team"
+        subtitle={query.isLoading ? 'Loading…' : `${active.length} ${active.length === 1 ? 'person' : 'people'}${inactive ? ` · ${inactive} deactivated` : ''}`}
+        actions={
+          !readOnly && (
+            <Button size="sm" className="gap-1.5 font-semibold" onClick={() => setDialog({ kind: 'edit', user: null })}>
+              <Plus className="size-4" /> Add person
             </Button>
-            {(search || roleFilter !== 'ALL' || statusFilter !== 'ALL' || whatsappFilter !== 'ALL' || projectFilter !== 'ALL') && (
-              <Button variant="ghost" size="sm" onClick={clearFilters} className="h-9 text-xs">
-                Clear
-              </Button>
-            )}
-          </div>
-        </div>
+          )
+        }
+      />
 
-        {/* Expandable Advanced Filters */}
-        {showAdvanced && (
-          <div className="grid gap-3 border-t pt-3 grid-cols-1 sm:grid-cols-3">
-            <div className="grid gap-1">
-              <label className="text-[10px] uppercase font-semibold text-muted-foreground">WhatsApp Link</label>
-              <Select value={whatsappFilter} onValueChange={setWhatsappFilter}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="WhatsApp Link" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">All Mappings</SelectItem>
-                  <SelectItem value="MAPPED">WhatsApp added</SelectItem>
-                  <SelectItem value="UNMAPPED">No WhatsApp yet</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-1">
-              <label className="text-[10px] uppercase font-semibold text-muted-foreground">Project Access</label>
-              <Select value={projectFilter} onValueChange={setProjectFilter}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Project Access" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">All Projects</SelectItem>
-                  {projects.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-1">
-              <label className="text-[10px] uppercase font-semibold text-muted-foreground">Sort Table By</label>
-              <Select value={sortBy} onValueChange={(val) => setSortBy(val as any)}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Sort By" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="name">Name</SelectItem>
-                  <SelectItem value="role">Role</SelectItem>
-                  <SelectItem value="status">Status</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Main Data Table */}
-      {isLoading ? (
-        <div className="flex h-48 items-center justify-center text-sm text-muted-foreground gap-2">
-          <Loader2 className="size-4 animate-spin text-primary" />
-          Loading users directory...
-        </div>
-      ) : isError ? (
-        <div className="bg-destructive/10 border border-destructive text-destructive text-xs p-4 rounded text-center">
-          Failed to load users: {error instanceof Error ? error.message : 'Unknown API error.'}
-        </div>
-      ) : filteredUsers.length === 0 ? (
-        <div className="border border-dashed p-12 text-center text-sm text-muted-foreground rounded-lg">
-          No users match the active search query or filter parameters.
-        </div>
-      ) : (
-        <div className="border border-border/60 rounded overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/10">
-                <TableHead className="w-12 px-4">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.length === filteredUsers.length}
-                    onChange={(e) => handleSelectAll(e.target.checked)}
-                    className="rounded border-border/80 text-primary focus:ring-primary size-4"
-                  />
-                </TableHead>
-                <TableHead>User</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Projects</TableHead>
-                <TableHead>WhatsApp Number</TableHead>
-                <TableHead>Account Status</TableHead>
-                <TableHead className="w-20 text-right pr-4">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredUsers.map((user) => {
-                const isSelected = selectedIds.includes(user.id)
-                const mappedProjectCount = user.access_policy?.projects?.length ?? 0
-                const isAllProjects = user.access_policy?.mode === 'all_projects'
-
-                return (
-                  <TableRow key={user.id} data-state={isSelected ? 'selected' : undefined}>
-                    <TableCell className="px-4">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={(e) => handleSelectRow(user.id, e.target.checked)}
-                        className="rounded border-border/80 text-primary focus:ring-primary size-4"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2.5">
-                        <Avatar className="size-8 rounded-full border border-border bg-muted flex items-center justify-center text-xs font-semibold text-muted-foreground">
-                          {user.full_name.substring(0, 2).toUpperCase()}
-                        </Avatar>
-                        <div className="flex flex-col">
-                          <Link
-                            to={`/users/${user.id}`}
-                            className="font-medium text-foreground hover:underline flex items-center gap-1"
-                          >
-                            {user.full_name}
-                            <ExternalLink className="size-3 text-muted-foreground/60" />
-                          </Link>
-                          <span className="text-[11px] text-muted-foreground">{user.email}</span>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={ROLE_BADGES[user.role] || 'secondary'} className="text-[10px] rounded-sm px-1.5 py-0">
-                        {roleLabel(user.role)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {isAllProjects ? (
-                        <span className="font-semibold text-primary">All Projects</span>
-                      ) : mappedProjectCount > 0 ? (
-                        <span>{mappedProjectCount} Assigned</span>
-                      ) : (
-                        <span className="italic text-muted-foreground/60">No access</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {user.whatsapp_number ? (
-                        <div className="flex items-center gap-1.5 text-foreground">
-                          <MessageSquare className="size-3 text-emerald-500" />
-                          {user.whatsapp_number}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground/40 italic">Not Added</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={user.status === 'active' ? 'default' : 'outline'}
-                        className={`text-[10px] rounded-sm px-1.5 py-0 ${
-                          user.status === 'active'
-                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-none'
-                            : 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-none'
-                        }`}
-                      >
-                        {user.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right pr-4">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="size-8 p-0">
-                            <ChevronDown className="size-4 text-muted-foreground" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-40">
-                          <DropdownMenuItem onClick={() => {
-                            setSelectedUserForEdit(user)
-                            setAddEditOpen(true)
-                          }}>
-                            <Edit2 className="size-3.5 mr-2" />
-                            Edit Profile
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => {
-                            setSelectedUserForAccess(user)
-                            setAccessOpen(true)
-                          }}>
-                            <FolderLock className="size-3.5 mr-2" />
-                            Manage Access
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => {
-                            setSelectedUserForWhatsapp(user)
-                            setWhatsappOpen(true)
-                          }}>
-                            <MessageSquare className="size-3.5 mr-2" />
-                            Manage WhatsApp
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          {user.status === 'active' ? (
-                            <DropdownMenuItem
-                              onClick={() =>
-                                statusMutation.mutate({ userId: user.id, status: 'inactive' })
-                              }
-                            >
-                              <UserX className="size-3.5 mr-2 text-rose-500" />
-                              Deactivate
-                            </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem
-                              onClick={() =>
-                                statusMutation.mutate({ userId: user.id, status: 'active' })
-                              }
-                            >
-                              <UserCheck className="size-3.5 mr-2 text-emerald-500" />
-                              Activate
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem
-                            onClick={async () => {
-                              if (
-                                confirm(
-                                  `Are you sure you want to permanently delete user "${user.full_name}"?`
-                                )
-                              ) {
-                                deleteMutation.mutate(user.id)
-                              }
-                            }}
-                            className="text-destructive hover:bg-destructive/10"
-                          >
-                            <Trash2 className="size-3.5 mr-2" />
-                            Delete User
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        </div>
+      {noWhatsApp.length > 0 && (
+        <Callout tone="draft" icon={MessageSquareOff}>
+          <strong className="font-semibold">
+            {noWhatsApp.length === 1 ? `${noWhatsApp[0].full_name} has` : `${noWhatsApp.length} people have`} no WhatsApp number
+          </strong>
+          <span className="hidden sm:inline"> and can't send updates from site. Add it from the ⋯ menu.</span>
+        </Callout>
       )}
 
-      {/* Bulk Operations Sticky Toolbar */}
-      <BulkActionBar selectedCount={selectedIds.length} onClear={() => setSelectedIds([])}>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => handleBulkStatus('active')}
-          className="h-8 text-xs text-emerald-600 dark:text-emerald-400 gap-1"
-        >
-          <UserCheck className="size-3.5" />
-          Activate
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => handleBulkStatus('inactive')}
-          className="h-8 text-xs text-rose-600 dark:text-rose-400 gap-1"
-        >
-          <UserX className="size-3.5" />
-          Deactivate
-        </Button>
-
-        {/* Quick bulk project assigner */}
-        {projects.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
-                <Building2 className="size-3.5" />
-                Assign Project
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="max-h-48 overflow-y-auto">
-              {projects.map((p) => (
-                <DropdownMenuItem key={p.id} onClick={() => handleBulkAssignProject(p.id)}>
-                  {p.name}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:w-64">
+          <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+          <Input placeholder="Search name, email or number…" aria-label="Search the team" value={search} onChange={(e) => setSearch(e.target.value)} className="h-9 pl-8" />
+        </div>
+        {/* WEB-40: dropdowns, like the other filters. */}
+        {roleCounts.length > 1 && (
+          <FilterSelect<string>
+            label="Role"
+            value={role}
+            onChange={setRole}
+            icon={UsersIcon}
+            className="h-9 w-[180px]"
+            options={[{ value: 'ALL', label: 'Everyone' }, ...roleCounts.map(({ r, n }) => ({ value: r, label: `${SHORT_ROLE[r]} · ${n}` }))]}
+          />
         )}
+        {inactive > 0 && (
+          <FilterSelect<'active' | 'inactive'>
+            label="Show"
+            value={show}
+            onChange={setShow}
+            className="h-9 w-[160px]"
+            options={[
+              { value: 'active', label: 'Active' },
+              { value: 'inactive', label: `Deactivated · ${inactive}` },
+            ]}
+          />
+        )}
+      </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleBulkDelete}
-          className="h-8 text-xs text-destructive hover:bg-destructive/10 gap-1"
-        >
-          <Trash2 className="size-3.5" />
-          Delete Selected
-        </Button>
-      </BulkActionBar>
+      {query.isLoading ? (
+        <div className="flex flex-col gap-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-16 rounded-lg" />
+          ))}
+        </div>
+      ) : visible.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
+          <UsersIcon className="size-6 text-muted-foreground" aria-hidden="true" />
+          <p className="text-sm font-medium">{users.length === 0 ? 'No one on the team yet' : 'No one matches'}</p>
+        </div>
+      ) : (
+        <ul className="flex flex-col divide-y rounded-xl border">
+          {visible.map((user) => {
+            const access = memberships.loading
+              ? { text: '…', none: false }
+              : projectAccessText(user, memberships.byUser.get(user.id) ?? [], memberships.names)
+            return (
+              <li key={user.id} className="flex items-center gap-3 px-4 py-3">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground" aria-hidden="true">
+                  {initials(user.full_name)}
+                </span>
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <Link to={`/team/${user.id}`} className="font-semibold hover:underline">
+                      {user.full_name}
+                    </Link>
+                    <span className="text-sm text-muted-foreground">{roleLabel(user.role)}</span>
+                    {user.status !== 'active' && <span className={cn(CHIP, 'bg-muted text-muted-foreground')}>{user.status === 'invited' ? 'Invited' : 'Deactivated'}</span>}
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-sm">
+                    <span className={cn('inline-flex min-w-0 items-center gap-1.5', access.none ? 'text-draft' : 'text-muted-foreground')}>
+                      <FolderLock className="size-3.5 shrink-0" aria-hidden="true" />
+                      <span className="truncate">{access.text}</span>
+                    </span>
+                    <span className={cn('inline-flex items-center gap-1.5 tabular-nums', user.whatsapp_number ? 'text-muted-foreground' : 'text-draft')}>
+                      <MessageSquare className="size-3.5 shrink-0" aria-hidden="true" />
+                      {user.whatsapp_number ? `+${user.whatsapp_number.replace(/^\+/, '')}` : 'No WhatsApp number'}
+                    </span>
+                  </div>
+                </div>
+                {!readOnly && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="size-8 shrink-0" aria-label={`More for ${user.full_name}`}>
+                        <MoreHorizontal className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-52">
+                      <DropdownMenuItem onClick={() => setDialog({ kind: 'edit', user })}>
+                        <Pencil className="mr-2 size-3.5" /> Edit name, email, role
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setDialog({ kind: 'access', user })}>
+                        <FolderLock className="mr-2 size-3.5" /> Projects and sites
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setDialog({ kind: 'whatsapp', user })}>
+                        <MessageSquare className="mr-2 size-3.5" /> WhatsApp number
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => setDialog({ kind: 'status', user })}>
+                        {user.status === 'active' ? <UserX className="mr-2 size-3.5" /> : <UserCheck className="mr-2 size-3.5" />}
+                        {user.status === 'active' ? 'Deactivate' : 'Make active'}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDialog({ kind: 'delete', user })}>
+                        <Trash2 className="mr-2 size-3.5" /> Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
 
-      {/* Dialog Containers */}
+      <Dialog open={dialog?.kind === 'status' || dialog?.kind === 'delete'} onOpenChange={(open) => !open && setDialog(null)}>
+        <DialogContent className="sm:max-w-md">
+          {(dialog?.kind === 'status' || dialog?.kind === 'delete') && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-base font-semibold">
+                  {dialog.kind === 'delete'
+                    ? `Delete ${dialog.user.full_name}?`
+                    : dialog.user.status === 'active'
+                      ? `Deactivate ${dialog.user.full_name}?`
+                      : `Make ${dialog.user.full_name} active again?`}
+                </DialogTitle>
+                <DialogDescription>
+                  {dialog.kind === 'delete'
+                    ? 'They are removed from the team for good. What they reported stays on the reports. To pause someone instead, deactivate them.'
+                    : dialog.user.status === 'active'
+                      ? 'They can no longer use the dashboard, and messages from their WhatsApp number are not taken as updates. You can make them active again later.'
+                      : 'They can use the dashboard and send updates again.'}
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDialog(null)}>
+                  Cancel
+                </Button>
+                {dialog.kind === 'delete' ? (
+                  <Button variant="destructive" disabled={deleteMutation.isPending} onClick={() => deleteMutation.mutate(dialog.user)}>
+                    {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+                  </Button>
+                ) : (
+                  <Button
+                    variant={dialog.user.status === 'active' ? 'destructive' : 'default'}
+                    disabled={statusMutation.isPending}
+                    onClick={() => statusMutation.mutate({ user: dialog.user, status: dialog.user.status === 'active' ? 'inactive' : 'active' })}
+                  >
+                    {dialog.user.status === 'active' ? 'Deactivate' : 'Make active'}
+                  </Button>
+                )}
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <AddEditUserDialog
-        open={addEditOpen}
-        onOpenChange={setAddEditOpen}
-        user={selectedUserForEdit}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['users-list'] })}
+        open={dialog?.kind === 'edit'}
+        onOpenChange={(open) => !open && setDialog(null)}
+        user={dialog?.kind === 'edit' ? dialog.user : null}
+        onSuccess={refresh}
       />
-
       <AccessManagerDialog
-        open={accessOpen}
-        onOpenChange={setAccessOpen}
-        user={selectedUserForAccess}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['users-list'] })}
+        open={dialog?.kind === 'access'}
+        onOpenChange={(open) => !open && setDialog(null)}
+        user={dialog?.kind === 'access' ? dialog.user : null}
+        onSuccess={refresh}
       />
-
       <WhatsAppManagerDialog
-        open={whatsappOpen}
-        onOpenChange={setWhatsappOpen}
-        user={selectedUserForWhatsapp}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['users-list'] })}
+        open={dialog?.kind === 'whatsapp'}
+        onOpenChange={(open) => !open && setDialog(null)}
+        user={dialog?.kind === 'whatsapp' ? dialog.user : null}
+        onSuccess={refresh}
       />
     </div>
   )

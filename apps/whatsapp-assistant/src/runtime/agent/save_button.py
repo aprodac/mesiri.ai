@@ -82,6 +82,7 @@ _CODES: dict[str, str] = {
     "labour_report": "l",
     "material_receipt": "r",
     "material_usage": "u",
+    "progress_update": "p",  # request 137: continued work; undo only (runtime/day_facts.PROGRESS_UPDATE)
     "site_issue": "i",
 }
 _TYPES = {code: fact_type for fact_type, code in _CODES.items()}
@@ -171,6 +172,23 @@ def card_plan(
     return "legacy", []
 
 
+def card_site(actor: Any, handled_list: Iterable[Any], *, always: bool = False) -> str | None:
+    """SIT-11: the one site every entry of a card is for, named only for a
+    sender who has several (``always``: for the "✅ Saved" line, which names it
+    for everyone, request 116)."""
+    from .work_site import short_site_label
+
+    if not always and len(getattr(actor, "sites", None) or []) < 2:
+        return None
+    site_ids = {
+        str(getattr(getattr(getattr(h.result, "confirmed_action", None), "draft_action", None), "site_id", "") or "")
+        for h in handled_list
+        if getattr(h, "saved_draft", False)
+    }
+    site_ids.discard("")
+    return short_site_label(actor, next(iter(site_ids))) if len(site_ids) == 1 else None
+
+
 def tap_id(action: str, facts: list[tuple[str, uuid.UUID]]) -> str:
     return f"{TAP_PREFIX}{action}:" + ".".join(f"{_CODES[t]}{i.hex}" for t, i in facts)
 
@@ -196,17 +214,24 @@ def parse_tap(value: str) -> tuple[str, list[tuple[str, uuid.UUID]]] | None:
 
 
 def with_save_buttons(
-    spec: ReplySpec, facts: list[tuple[str, uuid.UUID]], *, save_title: str = SAVE_TITLE
+    spec: ReplySpec,
+    facts: list[tuple[str, uuid.UUID]],
+    *,
+    save_title: str = SAVE_TITLE,
+    site: str | None = None,
 ) -> ReplySpec:
     """The composed reply with Save / Cancel in place of Undo, and its
-    "Saved:" header saying the records still wait on the tap. Any other
+    "Saved:" header saying the records still wait on the tap (naming the
+    site when ``site`` is given). Any other
     choice it carried (the team-photo offer) stays after them."""
     # The system's line sits under the model's own words (WA-37), so the
     # header is the last one in the text, at the start of its line.
     before, found, after = spec.text.rpartition(SAVED_HEADER)
     text = spec.text
     if found and (not before or before.endswith("\n")):
-        text = before + TO_SAVE_HEADER + after
+        # SIT-11: a sender with several sites sees which one the entries are for.
+        header = f"{TO_SAVE_HEADER[:-1]} · {site}:" if site else TO_SAVE_HEADER
+        text = before + header + after
     others = [row for row in (spec.buttons or spec.list_rows or ()) if row.id != UNDO_ROW.id]
     rows = [
         ListRow(tap_id(SAVE, facts), save_title),
@@ -228,11 +253,25 @@ def question_as_text(spec: ReplySpec) -> ReplySpec:
     return replace(spec, text=f"{spec.text}\n\n{lines}", buttons=None, list_rows=None, list_button_label=None)
 
 
-def tap_reply(action: str, settled: Any) -> str:
+def saved_line(card: Any | None, facts: list[tuple[str, uuid.UUID]]) -> str:
+    """"✅ Saved · Green Villa, Kakkanad: Plastering 50 sq ft (completed)":
+    what the tap saved, from the card's own lines (request 116). The bare
+    "✅ Saved." when the card is gone or does not hold these entries."""
+    wanted = set(facts)
+    items = [i for i in (card.items if card else []) if i.fact in wanted and i.summary]
+    if not items:
+        return SAVED_DONE
+    what = "; ".join(i.summary for i in items)
+    site = getattr(card, "site", "") or ""
+    head = f"{SAVED_DONE[:-1]} · {site}: " if site else f"{SAVED_DONE[:-1]} · "
+    return head + what
+
+
+def tap_reply(action: str, settled: Any, card: Any | None = None, facts: list | None = None) -> str:
     """What the sender hears after tapping Save or Cancel."""
     lines = []
     if settled.done:
-        lines.append(SAVED_DONE if action == SAVE else CANCELLED_DONE)
+        lines.append((saved_line(card, facts or []) if facts else SAVED_DONE) if action == SAVE else CANCELLED_DONE)
     elif not settled.refused:
         lines.append(ALREADY_DONE)
     if settled.refused and not settled.done and len(settled.refused) == 1 and settled.refused[0] in REFUSED_ONE:
@@ -293,7 +332,7 @@ async def handle_tap(
         )
         if settled is None:
             return ReplySpec(text=EXPIRED)
-        lines.append(tap_reply(action, settled))
+        lines.append(tap_reply(action, settled, card, drafts))
     ran = not drafts
     for _kind, action_id in pending:
         if actions is None:

@@ -17,6 +17,8 @@ disallowed role.
 
 from __future__ import annotations
 
+from mesiri.authorization.roles import may_grant_role
+
 from .add_member_commands import AddProjectMemberCommand
 
 # Matches create_site_validation.py's _SITE_CREATE_ROLES exactly -- the same
@@ -36,4 +38,7 @@ def validate(cmd: AddProjectMemberCommand) -> list[str]:
         reasons.append("couldn't find who to add")
     if cmd.role.strip().upper() not in _KNOWN_MEMBER_ROLES:
         reasons.append("unrecognized project role")
+    elif cmd.created_by_role and not may_grant_role(cmd.created_by_role, cmd.role):
+        # WA-67 (audit SET-01): a project manager can't make an admin.
+        reasons.append("only an admin can give someone the admin or finance role")
     return reasons

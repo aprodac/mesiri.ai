@@ -39,3 +39,10 @@ company's chat (10 sends an hour), never to customers. Pushes only with every ch
 
 Until then the board still runs (the bot posts its findings in the team group) and Ilan Usman still wakes every 4 h.
 Off switch: `TEAMMATE_BOARD_MINUTES=0` on the bot; disable the scheduled task.
+
+## Watching and talking to a cloud job (request 139)
+
+After `@bot ok n` the work runs in a cloud session. The bot follows it from outside (commits on `main` naming `[n]`, `request n` or a tracker id, the CI / deploy runs, the request-log notes) and posts when a commit lands (`[n] pushed <sha>, deploy green/red`), when the session is quiet for 30 min, or when it deployed but never reported (`landed but didn't report`, item marked done). Sessions therefore end every payload with the reporting rules: `inbox.py item note <id> "<step>"` at each step, `[n]` in every commit message, `inbox.py item done <id> --ref <sha>` and a group post.
+
+- `@bot status` / `@bot status <n>`: running jobs / one job, answered by code (no AI turn, works under a usage limit).
+- `@bot tell <n> <message>` (owners): starts a follow-up session on the same routine with the plan, the work so far, the earlier link and the message. A running session can't be typed into; the follow-up pulls, reads the earlier commits and continues.

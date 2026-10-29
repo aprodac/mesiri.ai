@@ -32,6 +32,9 @@ class MaterialReceiptResponse(BaseModel):
     reverses_movement_id: uuid.UUID | None
     # BE-32: set on both halves of a transfer between sites.
     transfer_id: uuid.UUID | None = None
+    # WEB-35: the supplier invoice this purchase came from, so the ledger can
+    # open the document. Was stored but never returned, so the link never showed.
+    invoice_id: uuid.UUID | None = None
     # True when a correction has already been posted against THIS movement, so
     # the UI can hide "Correct" rather than offer an action that now 409s.
     # Absent on list endpoints (it needs a per-row lookup); only the detail
@@ -121,6 +124,8 @@ class MaterialCatalogListResponse(BaseModel):
 
 class MaterialLedgerEntryResponse(BaseModel):
     id: uuid.UUID
+    # WEB-36: the material_receipts / material_usage row this movement came from.
+    source_id: uuid.UUID | None = None
     direction: str
     movement_reason: str
     quantity: Decimal

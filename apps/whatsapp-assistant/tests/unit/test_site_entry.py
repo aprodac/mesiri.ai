@@ -29,6 +29,7 @@ from mesiri_contracts.assistant.enums import SemanticType
 from mesiri_contracts.assistant.planner_decision import WorkflowKey
 from runtime.agent.entry_base import Ready, Say
 from runtime.agent.site_entry import SiteEntry
+from runtime.agent.work_site import NIGHT_GRACE_HOURS
 
 
 class _Accounts:
@@ -226,7 +227,8 @@ async def test_a_site_less_entry_never_overwrites_todays_site():
     ready = await _prepare(entry, SemanticType.EXPENSE, amount=500, description="tea")
     await entry.remember(ready)
     (write,) = entry.active_context.writes
-    assert write["site_id"] == SITE and 60 <= write["ttl_seconds"] <= 24 * 3600
+    # Until the company's midnight plus the night grace, whatever the hour now.
+    assert write["site_id"] == SITE and 60 <= write["ttl_seconds"] <= (24 + NIGHT_GRACE_HOURS) * 3600
 
 
 async def test_todays_site_does_not_override_a_reply_to_another_record():
@@ -303,3 +305,105 @@ def test_the_open_work_line_names_each_activity_once():
     assert line.startswith("Open work at Tower A (Hospital Project) (started, not finished): ")
     assert "Plastering (2nd floor plastering); Plastering (3rd floor plastering)." in line
     assert render_open_work_line("Tower A", []) is None
+
+
+class _Units:
+    """The units list: only these spellings are known."""
+
+    KNOWN = {"sq ft": "sqft", "sqft": "sqft", "meters": "m"}
+
+    def __init__(self) -> None:
+        self.asked: list[str] = []
+
+    async def resolve_unit(self, text: str) -> dict[str, Any] | None:
+        self.asked.append(text)
+        code = self.KNOWN.get(text.strip().lower())
+        return {"code": code} if code else None
+
+
+async def test_wrk02_a_unit_the_list_does_not_know_is_asked_not_lost():
+    entry = _entry(catalog_query=_Units())
+    said = await _prepare(
+        entry, SemanticType.GENERAL_SITE_UPDATE,
+        narrative="plastering done", work_type="plastering", quantity=50, unit="furlongs",
+    )
+    assert isinstance(said, Say) and said.status == "choose" and said.awaiting == "unit"
+    assert "furlongs" in said.question and "sq ft" in said.options
+    # every option is itself a unit the list knows or resolves (they come back as the answer)
+    assert len(said.options) <= 10
+
+
+async def test_wrk02_a_known_unit_goes_straight_through_and_no_quantity_asks_nothing():
+    units = _Units()
+    ready = await _prepare(
+        _entry(catalog_query=units), SemanticType.GENERAL_SITE_UPDATE,
+        narrative="tiling", work_type="tiling", quantities=[{"work_type": "tiling", "quantity": 200, "unit": "sq ft"}],
+    )
+    assert isinstance(ready, Ready) and units.asked == ["sq ft"]
+    ready = await _prepare(_entry(catalog_query=units), SemanticType.GENERAL_SITE_UPDATE, narrative="tiling done", work_type="tiling")
+    assert isinstance(ready, Ready) and units.asked == ["sq ft"]
+
+
+async def test_wrk02_every_quantity_of_a_message_is_checked():
+    said = await _prepare(
+        _entry(catalog_query=_Units()), SemanticType.GENERAL_SITE_UPDATE,
+        narrative="tiling and wiring", work_type="tiling",
+        quantities=[{"work_type": "tiling", "quantity": 200, "unit": "sq ft"},
+                    {"work_type": "wiring", "quantity": 50, "unit": "reels"}],
+    )
+    assert isinstance(said, Say) and "reels" in said.question and "wiring" in said.question
+
+
+def test_wrk04_past_six_open_jobs_the_rest_are_counted_not_dropped():
+    from runtime.today_context import render_open_work_line
+
+    rows = [{"activity_id": f"a{i}", "work_type": f"job{i}", "narrative": f"job{i}"} for i in range(1, 10)]
+    line = render_open_work_line("Tower A", rows)
+    assert "Job6" in line and "Job7" not in line
+    assert "and 3 more open" in line
+    assert "more open" not in render_open_work_line("Tower A", rows[:6])
+
+
+def test_wrk05_with_no_site_chosen_the_open_work_is_shown_under_each_site():
+    from runtime.today_context import render_open_work_line
+
+    rows = [
+        {"activity_id": "a1", "site_id": "s1", "work_type": "plastering", "narrative": "plastering"},
+        {"activity_id": "a2", "site_id": "s2", "work_type": "wiring", "narrative": "wiring"},
+    ]
+    line = render_open_work_line(None, rows, site_names={"s1": "Site A", "s2": "Site B"})
+    assert "Site A: Plastering" in line and "Site B: Wiring" in line
+
+
+async def test_wrk04_the_seventh_job_is_continued_not_started_again():
+    candidates = [
+        {"activity_id": f"a{i}", "work_type": f"job{i}", "narrative": f"started job{i}"} for i in range(1, 9)
+    ]
+
+    class _Many:
+        async def find_open_activities(self, **kwargs: Any) -> list[dict[str, Any]]:
+            assert kwargs["limit"] >= 8 if "limit" in kwargs else True
+            return candidates
+
+    entry = _entry(activity_query=_Many())
+    entry.actor.organization_id = ORG
+    ready = await _prepare(entry, SemanticType.GENERAL_SITE_UPDATE, narrative="job7 finished", continues="job7")
+    assert ready.event.fields["activity_id"] == "a7"
+
+
+async def test_an_owner_with_one_site_is_never_asked_which_site():
+    """SS-18: the welcome screen waits for a new owner's first update. Signup
+    made one project with one site, so the update must land on it straight
+    away -- a "which site?" there would leave the screen waiting -- even when
+    the context layer resolved no site for the message."""
+    entry = _entry(context=_Context(site_id=None))
+    entry.actor.role = "ADMIN"
+    entry.actor.sites = [SimpleNamespace(id=SITE, name="Green Villa", project_id=PRJ)]
+
+    work = await _prepare(entry, SemanticType.GENERAL_SITE_UPDATE, narrative="slab shuttering done")
+    assert isinstance(work, Ready)
+    assert str(work.event.site_id) == SITE
+
+    issue = await _prepare(entry, SemanticType.SITE_ISSUE, issue_type="MATERIAL_SHORTAGE")
+    assert isinstance(issue, Ready)
+    assert str(issue.event.site_id) == SITE

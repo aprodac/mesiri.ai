@@ -29,6 +29,7 @@ Commands:
   item show <id>                      one request with its history
   item add <chat> <title> --type bug|feature|question|complaint|task [--from 6,7] [--summary S]
   item start <id> [--note N]          mark it in progress
+  item note <id> "<step>"             a progress note (the bot reads these as heartbeats, request 139)
   item done <id> --ref R [--note N]   mark it done; R = commit / PR, e.g. aprodac/MERCON#262
   item wontdo <id> --note N           close it without doing it, with the reason
   summary <chat>                      one group on a page: open and done requests
@@ -295,6 +296,13 @@ def _item(a: argparse.Namespace) -> None:
         i = _request("POST", "/items", body=body)["item"]
         print(f"logged {_item_line(i)}  in {i['chat_name']}")
         return
+    if a.action == "note":
+        text = a.note or " ".join(a.args[1:])
+        if not a.args or not a.args[0].isdigit() or not text.strip():
+            sys.exit('usage: item note <id> "<what you are doing>"')
+        i = _request("POST", f"/items/{a.args[0]}", body={"note": text.strip(), "project": PROJECT})["item"]
+        print(_item_line(i))
+        return
     if len(a.args) != 1 or not a.args[0].isdigit():
         sys.exit(f"usage: item {a.action} <id>")
     n = a.args[0]
@@ -379,7 +387,7 @@ def main() -> None:
     its.add_argument("--status", choices=["open", "in_progress", "done", "wont_do"])
     its.add_argument("--type", choices=["bug", "feature", "question", "complaint", "task"])
     itm = sub.add_parser("item")
-    itm.add_argument("action", choices=["show", "add", "start", "done", "wontdo"])
+    itm.add_argument("action", choices=["show", "add", "start", "note", "done", "wontdo"])
     itm.add_argument("args", nargs="*")
     itm.add_argument("--type", choices=["bug", "feature", "question", "complaint", "task"])
     itm.add_argument("--from", dest="source", help="message numbers, e.g. 6,7")

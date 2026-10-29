@@ -935,10 +935,15 @@ async def list_conversation_messages(
         WHERE im.organization_id = :org_id AND im.sender_wa_id = :wa_id AND im.assistant_reply IS NOT NULL
     """
 
+    # The newest `limit` messages, oldest first (WEB-35: ordering ASC before
+    # LIMIT showed a long chat's first 100 and never its latest).
     query_str = f"""
-        SELECT * FROM ({inbound_part} UNION ALL {outbound_part}) q
+        SELECT * FROM (
+            SELECT * FROM ({inbound_part} UNION ALL {outbound_part}) q
+            ORDER BY timestamp DESC
+            LIMIT :limit
+        ) newest
         ORDER BY timestamp ASC
-        LIMIT :limit
     """
 
     rows = (

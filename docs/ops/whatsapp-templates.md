@@ -58,6 +58,7 @@ Submitted on the **Mesiri** WhatsApp account (named Paraclete until 24 Oct) (ID 
 | `mesiri_site_day_review` | In review |
 | `mesiri_join_request` | In review |
 | `mesiri_ops_alert` | In review |
+| `mesiri_group_invite` | **Not submitted yet** (WA-87, 28 Oct): text below |
 | `mesiri_dpr_delivery` | In review |
 | `mesiri_dpr_optin` | In review (reworded, see above) |
 | `mesiri_login_code` | **Approved (Active)**. Refused at first ("does not have permission") because the business portfolio (StarShape, renamed Aprodac on 24 Oct) was not verified; verified as **APRODAC PRIVATE LIMITED** on 24 Oct (public-records match, director Mohammed Sahel), then submitted and approved at once. **Switched on 24 Oct**: `WHATSAPP_APPROVED_TEMPLATES=mesiri_login_code` on the server (sender: whatsapp) |
@@ -244,6 +245,27 @@ when nobody was reached the alert goes to the team WhatsApp group instead.
 Sample values: `{{1}}` = `worker`, `{{2}}` = `dpr.render_failed project=Skyline Towers`.
 
 To switch it on: add `mesiri_ops_alert` to `WHATSAPP_APPROVED_TEMPLATES`.
+
+### `mesiri_group_invite` — invite to a site's WhatsApp group (WA-87)
+
+Sent to each team member of a site when Mesiri creates the site's WhatsApp group, if they
+haven't messaged Mesiri in the last 24 hours (inside the window the invite goes as a normal
+message). It ends with the group's invite link.
+
+| Field | Value |
+| --- | --- |
+| Name | `mesiri_group_invite` |
+| Category | Utility |
+| Language | English (`en`) |
+| Header | None |
+| Body | `Hi {{1}}, {{2}} has a WhatsApp group with Mesiri for {{3}}. Send the day's work, photos and workers there and Mesiri saves them to the site. Join: {{4}}` |
+| Footer | `Sent by Mesiri` |
+| Buttons | None (the invite link is `{{4}}`; our template sender has no link buttons) |
+
+Sample values: `{{1}}` = `Ravi`, `{{2}}` = `Skyline Builders`, `{{3}}` = `Kakkanad site`,
+`{{4}}` = `https://chat.whatsapp.com/AbCdEfGhIjK1234567890`.
+
+To switch it on: add `mesiri_group_invite` to `WHATSAPP_APPROVED_TEMPLATES`.
 
 ## Who receives the DPR, and opt-in (BE-15)
 

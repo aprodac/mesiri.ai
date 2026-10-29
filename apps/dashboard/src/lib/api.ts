@@ -154,7 +154,8 @@ export interface User {
 
 export interface UserCreatePayload {
   full_name: string
-  email: string
+  /** Left out for someone who works on WhatsApp only (WEB-17). */
+  email?: string
   password?: string
   role: string
   whatsapp_number?: string | null
@@ -451,6 +452,11 @@ export interface GalleryItem {
   role?: string | null
   captured_at?: string | null
   created_at: string
+  /** Short-lived link to the photo (WEB-24); null when storage can't give one. */
+  url?: string | null
+  /** The work item's (or issue's) date and title (WEB-24). */
+  work_date?: string | null
+  parent_title?: string | null
 }
 
 export interface GalleryListResponse {
@@ -1682,6 +1688,11 @@ export interface SiteDayItem {
   work_items: number
   photos: number
   open_issues: number
+  /** The day's other entries (WEB-32): materials, issues raised that day,
+   * progress on work started earlier. */
+  materials: number
+  issues_today: number
+  progress_updates: number
   last_update_at: string | null
   last_update_by: string | null
   latest_update: string | null
@@ -1738,11 +1749,10 @@ export async function approveDailyReportApi(reportId: string, notes?: string): P
   await api.post(`/dpr/daily-reports/${reportId}/approve`, { notes })
 }
 
-/** Fetches the DPR PDF as a Blob -- GET /dpr/daily-reports/{id}/pdf serves
- * either the already-rendered Playwright artifact (if the nightly cron has
- * caught up) or an on-demand fpdf2 fallback, transparently to the caller. */
+/** Fetches the DPR PDF as a Blob -- the PDF WhatsApp sent when one exists,
+ * otherwise printed now from the same template (BE-47). */
 export async function fetchDailyReportPdfApi(reportId: string, versionId?: string): Promise<Blob> {
-  const res = await api.get(`/dpr/daily-reports/${reportId}/pdf`, {
+  const res = await api.get(`/dpr/daily-reports/${reportId}/document.pdf`, {
     responseType: 'blob',
     params: versionId ? { version_id: versionId } : undefined,
   })
@@ -1812,6 +1822,8 @@ export interface SiteDayDetail {
   day: SiteDayItem | null
   project: ProjectDayItem | null
   report: SiteDayReport
+  /** WA-77: the same report with unsaved entries in it (the Live page shows them as drafts). */
+  report_with_drafts?: SiteDayReport
   items: ReviewItem[]
   drafts: number
   versions: DprVersion[]
@@ -1933,6 +1945,10 @@ export interface FactSources {
     received_at: string | null
     sender_name: string | null
     sender_number: string | null
+    /** Where it came in: 'whatsapp', or 'dashboard' for Tell Mesiri (WEB-36). */
+    source?: string
+    /** A voice note's English, from the speech step (WEB-37); null for text. */
+    translated_text?: string | null
   }[]
   readings: {
     provider: string | null
@@ -1941,13 +1957,44 @@ export interface FactSources {
     extracted: Record<string, unknown>
     created_at: string | null
   }[]
-  photos: { url: string | null; mime_type: string | null; caption: string | null }[]
+  photos: {
+    /** id, when and who sent it (WEB-40); older APIs leave them out. */
+    id?: string
+    url: string | null
+    mime_type: string | null
+    caption: string | null
+    at?: string | null
+    by?: string | null
+  }[]
   history: { state: string; note: string | null; at: string | null; by: string | null }[]
 }
 
 export async function fetchFactSourcesApi(factType: FactType, factId: string): Promise<FactSources> {
   const res = await api.get<FactSources>(`/dpr/facts/${factType}/${factId}/sources`)
   return res.data
+}
+
+/** A question asked about a site and what Mesiri answered (WEB-37's Live report). */
+export interface SiteQuestion {
+  id: string
+  type: string
+  text: string | null
+  translated_text: string | null
+  reply: string | null
+  received_at: string | null
+  sender_name: string | null
+  source: string
+  /** What was asked about. Finance questions are never listed. */
+  kind: 'stock' | 'manpower' | 'work' | 'project' | 'report'
+  /** Asked about the whole project rather than this site. */
+  whole_project: boolean
+}
+
+export async function fetchSiteQuestionsApi(siteId: string, since: Date, until: Date): Promise<SiteQuestion[]> {
+  const res = await api.get<{ items: SiteQuestion[] }>(`/dpr/site-days/${siteId}/questions`, {
+    params: { since: since.toISOString(), until: until.toISOString() },
+  })
+  return res.data.items
 }
 
 /** Confirm one draft (BE-09). */
@@ -2058,6 +2105,10 @@ export interface SetupProgress {
   first_project: { id: string; name: string; send_time: string; auto_dpr?: boolean } | null
   effective_status: string
   trial_days_left: number | null
+  /** Mesiri's own WhatsApp number, for inviting people to send updates (SS-18). */
+  whatsapp_number?: string | null
+  /** "Hide for now", for the whole company until then (SS-19); null: showing. */
+  hidden_until?: string | null
 }
 
 export async function fetchSetupProgress(): Promise<SetupProgress> {
@@ -2072,9 +2123,111 @@ export async function confirmReportTime(): Promise<SetupProgress> {
   return res.data
 }
 
+/** Hide the getting-started card for the company for a week (SS-19). */
+export async function hideSetupCard(): Promise<SetupProgress> {
+  const res = await api.post<SetupProgress>('/company/setup-progress/hide')
+  return res.data
+}
+
+/** Bring it back (the sidebar's "Finish setup"). */
+export async function showSetupCard(): Promise<SetupProgress> {
+  const res = await api.post<SetupProgress>('/company/setup-progress/show')
+  return res.data
+}
+
 /** "Continue with Mesiri" after (or near the end of) the free trial (SS-08):
  * apps/whatsapp-assistant/src/trial/router.py. Owners only. */
 export async function requestContinue(): Promise<{ requested: boolean; already_requested: boolean }> {
   const res = await api.post('/company/trial/continue')
   return res.data
 }
+
+// ─── Analytics (WEB-24) ──────────────────────────────────────────────────────
+
+export interface AnalyticsDay {
+  day: string
+  workers: number
+  work_items: number
+  photos: number
+  issues: number
+  delay_minutes: number
+}
+
+export interface AnalyticsSummary {
+  date_from: string
+  date_to: string
+  days: AnalyticsDay[]
+  /** Open (or acknowledged) issues now, by type and severity. */
+  open_issues: { issue_type: string; severity: string; count: number }[]
+  /** Each active site: days it sent anything, days its site DPR was confirmed. */
+  sites: { site_id: string; site_name: string; project_name: string; days_with_updates: number; days_confirmed: number }[]
+}
+
+/** GET /dpr/analytics: aggregated over the whole range in SQL. */
+export async function fetchAnalyticsApi(params: {
+  dateFrom: string
+  dateTo: string
+  projectId?: string
+  siteId?: string
+}): Promise<AnalyticsSummary> {
+  const res = await api.get<AnalyticsSummary>('/dpr/analytics', {
+    params: { date_from: params.dateFrom, date_to: params.dateTo, project_id: params.projectId, site_id: params.siteId },
+  })
+  return res.data
+}
+
+// ─── The DPR as a document, live (WEB-27) ────────────────────────────────────
+
+/** The site DPR as the PDF will look (HTML), from the day as it stands now. */
+export async function fetchSiteDayDocumentApi(siteId: string, date: string): Promise<string> {
+  const res = await api.get<string>(`/dpr/site-days/${siteId}/document`, { params: { date }, responseType: 'text' })
+  return res.data
+}
+
+/** The project DPR as a document: as sent once it has gone out, else a preview. */
+export async function fetchProjectDayDocumentApi(projectId: string, date: string): Promise<string> {
+  const res = await api.get<string>(`/dpr/project-days/${projectId}/document`, { params: { date }, responseType: 'text' })
+  return res.data
+}
+
+// ─── Tell Mesiri from the dashboard (WEB-36) ─────────────────────────────────
+// apps/whatsapp-assistant/src/web_assistant/router.py: the same handler as a
+// WhatsApp message, as the signed-in user; Mesiri's replies come back here.
+
+export interface AssistantReplyOption {
+  id: string
+  title: string
+  description?: string | null
+}
+
+export interface AssistantReply {
+  type: 'text' | 'buttons' | 'list'
+  text: string
+  buttons: AssistantReplyOption[]
+  list_rows: AssistantReplyOption[]
+  button_label?: string | null
+}
+
+export interface AssistantResponse {
+  message_id: string
+  replies: AssistantReply[]
+  /** A voice note's words, as Mesiri heard them. */
+  transcript: string | null
+}
+
+/** Mesiri can take up to a minute (voice + model); the request waits for it. */
+const ASSISTANT_TIMEOUT_MS = 90_000
+
+export async function sendToMesiri(body: { text?: string; interactive_reply_id?: string }): Promise<AssistantResponse> {
+  const res = await api.post<AssistantResponse>('/assistant/messages', body, { timeout: ASSISTANT_TIMEOUT_MS })
+  return res.data
+}
+
+export async function sendVoiceToMesiri(audio: Blob): Promise<AssistantResponse> {
+  const res = await api.post<AssistantResponse>('/assistant/messages/voice', audio, {
+    headers: { 'Content-Type': 'audio/ogg' },
+    timeout: ASSISTANT_TIMEOUT_MS,
+  })
+  return res.data
+}
+

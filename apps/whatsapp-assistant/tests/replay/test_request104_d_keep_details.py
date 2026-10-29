@@ -240,10 +240,14 @@ def test_up_to_twenty_are_listed_and_the_rest_are_counted():
 def test_the_search_counts_open_and_acknowledged():
     import inspect
 
+    from mesiri.application.dpr import open_issues
     from runtime import activity_search_service
 
-    source = inspect.getsource(activity_search_service)
-    assert '.in_(["OPEN", "ACKNOWLEDGED"])' in source
+    # Request 127: by the one open-issue rule the DPR counts by too.
+    assert open_issues.OPEN_STATUSES == ("OPEN", "ACKNOWLEDGED")
+    sql = open_issues.open_issue_sql("site_issues")
+    assert "'OPEN', 'ACKNOWLEDGED'" in sql and "Question for your engineer:" in sql and "fact_reviews" in sql
+    assert "open_issues.open_issue_sql(" in inspect.getsource(activity_search_service)
 
 
 # -- a question ends the reply: no card is left looking saved ------------------------

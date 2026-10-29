@@ -221,7 +221,7 @@ def test_the_pdf_shows_the_summary_under_the_header_escaped():
     )
     assert "Summary" in html
     assert "18 workers &lt;b&gt;on&lt;/b&gt; site." in html
-    assert html.index('class="summary"') < html.index("Activities Logged")
+    assert html.index('class="summary"') < html.index('class="meta"')
 
 
 def test_no_summary_block_without_a_summary():

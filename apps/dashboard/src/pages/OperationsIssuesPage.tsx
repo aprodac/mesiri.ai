@@ -1,6 +1,6 @@
 import * as React from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { ShieldAlert, Search, Plus, RefreshCw, CheckCircle2, Check } from 'lucide-react'
+import { Search, Plus, RefreshCw, CheckCircle2, Check, TriangleAlert } from 'lucide-react'
+import { CircleDot as IcCircleDot, Siren as IcSiren, Clock as IcClock } from 'lucide-react'
 import { useScope } from '@/lib/ScopeContext'
 import {
   fetchSiteIssuesApi,
@@ -8,6 +8,7 @@ import {
   resolveSiteIssueApi,
   acknowledgeSiteIssueApi,
   wontFixSiteIssueApi,
+  fetchUsers,
   type SiteIssueItem,
 } from '@/lib/api'
 import { useToast } from '@/components/ui/toast-notification'
@@ -15,10 +16,16 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { useQuery } from '@tanstack/react-query'
+import { Sheet, SheetContent, SheetFooter, SheetTitle } from '@/components/ui/sheet'
+import { ByLine, Fact, Facts, SheetHero, SheetSection } from '@/components/detail-sheet'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Callout, PageHeader, StatStrip } from '@/components/dpr-page'
+import { ROW_ACCENT } from '@/lib/cues'
+import { useSiteNames } from '@/lib/site-names'
+import { useUrlState } from '@/lib/url-state'
+import { plural } from '@/lib/site-day'
 import { cn } from '@/lib/utils'
-import { fetchSites } from '@/lib/projects'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -93,23 +100,40 @@ function openFor(occurredAt: string): string {
   return days === 1 ? '1 day' : `${days} days`
 }
 
+// WEB-37: an open issue turns amber after a day and red after three, so
+// what has been left waiting stands out.
+function ageClass(occurredAt: string): string {
+  const days = (Date.now() - new Date(occurredAt).getTime()) / 86_400_000
+  return days >= 3 ? 'font-medium text-destructive' : days >= 1 ? 'font-medium text-draft' : ''
+}
+
+/** The row's left stripe: its severity while open, none once closed. */
+function severityAccent(item: SiteIssueItem): string {
+  if (isClosed(item.status)) return ROW_ACCENT.none
+  const sev = item.severity.toUpperCase()
+  return sev === 'CRITICAL' ? ROW_ACCENT.bad : sev === 'HIGH' ? ROW_ACCENT.warn : sev === 'MEDIUM' ? ROW_ACCENT.info : ROW_ACCENT.none
+}
+
 // ─── Main Operations Issues Page ───────────────────────────────────────────────
 
 export default function OperationsIssuesPage() {
   const { scope } = useScope()
   const toast = useToast()
 
+  const names = useSiteNames()
   const [issues, setIssues] = React.useState<SiteIssueItem[]>([])
+  const [loadError, setLoadError] = React.useState<boolean>(false)
   // The server's count of every matching issue. `issues` holds one page
   // (limit 100), so counting that array under-reports the moment a site
   // passes 100 issues -- silently, and only on the busiest sites.
   const [totalCount, setTotalCount] = React.useState<number>(0)
   const [loading, setLoading] = React.useState<boolean>(true)
 
-  // Filters
-  const [searchQuery, setSearchQuery] = React.useState<string>('')
-  const [statusFilter, setStatusFilter] = React.useState<string>(ACTIVE_FILTER)
-  const [severityFilter, setSeverityFilter] = React.useState<string>('ALL')
+  // Filters live in the address (WEB-26).
+  const [searchQuery, setSearchQuery] = useUrlState<string>('q', '')
+  const [statusFilter, setStatusFilter] = useUrlState<string>('status', ACTIVE_FILTER)
+  const [severityFilter, setSeverityFilter] = useUrlState<string>('severity', 'ALL')
+  const [newSiteId, setNewSiteId] = React.useState<string>('')
 
   // Modals
   const [createDialogOpen, setCreateDialogOpen] = React.useState<boolean>(false)
@@ -141,6 +165,7 @@ export default function OperationsIssuesPage() {
 
   const loadIssues = React.useCallback(async () => {
     setLoading(true)
+    setLoadError(false)
     try {
       const res = await fetchSiteIssuesApi({
         projectId: scopeFilter.projectId,
@@ -152,8 +177,10 @@ export default function OperationsIssuesPage() {
       setIssues(res.items || [])
       setTotalCount(res.total ?? (res.items || []).length)
     } catch {
+      // Not "nothing is stuck": a failed load must not look like good news.
       setIssues([])
       setTotalCount(0)
+      setLoadError(true)
     } finally {
       setLoading(false)
     }
@@ -195,57 +222,47 @@ export default function OperationsIssuesPage() {
     }
   }, [issues])
 
-  // Site names: the issues API returns ids only. One sites call per project
-  // that appears in the list, cached by react-query.
-  const projectIdsInList = React.useMemo(
-    () => Array.from(new Set(issues.map((i) => i.project_id))).sort(),
-    [issues]
-  )
-  const { data: siteNames = {} } = useQuery<Record<string, string>>({
-    queryKey: ['issue-site-names', projectIdsInList],
-    enabled: projectIdsInList.length > 0,
-    queryFn: async () => {
-      const perProject = await Promise.all(
-        projectIdsInList.map((projectId) => fetchSites(projectId).catch(() => []))
-      )
-      const names: Record<string, string> = {}
-      for (const sites of perProject) {
-        for (const site of sites) names[site.id] = site.name
-      }
-      return names
-    },
-  })
-  const siteLabel = (item: SiteIssueItem) => siteNames[item.site_id] || '—'
+  const siteLabel = (item: SiteIssueItem) => names.get(item.site_id)?.name || '—'
 
-  const scopeLabel = React.useMemo(() => {
-    if (scope.mode === 'portfolio') return 'Portfolio Scope (All Projects)'
-    if (scope.mode === 'project') return `Project Scope: ${scope.projectName}`
-    return `Site Scope: ${scope.projectName} / ${scope.siteName}`
-  }, [scope])
+  const scopeLabel =
+    scope.mode === 'portfolio' ? 'All projects' : scope.mode === 'project' ? scope.projectName : `${scope.projectName} / ${scope.siteName}`
+  // Sites the issue can be reported on: the scope's site, else every site in view.
+  const siteChoices = React.useMemo(
+    () =>
+      [...names.entries()]
+        .filter(([id, n]) => (activeSiteId ? id === activeSiteId : !activeProjectId || n.projectId === activeProjectId))
+        .sort(([, x], [, y]) => (x.project + x.name).localeCompare(y.project + y.name)),
+    [names, activeSiteId, activeProjectId],
+  )
+  const openCreate = () => {
+    setNewSiteId(activeSiteId || (siteChoices.length === 1 ? siteChoices[0][0] : ''))
+    setCreateDialogOpen(true)
+  }
 
   const handleCreateIssue = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!activeProjectId || !activeSiteId) {
-      toast.error('Project & Site Scope Required', 'Please select a specific Site scope in the header scope switcher before creating an issue.')
+    const site = names.get(newSiteId)
+    if (!site) {
+      toast.error('Pick a site', 'Choose which site the issue is on.')
       return
     }
 
     setSubmitting(true)
     try {
       await createSiteIssueApi({
-        project_id: activeProjectId,
-        site_id: activeSiteId,
+        project_id: site.projectId,
+        site_id: newSiteId,
         issue_type: newIssueType,
         severity: newSeverity,
         narrative: newNarrative,
         delay_duration_minutes: parseInt(newDelayMins, 10) || 0,
       })
-      toast.success('Site Blocker Reported', 'Issue successfully recorded in database and assigned to site team.')
+      toast.success('Issue reported', `${humanizeIssueType(newIssueType)} on ${site.name} is now open.`)
       setCreateDialogOpen(false)
       setNewNarrative('')
       loadIssues()
     } catch {
-      toast.error('Failed to Create Issue', 'Could not record site issue. Please try again.')
+      toast.error('Could not report the issue', 'Please try again.')
     } finally {
       setSubmitting(false)
     }
@@ -256,13 +273,13 @@ export default function OperationsIssuesPage() {
     setSubmitting(true)
     try {
       await resolveSiteIssueApi(selectedIssue.id, resolutionNotes)
-      toast.success('Blocker Resolved', `Issue ${selectedIssue.id.slice(0, 8)} marked as RESOLVED.`)
+      toast.success('Issue resolved', `${humanizeIssueType(selectedIssue.issue_type)} on ${siteLabel(selectedIssue)} is closed.`)
       setResolveDialogOpen(false)
       setSelectedIssue(null)
       setResolutionNotes('')
       loadIssues()
     } catch {
-      toast.error('Resolution Failed', 'Could not resolve issue. Please try again.')
+      toast.error('Could not resolve the issue', 'Please try again.')
     } finally {
       setSubmitting(false)
     }
@@ -271,10 +288,10 @@ export default function OperationsIssuesPage() {
   const handleAcknowledgeIssue = async (issue: SiteIssueItem) => {
     try {
       await acknowledgeSiteIssueApi(issue.id)
-      toast.success('Issue Acknowledged', `Issue ${issue.id.slice(0, 8)} marked as ACKNOWLEDGED.`)
+      toast.success('Acknowledged', `${humanizeIssueType(issue.issue_type)} on ${siteLabel(issue)}.`)
       loadIssues()
     } catch {
-      toast.error('Acknowledge Failed', 'Could not acknowledge issue. Please try again.')
+      toast.error('Could not acknowledge', 'Please try again.')
     }
   }
 
@@ -283,84 +300,64 @@ export default function OperationsIssuesPage() {
     setSubmitting(true)
     try {
       await wontFixSiteIssueApi(selectedIssue.id, resolutionNotes)
-      toast.success('Marked as Won\'t Fix', `Issue ${selectedIssue.id.slice(0, 8)} closed as WONT_FIX.`)
+      toast.success("Closed as won't fix", `${humanizeIssueType(selectedIssue.issue_type)} on ${siteLabel(selectedIssue)}.`)
       setWontFixDialogOpen(false)
       setSelectedIssue(null)
       setResolutionNotes('')
       loadIssues()
     } catch {
-      toast.error('Update Failed', 'Could not update issue. Please try again.')
+      toast.error('Could not close the issue', 'Please try again.')
     } finally {
       setSubmitting(false)
     }
   }
 
+  const filtered = statusFilter !== ACTIVE_FILTER || severityFilter !== 'ALL' || !!searchQuery
+
   return (
-    <div className="flex flex-col gap-5 w-full max-w-full relative pb-12">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8 sm:px-2">
+      <PageHeader
+        title="Issues"
+        subtitle={<>What's stuck, most severe first · {scopeLabel}</>}
+        actions={
+          <>
+            <Button size="sm" className="gap-1.5 font-semibold" onClick={openCreate}>
+              <Plus className="size-4" /> Report issue
+            </Button>
+            <Button variant="ghost" size="icon" className="size-8" onClick={loadIssues} disabled={loading} title="Refresh" aria-label="Refresh">
+              <RefreshCw className={cn('size-4', loading && 'animate-spin')} />
+            </Button>
+          </>
+        }
+      />
 
-      {/* ── Page Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <p className="text-sm text-muted-foreground">{scopeLabel}</p>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">What's stuck</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={loadIssues}
-            disabled={loading}
-            className="h-9 gap-1.5"
-            aria-label="Refresh issues"
-          >
-            <RefreshCw className={cn('size-4', loading && 'animate-spin')} />
-            Refresh
-          </Button>
-          <Button size="sm" className="h-9 gap-1.5 font-semibold" onClick={() => setCreateDialogOpen(true)}>
-            <Plus className="size-4" />
-            Report issue
-          </Button>
-        </div>
-      </div>
+      <StatStrip
+        stats={[
+          { label: 'Open', value: stats.openCount || '—', tone: stats.openCount > 0 ? 'warn' : 'good', icon: IcCircleDot, hint: stats.openCount ? 'not closed yet' : 'nothing stuck' },
+          { label: 'High or critical', value: stats.urgentOpenCount || '—', tone: stats.urgentOpenCount > 0 ? 'bad' : 'default', icon: IcSiren, hint: stats.urgentOpenCount ? 'deal with these first' : 'none' },
+          { label: 'Time lost', value: stats.openMinutesLost ? formatDuration(stats.openMinutesLost) : '—', tone: stats.openMinutesLost ? 'warn' : 'default', icon: IcClock, hint: 'by open issues' },
+        ]}
+      />
 
-      {/* ── Summary ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="rounded-xl border bg-card px-5 py-4 flex flex-col gap-1">
-          <span className="text-sm text-muted-foreground">Open issues</span>
-          <span className="text-3xl font-bold">{stats.openCount}</span>
-        </div>
-        <div className="rounded-xl border bg-card px-5 py-4 flex flex-col gap-1">
-          <span className="text-sm text-muted-foreground">High or critical, still open</span>
-          <span className={cn('text-3xl font-bold', stats.urgentOpenCount > 0 && 'text-draft')}>
-            {stats.urgentOpenCount}
-          </span>
-        </div>
-        <div className="rounded-xl border bg-card px-5 py-4 flex flex-col gap-1">
-          <span className="text-sm text-muted-foreground">Time lost to open issues</span>
-          <span className="text-3xl font-bold">{formatDuration(stats.openMinutesLost)}</span>
-        </div>
-      </div>
-
-      {/* ── Filters ── */}
-      <div className="flex flex-col sm:flex-row flex-wrap gap-2.5 items-stretch sm:items-center">
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:w-64">
+          <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
           <Input
-            placeholder="Search issues"
+            placeholder="Search issues…"
             aria-label="Search issues"
             value={searchQuery}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
-            className="pl-9 h-10"
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-9 pl-8"
           />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="h-10 w-full sm:w-44" aria-label="Status">
-            <SelectValue placeholder="Status" />
+          <SelectTrigger className="h-9 w-[170px]" aria-label="Status">
+            <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ACTIVE_FILTER}>Open (not closed)</SelectItem>
-            <SelectItem value="ALL">All statuses</SelectItem>
-            <SelectItem value="OPEN">Open, not acknowledged</SelectItem>
+            <SelectItem value="ALL">Any status</SelectItem>
+            <SelectItem value="OPEN">Not acknowledged yet</SelectItem>
             <SelectItem value="ACKNOWLEDGED">Acknowledged</SelectItem>
             <SelectItem value="RESOLVED">Resolved</SelectItem>
             <SelectItem value="WONT_FIX">Won't fix</SelectItem>
@@ -368,120 +365,114 @@ export default function OperationsIssuesPage() {
           </SelectContent>
         </Select>
         <Select value={severityFilter} onValueChange={setSeverityFilter}>
-          <SelectTrigger className="h-10 w-full sm:w-40" aria-label="Severity">
-            <SelectValue placeholder="Severity" />
+          <SelectTrigger className="h-9 w-[140px]" aria-label="Severity">
+            <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="ALL">All severities</SelectItem>
+            <SelectItem value="ALL">Any severity</SelectItem>
             <SelectItem value="CRITICAL">Critical</SelectItem>
             <SelectItem value="HIGH">High</SelectItem>
             <SelectItem value="MEDIUM">Medium</SelectItem>
             <SelectItem value="LOW">Low</SelectItem>
           </SelectContent>
         </Select>
-        <span className="text-sm text-muted-foreground sm:ml-auto">
-          {filteredIssues.length} shown · {totalCount} recorded
+        <span className="ml-auto text-sm text-muted-foreground">
+          {filteredIssues.length === totalCount ? plural(totalCount, 'issue') : `${filteredIssues.length} of ${totalCount}`}
         </span>
       </div>
 
-      {/* ── Issues ── */}
-      {filteredIssues.length === 0 ? (
-        <div className="rounded-xl border bg-card p-12 text-center flex flex-col items-center gap-2">
-          <CheckCircle2 className="size-8 text-success" aria-hidden="true" />
-          <p className="text-base font-semibold">
-            {statusFilter === ACTIVE_FILTER ? 'Nothing is stuck right now' : 'No issues match these filters'}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Issues reported on WhatsApp or here appear in this list.
-          </p>
+      {loadError ? (
+        <Callout
+          tone="draft"
+          icon={TriangleAlert}
+          action={
+            <Button variant="outline" size="sm" className="bg-background" onClick={loadIssues}>
+              Try again
+            </Button>
+          }
+        >
+          The issues could not be loaded.
+        </Callout>
+      ) : loading && issues.length === 0 ? (
+        <div className="flex flex-col gap-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-14 rounded-lg" />
+          ))}
+        </div>
+      ) : filteredIssues.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
+          <CheckCircle2 className="size-6 text-success" aria-hidden="true" />
+          <p className="text-sm font-medium">{filtered ? 'No issues match these filters' : 'Nothing is stuck right now'}</p>
+          <p className="text-sm text-muted-foreground">Issues reported on WhatsApp or here show up in this list.</p>
         </div>
       ) : (
-        <div className="rounded-xl border bg-card overflow-x-auto">
-          <Table className="min-w-[760px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="text-xs font-semibold text-muted-foreground">Issue</TableHead>
-                <TableHead className="text-xs font-semibold text-muted-foreground">Site</TableHead>
-                <TableHead className="text-xs font-semibold text-muted-foreground">Severity</TableHead>
-                <TableHead className="text-xs font-semibold text-muted-foreground">Open for</TableHead>
-                <TableHead className="text-xs font-semibold text-muted-foreground">Time lost</TableHead>
-                <TableHead className="text-xs font-semibold text-muted-foreground">Status</TableHead>
-                <TableHead className="text-right text-xs font-semibold text-muted-foreground">
-                  <span className="sr-only">Actions</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody className="text-sm">
-              {filteredIssues.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="max-w-[320px]">
-                    <button
-                      type="button"
-                      className="flex flex-col items-start gap-0.5 text-left hover:underline"
-                      onClick={() => {
-                        setSelectedIssue(item)
-                        setInspectSheetOpen(true)
-                      }}
-                    >
-                      <span className="font-semibold">{humanizeIssueType(item.issue_type)}</span>
-                      {item.narrative && (
-                        <span className="text-xs text-muted-foreground line-clamp-1">{item.narrative}</span>
+        <ul className="flex flex-col divide-y overflow-hidden rounded-xl border px-4">
+          {filteredIssues.map((item) => {
+            const closed = isClosed(item.status)
+            return (
+              <li key={item.id} className={cn('-mx-4 flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-4', severityAccent(item), closed && 'opacity-70')}>
+                <div className="flex min-w-0 flex-1 items-start gap-3">
+                  <span className="mt-0.5 w-[68px] shrink-0">{getSeverityBadge(item.severity)}</span>
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-col items-start text-left"
+                    onClick={() => {
+                      setSelectedIssue(item)
+                      setInspectSheetOpen(true)
+                    }}
+                  >
+                    <span className="font-medium hover:underline">{humanizeIssueType(item.issue_type)}</span>
+                    {item.narrative && <span className="line-clamp-1 text-sm text-muted-foreground">{item.narrative}</span>}
+                    <span className="text-xs text-muted-foreground">
+                      {siteLabel(item)}
+                      {!closed && (
+                        <>
+                          {' · '}
+                          <span className={ageClass(item.occurred_at)}>open {openFor(item.occurred_at).toLowerCase()}</span>
+                        </>
                       )}
-                    </button>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap">{siteLabel(item)}</TableCell>
-                  <TableCell>{getSeverityBadge(item.severity)}</TableCell>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">
-                    {isClosed(item.status) ? 'Closed' : openFor(item.occurred_at)}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    {item.delay_duration_minutes ? formatDuration(item.delay_duration_minutes) : '—'}
-                  </TableCell>
-                  <TableCell>{getStatusBadge(item.status)}</TableCell>
-                  <TableCell className="text-right">
-                    {!isClosed(item.status) && (
-                      <div className="flex items-center justify-end gap-1.5">
-                        {item.status.toUpperCase() === 'OPEN' && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8"
-                            onClick={() => handleAcknowledgeIssue(item)}
-                          >
-                            Acknowledge
-                          </Button>
-                        )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 gap-1"
-                          onClick={() => {
-                            setSelectedIssue(item)
-                            setResolveDialogOpen(true)
-                          }}
-                        >
-                          <Check className="size-3.5" />
-                          Resolve
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 text-muted-foreground"
-                          onClick={() => {
-                            setSelectedIssue(item)
-                            setWontFixDialogOpen(true)
-                          }}
-                        >
-                          Won't fix
-                        </Button>
-                      </div>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+                      {item.delay_duration_minutes ? ` · ${formatDuration(item.delay_duration_minutes)} lost` : ''}
+                    </span>
+                  </button>
+                </div>
+                <div className="flex shrink-0 flex-wrap items-center gap-1.5 pl-[80px] sm:pl-0">
+                  {getStatusBadge(item.status)}
+                  {!closed && item.status.toUpperCase() === 'OPEN' && (
+                    <Button variant="ghost" size="sm" onClick={() => handleAcknowledgeIssue(item)}>
+                      Acknowledge
+                    </Button>
+                  )}
+                  {!closed && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1"
+                        onClick={() => {
+                          setSelectedIssue(item)
+                          setResolveDialogOpen(true)
+                        }}
+                      >
+                        <Check className="size-3.5" /> Resolve
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-muted-foreground"
+                        onClick={() => {
+                          setSelectedIssue(item)
+                          setWontFixDialogOpen(true)
+                        }}
+                      >
+                        Won't fix
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </li>
+            )
+          })}
+        </ul>
       )}
 
       {/* ── Report Issue Dialog ── */}
@@ -489,82 +480,94 @@ export default function OperationsIssuesPage() {
         <DialogContent className="sm:max-w-md">
           <form onSubmit={handleCreateIssue}>
             <DialogHeader>
-              <DialogTitle className="text-base font-bold flex items-center gap-2">
-                <ShieldAlert className="size-5 text-draft" />
-                Report Site Blocker / Issue
-              </DialogTitle>
-              <DialogDescription className="text-xs">
-                Record an operational issue or site delay for audit & resolution.
-              </DialogDescription>
+              <DialogTitle className="text-base font-semibold">Report an issue</DialogTitle>
+              <DialogDescription>Something stopping or slowing work on a site.</DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-3.5 py-4 text-xs">
+            <div className="space-y-3.5 py-4 text-sm">
               <div className="space-y-1">
-                <label className="font-bold text-foreground">Issue Type</label>
+                <label className="font-medium" htmlFor="issue-site">
+                  Site
+                </label>
+                <Select value={newSiteId} onValueChange={setNewSiteId}>
+                  <SelectTrigger id="issue-site" className="h-9">
+                    <SelectValue placeholder="Pick a site" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {siteChoices.map(([id, n]) => (
+                      <SelectItem key={id} value={id}>
+                        {n.name} · {n.project}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <label className="font-medium">What kind of issue</label>
                 <Select value={newIssueType} onValueChange={setNewIssueType}>
                   <SelectTrigger className="h-9 text-xs">
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="WEATHER">WEATHER</SelectItem>
-                    <SelectItem value="MATERIAL_SHORTAGE">MATERIAL_SHORTAGE</SelectItem>
-                    <SelectItem value="LABOUR_SHORTAGE">LABOUR_SHORTAGE</SelectItem>
-                    <SelectItem value="DRAWING_PENDING">DRAWING_PENDING</SelectItem>
-                    <SelectItem value="EQUIPMENT_BREAKDOWN">EQUIPMENT_BREAKDOWN</SelectItem>
-                    <SelectItem value="INSPECTION_WAITING">INSPECTION_WAITING</SelectItem>
-                    <SelectItem value="ACCESS">ACCESS</SelectItem>
-                    <SelectItem value="SAFETY">SAFETY (accident, injury)</SelectItem>
-                    <SelectItem value="QUALITY">QUALITY (leakage, seepage, crack)</SelectItem>
-                    <SelectItem value="OTHER">OTHER</SelectItem>
+                    <SelectItem value="WEATHER">Weather</SelectItem>
+                    <SelectItem value="MATERIAL_SHORTAGE">Material shortage</SelectItem>
+                    <SelectItem value="LABOUR_SHORTAGE">Labour shortage</SelectItem>
+                    <SelectItem value="DRAWING_PENDING">Drawing pending</SelectItem>
+                    <SelectItem value="EQUIPMENT_BREAKDOWN">Equipment breakdown</SelectItem>
+                    <SelectItem value="INSPECTION_WAITING">Waiting for inspection</SelectItem>
+                    <SelectItem value="ACCESS">Site access</SelectItem>
+                    <SelectItem value="SAFETY">Safety (accident, injury)</SelectItem>
+                    <SelectItem value="QUALITY">Quality (leakage, seepage, crack)</SelectItem>
+                    <SelectItem value="OTHER">Other</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="font-bold text-foreground">Severity</label>
+                  <label className="font-medium">Severity</label>
                   <Select value={newSeverity} onValueChange={setNewSeverity}>
                     <SelectTrigger className="h-9 text-xs">
                       <SelectValue placeholder="Severity" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="LOW">LOW</SelectItem>
-                      <SelectItem value="MEDIUM">MEDIUM</SelectItem>
-                      <SelectItem value="HIGH">HIGH</SelectItem>
-                      <SelectItem value="CRITICAL">CRITICAL</SelectItem>
+                      <SelectItem value="LOW">Low</SelectItem>
+                      <SelectItem value="MEDIUM">Medium</SelectItem>
+                      <SelectItem value="HIGH">High</SelectItem>
+                      <SelectItem value="CRITICAL">Critical</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-bold text-foreground">Delay (Minutes)</label>
+                  <label className="font-medium">Time lost (minutes)</label>
                   <Input
                     type="number"
                     value={newDelayMins}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewDelayMins(e.target.value)}
-                    className="h-9 text-xs font-mono"
+                    className="h-9"
                     placeholder="30"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="font-bold text-foreground">Narrative Description</label>
+                <label className="font-medium">What happened</label>
                 <textarea
                   value={newNarrative}
                   onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewNarrative(e.target.value)}
-                  placeholder="Describe the cause of delay, affected location, and equipment involved..."
-                  className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-xs shadow-2xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-24"
+                  placeholder="e.g. Cement not delivered, slab pour moved to tomorrow"
+                  className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-2xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-24"
                 />
               </div>
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setCreateDialogOpen(false)} className="h-8 text-xs">
+              <Button type="button" variant="outline" onClick={() => setCreateDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={submitting} className="h-9 font-semibold">
-                {submitting ? 'Reporting...' : 'Submit Blocker Report'}
+              <Button type="submit" disabled={submitting || !newSiteId} className="font-semibold">
+                {submitting ? 'Reporting…' : 'Report issue'}
               </Button>
             </DialogFooter>
           </form>
@@ -575,37 +578,34 @@ export default function OperationsIssuesPage() {
       <Dialog open={resolveDialogOpen} onOpenChange={setResolveDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-base font-bold flex items-center gap-2">
-              <CheckCircle2 className="size-5 text-success" />
-              Resolve Site Blocker
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              Mark issue {selectedIssue?.id.slice(0, 8)} as RESOLVED.
+            <DialogTitle className="text-base font-semibold">Resolve this issue?</DialogTitle>
+            <DialogDescription>
+              {selectedIssue ? `${humanizeIssueType(selectedIssue.issue_type)} on ${siteLabel(selectedIssue)}` : ''} is closed as fixed.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 py-3 text-xs">
+          <div className="space-y-3 py-3 text-sm">
             <div className="p-3 rounded-lg bg-muted/20 border text-muted-foreground">
-              <strong>Narrative:</strong> {selectedIssue?.narrative || 'No narrative provided'}
+              {selectedIssue?.narrative || 'No description'}
             </div>
 
             <div className="space-y-1">
-              <label className="font-bold text-foreground">Resolution Notes</label>
+              <label className="font-medium">How was it fixed? (optional)</label>
               <textarea
                 value={resolutionNotes}
                 onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setResolutionNotes(e.target.value)}
-                placeholder="Explain how the blocker was cleared (e.g. Pump replaced, weather cleared)..."
-                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-xs shadow-2xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-20"
+                placeholder="e.g. Pump replaced, cement arrived"
+                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-2xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-20"
               />
             </div>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setResolveDialogOpen(false)} className="h-8 text-xs">
+            <Button variant="outline" onClick={() => setResolveDialogOpen(false)}>
               Cancel
             </Button>
-            <Button disabled={submitting} onClick={handleResolveIssue} className="h-9 font-semibold">
-              {submitting ? 'Resolving...' : 'Confirm Resolution'}
+            <Button disabled={submitting} onClick={handleResolveIssue} className="font-semibold">
+              {submitting ? 'Resolving…' : 'Resolve'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -615,70 +615,137 @@ export default function OperationsIssuesPage() {
       <Dialog open={wontFixDialogOpen} onOpenChange={setWontFixDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-base font-bold flex items-center gap-2">
-              <ShieldAlert className="size-5 text-muted-foreground" />
-              Mark as Won't Fix
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              Close issue {selectedIssue?.id.slice(0, 8)} without resolving it (e.g. no longer relevant).
-            </DialogDescription>
+            <DialogTitle className="text-base font-semibold">Close without fixing?</DialogTitle>
+            <DialogDescription>For an issue that no longer matters. It is closed, not marked fixed.</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 py-3 text-xs">
+          <div className="space-y-3 py-3 text-sm">
             <div className="p-3 rounded-lg bg-muted/20 border text-muted-foreground">
-              <strong>Narrative:</strong> {selectedIssue?.narrative || 'No narrative provided'}
+              {selectedIssue?.narrative || 'No description'}
             </div>
 
             <div className="space-y-1">
-              <label className="font-bold text-foreground">Reason</label>
+              <label className="font-medium">Why</label>
               <textarea
                 value={resolutionNotes}
                 onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setResolutionNotes(e.target.value)}
                 placeholder="Explain why this issue will not be fixed..."
-                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-xs shadow-2xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-20"
+                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-2xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-20"
               />
             </div>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setWontFixDialogOpen(false)} className="h-8 text-xs">
+            <Button variant="outline" onClick={() => setWontFixDialogOpen(false)}>
               Cancel
             </Button>
-            <Button disabled={submitting} onClick={handleWontFixIssue} className="h-8 text-xs font-bold bg-zinc-700 text-white hover:bg-zinc-800">
-              {submitting ? 'Updating...' : "Confirm Won't Fix"}
+            <Button disabled={submitting} onClick={handleWontFixIssue} variant="secondary" className="font-semibold">
+              {submitting ? 'Closing…' : "Close as won't fix"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* ── Inspection Sheet ── */}
+      {/* ── Inspection Sheet (WEB-36: the side-panel layout, detail-sheet.tsx) ── */}
       <Sheet open={inspectSheetOpen} onOpenChange={setInspectSheetOpen}>
-        <SheetContent className="sm:max-w-md overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle className="text-sm font-bold flex items-center gap-2">
-              <ShieldAlert className="size-4 text-draft" />
-              {selectedIssue ? humanizeIssueType(selectedIssue.issue_type) : null}
-            </SheetTitle>
-            <SheetDescription className="text-[11px]">
-              ID: {selectedIssue?.id}
-            </SheetDescription>
-          </SheetHeader>
-
-          <div className="space-y-4 pt-4 text-xs">
-            <div className="p-3 rounded-lg border bg-muted/10 space-y-1">
-              <span className="font-bold block">Description</span>
-              <p className="text-muted-foreground leading-relaxed">{selectedIssue?.narrative || 'No description'}</p>
-            </div>
-
-            {selectedIssue?.resolution_notes && (
-              <div className="p-3 rounded-lg bg-success-soft space-y-1">
-                <span className="font-semibold text-success block">Resolution Notes</span>
-                <p className="text-foreground">{selectedIssue.resolution_notes}</p>
-              </div>
-            )}
-          </div>
+        <SheetContent className="w-full gap-0 overflow-y-auto p-0 sm:max-w-md">
+          {selectedIssue ? (
+            <IssuePanel
+              issue={selectedIssue}
+              site={siteLabel(selectedIssue)}
+              // Each closes the panel: the list reloads with the new status.
+              onAcknowledge={() => {
+                setInspectSheetOpen(false)
+                handleAcknowledgeIssue(selectedIssue)
+              }}
+              onResolve={() => {
+                setInspectSheetOpen(false)
+                setResolveDialogOpen(true)
+              }}
+              onWontFix={() => {
+                setInspectSheetOpen(false)
+                setWontFixDialogOpen(true)
+              }}
+            />
+          ) : (
+            <SheetTitle className="sr-only">Issue</SheetTitle>
+          )}
         </SheetContent>
       </Sheet>
     </div>
+  )
+}
+
+const SEVERITY_WORDS: Record<string, string> = { CRITICAL: 'Critical', HIGH: 'High', MEDIUM: 'Medium', LOW: 'Low' }
+const STATUS_WORDS: Record<string, string> = { OPEN: 'Open', ACKNOWLEDGED: 'Acknowledged', RESOLVED: 'Resolved', WONT_FIX: "Won't fix", CANCELLED: 'Withdrawn' }
+
+function IssuePanel({
+  issue,
+  site,
+  onAcknowledge,
+  onResolve,
+  onWontFix,
+}: {
+  issue: SiteIssueItem
+  site: string
+  onAcknowledge: () => void
+  onResolve: () => void
+  onWontFix: () => void
+}) {
+  const severity = issue.severity.toUpperCase()
+  const status = issue.status.toUpperCase()
+  const closed = isClosed(status)
+  const users = useQuery({ queryKey: ['users-list'], queryFn: fetchUsers, retry: false, staleTime: 5 * 60_000 })
+  const reporter = issue.reported_by_user_id ? users.data?.find((u) => u.id === issue.reported_by_user_id)?.full_name : undefined
+  const at = (iso: string) => new Date(iso).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+  const tone = closed ? (status === 'RESOLVED' ? 'in' : 'neutral') : severity === 'CRITICAL' ? 'out' : severity === 'HIGH' ? 'warn' : 'neutral'
+
+  return (
+    <>
+      <SheetHero tone={tone} kicker={closed ? STATUS_WORDS[status] ?? status : `${SEVERITY_WORDS[severity] ?? severity} · ${STATUS_WORDS[status] ?? status}`} title={humanizeIssueType(issue.issue_type)}>
+        <span>{site}</span>
+        <span>{at(issue.occurred_at)}</span>
+        {!closed && <span className="font-medium text-foreground">Open {openFor(issue.occurred_at).toLowerCase()}</span>}
+      </SheetHero>
+
+      <SheetSection title="What happened">
+        <p className={cn('text-sm leading-relaxed', !issue.narrative && 'text-muted-foreground')}>{issue.narrative || 'No description was given.'}</p>
+      </SheetSection>
+
+      <SheetSection title="Details" className="border-t">
+        <Facts>
+          <Fact label="Severity">{getSeverityBadge(issue.severity)}</Fact>
+          <Fact label="Status">{getStatusBadge(issue.status)}</Fact>
+          {issue.delay_duration_minutes ? <Fact label="Time lost">{formatDuration(issue.delay_duration_minutes)}</Fact> : null}
+          {issue.resolved_at && <Fact label="Closed">{at(issue.resolved_at)}</Fact>}
+        </Facts>
+      </SheetSection>
+
+      {issue.resolution_notes && (
+        <SheetSection title={status === 'RESOLVED' ? 'How it was fixed' : 'Why it was closed'} className="border-t">
+          <p className="rounded-lg bg-success-soft/60 px-3 py-2 text-sm">{issue.resolution_notes}</p>
+        </SheetSection>
+      )}
+
+      <SheetSection title="Reported by" className="border-t">
+        <ByLine name={reporter} detail={at(issue.created_at)} />
+      </SheetSection>
+
+      {!closed && (
+        <SheetFooter className="flex-row flex-wrap items-center gap-2 border-t px-5 py-3">
+          <Button size="sm" className="gap-1.5" onClick={onResolve}>
+            <Check className="size-3.5" /> Resolve
+          </Button>
+          {status === 'OPEN' && (
+            <Button size="sm" variant="outline" onClick={onAcknowledge}>
+              Acknowledge
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" className="ml-auto text-muted-foreground" onClick={onWontFix}>
+            Won't fix
+          </Button>
+        </SheetFooter>
+      )}
+    </>
   )
 }

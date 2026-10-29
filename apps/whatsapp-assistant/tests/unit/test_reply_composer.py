@@ -26,6 +26,7 @@ from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage, SenderInfo
 from mesiri_contracts.assistant.v2.confirmed_action import ConfirmedActionV2
 from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
+from runtime.agent import save_button as sb
 from runtime.reply_composer import (
     PHOTO_ROW,
     QUESTION,
@@ -47,6 +48,8 @@ USR = str(uuid.uuid4())
 REPORT = str(uuid.uuid4())
 NOTE = "Shuttering done for first floor slab. 8 masons and 3 helpers today. Received 50 bags cement from Ramco."
 SAVED = "✅ Saved:\n• Shuttering done, first floor slab\n• 8 masons, 3 helpers\n• 50 bags cement from Ramco"
+#: The Save / Cancel ids of a card for the saved attendance (REPORT).
+_SAVE_IDS = [sb.tap_id(a, [("labour_report", uuid.UUID(REPORT))]) for a in (sb.SAVE, sb.CANCEL)]
 
 
 def _rows(n: int) -> list[ListRow]:
@@ -342,7 +345,7 @@ def _sends(deps):
     )
 
 
-async def test_a_three_part_note_gets_one_reaction_and_one_message_with_photo_and_undo(monkeypatch):
+async def test_a_three_part_note_gets_one_reaction_and_one_message_with_save_and_photo(monkeypatch):
     on_normalized, deps, choices, setup = _build(monkeypatch)
     deps["interaction_handler"].handle_fast_path.return_value = _saved_attendance()
 
@@ -353,8 +356,9 @@ async def test_a_three_part_note_gets_one_reaction_and_one_message_with_photo_an
     assert len(_sends(deps)) == 1
     sender.send_text.assert_not_awaited()
     sent = sender.send_button.await_args.kwargs
-    assert sent["body"].startswith("✅ Saved:")
-    assert [b.id for b in sent["buttons"]] == [PHOTO_ROW.id, UNDO_ROW.id]
+    # ARCH-04: a saved-first draft waits on Save / Cancel (WA-35), never Undo.
+    assert sent["body"].startswith(sb.TO_SAVE_HEADER)
+    assert [b.id for b in sent["buttons"]] == [*_SAVE_IDS, PHOTO_ROW.id]
     # no "Attendance recorded" message, and no setup question on top of a save
     setup.after_reply.assert_not_awaited()
     # the photo hint stays parked so the next photo attaches to today's attendance
@@ -362,14 +366,14 @@ async def test_a_three_part_note_gets_one_reaction_and_one_message_with_photo_an
     deps["team_photo_hint_store"].clear.assert_not_awaited()
 
 
-async def test_the_photo_is_offered_once_a_day_after_that_only_undo(monkeypatch):
+async def test_the_photo_is_offered_once_a_day_after_that_only_save(monkeypatch):
     on_normalized, deps, _, _ = _build(monkeypatch)
     deps["team_photo_hint_store"].claim_daily_offer.return_value = False
     deps["interaction_handler"].handle_fast_path.return_value = _saved_attendance()
 
     await on_normalized(_message(), {})
 
-    assert [b.id for b in deps["sender"].send_button.await_args.kwargs["buttons"]] == [UNDO_ROW.id]
+    assert [b.id for b in deps["sender"].send_button.await_args.kwargs["buttons"]] == _SAVE_IDS
 
 
 async def test_the_promotion_question_comes_in_the_same_message_and_beats_the_photo(monkeypatch):
@@ -385,10 +389,10 @@ async def test_the_promotion_question_comes_in_the_same_message_and_beats_the_ph
     await on_normalized(_message(), {})
 
     sender = deps["sender"]
-    sender.send_button.assert_not_awaited()
     assert len(_sends(deps)) == 1
-    body = sender.send_text.await_args.args[1]
-    assert SAVED in body and "Add Suresh and Mahesh to your workers?" in body
+    sent = sender.send_button.await_args.kwargs
+    assert "Add Suresh and Mahesh to your workers?" in sent["body"]
+    assert [b.id for b in sent["buttons"]] == _SAVE_IDS
 
 
 async def test_undo_tap_runs_the_same_handler_as_typed_undo(monkeypatch):
@@ -551,7 +555,7 @@ async def test_a_save_first_reply_carries_the_receipt_as_the_image_header(monkey
     assert len(_sends(deps)) == 1
     sent = sender.send_button.await_args.kwargs
     assert sent["header_image"] == PNG
-    assert [b.id for b in sent["buttons"]] == [PHOTO_ROW.id, UNDO_ROW.id]
+    assert [b.id for b in sent["buttons"]] == [*_SAVE_IDS, PHOTO_ROW.id]
     sender.send_image.assert_not_awaited()  # not a second message
 
 

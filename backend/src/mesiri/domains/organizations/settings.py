@@ -22,9 +22,7 @@ from mesiri.domains.organizations.branding import DEFAULT_BRANDING
 # Every role the system recognises (users/router.py's _VALID_ROLES). Kept as
 # a frozenset here so a settings payload naming a role that doesn't exist is
 # rejected at the boundary instead of silently never matching anyone.
-VALID_ROLES: frozenset[str] = frozenset(
-    {"ADMIN", "PROJECT_MANAGER", "SITE_ENGINEER", "FINANCE"}
-)
+VALID_ROLES: frozenset[str] = frozenset({"ADMIN", "PROJECT_MANAGER", "SITE_ENGINEER", "FINANCE"})
 
 # Which roles may create a materials_catalog entry directly from a WhatsApp
 # report (STA-139). Default is Admin + Project Manager: before this setting
@@ -42,6 +40,9 @@ SETUP_PROGRESS = "setup_progress"
 BRANDING_REQUESTS = "branding_requests"
 # "Continue after the trial" requests (SS-08); rules in trial_notices.py.
 CONTINUE_REQUESTS = "continue_requests"
+# The dashboard's getting-started card (SS-07/SS-19): hidden for the company
+# until a time, so "Hide for now" holds for every admin and browser.
+GETTING_STARTED = "getting_started"
 # Joining a company by code (SS-05); rules in domains/organizations/team_join.py.
 JOIN_CODE = "join_code"
 JOIN_REQUESTS = "join_requests"
@@ -53,6 +54,10 @@ CAPTURE_MODE = "capture_mode"
 CAPTURE_MODE_SAVE_FIRST = "save_first"
 CAPTURE_MODE_CONFIRM_FIRST = "confirm_first"
 CAPTURE_MODES: frozenset[str] = frozenset({CAPTURE_MODE_SAVE_FIRST, CAPTURE_MODE_CONFIRM_FIRST})
+# One draft per open card, written only on the Save tap (request 124, P1;
+# docs/architecture/ADR-draft-per-message.md). Off for every company until the
+# Mesiri team switches it on for one.
+DRAFT_V2 = "draft_v2"
 
 # Product modules a company can have switched on (V1 tracker BE-06). Each key
 # gates one or more API routers (domains/shared/modules.py's require_module)
@@ -90,7 +95,7 @@ DEFAULT_ENABLED_MODULES: list[str] = list(V1_MODULES)
 
 # Settings only a platform admin may change. Modules are tied to what a
 # customer pays for, so a company's own admin can read them but not edit them.
-SUPERADMIN_ONLY_KEYS: frozenset[str] = frozenset({ENABLED_MODULES, CAPTURE_MODE})
+SUPERADMIN_ONLY_KEYS: frozenset[str] = frozenset({ENABLED_MODULES, CAPTURE_MODE, DRAFT_V2})
 
 DEFAULT_FINANCE_SETTINGS = {
     "base_currency": "INR",
@@ -169,6 +174,16 @@ _SPECS: dict[str, SettingSpec] = {
             "'Confirm?' before saving). Changed by the Mesiri team only."
         ),
     ),
+    DRAFT_V2: SettingSpec(
+        key=DRAFT_V2,
+        default=True,
+        description=(
+            "true (the default for every company since request 136, 28 Oct): a WhatsApp "
+            "message is held as one draft card and written only when the sender taps Save "
+            "(Cancel writes nothing). false: the old flow, kept only as the per-company off "
+            "switch. Changed by the Mesiri team only."
+        ),
+    ),
     BRANDING: SettingSpec(
         key=BRANDING,
         default=DEFAULT_BRANDING,
@@ -209,6 +224,14 @@ _SPECS: dict[str, SettingSpec] = {
             "to approve or reject them on WhatsApp."
         ),
     ),
+    GETTING_STARTED: SettingSpec(
+        key=GETTING_STARTED,
+        default={},
+        description=(
+            "The dashboard's getting-started card: hidden_until, when an admin chose "
+            "'Hide for now'. Written through /company/setup-progress only."
+        ),
+    ),
     CONTINUE_REQUESTS: SettingSpec(
         key=CONTINUE_REQUESTS,
         default=[],
@@ -223,7 +246,15 @@ _SPECS: dict[str, SettingSpec] = {
 # upload), or written only by the assistant (SS-14). The generic settings API
 # refuses them: a hand-written logo key could point at another company's file.
 DEDICATED_ENDPOINT_KEYS: frozenset[str] = frozenset(
-    {BRANDING, SETUP_PROGRESS, BRANDING_REQUESTS, CONTINUE_REQUESTS, JOIN_CODE, JOIN_REQUESTS}
+    {
+        BRANDING,
+        SETUP_PROGRESS,
+        BRANDING_REQUESTS,
+        CONTINUE_REQUESTS,
+        JOIN_CODE,
+        JOIN_REQUESTS,
+        GETTING_STARTED,
+    }
 )
 
 
@@ -335,7 +366,17 @@ def validate(key: str, value: object) -> object:
         if mode not in CAPTURE_MODES:
             raise ValueError(f"capture_mode must be one of {sorted(CAPTURE_MODES)}")
         return mode
+    if key == DRAFT_V2:
+        if not isinstance(value, bool):
+            raise ValueError("draft_v2 must be true or false")
+        return value
     return value
+
+
+def draft_v2_enabled(stored: object) -> bool:
+    """On for every company (request 136) unless its setting is exactly ``false``,
+    the Mesiri team's per-company off switch. Unset or unreadable is on."""
+    return stored is not False
 
 
 def saves_first(stored: object) -> bool:

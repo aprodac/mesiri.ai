@@ -7,6 +7,8 @@ from decimal import Decimal
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from mesiri.application.dpr import fact_review
+
 _material_receipts = sa.Table(
     "material_receipts",
     sa.MetaData(),
@@ -19,6 +21,8 @@ _material_receipts = sa.Table(
     sa.Column("unit", sa.String),
     sa.Column("unit_id", sa.UUID(as_uuid=True)),
     sa.Column("transfer_id", sa.UUID(as_uuid=True)),
+    # WEB-35: set when the purchase came from a supplier invoice.
+    sa.Column("invoice_id", sa.UUID(as_uuid=True)),
     sa.Column("unit_cost", sa.Numeric),
     sa.Column("total_cost", sa.Numeric),
     sa.Column("supplier", sa.String),
@@ -322,8 +326,14 @@ class PostgresMaterialReadRepository:
         project_ids: set[uuid.UUID] | None = None,
         site_id: uuid.UUID | None = None,
         material_id: uuid.UUID | None = None,
+        *,
+        include_unsaved: bool = False,
     ) -> list[dict]:
         """Aggregated inventory stock levels, derived solely from material_movements.
+
+        WA-77 (Alan, 25 Oct): stock is what is saved; an entry still waiting
+        for its Save on WhatsApp is left out. `include_unsaved` counts it,
+        for the over-stock hint while capturing (what was reported so far).
 
         RECEIPT movements add, ISSUE movements subtract; a reversal posts the
         opposite movement_type of what it corrects, so summing signed quantity
@@ -383,6 +393,8 @@ class PostgresMaterialReadRepository:
             ).join(_units_of_measure, _units_of_measure.c.id == _material_movements.c.unit_id)
         ).where(_material_movements.c.organization_id == organization_id)
 
+        if not include_unsaved:
+            stmt = stmt.where(sa.text(fact_review.movement_counted_sql("material_movements")))
         if project_ids is not None:
             stmt = stmt.where(_material_movements.c.project_id.in_(project_ids))
         if site_id is not None:
@@ -534,6 +546,9 @@ class PostgresMaterialReadRepository:
         stmt_base = (
             sa.select(
                 _material_movements.c.id,
+                # WEB-36: the receipt/usage row behind this movement, so a
+                # movement's panel can find its own place in the ledger.
+                _material_movements.c.source_id,
                 sa.case(
                     (_material_movements.c.movement_type == "RECEIPT", "IN"),
                     else_="OUT"
@@ -603,6 +618,8 @@ class PostgresMaterialReadRepository:
                 _material_movements.c.organization_id == organization_id,
                 _material_movements.c.site_id == site_id,
                 _material_movements.c.material_id == material_id,
+                # WA-77: the ledger is what is saved (an unsaved entry isn't in it yet).
+                sa.text(fact_review.movement_counted_sql("material_movements")),
             )
         )
 
@@ -854,21 +871,48 @@ class UnitsOfMeasureRepository:
         return [dict(r) for r in res.mappings().all()]
 
     async def resolve_alias(self, text_value: str) -> dict | None:
-        """Resolve free text (exact code or known alias, case/whitespace-insensitive)
-        to its active canonical unit. No unit conversion — spelling only."""
+        """Resolve free text (exact code, known alias or display name,
+        case/whitespace-insensitive) to its active canonical unit. No unit
+        conversion -- spelling only.
+
+        WRK-02: spacing, dots and the superscript digits do not matter either
+        ("sq.ft", "sq ft", "sft"; "m²", "m3"): the text is tried as typed,
+        then folded (``fold_unit_text``) against the aliases folded the same
+        way. The exact spelling wins."""
         needle = text_value.strip().lower()
         if not needle:
             return None
-        stmt = (
+        base = (
             sa.select(_units_of_measure)
             .select_from(
                 _unit_aliases.join(_units_of_measure, _units_of_measure.c.id == _unit_aliases.c.unit_id)
             )
-            .where(_unit_aliases.c.alias_text == needle, _units_of_measure.c.is_active.is_(True))
+            .where(_units_of_measure.c.is_active.is_(True))
         )
-        res = await self.conn.execute(stmt)
-        row = res.mappings().first()
+        row = (await self.conn.execute(base.where(_unit_aliases.c.alias_text == needle))).mappings().first()
+        if row is None:
+            folded = fold_unit_text(needle)
+            column = sa.func.regexp_replace(
+                sa.func.translate(sa.func.lower(_unit_aliases.c.alias_text), "²³", "23"),
+                "[^[:alnum:]%]", "", "g",
+            )
+            row = (
+                await self.conn.execute(base.where(column == folded).order_by(_unit_aliases.c.created_at))
+            ).mappings().first()
+        if row is None:
+            by_name = sa.select(_units_of_measure).where(
+                sa.func.lower(_units_of_measure.c.display_name) == needle,
+                _units_of_measure.c.is_active.is_(True),
+            )
+            row = (await self.conn.execute(by_name)).mappings().first()
         return dict(row) if row else None
+
+
+def fold_unit_text(text_value: str) -> str:
+    """"Sq. Ft" / "sq ft" / "SQFT" -> "sqft"; "m²" -> "m2": letters, digits and
+    "%" only (SQL side: the same fold in ``resolve_alias``)."""
+    translated = text_value.lower().translate(str.maketrans("²³", "23"))
+    return "".join(ch for ch in translated if ch.isalnum() or ch == "%")
 
 
 class MaterialMovementsRepository:

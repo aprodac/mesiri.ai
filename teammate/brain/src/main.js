@@ -16,9 +16,12 @@
 //   TEAMMATE_BRAIN_MODEL       default claude-opus-5-5
 //   TEAMMATE_BRAIN_SCREENSHOT_HOSTS   hosts screenshot_url may open, comma-separated
 //   TEAMMATE_OWNER             default Ilan
+//   TEAMMATE_WATCH_MINUTES     how often running cloud jobs are checked (commits, deploys, silence), default 10, 0 = off
 //   TEAMMATE_BOARD_MINUTES     how often the shared board (docs/agents/BOARD.md) is checked, default 30, 0 = off
 //   TEAMMATE_PARTNER_<P>_URL / _TOKEN   fire the routine bound to Ilan Usman's cloud session (TM-12)
 //   CLAUDE_CODE_OAUTH_TOKEN    from `claude setup-token`
+//   CLAUDE_CODE_OAUTH_TOKEN_<X>, TEAMMATE_ROUTINE_<P>_URL_<X> / _TOKEN_<X>, TEAMMATE_PARTNER_<P>_URL_<X> / _TOKEN_<X>
+//                              more Claude accounts B, C, … (TM-14); the unsuffixed set is account A
 //   GH_TOKEN                   GitHub token for clone / push / PRs
 
 import { execFileSync } from "node:child_process";
@@ -29,8 +32,10 @@ import { fileURLToPath } from "node:url";
 import { timingSafeEqual } from "node:crypto";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { Brain } from "./brain.js";
+import { Accounts, parseAccounts } from "./accounts.js";
 import { brainTools } from "./tools.js";
 import { createRenderer } from "./render.js";
+import { commitPatterns, formatWorkStatus } from "./work_status.js";
 
 const log = (m) => console.log(`[brain] ${m}`);
 const token = process.env.TEAMMATE_API_TOKEN || "";
@@ -94,7 +99,7 @@ function prepare({ name, cwd, branch, ghToken }) {
   git(cwd, "fetch", "--quiet", "origin");
   // With a cloud routine (hybrid), all changes happen in the cloud, so this copy only mirrors GitHub:
   // set aside anything unpushed or uncommitted on a backup branch (kept, never deleted), then follow origin.
-  if (routines[name]) {
+  if (brain.hasRoutine(name)) { // on any Claude account (TM-14)
     const ahead = git(cwd, "rev-list", "--count", `origin/${branch}..HEAD`);
     const dirty = git(cwd, "status", "--porcelain");
     if (ahead !== "0" || dirty) {
@@ -169,20 +174,12 @@ const screenshotHosts = (process.env.TEAMMATE_BRAIN_SCREENSHOT_HOSTS || "").spli
 
 // Hybrid (TM-03b): a project with a cloud routine runs approved work there, where the owner can watch it in
 // Claude Code. Per project: TEAMMATE_ROUTINE_<PROJECT>_URL (the routine's /fire URL) and _TOKEN (its API token).
-const routines = {};
-for (const name of Object.keys(projects)) {
-  const url = process.env[`TEAMMATE_ROUTINE_${name.toUpperCase()}_URL`];
-  const rtoken = process.env[`TEAMMATE_ROUTINE_${name.toUpperCase()}_TOKEN`];
-  if (url && rtoken) routines[name] = { url, token: rtoken };
-}
 // The pair (TM-12): TEAMMATE_PARTNER_<PROJECT>_URL / _TOKEN fire the routine bound to Ilan Usman's cloud session,
-// so Ilan Pro (this bot) can report to it. TEAMMATE_BOARD_MINUTES: how often the shared board is checked (0 = off).
-const partners = {};
-for (const name of Object.keys(projects)) {
-  const url = process.env[`TEAMMATE_PARTNER_${name.toUpperCase()}_URL`];
-  const ptoken = process.env[`TEAMMATE_PARTNER_${name.toUpperCase()}_TOKEN`];
-  if (url && ptoken) partners[name] = { url, token: ptoken };
-}
+// so Ilan Pro (this bot) can report to it. Both belong to a Claude account; with several accounts (TM-14) each
+// has its own set, and each WhatsApp group uses its own account's (accounts.js).
+const accounts = new Accounts({ list: parseAccounts(process.env, Object.keys(projects)), file: join(dir, "accounts.json"), log });
+log(`claude accounts: ${accounts.list.map((a) => a.id.toUpperCase()).join(", ")}; default ${accounts.state.default.toUpperCase()}`);
+// TEAMMATE_BOARD_MINUTES: how often the shared board is checked (0 = off).
 const boardMinutes = Number(process.env.TEAMMATE_BOARD_MINUTES ?? 30);
 async function fireRoutine({ url, token: rtoken }, text) {
   const res = await fetch(url, {
@@ -200,34 +197,64 @@ async function fireRoutine({ url, token: rtoken }, text) {
   return data;
 }
 
-// Is a plan's work on the project's branch? A commit since the approval that names the request ("request 61" or "[61]").
-async function landed(plan, sinceIso) {
+// Request 139: what the project's branch and GitHub show about a plan's work. A commit since the start that names the
+// request ("request 61", "[61]") or any tracker id in the plan / its notes (WA-86) is the plan's.
+async function planCommits(plan, sinceIso, item = null) {
   const { cwd, branch, ghToken } = projects[plan.project];
   const git = gitAs(ghToken);
   git(cwd, "fetch", "--quiet", "origin");
-  const id = String(plan.id);
-  return git(cwd, "log", `origin/${branch}`, `--since=${sinceIso}`, "-E", `--grep=request ${id}([^0-9]|$)|\\[${id}\\]`, "--format=%h").length > 0;
+  const greps = commitPatterns(plan, item).map((p) => `--grep=${p}`);
+  const out = git(cwd, "log", `origin/${branch}`, `--since=${sinceIso}`, "--reverse", "-E", ...greps, "--format=%H%x09%cI%x09%s");
+  return out ? out.split("\n").map((l) => { const [sha, at, ...subject] = l.split("\t"); return { sha, at, subject: subject.join("\t") }; }) : [];
+}
+
+/** Workflow runs (CI, "Deploy to Production") of those commits: GitHub REST, read-only, with the project's own token. */
+async function planRuns(shas, plan) {
+  const { repo, branch, ghToken } = projects[plan.project];
+  const res = await fetch(`https://api.github.com/repos/${repo}/actions/runs?branch=${encodeURIComponent(branch)}&per_page=60`, {
+    headers: { accept: "application/vnd.github+json", "user-agent": "teammate-brain", ...(ghToken ? { authorization: `Bearer ${ghToken}` } : {}) },
+  });
+  if (!res.ok) throw new Error(`GitHub runs HTTP ${res.status}`);
+  const data = await res.json();
+  return (data.workflow_runs || [])
+    .filter((r) => shas.includes(r.head_sha))
+    .map((r) => ({ sha: r.head_sha, name: r.name, status: r.status, conclusion: r.conclusion, at: r.updated_at, url: r.html_url }));
+}
+
+async function landed(plan, sinceIso) {
+  let item = null;
+  if (typeof plan.id === "number") item = (await listener.getItem(plan.id, plan.reply_project || plan.chat_project || plan.project).catch(() => null))?.item || null;
+  return (await planCommits(plan, sinceIso, item)).length > 0;
 }
 
 const brain = new Brain({
-  routines,
+  accounts,
   fireFn: fireRoutine,
   landed,
-  partners,
+  work: { commits: planCommits, runs: planRuns },
   queryFn: query,
   projects,
   dir,
   listener,
   tools: (ctx, plans) => {
-    const p = partners[ctx.chat_project || ctx.project];
-    return brainTools({ ctx, listener, render, plans, screenshotHosts, partner: p ? (text) => fireRoutine(p, text) : null });
+    const p = brain.partnerFor(ctx.chat, ctx.chat_project || ctx.project); // on this group's account, at the time of the turn
+    return brainTools({
+      ctx, listener, render, plans, screenshotHosts, partner: p ? (text) => fireRoutine(p, text) : null,
+      workStatus: async (id) => {
+        const plan = brain.planStore.plans[id];
+        return plan ? formatWorkStatus(await brain.workStatus(plan), Date.now()) : `No plan [${id}].`;
+      },
+      tellJob: ({ id, message, scope }) =>
+        brain.tellFromBot({ id, message, scope, reply_chat: ctx.reply_chat, project: ctx.chat_project || ctx.project, say: (text) => listener.send({ chat: ctx.reply_chat, project: ctx.chat_project || ctx.project, text }) }),
+    });
   },
   prepare,
   owner: process.env.TEAMMATE_OWNER || "Ilan",
   model: process.env.TEAMMATE_BRAIN_MODEL || "claude-opus-5-5",
-  // What Claude Code (and anything it runs) sees: never the dev-site password or the routine token.
+  // What Claude Code (and anything it runs) sees: never the dev-site password, a routine token, or a Claude
+  // login; the brain adds only the login of the account each turn runs on (TM-14).
   env: {
-    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^TEAMMATE_(DEV_LOGIN|ROUTINE|PARTNER|GITHUB_TOKEN)_/.test(k))),
+    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^TEAMMATE_(DEV_LOGIN|ROUTINE|PARTNER|GITHUB_TOKEN)_|^CLAUDE_CODE_OAUTH_TOKEN/.test(k))),
     TEAMMATE_TOKEN: token,
     TEAMMATE_API: api,
   },
@@ -270,6 +297,14 @@ if (boardMinutes > 0) {
   const check = () => brain.checkBoard().catch((e) => log(`board: ${e.message}`));
   setTimeout(check, 120_000); // after start-up settles
   setInterval(check, boardMinutes * 60_000);
-  log(`board: every ${boardMinutes} min; partner ${Object.keys(partners).join(", ") || "none"}`);
+  log(`board: every ${boardMinutes} min; partner ${Object.keys(projects).filter((p) => accounts.list.some((a) => a.partners[p])).join(", ") || "none"}`);
+}
+// Request 139: the watchdog over cloud jobs (commits, deploys, silence); TEAMMATE_WATCH_MINUTES, default 10, 0 = off.
+const watchMinutes = Number(process.env.TEAMMATE_WATCH_MINUTES ?? 10);
+if (watchMinutes > 0) {
+  const watch = () => brain.watchdog.tick().catch((e) => log(`watchdog: ${e.message}`));
+  setTimeout(watch, 180_000);
+  setInterval(watch, watchMinutes * 60_000);
+  log(`watchdog: every ${watchMinutes} min`);
 }
 setInterval(() => brain.auto.tick().catch((e) => log(`auto: ${e.message}`)), 60_000); // the auto loop (request 61)

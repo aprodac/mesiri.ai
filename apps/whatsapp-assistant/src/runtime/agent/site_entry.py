@@ -33,7 +33,7 @@ from mesiri_contracts.assistant.enums import SemanticType
 from mesiri_contracts.assistant.planner_decision import WorkflowKey
 from workflows.registry import module_for_workflow
 
-from .entry_base import SCOPE_KEYS, EntryScope, Ready, Say, number
+from .entry_base import SCOPE_KEYS, EntryScope, Ready, Say, choose, number
 
 _log = logging.getLogger("mesiri.agent")
 
@@ -42,6 +42,9 @@ _ROUTES = {
     SemanticType.SITE_ISSUE: (CanonicalEventType.SITE_ISSUE_REPORTED, WorkflowKey.SITE_ISSUE_REPORT),
     SemanticType.EXPENSE: (CanonicalEventType.EXPENSE_REQUESTED, WorkflowKey.EXPENSE_SUBMIT),
 }
+
+#: The units offered when the one named is unknown (their names resolve as aliases).
+WORK_UNIT_CHOICES = ("sq ft", "sq m", "cu m", "meters", "running ft", "nos", "kg", "percent")
 
 #: The semantic types this entry takes.
 SITE_ENTRY_TYPES = frozenset(_ROUTES)
@@ -60,6 +63,9 @@ class SiteEntry(EntryScope):
     #: ``() -> activity id | None``: the activity this conversation last
     #: touched (memory's CurrentActivityStore), the classic route's first pick.
     remembered_activity: Callable[[], Awaitable[str | None]] | None = None
+    #: The units list (``resolve_unit``): a quantity in a unit the company's list
+    #: does not know is asked, never "not saved" (WRK-02).
+    catalog_query: Any | None = None
 
     async def prepare(self, message: Any, understanding: Any, candidate: Any) -> Ready | Say | None:
         """The workflow to start, a line to say, or None (use the classic route)."""
@@ -75,6 +81,11 @@ class SiteEntry(EntryScope):
             amount = number(fields.get("amount"))
             if amount is None or amount <= 0:
                 return Say("error", "Not saved: an amount above zero is needed.")
+
+        if workflow_key is WorkflowKey.SITE_UPDATE:
+            asked = await self._ask_unknown_unit(fields)
+            if asked is not None:
+                return asked
 
         scoped = await self.settle(
             message,
@@ -123,6 +134,32 @@ class SiteEntry(EntryScope):
         if continues and workflow_key is WorkflowKey.SITE_UPDATE:
             _continue(ready.event.fields, continues, message, remembered=await self._last_activity(message))
         return ready
+
+    async def _ask_unknown_unit(self, fields: dict[str, Any]) -> Say | None:
+        """WRK-02: "50 pieces-ish plastering" with a unit nobody listed. The
+        save would be refused ("not a recognized unit") and the whole entry
+        lost; ask for the unit with the common ones as buttons instead."""
+        if self.catalog_query is None:
+            return None
+        said = [q for q in fields.get("quantities") or [] if isinstance(q, dict)] or [fields]
+        for entry in said:
+            text = str(entry.get("unit") or "").strip()
+            if not text or number(entry.get("quantity")) is None:
+                continue
+            try:
+                known = await self.catalog_query.resolve_unit(text)
+            except Exception:  # noqa: BLE001 -- the save's own check is the backstop
+                _log.warning("site_entry.unit_lookup_failed", exc_info=True)
+                return None
+            if known is None:
+                work = str(entry.get("work_type") or fields.get("work_type") or "this work").replace("_", " ")
+                return choose(
+                    f'Which unit is "{text}" for the {work}?',
+                    list(WORK_UNIT_CHOICES),
+                    "unit",
+                    note=" Do not guess the unit.",
+                )
+        return None
 
     async def _last_activity(self, message: Any) -> str | None:
         if self.remembered_activity is None:

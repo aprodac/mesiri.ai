@@ -187,7 +187,7 @@ export function RecordOutflowDialog({ open, onOpenChange, scope }: RecordOutflow
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[480px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Record Material Outflow</DialogTitle>
+          <DialogTitle>Record material used</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-2 text-xs">
           {error && (
@@ -211,7 +211,7 @@ export function RecordOutflowDialog({ open, onOpenChange, scope }: RecordOutflow
               ) : (
                 <Select value={projectId} onValueChange={(v) => { setProjectId(v); setSiteId('') }}>
                   <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Select project" />
+                    <SelectValue placeholder="Choose project" />
                   </SelectTrigger>
                   <SelectContent>
                     {projects.map((p) => (
@@ -231,7 +231,7 @@ export function RecordOutflowDialog({ open, onOpenChange, scope }: RecordOutflow
               ) : (
                 <Select value={siteId} onValueChange={setSiteId} disabled={!projectId}>
                   <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Optional site" />
+                    <SelectValue placeholder="Choose site" />
                   </SelectTrigger>
                   <SelectContent>
                     {sites.map((s) => (
@@ -251,7 +251,7 @@ export function RecordOutflowDialog({ open, onOpenChange, scope }: RecordOutflow
               options={materialOptions}
               value={materialId}
               onValueChange={setMaterialId}
-              placeholder="Select material from catalog"
+              placeholder="Choose material"
               searchPlaceholder="Search materials..."
               emptyText="No materials found."
             />
@@ -286,13 +286,13 @@ export function RecordOutflowDialog({ open, onOpenChange, scope }: RecordOutflow
               <Label>Unit</Label>
               {/* Read-only: a material's Stock Unit is fixed (no conversion) --
                   see materials_catalog.default_unit_id. */}
-              <Input value={selectedMaterial?.default_unit ?? ''} disabled placeholder="Select a material" />
+              <Input value={selectedMaterial?.default_unit ?? ''} disabled placeholder="Set by the material" />
             </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="grid gap-1.5">
-              <Label>Movement Reason</Label>
+              <Label>What kind</Label>
               <Select value={reason} onValueChange={(v) => setReason(v as OutflowReason)}>
                 <SelectTrigger className="h-9">
                   <SelectValue />
@@ -307,7 +307,7 @@ export function RecordOutflowDialog({ open, onOpenChange, scope }: RecordOutflow
               </Select>
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="occurredDateOut">Occurred At</Label>
+              <Label htmlFor="occurredDateOut">Day</Label>
               <Input
                 id="occurredDateOut"
                 type="date"
@@ -319,8 +319,8 @@ export function RecordOutflowDialog({ open, onOpenChange, scope }: RecordOutflow
           </div>
 
           <div className="grid gap-1.5">
-            <Label htmlFor="workItem">Work Item / Usage Context</Label>
-            <Input id="workItem" value={workItem} onChange={(e) => setWorkItem(e.target.value)} placeholder="Optional" />
+            <Label htmlFor="workItem">Used for</Label>
+            <Input id="workItem" value={workItem} onChange={(e) => setWorkItem(e.target.value)} placeholder="e.g. Slab casting, 5th floor" />
           </div>
 
           <div className="grid gap-1.5">
@@ -330,7 +330,7 @@ export function RecordOutflowDialog({ open, onOpenChange, scope }: RecordOutflow
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               className="flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-xs shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-              placeholder="Optional context..."
+              placeholder="Optional"
             />
           </div>
 
@@ -343,7 +343,7 @@ export function RecordOutflowDialog({ open, onOpenChange, scope }: RecordOutflow
               </p>
               <p className="text-muted-foreground">
                 Recording {overStock.requested} {overStock.unit} leaves this site at{' '}
-                <span className="font-mono tabular-nums">
+                <span className="tabular-nums">
                   {Number(overStock.available) - Number(overStock.requested)} {overStock.unit}
                 </span>
                 . Corrections need a Project Manager and cannot be undone by editing.
@@ -377,7 +377,7 @@ export function RecordOutflowDialog({ open, onOpenChange, scope }: RecordOutflow
               Cancel
             </Button>
             <Button type="submit" disabled={mutation.isPending || !!overStock}>
-              {mutation.isPending ? 'Recording...' : 'Record Outflow'}
+              {mutation.isPending ? 'Saving…' : 'Record use'}
             </Button>
           </DialogFooter>
         </form>

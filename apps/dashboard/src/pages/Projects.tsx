@@ -1,498 +1,305 @@
 import * as React from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate } from 'react-router-dom'
-import {
-  Search,
-  Plus,
-  Trash2,
-  Edit2,
-  ChevronDown,
-  Building2,
-  ExternalLink,
-  Loader2,
-  Grid,
-  List,
-  Activity,
-  Clock,
-  Archive,
-} from 'lucide-react'
-import { KpiCard } from '@/components/ui/kpi-card'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { fetchSiteDaysApi } from '@/lib/api'
+import { fetchAllOpenIssues } from '@/lib/issues'
+import { FROZEN, hasUpdates, localIsoDate } from '@/lib/site-day'
+import { Link } from 'react-router-dom'
+import { Archive, Building2, Clock, MapPin, MoreHorizontal, Pencil, Plus, Search, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from '@/components/ui/table'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  fetchProjectsFull,
-  archiveProject,
-  fetchSitesFull,
-  fetchProjectMembers,
-  type Project,
-} from '@/lib/projects'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { useToast } from '@/components/ui/toast-notification'
+import { PageError, PageHeader } from '@/components/dpr-page'
+import { ROW_ACCENT } from '@/lib/cues'
 import { AddEditProjectDialog } from '@/components/project-dialogs'
+import { archiveProject, fetchProjectMembers, fetchProjectsFull, fetchSitesFull, type Project } from '@/lib/projects'
+import { CHIP, plural } from '@/lib/site-day'
+import { usePageTitle } from '@/lib/page-title'
+import { useUrlState } from '@/lib/url-state'
+import { FilterSelect } from '@/components/filter-select'
 import { useReadOnly } from '@/lib/trial'
+import { cn, formatClock } from '@/lib/utils'
 
-const STATUS_BADGES = {
-  success: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-none',
-  warning: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-none',
-  critical: 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-none',
-  neutral: 'bg-muted text-muted-foreground border-none',
-} as const
+// WEB-28: Projects & Sites as rows that say what each project is set up
+// with -- its sites, its people, when its DPR goes out -- instead of
+// coloured count tiles and "NO-CODE • No Client • No Location".
+
+type Show = 'current' | 'paused' | 'all'
+
+/** Projects not being worked on now: kept out of the default list. */
+const PAUSED = ['On Hold', 'Completed', 'Archived']
+
+const STATUS_CHIP: Record<string, string> = {
+  success: 'bg-success-soft text-success',
+  warning: 'bg-draft-soft text-draft',
+  critical: 'bg-destructive/10 text-destructive',
+  neutral: 'bg-muted text-muted-foreground',
+}
 
 export default function Projects() {
-  // Free trial over: saves are refused, so don't offer them (SS-15).
   const readOnly = useReadOnly()
-  const navigate = useNavigate()
+  const toast = useToast()
   const queryClient = useQueryClient()
+  usePageTitle('Projects & Sites')
+  const [search, setSearch] = useUrlState<string>('q', '')
+  const [show, setShow] = useUrlState<Show>('show', 'current')
+  const [editing, setEditing] = React.useState<Project | null>(null)
+  const [dialogOpen, setDialogOpen] = React.useState(false)
+  const [archiving, setArchiving] = React.useState<Project | null>(null)
 
-  // Selection states
-  const [search, setSearch] = React.useState('')
-  const [statusFilter, setStatusFilter] = React.useState('ALL')
-  const [sortBy, setSortBy] = React.useState<'name' | 'code' | 'status'>('name')
-  
-  // View mode (Table vs Grid) persisted in localStorage
-  const [viewMode, setViewMode] = React.useState<'table' | 'grid'>(() => {
-    const stored = localStorage.getItem('mesiri_projects_view_mode')
-    return (stored as 'table' | 'grid') || 'table'
-  })
+  const query = useQuery<Project[]>({ queryKey: ['projects-list'], queryFn: fetchProjectsFull })
+  // WEB-37: today at a glance on each project -- sites reported and open
+  // issues -- from the same reads Today uses (cached between the pages).
+  const [today] = React.useState(() => localIsoDate(new Date()))
+  const days = useQuery({ queryKey: ['site-days', today, undefined], queryFn: () => fetchSiteDaysApi(today) })
+  const openIssues = useQuery({ queryKey: ['today-open-issues', undefined], queryFn: () => fetchAllOpenIssues(undefined) })
+  const todayFor = (projectId: string): ProjectToday | undefined => {
+    if (!days.data) return undefined
+    const sites = days.data.items.filter((d) => d.project_id === projectId)
+    const issues = (openIssues.data ?? []).filter((i) => i.project_id === projectId)
+    return {
+      sites: sites.length,
+      reported: sites.filter((d) => hasUpdates(d) || FROZEN.includes(d.status)).length,
+      issues: issues.length,
+      urgent: issues.filter((i) => ['CRITICAL', 'HIGH'].includes(i.severity.toUpperCase())).length,
+    }
+  }
+  const projects = React.useMemo(() => query.data ?? [], [query.data])
 
-  // Dialog state
-  const [projectDialogOpen, setProjectDialogOpen] = React.useState(false)
-  const [selectedProject, setSelectedProject] = React.useState<Project | null>(null)
-
-  const { data: projects = [], isLoading, isError, error } = useQuery<Project[]>({
-    queryKey: ['projects-list'],
-    queryFn: fetchProjectsFull,
-  })
-
-  const archiveMutation = useMutation({
+  const archive = useMutation({
     mutationFn: archiveProject,
-    onSuccess: () => {
+    onSuccess: (_, id) => {
+      const name = projects.find((p) => p.id === id)?.name ?? 'The project'
+      toast.success('Archived', `${name} is off the active list.`)
+      setArchiving(null)
       queryClient.invalidateQueries({ queryKey: ['projects-list'] })
       queryClient.invalidateQueries({ queryKey: ['scope-projects'] })
     },
-    onError: (err: any) => {
-      alert(err.response?.data?.detail || 'Failed to archive project.')
-    },
+    onError: () => toast.error('Could not archive', 'Please try again.'),
   })
 
-  const toggleViewMode = (mode: 'table' | 'grid') => {
-    setViewMode(mode)
-    localStorage.setItem('mesiri_projects_view_mode', mode)
+  const paused = projects.filter((p) => PAUSED.includes(p.statusLabel))
+  const current = projects.length - paused.length
+  const visible = projects
+    .filter((p) => (show === 'all' ? true : show === 'paused' ? PAUSED.includes(p.statusLabel) : !PAUSED.includes(p.statusLabel)))
+    .filter((p) => {
+      const q = search.trim().toLowerCase()
+      return !q || [p.name, p.code, p.client, p.location].some((v) => v?.toLowerCase().includes(q))
+    })
+    .sort((a, b) => a.name.localeCompare(b.name))
+
+  const openNew = () => {
+    setEditing(null)
+    setDialogOpen(true)
   }
 
-  // Filtered and sorted projects
-  const filteredProjects = React.useMemo(() => {
-    return projects
-      .filter((p) => {
-        // Exclude archived projects from main list view by default unless filtered
-        if (p.status === 'archived' && statusFilter !== 'archived') return false
-
-        const matchSearch =
-          p.name.toLowerCase().includes(search.toLowerCase()) ||
-          (p.code && p.code.toLowerCase().includes(search.toLowerCase())) ||
-          (p.client && p.client.toLowerCase().includes(search.toLowerCase())) ||
-          (p.location && p.location.toLowerCase().includes(search.toLowerCase()))
-
-        if (!matchSearch) return false
-
-        if (statusFilter !== 'ALL') {
-          if (statusFilter === 'active' && (p.status === 'on_hold' || p.status === 'archived' || p.status === 'neutral')) return false
-          if (statusFilter === 'on_hold' && p.status !== 'neutral' && p.status !== 'on_hold') return false
-          if (statusFilter === 'archived' && p.status !== 'archived') return false
-        }
-
-        return true
-      })
-      .sort((a, b) => {
-        if (sortBy === 'name') return a.name.localeCompare(b.name)
-        if (sortBy === 'code') return (a.code || '').localeCompare(b.code || '')
-        if (sortBy === 'status') return a.status.localeCompare(b.status)
-        return 0
-      })
-  }, [projects, search, statusFilter, sortBy])
-
-  // Stats summaries
-  const stats = React.useMemo(() => {
-    const total = projects.length
-    const active = projects.filter((p) => p.status !== 'archived' && p.status !== 'neutral' && p.status !== 'on_hold').length
-    const onHold = projects.filter((p) => p.status === 'neutral' || p.status === 'on_hold').length
-    const archived = projects.filter((p) => p.status === 'archived').length
-    return { total, active, onHold, archived }
-  }, [projects])
-
-  const handleOpenProject = (project: Project) => {
-    navigate(`/overview?project=${project.id}`)
+  if (query.isError) {
+    return <PageError message="Your projects could not be loaded." onRetry={() => query.refetch()} back={{ to: '/today', label: 'Back to Today' }} />
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Page Header */}
-      <div className="flex items-center justify-between border-b pb-4">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">Projects & Sites</h1>
-          <p className="text-xs text-muted-foreground">
-            Manage projects, sites, members, access and reporting configuration.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {!readOnly && (
-          <Button
-            size="sm"
-            onClick={() => {
-              setSelectedProject(null)
-              setProjectDialogOpen(true)
-            }}
-            className="h-8 gap-1.5"
-          >
-            <Plus className="size-4" />
-            Create Project
-          </Button>
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 pb-8 sm:px-2">
+      <PageHeader
+        title="Projects & Sites"
+        subtitle={query.isLoading ? 'Loading…' : `${plural(current, 'project')} running${paused.length ? ` · ${paused.length} paused or done` : ''}`}
+        actions={
+          !readOnly && (
+            <Button size="sm" className="gap-1.5 font-semibold" onClick={openNew}>
+              <Plus className="size-4" /> New project
+            </Button>
+          )
+        }
+      />
+
+      {projects.length > 3 || paused.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+            <Input placeholder="Search projects…" aria-label="Search projects" value={search} onChange={(e) => setSearch(e.target.value)} className="h-9 pl-8" />
+          </div>
+          {paused.length > 0 && (
+            <FilterSelect<Show>
+              label="Show"
+              value={show}
+              onChange={setShow}
+              className="h-9 w-[180px]"
+              options={[
+                { value: 'current', label: `Running · ${current}` },
+                { value: 'paused', label: `Paused or done · ${paused.length}` },
+                { value: 'all', label: 'All projects' },
+              ]}
+            />
           )}
         </div>
-      </div>
+      ) : null}
 
-      {/* Summary indicators */}
-      <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-        <KpiCard
-          title="Total Projects"
-          value={<span style={{ color: '#3b82f6' }}>{stats.total}</span>}
-          icon={<Building2 />}
-        />
-        <KpiCard
-          title="Active Projects"
-          value={<span style={{ color: '#10b981' }}>{stats.active}</span>}
-          trend="up"
-          icon={<Activity />}
-        />
-        <KpiCard
-          title="On Hold"
-          value={<span style={{ color: '#f59e0b' }}>{stats.onHold}</span>}
-          icon={<Clock />}
-        />
-        <KpiCard
-          title="Archived"
-          value={<span style={{ color: '#6b7280' }}>{stats.archived}</span>}
-          icon={<Archive />}
-        />
-      </div>
-
-      {/* Filters & Controls */}
-      <div className="flex flex-col md:flex-row gap-2 justify-between items-center border border-border/60 p-3 rounded">
-        <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto flex-1">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search project name, code, client..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-9 text-xs"
-            />
-          </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[160px] h-9">
-              <SelectValue placeholder="Status Filter" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All Active Statuses</SelectItem>
-              <SelectItem value="active">Active Only</SelectItem>
-              <SelectItem value="on_hold">On Hold</SelectItem>
-              <SelectItem value="archived">Archived Projects</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={sortBy} onValueChange={(val) => setSortBy(val as any)}>
-            <SelectTrigger className="w-[140px] h-9">
-              <SelectValue placeholder="Sort By" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="name">Sort by Name</SelectItem>
-              <SelectItem value="code">Sort by Code</SelectItem>
-              <SelectItem value="status">Sort by Status</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* View Mode toggler */}
-        <div className="flex border rounded overflow-hidden h-9 divide-x shrink-0">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => toggleViewMode('table')}
-            className={`h-full rounded-none px-3 ${viewMode === 'table' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/30'}`}
-          >
-            <List className="size-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => toggleViewMode('grid')}
-            className={`h-full rounded-none px-3 ${viewMode === 'grid' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/30'}`}
-          >
-            <Grid className="size-4" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Main List Area */}
-      {isLoading ? (
-        <div className="flex h-48 items-center justify-center text-sm text-muted-foreground gap-2">
-          <Loader2 className="size-4 animate-spin text-primary" />
-          Loading organization projects...
-        </div>
-      ) : isError ? (
-        <div className="bg-destructive/10 border border-destructive text-destructive text-xs p-4 rounded text-center">
-          Failed to load projects: {error instanceof Error ? error.message : 'Unknown API error.'}
-        </div>
-      ) : filteredProjects.length === 0 ? (
-        <div className="border border-dashed p-12 text-center text-sm text-muted-foreground rounded-lg">
-          No projects found matching the active search or filter.
-        </div>
-      ) : viewMode === 'table' ? (
-        <div className="border border-border/60 rounded overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/10">
-                <TableHead>Project</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Sites Count</TableHead>
-                <TableHead>Members Count</TableHead>
-                <TableHead className="w-20 text-right pr-4">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredProjects.map((project) => (
-                <ProjectRow
-                  key={project.id}
-                  project={project}
-                  onOpen={() => handleOpenProject(project)}
-                  onEdit={() => {
-                    setSelectedProject(project)
-                    setProjectDialogOpen(true)
-                  }}
-                  onArchive={() => {
-                    if (confirm(`Archive project "${project.name}"? This removes it from active list.`)) {
-                      archiveMutation.mutate(project.id)
-                    }
-                  }}
-                />
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredProjects.map((project) => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              onOpen={() => handleOpenProject(project)}
-              onEdit={() => {
-                setSelectedProject(project)
-                setProjectDialogOpen(true)
-              }}
-              onArchive={() => {
-                if (confirm(`Archive project "${project.name}"? This removes it from active list.`)) {
-                  archiveMutation.mutate(project.id)
-                }
-              }}
-            />
+      {query.isLoading ? (
+        <div className="flex flex-col gap-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-20 rounded-lg" />
           ))}
         </div>
+      ) : projects.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-14 text-center">
+          <Building2 className="size-6 text-muted-foreground" aria-hidden="true" />
+          <p className="font-medium">No projects yet</p>
+          <p className="max-w-sm text-sm text-muted-foreground">Add a project and its sites; site updates on WhatsApp then land in its daily report.</p>
+          {!readOnly && (
+            <Button className="mt-2 gap-1.5" onClick={openNew}>
+              <Plus className="size-4" /> New project
+            </Button>
+          )}
+        </div>
+      ) : visible.length === 0 ? (
+        <p className="rounded-xl border border-dashed py-10 text-center text-sm text-muted-foreground">No projects match.</p>
+      ) : (
+        <ul className="flex flex-col divide-y rounded-xl border">
+          {visible.map((project) => (
+            <ProjectRow
+              key={project.id}
+              project={project}
+              today={todayFor(project.id)}
+              readOnly={readOnly}
+              onEdit={() => {
+                setEditing(project)
+                setDialogOpen(true)
+              }}
+              onArchive={() => setArchiving(project)}
+            />
+          ))}
+        </ul>
       )}
 
-      {/* Dialog container */}
       <AddEditProjectDialog
-        open={projectDialogOpen}
-        onOpenChange={setProjectDialogOpen}
-        project={selectedProject}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        project={editing}
         onSuccess={() => queryClient.invalidateQueries({ queryKey: ['projects-list'] })}
       />
+
+      <Dialog open={archiving !== null} onOpenChange={(open) => !open && setArchiving(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">Archive {archiving?.name}?</DialogTitle>
+            <DialogDescription>
+              It leaves the active list and its daily report stops. Its reports and records are kept.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setArchiving(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" disabled={archive.isPending} onClick={() => archiving && archive.mutate(archiving.id)}>
+              {archive.isPending ? 'Archiving…' : 'Archive'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
 
 function ProjectRow({
   project,
-  onOpen,
+  readOnly,
   onEdit,
   onArchive,
+  today,
 }: {
   project: Project
-  onOpen: () => void
+  today?: ProjectToday
+  readOnly: boolean
   onEdit: () => void
   onArchive: () => void
 }) {
-  // Query site and member counts asynchronously
-  const { data: sites = [] } = useQuery({
-    queryKey: ['project-sites-count', project.id],
-    queryFn: () => fetchSitesFull(project.id),
-  })
-
-  const { data: members = [] } = useQuery({
-    queryKey: ['project-members-count', project.id],
-    queryFn: () => fetchProjectMembers(project.id),
-  })
+  const sites = useQuery({ queryKey: ['project-sites-count', project.id], queryFn: () => fetchSitesFull(project.id) })
+  const members = useQuery({ queryKey: ['project-members-count', project.id], queryFn: () => fetchProjectMembers(project.id) })
+  const siteList = sites.data ?? []
+  const people = members.data?.length ?? 0
+  const facts = [project.client && `Client: ${project.client}`, project.location, project.code].filter(Boolean)
 
   return (
-    <TableRow>
-      <TableCell>
-        <div className="flex flex-col">
-          <Link
-            to={`/projects/${project.id}`}
-            className="font-medium text-foreground hover:underline flex items-center gap-1.5"
-          >
+    <li
+      className={cn(
+        'flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-4',
+        today?.urgent ? ROW_ACCENT.bad : today && today.sites > 0 && today.reported === today.sites ? ROW_ACCENT.good : ROW_ACCENT.none,
+      )}
+    >
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link to={`/projects/${project.id}`} className="font-semibold hover:underline">
             {project.name}
-            <ExternalLink className="size-3 text-muted-foreground/60" />
           </Link>
-          <span className="text-[10px] text-muted-foreground font-mono">
-            {project.code || 'NO-CODE'} • {project.client || 'No Client'} • {project.location || 'No Location'}
+          <span className={cn(CHIP, STATUS_CHIP[project.status] ?? STATUS_CHIP.neutral)}>{project.statusLabel}</span>
+        </div>
+        {facts.length > 0 && <p className="text-sm text-muted-foreground">{facts.join(' · ')}</p>}
+        {today && today.sites > 0 && <TodayLine today={today} />}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+          <span className="inline-flex items-center gap-1.5">
+            <MapPin className="size-3.5 text-muted-foreground" aria-hidden="true" />
+            {sites.isLoading ? '…' : siteList.length === 0 ? <span className="text-draft">No sites yet</span> : siteList.map((s) => s.name).join(', ')}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Users className="size-3.5 text-muted-foreground" aria-hidden="true" />
+            {members.isLoading ? '…' : people === 0 ? <span className="text-muted-foreground">Admins only</span> : people === 1 ? '1 person' : `${people} people`}
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+            <Clock className="size-3.5" aria-hidden="true" />
+            {project.autoGenerateDpr ? `Daily cutoff ${formatClock(project.reportingCutoffTime) ?? project.reportingCutoffTime}` : 'Automatic DPR off'}
           </span>
         </div>
-      </TableCell>
-      <TableCell>
-        <Badge variant="outline" className={`text-[10px] rounded-sm py-0 ${STATUS_BADGES[project.status as keyof typeof STATUS_BADGES] || STATUS_BADGES.neutral}`}>
-          {project.statusLabel || project.status}
-        </Badge>
-      </TableCell>
-      <TableCell className="text-xs font-mono text-muted-foreground">{sites.length} site(s)</TableCell>
-      <TableCell className="text-xs font-mono text-muted-foreground">{members.length} member(s)</TableCell>
-      <TableCell className="text-right pr-4">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="size-8 p-0">
-              <ChevronDown className="size-4 text-muted-foreground" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-40">
-            <DropdownMenuItem onClick={onOpen}>
-              <Building2 className="size-3.5 mr-2" />
-              Open Project
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link to={`/projects/${project.id}`} className="flex items-center w-full">
-                <ExternalLink className="size-3.5 mr-2" />
-                Admin Console
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onEdit}>
-              <Edit2 className="size-3.5 mr-2" />
-              Edit Settings
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onArchive} className="text-destructive hover:bg-destructive/10">
-              <Trash2 className="size-3.5 mr-2" />
-              Archive Project
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </TableCell>
-    </TableRow>
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <Button asChild variant="outline" size="sm">
+          <Link to={`/projects/${project.id}`}>Open</Link>
+        </Button>
+        {!readOnly && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-8" aria-label={`More for ${project.name}`}>
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem onClick={onEdit}>
+                <Pencil className="mr-2 size-3.5" /> Edit details
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link to={`/today?project=${project.id}`}>
+                  <Building2 className="mr-2 size-3.5" /> Today's updates
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onArchive} className="text-destructive focus:text-destructive">
+                <Archive className="mr-2 size-3.5" /> Archive
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+    </li>
   )
 }
 
-function ProjectCard({
-  project,
-  onOpen,
-  onEdit,
-  onArchive,
-}: {
-  project: Project
-  onOpen: () => void
-  onEdit: () => void
-  onArchive: () => void
-}) {
-  const { data: sites = [] } = useQuery({
-    queryKey: ['project-sites-count', project.id],
-    queryFn: () => fetchSitesFull(project.id),
-  })
+type ProjectToday = { sites: number; reported: number; issues: number; urgent: number }
 
-  const { data: members = [] } = useQuery({
-    queryKey: ['project-members-count', project.id],
-    queryFn: () => fetchProjectMembers(project.id),
-  })
-
+/** "Today: 1 of 2 sites reported · 2 open issues", coloured by how it stands. */
+function TodayLine({ today }: { today: ProjectToday }) {
+  const all = today.reported === today.sites
   return (
-    <div className="border border-border/80 bg-card p-4 space-y-3.5 rounded flex flex-col justify-between hover:border-border transition-colors">
-      <div className="space-y-1">
-        <div className="flex justify-between items-start gap-2">
-          <Link to={`/projects/${project.id}`} className="font-bold text-foreground hover:underline text-sm leading-tight">
-            {project.name}
-          </Link>
-          <Badge variant="outline" className={`text-[9px] rounded-sm py-0 shrink-0 ${STATUS_BADGES[project.status as keyof typeof STATUS_BADGES] || STATUS_BADGES.neutral}`}>
-            {project.statusLabel || project.status}
-          </Badge>
-        </div>
-        <span className="block text-[10px] text-muted-foreground font-mono uppercase tracking-wider">
-          Code: {project.code || 'None'}
+    <p className="flex flex-wrap items-center gap-1.5 text-sm">
+      <span className="text-muted-foreground">Today:</span>
+      <span className={cn(CHIP, all ? 'bg-success-soft text-success' : today.reported ? 'bg-draft-soft text-draft' : 'bg-muted text-muted-foreground')}>
+        {today.reported} of {today.sites} {today.sites === 1 ? 'site' : 'sites'} reported
+      </span>
+      {today.issues > 0 && (
+        <span className={cn(CHIP, today.urgent ? 'bg-destructive/10 text-destructive' : 'bg-draft-soft text-draft')}>
+          {today.issues} open {today.issues === 1 ? 'issue' : 'issues'}
+          {today.urgent ? ` · ${today.urgent} urgent` : ''}
         </span>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 text-xs border-y py-2 border-border/40">
-        <div>
-          <span className="text-muted-foreground block text-[10px]">Client</span>
-          <span className="font-medium text-foreground">{project.client || 'None'}</span>
-        </div>
-        <div>
-          <span className="text-muted-foreground block text-[10px]">Location</span>
-          <span className="font-medium text-foreground">{project.location || 'None'}</span>
-        </div>
-      </div>
-
-      <div className="flex justify-between items-center text-[11px] text-muted-foreground">
-        <span>{sites.length} Sites</span>
-        <span>{members.length} Members</span>
-      </div>
-
-      <div className="flex gap-2 pt-1.5">
-        <Button size="sm" onClick={onOpen} className="flex-1 text-xs h-8">
-          Open Project
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="h-8 w-9 p-0">
-              <ChevronDown className="size-4 text-muted-foreground" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-40">
-            <DropdownMenuItem asChild>
-              <Link to={`/projects/${project.id}`} className="flex items-center w-full">
-                <ExternalLink className="size-3.5 mr-2" />
-                Admin Console
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onEdit}>
-              <Edit2 className="size-3.5 mr-2" />
-              Edit Settings
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onArchive} className="text-destructive hover:bg-destructive/10">
-              <Trash2 className="size-3.5 mr-2" />
-              Archive Project
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </div>
+      )}
+    </p>
   )
 }

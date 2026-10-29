@@ -394,7 +394,7 @@ async def test_confirm_all_is_held_back_until_the_unsure_item_is_checked(world) 
     assert [b.title for b in kept.buttons] == ["Confirm all", "Fix something"]
 
     removed = await tap(f"sdr:rm:{block_a}:20261015:activity:{extra_id}")
-    assert "• Work: 1 item" in removed.text
+    assert "(1 item)" in removed.text and "• Work: Plastering" in removed.text
     gone = await tap(f"sdr:rm:{block_a}:20261015:activity:{extra_id}")
     assert gone.text == site_day_review.ITEM_GONE
 

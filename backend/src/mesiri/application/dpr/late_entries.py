@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
 
-from mesiri.application.dpr import site_day
+from mesiri.application.dpr import fact_review, site_day
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection
@@ -254,6 +254,11 @@ async def _revise_day(
     )
 
 
+#: WA-77 (Alan, 25 Oct): a late entry still waiting for its Save is not
+#: listed in a report, nor claimed by one, until it is saved.
+_SAVED = fact_review.counted_sql_by_column("late_entries.fact_type", "late_entries.fact_id")
+
+
 async def late_entries_for_report(
     conn: AsyncConnection,
     *,
@@ -269,11 +274,12 @@ async def late_entries_for_report(
         (
             await conn.execute(
                 text(
-                    """
+                    f"""
                 SELECT report_date, summary, fact_type, outcome, entry_created_at
                 FROM late_entries
                 WHERE organization_id = :org AND site_id = :site AND report_date < :date
                   AND (shown_in_report_id IS NULL OR shown_in_report_id = :report_id)
+                  AND {_SAVED}
                 ORDER BY report_date, entry_created_at
                 """
                 ),
@@ -315,12 +321,13 @@ async def claim_for_report(
         (
             await conn.execute(
                 text(
-                    """
+                    f"""
                 UPDATE late_entries SET shown_in_report_id = :report_id
                 WHERE organization_id = :org AND site_id = :site
                   AND (report_date < :date
                        OR (report_date = :date AND outcome = 'reopened'))
                   AND shown_in_report_id IS NULL
+                  AND {_SAVED}
                 RETURNING fact_type, fact_id
                 """
                 ),

@@ -35,7 +35,13 @@ from mesiri_contracts.assistant.canonical_event import CanonicalEventType
 from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.planner_decision import WorkflowKey
 from runtime.entity_resolution.material_resolution import classify_material_matches
-from runtime.material_units import ask_amount_text, conversion_question, fit_stock_unit
+from runtime.material_units import (
+    amount_question,
+    ask_amount_text,
+    conversion_question,
+    fit_stock_unit,
+    stock_unit_code,
+)
 
 from .entry_base import (
     SCOPE_KEYS,
@@ -61,6 +67,15 @@ _BY_DIRECTION = {
 
 #: [103]: the last choice of a long material list: they type the name instead.
 SOMETHING_ELSE = "Something else"
+#: What an answer fills in (``Say.awaiting``), so a card line waiting on the
+#: question can take the answer from a tap (request 127): how many stock units
+#: one reported unit is, and whether to add a new material.
+AWAIT_UNIT = "unit"
+AWAIT_NEW_MATERIAL = "new_material"
+#: The amount in the stock unit, typed (no conversion to ask for): a card line
+#: waits on it (request 129).
+AWAIT_AMOUNT = "amount"
+ADD_IT = "Yes, add it"
 #: WhatsApp lists hold ten rows: nine materials and "Something else".
 LIST_MATERIALS = 9
 
@@ -129,7 +144,16 @@ class MaterialEntry(EntryScope):
             text = ask_amount_text(material, fields, fit, role=role)
             ask = conversion_question(material, fit, role=role)
             if ask is None:
-                return Say("info", text)
+                # Request 129: still a line of the draft card, with the question
+                # beside it ("Steel used: 20 rod (❓ How many kg is 20 rod?)"), not
+                # only the model's words; a typed amount in the stock unit fills it.
+                return Say(
+                    "info",
+                    text,
+                    question=amount_question(fields, fit),
+                    awaiting=AWAIT_AMOUNT,
+                    answer_unit=stock_unit_code(fit),
+                )
             question, options = ask
             return Say(
                 "choose",
@@ -140,6 +164,7 @@ class MaterialEntry(EntryScope):
                 "amount and unit. If they pick Other, ask them the number (ask_user, no options).",
                 question=question,
                 options=options,
+                awaiting=AWAIT_UNIT,
             )
 
         site_name = self._site_name(site_id)
@@ -301,7 +326,8 @@ class MaterialEntry(EntryScope):
                 "as a new material. If yes, call this tool again with new_material true; if no, ask "
                 "which listed material they meant.",
                 question=f'"{name}" isn\'t in your material list yet. Add it as a new material?',
-                options=("Yes, add it", "No"),
+                options=(ADD_IT, "No"),
+                awaiting=AWAIT_NEW_MATERIAL,
             )
         return await self._pick_material(
             organization_id,
@@ -393,6 +419,8 @@ class MaterialEntry(EntryScope):
                 site_id=str(site_id) if site_id else None,
                 material_name=None,
                 material_id=material_id,
+                # WA-77: the hint compares with what was reported, saved or not.
+                include_unsaved=True,
             )
         except Exception:  # noqa: BLE001 -- the stock note is a hint, never a block
             _log.warning("material_entry.stock_failed correlation_id=%s", message.correlation_id, exc_info=True)

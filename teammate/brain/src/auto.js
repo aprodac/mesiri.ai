@@ -234,7 +234,7 @@ export class AutoLoop {
     if (req.dm) return "Auto can be switched on in the team group only.";
     if (req.sender_role !== "owner") return "Only an owner can switch auto on. Anyone approved can say @bot auto off.";
     const project = req.reply_project || req.project;
-    if (!this.brain.routines[project] || !this.brain.fireFn) return `Auto needs the cloud routine for ${project}, which isn't set up on this server.`;
+    if (!this.brain.hasRoutine(project) || !this.brain.fireFn) return `Auto needs the cloud routine for ${project}, which isn't set up on this server.`;
     const hours = Math.min(this.cfg.maxHours, Math.max(1, m[2] ? Number(m[2]) : this.cfg.hours));
     const t = this.now();
     this.s = {
@@ -295,6 +295,10 @@ export class AutoLoop {
   /** A usage limit is not a failure: pause, say so once, resume at the reset time (else retry in 30 min). */
   pause(limit) {
     const t = this.now();
+    // Several Claude accounts (TM-14): the brain already moved to any free one, so this means all are limited;
+    // resume when the first frees up.
+    const accounts = this.brain.accounts;
+    if (accounts?.list.length > 1 && accounts.earliestReset()) limit = { resetAt: accounts.earliestReset() };
     const until = limit?.resetAt && limit.resetAt > t ? limit.resetAt + MIN : t + this.cfg.retryMs;
     const first = !this.s.limitNotified;
     this.s.paused = { reason: "usage limit", until, since: this.s.paused?.since || t };

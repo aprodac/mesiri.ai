@@ -83,6 +83,7 @@ def build_command(
             **common,
             supplier=fields.get("supplier"),
             movement_reason=fields.get("movement_reason"),
+            media_object_key=str(fields["media_object_key"]) if fields.get("media_object_key") else None,
         )
     if draft.action_type is DraftActionType.TRANSFER_MATERIAL:
         return RecordMaterialTransferCommand(

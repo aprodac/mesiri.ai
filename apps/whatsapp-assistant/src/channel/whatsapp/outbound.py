@@ -32,6 +32,23 @@ _REPLY_BUTTON_TITLE_MAX_CHARS = 20
 _REPLY_BUTTON_MAX_COUNT = 3
 
 
+#: WA-87: a send target naming a WhatsApp group instead of a person. Every
+#: send_* method takes it in place of a wa_id, so a group gets the same
+#: messages a person does without a second copy of each method.
+GROUP_TARGET_PREFIX = "group:"
+
+
+def group_target(group_id: str) -> str:
+    return f"{GROUP_TARGET_PREFIX}{group_id}"
+
+
+def group_id_of(target: str | None) -> str | None:
+    """The group id of a ``group:<id>`` target, else None."""
+    if target and str(target).startswith(GROUP_TARGET_PREFIX):
+        return str(target)[len(GROUP_TARGET_PREFIX):] or None
+    return None
+
+
 class WhatsAppSender:
     """Send messages via the Meta WhatsApp Cloud API."""
 
@@ -450,10 +467,12 @@ class WhatsAppSender:
             return None
 
         url = f"{self._graph_base_url}/{self._api_version}/{self._phone_number_id}/messages"
+        group_id = group_id_of(to_wa_id)
         payload = {
             "messaging_product": "whatsapp",
-            "recipient_type": "individual",
-            "to": to_wa_id,
+            # WA-87: a "group:<id>" target posts into that WhatsApp group.
+            "recipient_type": "group" if group_id else "individual",
+            "to": group_id or to_wa_id,
             **message_fields,
         }
         # Timed because every outbound send sits between the last traced

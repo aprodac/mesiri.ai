@@ -36,10 +36,11 @@ from mesiri.application.dpr.site_day import InvalidSiteDayTransition
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.domains.dpr.pdf import render_dpr_pdf_bytes
 from mesiri.domains.projects.router import get_auth_context
-from mesiri.domains.shared.media import assert_downloadable_url
+from mesiri.domains.shared.media import signed_media_url
 from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.objectstorage.dependency import get_object_storage
 from mesiri.infrastructure.postgres.dependency import get_db_conn
+from mesiri.infrastructure.postgres.repositories.analytics import PostgresAnalyticsRepository
 from mesiri.infrastructure.postgres.repositories.dpr import PostgresDprRepository
 from mesiri.infrastructure.postgres.repositories.fact_reviews import PostgresFactReviewRepository
 from mesiri_contracts.common.storage import ObjectStoragePort
@@ -145,6 +146,45 @@ async def list_daily_reports(
     return {"items": items, "total": total}
 
 
+_ANALYTICS_MAX_DAYS = 366
+
+
+@router.get("/analytics")
+async def get_analytics(
+    date_from: datetime.date | None = None,
+    date_to: datetime.date | None = None,
+    project_id: uuid.UUID | None = None,
+    site_id: uuid.UUID | None = None,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """The Analytics page (WEB-24): per-day workers, work items, photos,
+    issues and hours lost for a date range, open issues by type and
+    severity, and each site's reporting (days with updates / days its site
+    DPR was confirmed). Scoped exactly like /daily-reports, BE-42 included.
+    Defaults to the 30 days ending `date_to` (today); at most a year."""
+    date_to = date_to or datetime.date.today()
+    date_from = date_from or date_to - datetime.timedelta(days=29)
+    if date_from > date_to:
+        raise HTTPException(status_code=422, detail="The start date is after the end date.")
+    if (date_to - date_from).days >= _ANALYTICS_MAX_DAYS:
+        raise HTTPException(status_code=422, detail="Pick a range of a year or less.")
+
+    project_ids, denied = _resolve_project_ids(auth_context, project_id)
+    if denied:
+        return {"date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "days": [], "open_issues": [], "sites": []}
+    restricted, allowed = _site_filter(auth_context, project_ids)
+    return await PostgresAnalyticsRepository(conn).summary(
+        organization_id=auth_context.organization_id,
+        project_ids=project_ids,
+        site_id=site_id,
+        restricted_project_ids=restricted,
+        allowed_site_ids=allowed,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
 @router.get("/site-days")
 async def list_site_days(
     report_date: datetime.date = Query(alias="date"),
@@ -206,23 +246,26 @@ def _site_denied(
     return not scope.grants_all_sites and site_id not in scope.site_ids
 
 
-_MEDIA_URL_TTL_SECONDS = 600
+def _report_denied(auth_context: AuthorizationContext, scope: dict[str, Any]) -> bool:
+    """BE-49 (audit DSH-02): one report's project/site rule. A report with
+    no project (an old manual entry) is for company-wide roles only."""
+    if scope["project_id"] is None:
+        return not auth_context.project_scope.grants_all_org_projects
+    return _site_denied(auth_context, scope["project_id"], scope["site_id"])
 
 
-async def _signed_url(object_storage: ObjectStoragePort, key: str | None) -> str | None:
-    """A short-lived link to a stored photo/voice note, or None when storage
-    can't give one (the panel then shows the item without it)."""
-    if not key:
-        return None
-    try:
-        return assert_downloadable_url(
-            await object_storage.generate_presigned_url(
-                key, expires_in_seconds=_MEDIA_URL_TTL_SECONDS
-            )
-        )
-    except Exception:  # noqa: BLE001 -- one missing photo must not hide the rest
-        logger.warning("dpr.sources_media_unavailable key=%s", key)
-        return None
+async def _report_in_scope(
+    repo: PostgresDprRepository, auth_context: AuthorizationContext, report_id: uuid.UUID
+) -> dict[str, Any]:
+    """The report's scope, or 404 -- for a report in another company and one
+    whose project or site this user can't see alike, so neither is revealed.
+    Every /daily-reports/{id} route reads or changes the report through this."""
+    scope = await repo.get_report_scope(
+        organization_id=auth_context.organization_id, report_id=report_id
+    )
+    if scope is None or _report_denied(auth_context, scope):
+        raise HTTPException(status_code=404, detail="Daily report not found")
+    return scope
 
 
 @router.get("/site-days/{site_id}")
@@ -255,7 +298,7 @@ async def get_site_day(
         project_ids={project_id},
         report_date=report_date,
     )
-    payload, items = await repo.assemble_site_day(
+    payload, with_drafts, items = await repo.assemble_site_day_with_drafts(
         organization_id=auth_context.organization_id,
         project_id=project_id,
         site_id=site_id,
@@ -282,6 +325,9 @@ async def get_site_day(
         "day": day,
         "project": projects[0] if projects else None,
         "report": payload,
+        # WA-77: the same report with unsaved entries in it, for the Live page
+        # (which shows a draft on the sheet, marked draft, until it is saved).
+        "report_with_drafts": with_drafts,
         "items": items,
         "drafts": sum(1 for i in items if i["review"] == "draft"),
         "versions": versions,
@@ -313,10 +359,74 @@ async def get_fact_sources(
         organization_id=auth_context.organization_id, fact_type=fact_type, fact_id=fact_id
     )
     for message in sources["messages"]:
-        message["media_url"] = await _signed_url(object_storage, message.pop("media_object_key"))
+        message["media_url"] = await signed_media_url(object_storage, message.pop("media_object_key"))
     for photo in sources["photos"]:
-        photo["url"] = await _signed_url(object_storage, photo.pop("media_object_key"))
+        photo["url"] = await signed_media_url(object_storage, photo.pop("media_object_key"))
     return sources
+
+
+#: The questions the Live report shows (WEB-37): workflow -> what was asked
+#: about. Finance questions are left out: their answers are for admins,
+#: owners, finance and project managers only (SEC-01), and Live is open to
+#: everyone on the site.
+QUESTION_KINDS: dict[str, str] = {
+    "material.inventory_query": "stock",
+    "labour.query": "manpower",
+    "activity.query": "work",
+    "project.detail_query": "project",
+    "dpr.request": "report",
+}
+#: WEB-46: the agent's lookup tools -> the same kinds (its lookups leave no
+#: workflow row; the turn's traced tool calls say what answered).
+#: `query_expenses` is left out, as finance questions are above.
+QUESTION_TOOLS: dict[str, str] = {
+    "query_labour": "manpower",
+    "query_materials": "stock",
+    "query_work_log": "work",
+    "query_project": "project",
+    "request_dpr": "report",
+}
+
+
+@router.get("/site-days/{site_id}/questions")
+async def list_site_day_questions(
+    site_id: uuid.UUID,
+    since: datetime.datetime,
+    until: datetime.datetime,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """What was asked about this site (or its whole project) between
+    `since` and `until` (the viewer's day), and what Mesiri answered, for
+    the Live report (WEB-37). Read-only; the site rule is the site day's."""
+    site = await PostgresDprRepository(conn).find_site(
+        organization_id=auth_context.organization_id, site_id=site_id
+    )
+    if site is None or site["project_id"] is None:
+        raise HTTPException(status_code=404, detail="Site not found")
+    if _site_denied(auth_context, site["project_id"], site_id):
+        raise HTTPException(status_code=404, detail="Site not found")
+    if until <= since or until - since > datetime.timedelta(days=2):
+        raise HTTPException(status_code=422, detail="Ask for one day at a time")
+    rows = await PostgresFactReviewRepository(conn).questions(
+        organization_id=auth_context.organization_id,
+        project_id=site["project_id"],
+        site_id=site_id,
+        since=since,
+        until=until,
+        workflow_keys=list(QUESTION_KINDS),
+        tool_names=list(QUESTION_TOOLS),
+    )
+    items = []
+    for row in rows:
+        key = row.pop("workflow_key")
+        tools = row.pop("tools", None) or []
+        kind = QUESTION_KINDS.get(key or "") or next(
+            (QUESTION_TOOLS[t] for t in tools if t in QUESTION_TOOLS), None
+        )
+        if kind is not None:
+            items.append({**row, "kind": kind})
+    return {"items": items}
 
 
 class SiteDayConditionsRequest(BaseModel):
@@ -806,6 +916,7 @@ async def get_daily_report_detail(
     conn: AsyncConnection = Depends(get_db_conn),
 ):
     repo = PostgresDprRepository(conn)
+    await _report_in_scope(repo, auth_context, report_id)
     report = await repo.get_report(
         organization_id=auth_context.organization_id,
         report_id=report_id,
@@ -821,6 +932,12 @@ async def create_daily_report(
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
+    if req.project_id is None:
+        denied = not auth_context.project_scope.grants_all_org_projects
+    else:
+        denied = _site_denied(auth_context, req.project_id, req.site_id)
+    if denied:
+        raise HTTPException(status_code=403, detail="You don't have access to this project or site")
     repo = PostgresDprRepository(conn)
     created = await repo.create_report(
         organization_id=auth_context.organization_id,
@@ -838,6 +955,7 @@ async def submit_daily_report_for_review(
 ):
     """DRAFT -> IN_REVIEW."""
     repo = PostgresDprRepository(conn)
+    await _report_in_scope(repo, auth_context, report_id)
     success = await repo.submit_for_review(
         organization_id=auth_context.organization_id,
         report_id=report_id,
@@ -855,6 +973,7 @@ async def approve_daily_report(
     conn: AsyncConnection = Depends(get_db_conn),
 ):
     repo = PostgresDprRepository(conn)
+    await _report_in_scope(repo, auth_context, report_id)
     success = await repo.approve_report(
         organization_id=auth_context.organization_id,
         user_id=auth_context.user_id,
@@ -874,6 +993,7 @@ async def publish_daily_report(
 ):
     """APPROVED -> PUBLISHED."""
     repo = PostgresDprRepository(conn)
+    await _report_in_scope(repo, auth_context, report_id)
     success = await repo.publish_report(
         organization_id=auth_context.organization_id,
         report_id=report_id,
@@ -910,11 +1030,7 @@ async def revise_daily_report(
         raise HTTPException(status_code=400, detail="revision_reason is required")
 
     repo = PostgresDprRepository(conn)
-    scope = await repo.get_report_scope(
-        organization_id=auth_context.organization_id, report_id=report_id
-    )
-    if scope is None:
-        raise HTTPException(status_code=404, detail="Daily report not found")
+    scope = await _report_in_scope(repo, auth_context, report_id)
 
     sources: list[tuple[uuid.UUID, uuid.UUID | None]] | None = None
     if scope["level"] == "SITE" and scope["site_id"] is not None:
@@ -960,11 +1076,7 @@ async def list_daily_report_versions(
 ):
     """Every version of one report, newest first (WEB-04)."""
     repo = PostgresDprRepository(conn)
-    scope = await repo.get_report_scope(
-        organization_id=auth_context.organization_id, report_id=report_id
-    )
-    if scope is None or _site_denied(auth_context, scope["project_id"], scope["site_id"]):
-        raise HTTPException(status_code=404, detail="Daily report not found")
+    await _report_in_scope(repo, auth_context, report_id)
     return {
         "items": await repo.list_versions(
             organization_id=auth_context.organization_id, report_id=report_id
@@ -995,6 +1107,7 @@ async def get_daily_report_pdf(
     activities behind it) has nothing real to render.
     """
     repo = PostgresDprRepository(conn)
+    await _report_in_scope(repo, auth_context, report_id)
     report = await repo.get_report_for_pdf(
         organization_id=auth_context.organization_id, report_id=report_id, version_id=version_id
     )

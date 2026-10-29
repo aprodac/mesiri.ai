@@ -94,7 +94,7 @@ EXPIRED = "That request has expired. They can send their JOIN message again."
 REJECTED_DONE = "Okay, *{name}* won't be added."
 NOT_ALLOWED_TO_SHARE = "Only your company's admin or project manager can share the join code."
 CODE_INTRO = (
-    "Forward the next message to your team. Whoever sends it is asked to you to approve "
+    "Forward the next message to your team. Whoever sends it is asked for your approval "
     "before they're added.{rotated}\n\nCode leaked? Send *new join code* to replace it."
 )
 CODE_ROTATED = "\n\nThe old code no longer works."
@@ -287,6 +287,13 @@ class JoinJourney:
         rotate = words in _NEW_CODE_WORDS
         if not rotate and words not in _CODE_WORDS:
             return None
+        return await self.share_code(message, actor, rotate=rotate)
+
+    async def share_code(
+        self, message: Any, actor: ActorIdentity, *, rotate: bool = False
+    ) -> ReplySpec:
+        """The code to share: the intro is sent now, the message to forward
+        is returned (SET-07: also what the agent's join-code tool runs)."""
         if str(actor.role or "").upper() not in _SHARERS:
             return ReplySpec(text=NOT_ALLOWED_TO_SHARE)
         async with self._db.transaction() as conn:

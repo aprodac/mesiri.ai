@@ -30,6 +30,27 @@ owner would use it. Finding and documenting only: nothing here has been fixed ye
 Still to do: one full-day end-to-end check, then a single ranked list
 (wrong data → lost messages → UX).
 
+## Fixed since the audit (25 Oct, WhatsApp/dashboard gap review)
+
+Each fix is in [V1_TRACKER.md](../../plans/V1_TRACKER.md) with its commit.
+
+| Audit ID | Fix | Tracker |
+| --- | --- | --- |
+| DSH-07 | WhatsApp Inbox for admins only | WEB-31 |
+| DSH-04 | Today counts materials, issues and progress as reported | WEB-32 |
+| DPR-09, ISS-07, ISS-13 | Dashboard Download PDF uses the WhatsApp template | BE-47 |
+| ISS-08 | Hours lost never more than a day | BE-48 |
+| DSH-02 | Every daily-report route checks project and site | BE-49 |
+| ATT-09 | Labour from someone on no site is not saved site-less | BE-50 |
+| ISS-04 | Open issues stay on the DPR until closed | BE-51 |
+| PHO-08 | Photo question leaves out switched-off modules | WA-65 |
+| DPR-05 | Owner/PM "today's DPR?" shows each site's day | WA-66 |
+| SET-01, SET-05, SET-06 | WhatsApp role rules match the dashboard | WA-67 |
+| (WA-46) | A site's creator can report on it | WA-46 |
+| (BE-37) | Withdrawn attendance shows on the timeline | BE-37 |
+
+Still open from the same review: ISS-01 equipment (WA-68, needs what to record).
+
 ## How to use these files
 
 Each module file has:

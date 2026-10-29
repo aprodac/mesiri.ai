@@ -28,6 +28,15 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from mesiri.domains.shared.auth import require_platform_admin
+from runtime.reply_capture import (
+    CapturedReply,
+    ReplyCapture,
+    ReplyOption,
+    UserNotFound,
+    identity_refusal,
+    run_captured,
+    user_whatsapp_number,
+)
 
 router = APIRouter(prefix="/admin/system-graph", tags=["admin"])
 
@@ -134,18 +143,10 @@ class SystemGraphResponse(BaseModel):
     workflows: list[WorkflowGraphInfo]
 
 
-class ReplyOptionInfo(BaseModel):
-    id: str
-    title: str
-    description: str | None = None
-
-
-class StructuredReplyInfo(BaseModel):
-    type: str  # "text" | "buttons" | "list"
-    text: str
-    buttons: list[ReplyOptionInfo] = []
-    list_rows: list[ReplyOptionInfo] = []
-    button_label: str | None = None
+# The captured-reply shapes live with the capture itself (shared with the
+# dashboard's "Tell Mesiri", WEB-36); same fields as before.
+ReplyOptionInfo = ReplyOption
+StructuredReplyInfo = CapturedReply
 
 
 class SimulateRequest(BaseModel):
@@ -977,26 +978,16 @@ async def get_system_graph(_admin: dict = Depends(require_platform_admin)):
 async def _lookup_user_wa_id(org_id: uuid.UUID, user_id: uuid.UUID) -> str:
     """Resolve the chosen user's registered WhatsApp number (the pipeline keys
     identity off it). Raises HTTPException if the user is missing or unregistered."""
-    import sqlalchemy as sa
-
-    from admin.router import get_engine, users_table
-
-    engine = get_engine()
-    async with engine.connect() as conn:
-        result = await conn.execute(
-            sa.select(users_table.c.whatsapp_number).where(
-                sa.and_(users_table.c.id == user_id, users_table.c.organization_id == org_id)
-            )
-        )
-        row = result.first()
-    if row is None:
-        raise HTTPException(status_code=404, detail="User not found in that organization")
-    if not row.whatsapp_number:
+    try:
+        number = await user_whatsapp_number(org_id, user_id)
+    except UserNotFound:
+        raise HTTPException(status_code=404, detail="User not found in that organization") from None
+    if not number:
         raise HTTPException(
             status_code=400,
             detail="That user has no WhatsApp number on file, so a message can't be simulated as them.",
         )
-    return str(row.whatsapp_number)
+    return number
 
 
 @router.post("/simulate/reset")
@@ -1034,12 +1025,6 @@ async def simulate_message(
     capturing replies instead of sending them: the production message handler
     (runtime/message_journey.py) with a capturing sender, so buttons, YES/NO
     and the agent behave as on WhatsApp, including multi-turn workflows."""
-    from context.live_identity import (
-        NO_ORG_MESSAGE,
-        ORG_SUSPENDED_MESSAGE,
-        UNREGISTERED_MESSAGE,
-        resolve_sender,
-    )
     from mesiri_contracts.assistant.enums import InputModality
     from mesiri_contracts.assistant.normalized_message import NormalizedMessage, SenderInfo
     from mesiri_contracts.common.ids import new_id
@@ -1060,51 +1045,7 @@ async def simulate_message(
     wa_id = await _lookup_user_wa_id(body.organization_id, body.user_id)
     container = get_container(request)
 
-    captured_texts: list[str] = []
-    captured_structured: list[StructuredReplyInfo] = []
-
-    async def _capture_text(_to: str, text: str) -> None:
-        captured_texts.append(text)
-        captured_structured.append(StructuredReplyInfo(type="text", text=text))
-
-    async def _capture_list(_to: str, body_text: str, button_label: str, rows) -> None:
-        options = "\n".join(f"  • {getattr(r, 'title', r)}" for r in rows)
-        captured_texts.append(f"{body_text}\n{options}")
-        list_rows = [
-            ReplyOptionInfo(
-                id=getattr(r, "id", str(r)),
-                title=getattr(r, "title", str(r)),
-                description=getattr(r, "description", None),
-            )
-            for r in rows
-        ]
-        captured_structured.append(
-            StructuredReplyInfo(
-                type="list",
-                text=body_text,
-                button_label=button_label,
-                list_rows=list_rows,
-            )
-        )
-
-    async def _capture_button(_to: str, *, body: str, buttons) -> None:
-        options = " / ".join(getattr(r, "title", r) for r in buttons)
-        captured_texts.append(f"{body}\n\nReply {options}")
-        button_opts = [
-            ReplyOptionInfo(
-                id=getattr(r, "id", str(r)),
-                title=getattr(r, "title", str(r)),
-                description=getattr(r, "description", None),
-            )
-            for r in buttons
-        ]
-        captured_structured.append(
-            StructuredReplyInfo(
-                type="buttons",
-                text=body,
-                buttons=button_opts,
-            )
-        )
+    capture = ReplyCapture()
 
     def _build_response(routed_via: str, result_obj: object | None = None) -> SimulateResponse:
         def _dump(obj) -> dict | None:
@@ -1127,8 +1068,8 @@ async def simulate_message(
             dry_run=True,
             ran_as_wa_id=wa_id,
             routed_via=routed_via,
-            replies=captured_texts,
-            structured_replies=captured_structured,
+            replies=capture.texts,
+            structured_replies=capture.replies,
             understanding=und,
             resolved_context=ctx_dump,
             canonical_event=canon,
@@ -1137,15 +1078,9 @@ async def simulate_message(
         )
 
     # --- Identity gate (M4) — same check the real webhook path runs first. ---
-    ctx = await resolve_sender(container.actor_reader, wa_id)
-    if ctx is None:
-        await _capture_text(wa_id, UNREGISTERED_MESSAGE)
-        return _build_response("identity_gate")
-    if ctx.organization_id is None:
-        await _capture_text(wa_id, NO_ORG_MESSAGE.format(name=ctx.full_name))
-        return _build_response("identity_gate")
-    if not ctx.org_active:
-        await _capture_text(wa_id, ORG_SUSPENDED_MESSAGE)
+    refusal = await identity_refusal(container, wa_id)
+    if refusal is not None:
+        capture.text(refusal)
         return _build_response("identity_gate")
 
     metadata: dict[str, object] = {"simulated": True}
@@ -1166,41 +1101,6 @@ async def simulate_message(
     if container.simulate_handler is None:
         raise HTTPException(status_code=503, detail="The simulator is not wired.")
 
-    class _CapturingSender:
-        async def send_text(self, _to: str, text: str, *args: object, **kwargs: object) -> bool:
-            await _capture_text(_to, text)
-            return True
-
-        async def send_text_capturing_id(self, _to: str, text: str) -> str:
-            await _capture_text(_to, text)
-            return new_id("sim")
-
-        async def send_list(self, _to: str, *, body: str, button_label: str, rows, **kwargs: object) -> bool:
-            await _capture_list(_to, body, button_label, rows)
-            return True
-
-        async def send_button(self, _to: str, *, body: str, buttons, **kwargs: object) -> bool:
-            await _capture_button(_to, body=body, buttons=buttons)
-            return True
-
-        async def send_image(self, _to: str, _data: bytes, *, caption: str | None = None, filename: str = "") -> bool:
-            await _capture_text(_to, f"[image]{' ' + caption if caption else ''}")
-            return True
-
-        async def send_document(self, _to: str, _data: bytes, *, filename: str, **kwargs: object) -> bool:
-            await _capture_text(_to, f"[document: {filename}]")
-            return True
-
-        def __getattr__(self, _name: str):  # mark_as_read, send_reaction, prepare_image, ...
-            async def _quiet(*args: object, **kwargs: object) -> bool:
-                return True
-
-            return _quiet
-
-    handler = container.simulate_handler(_CapturingSender())
-    try:
-        await handler(message, {})
-    except Exception as exc:  # noqa: BLE001 -- an outage is shown, not raised
-        await _capture_text(wa_id, f"[error: {type(exc).__name__}]")
+    await run_captured(container, message, capture)
     return _build_response("message_journey")
 

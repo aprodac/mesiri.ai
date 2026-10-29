@@ -15,12 +15,15 @@ connection and never commits.
 from __future__ import annotations
 
 import datetime
+import json
 import uuid
 from decimal import Decimal
 from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncConnection
+
+from mesiri.application.dpr import fact_review
 
 _workforce_workers = sa.Table(
     "workforce_workers",
@@ -202,9 +205,14 @@ def live_report_sql(alias: str) -> str:
 #: Applies on top of `LIVE_REPORT_SQL`, never instead of it -- a superseded or
 #: voided report neither counts nor replaces anything.
 #:
+#: WA-77 (Alan, 25 Oct): only saved reports count. A line whose report is a
+#: draft (sent on WhatsApp, Save not tapped yet) is left out, and an unsaved
+#: later report replaces nothing until it is saved.
+#:
 #: `{line}` / `{report}` are the lines and reports aliases in the caller's
 #: query; the line must belong to that report.
 COUNTED_LINE_SQL = (
+    "(" + fact_review.counted_sql(fact_review.LABOUR_REPORT, "{report}.id") + ") AND "
     "NOT EXISTS ("
     "    SELECT 1 FROM labour_attendance_lines later_line"
     "    JOIN labour_attendance_reports later_report"
@@ -216,6 +224,7 @@ COUNTED_LINE_SQL = (
     "      AND (later_report.created_at, later_report.id)"
     "          > ({report}.created_at, {report}.id)"
     "      AND later_report.voided_at IS NULL"
+    "      AND (" + fact_review.counted_sql(fact_review.LABOUR_REPORT, "later_report.id") + ")"
     "      AND later_report.id NOT IN ("
     "          SELECT corrects_report_id FROM labour_attendance_reports"
     "          WHERE corrects_report_id IS NOT NULL)"
@@ -831,6 +840,23 @@ class PostgresWorkforceReadRepository:
         )
         if res.rowcount == 0:
             return "that attendance report no longer exists or was already withdrawn"
+        # BE-37: tell the timeline, as every other withdrawal does (an issue's
+        # SiteIssueCancelled, an expense's ExpenseVoided). Without it the
+        # dashboard timeline kept "N workers recorded" with nothing after it.
+        # Same transaction as the stamp, so one never lands without the other.
+        await self._conn.execute(
+            sa.text(
+                "INSERT INTO outbox_events "
+                "(id, aggregate_type, aggregate_id, event_type, payload) "
+                "VALUES (:id, 'labour_attendance_report', :aggregate_id, "
+                "'LabourAttendanceVoided', CAST(:payload AS jsonb))"
+            ),
+            {
+                "id": uuid.uuid4(),
+                "aggregate_id": report_id,
+                "payload": json.dumps({"reason": reason.strip()}),
+            },
+        )
         return None
 
     async def get_report(

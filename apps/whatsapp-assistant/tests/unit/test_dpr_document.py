@@ -137,7 +137,7 @@ def test_render_html_shows_labour_and_materials_sections():
     html = render_html(data)
     assert "Mason" in html
     assert "Cement" in html
-    assert "8000" in html
+    assert "₹8,000" in html  # WEB-27: rupees, Indian grouping
 
 
 def test_render_html_shows_empty_state_for_no_labour_or_materials():
@@ -329,3 +329,110 @@ def test_late_entries_section_lists_earlier_days_escaped():
 def test_no_late_entries_section_when_there_are_none():
     html = render_html(build_document_data(code="DPR-3", payload=_payload()))
     assert "Late entries for earlier days" not in html
+
+
+def test_wrk01_continued_work_says_where_it_started():
+    payload = _payload(
+        activities=[
+            {"work_type": "brickwork", "narrative": "Brickwork 60% done", "status": "IN_PROGRESS",
+             "contractor": None, "quantities": [], "evidence_count": 0,
+             "continued": True, "started_on": "2026-07-20"},
+            {"work_type": "slab", "narrative": "Slab", "status": "IN_PROGRESS",
+             "contractor": None, "quantities": [], "evidence_count": 0},
+        ],
+        activity_count=2,
+    )
+    data = build_document_data(code="DPR-1", payload=payload)
+    assert [a.continued_from for a in data.activities] == ["20 Jul", ""]
+    html = render_html(data)
+    assert "Continued from 20 Jul" in html
+    assert html.count("Continued from") == 1
+
+
+def test_dpr06_labour_cost_of_zero_is_not_shown():
+    labour = {"headcount": 5, "trades": [{"trade": "mason", "headcount": 5}], "total_cost": "0"}
+    html = render_html(build_document_data(code="DPR-1", payload=_payload(labour=labour)))
+    assert "Total cost" not in html and "Labour cost" not in html
+
+
+class _Stored:
+    def __init__(self, data: bytes, content_type: str = "image/jpeg") -> None:
+        self.data, self.content_type = data, content_type
+
+
+class _Storage:
+    def __init__(self, files: dict) -> None:
+        self.files = files
+
+    async def get_object(self, key: str):
+        if key not in self.files:
+            raise KeyError(key)
+        return self.files[key]
+
+
+def _jpeg(side: int = 800) -> bytes:
+    import io
+
+    from PIL import Image
+
+    out = io.BytesIO()
+    Image.new("RGB", (side, side), (200, 120, 40)).save(out, "JPEG")
+    return out.getvalue()
+
+
+async def test_pho02_the_document_prints_the_photos_not_just_their_number():
+    from channel.dpr_document.photos import MAX_THUMBS, embed_photos
+
+    pytest.importorskip("PIL")
+    photos = [{"object_key": f"media/{i}", "caption": None, "mime_type": "image/jpeg"} for i in range(9)]
+    storage = _Storage({f"media/{i}": _Stored(_jpeg()) for i in range(8)})  # media/8 is lost
+    payload = _payload(
+        activities=[
+            {"work_type": "plastering", "narrative": "2nd floor", "status": "IN_PROGRESS", "contractor": None,
+             "quantities": [], "evidence_count": 9, "photos": photos},
+            {"work_type": "slab", "narrative": "slab", "status": "IN_PROGRESS", "contractor": None,
+             "quantities": [], "evidence_count": 0, "photos": []},
+        ],
+        activity_count=2, evidence_count=9,
+    )
+    embedded = await embed_photos(storage, payload)
+    first, second = embedded["activities"]
+    assert len(first["thumbs"]) == MAX_THUMBS and first["photos_more"] == 9 - MAX_THUMBS
+    assert all(t.startswith("data:image/jpeg;base64,") for t in first["thumbs"])
+    assert second["thumbs"] == [] and second["photos_more"] == 0
+    assert "thumbs" not in payload["activities"][0]  # the stored payload is not changed
+
+    html = render_html(build_document_data(code="DPR-1", payload=embedded))
+    assert html.count('<img src="data:image/jpeg') == MAX_THUMBS
+    assert "+ 3 more" in html
+
+
+async def test_pho02_a_lost_or_unreadable_photo_never_stops_the_report():
+    from channel.dpr_document.photos import embed_photos
+
+    payload = _payload(
+        activities=[{"work_type": "slab", "narrative": "slab", "status": "COMPLETED", "contractor": None,
+                     "quantities": [], "evidence_count": 2,
+                     "photos": [{"object_key": "gone"}, {"object_key": "text", "mime_type": "text/plain"}]}],
+        activity_count=1,
+    )
+    embedded = await embed_photos(_Storage({"text": _Stored(b"x", "text/plain")}), payload)
+    assert embedded["activities"][0]["thumbs"] == []
+    assert embedded["activities"][0]["photos_more"] == 2
+    assert await embed_photos(None, payload) is payload
+
+
+def test_dpr07_confirm_all_lists_what_is_being_confirmed():
+    from runtime.site_day_review import day_lines
+
+    lines = day_lines({
+        "activity_count": 2,
+        "activities": [{"work_type": "plastering"}, {"work_type": "brick_work"}],
+        "labour": {"headcount": 13, "trades": [{"trade": "mason", "headcount": 5}, {"trade": "helper", "headcount": 8}]},
+        "materials": [{"material_name": "Cement"}],
+    })
+    assert lines[:3] == [
+        "• Work: Plastering, Brick work (2 items)",
+        "• Labour: 13 workers (5 mason, 8 helper)",
+        "• Materials: Cement",
+    ]

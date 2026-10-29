@@ -21,7 +21,8 @@ name: Claude ops
 #   bot-items         open requests in the request log
 #   bot-label-test    label chat `text` (a jid) as assistant-test for mesiri
 #   vps-agent-log     the assistant agent's log lines (agent., entry., site_entry.) for the last `hours`
-#                     (read-only; journalctl -u mesiri; numbers masked)
+#                     (read-only; journalctl -u mesiri -u mesiri-worker, where the ARQ journey and its
+#                     agent.outage errors log; numbers masked)
 #   vps-agent-trace   infra/deploy/agent_trace.sh: per message, the tools the model called (names, argument
 #                     names, outcome), the parked question, held calls, parts still to do; last `hours`
 #                     (read-only; no message text or values; INF-14, approved by Ilan 24 Oct)
@@ -29,6 +30,9 @@ name: Claude ops
 #                     access (read-only, names and counts only)
 #   vps-templates     infra/deploy/whatsapp_templates.sh: `text` = check | add:<name>[,<name>] -- list Meta-approved
 #                     templates in WHATSAPP_APPROVED_TEMPLATES, restart, /health (WA-10; asked by Ilan 24 Oct)
+#   bot-scenarios     teammate/scenarios.py: the 27 Oct live-round scenarios (WA-80) against the REAL assistant
+#                     in the assistant-test chat; `text` = scenario ids and/or repeats, e.g. "S02,S04 x3"
+#                     (empty: all, once). Same token and chat as bot-test; TEST company only.
 #   golden-live       the agent golden sets on the real model (`pytest -m live`, ARCH-02 gate; `text` = site |
 #                     materials | empty for both). Uses TEAMMATE_GEMINI_API_KEY (approved by Ilan 22 Oct); no VPS.
 #
@@ -42,7 +46,7 @@ on:
         description: What to run
         required: true
         type: choice
-        options: [vps-check, vps-backup-now, vps-staging, vps-app-login, vps-smoke, vps-perf, vps-evening, bot-status, bot-chats, bot-test, bot-recent-test, bot-recent-team, bot-items, bot-label-test, golden-live, vps-agent-log, vps-agent-trace, vps-scope, vps-templates]
+        options: [vps-check, vps-backup-now, vps-staging, vps-app-login, vps-smoke, vps-perf, vps-evening, bot-status, bot-chats, bot-test, bot-recent-test, bot-recent-team, bot-items, bot-label-test, bot-scenarios, golden-live, vps-agent-log, vps-agent-trace, vps-scope, vps-templates]
       text:
         description: "bot-test: the message (or choose:<n|title>); bot-label-test: the chat jid"
         required: false
@@ -60,7 +64,7 @@ jobs:
   run:
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 15
+    timeout-minutes: ${{ inputs.task == 'bot-scenarios' && 300 || 15 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -129,7 +133,7 @@ jobs:
             vps-agent-log)
               H="$(printf '%s' "$HOURS" | tr -dc 0-9)"
               ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
-                "journalctl -u mesiri --since '${H:-2} hours ago' --no-pager -o short-iso | grep -E 'agent\.|entry\.|site_entry|material_entry|Traceback|Error' | tail -300" 2>&1 | mask ;;
+                "journalctl -u mesiri -u mesiri-worker --since '${H:-2} hours ago' --no-pager -o short-iso | grep -E 'agent\.|entry\.|site_entry|material_entry|Traceback|Error' | tail -300" 2>&1 | mask ;;
             vps-agent-trace)
               ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "bash -s -- $(printf '%s' "$HOURS" | tr -dc 0-9)" \
                 < infra/deploy/agent_trace.sh 2>&1 | mask ;;
@@ -155,6 +159,10 @@ jobs:
             bot-recent-team) inbox recent --role team --hours "$HOURS" --limit 200 | mask ;;
             bot-items) inbox items --status open ;;
             bot-label-test) inbox label "$TEXT" assistant-test --project mesiri ;;
+            bot-scenarios)
+              ONLY="$(printf '%s' "$TEXT" | sed -E 's/x[0-9]+//g' | tr -dc 'A-Za-z0-9,')"
+              REPEAT="$(printf '%s' "$TEXT" | { grep -oE 'x[0-9]+' || true; } | tr -dc 0-9)"
+              python3 teammate/scenarios.py ${ONLY:+--only "$ONLY"} --repeat "${REPEAT:-1}" 2>&1 | mask ;;
             golden-live)
               T="$GITHUB_WORKSPACE/apps/whatsapp-assistant/tests/conversation"
               case "$TEXT" in

@@ -37,11 +37,15 @@ class EvidenceAttachService:
         correlation_id: str,
         mime_type: str | None = None,
         caption: str | None = None,
+        captions: list[str | None] | None = None,
     ) -> list[str]:
         """Attach every photo in ``media_object_keys`` to ``activity_id`` in
         one transaction. Returns the created progress_attachments ids -- an
         empty list is a legitimate outcome (an empty batch), never an
-        error."""
+        error.
+
+        ``captions`` (PHO-01): one per photo, the sender's own words, kept
+        with their photo; ``caption`` is the one for all of them."""
         if not media_object_keys:
             return []
 
@@ -52,16 +56,29 @@ class EvidenceAttachService:
         from mesiri_contracts.application.commands.progress import AttachEvidenceCommand
         from mesiri_contracts.common.ids import new_id
 
-        cmd = AttachEvidenceCommand(
-            command_id=new_id("cmd"),
-            correlation_id=correlation_id,
-            organization_id=organization_id,
-            activity_id=activity_id,
-            media_object_keys=media_object_keys,
-            mime_type=mime_type,
-            caption=caption,
-            uploaded_by=uploaded_by,
-        )
+        per_photo = list(captions) if captions is not None else [caption] * len(media_object_keys)
+        per_photo += [caption] * (len(media_object_keys) - len(per_photo))
+        # One command per run of photos with the same caption, in the order they came.
+        groups: list[tuple[str | None, list[str]]] = []
+        for key, text in zip(media_object_keys, per_photo, strict=False):
+            said = (text or "").strip() or None
+            if groups and groups[-1][0] == said:
+                groups[-1][1].append(key)
+            else:
+                groups.append((said, [key]))
         repo: ProgressExecutionRepository = PostgresProgressExecutionRepository()
+        created: list[str] = []
         async with self._db.transaction() as conn:
-            return await repo.persist_attach_evidence(conn, cmd)
+            for text, keys in groups:
+                cmd = AttachEvidenceCommand(
+                    command_id=new_id("cmd"),
+                    correlation_id=correlation_id,
+                    organization_id=organization_id,
+                    activity_id=activity_id,
+                    media_object_keys=keys,
+                    mime_type=mime_type,
+                    caption=text,
+                    uploaded_by=uploaded_by,
+                )
+                created += await repo.persist_attach_evidence(conn, cmd)
+        return created

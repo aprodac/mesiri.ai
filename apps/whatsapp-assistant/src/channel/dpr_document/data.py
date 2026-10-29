@@ -5,7 +5,9 @@ channel/receipt/data.py's split between data-shaping and layout.
 
 from __future__ import annotations
 
+import datetime
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from trade_label import trade_label
@@ -21,6 +23,13 @@ class DprActivityRow:
     evidence_count: int
     # BE-11: repeats an earlier work item of the day. Absent before BE-11.
     possible_duplicate: bool = False
+    #: WRK-01: work started on an earlier day and updated on this one -- the
+    #: day it was started, "20 Oct". Empty for the day's own work.
+    continued_from: str = ""
+    #: PHO-02: the work's photos as data URIs (at most MAX_THUMBS), and how many
+    #: more there are than are shown.
+    thumbs: tuple[str, ...] = ()
+    photos_more: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +42,10 @@ class DprIssueRow:
     # with the site it came from); "—" for a SITE report, where it's
     # already implied by the whole document.
     site_name: str = "—"
+    #: BE-51: an issue reported on an earlier day and still open (or closed
+    #: on this one) -- the day it was reported, "12 Oct". Empty for the day's
+    #: own issues.
+    since: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +110,10 @@ class DprDocumentData:
     late_entries: list[DprLateEntryRow] = field(default_factory=list)
     # BE-18: the version's AI summary of its confirmed facts; "" for none.
     summary: str = ""
+    # WEB-27: the date as people say it ("Friday, 24 October 2026"), and the
+    # labour cost in rupees ("₹14,400"), "" when there is none to show.
+    date_label: str = ""
+    labour_cost_label: str = ""
 
 
 _WEATHER_LABELS = {
@@ -110,18 +127,75 @@ _SITE_WORKING_LABELS = {"full": "Full day", "half": "Half day", "none": "No work
 
 
 def _pretty(label: object) -> str:
+    """``SLAB_SHUTTERING`` -> ``Slab Shuttering``; a word that starts with a
+    digit stays lower case (``5th``, not str.title()'s ``5Th``)."""
     if not label:
         return "—"
-    return str(label).replace("_", " ").title()
+    return " ".join(
+        w.capitalize() if w[:1].isalpha() else w.lower()
+        for w in str(label).replace("_", " ").split()
+    )
+
+
+def _number(value: object) -> str:
+    """``180.000`` -> ``180``, ``2.400`` -> ``2.4``: quantities come from a
+    NUMERIC column and carry its scale."""
+    try:
+        n = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return str(value)
+    text = format(n.normalize(), "f")
+    return text if text != "-0" else "0"
 
 
 def _quantities_text(quantities: list[dict[str, Any]]) -> str:
     if not quantities:
         return "—"
-    return ", ".join(
-        f"{q.get('quantity')} {q.get('unit')} {_pretty(q.get('work_type'))}".strip()
-        for q in quantities
-    )
+    parts = []
+    for q in quantities:
+        work = q.get("work_type")
+        part = f"{_number(q.get('quantity'))} {q.get('unit') or ''}".strip()
+        parts.append(f"{part} {_pretty(work)}" if work else part)
+    return ", ".join(parts)
+
+
+def _rupees(value: object) -> str:
+    """``14400`` -> ``₹14,400`` (Indian grouping: ``₹1,23,456``); "" for none."""
+    try:
+        n = Decimal(str(value or 0))
+    except (InvalidOperation, ValueError):
+        return ""
+    if n <= 0:
+        return ""
+    whole, _, frac = format(n.quantize(Decimal("0.01")), "f").partition(".")
+    head, tail = whole[:-3], whole[-3:]
+    groups = []
+    while len(head) > 2:
+        groups.insert(0, head[-2:])
+        head = head[:-2]
+    if head:
+        groups.insert(0, head)
+    text = ",".join([*groups, tail])
+    return f"₹{text}" + (f".{frac}" if frac != "00" else "")
+
+
+def _date_label(value: object) -> str:
+    try:
+        day = datetime.date.fromisoformat(str(value))
+    except ValueError:
+        return str(value or "—")
+    return f"{day:%A}, {day.day} {day:%B %Y}"
+
+
+def _short_day(value: object) -> str:
+    """"2026-10-12" -> "12 Oct"; empty when there is no day."""
+    import datetime
+
+    try:
+        day = datetime.date.fromisoformat(str(value or ""))
+    except ValueError:
+        return ""
+    return f"{day.day} {day:%b}"
 
 
 def build_document_data(
@@ -140,6 +214,9 @@ def build_document_data(
             quantities=_quantities_text(a.get("quantities") or []),
             evidence_count=int(a.get("evidence_count") or 0),
             possible_duplicate=bool(a.get("possible_duplicate")),
+            continued_from=_short_day(a.get("started_on")) if a.get("continued") else "",
+            thumbs=tuple(a.get("thumbs") or ()),
+            photos_more=int(a.get("photos_more") or 0),
         )
         for a in payload.get("activities", [])
     ]
@@ -151,8 +228,11 @@ def build_document_data(
             narrative=i.get("narrative") or "—",
             status=_pretty(i.get("status")),
             site_name=_pretty(i.get("site_name")) if is_project else "—",
+            since=_short_day(i.get("reported_on")),
         )
-        for i in payload.get("issues", [])
+        # A project payload already holds its sites' earlier issues in
+        # `issues` (assembly.build_project_report_payload).
+        for i in [*payload.get("issues", []), *payload.get("carried_issues", [])]
     ]
     labour = payload.get("labour") or {}
     trades = [
@@ -184,6 +264,8 @@ def build_document_data(
     hours_lost = conditions.get("hours_lost")
     return DprDocumentData(
         summary=(summary or "").strip(),
+        date_label=_date_label(payload.get("report_date")),
+        labour_cost_label=_rupees(labour.get("total_cost")),
         weather=_WEATHER_LABELS.get(conditions.get("weather") or "", "Not set"),
         site_working=_SITE_WORKING_LABELS.get(conditions.get("site_working") or "", "Not set"),
         hours_lost=f"{hours_lost} h" if hours_lost is not None else "—",

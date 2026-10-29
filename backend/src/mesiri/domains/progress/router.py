@@ -29,9 +29,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.domains.projects.router import get_auth_context
+from mesiri.domains.shared.media import signed_media_url
 from mesiri.domains.shared.modules import require_module
+from mesiri.infrastructure.objectstorage.dependency import get_object_storage
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.repositories.progress import PostgresProgressReadRepository
+from mesiri_contracts.common.storage import ObjectStoragePort
 
 from .responses import (
     ActivitiesListResponse,
@@ -439,8 +442,11 @@ async def list_gallery(
     offset: int = Query(default=0, ge=0),
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
+    object_storage: ObjectStoragePort = Depends(get_object_storage),
 ):
-    """List site media gallery attachments within organization & scope."""
+    """List site media gallery attachments within organization & scope.
+    Each item carries `url`, a short-lived link to the photo (WEB-24), or
+    null when storage can't give one."""
     project_ids, denied = _resolve_project_ids(auth_context, project_id)
     if denied or _site_filter_denied(auth_context, project_id, site_id):
         return {"items": [], "total": 0}
@@ -454,6 +460,8 @@ async def list_gallery(
         limit=limit,
         offset=offset,
     )
+    for item in items:
+        item["url"] = await signed_media_url(object_storage, item.get("media_object_key"))
     return {"items": items, "total": total}
 
 

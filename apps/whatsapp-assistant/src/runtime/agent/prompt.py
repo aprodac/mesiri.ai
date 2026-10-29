@@ -35,6 +35,11 @@ Site B", "innu Green Villa site-il"), call set_work_site; their entries follow i
 rest of the day. Only when they ask to create, add or start a NEW site or project, call \
 create_site or create_project: its Yes/No buttons ask for you. A site name that is not \
 in their list is never created unless they asked for a new one.
+- An open issue marked carried_over began on its "since" date: say "since 24 Oct", never "today" or "innu".
+- Hindi site words: mistri = mason, majdoor / mazdoor / labour = helper. Take them as those trades without \
+asking; there is no control on the card to pick a trade, so never tell them to select one.
+- The card, its lines, its questions and its buttons are drawn by the system, never by you: write at most one \
+short sentence, and never write "To save", "Saved", "Reply YES", an options list or a note about the system.
 - Only pass a project or site when the user named one. Never invent names, numbers, \
 quantities, units or dates. If a detail you need is missing and cannot be worked out, \
 or you cannot tell what they mean, call ask_user with ONE short question (and 2-3 \
@@ -48,8 +53,9 @@ already answers.
 - If the user's message answers your last question, act on it with the right tool. A \
 name or a short answer is never "yes" or "no" unless you asked a yes/no question.
 - A number just logged was wrong ("correction, it was 150 not 180"): correct_work_quantity, \
-never a second entry. An issue reported earlier is fixed, back again, or was a mistake: \
-update_issue, never report_issue. Adding a person to a project: add_member.
+never a second entry. A percentage ("tiling 80% aayi") is progress: save_work_done with \
+progress_percent, never a correction unless they say the last figure was wrong ("alla, 75%"). An issue reported earlier is fixed, back again, or was a mistake: \
+update_issue, never report_issue. Adding a person to a project: add_member. Any ask for the company's join code or how people join: get_join_code.
 - Questions about the company's data (workers, stock, work log, project, money) are \
 answered with the query tools. Copy numbers and names from tool results exactly; never \
 compute or recall figures yourself.
@@ -146,9 +152,10 @@ ath stock undo?", "nale slab-inu cement mathiyo?") is a stock question: query_ma
 answer with the figures. It is never report_issue and never note_for_engineer.
 - Words for arriving mean received: came, arrived, delivered, got, vannu, ethi, eththi, \
 irakki, aaya, aa gaya, mila. Words for using mean used: used, use cheythu, use aayi, \
-consumed, laga, lagaya. With either, call the save tool straight away. Only a material \
-with a quantity and NO such word ("50 bags cement") is not guessed: call ask_user with \
-"Received or used?" and both options.
+consumed, laga, lagaya. With either, call the save tool straight away: "50 bags cement \
+arrived", "cement vannu 50 bag", "cement 50 bag came" are receipts, never a question. Only \
+a material with a quantity and NO such word ("50 bags cement") is not guessed: call ask_user \
+with "Received or used?" and both options.
 - Material sent from one site to another ("10 bags cement sent from this site to Site B", \
 "shifted 5 bags to Green Villa", "transfer", matti, kondupoyi, bheja) is transfer_material with the \
 other site as to_site: never save_material_usage ("used") or save_material_receipt. If the other \
@@ -224,6 +231,8 @@ SYSTEM_PROMPT = SYSTEM_PROMPT + "\n" + MESIRI_VOICE
 class Turn:
     user_text: str
     assistant_reply: str
+    #: When it was said (epoch seconds), 0 when not known.
+    at: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -345,6 +354,14 @@ _ENGLISH_WORDS = frozenset(
     cum cft sqm kg tonnes tons loads load trucks truck lorry only just also but or if so""".split()
 )
 
+#: Hindi typed in English letters ("aaj Green Villa mein 3 mistri aur 2 labour aaye").
+#: Two of these make a message Hinglish; words English or Malayalam also use are left out.
+_HINGLISH_WORDS = frozenset(
+    """aaj mein aur aaye aaya gaya gayi hai hain hua hue kiya kiye karna nahi nahin kaam mistri majdoor
+    mazdoor kal abhi bahut chahiye lagaya bheja mila mili wale tha thi raha rahe kaise kitna kitne
+    chhutti baarish""".split()
+)
+
 _MALAYALAM = re.compile(r"[\u0d00-\u0d7f]")
 _DEVANAGARI = re.compile(r"[\u0900-\u097f]")
 
@@ -369,6 +386,8 @@ def reply_language(text: str) -> str | None:
         return None
     if is_manglish(text):
         return "manglish"
+    if is_hinglish(text):
+        return "hinglish"
     words = re.findall(r"[a-z]+", (text or "").lower())
     if len(words) >= 2 and set(words) & _ENGLISH_WORDS:
         return "english"
@@ -382,7 +401,20 @@ def is_manglish(text: str) -> bool:
     return bool(words & _MANGLISH_WORDS) or bool(_MANGLISH_SUFFIX.search(lowered))
 
 
+def is_hinglish(text: str) -> bool:
+    """True for Hindi typed in English letters: two everyday Hindi words, no Malayalam."""
+    if is_manglish(text):
+        return False
+    words = set(re.findall(r"[a-z]+", (text or "").lower()))
+    return len(words & _HINGLISH_WORDS) >= 2
+
+
 _LANGUAGE_RULES = {
+    "hinglish": (
+        "This message is Hindi typed in English letters (Hinglish): reply in Hindi in English letters, the "
+        "way a site supervisor texts (\"ho gaya\", \"theek hai\"). Not English, not Manglish, and no Devanagari "
+        "or Malayalam script."
+    ),
     "manglish": (
         "This message is Manglish (Malayalam typed in English letters): reply in Manglish, "
         "in English letters, the way a site supervisor texts. Not English, and no Malayalam script."

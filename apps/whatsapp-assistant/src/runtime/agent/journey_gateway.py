@@ -24,6 +24,7 @@ from channel.replies import (
 from interactions.saved_summary import summarise_draft
 from mesiri_contracts.application.results.execution_result import ExecutionStatus
 from mesiri_contracts.assistant.candidates import Candidate
+from mesiri_contracts.assistant.draft_action import DraftActionType
 from mesiri_contracts.assistant.enums import InputModality, SemanticType
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage
 from workflows import WorkflowRunStatus
@@ -45,6 +46,9 @@ _LOOKUPS = frozenset(
     }
 )
 
+
+#: Request 136: the reads of a day's figures whose site comes from the site resolver.
+_DAY_READS = frozenset({SemanticType.ACTIVITY_QUERY, SemanticType.LABOUR_QUERY, SemanticType.INVENTORY_QUERY})
 
 #: A WhatsApp list row: title 24, description 72; ids 200 (so "all of them" is
 #: offered for up to five entries only).
@@ -184,8 +188,14 @@ class JourneyGateway:
     held_prompt: HeldPromptFn
     language: str | None = None
     handled: list[Any] = field(default_factory=list)
+    #: WEB-38: the lookups this turn answered, as (workflow instance, project,
+    #: site), so the message log ties the question to what answered it (the
+    #: Live page shows questions and Mesiri's answers from that link).
+    answered: list[tuple[str | None, str | None, str | None]] = field(default_factory=list)
     #: WA-41: ``(material, unit, count) -> line to say``; None when not wired.
     set_conversion: Callable[[str, str, Any], Awaitable[str]] | None = None
+    #: SET-07: sends the join code and the message to forward (join_journey.share_code).
+    share_code: Callable[[], Awaitable[str]] | None = None
     #: ARCH-01: material receipts/usage straight to the workflow
     #: (runtime/agent/material_entry.py).
     material_entry: Any | None = None
@@ -213,6 +223,16 @@ class JourneyGateway:
     #: WA-45: ``(project_id, site_id) -> label``: today's site is this one
     #: (runtime/agent/work_site.py); None when not wired.
     set_today_site: Callable[[str | None, str], Awaitable[str]] | None = None
+    #: ``() -> site id`` the sender works at today, if set (SIT-05: a save at
+    #: another site does not move it).
+    get_today_site: Callable[[], Awaitable[str | None]] | None = None
+    #: ``(project_id, site_id)``: a confirmed site update was saved there; the
+    #: site is preselected for the next unnamed update for a short window
+    #: (work_site.remember_saved_site, request 129).
+    remember_saved_site: Callable[[str | None, str], Awaitable[None]] | None = None
+    #: Request 132: ``(project_id, site_id) -> label``: "now at Site B" on a draft
+    #: card preselects that site for the save window only (work_site.WorkSite.preselect).
+    preselect_site: Callable[[str | None, str], Awaitable[str]] | None = None
     #: Request 88: the sender's latest card (runtime/agent/cards.py), who they
     #: are, and ``(facts) -> FactsUndone | None``: withdraw exactly those entries.
     cards: Any | None = None
@@ -223,10 +243,51 @@ class JourneyGateway:
     #: The entries this turn saved, with the call that made each; and, when an
     #: open card was changed, the items of that card before and after the new one.
     card_items: list[CardItem] = field(default_factory=list)
+    #: Request 116 H: the join code and the message to forward went out, so the
+    #: model's closing line would be a third, redundant message.
+    code_shared: bool = False
     carry_before: list[CardItem] = field(default_factory=list)
     carry_after: list[CardItem] = field(default_factory=list)
+    #: Request 124 (P1), the company's ``draft_v2`` setting: the save tools add
+    #: to ONE open draft (``drafts``, runtime/agent/draft_store.py) instead of
+    #: starting a workflow, and the Save tap writes it (``save_draft``). Off:
+    #: none of the draft code below runs.
+    draft_v2: bool = False
+    drafts: Any | None = None
+    #: The sender's open draft, loaded on first use; ``draft_new`` are the item
+    #: ids this turn added.
+    draft: Any | None = None
+    draft_loaded: bool = False
+    draft_new: list[str] = field(default_factory=list)
+    #: Request 136 (C): which component decided the site, the items and the reply
+    #: of this turn (``draft_flow.decided``), written as the "draft_decisions" stage.
+    decisions: list[dict[str, str]] = field(default_factory=list)
+    #: ``() -> InteractionHandled | None``: confirm the waiting draft like a
+    #: Yes (work on an open activity cannot be saved first, so the Save tap is
+    #: its confirmation).
+    confirm_now: Callable[[], Awaitable[Any]] | None = None
+    #: ``() -> None``: drop the question a workflow was left asking.
+    abandon_question: Callable[[], Awaitable[Any]] | None = None
+    #: ``(facts) -> settled``: confirm the saved drafts (the Save tap's own step).
+    settle_facts: Callable[[list[Any]], Awaitable[Any]] | None = None
+    #: ``() -> async context manager``: one transaction for the whole Save.
+    transaction: Callable[[], Any] | None = None
+    #: Request 137: the day's saved work (runtime/day_facts.DayFactsReader): the
+    #: fact a continued activity's Save wrote, and what a correction targets.
+    day_facts: Any | None = None
+    #: Progress update id -> its activity id, for the updates this Save wrote.
+    continued: dict[str, Any] = field(default_factory=dict)
+    #: ``() -> text | None``: the Yes / No question of an old-style workflow that
+    #: still waits for its answer (request 127: said, not silently ignored).
+    pending_confirmation: Callable[[], Awaitable[Any]] | None = None
+    #: The WhatsApp sender, for the pending actions a Save runs (actions.run).
+    sender: Any | None = None
 
     async def run(self, candidate: Candidate, *, text: str) -> StepResult:
+        if self.draft_mode and self._drafted(candidate):
+            return await self._draft_add(candidate, text=text)
+        if self.draft_mode and getattr(candidate, "semantic_type", None) in _DAY_READS:
+            candidate = await self._reading_site(candidate, text)
         step = await self._run(candidate, text=text)
         if step.status == "saved" and self.handled and not (getattr(candidate, "fields", None) or {}).get("_action"):
             await self._remember_site(self.handled[-1])
@@ -262,6 +323,121 @@ class JourneyGateway:
     def carry_card_items(self, before: list[CardItem], after: list[CardItem]) -> None:
         self.carry_before, self.carry_after = list(before), list(after)
 
+    async def _reading_site(self, candidate: Candidate, text: str) -> Candidate:
+        """Request 136: a question about the day's figures ("innu enthokke cheythu?",
+        "innu ethra labour?") reads the site the site resolver gives (the one named, the
+        one saved to in the window), else every site of theirs: never the site the
+        context layer defaults to, which is how a saved Green Villa update read as
+        "no work recorded"."""
+        from . import draft_site
+        from .draft_flow import decided
+        from .entry_base import ALL_SITES
+
+        fields = dict(getattr(candidate, "fields", None) or {})
+        said = str(fields.get("site_name") or "")
+        if fields.get("site_id"):
+            decided(self, "read_site", draft_site.DECIDER, draft_site.NAMED)
+            return candidate
+        saved = None
+        if self.get_today_site is not None:
+            try:
+                saved = await self.get_today_site()
+            except Exception:  # noqa: BLE001 -- then every site is read
+                _log.warning("agent.saved_site_unreadable", exc_info=True)
+        choice = draft_site.resolve(self.actor, text, said=said, saved_site_id=saved)
+        site = choice.site if choice.kind != draft_site.ASK else None
+        if site is None and said:
+            return candidate  # a name that is none of theirs: the entry asks, as before
+        decided(self, "read_site", draft_site.DECIDER, choice.kind if site is not None else ALL_SITES)
+        if site is None:
+            fields[ALL_SITES] = True
+        else:
+            fields.pop("site_name", None)
+            fields["site_id"] = str(site.id)
+        return candidate.model_copy(update={"fields": fields})
+
+    @property
+    def draft_mode(self) -> bool:
+        """Whether this sender's company holds messages as one draft card."""
+        return bool(self.draft_v2) and self.drafts is not None
+
+    def _drafted(self, candidate: Candidate) -> bool:
+        """A save tool whose call becomes a line on the card. What is not one
+        (an expense, a transfer, opening stock...) runs as it always did."""
+        from .draft import DRAFT_TOOLS
+
+        tool = self.current_call[0] if self.current_call else ""
+        return tool in DRAFT_TOOLS and not (getattr(candidate, "fields", None) or {}).get("_action")
+
+    async def _draft_add(self, candidate: Candidate, *, text: str) -> StepResult:
+        from . import draft_flow
+
+        return await draft_flow.add(self, candidate, text=text)
+
+    async def open_draft(self) -> Any | None:
+        from . import draft_flow
+
+        return await draft_flow.load(self) if self.draft_mode else None
+
+    async def save_draft(self, draft: Any) -> ReplySpec:
+        """The Save tap (runtime/agent/draft_flow.py): the draft written in one transaction."""
+        from . import draft_flow
+
+        return await draft_flow.save(self, draft)
+
+    async def cancel_draft(self, draft: Any) -> ReplySpec:
+        from . import draft_flow
+
+        return await draft_flow.cancel(self, draft)
+
+    async def edit_draft_item(self, draft: Any, item: Any, changes: dict[str, Any]) -> StepResult:
+        """A correction of a line of the open card (request 127)."""
+        from . import draft_flow
+
+        return await draft_flow.edit_item(self, draft, item, changes, text=self.message.text or "")
+
+    async def change_saved_item(self, card_item: CardItem, changes: dict[str, Any]) -> StepResult:
+        """A correction of an entry already saved: a change line on the card."""
+        from . import draft_flow
+
+        return await draft_flow.change_saved(self, card_item, changes, text=self.message.text or "")
+
+    async def saved_card(self) -> Card | None:
+        from . import draft_flow
+
+        return await draft_flow.saved_card(self) if self.draft_mode else None
+
+    async def saved_work_today(self) -> list[Any]:
+        """Request 137 (C): the sender's own saved work facts of today, from the
+        database (runtime/day_facts.py), oldest first. Empty when not wired."""
+        from . import draft_flow
+
+        return await draft_flow.saved_work_today(self) if self.draft_mode else []
+
+    def change_site_draft(self, draft: Any) -> ReplySpec:
+        """The "📍 Change site" tap: the sites to pick from (request 129)."""
+        from . import draft_flow
+
+        return draft_flow.change_site_list(self, draft)
+
+    async def move_draft_site(self, draft: Any, site_id: str) -> ReplySpec:
+        """A site picked for the whole card (request 129)."""
+        from . import draft_flow
+
+        return await draft_flow.move_site(self, draft, site_id)
+
+    async def answer_draft_typed(self, draft: Any, text: str) -> ReplySpec | None:
+        """WA-81: a typed answer to the open card's question, read by code; None when
+        the message is not one (the model reads it)."""
+        from . import draft_flow
+
+        return await draft_flow.answer_typed(self, draft, text)
+
+    async def answer_draft(self, draft: Any, item_id: str, choice: int) -> ReplySpec:
+        from . import draft_flow
+
+        return await draft_flow.answer(self, draft, item_id, choice)
+
     async def open_card(self) -> Card | None:
         """The sender's card that still waits on Save / Cancel, or None."""
         card = await self._latest_card()
@@ -296,18 +472,31 @@ class JourneyGateway:
     async def _remember_site(self, handled: Any) -> None:
         """WA-45: a save at a site keeps the sender there for the rest of the
         day, whatever module it was. Never raises."""
-        if self.set_today_site is None:
+        if self.set_today_site is None and self.remember_saved_site is None:
             return
         try:
+            from .work_site import SITE_UPDATE_ACTIONS
+
             confirmed = getattr(handled.result, "confirmed_action", None)
             draft = confirmed.draft_action if confirmed is not None else None
             site_id = getattr(draft, "site_id", None)
-            if site_id:
+            if site_id and getattr(draft, "action_type", None) in SITE_UPDATE_ACTIONS:
+                if self.remember_saved_site is not None:
+                    await self.remember_saved_site(getattr(draft, "project_id", None), str(site_id))
+                    return
+                if self.get_today_site is not None:
+                    current = await self.get_today_site()
+                    if current and str(current) != str(site_id):
+                        return
                 await self.set_today_site(getattr(draft, "project_id", None), str(site_id))
         except Exception:  # noqa: BLE001 -- a missed hint only costs one question
             _log.warning("agent.remember_site_failed", exc_info=True)
 
     async def set_work_site(self, *, project_id: str | None, site_id: str) -> str:
+        if self.draft_mode and self.preselect_site is not None:
+            # Request 132: on a draft card "now at Site B" preselects for the save
+            # window (3 h), like a save does; it no longer pins the site until midnight.
+            return await self.preselect_site(project_id, site_id)
         if self.set_today_site is None:
             raise RuntimeError("today's site is not wired")
         return await self.set_today_site(project_id, site_id)
@@ -342,18 +531,25 @@ class JourneyGateway:
         if isinstance(prepared, Say):
             from .toolbox import question_reply
 
-            reply = question_reply(prepared.question, list(prepared.options)) if prepared.question else None
-            return StepResult(prepared.status, text=prepared.text, reply=reply)
+            reply = question_reply(prepared.question, list(prepared.options), awaiting=prepared.awaiting) if prepared.question else None
+            return StepResult(prepared.status, text=prepared.text, reply=reply, awaiting=prepared.awaiting)
         prepared_list = prepared if isinstance(prepared, list) else [prepared]
         tool = self.current_call[0] if self.current_call else prepared_list[0].kind
         args = dict(self.current_call[1]) if self.current_call else {}
         for action in prepared_list:
             if not await self.actions.store.put(self.actor, action):
                 return StepResult("error", text="Not done: the card could not be prepared. Please send it again.")
-        for action in prepared_list:
-            item = CardItem(tool, args, ACTION_FACT, str(uuid.UUID(action.id)), action.summary)
-            self.card_items.append(item)
-            self.action_items.append(item)
+        if self.draft_mode:
+            # One card for the whole message: the action is a line of the draft,
+            # and the one Save tap runs it (after everything else is written).
+            from . import draft_flow
+
+            await draft_flow.add_action(self, tool, args, prepared_list)
+        else:
+            for action in prepared_list:
+                item = CardItem(tool, args, ACTION_FACT, str(uuid.UUID(action.id)), action.summary)
+                self.card_items.append(item)
+                self.action_items.append(item)
         summaries = [a.summary for a in prepared_list]
         return StepResult(
             "saved",
@@ -402,12 +598,22 @@ class JourneyGateway:
         if isinstance(prepared, Say):
             from .toolbox import question_reply
 
-            reply = question_reply(prepared.question, list(prepared.options)) if prepared.question else None
-            return StepResult(prepared.status, text=prepared.text, reply=reply)
+            reply = question_reply(prepared.question, list(prepared.options), awaiting=prepared.awaiting) if prepared.question else None
+            return StepResult(prepared.status, text=prepared.text, reply=reply, awaiting=prepared.awaiting)
         run = await self.start_workflow(prepared.decision, prepared.event)
         _log.info("agent.direct correlation_id=%s kind=%s route=direct", message.correlation_id, kind)
         journey = SimpleNamespace(workflow_run=run, planner_decision=prepared.decision)
         step = await self._after_run(journey, candidate)
+        if step.status == "answer":
+            # A lookup usually finishes without a workflow row (WEB-46): its
+            # project and site are still recorded on the message.
+            instance = getattr(run, "workflow_instance_id", None)
+            event = prepared.event
+            project = getattr(event, "project_id", None)
+            site = getattr(event, "site_id", None)
+            self.answered.append(
+                (str(instance) if instance else None, str(project) if project else None, str(site) if site else None)
+            )
         if step.status in ("saved", "needs_confirmation"):
             await entry.remember(prepared, correlation_id=message.correlation_id)
         deliver = getattr(entry, "deliver", None)
@@ -445,6 +651,9 @@ class JourneyGateway:
                 )
             # Confirm-first (expenses, transfers) or the save failed: the
             # prompt the sender must answer.
+            card = self._work_card(run)
+            if card is not None:
+                return StepResult("needs_confirmation", text=card.text, reply=card, workflow_key=key)
             prompt = self.held_prompt(journey)
             return StepResult("needs_confirmation", text=prompt.text, reply=prompt, workflow_key=key)
 
@@ -474,6 +683,52 @@ class JourneyGateway:
 
         # FAILED / NO_GRAPH, or nothing started.
         return StepResult("error", text="Sorry, that didn't go through. Please try again.", workflow_key=key)
+
+    def _work_card(self, run: Any) -> ReplySpec | None:
+        """Request 114: work done on an open activity is held for its answer
+        (the review log has no place for a progress update, so it cannot be
+        saved first). It is shown as the same "To save" card as everything
+        else, with Save / Cancel (the Yes / No ids, so the answer is the same
+        confirmation), never a bare Yes / No under words that say "Saved"."""
+        draft = run.draft_action
+        if draft is None or draft.action_type is not DraftActionType.ADD_PROGRESS_UPDATE:
+            return None
+        from canonicalization.occurred_date import today_for
+        from channel.receipt.data import company_zone
+        from interactions.saved_summary import render_saved
+
+        from .save_button import CANCEL_TITLE, SAVE_TITLE, TO_SAVE_HEADER
+        from .work_site import short_site_label
+
+        try:
+            today = today_for(str(company_zone(getattr(self.actor, "timezone", None))))
+            summary = summarise_draft(draft, today=today)
+        except Exception:  # noqa: BLE001 -- the card is wording only
+            _log.warning("agent.work_card_failed", exc_info=True)
+            return None
+        if not summary:
+            return None
+        site = short_site_label(self.actor, draft.site_id) if len(getattr(self.actor, "sites", None) or []) > 1 else None
+        header = f"{TO_SAVE_HEADER[:-1]} · {site}:" if site else TO_SAVE_HEADER
+        return ReplySpec(
+            text=render_saved([summary], header),
+            buttons=(ListRow("confirm_yes", SAVE_TITLE), ListRow("confirm_no", CANCEL_TITLE)),
+        )
+
+    async def share_join_code(self) -> StepResult:
+        if self.share_code is None:
+            return StepResult("info", text="I can't share the join code here.")
+        refusal = await self.share_code()
+        if refusal:
+            return StepResult("info", text=refusal)
+        self.code_shared = True
+        return StepResult(
+            "info",
+            text=(
+                "The join code and a message to forward were already sent as separate messages. "
+                "Reply with one short line at most; do not repeat the code."
+            ),
+        )
 
     async def set_unit_conversion(self, *, material: str, unit: str, count: Any) -> StepResult:
         if self.set_conversion is None:

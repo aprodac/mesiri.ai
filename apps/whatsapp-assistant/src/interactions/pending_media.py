@@ -16,12 +16,19 @@ Key layout (the client prepends the ``mesiri`` namespace):
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage
 
-_DEFAULT_TTL_SECONDS = 600  # 10 minutes -- long enough to pick from a 2-row list
+#: PHO-06: photos nobody has said the purpose of are held for hours, not
+#: minutes, so they can be reminded about once and then said to be dropped --
+#: they used to vanish after 10 minutes without a word.
+_DEFAULT_TTL_SECONDS = 3 * 60 * 60
+
+#: PHO-07: how long a purpose read from a caption covers the photos that follow it.
+PURPOSE_BURST_SECONDS = 25
 
 #: Hard cap on one batch. Bounds the Redis payload size and, more
 #: importantly, the vision-analysis fan-out a single picker tap can trigger
@@ -43,10 +50,10 @@ class BatchAddResult:
     ``is_new_batch`` is the caller's signal for whether to send the purpose
     picker (True -- this is the first image of a fresh batch) or stay
     silent (False -- a picker is already pending for this batch; the photo
-    was just appended to it). ``capped`` is True exactly when this image was
-    the one that hit MAX_BATCH_SIZE -- the caller uses it to send one honest
-    "that's as many as I can hold at once" note, not a note per rejected
-    photo.
+    was just appended to it). ``capped`` is True exactly once per batch: for
+    the first photo that did NOT fit (PHO-09: the "20 photos held" note used
+    to be sent for every one of them) -- the caller sends one honest "that's
+    as many as I can hold at once" note, not one per rejected photo.
     """
 
     is_new_batch: bool
@@ -65,12 +72,17 @@ class PendingMediaStore:
     def _key(user_id: str) -> str:
         return f"user:{user_id}:pending_media"
 
+    @staticmethod
+    def _meta_key(user_id: str) -> str:
+        return f"user:{user_id}:pending_media_meta"
+
     async def add_pending(
         self,
         *,
         user_id: str,
         message: NormalizedMessage,
         ttl_seconds: int = _DEFAULT_TTL_SECONDS,
+        now: float | None = None,
     ) -> BatchAddResult:
         """Append one image to the user's batch, starting a fresh one if
         none is pending. TTL is refreshed on every add -- a burst spread
@@ -80,17 +92,60 @@ class PendingMediaStore:
         raw = await self._redis.get_json(key)
         batch: list[dict[str, Any]] = list(raw) if isinstance(raw, list) else []
         is_new_batch = not batch
+        meta = await self._meta(user_id) if not is_new_batch else {}
+        stamp = time.time() if now is None else now
 
         if len(batch) >= MAX_BATCH_SIZE:
-            # Already full -- this image is dropped, not silently discarded
-            # without the caller knowing: capped=True on an unchanged batch
-            # tells the caller to say so exactly once (not once per photo).
-            return BatchAddResult(is_new_batch=False, batch_size=len(batch), capped=True)
+            # Already full -- this image is not kept, and the caller is told so
+            # exactly once (the first one over), not once per photo.
+            overflow = int(meta.get("overflow") or 0) + 1
+            await self._redis.set_json(
+                self._meta_key(user_id), {**meta, "overflow": overflow}, ttl_seconds=ttl_seconds
+            )
+            return BatchAddResult(is_new_batch=False, batch_size=len(batch), capped=overflow == 1)
 
         batch.append(message.model_dump(mode="json"))
-        capped = len(batch) >= MAX_BATCH_SIZE
         await self._redis.set_json(key, batch, ttl_seconds=ttl_seconds)
-        return BatchAddResult(is_new_batch=is_new_batch, batch_size=len(batch), capped=capped)
+        if is_new_batch:
+            meta = {"held_at": stamp, "reminded_at": None, "overflow": 0}
+        await self._redis.set_json(self._meta_key(user_id), meta, ttl_seconds=ttl_seconds)
+        return BatchAddResult(is_new_batch=is_new_batch, batch_size=len(batch), capped=False)
+
+    async def _meta(self, user_id: str) -> dict[str, Any]:
+        raw = await self._redis.get_json(self._meta_key(user_id))
+        return dict(raw) if isinstance(raw, dict) else {}
+
+    async def waiting(self, *, user_id: str) -> tuple[int, dict[str, Any]]:
+        """(how many photos are held, when they were: ``held_at`` / ``reminded_at``
+        / ``overflow``). (0, {}) when nothing is held."""
+        raw = await self._redis.get_json(self._key(user_id))
+        count = len(raw) if isinstance(raw, list) else 0
+        return (count, await self._meta(user_id)) if count else (0, {})
+
+    @staticmethod
+    def _purpose_key(user_id: str) -> str:
+        return f"user:{user_id}:photo_purpose"
+
+    async def remember_purpose(self, *, user_id: str, row_id: str, now: float | None = None) -> None:
+        """PHO-07: a caption said what this photo is; the rest of its burst
+        (an album sends the caption on one photo) is the same, for a few seconds."""
+        stamp = time.time() if now is None else now
+        await self._redis.set_json(
+            self._purpose_key(user_id), {"row_id": row_id, "at": stamp}, ttl_seconds=PURPOSE_BURST_SECONDS
+        )
+
+    async def recent_purpose(self, *, user_id: str, now: float | None = None) -> str | None:
+        raw = await self._redis.get_json(self._purpose_key(user_id))
+        if not isinstance(raw, dict) or not raw.get("row_id"):
+            return None
+        stamp = time.time() if now is None else now
+        return str(raw["row_id"]) if stamp - float(raw.get("at") or 0) <= PURPOSE_BURST_SECONDS else None
+
+    async def mark_reminded(self, *, user_id: str, now: float | None = None) -> None:
+        meta = await self._meta(user_id)
+        if meta:
+            meta["reminded_at"] = time.time() if now is None else now
+            await self._redis.set_json(self._meta_key(user_id), meta, ttl_seconds=_DEFAULT_TTL_SECONDS)
 
     async def pop_batch(self, *, user_id: str) -> list[NormalizedMessage]:
         """Read the whole pending batch and clear it in the same call -- a
@@ -103,6 +158,7 @@ class PendingMediaStore:
         if not raw:
             return []
         await self._redis.set_json(key, [], ttl_seconds=1)
+        await self._redis.set_json(self._meta_key(user_id), {}, ttl_seconds=1)
         return [NormalizedMessage.model_validate(item) for item in raw]
 
     async def has_pending(self, *, user_id: str) -> bool:

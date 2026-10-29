@@ -1,30 +1,24 @@
 import { useState, useEffect } from 'react'
 import { flushSync } from 'react-dom'
+import { useQuery } from '@tanstack/react-query'
 import {
-  LayoutDashboard,
   Building2,
   Building,
   LogOut,
   Users,
   ArrowLeft,
-  History,
+  Activity,
   BarChart3,
-  Image as ImageIcon,
   FileText,
   DollarSign,
   Wallet,
   Boxes,
-  Activity,
   Landmark,
   PieChart,
   ArrowLeftRight,
   Store,
   Tags,
   SlidersHorizontal,
-  Warehouse,
-  ShoppingBag,
-  Truck,
-  Layers,
   ChevronRight,
   ChevronDown,
   CalendarDays,
@@ -32,11 +26,11 @@ import {
   Sun,
   Moon,
   HardHat,
-  ClipboardCheck,
   MessageSquare,
-  AlertCircle,
   Clock,
+  AlertCircle,
   Palette,
+  ListChecks,
 } from 'lucide-react'
 import { NavLink, Link, useLocation } from 'react-router-dom'
 import {
@@ -54,12 +48,15 @@ import {
 } from '@/components/ui/sidebar'
 import { useAuth } from '@/lib/AuthContext'
 import { useAllowedScopes, useScope } from '@/lib/ScopeContext'
-import { logout } from '@/lib/api'
+import { fetchBranding, logout, type Me } from '@/lib/api'
 import { MesiriMark, MesiriWordmark } from '@/components/brand/mesiri-logo'
+import { SETUP_URL, setupCounts, useSetupProgress } from '@/lib/setup'
+import { useTrial } from '@/lib/trial'
 import type { ScopeKind } from '@/lib/scope-types'
 import { cn } from '@/lib/utils'
 import { useModuleEnabled, type ModuleKey } from '@/lib/modules'
 import { useSidebarTheme, type SidebarTheme } from '@/lib/sidebar-theme'
+import { useNavCounts } from '@/lib/nav-counts'
 
 // Mirrors backend mesiri/authorization/roles.py EXPENSE_VIEW_ROLES (SEC-01);
 // the API refuses everyone else, this only keeps the link out of their way.
@@ -75,6 +72,12 @@ type NavItem = {
   allowedRoles?: readonly string[]
   // Switched-off modules are hidden (WEB-02); see lib/modules.tsx.
   module?: ModuleKey
+  // The icon's colour (WEB-20), like the More sections' icons.
+  tone?: NavTone
+  // Which live count to show as a badge (WEB-20).
+  badge?: 'drafts' | 'issues'
+  // Small text at the row's end, e.g. "3/6" on Finish setup (SS-19).
+  note?: string
 }
 
 type NavCategory = {
@@ -84,23 +87,6 @@ type NavCategory = {
   items: NavItem[]
   requiredRole?: string
   module?: ModuleKey
-}
-
-const OPERATIONS_CATEGORY: NavCategory = {
-  title: 'Operations',
-  icon: Activity,
-  tone: 'operations',
-  items: [
-    { title: 'Dashboard', url: '/operations/dashboard', icon: LayoutDashboard },
-    { title: 'Activities', url: '/operations/activities', icon: Activity },
-    { title: 'Timeline', url: '/operations/timeline', icon: History },
-    { title: 'Daily Reports', url: '/operations/daily-reports', icon: FileText },
-    { title: 'Issues', url: '/operations/issues', icon: AlertCircle },
-    { title: 'Gallery', url: '/operations/gallery', icon: ImageIcon },
-    { title: 'Analytics', url: '/operations/analytics', icon: BarChart3 },
-    { title: 'Automations', url: '/operations/automations', icon: Clock, module: 'automations' },
-    { title: 'Settings', url: '/operations/settings', icon: SlidersHorizontal },
-  ],
 }
 
 const FINANCE_CATEGORY: NavCategory = {
@@ -122,67 +108,36 @@ const FINANCE_CATEGORY: NavCategory = {
   ],
 }
 
-const LABOUR_CATEGORY: NavCategory = {
-  title: 'Labour & Workforce',
-  module: 'labour',
-  icon: HardHat,
-  tone: 'labour',
-  items: [
-    { title: 'Overview', url: '/labour/overview', icon: PieChart },
-    { title: 'Attendance', url: '/labour/attendance', icon: ClipboardCheck },
-    { title: 'Workers Roster', url: '/labour/workers', icon: Users },
-    { title: 'Analytics', url: '/labour/analytics', icon: BarChart3 },
-    { title: 'WhatsApp Automations', url: '/labour/whatsapp', icon: Bot },
-    { title: 'Reports', url: '/labour/reports', icon: FileText },
-    { title: 'Settings', url: '/labour/settings', icon: SlidersHorizontal },
-  ],
-}
+// Labour is one page since WEB-22 (Attendance | Workers).
+const NON_ADMIN_ROLES = ['PROJECT_MANAGER', 'SITE_ENGINEER', 'FINANCE'] as const
 
-const MATERIALS_CATEGORY: NavCategory = {
-  title: 'Materials',
-  module: 'materials',
-  icon: Boxes,
-  tone: 'materials',
-  items: [
-    { title: 'Overview', url: '/materials/overview', icon: Boxes },
-    { title: 'Inventory', url: '/materials/inventory', icon: Warehouse },
-    { title: 'Purchases', url: '/materials/purchases', icon: ShoppingBag },
-    { title: 'Suppliers', url: '/materials/suppliers', icon: Truck },
-    { title: 'Categories', url: '/materials/categories', icon: Layers },
-  ],
-}
+const LABOUR_ITEM: NavItem = { title: 'Attendance', url: '/labour', icon: HardHat, module: 'labour', tone: 'amber' }
 
-// V1 primary navigation (tracker WEB-01). "Today" is the WEB-03 page; the
-// older overview stays reachable under More > Operations.
+// V1 navigation (WEB-21, docs/DESIGN.md "Pages and routes"): the daily
+// pages, then setup. No "More": pages outside V1 were removed, and modules a
+// company has not switched on (WEB-02) are hidden.
 const PRIMARY_ITEMS: NavItem[] = [
-  { title: 'Today', url: '/today', icon: CalendarDays },
-  { title: 'Daily Reports', url: '/operations/daily-reports', icon: FileText },
-  { title: 'Issues', url: '/operations/issues', icon: AlertCircle },
+  { title: 'Today', url: '/today', icon: CalendarDays, tone: 'orange', badge: 'drafts' },
+  { title: 'Daily Reports', url: '/reports', icon: FileText, tone: 'sky' },
+  { title: 'Issues', url: '/issues', icon: AlertCircle, tone: 'rose', badge: 'issues' },
 ]
+
+// Site records: everything the sites sent, across days and sites.
+const RECORD_ITEMS: NavItem[] = [
+  { title: 'Site log', url: '/site-log', icon: Activity, tone: 'sky' },
+  { title: 'Analytics', url: '/analytics', icon: BarChart3, tone: 'indigo' },
+]
+
+const MATERIALS_ITEM: NavItem = { title: 'Materials', url: '/materials', icon: Boxes, module: 'materials', tone: 'emerald' }
 
 const ROOT_MANAGEMENT_ITEMS: NavItem[] = [
-  { title: 'Projects & Sites', url: '/projects', icon: Building2, requiredRole: 'ADMIN' },
-  { title: 'Team', url: '/users', icon: Users, requiredRole: 'ADMIN' },
-  { title: 'Company', url: '/company', icon: Building, requiredRole: 'ADMIN' },
-]
-
-// Everything outside V1's core, kept reachable under "More". WEB-02 hides
-// these per company with the module switch rather than deleting them.
-const OPERATIONS_MORE_CATEGORY: NavCategory = {
-  ...OPERATIONS_CATEGORY,
-  items: OPERATIONS_CATEGORY.items.filter(
-    (item) =>
-      !['/operations/daily-reports', '/operations/issues'].includes(
-        item.url
-      )
-  ),
-}
-
-const MORE_CATEGORIES: NavCategory[] = [
-  OPERATIONS_MORE_CATEGORY,
-  LABOUR_CATEGORY,
-  MATERIALS_CATEGORY,
-  FINANCE_CATEGORY,
+  { title: 'Projects & Sites', url: '/projects', icon: Building2, requiredRole: 'ADMIN', tone: 'teal' },
+  { title: 'Team', url: '/team', icon: Users, requiredRole: 'ADMIN', tone: 'violet' },
+  { title: 'Company', url: '/company', icon: Building, requiredRole: 'ADMIN', tone: 'indigo' },
+  // WEB-31: the inbox APIs answer admins only. Others who have Automations
+  // get that view of the WhatsApp page on its own.
+  { title: 'WhatsApp', url: '/whatsapp', icon: MessageSquare, requiredRole: 'ADMIN', tone: 'green' },
+  { title: 'Automations', url: '/whatsapp?view=automations', icon: Clock, module: 'automations', allowedRoles: NON_ADMIN_ROLES, tone: 'sky' },
 ]
 
 function initialsOf(name: string): string {
@@ -265,13 +220,35 @@ const SIDEBAR_THEMES = {
 // Each More section keeps its own icon colour, in the shade that reads on the
 // theme's background (on-dark for charcoal, on-light for light).
 const SECTION_TONES = {
-  operations: { charcoal: 'text-sky-300', light: 'text-sky-700 dark:text-sky-300' },
   labour: { charcoal: 'text-amber-300', light: 'text-amber-700 dark:text-amber-300' },
-  materials: { charcoal: 'text-emerald-300', light: 'text-emerald-700 dark:text-emerald-300' },
   finance: { charcoal: 'text-violet-300', light: 'text-violet-700 dark:text-violet-300' },
 } as const
 
 type SectionTone = keyof typeof SECTION_TONES
+
+// Main navigation icon colours (WEB-20): the same treatment as the More
+// sections -- a coloured icon, no background -- in the shade that reads on
+// the theme. Palette classes are allowed here only: identity colours, not
+// states (docs/DESIGN.md).
+const NAV_TONES = {
+  orange: { charcoal: 'text-orange-300', light: 'text-orange-700 dark:text-orange-300' },
+  sky: { charcoal: 'text-sky-300', light: 'text-sky-700 dark:text-sky-300' },
+  rose: { charcoal: 'text-rose-300', light: 'text-rose-700 dark:text-rose-300' },
+  emerald: { charcoal: 'text-emerald-300', light: 'text-emerald-700 dark:text-emerald-300' },
+  violet: { charcoal: 'text-violet-300', light: 'text-violet-700 dark:text-violet-300' },
+  amber: { charcoal: 'text-amber-300', light: 'text-amber-700 dark:text-amber-300' },
+  green: { charcoal: 'text-green-300', light: 'text-green-700 dark:text-green-300' },
+  teal: { charcoal: 'text-teal-300', light: 'text-teal-700 dark:text-teal-300' },
+  indigo: { charcoal: 'text-indigo-300', light: 'text-indigo-700 dark:text-indigo-300' },
+} as const
+
+type NavTone = keyof typeof NAV_TONES
+
+// Badges: orange = waiting on someone, red = something is wrong.
+const BADGE = {
+  drafts: 'bg-orange-500 text-white',
+  issues: 'bg-rose-500 text-white',
+} as const
 
 const NAV_LINK_BASE =
   'group/row flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm transition-colors'
@@ -456,7 +433,7 @@ export function AppSidebar() {
   }
 
   const getUrlWithScope = (baseUrl: string) => {
-    const isOperational = !['/projects', '/users', '/company'].includes(baseUrl)
+    const isOperational = !['/projects', '/team', '/company', '/whatsapp'].includes(baseUrl)
     if (!isOperational) return baseUrl
 
     const params = new URLSearchParams()
@@ -470,43 +447,60 @@ export function AppSidebar() {
     return qs ? `${baseUrl}?${qs}` : baseUrl
   }
 
-  const showBackButton = location.pathname.startsWith('/projects/') || location.pathname.startsWith('/users/')
+  const showBackButton = location.pathname.startsWith('/projects/') || location.pathname.startsWith('/team/')
 
+  const isModuleEnabled = useModuleEnabled()
   const visibleManagementItems = ROOT_MANAGEMENT_ITEMS.filter(
     (item) =>
+      isModuleEnabled(item.module) &&
       (!item.requiredScope || allowed.includes(item.requiredScope)) &&
-      (!item.requiredRole || me?.role === item.requiredRole)
+      (!item.requiredRole || me?.role === item.requiredRole) &&
+      (!item.allowedRoles || item.allowedRoles.includes((me?.role || '').toUpperCase()))
   )
+
 
   // Production's /auth/me returns org_name/name; the older identity router
   // shape used organization_name/full_name (see lib/api.ts's Me).
   const companyName = me?.org_name || me?.organization_name || 'Mesiri'
   const userName = me?.name || me?.full_name || ''
 
-  const isModuleEnabled = useModuleEnabled()
-  const visibleMoreCategories = MORE_CATEGORIES.filter((category) =>
-    isModuleEnabled(category.module)
-  ).map((category) => ({
-    ...category,
-    items: category.items.filter(
-      (item) =>
-        isModuleEnabled(item.module) &&
-        (!item.allowedRoles || item.allowedRoles.includes((me?.role || '').toUpperCase()))
-    ),
-  }))
-
-  const isMoreActive =
-    visibleMoreCategories.some((category) =>
-      category.items.some((item) => checkIsItemActive(location.pathname, item.url))
-    ) || checkIsItemActive(location.pathname, '/whatsapp/inbox')
-  const [isMoreOpen, setIsMoreOpen] = useState(isMoreActive)
-  useEffect(() => {
-    if (isMoreActive) setIsMoreOpen(true)
-  }, [isMoreActive])
+  const counts = useNavCounts()
+  // "Finish setup" (SS-19): the getting-started card stays one click away,
+  // hidden or not, until everything is done.
+  const setup = useSetupProgress()
+  const trial = useTrial()
+  const setupDone = setup.data ? setupCounts(setup.data) : null
+  const finishSetup: NavItem | null =
+    setup.isCompanyAdmin && !trial.readOnly && setupDone && setupDone.done < setupDone.total
+      ? { title: 'Finish setup', url: SETUP_URL, icon: ListChecks, tone: 'orange', note: `${setupDone.done}/${setupDone.total}` }
+      : null
+  // Module sections (Finance) with only the items this role may see.
+  const moduleCategories = [FINANCE_CATEGORY]
+    .filter((category) => isModuleEnabled(category.module))
+    .map((category) => ({
+      ...category,
+      items: category.items.filter(
+        (item) =>
+          isModuleEnabled(item.module) &&
+          (!item.allowedRoles || item.allowedRoles.includes((me?.role || '').toUpperCase()))
+      ),
+    }))
+  const renderCategory = (category: NavCategory) => (
+    <CollapsibleNavCategory
+      key={category.title}
+      category={category}
+      getUrlWithScope={getUrlWithScope}
+      pathname={location.pathname}
+      allowedScopes={allowed}
+      userRole={me?.role}
+      theme={sidebarTheme}
+    />
+  )
 
   const renderLink = (item: NavItem) => {
     const ItemIcon = item.icon
     const active = checkIsItemActive(location.pathname, item.url)
+    const count = item.badge === 'drafts' ? counts.drafts : item.badge === 'issues' ? counts.openIssues : 0
     // A plain string className, not NavLink's function form: SidebarMenuButton
     // (asChild -> Radix Slot) merges className as text, which silently drops
     // a function, so the active state never rendered.
@@ -518,8 +512,30 @@ export function AppSidebar() {
             aria-current={active ? 'page' : undefined}
             className={cn(NAV_LINK_BASE, S.ring, active ? S.rowActive : S.rowIdle, 'data-[active=true]:font-semibold')}
           >
-            <ItemIcon className={cn('size-4 shrink-0', active ? S.iconActive : S.icon)} />
+            <span className="relative shrink-0">
+              <ItemIcon className={cn('size-4', item.tone ? NAV_TONES[item.tone][sidebarTheme] : active ? S.iconActive : S.icon)} />
+              {count > 0 && (
+                <span
+                  aria-hidden
+                  className={cn('absolute -top-1 -right-1 hidden size-2 rounded-full ring-2 ring-sidebar group-data-[collapsible=icon]:block', BADGE[item.badge!])}
+                />
+              )}
+            </span>
             <span className="truncate">{item.title}</span>
+            {item.note && (
+              <span className="ml-auto text-[11px] tabular-nums opacity-70 group-data-[collapsible=icon]:hidden">{item.note}</span>
+            )}
+            {count > 0 && (
+              <span
+                className={cn(
+                  'ml-auto min-w-5 rounded-full px-1.5 py-px text-center text-[11px] font-semibold tabular-nums group-data-[collapsible=icon]:hidden',
+                  BADGE[item.badge!],
+                )}
+                title={item.badge === 'drafts' ? `${count} items to confirm today` : `${count} open issues`}
+              >
+                {count > 99 ? '99+' : count}
+              </span>
+            )}
           </NavLink>
         </SidebarMenuButton>
       </SidebarMenuItem>
@@ -566,7 +582,7 @@ export function AppSidebar() {
               </div>
               {showBackButton && (
                 <Link
-                  to={location.pathname.startsWith('/users/') ? '/users' : '/projects'}
+                  to={location.pathname.startsWith('/team/') ? '/team' : '/projects'}
                   className={cn(
                     'transition-colors group-data-[collapsible=icon]:hidden size-8 flex items-center justify-center rounded-lg',
                     S.headerBtn,
@@ -580,11 +596,8 @@ export function AppSidebar() {
               )}
             </div>
           </div>
-          <div className="bg-sidebar px-2.5 pt-2 pb-1 group-data-[collapsible=icon]:hidden">
-            <div className={cn('rounded-xl border px-3 py-2', S.card)}>
-              <div className={cn('text-xs', S.label)}>Company</div>
-              <div className={cn('text-sm font-semibold truncate', S.name)}>{companyName}</div>
-            </div>
+          <div className="bg-sidebar px-2 pt-2 pb-1 group-data-[collapsible=icon]:hidden">
+            <CompanyRow name={companyName} isAdmin={me?.role === 'ADMIN'} company={me?.company ?? null} S={S} />
           </div>
         </SidebarHeader>
 
@@ -592,6 +605,20 @@ export function AppSidebar() {
           <SidebarGroup className="p-1">
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">{PRIMARY_ITEMS.map(renderLink)}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarGroup className="p-1">
+            <SidebarGroupLabel className={cn('px-2.5 text-[11px] font-semibold uppercase tracking-wider', S.label)}>
+              Site records
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-0.5">
+                {RECORD_ITEMS.map(renderLink)}
+                {isModuleEnabled(LABOUR_ITEM.module) && renderLink(LABOUR_ITEM)}
+                {isModuleEnabled(MATERIALS_ITEM.module) && renderLink(MATERIALS_ITEM)}
+                {moduleCategories.map(renderCategory)}
+              </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
 
@@ -603,49 +630,14 @@ export function AppSidebar() {
                 Setup
               </SidebarGroupLabel>
               <SidebarGroupContent>
-                <SidebarMenu className="gap-0.5">{visibleManagementItems.map(renderLink)}</SidebarMenu>
+                <SidebarMenu className="gap-0.5">
+                  {finishSetup && renderLink(finishSetup)}
+                  {visibleManagementItems.map(renderLink)}
+                </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
           )}
 
-          <SidebarGroup className="p-1">
-            <SidebarMenu className="gap-0.5">
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={() => setIsMoreOpen((prev) => !prev)}
-                  tooltip="More"
-                  aria-expanded={isMoreOpen}
-                  className={cn(
-                    'w-full flex items-center justify-between rounded-lg px-2.5 py-2 text-[11px] font-semibold uppercase tracking-wider',
-                    S.label,
-                    S.hoverBg,
-                    S.ring
-                  )}
-                >
-                  <span className="group-data-[collapsible=icon]:hidden">More</span>
-                  <span className={S.chevron}>
-                    {isMoreOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
-                  </span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              {isMoreOpen && (
-                <>
-                  {renderLink({ title: 'WhatsApp Inbox', url: '/whatsapp/inbox', icon: MessageSquare })}
-                  {visibleMoreCategories.map((category) => (
-                    <CollapsibleNavCategory
-                      key={category.title}
-                      category={category}
-                      getUrlWithScope={getUrlWithScope}
-                      pathname={location.pathname}
-                      allowedScopes={allowed}
-                      userRole={me?.role}
-                      theme={sidebarTheme}
-                    />
-                  ))}
-                </>
-              )}
-            </SidebarMenu>
-          </SidebarGroup>
         </SidebarContent>
 
         <SidebarFooter className={cn('border-t p-2', S.divider)}>
@@ -702,5 +694,70 @@ export function AppSidebar() {
         </SidebarFooter>
       </div>
     </Sidebar>
+  )
+}
+
+// WEB-38: the company at the top of the sidebar, as a row rather than a
+// labelled box: its logo (or initials on its brand colour), the name, and
+// one useful line -- the trial's days left, or what an admin can open here.
+// Admins tap it to open the Company page.
+function CompanyRow({
+  name,
+  isAdmin,
+  company,
+  S,
+}: {
+  name: string
+  isAdmin: boolean
+  company: Me['company']
+  S: (typeof SIDEBAR_THEMES)[SidebarTheme]
+}) {
+  // The branding API answers admins only; everyone else gets initials.
+  const branding = useQuery({ queryKey: ['company-branding'], queryFn: fetchBranding, enabled: isAdmin, retry: false, staleTime: 10 * 60_000 })
+  const logo = branding.data?.logo_url
+  const colour = branding.data?.brand_color || undefined
+  const letters = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+  const trialLeft = company?.status === 'trial' ? company.trial_days_left : null
+  const line =
+    trialLeft !== null && trialLeft !== undefined
+      ? trialLeft <= 0
+        ? 'Free trial ends today'
+        : `Free trial · ${trialLeft} ${trialLeft === 1 ? 'day' : 'days'} left`
+      : company?.status === 'expired'
+        ? 'Trial ended'
+        : isAdmin
+          ? 'Company settings'
+          : 'Your company'
+  const body = (
+    <>
+      <span
+        className={cn(
+          'flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-lg text-xs font-bold',
+          logo ? 'bg-white p-1' : colour ? 'text-white' : S.avatar,
+        )}
+        style={!logo && colour ? { backgroundColor: colour } : undefined}
+        aria-hidden="true"
+      >
+        {logo ? <img src={logo} alt="" className="max-h-full max-w-full object-contain" /> : letters || 'M'}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className={cn('truncate text-sm leading-tight font-semibold', S.name)}>{name}</span>
+        <span className={cn('truncate text-xs', trialLeft !== null && trialLeft !== undefined && trialLeft <= 3 ? 'text-amber-400' : S.role)}>{line}</span>
+      </span>
+      {isAdmin && <ChevronRight className={cn('size-4 shrink-0 opacity-0 transition-opacity group-hover/company:opacity-100', S.chevron)} aria-hidden="true" />}
+    </>
+  )
+  return isAdmin ? (
+    <Link to="/company" className={cn('group/company flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors', S.hoverBg, S.ring)} title="Open company settings">
+      {body}
+    </Link>
+  ) : (
+    <div className="flex items-center gap-2.5 px-2 py-1.5">{body}</div>
   )
 }

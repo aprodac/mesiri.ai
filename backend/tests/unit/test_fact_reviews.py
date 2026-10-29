@@ -400,7 +400,9 @@ def test_a_payload_without_review_states_is_all_confirmed():
     assert payload["drafts"]["total"] == 0
 
 
-async def test_confirming_a_day_confirms_its_drafts_and_rebuilds_the_version(monkeypatch):
+async def test_confirming_a_day_leaves_its_drafts_and_rebuilds_the_version(monkeypatch):
+    """WA-77 (Alan, 25 Oct): approving a day no longer confirms its drafts
+    (Save not tapped); the version is rebuilt from what is saved."""
     from mesiri.infrastructure.postgres.repositories import dpr as dpr_module
     from mesiri.infrastructure.postgres.repositories import fact_reviews as reviews_module
 
@@ -415,6 +417,7 @@ async def test_confirming_a_day_confirms_its_drafts_and_rebuilds_the_version(mon
                         "report_date": DAY,
                         "level": "SITE",
                         "status": "IN_REVIEW",
+                        "current_version_id": uuid.uuid4(),
                     }
                 ]
             )
@@ -427,6 +430,10 @@ async def test_confirming_a_day_confirms_its_drafts_and_rebuilds_the_version(mon
         events.append("confirm_drafts")
         return 2
 
+    async def claim(*args, **kwargs):
+        events.append("claim_late")
+        return 0
+
     async def assemble(**kwargs):
         events.append("assemble")
         return {"activity_count": 1}
@@ -435,14 +442,17 @@ async def test_confirming_a_day_confirms_its_drafts_and_rebuilds_the_version(mon
         events.append("create_version")
         return {"id": uuid.uuid4()}
 
+    from mesiri.application.dpr import late_entries
+
     monkeypatch.setattr(
         reviews_module.PostgresFactReviewRepository, "confirm_drafts_for_day", confirm_drafts_for_day
     )
+    monkeypatch.setattr(late_entries, "claim_for_report", claim)
     monkeypatch.setattr(repo, "assemble_site_report_payload", assemble)
     monkeypatch.setattr(repo, "create_version", create_version)
 
     assert await repo.approve_report(organization_id=ORG, user_id=uuid.uuid4(), report_id=report_id, notes=None)
-    assert events == ["confirm_drafts", "assemble", "create_version"]
+    assert events == ["claim_late", "assemble", "create_version"]
 
 
 async def test_the_dpr_leaves_out_withdrawn_issues_and_reversed_materials():
@@ -450,7 +460,7 @@ async def test_the_dpr_leaves_out_withdrawn_issues_and_reversed_materials():
 
     from mesiri.infrastructure.postgres.repositories.dpr import PostgresDprRepository
 
-    source = inspect.getsource(PostgresDprRepository.assemble_site_day)
+    source = inspect.getsource(PostgresDprRepository.assemble_site_day_with_drafts)
     assert "status != 'CANCELLED'" in source
     assert "mm.reversal_of_movement_id IS NULL" in source
     assert "r.reversal_of_movement_id = mm.id" in source

@@ -413,6 +413,25 @@ def test_hours_lost_defaults_to_the_days_issue_delays():
     assert payload["conditions"]["hours_lost_source"] == "issues"
 
 
+def test_hours_lost_from_issues_is_never_more_than_a_day():
+    from mesiri.application.dpr.assembly import build_site_report_payload
+
+    payload = build_site_report_payload(
+        project_name="P",
+        site_name="S",
+        report_date=datetime.date(2026, 10, 13),
+        activity_rows=[],
+        quantities_by_activity={},
+        evidence_count_by_activity={},
+        issue_rows=[
+            {"issue_type": "WEATHER", "status": "OPEN", "delay_duration_minutes": 2880},
+            {"issue_type": "ACCESS", "status": "OPEN", "delay_duration_minutes": 240},
+        ],
+    )
+
+    assert payload["conditions"]["hours_lost"] == "24.0"
+
+
 def test_no_conditions_and_no_delays_leave_everything_unset():
     from mesiri.application.dpr.assembly import build_site_report_payload
 
@@ -534,6 +553,9 @@ async def test_site_days_carry_live_counts_as_numbers_and_parsed_missing_section
         "work_items": 4,
         "photos": 0,
         "open_issues": 2,
+        "materials": 3,
+        "issues_today": None,
+        "progress_updates": 1,
         "last_update_at": None,
         "last_update_by": None,
         "latest_update": None,
@@ -546,6 +568,7 @@ async def test_site_days_carry_live_counts_as_numbers_and_parsed_missing_section
 
     assert day["missing_sections"] == {"blocking": ["labour"], "optional": []}
     assert (day["workers"], day["work_items"], day["open_issues"]) == (0, 4, 2)
+    assert (day["materials"], day["issues_today"], day["progress_updates"]) == (3, 0, 1)
     sql, params = conn.calls[0]
     assert "COALESCE(NULLIF(lal.headcount, 0), 1)" in sql  # same per-line rule as the DPR
     assert "project_ids" not in params

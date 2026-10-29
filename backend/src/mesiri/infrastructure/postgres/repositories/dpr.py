@@ -35,7 +35,27 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from mesiri.application.dpr import site_day
+from mesiri.application.dpr import fact_review, open_issues, site_day
+
+_STATUS_BY_UPDATE_KIND = {"COMPLETED": "COMPLETED", "PAUSED": "STOPPED"}
+
+
+def _continued_activity_row(row: Any) -> dict[str, Any]:
+    """An earlier day's activity, as a row of the report day: the day's
+    update stands in for the activity's own narrative, quantity and status."""
+    quantity = row["update_quantity"]
+    return {
+        "id": row["id"],
+        "work_type": row["work_type"],
+        "contractor": row["contractor"],
+        "location_id": row["location_id"],
+        "narrative": row["update_narrative"] or row["work_type"],
+        "status": _STATUS_BY_UPDATE_KIND.get(str(row["update_kind"]), "IN_PROGRESS"),
+        "continued": True,
+        "started_on": row["started_on"],
+        "created_at": row["created_at"],
+        "quantity": None if quantity is None else {"quantity": str(quantity), "unit": row["update_unit"]},
+    }
 
 
 class PostgresDprRepository:
@@ -280,10 +300,11 @@ class PostgresDprRepository:
         user is looked up rather than trusted, so an id with no users row
         leaves the field empty instead of failing the confirmation.
 
-        A site day's drafts are confirmed with it (BE-09, approved 13 Oct:
-        the engineer has just looked at them; anything wrong is rejected
-        first), and the version is rebuilt so the frozen DPR shows them as
-        confirmed."""
+        WA-77 (Alan, 25 Oct): only saved entries go in. A draft nobody has
+        saved (Save not tapped, not kept in the evening review) is no longer
+        confirmed with the day: it stays out of the frozen DPR, listed for
+        the engineer, and saving it later makes it a late entry (BE-13). The
+        version is rebuilt here so the frozen DPR is what was saved now."""
         await self._confirm_drafts_before_approval(
             organization_id=organization_id, user_id=user_id, report_id=report_id
         )
@@ -332,21 +353,13 @@ class PostgresDprRepository:
         ):
             return
 
-        from mesiri.infrastructure.postgres.repositories.fact_reviews import (
-            PostgresFactReviewRepository,
-        )
-
-        confirmed = await PostgresFactReviewRepository(self._conn).confirm_drafts_for_day(
-            organization_id=organization_id,
-            site_id=scope["site_id"],
-            report_date=scope["report_date"],
-            actor_user_id=user_id,
-        )
+        # WA-77: the day's drafts are not confirmed with it any more (see
+        # approve_report); only saved entries are in the version built below.
         # BE-13: earlier days' late entries listed in this report are now
-        # shown here (once) and confirmed with it.
+        # shown here (once); saved ones only.
         from mesiri.application.dpr.late_entries import claim_for_report
 
-        confirmed += await claim_for_report(
+        await claim_for_report(
             self._conn,
             organization_id=organization_id,
             site_id=scope["site_id"],
@@ -354,19 +367,16 @@ class PostgresDprRepository:
             report_id=report_id,
             actor_user_id=user_id,
         )
-        # BE-41: a day with no version yet is built now, too. The cutoff only
-        # builds versions for sites with work items or issues, so a site that
-        # sent only labour or materials (or "no work today") was confirmed
-        # with nothing frozen: the project DPR showed it "Not reported" and
-        # left its workers out.
-        if confirmed or scope["current_version_id"] is None:
-            payload = await self.assemble_site_report_payload(
-                organization_id=organization_id,
-                project_id=scope["project_id"],
-                site_id=scope["site_id"],
-                report_date=scope["report_date"],
-            )
-            await self.create_version(daily_report_id=report_id, payload=payload)
+        # Always rebuilt (WA-77): the frozen version holds what is saved now,
+        # never a draft from an earlier build. This also covers BE-41, a day
+        # with no version yet (a site that sent only labour or materials).
+        payload = await self.assemble_site_report_payload(
+            organization_id=organization_id,
+            project_id=scope["project_id"],
+            site_id=scope["site_id"],
+            report_date=scope["report_date"],
+        )
+        await self.create_version(daily_report_id=report_id, payload=payload)
 
     async def publish_report(
         self, organization_id: uuid.UUID, report_id: uuid.UUID
@@ -413,7 +423,29 @@ class PostgresDprRepository:
         site_id: uuid.UUID,
         report_date: datetime.date,
     ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-        """The payload below, plus the day's reviewable items with their ids
+        """The day's report (saved entries) and its reviewable items; see
+        `assemble_site_day_with_drafts`."""
+        payload, _, items = await self.assemble_site_day_with_drafts(
+            organization_id=organization_id,
+            project_id=project_id,
+            site_id=site_id,
+            report_date=report_date,
+        )
+        return payload, items
+
+    async def assemble_site_day_with_drafts(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        project_id: uuid.UUID,
+        site_id: uuid.UUID,
+        report_date: datetime.date,
+    ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
+        """WA-77: the report (saved entries only), the same report with the
+        drafts in it too (the Live page shows a draft on the sheet, marked
+        draft, until it is saved), and the reviewable items.
+
+        The payload below, plus the day's reviewable items with their ids
         (WEB-04's site DPR page; application/dpr/assembly.build_review_items).
 
         Compose one SITE-level DPR payload from what was actually
@@ -475,6 +507,53 @@ class PostgresDprRepository:
 
         activity_ids = [row["id"] for row in activity_rows]
 
+        # WRK-01: work started on an earlier day and updated on this one
+        # ("brickwork 60% done") belongs on this day's report, showing this
+        # day's update. Appended after the day's own activities.
+        continued_rows = (
+            await self._conn.execute(
+                text(
+                    """
+                    SELECT DISTINCT ON (a.id)
+                           a.id, a.work_type, a.contractor, a.location_id,
+                           a.activity_date AS started_on, a.status AS activity_status,
+                           pu.id AS update_id, pu.update_kind, pu.narrative AS update_narrative,
+                           pu.quantity AS update_quantity, u.code AS update_unit,
+                           pu.created_at
+                    FROM progress_updates pu
+                    JOIN activities a ON a.id = pu.activity_id
+                    LEFT JOIN units_of_measure u ON u.id = pu.unit_id
+                    WHERE a.organization_id = :org_id
+                      AND a.project_id = :project_id
+                      AND a.site_id = :site_id
+                      AND a.activity_date <> :report_date
+                      AND pu.occurred_at::date = :report_date
+                      AND pu.deleted_at IS NULL AND a.deleted_at IS NULL
+                      AND NOT EXISTS (
+                          SELECT 1 FROM progress_updates newer
+                          WHERE newer.supersedes_id = pu.id AND newer.deleted_at IS NULL
+                      )
+                    ORDER BY a.id, pu.created_at DESC
+                    """
+                ),
+                {
+                    "org_id": organization_id,
+                    "project_id": project_id,
+                    "site_id": site_id,
+                    "report_date": report_date,
+                },
+            )
+        ).mappings().all()
+        activity_rows = [
+            *activity_rows,
+            *sorted(
+                (_continued_activity_row(row) for row in continued_rows),
+                key=lambda row: row["created_at"],
+            ),
+        ]
+        # Reviews, quantities and evidence below are the day's own activities'.
+        activity_ids = [row["id"] for row in activity_rows if not row.get("continued")]
+
         quantities_by_activity: dict[Any, list[dict[str, Any]]] = {}
         evidence_count_by_activity: dict[Any, int] = {}
         if activity_ids:
@@ -511,8 +590,37 @@ class PostgresDprRepository:
             ).mappings().all():
                 evidence_count_by_activity[row["activity_id"]] = int(row["n"])
 
+        # PHO-02: the photos themselves (their storage keys and captions) for
+        # the document to print. An earlier day's activity shows only the
+        # photos added on this day (PHO-01 attaches to the work, whenever it began).
+        photos_by_activity: dict[Any, list[dict[str, Any]]] = {}
+        all_activity_ids = [row["id"] for row in activity_rows]
+        if all_activity_ids:
+            photo_rows = (
+                await self._conn.execute(
+                    text(
+                        """
+                        SELECT parent_id AS activity_id, media_object_key, caption, mime_type
+                        FROM progress_attachments
+                        WHERE parent_type = 'ACTIVITY' AND parent_id = ANY(:ids)
+                          AND (parent_id = ANY(:own) OR created_at::date = :report_date)
+                        ORDER BY created_at, id
+                        """
+                    ),
+                    {"ids": all_activity_ids, "own": activity_ids, "report_date": report_date},
+                )
+            ).mappings().all()
+            for row in photo_rows:
+                photos_by_activity.setdefault(row["activity_id"], []).append(
+                    {"object_key": row["media_object_key"], "caption": row["caption"],
+                     "mime_type": row["mime_type"]}
+                )
+            for row in activity_rows:
+                if row.get("continued"):
+                    evidence_count_by_activity[row["id"]] = len(photos_by_activity.get(row["id"], []))
+
         issues_query = text(
-            """
+            f"""
             SELECT id, issue_type, severity, narrative, status, delay_duration_minutes
             FROM site_issues
             WHERE organization_id = :org_id
@@ -524,7 +632,7 @@ class PostgresDprRepository:
               AND status != 'CANCELLED'
               -- A question noted for the engineer (before request 104 these
               -- were saved as low-severity issues) is not a site issue.
-              AND COALESCE(narrative, '') NOT LIKE 'Question for your engineer:%'
+              AND {open_issues.site_issue_sql()}
             ORDER BY
                 CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1
                               WHEN 'MEDIUM' THEN 2 ELSE 3 END,
@@ -534,6 +642,46 @@ class PostgresDprRepository:
         issue_rows = (
             await self._conn.execute(
                 issues_query,
+                {
+                    "org_id": organization_id,
+                    "project_id": project_id,
+                    "site_id": site_id,
+                    "report_date": report_date,
+                },
+            )
+        ).mappings().all()
+
+        # BE-51 (audit ISS-04): issues reported on an earlier day that were
+        # still open on this one, and those closed on it. They used to drop
+        # out of the next day's DPR while the Today page still counted them.
+        # Open "on this day": not resolved before it (resolved_at), and not
+        # withdrawn. A later resolution reads as still open here.
+        carried_rows = (
+            await self._conn.execute(
+                text(
+                    f"""
+                    SELECT id, issue_type, severity, narrative,
+                           CASE WHEN resolved_at IS NOT NULL
+                                 AND resolved_at::date > :report_date
+                                THEN 'OPEN' ELSE status::text END AS status,
+                           occurred_at::date AS reported_on
+                    FROM site_issues
+                    WHERE organization_id = :org_id
+                      AND project_id = :project_id
+                      AND site_id = :site_id
+                      AND occurred_at::date < :report_date
+                      AND status != 'CANCELLED'
+                      AND {open_issues.site_issue_sql()}
+                      -- Request 127: an earlier day's issue nobody saved is
+                      -- not open anywhere (the "open issues?" rule).
+                      AND {open_issues.counted_issue_sql()}
+                      AND (
+                          (resolved_at IS NULL AND status IN ('OPEN', 'ACKNOWLEDGED'))
+                          OR resolved_at::date >= :report_date
+                      )
+                    ORDER BY occurred_at
+                    """
+                ),
                 {
                     "org_id": organization_id,
                     "project_id": project_id,
@@ -626,10 +774,13 @@ class PostgresDprRepository:
         # on it. From the whole ledger (corrections included), the same sum
         # get_available_stock uses, so "closing" is what the site really held.
         # Stock is per site, not per project, matching the outflow guard.
-        stock_rows = (
-            await self._conn.execute(
-                text(
-                    """
+        # WA-77: the report's stock is what is saved; the review list judges a
+        # draft as if it were saved ("more used than in stock" is about it).
+        async def stock(saved_only: bool) -> list[Any]:
+            return (
+                await self._conn.execute(
+                    text(
+                        f"""
                     SELECT mm.material_id, mc.name AS material_name, u.code AS unit,
                            SUM(CASE WHEN mm.occurred_at::date < :report_date
                                     THEN CASE WHEN mm.movement_type = 'RECEIPT'
@@ -643,13 +794,17 @@ class PostgresDprRepository:
                     WHERE mm.organization_id = :org_id
                       AND mm.site_id = :site_id
                       AND mm.occurred_at::date <= :report_date
+                      AND {fact_review.movement_counted_sql("mm") if saved_only else "true"}
                     GROUP BY mm.material_id, mc.name, u.code
                     HAVING bool_or(mm.occurred_at::date = :report_date)
                     """
-                ),
-                {"org_id": organization_id, "site_id": site_id, "report_date": report_date},
-            )
-        ).mappings().all()
+                    ),
+                    {"org_id": organization_id, "site_id": site_id, "report_date": report_date},
+                )
+            ).mappings().all()
+
+        stock_rows = await stock(saved_only=True)
+        stock_rows_with_drafts = await stock(saved_only=False)
 
         conditions_row = (
             await self._conn.execute(
@@ -673,7 +828,6 @@ class PostgresDprRepository:
         # Draft or confirmed, per fact (BE-09). Labour and materials are
         # reviewed per report / per receipt-or-usage record, the unit people
         # actually send.
-        from mesiri.application.dpr import fact_review
         from mesiri.infrastructure.postgres.repositories.fact_reviews import (
             PostgresFactReviewRepository,
         )
@@ -718,32 +872,51 @@ class PostgresDprRepository:
             report_id=this_report.id if this_report else None,
         )
 
-        from mesiri.application.dpr.assembly import build_review_items, build_site_report_payload
+        from mesiri.application.dpr.assembly import (
+            build_review_items,
+            build_site_report_payload,
+            saved_rows_only,
+        )
 
-        payload = build_site_report_payload(
-            review_states=review_states,
-            late_entries=late_entries,
-            conditions=dict(conditions_row) if conditions_row else None,
-            project_name=header["project_name"] if header else None,
-            site_name=header["site_name"] if header else None,
-            report_date=report_date,
-            activity_rows=[dict(row) for row in activity_rows],
-            quantities_by_activity=quantities_by_activity,
-            evidence_count_by_activity=evidence_count_by_activity,
-            issue_rows=[dict(row) for row in issue_rows],
-            labour_lines=[dict(row) for row in labour_rows],
-            material_movement_rows=[dict(row) for row in material_rows],
-            material_stock_rows=[dict(row) for row in stock_rows],
-        )
+        def build(rows: dict[str, list[dict[str, Any]]], stock: list[Any]) -> dict[str, Any]:
+            return build_site_report_payload(
+                review_states=review_states,
+                late_entries=late_entries,
+                conditions=dict(conditions_row) if conditions_row else None,
+                project_name=header["project_name"] if header else None,
+                site_name=header["site_name"] if header else None,
+                report_date=report_date,
+                activity_rows=rows["activities"],
+                quantities_by_activity=quantities_by_activity,
+                evidence_count_by_activity=evidence_count_by_activity,
+                photos_by_activity=photos_by_activity,
+                issue_rows=rows["issues"],
+                carried_issue_rows=[dict(row) for row in carried_rows],
+                labour_lines=rows["labour"],
+                material_movement_rows=rows["materials"],
+                material_stock_rows=[dict(row) for row in stock],
+            )
+
+        every_row = {
+            "activities": [dict(row) for row in activity_rows],
+            "issues": [dict(row) for row in issue_rows],
+            "labour": [dict(row) for row in labour_rows],
+            "materials": [dict(row) for row in material_rows],
+        }
+        # WA-77 (Alan, 25 Oct): the report is made of saved entries only; a
+        # draft (Save not yet tapped) is left out of it and only listed for
+        # the engineer to save (`items`, and `drafts` in the payload).
+        payload = build(saved_rows_only(every_row, review_states), stock_rows)
+        with_drafts = build(every_row, stock_rows_with_drafts)
         items = build_review_items(
-            payload=payload,
-            activity_rows=[dict(row) for row in activity_rows],
-            issue_rows=[dict(row) for row in issue_rows],
-            labour_lines=[dict(row) for row in labour_rows],
-            material_movement_rows=[dict(row) for row in material_rows],
+            payload=with_drafts,
+            activity_rows=every_row["activities"],
+            issue_rows=every_row["issues"],
+            labour_lines=every_row["labour"],
+            material_movement_rows=every_row["materials"],
             review_states=review_states,
         )
-        return payload, items
+        return payload, with_drafts, items
 
     async def find_site_report(
         self,
@@ -1307,7 +1480,9 @@ class PostgresDprRepository:
         the labour dashboard (workforce.live_report_sql, plus BE-10's
         counted_line_sql), so the three can't disagree; a line with no headcount counts as one person, as the DPR
         does. `open_issues` is everything still open on the site, not only
-        today's."""
+        today's. `materials`, `issues_today` and `progress_updates` (on work
+        started earlier) are the day's other entries (WEB-32): a site that
+        sent only those has still reported."""
         from mesiri.infrastructure.postgres.repositories.workforce import (
             counted_line_sql,
             live_report_sql,
@@ -1323,10 +1498,23 @@ class PostgresDprRepository:
                 text(
                     f"""
                     WITH acts AS (
-                        SELECT site_id, count(*) AS work_items, max(created_at) AS last_at
-                        FROM activities
-                        WHERE organization_id = :org_id AND activity_date = :report_date
-                          AND deleted_at IS NULL
+                        -- WRK-01: the day's own work, and earlier work with an
+                        -- update today (the DPR lists both), each once.
+                        SELECT site_id, count(DISTINCT id) AS work_items, max(at) AS last_at
+                        FROM (
+                            SELECT site_id, id, created_at AS at
+                            FROM activities
+                            WHERE organization_id = :org_id AND activity_date = :report_date
+                              AND deleted_at IS NULL
+                            UNION ALL
+                            SELECT a.site_id, a.id, pu.created_at
+                            FROM progress_updates pu
+                            JOIN activities a ON a.id = pu.activity_id
+                            WHERE a.organization_id = :org_id
+                              AND a.activity_date <> :report_date
+                              AND pu.occurred_at::date = :report_date
+                              AND pu.deleted_at IS NULL AND a.deleted_at IS NULL
+                        ) worked
                         GROUP BY site_id
                     ), latest_act AS (
                         SELECT DISTINCT ON (a.site_id) a.site_id, a.narrative,
@@ -1359,6 +1547,42 @@ class PostgresDprRepository:
                         FROM site_issues
                         WHERE organization_id = :org_id AND status IN ('OPEN', 'ACKNOWLEDGED')
                         GROUP BY site_id
+                    ), mats AS (
+                        -- WEB-32: the day's material entries, by the DPR's
+                        -- own rule (a corrected entry and its correction
+                        -- cancel out), so a site that only sent materials
+                        -- counts as having reported.
+                        SELECT mm.site_id, count(*) AS materials, max(mm.created_at) AS last_at
+                        FROM material_movements mm
+                        WHERE mm.organization_id = :org_id
+                          AND mm.occurred_at::date = :report_date
+                          AND mm.reversal_of_movement_id IS NULL
+                          AND NOT EXISTS (
+                              SELECT 1 FROM material_movements r
+                              WHERE r.reversal_of_movement_id = mm.id
+                          )
+                        GROUP BY mm.site_id
+                    ), new_issues AS (
+                        -- The day's issues, as the DPR lists them.
+                        SELECT site_id, count(*) AS issues_today, max(created_at) AS last_at
+                        FROM site_issues
+                        WHERE organization_id = :org_id
+                          AND occurred_at::date = :report_date
+                          AND status != 'CANCELLED'
+                          AND COALESCE(narrative, '') NOT LIKE 'Question for your engineer:%'
+                        GROUP BY site_id
+                    ), updates AS (
+                        -- Progress sent today on work started on an earlier
+                        -- day (today's own work is already in work_items).
+                        SELECT a.site_id, count(*) AS progress_updates,
+                               max(pu.created_at) AS last_at
+                        FROM progress_updates pu
+                        JOIN activities a ON a.id = pu.activity_id
+                        WHERE a.organization_id = :org_id
+                          AND pu.occurred_at::date = :report_date
+                          AND a.activity_date <> :report_date
+                          AND pu.deleted_at IS NULL AND a.deleted_at IS NULL
+                        GROUP BY a.site_id
                     )
                     SELECT s.id AS site_id, s.name AS site_name,
                            p.id AS project_id, p.name AS project_name,
@@ -1369,7 +1593,11 @@ class PostgresDprRepository:
                            COALESCE(acts.work_items, 0) AS work_items,
                            COALESCE(photos.photos, 0) AS photos,
                            COALESCE(issues.open_issues, 0) AS open_issues,
-                           GREATEST(acts.last_at, labour.last_at) AS last_update_at,
+                           COALESCE(mats.materials, 0) AS materials,
+                           COALESCE(new_issues.issues_today, 0) AS issues_today,
+                           COALESCE(updates.progress_updates, 0) AS progress_updates,
+                           GREATEST(acts.last_at, labour.last_at, mats.last_at,
+                                    new_issues.last_at, updates.last_at) AS last_update_at,
                            latest_act.reporter_name AS last_update_by,
                            latest_act.narrative AS latest_update
                     FROM sites s
@@ -1383,6 +1611,9 @@ class PostgresDprRepository:
                     LEFT JOIN photos ON photos.site_id = s.id
                     LEFT JOIN labour ON labour.site_id = s.id
                     LEFT JOIN issues ON issues.site_id = s.id
+                    LEFT JOIN mats ON mats.site_id = s.id
+                    LEFT JOIN new_issues ON new_issues.site_id = s.id
+                    LEFT JOIN updates ON updates.site_id = s.id
                     WHERE {" AND ".join(where)}
                     ORDER BY p.name, s.name
                     """
@@ -1395,7 +1626,10 @@ class PostgresDprRepository:
             day = dict(row)
             if isinstance(day["missing_sections"], str):
                 day["missing_sections"] = json.loads(day["missing_sections"])
-            for key in ("workers", "work_items", "photos", "open_issues"):
+            for key in (
+                "workers", "work_items", "photos", "open_issues",
+                "materials", "issues_today", "progress_updates",
+            ):
                 day[key] = int(day[key] or 0)
             days.append(day)
         return days
@@ -1655,6 +1889,7 @@ class PostgresDprRepository:
                     SELECT
                         dr.id, dr.code, dr.report_date::text AS report_date,
                         dr.status::text AS workflow_status,
+                        dr.project_id, dr.site_id,
                         p.name AS project_name,
                         s.name AS site_name,
                         v.id AS version_id, v.payload, v.rendered_object_key,

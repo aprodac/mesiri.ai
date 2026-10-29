@@ -255,3 +255,31 @@ async def test_a_set_recipient_list_replaces_the_defaults(world):
     assert contact_claim["payload"]["to_wa_id"] == "447911123456"
     assert contact_claim["payload"]["requires_opt_in"] is True
     assert contact_claim["payload"]["document_object_key"]
+
+
+async def test_the_dpr_also_goes_into_each_site_group(world, monkeypatch):
+    """WA-87: one more row per active site WhatsApp group, addressed to the
+    group, with the same PDF and words; none while groups are switched off."""
+    project_id, report_id = _project(world)
+    group_id = uuid.uuid4()
+    site_id = uuid.uuid4()
+
+    async def site_groups(conn, *, organization_id, project_id):
+        return [{"id": group_id, "wa_group_id": "120363000000000001", "site_id": site_id}]
+
+    monkeypatch.setattr(sender, "_site_groups", site_groups)
+    assert await _send() == 1
+
+    people, group_rows = _Notifications.claims[:2], _Notifications.claims[2:]
+    assert all(c["recipient_user_id"] is not None for c in people)
+    (row,) = group_rows
+    assert row["recipient_user_id"] is None and row["subject_id"] == f"group:{group_id}"
+    assert row["site_id"] == site_id
+    assert row["payload"]["to_wa_id"] == "group:120363000000000001"
+    assert row["payload"]["document_object_key"] == people[0]["payload"]["document_object_key"]
+    assert row["payload"]["message"] == people[0]["payload"]["message"]
+
+
+async def test_no_group_rows_while_groups_are_switched_off(monkeypatch):
+    monkeypatch.delenv("WHATSAPP_GROUPS_ENABLED", raising=False)
+    assert await sender._site_groups(object(), organization_id=None, project_id=None) == []

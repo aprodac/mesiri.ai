@@ -1,7 +1,6 @@
 import * as React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ImagePlus, Loader2, Trash2 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/AuthContext'
 import { fetchClientLogo, removeClientLogo, uploadClientLogo, type ClientLogo } from '@/lib/projects'
@@ -49,25 +48,19 @@ export function ProjectClientLogoCard({ projectId, clientName }: { projectId: st
   const busy = upload.isPending || remove.isPending
 
   return (
-    <Card className="rounded-none border-border/70 shadow-none">
-      <CardHeader className="pb-3 border-b">
-        <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-          Client logo on DPRs
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="pt-4 space-y-3 text-xs">
+    <div className="flex flex-col gap-3 text-sm">
         <p className="text-muted-foreground">
-          Printed on this project's DPRs next to your company logo
-          {clientName ? `, with the client name "${clientName}"` : ''}. PNG, JPEG or WebP, up to 700 KB.
+          Printed on this project's DPRs next to your company logo{clientName ? `, with "${clientName}"` : ''}. PNG, JPEG or
+          WebP, up to 700 KB.
         </p>
         <div className="flex items-center gap-4">
-          <div className="size-20 rounded border border-border/60 bg-muted/30 flex items-center justify-center overflow-hidden">
+          <div className="size-16 shrink-0 rounded-lg border bg-muted/30 flex items-center justify-center overflow-hidden">
             {isLoading ? (
               <Loader2 className="size-4 animate-spin text-muted-foreground" />
             ) : data?.url ? (
               <img src={data.url} alt="Client logo" className="max-h-full max-w-full object-contain" />
             ) : (
-              <span className="text-[10px] text-muted-foreground text-center px-1">
+              <span className="px-1 text-center text-xs text-muted-foreground">
                 {data?.hasClientLogo ? 'Preview unavailable' : 'No logo'}
               </span>
             )}
@@ -85,19 +78,19 @@ export function ProjectClientLogoCard({ projectId, clientName }: { projectId: st
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-9 text-xs gap-1.5"
+                className="gap-1.5"
                 disabled={busy}
                 onClick={() => fileInput.current?.click()}
               >
                 {upload.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <ImagePlus className="size-3.5" />}
-                {data?.hasClientLogo ? 'Replace client logo' : 'Upload client logo'}
+                {data?.hasClientLogo ? 'Replace' : 'Upload logo'}
               </Button>
               {data?.hasClientLogo && (
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-9 text-xs gap-1.5 text-rose-600"
+                  className="gap-1.5 text-destructive"
                   disabled={busy}
                   onClick={() => remove.mutate()}
                 >
@@ -109,8 +102,7 @@ export function ProjectClientLogoCard({ projectId, clientName }: { projectId: st
             <span className="text-muted-foreground">Only company admins can change this.</span>
           )}
         </div>
-        {error && <p className="text-rose-500">{error}</p>}
-      </CardContent>
-    </Card>
+        {error && <p className="text-destructive">{error}</p>}
+    </div>
   )
 }

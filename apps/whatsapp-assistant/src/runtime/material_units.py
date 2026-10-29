@@ -18,6 +18,21 @@ _log = logging.getLogger(__name__)
 
 #: Stock units of whole things: a conversion into one never gives a fraction.
 COUNTED_UNITS = frozenset({"nos", "pcs", "rolls"})
+#: Request 132: what sites call a counted thing. Against a material stocked in
+#: nos / pcs these are the same count ("10 sheets plywood" is 10 nos), never a
+#: question ("How much is 10 sheets in nos?" left plywood off the card).
+COUNT_WORDS = frozenset(
+    {"no", "nos", "number", "numbers", "pc", "pcs", "piece", "pieces", "sheet", "sheets", "rod", "rods", "unit", "units"}
+)
+_COUNT_STOCK = frozenset({"nos", "pcs"})
+
+
+def counts_as_stock(unit_text: Any, stock_unit: dict | None) -> bool:
+    """Whether ``unit_text`` is just another word for a count and the material
+    is stocked in nos / pcs."""
+    word = str(unit_text or "").strip().casefold().rstrip(".")
+    code = str((stock_unit or {}).get("code") or "").casefold()
+    return word in COUNT_WORDS and code in _COUNT_STOCK
 
 
 @dataclass(slots=True)
@@ -65,6 +80,11 @@ async def fit_stock_unit(
         _log.exception("unit_gate.lookup_failed correlation_id=%s", correlation_id)
         return UnitFit("unknown")
     qty = fields.get("quantity")
+    if stock_unit is not None and counts_as_stock(unit_text, stock_unit):
+        fields["reported_unit"] = str(unit_text)
+        fields["unit"] = stock_unit["code"]
+        fields["unit_id"] = str(stock_unit_id)
+        return UnitFit("ok")
     if reported is not None and stock_unit is not None and qty is not None:
         # WA-41: the company said (or physics says) how many of this unit make
         # one stock unit: convert, keep what was reported, no question.
@@ -122,6 +142,22 @@ def ask_amount_text(
         f"{head} How much is that in {unit_display}? (Your admin or project manager can "
         f"tell me how many {unit_text} make 1 {unit_display}, so this works next time.)"
     )
+
+
+def amount_question(fields: dict[str, Any], fit: UnitFit) -> str:
+    """Request 129: the question that goes on the card beside the line when no
+    conversion can be asked for (the unit is not one we know, or the sender may
+    not set conversions): "How many kg is 20 rod?". The sender types the amount."""
+    stock = _plain(fit.stock_unit) if fit.stock_unit else "the stock unit"
+    qty = fields.get("quantity")
+    shown = f"{qty:g}" if isinstance(qty, float) else str(qty) if qty is not None else ""
+    said = " ".join(p for p in (shown, str(fields.get("unit") or "")) if p)
+    return f"How many {stock} is {said}?" if said else f"How many {stock} is it?"
+
+
+def stock_unit_code(fit: UnitFit) -> str:
+    """The stock unit of ``fit`` as the amount question says it ("kg"), or ""."""
+    return _plain(fit.stock_unit) if fit.stock_unit else ""
 
 
 def _plain(unit: dict[str, Any] | None) -> str:

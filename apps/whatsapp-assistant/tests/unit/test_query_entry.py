@@ -118,3 +118,32 @@ async def test_a_lookup_asked_for_as_a_pdf_is_sent_as_one():
     assert len(sent) == 1 and sent[0][0].endswith(".pdf") and sent[0][1] == b"%PDF"
     without = to_candidate(QUERY_MATERIALS, {"material": "cement"}, ScopeLookup())
     assert "output_format" not in without.fields
+
+
+class _WorkLog:
+    """Records the dates the work-log lookup was asked for."""
+
+    def __init__(self) -> None:
+        self.asked: list[tuple[Any, Any]] = []
+
+    async def search(self, *, start_date: Any, end_date: Any, **kwargs: Any) -> dict[str, Any]:
+        self.asked.append((start_date, end_date))
+        return {"activities": [], "open_issues": []}
+
+
+async def test_wrk03_what_was_done_yesterday_is_asked_for_yesterday_in_the_project_zone():
+    """The audit's "answers today": the lookup is for the project's yesterday,
+    whatever day it is on the host (two zones 25 hours apart, so one of them
+    is never the host's date)."""
+    from runtime.agent.project_day import project_yesterday
+
+    for zone in ("Pacific/Kiritimati", "Pacific/Pago_Pago"):
+        log = _WorkLog()
+        context = _Context()
+        context.ctx.timezone = zone
+        entry = _entry(activity_search_service=log, context=context)
+        ready = await _prepare(entry, SemanticType.ACTIVITY_QUERY, date_range="yesterday")
+        assert isinstance(ready, Ready)
+        yesterday = project_yesterday(zone)
+        assert log.asked == [(yesterday, yesterday)], zone
+        assert ready.event.fields["activity_search_results"]["date_range_label"].lower().startswith("yesterday")

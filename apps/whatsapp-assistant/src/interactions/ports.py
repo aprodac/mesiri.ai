@@ -36,5 +36,10 @@ class ReceiptBuilder(Protocol):
     must never break the confirm flow itself."""
 
     async def build(
-        self, confirmed: ConfirmedActionV2, execution: ExecutionResult, actor: ActorIdentity | None
+        self,
+        confirmed: ConfirmedActionV2,
+        execution: ExecutionResult,
+        actor: ActorIdentity | None,
+        *,
+        saved: bool = False,
     ) -> bytes | None: ...
