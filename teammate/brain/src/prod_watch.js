@@ -295,6 +295,17 @@ export function opsSources(env, projects) {
   return out;
 }
 
+/** "5m", "30 min", "1h", "2 hours", "90": minutes between looks, 5 to 1440; null when not a time. */
+export function parseInterval(text) {
+  const m = String(text || "").trim().toLowerCase().match(/^(\d+(?:\.\d+)?)\s*(m|min|mins|minutes?|h|hr|hrs|hours?)?$/);
+  if (!m) return null;
+  const n = Number(m[1]) * (m[2] && m[2].startsWith("h") ? 60 : 1);
+  if (!Number.isFinite(n) || n < 5 || n > 1440) return null;
+  return Math.round(n);
+}
+
+const every = (minutes) => (minutes % 60 === 0 ? `${minutes / 60} hour${minutes === 60 ? "" : "s"}` : `${minutes} min`);
+
 export class ProdWatch {
   /**
    * @param sources   { project: { url, token } }
@@ -352,10 +363,82 @@ export class ProdWatch {
   }
 
   /** One look at every project with an ops source. Never throws for one project's failure. */
-  async tick() {
+  /** The owner's settings (``@bot watch …``), kept in the state file: { minutes, on, by, at }. */
+  settings(state = this.state()) {
+    return { minutes: this.minutes, on: true, ...(state._settings || {}) };
+  }
+
+  saveSettings(change) {
     const state = this.state();
+    state._settings = { ...this.settings(state), ...change };
+    writeFileSync(this.file, JSON.stringify(state));
+    return state._settings;
+  }
+
+  /** Called every minute: one look when it is on and its interval has passed since the last. */
+  async maybeTick() {
+    const st = this.settings();
+    const last = this.lastLookAt || 0;
+    if (!st.on || this.now() - last < st.minutes * 60_000) return false;
+    await this.tick();
+    return true;
+  }
+
+  /**
+   * "@bot watch" (anyone approved: how it is set and what it found today), and for owners in the team group:
+   * "watch 1h" / "30m" / "5 min" / "2 hours", "watch off" / "on", "watch now". Plain code, no Claude turn.
+   * Returns the reply, or undefined when the text isn't a watch command.
+   */
+  command(req) {
+    const text = String(req.text || "").trim();
+    const m = text.match(/^(?:prod(?:uction)?[\s-]?)?watch(?:er)?(?:\s+(.*))?$/i);
+    if (!m) return undefined;
+    const arg = String(m[1] || "").trim().toLowerCase();
+    const st = this.settings();
+    const today = this.today();
+    const ago = this.lastLookAt ? `${Math.max(0, Math.round((this.now() - this.lastLookAt) / 60_000))} min ago` : "not yet since the last restart";
+    const show = (head = "") =>
+      `${head}🔎 *Production watch*: ${st.on ? `on, every *${every(st.minutes)}*` : "*off*"}\n` +
+      `Last look: ${ago} · today: ${today.looks} look(s), ${today.flagged} flagged, ${today.reported} sent to Claude\n` +
+      "Owners: @bot watch 5m | 30m | 1h | 2h · @bot watch off | on · @bot watch now";
+    if (!arg || /^(status|\?)$/.test(arg)) return show();
+    if (req.dm) return "The production watch can be changed in the team group only.";
+    if (req.sender_role !== "owner") return "Only an owner can change the production watch.";
+    const who = req.sender || "an owner";
+    if (/^(off|pause|stop)$/.test(arg)) {
+      Object.assign(st, this.saveSettings({ on: false, by: who, at: new Date(this.now()).toISOString() }));
+      return show("⏸️ Paused. ");
+    }
+    if (/^(on|resume|start)$/.test(arg)) {
+      Object.assign(st, this.saveSettings({ on: true, by: who, at: new Date(this.now()).toISOString() }));
+      return show("▶️ On again. ");
+    }
+    if (/^now$/.test(arg)) {
+      this.tick().catch((e) => this.log(`prod-watch: ${e.message}`));
+      return "🔎 Looking at production now; anything real is reported here in a few minutes.";
+    }
+    const minutes = parseInterval(arg);
+    if (minutes === null) return `I didn't understand "${arg}". Try: @bot watch 5m, 30m, 1h, 2h, off, on or now.`;
+    Object.assign(st, this.saveSettings({ minutes, on: true, by: who, at: new Date(this.now()).toISOString() }));
+    return show(`✅ Now every ${every(minutes)}. `);
+  }
+
+  /** Today's counts (UTC day), kept in the state file. */
+  today(state = this.state()) {
+    const day = new Date(this.now()).toISOString().slice(0, 10);
+    const t = state._today || {};
+    return t.day === day ? t : { day, looks: 0, flagged: 0, reported: 0 };
+  }
+
+  async tick() {
+    this.lastLookAt = this.now();
+    const state = this.state();
+    const counts = this.today(state);
+    counts.looks += 1;
+    state._today = counts;
     const first = !this.started;
     this.started = true;
+    writeFileSync(this.file, JSON.stringify(state));
     for (const [project, source] of Object.entries(this.sources)) {
       const s = (state[project] ||= { since: this.now() / 1000 - FIRST_LOOK_MINUTES * 60, reported: [] });
       // After a restart (a deploy that changed how the watch reads), the first look reads the last half hour again;
@@ -374,6 +457,8 @@ export class ProdWatch {
       const reported = new Set(s.reported);
       const flagged = await this.flagged(rows, new Set(fresh.map((r) => r.correlation_id)));
       const all = conversations(rows, flagged, reported);
+      counts.flagged += flagged.length;
+      counts.reported += Math.min(all.length, MAX_CONVERSATIONS);
       const convs = all.slice(0, MAX_CONVERSATIONS);
       // More than one turn's worth: the rest wait for the next tick (the reported ids keep these from repeating).
       s.since = all.length > MAX_CONVERSATIONS ? all[MAX_CONVERSATIONS].at - 0.001 : Math.max(...fresh.map((r) => Number(r.at)));

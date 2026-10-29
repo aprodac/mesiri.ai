@@ -65,6 +65,7 @@ const HELP = [
   "• @me settings: Claude's model and effort · owners: @me model opus|sonnet|haiku|fable, @me effort low…max",
   "• @me account: which Claude account this group runs on (A, B, C…) · owners: @me account <letter> (this group), @me account default <letter>, @me account reset, @me account auto on|off",
   "• @me auto on [hours] (owners): test, fix and verify small Conversation / report issues by itself · @me auto: its state · @me auto off or @me stop (anyone)",
+  "• @me watch: the production watch (how often, what it found today) · owners: @me watch 5m|30m|1h|2h, @me watch off|on, @me watch now",
   "• @me status: the jobs running in the cloud · @me status <n>: one job (commits, deploy, last note) · owners: @me tell <n> <message> starts a follow-up session for job n",
   "• @me who: who is approved here",
   "Owners: @me approve @person · @me remove @person · @me make owner @person",

@@ -317,10 +317,11 @@ if (prodWatchMinutes > 0 && Object.keys(opsByProject).length) {
       ? new Screener({ apiKey: process.env.TEAMMATE_GEMINI_API_KEY, model: process.env.TEAMMATE_GEMINI_MODEL || undefined })
       : null,
   });
-  const look = () => prodWatch.tick().catch((e) => log(`prod-watch: ${e.message}`));
-  setTimeout(look, 120_000);
-  setInterval(look, prodWatchMinutes * 60_000);
-  log(`prod-watch: every ${prodWatchMinutes} min; ${Object.keys(opsByProject).join(", ")}; AI screen ${process.env.TEAMMATE_GEMINI_API_KEY ? "on" : "off"}`);
+  brain.prodWatch = prodWatch; // "@bot watch …" (owners change how often, pause, look now)
+  // Every minute: a look when it is on and its interval (TEAMMATE_PROD_WATCH_MINUTES, or what an owner set) has passed.
+  const beat = () => prodWatch.maybeTick().catch((e) => log(`prod-watch: ${e.message}`));
+  setTimeout(() => (beat(), setInterval(beat, 60_000)), 120_000);
+  log(`prod-watch: every ${prodWatch.settings().minutes} min${prodWatch.settings().on ? "" : " (paused)"}; ${Object.keys(opsByProject).join(", ")}; AI screen ${process.env.TEAMMATE_GEMINI_API_KEY ? "on" : "off"}`);
 }
 // Request 139: the watchdog over cloud jobs (commits, deploys, silence); TEAMMATE_WATCH_MINUTES, default 10, 0 = off.
 const watchMinutes = Number(process.env.TEAMMATE_WATCH_MINUTES ?? 10);

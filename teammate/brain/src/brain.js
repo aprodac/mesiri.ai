@@ -677,6 +677,8 @@ export class Brain {
       if (told !== undefined) return told ? say(told) : undefined;
       const auto = this.auto.command(req);
       if (auto !== undefined) return auto ? say(auto) : undefined;
+      const watch = this.prodWatch?.command(req); // TM-16: "@bot watch …"
+      if (watch !== undefined) return say(watch);
       const answer = this.accounts.command(req) || this.settingsCommand(req) || this.sessionCommand(req);
       if (answer) return say(answer);
     }

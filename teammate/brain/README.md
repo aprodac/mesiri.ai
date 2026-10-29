@@ -113,3 +113,8 @@ key, kept out of Claude's environment) reads every new exchange and names the on
 a missing feature, a wrong reply, a loop, a confusing reply, an error (`Screener` in `src/prod_watch.js`). Claude then
 investigates what it names. The word list stays as a free first pass; if the screen fails, the look carries on with
 it and logs why. The first look after a restart reads the last half hour again (reported messages are skipped).
+
+**Owners change it from the group, live:** `@bot watch` shows how often it looks and what it found today (anyone
+approved); owners, in the team group: `@bot watch 5m | 30m | 1h | 2h` (5 minutes to a day), `@bot watch off | on`,
+`@bot watch now`. Answered by code, no Claude turn; kept in `prod-watch.json`, so it lasts across restarts. A
+one-minute heartbeat starts each look when it is due; `TEAMMATE_PROD_WATCH_MINUTES` is only the starting value.

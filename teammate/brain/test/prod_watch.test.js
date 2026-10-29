@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { ProdWatch, QUIET, MAX_CONVERSATIONS, SCREEN_PROMPT, Screener, asObjects, chatHtml, conversations, flagRows, opsSources, screenFlags, screenItems, watchPrompt, watchSql } from "../src/prod_watch.js";
+import { ProdWatch, QUIET, MAX_CONVERSATIONS, SCREEN_PROMPT, Screener, parseInterval, asObjects, chatHtml, conversations, flagRows, opsSources, screenFlags, screenItems, watchPrompt, watchSql } from "../src/prod_watch.js";
 
 const T0 = 1_761_700_000; // epoch seconds
 const msg = (over) => ({
@@ -288,6 +288,46 @@ test("after a restart the first look reads the last half hour again, without rep
     await watch.tick();
     assert.equal(asked.length, 1);
     assert.deepEqual([...asked[0][0].flags.keys()], [missed.correlation_id]); // the missed one, not the reported one again
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// -- "@bot watch …": owners change it from the group, live, no deploy --
+
+test("intervals people type become minutes, between 5 minutes and a day", () => {
+  for (const [t, m] of [["5m", 5], ["30 min", 30], ["1h", 60], ["2 hours", 120], ["1.5h", 90], ["90", 90]]) assert.equal(parseInterval(t), m, t);
+  for (const t of ["1m", "2 days", "soon", "", "25h"]) assert.equal(parseInterval(t), null, t);
+});
+
+test("anyone sees the watch; only an owner in the team group changes it; it lasts and runs on its new interval", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pw-"));
+  try {
+    let t = T0 * 1000;
+    const { fetchFn } = fakeOps([]);
+    const file = join(dir, "s.json");
+    const make = () => new ProdWatch({ sources: { mesiri: { url: "u", token: "t" } }, ask: async () => {}, file, fetchFn, now: () => t, minutes: 5 });
+    const watch = make();
+    const member = { text: "watch", sender: "Ravi", sender_role: "member" };
+    assert.match(watch.command(member), /on, every \*5 min\*/);
+    assert.equal(watch.command({ text: "show me the dpr" }), undefined); // not a watch command
+    assert.equal(watch.command({ ...member, text: "watch 1h" }), "Only an owner can change the production watch.");
+    assert.equal(watch.command({ text: "watch 1h", sender_role: "owner", dm: true }), "The production watch can be changed in the team group only.");
+    assert.match(watch.command({ text: "watch 1h", sender: "Ilan", sender_role: "owner" }), /Now every 1 hour/);
+    assert.match(watch.command({ text: "watch forever", sender_role: "owner" }), /didn't understand/);
+
+    assert.equal(await watch.maybeTick(), true); // first look
+    t += 30 * 60_000;
+    assert.equal(await watch.maybeTick(), false); // 30 min later: not due at 1 hour
+    t += 31 * 60_000;
+    assert.equal(await watch.maybeTick(), true);
+
+    const restarted = make(); // the setting survives a restart
+    assert.match(restarted.command(member), /every \*1 hour\*/);
+    assert.match(restarted.command({ text: "watch off", sender_role: "owner" }), /Paused/);
+    assert.equal(await restarted.maybeTick(), false);
+    assert.match(restarted.command({ text: "watch on", sender_role: "owner" }), /On again/);
+    assert.match(restarted.command(member), /today: \d+ look\(s\)/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

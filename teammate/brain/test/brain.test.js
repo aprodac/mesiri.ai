@@ -671,3 +671,18 @@ test("brain: post_watch_chat exists only in a production-watch turn, and draws t
   const missing = await watch.instance._registeredTools.post_watch_chat.handler({ conversation: 2, caption: "x" }, {});
   assert.ok(missing.isError);
 });
+
+test("brain: '@bot watch …' is answered by code (the production watch), never by a Claude turn", async () => {
+  const { dir, calls, sent, ask, brain } = setup((p, id) => ok("claude answered", id));
+  const seen = [];
+  brain.prodWatch = { command: (req) => (seen.push(req), /^watch/i.test(req.text) ? `watch: ${req.text} by ${req.sender_role}` : undefined) };
+  try {
+    await ask("watch 1h", { sender_role: "owner" });
+    assert.equal(calls.length, 0);
+    assert.deepEqual(sent.map((s) => s.text), ["watch: watch 1h by owner"]);
+    await ask("what changed today?");
+    assert.equal(calls.length, 1); // anything else still goes to Claude
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
