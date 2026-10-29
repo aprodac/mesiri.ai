@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
-from datetime import datetime
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -298,3 +298,51 @@ async def test_a_turn_loads_the_set_language_and_resets_it_after():
     assert during == "malayalam" and kw["ctx"].last_language == "Malayalam"
     assert callable(kw["reply_language_setter"])
     assert preferred_language.get() is None
+
+
+# -- 5. what Mesiri sent on its own, the ack's language, a longer memory ------------------------
+
+
+async def test_the_last_message_sent_is_kept_per_recipient(store):
+    sent_text.report_sent(
+        wamid="w1", message_fields={"type": "text", "text": {"body": "Evening: send today's update?"}}, recipient="9190"
+    )
+    await asyncio.sleep(0)
+    text, at = await sent_text.last_sent_to("9190")
+    assert text == "Evening: send today's update?" and at > 0
+    assert await sent_text.last_sent_to("other") is None
+
+
+async def test_a_reminder_sent_after_the_last_reply_is_shown_to_the_model(store):
+    import time
+
+    from runtime.agent.turn import _last_system_message
+
+    now = time.time()
+    await store.set_json("last_sent:919000000001", {"text": "Add another site?", "at": now - 60})
+    message = _message("yes")
+    message = message.model_copy(update={"timestamp": datetime.fromtimestamp(now, tz=UTC)})
+    pack = SimpleNamespace(recent_turns=(SimpleNamespace(assistant_reply="Sheri, saved.", at=now - 600),))
+    note = await _last_system_message(message, pack, _deps([]))
+    assert note is not None and '"Add another site?"' in note
+    # Already the last reply in the conversation: nothing added.
+    same = SimpleNamespace(recent_turns=(SimpleNamespace(assistant_reply="Add another site?", at=now - 30),))
+    assert await _last_system_message(message, same, _deps([])) is None
+    # Sent after their message came in (the "listening now..." ack): not it.
+    await store.set_json("last_sent:919000000001", {"text": "🎤 listening", "at": now + 1})
+    assert await _last_system_message(message, pack, _deps([])) is None
+
+
+def test_the_processing_ack_follows_the_senders_language():
+    from runtime.message_journey import processing_ack_text
+
+    assert processing_ack_text(InputModality.VOICE, None, None).startswith("🎤 Got your voice note")
+    assert "കേൾക്കുന്നു" in processing_ack_text(InputModality.VOICE, "Malayalam", "native")
+    assert "kelkkunnu" in processing_ack_text(InputModality.VOICE, "Malayalam", "latin")
+    assert processing_ack_text(InputModality.TEXT, "Malayalam", "native") is None
+
+
+def test_the_conversation_is_remembered_for_two_hours():
+    from memory.requirements import RECENT_TURNS
+
+    assert RECENT_TURNS.ttl_seconds == 2 * 60 * 60

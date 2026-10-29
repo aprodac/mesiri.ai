@@ -524,5 +524,5 @@ class WhatsAppSender:
                 wamid=wamid, recipient=to_wa_id, message_fields=message_fields
             )
             # Its words, so a swipe-reply to it can be read (sent_text.py).
-            sent_text.report_sent(wamid=wamid, message_fields=message_fields)
+            sent_text.report_sent(wamid=wamid, message_fields=message_fields, recipient=to_wa_id)
         return wamid

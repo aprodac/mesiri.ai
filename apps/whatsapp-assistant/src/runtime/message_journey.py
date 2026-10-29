@@ -118,6 +118,40 @@ _PROCESSING_ACK_TEXT: dict[InputModality, str] = {
     InputModality.VOICE: "🎤 Got your voice note — listening now...",
 }
 
+#: Live 29 Oct: the same acks in the sender's language (it was English for a
+#: Malayalam voice note, and for a sender who set Malayalam replies).
+_PROCESSING_ACK_LOCALIZED: dict[str, dict[InputModality, str]] = {
+    "manglish": {
+        InputModality.IMAGE: "📷 Photo kitti — nokkunnu...",
+        InputModality.DOCUMENT: "📄 Document kitti — nokkunnu...",
+        InputModality.VOICE: "🎤 Voice note kitti — kelkkunnu...",
+    },
+    "malayalam": {
+        InputModality.IMAGE: "📷 ഫോട്ടോ കിട്ടി — നോക്കുന്നു...",
+        InputModality.DOCUMENT: "📄 ഡോക്യുമെന്റ് കിട്ടി — നോക്കുന്നു...",
+        InputModality.VOICE: "🎤 വോയ്സ് നോട്ട് കിട്ടി — കേൾക്കുന്നു...",
+    },
+    "hindi": {
+        InputModality.IMAGE: "📷 फोटो मिल गई — देख रहा हूँ...",
+        InputModality.DOCUMENT: "📄 डॉक्यूमेंट मिल गया — देख रहा हूँ...",
+        InputModality.VOICE: "🎤 वॉइस नोट मिल गया — सुन रहा हूँ...",
+    },
+    "hinglish": {
+        InputModality.IMAGE: "📷 Photo mil gayi — dekh raha hoon...",
+        InputModality.DOCUMENT: "📄 Document mil gaya — dekh raha hoon...",
+        InputModality.VOICE: "🎤 Voice note mil gaya — sun raha hoon...",
+    },
+}
+
+
+def processing_ack_text(modality: InputModality, language: str | None, script: str | None) -> str | None:
+    """The ack for ``modality`` in the sender's language (their profile: the
+    language they set, else the one they last spoke); English when unknown."""
+    from runtime.agent.wording import usual_from
+
+    table = _PROCESSING_ACK_LOCALIZED.get(usual_from(language, script) or "", {})
+    return table.get(modality) or _PROCESSING_ACK_TEXT.get(modality)
+
 
 def build_message_handlers(
     *,
@@ -250,17 +284,17 @@ def build_message_handlers(
     # Same reasoning, same pattern as WhatsAppReceiver._background_tasks.
     _ack_tasks: set[asyncio.Task[None]] = set()
 
-    def _fire_processing_ack(wa_id: str, modality: InputModality) -> None:
+    def _fire_processing_ack(wa_id: str, modality: InputModality, user_id: str | None = None) -> None:
         """Schedule _send_processing_ack without awaiting it -- the caller's
         real work (the slow understanding call that follows) must start
         immediately, not after this ~600-900ms Meta round trip."""
         if forward_batch.is_capturing():
             return  # WA-02: a forwarded batch gets one summary, no acks
-        task = asyncio.create_task(_send_processing_ack(wa_id, modality))
+        task = asyncio.create_task(_send_processing_ack(wa_id, modality, user_id))
         _ack_tasks.add(task)
         task.add_done_callback(_ack_tasks.discard)
 
-    async def _send_processing_ack(wa_id: str, modality: InputModality) -> None:
+    async def _send_processing_ack(wa_id: str, modality: InputModality, user_id: str | None = None) -> None:
         """A second, real message sent before understanding starts, not just
         the read-receipt blue tick.
 
@@ -277,7 +311,15 @@ def build_message_handlers(
         under ~2s (measured), where a second message would arrive at
         almost the same time as the real one and just add noise.
         """
-        text = _PROCESSING_ACK_TEXT.get(modality)
+        if modality not in _PROCESSING_ACK_TEXT:
+            return
+        language = script = None
+        if user_language_store is not None and user_id:
+            try:
+                language, script = await user_language_store.get_profile(user_id=user_id)
+            except Exception:  # noqa: BLE001 -- the English ack goes out
+                language = script = None
+        text = processing_ack_text(modality, language, script)
         if text is None:
             return
         try:
@@ -2523,7 +2565,7 @@ def build_message_handlers(
                 return
 
             held_message = held_batch[0]
-            _fire_processing_ack(wa_id, held_message.modality)
+            _fire_processing_ack(wa_id, held_message.modality, ctx.user_id)
             # ARCH-06: the agent reads the photo, told what they tapped it is.
             from interactions.category_hint import CategoryHint
 
@@ -2852,7 +2894,7 @@ def build_message_handlers(
                 await message_logger.log_reply(correlation_id=message.correlation_id, reply=morning.text)
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
                 return
-            _fire_processing_ack(wa_id, message.modality)
+            _fire_processing_ack(wa_id, message.modality, ctx.user_id)
             await _run_agent(message, ctx, category_hint, timer)
             return
 

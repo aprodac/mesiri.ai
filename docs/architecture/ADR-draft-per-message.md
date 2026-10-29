@@ -1033,3 +1033,18 @@ model with a real swipe-reply payload (the `context.id` key is Meta's documented
 
 Revert the commit. Redis keys `sent_text:*` expire in 7 days; `reply_language_pref:*` keys are ignored by the old
 code.
+
+### 23.6 Follow-up audit (same day)
+
+- **What Mesiri sends on its own was not in the conversation.** Reminders, setup questions, the evening DPR and
+  the follow-ups after a reply never entered `recent_turns`, so a bare "yes" to one meant nothing to the model.
+  `sent_text` keeps the latest message per recipient (`last_sent_to`, 24 h); the turn adds it as a note when it was
+  sent after the last recorded reply and before this message (so the "listening now..." ack never counts).
+- **The voice / photo ack was English only.** `processing_ack_text` writes it in the sender's profile language
+  (the one they set, else the one they last spoke).
+- **The conversation was forgotten after 30 minutes.** `RECENT_TURNS` keeps 2 hours (still 10 turns at most).
+- **Checked, no change needed:** a sender's messages run in order (one FIFO lane per sender in the receiver; one ARQ
+  worker process); reactions are ignored on purpose.
+- **Found, not changed (product decisions, WA-90):** a PDF is always declined ("can't read documents") although
+  the agent reads documents through the vision path, because ingress maps `document` to UNKNOWN and never
+  downloads it; a sticker gets the "can't read stickers" reply where a thumbs-up sticker usually means "ok".

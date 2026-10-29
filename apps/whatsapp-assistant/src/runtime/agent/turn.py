@@ -13,6 +13,7 @@ import logging
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from typing import Any
 
 from backend.ports import ActorIdentity
@@ -390,6 +391,9 @@ async def _run_agent_turn(
         card_line=lines[4],
         replying_to=replying_to,
     )
+    system_note = await _last_system_message(message, pack, deps)
+    if system_note:
+        context = replace(context, notes=[*context.notes, system_note])
     setter = _language_setter(deps, actor)
     # Request 136 (B): with draft cards what is still to do is a waiting line of the
     # card, so the old "later" list is neither shown nor kept.
@@ -506,6 +510,36 @@ async def _run_agent_turn(
         await gateway.finish()
         _lap(deps, "agent_followups")
     return result
+
+
+async def _last_system_message(message: NormalizedMessage, pack: Any | None, deps: AgentTurnDeps) -> str | None:
+    """Live 29 Oct: the latest message Mesiri sent this sender after its last
+    reply to them (a reminder, a setup question, a DPR, a follow-up), which this
+    message may be answering. Those never enter the conversation memory, so a
+    bare "yes" to one of them had nothing to go on. None when there is none."""
+    from channel.whatsapp import sent_text
+
+    try:
+        last = await sent_text.last_sent_to(getattr(getattr(message, "sender", None), "wa_id", None))
+    except Exception:  # noqa: BLE001
+        return None
+    if last is None:
+        return None
+    text, at = last
+    stamp = getattr(message, "timestamp", None)
+    received = stamp.timestamp() if hasattr(stamp, "timestamp") else deps.now().timestamp()
+    if at >= received - 1:
+        return None  # sent after this message came in (the "listening now..." ack)
+    turns = tuple(getattr(pack, "recent_turns", ()) or ())
+    if turns:
+        newest = turns[-1]
+        if at <= float(getattr(newest, "at", 0.0) or 0.0) + 1 or text.strip() in (newest.assistant_reply or ""):
+            return None  # it is the reply already in the conversation
+    when = datetime.fromtimestamp(at, tz=UTC).astimezone(deps.now().tzinfo or UTC)
+    return (
+        f'The last message the system sent them (at {when:%H:%M}, after your last reply; '
+        f'this message may answer it): "{text}"'
+    )
 
 
 def _language_setter(

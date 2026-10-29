@@ -119,7 +119,9 @@ CURRENT_DATE = MemoryScopeSpec(
 )
 RECENT_TURNS = MemoryScopeSpec(
     name="recent_turns",
-    ttl_seconds=30 * 60,
+    # Live 29 Oct: 30 minutes forgot a conversation across a tea break; two
+    # hours covers a site morning or afternoon (the cap below still bounds it).
+    ttl_seconds=2 * 60 * 60,
     authority=MemoryAuthority.HINT,
     description=(
         "The last few (user text, assistant reply) pairs in this "

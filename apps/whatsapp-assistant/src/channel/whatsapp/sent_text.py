@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Mapping
 from typing import Any, Protocol
 
@@ -81,16 +82,47 @@ async def remember(*, wamid: str, text: str, by: str = "mesiri") -> None:
         logger.warning("sent_text.remember_failed wamid=%s", wamid)
 
 
-def report_sent(*, wamid: str, message_fields: Mapping[str, Any]) -> None:
-    """Called by the sender for every message it sent (channel/whatsapp/outbound.py)."""
+async def _remember_last(recipient: str, text: str) -> None:
+    store = _store
+    if store is None or not recipient:
+        return
+    try:
+        await store.set_json(
+            f"last_sent:{recipient}", {"text": text[:MAX_CHARS], "at": time.time()}, ttl_seconds=24 * 3600
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning("sent_text.remember_last_failed")
+
+
+def report_sent(*, wamid: str, message_fields: Mapping[str, Any], recipient: str | None = None) -> None:
+    """Called by the sender for every message it sent (channel/whatsapp/outbound.py).
+    The latest one per ``recipient`` is kept too (``last_sent_to``)."""
     if _store is None:
         return
-    text = text_of_fields(message_fields)
+    text = text_of_fields(message_fields).strip()
     if not text:
         return
-    task = asyncio.ensure_future(remember(wamid=wamid, text=text))
-    _pending.add(task)
-    task.add_done_callback(_pending.discard)
+    for job in (remember(wamid=wamid, text=text), _remember_last(recipient or "", text)):
+        task = asyncio.ensure_future(job)
+        _pending.add(task)
+        task.add_done_callback(_pending.discard)
+
+
+async def last_sent_to(recipient: str | None) -> tuple[str, float] | None:
+    """``(text, sent at epoch seconds)`` of the latest message sent to
+    ``recipient`` in the last day -- a reminder, a setup question, a DPR, a
+    reply -- or None. Live 29 Oct: what Mesiri sent on its own (not as a reply)
+    was never in the conversation the model sees, so "yes" to it meant nothing."""
+    store = _store
+    if store is None or not recipient:
+        return None
+    try:
+        stored = await store.get_json(f"last_sent:{recipient}")
+    except Exception:  # noqa: BLE001
+        return None
+    if not isinstance(stored, dict) or not str(stored.get("text") or "").strip():
+        return None
+    return str(stored["text"]), float(stored.get("at") or 0.0)
 
 
 async def text_of(wamid: str | None) -> tuple[str, str] | None:
