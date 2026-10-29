@@ -213,6 +213,20 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "{what} आया या इस्तेमाल हुआ?",
         "hinglish": "{what} aaya ya use hua?",
     },
+    "photo.purpose": {
+        "english": "📷 What is this photo for?",
+        "manglish": "📷 Ee photo enthinaanu?",
+        "malayalam": "📷 ഈ ഫോട്ടോ എന്തിനാണ്?",
+        "hindi": "📷 यह फोटो किसलिए है?",
+        "hinglish": "📷 Yeh photo kis liye hai?",
+    },
+    "photo.waiting": {
+        "english": "📷 {count} {noun} you sent are still waiting. What {is_are} for?",
+        "manglish": "📷 Ningal ayacha {count} photo ippozhum kaathirikkunnu. Enthinaanu?",
+        "malayalam": "📷 നിങ്ങൾ അയച്ച {count} ഫോട്ടോ ഇപ്പോഴും കാത്തിരിക്കുന്നു. എന്തിനാണ്?",
+        "hindi": "📷 आपकी भेजी {count} फोटो अभी इंतज़ार में हैं. किसलिए हैं?",
+        "hinglish": "📷 Aapki bheji {count} photo abhi wait kar rahi hain. Kis liye hain?",
+    },
     "material.direction_cancelled": {
         "english": "Okay, nothing saved.",
         "manglish": "Sheri, onnum save cheythilla.",

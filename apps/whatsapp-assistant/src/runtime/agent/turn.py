@@ -95,6 +95,9 @@ class AgentTurnDeps:
     #: Request 88: ``(actor) -> "Their open card ..." | None``: the latest card,
     #: with the ids the model may name (runtime/agent/cards.py).
     card_line: Callable[[ActorIdentity], Awaitable[str | None]] | None = None
+    #: Live 29 Oct: ``(actor) -> the photos they sent that wait for their purpose``,
+    #: left held (interactions/pending_media.py's peek); None when not wired.
+    held_photos: Callable[[ActorIdentity], Awaitable[list[Any]]] | None = None
     #: [68]: called when the reply saved nothing (a question or small talk), so
     #: the journey holds setup nudges ("add another site?") for after a save.
     on_conversational: Callable[[], None] | None = None
@@ -401,6 +404,13 @@ async def _run_agent_turn(
     media_note = await _media_sent_note(message, deps)
     if media_note:
         context = replace(context, notes=[*context.notes, media_note])
+    held = await _held_photos(actor, deps)
+    if held:
+        context = replace(
+            context,
+            notes=[*context.notes, HELD_PHOTO_NOTE.format(count=len(held), s="" if len(held) == 1 else "s")],
+        )
+    look_at_photo = _photo_looker(held, deps)
     setter = _language_setter(deps, actor)
     # Request 136 (B): with draft cards what is still to do is a waiting line of the
     # card, so the old "later" list is neither shown nor kept.
@@ -431,6 +441,7 @@ async def _run_agent_turn(
         **({"lap": deps.lap} if deps.lap is not None else {}),
         **({"after_tool": deps.after_tool} if deps.after_tool is not None else {}),
         **({"reply_language_setter": setter} if setter is not None else {}),
+        **({"look_at_photo": look_at_photo} if look_at_photo is not None else {}),
     )
     _lap(deps, "agent_model")
     if result.outcome == "outage":
@@ -453,6 +464,7 @@ async def _run_agent_turn(
             **({"lap": deps.lap} if deps.lap is not None else {}),
             **({"after_tool": deps.after_tool} if deps.after_tool is not None else {}),
             **({"reply_language_setter": setter} if setter is not None else {}),
+        **({"look_at_photo": look_at_photo} if look_at_photo is not None else {}),
         )
         _lap(deps, "agent_model_retry")
     if result.outcome == "outage" or result.reply is None:
@@ -547,6 +559,33 @@ async def _last_system_message(message: NormalizedMessage, pack: Any | None, dep
         f'The last message the system sent them (at {when:%H:%M}, after your last reply; '
         f'this message may answer it): "{text}"'
     )
+
+
+HELD_PHOTO_NOTE = (
+    "They sent {count} photo{s} that Mesiri is holding, still waiting for its purpose. You can "
+    "look at it with look_at_held_photo when they ask about it. Never say you cannot see it."
+)
+
+
+async def _held_photos(actor: ActorIdentity, deps: AgentTurnDeps) -> list[Any]:
+    if deps.held_photos is None:
+        return []
+    try:
+        return list(await deps.held_photos(actor))
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _photo_looker(held: list[Any], deps: AgentTurnDeps) -> Callable[[], Awaitable[str | None]] | None:
+    """``look_at_held_photo``'s reader: the image path, run only when the model asks."""
+    if not held or deps.describe is None:
+        return None
+    describe = deps.describe
+
+    async def _look() -> str | None:
+        return await describe(held[0], None)
+
+    return _look
 
 
 async def _media_sent_note(message: NormalizedMessage, deps: AgentTurnDeps) -> str | None:

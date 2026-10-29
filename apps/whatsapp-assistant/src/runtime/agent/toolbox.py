@@ -42,6 +42,7 @@ from .tools import (
     CHANGE_OR_UNDO,
     CORRECT_WORK_QUANTITY,
     GET_JOIN_CODE,
+    LOOK_AT_PHOTO,
     NOTE_FOR_ENGINEER,
     QUERY_MATERIALS,
     REPORT_ISSUE,
@@ -382,6 +383,8 @@ class AgentToolbox:
     later_drop: set[int] = field(default_factory=set)
     attempted_writes: int = 0
     calls: int = 0
+    #: Live 29 Oct: reads the photo they hold (message_journey); None when none is held.
+    look_at_photo: Callable[[], Awaitable[str | None]] | None = None
     #: B-7: the journey's lap stopwatch; time before a tool call is the
     #: model's ("agent_model"), time in it is the tool's ("agent_tools").
     lap: Callable[[str], None] | None = None
@@ -473,6 +476,35 @@ class AgentToolbox:
         if self._inflight:
             await asyncio.wait(list(self._inflight), timeout=timeout)
 
+    async def _look_at_photo(self) -> ToolOutcome:
+        """The held photo, read now (the image path runs only when they ask about it)."""
+        seen: str | None = None
+        if self.look_at_photo is not None:
+            try:
+                seen = await self.look_at_photo()
+            except Exception:  # noqa: BLE001 -- the model then asks what it is
+                _log.warning("agent.look_at_photo_failed", exc_info=True)
+        if not seen:
+            return ToolOutcome(
+                content={
+                    "status": "unreadable",
+                    "instruction": (
+                        "The photo is held but could not be read clearly. Say so in one line and "
+                        "ask what it is for. Do not say you cannot see photos."
+                    ),
+                }
+            )
+        return ToolOutcome(
+            content={
+                "status": "seen",
+                "photo_shows": seen[:1500],
+                "instruction": (
+                    "Nothing is saved. Tell them what it shows in a line or two, in their "
+                    "language, and ask what it is for (bill, attendance, site update, expense)."
+                ),
+            }
+        )
+
     async def _redirect(self, redirect: reroute.Redirect) -> ToolOutcome:
         """A call the code knows better (runtime/agent/reroute.py): made here, in the
         same turn, when the words hold what it needs; else the model is told why
@@ -487,6 +519,8 @@ class AgentToolbox:
     async def _dispatch(self, name: str, args: dict[str, Any], *, rerouted: bool = False) -> ToolOutcome:
         if name == STILL_TO_DO:
             return self._still_to_do(args)
+        if name == LOOK_AT_PHOTO:
+            return await self._look_at_photo()
         if self.parked_by == "gate":
             self.held.append(name)
             if name in WRITE_TOOLS:

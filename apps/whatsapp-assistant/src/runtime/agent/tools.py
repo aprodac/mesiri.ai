@@ -53,6 +53,8 @@ CORRECT_WORK_QUANTITY = "correct_work_quantity"
 UPDATE_ISSUE = "update_issue"
 # Request 88: change one item of the card that is still open.
 UPDATE_PENDING_CARD = "update_pending_card"
+# Live 29 Oct: look at the photo they sent that is still waiting for its purpose.
+LOOK_AT_PHOTO = "look_at_held_photo"
 # WA-57: a part of the message that cannot be recorded this turn.
 STILL_TO_DO = "still_to_do"
 # Request 104, B: the day's weather, whether the site worked, tomorrow's plan.
@@ -206,6 +208,21 @@ _CHANGES = _obj(
         "date": _DATE,
     }
 )
+
+
+def look_at_photo_spec() -> ToolSpec:
+    """Offered only on a turn where a photo is held (runtime/agent/runner.py)."""
+    return ToolSpec(
+        name=LOOK_AT_PHOTO,
+        description=(
+            "Look at the photo they sent that is still waiting for its purpose, and get what it "
+            "shows. Call it when they ask about that photo ('what is this?', 'look at the photo', "
+            "'ithenthaa?', 'noki nok'). It saves nothing. Then say what you see in one or two "
+            "lines and ask what it is for (bill, attendance register, site update, expense), "
+            "or answer their question about it. Never say you cannot see it."
+        ),
+        parameters=_obj({}),
+    )
 
 
 def tool_specs() -> list[ToolSpec]:

@@ -82,8 +82,22 @@ def purpose_from_caption(caption: str | None) -> str | None:
     return row_id if module_is_enabled(IMAGE_PURPOSE_MODULE.get(row_id)) else None
 
 
+def localized_picker(language: str = "english") -> ReplySpec:
+    """The purpose picker with its question in the sender's language (live 29 Oct: a
+    Manglish sender got the English question every time)."""
+    from dataclasses import replace
+
+    from runtime.agent.wording import say
+
+    return replace(render_image_purpose_picker(), text=say("photo.purpose", language))
+
+
 async def try_hold_new_image_for_purpose_picker(
-    message: NormalizedMessage, *, user_id: str, pending_media_store: PendingMediaStore
+    message: NormalizedMessage,
+    *,
+    user_id: str,
+    pending_media_store: PendingMediaStore,
+    language: str = "english",
 ) -> ReplySpec | None:
     """Returns None for anything that isn't image modality (so the caller
     falls through to the normal journey unchanged for every other modality,
@@ -104,7 +118,7 @@ async def try_hold_new_image_for_purpose_picker(
         )
     if not result.is_new_batch:
         return None
-    return render_image_purpose_picker()
+    return localized_picker(language)
 
 
 #: PHO-06: how long photos may wait for the question to be answered before the
@@ -115,7 +129,11 @@ DROP_AFTER_SECONDS = 30 * 60
 
 
 async def photo_wait_notice(
-    *, user_id: str, pending_media_store: PendingMediaStore, now: float | None = None
+    *,
+    user_id: str,
+    pending_media_store: PendingMediaStore,
+    now: float | None = None,
+    language: str = "english",
 ) -> ReplySpec | None:
     """Photos nobody said the purpose of never vanish silently (PHO-06): the
     first message from the sender 5 minutes or more after they were held gets a
@@ -138,9 +156,17 @@ async def photo_wait_notice(
         if moment - float(meta.get("held_at") or moment) < REMIND_AFTER_SECONDS:
             return None
         await pending_media_store.mark_reminded(user_id=user_id, now=moment)
+        from runtime.agent.wording import say
+
         picker = render_image_purpose_picker()
         return ReplySpec(
-            text=f"📷 {count} {noun} you sent are still waiting. What {'is it' if count == 1 else 'are they'} for?",
+            text=say(
+                "photo.waiting",
+                language,
+                count=str(count),
+                noun=noun,
+                is_are="is it" if count == 1 else "are they",
+            ),
             list_button_label=picker.list_button_label,
             list_rows=picker.list_rows,
         )

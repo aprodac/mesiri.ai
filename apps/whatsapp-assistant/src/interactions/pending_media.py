@@ -161,6 +161,13 @@ class PendingMediaStore:
         await self._redis.set_json(self._meta_key(user_id), {}, ttl_seconds=1)
         return [NormalizedMessage.model_validate(item) for item in raw]
 
+    async def peek(self, *, user_id: str) -> list[NormalizedMessage]:
+        """The held photos, left held (``pop_batch`` clears them). Empty when none."""
+        raw = await self._redis.get_json(self._key(user_id))
+        if not isinstance(raw, list):
+            return []
+        return [NormalizedMessage.model_validate(item) for item in raw]
+
     async def has_pending(self, *, user_id: str) -> bool:
         """Non-destructive presence check -- for callers (memory/context_loader.py)
         that need to know *whether* a batch is held without consuming it."""

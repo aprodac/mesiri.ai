@@ -623,6 +623,18 @@ def build_message_handlers(
     async def _run_journey_steps(message, raw_payload, retry_of_id, timer) -> None:  # type: ignore[no-untyped-def]
         wa_id = message.sender.wa_id
 
+        async def _photo_language(ctx, message) -> str:  # type: ignore[no-untyped-def]
+            """The language a photo's question is asked in: the caption's, else their usual."""
+            if user_language_store is None:
+                return "english"
+            try:
+                from runtime.agent.wording import language_of, usual_from
+
+                usual = usual_from(*await user_language_store.get_profile(user_id=ctx.user_id))
+                return language_of(getattr(message, "text", None) or "", usual)
+            except Exception:  # noqa: BLE001 -- English wording
+                return "english"
+
         async def _run_agent(message, ctx, category_hint, timer, draft_tap=None, journal_tap=None, issue_tap=None):  # type: ignore[no-untyped-def]
             """The agent's turn. The pipeline it drives is the one below, with
             the senders swapped for a capture so the model writes the one reply.
@@ -1181,6 +1193,7 @@ def build_message_handlers(
                 attach_receipt=_attach_receipt,
                 transcribe=pipeline.transcribe_voice,
                 describe=pipeline.describe_media,
+                held_photos=lambda actor: pending_media_store.peek(user_id=actor.user_id),
                 message_logger=message_logger,
                 memory_loader=memory_loader,
                 memory_coordinator=memory_coordinator,
@@ -2567,7 +2580,11 @@ def build_message_handlers(
         if image_purpose_row_id is None:
             # PHO-06: photos nobody has said the purpose of are reminded about
             # once, then said to be dropped -- on the sender's next message.
-            wait_notice = await photo_wait_notice(user_id=ctx.user_id, pending_media_store=pending_media_store)
+            wait_notice = await photo_wait_notice(
+                user_id=ctx.user_id,
+                pending_media_store=pending_media_store,
+                language=await _photo_language(ctx, message),
+            )
             if wait_notice is not None:
                 await send_reply_spec(
                     wait_notice, wa_id,
@@ -2762,7 +2779,10 @@ def build_message_handlers(
         # with no caption saying what it's for. See
         # interactions/image_purpose.py.
         image_purpose_reply = await try_hold_new_image_for_purpose_picker(
-            message, user_id=ctx.user_id, pending_media_store=pending_media_store
+            message,
+            user_id=ctx.user_id,
+            pending_media_store=pending_media_store,
+            language=await _photo_language(ctx, message),
         )
         timer.lap("image_purpose_picker")
         if image_purpose_reply is not None:

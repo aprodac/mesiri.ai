@@ -64,6 +64,7 @@ from .tools import (
     SET_SITE_CONDITIONS,
     WRITE_TOOLS,
     ScopeLookup,
+    look_at_photo_spec,
 )
 from .wording import language_of, say, usual_from
 
@@ -119,6 +120,7 @@ class AgentRunner:
         after_tool: Callable[[], None] | None = None,
         site_queue: list[dict] | None = None,
         reply_language_setter: Callable[[str | None], Awaitable[bool]] | None = None,
+        look_at_photo: Callable[[], Awaitable[str | None]] | None = None,
     ) -> AgentResult:
         # Request 143: the turn's reply language, decided once; every line of the code's
         # and the prompt's language rule follow it.
@@ -132,6 +134,7 @@ class AgentRunner:
             after_tool=after_tool,
             site_queue=[dict(i) for i in site_queue or []],
             reply_language_setter=reply_language_setter,
+            look_at_photo=look_at_photo,
         )
         # WA-52: only a reply that OFFERED to ask counts ("Shall I ask your
         # engineer?"), not one that merely named the engineer.
@@ -150,7 +153,10 @@ class AgentRunner:
             run = await self._provider.run_tools(
                 SYSTEM_PROMPT,
                 messages,
-                tools_for(user_text, keep_all=_answers_a_question(ctx, user_text)),
+                [
+                    *tools_for(user_text, keep_all=_answers_a_question(ctx, user_text)),
+                    *([look_at_photo_spec()] if look_at_photo is not None else []),
+                ],
                 toolbox.handle,
                 max_steps=self._max_steps,
                 timeout_seconds=self._timeout,
