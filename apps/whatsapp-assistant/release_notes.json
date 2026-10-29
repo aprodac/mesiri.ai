@@ -1,4 +1,14 @@
 {
   "_doc": "TM-16: see src/runtime/release_notes.py. One entry per shipped fix or feature that someone hit: id (kebab-case), date (YYYY-MM-DD, the deploy day), for (the correlation ids of their production messages, from the watch report), message (in their language: it works now, and how to try it). Sent once per person, inside the 24-hour window.",
-  "notes": []
+  "notes": [
+    {
+      "id": "lookup-as-image",
+      "date": "2026-10-29",
+      "for": [
+        "cor_29d0d102a8b64c66822e06c020a2573c",
+        "cor_0164c257441a48d1b8a9a40ee352a189"
+      ],
+      "message": "Ippo list image aayittum ayakkam 👍 Try cheyyan: \"innathe workers list image aayittu ayakku\""
+    }
+  ]
 }

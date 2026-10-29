@@ -1098,6 +1098,7 @@ def build_message_handlers(
                         reversal_query=reversal_query,
                         object_storage=object_storage,
                         send_document=sender.send_document,
+                        send_image=sender.send_image,
                         card_renderer=card_renderer,
                     ),
                     # Request 143: the day's report, from Day Facts.

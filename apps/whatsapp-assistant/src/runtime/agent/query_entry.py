@@ -63,6 +63,9 @@ _REVERSAL = {
     "petty_cash": (E.PETTY_CASH_REVERSAL_REQUESTED, K.REVERSE, {"project": "none"}),
 }
 
+#: ``_deliver_images`` result: no picture went out, send the PDF instead.
+_IMAGE_FALLBACK = "image_fallback"
+
 #: The semantic types this entry takes.
 QUERY_ENTRY_TYPES = frozenset({*_ROUTES, T.FINANCE_QUERY, T.REVERSAL})
 
@@ -118,6 +121,8 @@ class QueryEntry(EntryScope):
     object_storage: Any | None = None
     #: ``(wa_id, data, *, filename, caption) -> bool``: a lookup asked for as a PDF.
     send_document: Callable[..., Awaitable[Any]] | None = None
+    #: ``(wa_id, png, *, caption, filename) -> bool``: a lookup asked for as an image.
+    send_image: Callable[..., Awaitable[Any]] | None = None
     #: Request 91: the receipt's renderer, for the Stock card; None draws none.
     card_renderer: Any | None = None
     #: The Stock card PNG for this turn's all-materials answer (set by
@@ -249,18 +254,26 @@ class QueryEntry(EntryScope):
             _log.warning("query_entry.stock_card_failed", exc_info=True)
 
     async def deliver(self, ready: Ready, message: Any) -> str | None:
-        """After the run: a lookup asked for as a PDF, sent as the pipeline
-        sent it (one retry). A line to add when it did not go. (The DPR is
+        """After the run: a lookup asked for as a PDF or an image, sent as the
+        pipeline sent it (one retry). An image that cannot be made goes as the
+        PDF, with a line saying so. A line to add when it did not go. (The DPR is
         ``report_entry``'s.)"""
         fields = ready.event.fields
         key = ready.decision.workflow_key
-        if key is K.MATERIAL_INVENTORY_QUERY and fields.get("output_format") != "pdf":
+        if key is K.MATERIAL_INVENTORY_QUERY and fields.get("output_format") not in ("pdf", "image"):
             await self._stock_card(ready)
+        fell_back = False
+        if fields.get("output_format") == "image":
+            line = await self._deliver_images(ready, message)
+            if line != _IMAGE_FALLBACK:
+                return line
+            # The picture could not be made: the PDF carries the same rows.
+            fell_back = True
         if self.send_document is None:
             return None
         from runtime.inbound_journey._shared import _send_with_one_retry
 
-        if fields.get("output_format") == "pdf":
+        if fields.get("output_format") in ("pdf", "image"):
             from runtime.inbound_journey.seeding import _build_query_pdf
 
             built = _build_query_pdf(key, fields)
@@ -274,6 +287,53 @@ class QueryEntry(EntryScope):
                     raise RuntimeError("send_document returned False")
 
             if await _send_with_one_retry(_send_pdf, what="query_pdf", correlation_id=message.correlation_id):
-                return None
+                return "I couldn't make the picture, so here is the PDF with the same list." if fell_back else None
             return "Sorry, the PDF didn't go through. Please ask again in a minute."
+        return None
+
+    async def _deliver_images(self, ready: Ready, message: Any) -> str | None:
+        """A lookup asked for as an image: the same table the PDF has, drawn
+        as one or more cards (``channel/cards/table.py``) and sent after the
+        text reply. None when sent; ``_IMAGE_FALLBACK`` when the pictures
+        could not be made or sent (the caller sends the PDF instead); else a
+        line to say."""
+        from runtime.inbound_journey._shared import _send_with_one_retry
+        from runtime.inbound_journey.seeding import _query_table
+
+        table = _query_table(ready.decision.workflow_key, ready.event.fields)
+        if table is None or self.send_image is None or self.card_renderer is None:
+            return _IMAGE_FALLBACK
+        try:
+            from channel.cards import build_table_cards, render_png, table_html
+
+            title, subtitle, columns, rows, empty_message, stem = table
+            event = ready.event
+            site = next(
+                (s.name for s in getattr(self.actor, "sites", None) or () if str(s.id) == str(event.site_id)),
+                None,
+            )
+            cards = build_table_cards(
+                title=title,
+                subtitle=subtitle,
+                columns=columns,
+                rows=rows,
+                empty_message=empty_message,
+                where=site or getattr(self.actor, "org_name", None) or "Site",
+            )
+            pngs = [await render_png(self.card_renderer, table_html(card), card="table") for card in cards]
+        except Exception:  # noqa: BLE001 -- the PDF has the same rows
+            _log.warning("query_entry.table_card_failed", exc_info=True)
+            return _IMAGE_FALLBACK
+        if any(png is None for png in pngs):
+            return _IMAGE_FALLBACK
+        for page, png in enumerate(pngs, start=1):
+            name = f"{stem}.png" if len(pngs) == 1 else f"{stem}_{page}.png"
+
+            async def _send_png(png: bytes = png, name: str = name) -> None:
+                sent = await self.send_image(message.sender.wa_id, png, caption=None, filename=name)
+                if sent is False:
+                    raise RuntimeError("send_image returned False")
+
+            if not await _send_with_one_retry(_send_png, what="query_image", correlation_id=message.correlation_id):
+                return "Sorry, the image didn't go through. Please ask again in a minute."
         return None
