@@ -361,3 +361,25 @@ def test_tap_id_round_trips_every_fact_type_a_card_can_hold():
     assert parse_tap(tap_id(UNDO, facts[:1])) == (UNDO, facts[:1])
     for fact in facts:
         assert parse_tap(tap_id(UNDO, [fact])) == (UNDO, [fact])
+
+
+# -- request 142: a card always says where --------------------------------------------
+
+
+def test_a_one_site_card_names_its_site_but_offers_no_change_site():
+    """Live 29 Oct (voice note): a sender with one site saw a card and a saved
+    line with no site. The site is named for everyone; "Change site" is only for
+    a sender who has another site to move to."""
+    draft = _draft(_item("Cement in: 10 bags", site_id="s1", site="Green Villa"))
+    assert dr.card_text(draft, site="Green Villa") == "📝 To save · Green Villa: Cement in: 10 bags"
+    assert dr.CHANGE_SITE_TITLE not in [r.title for r in dr.card_rows(draft)]
+
+
+def test_a_several_site_card_offers_change_site():
+    draft = _draft(_item("Cement in: 10 bags", site_id="s1", site="Green Villa", many_sites=True))
+    assert dr.CHANGE_SITE_TITLE in [r.title for r in dr.card_rows(draft)]
+
+
+def test_many_sites_survives_json():
+    item = _item("a", site_id="s1", site="Green Villa", many_sites=True)
+    assert dr.DraftItem.from_json(item.to_json()).many_sites is True

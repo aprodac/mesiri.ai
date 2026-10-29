@@ -91,8 +91,14 @@ def _scope(gw: Any) -> ScopeLookup:
     )
 
 
+def _many_sites(gw: Any) -> bool:
+    return len(getattr(gw.actor, "sites", None) or []) > 1
+
+
 def _site_name(gw: Any, site_id: Any) -> str:
-    if not site_id or len(getattr(gw.actor, "sites", None) or []) < 2:
+    """The line's site, for every sender: a card and a saved line always say
+    where (a sender with one site too; only "Change site" needs several)."""
+    if not site_id:
         return ""
     from .work_site import short_site_label
 
@@ -141,6 +147,7 @@ def _item_for(gw: Any, tool: str, args: dict[str, Any], ready: Ready) -> dr.Draf
         label=dr.label_for(tool, args),
         site_id=site_id,
         site=_site_name(gw, site_id),
+        many_sites=_many_sites(gw),
     )
     if not summary:
         item.state, item.reason = dr.UNREADABLE, "nothing readable in it"
@@ -399,7 +406,7 @@ def _place(gw: Any, item: dr.DraftItem) -> None:
         return
     site_id = _scope(gw).site_id(name)
     if site_id:
-        item.site_id, item.site = site_id, _site_name(gw, site_id)
+        item.site_id, item.site, item.many_sites = site_id, _site_name(gw, site_id), _many_sites(gw)
 
 
 async def _add_waiting(gw: Any, tool: str, args: dict[str, Any], asked: Say) -> StepResult:
@@ -431,7 +438,7 @@ async def _add_waiting(gw: Any, tool: str, args: dict[str, Any], asked: Say) -> 
         same.question, same.options, same.awaiting = item.question, item.options, item.awaiting
         same.answer_unit = item.answer_unit or same.answer_unit
         if item.args.get("site") and not same.args.get("site"):
-            same.args, same.site_id, same.site = item.args, item.site_id, item.site
+            same.args, same.site_id, same.site, same.many_sites = item.args, item.site_id, item.site, item.many_sites
         item = same
         gw.draft_new.append(same.id)
         _keep(gw, draft)
