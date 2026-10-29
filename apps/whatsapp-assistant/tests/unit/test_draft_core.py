@@ -346,3 +346,18 @@ def test_a_note_that_only_says_something_is_broken_is_an_issue(text):
 )
 def test_other_notes_are_left_alone(text):
     assert not is_problem_only(text)
+
+
+def test_tap_id_round_trips_every_fact_type_a_card_can_hold():
+    """[141] "undo" crashed with KeyError: a progress update (request 137) had no tap code."""
+    import uuid
+
+    from runtime.agent.save_button import _CODES, UNDO, parse_tap, tap_id
+    from runtime.day_facts import PROGRESS_UPDATE
+
+    assert PROGRESS_UPDATE in _CODES
+    assert len(set(_CODES.values())) == len(_CODES)
+    facts = [(fact_type, uuid.uuid4()) for fact_type in _CODES]
+    assert parse_tap(tap_id(UNDO, facts[:1])) == (UNDO, facts[:1])
+    for fact in facts:
+        assert parse_tap(tap_id(UNDO, [fact])) == (UNDO, [fact])

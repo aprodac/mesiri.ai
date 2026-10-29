@@ -82,6 +82,7 @@ _CODES: dict[str, str] = {
     "labour_report": "l",
     "material_receipt": "r",
     "material_usage": "u",
+    "progress_update": "p",  # request 137: continued work; undo only (runtime/day_facts.PROGRESS_UPDATE)
     "site_issue": "i",
 }
 _TYPES = {code: fact_type for fact_type, code in _CODES.items()}
