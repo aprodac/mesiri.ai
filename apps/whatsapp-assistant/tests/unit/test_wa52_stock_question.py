@@ -140,10 +140,22 @@ async def test_a_real_shortage_is_still_reported(text):
 
 
 @pytest.mark.parametrize(
-    "text", ["10 bag cement balance und, kooduthal venam", "nale 50 bag cement order cheyyanam", "order 100 bags cement"]
+    "text,quantity", [("nale 50 bag cement order cheyyanam", 50), ("order 100 bags cement", 100)]
 )
-async def test_an_order_is_never_an_issue(text):
-    """Request 143 (E): material to order is a material request, not a site issue."""
+async def test_an_order_is_never_an_issue(text, quantity):
+    """Request 143 (E): material to order is a material request, not a site issue. Live 29
+    Oct (runtime/agent/reroute.py): the code makes the request from their words in the same
+    turn; it no longer tells the model to, which it did not always do."""
+    box, gateway = _box(text)
+    await box.handle("report_issue", {"issue_type": "MATERIAL_SHORTAGE", "narrative": text})
+    (saved,) = gateway.saves()
+    assert saved.fields["_action"] == "material_request"
+    assert (saved.fields["material"].lower(), saved.fields["quantity"]) == ("cement", quantity)
+
+
+async def test_an_order_whose_figure_is_the_stock_left_goes_back_to_the_model():
+    """"10 bag cement balance und, kooduthal venam": 10 is what is left, not the order."""
+    text = "10 bag cement balance und, kooduthal venam"
     box, gateway = _box(text)
     out = await box.handle("report_issue", {"issue_type": "MATERIAL_SHORTAGE", "narrative": text})
     assert out.content["status"] == "not_saved" and "request_material" in out.content["instruction"]

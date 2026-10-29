@@ -19,7 +19,12 @@ from context import seed  # noqa: E402
 from mesiri_ai.fakes import FakeToolCallingProvider  # noqa: E402
 from runtime.agent.cards import CardStore  # noqa: E402
 from runtime.agent.draft_store import MemoryDraftStore  # noqa: E402
-from runtime.agent.toolbox import as_new_entry  # noqa: E402
+from runtime.agent.reroute import Call  # noqa: E402
+from runtime.agent.reroute import as_new_entry as _as_new  # noqa: E402
+
+
+def as_new_entry(tool, args, text=""):  # noqa: ANN001, ANN201
+    return _as_new(Call(tool, args, text)) if tool == "update_pending_card" else None
 
 CREW = ("save_labour", {"workers": [{"trade": "plasterer", "headcount": 10}, {"trade": "carpenter", "headcount": 5}]})
 HELPERS = {"workers": [{"trade": "helper", "headcount": 10}]}

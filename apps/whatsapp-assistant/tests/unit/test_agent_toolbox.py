@@ -232,12 +232,21 @@ async def test_a_yes_to_the_offer_to_ask_the_engineer_passes_it_on():
 async def test_mat07_a_message_that_says_it_arrived_is_never_asked_received_or_used():
     box, _ = _box(StepResult("saved", text="Saved"), user_text="50 bags cement arrived")
     out = await box.handle("ask_user", {"question": "Received or used?", "options": ["Received", "Used"]})
-    assert out.content["status"] == "not_asked" and "save_material_receipt" in out.content["instruction"]
-    assert box.parked is None
-    # a "used" save for the same words is sent back once, to the receipt tool
+    # Live 29 Oct (runtime/agent/reroute.py): the receipt is made from their words, in the
+    # same turn, instead of telling the model to make it.
+    assert out.content["status"] == "saved" and "save_material_receipt" in box.called
+    assert box.parked is None and box.attempted_writes == 1
+    # a "used" save for the same words goes to the receipt tool: the same receipt, not a second
     out = await box.handle("save_material_usage", {"material": "cement", "quantity": 50, "unit": "bags"})
-    assert out.content["status"] == "not_saved" and "save_material_receipt" in out.content["instruction"]
-    assert box.attempted_writes == 0
+    assert out.content["status"] == "duplicate_ignored"
+    assert box.attempted_writes == 1
+
+
+async def test_mat07_a_used_save_for_arrived_material_is_saved_as_received():
+    box, _ = _box(StepResult("saved", text="Saved"), user_text="cement vannu 50 bag")
+    out = await box.handle("save_material_usage", {"material": "cement", "quantity": 50, "unit": "bags"})
+    assert out.content["status"] == "saved"
+    assert "save_material_receipt" in box.called and box.attempted_writes == 1
 
 
 @pytest.mark.parametrize(

@@ -1128,3 +1128,26 @@ transaction and the receipt card, untouched here.
 ### 24.5 Rollback
 
 Revert the phase commit. No migration. `ToolOutcome.done` defaults to False, so any other caller is unchanged.
+
+## 25. One place where the code makes the call it knows is right (WA-92, live 29 Oct)
+
+**Problem.** Several cases had the same shape, each written as its own block in the toolbox: the model called
+tool X, the code could tell from the words that the right call was Y, and the toolbox *told* the model "nothing
+saved, call Y now". After phase 4 (section 24) the model makes its calls in one step, and a second step was at
+times an apology instead of the call ("10 helper-um vannu" on a saved card: nothing saved until a second message).
+
+**Decision.** `runtime/agent/reroute.py` holds every such case as one `Rule` in `RULES`: the model's tool, `when`
+(from the call and their words), `to` (the right call, built from the words), the `reason` and the `instruction`
+the model gets only when the words do not hold what the call needs. The toolbox asks one function at two moments,
+`reroute.before` (before running a call) and `reroute.after` (after its step came back with a status), and makes
+the call itself, in the same turn (`AgentToolbox._redirect`); a rerouted call is never rerouted again.
+
+Rules today: `received_not_used` (a usage for material that arrived -> the receipt, same figures),
+`received_not_asked` ("Received or used?" on "cement vannu 50 bag" -> the receipt), `order_not_issue` ("nale 50 bag
+cement order cheyyanam" filed as an issue -> `request_material`, needed tomorrow; a figure that is the stock left
+goes back to the model), `add_on_not_correction` (a correction with nothing to correct that carries a whole entry
+-> its save; never when the words say a figure was wrong).
+
+**A new case is a new entry in `RULES`**, nothing in the toolbox. Cases that answer instead of saving (a stock
+question, a question not meant for the engineer) and questions that park a turn (hours lost) are not reroutes and
+stay where they are.

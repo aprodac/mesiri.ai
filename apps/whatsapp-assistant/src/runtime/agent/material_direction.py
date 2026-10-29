@@ -53,6 +53,14 @@ DIRECTION_CANCEL = "Cancel"
 _CANCEL_WORDS = re.compile(r"^\W*(?:cancel|venda+|vendaa|skip|nothing|onnum venda|വേണ്ട|रद्द)\W*$", re.IGNORECASE)
 
 
+#: Words that say material ran out or work stopped (then it is a problem on site, not an order).
+RAN_OUT = re.compile(
+    r"\btheer\w*|\bkazhinj\w*|\bran out\b|\brunning out\b|\bout of\b|\bfinished\b|\bstopp?\w*"
+    r"|\bnilach\w*|\bnin(?:nu|ni)\b|\bkhatam\b|\bkhatm\b|തീർന്ന|കഴിഞ്ഞ|നിന്നു|खत्म|रुक",
+    re.IGNORECASE,
+)
+
+
 #: Request 143 (E): words that ask for material to be ordered or sent.
 _ORDER = re.compile(
     r"\border\w*|\bvenam\b|\bvenamm\b|\bvendi\b|\bvenum\b|\bneed(?:ed|s)?\b|\brequire\w*|\bsend\b|"

@@ -21,7 +21,7 @@ from channel.replies import ListRow, ReplySpec, is_module_disabled_reply
 from mesiri_ai.models import ToolOutcome
 from runtime.save_first import DRAFT_NOTE
 
-from . import site_wait
+from . import reroute, site_wait
 from .actions import CLOSE_ISSUES, ENGINEER_QUESTION, MATERIAL_REQUEST, SITE_CONDITIONS
 from .cards import CardItem, merge_changes
 from .equipment import EQUIPMENT_LINE, is_equipment_only
@@ -30,11 +30,11 @@ from .later import LaterItem, held_item
 from .material_direction import (
     DIRECTION_CANCEL,
     DIRECTION_OPTIONS,
+    RAN_OUT,
     asks_direction,
     default_options,
-    is_material_order,
-    says_received,
 )
+from .reroute import NOT_A_CORRECTION
 from .save_button import SAVE_TITLE
 from .site_match import short_title
 from .tools import (
@@ -47,7 +47,6 @@ from .tools import (
     REPORT_ISSUE,
     REQUEST_DPR,
     SAVE_LABOUR,
-    SAVE_MATERIAL_USAGE,
     SAVE_WORK_DONE,
     SET_REPLY_LANGUAGE,
     SET_UNIT_CONVERSION,
@@ -81,34 +80,6 @@ _RECORDED = re.compile(
 )
 
 
-#: WA-82: update_pending_card with nothing to correct; the model saves it as new.
-NOT_A_CORRECTION = "not_a_correction"
-
-
-def as_new_entry(name: str, args: dict[str, Any], text: str = "") -> tuple[str, dict[str, Any]] | None:
-    """A correction with nothing of theirs to correct, as the save it describes:
-    workers are a labour line, quantities with their work type a work line. None
-    when the changes are not a whole entry (a bare percent, a material figure that
-    could be received or used), or when their words say a figure was wrong ("alla,
-    6 mason aanu" on a line the model did not find is a correction, never more
-    masons): the model is asked, as before."""
-    from runtime.day_facts import is_correction
-
-    if name != UPDATE_PENDING_CARD or is_correction(text):
-        return None
-    changes = args.get("changes") if isinstance(args.get("changes"), dict) else {}
-    workers = [w for w in changes.get("workers") or [] if isinstance(w, dict) and w.get("headcount")]
-    if workers:
-        return SAVE_LABOUR, {"workers": workers}
-    quantities = [q for q in changes.get("quantities") or [] if isinstance(q, dict) and q.get("quantity")]
-    work_type = changes.get("work_type") or next((q.get("work_type") for q in quantities if q.get("work_type")), None)
-    if quantities and work_type:
-        return SAVE_WORK_DONE, {
-            "work_type": work_type,
-            "quantities": quantities,
-            **{k: changes[k] for k in ("location", "narrative") if changes.get(k)},
-        }
-    return None
 
 
 def per_stock_unit(args: dict[str, Any]) -> Decimal | None:
@@ -171,11 +142,6 @@ _QUESTION = re.compile(
     re.IGNORECASE,
 )
 #: Words that it ran out or work is held up: then a shortage issue is right.
-_RAN_OUT = re.compile(
-    r"\btheer\w*|\bkazhinj\w*|\bran out\b|\brunning out\b|\bout of\b|\bfinished\b|\bstopp?\w*"
-    r"|\bnilach\w*|\bnin(?:nu|ni)\b|\bkhatam\b|\bkhatm\b|തീർന്ന|കഴിഞ്ഞ|നിന്നു|खत्म|रुक",
-    re.IGNORECASE,
-)
 _MATERIAL_WORDS = (
     ("cement", re.compile(r"cement|സിമന്റ|സിമെന്റ|सीमेंट", re.IGNORECASE)),
     ("sand", re.compile(r"\b(?:m-?|p-?)?sand\b|മണൽ|रेत|बालू", re.IGNORECASE)),
@@ -433,7 +399,6 @@ class AgentToolbox:
     hours_asked: bool = False
     #: MAT-07: a "used" save for a message that says the material arrived was
     #: sent back once (to save_material_receipt).
-    direction_redirected: bool = False
     #: Request 104: every tool the model called this message (even a refused one).
     called: set[str] = field(default_factory=set)
     #: Request 104: the message is only about equipment, which WhatsApp does not
@@ -508,7 +473,18 @@ class AgentToolbox:
         if self._inflight:
             await asyncio.wait(list(self._inflight), timeout=timeout)
 
-    async def _dispatch(self, name: str, args: dict[str, Any]) -> ToolOutcome:
+    async def _redirect(self, redirect: reroute.Redirect) -> ToolOutcome:
+        """A call the code knows better (runtime/agent/reroute.py): made here, in the
+        same turn, when the words hold what it needs; else the model is told why
+        nothing was saved and what to call."""
+        _log.info("agent.rerouted rule=%s to=%s", redirect.rule, redirect.tool or "model")
+        if redirect.tool is not None:
+            return await self._dispatch(redirect.tool, redirect.args, rerouted=True)
+        return ToolOutcome(
+            content={"status": "not_saved", "reason": redirect.reason, "instruction": redirect.instruction}
+        )
+
+    async def _dispatch(self, name: str, args: dict[str, Any], *, rerouted: bool = False) -> ToolOutcome:
         if name == STILL_TO_DO:
             return self._still_to_do(args)
         if self.parked_by == "gate":
@@ -533,29 +509,10 @@ class AgentToolbox:
             return ToolOutcome(
                 content={"status": "skipped", "reason": "too many actions in one message"}
             )
-        if name == ASK_USER and asks_direction(str(args.get("question") or "")) and says_received(self.user_text):
-            # MAT-07: it says the material came; that is a receipt, not a question.
-            _log.warning("agent.direction_question_refused")
-            return ToolOutcome(
-                content={
-                    "status": "not_asked",
-                    "reason": "the message says the material arrived, so it was received",
-                    "instruction": (
-                        "Do not ask 'Received or used?'. Call save_material_receipt now with the "
-                        "material, quantity and unit from the message."
-                    ),
-                }
-            )
-        if name == SAVE_MATERIAL_USAGE and says_received(self.user_text) and not self.direction_redirected:
-            # The same words, the wrong tool: arrived material is not a usage.
-            self.direction_redirected = True
-            return ToolOutcome(
-                content={
-                    "status": "not_saved",
-                    "reason": "the message says the material arrived, so it was received, not used",
-                    "instruction": "Nothing was saved. Call save_material_receipt with the same material, quantity and unit.",
-                }
-            )
+        if not rerouted:
+            redirect = reroute.before(name, args, self.user_text)
+            if redirect is not None:
+                return await self._redirect(redirect)
         if name == ASK_USER:
             return self._ask(args)
         if name == SET_WORK_SITE:
@@ -593,7 +550,7 @@ class AgentToolbox:
                     ),
                 }
             )
-        if name == REPORT_ISSUE and asks_about_stock(self.user_text) and not _RAN_OUT.search(self.user_text):
+        if name == REPORT_ISSUE and asks_about_stock(self.user_text) and not RAN_OUT.search(self.user_text):
             # WA-52: "nale 10 bag cement venam, ath stock undo?" asks whether
             # it is in stock; the live model filed it as a Material Shortage
             # card. A question is answered, never saved as a problem.
@@ -618,16 +575,6 @@ class AgentToolbox:
                     "status": "not_saved",
                     "reason": "equipment is not recorded on WhatsApp yet",
                     "instruction": f"Nothing was saved. Say exactly: {EQUIPMENT_LINE}",
-                }
-            )
-        if name == REPORT_ISSUE and is_material_order(self.user_text) and not _RAN_OUT.search(self.user_text):
-            # Request 143 (E): "50 bag cement order cheyyanam" is material to order, not a problem
-            # on site. Nothing is filed as an issue; the model is told to make the request.
-            return ToolOutcome(
-                content={
-                    "status": "not_saved",
-                    "reason": "an order for material is a material request, not a site issue",
-                    "instruction": "Nothing was saved. Call request_material with the material, quantity, unit and when it is needed.",
                 }
             )
         if name == REPORT_ISSUE:
@@ -676,13 +623,9 @@ class AgentToolbox:
             self.failed += 1
             await self._note_lost(name, args, "that action failed")
             return ToolOutcome(content={"status": "error", "message": "that action failed"})
-        new = as_new_entry(name, args, self.user_text) if step.status == NOT_A_CORRECTION else None
-        if new is not None:
-            # Live 29 Oct: "10 helper-um vannu" swiped on a saved card was sent as a
-            # correction, found to be new information, and handed back to the model,
-            # which apologised instead of saving it. What it carries is saved here.
-            _log.info("agent.correction_saved_as_new tool=%s", new[0])
-            return await self._dispatch(*new)
+        redirect = None if rerouted else reroute.after(name, args, self.user_text, step.status)
+        if redirect is not None and redirect.tool is not None:
+            return await self._redirect(redirect)
         if step.status == "choose" and step.awaiting == "site" and name in WRITE_TOOLS:
             self._hold_for_site(name, args)
         outcome = self._outcome(name, step)
@@ -1239,12 +1182,7 @@ class AgentToolbox:
                 content={
                     "status": NOT_A_CORRECTION,
                     "reason": step.text,
-                    "instruction": (
-                        "Nothing was changed because there is nothing of theirs to correct: this is NEW "
-                        "information. Call the save tool for it now (save_work_done, save_labour, "
-                        "save_material_receipt, save_material_usage or report_issue) with the full details "
-                        "from their message. Do not tell them there is no card."
-                    ),
+                    "instruction": reroute.NEW_INFORMATION,
                 }
             )
         if step.status == "saved" and step.workflow_key in ACTION_KINDS:
