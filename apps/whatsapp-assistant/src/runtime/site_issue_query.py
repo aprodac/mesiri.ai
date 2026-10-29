@@ -94,7 +94,7 @@ class SiteIssueTargetQueryService:
             rows = (
                 await conn.execute(
                     sa.text(
-                        "SELECT id, site_id, issue_type, severity, narrative, status, occurred_at, "
+                        "SELECT id, project_id, site_id, issue_type, severity, narrative, status, occurred_at, "
                         "delay_duration_minutes FROM site_issues WHERE "
                         + " AND ".join(where)
                         + " ORDER BY occurred_at DESC, created_at DESC LIMIT :limit"

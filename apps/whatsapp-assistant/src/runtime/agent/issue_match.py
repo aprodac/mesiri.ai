@@ -216,7 +216,7 @@ def closing_action(
         issue = group[0]
         payload = {
             "organization_id": scoped.organization_id,
-            "project_id": str(scoped.project_id) if scoped.project_id else None,
+            "project_id": str(scoped.project_id or issue.get("project_id") or "") or None,
             "site_id": str(issue.get("site_id") or scoped.site_id or "") or None,
             "issues": [
                 {"id": str(i["id"]), "title": issue_line(i, zone), "site_id": str(i.get("site_id") or "") or None}

@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 
 from canonicalization.occurred_date import resolve_occurred_date
@@ -173,6 +174,13 @@ class ActionEntry(EntryScope):
     async def _close_issues(self, message: Any, understanding: Any, candidate: Any) -> PendingAction | Say:
         from .issue_match import closing_action
 
+        if candidate.fields.get("issue_refs") and self.open_issues is not None:
+            # Live 29 Oct: a tap on a row of "which issue is fixed?" names its issues by id.
+            # It carries no project or site (the model's call had them from the chat), so
+            # settling it asked "Which project is this for?" again and again. The issues'
+            # own site and project stand; the company's open issues are searched for them.
+            scoped = Scoped(SimpleNamespace(timezone=None), str(self.actor.organization_id), None, None, None, None)
+            return closing_action(await self.open_issues(scoped), candidate.fields, scoped, choose)
         scoped = await self.settle(
             message,
             understanding,

@@ -131,3 +131,25 @@ def test_tap_ids_round_trip():
     assert issue_match.parse_tap(issue_match.tap_id(["0000000a", "0000000b"])) == ["0000000a", "0000000b"]
     assert issue_match.parse_tap("agc:else") == []
     assert issue_match.parse_tap("agc:grp:nothex") is None and issue_match.parse_tap("agd:save:x") is None
+
+
+async def test_a_tap_never_asks_the_project_the_row_already_names(world, monkeypatch):
+    """Live 29 Oct (screenshots): a sender on several projects tapped "Innu bhayankara
+    mazha..." and was asked "Which project is this for?", then again after answering. The
+    model's call had the site from the chat; the tap has only the issue ids. A tap now
+    uses the issues' own site and project and never settles a project."""
+    from runtime.agent import action_entry
+    from runtime.agent.entry_base import choose
+
+    result = await _ask(world, {"about": ["mixer"]})
+    row = next(r for r in result.reply.list_rows if r.title.startswith("Mixer breakdown"))
+
+    async def unknown_project(self, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003, ANN202
+        return choose("Which project is this for?", ["Project Alpha", "Hospital Project"], "project")
+
+    monkeypatch.setattr(action_entry.ActionEntry, "settle", unknown_project)
+    card = await world.gateway("tap").pick_issues(row.id)
+
+    assert "Which project" not in card.text
+    assert "Close: Mixer breakdown aayi" in card.text
+    assert [b.title for b in card.buttons] == ["✅ Save", "❌ Cancel"]
