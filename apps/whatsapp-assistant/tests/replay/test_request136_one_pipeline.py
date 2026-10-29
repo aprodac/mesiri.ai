@@ -244,7 +244,7 @@ async def test_every_draft_turn_of_a_golden_conversation_is_resolver_and_templat
     assert _site_decisions(villa) == [{"what": "site", "by": draft_site.DECIDER, "kind": draft_site.CARD}]
     assert _first_paragraph(second.reply.text) == runner._CARD_CHECK["manglish"]
     saved = await tap(villa, second.reply, "✅ Save")
-    assert saved.text.startswith("✅ Saved")
+    assert saved.text.startswith("✅ *Saved*")
 
 
 # -- 4. readers: the resolver's site (else every site) and the day's materials ----------------

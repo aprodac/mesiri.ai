@@ -91,7 +91,7 @@ async def test_1_a_correction_after_save_is_a_change_card_and_its_save_replaces_
     (saved_fact,) = world.undo_facts.asked  # the saved entry was taken back...
     assert saved_fact[0] == "labour_report"
     assert _lines(world.dispatcher.dispatched[-1]) == [("mason", 5), ("helper", 2)]  # ...and the corrected one written
-    assert out.text.startswith("✅ Saved")
+    assert out.text.startswith("✅ *Saved*")
     assert await world.drafts.open_for(world.actor.organization_id, world.actor.user_id) is None
 
 

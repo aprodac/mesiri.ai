@@ -72,7 +72,7 @@ async def test_recorded_lines_the_model_wrote_are_dropped_before_save():
     assert "Recorded" not in result.reply.text
     # (the words above the card name every item on it, request 89)
     assert result.reply.text.startswith(
-        "12 workers (12 mason); Cement used: 5 bags (slab). Please check it and tap Save.\n\n✅ Saved:\n• 12 workers (12 mason)"
+        "12 workers (12 mason); Cement used: 5 bags (slab). Tap *✅ Save* to record it.\n\n✅ Saved:\n• 12 workers (12 mason)"
     )
 
 

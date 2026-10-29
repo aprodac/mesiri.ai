@@ -71,7 +71,7 @@ async def test_labour_and_the_days_conditions_are_one_card_and_one_save(setter):
     out, _ = await press(world, result.reply, "✅ Save")
     assert len(world.dispatcher.dispatched) == 1
     assert [c["changes"] for c in setter] == [{"weather": "rainy", "site_working": "half"}]
-    assert out.text.startswith("✅ Saved: 15 workers (3 mason, 12 helper); ")
+    assert out.text.startswith("✅ *Saved*: 15 workers (3 mason, 12 helper); ")
 
 
 async def test_cancel_drops_the_action_with_the_rest(setter):

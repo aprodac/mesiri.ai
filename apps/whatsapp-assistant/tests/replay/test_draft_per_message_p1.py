@@ -157,7 +157,7 @@ async def test_repro_3_cancel_cancels_everything_and_its_words_are_true(world):
 async def test_repro_3_save_writes_all_four(world):
     result = await world.say(FakeToolCallingProvider([FOUR_PART_CALLS, "Check it and tap Save."]), FOUR_PART)
     out, gateway = await press(world, result.reply, "✅ Save")
-    assert out.text.startswith("✅ Saved: 8 workers (5 mason, 3 helper); ")
+    assert out.text.startswith("✅ *Saved*: 8 workers (5 mason, 3 helper); ")
     assert [d.draft_action.action_type for d in world.dispatcher.dispatched] == [
         DraftActionType.RECORD_LABOUR_ATTENDANCE,
         DraftActionType.CREATE_ACTIVITY,
@@ -214,7 +214,7 @@ async def test_repro_5_mixer_breakdown_with_no_tool_call_still_makes_an_issue_ca
     assert [b.title for b in result.reply.buttons] == ["✅ Save", "❌ Cancel"]
     out, _ = await press(world, result.reply, "✅ Save")
     assert [d.draft_action.action_type for d in world.dispatcher.dispatched] == [DraftActionType.RECORD_SITE_ISSUE]
-    assert out.text.startswith("✅ Saved")
+    assert out.text.startswith("✅ *Saved*")
 
 
 @pytest.mark.parametrize(
@@ -243,7 +243,7 @@ async def test_work_on_an_open_activity_is_confirmed_by_the_save_tap_not_held(wo
     out, gateway = await press(world, result.reply, "✅ Save")
     (confirmed,) = world.dispatcher.dispatched
     assert confirmed.draft_action.action_type is DraftActionType.ADD_PROGRESS_UPDATE
-    assert out.text.startswith("✅ Saved: Plastering: 50 sq ft (completed)")
+    assert out.text.startswith("✅ *Saved*: Plastering: 50 sq ft (completed)")
     assert len(gateway.handled) == 1
 
 
@@ -381,7 +381,7 @@ async def test_save_with_an_open_question_saves_the_ready_items_and_keeps_the_ca
     assert titles(result.reply) == ["✅ Save", "❌ Cancel", "Replace", "Add"]
     out, _ = await press(world, result.reply, "✅ Save")
     assert [d.draft_action.action_type for d in world.dispatcher.dispatched] == [DraftActionType.RECORD_MATERIAL_RECEIPT]
-    assert out.text.startswith("✅ Saved 1 · still need: 6 workers (6 mason)")
+    assert out.text.startswith("✅ *Saved* 1 · still need: 6 workers (6 mason)")
     assert "Today already 13 workers" in out.text
     assert titles(out) == ["❌ Cancel", "Replace", "Add"]
     (left,) = await open_items(world)

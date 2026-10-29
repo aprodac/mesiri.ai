@@ -65,7 +65,7 @@ async def test_the_tool_adds_a_line_and_writes_nothing_until_save(world, call):
     saved, _gateway = await press(world, result.reply, "✅ Save")
     print(saved.text)
     assert world.started and world.dispatcher.dispatched, saved.text
-    assert saved.text.startswith("✅ Saved")
+    assert saved.text.startswith("✅ *Saved*")
 
 
 @pytest.mark.parametrize("call", GATED, ids=lambda c: c[0])
@@ -279,4 +279,4 @@ async def test_a_destination_pick_fills_the_transfer_and_never_sets_the_work_sit
     assert [b.title for b in picked.buttons][:1] == ["✅ Save"]
 
     saved, _gateway = await press(world, picked, "✅ Save")
-    assert world.started and saved.text.startswith("✅ Saved")
+    assert world.started and saved.text.startswith("✅ *Saved*")

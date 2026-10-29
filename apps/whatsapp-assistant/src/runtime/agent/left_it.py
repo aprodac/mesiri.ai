@@ -36,7 +36,7 @@ _DROP = frozenset(
 )
 #: A reply that already holds a record or a card, not a question. The words, not the
 #: header's exact form ("🟠 *To save* · Tower A:" never held "To save:").
-_NOT_A_QUESTION = ("To save", "To close", "Send to engineer", "✅ Saved", "Saved:")
+_NOT_A_QUESTION = ("To save", "To close", "Send to engineer", "✅ Saved", "✅ *Saved*", "Saved:")
 
 
 def is_drop_word(text: str | None) -> bool:

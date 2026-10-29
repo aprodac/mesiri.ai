@@ -652,11 +652,11 @@ def uncovered_items(sentence: str, summaries: list[str]) -> list[str]:
 #: The system's own sentence above the card when the model's leaves an item
 #: out twice: {items} are the card's lines. Never says it is saved (WA-37).
 _COVERING = {
-    "english": "{items}. Please check it and tap Save.",
-    "manglish": "{items}. Nokki shariyenkil Save tap cheyyu.",
-    "malayalam": "{items}. ശരിയാണെങ്കിൽ Save അമർത്തുക.",
-    "hindi": "{items}. सही हो तो Save दबाएँ.",
-    "hinglish": "{items}. Sahi ho to Save dabayein.",
+    "english": "{items}. Tap *✅ Save* to record it.",
+    "manglish": "{items}. *✅ Save* tap cheyyu, record aakum.",
+    "malayalam": "{items}. *✅ Save* അമർത്തിയാൽ രേഖപ്പെടുത്തും.",
+    "hindi": "{items}. *✅ Save* दबाते ही दर्ज हो जाएगा.",
+    "hinglish": "{items}. *✅ Save* dabate hi record ho jayega.",
 }
 
 
@@ -688,14 +688,17 @@ def _choice_line(toolbox: AgentToolbox) -> str | None:
 
 
 #: Request 136: the one sentence above a draft card, by what the card needs next.
-#: The Malayalam, Hindi and Hinglish lines (and Manglish "_ASKS") are Claude's
-#: drafts, PENDING the native review of WA-76.
+#: Live 29 Oct (Ilan): never "check the card" -- the card is the text right under it
+#: and there is no picture to look at; say it was understood and what the one tap
+#: does, with a cue per state (👍 understood, ❓ a question, *✅ Save* the button as
+#: it is titled) and the key word in bold. The Malayalam, Hindi and Hinglish lines
+#: are Claude's drafts, PENDING the native review of WA-76.
 _CARD_CHECK = {
-    "english": "Please check the card and tap Save.",
-    "manglish": "Card nokki shariyenkil Save tap cheyyu.",
-    "malayalam": "കാർഡ് നോക്കി ശരിയാണെങ്കിൽ Save അമർത്തുക.",
-    "hindi": "कार्ड देखें, सही हो तो Save दबाएँ.",
-    "hinglish": "Card dekhein, sahi ho to Save dabayein.",
+    "english": "👍 *Got it.* Tap *✅ Save* to record it.",
+    "manglish": "👍 *Kitti.* *✅ Save* tap cheyyu, record aakum.",
+    "malayalam": "👍 *കിട്ടി.* *✅ Save* അമർത്തിയാൽ രേഖപ്പെടുത്തും.",
+    "hindi": "👍 *मिल गया.* *✅ Save* दबाते ही दर्ज हो जाएगा.",
+    "hinglish": "👍 *Mil gaya.* *✅ Save* dabate hi record ho jayega.",
 }
 #: Request 137 (E): a write or correction that failed with nothing on screen to show
 #: for it. The words are the code's, in the sender's language, with a next step; the
@@ -709,18 +712,18 @@ _FAILED = {
     "hinglish": "Woh save ya change nahi hua. Kaam, jagah aur figure ek line mein dobara bhejein.",
 }
 _CARD_ASKS = {
-    "english": "Please answer the question on the card.",
-    "manglish": "Card-ile chodyathinu answer cheyyu.",
-    "malayalam": "കാർഡിലെ ചോദ്യത്തിന് ഉത്തരം നൽകുക.",
-    "hindi": "कार्ड पर पूछे गए सवाल का जवाब दें.",
-    "hinglish": "Card par pooche gaye sawal ka jawab dein.",
+    "english": "❓ *One question first* — tap your answer below.",
+    "manglish": "❓ *Oru chodyam* — thazhe answer tap cheyyu.",
+    "malayalam": "❓ *ഒരു ചോദ്യം* — താഴെ ഉത്തരം അമർത്തുക.",
+    "hindi": "❓ *एक सवाल* — नीचे जवाब दबाएँ.",
+    "hinglish": "❓ *Ek sawal* — neeche jawab dabayein.",
 }
 _CARD_BOTH = {
-    "english": "Please answer the question on the card, then tap Save.",
-    "manglish": "Card-ile chodyathinu answer cheythittu Save tap cheyyu.",
-    "malayalam": "കാർഡിലെ ചോദ്യത്തിന് ഉത്തരം നൽകി Save അമർത്തുക.",
-    "hindi": "कार्ड पर पूछे गए सवाल का जवाब दें, फिर Save दबाएँ.",
-    "hinglish": "Card par pooche gaye sawal ka jawab dein, phir Save dabayein.",
+    "english": "👍 *Got it.* ❓ Answer the question below, then tap *✅ Save*.",
+    "manglish": "👍 *Kitti.* ❓ Thazhe-ulla chodyathinu answer cheythittu *✅ Save* tap cheyyu.",
+    "malayalam": "👍 *കിട്ടി.* ❓ താഴെയുള്ള ചോദ്യത്തിന് ഉത്തരം നൽകി *✅ Save* അമർത്തുക.",
+    "hindi": "👍 *मिल गया.* ❓ नीचे के सवाल का जवाब दें, फिर *✅ Save* दबाएँ.",
+    "hinglish": "👍 *Mil gaya.* ❓ Neeche ke sawal ka jawab dein, phir *✅ Save* dabayein.",
 }
 #: Code ids of who wrote a reply (request 136, C): ``TEMPLATE`` = ``card_sentence``.
 TEMPLATE = "template"

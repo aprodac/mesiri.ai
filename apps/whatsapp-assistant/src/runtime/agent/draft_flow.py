@@ -1286,13 +1286,15 @@ def _saved_reply(
 ) -> ReplySpec:
     site = _card_site(gw, draft)
     what = "; ".join(line for line in lines if line)
+    # Live 29 Oct: the Saved line is the green state of the card -- ✅ and the word bold.
+    saved = "✅ *Saved*"
     if rest is None:
-        head = f"{SAVED_DONE[:-1]} · {site}: {what}" if site else f"{SAVED_DONE[:-1]}: {what}"
+        head = f"{saved} · {site}: {what}" if site else f"{saved}: {what}"
         if not what:
             head = SAVED_DONE
     else:
         needs = "; ".join(i.line for i in rest.items if i.line)
-        head = f"{SAVED_DONE[:-1]} {len(lines)} · still need: {needs}"
+        head = f"{saved} {len(lines)} · still need: {needs}"
     parts = [head, *notes]
     if gone:
         parts.append(dr.CANT_READ + "; ".join(i.label or i.summary or i.tool for i in gone) + ". Send it again.")

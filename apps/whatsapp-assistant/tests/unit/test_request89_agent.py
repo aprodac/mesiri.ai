@@ -111,7 +111,7 @@ async def test_manglish_for_english_is_corrected_in_code_with_no_second_call():
         ["Got it, 10 bags cement used for columns. Please check it and tap Save."],
     )
     assert provider.asked == []  # request 143: one language pass, no second call
-    assert text.startswith("10 bags cement used (columns). Please check it and tap Save.")
+    assert text.startswith("10 bags cement used (columns). Tap *✅ Save* to record it.")
     assert not rt.manglish_word_count(text, r._MANGLISH_WORDS)
 
 
@@ -128,14 +128,14 @@ async def test_a_flat_okay_never_goes_out_above_a_card(bare):
     )
     first = text.split("\n")[0]
     assert "crane breakdown, work stopped" in first.casefold()
-    assert "tap Save" in first and not first.startswith(("Okay", "Ok."))
+    assert "✅ Save" in first and not first.startswith(("Okay", "Ok."))
 
 
 def test_the_natural_fallback_is_built_from_the_items_in_each_language():
     items = ["Crane breakdown, work stopped"]
-    assert r.covering_sentence(items, "crane breakdown, work stopped since morning") == "Crane breakdown, work stopped. Please check it and tap Save."
-    assert r.covering_sentence(items, "crane kedayi pani nirthi").endswith("Save tap cheyyu.")
-    assert "അമർത്തുക" in r.covering_sentence(items, "ക്രെയിൻ കേടായി")
+    assert r.covering_sentence(items, "crane breakdown, work stopped since morning") == "Crane breakdown, work stopped. Tap *✅ Save* to record it."
+    assert r.covering_sentence(items, "crane kedayi pani nirthi").endswith("*✅ Save* tap cheyyu, record aakum.")
+    assert "അമർത്തിയാൽ" in r.covering_sentence(items, "ക്രെയിൻ കേടായി")
     for lang_text in ("hello there", "crane kedayi pani nirthi", "ക്രെയിൻ കേടായി", "क्रेन खराब"):
         line = r.covering_sentence(items, lang_text)
         assert not line.startswith(("Okay", "Ok.")) and "saved" not in line.casefold()

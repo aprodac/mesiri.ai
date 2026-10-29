@@ -426,7 +426,7 @@ async def test_a_malayalam_note_gets_the_saved_list_then_the_models_own_words(wo
     # from the saved data, not copied from the model.
     # ("See you tomorrow" is tied to nothing and names no item: the system's own
     # sentence, built from the card, stands above the list -- request 89.)
-    assert result.reply.text.startswith("3 workers (3 mason). ശരിയാണെങ്കിൽ Save അമർത്തുക.\n\n✅ Saved: 3 workers (3 mason)")
+    assert result.reply.text.startswith("3 workers (3 mason). *✅ Save* അമർത്തിയാൽ രേഖപ്പെടുത്തും.\n\n✅ Saved: 3 workers (3 mason)")
     assert "നാളെ കാണാം" not in result.reply.text
     assert "സേവ് ചെയ്തു" not in result.reply.text  # the model's own saved line is dropped
     # The canned workflow wording ("Labour recorded", "draft", ...) never reaches the user.
