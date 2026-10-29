@@ -52,7 +52,12 @@ class WhatsAppGroupsClient:
     def enabled(self) -> bool:
         return bool(self._access_token and self._phone_number_id)
 
-    async def _call(self, method: str, path: str, *, json: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    async def _call(
+        self, method: str, path: str, *, json: dict[str, Any] | None = None, refusal: bool = False
+    ) -> dict[str, Any] | None:
+        """Meta's answer; None on any failure, or with ``refusal`` Meta's own
+        refusal as ``{"refused": {"code", "message"}}`` (e.g. 131215: the
+        number is not eligible for groups)."""
         if not self.enabled:
             logger.warning("whatsapp_groups.disabled (missing phone_number_id/access_token)")
             return None
@@ -68,7 +73,13 @@ class WhatsAppGroupsClient:
             return None
         if resp.status_code >= 400:
             logger.error("whatsapp_groups.%s %s rejected (%s): %s", method, path, resp.status_code, resp.text[:300])
-            return None
+            if not refusal:
+                return None
+            try:
+                error = (resp.json() or {}).get("error") or {}
+            except ValueError:
+                error = {}
+            return {"refused": {"code": error.get("code"), "message": str(error.get("message") or "")}}
         try:
             body = resp.json()
         except ValueError:
@@ -79,7 +90,8 @@ class WhatsAppGroupsClient:
         self, subject: str, *, description: str | None = None, join_approval_mode: str = APPROVAL_REQUIRED
     ) -> dict[str, Any] | None:
         """Meta's answer to the create call (it may carry a request id or the
-        group id), or None when Meta refused it."""
+        group id); ``{"refused": {...}}`` when Meta said no; None when it
+        could not be reached."""
         payload: dict[str, Any] = {
             "messaging_product": "whatsapp",
             "subject": subject[:SUBJECT_MAX_CHARS],
@@ -87,8 +99,8 @@ class WhatsAppGroupsClient:
         }
         if description:
             payload["description"] = description[:DESCRIPTION_MAX_CHARS]
-        body = await self._call("POST", f"{self._phone_number_id}/groups", json=payload)
-        if body is not None:
+        body = await self._call("POST", f"{self._phone_number_id}/groups", json=payload, refusal=True)
+        if body is not None and "refused" not in body:
             logger.info("whatsapp_groups.create_accepted response=%s", str(body)[:300])
         return body
 

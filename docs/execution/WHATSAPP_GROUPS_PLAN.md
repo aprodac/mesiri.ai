@@ -60,6 +60,16 @@ every event it does not recognise (`group.event_ignored`), so the live test show
    today" and a photo, check the ✅, the site DPR, and that an outsider's message is ignored.
    Read `group.*` lines in the app log; fix any payload field the logs show differently.
 
+## First live try (29 Oct 2026)
+
+"make a group for Tower A" from a company admin reached Meta, which answered **400
+`(#131215) This phone number is not eligible to access Groups APIs`**. Meta's Groups API is
+open only to numbers with the **Official Business Account (OBA)** badge; APRODAC's *business
+verification* (24 Oct) is a different thing. Next: apply for OBA on the Mesiri number
+(WhatsApp Manager → the phone number → profile → Official business account), then try again.
+Code since: the admin is told this plainly instead of "try again" (dashboard: 409 with the same
+text), and a project's name ("hospital project") finds its site.
+
 ## Objective
 
 The Mesiri business number is a member of a customer's WhatsApp group. People in the group
