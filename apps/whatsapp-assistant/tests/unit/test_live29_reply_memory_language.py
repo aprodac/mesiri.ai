@@ -328,18 +328,9 @@ async def test_a_reminder_sent_after_the_last_reply_is_shown_to_the_model(store)
     # Already the last reply in the conversation: nothing added.
     same = SimpleNamespace(recent_turns=(SimpleNamespace(assistant_reply="Add another site?", at=now - 30),))
     assert await _last_system_message(message, same, _deps([])) is None
-    # Sent after their message came in (the "listening now..." ack): not it.
+    # Sent after their message came in: not what it answers.
     await store.set_json("last_sent:919000000001", {"text": "🎤 listening", "at": now + 1})
     assert await _last_system_message(message, pack, _deps([])) is None
-
-
-def test_the_processing_ack_follows_the_senders_language():
-    from runtime.message_journey import processing_ack_text
-
-    assert processing_ack_text(InputModality.VOICE, None, None).startswith("🎤 Got your voice note")
-    assert "കേൾക്കുന്നു" in processing_ack_text(InputModality.VOICE, "Malayalam", "native")
-    assert "kelkkunnu" in processing_ack_text(InputModality.VOICE, "Malayalam", "latin")
-    assert processing_ack_text(InputModality.TEXT, "Malayalam", "native") is None
 
 
 def test_the_conversation_is_remembered_for_two_hours():

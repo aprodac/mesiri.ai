@@ -109,48 +109,9 @@ _log = logging.getLogger("mesiri.context")
 #: How long a reply waits for its receipt card before going out without it.
 RECEIPT_TIMEOUT_S = 4.0
 
-# See _send_processing_ack below. text/interactive deliberately absent --
-# they already reply in under ~2s (measured), where a second message
-# would just add noise.
-_PROCESSING_ACK_TEXT: dict[InputModality, str] = {
-    InputModality.IMAGE: "📷 Got your photo — reading it now...",
-    InputModality.DOCUMENT: "📄 Got your document — reading it now...",
-    InputModality.VOICE: "🎤 Got your voice note — listening now...",
-}
-
-#: Live 29 Oct: the same acks in the sender's language (it was English for a
-#: Malayalam voice note, and for a sender who set Malayalam replies).
-_PROCESSING_ACK_LOCALIZED: dict[str, dict[InputModality, str]] = {
-    "manglish": {
-        InputModality.IMAGE: "📷 Photo kitti — nokkunnu...",
-        InputModality.DOCUMENT: "📄 Document kitti — nokkunnu...",
-        InputModality.VOICE: "🎤 Voice note kitti — kelkkunnu...",
-    },
-    "malayalam": {
-        InputModality.IMAGE: "📷 ഫോട്ടോ കിട്ടി — നോക്കുന്നു...",
-        InputModality.DOCUMENT: "📄 ഡോക്യുമെന്റ് കിട്ടി — നോക്കുന്നു...",
-        InputModality.VOICE: "🎤 വോയ്സ് നോട്ട് കിട്ടി — കേൾക്കുന്നു...",
-    },
-    "hindi": {
-        InputModality.IMAGE: "📷 फोटो मिल गई — देख रहा हूँ...",
-        InputModality.DOCUMENT: "📄 डॉक्यूमेंट मिल गया — देख रहा हूँ...",
-        InputModality.VOICE: "🎤 वॉइस नोट मिल गया — सुन रहा हूँ...",
-    },
-    "hinglish": {
-        InputModality.IMAGE: "📷 Photo mil gayi — dekh raha hoon...",
-        InputModality.DOCUMENT: "📄 Document mil gaya — dekh raha hoon...",
-        InputModality.VOICE: "🎤 Voice note mil gaya — sun raha hoon...",
-    },
-}
-
-
-def processing_ack_text(modality: InputModality, language: str | None, script: str | None) -> str | None:
-    """The ack for ``modality`` in the sender's language (their profile: the
-    language they set, else the one they last spoke); English when unknown."""
-    from runtime.agent.wording import usual_from
-
-    table = _PROCESSING_ACK_LOCALIZED.get(usual_from(language, script) or "", {})
-    return table.get(modality) or _PROCESSING_ACK_TEXT.get(modality)
+# See _fire_processing_ack below. text/interactive deliberately absent --
+# they already reply in under ~2s (measured), where an ack would just add noise.
+_PROCESSING_ACK_MODALITIES = frozenset({InputModality.IMAGE, InputModality.DOCUMENT, InputModality.VOICE})
 
 
 def build_message_handlers(
@@ -284,50 +245,22 @@ def build_message_handlers(
     # Same reasoning, same pattern as WhatsAppReceiver._background_tasks.
     _ack_tasks: set[asyncio.Task[None]] = set()
 
-    def _fire_processing_ack(wa_id: str, modality: InputModality, user_id: str | None = None) -> None:
-        """Schedule _send_processing_ack without awaiting it -- the caller's
-        real work (the slow understanding call that follows) must start
-        immediately, not after this ~600-900ms Meta round trip."""
+    def _fire_processing_ack(message, wa_id: str) -> None:  # type: ignore[no-untyped-def]
+        """The ✅ reaction on a voice note, photo or document the moment it is
+        picked up: their replies take several real seconds (traced: analyze_image
+        ~6.4s, understand_voice ~3.2s), and without a sign the sender watches
+        "typing..." and wonders whether it went through. 29 Oct (asked in chat): a
+        reaction on their own message, not a second "Got your voice note --
+        listening now..." message. The same check mark ``_acknowledge`` gives,
+        once per message. Scheduled, never awaited: the slow understanding call
+        must start at once. Text and taps reply in ~2s and get none."""
         if forward_batch.is_capturing():
             return  # WA-02: a forwarded batch gets one summary, no acks
-        task = asyncio.create_task(_send_processing_ack(wa_id, modality, user_id))
+        if message.modality not in _PROCESSING_ACK_MODALITIES:
+            return
+        task = asyncio.create_task(_acknowledge(message, wa_id))
         _ack_tasks.add(task)
         task.add_done_callback(_ack_tasks.discard)
-
-    async def _send_processing_ack(wa_id: str, modality: InputModality, user_id: str | None = None) -> None:
-        """A second, real message sent before understanding starts, not just
-        the read-receipt blue tick.
-
-        Voice/image replies still take several real seconds (traced:
-        analyze_image ~6.4s, understand_voice ~3.2s, plus a confirmed
-        expense's receipt render + a second send) -- without this the
-        sender watches "typing..." with zero information for that whole
-        window, which reads as "did this even go through?" rather than
-        "still working on it". Fire-and-forget like the read receipt:
-        nothing downstream depends on it, and a failure here must never
-        delay or replace the real reply.
-
-        Deliberately skips text/interactive -- those already reply in
-        under ~2s (measured), where a second message would arrive at
-        almost the same time as the real one and just add noise.
-        """
-        if modality not in _PROCESSING_ACK_TEXT:
-            return
-        language = script = None
-        if user_language_store is not None and user_id:
-            try:
-                language, script = await user_language_store.get_profile(user_id=user_id)
-            except Exception:  # noqa: BLE001 -- the English ack goes out
-                language = script = None
-        text = processing_ack_text(modality, language, script)
-        if text is None:
-            return
-        try:
-            await sender.send_text(wa_id, text)
-        except Exception:  # noqa: BLE001
-            _log.exception(
-                "processing_ack_failed wa_id=%s modality=%s", wa_id, modality.value
-            )
 
     # The sender each in-flight message resolved to, for the follow-up below.
     _resolved_actors: dict[str, Any] = {}
@@ -2574,7 +2507,7 @@ def build_message_handlers(
                 return
 
             held_message = held_batch[0]
-            _fire_processing_ack(wa_id, held_message.modality, ctx.user_id)
+            _fire_processing_ack(held_message, wa_id)
             # ARCH-06: the agent reads the photo, told what they tapped it is.
             from interactions.category_hint import CategoryHint
 
@@ -2903,7 +2836,7 @@ def build_message_handlers(
                 await message_logger.log_reply(correlation_id=message.correlation_id, reply=morning.text)
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
                 return
-            _fire_processing_ack(wa_id, message.modality, ctx.user_id)
+            _fire_processing_ack(message, wa_id)
             await _run_agent(message, ctx, category_hint, timer)
             return
 

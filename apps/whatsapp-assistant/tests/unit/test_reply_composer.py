@@ -868,3 +868,19 @@ def test_trade_labels_are_shared_by_the_labour_screens():
     assert query_label("steel_bender") == "Steel bender"
     assert value_text("trade", "steel_bender") == "Steel bender"
     assert "5 × Steel bender" in _line_summary({"trade": "steel_bender", "headcount": 5})
+
+
+async def test_a_voice_note_gets_the_check_mark_reaction_not_a_listening_message(monkeypatch):
+    """29 Oct: "🎤 Got your voice note — listening now..." was a second message on
+    every voice note; the ✅ reaction on their own message replaces it."""
+    import asyncio
+
+    on_normalized, deps, _, _ = _build(monkeypatch)
+    deps["interaction_handler"].handle_fast_path.return_value = _saved_attendance()
+
+    await on_normalized(_message(modality=InputModality.VOICE), {})
+    await asyncio.sleep(0)
+
+    deps["sender"].send_reaction.assert_awaited_once_with("919876543210", "wamid.in.1", "✅")
+    texts = [str(c.args[1]) for c in deps["sender"].send_text.await_args_list]
+    assert not any("listening" in t or "Got your" in t for t in texts)

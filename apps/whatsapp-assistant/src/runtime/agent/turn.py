@@ -529,7 +529,7 @@ async def _last_system_message(message: NormalizedMessage, pack: Any | None, dep
     stamp = getattr(message, "timestamp", None)
     received = stamp.timestamp() if hasattr(stamp, "timestamp") else deps.now().timestamp()
     if at >= received - 1:
-        return None  # sent after this message came in (the "listening now..." ack)
+        return None  # sent after this message came in (not what it answers)
     turns = tuple(getattr(pack, "recent_turns", ()) or ())
     if turns:
         newest = turns[-1]

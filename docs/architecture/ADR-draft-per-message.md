@@ -1040,8 +1040,9 @@ code.
   the follow-ups after a reply never entered `recent_turns`, so a bare "yes" to one meant nothing to the model.
   `sent_text` keeps the latest message per recipient (`last_sent_to`, 24 h); the turn adds it as a note when it was
   sent after the last recorded reply and before this message (so the "listening now..." ack never counts).
-- **The voice / photo ack was English only.** `processing_ack_text` writes it in the sender's profile language
-  (the one they set, else the one they last spoke).
+- **The voice / photo ack was a second message, in English only.** Replaced (asked 29 Oct) by the ✅ reaction on
+  the sender's own voice note, photo or document (`_fire_processing_ack` -> `_acknowledge`, once per message): no
+  extra message, nothing to translate.
 - **The conversation was forgotten after 30 minutes.** `RECENT_TURNS` keeps 2 hours (still 10 turns at most).
 - **Checked, no change needed:** a sender's messages run in order (one FIFO lane per sender in the receiver; one ARQ
   worker process); reactions are ignored on purpose.
