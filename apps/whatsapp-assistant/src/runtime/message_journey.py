@@ -2773,6 +2773,29 @@ def build_message_handlers(
                     await message_logger.mark_completed(correlation_id=message.correlation_id)
                     return
 
+        # Request 146 (live 29 Oct 20:00): a photo WITH words, sent while other photos are
+        # already held, was appended silently -- "Ithentha ariyo ?" got no reply at all. A
+        # captioned photo is never silent whatever the batch state: a caption that names the
+        # purpose settles the held photos together with this one; any other caption is read
+        # as the message (the agent looks at the photos when asked). Only captionless
+        # photos join a held batch quietly.
+        if (
+            message.modality is InputModality.IMAGE
+            and message.media is not None
+            and has_caption_words(message.text)
+            and await pending_media_store.has_pending(user_id=ctx.user_id)
+        ):
+            said_purpose = purpose_from_caption(message.text)
+            if said_purpose is not None:
+                held = await pending_media_store.pop_batch(user_id=ctx.user_id)
+                await pending_media_store.remember_purpose(user_id=ctx.user_id, row_id=said_purpose)
+                await _photos_for_purpose(said_purpose, [*held, message])
+                return
+            _fire_processing_ack(message, wa_id)
+            await _run_agent(message, ctx, None, timer)
+            await message_logger.mark_completed(correlation_id=message.correlation_id)
+            return
+
         # A genuinely new image (not a tap answering the picker above) is
         # held while we ask "what is this photo for?" instead of running
         # understanding/vision straight away -- a bare photo often arrives

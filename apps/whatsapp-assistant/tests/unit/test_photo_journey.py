@@ -148,3 +148,30 @@ async def test_pho06_a_photo_left_waiting_is_reminded_about_on_the_next_message(
     await on_normalized(_text("and 3 helpers"), {})
     assert not any("still waiting" in c.kwargs.get("body", "") for c in deps["sender"].send_list.await_args_list)
 
+
+
+# Request 146 (live 29 Oct 20:00): a captioned photo on top of a held batch was silent.
+async def test_r146_a_question_caption_on_a_held_batch_gets_a_reply(monkeypatch):
+    on_normalized, deps = _build(monkeypatch)
+    await on_normalized(_photo("wamid.1"), {})  # held, picker sent once
+    await on_normalized(_photo("wamid.2", "Ithentha ariyo ?"), {})
+    sent = _sent_texts(deps)
+    assert "Read the bill." in sent  # the agent answered the caption
+    assert sum("What is this photo for" in t for t in sent) == 1  # the picker was not repeated
+    deps["evidence_query"].attach_photos.assert_not_awaited()
+
+
+async def test_r146_a_purpose_caption_on_a_held_batch_settles_the_whole_batch(monkeypatch):
+    on_normalized, deps = _build(monkeypatch)
+    await on_normalized(_photo("wamid.1"), {})
+    await on_normalized(_photo("wamid.2", "2nd floor plastering"), {})
+    keys = deps["evidence_query"].attach_photos.await_args.kwargs["media_object_keys"]
+    assert keys == ["media/wamid.1/x", "media/wamid.2/x"]
+
+
+async def test_r146_a_captionless_photo_on_a_held_batch_stays_quiet(monkeypatch):
+    on_normalized, deps = _build(monkeypatch)
+    await on_normalized(_photo("wamid.1"), {})
+    sent_before = len(_sent_texts(deps))
+    await on_normalized(_photo("wamid.2"), {})
+    assert len(_sent_texts(deps)) == sent_before
