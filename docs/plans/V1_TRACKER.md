@@ -243,12 +243,14 @@ WhatsApp Manager → Phone numbers → Mesiri number → Profile: **OBA "Submit 
 disabled** — "Official business account requests are not available for your business at the
 moment. Check again later." Also still unresolved: the number's live display name is still
 **"Paraclete"**; the "Mesiri" display name submitted 24 Oct (WA-10) has since come back
-**rejected** (WhatsApp Manager banner: "Your display names were not approved... They don't
-meet WhatsApp's display name guidelines"), rejection reason not shown in the UI. The two are
-likely linked — OBA generally needs a confirmed brand display name first. **Ilan to pick the
-new display name wording himself** (29 Oct) rather than a blind resubmit; OBA stays blocked
-until Meta opens the request option regardless. **Still blocked on ops (owner):** fix/resubmit
-the display name, then once OBA is granted and the template is approved, set
+**rejected**: "The display name 'Mesiri' goes against our policies" (WhatsApp Manager, phone
+number's Rejected tooltip — a generic policy message, no specific reason). The two are likely
+linked — OBA generally needs a confirmed brand display name first. **Resubmitted 29 Oct**
+(Ilan's wording, after he said the company is Aprodac and Mesiri is the product): **"Mesiri by
+Aprodac"** — now **In review** on the phone number. OBA stays blocked until Meta opens the
+request option regardless; worth re-checking once this name decision lands either way.
+**Still blocked on ops (owner):** wait on the display name decision, then once OBA is granted
+and the template is approved, set
 `WHATSAPP_GROUPS_ENABLED=true` and add `mesiri_group_invite` to `WHATSAPP_APPROVED_TEMPLATES`,
 then a live test with our own numbers ([plan: Switching it on](../execution/WHATSAPP_GROUPS_PLAN.md#switching-it-on)). **Not verified:** Meta's real group payloads (parsed tolerantly, unknown events logged), reactions/documents in groups, the size limit. Rollback: flag off; revert the 4 commits (0492 is additive) |
 | WA-88 | **One core: AI + tools + Save gate, journal undo, Day Facts DPR, check layer, delete legacy (request 141, 29 Oct):** phases 1 A+B, 2 C, 3 D+E, 4 F, 5 G. Approved by Ilan in WhatsApp 29 Oct | XL | Must | WA-86 | in-progress | Claude (routine, request 141) | **Slice 1 done:** typed "undo" crashed (KeyError: `progress_update` had no tap code in `save_button._CODES`); fixed + test. **Not started:** A (every write behind Save), B (journal table + `change_or_undo`), C-G. Needs labour/attendance + money + migration (all approved in the plan); too large for one session, to be continued. |
