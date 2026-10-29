@@ -85,6 +85,32 @@ _RECORDED = re.compile(
 NOT_A_CORRECTION = "not_a_correction"
 
 
+def as_new_entry(name: str, args: dict[str, Any], text: str = "") -> tuple[str, dict[str, Any]] | None:
+    """A correction with nothing of theirs to correct, as the save it describes:
+    workers are a labour line, quantities with their work type a work line. None
+    when the changes are not a whole entry (a bare percent, a material figure that
+    could be received or used), or when their words say a figure was wrong ("alla,
+    6 mason aanu" on a line the model did not find is a correction, never more
+    masons): the model is asked, as before."""
+    from runtime.day_facts import is_correction
+
+    if name != UPDATE_PENDING_CARD or is_correction(text):
+        return None
+    changes = args.get("changes") if isinstance(args.get("changes"), dict) else {}
+    workers = [w for w in changes.get("workers") or [] if isinstance(w, dict) and w.get("headcount")]
+    if workers:
+        return SAVE_LABOUR, {"workers": workers}
+    quantities = [q for q in changes.get("quantities") or [] if isinstance(q, dict) and q.get("quantity")]
+    work_type = changes.get("work_type") or next((q.get("work_type") for q in quantities if q.get("work_type")), None)
+    if quantities and work_type:
+        return SAVE_WORK_DONE, {
+            "work_type": work_type,
+            "quantities": quantities,
+            **{k: changes[k] for k in ("location", "narrative") if changes.get(k)},
+        }
+    return None
+
+
 def per_stock_unit(args: dict[str, Any]) -> Decimal | None:
     """WA-61: set_unit_conversion's two amounts as the stored number -- how many
     of the unit make ONE stock unit. The model copies what was said ("1 load is
@@ -650,6 +676,13 @@ class AgentToolbox:
             self.failed += 1
             await self._note_lost(name, args, "that action failed")
             return ToolOutcome(content={"status": "error", "message": "that action failed"})
+        new = as_new_entry(name, args, self.user_text) if step.status == NOT_A_CORRECTION else None
+        if new is not None:
+            # Live 29 Oct: "10 helper-um vannu" swiped on a saved card was sent as a
+            # correction, found to be new information, and handed back to the model,
+            # which apologised instead of saving it. What it carries is saved here.
+            _log.info("agent.correction_saved_as_new tool=%s", new[0])
+            return await self._dispatch(*new)
         if step.status == "choose" and step.awaiting == "site" and name in WRITE_TOOLS:
             self._hold_for_site(name, args)
         outcome = self._outcome(name, step)
