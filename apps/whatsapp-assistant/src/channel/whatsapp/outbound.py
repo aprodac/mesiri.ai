@@ -16,6 +16,7 @@ import time
 import httpx
 
 from channel.replies import ListRow
+from channel.whatsapp import sent_text
 from channel.whatsapp import usage as message_usage
 
 logger = logging.getLogger(__name__)
@@ -522,4 +523,6 @@ class WhatsAppSender:
             message_usage.report_sent(
                 wamid=wamid, recipient=to_wa_id, message_fields=message_fields
             )
+            # Its words, so a swipe-reply to it can be read (sent_text.py).
+            sent_text.report_sent(wamid=wamid, message_fields=message_fields)
         return wamid

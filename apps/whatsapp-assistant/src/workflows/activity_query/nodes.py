@@ -107,7 +107,18 @@ def generate_activity_search_reply(state: WorkflowGraphState) -> dict:
             severity = issue.get("severity")
             label = _pretty(issue_type) if issue_type else "Issue"
             detail = f" — {narrative}" if narrative else ""
-            tags = [t for t in (_pretty(severity) if severity else "", "being handled" if issue.get("status") == "ACKNOWLEDGED" else "") if t]
+            # Live 29 Oct: an issue open from an earlier day says since when, so
+            # "what happened today?" never reads the rain of 24 Oct as today's.
+            since = f"open since {issue['since']}" if issue.get("carried_over") and issue.get("since") else ""
+            tags = [
+                t
+                for t in (
+                    _pretty(severity) if severity else "",
+                    "being handled" if issue.get("status") == "ACKNOWLEDGED" else "",
+                    since,
+                )
+                if t
+            ]
             severity_tag = f" ({', '.join(tags)})" if tags else ""
             lines.append(f"• {label}{detail}{severity_tag}")
         if open_issue_count > len(shown):

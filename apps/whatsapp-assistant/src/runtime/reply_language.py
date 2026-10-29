@@ -94,6 +94,16 @@ class _RedisLike(Protocol):
     async def get_json(self, key: str) -> Any | None: ...
 
 
+#: A reply language the sender can set, as the (language, script) the composer takes.
+PREFERENCE_PROFILES: dict[str, tuple[str | None, str]] = {
+    "english": (None, "native"),
+    "manglish": ("Malayalam", "latin"),
+    "malayalam": ("Malayalam", "native"),
+    "hindi": ("Hindi", "native"),
+    "hinglish": ("Hindi", "latin"),
+}
+
+
 class UserLanguageStore:
     """The language each sender last spoke. Never raises: a Redis problem
     costs a reply in English, never the reply itself."""
@@ -134,9 +144,40 @@ class UserLanguageStore:
     async def get_script(self, *, user_id: str) -> str:
         return (await self.get_profile(user_id=user_id))[1]
 
+    def _preference_key(self, user_id: str) -> str:
+        return self._redis.namespaced("reply_language_pref", user_id)
+
+    async def set_preference(self, *, user_id: str, preference: str | None) -> bool:
+        """Live 29 Oct: the reply language the sender chose ("english",
+        "manglish", "malayalam", "hindi", "hinglish"), kept until they change it
+        (no expiry); None goes back to following each message. True when kept."""
+        if not user_id:
+            return False
+        value = preference if preference in PREFERENCE_PROFILES else None
+        try:
+            await self._redis.set_json(self._preference_key(user_id), {"preference": value})
+        except Exception:  # noqa: BLE001
+            logger.warning("reply_language.preference_save_failed user=%s", user_id)
+            return False
+        return True
+
+    async def get_preference(self, *, user_id: str) -> str | None:
+        """The reply language the sender set, or None (follow each message)."""
+        try:
+            stored = await self._redis.get_json(self._preference_key(user_id))
+        except Exception:  # noqa: BLE001
+            logger.warning("reply_language.preference_lookup_failed user=%s", user_id)
+            return None
+        value = stored.get("preference") if isinstance(stored, dict) else None
+        return value if value in PREFERENCE_PROFILES else None
+
     async def get_profile(self, *, user_id: str) -> tuple[str | None, str]:
         """(language, script) -- script is "native" unless the sender types
-        their language in English letters."""
+        their language in English letters. The language the sender set, when
+        they set one, whatever they last spoke."""
+        preference = await self.get_preference(user_id=user_id)
+        if preference is not None:
+            return PREFERENCE_PROFILES[preference]
         try:
             stored = await self._redis.get_json(self._key(user_id))
         except Exception:  # noqa: BLE001

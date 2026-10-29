@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 
-from .prompt import reply_language
+from .prompt import preferred_language, reply_language
 
 LANGUAGES = ("english", "manglish", "malayalam", "hindi", "hinglish")
 
@@ -49,7 +49,10 @@ def _no_words_of_its_own(text: str) -> bool:
 def decide(text: str, usual: str | None = None) -> str | None:
     """THE reply language of a turn, decided once: the message's own when it tells
     (its script, Manglish or Hinglish words, plain English), else the sender's
-    usual one. None when neither tells (then nothing is forced)."""
+    usual one. None when neither tells (then nothing is forced). Live 29 Oct: the
+    language the sender set (``set_reply_language``) wins over both."""
+    if preferred_language.get() in LANGUAGES:
+        return str(preferred_language.get())
     if _no_words_of_its_own(text) and usual in LANGUAGES:
         return str(usual)
     found = reply_language(text or "")

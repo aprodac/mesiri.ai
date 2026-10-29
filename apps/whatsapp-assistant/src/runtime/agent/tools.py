@@ -42,6 +42,7 @@ QUERY_EXPENSES = "query_expenses"
 REQUEST_DPR = "request_dpr"
 # WA-45: where they work today, and new sites/projects.
 SET_WORK_SITE = "set_work_site"
+SET_REPLY_LANGUAGE = "set_reply_language"
 CREATE_SITE = "create_site"
 CREATE_PROJECT = "create_project"
 # 22 Oct: back from the classic pipeline.
@@ -811,6 +812,29 @@ def tool_specs() -> list[ToolSpec]:
                     "project": _PROJECT,
                 },
                 ["site"],
+            ),
+        ),
+        ToolSpec(
+            name=SET_REPLY_LANGUAGE,
+            description=(
+                "The user asks you to ALWAYS reply in one language, whatever they type in "
+                "('reply in Malayalam', 'eppozhum Malayalathil reply cheyyu', 'I type Manglish, "
+                "answer in Malayalam script', 'English il reply cheyyu'). Kept until they change it. "
+                "'auto' (or 'reply in my language') goes back to answering in the language of each "
+                "message. Not for a one-off translation."
+            ),
+            parameters=_obj(
+                {
+                    "language": {
+                        "type": "string",
+                        "enum": ["english", "manglish", "malayalam", "hindi", "hinglish", "auto"],
+                        "description": (
+                            "manglish = Malayalam in English letters; malayalam = Malayalam script; "
+                            "hinglish = Hindi in English letters."
+                        ),
+                    }
+                },
+                ["language"],
             ),
         ),
         ToolSpec(

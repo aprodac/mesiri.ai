@@ -29,7 +29,7 @@ from runtime.persona import guard, is_what_can_you_do, what_can_you_do
 
 from . import later
 from .left_it import LEFT_IT, is_drop_word, question_is_open
-from .prompt import AgentContext, Turn
+from .prompt import AgentContext, Turn, preferred_language
 from .runner import AgentResult, AgentRunner, default_now
 from .stale_questions import close_stale_questions
 from .stock_question import is_stock_question
@@ -213,7 +213,45 @@ async def run_agent_turn(
     menu_hint: str | None = None,
 ) -> AgentResult | None:
     """Returns the result, or None when nothing could be read from the message
-    (an unheard voice note, answered already)."""
+    (an unheard voice note, answered already). The reply language the sender
+    set (``set_reply_language``) holds for every reply of this turn."""
+    preference = None
+    if deps.user_language_store is not None and hasattr(deps.user_language_store, "get_preference"):
+        try:
+            preference = await deps.user_language_store.get_preference(user_id=actor.user_id)
+        except Exception:  # noqa: BLE001 -- the message's own language then decides
+            preference = None
+    token = preferred_language.set(preference)
+    try:
+        return await _run_agent_turn(message, actor, deps, menu_hint=menu_hint)
+    finally:
+        preferred_language.reset(token)
+
+
+async def _replying_to(message: NormalizedMessage) -> tuple[str, str] | None:
+    """Live 29 Oct: the words of the message the sender swiped and replied to
+    (channel/whatsapp/sent_text.py), or None. Never raises."""
+    from channel.whatsapp import sent_text
+
+    reply_context = getattr(message, "reply_context", None)
+    quoted_id = getattr(reply_context, "replied_to_message_id", None)
+    if not quoted_id:
+        return None
+    if getattr(reply_context, "replied_to_text", None):
+        return str(reply_context.replied_to_text), "mesiri"
+    try:
+        return await sent_text.text_of(quoted_id)
+    except Exception:  # noqa: BLE001 -- read as a plain message
+        return None
+
+
+async def _run_agent_turn(
+    message: NormalizedMessage,
+    actor: ActorIdentity,
+    deps: AgentTurnDeps,
+    *,
+    menu_hint: str | None = None,
+) -> AgentResult | None:
     wa_id = message.sender.wa_id
     correlation_id = message.correlation_id
     language: str | None = None
@@ -272,10 +310,17 @@ async def run_agent_turn(
     if deps.user_language_store is not None:
         try:
             stored_language, script = await deps.user_language_store.get_profile(user_id=actor.user_id)
-            if language is None:
+            if language is None or preferred_language.get() is not None:
+                # The language they set wins over the one this voice note was in.
                 language = stored_language
         except Exception:  # noqa: BLE001
             script = None
+
+    # Live 29 Oct: a later swipe-reply to this message reads its words.
+    from channel.whatsapp import sent_text
+
+    await _safe(sent_text.remember(wamid=str(getattr(message, "message_id", "") or ""), text=user_text, by="sender"))
+    replying_to = await _replying_to(message)
 
     if is_what_can_you_do(user_text):
         # [68]: the commonest question has a fixed 3-line answer, no model needed.
@@ -343,7 +388,9 @@ async def run_agent_turn(
         work_site=lines[2],
         open_work_line=lines[3],
         card_line=lines[4],
+        replying_to=replying_to,
     )
+    setter = _language_setter(deps, actor)
     # Request 136 (B): with draft cards what is still to do is a waiting line of the
     # card, so the old "later" list is neither shown nor kept.
     keeps_later = deps.later is not None and getattr(gateway, "draft_mode", False) is not True
@@ -372,6 +419,7 @@ async def run_agent_turn(
         **({"site_queue": site_queue} if site_queue else {}),
         **({"lap": deps.lap} if deps.lap is not None else {}),
         **({"after_tool": deps.after_tool} if deps.after_tool is not None else {}),
+        **({"reply_language_setter": setter} if setter is not None else {}),
     )
     _lap(deps, "agent_model")
     if result.outcome == "outage":
@@ -380,8 +428,11 @@ async def run_agent_turn(
         # the message again cannot double-write.
         await asyncio.sleep(QUICK_RETRY_PAUSE_SECONDS)
         result = await deps.runner.run(
-            ctx=_context_of(
-                actor, deps, pack, language, menu_hint, script, getattr(gateway, "draft_mode", False) is True
+            ctx=replace(
+                _context_of(
+                    actor, deps, pack, language, menu_hint, script, getattr(gateway, "draft_mode", False) is True
+                ),
+                replying_to=replying_to,
             ),
             user_text=user_text,
             gateway=gateway,
@@ -390,6 +441,7 @@ async def run_agent_turn(
             **({"site_queue": site_queue} if site_queue else {}),
             **({"lap": deps.lap} if deps.lap is not None else {}),
             **({"after_tool": deps.after_tool} if deps.after_tool is not None else {}),
+            **({"reply_language_setter": setter} if setter is not None else {}),
         )
         _lap(deps, "agent_model_retry")
     if result.outcome == "outage" or result.reply is None:
@@ -454,6 +506,21 @@ async def run_agent_turn(
         await gateway.finish()
         _lap(deps, "agent_followups")
     return result
+
+
+def _language_setter(
+    deps: AgentTurnDeps, actor: ActorIdentity
+) -> Callable[[str | None], Awaitable[bool]] | None:
+    """``set_reply_language``'s keeper: the sender's reply language in the
+    language store (runtime/reply_language.py); None when there is no store."""
+    store = deps.user_language_store
+    if store is None or not hasattr(store, "set_preference"):
+        return None
+
+    async def _set(preference: str | None) -> bool:
+        return bool(await store.set_preference(user_id=actor.user_id, preference=preference))
+
+    return _set
 
 
 async def _context_line(

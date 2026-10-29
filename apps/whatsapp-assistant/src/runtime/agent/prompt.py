@@ -4,6 +4,7 @@ and this moment. Pure text building -- the data is fetched by the caller."""
 from __future__ import annotations
 
 import re
+from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 
@@ -225,6 +226,16 @@ question (in the user's language) and says nothing else needs doing for it.
 - If a tool result says error, say plainly in one line that this part was not saved and why, \
 in your own words.
 - If you cannot do something, say so plainly in one line.
+- Your earlier replies are shown to you shortened. Never say you did not send a message, or \
+that you cannot see earlier messages. When the user swipes one of your messages and replies \
+to it, the system shows you that message before theirs ("They are replying to your earlier \
+message"): answer about THAT message. If they ask about a message of yours you are not shown, \
+ask them to swipe it and reply.
+- A saved fact belongs to the day it happened. Something open since an earlier day ("since \
+24 Oct") is not today's: never answer a question about today with it as if it were.
+- When the user asks you to always reply in a language ("reply in Malayalam", "eppozhum \
+Malayalathil reply cheyyu", "type in English, answer in Malayalam"), call set_reply_language; \
+"reply in my language" / "stop that" resets it (auto).
 """
 SYSTEM_PROMPT = SYSTEM_PROMPT + "\n" + MESIRI_VOICE
 
@@ -261,6 +272,9 @@ class AgentContext:
     open_work_line: str | None = None
     #: Request 88: their latest card and the ids undo_last / update_pending_card take.
     card_line: str | None = None
+    #: Live 29 Oct: the message they swiped and replied to, ``(its words, "mesiri" |
+    #: "sender")``; None when this message quotes nothing (or it is not known).
+    replying_to: tuple[str, str] | None = None
 
 
 def render_context(ctx: AgentContext) -> str:
@@ -367,6 +381,15 @@ _HINGLISH_WORDS = frozenset(
 _MALAYALAM = re.compile(r"[\u0d00-\u0d7f]")
 _DEVANAGARI = re.compile(r"[\u0900-\u097f]")
 
+#: The languages a sender can set as their reply language (``set_reply_language``).
+PREFERRED_LANGUAGES = ("english", "manglish", "malayalam", "hindi", "hinglish")
+
+#: Live 29 Oct: the reply language the sender set ("type Manglish, answer in
+#: Malayalam"), for this message; None follows each message's own language. Set
+#: per turn by runtime/agent/turn.py, so every place that decides the reply's
+#: language (``reply_language`` and the code's wording) follows it.
+preferred_language: ContextVar[str | None] = ContextVar("preferred_reply_language", default=None)
+
 
 def reply_language(text: str) -> str | None:
     """The language THIS message wants its reply in, decided in code:
@@ -374,6 +397,9 @@ def reply_language(text: str) -> str | None:
     script, "manglish" for Malayalam in English letters, "english" for plain
     English, None when the message has no words of its own ("ok", "👍", "20")
     or cannot be told ("50 bags", "Anil") -- then nothing is forced."""
+    preferred = preferred_language.get()
+    if preferred in PREFERRED_LANGUAGES:
+        return preferred
     if (text or "").startswith(FOLLOW_UP_PREFIX):
         # WA-57: the system's own words after a Save tap, not the sender's.
         return None
@@ -432,6 +458,21 @@ _LANGUAGE_RULES = {
 }
 
 
+_PREFERRED_RULES = {
+    "english": "The user has set their reply language to English: reply in English only, whatever language "
+    "this message is in. No Manglish words, no Malayalam, Hindi or Tamil script.",
+    "manglish": "The user has set their reply language to Manglish: reply in Malayalam typed in English "
+    "letters, whatever language this message is in. No Malayalam script.",
+    "malayalam": "The user has set their reply language to Malayalam: reply in Malayalam script, whatever "
+    "language or letters this message is in. One script only.",
+    "hindi": "The user has set their reply language to Hindi: reply in Hindi in Devanagari script, whatever "
+    "language this message is in.",
+    "hinglish": "The user has set their reply language to Hinglish: reply in Hindi typed in English letters, "
+    "whatever language this message is in. No Devanagari or Malayalam script.",
+}
+
+
+
 def reply_letters_rule(user_text: str, usual: str | None = None) -> str | None:
     """WA-37 / request 89: the language and letters of the reply, decided in code
     and said as a hard instruction rather than left to the model -- told only "the
@@ -439,6 +480,10 @@ def reply_letters_rule(user_text: str, usual: str | None = None) -> str | None:
     English with Malayalam script (21 Oct). Request 143: the turn's one decision
     (``wording.decide``): a message with no words of its own ("ok thanks") takes the
     sender's ``usual`` language instead of English."""
+    preferred = preferred_language.get()
+    if preferred in PREFERRED_LANGUAGES:
+        # Live 29 Oct: the language the sender set (set_reply_language) wins.
+        return _PREFERRED_RULES[preferred]
     if user_text.startswith(FOLLOW_UP_PREFIX):
         # WA-57: the system's own words, not theirs: their earlier language decides.
         return None
@@ -474,6 +519,10 @@ def build_messages(ctx: AgentContext, user_text: str) -> list[tuple[str, str]]:
         if turn.assistant_reply:
             messages.append(("model", turn.assistant_reply))
     message = f"User message:\n{user_text}"
+    if ctx.replying_to is not None:
+        quoted, by = ctx.replying_to
+        whose = "your earlier message" if by == "mesiri" else "their own earlier message"
+        message = f"[They are replying to {whose}: \"{quoted}\"]\n\n{message}"
     if rule is not None:
         message = f"{message}\n\n[{rule}]"
     messages.append(("user", message))
