@@ -672,6 +672,16 @@ def build_message_handlers(
             use_drafts = draft_tap is not None or journal_tap is not None or issue_tap is not None or await _draft_v2_on(ctx)
             # Request 143: this message's Day Facts (each site day read once).
             turn_facts = day_facts.for_turn() if hasattr(day_facts, "for_turn") else day_facts
+            # Request 143: the language the code words its lines in (a tap has no words of
+            # its own: the sender's usual language).
+            usual_language = None
+            if user_language_store is not None:
+                try:
+                    from runtime.agent.wording import usual_from
+
+                    usual_language = usual_from(*await user_language_store.get_profile(user_id=ctx.user_id))
+                except Exception:  # noqa: BLE001 -- English wording
+                    _log.warning("journey.language_profile_failed user=%s", ctx.user_id, exc_info=True)
 
             hint = category_hint.semantic_hint if category_hint else None
             if hint and category_hint.direction:
@@ -1010,8 +1020,11 @@ def build_message_handlers(
                 return (waiting.state.pending_prompt or None) if waiting is not None else None
 
             def _gateway(msg, language):  # type: ignore[no-untyped-def]
+                from runtime.agent.wording import language_of
+
                 early["gateway"] = JourneyGateway(
                     message=msg,
+                    wording_language=language_of(msg.text or "", usual_language),
                     save_now=_save_now,
                     undo=_undo,
                     followups=lambda handled: _deliver_followups(handled, audit=False),

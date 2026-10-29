@@ -241,6 +241,7 @@ from runtime.agent import tools as t  # noqa: E402
 #: test_golden_draft_per_message / test_draft_actions_p1 / test_request104_*).
 THROUGH_THE_CARD = set(dr.DRAFT_TOOLS) | {
     t.NOTE_FOR_ENGINEER,  # a pending action: the Send tap sends it
+    t.REQUEST_MATERIAL,  # a pending action (request 143): the Send tap sends it
     t.SET_SITE_CONDITIONS,  # a pending action
     t.CORRECT_WORK_QUANTITY,  # a "Change" line (draft mode)
 }

@@ -406,6 +406,10 @@ async def run_agent_turn(
             reply = replace(reply, text=f"{reply.text}\n\n{what_can_you_do(language, script, user_text, modules)}")
         if deps.on_conversational is not None:
             deps.on_conversational()
+    entry = getattr(gateway, "query_entry", None)
+    if entry is not None and getattr(entry, "stock_card", None) and not result.toolbox.answers_only_stock():
+        # Request 143: a picture belongs to the answer it shows.
+        entry.stock_card = None
     if deps.attach_receipt is not None:
         try:
             reply = await deps.attach_receipt(reply, gateway)

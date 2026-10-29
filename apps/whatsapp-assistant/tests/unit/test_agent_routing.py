@@ -87,7 +87,7 @@ async def test_a_text_message_gets_the_agents_reply(monkeypatch):
     await on_normalized(_message("50 bags cement"), {})
     sent = deps["sender"].send_button.await_args
     assert sent.kwargs["body"] == "Received or used?"
-    assert [b.title for b in sent.kwargs["buttons"]] == ["Received", "Used"]
+    assert [b.title for b in sent.kwargs["buttons"]] == ["Received", "Used", "Cancel"]
 
 
 @pytest.mark.parametrize("mode", [None, ""])

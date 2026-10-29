@@ -91,6 +91,24 @@ class Say:
     rows: tuple[Any, ...] = ()
     #: "answer" only (request 143): documents the entry sent with this answer.
     documents: int = 0
+    #: Request 143: a code line by its ``wording`` key and values (``StepResult.line_key``).
+    line_key: str = ""
+    line_values: dict[str, Any] | None = None
+
+    def step(self, reply: Any = None) -> Any:
+        """This as the gateway's ``StepResult`` (the one conversion: its code line,
+        documents and question carried with it)."""
+        from .gateway import StepResult
+
+        return StepResult(
+            self.status,
+            text=self.text,
+            reply=reply,
+            awaiting=self.awaiting,
+            documents=self.documents,
+            line_key=self.line_key,
+            line_values=dict(self.line_values or {}),
+        )
 
 
 @dataclass(slots=True)
@@ -173,9 +191,11 @@ class EntryScope:
         organization_id = str(ctx.organization_id)
 
         if module is not None and not await self._module_on(organization_id, module):
-            from channel.replies import render_module_disabled_reply
+            from channel.replies import module_disabled_line, render_module_disabled_reply
 
-            return Say("info", render_module_disabled_reply(module, getattr(self.actor, "role", None)))
+            role = getattr(self.actor, "role", None)
+            key, values = module_disabled_line(module, role)
+            return Say("info", render_module_disabled_reply(module, role), line_key=key, line_values=values)
 
         # Only when the context layer refused the pick does their own list
         # decide it; otherwise its resolved ids stand, as before.

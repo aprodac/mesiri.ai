@@ -915,3 +915,62 @@ live model (the live gate runs on deploy), a real Chromium render inside this se
 
 Revert the phase commit. No migration, no data change. The date rule moves an entry saved 00:00-05:30 IST from the
 day before to its own day in every DPR read; reverting moves it back.
+
+## 22. Request 143, phase 3 (D + E): the check layer, true card facts, one language per turn
+
+Approved by Ilan in WhatsApp (29 Oct, request 143). Repros: "Site B 500 mason vannu" saved with no question;
+"Green Villa ground floor tiling 40% aayi" after a saved 88% had no "went down, sure?"; "Saved 6 workers (6 helper)"
+while the day had 13; a late entry's card did not say its day; the module-off line, "ok thanks" and "Received or
+used?" were English for a Manglish sender; a cement order became an issue; a week summary carried the Stock card.
+
+### 22.1 D: the check layer (`runtime/agent/checks.py`)
+
+`checks.doubt(kind, args, fields, history)` is pure. `draft_flow.add` runs it (`_checked`) on every line that is
+ready, before it joins the card; a doubt makes the line wait on a question with `Yes, it's right` / `Change`, in the
+turn's language. The rules are few so a normal day is never asked about:
+
+- labour: the day's workers above both three times the site's usual day and the usual day + 30, or above 150 at a
+  site with no history (fewer than three days with a count);
+- work: a percent above 100, or below the newest saved percent of the same work and place;
+- material used: more than the site's stock, when its stock is known (the entry's `available_stock`).
+
+The history is Day Facts': `DayFacts.site_history` (`SiteHistory`: workers per day over 30 days by the workforce
+module's own live-report and counted-line rules, and the newest saved percent per work over 120 days from
+`DayFactsReader.work`), read once per turn. Answers: the `Yes` tap or a typed yes-word makes the line ready;
+`Change` takes it off the card ("send the right figure"); a typed figure ("50") replaces the one asked about and the
+line is checked again. Save already carries a waiting line over to a new card, so nothing is dropped.
+
+### 22.2 E: card facts
+
+- A labour line says the day's true total once saved (`draft.day_total_note`: " · day total 13 workers"), by the
+  save's own BE-10 rule; the saved reply keeps the card's labour line (the saved record's summary does not know the
+  day's other lines). Display only: labour rules unchanged.
+- Every record for another day says which ("(yesterday, 28 Oct)"), not only an issue (`summarise_draft`).
+- "Closed" is the saved-lines layout (`actions.closed_lines`): one line, or a header and bullets.
+- A material order is a material request: tool `request_material`, a pending action (`material_request`) whose Send
+  tap messages the site's engineer(s), else the project's manager(s), through the notification queue, as the
+  engineer question does. The toolbox refuses `report_issue` for an order (unless it ran out and held work up) and
+  tells the model to make the request. No new table, no migration.
+- A picture belongs to its answer: the Stock card goes only on a reply whose answers are the stock answer alone
+  (`AgentToolbox.answers_only_stock`).
+
+### 22.3 One language decision per turn (`wording.decide`)
+
+The message's own language when it tells; otherwise (no words of its own: "ok thanks", "👍", "20", a tap) the
+sender's usual language from their profile (`UserLanguageStore` -> `wording.usual_from`). The runner decides once
+(`AgentToolbox.language`, `JourneyGateway.wording_language`) and everything follows it: the prompt's language rule
+(`reply_letters_rule(text, usual)`), the card sentence, the covering and failure templates, the check questions, the
+module-off line (an entry now returns its `wording` key, `Say.line_key`, and the toolbox words it) and the
+"Received or used?" question, which is the code's own with `Cancel` (a Cancel is answered by code, no model). The
+older after-the-fact replacement tables in `reply_language.py` stay for lines not moved yet.
+
+### 22.4 Verified
+
+`tests/unit/test_request143_checks.py`, golden cases 12-14 (the live gate: 500 masons asked, 40% after 88% asked,
+an order is a Send card), materials golden 24-25, and on a fresh local Postgres 16 at head 0493
+`test_report_day_postgres.py::test_the_site_history_the_check_layer_reads` plus every integration test. Not
+verified: the live model (it runs in the deploy's live gate), production data.
+
+### 22.5 Rollback
+
+Revert the phase commit. No migration, no data change.

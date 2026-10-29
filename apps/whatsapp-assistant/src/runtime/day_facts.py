@@ -21,7 +21,7 @@ come from the saved card (each item carries its fact id) and the day readers
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from mesiri.application.dpr import fact_review
@@ -546,6 +546,7 @@ class DayFacts:
     def __init__(self, db: Any) -> None:
         self._db = db
         self._days: dict[tuple[str, str, Any], SiteDay] = {}
+        self._history: dict[tuple[str, str, Any], SiteHistory] = {}
 
     def for_turn(self) -> DayFacts:
         return DayFacts(self._db)
@@ -567,9 +568,82 @@ class DayFacts:
     def forget(self) -> None:
         """After a Save the day has changed: the next read is fresh."""
         self._days.clear()
+        self._history.clear()
+
+    async def site_history(self, *, organization_id: Any, site_id: Any, day: Any) -> SiteHistory:
+        """The site before ``day`` (the check layer's), read once per turn."""
+        key = (str(organization_id), str(site_id), day)
+        if key not in self._history:
+            self._history[key] = await read_site_history(
+                self._db, DayFactsReader(self._db), organization_id=organization_id, site_id=site_id, day=day
+            )
+        return self._history[key]
 
     async def work(self, **kwargs: Any) -> list[WorkFact]:
         return await DayFactsReader(self._db).work(**kwargs)
 
     async def latest_update(self, activity_id: str) -> str | None:
         return await DayFactsReader(self._db).latest_update(activity_id)
+
+
+# -- the site's history, for the check layer (request 143, phase 3) -----------------
+
+
+@dataclass(frozen=True, slots=True)
+class SiteHistory:
+    """What a site usually looks like, before the day a new line is for: the check
+    layer (``runtime/agent/checks.py``) judges a new figure against it."""
+
+    #: Workers counted on each earlier day with a count (newest first, up to 30 days).
+    labour_days: tuple[int, ...] = ()
+    #: The newest saved percent of each work (``work_key``): (percent, its saved note).
+    percents: dict = field(default_factory=dict)
+
+    @property
+    def usual_workers(self) -> int | None:
+        """The median day's workers, when there are three days to tell from."""
+        days = sorted(self.labour_days)
+        if len(days) < 3:
+            return None
+        return days[len(days) // 2]
+
+
+#: How far back the history looks.
+HISTORY_DAYS = 30
+PERCENT_DAYS = 120
+
+
+async def read_site_history(db: Any, reader: DayFactsReader, *, organization_id: Any, site_id: Any, day: Any) -> SiteHistory:
+    import datetime as dt
+    import uuid
+
+    import sqlalchemy as sa
+
+    from mesiri.infrastructure.postgres.repositories.workforce import (
+        counted_line_sql,
+        live_report_sql,
+    )
+
+    try:
+        org, site = uuid.UUID(str(organization_id)), uuid.UUID(str(site_id))
+    except (TypeError, ValueError):
+        return SiteHistory()
+    sql = (
+        "SELECT lar.occurred_date AS day, sum(COALESCE(NULLIF(lal.headcount, 0), 1)) AS workers"
+        " FROM labour_attendance_lines lal JOIN labour_attendance_reports lar ON lar.id = lal.report_id"
+        " WHERE lar.organization_id = :org AND lar.site_id = :site"
+        "   AND lar.occurred_date < :day AND lar.occurred_date >= :since"
+        f"   AND {live_report_sql('lar')} AND {counted_line_sql('lal', 'lar')}"
+        " GROUP BY lar.occurred_date ORDER BY lar.occurred_date DESC"
+    )
+    params = {"org": org, "site": site, "day": day, "since": day - dt.timedelta(days=HISTORY_DAYS)}
+    async with db.transaction() as conn:
+        rows = (await conn.execute(sa.text(sql), params)).mappings().all()
+    work = await reader.work(
+        organization_id=str(org), start=day - dt.timedelta(days=PERCENT_DAYS), end=day, site_id=str(site)
+    )
+    percents: dict[str, tuple[float, Any]] = {}
+    for fact in work:  # oldest first: the last one of a work is its newest
+        if fact.field == PERCENT and fact.value is not None and fact.saved:
+            percents[fact.key] = (fact.value, fact.note)
+    return SiteHistory(labour_days=tuple(int(r["workers"] or 0) for r in rows), percents=percents)

@@ -18,6 +18,9 @@ Kinds:
   (``PostgresDprRepository.set_site_day_conditions``).
 - ``close_issues``: resolve the named site issues through the same dispatcher a
   confirmed "resolve" takes.
+- ``material_request`` (request 143): material to order ("50 bag cement order
+  cheyyanam"), sent to the site's engineer(s), else its project manager(s), the
+  same way as a question. Never a site issue.
 """
 
 from __future__ import annotations
@@ -37,6 +40,7 @@ ACTION_FACT = "action"
 ENGINEER_QUESTION = "engineer_question"
 SITE_CONDITIONS = "site_conditions"
 CLOSE_ISSUES = "close_issues"
+MATERIAL_REQUEST = "material_request"
 
 ACTION_TTL_SECONDS = 6 * 60 * 60
 
@@ -168,6 +172,20 @@ def engineer_message(*, asker: str, site: str | None, question: str) -> str:
     return f"❓ Question from {asker}{where}:\n{question}\n\nPlease reply to {asker} directly."
 
 
+def material_request_message(*, asker: str, site: str | None, request: str) -> str:
+    where = f" for {site}" if site else ""
+    return f"📦 Material request from {asker}{where}:\n{request}\n\nPlease reply to {asker} directly."
+
+
+def material_request_line(fields: dict[str, Any]) -> str:
+    """"50 bags cement (needed tomorrow)" from the tool's arguments."""
+    amount = fields.get("quantity")
+    shown = f"{float(amount):g}" if isinstance(amount, (int, float)) or str(amount or "").replace(".", "", 1).isdigit() else ""
+    what = " ".join(p for p in (shown, str(fields.get("unit") or "").strip(), str(fields.get("material") or "").strip()) if p)
+    needed = " ".join(str(fields.get("needed_by") or "").split())
+    return f"{what} (needed {needed})" if needed else what
+
+
 class ActionService:
     """Runs a pending action when its Save tap arrives. Built once with the
     services it needs; one method per kind, each returns the line to say."""
@@ -197,6 +215,8 @@ class ActionService:
                 return await self._set_conditions(action)
             if action.kind == CLOSE_ISSUES:
                 return await self._close_issues(action, actor)
+            if action.kind == MATERIAL_REQUEST:
+                return await self._send_material_request(action, actor, sender)
         except Exception:  # noqa: BLE001 -- said plainly, never "done"
             _log.exception("agent.action_failed kind=%s", action.kind)
             return "❌ That didn't go through, so nothing was changed. Please try again."
@@ -266,6 +286,25 @@ class ActionService:
         )
         if not queued:
             return "❌ Not sent: that question was already sent to them."
+        outcomes = await self.deliver(frozenset(p["notification_id"] for p in queued), sender)
+        return engineer_report(queued, outcomes)
+
+    async def _send_material_request(self, action: PendingAction, actor: Any, sender: Any) -> str:
+        payload = action.payload
+        text = material_request_message(
+            asker=str(payload.get("asker") or "A teammate"),
+            site=payload.get("site_name"),
+            request=str(payload["request"]),
+        )
+        queued = await self.queue_messages(
+            organization_id=str(actor.organization_id),
+            action_id=action.id,
+            payload=payload,
+            text=text,
+            recipients=[dict(p) for p in payload["recipients"]],
+        )
+        if not queued:
+            return "❌ Not sent: that request was already sent to them."
         outcomes = await self.deliver(frozenset(p["notification_id"] for p in queued), sender)
         return engineer_report(queued, outcomes)
 
@@ -386,11 +425,22 @@ class ActionService:
                 failed.append(issue["title"])
                 continue
             (done if result.status is ExecutionStatus.SUCCEEDED else failed).append(issue["title"])
-        if done and not failed:
-            return "✅ Closed: " + "; ".join(done) + "."
-        if done:
-            return "✅ Closed: " + "; ".join(done) + ". ❌ Couldn't close: " + "; ".join(failed) + "."
-        return "❌ Couldn't close: " + "; ".join(failed) + ". Nothing was changed."
+        return closed_lines(done, failed)
+
+
+def closed_lines(done: list[str], failed: list[str]) -> str:
+    """Request 143 (E): what was closed, as the saved lines read: one line for one
+    issue, a header and a bullet per issue for several, never titles run together
+    with "; " and a stray full stop after a bracket."""
+    from interactions.saved_summary import render_saved
+
+    tidy = lambda titles: [" ".join(str(t).split()).rstrip(" .;") for t in titles if str(t).strip()]  # noqa: E731
+    parts = [render_saved(tidy(done), "✅ Closed:")] if done else []
+    if failed:
+        parts.append(render_saved(tidy(failed), "❌ Couldn't close:"))
+    if not done:
+        parts.append("Nothing was changed.")
+    return "\n".join(p for p in parts if p)
 
 
 _ROLE_WORDS = {

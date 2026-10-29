@@ -101,7 +101,7 @@ _ISSUE_LABELS = {"SAFETY": "safety / accident", "QUALITY": "leakage / quality"}
 
 
 def _issue_day(fields: dict[str, Any], today: date | None) -> str:
-    """"yesterday, 23 Oct" / "22 Oct" for an issue that is not of today."""
+    """"yesterday, 23 Oct" / "22 Oct" for a record that is not of today."""
     raw = _text(fields.get("occurred_date"))
     if not raw or today is None:
         return ""
@@ -136,7 +136,17 @@ def _severity(fields: dict[str, Any]) -> str:
 
 def summarise_draft(draft: DraftActionV2 | Any, *, today: date | None = None) -> str | None:
     """One short line for a saved record, or None when the type has no
-    summary (the reply then keeps its generic wording)."""
+    summary (the reply then keeps its generic wording). Request 143 (E): a
+    record for another day says which ("(yesterday, 28 Oct)"), whatever its kind."""
+    line = _summary(draft, today=today)
+    action = getattr(draft, "action_type", None)
+    if not line or action is DraftActionType.RECORD_SITE_ISSUE:
+        return line  # an issue says its day among its facts
+    day = _issue_day(dict(getattr(draft, "fields", None) or {}), today)
+    return f"{line} ({day})" if day else line
+
+
+def _summary(draft: DraftActionV2 | Any, *, today: date | None = None) -> str | None:
     fields = dict(getattr(draft, "fields", None) or {})
     action = getattr(draft, "action_type", None)
     if action is DraftActionType.RECORD_LABOUR_ATTENDANCE:

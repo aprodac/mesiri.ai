@@ -32,6 +32,7 @@ UNDO_LAST = "undo_last"
 CHANGE_OR_UNDO = "change_or_undo"
 ASK_USER = "ask_user"
 NOTE_FOR_ENGINEER = "note_for_engineer"
+REQUEST_MATERIAL = "request_material"
 SET_UNIT_CONVERSION = "set_unit_conversion"
 QUERY_LABOUR = "query_labour"
 QUERY_MATERIALS = "query_materials"
@@ -69,6 +70,7 @@ WRITE_TOOLS = frozenset(
         SAVE_EXPENSE,
         REPORT_ISSUE,
         NOTE_FOR_ENGINEER,
+        REQUEST_MATERIAL,
         TRANSFER_MONEY,
         UNDO_LAST,
         CHANGE_OR_UNDO,
@@ -462,6 +464,30 @@ def tool_specs() -> list[ToolSpec]:
                     "site": _SITE,
                 },
                 ["issue_type", "narrative"],
+            ),
+        ),
+        ToolSpec(
+            name=REQUEST_MATERIAL,
+            description=(
+                "Material to be ordered or sent to the site ('50 bag cement order cheyyanam', "
+                "'order 100 bags cement', 'nale 20 rod steel venam', 'need 2 loads sand by Monday'). "
+                "It shows a 'Material request' card and is sent to their engineer when they tap Send. "
+                "Never report_issue for an order: an issue is only material that ran out and held "
+                "work up. Not for material that arrived or was used (save_material_receipt / usage)."
+            ),
+            parameters=_obj(
+                {
+                    "material": {"type": "string", "description": "The material, as they said it."},
+                    "quantity": {"type": "number"},
+                    "unit": {"type": "string"},
+                    "needed_by": {
+                        "type": "string",
+                        "description": "When it is needed, in their words ('tomorrow', 'Monday'), if said.",
+                    },
+                    "project": _PROJECT,
+                    "site": _SITE,
+                },
+                ["material"],
             ),
         ),
         ToolSpec(
@@ -1087,6 +1113,19 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             return None
         # Not an issue: a card whose Send tap messages the engineer (actions.py).
         fields = {"_action": "engineer_question", "question": question, **sc}
+        return Candidate(semantic_type=SemanticType.SITE_ISSUE, fields=_clean(fields))
+    if name == REQUEST_MATERIAL:
+        if not str(args.get("material") or "").strip():
+            return None
+        # Not an issue (request 143): a card whose Send tap messages the engineer (actions.py).
+        fields = {
+            "_action": "material_request",
+            "material": str(args.get("material") or "").strip(),
+            "quantity": args.get("quantity"),
+            "unit": args.get("unit"),
+            "needed_by": args.get("needed_by"),
+            **sc,
+        }
         return Candidate(semantic_type=SemanticType.SITE_ISSUE, fields=_clean(fields))
     if name == SET_SITE_CONDITIONS:
         fields = {

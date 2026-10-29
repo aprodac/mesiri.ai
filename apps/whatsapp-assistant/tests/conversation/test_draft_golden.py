@@ -64,7 +64,31 @@ async def villa_world():  # noqa: ANN201
     )
     world.project_id = project_id
     world.report = _report_entry(world)
+    world.day_facts = _History(next(s.id for s in world.actor.sites if s.name == VILLA))
+    from tests.unit.request104_fakes import ENGINEER, FakeActions
+
+    world.actions = FakeActions(people=[ENGINEER])
     return world
+
+
+class _History:
+    """Request 143 (D): the sites' history for the check layer: a case's ``history``
+    ({"tiling|ground floor": 88}) is Green Villa's saved percents; no labour history."""
+
+    def __init__(self, villa_id: Any) -> None:
+        self.villa_id = str(villa_id)
+        self.percents: dict[str, tuple[float, str]] = {}
+
+    async def site_history(self, *, organization_id, site_id, day):  # noqa: ANN001, ANN201
+        from runtime.day_facts import SiteHistory
+
+        return SiteHistory(percents=self.percents if str(site_id) == self.villa_id else {})
+
+    async def work(self, **_):  # noqa: ANN003, ANN201
+        return []
+
+    async def latest_update(self, activity_id):  # noqa: ANN001, ANN201
+        return None
 
 
 class _GreenVillaDay:
@@ -123,6 +147,11 @@ async def _saved_at(world, name: str) -> None:  # noqa: ANN001
 async def run_case(case: dict[str, Any], provider_for) -> tuple[Any, Any]:  # noqa: ANN001
     """The case's conversation; ``provider_for(turn)`` gives the model of each turn."""
     world = await villa_world()
+    from runtime.day_facts import work_key
+
+    world.day_facts.percents = {
+        work_key(*key.split("|")): (float(value), "") for key, value in (case.get("history") or {}).items()
+    }
     if case.get("saved"):
         await _saved_at(world, case["saved"])
     for turn in case.get("before", []):

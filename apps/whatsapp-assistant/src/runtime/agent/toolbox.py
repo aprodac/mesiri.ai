@@ -22,12 +22,19 @@ from mesiri_ai.models import ToolOutcome
 from runtime.save_first import DRAFT_NOTE
 
 from . import site_wait
-from .actions import CLOSE_ISSUES, ENGINEER_QUESTION, SITE_CONDITIONS
+from .actions import CLOSE_ISSUES, ENGINEER_QUESTION, MATERIAL_REQUEST, SITE_CONDITIONS
 from .cards import CardItem, merge_changes
 from .equipment import EQUIPMENT_LINE, is_equipment_only
 from .gateway import StepResult, WorkflowGateway
 from .later import LaterItem, held_item
-from .material_direction import asks_direction, default_options, says_received
+from .material_direction import (
+    DIRECTION_CANCEL,
+    DIRECTION_OPTIONS,
+    asks_direction,
+    default_options,
+    is_material_order,
+    says_received,
+)
 from .save_button import SAVE_TITLE
 from .site_match import short_title
 from .tools import (
@@ -52,10 +59,11 @@ from .tools import (
     to_candidate,
     tool_specs,
 )
+from .wording import say
 
 _log = logging.getLogger("mesiri.agent")
 
-ACTION_KINDS = frozenset({ENGINEER_QUESTION, SITE_CONDITIONS, CLOSE_ISSUES})
+ACTION_KINDS = frozenset({ENGINEER_QUESTION, SITE_CONDITIONS, CLOSE_ISSUES, MATERIAL_REQUEST})
 
 #: Most tool calls one message may make in total (steps are bounded separately
 #: by the provider loop). A note with many parts is still a handful of calls.
@@ -327,6 +335,9 @@ class AgentToolbox:
     gateway: WorkflowGateway
     scope: ScopeLookup
     user_text: str
+    #: Request 143: the turn's reply language, decided once (``wording.decide``):
+    #: every line the code writes this turn is in it.
+    language: str = "english"
     saved: list[SavedItem] = field(default_factory=list)
     answers: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
@@ -545,6 +556,16 @@ class AgentToolbox:
                     "instruction": f"Nothing was saved. Say exactly: {EQUIPMENT_LINE}",
                 }
             )
+        if name == REPORT_ISSUE and is_material_order(self.user_text) and not _RAN_OUT.search(self.user_text):
+            # Request 143 (E): "50 bag cement order cheyyanam" is material to order, not a problem
+            # on site. Nothing is filed as an issue; the model is told to make the request.
+            return ToolOutcome(
+                content={
+                    "status": "not_saved",
+                    "reason": "an order for material is a material request, not a site issue",
+                    "instruction": "Nothing was saved. Call request_material with the material, quantity, unit and when it is needed.",
+                }
+            )
         if name == REPORT_ISSUE:
             args = classify_issue(self.user_text, args)
         if (
@@ -725,6 +746,12 @@ class AgentToolbox:
 
         return _say(_language_of(self.user_text), "hold", n=waiting)
 
+    def answers_only_stock(self) -> bool:
+        """Request 143: the turn's answers are the stock answer and nothing else, so
+        the Stock card is its picture. A week summary that also looked at stock is
+        not a stock answer: no Stock card on it."""
+        return bool(self._stock_answer) and all(a == self._stock_answer for a in self.answers)
+
     async def _stock_for_question(self) -> str | None:
         """WA-52: the stock answer for a message asking whether a material is
         in stock or will be enough -- the one the model already got this
@@ -790,6 +817,12 @@ class AgentToolbox:
             )
         options = args.get("options") or []
         options = rejoin_names(options if isinstance(options, list) else [], self._known_names())
+        if asks_direction(question):
+            # Request 143: "Received or used?" is the code's question, in their language,
+            # and it can be cancelled.
+            what = " ".join(self.user_text.split())[:40]
+            question = say("material.direction", self.language, what=what)
+            options = [*DIRECTION_OPTIONS, DIRECTION_CANCEL]
         if not options:
             # MAT-08: "cement vannu" -> "How many?" came with no buttons.
             options = list(default_options(question, self.user_text))
@@ -1091,7 +1124,10 @@ class AgentToolbox:
         self._carry_after = []
 
     def _outcome(self, name: str, step: StepResult) -> ToolOutcome:
-        if step.status == "info" and is_module_disabled_reply(step.text or ""):
+        if step.status == "info" and step.line_key:
+            # Request 143: a line of the code's, worded in the turn's language.
+            self.module_off_line = say(step.line_key, self.language, **step.line_values)
+        elif step.status == "info" and is_module_disabled_reply(step.text or ""):
             self.module_off_line = (step.text or "").split("\n\n", 1)[0]
         if step.status == NOT_A_CORRECTION:
             return ToolOutcome(

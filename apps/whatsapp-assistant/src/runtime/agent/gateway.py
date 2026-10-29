@@ -10,7 +10,7 @@ company.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 from channel.replies import ReplySpec
 from mesiri_contracts.assistant.candidates import Candidate
@@ -54,6 +54,10 @@ class StepResult:
     changed: bool = False
     #: ``answer`` only (request 143): documents sent with it (the report's PDFs).
     documents: int = 0
+    #: Request 143: a line of the code's (``wording`` key and its values): the toolbox
+    #: words it in the turn's language; ``text`` stays the English for the model and logs.
+    line_key: str = ""
+    line_values: dict[str, Any] = field(default_factory=dict)
 
 
 class WorkflowGateway(Protocol):

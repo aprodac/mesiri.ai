@@ -15,33 +15,54 @@ from __future__ import annotations
 
 import re
 
-from .prompt import is_hinglish, is_manglish, reply_language
+from .prompt import reply_language
 
 LANGUAGES = ("english", "manglish", "malayalam", "hindi", "hinglish")
 
 
-def language_of(text: str, usual: str | None = None) -> str:
-    """The language of the reply to ``text``: one of ``LANGUAGES``."""
-    if re.search(r"[ഀ-ൿ]", text or ""):
-        return "malayalam"
-    if re.search(r"[ऀ-ॿ]", text or ""):
-        return "hindi"
-    if is_manglish(text or ""):
-        return "manglish"
-    if is_hinglish(text or ""):
-        return "hinglish"
-    if reply_language(text or "") is None and usual in LANGUAGES:
-        return str(usual)
-    return "english"
+#: Words that say nothing about a language: an acknowledgement ("ok thanks", "👍")
+#: is answered in the sender's usual language, not in English for its English words.
+_ACK = frozenset(
+    "ok okay okey k kk fine thanks thank thanku thankyou thx tnx ty you done good great nice cool yes no "
+    "hmm hm noted right alright super".split()
+)
 
 
-def usual_language(texts: list[str]) -> str | None:
-    """The language the sender's recent messages were in (newest first wins), for a
-    message that cannot tell on its own."""
-    for text in texts:
-        if reply_language(text or "") is not None:
-            return language_of(text)
+def usual_from(language: str | None, script: str | None) -> str | None:
+    """The sender's remembered language (``UserLanguageStore`` profile: a name like
+    "Malayalam" and "latin" / "native") as one of ``LANGUAGES``; None when English or
+    not known."""
+    name = str(language or "").strip().lower()
+    latin = str(script or "").strip().lower() == "latin"
+    if name in ("malayalam", "ml"):
+        return "manglish" if latin else "malayalam"
+    if name in ("hindi", "hi"):
+        return "hinglish" if latin else "hindi"
     return None
+
+
+def _no_words_of_its_own(text: str) -> bool:
+    words = re.findall(r"[^\W\d_]+", (text or "").lower())
+    return not words or all(w in _ACK for w in words)
+
+
+def decide(text: str, usual: str | None = None) -> str | None:
+    """THE reply language of a turn, decided once: the message's own when it tells
+    (its script, Manglish or Hinglish words, plain English), else the sender's
+    usual one. None when neither tells (then nothing is forced)."""
+    if _no_words_of_its_own(text) and usual in LANGUAGES:
+        return str(usual)
+    found = reply_language(text or "")
+    if found in LANGUAGES:
+        return found
+    if found is None and usual in LANGUAGES:
+        return str(usual)
+    return None
+
+
+def language_of(text: str, usual: str | None = None) -> str:
+    """The language of a code-made line for ``text``: one of ``LANGUAGES``."""
+    return decide(text, usual) or "english"
 
 
 #: A day in each language: "of" (the report OF the day) and "on" (saved ON it).
@@ -122,6 +143,79 @@ LINES: dict[str, dict[str, str]] = {
         "malayalam": "ഇതുവരെയുള്ള റിപ്പോർട്ട് കൂടെയുണ്ട്; മുകളിലെ ഇനങ്ങൾ Save അമർത്തിയാൽ അതിൽ ചേരും.",
         "hindi": "अब तक की रिपोर्ट साथ है; ऊपर की चीज़ें Save दबाने पर उसमें जुड़ेंगी.",
         "hinglish": "Ab tak ki report saath hai; upar ke items Save dabane par usmein judenge.",
+    },
+    # -- the check layer (request 143, phase 3) --------------------------------
+    "check.labour_many": {
+        "english": "{workers} workers? This site usually has about {usual}.",
+        "manglish": "{workers} per aano? Ee site-il saadharana {usual} okke aanu.",
+        "malayalam": "{workers} പേരോ? ഈ സൈറ്റിൽ സാധാരണ {usual} ഓളം ആണ്.",
+        "hindi": "{workers} मज़दूर? इस साइट पर आमतौर पर लगभग {usual} होते हैं.",
+        "hinglish": "{workers} workers? Is site par aam taur par {usual} ke aas paas hote hain.",
+    },
+    "check.labour_new": {
+        "english": "{workers} workers in one day, is that right?",
+        "manglish": "Oru divasam {workers} per, shariyaano?",
+        "malayalam": "ഒരു ദിവസം {workers} പേർ, ശരിയാണോ?",
+        "hindi": "एक दिन में {workers} मज़दूर, सही है?",
+        "hinglish": "Ek din mein {workers} workers, sahi hai?",
+    },
+    "check.percent_over": {
+        "english": "{percent}% is above 100%. Is that right?",
+        "manglish": "{percent}% 100%-il kooduthal aanu. Shariyaano?",
+        "malayalam": "{percent}% 100%-ൽ കൂടുതലാണ്. ശരിയാണോ?",
+        "hindi": "{percent}% तो 100% से ज़्यादा है. सही है?",
+        "hinglish": "{percent}% to 100% se zyada hai. Sahi hai?",
+    },
+    "check.percent_down": {
+        "english": "{work} went down: {before}% was saved, now {percent}%. Is that right?",
+        "manglish": "{work} kuranju: munpu {before}% save cheythirunnu, ippo {percent}%. Shariyaano?",
+        "malayalam": "{work} കുറഞ്ഞു: മുമ്പ് {before}% സേവ് ചെയ്തിരുന്നു, ഇപ്പോൾ {percent}%. ശരിയാണോ?",
+        "hindi": "{work} कम हो गया: पहले {before}% सेव था, अब {percent}%. सही है?",
+        "hinglish": "{work} kam ho gaya: pehle {before}% save tha, ab {percent}%. Sahi hai?",
+    },
+    "check.more_than_stock": {
+        "english": "{used} {unit} used, but the site has {stock} {unit} in stock. Is that right?",
+        "manglish": "{used} {unit} use cheythu, pakshe site-il {stock} {unit} maathrame stock ullu. Shariyaano?",
+        "malayalam": "{used} {unit} ഉപയോഗിച്ചു, പക്ഷേ സൈറ്റിൽ {stock} {unit} മാത്രമേ സ്റ്റോക്കുള്ളൂ. ശരിയാണോ?",
+        "hindi": "{used} {unit} इस्तेमाल हुआ, पर साइट पर {stock} {unit} ही स्टॉक है. सही है?",
+        "hinglish": "{used} {unit} use hua, par site par {stock} {unit} hi stock hai. Sahi hai?",
+    },
+    "check.change": {
+        "english": "Okay, {line} is off the card. Send the right figure.",
+        "manglish": "Sheri, {line} card-il ninnu maatti. Shariyaaya figure ayakku.",
+        "malayalam": "ശരി, {line} കാർഡിൽ നിന്ന് മാറ്റി. ശരിയായ കണക്ക് അയക്കൂ.",
+        "hindi": "ठीक है, {line} कार्ड से हटा दिया. सही आँकड़ा भेजें.",
+        "hinglish": "Theek hai, {line} card se hata diya. Sahi figure bhejein.",
+    },
+    # -- a module the company has switched off (WA-07; request 143: in their language) --
+    "module.off.admin": {
+        "english": "{name} {verb} switched on for your company yet, so I didn't record this. Ask your admin to turn {pronoun} on.",
+        "manglish": "{name} ningalude company-kku ippo on cheythittilla, athukondu ithu record cheythilla. Ningalude admin-inodu on aakkan parayu.",
+        "malayalam": "{name} നിങ്ങളുടെ കമ്പനിക്ക് ഇതുവരെ ഓൺ ചെയ്തിട്ടില്ല, അതുകൊണ്ട് ഇത് രേഖപ്പെടുത്തിയില്ല. ഓൺ ആക്കാൻ നിങ്ങളുടെ അഡ്മിനോട് പറയൂ.",
+        "hindi": "{name} आपकी कंपनी के लिए अभी चालू नहीं है, इसलिए यह दर्ज नहीं हुआ. अपने एडमिन से चालू करने को कहें.",
+        "hinglish": "{name} aapki company ke liye abhi on nahi hai, isliye yeh record nahi hua. Apne admin se on karne ko kahein.",
+    },
+    "module.off.team": {
+        "english": "{name} {verb} switched on for your company yet, so I didn't record this. Ask the Mesiri team to turn {pronoun} on.",
+        "manglish": "{name} ningalude company-kku ippo on cheythittilla, athukondu ithu record cheythilla. Mesiri team-inodu on aakkan parayu.",
+        "malayalam": "{name} നിങ്ങളുടെ കമ്പനിക്ക് ഇതുവരെ ഓൺ ചെയ്തിട്ടില്ല, അതുകൊണ്ട് ഇത് രേഖപ്പെടുത്തിയില്ല. ഓൺ ആക്കാൻ മെസിരി ടീമിനോട് പറയൂ.",
+        "hindi": "{name} आपकी कंपनी के लिए अभी चालू नहीं है, इसलिए यह दर्ज नहीं हुआ. Mesiri टीम से चालू करने को कहें.",
+        "hinglish": "{name} aapki company ke liye abhi on nahi hai, isliye yeh record nahi hua. Mesiri team se on karne ko kahein.",
+    },
+    # -- the "Received or used?" question (request 143: in their language, with Cancel) --
+    "material.direction": {
+        "english": "Did {what} come in, or was it used?",
+        "manglish": "{what} vannatho, use cheythatho?",
+        "malayalam": "{what} വന്നതോ, ഉപയോഗിച്ചതോ?",
+        "hindi": "{what} आया या इस्तेमाल हुआ?",
+        "hinglish": "{what} aaya ya use hua?",
+    },
+    "material.direction_cancelled": {
+        "english": "Okay, nothing saved.",
+        "manglish": "Sheri, onnum save cheythilla.",
+        "malayalam": "ശരി, ഒന്നും സേവ് ചെയ്തില്ല.",
+        "hindi": "ठीक है, कुछ सेव नहीं हुआ.",
+        "hinglish": "Theek hai, kuch save nahi hua.",
     },
 }
 

@@ -353,7 +353,24 @@ def preview(workflow_key: Any, fields: dict[str, Any], *, today: Any = None) -> 
         return None
     if action is DraftActionType.CLOSE_SITE_ISSUE:
         return _issue_status_line(fields)
-    return summarise_draft(SimpleNamespace(action_type=action, fields=dict(fields)), today=today)
+    line = summarise_draft(SimpleNamespace(action_type=action, fields=dict(fields)), today=today)
+    if line and action is DraftActionType.RECORD_LABOUR_ATTENDANCE:
+        return line + day_total_note(fields)
+    return line
+
+
+def day_total_note(fields: dict[str, Any]) -> str:
+    """Request 143 (E): a labour line says the day's true total once it is saved
+    (" · day total 13 workers"), when the day already counts others: the card said
+    "6 workers (6 helper)" while the day had 13. By the save's own rule (BE-10: a
+    re-sent trade replaces its earlier figure, another adds). Display only."""
+    new = _lines(fields.get("lines"))
+    old = _lines(fields.get("day_counted_lines"))
+    if not new or not old:
+        return ""
+    kept = [o for o in old if not any(_replaces(n, o) for n in new)]
+    total = _total(kept) + _total(new)
+    return f" · day total {total} workers" if total != _total(new) else ""
 
 
 # -- labour: a day that already has a count ------------------------------------

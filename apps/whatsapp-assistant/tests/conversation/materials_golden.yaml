@@ -42,4 +42,5 @@
 # Round 2 (21 Oct afternoon): a question is passed on ONLY when they ask for the engineer (Ilan);
 # a shortage is an issue, never a question.
 - {"id": 23, "lang": "manglish", "message": "engineer-inodu chodikku, nale slab concrete cheyyamo?", "calls": [["note_for_engineer", {"question": "nale slab concrete cheyyamo?"}]], "expect": [], "card": true}
-- {"id": 24, "lang": "manglish", "message": "10 bag cement balance und, kooduthal venam", "calls": [["report_issue", {"issue_type": "MATERIAL_SHORTAGE", "narrative": "10 bag cement balance, kooduthal venam"}]], "expect": [{"action": "record_site_issue"}]}
+- {"id": 24, "lang": "manglish", "message": "10 bag cement balance und, kooduthal venam", "calls": [["request_material", {"material": "cement"}]], "expect": [], "card": true}
+- {"id": 25, "lang": "manglish", "message": "nale 50 bag cement order cheyyanam", "calls": [["request_material", {"material": "cement", "quantity": 50, "unit": "bags", "needed_by": "nale"}]], "expect": [], "card": true}

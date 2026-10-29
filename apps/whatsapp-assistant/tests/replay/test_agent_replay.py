@@ -170,6 +170,8 @@ class World:
     report: Any = None
     #: The file names of the documents the report entry sent.
     documents: Any = None
+    #: Request 143: Day Facts (site history for the check layer), when wired.
+    day_facts: Any = None
 
     def message(self, text: str, modality: InputModality = InputModality.TEXT) -> NormalizedMessage:
         media = None
@@ -251,6 +253,7 @@ class World:
             pending_confirmation=self.pending_confirmation,
             preselect_site=self.preselect_site,
             get_today_site=self._saved_site,
+            day_facts=self.day_facts,
         )
 
     async def _saved_site(self) -> str | None:
@@ -474,7 +477,7 @@ async def test_an_unclear_note_is_one_question_with_buttons(world):
     result = await world.say(provider, "50 bags cement")
     assert world.journeys == 0  # nothing was run on a guess
     assert result.reply.text == "Was that cement received or used?"
-    assert [b.title for b in result.reply.buttons] == ["Received", "Used"]
+    assert [b.title for b in result.reply.buttons] == ["Received", "Used", "Cancel"]
 
 
 async def test_green_villa_after_a_which_site_question_is_a_site_not_a_yes(world_two_sites):

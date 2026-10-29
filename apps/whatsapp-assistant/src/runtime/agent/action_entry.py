@@ -23,9 +23,11 @@ from workflows.registry import module_for_workflow
 from .actions import (
     CLOSE_ISSUES,
     ENGINEER_QUESTION,
+    MATERIAL_REQUEST,
     SITE_CONDITIONS,
     ActionService,
     PendingAction,
+    material_request_line,
     new_action,
 )
 from .entry_base import EntryScope, Say, Scoped, choose
@@ -65,7 +67,38 @@ class ActionEntry(EntryScope):
             return await self._conditions(message, understanding, candidate)
         if kind == CLOSE_ISSUES:
             return await self._close_issues(message, understanding, candidate)
+        if kind == MATERIAL_REQUEST:
+            return await self._material_request(message, understanding, candidate)
         return Say("error", "Not done: that can't be done here yet.")
+
+    # -- material to order (request 143) ------------------------------------------
+
+    async def _material_request(self, message: Any, understanding: Any, candidate: Any) -> PendingAction | Say:
+        request = material_request_line(candidate.fields)
+        if not str(candidate.fields.get("material") or "").strip():
+            return Say("error", "Not sent: say which material is needed.")
+        scoped = await self.settle(
+            message, understanding, candidate, module=module_for_workflow(WorkflowKey.MATERIAL_RECEIPT)
+        )
+        if isinstance(scoped, Say):
+            return scoped
+        people = await self.service.engineers(
+            organization_id=scoped.organization_id,
+            project_id=str(scoped.project_id) if scoped.project_id else None,
+            site_id=str(scoped.site_id) if scoped.site_id else None,
+            exclude_user=str(scoped.ctx.user_id),
+        )
+        if not people:
+            return Say("info", NO_ONE)
+        payload = {
+            "request": request,
+            "asker": str(getattr(self.actor, "full_name", None) or getattr(self.actor, "name", None) or "A teammate"),
+            "site_name": self._site_name(scoped),
+            "project_id": str(scoped.project_id) if scoped.project_id else None,
+            "site_id": str(scoped.site_id) if scoped.site_id else None,
+            "recipients": people,
+        }
+        return new_action(MATERIAL_REQUEST, payload, f"Material request: {request}")
 
     # -- a question for the engineer ----------------------------------------------
 

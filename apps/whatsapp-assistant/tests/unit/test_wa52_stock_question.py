@@ -130,13 +130,24 @@ async def test_the_screenshot_question_is_not_filed_as_a_shortage():
 
 @pytest.mark.parametrize(
     "text",
-    ["10 bag cement balance und, kooduthal venam", "cement theernnu, stock undo?", "cement ran out, is there stock?"],
+    ["cement theernnu, stock undo?", "cement ran out, is there stock?", "cement theernnu, pani ninnu, 50 bag venam"],
 )
 async def test_a_real_shortage_is_still_reported(text):
     box, gateway = _box(text)
     out = await box.handle("report_issue", {"issue_type": "MATERIAL_SHORTAGE", "narrative": text})
     assert out.content["status"] == "saved"
     assert len(gateway.saves()) == 1
+
+
+@pytest.mark.parametrize(
+    "text", ["10 bag cement balance und, kooduthal venam", "nale 50 bag cement order cheyyanam", "order 100 bags cement"]
+)
+async def test_an_order_is_never_an_issue(text):
+    """Request 143 (E): material to order is a material request, not a site issue."""
+    box, gateway = _box(text)
+    out = await box.handle("report_issue", {"issue_type": "MATERIAL_SHORTAGE", "narrative": text})
+    assert out.content["status"] == "not_saved" and "request_material" in out.content["instruction"]
+    assert gateway.saves() == []
 
 
 # -- the reply -----------------------------------------------------------------

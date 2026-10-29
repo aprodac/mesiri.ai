@@ -30,12 +30,12 @@ from runtime.reply_composer import BODY_MAX
 from . import draft as dr
 from .equipment import is_problem_only
 from .gateway import WorkflowGateway
+from .material_direction import asked_direction, is_cancel
 from .prompt import (
     _MANGLISH_WORDS,
     SYSTEM_PROMPT,
     AgentContext,
     build_messages,
-    is_hinglish,
     is_manglish,
     letters_of,
     reply_language,
@@ -64,7 +64,7 @@ from .tools import (
     ScopeLookup,
     tool_specs,
 )
-from .wording import language_of, say
+from .wording import language_of, say, usual_from
 
 _log = logging.getLogger("mesiri.agent")
 
@@ -124,19 +124,29 @@ class AgentRunner:
         after_tool: Callable[[], None] | None = None,
         site_queue: list[dict] | None = None,
     ) -> AgentResult:
+        # Request 143: the turn's reply language, decided once; every line of the code's
+        # and the prompt's language rule follow it.
+        language = language_of(user_text, usual_from(ctx.last_language, ctx.last_script))
         toolbox = AgentToolbox(
             gateway=gateway,
             scope=scope,
             user_text=user_text,
+            language=language,
             lap=lap,
             after_tool=after_tool,
             site_queue=[dict(i) for i in site_queue or []],
         )
         # WA-52: only a reply that OFFERED to ask counts ("Shall I ask your
         # engineer?"), not one that merely named the engineer.
+        if hasattr(gateway, "wording_language"):
+            gateway.wording_language = language
         toolbox.engineer_offered = bool(ctx.turns) and offers_engineer(ctx.turns[-1].assistant_reply)
         # Request 104, D2: the hours-lost question is asked once.
         toolbox.hours_asked = bool(ctx.turns) and HOURS_QUESTION in ctx.turns[-1].assistant_reply
+        if ctx.turns and is_cancel(user_text) and asked_direction(ctx.turns[-1].assistant_reply):
+            # Request 143: Cancel on "Received or used?": nothing to save, no model.
+            _decided(toolbox, "reply", TEMPLATE)
+            return AgentResult("ok", ReplySpec(text=say("material.direction_cancelled", language)), toolbox)
         prompt_messages = build_messages(ctx, user_text)
         messages = [ChatMessage(role=r, text=t) for r, t in prompt_messages]
         try:
@@ -413,7 +423,7 @@ class AgentRunner:
         _log.warning(
             "agent.coverage_fallback correlation_id=%s missing=%s claims=%s", correlation_id, len(missing), claims
         )
-        return run.model_copy(update={"text": covering_sentence(items, user_text)})
+        return run.model_copy(update={"text": covering_sentence(items, user_text, toolbox.language)})
 
     # -- the one reply -----------------------------------------------------
 
@@ -575,7 +585,7 @@ class AgentRunner:
         if asked := _questions_line(toolbox):
             tail.append(asked)
         tail.extend(line for line in toolbox.system_lines if line not in tail)
-        text = _within_cap(card_sentence(draft, toolbox.user_text), [t for t in tail if t])
+        text = _within_cap(card_sentence(draft, toolbox.user_text, toolbox.language), [t for t in tail if t])
         _decided(toolbox, "reply", TEMPLATE)
         return _with_card(ReplySpec(text=text), toolbox)
 
@@ -598,7 +608,7 @@ class AgentRunner:
         ):
             return None
         _decided(toolbox, "reply", TEMPLATE)
-        return ReplySpec(text=_FAILED[_wording_language(toolbox.user_text)])
+        return ReplySpec(text=_FAILED[toolbox.language])
 
     def _natural(self, text: str, toolbox: AgentToolbox) -> str:
         """Request 89: after every strip, the words above a Save card must
@@ -614,7 +624,7 @@ class AgentRunner:
         bare = len(re.findall(r"[^\W\d_]{2,}", text)) < 3
         if bare or uncovered_items(text, items):
             _log.warning("agent.natural_fallback bare=%s", bare)
-            return covering_sentence(items, toolbox.user_text)
+            return covering_sentence(items, toolbox.user_text, toolbox.language)
         return text
 
     def _save_attached(self, toolbox: AgentToolbox) -> bool:
@@ -805,7 +815,7 @@ def _choice_line(toolbox: AgentToolbox) -> str | None:
         # Request 136: naming only the short ones told them to tap "Site B" while the
         # card asked between "Green Villa, Kakkanad" and "Site B" (28 Oct).
         return None
-    return _CHOOSE[_wording_language(toolbox.user_text)].format(options=" or ".join(options))
+    return _CHOOSE[toolbox.language].format(options=" or ".join(options))
 
 
 #: Request 136: the one sentence above a draft card, by what the card needs next.
@@ -848,11 +858,12 @@ TEMPLATE = "template"
 MODEL_FILTERED = "model_filtered"
 
 
-def card_sentence(draft: dr.MessageDraft, user_text: str) -> str:
-    """The sentence above a draft card, in the sender's language: tap Save; answer
-    the question (or tap its short answers); or both. Empty when nothing on the card
-    can be saved or answered (the card says what could not be read)."""
-    language = _wording_language(user_text)
+def card_sentence(draft: dr.MessageDraft, user_text: str, language: str | None = None) -> str:
+    """The sentence above a draft card, in the sender's language (the turn's, else
+    the message's): tap Save; answer the question (or tap its short answers); or both.
+    Empty when nothing on the card can be saved or answered (the card says what could
+    not be read)."""
+    language = language or language_of(user_text)
     waiting, ready = draft.waiting_items, draft.ready_items
     if waiting and not ready:
         options = list(waiting[0].options)
@@ -870,17 +881,7 @@ def _decided(toolbox: AgentToolbox, what: str, by: str) -> None:
     decided(toolbox.gateway, what, by)
 
 
-def _wording_language(user_text: str) -> str:
-    if re.search(r"[ഀ-ൿ]", user_text):
-        return "malayalam"
-    if re.search(r"[ऀ-ॿ]", user_text):
-        return "hindi"
-    if is_manglish(user_text):
-        return "manglish"
-    return "hinglish" if is_hinglish(user_text) else "english"
-
-
-def covering_sentence(summaries: list[str], user_text: str) -> str:
+def covering_sentence(summaries: list[str], user_text: str, language: str | None = None) -> str:
     # The card header says "To close:" / "Send to engineer:" already (request 104):
     # the sentence above it says it as words, not the same label twice.
     said = [
@@ -890,8 +891,7 @@ def covering_sentence(summaries: list[str], user_text: str) -> str:
     ]
     items = "; ".join(said)
     items = items[:1].upper() + items[1:]
-    language = _wording_language(user_text)
-    return _COVERING[language].format(items=items)
+    return _COVERING[language or language_of(user_text)].format(items=items)
 
 
 def _report_only(toolbox: AgentToolbox) -> ReplySpec | None:

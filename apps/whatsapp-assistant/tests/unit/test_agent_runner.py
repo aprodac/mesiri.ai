@@ -334,7 +334,10 @@ async def test_a_code_word_in_the_reply_is_never_sent():
         ("3 carpenters today", "English only"),
         ("slab-inu 20 bag cement use cheythu", "Manglish"),
         ("ഇന്ന് മഴയാണ്", "Malayalam script"),
-        ("👍", None),
+        # Request 143: a message with no words of its own takes their usual language.
+        ("👍", "Malayalam script"),
+        ("ok thanks", "Malayalam script"),
+        ("20", "Malayalam script"),
     ],
 )
 def test_the_reply_letters_follow_this_message_not_the_earlier_ones(message, rule):

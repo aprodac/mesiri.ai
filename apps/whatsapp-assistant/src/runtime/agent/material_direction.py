@@ -48,6 +48,39 @@ _MATERIAL_UNITS = re.compile(r"\b(?:bags?|kgs?|nos|pcs|pieces|loads?|cum|cft|ton
 #: Typical quantities, as the buttons of a "how many?" about a material.
 QUANTITY_GUESSES = ("10", "25", "50", "Other")
 DIRECTION_OPTIONS = ("Received", "Used")
+#: Request 143: the direction question can be cancelled; the code answers the tap.
+DIRECTION_CANCEL = "Cancel"
+_CANCEL_WORDS = re.compile(r"^\W*(?:cancel|venda+|vendaa|skip|nothing|onnum venda|വേണ്ട|रद्द)\W*$", re.IGNORECASE)
+
+
+#: Request 143 (E): words that ask for material to be ordered or sent.
+_ORDER = re.compile(
+    r"\border\w*|\bvenam\b|\bvenamm\b|\bvendi\b|\bvenum\b|\bneed(?:ed|s)?\b|\brequire\w*|\bsend\b|"
+    r"\bbhej\w*|\bchahiye\b|\bmangwa\w*|\bkondu ?var\w*|വേണം|ഓർഡർ|चाहिए|मंगवा",
+    re.IGNORECASE,
+)
+
+
+def is_material_order(text: str | None) -> bool:
+    """The message asks for material to be ordered or sent ("50 bag cement order
+    cheyyanam", "nale 20 rod steel venam")."""
+    from .toolbox import material_named
+
+    return bool(_ORDER.search(text or "")) and bool(material_named(text or ""))
+
+
+def asked_direction(reply: str | None) -> bool:
+    """The assistant's last reply was the direction question, in any language."""
+    from .wording import LINES
+
+    text = reply or ""
+    if asks_direction(text):
+        return True
+    return any(line.split("{what}")[-1].strip() in text for line in LINES["material.direction"].values())
+
+
+def is_cancel(text: str | None) -> bool:
+    return bool(_CANCEL_WORDS.match(text or ""))
 
 
 def default_options(question: str | None, user_text: str | None) -> tuple[str, ...]:

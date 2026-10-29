@@ -1199,6 +1199,16 @@ def is_module_disabled_reply(text: str) -> bool:
 _COMPANY_ADMIN_ROLES = frozenset({"ADMIN", "OWNER", "SUPER_ADMIN"})
 
 
+def module_disabled_line(module: str, role: str | None = None) -> tuple[str, dict[str, str]]:
+    """The module-disabled line as a ``runtime.agent.wording`` key and its values, so
+    it is worded in the sender's language (request 143); the module keeps the name
+    the app shows."""
+    name, pronoun = _MODULE_USER_NAMES.get(module, (module.capitalize(), "it"))
+    verb = "aren't" if pronoun == "them" else "isn't"
+    team = str(role or "").strip().upper() in _COMPANY_ADMIN_ROLES
+    return ("module.off.team" if team else "module.off.admin"), {"name": name, "verb": verb, "pronoun": pronoun}
+
+
 def render_module_disabled_reply(module: str, role: str | None = None) -> str:
     """A request for a module the company hasn't switched on (WA-07).
 

@@ -141,9 +141,11 @@ to ask their engineer. Call note_for_engineer ONLY when the user asks you to ask
 engineer ("engineer-inodu chodikku"): it only prepares a "Send to engineer" card, and the question \
 goes when they tap Send, so say what you will send and ask them to tap Send, never that it was \
 sent or passed on. If the tool says there is nobody to send it to, say that plainly.
-- A worker saying a material is running low or asking for more ("10 bag cement balance und, \
-kooduthal venam") is a material shortage: report_issue with their words, never a question \
-for the engineer. If the stock in the facts above disagrees with their count, say both \
+- Material to order or send ("50 bag cement order cheyyanam", "10 bag cement balance und, \
+kooduthal venam", "nale 20 rod steel venam", "need 2 loads sand") is request_material: a Send \
+card for their engineer, never report_issue and never a question for the engineer. Only \
+material that ran out and held work up ("cement theernnu, pani ninnu") is report_issue \
+(MATERIAL_SHORTAGE). If the stock in the facts above disagrees with their count, say both \
 figures plainly so they can check.
 - A question whether a material is in stock or will be enough ("nale 10 bag cement venam, \
 ath stock undo?", "nale slab-inu cement mathiyo?") is a stock question: query_materials and \
@@ -430,15 +432,19 @@ _LANGUAGE_RULES = {
 }
 
 
-def reply_letters_rule(user_text: str) -> str | None:
-    """WA-37 / request 89: the language and letters THIS message is in, decided
-    in code and said as a hard instruction rather than left to the model --
-    told only "the sender's language", it answered English with Manglish
-    (22 Oct) and Manglish and English with Malayalam script (21 Oct)."""
+def reply_letters_rule(user_text: str, usual: str | None = None) -> str | None:
+    """WA-37 / request 89: the language and letters of the reply, decided in code
+    and said as a hard instruction rather than left to the model -- told only "the
+    sender's language", it answered English with Manglish (22 Oct) and Manglish and
+    English with Malayalam script (21 Oct). Request 143: the turn's one decision
+    (``wording.decide``): a message with no words of its own ("ok thanks") takes the
+    sender's ``usual`` language instead of English."""
     if user_text.startswith(FOLLOW_UP_PREFIX):
         # WA-57: the system's own words, not theirs: their earlier language decides.
         return None
-    language = reply_language(user_text)
+    from .wording import decide
+
+    language = decide(user_text, usual) if usual else reply_language(user_text)
     if language is not None:
         return _LANGUAGE_RULES[language]
     if letters_of(user_text) == "latin":
@@ -452,7 +458,9 @@ def reply_letters_rule(user_text: str) -> str | None:
 def build_messages(ctx: AgentContext, user_text: str) -> list[tuple[str, str]]:
     """``(role, text)`` pairs: the context, then the last turns oldest first,
     then the new message. Roles are ``user`` and ``model``."""
-    rule = reply_letters_rule(user_text)
+    from .wording import usual_from
+
+    rule = reply_letters_rule(user_text, usual_from(ctx.last_language, ctx.last_script))
     if rule is not None:
         # The message decides; their earlier language only matters for one
         # with no words of its own.

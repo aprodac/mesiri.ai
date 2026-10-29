@@ -38,14 +38,15 @@ from mesiri_contracts.assistant.v2.planner_decision import PlannerDecisionV2
 from runtime.day_facts import PROGRESS_UPDATE
 from workflows import WorkflowRunStatus
 
+from . import checks, draft_site
 from . import draft as dr
-from . import draft_site
 from .cards import SAVED as CARD_SAVED
 from .cards import CardItem, merge_changes, new_card
 from .entry_base import Ready, Say, tool_understanding
 from .gateway import StepResult
 from .save_button import SAVED_DONE, fact_of
 from .tools import ScopeLookup, to_candidate
+from .wording import say
 
 _log = logging.getLogger("mesiri.agent")
 
@@ -287,10 +288,10 @@ async def add(gw: Any, candidate: Any, *, text: str) -> StepResult:
             if prepared.question
             else None
         )
-        return StepResult(prepared.status, text=prepared.text, reply=reply, awaiting=prepared.awaiting)
+        return prepared.step(reply)
 
     draft = await load(gw)
-    item = _item_for(gw, tool, args, prepared)
+    item = await _checked(gw, _item_for(gw, tool, args, prepared))
     if item.state == dr.UNREADABLE:
         await _add_item(gw, item, source=message.message_id)
         return StepResult("error", text=f"Couldn't read it: {item.label}. Nothing was added to the card.")
@@ -314,7 +315,7 @@ async def add(gw: Any, candidate: Any, *, text: str) -> StepResult:
             else None
         )
         if isinstance(redone, Ready):
-            item = _item_for(gw, tool, merged, redone)
+            item = await _checked(gw, _item_for(gw, tool, merged, redone))
             draft.items[draft.items.index(old)] = item
             gw.draft_new.append(item.id)
             _keep(gw, draft)
@@ -335,6 +336,47 @@ async def add(gw: Any, candidate: Any, *, text: str) -> StepResult:
             return StepResult("error", text=TOO_MANY)
     await _add_item(gw, item, source=message.message_id)
     return _drafted(item, prepared, note=await _pending_note(gw))
+
+
+#: The kinds of line the check layer judges (request 143, D).
+_CHECKED = frozenset({dr.KIND_LABOUR, dr.KIND_WORK, dr.KIND_MATERIAL_OUT})
+
+
+async def _checked(gw: Any, item: dr.DraftItem) -> dr.DraftItem:
+    """Request 143 (D): an odd figure is asked about on the card before it can be
+    saved ("500 workers? This site usually has about 12." [Yes, it's right] [Change]).
+    The check is pure (``checks.doubt``); the site's history comes from Day Facts.
+    A failed history read never stops the line."""
+    if item.state != dr.OK or item.kind not in _CHECKED:
+        return item
+    fields = ((item.ready or {}).get("event") or {}).get("fields") or {}
+    history = None
+    reader = getattr(gw, "day_facts", None)
+    if item.site_id and hasattr(reader, "site_history"):
+        day = _day_of_fields(fields) or _today(gw)
+        try:
+            history = await reader.site_history(
+                organization_id=str(getattr(gw.actor, "organization_id", "")), site_id=item.site_id, day=day
+            )
+        except Exception:  # noqa: BLE001 -- unchecked, as before
+            _log.warning("draft.check_history_failed site=%s", item.site_id, exc_info=True)
+    found = checks.doubt(item.kind, item.args, fields, history)
+    if found is None:
+        return item
+    item.state = dr.NEEDS_ANSWER
+    item.question = say(found.key, getattr(gw, "wording_language", "english"), **found.values)
+    item.options = list(checks.OPTIONS)
+    decided(gw, "check", found.key, item.kind)
+    return item
+
+
+def _day_of_fields(fields: dict[str, Any]) -> Any:
+    import datetime as dt
+
+    try:
+        return dt.date.fromisoformat(str(fields.get("occurred_date") or "")[:10])
+    except ValueError:
+        return None
 
 
 #: Request 136 (C): a line made from a save tool call (the model's extraction, or the
@@ -541,7 +583,7 @@ async def _prepare_changed(gw: Any, tool: str, merged: dict[str, Any], candidate
             if prepared.question
             else None
         )
-        return StepResult(prepared.status, text=prepared.text, reply=reply, awaiting=prepared.awaiting)
+        return prepared.step(reply)
     return prepared
 
 
@@ -672,11 +714,50 @@ async def cancel(gw: Any, draft: dr.MessageDraft) -> ReplySpec:
 
 async def answer(gw: Any, draft: dr.MessageDraft, item_id: str, choice: int) -> ReplySpec:
     item = draft.item(item_id)
+    if item is not None and checks.asking(item) and 0 <= choice < len(item.options):
+        return await _answer_check(gw, draft, item, right=item.options[choice] == checks.RIGHT)
     if item is not None and item.pending_answer and 0 <= choice < len(item.options):
         return await _answer_waiting(gw, draft, item, item.options[choice])
     if item is None or not dr.apply_answer(item, choice, today=_today(gw)):
         return ReplySpec(text=dr.ALREADY_DONE)
     await gw.drafts.put(draft)
+    return dr.card_reply(draft, site=_card_site(gw, draft))
+
+
+async def _answer_check(gw: Any, draft: dr.MessageDraft, item: dr.DraftItem, *, right: bool) -> ReplySpec:
+    """The answer to a check question (request 143, D): right -> the line is ready;
+    Change -> it is off the card and they send the right figure."""
+    site = _card_site(gw, draft)
+    if right:
+        item.state, item.question, item.options = dr.OK, "", []
+        await _persist(gw, draft)
+        return dr.card_reply(draft, site=site)
+    draft.items.remove(item)
+    words = say("check.change", getattr(gw, "wording_language", "english"), line=item.line)
+    if draft.live:
+        await _persist(gw, draft)
+        return dr.card_reply(draft, words, site=site)
+    await gw.drafts.discard(draft.id)
+    return ReplySpec(text=words)
+
+
+async def _typed_check(gw: Any, draft: dr.MessageDraft, text: str) -> ReplySpec | None:
+    """A typed answer to a check question: "yes" / "sheri" settles it, a figure
+    ("50") replaces the one asked about. None when it is neither."""
+    item = next((i for i in draft.items if checks.asking(i)), None)
+    if item is None:
+        return None
+    if checks.says_right(text):
+        return await _answer_check(gw, draft, item, right=True)
+    from . import draft_answer
+
+    figure = draft_answer._number(text.strip())
+    args = checks.with_figure(item, float(figure)) if figure is not None else None
+    if args is None:
+        return None
+    new = await _checked(gw, await _prepare_line(gw, item, args))
+    draft.items[draft.items.index(item)] = new
+    await _persist(gw, draft)
     return dr.card_reply(draft, site=_card_site(gw, draft))
 
 
@@ -812,6 +893,8 @@ async def answer_typed(gw: Any, draft: dr.MessageDraft, text: str) -> ReplySpec 
     (then the model reads it as usual)."""
     from . import draft_answer
 
+    if (checked := await _typed_check(gw, draft, text)) is not None:
+        return checked
     where = next((i for i in draft.items if i.needs_site), None)
     if where is not None:
         picked = draft_answer.site_answer(gw.actor, text, where.options)
@@ -1095,7 +1178,12 @@ async def save(gw: Any, draft: dr.MessageDraft) -> ReplySpec:
         "draft.saved draft=%s written=%s actions=%s left=%s unreadable=%s",
         draft.id, len(saved), len(actions), len(waiting), len(gone),
     )
-    lines = [step.summary or item.summary for item, step in saved]
+    # Request 143 (E): a labour line keeps the card's day total ("6 workers (6 helper) · day total 13
+    # workers"); the saved record's own summary does not know the day's other lines.
+    lines = [
+        (item.summary if item.kind == dr.KIND_LABOUR and item.summary else step.summary or item.summary)
+        for item, step in saved
+    ]
     notes = [n for n in (_note(step) for _item, step in saved) if n]
     await _remember_saved(gw, saved, fact_of_item)
     ran: list[str] = []

@@ -98,7 +98,7 @@ async def test_save_closes_exactly_that_issue_through_the_shared_dispatcher():
     fields = confirmed.draft_action.fields
     assert fields == {"site_issue_id": CRANE["id"], "action": "resolve"}
     assert confirmed.draft_action.action_type.value == "close_site_issue"
-    assert reply.text == "✅ Closed: Crane breakdown (since 20 Oct)."
+    assert reply.text == "✅ Closed: Crane breakdown (since 20 Oct)"
 
 
 async def test_cancel_closes_nothing():

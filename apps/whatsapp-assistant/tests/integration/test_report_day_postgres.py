@@ -85,3 +85,57 @@ async def test_an_entry_after_midnight_ist_is_on_the_ist_day_of_the_report():
         async with db.transaction() as conn:
             await conn.execute(text("DELETE FROM organizations WHERE id = :o"), {"o": org})
         await db.disconnect()
+
+
+async def test_the_site_history_the_check_layer_reads():
+    """Request 143 (D): the usual day's workers (median of the days with a count,
+    voided reports left out) and the newest saved percent of each work."""
+    from runtime.day_facts import work_key
+
+    db = PostgresDatabase(Settings().postgres)
+    await db.connect()
+    async with db.transaction() as conn:
+        created = await create_company(
+            conn,
+            NewCompany(
+                name=f"Site history {uuid.uuid4().hex[:6]}",
+                owner_name="Owner",
+                owner_phone=f"9198{uuid.uuid4().int % 10**8:08d}",
+                project_name="Green Villa",
+                site_names=("Kakkanad",),
+            ),
+            now=dt.datetime(2026, 10, 20, 6, tzinfo=dt.UTC),
+        )
+        org, project, site = created.organization_id, created.project_id, created.sites[0].site_id
+        for day, workers, voided in ((20, 10, False), (21, 12, False), (22, 14, False), (23, 400, True)):
+            report = uuid.uuid4()
+            await conn.execute(
+                text(
+                    "INSERT INTO labour_attendance_reports (id, organization_id, project_id, site_id, occurred_date,"
+                    " recorded_via, created_by, voided_at) VALUES (:id, :org, :p, :s, :d, 'whatsapp_text', :u, :v)"
+                ),
+                {"id": report, "org": org, "p": project, "s": site, "d": dt.date(2026, 10, day),
+                 "u": created.owner_user_id, "v": dt.datetime(2026, 10, 23, tzinfo=dt.UTC) if voided else None},
+            )
+            await conn.execute(
+                text("INSERT INTO labour_attendance_lines (id, report_id, trade, headcount) VALUES (:id, :r, 'mason', :n)"),
+                {"id": uuid.uuid4(), "r": report, "n": workers},
+            )
+        await conn.execute(
+            text(
+                "INSERT INTO activities (id, organization_id, project_id, site_id, activity_date, work_type, narrative)"
+                " VALUES (:id, :org, :p, :s, :d, 'tiling', 'Tiling, ground floor: 88%')"
+            ),
+            {"id": uuid.uuid4(), "org": org, "p": project, "s": site, "d": dt.date(2026, 10, 28)},
+        )
+    try:
+        history = await DayFacts(db).for_turn().site_history(
+            organization_id=org, site_id=site, day=dt.date(2026, 10, 29)
+        )
+        assert history.labour_days == (14, 12, 10)  # newest first; the voided 400 is not a day
+        assert history.usual_workers == 12
+        assert history.percents[work_key("tiling", "ground floor")][0] == 88.0
+    finally:
+        async with db.transaction() as conn:
+            await conn.execute(text("DELETE FROM organizations WHERE id = :o"), {"o": org})
+        await db.disconnect()

@@ -270,7 +270,7 @@ async def test_mat08_a_material_question_without_options_gets_buttons():
     assert [r.title for r in box.parked.list_rows] == ["10", "25", "50", "Other"]
     box, _ = _box(user_text="50 bags cement")
     await box.handle("ask_user", {"question": "Received or used?"})
-    assert [b.title for b in box.parked.buttons] == ["Received", "Used"]
+    assert [b.title for b in box.parked.buttons] == ["Received", "Used", "Cancel"]
     # the model's own options are kept; a question that is not about material gets none
     box, _ = _box(user_text="cement vannu")
     await box.handle("ask_user", {"question": "How many?", "options": ["5", "6"]})

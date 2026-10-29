@@ -187,6 +187,9 @@ class JourneyGateway:
     followups: FollowupsFn
     held_prompt: HeldPromptFn
     language: str | None = None
+    #: Request 143: the language the code words its lines in this turn (``wording``):
+    #: the runner's decision for a message, the sender's usual one for a tap.
+    wording_language: str = "english"
     handled: list[Any] = field(default_factory=list)
     #: WEB-38: the lookups this turn answered, as (workflow instance, project,
     #: site), so the message log ties the question to what answered it (the
@@ -586,7 +589,7 @@ class JourneyGateway:
                 if prepared.question
                 else None
             )
-            return StepResult(prepared.status, text=prepared.text, reply=reply, awaiting=prepared.awaiting)
+            return prepared.step(reply)
         prepared_list = prepared if isinstance(prepared, list) else [prepared]
         tool = self.current_call[0] if self.current_call else prepared_list[0].kind
         args = dict(self.current_call[1]) if self.current_call else {}
@@ -655,9 +658,7 @@ class JourneyGateway:
             from .toolbox import question_reply
 
             reply = question_reply(prepared.question, list(prepared.options), awaiting=prepared.awaiting) if prepared.question else None
-            return StepResult(
-                prepared.status, text=prepared.text, reply=reply, awaiting=prepared.awaiting, documents=prepared.documents
-            )
+            return prepared.step(reply)
         run = await self.start_workflow(prepared.decision, prepared.event)
         _log.info("agent.direct correlation_id=%s kind=%s route=direct", message.correlation_id, kind)
         journey = SimpleNamespace(workflow_run=run, planner_decision=prepared.decision)
