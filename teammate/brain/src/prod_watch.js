@@ -126,6 +126,46 @@ export function conversations(rows, flagged, reported = new Set()) {
 
 const clockIst = (epoch) => new Date(Number(epoch) * 1000 + 5.5 * 3600_000).toISOString().slice(11, 16);
 
+const esc = (t) => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+/** WhatsApp *bold* and _italic_, on escaped text. */
+const formatted = (t) => esc(t).replace(/\*([^*\n]+)\*/g, "<b>$1</b>").replace(/(^|\s)_([^_\n]+)_/g, "$1<i>$2</i>").replace(/\n/g, "<br>");
+
+/**
+ * One flagged conversation as a WhatsApp-style chat (TM-16: the report shows the chat, not a retelling of it),
+ * drawn from the production rows themselves: the user's words on the right, Mesiri's reply on the left, the time,
+ * and the flags under the message they belong to. Self-contained HTML (inline CSS), no phone number.
+ */
+export function chatHtml(conv) {
+  const bubbles = conv.messages.flatMap((m) => {
+    const out = [];
+    const flags = conv.flags.get(m.correlation_id);
+    const time = clockIst(m.at);
+    if (m.text || m.kind) {
+      const said = m.text ? formatted(m.text) : `<i>(${esc(m.kind)})</i>`;
+      out.push(`<div class="b u">${said}<span class="t">${time}</span></div>`);
+    }
+    if (m.reply) {
+      const took = Number(m.done_at) - Number(m.at);
+      const t = Number.isFinite(took) ? `${clockIst(m.done_at)} · ${Math.round(took)}s` : time;
+      out.push(`<div class="b m">${formatted(m.reply)}<span class="t">${t}</span></div>`);
+    } else if (m.status && m.status !== "completed") {
+      out.push(`<div class="b m none"><i>(no reply · ${esc(m.status)}${m.error_code ? ` · ${esc(m.error_code)}` : ""})</i></div>`);
+    }
+    if (flags) out.push(`<div class="flag">⚑ ${esc(flags.map((f) => f.why).join(" · "))}</div>`);
+    return out;
+  });
+  const who = `${esc(conv.person || "Someone")}${conv.role ? ` (${esc(conv.role)})` : ""} · ${esc(conv.company || "")}`;
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box}body{margin:0;background:#efeae2;font-family:-apple-system,'Segoe UI',Roboto,'Noto Sans','Noto Sans Malayalam','Noto Sans Devanagari',sans-serif;font-size:15px;color:#111b21}
+.top{background:#008069;color:#fff;padding:12px 14px;font-weight:600}.top small{display:block;font-weight:400;opacity:.85;font-size:12px}
+.chat{padding:12px 10px 16px;display:flex;flex-direction:column;gap:6px}
+.b{max-width:82%;padding:7px 9px 18px;border-radius:8px;position:relative;line-height:1.35;word-wrap:break-word;box-shadow:0 1px .5px rgba(0,0,0,.13)}
+.u{align-self:flex-end;background:#d9fdd3}.m{align-self:flex-start;background:#fff}.none{color:#667781}
+.t{position:absolute;right:8px;bottom:3px;font-size:11px;color:#667781}
+.flag{align-self:center;background:#fff3cd;color:#7a4d00;border-radius:6px;padding:3px 8px;font-size:12px}
+</style></head><body><div class="top">Mesiri · ${who}<small>Production · IST</small></div><div class="chat">${bubbles.join("")}</div></body></html>`;
+}
+
 /** The planning turn's text: the conversations, then what to do with them. */
 export function watchPrompt(project, convs, { minutes }) {
   const blocks = convs.map((c, i) => {
@@ -162,7 +202,9 @@ export function watchPrompt(project, convs, { minutes }) {
     "   apps/whatsapp-assistant/release_notes.json (see src/runtime/release_notes.py) with id, date = the deploy day,",
     "   for = the correlation ids of their messages (shown below in full), and message = one or two lines in THEIR",
     "   language and letters: what they asked for works now, and exactly what to send to try it.",
-    "5. Then post ONE short report in this team group: for each plan, its number, WHO hit it (the person's name, role",
+    "5. For each plan, first post the chat itself: call post_watch_chat with its conversation number and a caption",
+    "   (\"[n] <who> · <what they hit>\"). It draws the real production messages; never retype or retell them.",
+    "6. Then post ONE short report in this team group: for each plan, its number, WHO hit it (the person's name, role",
     "   and company, and the time; never a phone number), what they tried and got, the root cause in plain words, and",
     "   how big the fix is. End with \"Reply @bot ok <n> to build it.\" WhatsApp formatting (*bold*), no tables.",
     `If nothing is really wrong, answer with exactly ${QUIET} and nothing else; then nothing is posted.`,
@@ -236,7 +278,7 @@ export class ProdWatch {
       s.reported = [...reported].slice(-2000);
       writeFileSync(this.file, JSON.stringify(state));
       this.log(`prod-watch ${project}: ${fresh.length} new message(s), ${convs.length} flagged conversation(s)`);
-      if (convs.length) await this.ask(project, watchPrompt(project, convs, { minutes: this.minutes }));
+      if (convs.length) await this.ask(project, watchPrompt(project, convs, { minutes: this.minutes }), convs);
     }
   }
 }

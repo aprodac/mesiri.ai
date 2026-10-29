@@ -652,3 +652,22 @@ test("brain: the production watch (TM-16) reports in the team group's watch conv
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("brain: post_watch_chat exists only in a production-watch turn, and draws the conversation it is given", async () => {
+  const rendered = [];
+  const sent = [];
+  const render = { html: async (html, width) => (rendered.push({ html, width }), Buffer.from("PNG")) };
+  const listener = { send: async (b) => sent.push(b) };
+  const conv = { person: "Ilan", role: "ADMIN", company: "Acme", messages: [{ correlation_id: "c1", at: 1761700000, done_at: 1761700008, text: "list photo", reply: "kazhiyilla" }], flags: new Map() };
+  const names = (t) => t.instance._registeredTools ? Object.keys(t.instance._registeredTools) : [];
+  const plain = brainTools({ ctx: { project: "mesiri", reply_chat: "T@g.us" }, listener, render, plans: {}, screenshotHosts: [] });
+  const watch = brainTools({ ctx: { project: "mesiri", reply_chat: "T@g.us", watch_conversations: [conv] }, listener, render, plans: {}, screenshotHosts: [] });
+  assert.ok(!names(plain).includes("post_watch_chat"));
+  assert.ok(names(watch).includes("post_watch_chat"));
+  const out = await watch.instance._registeredTools.post_watch_chat.handler({ conversation: 1, caption: "[7] Ilan · photo" }, {});
+  assert.ok(!out.isError, JSON.stringify(out));
+  assert.match(rendered[0].html, /Mesiri · Ilan \(ADMIN\) · Acme/);
+  assert.equal(sent[0].chat, "T@g.us");
+  const missing = await watch.instance._registeredTools.post_watch_chat.handler({ conversation: 2, caption: "x" }, {});
+  assert.ok(missing.isError);
+});

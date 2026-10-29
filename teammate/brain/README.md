@@ -102,3 +102,7 @@ The report names who hit it (name, role, company; never a phone number). A reply
 treated as a missing feature, and every plan ends with a release note in the Mesiri repo
 (`apps/whatsapp-assistant/release_notes.json`): after the deploy, Mesiri's scheduler tells each person who hit it,
 once and inside the 24-hour window, that it works now and what to send to try it (`runtime/release_notes.py`).
+
+Each reported plan comes with a picture of the conversation itself (`post_watch_chat`): a WhatsApp-style chat drawn
+from the production rows the watch read (the user's words, Mesiri's replies, times, reply delays, the flags), titled
+with the person and company and never a phone number. Claude names the conversation; it never retypes it.

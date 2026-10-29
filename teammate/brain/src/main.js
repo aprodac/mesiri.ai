@@ -308,7 +308,7 @@ const opsByProject = opsSources(process.env, Object.keys(projects));
 if (prodWatchMinutes > 0 && Object.keys(opsByProject).length) {
   const prodWatch = new ProdWatch({
     sources: opsByProject,
-    ask: (project, text) => brain.askWatch(project, text, QUIET),
+    ask: (project, text, conversations) => brain.askWatch(project, text, QUIET, conversations),
     file: join(dir, "prod-watch.json"),
     log,
     minutes: prodWatchMinutes,

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { ProdWatch, QUIET, MAX_CONVERSATIONS, asObjects, conversations, flagRows, opsSources, watchPrompt, watchSql } from "../src/prod_watch.js";
+import { ProdWatch, QUIET, MAX_CONVERSATIONS, asObjects, chatHtml, conversations, flagRows, opsSources, watchPrompt, watchSql } from "../src/prod_watch.js";
 
 const T0 = 1_761_700_000; // epoch seconds
 const msg = (over) => ({
@@ -185,4 +185,39 @@ test("the report names who hit it, and every plan tells them when it is live", (
 test("the SQL names the sender from users, inside the company", () => {
   const sql = watchSql(T0);
   assert.match(sql, /LEFT JOIN LATERAL \(SELECT u\.full_name, u\.role FROM users u WHERE u\.organization_id = m\.organization_id/);
+});
+
+test("the chat picture is the real conversation: both sides, the flag, escaped, no phone number", () => {
+  const rows = [
+    msg({ person: "Ilan", person_role: "ADMIN", text: "list <b>photo</b> ayakku", reply: "Photo ayakkan Mesiri-kku *kazhiyilla*." }),
+    msg({ at: T0 + 30, status: "failed", error_code: "AI_TIMEOUT", reply: null, text: "veendum" }),
+  ];
+  const [c] = conversations(rows, flagRows(rows));
+  const html = chatHtml(c);
+  assert.match(html, /Mesiri · Ilan \(ADMIN\) · Acme/);
+  assert.match(html, /list &lt;b&gt;photo&lt;\/b&gt; ayakku/); // their words, escaped
+  assert.match(html, /Photo ayakkan Mesiri-kku <b>kazhiyilla<\/b>/); // WhatsApp *bold*
+  assert.match(html, /no reply · failed · AI_TIMEOUT/);
+  assert.match(html, /⚑ the reply says it can't do that/);
+  assert.doesNotMatch(html, /3210/); // not even the last 4 digits
+  assert.doesNotMatch(html, /<script/i);
+});
+
+test("the prompt asks for the chat picture before each plan's report", () => {
+  const rows = [msg({ reply: "Photo ayakkan Mesiri-kku kazhiyilla." })];
+  assert.match(watchPrompt("mesiri", conversations(rows, flagRows(rows)), { minutes: 5 }), /post_watch_chat/);
+});
+
+test("a tick hands the conversations themselves to the turn, for the picture", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pw-"));
+  try {
+    const { fetchFn } = fakeOps([[msg({ at: T0 + 10, reply: "Photo ayakkan Mesiri-kku kazhiyilla." })]]);
+    let handed = null;
+    const watch = new ProdWatch({ sources: { mesiri: { url: "u", token: "t" } }, ask: async (p, text, convs) => (handed = convs), file: join(dir, "s.json"), fetchFn, now: () => (T0 - 60) * 1000 });
+    await watch.tick();
+    assert.equal(handed.length, 1);
+    assert.equal(handed[0].messages[0].reply, "Photo ayakkan Mesiri-kku kazhiyilla.");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

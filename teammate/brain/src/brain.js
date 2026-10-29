@@ -627,7 +627,7 @@ export class Brain {
    * The production watch (TM-16, prod_watch.js) found something: one planning turn on it in the project's team group,
    * in a separate "watch" conversation. Posts nothing when Claude answers the quiet word.
    */
-  async askWatch(project, text, quiet) {
+  async askWatch(project, text, quiet, conversations = []) {
     let team;
     try {
       team = ((await this.listener.chats(project)).chats || []).find((c) => c.role === "team" && c.project === project);
@@ -644,7 +644,7 @@ export class Brain {
     } catch (e) {
       this.log(`brain: prod-watch prepare ${project}: ${e.message}`);
     }
-    const req = { project, reply_project: project, chat: team.jid, chat_name: team.name || project, chat_role: "team", reply_chat: team.jid, sender: "the production watch", n: null, text, session: "watch", quiet };
+    const req = { project, reply_project: project, chat: team.jid, chat_name: team.name || project, chat_role: "team", reply_chat: team.jid, sender: "the production watch", n: null, text, session: "watch", quiet, watch_conversations: conversations };
     return this.enqueue(`${team.jid}::watch`, () => this.turn(req, "planning"));
   }
 
@@ -693,7 +693,7 @@ export class Brain {
     const header = `[WhatsApp · ${where} · #${req.n ?? "-"} · from ${req.sender}]`;
     const quoted = req.quoted_text ? `\nReplying to: "${String(req.quoted_text).slice(0, 1500)}"` : "";
     const prompt = `${header}${quoted}\n${req.text}`;
-    const ctx = { project: req.project, chat_project: req.reply_project || req.project, chat: req.chat, chat_name: req.chat_name, reply_chat: req.reply_chat, sender: req.sender, session: req.session, ...(req.auto ? { auto_cycle: req.auto_cycle, auto_report: req.auto_report, auto_attention: req.auto_attention } : {}) };
+    const ctx = { project: req.project, chat_project: req.reply_project || req.project, chat: req.chat, chat_name: req.chat_name, reply_chat: req.reply_chat, sender: req.sender, session: req.session, ...(req.watch_conversations?.length ? { watch_conversations: req.watch_conversations } : {}), ...(req.auto ? { auto_cycle: req.auto_cycle, auto_report: req.auto_report, auto_attention: req.auto_attention } : {}) };
     // What the auto loop needs to know about how the turn ended.
     const outcome = { ok: false, limit: null, budget: false, denied: [], error: null };
     let limitSeen = null;

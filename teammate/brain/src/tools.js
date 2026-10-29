@@ -14,6 +14,7 @@
 
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
+import { chatHtml } from "./prod_watch.js";
 
 const MAX_TEXT = 3800;
 // test_assistant: how long to wait for the assistant, and how long a quiet gap means it has finished.
@@ -129,6 +130,24 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
         return image(await render.html(html, width || 1280), caption);
       },
     ),
+    ...(ctx.watch_conversations?.length
+      ? [
+          tool(
+            "post_watch_chat",
+            "Production watch (TM-16): post one flagged conversation to the team group as a WhatsApp-style picture of the real production messages (the user's words, Mesiri's replies, times, the flags). Use it once per reported plan, before the report, with that plan's conversation number.",
+            {
+              conversation: z.number().int().min(1).describe("The conversation number from the watch message (Conversation 1, 2, ...)"),
+              caption: z.string().max(1000).describe("[plan n] who · what they hit, e.g. '[7] Ilan (ADMIN) · attendance photo: \"can't send photos\"'"),
+            },
+            async ({ conversation, caption }) => {
+              const conv = ctx.watch_conversations[conversation - 1];
+              if (!conv) return fail(`There is no conversation ${conversation}; this watch has ${ctx.watch_conversations.length}.`);
+              if (!render) return fail("Pictures aren't available on this server (no browser installed); quote the messages in the report instead.");
+              return image(await render.html(chatHtml(conv), 430), caption);
+            },
+          ),
+        ]
+      : []),
     tool(
       "screenshot_url",
       `Screenshot a page of the dev / staging site and post it to the team group. Allowed hosts: ${screenshotHosts.join(", ") || "(none configured)"}.`,
@@ -381,4 +400,4 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
   return createSdkMcpServer({ name: "whatsapp", version: "1.0.0", tools });
 }
 
-export const BRAIN_TOOL_NAMES = ["post_message", "post_image", "preview_html", "screenshot_url", "view_media", "translate_message", "propose_plan", "test_assistant", "tell_ilan_usman", "needs_attention", "cycle_report", "status_of_work", "tell_job"].map((t) => `mcp__whatsapp__${t}`);
+export const BRAIN_TOOL_NAMES = ["post_message", "post_image", "preview_html", "post_watch_chat", "screenshot_url", "view_media", "translate_message", "propose_plan", "test_assistant", "tell_ilan_usman", "needs_attention", "cycle_report", "status_of_work", "tell_job"].map((t) => `mcp__whatsapp__${t}`);
