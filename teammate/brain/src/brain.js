@@ -623,6 +623,31 @@ export class Brain {
     }
   }
 
+  /**
+   * The production watch (TM-16, prod_watch.js) found something: one planning turn on it in the project's team group,
+   * in a separate "watch" conversation. Posts nothing when Claude answers the quiet word.
+   */
+  async askWatch(project, text, quiet) {
+    let team;
+    try {
+      team = ((await this.listener.chats(project)).chats || []).find((c) => c.role === "team" && c.project === project);
+    } catch (e) {
+      this.log(`brain: prod-watch ${project}: couldn't list chats: ${e.message}`);
+      return;
+    }
+    if (!team) {
+      this.log(`brain: prod-watch ${project}: no team group to report in`);
+      return;
+    }
+    try {
+      this.prepare(this.projects[project]);
+    } catch (e) {
+      this.log(`brain: prod-watch prepare ${project}: ${e.message}`);
+    }
+    const req = { project, reply_project: project, chat: team.jid, chat_name: team.name || project, chat_role: "team", reply_chat: team.jid, sender: "the production watch", n: null, text, session: "watch", quiet };
+    return this.enqueue(`${team.jid}::watch`, () => this.turn(req, "planning"));
+  }
+
   enqueue(key, fn) {
     const prev = this.queues.get(key) || Promise.resolve();
     const next = prev.then(fn).catch((e) => this.log(`brain: turn failed: ${e.stack || e}`));
@@ -754,7 +779,9 @@ export class Brain {
     } else {
       outcome.ok = true;
       this.log(`brain: ${req.chat_name} ${mode} done in ${Math.round(result.duration_ms / 1000)}s ($${result.total_cost_usd?.toFixed(3)})`);
-      for (const part of chunk(result.result)) await say(part);
+      // A turn that may have nothing to say (the production watch, TM-15) answers its quiet word: nothing is posted.
+      if (req.quiet && String(result.result || "").trim() === req.quiet) this.log(`brain: ${req.chat_name}: nothing to report`);
+      else for (const part of chunk(result.result)) await say(part);
     }
     // Anything the permission rules refused: tell the owner, so nothing fails silently.
     // Planning is read-only by design, so refusals there are expected and only logged.

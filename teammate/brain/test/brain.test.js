@@ -636,3 +636,19 @@ test("tools (TM-12): tell_ilan_usman fires the partner with a peer-report header
   const broken = await make(async () => Promise.reject(new Error("HTTP 401")))({ text: "B-1: anything at all" });
   assert.match(broken.content[0].text, /HTTP 401/);
 });
+
+test("brain: the production watch (TM-16) reports in the team group's watch conversation, and its quiet word posts nothing", async () => {
+  const replies = ["NOTHING_TO_REPORT", "🔎 *1 problem* ... Reply @bot ok 3 to build it."];
+  const { dir, calls, sent, brain } = setup((p, id) => ok(replies.shift(), id));
+  brain.listener.chats = async () => ({ chats: [{ jid: "T@g.us", name: "PROJECT MERCON", role: "team", project: "mercon" }, { jid: "C@g.us", role: "customer", project: "mercon" }] });
+  try {
+    await brain.askWatch("mercon", "Production watch (TM-16) for mercon: ...", "NOTHING_TO_REPORT");
+    assert.deepEqual(sent, []); // nothing real: nothing posted
+    await brain.askWatch("mercon", "Production watch (TM-16) for mercon: ...", "NOTHING_TO_REPORT");
+    assert.deepEqual(sent.map((s) => [s.chat, s.text.slice(0, 15)]), [["T@g.us", "🔎 *1 problem* "]]); // the team group, never a customer one
+    assert.ok(!calls[0].options.allowedTools.includes("Edit")); // a planning turn: reads, plans, changes nothing
+    assert.ok(JSON.parse(readFileSync(join(dir, "sessions.json"), "utf8")).ids["T@g.us::watch"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

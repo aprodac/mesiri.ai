@@ -36,6 +36,7 @@ import { Accounts, parseAccounts } from "./accounts.js";
 import { brainTools } from "./tools.js";
 import { createRenderer } from "./render.js";
 import { commitPatterns, formatWorkStatus } from "./work_status.js";
+import { ProdWatch, QUIET, opsSources } from "./prod_watch.js";
 
 const log = (m) => console.log(`[brain] ${m}`);
 const token = process.env.TEAMMATE_API_TOKEN || "";
@@ -254,7 +255,7 @@ const brain = new Brain({
   // What Claude Code (and anything it runs) sees: never the dev-site password, a routine token, or a Claude
   // login; the brain adds only the login of the account each turn runs on (TM-14).
   env: {
-    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^TEAMMATE_(DEV_LOGIN|ROUTINE|PARTNER|GITHUB_TOKEN)_|^CLAUDE_CODE_OAUTH_TOKEN/.test(k))),
+    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^TEAMMATE_(DEV_LOGIN|ROUTINE|PARTNER|GITHUB_TOKEN|OPS)_|^CLAUDE_CODE_OAUTH_TOKEN|^MESIRI_CLAUDE_OPS/.test(k))),
     TEAMMATE_TOKEN: token,
     TEAMMATE_API: api,
   },
@@ -298,6 +299,23 @@ if (boardMinutes > 0) {
   setTimeout(check, 120_000); // after start-up settles
   setInterval(check, boardMinutes * 60_000);
   log(`board: every ${boardMinutes} min; partner ${Object.keys(projects).filter((p) => accounts.list.some((a) => a.partners[p])).join(", ") || "none"}`);
+}
+// TM-16: the production watch. Per project TEAMMATE_OPS_<PROJECT>_URL / _TOKEN (read-only ops API, kept out of
+// Claude's environment); TEAMMATE_PROD_WATCH_MINUTES, default 30, 0 = off.
+const prodWatchMinutes = Number(process.env.TEAMMATE_PROD_WATCH_MINUTES ?? 30);
+const opsByProject = opsSources(process.env, Object.keys(projects));
+if (prodWatchMinutes > 0 && Object.keys(opsByProject).length) {
+  const prodWatch = new ProdWatch({
+    sources: opsByProject,
+    ask: (project, text) => brain.askWatch(project, text, QUIET),
+    file: join(dir, "prod-watch.json"),
+    log,
+    minutes: prodWatchMinutes,
+  });
+  const look = () => prodWatch.tick().catch((e) => log(`prod-watch: ${e.message}`));
+  setTimeout(look, 240_000);
+  setInterval(look, prodWatchMinutes * 60_000);
+  log(`prod-watch: every ${prodWatchMinutes} min; ${Object.keys(opsByProject).join(", ")}`);
 }
 // Request 139: the watchdog over cloud jobs (commits, deploys, silence); TEAMMATE_WATCH_MINUTES, default 10, 0 = off.
 const watchMinutes = Number(process.env.TEAMMATE_WATCH_MINUTES ?? 10);

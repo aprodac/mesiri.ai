@@ -82,3 +82,18 @@ A systemd service (`../deploy/teammate-brain.service`) as its own user, writing 
 ```bash
 cd teammate/brain && npm install && npm test     # fake Claude, no tokens needed
 ```
+
+## Production watch (TM-16)
+
+Every `TEAMMATE_PROD_WATCH_MINUTES` (30; 0 = off) the brain reads the newest production messages of each project
+that has `TEAMMATE_OPS_<PROJECT>_URL` / `_TOKEN` (Mesiri: the read-only `/claude-ops/sql` API, one audited SELECT).
+Plain code flags messages: failed or stuck, a reply slower than 15 s, a reply that admits a dead end, the same
+question twice, the user resending or pushing back (`src/prod_watch.js`, `flagRows`). Only when something is
+flagged, one planning turn runs in the project's team group (a separate "watch" conversation) with those
+conversations as data: Claude judges what really went wrong, finds the root cause and its class
+(`docs/engineering/FIX_APPROACH.md` in the Mesiri repo), records one plan per root cause and posts a short report;
+`@bot ok <n>` builds it. When nothing is real it answers `NOTHING_TO_REPORT` and nothing is posted.
+
+The ops token stays in the brain's own process (filtered out of Claude's environment): Claude sees the flagged
+conversations, never the token, and cannot query production itself. Reported messages are remembered
+(`prod-watch.json`), so nothing is reported twice; more than 12 flagged conversations wait for the next look.
