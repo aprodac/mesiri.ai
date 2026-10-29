@@ -164,6 +164,16 @@ def _copy(entry: JournalEntry) -> JournalEntry:
     )
 
 
+def _date(value: str) -> Any:
+    """The entry's day as a date (the driver takes no text for a date column); None when unknown."""
+    import datetime as dt
+
+    try:
+        return dt.date.fromisoformat(value) if value else None
+    except ValueError:
+        return None
+
+
 class PostgresJournalStore:
     """``save_journal`` through ``PostgresDatabase.transaction()``: inside the
     Save's ``shared_transaction()`` the write joins it."""
@@ -186,14 +196,14 @@ class PostgresJournalStore:
             "draft": canonical_uuid(entry.draft_id),
             "site": canonical_uuid(entry.site_id),
             "site_name": entry.site or None,
-            "day": entry.day or None,
+            "day": _date(entry.day),
             "facts": json.dumps([asdict(f) for f in entry.facts], default=str),
         }
         async with self._db.transaction() as conn:
             await conn.execute(
                 text(
                     "INSERT INTO save_journal (id, organization_id, user_id, draft_id, site_id, site_name, day, facts) "
-                    "VALUES (:id, :org, :user, :draft, :site, :site_name, CAST(:day AS date), CAST(:facts AS jsonb))"
+                    "VALUES (:id, :org, :user, :draft, :site, :site_name, :day, CAST(:facts AS jsonb))"
                 ),
                 params,
             )
@@ -209,7 +219,7 @@ class PostgresJournalStore:
                 await conn.execute(
                     text(
                         f"SELECT {self._COLUMNS} FROM save_journal WHERE organization_id = :org AND user_id = :user "
-                        "AND created_at > now() - make_interval(secs => :window) "
+                        "AND created_at > now() - make_interval(secs => CAST(:window AS double precision)) "
                         "AND EXISTS (SELECT 1 FROM jsonb_array_elements(facts) f WHERE NOT COALESCE((f->>'undone')::boolean, false)) "
                         "ORDER BY created_at DESC LIMIT :limit"
                     ),

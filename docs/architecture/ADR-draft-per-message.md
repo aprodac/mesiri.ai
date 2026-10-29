@@ -838,6 +838,15 @@ a row "All N of these" closes every listed issue (up to 7); the model can say `a
 issues-um"; "Something else" asks for words instead of listing ten options. Titles are cut between words and the full
 line is the row description. Test: `tests/replay/test_close_issue_pick_142.py`.
 
-### 20.4 Rollback
+### 20.4 Verified
+
+Replay tests (scripted model, real journey) and, on a local Postgres 16 with `alembic upgrade head` to 0493,
+`tests/integration/test_save_journal_postgres.py` (record, read, undo, company and sender isolation) and the draft
+integration tests: a Save writes one entry with the real fact ids, an asked undo removes nothing, the Yes tap removes
+exactly the named fact through the module's own undo, and a Save that fails part-way leaves no journal row. The
+real-database tests run locally only (not in CI), as for P1. Not verified: a live model; the tap through WhatsApp itself;
+the tenant row-level-security policy under a non-superuser role (the queries name company and sender regardless).
+
+### 20.5 Rollback
 
 Flag off, or revert the commit. The migration is additive; the table stays empty for companies without `draft_v2`.

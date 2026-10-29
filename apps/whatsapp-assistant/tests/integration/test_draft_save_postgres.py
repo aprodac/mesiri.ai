@@ -57,6 +57,7 @@ from mesiri_contracts.common.result import Result
 from runtime.activity_query import ActivityQueryService
 from runtime.agent import draft as dr
 from runtime.agent.draft_store import PostgresDraftStore
+from runtime.agent.journal import PostgresJournalStore
 from runtime.agent.journey_gateway import JourneyGateway
 from runtime.agent.labour_entry import LabourEntry
 from runtime.agent.material_entry import MaterialEntry
@@ -234,6 +235,8 @@ def _gateway(w, *, draft: bool, dispatcher=None) -> JourneyGateway:
         actor=w.actor,
         draft_v2=draft,
         drafts=w.drafts if draft else None,
+        journal=PostgresJournalStore(w.db) if draft else None,
+        undo_facts=lambda facts: w.handler.undo_facts(organization_id=str(w.org), user_id=w.user, facts=facts),
         confirm_now=lambda: w.handler.confirm_now(w.user, actor=w.actor),
         settle_facts=lambda facts: w.handler.settle_drafts(
             organization_id=str(w.org), user_id=w.user, facts=facts, keep=True
@@ -300,6 +303,41 @@ async def test_nothing_is_written_until_save_then_everything_is_one_commit(world
     assert await _count(world, "labour_attendance_reports") == 1
 
 
+async def test_a_save_writes_one_journal_entry_and_an_undo_removes_exactly_what_it_names(world):
+    """Request 142 (B): the entry is written in the Save's transaction; "undo" asks first and
+    removes the named fact through the module's own undo."""
+    gateway = _gateway(world, draft=True)
+    for tool, args in (LABOUR, RECEIPT):
+        await _call(world, gateway, tool, args)
+    draft = await _open(world)
+    await _gateway(world, draft=True).save_draft(draft)
+
+    journal = PostgresJournalStore(world.db)
+    (entry,) = await journal.recent(world.org, world.user)
+    assert entry.draft_id == draft.id and {f.tool for f in entry.facts} == {SAVE_LABOUR, SAVE_MATERIAL_RECEIPT}
+    assert all(uuid.UUID(f.fact_id) for f in entry.facts)
+
+    step = await _gateway(world, draft=True).change_or_undo("the cement")
+    assert step.awaiting == "confirm_undo" and "Remove this?" in step.reply.text
+    assert await _count(world, "material_receipts") == 1  # asking removed nothing
+    from runtime.agent import journal as jr
+
+    action, entry_id, numbers = jr.parse_tap(step.reply.buttons[0].id)
+    reply = await _gateway(world, draft=True).journal_tap(action, entry_id, numbers)
+    assert reply.text.startswith("✅ Removed:"), reply.text
+    again = await journal.get(entry.id, world.org, world.user)
+    assert [f.undone for f in again.facts if f.tool == SAVE_MATERIAL_RECEIPT] == [True]
+    assert [f.undone for f in again.facts if f.tool == SAVE_LABOUR] == [False]
+    async with world.db.transaction() as conn:
+        states = dict(
+            (await conn.execute(
+                text("SELECT DISTINCT ON (fact_type, fact_id) fact_type, state FROM fact_reviews "
+                     "WHERE organization_id = :o ORDER BY fact_type, fact_id, created_at DESC"), {"o": world.org}
+            )).all()
+        )
+    assert states["material_receipt"] != "confirmed" and states["labour_report"] == "confirmed"
+
+
 async def test_a_failure_part_way_leaves_nothing_written_and_the_card_open(world):
     gateway = _gateway(world, draft=True)
     for tool, args in (LABOUR, RECEIPT, USAGE):
@@ -313,6 +351,7 @@ async def test_a_failure_part_way_leaves_nothing_written_and_the_card_open(world
     assert [await _count(world, t) for t in ("labour_attendance_reports", "material_receipts", "material_usage")] == [0, 0, 0]
     async with world.db.transaction() as conn:
         assert (await conn.execute(text("SELECT count(*) FROM fact_reviews WHERE organization_id = :o"), {"o": world.org})).scalar_one() == 0
+    assert await PostgresJournalStore(world.db).recent(world.org, world.user) == []  # ...and so was the journal
     still = await _open(world)  # the claim was rolled back with the rest
     assert still.id == draft.id and [i.state for i in still.items] == [dr.OK, dr.OK, dr.UNREADABLE]
 
