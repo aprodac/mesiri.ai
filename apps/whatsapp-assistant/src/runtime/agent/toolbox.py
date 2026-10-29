@@ -356,9 +356,10 @@ class AgentToolbox:
     #: while the model writes the reply.
     after_tool: Callable[[], None] | None = None
     failed: int = 0
-    #: Request 83: what request_dpr answered, for the one "draft so far" line a
-    #: message that also saves entries gets under its card.
+    #: Request 143: what request_dpr answered (the code's sentence, in the sender's
+    #: language) and how many PDFs it sent. The reply says it, never the model.
     report_text: str | None = None
+    report_documents: int = 0
     #: Request 104: the card lines this turn prepared for pending actions.
     _action_summaries: list[str] = field(default_factory=list)
     #: Request 104, D2: the hours-lost question was the last thing asked.
@@ -1263,15 +1264,16 @@ class AgentToolbox:
             )
         if step.status == "answer" and name == REQUEST_DPR:
             self.report_text = step.text
+            self.report_documents = step.documents
             self.answers.append(step.text)
             return ToolOutcome(
                 content={
                     "status": "answer",
                     "text": step.text,
                     "instruction": (
-                        "If this same message also saves entries, the system adds one 'Today's draft so "
-                        "far' line under them: do not describe this report, do not list any items, and "
-                        "do not ask for details that are already in the entries."
+                        "The system has already sent the report (a PDF when the day has entries) and puts "
+                        "this line under your words itself. Do not describe the report, list anything from "
+                        "it or repeat this line. If the message asked for nothing else, write nothing."
                     ),
                 }
             )

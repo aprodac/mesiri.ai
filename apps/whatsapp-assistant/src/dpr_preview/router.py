@@ -51,9 +51,8 @@ async def site_day_document(
     conn: AsyncConnection = Depends(get_db_conn),
     object_storage=Depends(get_object_storage),
 ) -> HTMLResponse:
-    from channel.dpr_document.data import build_document_data
-    from channel.dpr_document.template import render_html
-    from runtime.dpr_request_query import for_document, only_kept
+    from channel.dpr_document.day_document import day_html
+    from runtime.day_facts import read_site_day
 
     repo = PostgresDprRepository(conn)
     site = await repo.find_site(organization_id=auth_context.organization_id, site_id=site_id)
@@ -63,11 +62,13 @@ async def site_day_document(
     if _site_denied(auth_context, project_id, site_id):
         raise HTTPException(status_code=404, detail="Site not found")
 
-    payload, items = await repo.assemble_site_day(
+    # Day Facts: the same read of the day the WhatsApp report is made from.
+    day = await read_site_day(
+        conn,
         organization_id=auth_context.organization_id,
         project_id=project_id,
         site_id=site_id,
-        report_date=report_date,
+        day=report_date,
     )
     # The day's report row, if the cutoff or a confirm has made one: its code
     # names the document once confirmed; its letterhead brands it.
@@ -86,11 +87,8 @@ async def site_day_document(
         conn, object_storage, auth_context.organization_id, project_id, report
     )
 
-    from channel.dpr_document.photos import embed_photos
-
-    document = await embed_photos(object_storage, for_document(only_kept(payload, items)))
     return _document(
-        render_html(build_document_data(code=code, payload=document, summary=summary), letterhead)
+        await day_html(day, object_storage=object_storage, code=code, letterhead=letterhead, summary=summary)
     )
 
 
@@ -167,9 +165,9 @@ async def daily_report_document_pdf(
     import json
 
     from channel.dpr_document.data import build_document_data
+    from channel.dpr_document.day_document import DRAFT_CODE, shared_renderer
     from channel.dpr_document.letterhead import load_letterhead
     from channel.dpr_document.template import render_html
-    from runtime.dpr_request_query import DRAFT_CODE, shared_renderer
 
     report = await PostgresDprRepository(conn).get_report_for_pdf(
         organization_id=auth_context.organization_id, report_id=report_id, version_id=version_id
@@ -230,23 +228,13 @@ async def _report_row(
 async def _letterhead(
     conn: AsyncConnection, object_storage, org_id: uuid.UUID, project_id: uuid.UUID, report
 ):
-    """The letterhead hangs off a report row; before the cutoff makes the
-    day's, borrow the project's latest so the preview still carries the
-    company's branding."""
-    from channel.dpr_document.letterhead import load_letterhead
+    """The day's report row's letterhead; before the cutoff makes one, the
+    project's (the same company and client branding)."""
+    from channel.dpr_document.letterhead import load_letterhead, load_project_letterhead
 
-    report_id = report["id"] if report is not None else None
-    if report_id is None:
-        report_id = (
-            await conn.execute(
-                text(
-                    "SELECT id FROM daily_reports WHERE organization_id = :org AND project_id = :p"
-                    " ORDER BY report_date DESC, created_at DESC LIMIT 1"
-                ),
-                {"org": org_id, "p": project_id},
-            )
-        ).scalar()
-    return await load_letterhead(conn, object_storage, report_id) if report_id else None
+    if report is not None:
+        return await load_letterhead(conn, object_storage, report["id"])
+    return await load_project_letterhead(conn, object_storage, project_id)
 
 
 def _document(html: str) -> HTMLResponse:

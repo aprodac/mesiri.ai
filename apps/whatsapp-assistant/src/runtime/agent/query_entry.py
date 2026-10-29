@@ -15,9 +15,10 @@ tool's arguments become the workflow's event:
   (``runtime/inbound_journey/seeding.py``), so the read rules in them
   (SEC-01: expenses for admin/owner/finance/PM, own projects only) hold.
 
-The workflows, their answers and confirmations are unchanged. The DPR PDF, and
-a lookup asked for as a PDF (``as_pdf``), are sent after the run, as the
-pipeline did (``deliver``).
+The workflows, their answers and confirmations are unchanged. A lookup asked for
+as a PDF (``as_pdf``) is sent after the run, as the pipeline did (``deliver``).
+The DPR is not a lookup here: ``report_entry.py`` makes and sends it from Day
+Facts (request 143).
 """
 
 from __future__ import annotations
@@ -27,14 +28,13 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from canonicalization.occurred_date import parse_stated_date
 from mesiri_contracts.assistant.canonical_event import CanonicalEventType as E
 from mesiri_contracts.assistant.enums import SemanticType as T
 from mesiri_contracts.assistant.planner_decision import WorkflowKey as K
 from workflows.registry import module_for_event
 
 from .entry_base import ALL_SITES, SCOPE_KEYS, EntryScope, Ready, Say, number
-from .project_day import project_today, project_zone_name
+from .project_day import project_zone_name
 
 _log = logging.getLogger("mesiri.agent")
 
@@ -45,7 +45,6 @@ _ROUTES: dict[Any, tuple[E, K, dict[str, Any]]] = {
     T.INVENTORY_QUERY: (E.INVENTORY_QUERY_ASKED, K.MATERIAL_INVENTORY_QUERY, _LOOKUP),
     T.ACTIVITY_QUERY: (E.ACTIVITY_QUERY_ASKED, K.ACTIVITY_QUERY, _LOOKUP),
     T.PROJECT_DETAIL_QUERY: (E.PROJECT_DETAIL_QUERY_ASKED, K.PROJECT_DETAIL_QUERY, _LOOKUP),
-    T.DPR_REQUEST: (E.DPR_REQUESTED, K.DPR_REQUEST, _LOOKUP),
     T.TRANSFER: (E.TRANSFER_REQUESTED, K.TRANSFER, {"project": "none"}),
     T.SITE_CREATE: (E.SITE_CREATE_REQUESTED, K.SITE_CREATE, {"project": "required", "ask_site": False}),
     T.PROJECT_CREATE: (E.PROJECT_CREATE_REQUESTED, K.PROJECT_CREATE, {"project": "none"}),
@@ -103,10 +102,6 @@ def _one_name_per_trade(results: Any) -> None:
         results["trade_counts"] = [[trade, count] for trade, count in counts.items()]
 
 
-#: Request 67: today's report could not be made. Fixed words, no stack text.
-DPR_RETRY_REPLY = "Couldn't make today's report just now, try again in a few minutes."
-
-
 @dataclass(slots=True)
 class QueryEntry(EntryScope):
     context_resolver: Any
@@ -116,13 +111,12 @@ class QueryEntry(EntryScope):
     inventory_query: Any | None = None
     labour_query_service: Any | None = None
     activity_search_service: Any | None = None
-    dpr_request_query: Any | None = None
     project_detail_query: Any | None = None
     expense_query_service: Any | None = None
     money_account_query: Any | None = None
     reversal_query: Any | None = None
     object_storage: Any | None = None
-    #: ``(wa_id, data, *, filename, caption) -> bool``: the DPR PDF.
+    #: ``(wa_id, data, *, filename, caption) -> bool``: a lookup asked for as a PDF.
     send_document: Callable[..., Awaitable[Any]] | None = None
     #: Request 91: the receipt's renderer, for the Stock card; None draws none.
     card_renderer: Any | None = None
@@ -168,111 +162,7 @@ class QueryEntry(EntryScope):
         ready = self.ready(scoped, message, event_type, workflow_key, fields)
         timezone = project_zone_name(scoped.ctx.timezone)
         await self._seed(ready, message, timezone=timezone)
-        if workflow_key is K.DPR_REQUEST:
-            draft = await self._past_day_draft(ready, timezone=timezone)
-            if draft is not None:
-                return draft
         return ready
-
-    async def _past_day_draft(self, ready: Ready, *, timezone: str) -> Say | None:
-        """Request 89: ONE rule for a past day's report, however it is worded
-        ("yesterday's report", "innale report ayakku"). The day is the project's
-        own (its time zone, ``project_today``), and what it holds is counted from the
-        same saved-entry source the day's summary uses (``preview_lines``: Save
-        tapped, not cancelled), not from the stored version's count (which said
-        "0 updates" for a day with a dozen saves, 22 Oct).
-
-        - the site's finished PDF: the workflow sends it (marked "Not confirmed
-          yet" when the day is not signed off);
-        - else the project's confirmed PDF for that day: sent as that;
-        - else the day has entries: the draft DPR PDF, rendered by the existing
-          DPR renderer, marked "Draft · not confirmed yet", sent like any report
-          (the workflow's "attached" line);
-        - else the workflow says there is no report for that day.
-        A draft that cannot be rendered is shown as text. Returns a ``Say`` only
-        then."""
-        fields = ready.event.fields
-        today = not fields.get("dpr_day")
-        # Today too (request 67): "send me today's report" at 3 pm with entries
-        # saved gets the draft PDF, not a dead end. The wait-for-evening text
-        # (WA-40 preview/waiting) only stays when no PDF can be made.
-        statuses = ("pending_confirmation", "not_generated") + (("preview", "waiting") if today else ())
-        if fields.get("dpr_status") not in statuses:
-            return None
-        if self.dpr_request_query is None:
-            return None
-        from runtime.inbound_journey.seeding import _dpr_scope
-
-        stated = fields.get("report_date") or fields.get("occurred_on")
-        report_date = parse_stated_date(stated, today=project_today(timezone)) if stated else None
-        if today:
-            report_date = project_today(timezone)
-        project_id, site_id = _dpr_scope(ready.event, self.actor)
-        if report_date is None or not project_id or not site_id:
-            return None
-        org = self.actor.organization_id
-        if await self._project_pdf(fields, org, project_id, report_date):
-            return None
-        try:
-            lines, pdf = await self.dpr_request_query.draft_pdf(
-                organization_id=org,
-                project_id=project_id,
-                site_id=site_id,
-                report_date=report_date,
-                object_storage=self.object_storage,
-            )
-        except Exception:  # noqa: BLE001 -- the workflow's own answer stands
-            _log.warning("query_entry.past_draft_failed", exc_info=True)
-            return Say("answer", DPR_RETRY_REPLY) if today else None
-        if not lines:
-            # Nothing was saved that day: say so, not "0 updates, not confirmed yet".
-            fields["dpr_status"] = "not_generated"
-            return None
-        if pdf is not None and self.object_storage is not None:
-            key = f"dpr/drafts/{site_id}/{report_date.isoformat()}.pdf"
-            try:
-                await self.object_storage.put_object(key, pdf, content_type="application/pdf")
-            except Exception:  # noqa: BLE001 -- shown as text below
-                _log.warning("query_entry.draft_store_failed", exc_info=True)
-            else:
-                fields.pop("dpr_preview", None)
-                fields.update(
-                    dpr_status="ready",
-                    dpr_object_key=key,
-                    dpr_code=f"Draft-{report_date:%Y%m%d}",
-                    dpr_confirmed=False,
-                )
-                return None
-        if today:
-            return None  # no PDF: the workflow's own "so far today" lines (WA-40) answer
-        site = fields.get("dpr_site_name")
-        where = f" at {site}" if site else ""
-        return Say(
-            "answer",
-            f"The report for {fields['dpr_day'] or 'today'}{where} isn't confirmed yet. So far:\n"
-            + "\n".join(lines)
-            + "\nThis is a draft: not final, and not sent to anyone.",
-        )
-
-    async def _project_pdf(self, fields: dict[str, Any], org: str, project_id: str, report_date: Any) -> bool:
-        """The project's confirmed PDF for the day, when the site has none of its
-        own: it holds the site's entries too. Sets the answer's fields; False
-        when there is none."""
-        try:
-            found = await self.dpr_request_query.find_report(
-                organization_id=org, project_id=project_id, site_id=None, report_date=report_date
-            )
-            if found.get("status") != "ready" or not found.get("confirmed"):
-                return False
-            if self.object_storage is not None:
-                await self.object_storage.head_object(found["object_key"])
-        except Exception:  # noqa: BLE001 -- the day's own draft answers instead
-            _log.warning("query_entry.project_pdf_failed", exc_info=True)
-            return False
-        fields.update(
-            dpr_status="ready", dpr_object_key=found["object_key"], dpr_code=found.get("code"), dpr_confirmed=True
-        )
-        return True
 
     async def _seed(self, ready: Ready, message: Any, *, timezone: str) -> None:
         """The data the workflow answers from, by the pipeline's own seeds.
@@ -290,12 +180,6 @@ class QueryEntry(EntryScope):
                     event, decision, self.activity_search_service, actor, timezone,
                     labour_query_service=self.labour_query_service,
                     inventory_query=self.inventory_query,
-                )
-            ]
-        elif key is K.DPR_REQUEST:
-            seeds = [
-                s._seed_dpr_request(
-                    event, decision, self.dpr_request_query, actor, timezone, object_storage=self.object_storage
                 )
             ]
         elif key is K.PROJECT_DETAIL_QUERY:
@@ -365,9 +249,9 @@ class QueryEntry(EntryScope):
             _log.warning("query_entry.stock_card_failed", exc_info=True)
 
     async def deliver(self, ready: Ready, message: Any) -> str | None:
-        """After the run: the DPR PDF the answer says is attached, or a
-        lookup asked for as a PDF, sent as the pipeline sent them (one retry).
-        A line to add when it did not go."""
+        """After the run: a lookup asked for as a PDF, sent as the pipeline
+        sent it (one retry). A line to add when it did not go. (The DPR is
+        ``report_entry``'s.)"""
         fields = ready.event.fields
         key = ready.decision.workflow_key
         if key is K.MATERIAL_INVENTORY_QUERY and fields.get("output_format") != "pdf":
@@ -375,19 +259,6 @@ class QueryEntry(EntryScope):
         if self.send_document is None:
             return None
         from runtime.inbound_journey._shared import _send_with_one_retry
-
-        if key is K.DPR_REQUEST and fields.get("dpr_object_key") and self.object_storage is not None:
-            code = fields.get("dpr_code") or "DPR"
-
-            async def _send() -> None:
-                stored = await self.object_storage.get_object(fields["dpr_object_key"])
-                sent = await self.send_document(message.sender.wa_id, stored.data, filename=f"{code}.pdf", caption=None)
-                if sent is False:
-                    raise RuntimeError("send_document returned False")
-
-            if await _send_with_one_retry(_send, what="dpr_request.document", correlation_id=message.correlation_id):
-                return None
-            return f"Sorry, the PDF didn't go through. The report ({code}) is ready, please ask again in a minute."
 
         if fields.get("output_format") == "pdf":
             from runtime.inbound_journey.seeding import _build_query_pdf

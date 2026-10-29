@@ -260,24 +260,3 @@ def without_engineer_promise(text: str) -> str:
     engineer" went out for a stock question the records answered)."""
     kept = [s for s in sentences(text) if not promises_engineer(s)]
     return re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
-
-
-_DPR_READY = re.compile(
-    r"^(?:The DPR for (?P<day>.+?)|Today's DPR)(?P<code> \([^)]*\))? attached\.(?P<note> Not confirmed yet\.)?$"
-)
-
-
-def dpr_caption(answer: str, language: str | None) -> str | None:
-    """Request 94: the "report attached" line of the DPR lookup in the language
-    of the message ("22 Oct 2026-inte DPR ithaa."), decided in code so the
-    caption never depends on the model rewriting it. None when ``answer`` is
-    another kind of line or the language has no wording here."""
-    found = _DPR_READY.match((answer or "").strip())
-    if found is None or language not in ("manglish", "malayalam"):
-        return None
-    day, code, note = found.group("day"), found.group("code") or "", bool(found.group("note"))
-    if language == "manglish":
-        head = f"{day}-inte DPR" if day else "Innathe DPR"
-        return f"{head}{code} ithaa." + (" Confirm cheythittilla." if note else "")
-    head = f"{day}-ലെ DPR" if day else "ഇന്നത്തെ DPR"
-    return f"{head}{code} ഇതാ." + (" ഇതുവരെ സ്ഥിരീകരിച്ചിട്ടില്ല." if note else "")

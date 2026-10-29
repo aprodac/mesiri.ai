@@ -78,24 +78,11 @@ async def test_a_transfer_needs_an_amount():
     assert isinstance(said, Say) and "amount above zero" in said.text
 
 
-async def test_the_dpr_pdf_goes_after_the_answer_and_a_failure_is_said():
-    class _Store:
-        async def get_object(self, key: str) -> Any:
-            return SimpleNamespace(data=b"%PDF")
+async def test_the_dpr_is_not_a_query_entry_type():
+    """Request 143: the DPR is report_entry's (a PDF from Day Facts), not a lookup's."""
+    from runtime.agent.query_entry import QUERY_ENTRY_TYPES
 
-    sent: list[str] = []
-
-    async def send_document(wa_id: str, data: bytes, *, filename: str, caption: Any) -> bool:
-        sent.append(filename)
-        return len(sent) > 5  # fails both tries
-
-    entry = _entry(object_storage=_Store(), send_document=send_document)
-    ready = await _prepare(entry, SemanticType.DPR_REQUEST)
-    ready.event.fields.update({"dpr_object_key": "k", "dpr_code": "DPR-1"})
-    message = SimpleNamespace(correlation_id="c", sender=SimpleNamespace(wa_id="91"))
-    line = await entry.deliver(ready, message)
-    assert sent == ["DPR-1.pdf", "DPR-1.pdf"]
-    assert line.startswith("Sorry, the PDF didn't go through")
+    assert SemanticType.DPR_REQUEST not in QUERY_ENTRY_TYPES
 
 
 async def test_a_lookup_asked_for_as_a_pdf_is_sent_as_one():

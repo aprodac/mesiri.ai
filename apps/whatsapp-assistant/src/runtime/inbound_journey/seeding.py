@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from backend.ports import ActorIdentity
-from canonicalization.occurred_date import parse_stated_date, today_for
+from canonicalization.occurred_date import today_for
 from channel.replies import (
     ReplySpec,
 )
@@ -20,10 +20,8 @@ from mesiri_contracts.assistant.planner_decision import PlannerDecisionType, Wor
 from mesiri_contracts.assistant.v2.canonical_event import CanonicalEventV2
 from mesiri_contracts.assistant.v2.planner_decision import PlannerDecisionV2
 from mesiri_contracts.common.ids import new_id as _new_id
-from mesiri_contracts.common.storage import ObjectStoragePort
 from runtime.activity_query import ActivityQueryService
 from runtime.activity_search_service import ActivitySearchService
-from runtime.dpr_request_query import DprRequestQueryService
 from runtime.duplicate_expense_query import DuplicateExpenseQueryService
 from runtime.expense_query_service import ExpenseQueryService, resolve_date_range
 from runtime.inbound_journey._shared import _log
@@ -558,192 +556,6 @@ async def _seed_activity_search(
         if materials:
             results["materials"] = materials
     event.fields["activity_search_results"] = results
-
-
-def _dpr_scope(event: CanonicalEventV2, actor: ActorIdentity) -> tuple[str | None, str | None]:
-    """The project and site whose report to look up. A bare "send me today's
-    report" names neither, and the request has no required fields, so no gate
-    resolves them: fall back to the sender's own access -- a lone project, and
-    a lone site under it. With several sites nothing is guessed and the
-    project roll-up is looked up."""
-    project_id = event.project_id
-    site_id = event.site_id
-    projects = getattr(actor, "projects", None) or []
-    sites = getattr(actor, "sites", None) or []
-    if project_id is None and len(projects) == 1:
-        project_id = projects[0].id
-    if site_id is None:
-        under = [s for s in sites if project_id is None or s.project_id == project_id]
-        if len(under) == 1:
-            site_id = under[0].id
-            if project_id is None:
-                project_id = under[0].project_id
-    return project_id, site_id
-
-
-async def _project_preview(
-    dpr_request_query: DprRequestQueryService,
-    actor: ActorIdentity,
-    *,
-    project_id: str,
-    report_date: Any,
-    event: CanonicalEventV2,
-) -> str:
-    """The day so far at each of the project's sites the sender can see, a
-    site name over its lines; sites with nothing yet are left out. Empty
-    when no site has anything."""
-    blocks = []
-    for site in getattr(actor, "sites", None) or []:
-        if str(getattr(site, "project_id", None)) != str(project_id):
-            continue
-        try:
-            lines = await dpr_request_query.preview_lines(
-                organization_id=actor.organization_id,
-                project_id=project_id,
-                site_id=site.id,
-                report_date=report_date,
-            )
-        except Exception:  # noqa: BLE001 -- the other sites still answer
-            _log.warning(
-                "dpr_request.site_preview_failed correlation_id=%s site=%s",
-                event.correlation_id,
-                site.id,
-                exc_info=True,
-            )
-            continue
-        if lines:
-            blocks.append("\n".join([f"*{site.name}*", *lines]))
-    return "\n".join(blocks)
-
-
-async def _seed_dpr_request(
-    event: CanonicalEventV2,
-    decision: PlannerDecisionV2,
-    dpr_request_query: DprRequestQueryService | None,
-    actor: ActorIdentity | None,
-    timezone_name: str | None,
-    object_storage: ObjectStoragePort | None = None,
-) -> None:
-    """Resolve today's DPR status before the graph runs -- same shape and
-    reasoning as _seed_labour_query above. Only ever runs for DPR_REQUEST.
-
-    Only ever checks *today* -- see runtime/dpr_request_query.py's module
-    docstring for why a date range isn't extracted for this V1 trigger.
-    Writes `dpr_object_key` even though the node itself never reads it
-    (workflows/dpr_request/nodes.py only reads `dpr_status`/`dpr_code`) --
-    the post-reply delivery step below (in process_inbound_message) is what
-    actually fetches and sends the PDF, and it reads the field straight off
-    `canonical_event.fields` rather than threading a third value through
-    the node's return dict.
-    """
-    if decision.workflow_key is not WorkflowKey.DPR_REQUEST:
-        return
-    if dpr_request_query is None or actor is None or not actor.organization_id:
-        # Not "no report exists": the lookup could not be made at all.
-        event.fields["dpr_status"] = "unavailable"
-        event.fields["dpr_object_key"] = None
-        event.fields["dpr_code"] = None
-        return
-
-    project_id, site_id = _dpr_scope(event, actor)
-    today = today_for(timezone_name)
-    report_date = today
-    stated = event.fields.get("report_date") or event.fields.get("occurred_on")
-    if stated not in (None, ""):
-        # Any day, not only today (request 57, A4). A day that cannot be read
-        # ("last Friday", tomorrow) is asked about, never answered with
-        # today's report.
-        report_date = parse_stated_date(stated, today=today)
-        if report_date is None:
-            event.fields["dpr_status"] = "bad_date"
-            event.fields["dpr_object_key"] = None
-            event.fields["dpr_code"] = None
-            return
-    event.fields["dpr_day"] = "" if report_date == today else f"{report_date:%d %b %Y}".lstrip("0")
-    try:
-        result = await dpr_request_query.find_report(
-            organization_id=actor.organization_id,
-            project_id=project_id,
-            site_id=site_id,
-            report_date=report_date,
-        )
-    except Exception:  # noqa: BLE001 -- an honest "can't check" beats a failed run
-        _log.exception(
-            "dpr_request.lookup_failed correlation_id=%s user=%s",
-            event.correlation_id,
-            getattr(actor, "user_id", None),
-        )
-        event.fields["dpr_status"] = "unavailable"
-        event.fields["dpr_object_key"] = None
-        event.fields["dpr_code"] = None
-        return
-    if (
-        result["status"] in ("not_generated", "pending_confirmation")
-        and report_date == today
-        and project_id
-        and site_id
-    ):
-        # WA-40: today's report is only built at the evening cutoff; asked for
-        # during the day, the sender gets what the day holds so far, marked
-        # as a draft (nothing is stored or sent to the report's recipients).
-        try:
-            lines = await dpr_request_query.preview_lines(
-                organization_id=actor.organization_id,
-                project_id=project_id,
-                site_id=site_id,
-                report_date=today,
-            )
-        except Exception:  # noqa: BLE001 -- the plain "not generated" still answers
-            _log.warning("dpr_request.preview_failed correlation_id=%s", event.correlation_id, exc_info=True)
-            lines = []
-        if lines:
-            # Before the cutoff: "made this evening". After it, the day exists
-            # but waits on the site: say so, with what it still needs.
-            waiting = result["status"] == "pending_confirmation"
-            result = {**result, "status": "waiting" if waiting else "preview"}
-            event.fields["dpr_preview"] = "\n".join(lines)
-            event.fields["dpr_missing"] = list(result.get("missing") or [])
-    elif (
-        result["status"] in ("not_generated", "pending_confirmation")
-        and report_date == today
-        and project_id
-        and not site_id
-    ):
-        # WA-66 (audit DPR-05): an owner/PM whose project has several sites
-        # asks during the day. The project roll-up is only made at the
-        # cutoff, so this used to say "Nothing's been logged" while the
-        # sites had entries. Each of their sites' day so far instead.
-        preview = await _project_preview(
-            dpr_request_query, actor, project_id=project_id, report_date=today, event=event
-        )
-        if preview:
-            waiting = result["status"] == "pending_confirmation"
-            result = {**result, "status": "waiting" if waiting else "preview"}
-            event.fields["dpr_preview"] = preview
-            event.fields["dpr_missing"] = []
-    event.fields["dpr_status"] = result["status"]
-    event.fields["dpr_object_key"] = result["object_key"]
-    event.fields["dpr_code"] = result["code"]
-    event.fields["dpr_confirmed"] = result.get("confirmed", True)
-    event.fields["dpr_update_count"] = result.get("update_count", 0)
-    event.fields["dpr_site_name"] = next(
-        (getattr(s, "name", None) for s in getattr(actor, "sites", None) or [] if s.id == site_id),
-        None,
-    )
-    if result["status"] == "ready" and object_storage is not None:
-        # The reply says a PDF is attached: be sure it can be fetched before
-        # saying so (the send itself comes after the reply).
-        try:
-            await object_storage.head_object(result["object_key"])
-        except Exception:  # noqa: BLE001 -- say so rather than promise a PDF
-            _log.warning(
-                "dpr_request.pdf_unavailable correlation_id=%s object_key=%s",
-                event.correlation_id,
-                result["object_key"],
-                exc_info=True,
-            )
-            event.fields["dpr_status"] = "pdf_unavailable"
-            event.fields["dpr_object_key"] = None
 
 
 async def _seed_project_detail_query(

@@ -850,3 +850,68 @@ the tenant row-level-security policy under a non-superuser role (the queries nam
 ### 20.5 Rollback
 
 Flag off, or revert the commit. The migration is additive; the table stays empty for companies without `draft_v2`.
+
+## 21. Request 143, phase 2 (C): Day Facts is the one reader of a site's day; the report is always a PDF
+
+Approved by Ilan in WhatsApp (29 Oct, request 143, continuing [142]). Repro: "innathe report ayakku" came back as
+"Today's report ready aayittilla, ithu oru draft aanu..." with no content and no PDF. Cause: `request_dpr` ran the
+`dpr.request` workflow, whose answer was a status line ("made this evening. So far today: ..."), and the model retold
+it, keeping the status and dropping the day. A site that was not resolved (several sites) got no PDF at all.
+
+### 21.1 One date rule (backend, shared)
+
+`mesiri.application.dpr.project_day.local_date_sql` is the one way to put a `timestamptz` on a site's day: the
+company's zone (India when unset or the untouched "UTC"). It replaces every UTC `::date` of the DPR family: the
+assembly (`assemble_site_day_with_drafts`: continued work, photos, issues, carried issues, materials, stock), the
+Today page's counts, late entries, the review log's issue date, the auto-DPR scans and the generation script. Day
+Facts' `project_date_sql` (section 19.4) now calls it, so the assistant and the report can no longer put one entry on
+two days. Columns that already hold the project's date (`activity_date`, `occurred_date`) are unchanged.
+
+### 21.2 Day Facts reads the whole day (`runtime/day_facts.py`)
+
+`SiteDay` is what a site's day holds (work with percents and amounts, labour, materials, issues, conditions,
+photos), from the one assembly, saved entries only, cancelled ones left out (`only_kept`/`for_document` moved here).
+`DayFacts` is the process's one reader (it replaces the `DayFactsReader` wiring; `work` and `latest_update` are
+unchanged); each message works on `for_turn()`, which reads each site day once however many parts of the turn ask.
+The dashboard's live document (`dpr_preview`) reads through `read_site_day` too.
+
+### 21.3 The report entry (`runtime/agent/report_entry.py`)
+
+`request_dpr` no longer starts a workflow. `ReportEntry` settles the scope (no site question), takes the project's
+day (today, or the day named; an unreadable day is asked about), and for each site in scope (the one named or worked
+at; with several and none named, every site of the sender's in the project that has entries, up to 5):
+
+1. the site's confirmed DPR when its PDF can be fetched; else
+2. the project's confirmed DPR (it holds every site), once; else
+3. the day from Day Facts printed by the DPR template as a draft (`channel/dpr_document/day_document.py`, the same
+   renderer as the dashboard's download), with the company letterhead by project (`load_project_letterhead`).
+
+A stored PDF nobody confirmed is not sent: the day's facts are. The PDFs go right after the tool call (one retry
+each). The sentence is the code's, from `runtime/agent/wording.py` in the sender's language ("Innathe draft report ·
+Green Villa ithaa, ..."); a report-only turn is that line exactly (`runner._report_only`), and a turn that also saved
+entries gets one line under the card (`report.with_card`). The model is told the system sent it and writes nothing
+about it; `dpr_caption`, `draft_report_line` and the DPR branch of `_answer_in_language` are gone.
+
+`wording.py` is the catalog for the code's fixed sentences (every key in English, Manglish, Malayalam, Hindi and
+Hinglish, checked by a test), with `language_of(text, usual)`: a message that cannot tell ("ok", "20") takes the
+sender's usual language. Phase 3 moves the other fixed lines into it.
+
+### 21.4 Removed
+
+`seeding._seed_dpr_request`, `_dpr_scope`, `_project_preview`; `QueryEntry`'s DPR route, `_past_day_draft`,
+`_project_pdf` and DPR delivery; `DprRequestQueryService.preview_lines` and `draft_pdf` (it keeps `find_report`).
+The `dpr.request` workflow graph is no longer reached and goes with the other workflow nodes in phase 5.
+
+### 21.5 Verified
+
+Unit and replay tests (`tests/unit/test_request143_report.py`: the repro, confirmed vs draft, project PDF, nothing
+saved, several sites, a named site, bad day, render and send failures, the reply is the code's line, one read per
+turn, wording for every language). Golden cases 10 and 11 (`draft_golden.yaml`) are in the deploy's live gate. On a
+local Postgres 16 at head 0493: `test_report_day_postgres.py` (an update and an issue saved 00:30 IST are on the IST
+day; fails on the old assembly, passes now) and the existing DPR and Day Facts integration tests. Not verified: the
+live model (the live gate runs on deploy), a real Chromium render inside this session, production data.
+
+### 21.6 Rollback
+
+Revert the phase commit. No migration, no data change. The date rule moves an entry saved 00:00-05:30 IST from the
+day before to its own day in every DPR read; reverting moves it back.

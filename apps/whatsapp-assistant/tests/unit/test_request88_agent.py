@@ -24,7 +24,7 @@ from runtime.agent.journey_gateway import JourneyGateway
 from runtime.agent.prompt import AgentContext
 from runtime.agent.query_entry import _one_name_per_trade
 from runtime.agent.tools import ScopeLookup, day_argument, to_candidate
-from runtime.dpr_request_query import only_kept
+from runtime.day_facts import only_kept
 
 # -- helpers -------------------------------------------------------------------
 

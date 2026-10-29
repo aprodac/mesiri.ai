@@ -173,7 +173,7 @@ async def test_open_issues_and_the_days_report_count_by_the_same_rule(world):  #
     mixer from an earlier day and today's rain)."""
     from mesiri.infrastructure.postgres.repositories.dpr import PostgresDprRepository
     from runtime.activity_search_service import ActivitySearchService
-    from runtime.dpr_request_query import only_kept
+    from runtime.day_facts import only_kept
     from runtime.site_day_review import day_lines
 
     await _issue(world, days_ago=2, narrative="mixer breakdown")  # an earlier day, still open

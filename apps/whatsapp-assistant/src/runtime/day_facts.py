@@ -272,16 +272,14 @@ def date_sql(day: Any) -> str:
 
 
 def project_date_sql(timestamp_column: str, organization_sql: str) -> str:
-    """SQL for the project's calendar date of a moment: the company's zone, India
-    when unset or the untouched "UTC" (as ``channel.receipt.data.company_zone``).
-    A bare ``CAST(occurred_at AS date)`` is the UTC date, so an update saved after
-    midnight IST (before 05:30) counted on the day before, while its activity was
-    already dated today (29 Oct re-test: tiling 82% missing from "innale").
-    Both arguments are SQL from code, never input."""
-    return (
-        f"CAST(({timestamp_column} AT TIME ZONE COALESCE(NULLIF((SELECT o_z.timezone FROM organizations o_z "
-        f"WHERE o_z.id = {organization_sql}), 'UTC'), 'Asia/Kolkata')) AS date)"
-    )
+    """SQL for the project's calendar date of a moment: the one rule
+    (``mesiri.application.dpr.project_day``) the DPR assembly uses too, so the
+    assistant and the report never put an entry on different days (29 Oct
+    re-test: tiling 82% saved at 00:30 IST missing from "innale"). Both
+    arguments are SQL from code, never input."""
+    from mesiri.application.dpr.project_day import local_date_sql
+
+    return local_date_sql(timestamp_column, organization_sql)
 
 
 def latest_note_sql(activity_column: str, end_date_param: str = ":day_facts_end") -> str:
@@ -426,3 +424,152 @@ class DayFactsReader:
                 )
             ).scalar_one_or_none()
         return str(found) if found is not None else None
+
+
+# -- the whole site day (request 143) ----------------------------------------------
+#
+# One read of everything a site's day holds (work with percents and amounts,
+# labour, materials, issues, conditions, photos), from the one assembly the DPR
+# is built from, in the project's zone (``project_day``). Every reader of a
+# site's day -- "send me the report", the dashboard's live document, the turn's
+# context -- goes through ``DayFacts.site_day``: one definition of what the day
+# holds, one read per site and day in a turn.
+
+
+def only_kept(payload: dict[str, Any], items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Request 88: the day's payload without what the sender cancelled. A
+    material is listed only while at least one of its entries is still alive
+    (not rejected): a Cancelled steel or cement card is not "Materials:
+    Steel, Cement" (22 Oct). The same holds for work, labour and issues whose
+    entries were all rejected. Reads the review state the assembly already
+    attached to every item; changes only the copy shown."""
+    rejected = "rejected"
+    alive_materials: set[str] = set()
+    gone = {"work": 0, "labour": 0, "issues": 0, "issues_open": 0, "headcount": 0}
+    for item in items:
+        section, dead = item.get("section"), item.get("review") == rejected
+        if section == "materials":
+            if not dead:
+                alive_materials.add(str(item.get("title") or "").strip().casefold())
+        elif dead and section in ("work", "labour", "issues"):
+            gone[section] += 1
+            if section == "issues" and item.get("status") == "OPEN":
+                gone["issues_open"] += 1
+            if section == "labour":
+                words = str(item.get("title") or "").split()
+                gone["headcount"] += int(words[0]) if words and words[0].isdigit() else 0
+    kept = dict(payload)
+    kept["materials"] = [
+        m
+        for m in payload.get("materials") or []
+        if str(m.get("material_name") or m.get("name") or "").strip().casefold() in alive_materials
+    ]
+    kept["activity_count"] = max(int(payload.get("activity_count") or 0) - gone["work"], 0)
+    kept["open_issue_count"] = max(int(payload.get("open_issue_count") or 0) - gone["issues_open"], 0)
+    labour = dict(payload.get("labour") or {})
+    if labour.get("headcount"):
+        labour["headcount"] = max(int(labour["headcount"]) - gone["headcount"], 0)
+    kept["labour"] = labour
+    return kept
+
+
+def for_document(payload: dict[str, Any]) -> dict[str, Any]:
+    """``payload`` (already through ``only_kept``) without the work and issues
+    the sender cancelled, for a document that lists them one by one."""
+    out = dict(payload)
+    for key in ("activities", "issues"):
+        if key in out:
+            out[key] = [row for row in out[key] or [] if row.get("review") != "rejected"]
+    return out
+
+
+@dataclass(frozen=True, slots=True)
+class SiteDay:
+    """What one site's day holds: saved entries, cancelled ones left out."""
+
+    organization_id: str
+    project_id: str
+    site_id: str
+    day: Any
+    #: The assembly's payload through ``only_kept``.
+    payload: dict
+    #: The reviewable items (with their review state), as assembled.
+    items: tuple = ()
+
+    @property
+    def site_name(self) -> str:
+        return str(self.payload.get("site_name") or "")
+
+    @property
+    def lines(self) -> list[str]:
+        """One short line per section ("• Work: Tiling 40 sq ft (2 items)")."""
+        from runtime.site_day_review import day_lines
+
+        return day_lines(self.payload)
+
+    @property
+    def empty(self) -> bool:
+        return not self.lines
+
+    def document(self) -> dict[str, Any]:
+        """The payload the DPR document prints, item by item."""
+        return for_document(self.payload)
+
+
+async def read_site_day(conn: Any, *, organization_id: Any, project_id: Any, site_id: Any, day: Any) -> SiteDay:
+    """The site's day on an open connection (the dashboard's own request)."""
+    import uuid
+
+    from mesiri.infrastructure.postgres.repositories.dpr import PostgresDprRepository
+
+    payload, items = await PostgresDprRepository(conn).assemble_site_day(
+        organization_id=uuid.UUID(str(organization_id)),
+        project_id=uuid.UUID(str(project_id)),
+        site_id=uuid.UUID(str(site_id)),
+        report_date=day,
+    )
+    return SiteDay(
+        organization_id=str(organization_id),
+        project_id=str(project_id),
+        site_id=str(site_id),
+        day=day,
+        payload=only_kept(payload, items),
+        items=tuple(items),
+    )
+
+
+class DayFacts:
+    """Day Facts, the one reader of a site's day. The process holds one; each
+    message works on its own ``for_turn()`` copy, which reads each site day once
+    however many parts of the turn ask for it. Read-only."""
+
+    def __init__(self, db: Any) -> None:
+        self._db = db
+        self._days: dict[tuple[str, str, Any], SiteDay] = {}
+
+    def for_turn(self) -> DayFacts:
+        return DayFacts(self._db)
+
+    @property
+    def db(self) -> Any:
+        """The database the day is read from (a draft's letterhead reads it too)."""
+        return self._db
+
+    async def site_day(self, *, organization_id: Any, project_id: Any, site_id: Any, day: Any) -> SiteDay:
+        key = (str(organization_id), str(site_id), day)
+        if key not in self._days:
+            async with self._db.transaction() as conn:
+                self._days[key] = await read_site_day(
+                    conn, organization_id=organization_id, project_id=project_id, site_id=site_id, day=day
+                )
+        return self._days[key]
+
+    def forget(self) -> None:
+        """After a Save the day has changed: the next read is fresh."""
+        self._days.clear()
+
+    async def work(self, **kwargs: Any) -> list[WorkFact]:
+        return await DayFactsReader(self._db).work(**kwargs)
+
+    async def latest_update(self, activity_id: str) -> str | None:
+        return await DayFactsReader(self._db).latest_update(activity_id)

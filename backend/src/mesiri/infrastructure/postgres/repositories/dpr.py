@@ -35,9 +35,15 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from mesiri.application.dpr import fact_review, open_issues, site_day
+from mesiri.application.dpr import fact_review, open_issues, project_day, site_day
 
 _STATUS_BY_UPDATE_KIND = {"COMPLETED": "COMPLETED", "PAUSED": "STOPPED"}
+
+
+def _day(moment: str, organization: str = ":org_id") -> str:
+    """The project's date of a ``timestamptz`` column (``project_day``): never the
+    UTC ``::date``, which put an entry made 00:00-05:30 IST on the day before."""
+    return project_day.local_date_sql(moment, organization)
 
 
 def _continued_activity_row(row: Any) -> dict[str, Any]:
@@ -513,7 +519,7 @@ class PostgresDprRepository:
         continued_rows = (
             await self._conn.execute(
                 text(
-                    """
+                    f"""
                     SELECT DISTINCT ON (a.id)
                            a.id, a.work_type, a.contractor, a.location_id,
                            a.activity_date AS started_on, a.status AS activity_status,
@@ -527,7 +533,7 @@ class PostgresDprRepository:
                       AND a.project_id = :project_id
                       AND a.site_id = :site_id
                       AND a.activity_date <> :report_date
-                      AND pu.occurred_at::date = :report_date
+                      AND {_day("pu.occurred_at")} = :report_date
                       AND pu.deleted_at IS NULL AND a.deleted_at IS NULL
                       AND NOT EXISTS (
                           SELECT 1 FROM progress_updates newer
@@ -599,15 +605,15 @@ class PostgresDprRepository:
             photo_rows = (
                 await self._conn.execute(
                     text(
-                        """
+                        f"""
                         SELECT parent_id AS activity_id, media_object_key, caption, mime_type
                         FROM progress_attachments
                         WHERE parent_type = 'ACTIVITY' AND parent_id = ANY(:ids)
-                          AND (parent_id = ANY(:own) OR created_at::date = :report_date)
+                          AND (parent_id = ANY(:own) OR {_day("created_at", ":org")} = :report_date)
                         ORDER BY created_at, id
                         """
                     ),
-                    {"ids": all_activity_ids, "own": activity_ids, "report_date": report_date},
+                    {"ids": all_activity_ids, "own": activity_ids, "report_date": report_date, "org": organization_id},
                 )
             ).mappings().all()
             for row in photo_rows:
@@ -626,7 +632,7 @@ class PostgresDprRepository:
             WHERE organization_id = :org_id
               AND project_id = :project_id
               AND site_id = :site_id
-              AND occurred_at::date = :report_date
+              AND {_day("occurred_at")} = :report_date
               -- Withdrawn as reported in error (0460) -- including a
               -- rejected draft (BE-09) -- is not part of the day.
               AND status != 'CANCELLED'
@@ -662,14 +668,14 @@ class PostgresDprRepository:
                     f"""
                     SELECT id, issue_type, severity, narrative,
                            CASE WHEN resolved_at IS NOT NULL
-                                 AND resolved_at::date > :report_date
+                                 AND {_day("resolved_at")} > :report_date
                                 THEN 'OPEN' ELSE status::text END AS status,
-                           occurred_at::date AS reported_on
+                           {_day("occurred_at")} AS reported_on
                     FROM site_issues
                     WHERE organization_id = :org_id
                       AND project_id = :project_id
                       AND site_id = :site_id
-                      AND occurred_at::date < :report_date
+                      AND {_day("occurred_at")} < :report_date
                       AND status != 'CANCELLED'
                       AND {open_issues.site_issue_sql()}
                       -- Request 127: an earlier day's issue nobody saved is
@@ -677,7 +683,7 @@ class PostgresDprRepository:
                       AND {open_issues.counted_issue_sql()}
                       AND (
                           (resolved_at IS NULL AND status IN ('OPEN', 'ACKNOWLEDGED'))
-                          OR resolved_at::date >= :report_date
+                          OR {_day("resolved_at")} >= :report_date
                       )
                     ORDER BY occurred_at
                     """
@@ -734,7 +740,7 @@ class PostgresDprRepository:
         ).mappings().all()
 
         material_query = text(
-            """
+            f"""
             SELECT mm.material_id, mc.name AS material_name, u.code AS unit,
                    mm.movement_type, mm.quantity, mm.source_type, mm.source_id,
                    COALESCE(mr.movement_reason, mu.movement_reason) AS movement_reason
@@ -748,7 +754,7 @@ class PostgresDprRepository:
             WHERE mm.organization_id = :org_id
               AND mm.project_id = :project_id
               AND mm.site_id = :site_id
-              AND mm.occurred_at::date = :report_date
+              AND {_day("mm.occurred_at")} = :report_date
               -- A corrected movement and its correction cancel out; showing
               -- both would read as 50 received AND 50 used. This also keeps a
               -- rejected draft (BE-09, reversed by Materials) off the DPR.
@@ -782,7 +788,7 @@ class PostgresDprRepository:
                     text(
                         f"""
                     SELECT mm.material_id, mc.name AS material_name, u.code AS unit,
-                           SUM(CASE WHEN mm.occurred_at::date < :report_date
+                           SUM(CASE WHEN {_day("mm.occurred_at")} < :report_date
                                     THEN CASE WHEN mm.movement_type = 'RECEIPT'
                                               THEN mm.quantity ELSE -mm.quantity END
                                     ELSE 0 END) AS opening,
@@ -793,10 +799,10 @@ class PostgresDprRepository:
                     JOIN units_of_measure u ON u.id = mm.unit_id
                     WHERE mm.organization_id = :org_id
                       AND mm.site_id = :site_id
-                      AND mm.occurred_at::date <= :report_date
+                      AND {_day("mm.occurred_at")} <= :report_date
                       AND {fact_review.movement_counted_sql("mm") if saved_only else "true"}
                     GROUP BY mm.material_id, mc.name, u.code
-                    HAVING bool_or(mm.occurred_at::date = :report_date)
+                    HAVING bool_or({_day("mm.occurred_at")} = :report_date)
                     """
                     ),
                     {"org_id": organization_id, "site_id": site_id, "report_date": report_date},
@@ -1512,7 +1518,7 @@ class PostgresDprRepository:
                             JOIN activities a ON a.id = pu.activity_id
                             WHERE a.organization_id = :org_id
                               AND a.activity_date <> :report_date
-                              AND pu.occurred_at::date = :report_date
+                              AND {_day("pu.occurred_at")} = :report_date
                               AND pu.deleted_at IS NULL AND a.deleted_at IS NULL
                         ) worked
                         GROUP BY site_id
@@ -1555,7 +1561,7 @@ class PostgresDprRepository:
                         SELECT mm.site_id, count(*) AS materials, max(mm.created_at) AS last_at
                         FROM material_movements mm
                         WHERE mm.organization_id = :org_id
-                          AND mm.occurred_at::date = :report_date
+                          AND {_day("mm.occurred_at")} = :report_date
                           AND mm.reversal_of_movement_id IS NULL
                           AND NOT EXISTS (
                               SELECT 1 FROM material_movements r
@@ -1567,7 +1573,7 @@ class PostgresDprRepository:
                         SELECT site_id, count(*) AS issues_today, max(created_at) AS last_at
                         FROM site_issues
                         WHERE organization_id = :org_id
-                          AND occurred_at::date = :report_date
+                          AND {_day("occurred_at")} = :report_date
                           AND status != 'CANCELLED'
                           AND COALESCE(narrative, '') NOT LIKE 'Question for your engineer:%'
                         GROUP BY site_id
@@ -1579,7 +1585,7 @@ class PostgresDprRepository:
                         FROM progress_updates pu
                         JOIN activities a ON a.id = pu.activity_id
                         WHERE a.organization_id = :org_id
-                          AND pu.occurred_at::date = :report_date
+                          AND {_day("pu.occurred_at")} = :report_date
                           AND a.activity_date <> :report_date
                           AND pu.deleted_at IS NULL AND a.deleted_at IS NULL
                         GROUP BY a.site_id

@@ -52,34 +52,43 @@ async def _data_uri(object_storage: Any, organization_id: Any, key: object) -> s
     return f"data:{stored.content_type};base64,{base64.b64encode(stored.data).decode()}"
 
 
-async def _letterhead_row(conn: Any, daily_report_id: Any, branding_key: str) -> Any:
+async def _letterhead_row(conn: Any, key: dict[str, Any], branding_key: str) -> Any:
     # A savepoint where the connection offers one: callers may hand over the
     # transaction that is about to send the DPR, and a failed lookup here must
     # not leave that transaction unusable.
     begin_nested = getattr(conn, "begin_nested", None)
     if begin_nested is None:
-        return await _fetch(conn, daily_report_id, branding_key)
+        return await _fetch(conn, key, branding_key)
     async with begin_nested():
-        return await _fetch(conn, daily_report_id, branding_key)
+        return await _fetch(conn, key, branding_key)
 
 
-async def _fetch(conn: Any, daily_report_id: Any, branding_key: str) -> Any:
+async def _fetch(conn: Any, key: dict[str, Any], branding_key: str) -> Any:
+    """The company and project of a DPR row (``{"report": id}``) or of a project
+    (``{"project": id}``: a draft before the day's report row exists)."""
     from sqlalchemy import text
 
+    if "report" in key:
+        source = (
+            "FROM daily_reports dr JOIN organizations o ON o.id = dr.organization_id "
+            "LEFT JOIN projects p ON p.id = dr.project_id "
+        )
+        where, value = "dr.id = :id", key["report"]
+    else:
+        source = "FROM projects p JOIN organizations o ON o.id = p.organization_id "
+        where, value = "p.id = :id", key["project"]
     return (
         (
             await conn.execute(
                 text(
                     "SELECT o.id AS organization_id, o.name, o.address, o.phone, o.email, "
                     "       p.client, p.client_logo_object_key, s.value AS branding "
-                    "FROM daily_reports dr "
-                    "JOIN organizations o ON o.id = dr.organization_id "
-                    "LEFT JOIN projects p ON p.id = dr.project_id "
-                    "LEFT JOIN organization_settings s "
+                    + source
+                    + "LEFT JOIN organization_settings s "
                     "  ON s.organization_id = o.id AND s.key = :key "
-                    "WHERE dr.id = :id"
+                    "WHERE " + where
                 ),
-                {"id": daily_report_id, "key": branding_key},
+                {"id": value, "key": branding_key},
             )
         )
         .mappings()
@@ -92,13 +101,23 @@ async def load_letterhead(
 ) -> Letterhead | None:
     """The letterhead for one DPR, or None when it can't be loaded (no such
     report, or any error -- the DPR is then sent with the plain header)."""
+    return await _load(conn, object_storage, {"report": daily_report_id})
+
+
+async def load_project_letterhead(conn: Any, object_storage: Any, project_id: Any) -> Letterhead | None:
+    """The letterhead of a project's DPRs, for a document made before the day's
+    report row exists (a draft, the live preview). None as ``load_letterhead``."""
+    return await _load(conn, object_storage, {"project": project_id})
+
+
+async def _load(conn: Any, object_storage: Any, key: dict[str, Any]) -> Letterhead | None:
     from mesiri.domains.organizations import branding
     from mesiri.domains.organizations import settings as org_settings
 
     try:
-        row = await _letterhead_row(conn, daily_report_id, org_settings.BRANDING)
+        row = await _letterhead_row(conn, key, org_settings.BRANDING)
     except Exception:  # noqa: BLE001 -- the DPR goes out with the plain header
-        logger.warning("dpr_letterhead.load_failed report=%s", daily_report_id, exc_info=True)
+        logger.warning("dpr_letterhead.load_failed key=%s", key, exc_info=True)
         return None
     if row is None:
         return None

@@ -43,7 +43,6 @@ from .prompt import (
 )
 from .reply_clean import clean_annotations, clean_model_text
 from .reply_text import (
-    dpr_caption,
     manglish_word_count,
     mixed_script_words,
     sentences,
@@ -65,6 +64,7 @@ from .tools import (
     ScopeLookup,
     tool_specs,
 )
+from .wording import language_of, say
 
 _log = logging.getLogger("mesiri.agent")
 
@@ -290,10 +290,9 @@ class AgentRunner:
         language = reply_language(user_text)
         if language in (None, "english") or not toolbox.answers:
             return run
+        if toolbox.answers == [toolbox.report_text]:
+            return run  # the report's line is the code's, already in their language (request 143)
         said_now = (run.text or "").strip()
-        caption = dpr_caption(toolbox.report_text or "", language)
-        if caption is not None and toolbox.answers == [toolbox.report_text] and (not said_now or looks_english(said_now)):
-            return run.model_copy(update={"text": caption})
         if said_now:
             return run
         answer = "\n".join(toolbox.answers)[:800]
@@ -434,6 +433,8 @@ class AgentRunner:
         text = clean_model_text(text) if draft_mode else clean_annotations(text)
         if (code_made := self._code_card(toolbox)) is not None:
             return code_made
+        if (report := _report_only(toolbox)) is not None:
+            return report
         if draft_mode and (open_draft := _open_draft(toolbox)) is not None:
             _decided(toolbox, "reply", MODEL_FILTERED)
             text = _one_sentence(text)
@@ -515,9 +516,9 @@ class AgentRunner:
             elif run.stop_reason != "max_steps" and toolbox.parked is None:
                 text = self._natural(text, toolbox)
             tail.append(block)
-            draft = draft_report_line(toolbox.report_text)
-            if draft:
-                tail.append(draft)
+        if line := _report_line(toolbox):
+            # Request 143: the PDF went with the tool call; the model says nothing about it.
+            tail.append(line)
         asked = _questions_line(toolbox)
         if asked:
             tail.append(asked)
@@ -653,10 +654,10 @@ class AgentRunner:
         words for what it did."""
         block = _saved_block(toolbox)
         parts = [block] if block else [item.text for item in toolbox.saved]
-        draft = draft_report_line(toolbox.report_text) if block else ""
-        if draft:
-            parts.append(draft)
-        parts.extend(a for a in toolbox.answers if not (draft and a == toolbox.report_text))
+        line = _report_line(toolbox)
+        if line:
+            parts.append(line)
+        parts.extend(a for a in toolbox.answers if not (line and a == toolbox.report_text))
         parked = toolbox.parked
         if parked is not None:
             parts.append(parked.text)
@@ -893,23 +894,25 @@ def covering_sentence(summaries: list[str], user_text: str) -> str:
     return _COVERING[language].format(items=items)
 
 
-#: "• Work: 2 items", one line per section of the day's draft report.
-_DRAFT_LINE = re.compile(r"^\s*•\s*(?P<item>\S.*)$", re.MULTILINE)
-DRAFT_TAIL = "(The items above are added once you tap Save.)"
+def _report_only(toolbox: AgentToolbox) -> ReplySpec | None:
+    """Request 143: a turn that only asked for the report is answered by the code's
+    one sentence (the PDFs went with the tool call); the model writes no report text."""
+    if not toolbox.report_text or toolbox.answers != [toolbox.report_text]:
+        return None
+    if _entries(toolbox) or toolbox.parked is not None or _open_draft(toolbox) is not None:
+        return None
+    _decided(toolbox, "reply", TEMPLATE)
+    return ReplySpec(text=toolbox.report_text)
 
 
-def draft_report_line(report_text: str | None) -> str:
-    """Request 83: ONE line for "send the report" asked in the same message as
-    saves -- what the day's draft holds so far (the WA-40 preview request_dpr
-    returned), and that the new items join it on Save. Empty when the answer
-    carries no preview (a finished PDF is attached by its own path)."""
-    text = report_text or ""
-    items = [m.group("item").strip().rstrip(".") for m in _DRAFT_LINE.finditer(text)]
-    if items:
-        return f"Today's draft so far: {', '.join(items)}. {DRAFT_TAIL}"
-    if text.startswith(("No DPR has been generated", "Nothing's been logged for today")):
-        return f"Today's draft so far: nothing yet. {DRAFT_TAIL}"
-    return ""
+def _report_line(toolbox: AgentToolbox) -> str:
+    """Request 143: the report asked for in the same message as entries: one line
+    under the card. The PDF went already; the items join the day on Save."""
+    if not toolbox.report_text:
+        return ""
+    if toolbox.report_documents:
+        return say("report.with_card", language_of(toolbox.user_text))
+    return toolbox.report_text
 
 
 #: A camelCase or snake_case identifier ("clientIdb", "site_id"): code, not words.

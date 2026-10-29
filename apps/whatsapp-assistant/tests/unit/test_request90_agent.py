@@ -294,22 +294,23 @@ class _Provider(FakeToolCallingProvider):
         return ToolRunResult(text=self.retries.pop(0), calls=[], steps=1, stop_reason="answered", model="fake")
 
 
-async def test_a_report_with_no_words_from_the_model_is_said_in_manglish():
-    english = "The report for 22 Oct at Green Villa isn't confirmed yet. So far:\n• Labour: 2 workers"
+async def test_a_lookup_with_no_words_from_the_model_is_said_in_manglish():
+    # (The DPR's own line is the code's, in the sender's language: request 143.)
+    english = "There were 2 workers at Green Villa on 22 Oct (2 mason)."
 
     class Gateway:
         async def run(self, candidate, *, text):  # noqa: ANN001, ANN202
             return StepResult("answer", text=english)
 
     provider = _Provider(
-        [[("request_dpr", {"date": "yesterday"})], ""], ["Innale report: 22 Oct-nu 2 per vannu, ippo draft aanu."]
+        [[("query_labour", {"date_range": "yesterday"})], ""], ["Innale Green Villa-il 2 per vannu (2 mason)."]
     )
     result = await r.AgentRunner(provider).run(
-        ctx=CTX, user_text="innale report ayakku", gateway=Gateway(), scope=ScopeLookup()
+        ctx=CTX, user_text="innale ethra per vannu", gateway=Gateway(), scope=ScopeLookup()
     )
-    assert "isn't confirmed" not in result.reply.text
-    assert "Innale report" in result.reply.text
-    assert "Manglish" in provider.asked[0] and "isn't confirmed" in provider.asked[0]
+    assert "There were" not in result.reply.text
+    assert "Innale Green Villa-il" in result.reply.text
+    assert "Manglish" in provider.asked[0] and "There were" in provider.asked[0]
 
 
 async def test_an_english_message_keeps_the_english_answer():

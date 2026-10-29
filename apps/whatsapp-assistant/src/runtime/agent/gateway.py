@@ -52,6 +52,8 @@ class StepResult:
     #: ``drafted`` only: the line is a correction (of a line of the card, or of a
     #: saved entry). It is a change they have not saved yet (request 129).
     changed: bool = False
+    #: ``answer`` only (request 143): documents sent with it (the report's PDFs).
+    documents: int = 0
 
 
 class WorkflowGateway(Protocol):

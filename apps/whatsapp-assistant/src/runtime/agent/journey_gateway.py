@@ -208,6 +208,9 @@ class JourneyGateway:
     #: ARCH-06 step 2: lookups, transfers, site/project create, money undo
     #: (runtime/agent/query_entry.py).
     query_entry: Any | None = None
+    #: Request 143: request_dpr, the day's report as a PDF from Day Facts
+    #: (runtime/agent/report_entry.py).
+    report_entry: Any | None = None
     #: 22 Oct: add a team member, correct a work quantity, close a site issue
     #: (runtime/agent/change_entry.py).
     change_entry: Any | None = None
@@ -622,6 +625,8 @@ class JourneyGateway:
 
         if semantic_type in SITE_ENTRY_TYPES:
             return self.site_entry
+        if semantic_type is SemanticType.DPR_REQUEST:
+            return self.report_entry
         from .query_entry import QUERY_ENTRY_TYPES
 
         if semantic_type in QUERY_ENTRY_TYPES:
@@ -650,7 +655,9 @@ class JourneyGateway:
             from .toolbox import question_reply
 
             reply = question_reply(prepared.question, list(prepared.options), awaiting=prepared.awaiting) if prepared.question else None
-            return StepResult(prepared.status, text=prepared.text, reply=reply, awaiting=prepared.awaiting)
+            return StepResult(
+                prepared.status, text=prepared.text, reply=reply, awaiting=prepared.awaiting, documents=prepared.documents
+            )
         run = await self.start_workflow(prepared.decision, prepared.event)
         _log.info("agent.direct correlation_id=%s kind=%s route=direct", message.correlation_id, kind)
         journey = SimpleNamespace(workflow_run=run, planner_decision=prepared.decision)

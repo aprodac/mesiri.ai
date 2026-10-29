@@ -89,6 +89,8 @@ class Say:
     #: "choose" only (request 142): the list rows with ids the code reads back, so the
     #: tap names the thing itself (an issue) and no model has to match its title again.
     rows: tuple[Any, ...] = ()
+    #: "answer" only (request 143): documents the entry sent with this answer.
+    documents: int = 0
 
 
 @dataclass(slots=True)

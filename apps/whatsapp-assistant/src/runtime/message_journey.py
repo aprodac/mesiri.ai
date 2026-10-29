@@ -663,12 +663,15 @@ def build_message_handlers(
             from runtime.agent.material_entry import MaterialEntry
             from runtime.agent.project_day import project_zone_name
             from runtime.agent.query_entry import QueryEntry
+            from runtime.agent.report_entry import ReportEntry
             from runtime.agent.site_entry import SiteEntry
             from runtime.agent.turn import AgentTurnDeps, run_agent_turn
             from runtime.inbound_journey import render_workflow_run_reply_spec
             from runtime.today_context import build_stock_line, build_today_line
 
             use_drafts = draft_tap is not None or journal_tap is not None or issue_tap is not None or await _draft_v2_on(ctx)
+            # Request 143: this message's Day Facts (each site day read once).
+            turn_facts = day_facts.for_turn() if hasattr(day_facts, "for_turn") else day_facts
 
             hint = category_hint.semantic_hint if category_hint else None
             if hint and category_hint.direction:
@@ -1075,7 +1078,6 @@ def build_message_handlers(
                         inventory_query=inventory_query,
                         labour_query_service=labour_query_service,
                         activity_search_service=activity_search_service,
-                        dpr_request_query=dpr_request_query,
                         project_detail_query=project_detail_query,
                         expense_query_service=expense_query_service,
                         money_account_query=money_account_query,
@@ -1083,6 +1085,18 @@ def build_message_handlers(
                         object_storage=object_storage,
                         send_document=sender.send_document,
                         card_renderer=card_renderer,
+                    ),
+                    # Request 143: the day's report, from Day Facts.
+                    report_entry=ReportEntry(
+                        context_resolver=context_resolver,
+                        org_settings_query=org_settings_query,
+                        actor=ctx,
+                        active_context=getattr(context_resolver, "active_context", None),
+                        day_facts=turn_facts,
+                        dpr_request_query=dpr_request_query,
+                        object_storage=object_storage,
+                        db=getattr(turn_facts, "db", None),
+                        send_document=sender.send_document,
                     ),
                     # ARCH-03: labour attendance (Alan's approval, 22 Oct).
                     labour_entry=LabourEntry(
@@ -1117,7 +1131,7 @@ def build_message_handlers(
                         member_resolver=member_resolver,
                         activity_query=activity_query,
                         site_issue_query=site_issue_query,
-                        day_facts=day_facts,
+                        day_facts=turn_facts,
                         remembered_activity=(
                             (lambda: memory_loader.current_activity_id(user_id=ctx.user_id))
                             if hasattr(memory_loader, "current_activity_id")
@@ -1135,7 +1149,7 @@ def build_message_handlers(
                         organization_id=str(ctx.organization_id), user_id=ctx.user_id, facts=facts, keep=True
                     ),
                     transaction=shared_transaction,
-                    day_facts=day_facts,
+                    day_facts=turn_facts,
                     pending_confirmation=_pending_confirmation,
                     sender=sender,
                 )

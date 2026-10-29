@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
 
-from mesiri.application.dpr import fact_review, site_day
+from mesiri.application.dpr import fact_review, project_day, site_day
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection
@@ -76,7 +76,7 @@ _SOURCES: tuple[tuple[str, str, str], ...] = (
         "site_issue",
         """
         SELECT i.id AS source_id, i.id AS fact_id, i.organization_id, i.project_id, i.site_id,
-               i.occurred_at::date AS fact_date, i.created_at,
+               """ + project_day.local_date_sql("i.occurred_at", "i.organization_id") + """ AS fact_date, i.created_at,
                concat_ws(': ', 'Issue', initcap(replace(i.issue_type::text, '_', ' ')),
                          i.narrative) AS summary
         FROM site_issues i

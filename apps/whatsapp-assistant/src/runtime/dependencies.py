@@ -654,9 +654,9 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     from runtime.activity_query import ActivityQueryService
 
     activity_query = ActivityQueryService(material_db)
-    from runtime.day_facts import DayFactsReader
+    from runtime.day_facts import DayFacts
 
-    day_facts = DayFactsReader(material_db)
+    day_facts = DayFacts(material_db)
     # Direct evidence attach for #2 Batch Media's "Site Update" photo
     # purpose -- never a workflow (see AttachEvidenceCommand's docstring).
     # Reuses the same pool; opens its own write transaction only when

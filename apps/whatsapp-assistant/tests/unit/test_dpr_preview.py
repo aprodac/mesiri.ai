@@ -93,6 +93,10 @@ def client(monkeypatch):
         return None
 
     monkeypatch.setattr(preview, "PostgresDprRepository", FakeRepo)
+    # The day itself is read through Day Facts (request 143), from the same repository.
+    from mesiri.infrastructure.postgres.repositories import dpr as dpr_repo
+
+    monkeypatch.setattr(dpr_repo, "PostgresDprRepository", FakeRepo)
     monkeypatch.setattr(preview, "_report_row", report_row)
     monkeypatch.setattr(preview, "_letterhead", no_letterhead)
     monkeypatch.setattr(preview, "_site_denied", lambda auth, p, s: state.denied)

@@ -15,6 +15,7 @@ from runtime.agent import runner as r
 from runtime.agent.gateway import StepResult
 from runtime.agent.prompt import AgentContext
 from runtime.agent.tools import ScopeLookup
+from runtime.agent.wording import say
 
 CTX = AgentContext(
     user_name="Anil",
@@ -171,16 +172,13 @@ async def test_a_sentence_that_names_everything_costs_no_second_call():
     assert provider.retried == 0 and provider.calls == 1
 
 
-# -- the report in a mixed message -------------------------------------------
+# -- the report in a mixed message (request 143: the PDF went, one line) ------
 
-PREVIEW = (
-    "Today's report is made this evening. So far today at Site A1:\n• Work: 2 items\n• Labour: 14 workers\n"
-    "This is a draft: not final, and not sent to anyone."
-)
+SENT = "Innathe draft report · Site A1 ithaa, ithuvare save cheythathil ninnu. Confirm aayittilla."
 MIXED = "6 mason vannu, 25 bag cement use cheythu, nale steel venam. innathe report ayakku"
 
 
-async def test_a_report_request_with_saves_is_one_card_and_one_draft_line():
+async def test_a_report_request_with_saves_is_one_card_and_one_report_line():
     provider = FakeToolCallingProvider(
         [
             [
@@ -196,28 +194,19 @@ async def test_a_report_request_with_saves_is_one_card_and_one_draft_line():
         MIXED,
         StepResult("saved", text="a", summary="6 workers (6 mason)"),
         StepResult("saved", text="b", summary="Cement used: 25 bags"),
-        StepResult("answer", text=PREVIEW),
+        StepResult("answer", text=SENT, documents=1),
     )
     text = result.reply.text
     assert text.count("✅ Saved:") == 1 and text.count("6 workers (6 mason)") == 1
-    assert text.count("Today's draft so far:") == 1
-    assert "Today's draft so far: Work: 2 items, Labour: 14 workers. (The items above are added once you tap Save.)" in text
-    assert text.index("Cement used: 25 bags") < text.index("Today's draft so far:")
-    assert "This is a draft" not in text and "made this evening" not in text
+    line = say("report.with_card", "manglish")
+    assert text.count(line) == 1 and text.index("Cement used: 25 bags") < text.index(line)
+    assert SENT not in text
 
 
-def test_the_draft_line_needs_a_preview_and_a_nothing_yet_answer_is_said():
-    assert r.draft_report_line("Today's DPR (X) is attached.") == ""
-    assert r.draft_report_line(None) == ""
-    assert r.draft_report_line("No DPR has been generated for today yet. Log an activity first.").startswith(
-        "Today's draft so far: nothing yet."
-    )
-
-
-async def test_a_report_request_alone_is_answered_as_before():
-    provider = FakeToolCallingProvider([[("request_dpr", {})], "Today's report is a draft so far: 2 work items."])
-    result = await _say(provider, "innathe report ayakku", StepResult("answer", text=PREVIEW))
-    assert "Today's draft so far:" not in result.reply.text
+async def test_a_report_request_alone_is_the_codes_line_not_the_models():
+    provider = FakeToolCallingProvider([[("request_dpr", {})], "Today's report ready aayittilla, ithu oru draft aanu."])
+    result = await _say(provider, "innathe report ayakku", StepResult("answer", text=SENT, documents=1))
+    assert result.reply.text == SENT
 
 
 async def test_the_work_done_entry_hands_the_workflow_the_floor_and_the_status():

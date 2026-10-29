@@ -21,13 +21,13 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from mesiri.application.dpr import fact_review
+from mesiri.application.dpr import fact_review, project_day
 from mesiri.application.dpr.fact_review import FactReviewError
 
 # Where each fact lives, and the date column that puts it on a site's day.
 _FACT_SOURCES: dict[str, tuple[str, str]] = {
     fact_review.ACTIVITY: ("activities", "activity_date"),
-    fact_review.SITE_ISSUE: ("site_issues", "occurred_at::date"),
+    fact_review.SITE_ISSUE: ("site_issues", project_day.local_date_sql("site_issues.occurred_at", "site_issues.organization_id")),
     fact_review.LABOUR_REPORT: ("labour_attendance_reports", "occurred_date"),
     fact_review.MATERIAL_RECEIPT: ("material_receipts", "occurred_date"),
     fact_review.MATERIAL_USAGE: ("material_usage", "occurred_date"),

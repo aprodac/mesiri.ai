@@ -11,6 +11,7 @@
 #   waiting  a line waits on a question of the card (a unit, the site)
 #   read     a question about the day's figures: no card; the read's site came from the site resolver
 #   lang     manglish | en: the sentence above the card is the template of that language
+#   report   request 143: the day's report PDF is sent and the reply is the code's one line
 #
 - {"id": 1, "message": "Green Villa innathe update: 5 mason 3 helper, ground floor tiling 40% aayi, 30 bags cement use cheythu, mixer breakdown aayi pani 2 hour ninnu", "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 5}, {"trade": "helper", "headcount": 3}]}], ["save_work_done", {"narrative": "ground floor tiling 40%", "work_type": "tiling", "location": "ground floor", "progress_percent": 40}], ["save_material_usage", {"material": "cement", "quantity": 30, "unit": "bags"}], ["report_issue", {"issue_type": "EQUIPMENT_BREAKDOWN", "narrative": "mixer breakdown, work stopped 2 hours", "delay_duration_minutes": 120}]], "site": "Green Villa, Kakkanad", "kinds": ["labour", "work", "material_out", "issue_open"], "has": ["5 mason", "40%", "30 bags"], "lang": "manglish"}
 - {"id": 2, "message": "Green Villa ground floor wall putty 200 sqft", "calls": [["save_work_done", {"narrative": "ground floor wall putty 200 sqft", "work_type": "putty", "location": "ground floor", "quantities": [{"work_type": "putty", "quantity": 200, "unit": "sqft"}]}]], "site": "Green Villa, Kakkanad", "kinds": ["work"], "has": ["200"], "lang": "en"}
@@ -21,3 +22,5 @@
 - {"id": 7, "message": "alla, 6 mason aanu", "before": [{"message": "Green Villa 5 mason 3 helper vannu", "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 5}, {"trade": "helper", "headcount": 3}]}]]}], "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 6}]}]], "site": "Green Villa, Kakkanad", "kinds": ["labour"], "has": ["6 mason", "3 helper"], "lang": "manglish"}
 - {"id": 8, "message": "innu enthokke cheythu?", "saved": "Green Villa, Kakkanad", "calls": [["query_work_log", {"date_range": "today"}]], "read": true, "lang": "manglish"}
 - {"id": 9, "message": "Green Villa 2 helper vannu, tiling 70% aayi", "calls": [["save_labour", {"workers": [{"trade": "helper", "headcount": 2}]}], ["save_work_done", {"narrative": "tiling 70%", "work_type": "tiling", "progress_percent": 70}]], "site": "Green Villa, Kakkanad", "kinds": ["labour", "work"], "has": ["2 helper", "70%"], "lang": "manglish"}
+- {"id": 10, "message": "innathe report ayakku", "calls": [["request_dpr", {}]], "report": true, "lang": "manglish"}
+- {"id": 11, "message": "send me today's report", "calls": [["request_dpr", {}]], "report": true, "lang": "en"}

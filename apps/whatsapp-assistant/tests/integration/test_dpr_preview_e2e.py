@@ -1,5 +1,5 @@
-"""WA-40 against a real database: the "so far today" preview reads the day the
-report will be built from, and writes nothing."""
+"""WA-40 against a real database: Day Facts reads the day the report is built
+from (request 143: the one reader of a site's day), and writes nothing."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from sqlalchemy import text
 from mesiri.application.organizations.create_company import NewCompany, create_company
 from mesiri.bootstrap.settings import Settings
 from mesiri.infrastructure.postgres.database import PostgresDatabase
+from runtime.day_facts import DayFacts
 from runtime.dpr_request_query import DprRequestQueryService
 
 pytestmark = pytest.mark.integration
@@ -49,13 +50,13 @@ async def test_the_preview_is_the_days_sections_and_stores_nothing():
                 },
             )
     try:
-        lines = await DprRequestQueryService(db).preview_lines(
+        day = await DayFacts(db).for_turn().site_day(
             organization_id=str(created.organization_id),
             project_id=str(created.project_id),
             site_id=str(created.sites[0].site_id),
-            report_date=DAY,
+            day=DAY,
         )
-        assert lines == ["• Work: 2 items"]
+        assert day.lines == ["• Work: 2 items"]
         async with db.transaction() as conn:
             reports = (
                 await conn.execute(

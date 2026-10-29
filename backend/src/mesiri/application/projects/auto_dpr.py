@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING, Any
 import sqlalchemy as sa
 
 from mesiri.application.automations.scheduling import is_due, local_now, parse_time_of_day
-from mesiri.application.dpr import site_day
+from mesiri.application.dpr import project_day, site_day
 from mesiri.domains.organizations.lifecycle import operational_sql
 from mesiri.infrastructure.postgres.repositories.dpr import PostgresDprRepository
 
@@ -103,7 +103,7 @@ async def _sites_with_activity_for_project(
                 UNION
                 SELECT DISTINCT site_id FROM site_issues
                 WHERE organization_id = :org_id AND project_id = :project_id
-                  AND occurred_at::date = :report_date
+                  AND """ + project_day.local_date_sql("occurred_at", ":org_id") + """ = :report_date
                 """
             ),
             {
@@ -519,7 +519,8 @@ async def site_days_for_review(
                      WHERE organization_id = :org_id AND activity_date = :d
                     UNION ALL
                     SELECT site_id, updated_at, true FROM site_issues
-                     WHERE organization_id = :org_id AND occurred_at::date = :d
+                     WHERE organization_id = :org_id
+                       AND """ + project_day.local_date_sql("occurred_at", ":org_id") + """ = :d
                     UNION ALL
                     SELECT site_id, GREATEST(created_at, voided_at), voided_at IS NULL
                       FROM labour_attendance_reports

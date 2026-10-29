@@ -42,6 +42,7 @@ import datetime
 import sys
 import uuid
 
+from ..application.dpr import project_day
 from ..bootstrap.settings import Settings
 from ..domains.organizations.lifecycle import operational_sql
 from ..infrastructure.postgres.database import PostgresDatabase
@@ -75,7 +76,8 @@ async def _sites_with_activity(conn, *, organization_id: uuid.UUID, report_date:
                   AND deleted_at IS NULL
                 UNION
                 SELECT DISTINCT project_id, site_id FROM site_issues
-                WHERE organization_id = :org_id AND occurred_at::date = :report_date
+                WHERE organization_id = :org_id
+                  AND """ + project_day.local_date_sql("occurred_at", ":org_id") + """ = :report_date
                 """
             ),
             {"org_id": organization_id, "report_date": report_date},

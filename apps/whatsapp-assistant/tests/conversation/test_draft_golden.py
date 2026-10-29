@@ -63,7 +63,49 @@ async def villa_world():  # noqa: ANN201
         ],
     )
     world.project_id = project_id
+    world.report = _report_entry(world)
     return world
+
+
+class _GreenVillaDay:
+    """Day Facts for the golden world: Green Villa has a day's entries, Site B none."""
+
+    def __init__(self, villa_id: Any) -> None:
+        self.villa_id = str(villa_id)
+
+    async def site_day(self, *, organization_id, project_id, site_id, day):  # noqa: ANN001, ANN201
+        from runtime.day_facts import SiteDay
+
+        villa = str(site_id) == self.villa_id
+        payload = (
+            {"site_name": VILLA, "activity_count": 1, "activities": [{"work_type": "tiling", "quantities": []}],
+             "labour": {"headcount": 8}}
+            if villa
+            else {}
+        )
+        return SiteDay(str(organization_id), str(project_id), str(site_id), day, payload=payload)
+
+
+class _Renderer:
+    async def render_pdf(self, html: str) -> bytes:
+        return b"%PDF-golden"
+
+
+def _report_entry(world):  # noqa: ANN001, ANN202
+    from context.resolver import ContextResolver
+    from runtime.agent.report_entry import ReportEntry
+
+    world.documents = []
+    villa = next(s.id for s in world.actor.sites if s.name == VILLA)
+
+    async def send_document(wa_id, data, *, filename, caption):  # noqa: ANN001, ANN202
+        world.documents.append(filename)
+        return True
+
+    return ReportEntry(
+        ContextResolver(world.deps), None, world.actor, active_context=world.deps.active_context,
+        day_facts=_GreenVillaDay(villa), send_document=send_document, renderer=_Renderer(),
+    )
 
 
 async def _saved_at(world, name: str) -> None:  # noqa: ANN001
@@ -95,6 +137,18 @@ def mismatch(case: dict[str, Any], world: Any, result: Any, items: list[dr.Draft
         return f"outcome {result.outcome}"
     text = result.reply.text
     decisions = list(world.last_gateway.decisions)
+    if case.get("report"):
+        # Request 143: the PDF went, and the reply is the code's one line, never the model's.
+        from runtime.agent.wording import day_words, say
+
+        language = case["lang"] if case["lang"] != "en" else "english"
+        today = dt.date.today()
+        line = say("report.draft", language, at=f" · {VILLA}", **day_words(today, today, language))
+        if not world.documents:
+            return "no report PDF was sent"
+        if text != line:
+            return f"the reply is not the report's line: {text!r}"
+        return None
     if case.get("read"):
         reads = [d for d in decisions if d["what"] == "read_site"]
         if not reads or any(d["by"] != draft_site.DECIDER for d in reads):
@@ -144,7 +198,7 @@ def test_the_draft_golden_set_is_well_formed():
     assert len(CASES) >= 9 and len({c["id"] for c in CASES}) == len(CASES)
     for case in CASES:
         assert case["message"] and case["calls"] and case["lang"] in ("en", "manglish"), case["id"]
-        assert case.get("read") or (case["site"] and case["kinds"]), case["id"]
+        assert case.get("read") or case.get("report") or (case["site"] and case["kinds"]), case["id"]
 
 
 def _scripted(turn: dict[str, Any]) -> FakeToolCallingProvider:
@@ -157,7 +211,7 @@ async def test_the_draft_pipeline_makes_exactly_the_expected_card(case):
     world, result = await run_case(case, _scripted)
     why = mismatch(case, world, result, await _items(world))
     assert why is None, why
-    if not case.get("read"):
+    if not case.get("read") and not case.get("report"):
         assert "Site B tap" not in result.reply.text and "Saved!" not in result.reply.text
 
 

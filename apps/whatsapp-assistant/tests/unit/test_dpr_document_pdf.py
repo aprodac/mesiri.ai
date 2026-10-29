@@ -11,8 +11,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import channel.dpr_document.day_document as day_document
 import channel.dpr_document.letterhead as letterhead_module
-import runtime.dpr_request_query as dpr_request_query
 from dpr_preview import router as preview
 from mesiri.domains.projects.router import get_auth_context
 from mesiri.infrastructure.objectstorage.dependency import get_object_storage
@@ -104,7 +104,7 @@ def setup(monkeypatch):
     monkeypatch.setattr(preview, "PostgresDprRepository", FakeRepo)
     monkeypatch.setattr(preview, "_site_denied", denied)
     monkeypatch.setattr(letterhead_module, "load_letterhead", no_letterhead)
-    monkeypatch.setattr(dpr_request_query, "shared_renderer", lambda: renderer)
+    monkeypatch.setattr(day_document, "shared_renderer", lambda: renderer)
     app = FastAPI()
     app.include_router(preview.router)
     app.dependency_overrides[get_auth_context] = lambda: SimpleNamespace(organization_id=ORG)
@@ -134,7 +134,7 @@ def test_without_a_stored_pdf_it_is_printed_from_the_whatsapp_template(setup):
     assert "Daily Progress Report" in html and "Tower 1" in html
     assert "മിക്സർ കേടായി" in html  # Malayalam kept (the fpdf report crashed)
     assert "EQUIPMENT_BREAKDOWN" not in html  # a plain label, not the code
-    assert dpr_request_query.DRAFT_CODE in html  # a draft says so
+    assert day_document.DRAFT_CODE in html  # a draft says so
     assert setup.storage.written == []  # never stored (BE-43)
 
 
@@ -144,7 +144,7 @@ def test_a_confirmed_report_prints_its_code(setup):
     setup.client.get(f"/dpr/daily-reports/{REPORT}/document.pdf")
 
     assert "DPR-0007" in setup.renderer.html[0]
-    assert dpr_request_query.DRAFT_CODE not in setup.renderer.html[0]
+    assert day_document.DRAFT_CODE not in setup.renderer.html[0]
 
 
 def test_an_older_version_is_asked_for_by_id(setup):

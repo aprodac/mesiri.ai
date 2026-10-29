@@ -166,6 +166,10 @@ class World:
     pending_confirmation: Any = None
     #: Request 132: ``(project_id, site_id) -> label``, "now at Site B" on a draft card.
     preselect_site: Any = None
+    #: Request 143: request_dpr's entry (runtime/agent/report_entry.py), when wired.
+    report: Any = None
+    #: The file names of the documents the report entry sent.
+    documents: Any = None
 
     def message(self, text: str, modality: InputModality = InputModality.TEXT) -> NormalizedMessage:
         media = None
@@ -221,6 +225,7 @@ class World:
                 if self.direct
                 else None
             ),
+            report_entry=self.report,
             change_entry=ChangeEntry(
                 ContextResolver(self.deps), None, self.actor, active_context=self.deps.active_context, **self.change
             ),

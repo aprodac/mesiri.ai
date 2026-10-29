@@ -6,7 +6,6 @@ from __future__ import annotations
 from channel.replies import ReplySpec
 from runtime.agent import save_button
 from runtime.agent.query_entry import _one_name_per_trade
-from runtime.agent.reply_text import dpr_caption
 from runtime.reply_language import localize_fixed_reply, localize_reply_spec
 from workflows.labour_query.nodes import generate_labour_query_reply
 
@@ -35,17 +34,6 @@ def test_cancel_line_english_sender_unchanged():
 def test_manglish_swap_leaves_other_text_alone():
     text = "✅ Saved.\nCouldn't cancel 1 of them: x."
     assert localize_fixed_reply(text, "Malayalam", "latin") == text
-
-
-def test_dpr_caption_follows_the_reply_language():
-    answer = "The DPR for 22 Oct 2026 (DPR-1) attached."
-    assert dpr_caption(answer, "manglish") == "22 Oct 2026-inte DPR (DPR-1) ithaa."
-    assert dpr_caption("Today's DPR (D-1) attached. Not confirmed yet.", "manglish") == (
-        "Innathe DPR (D-1) ithaa. Confirm cheythittilla."
-    )
-    assert dpr_caption(answer, "malayalam") == "22 Oct 2026-ലെ DPR (DPR-1) ഇതാ."
-    assert dpr_caption(answer, "english") is None
-    assert dpr_caption("No DPR has been generated for today yet.", "manglish") is None
 
 
 def test_a_second_save_of_the_same_trade_keeps_every_trade_with_numbers():
