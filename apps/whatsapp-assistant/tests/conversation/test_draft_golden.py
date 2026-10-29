@@ -123,7 +123,7 @@ def _report_entry(world):  # noqa: ANN001, ANN202
     world.documents = []
     villa = next(s.id for s in world.actor.sites if s.name == VILLA)
 
-    async def send_document(wa_id, data, *, filename, caption):  # noqa: ANN001, ANN202
+    async def send_document(wa_id, data, *, filename, caption, shows=None):  # noqa: ANN001, ANN202
         world.documents.append(filename)
         return True
 

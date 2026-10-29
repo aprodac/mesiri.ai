@@ -69,6 +69,10 @@ class ReplySpec:
     #: instead of the text and then the image. Only with no buttons or list; the
     #: text alone goes out if the image fails. Receipts leave this False.
     caption_image: bool = False
+    #: What the picture shows, in a few words ("Workers list card, 29 Oct"). The sender
+    #: keeps it so Mesiri knows what it sent (channel/whatsapp/sent_text.py); without
+    #: one, runtime/reply_dispatch.py describes the card by the reply it came with.
+    shows: str | None = field(default=None, compare=False)
 
 
 # The two reply buttons shown under every "Confirm this record?" prompt.

@@ -32,7 +32,7 @@ class _Sender:
     async def send_text(self, to, body):
         self.texts.append((to, body))
 
-    async def send_button(self, to, *, body, buttons):
+    async def send_button(self, to, *, body, buttons, shows=None):
         self.buttons.append((to, body, buttons))
 
     async def send_template(self, to, *, name, language, body_params=(), quick_reply_payloads=()):

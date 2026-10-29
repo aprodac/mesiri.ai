@@ -282,7 +282,9 @@ class QueryEntry(EntryScope):
             data, filename = built
 
             async def _send_pdf() -> None:
-                sent = await self.send_document(message.sender.wa_id, data, filename=filename, caption=None)
+                sent = await self.send_document(
+                    message.sender.wa_id, data, filename=filename, caption=None, shows=f"PDF list: {filename}"
+                )
                 if sent is False:
                     raise RuntimeError("send_document returned False")
 
@@ -329,8 +331,12 @@ class QueryEntry(EntryScope):
         for page, png in enumerate(pngs, start=1):
             name = f"{stem}.png" if len(pngs) == 1 else f"{stem}_{page}.png"
 
-            async def _send_png(png: bytes = png, name: str = name) -> None:
-                sent = await self.send_image(message.sender.wa_id, png, caption=None, filename=name)
+            shows = f"{title}, list card ({page} of {len(pngs)})"
+
+            async def _send_png(png: bytes = png, name: str = name, shows: str = shows) -> None:
+                sent = await self.send_image(
+                    message.sender.wa_id, png, caption=None, filename=name, shows=shows
+                )
                 if sent is False:
                     raise RuntimeError("send_image returned False")
 

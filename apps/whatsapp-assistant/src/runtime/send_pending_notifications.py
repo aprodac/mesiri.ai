@@ -121,20 +121,21 @@ async def _send_one(
     # any failure sends the text alone, as before.
     from channel.cards import render_payload_card
 
+    card_shows = "Today / site-day card with " + (text.strip().splitlines() or ["the update"])[0][:80]
     card = await render_payload_card(payload.get("card"), card_renderer)
     text_sent = False
     if buttons:
         # WA-04: tappable answers, e.g. "Site closed today".
         if card is not None:
             text_sent = await sender.send_button(
-                wa_id, body=text, buttons=buttons, header_image=card
+                wa_id, body=text, buttons=buttons, header_image=card, shows=card_shows
             )
         if not text_sent:
             text_sent = await sender.send_button(wa_id, body=text, buttons=buttons)
     else:
         if card is not None:
             text_sent = await sender.send_image(
-                wa_id, card, caption=text[:_CAPTION_MAX], filename="today.png"
+                wa_id, card, caption=text[:_CAPTION_MAX], filename="today.png", shows=card_shows
             )
         if not text_sent:
             text_sent = await sender.send_text(wa_id, text)
@@ -146,7 +147,11 @@ async def _send_one(
         try:
             stored = await object_storage.get_object(object_key)
             await sender.send_document(
-                wa_id, stored.data, filename="DPR.pdf", mime_type=_DOCUMENT_MIME_TYPE
+                wa_id,
+                stored.data,
+                filename="DPR.pdf",
+                mime_type=_DOCUMENT_MIME_TYPE,
+                shows="Daily progress report (DPR) PDF",
             )
         except Exception:  # noqa: BLE001
             # The status text already went out -- a failed document fetch/

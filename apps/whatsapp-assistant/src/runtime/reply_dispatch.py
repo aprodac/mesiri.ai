@@ -20,6 +20,14 @@ _log = logging.getLogger("mesiri.reply_dispatch")
 _CAPTION_MAX = 1024
 
 
+def card_label(reply: ReplySpec) -> str:
+    """What the card of ``reply`` shows: its own ``shows``, else the reply's first line."""
+    if reply.shows and reply.shows.strip():
+        return reply.shows.strip()
+    first = next((line.strip() for line in (reply.text or "").splitlines() if line.strip()), "")
+    return f"card sent with the reply \"{first[:100]}\"" if first else "card"
+
+
 async def send_reply_spec(
     reply: ReplySpec,
     wa_id: str,
@@ -45,7 +53,7 @@ async def send_reply_spec(
         and not reply.list_rows
     ):
         sent = await send_image(
-            wa_id, image, caption=reply.text[:_CAPTION_MAX], filename="stock.png"
+            wa_id, image, caption=reply.text[:_CAPTION_MAX], filename="stock.png", shows=card_label(reply)
         )
         if sent is not False:
             return sent
@@ -62,12 +70,12 @@ async def send_reply_spec(
             send_button=send_button,
         )
         if send_image is not None:
-            await send_image(wa_id, image, caption=None)
+            await send_image(wa_id, image, caption=None, shows=card_label(reply))
         return sent
     if reply.buttons and send_button is not None:
         if image is not None:
             sent = await send_button(
-                wa_id, body=reply.text, buttons=reply.buttons, header_image=image
+                wa_id, body=reply.text, buttons=reply.buttons, header_image=image, shows=card_label(reply)
             )
             if sent is not False:
                 return sent
@@ -76,7 +84,7 @@ async def send_reply_spec(
             _log.warning("receipt.header_send_failed wa_id=%s", wa_id)
             sent = await send_button(wa_id, body=reply.text, buttons=reply.buttons)
             if send_image is not None:
-                await send_image(wa_id, image, caption=None)
+                await send_image(wa_id, image, caption=None, shows=card_label(reply))
             if sent is not False:
                 return sent
             return await send_text(wa_id, numbered(reply.text, reply.buttons))

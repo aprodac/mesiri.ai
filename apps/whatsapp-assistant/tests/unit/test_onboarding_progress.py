@@ -76,7 +76,7 @@ def rig(monkeypatch):
 
     service._read = fake_read  # type: ignore[method-assign]
 
-    async def send_image(wa_id, png, caption=None):
+    async def send_image(wa_id, png, caption=None, shows=None):
         sent.append(png)
         return True
 

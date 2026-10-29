@@ -125,7 +125,9 @@ class BatchingSender:
         # so it goes out as its own image, as receipts always did here.
         header_image = kwargs.pop("header_image", None)
         if header_image is not None:
-            await self._inner.send_image(to_wa_id, header_image, caption=None)
+            await self._inner.send_image(
+                to_wa_id, header_image, caption=None, shows=kwargs.get("shows") or "receipt card of a forwarded item"
+            )
         captured.append({"kind": "button", **kwargs, "buttons": _rows(kwargs.get("buttons") or [])})
         return True
 

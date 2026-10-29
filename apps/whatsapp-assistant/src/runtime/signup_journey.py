@@ -321,7 +321,7 @@ class SignupJourney:
         # sent, the same message goes out as text and buttons.
         card = await render_card_png(self._renderer, build_welcome_card("en"))
         if card is None or not await self._sender.send_button(
-            wa_id, body=body, buttons=buttons, header_image=card
+            wa_id, body=body, buttons=buttons, header_image=card, shows="Welcome card: set up Mesiri for your company"
         ):
             await self._sender.send_button(wa_id, body=body, buttons=buttons)
         return body
@@ -388,7 +388,10 @@ class SignupJourney:
             ),
         )
         if card is not None and await self._sender.send_image(
-            wa_id, card, caption=TRIAL_CAPTION.format(trial_end=trial_end)
+            wa_id,
+            card,
+            caption=TRIAL_CAPTION.format(trial_end=trial_end),
+            shows=f"Ready card: {created.name} is set up, trial until {trial_end}",
         ):
             return done
         return await self._say(wa_id, done)

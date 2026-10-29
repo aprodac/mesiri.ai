@@ -58,11 +58,11 @@ async def _run(tool: str, args: dict[str, Any], *, renderer: Any = None):
     images: list[tuple[bytes, str]] = []
     docs: list[tuple[str, bytes]] = []
 
-    async def send_image(wa_id: str, png: bytes, *, caption: Any = None, filename: str = "x.png") -> bool:
+    async def send_image(wa_id: str, png: bytes, *, caption: Any = None, filename: str = "x.png", shows=None) -> bool:
         images.append((png, filename))
         return True
 
-    async def send_document(wa_id: str, data: bytes, *, filename: str, caption: Any) -> bool:
+    async def send_document(wa_id: str, data: bytes, *, filename: str, caption: Any, shows=None) -> bool:
         docs.append((filename, data))
         return True
 

@@ -339,7 +339,9 @@ class ContactShareJourney:
         if png is None:
             return False
         try:
-            sent = await self._send_image(wa_id, png, caption=caption, filename="welcome.png")
+            sent = await self._send_image(
+                wa_id, png, caption=caption, filename="welcome.png", shows=f"Welcome card for {first} at {company}"
+            )
         except Exception:  # noqa: BLE001 -- the text goes instead
             _log.warning("contact_share.welcome_card_not_sent user=%s", actor.user_id, exc_info=True)
             return False

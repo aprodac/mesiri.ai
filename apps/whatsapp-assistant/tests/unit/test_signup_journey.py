@@ -31,12 +31,12 @@ class _Sender:
         self.texts.append(body)
         return True
 
-    async def send_button(self, to, *, body, buttons, header_image=None):
+    async def send_button(self, to, *, body, buttons, header_image=None, shows=None):
         self.buttons.append((body, [b.id for b in buttons]))
         self.headers.append(header_image)
         return True
 
-    async def send_image(self, to, image, *, caption=None):
+    async def send_image(self, to, image, *, caption=None, shows=None):
         self.images.append((image, caption))
         return True
 
@@ -327,7 +327,7 @@ async def test_signup_falls_back_to_text_when_the_renderer_raises(journey) -> No
 async def test_signup_falls_back_to_text_when_the_image_send_fails(journey) -> None:
     _with_renderer(journey, _Renderer())
 
-    async def refuse(to, image, *, caption=None):
+    async def refuse(to, image, *, caption=None, shows=None):
         return False
 
     journey.sender.send_image = refuse
