@@ -140,7 +140,7 @@ jobs:
               # (no prompts, no message text: the brain logs counts and outcomes).
               H="$(printf '%s' "$HOURS" | tr -dc 0-9)"
               ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
-                "journalctl -u teammate-brain --since '${H:-2} hours ago' --no-pager -o short-iso | grep -E 'prod-watch|watch|listening on|board:|Error' | tail -200" 2>&1 | mask ;;
+                "journalctl -u teammate-brain --since '${H:-2} hours ago' --no-pager -o short-iso | grep -E 'prod-watch|nothing to report|planning done|turn failed|no team group|listening on|Error' | tail -200" 2>&1 | mask ;;
             vps-agent-trace)
               ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "bash -s -- $(printf '%s' "$HOURS" | tr -dc 0-9)" \
                 < infra/deploy/agent_trace.sh 2>&1 | mask ;;

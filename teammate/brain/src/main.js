@@ -36,7 +36,7 @@ import { Accounts, parseAccounts } from "./accounts.js";
 import { brainTools } from "./tools.js";
 import { createRenderer } from "./render.js";
 import { commitPatterns, formatWorkStatus } from "./work_status.js";
-import { ProdWatch, QUIET, opsSources } from "./prod_watch.js";
+import { ProdWatch, QUIET, Screener, opsSources } from "./prod_watch.js";
 
 const log = (m) => console.log(`[brain] ${m}`);
 const token = process.env.TEAMMATE_API_TOKEN || "";
@@ -255,7 +255,7 @@ const brain = new Brain({
   // What Claude Code (and anything it runs) sees: never the dev-site password, a routine token, or a Claude
   // login; the brain adds only the login of the account each turn runs on (TM-14).
   env: {
-    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^TEAMMATE_(DEV_LOGIN|ROUTINE|PARTNER|GITHUB_TOKEN|OPS)_|^CLAUDE_CODE_OAUTH_TOKEN|^MESIRI_CLAUDE_OPS/.test(k))),
+    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^TEAMMATE_(DEV_LOGIN|ROUTINE|PARTNER|GITHUB_TOKEN|OPS)_|^TEAMMATE_GEMINI_API_KEY$|^CLAUDE_CODE_OAUTH_TOKEN|^MESIRI_CLAUDE_OPS/.test(k))),
     TEAMMATE_TOKEN: token,
     TEAMMATE_API: api,
   },
@@ -312,11 +312,15 @@ if (prodWatchMinutes > 0 && Object.keys(opsByProject).length) {
     file: join(dir, "prod-watch.json"),
     log,
     minutes: prodWatchMinutes,
+    // The AI screen (TEAMMATE_GEMINI_API_KEY, the listener's key): catches the "I can't" a word list misses.
+    screener: process.env.TEAMMATE_GEMINI_API_KEY
+      ? new Screener({ apiKey: process.env.TEAMMATE_GEMINI_API_KEY, model: process.env.TEAMMATE_GEMINI_MODEL || undefined })
+      : null,
   });
   const look = () => prodWatch.tick().catch((e) => log(`prod-watch: ${e.message}`));
   setTimeout(look, 120_000);
   setInterval(look, prodWatchMinutes * 60_000);
-  log(`prod-watch: every ${prodWatchMinutes} min; ${Object.keys(opsByProject).join(", ")}`);
+  log(`prod-watch: every ${prodWatchMinutes} min; ${Object.keys(opsByProject).join(", ")}; AI screen ${process.env.TEAMMATE_GEMINI_API_KEY ? "on" : "off"}`);
 }
 // Request 139: the watchdog over cloud jobs (commits, deploys, silence); TEAMMATE_WATCH_MINUTES, default 10, 0 = off.
 const watchMinutes = Number(process.env.TEAMMATE_WATCH_MINUTES ?? 10);

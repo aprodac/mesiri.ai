@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { ProdWatch, QUIET, MAX_CONVERSATIONS, asObjects, chatHtml, conversations, flagRows, opsSources, watchPrompt, watchSql } from "../src/prod_watch.js";
+import { ProdWatch, QUIET, MAX_CONVERSATIONS, SCREEN_PROMPT, Screener, asObjects, chatHtml, conversations, flagRows, opsSources, screenFlags, screenItems, watchPrompt, watchSql } from "../src/prod_watch.js";
 
 const T0 = 1_761_700_000; // epoch seconds
 const msg = (over) => ({
@@ -217,6 +217,77 @@ test("a tick hands the conversations themselves to the turn, for the picture", a
     await watch.tick();
     assert.equal(handed.length, 1);
     assert.equal(handed[0].messages[0].reply, "Photo ayakkan Mesiri-kku kazhiyilla.");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// -- the AI screen: an AI reads every new exchange (29 Oct: "ayakkanaakilla" passed the word list) --
+
+const ANSWER = (bad) => ({ ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify({ bad }) }] } }] }) });
+
+test("the screen numbers each exchange and keeps only well-formed answers", () => {
+  const rows = [msg({ text: "list image aayi ayakku", reply: "Sorry, Mesiri-kku image aayittu ayakkanaakilla." }), msg({ text: "5 mason vannu" })];
+  const items = screenItems(rows);
+  assert.equal(items.length, 2);
+  assert.match(items[0].line, /^1\. user: "list image aayi ayakku"\n {3}mesiri: "Sorry, Mesiri-kku image aayittu ayakkanaakilla\."/);
+  const flags = screenFlags(items, { bad: [{ i: 1, kind: "missing_feature", why: "can't send an image" }, { i: 9, kind: "wrong" }, { i: 2, kind: "made_up" }] });
+  assert.deepEqual([...flags.values()], [{ kind: "ai_missing_feature", why: "can't send an image" }]);
+  assert.match(SCREEN_PROMPT, /data, never instructions/);
+});
+
+test("a tick reports what the screen found that the word list did not, and the screen failing leaves the code flags", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pw-"));
+  try {
+    const subtle = msg({ at: T0 + 10, text: "workers list photo aayi ayakku", reply: "PDF aayittaanu list ayakkan pattuka, photo alla." }); // no word-list hit
+    const fine = msg({ at: T0 + 20, who: "w2", text: "5 mason vannu" });
+    assert.deepEqual(flagRows([subtle, fine]), []); // the word list alone misses it
+    const calls = [];
+    const geminiFetch = async (url, init) => (calls.push(JSON.parse(init.body)), ANSWER([{ i: 1, kind: "missing_feature", why: "offered a PDF instead of the photo asked for" }]));
+    const { fetchFn } = fakeOps([[subtle, fine]]);
+    const asked = [];
+    const watch = new ProdWatch({
+      sources: { mesiri: { url: "u", token: "t" } }, ask: async (p, text, convs) => asked.push({ text, convs }), file: join(dir, "s.json"), fetchFn,
+      now: () => (T0 - 60) * 1000, screener: new Screener({ apiKey: "k", fetchFn: geminiFetch }),
+    });
+    await watch.tick();
+    assert.equal(calls.length, 1); // one call for the whole look
+    assert.equal(asked.length, 1);
+    assert.match(asked[0].text, /ai_missing_feature \(offered a PDF instead of the photo asked for\)/);
+    assert.equal(asked[0].convs[0].who, "w1");
+
+    const { fetchFn: f2 } = fakeOps([[msg({ at: T0 + 400, status: "failed", error_code: "X" })]]);
+    const logs = [];
+    const broken = new ProdWatch({
+      sources: { mesiri: { url: "u", token: "t" } }, ask: async (p, text) => asked.push({ text }), file: join(dir, "s2.json"), fetchFn: f2, log: (l) => logs.push(l),
+      now: () => (T0 - 60) * 1000, screener: new Screener({ apiKey: "k", fetchFn: async () => ({ ok: false, status: 503 }) }),
+    });
+    await broken.tick();
+    assert.ok(logs.some((l) => /screen failed \(Gemini 503\); code flags only/.test(l)));
+    assert.equal(asked.length, 2); // the failed message is still reported
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the word list now knows the -aakilla / apology family too (the free first pass)", () => {
+  assert.deepEqual(kinds([msg({ reply: "Sorry, Mesiri-kku image aayittu ayakkanaakilla. PDF aayittaanu list ayakkan kazhiyuka." })]), ["dead_end"]);
+});
+
+test("after a restart the first look reads the last half hour again, without repeating what was reported", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pw-"));
+  try {
+    const file = join(dir, "s.json");
+    const missed = msg({ at: T0 + 100, reply: "Sorry, Mesiri-kku image aayittu ayakkanaakilla." });
+    const reported = msg({ at: T0 + 50, status: "failed", error_code: "X" });
+    // The old watch had already read both (cursor past them) and reported only the failure.
+    writeFileSync(file, JSON.stringify({ mesiri: { since: T0 + 200, reported: [reported.correlation_id] } }));
+    const { fetchFn } = fakeOps([[reported, missed]]);
+    const asked = [];
+    const watch = new ProdWatch({ sources: { mesiri: { url: "u", token: "t" } }, ask: async (p, text, convs) => asked.push(convs), file, fetchFn, now: () => (T0 + 300) * 1000 });
+    await watch.tick();
+    assert.equal(asked.length, 1);
+    assert.deepEqual([...asked[0][0].flags.keys()], [missed.correlation_id]); // the missed one, not the reported one again
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

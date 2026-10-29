@@ -176,6 +176,11 @@ jobs:
               if [ -n "${TEAMMATE_PARTNER_MESIRI_URL:-}" ] && [ -n "${TEAMMATE_PARTNER_MESIRI_TOKEN:-}" ]; then
                 printf 'TEAMMATE_PARTNER_MESIRI_URL=%s\nTEAMMATE_PARTNER_MESIRI_TOKEN=%s\n' "$(clean "$TEAMMATE_PARTNER_MESIRI_URL")" "$(clean "$TEAMMATE_PARTNER_MESIRI_TOKEN")"
               fi
+              # TM-16: the production watch's AI screen reads every new exchange (Gemini, the listener's key;
+              # kept out of Claude's environment by main.js).
+              if [ -n "${TEAMMATE_GEMINI_API_KEY:-}" ]; then
+                printf 'TEAMMATE_GEMINI_API_KEY=%s\n' "$(clean "$TEAMMATE_GEMINI_API_KEY")"
+              fi
               # TM-16: the production watch (brain/src/prod_watch.js).
               if [ -n "${MESIRI_CLAUDE_OPS_TOKEN:-}" ]; then
                 printf 'TEAMMATE_OPS_MESIRI_URL=https://api.whatsapp.mesiri.ai\nTEAMMATE_OPS_MESIRI_TOKEN=%s\n' "$(clean "$MESIRI_CLAUDE_OPS_TOKEN")"

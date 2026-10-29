@@ -106,3 +106,10 @@ once and inside the 24-hour window, that it works now and what to send to try it
 Each reported plan comes with a picture of the conversation itself (`post_watch_chat`): a WhatsApp-style chat drawn
 from the production rows the watch read (the user's words, Mesiri's replies, times, reply delays, the flags), titled
 with the person and company and never a phone number. Claude names the conversation; it never retypes it.
+
+**AI reads everything (29 Oct).** A word list can't hold every way a reply says "I can't" in Manglish, Malayalam or
+Hindi ("ayakkanaakilla" passed it). So each look, a fast model (Gemini, `TEAMMATE_GEMINI_API_KEY`, the listener's
+key, kept out of Claude's environment) reads every new exchange and names the ones where Mesiri failed the user:
+a missing feature, a wrong reply, a loop, a confusing reply, an error (`Screener` in `src/prod_watch.js`). Claude then
+investigates what it names. The word list stays as a free first pass; if the screen fails, the look carries on with
+it and logs why. The first look after a restart reads the last half hour again (reported messages are skipped).
