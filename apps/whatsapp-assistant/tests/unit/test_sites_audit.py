@@ -419,7 +419,7 @@ def test_sit11_the_to_save_header_names_the_site():
     facts = [("labour_report", __import__("uuid").uuid4())]
     named = with_save_buttons(spec, facts, site="Green Villa")
     plain = with_save_buttons(spec, facts)
-    assert named.text.startswith("📝 To save · Green Villa:")
+    assert named.text.startswith("🟠 *To save* · Green Villa:")
     assert plain.text.startswith(TO_SAVE_HEADER)
 
 

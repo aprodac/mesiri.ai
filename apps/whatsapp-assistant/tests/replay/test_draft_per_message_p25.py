@@ -125,7 +125,7 @@ async def test_a_now_at_a_site_preselects_for_three_hours_not_until_midnight(two
     assert work_site.from_a_save(await _active(two))  # the save window, not the day
 
     result = await two.say(FakeToolCallingProvider([[MASONS], "Check it."]), "4 mason")
-    assert "To save · Site A2:" in result.reply.text and "📍 Change site" in titles(result.reply)
+    assert "*To save* · Site A2:" in result.reply.text and "📍 Change site" in titles(result.reply)
 
 
 async def test_a_a_site_named_in_the_message_is_used_even_when_the_model_passes_none(two):
@@ -133,7 +133,7 @@ async def test_a_a_site_named_in_the_message_is_used_even_when_the_model_passes_
     aanu?" because the model left the site out; the name is in the message."""
     result = await two.say(FakeToolCallingProvider([[MASONS], "Check it."]), "Site A2 ground floor 4 mason vannu")
     assert "Which site" not in result.reply.text and "Ethu site" not in result.reply.text
-    assert "To save · Site A2:" in result.reply.text
+    assert "*To save* · Site A2:" in result.reply.text
     (item,) = await open_items(two)
     assert item.site == "Site A2"
 
@@ -141,12 +141,12 @@ async def test_a_a_site_named_in_the_message_is_used_even_when_the_model_passes_
 async def test_a_a_name_in_the_message_beats_the_site_of_the_last_save(two):
     await _remember(two, SITE_A1)
     result = await two.say(FakeToolCallingProvider([[CEMENT], "Check it."]), "Site A2 cement vannu")
-    assert "To save · Site A2:" in result.reply.text
+    assert "*To save* · Site A2:" in result.reply.text
 
 
 # -- C. the model cannot write a card -----------------------------------------------------------
 
-FAKE_CARD = "📝 To save · 4 mason for Unknown purpose\n• 4 mason"
+FAKE_CARD = "🟠 *To save* · 4 mason for Unknown purpose\n• 4 mason"
 LEAKY = [
     f"Sheri.\n{FAKE_CARD}",
     f"Sheri. {CLOSED.strip()}",
@@ -189,7 +189,7 @@ async def test_c_a_second_sentence_of_the_model_does_not_sit_above_a_card(world)
 
 def test_c_the_filter_keeps_plain_words_and_removes_only_the_system_text():
     assert reply_clean.clean_model_text("Sheri, 4 mason.") == "Sheri, 4 mason."
-    assert reply_clean.clean_model_text("Sheri.\n📝 To save: x\n• a\n• b\nOk") == "Sheri.\nOk"
+    assert reply_clean.clean_model_text("Sheri.\n🟠 *To save*: x\n• a\n• b\nOk") == "Sheri.\nOk"
     assert reply_clean.clean_annotations("Okay (closed: not to be asked again unless the sender brings it up)") == "Okay"
     assert reply_clean.leaks(CLOSED) and reply_clean.leaks("[options: a / b]")
 
@@ -200,8 +200,8 @@ def test_c_the_filter_keeps_plain_words_and_removes_only_the_system_text():
 def test_d_the_history_carries_the_senders_words_and_a_gist_never_a_card_or_a_note():
     turns = (
         Turn("20 rod steel", "Ethra kg aanu?\n[options: 2 / Other]", 1.0),
-        Turn("6 mason vannu", f"Sheri, 6 mason vannu.\n📝 To save: 6 mason\n[options: Save / Cancel]{CLOSED}", 2.0),
-        Turn("hi", "📝 To save: x\n• y", 3.0),
+        Turn("6 mason vannu", f"Sheri, 6 mason vannu.\n🟠 *To save*: 6 mason\n[options: Save / Cancel]{CLOSED}", 2.0),
+        Turn("hi", "🟠 *To save*: x\n• y", 3.0),
     )
     shown = history.for_model(turns)
     assert [t.user_text for t in shown] == ["20 rod steel", "6 mason vannu", "hi"]

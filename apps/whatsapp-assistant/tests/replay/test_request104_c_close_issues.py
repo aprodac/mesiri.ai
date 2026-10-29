@@ -3,7 +3,7 @@
 "Crane is repaired" offered to close "Cement running low (MATERIAL_SHORTAGE)":
 the old close-out took the latest reported issue. Now the issue is matched by
 the sender's words, the open issues are listed when it is unclear, several
-close in one card, and the card is "📝 To close: ..." with Save / Cancel."""
+close in one card, and the card is "🟠 *To close*: ..." with Save / Cancel."""
 
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ def _tap(world, action):  # noqa: ANN001, ANN202
 async def test_crane_repaired_offers_the_crane_issue_not_the_cement_one():
     world = await _world([CEMENT, CRANE])
     result = await _say(world, "Crane is repaired", {"about": ["crane"]})
-    assert "📝 To close: Crane breakdown (since 20 Oct)" in result.reply.text
+    assert "🟠 *To close*: Crane breakdown (since 20 Oct)" in result.reply.text
     assert "Cement" not in result.reply.text
     assert "MATERIAL_SHORTAGE" not in result.reply.text and "EQUIPMENT_BREAKDOWN" not in result.reply.text
     assert "Reply YES" not in result.reply.text
@@ -128,7 +128,7 @@ async def test_no_words_lists_the_open_issues_newest_first_up_to_nine_and_someth
 async def test_the_issue_they_pick_from_the_list_is_the_one_closed():
     world = await _world([CEMENT, CRANE, CRANE_2])
     result = await _say(world, "Crane breakdown", {"about": ["Crane breakdown"]})
-    assert "To close: Crane breakdown (since 20 Oct)" in result.reply.text
+    assert "*To close*: Crane breakdown (since 20 Oct)" in result.reply.text
     assert len(world.last_gateway.action_items) == 1
 
 
@@ -136,7 +136,7 @@ async def test_both_are_fixed_closes_several_on_one_card():
     world = await _world([CEMENT, CRANE])
     result = await _say(world, "Both are fixed", {"all_issues": True})
     lines = result.reply.text.split("\n")
-    assert "📝 To close:" in lines
+    assert "🟠 *To close*:" in lines
     assert "• Crane breakdown (since 20 Oct)" in lines and "• Cement running low (since 21 Oct)" in lines
     reply = await sb.handle_tap(_tap(world, sb.SAVE), world.actor, world.handler, actions=world.actions)
     assert sorted(c.draft_action.fields["site_issue_id"] for c in world.dispatcher_for_close.dispatched) == sorted(
@@ -174,7 +174,7 @@ async def test_two_issues_of_the_same_words_are_told_apart_by_the_picked_day():
     b = _issue(6, "Rain today", "WEATHER", 19)
     world = await _world([a, b])
     result = await _say(world, "Rain today · 21 Oct", {"about": ["Rain today · 21 Oct"]})
-    assert "To close: Rain today (since 21 Oct)" in result.reply.text
+    assert "*To close*: Rain today (since 21 Oct)" in result.reply.text
 
 
 async def test_a_card_line_the_model_wrote_itself_is_not_doubled():
@@ -182,8 +182,8 @@ async def test_a_card_line_the_model_wrote_itself_is_not_doubled():
     provider = FakeToolCallingProvider(
         [
             [("update_issue", {"action": "resolve", "about": ["crane"]})],
-            "Okay, the crane is fixed.\n\n📝 To close: Crane breakdown (since 20 Oct)",
+            "Okay, the crane is fixed.\n\n🟠 *To close*: Crane breakdown (since 20 Oct)",
         ]
     )
     result = await world.say(provider, "Crane is repaired")
-    assert result.reply.text.count("To close: Crane breakdown") == 1
+    assert result.reply.text.count("*To close*: Crane breakdown") == 1

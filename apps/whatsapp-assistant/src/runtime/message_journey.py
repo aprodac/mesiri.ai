@@ -778,28 +778,19 @@ def build_message_handlers(
             async def _with_saved_card(reply, gateway):  # type: ignore[no-untyped-def]
                 """Live 29 Oct: the Save tap of a draft card sent the "Saved" line without
                 the receipt card (ADR draft-per-message 10.6, a P1 limit, on for every
-                company since 28 Oct). The records it saved carry their card as before;
-                it rides on the reply, one card for one record, one combined for several.
-                Not when a waiting part of the card is shown again (its Save buttons)."""
+                company since 28 Oct). The records it saved get their SAVED card -- drawn
+                after the "Saved" line went out (``_send_saved_card``), never before it:
+                time to the reply matters more than the picture. Not when a waiting part
+                of the card is shown again (its Save buttons)."""
                 handled_list = list(getattr(gateway, "handled", None) or [])
-                if not handled_list or reply.header_image:
-                    return reply
                 for handled in handled_list:
                     # Made before the tap was known: they would say TO SAVE (live 29 Oct).
                     if getattr(handled, "receipt_coro", None) is not None:
                         handled.receipt_coro.close()
                         handled.receipt_coro = None
-                if getattr(gateway, "draft", None) is not None or reply.buttons or reply.list_rows:
-                    return reply
-                try:
-                    image = await asyncio.wait_for(
-                        interaction_handler.build_combined_receipt(handled_list, ctx, kept=True),
-                        timeout=RECEIPT_TIMEOUT_S,
-                    )
-                except Exception:  # noqa: BLE001 -- the Saved line goes out without it
-                    _log.exception("receipt.render_failed user=%s", ctx.user_id)
-                    image = None
-                return dataclasses.replace(reply, header_image=image) if image else reply
+                waiting = getattr(gateway, "draft", None) is not None or reply.buttons or reply.list_rows
+                gateway.saved_card_parts = [] if waiting or reply.header_image else handled_list
+                return reply
 
             async def _remember_card(gateway, *, open_card: bool) -> None:  # type: ignore[no-untyped-def]
                 """Request 88: keep the card this reply shows, so "undo that" and
@@ -1568,6 +1559,22 @@ def build_message_handlers(
                 _log.exception("receipt.render_failed user=%s", ctx.user_id)
             return None
 
+        async def _send_saved_card(gateway, target_wa_id: str, actor) -> None:  # type: ignore[no-untyped-def]
+            """The green SAVED card of what a Save tap wrote, sent after the "Saved" line
+            (live 29 Oct: the reply never waits for a picture). Never raises."""
+            parts = list(getattr(gateway, "saved_card_parts", None) or [])
+            if not parts:
+                return
+            gateway.saved_card_parts = []
+            try:
+                image = await asyncio.wait_for(
+                    interaction_handler.build_combined_receipt(parts, actor, kept=True), timeout=RECEIPT_TIMEOUT_S
+                )
+                if image:
+                    await sender.send_image(target_wa_id, image)
+            except Exception:  # noqa: BLE001 -- the Save and its line went through
+                _log.exception("receipt.render_failed user=%s", getattr(actor, "user_id", None))
+
         async def _combined_receipt_image(handled_list) -> bytes | None:  # type: ignore[no-untyped-def]
             """The one card for a multi-part note; same bound and same
             never-raises contract as _receipt_image."""
@@ -1806,6 +1813,7 @@ def build_message_handlers(
                 )
             except Exception:  # noqa: BLE001 -- memory is a hint
                 _log.warning("save_button.record_turn_failed user=%s", ctx.user_id, exc_info=True)
+            await _send_saved_card(draft_gateway, wa_id, ctx)
             if draft_gateway is not None:
                 # Request 124: the follow-ups a save triggers (worker promotion,
                 # team-photo offer), after the "Saved" line, as after a message.

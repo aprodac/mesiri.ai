@@ -162,7 +162,7 @@ async def test_b1_a_sender_on_one_site_is_never_asked(world):
 
 async def test_b2_a_site_named_in_the_message_is_that_site(two):
     result = await two.say(FakeToolCallingProvider([[at("Site A2", MASONS)], "Check it."]), "Site A2: 4 mason")
-    assert "To save · Site A2:" in result.reply.text
+    assert "*To save* · Site A2:" in result.reply.text
     assert titles(result.reply) == ["✅ Save", "❌ Cancel", "📍 Change site"]  # always, on several sites
 
 
@@ -171,7 +171,7 @@ async def test_b3_within_three_hours_of_a_save_the_site_is_preselected_shown_and
     _clock(two, dt.timedelta(hours=2, minutes=59))
     result = await two.say(FakeToolCallingProvider([[CEMENT], "Check it."]), "cement vannu")  # names no site
     assert "Which site" not in result.reply.text
-    assert "To save · Site A2:" in result.reply.text  # the site, plainly, before Save
+    assert "*To save* · Site A2:" in result.reply.text  # the site, plainly, before Save
     assert titles(result.reply) == ["✅ Save", "❌ Cancel", "📍 Change site"]
     (item,) = await open_items(two)
     assert item.site == "Site A2"
@@ -260,7 +260,7 @@ async def test_b_change_site_moves_every_item_of_the_card(two):
     picker = await tap(two, result.reply, "Change site")
     assert titles(picker) == ["Site A1"]  # the card is on A2: the other site(s) to pick
     moved = await tap(two, picker, "Site A1")
-    assert "Moved to Site A1" in moved.text and "To save · Site A1:" in moved.text
+    assert "Moved to Site A1" in moved.text and "*To save* · Site A1:" in moved.text
     assert {i.site for i in await open_items(two)} == {"Site A1"}
     assert len(await open_items(two)) == 2 and titles(moved) == ["✅ Save", "❌ Cancel", "📍 Change site"]
 

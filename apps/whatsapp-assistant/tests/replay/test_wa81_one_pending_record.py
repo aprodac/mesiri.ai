@@ -101,7 +101,7 @@ async def test_a_waiting_labour_line_joins_the_labour_of_its_site_once_answered(
 async def test_a_card_for_one_site_gives_its_site_to_a_line_that_names_none(two):
     """Live 27 Oct (#4300s): "which site?" asked inside a card that already said Green Villa."""
     first = await two.say(FakeToolCallingProvider([[at("Site A2", CEMENT)], "Okay."]), "Site A2 100 bags cement vannu")
-    assert "To save · Site A2" in first.reply.text
+    assert "*To save* · Site A2" in first.reply.text
     result = await two.say(FakeToolCallingProvider([[MASONS], "Okay."]), "4 mason")
     assert all(i.state == dr.OK and i.site == "Site A2" for i in await open_items(two))
     assert "📍 Which" not in result.reply.text and "Site A1" not in titles(result.reply)

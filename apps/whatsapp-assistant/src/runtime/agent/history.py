@@ -23,7 +23,7 @@ from .reply_clean import clean_model_text
 #: 2 issues: ..." the model saw "No work saved today." and then told the sender
 #: it had never said anything about cement or rain.
 GIST_MAX = 400
-_CARD_LINE = ("📝", "✅", "❓", "•", "📍", "❌")
+_CARD_LINE = ("📝", "🟠", "✅", "❓", "•", "📍", "❌")
 
 
 def gist(reply: str) -> str:

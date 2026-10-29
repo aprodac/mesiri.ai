@@ -44,7 +44,7 @@ async def test_work_done_is_a_save_cancel_card_that_claims_nothing(world_two_sit
     result = await world.say(FakeToolCallingProvider(_work_done(site="Site A2")), "plastering 50 sq ft done today")
 
     reply = result.reply
-    assert "📝 To save: Plastering: 50 sq ft (completed)" in reply.text
+    assert "🟠 *To save*: Plastering: 50 sq ft (completed)" in reply.text
     assert [b.title for b in reply.buttons] == ["✅ Save", "❌ Cancel"]
     low = reply.text.casefold()
     assert "saved" not in low and "undo" not in low and "yes" not in low
@@ -94,4 +94,4 @@ def test_a_sender_with_several_sites_sees_which_one_the_card_is_for():
         fields={"work_type": "plastering", "quantities": [{"quantity": 50, "unit": "sq ft"}], "update_kind": "completed"},
     )
     card = gateway._work_card(SimpleNamespace(draft_action=draft))
-    assert card.text == "📝 To save · Green Villa: Plastering: 50 sq ft (completed)"
+    assert card.text == "🟠 *To save* · Green Villa: Plastering: 50 sq ft (completed)"

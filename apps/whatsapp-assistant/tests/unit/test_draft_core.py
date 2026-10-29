@@ -63,18 +63,18 @@ def test_the_card_lists_ready_lines_questions_and_what_could_not_be_read():
         _item("", dr.UNREADABLE, label="120 rft skirting"),
     )
     assert dr.card_text(draft) == (
-        "📝 To save: Cement in: 50 bags\n❓ Today already 13 workers. Replace it, or add to it?\nCouldn't read: 120 rft skirting"
+        "🟠 *To save*: Cement in: 50 bags\n❓ Today already 13 workers. Replace it, or add to it?\nCouldn't read: 120 rft skirting"
     )
 
 
 def test_several_ready_lines_are_bullets_and_a_one_site_card_names_its_site():
     draft = _draft(_item("a"), _item("b"))
-    assert dr.card_text(draft, site="Green Villa") == "📝 To save · Green Villa:\n• a\n• b"
+    assert dr.card_text(draft, site="Green Villa") == "🟠 *To save* · Green Villa:\n• a\n• b"
 
 
 def test_a_card_of_several_sites_names_the_site_on_each_line():
     draft = _draft(_item("a", site_id="s1", site="Block A"), _item("b", site_id="s2", site="Block B"))
-    assert dr.card_text(draft, site="Block A") == "📝 To save:\n• a · Block A\n• b · Block B"
+    assert dr.card_text(draft, site="Block A") == "🟠 *To save*:\n• a · Block A\n• b · Block B"
 
 
 def test_buttons_are_save_cancel_then_the_options_of_the_first_question():
@@ -371,7 +371,7 @@ def test_a_one_site_card_names_its_site_but_offers_no_change_site():
     line with no site. The site is named for everyone; "Change site" is only for
     a sender who has another site to move to."""
     draft = _draft(_item("Cement in: 10 bags", site_id="s1", site="Green Villa"))
-    assert dr.card_text(draft, site="Green Villa") == "📝 To save · Green Villa: Cement in: 10 bags"
+    assert dr.card_text(draft, site="Green Villa") == "🟠 *To save* · Green Villa: Cement in: 10 bags"
     assert dr.CHANGE_SITE_TITLE not in [r.title for r in dr.card_rows(draft)]
 
 

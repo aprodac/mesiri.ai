@@ -268,6 +268,8 @@ class JourneyGateway:
     draft: Any | None = None
     draft_loaded: bool = False
     draft_new: list[str] = field(default_factory=list)
+    #: What a Save tap wrote, for the SAVED card sent after its "Saved" line (live 29 Oct).
+    saved_card_parts: list[Any] = field(default_factory=list)
     #: Request 136 (C): which component decided the site, the items and the reply
     #: of this turn (``draft_flow.decided``), written as the "draft_decisions" stage.
     decisions: list[dict[str, str]] = field(default_factory=list)

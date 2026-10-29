@@ -130,7 +130,7 @@ async def test_green_villa_named_by_its_head_is_the_lines_site_with_no_question(
     (item,) = await open_items(villa)
     assert item.state == dr.OK and item.site == VILLA
     assert "📍" not in result.reply.text and "ethu site" not in result.reply.text
-    assert f"To save · {VILLA}" in result.reply.text
+    assert f"*To save* · {VILLA}" in result.reply.text
     assert _site_decisions(villa) == [{"what": "site", "by": draft_site.DECIDER, "kind": draft_site.NAMED}]
 
 
@@ -146,7 +146,7 @@ async def test_a_save_within_three_hours_preselects_its_site(villa):
     _clock(villa, dt.timedelta(hours=2, minutes=30))
     result = await villa.say(FakeToolCallingProvider([[CEMENT], "Okay."]), "100 bags cement vannu")
     (item,) = await open_items(villa)
-    assert item.site == SITE_B and f"To save · {SITE_B}" in result.reply.text
+    assert item.site == SITE_B and f"*To save* · {SITE_B}" in result.reply.text
     assert _site_decisions(villa)[0]["kind"] == draft_site.SAVED
 
 

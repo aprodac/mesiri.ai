@@ -210,8 +210,8 @@ def _summary(draft: DraftActionV2 | Any, *, today: date | None = None) -> str | 
 #: Request 104: a card whose lines all start the same way says it in its
 #: header instead ("📝 To close: Crane breakdown"), not "To save: To close: ...".
 CARD_VERBS = {
-    "Send to engineer: ": "📝 Send to engineer:",
-    "To close: ": "📝 To close:",
+    "Send to engineer: ": "🟠 *Send to engineer*:",
+    "To close: ": "🟠 *To close*:",
 }
 
 

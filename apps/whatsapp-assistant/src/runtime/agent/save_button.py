@@ -48,7 +48,9 @@ SAVE_TITLE = "✅ Save"
 SEND_TITLE = "✅ Send"
 CANCEL_TITLE = "❌ Cancel"
 #: Replaces "✅ Saved:" at the top of a reply whose records wait on the tap.
-TO_SAVE_HEADER = "📝 To save:"
+#: Live 29 Oct: a card waiting for Save reads as one at a glance (amber, bold), a saved
+#: one starts with ✅ (green): no picture is needed to tell them apart.
+TO_SAVE_HEADER = "🟠 *To save*:"
 
 SAVED_DONE = "✅ Saved."
 CANCELLED_DONE = "❌ Okay, nothing saved. Send it again whenever you're ready."

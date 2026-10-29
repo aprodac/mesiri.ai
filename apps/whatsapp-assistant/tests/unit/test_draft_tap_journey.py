@@ -188,9 +188,9 @@ async def test_hi_still_opens_the_menu(monkeypatch):
 
 async def test_the_save_tap_sends_the_saved_records_card(monkeypatch):
     """Live 29 Oct: Save on a draft card sent "Saved" with no receipt card (a P1 limit,
-    on for every company since 28 Oct). The saved record's card rides on the reply,
-    built after the tap so it says SAVED, never TO SAVE (the card made at the write
-    did not know the tap and said TO SAVE)."""
+    on for every company since 28 Oct). The saved record's card follows the "Saved"
+    line -- the line never waits for the picture -- built after the tap so it says
+    SAVED, never TO SAVE (the card made at the write did not know the tap)."""
     from runtime.agent.toolbox import ReplySpec
 
     store = MemoryDraftStore()
@@ -213,3 +213,6 @@ async def test_the_save_tap_sends_the_saved_records_card(monkeypatch):
     images = [c.args[1] if len(c.args) > 1 else c.kwargs.get("image") for c in deps["sender"].send_image.await_args_list]
     assert b"PNG-saved" in images, deps["sender"].method_calls
     assert deps["interaction_handler"].build_combined_receipt.await_args.kwargs == {"kept": True}
+    # The words went first: the picture is the last thing sent.
+    sent = [c[0] for c in deps["sender"].method_calls if c[0] in ("send_text", "send_image", "send_button")]
+    assert sent[-1] == "send_image" and sent.index("send_image") > 0, sent

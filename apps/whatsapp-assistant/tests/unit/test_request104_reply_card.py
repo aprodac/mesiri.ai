@@ -44,7 +44,7 @@ async def test_an_engineer_question_goes_out_as_a_send_card(monkeypatch, actions
     await on_normalized(_message("ask the engineer when the drawings will come"), {})
 
     sent = deps["sender"].send_button.await_args
-    assert "📝 Send to engineer: When will the drawings come?" in sent.kwargs["body"]
+    assert "🟠 *Send to engineer*: When will the drawings come?" in sent.kwargs["body"]
     assert [b.title for b in sent.kwargs["buttons"]] == [sb.SEND_TITLE, sb.CANCEL_TITLE]
     assert sent.kwargs["buttons"][0].id.startswith("agt:save:x")
     assert actions.delivered == []  # nothing is sent before the tap

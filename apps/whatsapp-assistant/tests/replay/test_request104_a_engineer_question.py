@@ -44,7 +44,7 @@ def _tap(world, action):  # noqa: ANN001, ANN202
 
 async def test_the_question_is_a_send_card_and_nothing_goes_before_the_tap():
     world, result = await _prepared([ENGINEER])
-    assert "📝 Send to engineer: " + QUESTION in result.reply.text
+    assert "🟠 *Send to engineer*: " + QUESTION in result.reply.text
     assert "passed" not in result.reply.text.lower() and "Saved" not in result.reply.text
     assert world.actions.delivered == []
     # Nothing is written as an issue.

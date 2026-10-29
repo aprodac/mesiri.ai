@@ -302,7 +302,7 @@ def test_4_a_waiting_line_survives_the_store():
     assert clone == item and clone.pending_answer
     draft = dr.MessageDraft.new(organization_id="o", user_id="u")
     draft.items.append(clone)
-    assert dr.card_text(draft) == "📝 To save: Steel used: 20 rod (❓ 1 rod = how many kg?)"
+    assert dr.card_text(draft) == "🟠 *To save*: Steel used: 20 rod (❓ 1 rod = how many kg?)"
     assert [r.title for r in dr.card_rows(draft)] == ["❌ Cancel", "2", "Other"]
 
 

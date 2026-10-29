@@ -20,7 +20,7 @@ WORK = {
     "quantities": [{"work_type": "plastering", "quantity": 50, "unit": "sq ft"}], "update_kind": "completed",
     "continues": "plastering",
 }
-CARD = "📝 To save: Plastering, today: 50 sq ft (completed)"
+CARD = "🟠 *To save*: Plastering, today: 50 sq ft (completed)"
 
 
 @pytest.mark.parametrize(

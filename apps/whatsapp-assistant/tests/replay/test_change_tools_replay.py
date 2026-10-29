@@ -73,5 +73,5 @@ async def test_fixed_shows_a_to_close_card_and_closes_nothing_before_the_tap():
     world.open_issues = open_issues
     result, step = await _say(world, ("update_issue", {"action": "resolve", "about": ["jcb"]}))
     assert step["status"] == "saved", step
-    assert "To close: JCB breakdown" in result.reply.text
+    assert "*To close*: JCB breakdown" in result.reply.text
     assert dispatcher.dispatched == []

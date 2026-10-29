@@ -24,7 +24,7 @@ import re
 
 from .stale_questions import CLOSED
 
-_HEADER = re.compile(r"^\s*(?:✅\s*Saved|📝\s*(?:To close|To save|Send to engineer))", re.IGNORECASE)
+_HEADER = re.compile(r"^\s*(?:✅\s*\*?Saved|(?:📝|🟠)\s*\*?(?:To close|To save|Send to engineer))", re.IGNORECASE)
 _BULLET = re.compile(r"^\s*[•\-\*▫️]\s")
 _REPLY_YES = re.compile(
     r"\breply\s+(?:yes|no)\b"

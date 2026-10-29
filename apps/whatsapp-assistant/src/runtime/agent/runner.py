@@ -1067,7 +1067,7 @@ def _without_echoed_questions(text: str, toolbox: AgentToolbox, *, saved_list: b
 
 
 # (also the card headers of request 104, so a model-written "📝 To close: ..." is not doubled)
-_SAVED_HEAD = re.compile(r"^\s*(?:✅|📝\s*(?:To close|To save|Send to engineer))")
+_SAVED_HEAD = re.compile(r"^\s*(?:✅|(?:📝|🟠)\s*\*?(?:To close|To save|Send to engineer))")
 _BULLET = re.compile(r"^\s*[•\-\*]\s")
 
 
