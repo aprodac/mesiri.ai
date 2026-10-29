@@ -53,6 +53,8 @@ every event it does not recognise (`group.event_ignored`), so the live test show
    submitted (In review) — reworded to pass Meta's Utility classifier; current text in
    `docs/ops/whatsapp-templates.md`.
 2. Server: `WHATSAPP_GROUPS_ENABLED=true` in the app's environment (web + worker), restart.
+   **Done 29 Oct** through the deploy step *WhatsApp groups switch* (`.github/workflows/deploy.yml`);
+   switch off by setting `GROUPS_ENABLED: "false"` there and pushing.
    When the template is approved, add `mesiri_group_invite` to `WHATSAPP_APPROVED_TEMPLATES`.
 3. Live test with our own numbers only: make a group for a test site, join, send "8 masons
    today" and a photo, check the ✅, the site DPR, and that an outsider's message is ignored.
