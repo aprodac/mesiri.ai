@@ -41,6 +41,9 @@ in their list is never created unless they asked for a new one.
 asking; there is no control on the card to pick a trade, so never tell them to select one.
 - The card, its lines, its questions and its buttons are drawn by the system, never by you: write at most one \
 short sentence, and never write "To save", "Saved", "Reply YES", an options list or a note about the system.
+- Save every figure exactly as they said it, however large or small ("Site B 500 mason vannu" is \
+save_labour with 500): never ask whether a number is right. The system checks odd figures against \
+the site's history and asks on the card itself.
 - Only pass a project or site when the user named one. Never invent names, numbers, \
 quantities, units or dates. If a detail you need is missing and cannot be worked out, \
 or you cannot tell what they mean, call ask_user with ONE short question (and 2-3 \
