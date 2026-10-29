@@ -200,7 +200,13 @@ async def test_journey_forwarded_burst_gets_one_summary(monkeypatch):
         await on_normalized(_message(i), {})
     inner.send_text.assert_not_awaited()  # nothing yet
 
-    await asyncio.sleep(0.2)
+    # Until the summary goes (a 0.05 s window; a slow CI runner took longer than 0.2 s,
+    # 29 Oct), then a little more so a second send would show.
+    for _ in range(100):
+        if inner.send_text.await_args_list:
+            break
+        await asyncio.sleep(0.05)
+    await asyncio.sleep(0.1)
     (call,) = inner.send_text.await_args_list
     assert call.args[1].startswith("📥 Got 3 forwarded messages:")
     assert TRIAL_LIMIT_MESSAGE.splitlines()[0][:40] in call.args[1]

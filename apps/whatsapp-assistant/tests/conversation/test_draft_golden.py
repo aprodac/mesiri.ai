@@ -32,8 +32,9 @@ from tests.replay.test_draft_per_message_p3 import _SteelCatalog  # noqa: E402
 
 from context import seed  # noqa: E402
 from runtime.agent import draft as dr  # noqa: E402
-from runtime.agent import draft_site, runner, work_site  # noqa: E402
+from runtime.agent import draft_site, history, runner, work_site  # noqa: E402
 from runtime.agent.draft_store import MemoryDraftStore  # noqa: E402
+from runtime.agent.prompt import Turn  # noqa: E402
 
 PATH = Path(__file__).with_name("draft_golden.yaml")
 CASES = [
@@ -154,10 +155,35 @@ async def run_case(case: dict[str, Any], provider_for) -> tuple[Any, Any]:  # no
     }
     if case.get("saved"):
         await _saved_at(world, case["saved"])
+    _as_on_whatsapp(world)
+    turns: list[Turn] = []
     for turn in case.get("before", []):
-        await world.say(provider_for(turn), turn["message"])
-    result = await world.say(provider_for(case), case["message"])
+        before = await world.say(provider_for(turn), turn["message"], turns=history.for_model(tuple(turns)))
+        turns.append(Turn(turn["message"], before.reply.text if before.reply else ""))
+    result = await world.say(provider_for(case), case["message"], turns=history.for_model(tuple(turns)))
     return world, result
+
+
+def _as_on_whatsapp(world) -> None:  # noqa: ANN001
+    """The model's context as the journey gives it (``message_journey._card_line``):
+    the open card, with its id for update_pending_card. Without it a correction
+    ("alla, 6 mason aanu", case 7) reaches the model with no card to correct."""
+    context = world.context
+
+    def with_card(turns=(), **kw):  # noqa: ANN001, ANN003, ANN202
+        return context(turns, card_line=world.card_line, **kw)
+
+    world.card_line = None
+    world.context = with_card
+    say = world.say
+
+    async def say_with_card(provider, text, **kw):  # noqa: ANN001, ANN003, ANN202
+        world.card_line = dr.context_line(
+            await world.drafts.open_for(world.actor.organization_id, world.actor.user_id)
+        )
+        return await say(provider, text, **kw)
+
+    world.say = say_with_card
 
 
 def mismatch(case: dict[str, Any], world: Any, result: Any, items: list[dr.DraftItem]) -> str | None:
@@ -277,3 +303,26 @@ async def test_live_model_on_the_draft_golden_set():
             failures.append(case["id"])
     print(f"DRAFT GOLDEN {len(CASES) - len(failures)}/{len(CASES)}")
     assert not failures, f"failed cases: {failures}"
+
+
+async def test_a_correction_is_shown_the_open_card_and_correcting_it_passes():
+    """Live gate #7 (29 Oct): "alla, 6 mason aanu" reached the model with no card in its
+    context, so "which entry?" was a fair answer. The model is shown the open card as on
+    WhatsApp, and update_pending_card on it makes the card the case wants."""
+    case = next(c for c in CASES if c["id"] == 7)
+    fix = {"workers": [{"trade": "mason", "headcount": 6}]}
+    seen: list[str] = []
+
+    class _Correcting(FakeToolCallingProvider):
+        async def run_tools(self, system, messages, tools, handler, **kw):  # noqa: ANN001, ANN003, ANN201
+            seen.append(messages[0].text)
+            return await super().run_tools(system, messages, tools, handler, **kw)
+
+    def provider_for(turn):  # noqa: ANN001, ANN202
+        if turn is case:
+            return _Correcting([[("update_pending_card", {"card_id": "x", "item_index": 1, "changes": fix})], "Sheri"])
+        return _scripted(turn)
+
+    world, result = await run_case(case, provider_for)
+    assert "Their open card" in seen[-1] and "8 workers (5 mason, 3 helper)" in seen[-1]
+    assert mismatch(case, world, result, await _items(world)) is None

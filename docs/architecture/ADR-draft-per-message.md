@@ -712,6 +712,14 @@ open card, "innu enthokke cheythu?", a two-part note). `test_draft_golden.py` ru
 Limits: production chooses its model at runtime (`DynamicAIProviderResolver`); the gate tests the default Gemini
 model. Each deploy spends a few model calls (about 20).
 
+**29 Oct fix:** the harness called the runner with a bare context, so a case with earlier turns (case 7, the
+correction of the open card) reached the model with no open card and no history. "alla, 6 mason aanu" then had
+nothing to correct; with every tool shown the model happened to guess `save_labour`, and once phase 4 (section
+24) showed fewer tools it asked "which entry?" instead, which stopped four deploys. `run_case` now gives each turn
+what `message_journey` gives it: the open card line (`draft.context_line`) and the earlier turns
+(`history.for_model`). A scripted test checks the card is in the context and that `update_pending_card` on it
+passes the case.
+
 ## 19. Day facts: one rule for saved work (request 137, 28 Oct)
 
 Live re-test of section 18 (test chat, 28 Oct). **F1:** "Green Villa ground floor tiling 80% aayi" after 70% was saved
