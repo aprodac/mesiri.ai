@@ -664,3 +664,16 @@ async def test_deliver_draws_the_card_but_a_pdf_lookup_still_sends_the_pdf():
     ready.event.fields["output_format"] = "pdf"
     assert await pdf.deliver(ready, message) is None
     assert pdf.stock_card is None  # a PDF was asked for: no card
+
+
+def test_a_card_waiting_for_save_and_a_saved_card_never_look_alike():
+    """Live 29 Oct: both used the record's colour; TO SAVE is amber, SAVED green."""
+    from channel.receipt.data import KIND_STYLE, STATUS_DRAFT, STATUS_SAVED, ReceiptKind
+    from channel.receipt.template import SAVED_COLOUR, TO_SAVE_COLOUR, status_colour
+
+    blue = KIND_STYLE[ReceiptKind.LABOUR].colour
+    assert status_colour(STATUS_DRAFT, blue) == TO_SAVE_COLOUR
+    assert status_colour(f"3 {STATUS_DRAFT}", blue) == TO_SAVE_COLOUR
+    assert status_colour(STATUS_SAVED, blue) == SAVED_COLOUR
+    assert status_colour("UNDONE", blue) == blue
+    assert TO_SAVE_COLOUR != SAVED_COLOUR

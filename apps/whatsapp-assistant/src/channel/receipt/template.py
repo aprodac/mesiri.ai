@@ -18,7 +18,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .data import KIND_STYLE, ReceiptData, ReceiptKind
+from .data import KIND_STYLE, STATUS_DRAFT, STATUS_SAVED, ReceiptData, ReceiptKind
 
 if TYPE_CHECKING:
     from jinja2 import Template
@@ -59,16 +59,32 @@ def _font_css() -> str:
     )
 
 
+#: Live 29 Oct: a card waiting for Save and a saved card must not look alike, whatever
+#: the record: the tag and the stripe across the top say which (amber / green).
+TO_SAVE_COLOUR = "#B45309"
+SAVED_COLOUR = "#15803D"
+
+
+def status_colour(status: str, kind_colour: str) -> str:
+    """The tag's colour: amber while it waits for Save, green once saved; an undone
+    or late card keeps its record's colour."""
+    if STATUS_DRAFT in status:
+        return TO_SAVE_COLOUR
+    if STATUS_SAVED in status:
+        return SAVED_COLOUR
+    return kind_colour
+
+
 _STYLE = """
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { background: #FFFFFF; }
 body { width: 620px; font-family: "Inter", "Noto Sans Malayalam", "Noto Sans Devanagari",
   "Noto Sans", sans-serif; color: {{ ink }}; font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased; }
-.card { width: 620px; background: #FFFFFF; padding: 28px 32px 22px; }
+.card { width: 620px; background: #FFFFFF; padding: 22px 32px 22px; border-top: 6px solid {{ status_colour }}; }
 .top { display: flex; align-items: center; justify-content: space-between; }
 .brand { font-size: 15px; font-weight: 800; letter-spacing: 0.2em; }
-.tag { display: flex; align-items: center; gap: 7px; background: {{ colour }}; color: #FFFFFF;
+.tag { display: flex; align-items: center; gap: 7px; background: {{ status_colour }}; color: #FFFFFF;
   font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
   padding: 7px 12px; }
 .hero { margin-top: 26px; }
@@ -117,7 +133,7 @@ _BODY = """
 <div class="card">
   <div class="top">
     <div class="brand">MESIRI</div>
-    <div class="tag">{% if not undone %}{{ check }}{% endif %}{{ data.status }}</div>
+    <div class="tag">{% if not undone and not to_save %}{{ check }}{% endif %}{{ data.status }}</div>
   </div>
 
   <div class="hero">
@@ -223,6 +239,8 @@ def render_html(data: ReceiptData) -> str:
         sub=_SUB,
         line=_LINE,
         colour=KIND_STYLE[data.kind].colour,
+        status_colour=status_colour(data.status, KIND_STYLE[data.kind].colour),
+        to_save=STATUS_DRAFT in data.status,
         labour=KIND_STYLE[ReceiptKind.LABOUR].colour,
         colour_of=lambda kind: KIND_STYLE[kind].colour,
         undone=data.kind is ReceiptKind.UNDONE,

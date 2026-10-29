@@ -784,13 +784,21 @@ def build_message_handlers(
                 handled_list = list(getattr(gateway, "handled", None) or [])
                 if not handled_list or reply.header_image:
                     return reply
+                for handled in handled_list:
+                    # Made before the tap was known: they would say TO SAVE (live 29 Oct).
+                    if getattr(handled, "receipt_coro", None) is not None:
+                        handled.receipt_coro.close()
+                        handled.receipt_coro = None
                 if getattr(gateway, "draft", None) is not None or reply.buttons or reply.list_rows:
-                    for handled in handled_list:
-                        if getattr(handled, "receipt_coro", None) is not None:
-                            handled.receipt_coro.close()
-                            handled.receipt_coro = None
                     return reply
-                image = await _receipt_for(handled_list)
+                try:
+                    image = await asyncio.wait_for(
+                        interaction_handler.build_combined_receipt(handled_list, ctx, kept=True),
+                        timeout=RECEIPT_TIMEOUT_S,
+                    )
+                except Exception:  # noqa: BLE001 -- the Saved line goes out without it
+                    _log.exception("receipt.render_failed user=%s", ctx.user_id)
+                    image = None
                 return dataclasses.replace(reply, header_image=image) if image else reply
 
             async def _remember_card(gateway, *, open_card: bool) -> None:  # type: ignore[no-untyped-def]
