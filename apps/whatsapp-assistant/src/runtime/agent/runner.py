@@ -23,13 +23,14 @@ from decimal import Decimal, InvalidOperation
 
 from channel.replies import ReplySpec
 from interactions.saved_summary import QUESTION_PREFIX, render_saved
-from mesiri_ai.models import ChatMessage, ToolOutcome, ToolRunResult
+from mesiri_ai.models import ChatMessage, ToolRunResult
 from mesiri_ai.ports.tool_calling import ToolCallingProvider
 from runtime.reply_composer import BODY_MAX
 
 from . import draft as dr
 from .equipment import is_problem_only
 from .gateway import WorkflowGateway
+from .later import FOLLOW_UP_PREFIX
 from .material_direction import asked_direction, is_cancel
 from .prompt import (
     _MANGLISH_WORDS,
@@ -40,7 +41,6 @@ from .prompt import (
     letters_of,
     preferred_language,
     reply_language,
-    reply_letters_rule,
 )
 from .reply_clean import clean_annotations, clean_model_text
 from .reply_text import (
@@ -56,6 +56,7 @@ from .reply_text import (
     without_undo_prompt,
 )
 from .save_button import SAVE_TITLE
+from .tool_choice import tools_for
 from .toolbox import HOURS_QUESTION, AgentToolbox, SavedItem, offers_engineer, tomorrow_plan_text
 from .tools import (
     NOTE_FOR_ENGINEER,
@@ -63,7 +64,6 @@ from .tools import (
     SET_SITE_CONDITIONS,
     WRITE_TOOLS,
     ScopeLookup,
-    tool_specs,
 )
 from .wording import language_of, say, usual_from
 
@@ -74,12 +74,6 @@ MAX_STEPS = 3
 TIMEOUT_SECONDS = 25.0  # a 4-part note is ~2 model rounds + 4 saves; 12s cut it off (request [43])
 
 UNDO_LINE = "Wrong? Reply UNDO."
-#: The second try for a Manglish reply is short: past this, English goes out.
-MANGLISH_TIMEOUT_SECONDS = 4.0
-
-
-async def _no_tools(name: str, args: dict) -> ToolOutcome:
-    return ToolOutcome(content={"status": "error", "reason": "no tools in this step"})
 CHECK_LINE = (
     "I couldn't finish the rest of your message, so please check what is saved and "
     "send anything missing again."
@@ -156,7 +150,7 @@ class AgentRunner:
             run = await self._provider.run_tools(
                 SYSTEM_PROMPT,
                 messages,
-                tool_specs(),
+                tools_for(user_text, keep_all=_answers_a_question(ctx, user_text)),
                 toolbox.handle,
                 max_steps=self._max_steps,
                 timeout_seconds=self._timeout,
@@ -183,9 +177,9 @@ class AgentRunner:
         await self._problem_only(toolbox, user_text)
         await self._problem_part(toolbox, user_text)
         await toolbox.finish_site_queue()
-        run = await self._in_manglish(run, messages, user_text, correlation_id)
-        run = await self._one_script(run, messages, user_text, correlation_id)
-        run = await self._answer_in_language(run, messages, toolbox, user_text, correlation_id)
+        # Request 143 (speed): one language pass. The language was decided once and is
+        # in the prompt; what breaks it is cut here in code, never asked of the model again.
+        run = self._one_script(run, user_text, correlation_id)
         _park_plain_question(run, toolbox)
         # WA-37: every figure the model writes must come from what it was
         # given (the message, the facts in its prompt, a tool result) or from
@@ -197,7 +191,7 @@ class AgentRunner:
             sources.append(json.dumps(call.outcome.content, ensure_ascii=False, default=str))
         if not unbacked_numbers(run.text or "", sources):
             # (a reply with a made-up figure loses that sentence below anyway)
-            run = await self._covering(run, messages, toolbox, user_text, correlation_id)
+            run = self._covering(run, toolbox, correlation_id)
         return AgentResult("ok", self._compose(run, toolbox, sources, correlation_id), toolbox, run=run)
 
     @staticmethod
@@ -258,123 +252,15 @@ class AgentRunner:
         _decided(toolbox, "item_source", "code:problem_part")
         await toolbox.handle(REPORT_ISSUE, args)
 
-    async def _in_manglish(
-        self,
-        run: ToolRunResult,
-        messages: list[ChatMessage],
-        user_text: str,
-        correlation_id: str | None,
-    ) -> ToolRunResult:
-        """A Manglish message answered in English gets one more try, with no
-        tools: the same reply, in Manglish (round 3b, 21 Oct: told to, the
-        model still answered English one time in three). Anything going wrong
-        keeps the English reply; nothing is run or saved again."""
-        text = (run.text or "").strip()
-        if not text or reply_language(user_text) != "manglish" or is_manglish(text) or letters_of(text) != "latin":
-            return run
-        ask = (
-            "Say your last reply again in Manglish (Malayalam in English letters), the way a "
-            "site supervisor texts. Same meaning, same numbers, nothing added. Only the reply."
-        )
-        try:
-            again = await self._provider.run_tools(
-                SYSTEM_PROMPT,
-                [*messages, ChatMessage(role="model", text=text), ChatMessage(role="user", text=ask)],
-                [],
-                _no_tools,
-                max_steps=1,
-                timeout_seconds=MANGLISH_TIMEOUT_SECONDS,
-                correlation_id=correlation_id,
-            )
-        except Exception:  # noqa: BLE001 -- the English reply still goes out
-            _log.warning("agent.manglish_retry_failed correlation_id=%s", correlation_id)
-            return run
-        if not is_manglish(again.text or ""):
-            return run
-        return run.model_copy(update={"text": again.text})
-
-    async def _answer_in_language(
-        self,
-        run: ToolRunResult,
-        messages: list[ChatMessage],
-        toolbox: AgentToolbox,
-        user_text: str,
-        correlation_id: str | None,
-    ) -> ToolRunResult:
-        """Request 90: a lookup's answer (a report, a count) goes through the
-        same language decision as every other reply. When the model gave no
-        words of its own, the system's English answer would go out as it is
-        ("innale report ayakku" answered in English, 23 Oct): it is said once
-        more in the language of THIS message, with no tools. Anything going
-        wrong keeps the answer as it was."""
-        language = reply_language(user_text)
-        if language in (None, "english") or not toolbox.answers:
-            return run
-        if toolbox.answers == [toolbox.report_text]:
-            return run  # the report's line is the code's, already in their language (request 143)
-        said_now = (run.text or "").strip()
-        if said_now:
-            return run
-        answer = "\n".join(toolbox.answers)[:800]
-        if not looks_english(answer):
-            return run
-        ask = (
-            "Say this answer to the sender as a short reply. " + (reply_letters_rule(user_text) or "")
-            + " Same meaning, same numbers, nothing added. Only the reply.\n\n" + answer
-        )
-        try:
-            again = await self._provider.run_tools(
-                SYSTEM_PROMPT,
-                [*messages, ChatMessage(role="user", text=ask)],
-                [],
-                _no_tools,
-                max_steps=1,
-                timeout_seconds=MANGLISH_TIMEOUT_SECONDS,
-                correlation_id=correlation_id,
-            )
-        except Exception:  # noqa: BLE001 -- the answer goes out as it is
-            _log.warning("agent.answer_language_failed correlation_id=%s", correlation_id)
-            return run
-        said = (again.text or "").strip()
-        if not said or script_problems(said, user_text) or looks_english(said):
-            return run
-        return run.model_copy(update={"text": said})
-
-    async def _one_script(
-        self,
-        run: ToolRunResult,
-        messages: list[ChatMessage],
-        user_text: str,
-        correlation_id: str | None,
-    ) -> ToolRunResult:
-        """The reply is in the letters and language of THIS message, one script
-        (22 Oct: "innaleത്തെ" went out; English in, Manglish out). A reply
-        that is not gets one more try with no tools; if that is wrong too, the
-        sentences that break the rule go, so the sender never reads them."""
+    @staticmethod
+    def _one_script(run: ToolRunResult, user_text: str, correlation_id: str | None) -> ToolRunResult:
+        """The reply is in the letters and language of THIS message, one script (22 Oct:
+        "innaleത്തെ" went out; English in, Manglish out). Request 143: no second model
+        call -- the sentences that break the rule go, so the sender never reads them."""
         text = (run.text or "").strip()
         problems = script_problems(text, user_text)
         if not text or not problems:
             return run
-        ask = (
-            "Your last reply was rejected: " + "; ".join(problems) + ". Say it again, same meaning and "
-            "numbers, nothing added. " + (reply_letters_rule(user_text) or "") + " Only the reply."
-        )
-        retried = ""
-        try:
-            again = await self._provider.run_tools(
-                SYSTEM_PROMPT,
-                [*messages, ChatMessage(role="model", text=text), ChatMessage(role="user", text=ask)],
-                [],
-                _no_tools,
-                max_steps=1,
-                timeout_seconds=MANGLISH_TIMEOUT_SECONDS,
-                correlation_id=correlation_id,
-            )
-            retried = (again.text or "").strip()
-        except Exception:  # noqa: BLE001 -- the sentences that break the rule go instead
-            _log.warning("agent.script_retry_failed correlation_id=%s", correlation_id)
-        if retried and not script_problems(retried, user_text):
-            return run.model_copy(update={"text": retried})
         _log.warning("agent.script_fallback correlation_id=%s problems=%s", correlation_id, problems)
         if (
             letters_of(user_text) == "latin"
@@ -388,56 +274,25 @@ class AgentRunner:
         kept = "".join(p for p in sentences(text) if not any(w in p for w in broken))
         return run.model_copy(update={"text": kept.strip()})
 
-    async def _covering(
-        self,
-        run: ToolRunResult,
-        messages: list[ChatMessage],
-        toolbox: AgentToolbox,
-        user_text: str,
-        correlation_id: str | None,
-    ) -> ToolRunResult:
-        """Request 83: the sentence above the card names every item on it (it
-        left out "2 electricians" on 22 Oct). One more try, with no tools, when
-        one is missing; then the system's own sentence, built from the card's
-        items in the sender's language. A reply that carries a question is left
-        alone: the question must still end it."""
+    @staticmethod
+    def _covering(run: ToolRunResult, toolbox: AgentToolbox, correlation_id: str | None) -> ToolRunResult:
+        """Request 83: the sentence above the card names every item on it (it left out
+        "2 electricians" on 22 Oct) and never says it is saved before the tap. Request
+        143: no second model call -- a sentence that misses an item or claims a save is
+        the system's own, built from the card's items in the turn's language. A reply
+        that carries a question is left alone: the question must still end it."""
         items = [item.summary for item in _entries(toolbox) if item.summary and not item.carried]
         text = (run.text or "").strip()
         if not items or not text or toolbox.parked is not None:
             return run
         missing = uncovered_items(text, items)
-        claims = bool(_SAVED_CLAIM.search(text)) and self._card_attached(toolbox)
+        claims = bool(_SAVED_CLAIM.search(text)) and AgentRunner._card_attached(toolbox)
         if not missing and not claims:
             return run
-        ask = (
-            "Your last reply was not right for a card that is not saved yet. "
-            + ("It left out: " + "; ".join(missing) + ". " if missing else "")
-            + ("It said the entry is written, noted or saved, which is not true before they tap Save. " if claims else "")
-            + "Say it again in the same language and letters, naming every one of these, with their numbers: "
-            + "; ".join(items)
-            + ". Ask them to check it and tap Save; never say it is saved, written, noted or done. "
-            "Short, friendly, nothing added. Only the reply."
-        )
-        try:
-            again = await self._provider.run_tools(
-                SYSTEM_PROMPT,
-                [*messages, ChatMessage(role="model", text=text), ChatMessage(role="user", text=ask)],
-                [],
-                _no_tools,
-                max_steps=1,
-                timeout_seconds=MANGLISH_TIMEOUT_SECONDS,
-                correlation_id=correlation_id,
-            )
-            retried = (again.text or "").strip()
-        except Exception:  # noqa: BLE001 -- the system's sentence stands in
-            _log.warning("agent.coverage_retry_failed correlation_id=%s", correlation_id)
-            retried = ""
-        if retried and not uncovered_items(retried, items) and not _SAVED_CLAIM.search(retried):
-            return run.model_copy(update={"text": retried})
         _log.warning(
             "agent.coverage_fallback correlation_id=%s missing=%s claims=%s", correlation_id, len(missing), claims
         )
-        return run.model_copy(update={"text": covering_sentence(items, user_text, toolbox.language)})
+        return run.model_copy(update={"text": covering_sentence(items, toolbox.user_text, toolbox.language)})
 
     # -- the one reply -----------------------------------------------------
 
@@ -906,6 +761,16 @@ def covering_sentence(summaries: list[str], user_text: str, language: str | None
     items = "; ".join(said)
     items = items[:1].upper() + items[1:]
     return _COVERING[language or language_of(user_text)].format(items=items)
+
+
+def _answers_a_question(ctx: AgentContext, user_text: str) -> bool:
+    """Request 143 (speed): an answer to the assistant's own question ("50", "Site B")
+    or the system's follow-up cannot tell from its words which tools it needs: every
+    tool is shown for it (``tool_choice.tools_for``)."""
+    if user_text.startswith(FOLLOW_UP_PREFIX):
+        return True
+    last = ctx.turns[-1].assistant_reply if ctx.turns else ""
+    return "?" in (last or "")[-300:]
 
 
 def _report_only(toolbox: AgentToolbox) -> ReplySpec | None:

@@ -370,7 +370,9 @@ class _Runs:
         return await fake.run_tools(system_prompt, messages, tools, handler, **kwargs)
 
 
-async def test_an_english_reply_to_manglish_is_said_again_in_manglish():
+async def test_a_reply_in_the_wrong_language_costs_no_second_model_call():
+    """Request 143 (speed): the language is decided once and put in the prompt; the
+    model is never asked again to re-say a reply."""
     provider = _Runs(
         FakeToolCallingProvider(
             [[("save_labour", {"workers": WORKERS})], "3 masons came today. Check and tap Save."]
@@ -383,10 +385,8 @@ async def test_an_english_reply_to_manglish_is_said_again_in_manglish():
         gateway=Gateway(StepResult("saved", text="x", summary="3 masons")),
         scope=ScopeLookup(),
     )
-    assert result.reply.text.startswith("Innu 3 mason vannu. Onnu nokki Save tap cheyyu.")
-    assert provider.calls == 2
-    assert provider.tools_seen[1] == []  # the second try has no tools
-    assert len(result.toolbox.saved) == 1  # nothing was run or saved again
+    assert provider.calls == 1
+    assert len(result.toolbox.saved) == 1
 
 
 async def test_the_english_reply_stays_when_the_second_try_fails():

@@ -294,23 +294,21 @@ class _Provider(FakeToolCallingProvider):
         return ToolRunResult(text=self.retries.pop(0), calls=[], steps=1, stop_reason="answered", model="fake")
 
 
-async def test_a_lookup_with_no_words_from_the_model_is_said_in_manglish():
-    # (The DPR's own line is the code's, in the sender's language: request 143.)
+async def test_a_lookup_answer_costs_no_second_model_call():
+    """Request 143 (speed): the answer goes as the tool gave it when the model wrote
+    nothing; it is never sent to the model again to be re-said."""
     english = "There were 2 workers at Green Villa on 22 Oct (2 mason)."
 
     class Gateway:
         async def run(self, candidate, *, text):  # noqa: ANN001, ANN202
             return StepResult("answer", text=english)
 
-    provider = _Provider(
-        [[("query_labour", {"date_range": "yesterday"})], ""], ["Innale Green Villa-il 2 per vannu (2 mason)."]
-    )
+    provider = _Provider([[("query_labour", {"date_range": "yesterday"})], ""], ["never asked"])
     result = await r.AgentRunner(provider).run(
         ctx=CTX, user_text="innale ethra per vannu", gateway=Gateway(), scope=ScopeLookup()
     )
-    assert "There were" not in result.reply.text
-    assert "Innale Green Villa-il" in result.reply.text
-    assert "Manglish" in provider.asked[0] and "There were" in provider.asked[0]
+    assert provider.asked == []
+    assert "2 workers" in result.reply.text
 
 
 async def test_an_english_message_keeps_the_english_answer():

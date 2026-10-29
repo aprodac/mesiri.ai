@@ -1048,3 +1048,58 @@ code.
 - **Found, not changed (product decisions, WA-90):** a PDF is always declined ("can't read documents") although
   the agent reads documents through the vision path, because ingress maps `document` to UNKNOWN and never
   downloads it; a sticker gets the "can't read stickers" reply where a thumbs-up sticker usually means "ok".
+
+## 24. Request 143, phase 4 (F): fewer and smaller model calls per message
+
+Approved by Ilan in WhatsApp (29 Oct, request 143). Live before: taps 2.5-7.9 s, messages 6-11 s (a transfer
+10.8-11.4 s). Targets: <= 3 s per tap, <= 5 s per message.
+
+### 24.1 What a message cost
+
+The tool loop's model calls (one per round: the calls, then the words), then up to four more model calls after it:
+`_in_manglish` (say it again in Manglish), `_one_script` (say it again in one script), `_answer_in_language` (say the
+lookup's answer in their language) and `_covering` (say it again naming every card item). Each sent every tool spec
+(31 tools, ~30K characters) and the ~23K-character prompt. In draft mode the words above a card are the code's
+(`runner._code_card`), so the last round and every re-say were thrown away.
+
+### 24.2 What changed
+
+- **One language pass.** The language is decided once (`wording.decide`, section 22.3) and given to the model as a
+  hard rule; what breaks it is cut in code (`_one_script` keeps only its code fallback), a sentence that misses a
+  card item or claims a save is the code's covering sentence (`_covering`). `_in_manglish` and
+  `_answer_in_language` are gone. No second model call for language or coverage.
+- **A round of card lines ends the run.** The tool contract (platform/ai) gets `ToolOutcome.done`: the call needs
+  no words from the model. When every call of a round is done, the Gemini adapter (and the fake) ends the run
+  (`stop_reason="done_by_tools"`). The toolbox marks a draft-card line done when the turn has no answer, question or
+  module line for the model to word. The prompt asks for every call in the first step.
+- **A tool subset per turn** (`runtime/agent/tool_choice.py`). The families a message's words name (labour, work,
+  material, money, site problems, equipment, reports, team, language) plus the core (a question, still-to-do, the
+  card, undo / change, the work site). Every tool when the words name no family, when the message is in Malayalam or
+  Devanagari script (their words take endings), and when it answers the assistant's own question. Two tests guard
+  it: every golden message's good calls are within its subset, and every tool is in the core or a family.
+- **Context.** The sender's site for today is read once per message (it was read by four context lines). The
+  turn's Day Facts (section 21.2) is shared by the report and the check layer.
+
+### 24.3 Measured (scripted, the golden sets: 68 messages)
+
+| | before (`3148cdc`) | after |
+|---|---:|---:|
+| model round-trips per message | 4.04 | 1.82 |
+| `run_tools` calls per message | 2.03 | 1.00 |
+| tool-spec characters per model call | 30,054 | 16,804 |
+
+At 1.5-2.5 s a round on gemini-2.5-flash that is roughly 6-10 s down to 3-4.5 s a message. **Not measured live:**
+`test_assistant` (the bot's live timing tool) needs the teammate listener's token, and production timings
+(`journey_traces`) need the ops token; neither was in this session. Taps run no model call; their time is the Save
+transaction and the receipt card, untouched here.
+
+### 24.4 Not done
+
+- The "today so far" context line still reads `project_day.read_period` (the shared read helper, saved and waiting
+  lines). Moving it onto the Day Facts assembly would change its saved / waiting wording for no latency gain (the
+  context lines are read in parallel, under a 0.5-1 s timeout); left for when a reader needs it.
+- Tap latency (no model): not changed.
+
+### 24.5 Rollback
+
+Revert the phase commit. No migration. `ToolOutcome.done` defaults to False, so any other caller is unchanged.

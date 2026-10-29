@@ -104,24 +104,13 @@ async def _reply_for(user_text: str, script: list, retries: list[str], summary: 
 CEMENT = [("save_material_usage", {"material": "cement", "quantity": 10, "unit": "bags", "purpose": "columns"})]
 
 
-async def test_manglish_for_english_is_asked_again_once_then_corrected():
+async def test_manglish_for_english_is_corrected_in_code_with_no_second_call():
     text, provider = await _reply_for(
         "used 10 bags cement for columns",
         [CEMENT, "Okay. Nokki shariyenkil Save tap cheyyu."],
         ["Got it, 10 bags cement used for columns. Please check it and tap Save."],
     )
-    assert text.startswith("Got it, 10 bags cement used for columns. Please check it and tap Save.")
-    assert len(provider.asked) == 1 and "English only" in provider.asked[0]
-    assert not rt.manglish_word_count(text, r._MANGLISH_WORDS)
-
-
-async def test_when_the_second_try_is_wrong_too_the_code_line_in_english_goes_out():
-    text, provider = await _reply_for(
-        "used 10 bags cement for columns",
-        [CEMENT, "Okay. Nokki shariyenkil Save tap cheyyu."],
-        ["Sheri. Shariyenkil Save tap cheyyu."],
-    )
-    assert sum("was rejected" in a for a in provider.asked) == 1  # the language is asked again once, not more
+    assert provider.asked == []  # request 143: one language pass, no second call
     assert text.startswith("10 bags cement used (columns). Please check it and tap Save.")
     assert not rt.manglish_word_count(text, r._MANGLISH_WORDS)
 

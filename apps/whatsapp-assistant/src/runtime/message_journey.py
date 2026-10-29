@@ -958,9 +958,18 @@ def build_message_handlers(
                 today = await work_site.today(ctx)
                 return today[1] if today else None
 
+            today_memo: dict[str, Any] = {}
+
+            async def _today(actor):  # type: ignore[no-untyped-def]
+                """Request 143 (speed): the sender's site for today, read once per message
+                (the today, stock, work-site and open-work lines all ask)."""
+                if "today" not in today_memo:
+                    today_memo["today"] = await work_site.today(actor) if work_site is not None else None
+                return today_memo["today"]
+
             async def _today_site_id(actor):  # type: ignore[no-untyped-def]
                 """SIT-10: the site a multi-site sender chose for today."""
-                today = await work_site.today(actor) if work_site is not None else None
+                today = await _today(actor)
                 return today[1] if today else None
 
             async def _today_context_line(actor):  # type: ignore[no-untyped-def]
@@ -976,7 +985,7 @@ def build_message_handlers(
                 return await build_stock_line(inventory_query, actor, site_id=await _today_site_id(actor))
 
             async def _work_site_line(actor):  # type: ignore[no-untyped-def]
-                today = await work_site.today(actor)
+                today = await _today(actor)
                 return site_label(actor, today[1]) if today else None
 
             async def _open_work_line(actor):  # type: ignore[no-untyped-def]
@@ -984,7 +993,7 @@ def build_message_handlers(
                 several sites and none chosen yet, at all of them (WRK-05)."""
                 from runtime.today_context import render_open_work_line
 
-                today = await work_site.today(actor) if work_site is not None else None
+                today = await _today(actor)
                 sites = list(getattr(actor, "sites", None) or [])
                 site_id = today[1] if today else (str(sites[0].id) if len(sites) == 1 else None)
                 if site_id is None and not sites:

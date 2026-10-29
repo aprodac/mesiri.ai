@@ -144,23 +144,14 @@ WORKERS = [{"trade": "mason", "headcount": 5}, {"trade": "helper", "headcount": 
 SAID = "innu 5 mason, 8 helper, 2 electrician vannu"
 
 
-async def test_a_sentence_that_leaves_an_item_out_is_asked_again_once():
+async def test_a_sentence_that_leaves_an_item_out_is_the_systems_own_at_once():
+    """Request 143 (speed): no second model call; the system's sentence names every item."""
     provider = _Provider(
         [[("save_labour", {"workers": WORKERS})], "Innu 5 mason, 8 helper vannu. Nokki Save tap cheyyu."],
         ["Sheri, innu 5 mason, 8 helper, 2 electrician vannu. Nokki Save tap cheyyu."],
     )
     result = await _say(provider, SAID, StepResult("saved", text="x", summary=LABOUR))
-    assert provider.retried == 1
-    assert result.reply.text.startswith("Sheri, innu 5 mason, 8 helper, 2 electrician vannu.")
-
-
-async def test_a_second_miss_falls_back_to_the_systems_own_sentence():
-    provider = _Provider(
-        [[("save_labour", {"workers": WORKERS})], "Innu 5 mason, 8 helper vannu."],
-        ["Innu 5 mason vannu."],
-    )
-    result = await _say(provider, SAID, StepResult("saved", text="x", summary=LABOUR))
-    assert provider.retried == 1
+    assert provider.retried == 0
     assert result.reply.text.startswith(f"{LABOUR}. Nokki shariyenkil Save tap cheyyu.")
 
 

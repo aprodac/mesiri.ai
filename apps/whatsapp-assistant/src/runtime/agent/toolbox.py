@@ -755,6 +755,13 @@ class AgentToolbox:
 
         return _say(_language_of(self.user_text), "hold", n=waiting)
 
+    def _card_writes_reply(self) -> bool:
+        """Request 143 (speed): a line of the draft card needs no words from the model:
+        above a card every word is the code's (``runner._code_card``). So a round of
+        calls that only made card lines ends the run without one more model call, unless
+        the turn also has an answer or a question the model must put into words."""
+        return self.draft_mode and not self.answers and self.parked is None and not self.module_off_line
+
     def answers_only_stock(self) -> bool:
         """Request 143: the turn's answers are the stock answer and nothing else, so
         the Stock card is its picture. A week summary that also looked at stock is
@@ -1219,7 +1226,7 @@ class AgentToolbox:
                 if step.hint:
                     # How a typed answer is taken (the entry's own words).
                     content["if_they_type_the_answer"] = step.hint
-                return ToolOutcome(content=content)
+                return ToolOutcome(content=content, done=self._card_writes_reply())
             instruction = (
                 "Nothing is saved yet: it is a line on a Save / Cancel card shown under your words. "
                 "Say in one short line what you understood, in the language of their message, and "
@@ -1234,7 +1241,8 @@ class AgentToolbox:
                     "never in the past tense (not 'changed', 'maatti', 'aakki', 'updated', 'corrected')."
                 )
             return ToolOutcome(
-                content={"status": "waiting_for_save", "on_card": line, "instruction": instruction}
+                content={"status": "waiting_for_save", "on_card": line, "instruction": instruction},
+                done=self._card_writes_reply(),
             )
         if step.status == "undone":
             self.system_lines.append(step.text)

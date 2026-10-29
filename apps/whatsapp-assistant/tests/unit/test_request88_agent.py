@@ -463,21 +463,21 @@ async def test_a_card_reply_keeps_the_save_request():
     assert "Save tap cheyyu" in result.reply.text
 
 
-async def test_a_done_word_before_save_is_asked_again_then_replaced():
+async def test_a_done_word_before_save_is_replaced_by_the_systems_sentence():
     provider = FakeToolCallingProvider(
         [[("report_issue", {"narrative": "mixer kedayi"})], "Ayyo, mixer machine kedayi, issue aayi ezhuthiyittund. Save tap cheyyu."]
     )
     gateway = _Gateway(StepResult("saved", text="ok", summary="Machine breakdown: mixer kedayi"))
     result = await _run(provider, text="mixer machine kedayi", gateway=gateway)
-    assert provider.calls == 2  # asked again once
+    assert provider.calls == 1  # request 143: never asked again
     assert "ezhuthiyittund" not in result.reply.text
     assert "Machine breakdown" in result.reply.text  # the system's own sentence names the card
 
 
-async def test_a_mixed_script_word_is_asked_again_and_cut_if_it_comes_back():
+async def test_a_mixed_script_word_is_cut_without_a_second_call():
     provider = FakeToolCallingProvider(["innaleത്തെ report ayakkam. Ethu site?"])
     result = await _run(provider, text="innale report ayakku")
-    assert provider.calls == 2
+    assert provider.calls == 1
     assert "innaleത്തെ" not in result.reply.text
 
 

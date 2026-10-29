@@ -44,6 +44,8 @@ short sentence, and never write "To save", "Saved", "Reply YES", an options list
 - Save every figure exactly as they said it, however large or small ("Site B 500 mason vannu" is \
 save_labour with 500): never ask whether a number is right. The system checks odd figures against \
 the site's history and asks on the card itself.
+- Make every tool call the message needs together, in your FIRST step (one call per thing it reports): \
+when they only add lines to the card, the system writes the reply and you are not asked again.
 - Only pass a project or site when the user named one. Never invent names, numbers, \
 quantities, units or dates. If a detail you need is missing and cannot be worked out, \
 or you cannot tell what they mean, call ask_user with ONE short question (and 2-3 \

@@ -301,11 +301,15 @@ class ToolOutcome(BaseModel):
 
     ``content`` goes back to the model verbatim. ``stop`` ends the run after
     this round of calls without asking the model again (a tool that parked the
-    conversation on a question the user must answer first).
+    conversation on a question the user must answer first). ``done``: this call
+    needs no words from the model (the caller writes the reply for it, e.g. a
+    line added to a card); when EVERY call of a round is done, the run ends there
+    too, saving the model call that would only write text nobody reads.
     """
 
     content: dict[str, Any] = Field(default_factory=dict)
     stop: bool = False
+    done: bool = False
 
 
 class ToolCallRecord(BaseModel):
@@ -322,7 +326,7 @@ class ToolRunResult(BaseModel):
 
     ``text`` is the model's final message (empty when the run stopped on a
     parked question or ran out of steps). ``stop_reason`` is one of
-    ``answered`` | ``stopped_by_tool`` | ``max_steps``.
+    ``answered`` | ``stopped_by_tool`` | ``done_by_tools`` | ``max_steps``.
     """
 
     text: str = ""

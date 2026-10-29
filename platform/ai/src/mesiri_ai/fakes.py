@@ -275,6 +275,7 @@ class FakeToolCallingProvider:
                 )
             steps += 1
             stop = False
+            done = bool(step)
             for name, arguments in step:
                 if name not in known:
                     outcome = ToolOutcome(content={"error": f"unknown tool {name}"})
@@ -282,8 +283,9 @@ class FakeToolCallingProvider:
                     outcome = await handler(name, dict(arguments))
                 records.append(ToolCallRecord(name=name, arguments=dict(arguments), outcome=outcome))
                 stop = stop or outcome.stop
-            if stop:
+                done = done and outcome.done
+            if stop or done:
                 return ToolRunResult(
-                    calls=records, steps=steps, stop_reason="stopped_by_tool", model="fake"
+                    calls=records, steps=steps, stop_reason="stopped_by_tool" if stop else "done_by_tools", model="fake"
                 )
         return ToolRunResult(calls=records, steps=steps, stop_reason="max_steps", model="fake")

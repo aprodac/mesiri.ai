@@ -1043,6 +1043,7 @@ class GeminiProvider:
                     contents.append(candidates[0].content)
                 response_parts: list[Any] = []
                 stop = False
+                done = True
                 for call in calls:
                     name = getattr(call, "name", "") or ""
                     arguments = dict(getattr(call, "args", None) or {})
@@ -1059,14 +1060,15 @@ class GeminiProvider:
                         )
                     )
                     stop = stop or outcome.stop
+                    done = done and outcome.done
                     response_parts.append(
                         types.Part.from_function_response(name=name, response=outcome.content)
                     )
-                if stop:
+                if stop or done:
                     return ToolRunResult(
                         calls=records,
                         steps=steps,
-                        stop_reason="stopped_by_tool",
+                        stop_reason="stopped_by_tool" if stop else "done_by_tools",
                         model=self._settings.model,
                     )
                 contents.append(types.Content(role="user", parts=response_parts))
