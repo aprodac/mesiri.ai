@@ -1,8 +1,12 @@
 # Mesiri inside WhatsApp groups — plan (WA-87)
 
-> Status: **approved 28 Oct 2026 (Ilan); code built 28 Oct, switched OFF.** Mesiri's number
-> is an Official Business Account. What is left is on Meta's side and a live test: see
-> *Switching it on*. Nothing reaches a customer until `WHATSAPP_GROUPS_ENABLED=true`.
+> Status: **approved 28 Oct 2026 (Ilan); code built 28 Oct, switched OFF.** **Correction, 29
+> Oct:** Mesiri's number is *not* an Official Business Account yet — that was a wrong
+> assumption in the original ask. A live test got `(#131215) This phone number is not
+> eligible to access Groups APIs`; the Groups API requires the OBA badge, and WhatsApp
+> Manager currently has OBA requests disabled for this business ("not available at the
+> moment"), likely tied to the still-rejected "Mesiri" display name. See *Switching it on*.
+> Nothing reaches a customer until `WHATSAPP_GROUPS_ENABLED=true`.
 
 ## Built (28 Oct 2026)
 
@@ -52,9 +56,15 @@ every event it does not recognise (`group.event_ignored`), so the live test show
 1. **Done 29 Oct:** the 4 `group_*` webhook fields are subscribed and `mesiri_group_invite` is
    submitted (In review) — reworded to pass Meta's Utility classifier; current text in
    `docs/ops/whatsapp-templates.md`.
-2. Server: `WHATSAPP_GROUPS_ENABLED=true` in the app's environment (web + worker), restart.
+2. **New, found 29 Oct:** the number needs WhatsApp's **Official Business Account (OBA)**
+   badge before the Groups API will work at all (`(#131215) not eligible to access Groups
+   APIs`). In WhatsApp Manager → Phone numbers → Mesiri number → Profile, "Submit request" is
+   disabled ("not available for your business at the moment"); likely blocked on the
+   still-rejected "Mesiri" display name (shown as "Paraclete" today) — Ilan to pick new wording
+   and resubmit. Re-check OBA eligibility after that; it may also just need time.
+3. Server: `WHATSAPP_GROUPS_ENABLED=true` in the app's environment (web + worker), restart.
    When the template is approved, add `mesiri_group_invite` to `WHATSAPP_APPROVED_TEMPLATES`.
-3. Live test with our own numbers only: make a group for a test site, join, send "8 masons
+4. Live test with our own numbers only: make a group for a test site, join, send "8 masons
    today" and a photo, check the ✅, the site DPR, and that an outsider's message is ignored.
    Read `group.*` lines in the app log; fix any payload field the logs show differently.
 
