@@ -320,3 +320,10 @@ def test_a_transfer_gets_its_own_receipt_card():
     )
     assert data.category == "Material transfer"
     assert [(r.tag, r.text) for r in data.rows] == [("Material", "Cement"), ("From", "Green Villa"), ("To", "Site B")]
+
+
+async def test_a_partial_destination_name_finds_the_site_like_every_other_site_said():
+    """Live 29 Oct: "Green Villa-lekku" was refused while "Green Villa-il ninnu" matched."""
+    actor = _actor("ADMIN", ((SITE_B, "Green Villa, Kakkanad", PRJ),))
+    ready = await _prepare(_entry(actor=actor), direction="transfer", to_site_name="Green Villa")
+    assert isinstance(ready, Ready) and ready.event.fields["to_site_name"] == "Green Villa, Kakkanad"

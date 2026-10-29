@@ -203,8 +203,10 @@ def _message(gw: Any, text: str) -> Any:
 
 
 #: What an answer fills in when the question is about WHERE (the site queue of
-#: [111] holds those calls): no line of the card waits for them.
-_SCOPE_QUESTIONS = ("site", "project", "to_site")
+#: [111] holds those calls): no line of the card waits for them. A transfer's
+#: destination ("to_site") is a line of the card waiting on its question: the
+#: tap fills the transfer, it never sets the work site.
+_SCOPE_QUESTIONS = ("site", "project")
 
 #: The one note when an old-style Yes / No question is still waiting while the
 #: sender's message went onto a draft card (request 127).

@@ -261,3 +261,21 @@ def test_every_write_tool_is_behind_the_card_or_listed_as_not_yet():
         "a write tool was added without saying how it waits for Save"
     )
     assert t.UPDATE_ISSUE in THROUGH_THE_CARD  # acknowledge / won't fix / reopen are card lines; resolving a pending action
+
+
+# -- the transfer's destination ------------------------------------------------------
+
+
+async def test_a_destination_pick_fills_the_transfer_and_never_sets_the_work_site(world):
+    """Live 29 Oct: the tap on the destination ran set_work_site and the transfer was lost."""
+    call = ("transfer_material", {"material": "cement", "quantity": 5, "unit": "bags", "to_site": "Moon base"})
+    result = await world.say(FakeToolCallingProvider([[call], "Which site?"]), "x")
+    assert world.started == []
+
+    picked, _gateway = await press(world, result.reply, "Site A2")
+    text = picked.text.casefold()
+    assert "for your entries" not in text and "site a2" in text
+    assert [b.title for b in picked.buttons][:1] == ["✅ Save"]
+
+    saved, _gateway = await press(world, picked, "✅ Save")
+    assert world.started and saved.text.startswith("✅ Saved")

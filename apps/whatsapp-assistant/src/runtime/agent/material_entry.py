@@ -218,6 +218,12 @@ class MaterialEntry(EntryScope):
         hit = [s for s in others if key and " ".join(labels[str(s.id)].casefold().split()) == key]
         if not hit and key:
             hit = [s for s in others if " ".join(str(s.name).casefold().split()) == key]
+        if not hit and key:
+            # The same matcher as the source and every other line (partial names:
+            # "Green Villa" for "Green Villa, Kakkanad"); several hits stay a question.
+            from .site_match import find_sites, mentioned_sites
+
+            hit = find_sites(others, said, projects, part=True) or mentioned_sites(others, said)
         if len(hit) != 1:
             if not others:
                 return Say("info", "Not saved: you have no other site to send it to. Your admin can add one.")
