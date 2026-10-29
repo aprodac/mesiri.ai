@@ -708,7 +708,7 @@ class JourneyGateway:
             return None
         if not summary:
             return None
-        site = short_site_label(self.actor, draft.site_id) if len(getattr(self.actor, "sites", None) or []) > 1 else None
+        site = short_site_label(self.actor, draft.site_id) if draft.site_id else None
         header = f"{TO_SAVE_HEADER[:-1]} · {site}:" if site else TO_SAVE_HEADER
         return ReplySpec(
             text=render_saved([summary], header),

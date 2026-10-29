@@ -173,13 +173,11 @@ def card_plan(
 
 
 def card_site(actor: Any, handled_list: Iterable[Any], *, always: bool = False) -> str | None:
-    """SIT-11: the one site every entry of a card is for, named only for a
-    sender who has several (``always``: for the "✅ Saved" line, which names it
-    for everyone, request 116)."""
+    """SIT-11: the one site every entry of a card is for. Request 142: named
+    for every sender, one site or several, whatever the input (``always`` is
+    kept for its callers and no longer changes anything)."""
     from .work_site import short_site_label
 
-    if not always and len(getattr(actor, "sites", None) or []) < 2:
-        return None
     site_ids = {
         str(getattr(getattr(getattr(h.result, "confirmed_action", None), "draft_action", None), "site_id", "") or "")
         for h in handled_list

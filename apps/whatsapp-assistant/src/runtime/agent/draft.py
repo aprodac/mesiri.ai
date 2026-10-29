@@ -136,6 +136,8 @@ class DraftItem:
     #: The site the entry is for (its id and short name), for a card of several.
     site_id: str = ""
     site: str = ""
+    #: The sender has several sites: only then does the card offer "Change site".
+    many_sites: bool = False
     #: ``action`` only: the id of the pending action (runtime/agent/actions.py).
     action_id: str = ""
     #: A line waiting on a question (request 127): what its answer fills in
@@ -184,6 +186,7 @@ class DraftItem:
                 label=str(raw.get("label") or ""),
                 site_id=str(raw.get("site_id") or ""),
                 site=str(raw.get("site") or ""),
+                many_sites=bool(raw.get("many_sites")),
                 action_id=str(raw.get("action_id") or ""),
                 target=raw.get("target") if isinstance(raw.get("target"), dict) else None,
                 awaiting=str(raw.get("awaiting") or ""),
@@ -390,7 +393,7 @@ def card_text(draft: MessageDraft, *, site: str | None = None) -> str:
     each open question, and what could not be read."""
     ready = draft.ready_items
     asking = [i for i in draft.waiting_items if i.pending_answer]
-    sites = {i.site_id or i.site for i in draft.items if i.state != UNREADABLE and (i.site_id or i.site)}
+    sites = {i.site for i in draft.items if i.state != UNREADABLE and i.site}
     show_site = len(sites) > 1
     parts: list[str] = []
     if ready or asking:
@@ -415,7 +418,7 @@ def movable_items(draft: MessageDraft) -> list[DraftItem]:
     """The items "Change site" moves: new entries of a sender with several sites
     (their line names the site). A pending action or a correction of a saved
     entry stays where it is."""
-    return [i for i in draft.items if i.state != UNREADABLE and i.site and i.kind not in (KIND_ACTION, KIND_CHANGE)]
+    return [i for i in draft.items if i.state != UNREADABLE and i.site and i.many_sites and i.kind not in (KIND_ACTION, KIND_CHANGE)]
 
 
 def card_rows(draft: MessageDraft) -> list[ListRow]:
