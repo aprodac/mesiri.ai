@@ -54,6 +54,10 @@ def groups_switched_on() -> bool:
     return os.environ.get("WHATSAPP_GROUPS_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+#: Meta's "This phone number is not eligible to access Groups APIs" (first live
+#: try, 29 Oct): the number needs the Official Business Account badge.
+NOT_ELIGIBLE_CODE = 131215
+
 ALLOW_PREFIX = "wagroup:allow:"
 DENY_PREFIX = "wagroup:deny:"
 
@@ -272,7 +276,7 @@ def _on_site_team(actor: Any, group: Mapping[str, Any]) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class CreateResult:
-    #: creating | exists | failed | disabled
+    #: creating | exists | failed | not_eligible | disabled
     status: str
     group: Mapping[str, Any] | None = None
 
@@ -337,6 +341,12 @@ class GroupChat:
                 "here; Mesiri saves them to the site."
             ),
         )
+        refused = (answer or {}).get("refused") if isinstance(answer, dict) else None
+        if refused is not None:
+            await self._groups.update(row["id"], status="failed")
+            if refused.get("code") == NOT_ELIGIBLE_CODE:
+                return CreateResult("not_eligible", row)
+            return CreateResult("failed", row)
         if answer is None:
             await self._groups.update(row["id"], status="failed")
             return CreateResult("failed", row)
@@ -553,6 +563,15 @@ class GroupChat:
     ) -> str:
         sites = await self._groups.company_sites(organization_id=organization_id)
         found = _match(site_text, sites, "site_name") if site_text.strip() else (sites if len(sites) == 1 else [])
+        if not found and site_text.strip():
+            # "make a group for hospital project": a project's name. Its only
+            # site, or the question which of its sites.
+            words = " ".join(w for w in _norm(site_text).split() if w not in {"project", "site"})
+            projects = {s["project_id"] for s in _match(words or site_text, sites, "project_name")}
+            found = [s for s in sites if s["project_id"] in projects]
+            if len(found) > 1:
+                names = ", ".join(s["site_name"] for s in found[:8])
+                return f"Which site of {found[0]['project_name']}? {names}\nSend: make a group for <site>"
         if len(found) != 1:
             names = ", ".join(s["site_name"] for s in (found or sites)[:8])
             lead = "Which site?" if found or not site_text.strip() else "I couldn't find that site."
@@ -648,6 +667,11 @@ def create_reply(result: CreateResult, site_name: str) -> str:
         return f"{site_name} has a WhatsApp group already." + (f" Invite link: {link}" if link else "")
     if result.status == "disabled":
         return "WhatsApp groups aren't switched on yet."
+    if result.status == "not_eligible":
+        return (
+            "WhatsApp hasn't opened groups to Mesiri's number yet (it needs WhatsApp's "
+            "Official Business Account badge). Nothing to do on your side: the Mesiri team is on it."
+        )
     return f"WhatsApp didn't let me make the group for {site_name}. Please try again in a while."
 
 

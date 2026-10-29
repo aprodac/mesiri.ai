@@ -533,3 +533,33 @@ async def test_a_created_event_that_beats_the_stored_request_id() -> None:
         "group_lifecycle_update", {"groups": [{"type": "group_create", "group_id": "120363999"}]}
     )
     assert parts["outbox"].sent == [] and parts["sender"].sent == []
+
+
+async def test_a_number_meta_has_not_opened_groups_to_says_so() -> None:
+    """29 Oct live try: Meta answered 131215 "This phone number is not eligible
+    to access Groups APIs". The admin is told why, not "try again"."""
+    chat, parts = _chat(client=FakeClient({"refused": {"code": 131215, "message": "(#131215) not eligible"}}))
+    owner = _actor(OWNER, role="ADMIN", sites=(SITE_A, SITE_B))
+    reply = await chat.handle_private(_message("make a group for Block A"), owner)
+    assert "Official Business Account" in reply and "try again" not in reply
+    assert next(iter(parts["groups"].rows.values()))["status"] == "failed"
+
+    chat, _ = _chat(client=FakeClient({"refused": {"code": 100, "message": "bad"}}))
+    assert "try again" in await chat.handle_private(_message("make a group for Block A"), owner)
+
+
+async def test_a_project_name_finds_its_site() -> None:
+    """29 Oct live try: "Make group for hospital project" named the project."""
+    chat, parts = _chat()
+    parts["groups"].sites = [
+        {"site_id": SITE_A, "site_name": "Tower A", "project_id": PROJECT, "project_name": "Hospital"},
+    ]
+    owner = _actor(OWNER, role="ADMIN", sites=(SITE_A,))
+    made = await chat.handle_private(_message("Make group for hospital project"), owner)
+    assert made.startswith("Making the WhatsApp group for Tower A")
+
+    chat, parts = _chat()
+    for s in parts["groups"].sites:
+        s["project_name"] = "Hospital"
+    which = await chat.handle_private(_message("make a group for hospital project"), owner)
+    assert which.startswith("Which site of Hospital?") and "Block A" in which and "Block B" in which

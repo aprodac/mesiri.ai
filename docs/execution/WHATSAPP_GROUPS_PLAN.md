@@ -56,17 +56,30 @@ every event it does not recognise (`group.event_ignored`), so the live test show
 1. **Done 29 Oct:** the 4 `group_*` webhook fields are subscribed and `mesiri_group_invite` is
    submitted (In review) — reworded to pass Meta's Utility classifier; current text in
    `docs/ops/whatsapp-templates.md`.
-2. **New, found 29 Oct:** the number needs WhatsApp's **Official Business Account (OBA)**
-   badge before the Groups API will work at all (`(#131215) not eligible to access Groups
-   APIs`). In WhatsApp Manager → Phone numbers → Mesiri number → Profile, "Submit request" is
-   disabled ("not available for your business at the moment"); likely blocked on the
-   still-rejected "Mesiri" display name (shown as "Paraclete" today) — Ilan to pick new wording
-   and resubmit. Re-check OBA eligibility after that; it may also just need time.
+2. **Found 29 Oct, still open:** the number needs WhatsApp's **Official Business Account
+   (OBA)** badge before the Groups API will work at all (`(#131215) not eligible to access
+   Groups APIs`). In WhatsApp Manager → Phone numbers → Mesiri number → Profile, "Submit
+   request" is disabled ("not available for your business at the moment"); likely blocked on
+   the display name — the "Mesiri" name was rejected (shown as "Paraclete" live); **resubmitted
+   29 Oct as "Mesiri by Aprodac"** (Ilan's wording), now In review. Re-check OBA eligibility
+   once that lands; it may also just need time regardless.
 3. Server: `WHATSAPP_GROUPS_ENABLED=true` in the app's environment (web + worker), restart.
+   **Done 29 Oct** through the deploy step *WhatsApp groups switch* (`.github/workflows/deploy.yml`);
+   switch off by setting `GROUPS_ENABLED: "false"` there and pushing.
    When the template is approved, add `mesiri_group_invite` to `WHATSAPP_APPROVED_TEMPLATES`.
 4. Live test with our own numbers only: make a group for a test site, join, send "8 masons
    today" and a photo, check the ✅, the site DPR, and that an outsider's message is ignored.
    Read `group.*` lines in the app log; fix any payload field the logs show differently.
+
+## First live try (29 Oct 2026)
+
+"make a group for Tower A" from a company admin reached Meta, which answered **400
+`(#131215) This phone number is not eligible to access Groups APIs`**. Meta's Groups API is
+open only to numbers with the **Official Business Account (OBA)** badge; APRODAC's *business
+verification* (24 Oct) is a different thing. Next: apply for OBA on the Mesiri number
+(WhatsApp Manager → the phone number → profile → Official business account), then try again.
+Code since: the admin is told this plainly instead of "try again" (dashboard: 409 with the same
+text), and a project's name ("hospital project") finds its site.
 
 ## Objective
 

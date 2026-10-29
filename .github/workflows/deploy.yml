@@ -217,6 +217,19 @@ jobs:
           printf '%s' "${CLAUDE_OPS_TOKEN}" | ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
             "python3 /tmp/set_env_value.py /opt/mesiri/.env MESIRI_CLAUDE_OPS_TOKEN && rm -f /tmp/set_env_value.py"
 
+      # WA-87: Mesiri inside site WhatsApp groups (runtime/group_chat.py).
+      # Switched on 29 Oct (Ilan). To switch off: set GROUPS_ENABLED to false
+      # and push; the restarts below load it (app + worker).
+      - name: WhatsApp groups switch
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          GROUPS_ENABLED: "true"
+        run: |
+          scp -i ~/.ssh/deploy_key infra/deploy/set_env_value.py "${VPS_USER}@${VPS_HOST}:/tmp/set_env_value.py"
+          printf '%s' "${GROUPS_ENABLED}" | ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
+            "python3 /tmp/set_env_value.py /opt/mesiri/.env WHATSAPP_GROUPS_ENABLED && rm -f /tmp/set_env_value.py"
+
       # ── Step 1: update code + deps + run migrations + restart ──────────────
       - name: Deploy backend
         env:

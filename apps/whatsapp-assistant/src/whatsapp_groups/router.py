@@ -110,5 +110,7 @@ async def create_site_whatsapp_group(
     )
     if result.status == "failed":
         raise HTTPException(status_code=502, detail=create_reply(result, site_name))
+    if result.status == "not_eligible":
+        raise HTTPException(status_code=409, detail=create_reply(result, site_name))
     group = await chat.site_group(organization_id=org_id, site_id=str(site_id))
     return _response(group, enabled=True, message=create_reply(result, site_name))

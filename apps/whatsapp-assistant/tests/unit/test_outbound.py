@@ -353,3 +353,18 @@ async def test_a_group_target_posts_into_the_group():
     assert person_payload["to"] == "919876543210"
     assert group_id_of("919876543210") is None
     assert group_id_of("group:") is None
+
+
+@pytest.mark.asyncio
+async def test_the_groups_client_hands_back_metas_refusal():
+    """WA-87, 29 Oct: Meta's 400 for a number not eligible for groups."""
+    from channel.whatsapp.groups import WhatsAppGroupsClient
+
+    body = {"error": {"message": "(#131215) This phone number is not eligible to access Groups APIs", "code": 131215}}
+    client = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(400, json=body)))
+    groups = WhatsAppGroupsClient(client=client, access_token="t", phone_number_id="PNID")
+    answer = await groups.create_group("Tower A · Mesiri")
+    assert answer == {"refused": {"code": 131215, "message": body["error"]["message"]}}
+
+    ok = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"request_id": "r1"})))
+    assert await WhatsAppGroupsClient(client=ok, access_token="t", phone_number_id="PNID").create_group("x") == {"request_id": "r1"}
