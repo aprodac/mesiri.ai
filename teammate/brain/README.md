@@ -85,7 +85,7 @@ cd teammate/brain && npm install && npm test     # fake Claude, no tokens needed
 
 ## Production watch (TM-16)
 
-Every `TEAMMATE_PROD_WATCH_MINUTES` (30; 0 = off) the brain reads the newest production messages of each project
+Every `TEAMMATE_PROD_WATCH_MINUTES` (5; 0 = off) the brain reads the newest production messages of each project
 that has `TEAMMATE_OPS_<PROJECT>_URL` / `_TOKEN` (Mesiri: the read-only `/claude-ops/sql` API, one audited SELECT).
 Plain code flags messages: failed or stuck, a reply slower than 15 s, a reply that admits a dead end, the same
 question twice, the user resending or pushing back (`src/prod_watch.js`, `flagRows`). Only when something is
@@ -97,3 +97,8 @@ conversations as data: Claude judges what really went wrong, finds the root caus
 The ops token stays in the brain's own process (filtered out of Claude's environment): Claude sees the flagged
 conversations, never the token, and cannot query production itself. Reported messages are remembered
 (`prod-watch.json`), so nothing is reported twice; more than 12 flagged conversations wait for the next look.
+
+The report names who hit it (name, role, company; never a phone number). A reply that says it can't do something is
+treated as a missing feature, and every plan ends with a release note in the Mesiri repo
+(`apps/whatsapp-assistant/release_notes.json`): after the deploy, Mesiri's scheduler tells each person who hit it,
+once and inside the 24-hour window, that it works now and what to send to try it (`runtime/release_notes.py`).

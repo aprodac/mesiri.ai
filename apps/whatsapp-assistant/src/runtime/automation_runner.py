@@ -249,6 +249,16 @@ async def run_tick(
             except Exception:  # noqa: BLE001
                 logger.exception("automation_runner.trial_reminders_failed")
 
+            # TM-16: "it works now" for whoever hit what a deploy just shipped (release_notes.json),
+            # queued for the drain below. In a savepoint: a failure here must not abort the tick.
+            try:
+                from .release_notes import queue_release_notes
+
+                async with conn.begin_nested():
+                    fired += await queue_release_notes(conn)
+            except Exception:  # noqa: BLE001
+                logger.exception("automation_runner.release_notes_failed")
+
             sent_skipped = {"sent": 0, "skipped": 0}
             try:
                 sent_skipped = await _drain_and_send(db=db, card_renderer=card_renderer)

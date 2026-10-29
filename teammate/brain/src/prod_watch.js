@@ -29,9 +29,12 @@ export function watchSql(since, limit = 400) {
   return `SELECT m.correlation_id, extract(epoch FROM m.received_at)::float8 AS at,
        extract(epoch FROM m.processed_at)::float8 AS done_at,
        o.name AS company, md5(coalesce(m.sender_wa_id, '')) AS who, right(coalesce(m.sender_wa_id, ''), 4) AS last4,
+       su.full_name AS person, su.role AS person_role,
        m.message_type AS kind, m.processing_status AS status, m.error_code,
        left(m.body_text, 400) AS text, left(m.assistant_reply, 700) AS reply
 FROM inbound_messages m LEFT JOIN organizations o ON o.id = m.organization_id
+LEFT JOIN LATERAL (SELECT u.full_name, u.role FROM users u WHERE u.organization_id = m.organization_id
+  AND regexp_replace(u.whatsapp_number, '\\D', '', 'g') = regexp_replace(m.sender_wa_id, '\\D', '', 'g') LIMIT 1) su ON true
 WHERE m.received_at > to_timestamp(${from}) AND m.received_at < now() - interval '2 minutes'
 ORDER BY m.received_at ASC LIMIT ${Math.max(1, Math.min(1000, Number(limit) || 400))}`;
 }
@@ -44,8 +47,20 @@ export function asObjects(res) {
 
 const norm = (s) => String(s || "").toLowerCase().replace(/\s+/g, " ").replace(/[^\p{L}\p{N} ?]/gu, "").trim();
 
-/** Replies that admit a dead end ("couldn't", "nothing was saved", "expired", Manglish / Hindi too). */
-export const CANT = /\b(?:couldn'?t|could not|can'?t|cannot|unable|not able|didn'?t work|something went wrong|nothing was (?:saved|changed)|has expired|try again|pattilla|kazhinjilla|nahi ho)\b/i;
+/**
+ * Replies that admit a dead end or a missing feature, as a family, not one spelling (29 Oct: "Photo ayakkan
+ * Mesiri-kku kazhiyilla" slipped past a list that only knew "kazhinjilla"). English, Manglish, Malayalam, Hindi.
+ */
+export const CANT = new RegExp(
+  [
+    String.raw`\b(?:couldn'?t|could not|can'?t|cannot|unable|not able|didn'?t work|something went wrong|try again|has expired)\b`,
+    String.raw`\bnothing was (?:saved|changed)\b|\bnot (?:possible|supported|available) (?:yet|here|on whatsapp)\b|\b(?:don'?t|doesn'?t|do not|does not) support\b`,
+    String.raw`\b(?:kazhiy?illa|kazhinj?illa|kazhiyunnilla|patt?illa|pattunnilla|saadhikkilla|sadhikkilla|nadakkilla)\b`,
+    String.raw`\b(?:nahi|nahin) (?:ho|kar) (?:sakta|sakti|sakte|paya|payega)\b|\bmumkin nahi\b|\bsupport nahi\b`,
+    "കഴിയില്ല|കഴിഞ്ഞില്ല|പറ്റില്ല|പറ്റിയില്ല|സാധിക്കില്ല|नहीं कर सकत|संभव नहीं",
+  ].join("|"),
+  "i",
+);
 /** A user pushing back on the last reply. */
 export const PUSHBACK = /\b(?:alla|allaa|wrong|thettu|thett\w*|galat|not correct|no no|why|enthu patti|enthanu ith|i said|njan paranju|already (?:said|sent|told)|again\??|nahi)\b|\?\?|ayyo/i;
 
@@ -64,7 +79,7 @@ export function flagRows(rows) {
     else if (row.status && !["completed", "failed"].includes(row.status)) flags.push({ kind: "stuck", why: `status ${row.status}` });
     const took = Number(row.done_at) - at;
     if (Number.isFinite(took) && took > SLOW_SECONDS) flags.push({ kind: "slow", why: `${Math.round(took)} s to reply` });
-    if (row.reply && CANT.test(row.reply)) flags.push({ kind: "dead_end", why: "the reply admits it could not do it" });
+    if (row.reply && CANT.test(row.reply)) flags.push({ kind: "dead_end", why: "the reply says it can't do that: a bug or a missing feature" });
     const asked = norm(row.reply);
     if (asked && asked.includes("?") && asked === prev.reply && at - prev.replyAt < WINDOW_SECONDS) {
       flags.push({ kind: "loop", why: "the same question as the reply before" });
@@ -103,7 +118,8 @@ export function conversations(rows, flagged, reported = new Set()) {
     const lastAt = Math.max(...list.map((f) => Number(f.row.at)));
     const messages = rows.filter((r) => r.who === who && Number(r.at) >= first - WINDOW_SECONDS && Number(r.at) <= lastAt + WINDOW_SECONDS).slice(-10);
     const flags = new Map(list.map((f) => [f.row.correlation_id, f.flags]));
-    out.push({ who, company: list[0].row.company || "(no company)", last4: list[0].row.last4 || "", messages, flags, at: first });
+    const r = list[0].row;
+    out.push({ who, company: r.company || "(no company)", person: r.person || "an unregistered sender", role: r.person_role || "", last4: r.last4 || "", messages, flags, at: first });
   }
   return out.sort((a, b) => a.at - b.at);
 }
@@ -119,12 +135,12 @@ export function watchPrompt(project, convs, { minutes }) {
       const took = Number(m.done_at) - Number(m.at);
       const t = Number.isFinite(took) ? ` ${Math.round(took)}s` : "";
       return [
-        `  [${clockIst(m.at)} IST · ${m.kind || "?"} · ${m.status || "?"}${t} · ${String(m.correlation_id || "").slice(0, 12)}]${mark}`,
+        `  [${clockIst(m.at)} IST · ${m.kind || "?"} · ${m.status || "?"}${t} · ${m.correlation_id || "?"}]${mark}`,
         `    user: ${JSON.stringify(m.text || "")}`,
         `    bot:  ${JSON.stringify(m.reply || "")}`,
       ].join("\n");
     });
-    return `Conversation ${i + 1} · ${c.company} · sender …${c.last4}\n${lines.join("\n")}`;
+    return `Conversation ${i + 1} · ${c.person}${c.role ? ` (${c.role})` : ""} at ${c.company} · number …${c.last4}\n${lines.join("\n")}`;
   });
   return [
     `Production watch (TM-16) for ${project}: the code flagged ${convs.length} conversation(s) in the last ~${minutes} min of`,
@@ -140,9 +156,15 @@ export function watchPrompt(project, convs, { minutes }) {
     "3. Record one plan per root cause (the plan tool), scoped as FIX_APPROACH says: the root, the siblings, the UX, the",
     "   guard tests. Never a one-message patch. Labour / Attendance / Payroll / Workforce, migrations that change data,",
     "   and security changes are marked as needing the owner's decision in the plan.",
-    "4. Then post ONE short report for the team group: for each plan, its number, one line on what users hit (company",
-    "   and time, no names or phone numbers), the root cause in plain words, and how big the fix is. End with",
-    "   \"Reply @bot ok <n> to build it.\" WhatsApp formatting (*bold*), no tables.",
+    "   A reply that says it can't do something the user asked for (a photo, a list, a report) is a missing feature:",
+    "   plan the feature itself, done properly, not a nicer refusal.",
+    "4. Every plan ends with this step, so the people who hit it hear it works: add an entry to",
+    "   apps/whatsapp-assistant/release_notes.json (see src/runtime/release_notes.py) with id, date = the deploy day,",
+    "   for = the correlation ids of their messages (shown below in full), and message = one or two lines in THEIR",
+    "   language and letters: what they asked for works now, and exactly what to send to try it.",
+    "5. Then post ONE short report in this team group: for each plan, its number, WHO hit it (the person's name, role",
+    "   and company, and the time; never a phone number), what they tried and got, the root cause in plain words, and",
+    "   how big the fix is. End with \"Reply @bot ok <n> to build it.\" WhatsApp formatting (*bold*), no tables.",
     `If nothing is really wrong, answer with exactly ${QUIET} and nothing else; then nothing is posted.`,
     "",
     ...blocks,

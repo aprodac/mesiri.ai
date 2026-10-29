@@ -301,8 +301,9 @@ if (boardMinutes > 0) {
   log(`board: every ${boardMinutes} min; partner ${Object.keys(projects).filter((p) => accounts.list.some((a) => a.partners[p])).join(", ") || "none"}`);
 }
 // TM-16: the production watch. Per project TEAMMATE_OPS_<PROJECT>_URL / _TOKEN (read-only ops API, kept out of
-// Claude's environment); TEAMMATE_PROD_WATCH_MINUTES, default 30, 0 = off.
-const prodWatchMinutes = Number(process.env.TEAMMATE_PROD_WATCH_MINUTES ?? 30);
+// Claude's environment); TEAMMATE_PROD_WATCH_MINUTES, default 5 (Ilan: told within 5 minutes), 0 = off. The look
+// itself is one SELECT and plain code; Claude runs only when something is flagged.
+const prodWatchMinutes = Number(process.env.TEAMMATE_PROD_WATCH_MINUTES ?? 5);
 const opsByProject = opsSources(process.env, Object.keys(projects));
 if (prodWatchMinutes > 0 && Object.keys(opsByProject).length) {
   const prodWatch = new ProdWatch({
@@ -313,7 +314,7 @@ if (prodWatchMinutes > 0 && Object.keys(opsByProject).length) {
     minutes: prodWatchMinutes,
   });
   const look = () => prodWatch.tick().catch((e) => log(`prod-watch: ${e.message}`));
-  setTimeout(look, 240_000);
+  setTimeout(look, 120_000);
   setInterval(look, prodWatchMinutes * 60_000);
   log(`prod-watch: every ${prodWatchMinutes} min; ${Object.keys(opsByProject).join(", ")}`);
 }

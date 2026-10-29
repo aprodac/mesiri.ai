@@ -158,3 +158,31 @@ test("asObjects maps the ops API's columns and rows", () => {
   assert.deepEqual(asObjects({ columns: ["a", "b"], rows: [[1, 2]] }), [{ a: 1, b: 2 }]);
   assert.deepEqual(asObjects(null), []);
 });
+
+test("a missing feature, in any of its phrasings, is flagged (29 Oct: the attendance photo)", () => {
+  for (const reply of [
+    "Ippo ulla records vechu njan parayam: innu 10 plasterer, 5 carpenter, pinne 5 electrician-um vannu. Photo ayakkan Mesiri-kku kazhiyilla.",
+    "ഫോട്ടോ അയക്കാൻ കഴിയില്ല",
+    "Photo bhejna abhi nahi ho sakta",
+    "Image sending is not supported yet",
+    "Sorry, I can't make a picture of that.",
+  ]) assert.deepEqual(kinds([msg({ reply })]), ["dead_end"], reply);
+  for (const reply of ["👍 Got it. Tap ✅ Save to record it.", "innu 5 mason vannu, pani nadannu", "✅ Saved · Tower A: 5 workers"]) {
+    assert.deepEqual(kinds([msg({ reply })]), [], reply);
+  }
+});
+
+test("the report names who hit it, and every plan tells them when it is live", () => {
+  const rows = [msg({ person: "Ilan", person_role: "ADMIN", text: "innathe attendance photo ayakku", reply: "Photo ayakkan Mesiri-kku kazhiyilla." })];
+  const text = watchPrompt("mesiri", conversations(rows, flagRows(rows)), { minutes: 5 });
+  assert.match(text, /Conversation 1 · Ilan \(ADMIN\) at Acme · number …3210/);
+  assert.match(text, /release_notes\.json/);
+  assert.match(text, /missing feature/);
+  assert.match(text, new RegExp(rows[0].correlation_id)); // the full id, for the release note
+  assert.match(text, /never a phone number/);
+});
+
+test("the SQL names the sender from users, inside the company", () => {
+  const sql = watchSql(T0);
+  assert.match(sql, /LEFT JOIN LATERAL \(SELECT u\.full_name, u\.role FROM users u WHERE u\.organization_id = m\.organization_id/);
+});
