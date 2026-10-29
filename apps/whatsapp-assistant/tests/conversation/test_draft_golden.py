@@ -326,3 +326,12 @@ async def test_a_correction_is_shown_the_open_card_and_correcting_it_passes():
     world, result = await run_case(case, provider_for)
     assert "Their open card" in seen[-1] and "8 workers (5 mason, 3 helper)" in seen[-1]
     assert mismatch(case, world, result, await _items(world)) is None
+
+
+async def test_a_figure_the_model_left_out_is_on_the_card():
+    """Live gate #2 (29 Oct): the model's save_work_done had no quantities, and the card
+    read "Wall putty, ground floor". The figure in their words is on the card."""
+    case = next(c for c in CASES if c["id"] == 2)
+    call = ("save_work_done", {"narrative": case["message"], "work_type": "wall putty", "location": "ground floor"})
+    world, result = await run_case(case, lambda _turn: FakeToolCallingProvider([[call], "x"]))
+    assert mismatch(case, world, result, await _items(world)) is None

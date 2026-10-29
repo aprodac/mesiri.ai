@@ -238,6 +238,35 @@ def classify_issue(text: str, args: dict[str, Any]) -> dict[str, Any]:
     return args
 
 
+_WORK_QUANTITY = re.compile(
+    r"(?<![\w.])(\d+(?:\.\d+)?)\s*"
+    r"(sq\.?\s?ft|sqft|sft|sq\.?\s?m|sqm|m2|m²|m3|m³|cum|cft|rft|rmt|running\s?(?:ft|feet|m)|nos|"
+    r"mtrs?|metres?|meters?|feet|ft|m)(?![\w])",
+    re.IGNORECASE,
+)
+
+
+def with_said_quantity(text: str, args: dict[str, Any]) -> dict[str, Any]:
+    """Live gate 29 Oct: "Green Villa ground floor wall putty 200 sqft" was saved with
+    no quantities, so the card read "Wall putty, ground floor". A figure with a unit
+    that the model left out is taken from its narrative, else from the message when
+    it gives exactly one (two works in one message are never given each other's)."""
+    given = args.get("quantities")
+    if isinstance(given, list) and any(isinstance(q, dict) and q.get("quantity") not in (None, "") for q in given):
+        return args
+    said = _WORK_QUANTITY.findall(str(args.get("narrative") or ""))
+    if not said:
+        said = _WORK_QUANTITY.findall(text or "")
+        if len(said) != 1:
+            return args
+    work = args.get("work_type")
+    quantities = [
+        {**({"work_type": work} if work else {}), "quantity": float(number) if "." in number else int(number), "unit": unit}
+        for number, unit in said
+    ]
+    return {**args, "quantities": quantities}
+
+
 def needs_hours_question(text: str, args: dict[str, Any]) -> bool:
     """A work-stopping issue that says when it began but not for how long."""
     if args.get("delay_duration_minutes") not in (None, "", 0):
@@ -577,6 +606,8 @@ class AgentToolbox:
             )
         if name == REPORT_ISSUE:
             args = classify_issue(self.user_text, args)
+        if name == SAVE_WORK_DONE:
+            args = with_said_quantity(self.user_text, args)
         if (
             name == REPORT_ISSUE
             and not self.hours_asked

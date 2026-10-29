@@ -720,6 +720,11 @@ what `message_journey` gives it: the open card line (`draft.context_line`) and t
 (`history.for_model`). A scripted test checks the card is in the context and that `update_pending_card` on it
 passes the case.
 
+The next run (`bda324a`) passed #7 and missed #2 twice: the model's `save_work_done` for "Green Villa ground floor
+wall putty 200 sqft" had no `quantities`, so the card read "Wall putty, ground floor". The figure is no longer the
+model's alone: `toolbox.with_said_quantity` (beside `classify_issue`) takes a number with a unit from the call's
+narrative, else from the message when it holds exactly one, so two works in one message never share a figure.
+
 ## 19. Day facts: one rule for saved work (request 137, 28 Oct)
 
 Live re-test of section 18 (test chat, 28 Oct). **F1:** "Green Villa ground floor tiling 80% aayi" after 70% was saved
