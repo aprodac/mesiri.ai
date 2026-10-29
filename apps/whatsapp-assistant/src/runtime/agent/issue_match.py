@@ -13,6 +13,7 @@ import re
 from typing import Any
 
 from channel.receipt.data import company_zone
+from channel.replies import ListRow
 
 from .actions import CLOSE_ISSUES, PendingAction, new_action
 from .entry_base import Say
@@ -118,6 +119,71 @@ def _phrases(value: Any) -> list[str]:
     return [str(v) for v in value or [] if str(v).strip()] if isinstance(value, list) else []
 
 
+TAP_PREFIX = "agc:"
+#: The tap of a row: the issues it closes, by the first characters of their ids.
+GROUP = "grp"
+ELSE = "else"
+ELSE_TEXT = "Tell me which issue it is, in a few words, or say 'all' to close every one listed."
+
+
+def ref_of(issue: dict[str, Any]) -> str:
+    return str(issue["id"]).replace("-", "")[:8]
+
+
+def group_same(issues: list[dict[str, Any]], zone: str) -> list[list[dict[str, Any]]]:
+    """The same report made twice (the same words on the same day) is one choice:
+    closing it closes both, so a list never shows two rows that read alike."""
+    groups: dict[tuple[str, dt.date], list[dict[str, Any]]] = {}
+    for issue in issues:
+        groups.setdefault((issue_label(issue).casefold(), _day(issue, zone)), []).append(issue)
+    return list(groups.values())
+
+
+def tap_id(refs: list[str]) -> str:
+    return f"{TAP_PREFIX}{GROUP}:{','.join(refs)}"
+
+
+def parse_tap(value: str) -> list[str] | None:
+    """The issue refs a tap names; [] for "something else"; None when it is no issue tap."""
+    if not value.startswith(TAP_PREFIX):
+        return None
+    kind, _, rest = value[len(TAP_PREFIX) :].partition(":")
+    if kind == ELSE:
+        return []
+    if kind != GROUP:
+        return None
+    refs = [r for r in rest.split(",") if re.fullmatch(r"[0-9a-f]{8}", r)]
+    return refs or None
+
+
+def pick_rows(issues: list[dict[str, Any]], zone: str) -> tuple[ListRow, ...]:
+    """The list of open issues to choose from, one row per distinct report. The title
+    is the issue in a few words (cut between words), the description the whole line
+    with its day; a row that closes several says how many. Each row's id names its issues."""
+    from .site_match import short_title
+
+    groups = group_same(issues, zone)[:MAX_LISTED]
+    titles = [short_title(issue_label(g[0]), 24) for g in groups]
+    rows = []
+    for n, group in enumerate(groups):
+        title = titles[n]
+        if titles.count(title) > 1:
+            title = f"{short_title(issue_label(group[0]), 15)} · {short_day(_day(group[0], zone))}"
+        line = issue_line(group[0], zone)
+        rows.append(
+            ListRow(
+                tap_id([ref_of(i) for i in group]),
+                title,
+                f"{line} · {len(group)} same reports" if len(group) > 1 else line,
+            )
+        )
+    shown = [i for g in groups for i in g]
+    if 1 < len(groups) and len(shown) <= MAX_CLOSE:
+        rows.append(ListRow(tap_id([ref_of(i) for i in shown]), f"All {len(shown)} of these", ""))
+    rows.append(ListRow(f"{TAP_PREFIX}{ELSE}", SOMETHING_ELSE, ""))
+    return tuple(rows[:10])
+
+
 def closing_action(
     issues: list[dict[str, Any]], fields: dict[str, Any], scoped: Any, choose: Any
 ) -> list[PendingAction] | Say:
@@ -127,29 +193,36 @@ def closing_action(
     wants_all = bool(fields.get("all_issues"))
     picked: list[dict[str, Any]] | None = None
     offered = issues
-    if wants_all and len(issues) <= MAX_CLOSE:
+    refs = {r for r in _phrases(fields.get("issue_refs"))}
+    if refs:
+        # A tap on a row: the issues it names, exactly (request 142).
+        picked = [i for i in issues if ref_of(i) in refs] or None
+    elif wants_all and len(issues) <= MAX_CLOSE:
         picked = issues
     elif _phrases(fields.get("about")):
         matched = best_matches(issues, _phrases(fields.get("about")), zone)
-        if len(matched) == 1:
+        if len(matched) == 1 or (fields.get("all_matching") and matched and len(matched) <= MAX_CLOSE):
             picked = matched
         elif matched:
             offered = matched
     if picked is None:
         shown = offered[:MAX_LISTED]
-        labels = row_titles(shown, zone)
-        return choose(
-            "Which issue is fixed?",
-            [*labels, SOMETHING_ELSE],
-            "issue",
-        )
+        say = choose("Which issue is fixed?", [*row_titles(shown, zone), SOMETHING_ELSE], "issue")
+        if fields.get("pick_ids"):
+            say.rows = pick_rows(offered, zone)
+        return say
     out = []
-    for issue in picked:
+    for group in group_same(picked, zone):
+        issue = group[0]
         payload = {
             "organization_id": scoped.organization_id,
             "project_id": str(scoped.project_id) if scoped.project_id else None,
             "site_id": str(issue.get("site_id") or scoped.site_id or "") or None,
-            "issues": [{"id": str(issue["id"]), "title": issue_line(issue, zone), "site_id": str(issue.get("site_id") or "") or None}],
+            "issues": [
+                {"id": str(i["id"]), "title": issue_line(i, zone), "site_id": str(i.get("site_id") or "") or None}
+                for i in group
+            ],
         }
-        out.append(new_action(CLOSE_ISSUES, payload, f"To close: {issue_line(issue, zone)}"))
+        many = f" ×{len(group)}" if len(group) > 1 else ""
+        out.append(new_action(CLOSE_ISSUES, payload, f"To close: {issue_line(issue, zone)}{many}"))
     return out

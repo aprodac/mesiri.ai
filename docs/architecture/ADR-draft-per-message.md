@@ -789,3 +789,55 @@ Not changed (shared, backend): the DPR assembly (`dpr.py`) still uses `pu.occurr
 UTC rule; a DPR for a day would miss an update made 00:00-05:30 IST. Needs approval to touch (shared component).
 
 Rollback: revert the commits; no migration, no data change.
+
+
+## 20. Request 142, phase 1: one Save gate for the money tools, and the save journal (A + B)
+
+Approved by Ilan in WhatsApp (29 Oct, "AI decides, software guarantees"). Same switch as before: the company
+`draft_v2` setting. Off = the old flow, byte for byte.
+
+### 20.1 A: more tools wait for Save
+
+`save_expense`, `transfer_material`, `transfer_money`, `save_opening_stock` and `update_issue` (acknowledge, won't fix,
+withdraw, reopen) now add a line to the card instead of starting a confirm-first workflow. Nothing is started or
+written when the message arrives; the Save tap starts the workflow and confirms it inside the one transaction
+(`draft_flow._write`, which already did so for work on an open activity). A money transfer belongs to no site, so
+the site resolver does not ask for one (`draft.SITELESS_TOOLS`). Resolving issues and the engineer question and the
+day's conditions were already pending actions behind the same tap; `correct_work_quantity` is a "Change" line.
+
+Test: `tests/replay/test_write_gate_142.py`. A spy on `runtime.start` and the dispatcher fails any write before Save
+for each gated tool, Save writes, Cancel writes nothing, and `test_every_write_tool_is_behind_the_card_or_listed_as_not_yet`
+fails when a new write tool is added without saying how it waits.
+
+**Not behind Save yet** (listed in that test with the reason, each needs the owner's ok first): `add_member`
+(grants access: security-sensitive), `create_site` and `create_project` (role-gated creation), `set_unit_conversion`
+(a company-wide setting answered on the spot).
+
+### 20.2 B: the journal
+
+Migration `0493_save_journal` (additive, RLS like every company table): one row per Save with company, sender,
+site, day, time and `facts` (type and id of each record written, the tool and arguments that made it, its card line).
+`draft_flow.save` writes it in the Save's transaction; a journal failure rolls the Save back. `runtime/agent/journal.py`
+holds the entry, the matching of the sender's words ("last", an id, "the cement") and the two stores; every query
+names company AND sender, so a sender can only ever reach their own entries.
+
+`change_or_undo(target, changes?)` (tool; `undo_last` now routes to it) never removes at once: it shows
+"Remove this? • line · site" with `Yes, remove` / `Keep it` (typed yes/no, Manglish and Malayalam words work), and the
+Yes tap (`agj:undo:<entry>:<fact numbers>`) removes exactly those facts through each module's own undo
+(`undo_facts`) and marks them undone. Several matches become a pick list. A change (`changes`) is the existing
+"Change ..." line, started from the arguments the journal kept (`undo_flow.py`).
+
+Not done in this phase: the old per-card store (`cards.py`, Redis) still exists and is still written beside the
+journal (a saved card from before the deploy has no journal entry, so undo falls back to it); it goes in phase 5.
+
+### 20.3 Closing an issue (live 29 Oct)
+
+"Which issue is fixed?" rows carry ids (`agc:grp:<8-hex refs>`): the tap makes the "Close: <issue> · <site>" line of
+the card without asking a model to match a cut title again. The same report made twice is one row that closes both;
+a row "All N of these" closes every listed issue (up to 7); the model can say `all_matching` for "ellam mixer
+issues-um"; "Something else" asks for words instead of listing ten options. Titles are cut between words and the full
+line is the row description. Test: `tests/replay/test_close_issue_pick_142.py`.
+
+### 20.4 Rollback
+
+Flag off, or revert the commit. The migration is additive; the table stays empty for companies without `draft_v2`.

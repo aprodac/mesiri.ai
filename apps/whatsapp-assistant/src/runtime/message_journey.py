@@ -181,6 +181,7 @@ def build_message_handlers(
     ops_alerts: Any | None = None,
     actions: Any | None = None,
     drafts: Any | None = None,
+    journal: Any | None = None,
     shared_transaction: Any | None = None,
     day_facts: Any | None = None,
     group_chat: Any | None = None,
@@ -646,7 +647,7 @@ def build_message_handlers(
     async def _run_journey_steps(message, raw_payload, retry_of_id, timer) -> None:  # type: ignore[no-untyped-def]
         wa_id = message.sender.wa_id
 
-        async def _run_agent(message, ctx, category_hint, timer, draft_tap=None):  # type: ignore[no-untyped-def]
+        async def _run_agent(message, ctx, category_hint, timer, draft_tap=None, journal_tap=None, issue_tap=None):  # type: ignore[no-untyped-def]
             """The agent's turn. The pipeline it drives is the one below, with
             the senders swapped for a capture so the model writes the one reply.
 
@@ -667,7 +668,7 @@ def build_message_handlers(
             from runtime.inbound_journey import render_workflow_run_reply_spec
             from runtime.today_context import build_stock_line, build_today_line
 
-            use_drafts = draft_tap is not None or await _draft_v2_on(ctx)
+            use_drafts = draft_tap is not None or journal_tap is not None or issue_tap is not None or await _draft_v2_on(ctx)
 
             hint = category_hint.semantic_hint if category_hint else None
             if hint and category_hint.direction:
@@ -971,7 +972,12 @@ def build_message_handlers(
                         if saved is not None and saved.state == _SAVED
                         else None
                     )
-                    return "\n".join(line for line in (open_line, saved_line) if line) or None
+                    journal_line = None
+                    if journal is not None:
+                        from runtime.agent import journal as journal_mod
+
+                        journal_line = journal_mod.context_line(await journal.recent(actor.organization_id, actor.user_id))
+                    return "\n".join(line for line in (open_line, saved_line, journal_line) if line) or None
                 return context_line(await cards.get(actor))
 
             async def _open_issues(scoped):  # type: ignore[no-untyped-def]
@@ -1122,6 +1128,7 @@ def build_message_handlers(
                     start_workflow=workflow_runtime.start,
                     draft_v2=use_drafts,
                     drafts=drafts if use_drafts else None,
+                    journal=journal if use_drafts else None,
                     confirm_now=lambda: interaction_handler.confirm_now(ctx.user_id, actor=ctx),
                     abandon_question=lambda: interaction_handler._close_question(ctx.user_id),
                     settle_facts=lambda facts: interaction_handler.settle_drafts(
@@ -1161,6 +1168,14 @@ def build_message_handlers(
                 site_wait=site_wait,
             )
             timer.lap("agent_setup")
+            if issue_tap is not None:
+                # Request 142: a row of "which issue is fixed?" names its issues.
+                gateway = _gateway(message, None)
+                return await gateway.pick_issues(issue_tap), gateway
+            if journal_tap is not None:
+                # Request 142 (B): the Yes / Keep tap of an undo's confirm card.
+                gateway = _gateway(message, None)
+                return await gateway.journal_tap(*journal_tap), gateway
             if draft_tap is not None:
                 action, draft, extra = draft_tap
                 gateway = _gateway(message, None)
@@ -1227,6 +1242,16 @@ def build_message_handlers(
                 await drafts.discard(draft.id)
                 return ReplySpec(text=draft_card.EXPIRED), None
             return await _run_agent(message, ctx, None, timer, draft_tap=(action, draft, extra))
+
+        async def _journal_tap_reply(message, ctx, timer, tap_value):  # type: ignore[no-untyped-def]
+            """Request 142 (B): the reply to a tap on an undo's confirm card (Yes, remove /
+            Keep it / a row of the pick list), and the gateway that ran it."""
+            from runtime.agent import journal as journal_mod
+
+            parsed = journal_mod.parse_tap(tap_value)
+            if parsed is None:
+                return ReplySpec(text=journal_mod.EXPIRED), None
+            return await _run_agent(message, ctx, None, timer, journal_tap=parsed)
 
         # M4: resolve the sender before spending on understanding.
         try:
@@ -1718,6 +1743,10 @@ def build_message_handlers(
         try:
             if drafts is not None and draft_tap_value.startswith("agd:"):
                 save_reply, draft_gateway = await _draft_tap_reply(message, ctx, timer, draft_tap_value)
+            elif journal is not None and draft_tap_value.startswith("agj:"):
+                save_reply, draft_gateway = await _journal_tap_reply(message, ctx, timer, draft_tap_value)
+            elif drafts is not None and draft_tap_value.startswith("agc:"):
+                save_reply, draft_gateway = await _run_agent(message, ctx, None, timer, issue_tap=draft_tap_value)
             else:
                 save_reply = await save_button.handle_tap(
                     message, ctx, interaction_handler, cards, actions=actions, sender=sender

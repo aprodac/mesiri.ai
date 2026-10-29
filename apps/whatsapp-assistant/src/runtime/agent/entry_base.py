@@ -86,6 +86,9 @@ class Say:
     #: ``awaiting == "amount"`` only (request 129): the stock unit the typed amount is
     #: in ("kg" for "How many kg is 20 rod?"), so code can read "oru rod 12 kg" (WA-81).
     answer_unit: str = ""
+    #: "choose" only (request 142): the list rows with ids the code reads back, so the
+    #: tap names the thing itself (an issue) and no model has to match its title again.
+    rows: tuple[Any, ...] = ()
 
 
 @dataclass(slots=True)

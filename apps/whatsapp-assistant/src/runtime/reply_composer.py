@@ -156,8 +156,18 @@ def resolve_choice(text: str, options: list[ListRow]) -> ListRow | None:
     for row in options:
         if said == normalise(row.title) or said in TYPED_ALIASES.get(row.id, ()):
             return row
+    from runtime.agent import journal as journal_card
     from runtime.agent.draft import CANCEL, TAP_PREFIX
     from runtime.agent.left_it import is_drop_word
+
+    # Request 142 (B): "yes" / "no" typed to an undo's confirm card are its two buttons.
+    undo = next((r for r in options if r.id.startswith(f"{journal_card.TAP_PREFIX}{journal_card.UNDO}:")), None)
+    keep = next((r for r in options if r.id.startswith(f"{journal_card.TAP_PREFIX}{journal_card.KEEP}:")), None)
+    if undo is not None and keep is not None:
+        if said in journal_card.YES_WORDS:
+            return undo
+        if said in journal_card.NO_WORDS or is_drop_word(text):
+            return keep
 
     if is_drop_word(text):
         # Request 129: typed "cancel" / "venda" is the Cancel button of a draft card.

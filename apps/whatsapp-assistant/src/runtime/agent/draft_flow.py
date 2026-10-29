@@ -253,10 +253,11 @@ async def add(gw: Any, candidate: Any, *, text: str) -> StepResult:
     decided(gw, "item", ITEM_FROM_TOOL, tool)
     # Request 136: THE site resolver decides the line's site before the entry runs, so
     # the entry's own fallbacks (today's site, the context layer's default) never do.
-    choice = await _resolve_site(gw, args, text)
-    if choice.kind == draft_site.ASK:
+    choice = None if tool in dr.SITELESS_TOOLS else await _resolve_site(gw, args, text)
+    if choice is not None and choice.kind == draft_site.ASK:
         return await _add_waiting(gw, tool, args, _site_question(gw, message, choice))
-    args = {**args, "site": draft_site.label(gw.actor, choice.site)}
+    if choice is not None:
+        args = {**args, "site": draft_site.label(gw.actor, choice.site)}
     candidate = to_candidate(tool, args, _scope(gw)) or candidate
     prepared = await entry.prepare(message, tool_understanding(candidate, message, language=gw.language), candidate)
     if prepared is None:
@@ -266,7 +267,7 @@ async def add(gw: Any, candidate: Any, *, text: str) -> StepResult:
         # The entry could not place the site the resolver gave (no longer theirs):
         # "which site?" is a question of the card (WA-81), never of a separate queue.
         return await _add_waiting(gw, tool, args, prepared)
-    if isinstance(prepared, Ready) and str(prepared.event.site_id or "") != str(choice.site.id):
+    if choice is not None and isinstance(prepared, Ready) and str(prepared.event.site_id or "") != str(choice.site.id):
         _log.warning(
             "draft.site_mismatch decided=%s entry=%s correlation_id=%s",
             choice.site.id, prepared.event.site_id, getattr(gw.message, "correlation_id", None),
@@ -478,13 +479,18 @@ async def add_action(gw: Any, tool: str, args: dict[str, Any], prepared: list[An
     """The pending actions a tool call made (their store holds what the Save
     tap runs): one card line each, so the one Save tap covers them too."""
     for action in prepared:
+        # Request 142 (E): "Close: Mixer ippo work · Green Villa" -- what it does, and where.
+        summary = action.summary.replace("To close: ", "Close: ", 1)
+        site_id = str((action.payload or {}).get("site_id") or "")
         item = dr.DraftItem(
             kind=dr.KIND_ACTION,
             tool=tool,
             args=dict(args),
-            summary=action.summary,
+            summary=summary,
             action_id=uuid.UUID(action.id).hex,
-            label=action.summary,
+            label=summary,
+            site_id=site_id,
+            site=_site_name(gw, site_id),
         )
         await _add_item(gw, item, source=gw.message.message_id)
 
@@ -1062,6 +1068,7 @@ async def save(gw: Any, draft: dr.MessageDraft) -> ReplySpec:
                 if settled is None or refused:
                     raise _Failed(None, f"the entries could not be confirmed ({refused[0] if refused else 'not wired'})")
             await _settle_continued(gw, facts)
+            await _journal(gw, draft, saved, fact_of_item)
             if waiting:
                 rest = dr.MessageDraft.new(
                     organization_id=draft.organization_id,
@@ -1094,6 +1101,44 @@ async def save(gw: Any, draft: dr.MessageDraft) -> ReplySpec:
         ran.append(await _run_action(gw, item))
     gw.draft = draft_rest
     return _saved_reply(gw, draft, lines + [r for r in ran if r], notes, draft_rest, gone)
+
+
+async def _journal(
+    gw: Any,
+    draft: dr.MessageDraft,
+    saved: list[tuple[dr.DraftItem, StepResult]],
+    facts: list[tuple[str, uuid.UUID] | None],
+) -> None:
+    """Request 142 (B): the one journal entry of this Save, written in the Save's
+    transaction (company, sender, time, site, day, a reference to each fact)."""
+    if getattr(gw, "journal", None) is None:
+        return
+    from . import journal as jr
+
+    written = [
+        jr.JournalFact(fact[0], str(fact[1]), item.tool, dict(item.args), step.summary or item.summary)
+        for (item, step), fact in zip(saved, facts, strict=True)
+        if fact is not None
+    ]
+    if not written:
+        return
+    first = next((i for i, f in zip((s[0] for s in saved), facts, strict=True) if f is not None), None)
+    site_id = (first.site_id if first is not None else "") or draft.site_id or ""
+    await gw.journal.record(
+        jr.JournalEntry(
+            organization_id=draft.organization_id,
+            user_id=draft.user_id,
+            facts=written,
+            draft_id=draft.id,
+            site_id=site_id,
+            site=_site_name(gw, site_id) if site_id else "",
+            day=(_day_of(first) if first is not None else "") or "",
+        )
+    )
+
+
+def _day_of(item: dr.DraftItem) -> str:
+    return dr._day(item) or ""
 
 
 def _note(step: StepResult) -> str:

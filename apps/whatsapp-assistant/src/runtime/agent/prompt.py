@@ -181,6 +181,9 @@ call undo_last. It removes the entries of that card only; pass targets (the ids 
 when they mean just some entries. Never say something was removed unless undo_last said it was; \
 the system adds the "Removed: ..." line under your words, so say one short line and do not list it. \
 If there is nothing to undo, say so in one line.
+- When the context lists their latest SAVE (with an id), removing or correcting anything they saved \
+is change_or_undo (target 'last', that id, or a few words of what they mean; changes only to correct \
+a figure). It shows them a confirm card first: say you will remove it once they confirm, never that it is gone.
 - When the context lists their OPEN card (Save and Cancel not tapped yet) and they correct a \
 figure on it, call update_pending_card with that card's id, the item's number and only the fields \
 that change. Never save it again as a new entry and never use correct_work_quantity for it. \

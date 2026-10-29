@@ -153,6 +153,8 @@ class World:
     #: (runtime/agent/draft_store.py); the Save tap writes it.
     draft_v2: bool = False
     drafts: Any = None
+    #: Request 142 (B): the save journal (runtime/agent/journal.py).
+    journal: Any = None
     #: What the confirmation of the saved drafts returns (None: not wired).
     settle: Any = None
     #: The labour entry's workforce reads (``find_existing_report_for_day``...).
@@ -235,6 +237,7 @@ class World:
             start_workflow=self.runtime.start,
             draft_v2=self.draft_v2,
             drafts=self.drafts,
+            journal=self.journal,
             confirm_now=lambda: self.handler.confirm_now(self.actor.user_id, actor=self.actor),
             settle_facts=self.settle,
             transaction=getattr(self.drafts, "transaction", None),

@@ -28,6 +28,8 @@ SAVE_EXPENSE = "save_expense"
 REPORT_ISSUE = "report_issue"
 TRANSFER_MONEY = "transfer_money"
 UNDO_LAST = "undo_last"
+# Request 142 (B): undo or change anything saved, from the journal.
+CHANGE_OR_UNDO = "change_or_undo"
 ASK_USER = "ask_user"
 NOTE_FOR_ENGINEER = "note_for_engineer"
 SET_UNIT_CONVERSION = "set_unit_conversion"
@@ -69,6 +71,7 @@ WRITE_TOOLS = frozenset(
         NOTE_FOR_ENGINEER,
         TRANSFER_MONEY,
         UNDO_LAST,
+        CHANGE_OR_UNDO,
         SET_UNIT_CONVERSION,
         CREATE_SITE,
         CREATE_PROJECT,
@@ -151,6 +154,45 @@ _LATER_ITEM = _obj(
         },
     },
     ["what"],
+)
+
+
+#: The fields a correction may carry (update_pending_card, change_or_undo).
+_CHANGES = _obj(
+    {
+        "workers": {
+            "type": "array",
+            "description": "Only the trade lines that change, e.g. [{trade:'mason',headcount:8}].",
+            "items": _obj(
+                {
+                    "name": {"type": "string"},
+                    "trade": {"type": "string"},
+                    "headcount": {"type": "integer"},
+                    "daily_wage": {"type": "number"},
+                    "attendance_status": {
+                        "type": "string",
+                        "enum": ["present", "absent", "half_day"],
+                    },
+                }
+            ),
+        },
+        "quantity": {"type": "number"},
+        "unit": {"type": "string"},
+        "material": {"type": "string"},
+        "supplier": {"type": "string"},
+        "work_item": {"type": "string"},
+        "narrative": {"type": "string"},
+        "work_type": {"type": "string"},
+        "location": {"type": "string"},
+        "progress_percent": {"type": "number"},
+        "amount": {"type": "number"},
+        "description": {"type": "string"},
+        "vendor": {"type": "string"},
+        "paid_to": {"type": "string"},
+        "category": {"type": "string"},
+        "severity": {"type": "string"},
+        "date": _DATE,
+    }
 )
 
 
@@ -544,6 +586,28 @@ def tool_specs() -> list[ToolSpec]:
             ),
         ),
         ToolSpec(
+            name=CHANGE_OR_UNDO,
+            description=(
+                "Undo or change something THEY ALREADY SAVED ('undo', 'undo that', 'remove the cement', "
+                "'last expense venda', 'alla, 5 mason aanu'). The system asks them to confirm a removal "
+                "with a card first; nothing is removed before they tap Yes. 'last' is their latest Save; "
+                "otherwise pass the id the context gives, or a few words of what they mean ('cement', "
+                "'diesel expense'). To correct a figure of a saved entry pass changes (named as the "
+                "entry's own save tool names them). Not for a card they have not saved yet "
+                "(update_pending_card / Cancel)."
+            ),
+            parameters=_obj(
+                {
+                    "target": {
+                        "type": "string",
+                        "description": "'last', an id from the context, or a few words describing the saved entry.",
+                    },
+                    "changes": _CHANGES,
+                },
+                ["target"],
+            ),
+        ),
+        ToolSpec(
             name=UPDATE_PENDING_CARD,
             description=(
                 "Change one item of the user's OPEN card (the one with Save / Cancel not tapped "
@@ -557,42 +621,7 @@ def tool_specs() -> list[ToolSpec]:
                 {
                     "card_id": {"type": "string", "description": "The open card's id, from the context."},
                     "item_index": {"type": "integer", "description": "The item's number on that card, from 1."},
-                    "changes": _obj(
-                        {
-                            "workers": {
-                                "type": "array",
-                                "description": "Only the trade lines that change, e.g. [{trade:'mason',headcount:8}].",
-                                "items": _obj(
-                                    {
-                                        "name": {"type": "string"},
-                                        "trade": {"type": "string"},
-                                        "headcount": {"type": "integer"},
-                                        "daily_wage": {"type": "number"},
-                                        "attendance_status": {
-                                            "type": "string",
-                                            "enum": ["present", "absent", "half_day"],
-                                        },
-                                    }
-                                ),
-                            },
-                            "quantity": {"type": "number"},
-                            "unit": {"type": "string"},
-                            "material": {"type": "string"},
-                            "supplier": {"type": "string"},
-                            "work_item": {"type": "string"},
-                            "narrative": {"type": "string"},
-                            "work_type": {"type": "string"},
-                            "location": {"type": "string"},
-                            "progress_percent": {"type": "number"},
-                            "amount": {"type": "number"},
-                            "description": {"type": "string"},
-                            "vendor": {"type": "string"},
-                            "paid_to": {"type": "string"},
-                            "category": {"type": "string"},
-                            "severity": {"type": "string"},
-                            "date": _DATE,
-                        }
-                    ),
+                    "changes": _CHANGES,
                 },
                 ["card_id", "item_index", "changes"],
             ),
@@ -850,6 +879,13 @@ def tool_specs() -> list[ToolSpec]:
                     "all_issues": {
                         "type": "boolean",
                         "description": "resolve only: true when they say all / both of the open issues are fixed.",
+                    },
+                    "all_matching": {
+                        "type": "boolean",
+                        "description": (
+                            "resolve only: true when they say ALL the issues about that thing are fixed "
+                            "('ellam mixer issues-um close cheyyu', 'all the crane problems')."
+                        ),
                     },
                     "notes": {"type": "string", "description": "What was done, only if said."},
                     "project": _PROJECT,
@@ -1147,6 +1183,7 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
                 "_action": "close_issues",
                 "about": [str(a) for a in about] if isinstance(about, list) else about,
                 "all_issues": args.get("all_issues") is True,
+                "all_matching": args.get("all_matching") is True,
                 **sc,
             }
             return Candidate(semantic_type=SemanticType.SITE_ISSUE_UPDATE, fields=_clean(fields))

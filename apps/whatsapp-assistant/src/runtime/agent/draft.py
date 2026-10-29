@@ -39,10 +39,15 @@ from .cards import CARD_TTL_SECONDS
 from .save_button import CANCEL_TITLE, SAVE_TITLE, TO_SAVE_HEADER
 from .tools import (
     REPORT_ISSUE,
+    SAVE_EXPENSE,
     SAVE_LABOUR,
     SAVE_MATERIAL_RECEIPT,
     SAVE_MATERIAL_USAGE,
+    SAVE_OPENING_STOCK,
     SAVE_WORK_DONE,
+    TRANSFER_MATERIAL,
+    TRANSFER_MONEY,
+    UPDATE_ISSUE,
 )
 
 OK = "ok"
@@ -74,6 +79,14 @@ KIND_WORK = "work"
 KIND_MATERIAL_IN = "material_in"
 KIND_MATERIAL_OUT = "material_out"
 KIND_ISSUE_OPEN = "issue_open"
+#: Request 142 (A): money and stock tools are lines of the card too; their
+#: workflows are confirm-first, and the Save tap is that confirmation.
+KIND_EXPENSE = "expense"
+KIND_TRANSFER_MATERIAL = "transfer_material"
+KIND_TRANSFER_MONEY = "transfer_money"
+KIND_OPENING_STOCK = "opening_stock"
+#: acknowledge / won't fix / cancel / reopen an issue (resolving is a pending action).
+KIND_ISSUE_STATUS = "issue_status"
 #: A pending action of request 104 (engineer question, day's conditions, issues to
 #: close): it keeps its own store, the draft holds its id and runs it on Save.
 KIND_ACTION = "action"
@@ -88,8 +101,15 @@ KIND_BY_TOOL = {
     SAVE_MATERIAL_RECEIPT: KIND_MATERIAL_IN,
     SAVE_MATERIAL_USAGE: KIND_MATERIAL_OUT,
     REPORT_ISSUE: KIND_ISSUE_OPEN,
+    SAVE_EXPENSE: KIND_EXPENSE,
+    TRANSFER_MATERIAL: KIND_TRANSFER_MATERIAL,
+    TRANSFER_MONEY: KIND_TRANSFER_MONEY,
+    SAVE_OPENING_STOCK: KIND_OPENING_STOCK,
+    UPDATE_ISSUE: KIND_ISSUE_STATUS,
 }
 DRAFT_TOOLS = frozenset(KIND_BY_TOOL)
+#: A money transfer belongs to no site: the site resolver does not ask for one.
+SITELESS_TOOLS = frozenset({TRANSFER_MONEY})
 #: Request 136 (B): the workflows the draft tools write through. For a draft_v2
 #: sender, one of these waiting for a Yes / No or an answer is from the old path.
 DRAFT_WORKFLOWS = frozenset(
@@ -290,12 +310,38 @@ def _action_type(workflow_key: Any, fields: dict[str, Any]) -> DraftActionType |
         return DraftActionType.RECORD_MATERIAL_USAGE
     if key == WorkflowKey.SITE_ISSUE_REPORT.value:
         return DraftActionType.RECORD_SITE_ISSUE
+    if key == WorkflowKey.EXPENSE_SUBMIT.value:
+        return DraftActionType.RECORD_EXPENSE
+    if key == WorkflowKey.MATERIAL_TRANSFER.value:
+        return DraftActionType.TRANSFER_MATERIAL
+    if key == WorkflowKey.TRANSFER.value:
+        return DraftActionType.TRANSFER_MONEY
+    if key == WorkflowKey.SITE_ISSUE_CLOSE.value:
+        return DraftActionType.CLOSE_SITE_ISSUE
     if key == WorkflowKey.SITE_UPDATE.value:
         # Work on an open activity is a progress update; else new work: the two
         # read the same on the card, bar the "(completed)" a new activity shows
         # only when it is finished (saved_summary.summarise_draft).
         return DraftActionType.ADD_PROGRESS_UPDATE if fields.get("activity_id") else DraftActionType.CREATE_ACTIVITY
     return None
+
+
+_ISSUE_VERBS = {
+    "acknowledge": "Acknowledge",
+    "resolve": "Close",
+    "wont_fix": "Won't fix",
+    "cancel": "Withdraw",
+    "reopen": "Reopen",
+}
+
+
+def _issue_status_line(fields: dict[str, Any]) -> str | None:
+    """"Reopen: Mixer breakdown aayi" -- what happens to which issue; None when no issue was found."""
+    narrative = " ".join(str(fields.get("site_issue_narrative") or "").split())
+    if not narrative or not fields.get("site_issue_id"):
+        return None
+    verb = _ISSUE_VERBS.get(str(fields.get("action") or "").lower(), "Update")
+    return f"{verb}: {narrative[:60]}"
 
 
 def preview(workflow_key: Any, fields: dict[str, Any], *, today: Any = None) -> str | None:
@@ -305,6 +351,8 @@ def preview(workflow_key: Any, fields: dict[str, Any], *, today: Any = None) -> 
     action = _action_type(workflow_key, fields)
     if action is None:
         return None
+    if action is DraftActionType.CLOSE_SITE_ISSUE:
+        return _issue_status_line(fields)
     return summarise_draft(SimpleNamespace(action_type=action, fields=dict(fields)), today=today)
 
 
@@ -503,13 +551,19 @@ def label_for(tool: str, args: dict[str, Any]) -> str:
                 for q in quantities
             )
             return said or str(args.get("narrative") or args.get("work_type") or "work done")[:60]
-        if tool in (SAVE_MATERIAL_RECEIPT, SAVE_MATERIAL_USAGE):
+        if tool == SAVE_EXPENSE:
+            return " ".join(str(p) for p in ("₹" + str(args["amount"]) if args.get("amount") else "", args.get("description")) if p) or "expense"
+        if tool == TRANSFER_MONEY:
+            return f"transfer ₹{args['amount']}" if args.get("amount") else "money transfer"
+        if tool in (SAVE_MATERIAL_RECEIPT, SAVE_MATERIAL_USAGE, TRANSFER_MATERIAL, SAVE_OPENING_STOCK):
             return (
                 " ".join(
                     str(p) for p in (args.get("quantity"), args.get("unit"), args.get("material")) if p not in (None, "")
                 )
                 or "material"
             )
+        if tool == UPDATE_ISSUE:
+            return f"{_ISSUE_VERBS.get(str(args.get('action') or '').lower(), 'Update')} an issue"
         if tool == REPORT_ISSUE:
             return str(args.get("narrative") or args.get("issue_type") or "issue")[:60]
     except Exception:  # noqa: BLE001 -- a label is wording only

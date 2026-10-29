@@ -254,6 +254,9 @@ class JourneyGateway:
     #: none of the draft code below runs.
     draft_v2: bool = False
     drafts: Any | None = None
+    #: Request 142 (B): the save journal (runtime/agent/journal.py): each Save
+    #: writes one entry; undo and change of anything saved read it.
+    journal: Any | None = None
     #: The sender's open draft, loaded on first use; ``draft_new`` are the item
     #: ids this turn added.
     draft: Any | None = None
@@ -373,6 +376,47 @@ class JourneyGateway:
         from . import draft_flow
 
         return await draft_flow.add(self, candidate, text=text)
+
+    @property
+    def journal_mode(self) -> bool:
+        """Whether undo and change of saved entries go through the journal."""
+        return self.draft_mode and self.journal is not None
+
+    async def change_or_undo(self, ref: str, changes: dict[str, Any] | None = None) -> StepResult:
+        from . import undo_flow
+
+        return await undo_flow.request(self, ref, changes)
+
+    async def journal_tap(self, action: str, entry_id: str, numbers: list[int] | None) -> ReplySpec:
+        from . import undo_flow
+
+        return await undo_flow.confirm(self, action, entry_id, numbers)
+
+    async def pick_issues(self, tap: str) -> ReplySpec:
+        """Request 142: the tap on a row of "which issue is fixed?". The row names its
+        issues; they become the "Close: ..." line of the card, with Save. No model is
+        asked to match a title again, so a tap can never ask the same question twice."""
+        from . import draft as dr
+        from . import issue_match
+
+        refs = issue_match.parse_tap(tap)
+        if refs is None:
+            return ReplySpec(text="That choice has expired. Tell me which issue is fixed.")
+        if not refs:
+            return ReplySpec(text=issue_match.ELSE_TEXT)
+        fields = {"_action": "close_issues", "issue_refs": refs}
+        candidate = Candidate(semantic_type=SemanticType.SITE_ISSUE_UPDATE, fields=fields)
+        self.current_call = ("update_issue", {"action": "resolve", "issue_refs": refs})
+        message = self.message.model_copy(update={"text": self.message.text or "", "modality": InputModality.TEXT})
+        step = await self._run_action(candidate, message)
+        if step.status != "saved":
+            return step.reply or ReplySpec(text=step.text)
+        draft = await self.open_draft()
+        if draft is None or not draft.live:
+            return ReplySpec(text=step.text)
+        from . import draft_flow
+
+        return dr.card_reply(draft, "", site=draft_flow._card_site(self, draft))
 
     async def open_draft(self) -> Any | None:
         from . import draft_flow
@@ -526,12 +570,19 @@ class JourneyGateway:
 
         if self.action_entry is None or self.actions is None:
             return StepResult("error", text="Not done: that can't be done here yet.")
+        if self.draft_mode:
+            # Request 142: an ambiguous pick (which issue?) offers rows whose ids name the thing.
+            candidate = candidate.model_copy(update={"fields": {**candidate.fields, "pick_ids": True}})
         understanding = tool_understanding(candidate, message, language=self.language)
         prepared = await self.action_entry.prepare(message, understanding, candidate)
         if isinstance(prepared, Say):
             from .toolbox import question_reply
 
-            reply = question_reply(prepared.question, list(prepared.options), awaiting=prepared.awaiting) if prepared.question else None
+            reply = (
+                question_reply(prepared.question, list(prepared.options), awaiting=prepared.awaiting, rows=prepared.rows)
+                if prepared.question
+                else None
+            )
             return StepResult(prepared.status, text=prepared.text, reply=reply, awaiting=prepared.awaiting)
         prepared_list = prepared if isinstance(prepared, list) else [prepared]
         tool = self.current_call[0] if self.current_call else prepared_list[0].kind

@@ -32,6 +32,7 @@ from .save_button import SAVE_TITLE
 from .site_match import short_title
 from .tools import (
     ASK_USER,
+    CHANGE_OR_UNDO,
     CORRECT_WORK_QUANTITY,
     GET_JOIN_CODE,
     NOTE_FOR_ENGINEER,
@@ -297,9 +298,12 @@ def site_reply(question: str, options: list[str]) -> ReplySpec:
     return _choice_reply(question, options, "Choose site")
 
 
-def question_reply(question: str, options: list[str], *, awaiting: str = "") -> ReplySpec:
+def question_reply(question: str, options: list[str], *, awaiting: str = "", rows: tuple[Any, ...] = ()) -> ReplySpec:
     """The one question as a message: buttons when the options are short
-    (up to three), a list otherwise (up to ten), plain text with none."""
+    (up to three), a list otherwise (up to ten), plain text with none. ``rows``
+    (request 142) are rows the code made, with ids it reads back: sent as they are."""
+    if rows:
+        return ReplySpec(text=question, list_button_label="Choose one", list_rows=tuple(rows)[:MAX_LIST_ROWS])
     if awaiting == "site":
         return site_reply(question, options)
     return _choice_reply(question, options, "Choose one")
@@ -861,6 +865,8 @@ class AgentToolbox:
         )
 
     async def _run(self, name: str, args: dict[str, Any]) -> StepResult:
+        if name == CHANGE_OR_UNDO:
+            return await self._change_or_undo(args)
         if name == UNDO_LAST and str(args.get("what") or "latest_update") == "latest_update":
             return await self._undo(args)
         if name == UPDATE_PENDING_CARD:
@@ -904,12 +910,35 @@ class AgentToolbox:
                 if reply.text != dr.CANCELLED:
                     return StepResult("info", text=reply.text)
                 return StepResult("undone", text=f"Removed from the card: {lines}. Nothing was saved.")
+        if getattr(self.gateway, "journal_mode", False) is True:
+            # Request 142 (B): what was saved is undone from the journal, after a confirm card.
+            step = await self.gateway.change_or_undo("last")
+            from .journal import NOTHING
+
+            if step.text != NOTHING:
+                return step
         undo_card = getattr(self.gateway, "undo_card", None)
         if undo_card is None:
             return StepResult("info", text="Nothing to undo from your last card.")
         targets = args.get("targets")
         refs = [str(t) for t in targets] if isinstance(targets, list) else []
         return await undo_card(refs)
+
+    async def _change_or_undo(self, args: dict[str, Any]) -> StepResult:
+        """Request 142 (B): the one tool to take back or correct something. A card
+        not saved yet is cancelled / edited as before; anything saved goes through
+        the journal, with a confirm card for a removal."""
+        target = str(args.get("target") or "last").strip()
+        changes = args.get("changes")
+        changes = changes if isinstance(changes, dict) and [v for v in changes.values() if v is not None] else None
+        if getattr(self.gateway, "journal_mode", False) is not True:
+            return await self._undo({})
+        if changes:
+            return await self.gateway.change_or_undo(target, changes)
+        if target.casefold() in ("", "last", "latest", "that", "it", "this"):
+            return await self._undo({})
+        step = await self.gateway.change_or_undo(target)
+        return step
 
     async def _update_card(self, args: dict[str, Any]) -> StepResult:
         """Request 88: change one item of the open card. The old draft is
@@ -1192,6 +1221,21 @@ class AgentToolbox:
                     "status": "waiting_for_user",
                     "question": question.text,
                     "instruction": "Your final message must end with this question.",
+                }
+            )
+        if step.status == "choose" and step.awaiting == "confirm_undo" and step.reply is not None:
+            # Request 142 (B): a removal is asked first. Nothing is removed before the Yes tap.
+            if self.parked is None:
+                # parked_confirm: the lines go under the model's words, whatever it wrote.
+                self.parked, self.parked_by, self.parked_confirm = step.reply, "ask", True
+            return ToolOutcome(
+                content={
+                    "status": "waiting_for_confirmation",
+                    "instruction": (
+                        "Nothing is removed yet: a confirm card with Yes / Keep buttons is shown under your "
+                        "words, listing what would go. Say in one short line that you will remove it if they "
+                        "confirm, in the language of their message. Never say it is removed. Do not list it."
+                    ),
                 }
             )
         if step.status == "choose" and step.reply is not None:
