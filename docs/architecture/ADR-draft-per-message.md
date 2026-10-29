@@ -249,7 +249,8 @@ cancelled by its buttons; it expires after 6 hours. The migration is additive; r
 - Report timing changes by design for a company with the flag on: an unsaved card counts nowhere (the reminder is
   the mitigation). The reminder goes out only for projects with `auto_generate_dpr` on, and, outside the 24-hour
   WhatsApp window, is skipped by the existing send rules (no approved template).
-- The receipt picture (the combined card image) is not drawn for a draft card.
+- The receipt picture (the combined card image) is not drawn for a draft card. **Fixed 29 Oct:** the Save tap's
+  reply carries the saved records' card (`message_journey._with_saved_card`), as a saved message's reply did.
 - The new card lines ("Couldn't read", the replace/add question) are English; the existing label swap for
   Malayalam / Hindi senders does not know them yet.
 - A pending Yes/No of a confirm-first flow (expense, transfer) blocks a Save that needs to start a workflow

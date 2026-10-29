@@ -775,6 +775,24 @@ def build_message_handlers(
                 image = await task if task is not None else None
                 return dataclasses.replace(reply, header_image=image) if image else reply
 
+            async def _with_saved_card(reply, gateway):  # type: ignore[no-untyped-def]
+                """Live 29 Oct: the Save tap of a draft card sent the "Saved" line without
+                the receipt card (ADR draft-per-message 10.6, a P1 limit, on for every
+                company since 28 Oct). The records it saved carry their card as before;
+                it rides on the reply, one card for one record, one combined for several.
+                Not when a waiting part of the card is shown again (its Save buttons)."""
+                handled_list = list(getattr(gateway, "handled", None) or [])
+                if not handled_list or reply.header_image:
+                    return reply
+                if getattr(gateway, "draft", None) is not None or reply.buttons or reply.list_rows:
+                    for handled in handled_list:
+                        if getattr(handled, "receipt_coro", None) is not None:
+                            handled.receipt_coro.close()
+                            handled.receipt_coro = None
+                    return reply
+                image = await _receipt_for(handled_list)
+                return dataclasses.replace(reply, header_image=image) if image else reply
+
             async def _remember_card(gateway, *, open_card: bool) -> None:  # type: ignore[no-untyped-def]
                 """Request 88: keep the card this reply shows, so "undo that" and
                 "alla, 8 mason aanu" act on it. A reply without Save buttons
@@ -1192,6 +1210,7 @@ def build_message_handlers(
                 gateway = _gateway(message, None)
                 if action == draft_card_mod.SAVE:
                     reply = await gateway.save_draft(draft)
+                    reply = await _with_saved_card(reply, gateway)
                 elif action == draft_card_mod.CANCEL:
                     reply = await gateway.cancel_draft(draft)
                 elif action == draft_card_mod.CHANGE_SITE:

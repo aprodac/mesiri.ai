@@ -184,3 +184,28 @@ async def test_hi_still_opens_the_menu(monkeypatch):
     await on_normalized(_text("hi"), {})
 
     deps["sender"].send_list.assert_awaited()
+
+
+async def test_the_save_tap_sends_the_saved_records_card(monkeypatch):
+    """Live 29 Oct: Save on a draft card sent "Saved" with no receipt card (a P1 limit,
+    on for every company since 28 Oct). The saved record's card rides on the reply."""
+    from runtime.agent.toolbox import ReplySpec
+
+    store = MemoryDraftStore()
+    draft = _draft()
+    await store.put(draft)
+    on_normalized, deps = _build(monkeypatch, drafts=store)
+
+    async def card() -> bytes:
+        return b"PNG-receipt"
+
+    async def save_draft(self, _draft):  # noqa: ANN001, ANN202
+        self.handled = [SimpleNamespace(receipt_coro=card(), workflow_key=None, execution_result=None)]
+        self.draft = None
+        return ReplySpec(text="✅ Saved: Cement in: 50 bags")
+
+    monkeypatch.setattr(jg.JourneyGateway, "save_draft", save_draft)
+    await on_normalized(_tap(dr.tap_id(dr.SAVE, draft.id), "✅ Save"), {})
+
+    images = [c.args[1] if len(c.args) > 1 else c.kwargs.get("image") for c in deps["sender"].send_image.await_args_list]
+    assert b"PNG-receipt" in images, deps["sender"].method_calls
