@@ -140,10 +140,11 @@ class SettingSpec:
 _SPECS: dict[str, SettingSpec] = {
     WHATSAPP_MATERIAL_CREATE_ROLES: SettingSpec(
         key=WHATSAPP_MATERIAL_CREATE_ROLES,
-        default=["ADMIN", "PROJECT_MANAGER"],
+        default=["ADMIN", "PROJECT_MANAGER", "SITE_ENGINEER"],
         description=(
             "Roles allowed to add a new material to the catalog directly from a "
-            "WhatsApp report. Anyone else is told to ask their admin."
+            "WhatsApp report (admins, project managers and site engineers by "
+            "default). Anyone else is told to ask their admin."
         ),
     ),
     FINANCE_SETTINGS: SettingSpec(

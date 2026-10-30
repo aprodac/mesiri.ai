@@ -15,12 +15,13 @@ import pytest
 from mesiri.domains.organizations import settings
 
 
-def test_whatsapp_material_create_defaults_to_admin_and_pm():
-    """An org that has never touched its settings must behave conservatively:
-    the people who own the catalog can add to it, field reporters cannot."""
+def test_whatsapp_material_create_defaults_to_admin_pm_and_site_engineer():
+    """Site engineers may add a material (owner decision, 30 Oct 2026); an org
+    that stored its own list keeps it."""
     assert settings.default_for(settings.WHATSAPP_MATERIAL_CREATE_ROLES) == [
         "ADMIN",
         "PROJECT_MANAGER",
+        "SITE_ENGINEER",
     ]
 
 
