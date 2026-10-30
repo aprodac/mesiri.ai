@@ -86,3 +86,28 @@ def amount_answer(text: str, args: dict[str, Any], stock_unit: str) -> Decimal |
     if len(numbers) != 1:
         return None
     return numbers[0]
+
+
+def _plain(text: str) -> list[str]:
+    """Words only: no emoji, signs or punctuation ("➕ Add new: TMT" -> add new tmt)."""
+    return [w for w in re.split(r"[^\w]+", (text or "").casefold()) if w]
+
+
+def option_answer(text: str, options: list[str]) -> str | None:
+    """Request 159 (A): the one option of a card question that a short typed reply
+    picks: its number ("2"), its words ("office cash" for "Office Cash"), or words
+    only that option has ("own pocket" for "My own pocket"). None when the reply
+    is longer than an answer, or fits no option or more than one (then the model
+    reads it as usual)."""
+    said = _plain(text)
+    if not said or len(said) > MAX_ANSWER_WORDS or not options:
+        return None
+    if len(said) == 1 and said[0].isdigit():
+        n = int(said[0])
+        return options[n - 1] if 1 <= n <= len(options) else None
+    exact = [o for o in options if _plain(o) == said]
+    if len(exact) == 1:
+        return exact[0]
+    want = set(said)
+    within = [o for o in options if want <= set(_plain(o))]
+    return within[0] if len(within) == 1 else None

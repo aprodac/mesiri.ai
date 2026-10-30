@@ -62,8 +62,10 @@ def test_the_card_lists_ready_lines_questions_and_what_could_not_be_read():
         _item("6 workers (6 mason)", dr.NEEDS_ANSWER, question="Today already 13 workers. Replace it, or add to it?", options=["Replace", "Add"]),
         _item("", dr.UNREADABLE, label="120 rft skirting"),
     )
+    # Request 159 (A): a question sits on the line it is about, never alone below the card.
     assert dr.card_text(draft) == (
-        "🟠 *To save*: Cement in: 50 bags\n❓ Today already 13 workers. Replace it, or add to it?\nCouldn't read: 120 rft skirting"
+        "🟠 *To save*:\n• Cement in: 50 bags\n• 6 workers (6 mason) (❓ Today already 13 workers. Replace it, or add to it?)"
+        "\nCouldn't read: 120 rft skirting"
     )
 
 

@@ -69,6 +69,9 @@ class Card:
     created: float = 0.0
     #: The one site every entry is for, so "✅ Saved" can name it (request 116).
     site: str = ""
+    #: Request 159 (E): the draft a partial Save left with what still waits, so its
+    #: Cancel can say what stayed saved.
+    rest: str = ""
 
     def to_json(self) -> dict[str, Any]:
         return asdict(self)
@@ -83,6 +86,7 @@ class Card:
                 items=items,
                 created=float(raw.get("created", 0)),
                 site=str(raw.get("site") or ""),
+                rest=str(raw.get("rest") or ""),
             )
         except Exception:  # noqa: BLE001 -- an unreadable card is no card
             return None

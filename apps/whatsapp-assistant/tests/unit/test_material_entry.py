@@ -209,7 +209,7 @@ async def test_an_unknown_name_asks_to_add_it_when_they_may():
     said = await _prepare(entry, material_name="Fevicol", unit="bags")
     assert said.status == "choose" and "add it as a new material" in said.text
     assert said.text.count("new_material") == 1
-    assert said.options == ("Yes, add it", "No")
+    assert said.options == ("➕ Add Fevicol", "No")
 
 
 async def test_after_a_yes_the_new_material_is_added_and_saved():
@@ -348,7 +348,7 @@ async def test_a_new_name_close_to_a_listed_one_asks_same_as_before_creating():
     entry = _entry(catalog=catalog, modules=_Modules(["materials"], create_roles=["SITE_ENGINEER"]))
     said = await _prepare(entry, material_name="Steel bars", unit="bags")
     assert said.status == "choose" and catalog.created == []
-    assert said.options[0] == "Steel rods" and said.options[-1].startswith("➕ Add new: Steel")
+    assert said.options[0] == "Steel rods" and said.options[-1] == "➕ Add Steel bars"
     assert "Sand" not in said.options
 
 
@@ -356,7 +356,7 @@ async def test_a_name_far_from_everything_is_offered_as_a_plain_add():
     catalog = _CatalogWithClosest([SAND])
     entry = _entry(catalog=catalog, modules=_Modules(["materials"], create_roles=["SITE_ENGINEER"]))
     said = await _prepare(entry, material_name="Fevicol", unit="bags")
-    assert said.options == ("Yes, add it", "No")
+    assert said.options == ("➕ Add Fevicol", "No")
 
 
 async def test_a_role_outside_the_list_never_gets_the_add_choice():
@@ -364,3 +364,48 @@ async def test_a_role_outside_the_list_never_gets_the_add_choice():
     entry = _entry(catalog=catalog, modules=_Modules(["materials"], create_roles=["ADMIN"]))
     said = await _prepare(entry, material_name="Steel bars", unit="bags")
     assert catalog.created == [] and "➕" not in " ".join(said.options or ())
+
+
+# -- request 159 (D): a typed answer to "Add it as a new material?" ------------------
+
+
+@pytest.mark.parametrize(
+    ("said", "picked"),
+    [
+        ("Add Tmt steel bars material", "➕ Add Tmt steel bars"),  # live 30 Oct, 11:14
+        ("TMT steel", "➕ Add Tmt steel bars"),  # live 30 Oct, 11:15
+        ("Tmt steel bars", "➕ Add Tmt steel bars"),
+        ("yes", "➕ Add Tmt steel bars"),
+        ("add cheyyu", "➕ Add Tmt steel bars"),
+        ("no", "No"),
+        ("venda", "No"),
+    ],
+)
+def test_a_typed_reply_answers_the_new_material_question(said, picked):
+    from runtime.agent.material_entry import add_new_label, typed_new_material_answer
+
+    options = [add_new_label("Tmt steel bars"), "No"]
+    assert typed_new_material_answer(said, "Tmt steel bars", options) == picked
+
+
+def test_a_typed_listed_name_picks_it_over_adding():
+    from runtime.agent.material_entry import add_new_label, typed_new_material_answer
+
+    options = ["Steel rods", add_new_label("Steel bars")]
+    assert typed_new_material_answer("steel rods", "Steel bars", options) == "Steel rods"
+    assert typed_new_material_answer("add steel rods", "Steel bars", options) == "Steel rods"
+    assert typed_new_material_answer("yes add it", "Steel bars", options) == "➕ Add Steel bars"
+
+
+@pytest.mark.parametrize("said", ["3 mason vannu", "cement 50 bag vannu", "what is the stock", ""])
+def test_a_new_update_is_not_taken_for_the_answer(said):
+    from runtime.agent.material_entry import add_new_label, typed_new_material_answer
+
+    assert typed_new_material_answer(said, "Tmt steel bars", [add_new_label("Tmt steel bars"), "No"]) is None
+
+
+def test_every_role_may_add_a_material_by_default():
+    from mesiri.domains.organizations import settings
+
+    for role in settings.VALID_ROLES:
+        assert settings.role_allowed(role, settings.default_for(settings.WHATSAPP_MATERIAL_CREATE_ROLES))

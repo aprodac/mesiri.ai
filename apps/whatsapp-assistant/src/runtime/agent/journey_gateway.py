@@ -279,6 +279,12 @@ class JourneyGateway:
     confirm_now: Callable[[], Awaitable[Any]] | None = None
     #: ``() -> None``: drop the question a workflow was left asking.
     abandon_question: Callable[[], Awaitable[Any]] | None = None
+    #: ``(answer) -> WorkflowRunResult | None``: answer the question the workflow
+    #: just asked (request 159 A: an answer the sender gave on the card at Save).
+    answer_question: Callable[[str], Awaitable[Any]] | None = None
+    #: Request 159 (C): the sender's recent saves, read once per message for the
+    #: "already saved at 11:05" check (``draft_flow._repeat_of_saved``).
+    recent_saves: list[Any] | None = None
     #: ``(facts) -> settled``: confirm the saved drafts (the Save tap's own step).
     settle_facts: Callable[[list[Any]], Awaitable[Any]] | None = None
     #: ``() -> async context manager``: one transaction for the whole Save.

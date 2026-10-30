@@ -15,14 +15,10 @@ import pytest
 from mesiri.domains.organizations import settings
 
 
-def test_whatsapp_material_create_defaults_to_admin_pm_and_site_engineer():
-    """Site engineers may add a material (owner decision, 30 Oct 2026); an org
-    that stored its own list keeps it."""
-    assert settings.default_for(settings.WHATSAPP_MATERIAL_CREATE_ROLES) == [
-        "ADMIN",
-        "PROJECT_MANAGER",
-        "SITE_ENGINEER",
-    ]
+def test_whatsapp_material_create_defaults_to_every_role():
+    """Everyone may add a material (owner decision, request 159, 30 Oct 2026); an
+    org that stored its own list keeps it."""
+    assert sorted(settings.default_for(settings.WHATSAPP_MATERIAL_CREATE_ROLES)) == sorted(settings.VALID_ROLES)
 
 
 def test_unknown_key_raises():

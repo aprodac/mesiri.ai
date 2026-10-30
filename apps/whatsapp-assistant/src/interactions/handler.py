@@ -687,6 +687,16 @@ class InteractionHandler:
             site_id=str(loaded.state.site_id) if loaded.state.site_id else None,
         )
 
+    async def answer_open_question(self, user_id: str, answer: str) -> Any | None:
+        """Request 159 (A): the answer the sender gave on the card to the question
+        the workflow asked at Save ("Which account did you pay from?" -> "Office
+        Cash"), fed to that workflow the way a typed reply is. The run result, or
+        None when no question is open."""
+        loaded = await self._runtime.get_awaiting_input(user_id)
+        if loaded is None:
+            return None
+        return await self._runtime.provide_input(loaded, answer)
+
     async def _close_question(self, user_id: str) -> InteractionHandled | None:
         """Close the user's open slot question with its safe default. None
         when it could not be closed -- the re-ask then stands."""

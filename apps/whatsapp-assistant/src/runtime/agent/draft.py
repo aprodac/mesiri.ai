@@ -133,6 +133,8 @@ CANT_READ = "Couldn't read: "
 CANCELLED = "❌ Okay, nothing saved. Send it again whenever you're ready."
 ALREADY_DONE = "That one is already done."
 EXPIRED = "That card has expired. Please send it again."
+#: Request 159 (A): what a line waits on when its workflow asked at Save.
+AWAIT_SAVE_QUESTION = "save_question"
 NOTHING_READY = "Nothing on the card is ready to save yet. Answer the question on it, or send the missing detail."
 
 
@@ -168,6 +170,9 @@ class DraftItem:
     target: dict[str, Any] | None = None
     #: ``awaiting == "amount"`` only: the stock unit the typed answer is in (WA-81).
     answer_unit: str = ""
+    #: Request 159 (A): the answers given on the card to the questions its workflow
+    #: asked at Save (question -> the option picked), fed to it on the next Save.
+    answers: dict[str, str] = field(default_factory=dict)
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
 
     @property
@@ -179,6 +184,12 @@ class DraftItem:
         """WA-81: a line waiting for WHERE (its site or project): the card asks
         once for all of them, and one answer settles every such line."""
         return self.pending_answer and self.awaiting in WHERE_QUESTIONS
+
+    @property
+    def asked_at_save(self) -> bool:
+        """Request 159 (A): the line is prepared, but its workflow asked a question
+        at Save ("Which account did you pay from?"); the answer goes on this line."""
+        return self.state == NEEDS_ANSWER and self.awaiting == AWAIT_SAVE_QUESTION
 
     @property
     def pending_answer(self) -> bool:
@@ -211,6 +222,7 @@ class DraftItem:
                 target=raw.get("target") if isinstance(raw.get("target"), dict) else None,
                 awaiting=str(raw.get("awaiting") or ""),
                 answer_unit=str(raw.get("answer_unit") or ""),
+                answers={str(k): str(v) for k, v in (raw.get("answers") or {}).items()},
                 id=str(raw.get("id") or uuid.uuid4().hex[:8]),
             )
         except Exception:  # noqa: BLE001 -- an unreadable item is no item
@@ -457,7 +469,9 @@ def card_text(draft: MessageDraft, *, site: str | None = None) -> str:
     """The whole draft as one card: a line per ready item (under "To save:"),
     each open question, and what could not be read."""
     ready = draft.ready_items
-    asking = [i for i in draft.waiting_items if i.pending_answer]
+    # Request 159 (A): every question sits on the line it is about ("Cement in: 50 bags
+    # (❓ It says 30 Dec ...)"); a question with no line of its own stands below.
+    asking = [i for i in draft.waiting_items if i.pending_answer or i.line]
     sites = {i.site for i in draft.items if i.state != UNREADABLE and i.site}
     show_site = len(sites) > 1
     parts: list[str] = []
@@ -473,7 +487,7 @@ def card_text(draft: MessageDraft, *, site: str | None = None) -> str:
     where = next((i.question for i in asking if i.needs_site and i.question), "")
     if where:
         parts.append(f"📍 {where}")
-    parts.extend(f"❓ {i.question}" for i in draft.waiting_items if not i.pending_answer)
+    parts.extend(f"❓ {i.question}" for i in draft.waiting_items if not (i.pending_answer or i.line))
     if draft.unreadable_items:
         parts.append(CANT_READ + "; ".join(i.label or i.summary or i.tool for i in draft.unreadable_items))
     return "\n".join(parts)

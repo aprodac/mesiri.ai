@@ -15,7 +15,9 @@ rules are few and plain, so a sender is never asked about a normal day:
   times its usual day and 30 more), or above 150 at a site with no history yet;
 - work: a percent above 100, or below the newest saved percent of the same work
   and place ("went down from 88%");
-- material used: more than the site holds in stock (when its stock is known).
+- material used: more than the site holds in stock (when its stock is known);
+- any line: a day after today (request 159);
+- any line: the same line saved earlier for the same site and day (request 159).
 """
 
 from __future__ import annotations
@@ -29,6 +31,14 @@ from . import draft as dr
 RIGHT = "Yes, it's right"
 CHANGE = "Change"
 OPTIONS = [RIGHT, CHANGE]
+#: Request 159 (C): the answers of "already saved at 11:05. Save again?".
+AGAIN = "➕ Save again"
+REMOVE = "Remove"
+REPEAT_OPTIONS = [AGAIN, REMOVE]
+#: A check whose answers are not ``OPTIONS``: its doubt key -> its answers.
+OPTIONS_OF = {"check.already_saved": REPEAT_OPTIONS}
+#: The answers that keep the line.
+KEEPS = frozenset({RIGHT, AGAIN})
 
 #: Above this many workers, a site with no history yet is asked.
 NEW_SITE_WORKERS = 150
@@ -62,8 +72,33 @@ def _workers(fields: dict[str, Any]) -> int:
     return total
 
 
-def doubt(kind: str, args: dict[str, Any], fields: dict[str, Any], history: Any) -> Doubt | None:
+def _future_day(args: dict[str, Any], fields: dict[str, Any], today: Any) -> Any:
+    """The day the line was given when it is after ``today`` (a bill read as "30 Dec"
+    on 30 Oct), else None. The date as said (``args``) is read too: the pipeline
+    files a future date as today without a word (canonicalization/occurred_date.py),
+    so the sender is asked rather than the day changed silently."""
+    import datetime as dt
+
+    if today is None:
+        return None
+    for said in (args.get("date"), fields.get("occurred_date")):
+        try:
+            day = dt.date.fromisoformat(str(said or "")[:10])
+        except ValueError:
+            continue
+        if day > today:
+            return day
+    return None
+
+
+def doubt(
+    kind: str, args: dict[str, Any], fields: dict[str, Any], history: Any, *, today: Any = None
+) -> Doubt | None:
     """What is odd about a new line, or None (the normal case)."""
+    # Request 159 (A): a day after today, on any kind of line (live 30 Oct: a tea bill
+    # of 30 Oct read as 30 Dec).
+    if (day := _future_day(args, fields, today)) is not None:
+        return Doubt("check.future_date", {"day": f"{day.day} {day:%b}", "today": f"{today.day} {today:%b}"})
     if kind == dr.KIND_LABOUR:
         workers = _workers(fields)
         usual = getattr(history, "usual_workers", None)
@@ -99,9 +134,49 @@ def doubt(kind: str, args: dict[str, Any], fields: dict[str, Any], history: Any)
     return None
 
 
+#: What is not part of WHAT a line records: where and when it is for (compared
+#: separately), and a yes already given to adding its material.
+_NOT_WHAT = frozenset({"site", "project", "date", "new_material"})
+
+
+def _what(args: dict[str, Any]) -> dict[str, Any]:
+    def plain(value: Any) -> Any:
+        if isinstance(value, str):
+            return " ".join(value.casefold().split())
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, int | float):
+            return float(value)
+        if isinstance(value, list):
+            return [plain(v) for v in value]
+        if isinstance(value, dict):
+            return {k: plain(v) for k, v in value.items()}
+        return value
+
+    return {k: plain(v) for k, v in args.items() if k not in _NOT_WHAT and v not in (None, "", [])}
+
+
+def already_saved(tool: str, args: dict[str, Any], day: str, site_id: str, entries: list[Any]) -> float | None:
+    """Request 159 (C): when the sender saved this same line (the same tool and
+    figures, for the same site and day) earlier, that Save's time, else None.
+    Live 30 Oct: 100 bags in / 20 used were sent again with the cost at 11:09 and
+    saved a second time, so stock showed 200 in, 40 used. ``entries`` are the
+    sender's recent saves (runtime/agent/journal.py), newest first."""
+    want = _what(args)
+    if not want:
+        return None
+    for entry in entries:
+        if (day and entry.day and entry.day != day) or (site_id and entry.site_id and str(entry.site_id) != str(site_id)):
+            continue
+        if any(f.tool == tool and _what(f.args) == want for f in entry.live):
+            return float(entry.created)
+    return None
+
+
 def asking(item: Any) -> bool:
     """The line waits on a check question (its answers are ``OPTIONS``)."""
-    return getattr(item, "state", "") == dr.NEEDS_ANSWER and list(getattr(item, "options", None) or []) == OPTIONS
+    options = list(getattr(item, "options", None) or [])
+    return getattr(item, "state", "") == dr.NEEDS_ANSWER and options in (OPTIONS, REPEAT_OPTIONS)
 
 
 def with_figure(item: Any, figure: float) -> dict[str, Any] | None:

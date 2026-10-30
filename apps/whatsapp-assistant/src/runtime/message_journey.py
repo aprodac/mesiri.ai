@@ -1175,6 +1175,7 @@ def build_message_handlers(
                     journal=journal if use_drafts else None,
                     confirm_now=lambda: interaction_handler.confirm_now(ctx.user_id, actor=ctx),
                     abandon_question=lambda: interaction_handler._close_question(ctx.user_id),
+                    answer_question=lambda text: interaction_handler.answer_open_question(ctx.user_id, text),
                     settle_facts=lambda facts: interaction_handler.settle_drafts(
                         organization_id=str(ctx.organization_id), user_id=ctx.user_id, facts=facts, keep=True
                     ),

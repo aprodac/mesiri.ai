@@ -25,10 +25,9 @@ from mesiri.domains.organizations.branding import DEFAULT_BRANDING
 VALID_ROLES: frozenset[str] = frozenset({"ADMIN", "PROJECT_MANAGER", "SITE_ENGINEER", "FINANCE"})
 
 # Which roles may create a materials_catalog entry directly from a WhatsApp
-# report (STA-139). Default is Admin + Project Manager: before this setting
-# existed the WhatsApp path could not create catalog entries at all, so the
-# conservative default keeps casual field reports from populating a shared
-# catalog with typos, while still unblocking the people who own it.
+# report (STA-139). Default is every role (owner decision, request 159, 30 Oct
+# 2026): a material that came in or was used is added right there, after a
+# "same as <listed material>?" check against typos. An org can narrow the list.
 WHATSAPP_MATERIAL_CREATE_ROLES = "whatsapp_material_create_roles"
 FINANCE_SETTINGS = "finance_settings"
 LABOUR_SETTINGS = "labour_settings"
@@ -140,11 +139,14 @@ class SettingSpec:
 _SPECS: dict[str, SettingSpec] = {
     WHATSAPP_MATERIAL_CREATE_ROLES: SettingSpec(
         key=WHATSAPP_MATERIAL_CREATE_ROLES,
-        default=["ADMIN", "PROJECT_MANAGER", "SITE_ENGINEER"],
+        # Request 159 (owner, 30 Oct 2026): everyone may add a material from
+        # WhatsApp, asked right where it came in or was used. An org that saved
+        # its own list keeps it.
+        default=["ADMIN", "FINANCE", "PROJECT_MANAGER", "SITE_ENGINEER"],
         description=(
             "Roles allowed to add a new material to the catalog directly from a "
-            "WhatsApp report (admins, project managers and site engineers by "
-            "default). Anyone else is told to ask their admin."
+            "WhatsApp report (every role by default). Anyone else is told to ask "
+            "their admin."
         ),
     ),
     FINANCE_SETTINGS: SettingSpec(

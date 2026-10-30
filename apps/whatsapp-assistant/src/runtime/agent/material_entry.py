@@ -77,7 +77,7 @@ AWAIT_NEW_MATERIAL = "new_material"
 AWAIT_AMOUNT = "amount"
 ADD_IT = "Yes, add it"
 #: Request 159 (part D): the add choice shown after the closest listed materials.
-ADD_NEW = "➕ Add new: "
+ADD_NEW = "➕ Add "
 #: A listed material this close to a new name is offered first ("Same as Steel rods?").
 NEAR_DUPLICATE = 0.55
 NEAR_LIMIT = 3
@@ -85,12 +85,47 @@ _ROW_TITLE = 24
 
 
 def add_new_label(name: str) -> str:
-    """"➕ Add new: TMT steel bars", cut to a WhatsApp row title."""
+    """"➕ Add TMT steel bars", cut to a WhatsApp row title."""
     return (ADD_NEW + name.strip())[:_ROW_TITLE]
 
 
 def is_add_new(option: str) -> bool:
-    return option == ADD_IT or option.startswith(ADD_NEW)
+    return option == ADD_IT or option.startswith(ADD_NEW) or option.startswith("➕ Add new: ")
+
+
+#: A typed "add it" to "Add it as a new material?" (request 159: "Add Tmt steel bars
+#: material" and "TMT steel" were not read as the answer, live 30 Oct).
+_ADD_WORDS = frozenset(
+    "add yes y ok okay sheri shari athe venam cheyyu cheyy aakku akku haan ha haa ചേർക്കൂ ചേർക്ക് ശരി അതെ വേണം जोड़ो हाँ".split()
+)
+_NO_WORDS = frozenset("no venda vendaa illa nahi नहीं വേണ്ട ഇല്ല".split())
+
+
+def typed_new_material_answer(text: str, name: str, options: list[str]) -> str | None:
+    """The option a typed reply picks for the new-material question: a listed
+    material it names, "No", or the add option when it says add / yes or repeats
+    the material's own name ("TMT steel" for "Tmt steel bars"). None when it is
+    something else (a new update): the model reads it then."""
+    from .draft_answer import MAX_ANSWER_WORDS, _plain, option_answer
+
+    said = _plain(text)
+    if not said or len(said) > MAX_ANSWER_WORDS:
+        return None
+    adds = [o for o in options if is_add_new(o)]
+    listed = [o for o in options if not is_add_new(o) and o != "No"]
+    if set(said) <= _NO_WORDS:
+        return "No" if "No" in options else None
+    rest = [w for w in said if w not in _ADD_WORDS and w not in _FILLER]
+    for words in (text, " ".join(rest)):
+        picked = option_answer(words, listed) if listed and words else None
+        if picked is not None:
+            return picked
+    if adds and (said[0] in _ADD_WORDS or rest) and set(rest) <= set(_plain(name)):
+        return adds[0]
+    return None
+
+
+_FILLER = frozenset({"material", "new", "it", "list", "the", "to", "as", "a"})
 #: WhatsApp lists hold ten rows: nine materials and "Something else".
 LIST_MATERIALS = 9
 
@@ -359,7 +394,7 @@ class MaterialEntry(EntryScope):
                 "as a new material. If yes, call this tool again with new_material true; if no, ask "
                 "which listed material they meant.",
                 question=f'"{name}" isn\'t in your material list yet. Add it as a new material?',
-                options=(ADD_IT, "No"),
+                options=(add_new_label(name), "No"),
                 awaiting=AWAIT_NEW_MATERIAL,
             )
         return await self._pick_material(

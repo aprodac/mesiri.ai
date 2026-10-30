@@ -183,3 +183,33 @@ The four live chats replayed give:
 - "TMT steel bars (ton)" added in one tap, with "kambi" known next time;
 - ₹3000 asked about, not dropped;
 - Cancel naming the 30 workers that stayed saved.
+
+---
+
+## Status, 30 Oct (WA-96)
+
+Built and pushed in WA-96:
+- **A:** the mechanism shared by every workflow:
+  - questions at Save go on the card line;
+  - typed answers are read by code;
+  - the Save goes on by itself after the answer;
+  - every check question sits on its line;
+  - future dates are asked about.
+- **D:**
+  - every role may add a material by default (owner, 30 Oct; this replaces the admin approval card);
+  - the button is "➕ Add <name>";
+  - typed answers count as the answer.
+- **C:** the "already saved at …" check, with [➕ Save again] [Remove].
+- **E:** Cancel says what stayed saved.
+
+Still open, and why:
+
+| Item | Why it's open |
+|------|---------------|
+| B (photo groups) | Attendance pages change Labour behaviour |
+| E total wage | Labour/Payroll change |
+| C delivery cost | Touches the shared contracts and the backend materials command, a shared component |
+| Loss sheet | Needs a waste reason on material use |
+| Material word memory (kambi) | Needs an additive migration |
+| Admin FYI of new materials | Not built yet |
+| Doubled 11:10 cement rows | Ops decision |

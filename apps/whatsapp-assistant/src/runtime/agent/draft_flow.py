@@ -347,12 +347,12 @@ async def _checked(gw: Any, item: dr.DraftItem) -> dr.DraftItem:
     saved ("500 workers? This site usually has about 12." [Yes, it's right] [Change]).
     The check is pure (``checks.doubt``); the site's history comes from Day Facts.
     A failed history read never stops the line."""
-    if item.state != dr.OK or item.kind not in _CHECKED:
+    if item.state != dr.OK or item.kind in (dr.KIND_ACTION, dr.KIND_CHANGE):
         return item
     fields = ((item.ready or {}).get("event") or {}).get("fields") or {}
     history = None
     reader = getattr(gw, "day_facts", None)
-    if item.site_id and hasattr(reader, "site_history"):
+    if item.kind in _CHECKED and item.site_id and hasattr(reader, "site_history"):
         day = _day_of_fields(fields) or _today(gw)
         try:
             history = await reader.site_history(
@@ -360,14 +360,47 @@ async def _checked(gw: Any, item: dr.DraftItem) -> dr.DraftItem:
             )
         except Exception:  # noqa: BLE001 -- unchecked, as before
             _log.warning("draft.check_history_failed site=%s", item.site_id, exc_info=True)
-    found = checks.doubt(item.kind, item.args, fields, history)
+    found = checks.doubt(item.kind, item.args, fields, history, today=_today(gw))
+    if found is None:
+        found = await _repeat_of_saved(gw, item, fields)
     if found is None:
         return item
     item.state = dr.NEEDS_ANSWER
     item.question = say(found.key, getattr(gw, "wording_language", "english"), **found.values)
-    item.options = list(checks.OPTIONS)
+    item.options = list(checks.OPTIONS_OF.get(found.key, checks.OPTIONS))
     decided(gw, "check", found.key, item.kind)
     return item
+
+
+async def _repeat_of_saved(gw: Any, item: dr.DraftItem, fields: dict[str, Any]) -> checks.Doubt | None:
+    """Request 159 (C): the same line was saved earlier today by this sender ("already
+    saved at 11:05. Save again?"); a real second delivery is one tap away. The
+    sender's recent saves come from the save journal; a failed read never stops
+    the line."""
+    journal = getattr(gw, "journal", None)
+    if journal is None or gw.actor is None:
+        return None
+    entries = getattr(gw, "recent_saves", None)
+    if entries is None:
+        try:
+            entries = await journal.recent(gw.actor.organization_id, gw.actor.user_id)
+        except Exception:  # noqa: BLE001 -- unchecked, as before
+            _log.warning("draft.repeat_check_failed", exc_info=True)
+            return None
+        with contextlib.suppress(AttributeError):
+            gw.recent_saves = entries  # one read per message, however many lines
+    day = str(fields.get("occurred_date") or "")[:10] or str(_today(gw) or "")
+    at = checks.already_saved(item.tool, item.args, day, item.site_id, entries)
+    if at is None:
+        return None
+    import datetime as dt
+    from zoneinfo import ZoneInfo
+
+    try:
+        zone = ZoneInfo(str(company_zone(getattr(gw.actor, "timezone", None))))
+    except Exception:  # noqa: BLE001 -- the time only words the question
+        zone = dt.UTC
+    return checks.Doubt("check.already_saved", {"time": dt.datetime.fromtimestamp(at, zone).strftime("%H:%M")})
 
 
 def _day_of_fields(fields: dict[str, Any]) -> Any:
@@ -709,13 +742,34 @@ async def cancel(gw: Any, draft: dr.MessageDraft) -> ReplySpec:
             if item.kind == dr.KIND_ACTION and item.action_id:
                 await gw.actions.store.drop(gw.actor, item.action_id)
     gw.draft = None
+    saved = await _saved_with(gw, draft)
+    if saved:
+        # Request 159 (E): the rest of a card that was partly saved ("✅ Saved 1 · still
+        # need ..."); "nothing saved" was untrue (live 30 Oct: 30 workers were saved).
+        return ReplySpec(text=say("cancel.rest", getattr(gw, "wording_language", "english"), saved="; ".join(saved)))
     return ReplySpec(text=dr.CANCELLED)
+
+
+async def _saved_with(gw: Any, draft: dr.MessageDraft) -> list[str]:
+    """The lines saved by the Save that left ``draft`` as its rest (the saved card
+    names the rest's draft), else none."""
+    if gw.cards is None or gw.actor is None:
+        return []
+    try:
+        card = await gw.cards.get(gw.actor)
+    except Exception:  # noqa: BLE001 -- the plain Cancel line is said then
+        return []
+    if card is None or card.state != CARD_SAVED or not card.rest or card.rest != draft.id:
+        return []
+    return [i.summary for i in card.items if i.summary]
 
 
 async def answer(gw: Any, draft: dr.MessageDraft, item_id: str, choice: int) -> ReplySpec:
     item = draft.item(item_id)
     if item is not None and checks.asking(item) and 0 <= choice < len(item.options):
-        return await _answer_check(gw, draft, item, right=item.options[choice] == checks.RIGHT)
+        return await _answer_check(gw, draft, item, right=item.options[choice] in checks.KEEPS)
+    if item is not None and item.asked_at_save and 0 <= choice < len(item.options):
+        return await _answer_save_question(gw, draft, item, item.options[choice])
     if item is not None and item.pending_answer and 0 <= choice < len(item.options):
         return await _answer_waiting(gw, draft, item, item.options[choice])
     if item is None or not dr.apply_answer(item, choice, today=_today(gw)):
@@ -728,12 +782,18 @@ async def _answer_check(gw: Any, draft: dr.MessageDraft, item: dr.DraftItem, *, 
     """The answer to a check question (request 143, D): right -> the line is ready;
     Change -> it is off the card and they send the right figure."""
     site = _card_site(gw, draft)
+    # Request 159 (C): one answer settles every line asking the same question ("already
+    # saved at 11:05. Save again?" on cement in, cement used and the issue alike).
+    same = [i for i in draft.items if checks.asking(i) and i.question == item.question]
     if right:
-        item.state, item.question, item.options = dr.OK, "", []
+        for one in same:
+            one.state, one.question, one.options = dr.OK, "", []
         await _persist(gw, draft)
         return dr.card_reply(draft, site=site)
-    draft.items.remove(item)
-    words = say("check.change", getattr(gw, "wording_language", "english"), line=item.line)
+    for one in same:
+        draft.items.remove(one)
+    key = "check.removed_repeat" if item.options == checks.REPEAT_OPTIONS else "check.change"
+    words = say(key, getattr(gw, "wording_language", "english"), line="; ".join(i.line for i in same))
     if draft.live:
         await _persist(gw, draft)
         return dr.card_reply(draft, words, site=site)
@@ -900,6 +960,18 @@ async def answer_typed(gw: Any, draft: dr.MessageDraft, text: str) -> ReplySpec 
 
     if (checked := await _typed_check(gw, draft, text)) is not None:
         return checked
+    for item in [i for i in draft.items if i.asked_at_save]:
+        picked = draft_answer.option_answer(text, item.options)
+        if picked is not None:
+            return await _answer_save_question(gw, draft, item, picked)
+    from .material_entry import AWAIT_NEW_MATERIAL, typed_new_material_answer
+
+    for item in [i for i in draft.items if i.pending_answer and i.awaiting == AWAIT_NEW_MATERIAL]:
+        # Request 159 (D): "Add Tmt steel bars material", "TMT steel", "yes" answer
+        # "Add it as a new material?" (live 30 Oct they were read as new messages).
+        picked = typed_new_material_answer(text, str(item.args.get("material") or ""), item.options)
+        if picked is not None:
+            return await _answer_waiting(gw, draft, item, picked)
     where = next((i for i in draft.items if i.needs_site), None)
     if where is not None:
         picked = draft_answer.site_answer(gw.actor, text, where.options)
@@ -1012,13 +1084,68 @@ class _Failed(Exception):
         self.reason = reason
 
 
+class _Asks(Exception):
+    """Request 159 (A): the item's workflow asked a question at Save ("Which account
+    did you pay from?"). Nothing is written; the question goes on the item's line."""
+
+    def __init__(self, item: dr.DraftItem, question: str, options: list[str]) -> None:
+        super().__init__(question)
+        self.item = item
+        self.question = question
+        self.options = options
+
+
+#: The most answers fed to one item's workflow in one Save (each answer may lead
+#: to the next question; this is only a stop for a workflow that keeps asking).
+_MAX_ANSWERS = 4
+
+
+def question_title(prompt: str | None) -> str:
+    """The question of a workflow's slot prompt: its first line, without the
+    retry preface ("I couldn't tell which one you meant. Which account...")."""
+    from workflows.slots import PROMOTION_RETRY_PREFIX, RETRY_PREFIX
+
+    first = next((line.strip() for line in (prompt or "").splitlines() if line.strip()), "")
+    for prefix in (RETRY_PREFIX, PROMOTION_RETRY_PREFIX):
+        if first.startswith(prefix):
+            first = first[len(prefix):].strip()
+    return first
+
+
+async def _answered(gw: Any, item: dr.DraftItem, run: Any) -> Any:
+    """The run after the answers already given on the card are fed to the
+    questions it asks, one by one (request 159 A). A question with no answer yet
+    stops here, and the caller puts it on the card."""
+    fed: set[str] = set()
+    for _ in range(_MAX_ANSWERS):
+        if run is None or run.status is not WorkflowRunStatus.AWAITING_INPUT or gw.answer_question is None:
+            return run
+        title = question_title(run.pending_prompt)
+        said = item.answers.get(title)
+        if said is None or title in fed:
+            # Not answered yet, or asked again after its answer (it did not fit):
+            # the sender is asked, never the same answer fed twice.
+            return run
+        fed.add(title)
+        answered = await gw.answer_question(said)
+        if answered is None:
+            return run
+        run = answered
+    return run
+
+
 @contextlib.asynccontextmanager
 async def _no_transaction():
     yield
 
 
-def _clean(text: str) -> str:
-    return " ".join((text or "").split())[:160]
+def _clean(text: str, limit: int = 160) -> str:
+    """One line of at most ``limit`` characters, cut at a word ("…"), never mid-word
+    (live 30 Oct: "...Reply with a number, or just t")."""
+    flat = " ".join((text or "").split())
+    if len(flat) <= limit:
+        return flat
+    return flat[: limit - 1].rsplit(" ", 1)[0].rstrip(",;:") + "…"
 
 
 async def _write(gw: Any, item: dr.DraftItem) -> tuple[StepResult, tuple[str, uuid.UUID] | None]:
@@ -1035,9 +1162,17 @@ async def _write(gw: Any, item: dr.DraftItem) -> tuple[StepResult, tuple[str, uu
         raise _Failed(item, "that can't be saved here yet")
     if item.kind == dr.KIND_CHANGE:
         await _take_back(gw, item)
-    run = await gw.start_workflow(ready.decision, ready.event)
+    run = await _answered(gw, item, await gw.start_workflow(ready.decision, ready.event))
     if run is not None and run.status is WorkflowRunStatus.BLOCKED_PENDING_CONFIRMATION:
         raise _Failed(item, "an earlier question is still waiting for its answer")
+    if run is not None and run.status is WorkflowRunStatus.AWAITING_INPUT and run.slot_options:
+        # Request 159 (A): the workflow needs one more answer. It is asked on the
+        # item's line with buttons, never turned into a failure (live 30 Oct: "which
+        # account?" came back as an error, and the typed answer made a second line).
+        if gw.abandon_question is not None:
+            with contextlib.suppress(Exception):
+                await gw.abandon_question()
+        raise _Asks(item, question_title(run.pending_prompt), [str(o.label) for o in run.slot_options])
     journey = SimpleNamespace(workflow_run=run, planner_decision=ready.decision)
     step = await gw._after_run(journey, candidate)
     if step.status == "needs_confirmation" and gw.confirm_now is not None:
@@ -1171,6 +1306,9 @@ async def save(gw: Any, draft: dr.MessageDraft) -> ReplySpec:
                 draft_rest = rest
             else:
                 draft_rest = None
+    except _Asks as asked:
+        gw.handled = []
+        return await _asked_reply(gw, draft, asked)
     except _Failed as failed:
         gw.handled = []
         return await _failed_reply(gw, draft, failed)
@@ -1190,7 +1328,7 @@ async def save(gw: Any, draft: dr.MessageDraft) -> ReplySpec:
         for item, step in saved
     ]
     notes = [n for n in (_note(step) for _item, step in saved) if n]
-    await _remember_saved(gw, saved, fact_of_item)
+    await _remember_saved(gw, saved, fact_of_item, rest=draft_rest.id if draft_rest is not None else "")
     ran: list[str] = []
     for item in actions:
         ran.append(await _run_action(gw, item))
@@ -1254,7 +1392,11 @@ async def _run_action(gw: Any, item: dr.DraftItem) -> str:
 
 
 async def _remember_saved(
-    gw: Any, saved: list[tuple[dr.DraftItem, StepResult]], facts: list[tuple[str, uuid.UUID] | None]
+    gw: Any,
+    saved: list[tuple[dr.DraftItem, StepResult]],
+    facts: list[tuple[str, uuid.UUID] | None],
+    *,
+    rest: str = "",
 ) -> None:
     """Keep the saved card where "undo that" looks for it (runtime/agent/cards.py),
     so an undo after the Save works as it did. ``facts`` has one slot per saved
@@ -1276,7 +1418,9 @@ async def _remember_saved(
             replaced = {str((i.target or {}).get("fact_id")) for i, _s in saved}
             if old is not None and old.state == CARD_SAVED:
                 kept = [i for i in old.items if i.fact_id not in replaced]
-        await gw.cards.put(gw.actor, new_card(CARD_SAVED, [*kept, *items]))
+        card = new_card(CARD_SAVED, [*kept, *items])
+        card.rest = rest
+        await gw.cards.put(gw.actor, card)
     except Exception:  # noqa: BLE001 -- the card only enables undo
         _log.warning("agent.draft_card_remember_failed", exc_info=True)
 
@@ -1307,6 +1451,32 @@ def _saved_reply(
     if rest is not None:
         return dr.card_reply(rest, text, site=_card_site(gw, rest))
     return ReplySpec(text=text)
+
+
+async def _asked_reply(gw: Any, draft: dr.MessageDraft, asked: _Asks) -> ReplySpec:
+    """Request 159 (A): nothing was written; the line whose workflow asked waits on
+    the question, with its options as the card's buttons. The answer is kept on
+    the line (``answer``) and the Save goes on by itself."""
+    item = asked.item
+    _log.info("draft.save_asked draft=%s kind=%s question=%s", draft.id, item.kind, asked.question)
+    item.state, item.awaiting = dr.NEEDS_ANSWER, dr.AWAIT_SAVE_QUESTION
+    item.question, item.options = asked.question, list(asked.options)
+    _keep(gw, draft)
+    await _persist(gw, draft)
+    decided(gw, "save_question", asked.question, item.kind)
+    return dr.card_reply(draft, site=_card_site(gw, draft))
+
+
+async def _answer_save_question(gw: Any, draft: dr.MessageDraft, item: dr.DraftItem, option: str) -> ReplySpec:
+    """The answer to a question asked at Save: kept on the line, and the Save they
+    already tapped goes on (asked again only if the workflow has another question)."""
+    item.answers = {**item.answers, item.question: option}
+    item.state, item.awaiting, item.question, item.options = dr.OK, "", "", []
+    _log.info("draft.save_question_answered draft=%s kind=%s", draft.id, item.kind)
+    if draft.waiting_items:
+        await _persist(gw, draft)
+        return dr.card_reply(draft, site=_card_site(gw, draft))
+    return await save(gw, draft)
 
 
 async def _failed_reply(gw: Any, draft: dr.MessageDraft, failed: _Failed) -> ReplySpec:
