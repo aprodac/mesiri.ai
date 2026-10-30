@@ -76,6 +76,21 @@ AWAIT_NEW_MATERIAL = "new_material"
 #: waits on it (request 129).
 AWAIT_AMOUNT = "amount"
 ADD_IT = "Yes, add it"
+#: Request 159 (part D): the add choice shown after the closest listed materials.
+ADD_NEW = "➕ Add new: "
+#: A listed material this close to a new name is offered first ("Same as Steel rods?").
+NEAR_DUPLICATE = 0.55
+NEAR_LIMIT = 3
+_ROW_TITLE = 24
+
+
+def add_new_label(name: str) -> str:
+    """"➕ Add new: TMT steel bars", cut to a WhatsApp row title."""
+    return (ADD_NEW + name.strip())[:_ROW_TITLE]
+
+
+def is_add_new(option: str) -> bool:
+    return option == ADD_IT or option.startswith(ADD_NEW)
 #: WhatsApp lists hold ten rows: nine materials and "Something else".
 LIST_MATERIALS = 9
 
@@ -326,6 +341,18 @@ class MaterialEntry(EntryScope):
         if may_create and fields.get("new_material"):
             return await self._create(organization_id, name, fields, ctx, message)
         if may_create:
+            near = await self._near_duplicates(organization_id, name)
+            if near:
+                # Before anything is created: "Same as Steel rods?" (it runs for everyone).
+                return Say(
+                    "choose",
+                    f'Not saved yet: "{name}" is not in the material list, but it is close to {", ".join(near)}. '
+                    "Ask which one they meant. If they pick a listed material, call this tool again with that "
+                    f'exact material; if they pick "{add_new_label(name)}", call it again with new_material true.',
+                    question=f'"{name}" isn\'t in your list. Is it the same as one of these?',
+                    options=(*near, add_new_label(name)),
+                    awaiting=AWAIT_NEW_MATERIAL,
+                )
             return Say(
                 "choose",
                 f'Not saved yet: "{name}" is not in the company\'s material list. Ask whether to add it '
@@ -341,6 +368,25 @@ class MaterialEntry(EntryScope):
             name,
             note=" A new material is added by an admin on the dashboard.",
         )
+
+    async def _near_duplicates(self, organization_id: str, name: str) -> list[str]:
+        """Up to three listed materials close to ``name`` in spelling."""
+        from difflib import SequenceMatcher
+
+        try:
+            closest = getattr(self.catalog_query, "closest_materials", None)
+            if closest is None:
+                return []
+            listed, _ = await closest(organization_id=organization_id, name=name, limit=NEAR_LIMIT)
+        except Exception:  # noqa: BLE001 -- no suggestion is better than a failed save
+            return []
+        typed = " ".join(name.casefold().split())
+        near: list[str] = []
+        for row in listed:
+            listed_name = " ".join(str(row["name"]).casefold().split())
+            if SequenceMatcher(None, typed, listed_name).ratio() >= NEAR_DUPLICATE or typed in listed_name:
+                near.append(str(row["name"]))
+        return near
 
     async def _named_on_bill(self, organization_id: str, name: str, message: Any) -> dict | None:
         """The listed material a bill line names, by its words and word pairs

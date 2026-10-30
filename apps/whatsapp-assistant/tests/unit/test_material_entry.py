@@ -332,3 +332,35 @@ async def test_a_typed_trade_name_still_asks():
     entry = _entry(catalog=_Catalog([CEMENT, SAND]), modules=_Modules(["materials"], create_roles=[]))
     said = await _prepare(entry, material_name="Cement OPC 53 grade")
     assert said.status == "choose"
+
+
+class _CatalogWithClosest(_Catalog):
+    async def closest_materials(self, *, organization_id: str, name: str, limit: int = 9):
+        return self.materials[:limit], len(self.materials)
+
+
+STEEL_RODS = {"id": "88888888-8888-4888-8888-888888888888", "name": "Steel rods", "default_unit_id": "u-bag", "is_active": True}
+
+
+async def test_a_new_name_close_to_a_listed_one_asks_same_as_before_creating():
+    """Request 159 (part D.3): the guard runs for the site engineer too."""
+    catalog = _CatalogWithClosest([STEEL_RODS, SAND])
+    entry = _entry(catalog=catalog, modules=_Modules(["materials"], create_roles=["SITE_ENGINEER"]))
+    said = await _prepare(entry, material_name="Steel bars", unit="bags")
+    assert said.status == "choose" and catalog.created == []
+    assert said.options[0] == "Steel rods" and said.options[-1].startswith("➕ Add new: Steel")
+    assert "Sand" not in said.options
+
+
+async def test_a_name_far_from_everything_is_offered_as_a_plain_add():
+    catalog = _CatalogWithClosest([SAND])
+    entry = _entry(catalog=catalog, modules=_Modules(["materials"], create_roles=["SITE_ENGINEER"]))
+    said = await _prepare(entry, material_name="Fevicol", unit="bags")
+    assert said.options == ("Yes, add it", "No")
+
+
+async def test_a_role_outside_the_list_never_gets_the_add_choice():
+    catalog = _CatalogWithClosest([STEEL_RODS])
+    entry = _entry(catalog=catalog, modules=_Modules(["materials"], create_roles=["ADMIN"]))
+    said = await _prepare(entry, material_name="Steel bars", unit="bags")
+    assert catalog.created == [] and "➕" not in " ".join(said.options or ())

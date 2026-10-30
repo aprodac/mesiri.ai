@@ -771,7 +771,7 @@ async def _answer_waiting(gw: Any, draft: dr.MessageDraft, item: dr.DraftItem, o
     as the typed answer does) and the entry is prepared again, with every check
     it runs. Ready: the line becomes the entry. Asked again: the new question
     replaces the old. Nothing is written to a domain table here."""
-    from .material_entry import ADD_IT, AWAIT_NEW_MATERIAL, AWAIT_UNIT
+    from .material_entry import AWAIT_NEW_MATERIAL, AWAIT_UNIT, is_add_new
     from .toolbox import per_stock_unit
 
     site = _card_site(gw, draft)
@@ -781,7 +781,7 @@ async def _answer_waiting(gw: Any, draft: dr.MessageDraft, item: dr.DraftItem, o
         return await _answer_where(gw, draft, item.awaiting, option)
     args = dict(item.args)
     if item.awaiting == AWAIT_NEW_MATERIAL:
-        if option != ADD_IT:
+        if option == "No":
             draft.items.remove(item)
             if draft.live:
                 await gw.drafts.put(draft)
@@ -789,7 +789,12 @@ async def _answer_waiting(gw: Any, draft: dr.MessageDraft, item: dr.DraftItem, o
                 await gw.drafts.discard(draft.id)
             words = f"Okay, {item.line} is off the card. Send it again with a material from your list."
             return dr.card_reply(draft, words, site=site) if draft.live else ReplySpec(text=words)
-        args["new_material"] = True
+        if is_add_new(option):
+            args["new_material"] = True
+        else:
+            # "Same as Steel rods?": a listed material was picked, nothing is created.
+            args["material"] = option
+            args.pop("new_material", None)
     elif item.awaiting == AWAIT_UNIT:
         # "1 load = how many cum?" answered 3: one cum is a third of a load.
         count = per_stock_unit({"unit_amount": 1, "stock_amount": option})
