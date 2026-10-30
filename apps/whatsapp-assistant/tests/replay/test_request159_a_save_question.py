@@ -213,6 +213,6 @@ async def test_a_line_dated_after_today_waits_on_the_date_question(world):
     result = await world.say(FakeToolCallingProvider([[cement], "Check it."]), "50 bag cement vannu")
     # The question sits on the line it is about.
     assert "Cement in: 50 bags (❓ 📅 " in result.reply.text
-    assert "Yes, it's right" in titles(result.reply)
+    assert {"Today", "Another date"} <= set(titles(result.reply))
     (item,) = await open_items(world)
     assert item.state == dr.NEEDS_ANSWER

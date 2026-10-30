@@ -203,6 +203,23 @@ class DraftItem:
 
     @classmethod
     def from_json(cls, raw: Any) -> DraftItem | None:
+        item = cls._from_json(raw)
+        return item.healed() if item is not None else None
+
+    def healed(self) -> DraftItem:
+        """Request 161: an item with an open question is WAITING, never UNREADABLE.
+        Cards saved before request 159 marked a prepared line unreadable with the
+        workflow's question as its reason ("Which account did you pay from?"); read
+        back, such a line waits on that question again (once: the stored draft is
+        rewritten on its next put), so it is not also listed under "Couldn't read".
+        A real failure (an unprepared line, or a reason that is not a question) stays."""
+        if self.state == UNREADABLE and self.ready is not None and (self.options or self.reason.rstrip().endswith("?")):
+            self.state, self.awaiting = NEEDS_ANSWER, AWAIT_SAVE_QUESTION
+            self.question, self.reason = self.question or self.reason, ""
+        return self
+
+    @classmethod
+    def _from_json(cls, raw: Any) -> DraftItem | None:
         try:
             return cls(
                 kind=str(raw["kind"]),

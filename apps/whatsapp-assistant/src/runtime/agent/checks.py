@@ -39,6 +39,10 @@ REPEAT_OPTIONS = [AGAIN, REMOVE]
 OPTIONS_OF = {"check.already_saved": REPEAT_OPTIONS}
 #: The answers that keep the line.
 KEEPS = frozenset({RIGHT, AGAIN})
+#: Request 161: the answers of "Bill date 30 Dec? Today is 30 Oct": today, the day as
+#: read (its title is the day, in the middle), or another date typed.
+TODAY = "Today"
+ANOTHER_DATE = "Another date"
 
 #: Above this many workers, a site with no history yet is asked.
 NEW_SITE_WORKERS = 150
@@ -50,6 +54,8 @@ class Doubt:
 
     key: str
     values: dict[str, Any] = field(default_factory=dict)
+    #: The answers when they are not ``OPTIONS_OF``'s (a date check names the day).
+    options: tuple[str, ...] = ()
 
 
 def _number(value: Any) -> float | None:
@@ -98,7 +104,12 @@ def doubt(
     # Request 159 (A): a day after today, on any kind of line (live 30 Oct: a tea bill
     # of 30 Oct read as 30 Dec).
     if (day := _future_day(args, fields, today)) is not None:
-        return Doubt("check.future_date", {"day": f"{day.day} {day:%b}", "today": f"{today.day} {today:%b}"})
+        shown = f"{day.day} {day:%b}"
+        return Doubt(
+            "check.future_date",
+            {"day": shown, "today": f"{today.day} {today:%b}"},
+            (TODAY, shown, ANOTHER_DATE),
+        )
     if kind == dr.KIND_LABOUR:
         workers = _workers(fields)
         usual = getattr(history, "usual_workers", None)
@@ -176,7 +187,13 @@ def already_saved(tool: str, args: dict[str, Any], day: str, site_id: str, entri
 def asking(item: Any) -> bool:
     """The line waits on a check question (its answers are ``OPTIONS``)."""
     options = list(getattr(item, "options", None) or [])
-    return getattr(item, "state", "") == dr.NEEDS_ANSWER and options in (OPTIONS, REPEAT_OPTIONS)
+    return getattr(item, "state", "") == dr.NEEDS_ANSWER and (options in (OPTIONS, REPEAT_OPTIONS) or asking_date(item))
+
+
+def asking_date(item: Any) -> bool:
+    """The line waits on a future-date question (Today / the day / Another date)."""
+    options = list(getattr(item, "options", None) or [])
+    return getattr(item, "state", "") == dr.NEEDS_ANSWER and len(options) == 3 and options[0] == TODAY and options[2] == ANOTHER_DATE
 
 
 def with_figure(item: Any, figure: float) -> dict[str, Any] | None:

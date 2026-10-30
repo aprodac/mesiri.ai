@@ -367,7 +367,7 @@ async def _checked(gw: Any, item: dr.DraftItem) -> dr.DraftItem:
         return item
     item.state = dr.NEEDS_ANSWER
     item.question = say(found.key, getattr(gw, "wording_language", "english"), **found.values)
-    item.options = list(checks.OPTIONS_OF.get(found.key, checks.OPTIONS))
+    item.options = list(found.options or checks.OPTIONS_OF.get(found.key, checks.OPTIONS))
     decided(gw, "check", found.key, item.kind)
     return item
 
@@ -766,6 +766,8 @@ async def _saved_with(gw: Any, draft: dr.MessageDraft) -> list[str]:
 
 async def answer(gw: Any, draft: dr.MessageDraft, item_id: str, choice: int) -> ReplySpec:
     item = draft.item(item_id)
+    if item is not None and checks.asking_date(item) and 0 <= choice < len(item.options):
+        return await _answer_date(gw, draft, item, choice)
     if item is not None and checks.asking(item) and 0 <= choice < len(item.options):
         return await _answer_check(gw, draft, item, right=item.options[choice] in checks.KEEPS)
     if item is not None and item.asked_at_save and 0 <= choice < len(item.options):
@@ -776,6 +778,29 @@ async def answer(gw: Any, draft: dr.MessageDraft, item_id: str, choice: int) -> 
         return ReplySpec(text=dr.ALREADY_DONE)
     await gw.drafts.put(draft)
     return dr.card_reply(draft, site=_card_site(gw, draft))
+
+
+async def _answer_date(gw: Any, draft: dr.MessageDraft, item: dr.DraftItem, choice: int) -> ReplySpec:
+    """The answer to "Bill date 30 Dec? Today is 30 Oct" (request 161): Today files the
+    line on today, the day keeps it as read, Another date takes it off the card to be
+    sent again with the right date."""
+    site = _card_site(gw, draft)
+    if choice == 1:
+        item.state, item.question, item.options = dr.OK, "", []
+        await _persist(gw, draft)
+        return dr.card_reply(draft, site=site)
+    if choice == 0:
+        new = await _checked(gw, await _prepare_line(gw, item, {**item.args, "date": "today"}))
+        draft.items[draft.items.index(item)] = new
+        await _persist(gw, draft)
+        return dr.card_reply(draft, site=site)
+    draft.items.remove(item)
+    words = say("check.change_date", getattr(gw, "wording_language", "english"), line=item.line)
+    if draft.live:
+        await _persist(gw, draft)
+        return dr.card_reply(draft, words, site=site)
+    await gw.drafts.discard(draft.id)
+    return ReplySpec(text=words)
 
 
 async def _answer_check(gw: Any, draft: dr.MessageDraft, item: dr.DraftItem, *, right: bool) -> ReplySpec:
@@ -1259,6 +1284,11 @@ async def _take_back(gw: Any, item: dr.DraftItem) -> None:
 
 async def save(gw: Any, draft: dr.MessageDraft) -> ReplySpec:
     """The Save tap: every ready item written in one transaction."""
+    for item in draft.items:
+        if item.asked_at_save and not item.options:
+            # Request 161: a card from before request 159, healed on load, waits on a
+            # question it has no buttons for: the workflow asks it again, with them.
+            item.state, item.awaiting, item.question = dr.OK, "", ""
     ready = draft.ready_items
     if not ready:
         return dr.card_reply(draft, dr.NOTHING_READY, site=_card_site(gw, draft)) if draft.live else ReplySpec(

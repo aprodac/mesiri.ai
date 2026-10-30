@@ -184,7 +184,7 @@ LINES: dict[str, dict[str, str]] = {
         "hinglish": "{used} {unit} use hua, par site par {stock} {unit} hi stock hai. Sahi hai?",
     },
     "check.future_date": {
-        "english": "📅 It says {day}, which is after today. Save it as today, {today}?",
+        "english": "📅 Bill date {day}? Today is {today}.",
         "manglish": "📅 {day} ennaanu, athu innathe kazhinjulla date aanu. Innathe ({today}) aayi save cheyyatte?",
         "malayalam": "📅 {day} എന്നാണ്, അത് ഇന്നത്തേതിന് ശേഷമുള്ള തീയതിയാണ്. ഇന്നത്തെ ({today}) തീയതിയിൽ സേവ് ചെയ്യട്ടെ?",
         "hindi": "📅 इसमें {day} लिखा है, जो आज के बाद की तारीख है. आज ({today}) की तारीख में सेव करें?",
@@ -196,6 +196,13 @@ LINES: dict[str, dict[str, str]] = {
         "malayalam": "{time}-ന് സേവ് ആയി. വീണ്ടും സേവ് ചെയ്യണോ?",
         "hindi": "{time} पर सेव हो चुका. फिर से सेव करें?",
         "hinglish": "{time} par save ho chuka. Phir se save karein?",
+    },
+    "check.change_date": {
+        "english": "Okay, {line} is off the card. Send it again with the right date.",
+        "manglish": "Sheri, {line} card-il ninnu maatti. Shariyaaya date koode ayakku.",
+        "malayalam": "ശരി, {line} കാർഡിൽ നിന്ന് മാറ്റി. ശരിയായ തീയതിയോടെ വീണ്ടും അയക്കൂ.",
+        "hindi": "ठीक है, {line} कार्ड से हटा दिया. सही तारीख के साथ फिर भेजें.",
+        "hinglish": "Theek hai, {line} card se hata diya. Sahi date ke saath phir bhejein.",
     },
     "check.removed_repeat": {
         "english": "Okay, not saved twice: {line} stays saved once.",
