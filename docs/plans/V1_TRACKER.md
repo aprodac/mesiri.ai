@@ -535,4 +535,4 @@ Structural drawings become the list of what has to be built (`location_nodes` + 
 | 2026-10-27 | Request 126 control panel: draft_v2 On/Off switch on company Settings tab | `23580f5` |
 | 2026-10-27 | SA-22 costs on the company page, by person (AI + WhatsApp), 30-day cost on the companies list | `82bf8a4d`, `13622f4d` |
 | 2026-10-27 | SA-23 Costs page filter bar (period, custom dates, company, AI/WhatsApp, search) and People across companies | `5cc7bb71`, `e37efc3e` |
-| 2026-10-30 | Request 159 part D: site engineers may add materials from WhatsApp (code default `SITE_ENGINEER` added; no migration). Admin FYI / merge / shared approval card NOT built (plan 158 unreadable) | `PENDING` |
+| 2026-10-30 | Request 159 part D: site engineers may add materials from WhatsApp (code default `SITE_ENGINEER` added; no migration). Admin FYI / merge / shared approval card NOT built (plan 158 unreadable) | `c5b9691` |
