@@ -73,17 +73,28 @@ async def test_live_model_on_the_module_skills():
     from mesiri_ai.adapters.gemini.adapter import GeminiProvider
 
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    engine = os.environ.get("MESIRI_V2_ENGINE", "v2")  # v2 | adk
     provider = GeminiProvider(GeminiSettings(api_key=SecretStr(key), model=model))
     right, total, wrong = Counter(), Counter(), []
     for module, case in CASES:
-        verdict, _ = await run_case(case, provider)
+        verdict, _ = await run_case(case, provider, engine=engine)
         total[module] += 1
         right[module] += verdict.right
         if verdict.wrong_save:
             wrong.append(case["id"])
         print(f"{'PASS' if verdict.right else 'FAIL'} {module}#{case['id']} {case['message']!r} {verdict.why}")
     for module in skills.MODULES:
-        print(f"MODEL {model} {module}: {right[module]}/{total[module]}")
+        print(f"ENGINE {engine} MODEL {model} {module}: {right[module]}/{total[module]}")
     print(f"WRONG SAVES {wrong}")
     assert not wrong
     assert all(right[m] / total[m] >= 0.9 for m in skills.MODULES)
+
+
+@pytest.mark.parametrize(("module", "case"), CASES[:6], ids=[f"adk:{m}#{c['id']}" for m, c in CASES[:6]])
+async def test_the_same_cases_run_on_the_adk_engine(module, case):
+    """The kit runs a case on v2-on-ADK too (scripted ADK model), so the live run can compare engines."""
+    from agent_v2.adk.models import ScriptedLlm
+
+    calls = [(name, args) for name, args in case["calls"]]
+    verdict, _ = await run_case(case, ScriptedLlm([calls, "Check it."] if calls else ["Sorry, I don't have that."]), engine="adk")
+    assert verdict.right, verdict.why

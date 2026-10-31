@@ -114,17 +114,49 @@ async def _given(world: Any, case: dict[str, Any]) -> None:
         )
 
 
-async def run_case(case: dict[str, Any], provider: Any) -> tuple[Verdict, Any]:
+def _adk_runner(provider: Any) -> tuple[Any, list[tuple[str, dict[str, Any]]]]:
+    """Request 185: the same case on v2-on-ADK (``engine="adk"``). ``provider`` is a GeminiProvider
+    (its key and model are reused) or an ADK model; the calls are recorded at the shared handler."""
+    from tests.replay.test_agent_replay import _Catalog
+
+    from agent_v2.adk.agent import AdkAgent
+    from agent_v2.adk.models import gemini
+
+    calls: list[tuple[str, dict[str, Any]]] = []
+    model = provider
+    if hasattr(provider, "run_tools"):
+        settings = provider._settings
+        model = gemini(settings.model, settings.api_key.get_secret_value())
+
+    class _Recorded(AdkAgent):
+        def handler(self, state, organization_id, *, shadow=False):  # noqa: ANN001, ANN202
+            inner = super().handler(state, organization_id, shadow=shadow)
+
+            async def record(name, args):  # noqa: ANN001, ANN202
+                calls.append((name, dict(args)))
+                return await inner(name, args)
+
+            return record
+
+    agent = _Recorded(model, catalog=_Catalog())
+    return V2Runner(None, AgentRunner(FakeToolCallingProvider(["(today's agent)"])), agent=agent), calls
+
+
+async def run_case(case: dict[str, Any], provider: Any, *, engine: str = "v2") -> tuple[Verdict, Any]:
     world = await new_world()
     await _given(world, case)
     card = await world.drafts.open_for(world.actor.organization_id, world.actor.user_id)
-    recording = Recording(provider)
-    runner = V2Runner(recording, AgentRunner(FakeToolCallingProvider(["(today's agent)"])))
+    if engine == "adk":
+        runner, recorded = _adk_runner(provider)
+    else:
+        recording = Recording(provider)
+        recorded = recording.calls
+        runner = V2Runner(recording, AgentRunner(FakeToolCallingProvider(["(today's agent)"])))
     result = await runner.run(
         ctx=world.context(card_line=dr.context_line(card)), user_text=case["message"],
         gateway=world.gateway(case["message"]), scope=world.scope(), correlation_id="cor_skill_eval",
     )
-    names = [name for name, _ in recording.calls]
+    names = [name for name, _ in recorded]
     return judge(case, await open_items(world), names), result
 
 
