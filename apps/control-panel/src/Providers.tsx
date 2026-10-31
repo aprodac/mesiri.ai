@@ -33,6 +33,17 @@ interface AIConfig {
 // ──────────────────────────────────────────────────
 // Static capability definitions
 // ──────────────────────────────────────────────────
+// Gemini models offered for the WhatsApp assistant's brains (request 178). "Custom model..." takes any
+// other id (a newer preview, a Pro model): the id is passed to Gemini as typed.
+const GEMINI_AGENT_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-pro',
+  'gemini-3.5-flash-lite',
+  'gemini-3.5-flash',
+  'gemini-3.6-flash',
+];
+
 const CAPABILITY_DEFS: {
   key: string;
   label: string;
@@ -88,6 +99,18 @@ const CAPABILITY_DEFS: {
       gemini: ['gemini-2.5-flash'],
       deepseek: ['deepseek-chat'],
     },
+  },
+  {
+    key: 'agent',
+    label: "WhatsApp assistant (today's agent)",
+    providers: [{ value: 'gemini', label: 'Gemini' }],
+    models: { gemini: GEMINI_AGENT_MODELS },
+  },
+  {
+    key: 'agent_v2',
+    label: 'WhatsApp assistant v2 (pilot companies only)',
+    providers: [{ value: 'gemini', label: 'Gemini' }],
+    models: { gemini: GEMINI_AGENT_MODELS },
   },
 ];
 
@@ -286,6 +309,8 @@ export default function Providers() {
     extraction: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
     vision: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
     translation: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
+    agent: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
+    agent_v2: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
   });
 
   const [secretsInput, setSecretsInput] = useState<Record<string, { api_key: string; base_url: string }>>({
