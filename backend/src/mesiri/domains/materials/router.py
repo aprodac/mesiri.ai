@@ -21,6 +21,7 @@ from mesiri.domains.materials.invoices import (
     insert_invoice,
     insert_invoice_line,
 )
+from mesiri.domains.materials.names import MaterialNameError, require_latin_name
 from mesiri.domains.materials.posting import post_material_movement
 from mesiri.domains.materials.responses import (
     MaterialCatalogListResponse,
@@ -276,6 +277,10 @@ async def create_material(
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=422, detail="name is required")
+    try:
+        name = require_latin_name(name)
+    except MaterialNameError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     units_repo = UnitsOfMeasureRepository(conn)
     unit = await units_repo.get_by_id(body.default_unit_id)
     if unit is None or not unit["is_active"]:
@@ -335,7 +340,13 @@ async def update_material(
             raise HTTPException(status_code=422, detail="default_unit_id is not a valid active unit")
 
     name = body.name.strip() if body.name else None
+    if name == existing["name"]:
+        name = None  # unchanged: an old non-English name does not block editing other fields
     if name:
+        try:
+            name = require_latin_name(name)
+        except MaterialNameError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         clash = await repo.get_by_name(
             auth_context.organization_id, name, exclude_id=material_id
         )

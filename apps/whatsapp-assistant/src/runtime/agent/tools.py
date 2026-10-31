@@ -101,6 +101,17 @@ _NEW_MATERIAL = {
     "description": "Only true after the user said yes to adding this as a new material.",
 }
 
+#: Request 165: a material is saved in English, so the model gives the English name it
+#: already knows from reading the message (no extra call).
+_NAME_EN = {
+    "type": "string",
+    "description": (
+        "English trade name of the material, in Latin letters, e.g. 'Laterite stone' for "
+        "ചെങ്കല്ല്, 'Cement' for സിമന്റ്, 'Bricks' for ഇഷ്ടിക. Always give it when `material` is "
+        "not already an English name."
+    ),
+}
+
 _DATE = {
     "type": "string",
     "description": (
@@ -360,6 +371,7 @@ def tool_specs() -> list[ToolSpec]:
                         ),
                     },
                     "supplier": {"type": "string", "description": "Only if stated."},
+                    "name_en": _NAME_EN,
                     "new_material": _NEW_MATERIAL,
                     "date": _DATE,
                     "project": _PROJECT,
@@ -380,6 +392,7 @@ def tool_specs() -> list[ToolSpec]:
                     "quantity": {"type": "number"},
                     "unit": {"type": "string"},
                     "work_item": {"type": "string", "description": "What it was used for."},
+                    "name_en": _NAME_EN,
                     "new_material": _NEW_MATERIAL,
                     "date": _DATE,
                     "project": _PROJECT,
@@ -433,6 +446,7 @@ def tool_specs() -> list[ToolSpec]:
                     "material": _MATERIAL,
                     "quantity": {"type": "number"},
                     "unit": {"type": "string"},
+                    "name_en": _NAME_EN,
                     "new_material": _NEW_MATERIAL,
                     "project": _PROJECT,
                     "site": _SITE,
@@ -1135,6 +1149,7 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             "supplier": args.get("supplier") if received else None,
             "work_item": None if received else args.get("work_item"),
             "occurred_on": date,
+            "name_en": args.get("name_en"),
             "new_material": True if args.get("new_material") is True else None,
             **sc,
         }
@@ -1157,6 +1172,7 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             "quantity": args.get("quantity"),
             "unit": args.get("unit"),
             "direction": "opening_stock",
+            "name_en": args.get("name_en"),
             "new_material": True if args.get("new_material") is True else None,
             **sc,
         }

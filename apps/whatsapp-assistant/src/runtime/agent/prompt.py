@@ -182,6 +182,10 @@ If they give the amount in the stock unit instead, just save that.
 new material), nothing was saved: end your message with that question (its options are \
 shown as buttons for you), never pick for them. Their answer comes as their next message: call the same save tool again with that \
 exact name (and new_material true only after they said yes to adding it).
+- Materials are saved in English in Latin letters. On every material tool pass name_en, the \
+English trade name ("Laterite stone" for ചെങ്കല്ല്), unless `material` already is one. \
+If they answer a new-material question by typing an English name, call the tool again with \
+material as first said, that name as name_en and new_material true.
 - Their latest card may be listed in the context. "undo", "undo that", "remove the painters": \
 call undo_last. It removes the entries of that card only; pass targets (the ids in brackets) only \
 when they mean just some entries. Never say something was removed unless undo_last said it was; \

@@ -8,6 +8,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.application.dpr import fact_review
+from mesiri.domains.materials.names import alias_key, require_latin_name
 
 _material_receipts = sa.Table(
     "material_receipts",
@@ -84,6 +85,17 @@ _materials_catalog = sa.Table(
     sa.Column("created_by", sa.UUID(as_uuid=True)),
     sa.Column("updated_at", sa.DateTime(timezone=True)),
     sa.Column("updated_by", sa.UUID(as_uuid=True)),
+)
+
+_material_aliases = sa.Table(
+    "material_aliases",
+    sa.MetaData(),
+    sa.Column("id", sa.UUID(as_uuid=True)),
+    sa.Column("organization_id", sa.UUID(as_uuid=True)),
+    sa.Column("material_id", sa.UUID(as_uuid=True)),
+    sa.Column("alias_key", sa.String),
+    sa.Column("alias_text", sa.String),
+    sa.Column("created_by", sa.UUID(as_uuid=True)),
 )
 
 _units_of_measure = sa.Table(
@@ -763,6 +775,8 @@ class PostgresMaterialCatalogRepository:
         created_by: uuid.UUID,
     ) -> dict:
         new_id = uuid.uuid4()
+        # Request 165: one rule for every creator (API, WhatsApp, starter catalogue).
+        name = require_latin_name(name)
         stmt = sa.insert(_materials_catalog).values(
             id=new_id,
             organization_id=organization_id,
@@ -791,7 +805,7 @@ class PostgresMaterialCatalogRepository:
     ) -> dict | None:
         values: dict = {"updated_by": updated_by}
         if name is not None:
-            values["name"] = name
+            values["name"] = require_latin_name(name)
         if default_unit_id is not None:
             values["default_unit_id"] = default_unit_id
         if category is not None:
@@ -822,6 +836,51 @@ class PostgresMaterialCatalogRepository:
         )
         res = await self.conn.execute(stmt)
         return res.first() is not None
+
+    async def find_by_alias(self, organization_id: uuid.UUID, alias: str) -> dict | None:
+        """The active material this company's people call ``alias`` (request 165)."""
+        stmt = (
+            sa.select(_materials_catalog)
+            .select_from(
+                _materials_catalog.join(
+                    _material_aliases, _material_aliases.c.material_id == _materials_catalog.c.id
+                )
+            )
+            .where(
+                _material_aliases.c.organization_id == organization_id,
+                _material_aliases.c.alias_key == alias_key(alias),
+                _materials_catalog.c.is_active.is_(True),
+            )
+        )
+        row = (await self.conn.execute(stmt)).mappings().first()
+        return dict(row) if row else None
+
+    async def add_alias(
+        self,
+        organization_id: uuid.UUID,
+        material_id: uuid.UUID,
+        alias: str,
+        created_by: uuid.UUID | None,
+    ) -> None:
+        """Remember ``alias`` for the material; a word already remembered keeps its material."""
+        key = alias_key(alias)
+        if not key:
+            return
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        stmt = (
+            pg_insert(_material_aliases)
+            .values(
+                id=uuid.uuid4(),
+                organization_id=organization_id,
+                material_id=material_id,
+                alias_key=key,
+                alias_text=alias.strip(),
+                created_by=created_by,
+            )
+            .on_conflict_do_nothing(index_elements=["organization_id", "alias_key"])
+        )
+        await self.conn.execute(stmt)
 
     async def delete_unused(self, organization_id: uuid.UUID, material_id: uuid.UUID) -> bool:
         """Delete a catalog row only when no immutable ledger movement references it."""

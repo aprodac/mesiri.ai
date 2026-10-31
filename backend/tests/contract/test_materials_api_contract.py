@@ -235,6 +235,24 @@ async def test_create_material_with_unknown_unit_rejected(client, admin_ctx):
     assert resp.status_code == 422
 
 
+async def test_create_and_rename_with_a_malayalam_name_rejected(client, admin_ctx):
+    """Request 165: catalogue names are English in Latin letters."""
+    bags_id = await _bags_unit_id(client, admin_ctx["token"])
+    resp = await client.post(
+        "/materials",
+        json={"name": "ചെങ്കല്ല്", "default_unit_id": bags_id},
+        headers=_auth(admin_ctx["token"]),
+    )
+    assert resp.status_code == 422
+    material_id = await _make_material(client, admin_ctx["token"], "Laterite stone", bags_id)
+    resp = await client.patch(
+        f"/materials/{material_id}",
+        json={"name": "ചെങ്കല്ല്"},
+        headers=_auth(admin_ctx["token"]),
+    )
+    assert resp.status_code == 422
+
+
 async def test_delete_unused_material_removes_catalog_entry(client, admin_ctx):
     bags_id = await _bags_unit_id(client, admin_ctx["token"])
     material_id = await _make_material(client, admin_ctx["token"], "Delete Me", bags_id)

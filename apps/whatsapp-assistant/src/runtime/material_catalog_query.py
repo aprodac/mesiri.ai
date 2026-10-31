@@ -45,6 +45,33 @@ class MaterialCatalogQueryService:
                 return [exact]
             return await repo.find_by_name_fuzzy(org, name, limit=10)
 
+    async def find_by_alias(self, *, organization_id: str, alias: str) -> dict[str, Any] | None:
+        """The active material this company's people call ``alias`` (request 165)."""
+        from mesiri.infrastructure.postgres.repositories.materials import (
+            PostgresMaterialCatalogRepository,
+        )
+
+        async with self._db.transaction() as conn:
+            return await PostgresMaterialCatalogRepository(conn).find_by_alias(
+                uuid.UUID(organization_id), alias
+            )
+
+    async def add_alias(
+        self, *, organization_id: str, material_id: str, alias: str, created_by: str | None
+    ) -> None:
+        """Remember the word someone said for a material (an alias; the name stays English)."""
+        from mesiri.infrastructure.postgres.repositories.materials import (
+            PostgresMaterialCatalogRepository,
+        )
+
+        async with self._db.transaction() as conn:
+            await PostgresMaterialCatalogRepository(conn).add_alias(
+                uuid.UUID(organization_id),
+                uuid.UUID(material_id),
+                alias,
+                _uuid_or_none(created_by),
+            )
+
     async def list_active_materials(self, *, organization_id: str) -> list[dict[str, Any]]:
         """Fallback candidate list when nothing matched the reported name at
         all -- still gives the user something to pick from."""
@@ -217,6 +244,12 @@ class MaterialCatalogQueryService:
             if existing is not None:
                 return existing
 
+            # Request 165: only English names in Latin letters reach the catalogue
+            # (``MaterialNameError`` from the repository is a caller bug here: None).
+            from mesiri.domains.materials.names import is_latin_name
+
+            if not is_latin_name(clean_name):
+                return None
             return await repo.create(
                 organization_id=org,
                 name=clean_name,

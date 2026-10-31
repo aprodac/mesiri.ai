@@ -30,6 +30,7 @@ from typing import Any
 
 from canonicalization.occurred_date import resolve_occurred_date
 from channel.receipt.data import company_zone
+from mesiri.domains.materials.names import alias_key
 from mesiri.domains.materials.validation import OPENING_STOCK, role_can_adjust
 from mesiri_contracts.assistant.canonical_event import CanonicalEventType
 from mesiri_contracts.assistant.enums import InputModality
@@ -51,6 +52,7 @@ from .entry_base import (
     choose,
     number,
 )
+from .material_names import EnglishName, english_name
 
 __all__ = ["MaterialEntry", "Ready", "Say"]
 
@@ -84,9 +86,32 @@ NEAR_LIMIT = 3
 _ROW_TITLE = 24
 
 
-def add_new_label(name: str) -> str:
-    """"➕ Add TMT steel bars", cut to a WhatsApp row title."""
-    return (ADD_NEW + name.strip())[:_ROW_TITLE]
+_NAME_NOTE = (
+    "Materials are saved in English: when you call this tool again, always pass name_en, the "
+    "English trade name in Latin letters ('Laterite stone'). If they type an English name for it, "
+    "call again with material as first said and name_en = what they typed, as a new material."
+)
+
+
+def _name_question(named: EnglishName, said: str) -> str:
+    """What will be stored, and the way to change it (request 165 C)."""
+    if named.sure:
+        if named.name.casefold() == " ".join(said.casefold().split()):
+            return ""
+        return f' It will be saved as "{named.name}".'
+    return f' Name it "{named.name}"? Or type the English name.'
+
+
+def add_new_label(name: str, said: str = "") -> str:
+    """"➕ Add Laterite stone (ചെങ്കല്ല്)": the English name that will be stored, with
+    the word they said in brackets when it fits a WhatsApp row title (request 165)."""
+    base = ADD_NEW + name.strip()
+    word = " ".join(said.split())
+    if word and word.casefold() != name.strip().casefold():
+        with_word = f"{base} ({word})"
+        if len(with_word) <= _ROW_TITLE:
+            return with_word
+    return base[:_ROW_TITLE]
 
 
 def is_add_new(option: str) -> bool:
@@ -98,7 +123,13 @@ def is_add_new(option: str) -> bool:
 _ADD_WORDS = frozenset(
     "add yes y ok okay sheri shari athe venam cheyyu cheyy aakku akku haan ha haa ചേർക്കൂ ചേർക്ക് ശരി അതെ വേണം जोड़ो हाँ".split()
 )
-_NO_WORDS = frozenset("no venda vendaa illa nahi नहीं വേണ്ട ഇല്ല".split())
+_NO_WORDS = frozenset("no venda vendaa illa nahi नहीं वेणा വേണ്ട ഇല്ല".split())
+#: "it's a new one": "new / puthiya / vere type / save it as just കല്ല്" picks the add
+#: option (request 163/165: a typed way out of the "same as ...?" question).
+_NEW_WORDS = frozenset(
+    "new puthiya puthu puthiyathu vere different separate another save just only "
+    "പുതിയ പുതിയത് വേറെ വേറൊരു".split()
+)
 
 
 def typed_new_material_answer(text: str, name: str, options: list[str]) -> str | None:
@@ -115,17 +146,18 @@ def typed_new_material_answer(text: str, name: str, options: list[str]) -> str |
     listed = [o for o in options if not is_add_new(o) and o != "No"]
     if set(said) <= _NO_WORDS:
         return "No" if "No" in options else None
-    rest = [w for w in said if w not in _ADD_WORDS and w not in _FILLER]
+    rest = [w for w in said if w not in _ADD_WORDS and w not in _FILLER and w not in _NEW_WORDS]
     for words in (text, " ".join(rest)):
         picked = option_answer(words, listed) if listed and words else None
         if picked is not None:
             return picked
-    if adds and (said[0] in _ADD_WORDS or rest) and set(rest) <= set(_plain(name)):
+    wants_new = said[0] in _ADD_WORDS or bool(rest) or bool(set(said) & _NEW_WORDS)
+    if adds and wants_new and set(rest) <= set(_plain(name)) | set(_plain(" ".join(adds))):
         return adds[0]
     return None
 
 
-_FILLER = frozenset({"material", "new", "it", "list", "the", "to", "as", "a"})
+_FILLER = frozenset({"material", "new", "it", "list", "the", "to", "as", "a", "s", "type", "alla", "അല്ല"})
 #: WhatsApp lists hold ten rows: nine materials and "Something else".
 LIST_MATERIALS = 9
 
@@ -179,6 +211,7 @@ class MaterialEntry(EntryScope):
             return found
         material = found
         fields.pop("new_material", None)
+        fields.pop("name_en", None)
         fields["material_id"] = str(material["id"])
         fields["material_name"] = material["name"]
 
@@ -342,16 +375,19 @@ class MaterialEntry(EntryScope):
         lookup failed (the classic route answers)."""
         from workflows.entities import Ambiguous, Resolved
 
+        said = name
+        named = english_name(said, fields.get("name_en"))
         try:
-            matches = await self.catalog_query.find_materials(organization_id=organization_id, name=name)
-            singular = name.strip()[:-1] if name.strip().lower().endswith("s") else ""
-            if not matches and len(singular) > 2:
-                # "bricks" never finds "Brick" by substring (review, 22 Oct).
-                matches = await self.catalog_query.find_materials(organization_id=organization_id, name=singular)
+            matches = await self._find(organization_id, said)
+            by_word = False
+            if not matches:
+                matches = await self._by_word(organization_id, said, named)
+                by_word = bool(matches)
         except Exception:  # noqa: BLE001 -- the classic route asks or lets it through
             _log.warning("material_entry.lookup_failed correlation_id=%s", message.correlation_id, exc_info=True)
             return None
-        outcome = classify_material_matches(name, matches)
+        # A word this company taught, or a known local word, names one material exactly.
+        outcome = Resolved(str(matches[0]["id"]), str(matches[0]["name"])) if by_word else classify_material_matches(name, matches)
         if isinstance(outcome, Resolved):
             material = next(m for m in matches if str(m["id"]) == outcome.entity_id)
             if not material.get("is_active", True):
@@ -374,27 +410,30 @@ class MaterialEntry(EntryScope):
 
         may_create = await self._may_create(organization_id)
         if may_create and fields.get("new_material"):
-            return await self._create(organization_id, name, fields, ctx, message)
+            return await self._create(organization_id, named, fields, ctx, message)
         if may_create:
-            near = await self._near_duplicates(organization_id, name)
+            near = await self._near_duplicates(organization_id, named.name)
+            add = add_new_label(named.name, said)
+            ask = _name_question(named, said)
             if near:
                 # Before anything is created: "Same as Steel rods?" (it runs for everyone).
                 return Say(
                     "choose",
                     f'Not saved yet: "{name}" is not in the material list, but it is close to {", ".join(near)}. '
                     "Ask which one they meant. If they pick a listed material, call this tool again with that "
-                    f'exact material; if they pick "{add_new_label(name)}", call it again with new_material true.',
-                    question=f'"{name}" isn\'t in your list. Is it the same as one of these?',
-                    options=(*near, add_new_label(name)),
+                    f'exact material; if they pick "{add}" (or say it is a new one), call it again with '
+                    f"new_material true. {_NAME_NOTE}",
+                    question=f'"{said}" isn\'t in your list. Is it the same as one of these?{ask}',
+                    options=(*near, add),
                     awaiting=AWAIT_NEW_MATERIAL,
                 )
             return Say(
                 "choose",
                 f'Not saved yet: "{name}" is not in the company\'s material list. Ask whether to add it '
                 "as a new material. If yes, call this tool again with new_material true; if no, ask "
-                "which listed material they meant.",
-                question=f'"{name}" isn\'t in your material list yet. Add it as a new material?',
-                options=(add_new_label(name), "No"),
+                f"which listed material they meant. {_NAME_NOTE}",
+                question=f'"{said}" isn\'t in your material list yet. Add it as a new material?{ask}',
+                options=(add, "No"),
                 awaiting=AWAIT_NEW_MATERIAL,
             )
         return await self._pick_material(
@@ -474,8 +513,35 @@ class MaterialEntry(EntryScope):
             _log.warning("material_entry.create_rights_failed", exc_info=True)
             return False
 
-    async def _create(self, organization_id: str, name: str, fields: dict, ctx: Any, message: Any) -> dict | Say:
-        """Add the material (the sender said yes), counted in the unit they used."""
+    async def _find(self, organization_id: str, name: str) -> list[dict]:
+        """Catalogue matches for a name, with "bricks" finding "Brick" (review, 22 Oct)."""
+        matches = await self.catalog_query.find_materials(organization_id=organization_id, name=name)
+        singular = name.strip()[:-1] if name.strip().lower().endswith("s") else ""
+        if not matches and len(singular) > 2:
+            matches = await self.catalog_query.find_materials(organization_id=organization_id, name=singular)
+        return matches
+
+    async def _by_word(self, organization_id: str, said: str, named: EnglishName) -> list[dict]:
+        """The material a word stands for when its own letters found nothing: the
+        word this company already taught (the alias store), then the English name of
+        a known local word ("സിമന്റ്" -> Cement). Only an exact English name counts:
+        കല്ല് (Stone) must never land on Laterite stone."""
+        by_alias = getattr(self.catalog_query, "find_by_alias", None)
+        if by_alias is not None:
+            hit = await by_alias(organization_id=organization_id, alias=said)
+            if hit is not None:
+                return [hit]
+        if named.name.casefold() == " ".join(said.casefold().split()):
+            return []
+        wanted = {named.name.casefold(), named.name.casefold().rstrip("s")}
+        exact = [m for m in await self._find(organization_id, named.name) if str(m["name"]).casefold() in wanted
+                 or str(m["name"]).casefold().rstrip("s") in wanted]
+        return exact if len(exact) == 1 else []
+
+    async def _create(self, organization_id: str, named: EnglishName, fields: dict, ctx: Any, message: Any) -> dict | Say:
+        """Add the material (the sender said yes), counted in the unit they used.
+        Saved under its English name; their own word is kept as an alias."""
+        name = named.name
         unit_text = fields.get("unit")
         unit = await self.catalog_query.resolve_unit(str(unit_text)) if unit_text else None
         if unit is None:
@@ -492,7 +558,23 @@ class MaterialEntry(EntryScope):
         if created is None:
             return Say("error", f'Not saved: "{name}" could not be added to the material list.')
         _log.info("material_entry.material_created correlation_id=%s", message.correlation_id)
+        await self._remember_word(organization_id, created, named, ctx)
         return created
+
+    async def _remember_word(self, organization_id: str, material: dict, named: EnglishName, ctx: Any) -> None:
+        """Their word is an alias of the material, so it finds it next time. Never blocks the save."""
+        add = getattr(self.catalog_query, "add_alias", None)
+        if add is None or not named.said or alias_key(named.said) == alias_key(str(material["name"])):
+            return
+        try:
+            await add(
+                organization_id=organization_id,
+                material_id=str(material["id"]),
+                alias=named.said,
+                created_by=str(getattr(self.actor, "user_id", None) or ctx.user_id),
+            )
+        except Exception:  # noqa: BLE001 -- the word is a convenience
+            _log.warning("material_entry.alias_failed", exc_info=True)
 
     async def _stock(
         self, organization_id: str, project_id: Any, site_id: Any, material_id: str, message: Any

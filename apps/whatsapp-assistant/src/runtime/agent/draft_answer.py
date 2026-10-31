@@ -90,7 +90,8 @@ def amount_answer(text: str, args: dict[str, Any], stock_unit: str) -> Decimal |
 
 def _plain(text: str) -> list[str]:
     """Words only: no emoji, signs or punctuation ("➕ Add new: TMT" -> add new tmt)."""
-    return [w for w in re.split(r"[^\w]+", (text or "").casefold()) if w]
+    # Malayalam vowel signs and the virama are combining marks, not \w: keep them in the word.
+    return [w for w in re.split(r"[^\w\u0d00-\u0d7f]+", (text or "").casefold()) if w]
 
 
 def option_answer(text: str, options: list[str]) -> str | None:
