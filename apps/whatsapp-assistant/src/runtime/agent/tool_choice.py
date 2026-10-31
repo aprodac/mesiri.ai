@@ -20,7 +20,7 @@ from . import tools as t
 
 #: Every turn: one question, the still-to-do note, the card, undo / change, the site.
 CORE = frozenset(
-    {t.ASK_USER, t.STILL_TO_DO, t.UPDATE_PENDING_CARD, t.CHANGE_OR_UNDO, t.UNDO_LAST, t.SET_WORK_SITE}
+    {t.ASK_USER, t.STILL_TO_DO, t.UPDATE_PENDING_CARD, t.CHANGE_OR_UNDO, t.UNDO_LAST, t.SET_WORK_SITE, t.MY_SCOPE}
 )
 
 _W = r"(?<![\w]){}(?![\w])"

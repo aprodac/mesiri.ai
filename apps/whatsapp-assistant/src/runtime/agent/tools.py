@@ -38,6 +38,8 @@ QUERY_LABOUR = "query_labour"
 QUERY_MATERIALS = "query_materials"
 QUERY_WORK_LOG = "query_work_log"
 QUERY_PROJECT = "query_project"
+# Request 160: the sender's own projects / sites / role, answered from who they are.
+MY_SCOPE = "my_scope"
 QUERY_EXPENSES = "query_expenses"
 REQUEST_DPR = "request_dpr"
 # WA-45: where they work today, and new sites/projects.
@@ -90,7 +92,7 @@ WRITE_TOOLS = frozenset(
 
 #: Tools that read. Their reply text is handed to the model to put in its answer.
 QUERY_TOOLS = frozenset(
-    {QUERY_LABOUR, QUERY_MATERIALS, QUERY_WORK_LOG, QUERY_PROJECT, QUERY_EXPENSES, REQUEST_DPR}
+    {QUERY_LABOUR, QUERY_MATERIALS, QUERY_WORK_LOG, QUERY_PROJECT, QUERY_EXPENSES, REQUEST_DPR, MY_SCOPE}
 )
 
 #: ARCH-04: set only after the user said yes to adding it to the material list.
@@ -797,8 +799,22 @@ def tool_specs() -> list[ToolSpec]:
         ),
         ToolSpec(
             name=QUERY_PROJECT,
-            description="Summary / status of a project or site.",
+            description=(
+                "Summary / status of ONE named project or site. Not for 'which projects am I on' "
+                "(my_scope)."
+            ),
             parameters=_obj({"project": _PROJECT, "site": _SITE}),
+        ),
+        ToolSpec(
+            name=MY_SCOPE,
+            description=(
+                "Answer questions about the sender's OWN scope, with no project needed: which "
+                "projects / sites they are on or assigned to, their role, their default site, "
+                "'all projects of the company' for an admin ('which project am I assigned to?', "
+                "'ente sites ethokke', 'where am I assigned', 'എന്റെ പ്രോജക്ടുകൾ ഏതൊക്കെ?'). "
+                "The system lists them and shows each project as a button; never ask which project first."
+            ),
+            parameters=_obj({}),
         ),
         ToolSpec(
             name=QUERY_EXPENSES,

@@ -43,8 +43,10 @@ from .tools import (
     CORRECT_WORK_QUANTITY,
     GET_JOIN_CODE,
     LOOK_AT_PHOTO,
+    MY_SCOPE,
     NOTE_FOR_ENGINEER,
     QUERY_MATERIALS,
+    QUERY_PROJECT,
     REPORT_ISSUE,
     REQUEST_DPR,
     SAVE_LABOUR,
@@ -991,6 +993,15 @@ class AgentToolbox:
             return await self._correct_work(args)
         if name == GET_JOIN_CODE:
             return await self.gateway.share_join_code()
+        if name == QUERY_PROJECT and not (args.get("project") or args.get("site")):
+            from .scope_answer import asks_own_scope
+
+            # Request 160: no project named and the words are about their own
+            # assignments -- answered, never the "which project?" clarifier.
+            if asks_own_scope(self.user_text):
+                name = MY_SCOPE
+        if name == MY_SCOPE:
+            return self._my_scope()
         if name == SET_UNIT_CONVERSION:
             return await self.gateway.set_unit_conversion(
                 material=str(args.get("material") or ""),
@@ -1039,6 +1050,19 @@ class AgentToolbox:
         targets = args.get("targets")
         refs = [str(t) for t in targets] if isinstance(targets, list) else []
         return await undo_card(refs)
+
+    def _my_scope(self) -> StepResult:
+        """Request 160: their projects, sites and role, from who they are (no
+        query, no model memory). Several projects: each is a button, and a tap is
+        the project's name as an answer, so it goes on as any project pick."""
+        from .scope_answer import project_names, scope_facts
+
+        actor = getattr(self.gateway, "actor", None)
+        if actor is None:
+            return StepResult("info", text="I can't tell their projects here.")
+        names = project_names(actor)
+        reply = question_reply("Tap a project to see how it is going:", names) if len(names) > 1 else None
+        return StepResult("answer", text=scope_facts(actor), reply=reply, awaiting="my_scope")
 
     async def _change_or_undo(self, args: dict[str, Any]) -> StepResult:
         """Request 142 (B): the one tool to take back or correct something. A card
@@ -1388,6 +1412,27 @@ class AgentToolbox:
                         "The system has already sent the report (a PDF when the day has entries) and puts "
                         "this line under your words itself. Do not describe the report, list anything from "
                         "it or repeat this line. If the message asked for nothing else, write nothing."
+                    ),
+                }
+            )
+        if step.status == "answer" and step.awaiting == "my_scope":
+            if step.reply is not None and self.parked is None:
+                self.parked, self.parked_by = step.reply, "ask"
+            return ToolOutcome(
+                content={
+                    "status": "answer",
+                    "text": step.text,
+                    "instruction": (
+                        "This is the whole answer, from the system. Say it in the language of their message: "
+                        "how many projects, each project name exactly as written with its place and sites, "
+                        "and their role. Copy the names; add nothing. "
+                        + (
+                            "Buttons for each project are shown under your words; end by inviting a tap "
+                            "(one short line). "
+                            if step.reply is not None
+                            else "No buttons. "
+                        )
+                        + "Do not ask which project."
                     ),
                 }
             )

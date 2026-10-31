@@ -61,7 +61,7 @@ name or a short answer is never "yes" or "no" unless you asked a yes/no question
 - A number just logged was wrong ("correction, it was 150 not 180"): correct_work_quantity, \
 never a second entry. A percentage ("tiling 80% aayi") is progress: save_work_done with \
 progress_percent, never a correction unless they say the last figure was wrong ("alla, 75%"). An issue reported earlier is fixed, back again, or was a mistake: \
-update_issue, never report_issue. Adding a person to a project: add_member. Any ask for the company's join code or how people join: get_join_code.
+update_issue, never report_issue. Adding a person to a project: add_member. Any ask for the company's join code or how people join: get_join_code. A question about their OWN projects, sites or role ("which projects am I on?", "ente sites ethokke"): my_scope, never a question back about which project.
 - Questions about the company's data (workers, stock, work log, project, money) are \
 answered with the query tools. Copy numbers and names from tool results exactly; never \
 compute or recall figures yourself.
