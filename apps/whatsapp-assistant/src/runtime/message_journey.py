@@ -397,6 +397,15 @@ def build_message_handlers(
         from runtime.agent.runner import AgentRunner
 
         _agent_runner = AgentRunner(agent_provider)
+    # Request 174 (v2 pilot): the v2 runners wrap today's runner and are used only for a
+    # company whose ``assistant_mode`` says so (default "classic": nothing changes).
+    _v2_runner = None
+    _v2_shadow_runner = None
+    if _agent_runner is not None:
+        from agent_v2.runner import ShadowRunner, V2Runner
+
+        _v2_runner = V2Runner(agent_provider, _agent_runner, catalog=catalog_query, trace_logger=trace_logger)
+        _v2_shadow_runner = ShadowRunner(agent_provider, _agent_runner, catalog=catalog_query, trace_logger=trace_logger)
     #: Correlation ids whose reply ended on a question: the daily setup
     #: question must not pile a second one on top of it.
     _agent_parked: set[str] = set()
@@ -582,6 +591,22 @@ def build_message_handlers(
             _log.warning("draft_v2.setting_unreadable user=%s", ctx.user_id, exc_info=True)
             return False
 
+    async def _assistant_mode(ctx) -> str:  # type: ignore[no-untyped-def]
+        """Request 174: which agent reads this sender's messages (``assistant_mode``:
+        "classic" | "v2_shadow" | "v2_materials"). Unset, unreadable or an error is "classic"."""
+        if org_settings_query is None or not getattr(ctx, "organization_id", None):
+            return "classic"
+        try:
+            from mesiri.domains.organizations import settings as settings_spec
+
+            stored = await org_settings_query.get(
+                organization_id=str(ctx.organization_id), key=settings_spec.ASSISTANT_MODE
+            )
+            return settings_spec.assistant_mode(stored)
+        except Exception:  # noqa: BLE001 -- unreadable means today's agent
+            _log.warning("assistant_mode.setting_unreadable user=%s", ctx.user_id, exc_info=True)
+            return "classic"
+
     async def _legacy_site_update_waiting(ctx) -> bool:  # type: ignore[no-untyped-def]
         """Request 136 (B): a site-update workflow of the OLD path (labour, material,
         work, an issue) still waits for this draft_v2 sender's Yes / No or answer.
@@ -635,7 +660,7 @@ def build_message_handlers(
             except Exception:  # noqa: BLE001 -- English wording
                 return "english"
 
-        async def _run_agent(message, ctx, category_hint, timer, draft_tap=None, journal_tap=None, issue_tap=None):  # type: ignore[no-untyped-def]
+        async def _run_agent(message, ctx, category_hint, timer, draft_tap=None, journal_tap=None, issue_tap=None, assistant_mode="classic"):  # type: ignore[no-untyped-def]
             """The agent's turn. The pipeline it drives is the one below, with
             the senders swapped for a capture so the model writes the one reply.
 
@@ -1187,8 +1212,15 @@ def build_message_handlers(
                 )
                 return early["gateway"]
 
+            # Request 174: only a plain message is ever read by a v2 runner (never a tap).
+            runner = _agent_runner
+            if draft_tap is None and journal_tap is None and issue_tap is None:
+                if assistant_mode == "v2_materials" and _v2_runner is not None:
+                    runner = _v2_runner
+                elif assistant_mode == "v2_shadow" and _v2_shadow_runner is not None:
+                    runner = _v2_shadow_runner
             deps = AgentTurnDeps(
-                runner=_agent_runner,
+                runner=runner,
                 make_gateway=_gateway,
                 send_spec=_send_spec,
                 send_agent_reply=_send_agent_reply,
@@ -2940,7 +2972,7 @@ def build_message_handlers(
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
                 return
             _fire_processing_ack(message, wa_id)
-            await _run_agent(message, ctx, category_hint, timer)
+            await _run_agent(message, ctx, category_hint, timer, assistant_mode=await _assistant_mode(ctx))
             return
 
         # Nothing the agent can read (an empty tap, an unknown kind of message).
