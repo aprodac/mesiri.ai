@@ -1,3 +1,6 @@
+> **HISTORICAL.** Superseded for the WhatsApp assistant by [assistant-v2.md](assistant-v2.md) (one agent + skills + tools).
+> The body below is kept as it was and describes the classic chain; do not use it as the current design.
+
 All nine additions are documentation improvements, not architecture changes — nothing here alters a single arrow in the pipeline, it just makes the existing boundaries impossible to misread later. Worth adding all of it. Here's the complete final version, ready to paste as `docs/architecture/FROZEN_RUNTIME_ARCHITECTURE.md`.
 
 ```markdown

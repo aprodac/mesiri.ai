@@ -9,6 +9,7 @@
 
 ## Table of Contents
 
+0. [The assistant today: v2 (read first)](#0-the-assistant-today-v2-read-first)
 1. [What This Folder Owns](#1-what-this-folder-owns)
 2. [What This Folder Must NOT Do](#2-what-this-folder-must-not-do)
 3. [Folder Structure and Module Responsibilities](#3-folder-structure-and-module-responsibilities)
@@ -22,6 +23,47 @@
 11. [Common Mistakes](#11-common-mistakes)
 12. [Development Checklist](#12-development-checklist)
 13. [Glossary](#13-glossary)
+
+---
+
+## 0. The assistant today: v2 (read first)
+
+**One agent reads every message, decides, and writes its own reply**, working through **skills**
+(`SKILL.md` plain-English rules + `tools.py` + `evals.yaml`). The old code is only **tools**: the
+`AgentToolbox` tools, the draft card, the Save tap, journal / undo and the backend handlers are what
+the agent calls to save and read. **Nothing saves without the Save tap.**
+
+The full architecture (flow, context, tools, save door, honesty rules, model choice, evals and gate,
+switch and rollback, retirement plan, how to add a feature) is
+[docs/architecture/assistant-v2.md](../../docs/architecture/assistant-v2.md); decisions and history are in
+[ADR-v2-agent-framework.md](../../docs/architecture/ADR-v2-agent-framework.md). Code: `src/agent_v2/`.
+
+```
+src/agent_v2/
+  runner.py            V2Runner (the switch side, eligibility, loop guard) and ShadowRunner
+  agents/main.py       MainAgent: context + rule files + tools -> one model run
+  skills/general/      SKILL.md  (every part of a message, feedback, questions)
+  skills/materials/    SKILL.md + tools.py + evals.yaml
+  report.py            shadow side-by-side
+```
+
+**Status (31 Oct 2026, do not overclaim):** v2 is live **only on the 2 test companies**
+(`assistant_mode = v2`, migration 0495). **Real customers run the classic path.** v2's live gate
+(>= 90% right, 0 wrong saves, reply time not worse) has **not been passed**; the live run needs
+`GEMINI_API_KEY`. Retirement is module by module, old code deleted only after a module passes.
+
+**Rules for a change here:**
+
+- An assistant feature is a **v2 skill**: a new folder (or an edit) with `SKILL.md`, `tools.py`
+  reusing the existing write paths, and `evals.yaml`. **Never add a new workflow, router, classifier or
+  word list.**
+- Where a fix belongs: rule in `SKILL.md` -> a decision the code must enforce in the runner / tool ->
+  a new tool, plus an `evals.yaml` case ([FIX_APPROACH](../../docs/engineering/FIX_APPROACH.md)).
+- Write paths stay the existing ones (toolbox -> draft card -> Save tap); v2 adds none.
+- Labour, Attendance, Payroll, Workforce: untouched by v2 work unless a plan says so plainly.
+
+Sections 3 to 6 below describe the **classic path (retiring)** and the shared plumbing (ingress,
+identity, channel, ports). Code-style rules in sections 2, 7 to 12 still hold.
 
 ---
 
@@ -42,9 +84,10 @@ This folder is the **AI conversation layer** of Mesiri. It owns everything from 
 | Structured field extraction (Gemini / DeepSeek) | ✅ |
 | Confidence scoring (deterministic policy) | ✅ |
 | Context resolution — who/org/project/site/role | ✅ wired (~90%) |
-| Canonicalization — normalizes AI output into business intent | ✅ |
-| Planner — routes to the correct workflow | ✅ (not yet consumed downstream) |
-| Workflow runtime — LangGraph state machines | 🔲 stub only |
+| Canonicalization — normalizes AI output into business intent | ✅ (classic path, retiring) |
+| Planner — routes to the correct workflow | ✅ (classic path, retiring; v2 has no planner) |
+| Workflow runtime — LangGraph state machines | ⛔ not planned: v2 skills replace it (the LangGraph plan is dropped) |
+| v2 agent + skills (`agent_v2/`) | ✅ live on 2 test companies only; gate not passed |
 | Human-in-the-loop interaction layer (M7) | 🔲 stub only |
 | Application & Domain Execution (M8) | 🔲 not started |
 | Conversation memory (M19) | 🔲 stub only |
@@ -214,7 +257,8 @@ if actor.role == "site_engineer":
 apps/whatsapp-assistant/
 ├── src/
 │   ├── backend/            ← backend capability boundary (ports + one postgres adapter)
-│   ├── canonicalization/   ← normalizes UnderstandingResult + ResolvedContext into CanonicalEvent
+│   ├── agent_v2/           ← v2: one agent + skills (SKILL.md, tools.py, evals.yaml); see §0
+│   ├── canonicalization/   ← (classic, retiring) normalizes UnderstandingResult + ResolvedContext into CanonicalEvent
 │   ├── channel/            ← outbound WhatsApp message rendering
 │   ├── context/            ← M4 context resolution (single ContextResolver — see §6)
 │   ├── ingress/            ← M2 inbound pipeline
@@ -262,7 +306,7 @@ apps/whatsapp-assistant/
 
 ---
 
-### `understanding/`
+### `understanding/` (classic path, retiring)
 
 **Single responsibility:** Semantically interpret a `NormalizedMessage` into a structured `UnderstandingResult`.
 
@@ -360,14 +404,14 @@ Provider failures are caught as `MesiriError` and surfaced as `UNUSABLE` results
 
 ---
 
-### Implemented: `planner/`
+### Implemented: `planner/` (classic path, retiring)
 
 `planner/` is no longer a stub. `Planner.decide(canonical_event)` (`planner.py`) is a pure, deterministic router —
 receives a `CanonicalEvent`, emits a `PlannerDecision` via a static `routing.py` lookup table. It must never import
 LangGraph or any specific graph. `ambiguity.py`, `decision.py`, and `prompts/` remain 0 bytes — no logic needed yet
 (v1 intents are unambiguous, single-candidate).
 
-### Stub modules — do not add logic yet
+### Stub modules — do not add logic yet (`workflows/` will not be built: v2 skills replace it)
 
 | Module | Purpose when built | Current state |
 |---|---|---|
@@ -385,7 +429,12 @@ LangGraph or any specific graph. `ambiguity.py`, `decision.py`, and `prompts/` r
 
 ---
 
-## 4. Runtime Architecture
+## 4. Runtime Architecture: the classic path (retiring)
+
+> This is the classic chain (understanding -> canonicalization -> planner -> workflows), kept for the
+> companies still on `assistant_mode = classic`. It is **retiring**: v2 (§0) replaces it module by
+> module, and old code is deleted only after a module passes the v2 gate. Do not extend it; build
+> a v2 skill instead. The shared top (ingress, identity gate) and bottom (reply send) are used by both paths.
 
 ```
 [WhatsApp Cloud API — Meta's servers]
@@ -468,7 +517,7 @@ Workflow Runtime (M6, LangGraph) is the first real consumer of `PlannerDecision.
 
 ---
 
-## 5. Runtime Journey — Step by Step
+## 5. Runtime Journey — Step by Step (classic path, retiring)
 
 This is exactly what happens today when a WhatsApp message arrives. No future state, no assumptions.
 
@@ -602,6 +651,14 @@ skipped entirely if context resolution fails.
 
 ## 6. Current Implementation Status
 
+| Area | Status |
+|---|---|
+| v2 agent + skills (`agent_v2/`: general, materials) | Live on the 2 test companies only; **live gate not passed** |
+| Classic path (agent [40] -> workflows, plus the chain below) | Runs every real customer; retiring module by module |
+| Save door (draft card, Save tap, journal / undo) | Shared by both paths; unchanged |
+
+The table below is the classic chain's module status (2026-07-08 snapshot, kept for the classic path).
+
 | Module | Status | % | Critical gaps |
 |---|---|---|---|
 | Ingress (M2) | ✅ Implemented | 100% | Inline SQL removed (2026-07-08); `FakeObjectStorage` used unless `MESIRI_OBJECT_STORAGE__PROVIDER=r2` is configured |
@@ -610,7 +667,7 @@ skipped entirely if context resolution fails.
 | Identity Gate | ✅ Implemented | 100% | No `FakeActorReader` — identity gate tests require live DB |
 | Canonicalization | ✅ Implemented | 100% | `CanonicalEvent.v1` wired into the journey (2026-07-08); not yet consumed downstream |
 | Planner (M5) | ✅ Implemented | 100% | `PlannerDecision.v1` wired (2026-07-08); pure router, no LangGraph knowledge. Not yet consumed by anything (Workflow Runtime is the first real consumer) |
-| Workflow Runtime (M6) | 🔲 Not started | 0% | LangGraph not installed; `WorkflowState`/`DraftAction` contracts not defined |
+| Workflow Runtime (M6) | ⛔ Dropped (v2 skills replace it) | n/a | (old note: LangGraph not installed; `WorkflowState`/`DraftAction` contracts not defined) |
 | Interaction (M7) | 🔲 Not started | 0% | Contracts not defined |
 | Application & Domain Execution (M8) | 🔲 Not started | 0% | Application and domain missing for material |
 | Memory (M19) | 🔲 Not started | 0% | `platform/memory/` entirely empty |
@@ -621,12 +678,17 @@ skipped entirely if context resolution fails.
 
 ### Next required steps (in order)
 
-1. Add `FakeActorReader` for identity gate testing
-2. Configure `MESIRI_OBJECT_STORAGE__PROVIDER=r2` + credentials in deployment; verify live (adapter already exists)
-3. Define minimum Memory (conversation history) — a prerequisite for Workflow Runtime checkpointing
-4. Define `WorkflowState` + `DraftAction` contracts (requires Alan + Ilan review)
-5. Install LangGraph and implement the Material workflow (the doc's designated proof-of-architecture module)
-6. Wire `Workflow Registry` (`workflow_key → graph`) as the seam between Planner and LangGraph
+1. **Run the v2 live gate** (`GEMINI_API_KEY`, `pytest -m live tests/agent_v2/test_evals.py` and
+   `tests/conversation/general_messages.yaml`; >= 90% right, 0 wrong saves, p95 not worse than classic)
+   and record the model comparison in the ADR. Needs a person with the key.
+2. Add the `v2` case to the golden-live workflow (a person; bots do not touch `.github/`).
+3. If the gate passes: switch real companies one at a time (`assistant_mode`), watching the shadow / live rows.
+4. Retire module by module: delete the old route of a module only after that module passes in v2.
+5. Next skills (labour questions, expenses, issues) as folders in `agent_v2/skills/`, each with evals.
+6. Keep: `FakeActorReader` for identity-gate tests; object storage config (`MESIRI_OBJECT_STORAGE__PROVIDER=r2`).
+
+The earlier plan items "install LangGraph", "Workflow Registry", `WorkflowState` / `DraftAction`
+contracts are **dropped**: the agent calls tools, there is no graph runtime to build.
 
 ---
 
@@ -1025,7 +1087,17 @@ Before creating or modifying any module, verify every item.
 
 **Correlation ID** — A `cor_<uuid>` string minted at ingress. Every log line, port call, and downstream service call must carry it unchanged. Enables end-to-end tracing.
 
-**Workflow** — A stateful, multi-turn LangGraph graph that collects business data from a user across one or more messages. Example: material usage workflow.
+**Skill (v2)** — A folder in `agent_v2/skills/` with `SKILL.md` (plain-English rules), `tools.py` and `evals.yaml`. The unit of an assistant feature.
+
+**Tool (v2)** — Something the agent may call: an existing toolbox tool, or a skill tool that reuses an existing write path. Write tools add lines to the draft card; reads are read-only.
+
+**Save tap** — The worker's tap on Save; the only thing that writes the card's lines. Cancel removes them.
+
+**Evals** — `evals.yaml` cases (message -> expected calls / reply facts, incl. "must not save") that gate a skill before it goes live.
+
+**assistant_mode** — Per-company setting: `classic` | `v2_shadow` | `v2`. Rollback is setting it to `classic`.
+
+**Workflow (classic, retiring)** — A stateful, multi-turn graph that collects business data from a user across one or more messages. Example: material usage workflow.
 
 **Application Layer** — The translation layer from `DraftAction` to domain service calls. Owns command construction, not business rules.
 
@@ -1033,15 +1105,15 @@ Before creating or modifying any module, verify every item.
 
 **Canonical Event** — A domain event produced when a workflow commits data. Flows to the event bus and timeline. Example: `MaterialReceiptCreated`.
 
-**Planner** — Decides, given `ResolvedContext` + `UnderstandingResult`, which workflow to start/continue/clarify or whether to reply directly. Produces `PlannerDecision`.
+**Planner (classic, retiring)** — Decides, given `ResolvedContext` + `UnderstandingResult`, which workflow to start/continue/clarify or whether to reply directly. Produces `PlannerDecision`.
 
 **Interaction** — A human-in-the-loop confirmation, field clarification, or correction before a workflow commits data. Re-enters via ingress and is matched to a pending interaction record.
 
-**Checkpoint** — A LangGraph state snapshot persisted to Redis after each workflow step. Enables workflow resumption after process restart.
+**Checkpoint (classic, retiring)** — A LangGraph state snapshot persisted to Redis after each workflow step. Enables workflow resumption after process restart.
 
 **Context** — The resolved business scope: actor, org, project, site, permissions, and confidence. Produced by `ContextResolver`, consumed by Planner.
 
-**Workflow Runtime** — The LangGraph execution environment. Manages graph state, transitions, and checkpoint persistence. Contains no business logic.
+**Workflow Runtime (dropped; not built)** — The LangGraph execution environment. Manages graph state, transitions, and checkpoint persistence. Contains no business logic.
 
 **Tool Executor** — A controlled interface through which workflows call external services. Validates inputs, calls the tool, returns the result. No workflow calls external services except through this.
 
@@ -1051,4 +1123,4 @@ Before creating or modifying any module, verify every item.
 
 ---
 
-*Reflects codebase state: 2026-07-08. Update this file whenever the architecture changes.*
+*§0 reflects main on 31 Oct 2026; the classic-path sections reflect 2026-07-08. Update this file whenever the architecture changes.*

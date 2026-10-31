@@ -10,19 +10,14 @@ The primary human-facing interface of Mesiri. Construction site workers send Wha
 
 A site engineer sends a voice note: *"received 20 bags cement today"*
 
-The assistant:
-1. Verifies the message is from Meta (HMAC-SHA256)
-2. Confirms the sender is a registered, active Mesiri user
-3. Transcribes and translates the voice note (Sarvam STT)
-4. Extracts structured fields: `material_name: cement`, `quantity: 20`, `unit: bags`
-5. Scores confidence in the extraction
-6. Replies with a structured summary on WhatsApp
+The assistant (v2): one agent reads the message, decides what it holds, calls tools (put a receipt line on the
+draft card, look up stock, ...) and writes its own reply in the sender's language. The worker taps **Save**
+and only then is anything written. Before that, the message is verified (Meta HMAC-SHA256), the sender is
+checked as a registered, active Mesiri user, and a voice note is transcribed.
 
-Eventually (Planner + Workflow not yet built):
-- Routes to the correct workflow (material receipt, expense, labour, etc.)
-- Asks for missing fields if needed
-- Asks the user to confirm before saving
-- Commits the record to the backend
+> Status: v2 is live **only on the 2 test companies**; real customers still run the classic path. v2's live
+> gate (>= 90% right, 0 wrong saves) is not passed yet. Full architecture:
+> [docs/architecture/assistant-v2.md](../../docs/architecture/assistant-v2.md).
 
 ---
 
@@ -54,59 +49,42 @@ The assistant is the **front door for field workers**. The backend is the **sour
 [Meta webhook POST]
         │
         ▼
-  Ingress            ✅  verify → dedup → normalize → media
+  Ingress            ✅  verify → dedup → normalize → media (voice → text)
         │
         ▼
   Identity Gate      ✅  block unregistered / no-org / suspended
         │
         ▼
-  Understanding      ✅  text / voice / image → structured fields
+  Journey            ✅  taps, site questions, pending Yes/No, held photos keep their handlers
         │
         ▼
-  Context            ⚠️  who/project/site — partially wired
+  assistant_mode     ✅  per-company setting
+     ├─ v2 / v2_shadow ⚠️  agent_v2: ONE agent + skills + tools        (2 test companies only)
+     └─ classic        ✅  today's agent [40] → workflows as tools       (every real customer, retiring)
         │
         ▼
-  Planner            🔲  route to correct workflow
-        │
-        ▼
-  Workflow Runtime   🔲  LangGraph — collect missing fields
-        │
-        ▼
-  Interaction        🔲  ask user to confirm before saving
-        │
-        ▼
-  [Backend]          ←   commit the record
+  Draft card         ✅  tools add lines; the worker's Save tap is the only write
         │
         ▼
   Reply              ✅  send WhatsApp message back
 ```
 
-**Today:** The pipeline runs Ingress → Identity Gate → Understanding → (partial) Context → Reply. Planner and Workflow are not yet built.
+v2 and classic share everything above and below the agent: ingress, identity gate, the draft card, the Save
+tap, journal / undo, the toolbox tools and the backend handlers. The old chain (understanding → canonicalization
+→ planner → workflows) is the **classic path (retiring)**, replaced module by module once a module passes the
+v2 gate. See [AGENTS.md](./AGENTS.md) §0 and §4.
 
 ---
 
-## Current Milestone Status
+## Current Status
 
-| Module | Status | Notes |
+| Area | Status | Notes |
 |---|---|---|
-| Ingress (M2) | ✅ 100% | Signature verify, dedup, normalization, media download |
-| Understanding (M3) | ✅ 100% | Text, voice (Sarvam), image (Gemini), confidence scoring |
-| Identity Gate | ✅ 100% | Postgres-backed; blocks unregistered/suspended users |
-| Context (M4) | ⚠️ 65% | M4 resolver built but not wired; fake adapters in production |
-| Planner (M5) | 🔲 0% | Folder declared; all files empty; contract not defined |
-| Workflow Runtime (M6) | 🔲 0% | LangGraph not installed; contracts not defined |
-| Interaction (M7) | 🔲 0% | Folder declared; all files empty |
-| Application & Domain Execution (M8) | 🔲 0% | Not started |
-| Memory (M19) | 🔲 0% | Not started |
-| Reply | ✅ | M3-based plain text only; no templates yet |
-
-### Known gaps to fix before Planner
-
-1. Remove inline SQL from `ingress/receiver._process_message()` (boundary violation)
-2. Wire real object storage adapter (media lost on process restart today)
-3. Unify the two `ResolvedContext` schemas into one canonical contract
-4. Wire M4 `ContextResolver` (fully built, just not called in production)
-5. Define `PlannerDecision` contract (requires Alan + Ilan review)
+| Ingress, Identity Gate, Reply | ✅ | Signature verify, dedup, media, Postgres-backed identity |
+| v2 agent + skills (general, materials) | ⚠️ test companies only | Live gate (>= 90% right, 0 wrong saves, reply time) **not passed**; needs `GEMINI_API_KEY` run |
+| Classic path (agent [40] → workflows) | ✅ real customers | Retiring module by module; old code deleted only after a module passes in v2 |
+| Draft card + Save tap + journal / undo | ✅ | The only write door, shared by both paths |
+| LangGraph workflow runtime | dropped | The agent calls tools; there is no graph runtime to build |
 
 ---
 
@@ -115,15 +93,21 @@ The assistant is the **front door for field workers**. The backend is the **sour
 ```
 src/
 ├── ingress/          M2 — webhook, dedup, normalization, media
-├── understanding/    M3 — AI pipeline (speech, vision, extraction, confidence)
-├── context/          M4 — context resolution (two implementations — see AGENTS.md)
-├── planner/          M5 — stub (empty)
-├── workflows/        M6 — stub (empty)
-├── interactions/     M7 — stub (empty)
-├── memory/           M19 — stub (empty)
+├── agent_v2/         v2 — one agent + skills
+│   ├── runner.py        V2Runner (eligibility, fallback, loop guard), ShadowRunner
+│   ├── agents/main.py   MainAgent: context + rules + tools → one model run
+│   ├── skills/general/      SKILL.md
+│   └── skills/materials/    SKILL.md, tools.py, evals.yaml
+├── runtime/          DI, lifecycle, message_journey (the assistant_mode switch), agent/ (classic agent, toolbox, draft card)
+├── understanding/    classic path (retiring) — AI pipeline (speech, vision, extraction, confidence)
+├── context/          context resolution
+├── canonicalization/ classic path (retiring)
+├── planner/          classic path (retiring)
+├── workflows/        stub (empty); will not be built — v2 skills replace it
+├── interactions/     stub (empty)
+├── memory/           stub (empty)
 ├── backend/          Capability boundary — ports + one Postgres adapter
 ├── channel/          Outbound WhatsApp rendering
-├── runtime/          DI container, lifecycle, inbound journey orchestration
 ├── auth/             HTTP API — mobile app JWT login
 ├── admin/            HTTP API — organization admin endpoints
 ├── users/            HTTP API — tenant user CRUD
@@ -131,85 +115,8 @@ src/
 └── main.py           ASGI entry point
 ```
 
----
-
-## Running Locally
-
-### Prerequisites
-
-- Python 3.11+
-- [`uv`](https://github.com/astral-sh/uv) (recommended) or pip
-- PostgreSQL (for the identity gate — see `.env`)
-- A Meta WhatsApp Business API app (for live webhook testing)
-
-### Install
-
-```bash
-cd apps/whatsapp-assistant
-uv pip install -e ".[dev]"
-```
-
-Or with pip:
-
-```bash
-pip install -e ".[dev]"
-```
-
-### Run
-
-```bash
-uvicorn main:app --reload --port 8000
-```
-
-The service starts at `http://localhost:8000`. The webhook endpoint is `POST /webhook`.
-
-### Test
-
-```bash
-# Unit tests (no DB, no API keys required)
-pytest tests/unit/
-
-# Contract tests
-pytest tests/contract/
-
-# Integration tests (requires live DB + API keys)
-pytest tests/integration/ -m integration
-```
-
----
-
-## Environment Variables
-
-Copy `.env.example` to `.env` and fill in your values. All variables use the `WHATSAPP_` prefix (via `pydantic-settings`).
-
-| Variable | Required | Description |
-|---|---|---|
-| `WHATSAPP_VERIFY_TOKEN` | ✅ | Meta webhook subscription challenge token |
-| `WHATSAPP_APP_SECRET` | ✅ | Meta app secret for HMAC-SHA256 signature verification |
-| `WHATSAPP_ACCESS_TOKEN` | ✅ | Meta permanent or system user access token |
-| `WHATSAPP_PHONE_NUMBER_ID` | ✅ | Meta phone number ID for outbound messages |
-| `WHATSAPP_API_VERSION` | — | Meta API version (default: `v21.0`) |
-| `WHATSAPP_GRAPH_BASE_URL` | — | Override for Meta Graph API base (default: `https://graph.facebook.com`) |
-| `WHATSAPP_MEDIA_DOWNLOAD_DIR` | — | Local path for temporary media files (default: `/tmp/mesiri/whatsapp-media`) |
-| `WHATSAPP_DEDUP_TTL_HOURS` | — | Deduplication window in hours (default: `24`) |
-| `WHATSAPP_CONTEXT_DEBUG` | — | Set to `true` to log `ResolvedContext` after each message (dev only) |
-| `WHATSAPP_APPROVED_TEMPLATES` | — | Comma-separated Meta-approved template names Mesiri may send outside the 24 h window (default: none). See [docs/ops/whatsapp-templates.md](../../docs/ops/whatsapp-templates.md) |
-
-AI provider keys (set in platform-level settings, not `WHATSAPP_` prefix):
-
-| Variable | Description | Fallback |
-|---|---|---|
-| `GEMINI_API_KEY` | Google Gemini (vision + extraction) | `FakeVisionProvider` + `FakeExtractionProvider` |
-| `DEEPSEEK_API_KEY` | DeepSeek (extraction, preferred over Gemini if set) | Falls back to Gemini |
-| `SARVAM_API_KEY` | Sarvam (speech-to-text + translation) | `FakeSpeechProvider` (fixture audio) |
-
-Database (for identity gate):
-
-| Variable | Description |
-|---|---|
-| `DATABASE_URL` | PostgreSQL connection string |
-
-> If no AI provider keys are set, the service runs with fake providers that return deterministic fixture data. This is useful for local development and testing without API credits.
+To add an assistant feature: add a v2 skill (SKILL.md, tools.py, evals.yaml); see
+[assistant-v2.md](../../docs/architecture/assistant-v2.md#how-to-add-a-feature).
 
 ---
 
@@ -225,31 +132,18 @@ These decisions are non-negotiable and explain why the codebase looks the way it
 
 **AI providers are isolated in `platform/ai/`** — the assistant imports ports, never SDKs. Provider swaps require changing one adapter file.
 
-**Context has two implementations today** — this is a known debt. The M4 `ContextResolver` (Postgres/Redis-backed) is fully built but not yet wired. `ContractContextResolver` runs in production with fake adapters. This will be unified before Planner is implemented.
+**One agent, skills and tools** — an assistant feature is a v2 skill (rules in `SKILL.md`, tools, evals), never a new workflow, router or word list.
 
-**The reply is M3-based today** — the current reply is generated directly from `UnderstandingResult`. Context resolution runs but does not affect the reply yet.
+**Nothing saves without the Save tap** — the agent only puts lines on the draft card.
 
 ---
 
-## Future Roadmap
+## Next
 
-### Near term (before Planner)
-- Unify `ResolvedContext` schema and wire M4 `ContextResolver` into production
-- Wire real object storage (R2/S3) — media is lost on restart today
-- Add `FakeActorReader` for identity gate testing
-- Define `PlannerDecision` contract
-
-### Medium term (Planner + first workflow)
-- Implement Planner — routes messages to the correct workflow
-- Implement first LangGraph workflow — material usage / expense capture
-- Implement Interaction layer — human-in-the-loop confirmations
-
-### Long term
-- Conversation memory (M19 - pgvector semantic retrieval)
-- Rules engine (configurable approval thresholds, quantity limits)
-- Tool executor (external service calls from workflows)
-- Rich WhatsApp reply templates (buttons, lists, confirmation cards)
-- Timeline (canonical events → project history feed)
+- Run the v2 live gate with `GEMINI_API_KEY` (>= 90% right, 0 wrong saves, reply time not worse than classic) and pick the model (control panel, Providers, "WhatsApp assistant v2").
+- If it passes: move real companies to v2 one at a time (`assistant_mode`), then retire the classic route of each module.
+- More skills as folders in `agent_v2/skills/`, each with evals.
+- Longer-term, unchanged: conversation memory (pgvector), rules engine, rich WhatsApp reply templates; timeline (canonical events → project history feed).
 
 ---
 
@@ -265,4 +159,4 @@ These decisions are non-negotiable and explain why the codebase looks the way it
 
 ---
 
-*Last updated: July 2026*
+*Last updated: 31 Oct 2026*

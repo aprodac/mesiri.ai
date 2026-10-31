@@ -545,107 +545,41 @@ Implement business approval logic
 
 ---
 
-# 10. Understanding Module Boundary
+# 10. Assistant Agent Boundary (agent_v2)
+
+> Replaces the former "Understanding Module" section. The assistant is now **one agent + skills + tools**
+> ([assistant-v2.md](../architecture/assistant-v2.md)). The classic understanding pipeline is retiring.
+> Status: v2 is live on the 2 test companies only; real customers run classic.
 
 ## OWNS
 
 ```text
-Content routing
+Reading every eligible message (text or voice) and deciding what it holds
 
-Text processing
+Choosing which tools to call, and asking when something is unclear
 
-Speech processing coordination
+Writing the reply in the sender's language
 
-Translation coordination
+The context given to the model (sites, today's records, open card, last turns, catalog)
 
-Vision processing coordination
+The switch side: eligibility, fallback to classic on a failure before any action, loop guard
 
-OCR coordination
-
-Structured extraction
-
-Semantic candidate generation
-
-Confidence analysis
-
-Ambiguity detection
-
-Provider fallback behavior
-
-UnderstandingResult production
+Shadow runs and their report
 ```
 
-## CONSUMES
-
-```text
-NormalizedMessage.v1
-
-Media access interface
-
-AI Gateway/provider interfaces
-
-Structured error contract
-
-ID utilities
-
-Logging/tracing interfaces
-```
-
-## PRODUCES
-
-```text
-UnderstandingResult.v1
-
-Provider execution traces
-
-Understanding telemetry
-
-Understanding errors
-```
+Owner: `apps/whatsapp-assistant/src/agent_v2/` (`runner.py`, `agents/main.py`). Switch: `runtime/message_journey.py`.
 
 ## MUST NOT
 
 ```text
-Parse raw WhatsApp payloads
+Write a record itself (only tools put lines on the draft card; only the Save tap writes)
 
-Know WhatsApp webhook structure
+Add a workflow, router, classifier or word list
 
-Write business records
+Call a provider SDK directly (it goes through ToolCallingProvider in platform/ai)
 
-Resolve final project/site context
-
-Select the final workflow
-
-Execute tools
-
-Evaluate business rules
-
-Send WhatsApp messages directly
-
-Persist expenses
-
-Persist equipment usage
-
-Persist material usage
-
-Implement approval workflows
+Touch Labour, Attendance, Payroll or Workforce rules or data paths
 ```
-
-The Understanding Pipeline may produce:
-
-```text
-intent_candidates
-
-entities
-
-extracted_fields
-
-ambiguities
-
-confidence
-```
-
-The Understanding Pipeline does not own final workflow selection.
 
 ---
 
@@ -717,145 +651,57 @@ Send WhatsApp responses
 
 ---
 
-# 12. Planner Boundary
+# 12. Skills Boundary
+
+> Replaces the former "Planner Boundary". There is no planner in v2: the agent chooses tools from the
+> skills it is given.
 
 ## OWNS
 
 ```text
-Reasoning over canonical input
+agent_v2/skills/<skill>/SKILL.md   the rules in plain English
 
-Workflow selection
+agent_v2/skills/<skill>/tools.py   the tool specs the agent may call (reusing existing write paths)
 
-Clarification decision
-
-No-op decision
-
-Safe rejection decision
-
-PlannerDecision production
+agent_v2/skills/<skill>/evals.yaml the cases that gate the skill before it goes live
 ```
 
-## CONSUMES
-
-```text
-CanonicalEvent
-
-ResolvedContext
-
-ContextPack when required
-
-AI Gateway
-
-Workflow Registry metadata
-```
-
-## PRODUCES
-
-```text
-PlannerDecision.v1
-```
+A new assistant feature is a new skill folder, reviewed with its evals. Today: `general`, `materials`.
 
 ## MUST NOT
 
 ```text
-Execute workflows
+Create a new write path (skills reuse the toolbox / draft card)
 
-Call domain repositories
+Hold a second copy of a business rule that the domain or toolbox already enforces
 
-Write PostgreSQL records
-
-Call Redis directly
-
-Send WhatsApp messages
-
-Execute tools directly
-
-Bypass Business Rules
+Go live before the gate: >= 90% right, 0 wrong saves, reply time not worse than classic
 ```
 
 ---
 
-# 13. Workflow Runtime Boundary
+# 13. Draft and Save Boundary
+
+> Replaces the former "Workflow Runtime Boundary" (LangGraph is dropped). Unchanged from classic agent mode
+> and shared by both paths; see [ADR-draft-per-message.md](../architecture/ADR-draft-per-message.md).
 
 ## OWNS
 
 ```text
-Workflow lifecycle
+The draft card (runtime/agent/draft*.py): lines added by tools
 
-Workflow state
+The Save tap: the only thing that writes the card's lines; Cancel removes them
 
-Node transitions
-
-Pause
-
-Resume
-
-Checkpointing coordination
-
-Missing-field loops
-
-User confirmation state
-
-Workflow completion
-
-Workflow failure
-```
-
-## CONSUMES
-
-```text
-PlannerDecision
-
-Workflow definitions
-
-Memory interface
-
-Rules Engine interface
-
-Tool Executor interface
-
-Interaction interface
-
-Domain application interfaces
-```
-
-## PRODUCES
-
-```text
-WorkflowState
-
-DraftAction
-
-Interaction requests
-
-Domain commands after authorization
+Journal and undo
 ```
 
 ## MUST NOT
 
 ```text
-Access PostgreSQL directly
+Save anything without the Save tap
 
-Access Redis directly
-
-Access R2 directly
-
-Call provider SDKs directly
-
-Insert expenses directly
-
-Publish domain events directly
-
-Bypass Tool Executor
-
-Bypass Business Rules
-
-Implement transport-specific rendering
+Let a model or a skill write a record directly
 ```
-
-LangGraph, if used, is an implementation detail of this boundary.
-
-LangGraph does not become the business architecture.
 
 ---
 
@@ -1144,68 +990,29 @@ generic rule evaluation mechanism
 
 ---
 
-# 18. Tool Registry Boundary
+# 18. Tool Boundary (toolbox)
+
+> Replaces the former "Tool Registry Boundary". The tools are the existing `AgentToolbox` tools plus the
+> skills' own tools; v2 calls them, it does not replace them.
 
 ## OWNS
 
 ```text
-Tool definitions
+runtime/agent/toolbox.py and tools.py: the record tools (labour, work, expense, issue, notes, DPR, materials) and the read tools
 
-Tool registration
+Site resolver, unit gate, repeat check: applied inside the tools, not by the agent
 
-Input schema
-
-Output schema
-
-Tool metadata
-
-Tool version
-
-Side-effect classification
-
-Permission requirements
-
-Timeout configuration
-
-Retry policy metadata
-```
-
-## TOOL EXECUTOR OWNS
-
-```text
-Input validation
-
-Authorization
-
-Permission enforcement
-
-Idempotency enforcement
-
-Timeout enforcement
-
-Retry execution
-
-Tool invocation
-
-Result validation
-
-Execution telemetry
-
-Audit information
+Calling the backend handlers through the existing ports
 ```
 
 ## MUST NOT
 
 ```text
-Contain workflow logic
+Be bypassed: a v2 tool that writes goes through the toolbox and the draft card
 
-Contain business approval policy
+Contain business rules the domain owns
 
-Allow unrestricted arbitrary functions
-
-Allow LLMs to bypass authorization
-
-Allow direct tool invocation without executor policy
+Give v2 the admin tools (create site / project, members, join code): they stay with classic
 ```
 
 ---
