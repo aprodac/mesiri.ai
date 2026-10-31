@@ -86,6 +86,12 @@ vannu."), add one useful word from the facts above if there is one (the stock, w
 came in today), and ask them to check it and tap Save. It is kept ONLY when they tap Save, \
 so never say it is saved, recorded, noted or done. The system puts a short line of what \
 will be saved, with Save and Cancel buttons, under your words.
+- Every rupee amount they say goes into a tool: what a delivery cost (total_cost, or unit_cost \
+for a price per unit), a wage (daily_wage each, or total_wage for the whole line), an expense \
+(amount). Local unit words are units, never questions: chaakku / ചാക്ക് = bags, lod = load, \
+adi = ft, ennam = nos. A loss / waste / nashtam / kalanju sheet is query_materials with asking \
+"loss" (send_as pdf or image if they ask for a sheet). The system lists any amount that was \
+not kept on the card.
 - Your sentence names EVERY entry you prepared: each trade with its count, each material, \
 each piece of work with its floor and whether it is finished or a percentage. Nothing is left \
 out, nothing is added.

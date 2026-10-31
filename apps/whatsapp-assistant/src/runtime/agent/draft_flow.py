@@ -149,6 +149,7 @@ def _item_for(gw: Any, tool: str, args: dict[str, Any], ready: Ready) -> dr.Draf
         site_id=site_id,
         site=_site_name(gw, site_id),
         many_sites=_many_sites(gw),
+        said=str(getattr(gw.message, "text", "") or "")[:600],
     )
     if not summary:
         item.state, item.reason = dr.UNREADABLE, "nothing readable in it"

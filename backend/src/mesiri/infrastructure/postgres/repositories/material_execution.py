@@ -15,6 +15,7 @@ from __future__ import annotations
 import datetime
 import json
 import uuid
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from mesiri.application.materials.repository import MaterialCommand, MaterialExecutionRepository
@@ -170,16 +171,22 @@ class PostgresMaterialExecutionRepository(MaterialExecutionRepository):
 
         row_id = uuid.uuid4()
         if isinstance(cmd, RecordMaterialReceiptCommand):
+            # Request 164: a cost said with the delivery; one of the two gives the other.
+            total_cost, unit_cost = cmd.total_cost, cmd.unit_cost
+            if total_cost is None and unit_cost is not None:
+                total_cost = unit_cost * cmd.quantity
+            elif unit_cost is None and total_cost is not None and cmd.quantity:
+                unit_cost = (total_cost / cmd.quantity).quantize(Decimal("0.01"))
             await conn.execute(
                 text(
                     "INSERT INTO material_receipts "
                     "(id, organization_id, project_id, site_id, material_name, quantity, unit, "
                     "unit_id, material_id, supplier, occurred_date, occurred_date_source, "
-                    "movement_reason, correlation_id, created_by) "
+                    "movement_reason, correlation_id, created_by, unit_cost, total_cost) "
                     "VALUES (:id, :organization_id, :project_id, :site_id, :material_name, "
                     ":quantity, :unit, :unit_id, :material_id, :supplier, :occurred_date, "
                     ":occurred_date_source, COALESCE(:movement_reason, 'RECEIVED'), "
-                    ":correlation_id, :created_by)"
+                    ":correlation_id, :created_by, :unit_cost, :total_cost)"
                 ),
                 {
                     "id": row_id,
@@ -192,6 +199,8 @@ class PostgresMaterialExecutionRepository(MaterialExecutionRepository):
                     "unit_id": unit_id,
                     "material_id": material_id,
                     "supplier": cmd.supplier,
+                    "unit_cost": unit_cost,
+                    "total_cost": total_cost,
                     "movement_reason": cmd.movement_reason,
                     "occurred_date": cmd.occurred_date,
                     "occurred_date_source": cmd.occurred_date_source,

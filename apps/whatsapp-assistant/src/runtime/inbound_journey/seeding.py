@@ -146,7 +146,16 @@ async def _add_period(
         end_date=end,
         timezone_name=zone,
     )
+    costs: dict = {}
+    if event.fields.get("asking") == "loss" and hasattr(inventory_query, "period_costs"):
+        costs = await inventory_query.period_costs(
+            organization_id=event.organization_id, project_id=event.project_id, site_id=event.site_id,
+            start_date=start, end_date=end,
+        )
     for level in event.fields.get("inventory_levels") or []:
+        key = (str(level["material_name"]).lower(), str(level["unit"]))
+        if costs.get(key):
+            level["period_rate"] = costs[key]
         moved = totals.pop((str(level["material_name"]).lower(), str(level["unit"])), None) or {}
         level["period_received"] = moved.get("received", 0.0)
         level["period_used"] = moved.get("used", 0.0)

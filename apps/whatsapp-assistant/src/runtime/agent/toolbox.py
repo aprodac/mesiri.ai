@@ -228,6 +228,13 @@ def classify_issue(text: str, args: dict[str, Any]) -> dict[str, Any]:
     if kind == "SAFETY":
         severity = str(args.get("severity") or "").upper()
         return {**args, "severity": "HIGH" if severity in _RAISE_TO_HIGH else severity}
+    from runtime.agent import amount_check
+    from runtime.loss_rules import WASTE_WORDS, severity_for_value
+
+    if WASTE_WORDS.search(said) and (amounts := amount_check.said_amounts(said)):
+        # Request 164: a waste issue's severity comes from its value in rupees.
+        severity = severity_for_value(max(amounts), str(args.get("severity") or ""))
+        args = {**args, "severity": severity}
     if kind in ("", "OTHER") and _QUALITY.search(said):
         return {**args, "issue_type": "QUALITY"}
     return args

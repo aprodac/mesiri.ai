@@ -41,6 +41,11 @@ class RecordMaterialReceiptCommand(BaseModel):
     quantity: Decimal
     unit: str
     supplier: str | None = None
+    #: Request 164: what the delivery cost, said with it (additive; the receipt
+    #: table already has unit_cost / total_cost). Either may be given; the other
+    #: is worked out from the quantity.
+    total_cost: Decimal | None = None
+    unit_cost: Decimal | None = None
     #: None is an ordinary delivery. "OPENING_STOCK" is what was already on
     #: site before Mesiri (entered once per site + material).
     movement_reason: str | None = None

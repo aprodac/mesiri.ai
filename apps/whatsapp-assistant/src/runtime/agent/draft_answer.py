@@ -68,17 +68,25 @@ def amount_answer(text: str, args: dict[str, Any], stock_unit: str) -> Decimal |
     if not words or len(words) > MAX_ANSWER_WORDS or not stock_unit:
         return None
     asked_unit = str(args.get("unit") or "").strip().casefold()
+    from runtime.unit_words import fold, words_for
+
     stock_words = set(_UNIT_WORDS.get(stock_unit.casefold(), ())) | {stock_unit.casefold()}
+    # Request 164: the one table of site words ("chaakku ennu paranjaal bag") for both units.
+    stock_words |= words_for(stock_unit)
     unit_words = {asked_unit, asked_unit.rstrip("s"), f"{asked_unit.rstrip('s')}s"} - {""}
+    unit_words |= words_for(asked_unit) if asked_unit else set()
+    # A typed answer says the word the other way round ("chaakku ennu paranjaal bag thanne").
+    known_filler = {"ennu", "paranjaal", "paranjal", "thanne", "thanneyaanu", "alle"}
+    stock_words |= known_filler
     known = stock_words | unit_words | {"=", "aanu", "anu", "und", "undu", "ku", "kku", "nu", "is", "hai", "approx"}
     numbers = [n for n in (_number(m) for m in _NUMBER.findall(text)) if n is not None]
-    rest = [w for w in words if not _NUMBER.fullmatch(w) and w not in known and not re.fullmatch(_ONE, w)]
+    rest = [w for w in words if not _NUMBER.fullmatch(w) and w not in known and fold(w) not in known and not re.fullmatch(_ONE, w)]
     if not numbers or rest:
         return None
     quantity = _number(str(args.get("quantity") or ""))
     lowered = " ".join(words)
     per_one = bool(re.search(rf"(?:^|\s){_ONE}(?:\s|$)", lowered)) or (
-        len(numbers) == 2 and numbers[0] == 1 and any(w in unit_words for w in words)
+        len(numbers) == 2 and numbers[0] == 1 and any(w in unit_words or fold(w) in unit_words for w in words)
     )
     if per_one:
         each = numbers[-1]

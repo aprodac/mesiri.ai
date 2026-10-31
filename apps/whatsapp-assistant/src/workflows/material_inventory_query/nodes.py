@@ -64,6 +64,13 @@ def _period_reply(label: str, levels: list[dict], material_name: str | None, ask
         name = level["material_name"].lower()
         moved = _moved(level)
         left = f"{_fmt(level['current_stock'])} {level['unit']} left now."
+        if asking == "loss":
+            from runtime.loss_rules import loss_line
+
+            return f"{head}: " + loss_line(
+                name, level["unit"], float(level.get("period_received") or 0), float(level.get("period_used") or 0),
+                level.get("period_rate"), _fmt,
+            )
         if asking in ("used", "received"):
             # Request 114: "cement used yesterday?" leads with what was used,
             # and says so when it was nothing, never only what arrived.
@@ -84,6 +91,15 @@ def _period_reply(label: str, levels: list[dict], material_name: str | None, ask
         if level.get("period_received"):
             words.append(f"{_fmt(level['period_received'])} {level['unit']} {name} received")
         return f"{head}: {' and '.join(words)}. {left}"
+    if asking == "loss":
+        from runtime.loss_rules import loss_line
+
+        rows = [
+            loss_line(lv["material_name"], lv["unit"], float(lv.get("period_received") or 0),
+                      float(lv.get("period_used") or 0), lv.get("period_rate"), _fmt)
+            for lv in levels if lv.get("period_received")
+        ]
+        return f"📉 *Material loss — {label}*\n\n" + "\n".join(rows) if rows else f"Nothing was received {label}."
     lines = [f"📦 *Materials — {label}*", ""]
     for level in levels:
         moved = _moved(level)

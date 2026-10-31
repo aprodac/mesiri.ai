@@ -82,6 +82,8 @@ def build_command(
         return RecordMaterialReceiptCommand(
             **common,
             supplier=fields.get("supplier"),
+            total_cost=_decimal(fields["total_cost"]) if fields.get("total_cost") not in (None, "") else None,
+            unit_cost=_decimal(fields["unit_cost"]) if fields.get("unit_cost") not in (None, "") else None,
             movement_reason=fields.get("movement_reason"),
             media_object_key=str(fields["media_object_key"]) if fields.get("media_object_key") else None,
         )
