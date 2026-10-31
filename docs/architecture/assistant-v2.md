@@ -104,6 +104,7 @@ with the same code as classic replies:
   and offer what is possible; no card, no invented answer.
 - **Loop guard:** a words-only reply identical to the previous one to the same sender within 10
   minutes is replaced by "that is what I just said, tell me again in a few words".
+- A read tool's template text is facts for the agent, never the reply; if a message asked a stock question and the agent did not look it up, the code looks it up and puts the answer under the reply (ADR, "Request 180, live re-test").
 - A complaint about the last reply gets a short sorry, what will be different, and the part they
   actually asked for, never the same text again.
 
