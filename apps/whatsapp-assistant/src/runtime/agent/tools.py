@@ -133,7 +133,8 @@ _PROJECT = {
 }
 _SITE = {
     "type": "string",
-    "description": "Site name, ONLY if the user names one. Omit to use their usual site.",
+    "description": "Site name, ONLY if the user names one. Omit to use their usual site. "
+    "\"all sites\" when they ask about every site.",
 }
 #: The classic "send it as a PDF" of a lookup (stock, labour, work log, money).
 _AS_PDF = {"type": "boolean", "description": "Old way of asking for a PDF; use send_as."}

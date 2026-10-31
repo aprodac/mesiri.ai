@@ -159,6 +159,20 @@ listener (designed in: its running day summary can become one more context line 
   overlapping names; `catalog_match` stays for a word not in the line.
 - One extra read per message: the `assistant_mode` setting, as `draft_v2` already does.
 
+## Second round (request 178, live re-test 31 Oct: 12/15)
+
+- Size/grade words ("1.5 sq mm", "12 mm", "M20", "4 inch") are specifications, not quantities: the
+  figure check ignores them (`tools._SPEC`), and SKILL.md says so. Before, "2 box 1.5 sq mm wire" asked
+  "what is 1.5 for?".
+- "Every item reaches the card or a question": SKILL.md tells the model to draft the clear items and
+  `ask` about the unclear one in the same turn (the wire's Electrical/Binding question was lost behind
+  the switch line). Eval 142. Model behaviour: only the live gate proves it.
+- "...and at all sites?": `site: "all sites"` is an explicit scope in `JourneyGateway._reading_site`
+  (shared, read-only; classic gains the same). Two scopes in one message = two `stock_for` calls. Eval 143.
+- Not changed: "5 load M sand = 10 cum" comes from a company-saved conversion (the built-in table has
+  no load), so it is the company's own rule, not a guess. "1 box = how many rolls?" is the shared unit
+  gate asking because wire is stocked in rolls; the v2 prompt now says never to ask it itself.
+
 ## Rollback
 
 Set the company's `assistant_mode` to `classic` (instant), or delete the setting. Code: revert the
