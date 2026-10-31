@@ -86,6 +86,20 @@ class MaterialCatalogQueryService:
             )
             return items
 
+    async def catalog_with_aliases(self, *, organization_id: str, limit: int = 500) -> list[dict[str, Any]]:
+        """Request 178: ALL active materials (not the first ten) with the words the company
+        uses for each: ``[{"name", "aliases": [...]}]``. What the v2 agent reads in its prompt."""
+        from mesiri.infrastructure.postgres.repositories.materials import (
+            PostgresMaterialCatalogRepository,
+        )
+
+        org = uuid.UUID(organization_id)
+        async with self._db.transaction() as conn:
+            repo = PostgresMaterialCatalogRepository(conn)
+            items, _total = await repo.list_materials(organization_id=org, is_active=True, limit=limit)
+            aliases = await repo.list_aliases(org)
+        return [{"name": i["name"], "aliases": aliases.get(str(i["id"]), [])} for i in items]
+
     async def closest_materials(
         self, *, organization_id: str, name: str, limit: int = 9
     ) -> tuple[list[dict[str, Any]], int]:

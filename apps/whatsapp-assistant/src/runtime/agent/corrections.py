@@ -148,10 +148,12 @@ async def correct(gw: Any, text: str) -> ReplySpec | None:
     return None
 
 
-async def _from_open_card(gw: Any, draft: dr.MessageDraft, gone: list[dr.DraftItem], language: str) -> ReplySpec:
+async def drop_from_open_card(gw: Any, draft: dr.MessageDraft, gone: list[dr.DraftItem]) -> bool:
+    """Take ``gone`` off the open card, in place; the one place that does it (the typed
+    removal here and the v2 agent's remove_card_line). True while lines remain; False when
+    the card is empty and was discarded."""
     from . import draft_flow
 
-    line = _lines(gone)
     draft.items = [i for i in draft.items if i not in gone]
     if gw.actions is not None:
         for item in gone:
@@ -161,9 +163,18 @@ async def _from_open_card(gw: Any, draft: dr.MessageDraft, gone: list[dr.DraftIt
     if not draft.live:
         await gw.drafts.discard(draft.id)
         gw.draft = None
-        return ReplySpec(text=say("remove.empty", language, line=line))
+        return False
     await draft_flow._persist(gw, draft)
     draft_flow._keep(gw, draft)
+    return True
+
+
+async def _from_open_card(gw: Any, draft: dr.MessageDraft, gone: list[dr.DraftItem], language: str) -> ReplySpec:
+    from . import draft_flow
+
+    line = _lines(gone)
+    if not await drop_from_open_card(gw, draft, gone):
+        return ReplySpec(text=say("remove.empty", language, line=line))
     return dr.card_reply(draft, say("remove.done", language, line=line), site=draft_flow._card_site(gw, draft))
 
 

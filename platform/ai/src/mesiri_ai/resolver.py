@@ -505,6 +505,7 @@ class DynamicAIProviderResolver:
         max_steps: int = 3,
         timeout_seconds: float | None = None,
         correlation_id: str | None = None,
+        model: str | None = None,
     ) -> Any:
         """Tool-calling for the WhatsApp assistant agent (request [40]).
 
@@ -523,7 +524,9 @@ class DynamicAIProviderResolver:
                 "No tool-calling provider configured (the agent needs Gemini)",
                 code="CONFIG_MISSING",
             )
-        model = route.get("model") or self._settings.gemini.model
+        # Request 178: a caller may name its own Gemini model (the v2 agent's brain); the
+        # route's fallback model still applies if that one fails before a tool ran.
+        model = model or route.get("model") or self._settings.gemini.model
         fallback_model = route.get("fallback_model") if route.get(
             "fallback_provider_id"
         ) in (None, "", "gemini") else None

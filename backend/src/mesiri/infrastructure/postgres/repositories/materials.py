@@ -855,6 +855,28 @@ class PostgresMaterialCatalogRepository:
         row = (await self.conn.execute(stmt)).mappings().first()
         return dict(row) if row else None
 
+    async def list_aliases(self, organization_id: uuid.UUID) -> dict[str, list[str]]:
+        """Every alias this company's people use, by material id (read only; request 178:
+        the v2 agent shows the model the catalog WITH what each material is called)."""
+        stmt = (
+            sa.select(_material_aliases.c.material_id, _material_aliases.c.alias_text)
+            .select_from(
+                _material_aliases.join(
+                    _materials_catalog, _materials_catalog.c.id == _material_aliases.c.material_id
+                )
+            )
+            .where(
+                _material_aliases.c.organization_id == organization_id,
+                _materials_catalog.c.is_active.is_(True),
+            )
+            .order_by(_material_aliases.c.alias_text.asc())
+        )
+        out: dict[str, list[str]] = {}
+        for material_id, alias_text in (await self.conn.execute(stmt)).all():
+            if alias_text:
+                out.setdefault(str(material_id), []).append(str(alias_text))
+        return out
+
     async def add_alias(
         self,
         organization_id: uuid.UUID,

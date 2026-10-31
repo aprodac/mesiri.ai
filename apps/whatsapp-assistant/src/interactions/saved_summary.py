@@ -193,7 +193,19 @@ def _summary(draft: DraftActionV2 | Any, *, today: date | None = None) -> str | 
         reported = " ".join(
             p for p in (_num(fields.get("reported_quantity")), _text(fields.get("reported_unit"))) if p
         )
-        extras = [e for e in (reported, _text(fields.get("supplier") if verb == "in" else fields.get("work_item"))) if e]
+        # Request 178: the rate said ("₹380 a bag", or the whole delivery's amount) is on the card,
+        # so a wrong one is seen before Save.
+        rate = ""
+        if verb == "in":
+            if _num(fields.get("unit_cost")):
+                rate = f"₹{_num(fields.get('unit_cost'))}/{_text(fields.get('reported_unit') or fields.get('unit')) or 'unit'}"
+            elif _num(fields.get("total_cost")):
+                rate = f"₹{_num(fields.get('total_cost'))} total"
+        extras = [
+            e
+            for e in (reported, _text(fields.get("supplier") if verb == "in" else fields.get("work_item")), rate)
+            if e
+        ]
         return f"{line} ({'; '.join(extras)})" if extras else line
     if action is DraftActionType.RECORD_EXPENSE:
         amount = _num(fields.get("amount"))

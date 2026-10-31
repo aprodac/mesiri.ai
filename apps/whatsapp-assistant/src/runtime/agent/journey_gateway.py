@@ -268,6 +268,9 @@ class JourneyGateway:
     draft: Any | None = None
     draft_loaded: bool = False
     draft_new: list[str] = field(default_factory=list)
+    #: Request 178: which sites the last day-read covered, for the answer to name: a site's name,
+    #: or ``ALL_SITES`` (set by ``_reading_site``, the one place that decides it).
+    read_scope: str | None = None
     #: What a Save tap wrote, for the SAVED card sent after its "Saved" line (live 29 Oct).
     saved_card_parts: list[Any] = field(default_factory=list)
     #: Request 136 (C): which component decided the site, the items and the reply
@@ -354,6 +357,9 @@ class JourneyGateway:
         said = str(fields.get("site_name") or "")
         if fields.get("site_id"):
             decided(self, "read_site", draft_site.DECIDER, draft_site.NAMED)
+            self.read_scope = next(
+                (str(x.name) for x in getattr(self.actor, "sites", None) or () if str(x.id) == str(fields["site_id"])), None
+            )
             return candidate
         saved = None
         if self.get_today_site is not None:
@@ -366,6 +372,7 @@ class JourneyGateway:
         if site is None and said:
             return candidate  # a name that is none of theirs: the entry asks, as before
         decided(self, "read_site", draft_site.DECIDER, choice.kind if site is not None else ALL_SITES)
+        self.read_scope = ALL_SITES if site is None else str(site.name)
         if site is None:
             fields[ALL_SITES] = True
         else:

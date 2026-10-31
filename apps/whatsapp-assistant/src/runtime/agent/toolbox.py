@@ -48,6 +48,7 @@ from .tools import (
     NOTE_FOR_ENGINEER,
     QUERY_MATERIALS,
     QUERY_PROJECT,
+    REMOVE_CARD_LINE,
     REPORT_ISSUE,
     REQUEST_DPR,
     SAVE_LABOUR,
@@ -1019,6 +1020,8 @@ class AgentToolbox:
             return await self._undo(args)
         if name == UPDATE_PENDING_CARD:
             return await self._update_card(args)
+        if name == REMOVE_CARD_LINE:
+            return await self._remove_line(args)
         if name == CORRECT_WORK_QUANTITY and self.draft_mode:
             return await self._correct_work(args)
         if name == GET_JOIN_CODE:
@@ -1166,6 +1169,29 @@ class AgentToolbox:
         return StepResult(
             "error", text="The change did not go through and the old entry could not be put back: they need to send it again."
         )
+
+    async def _remove_line(self, args: dict[str, Any]) -> StepResult:
+        """Request 178: take ONE line off the open card ("cement venda", "ath kalayu"). Only
+        the open card: a saved line is taken back by the undo flow, never from here. The
+        removal is the code's; "Removed from the card" is claimed only when it happened."""
+        from . import corrections
+
+        draft = await self.gateway.open_draft() if self.draft_mode else None
+        if draft is None or not draft.live:
+            return StepResult("info", text="There is no open card to take a line off.")
+        lines = draft.items
+        try:
+            index = int(args.get("item_index"))
+        except (TypeError, ValueError):
+            index = 1 if len(lines) == 1 else 0
+        if not 1 <= index <= len(lines):
+            return StepResult("error", text="That line is not on the card, so nothing was removed.")
+        target = lines[index - 1]
+        label = target.line or target.label or "that line"
+        if await corrections.drop_from_open_card(self.gateway, draft, [target]):
+            self.gateway.draft_new.append(draft.items[0].id)  # the card is shown again, as it is now
+            return StepResult("undone", text=f"Removed from the card: {label}. Nothing was saved.")
+        return StepResult("undone", text=f"Removed from the card: {label}. The card is empty now. Nothing was saved.")
 
     async def _correct_work(self, args: dict[str, Any]) -> StepResult:
         """Request 137 (C): a correction of saved work, resolved in code against the

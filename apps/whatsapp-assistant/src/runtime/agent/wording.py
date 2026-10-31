@@ -298,6 +298,20 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "📷 आपकी भेजी {count} फोटो अभी इंतज़ार में हैं. किसलिए हैं?",
         "hinglish": "📷 Aapki bheji {count} photo abhi wait kar rahi hain. Kis liye hain?",
     },
+    "read.all_sites": {
+        "english": "All your sites",
+        "manglish": "Ningalude ellaa site-um",
+        "malayalam": "നിങ്ങളുടെ എല്ലാ സൈറ്റുകളും",
+        "hindi": "आपकी सभी साइट",
+        "hinglish": "Aapki saari sites",
+    },
+    "material_request.not_built": {
+        "english": "Material requests aren't in Mesiri yet, so nothing was saved. To record what is on site, send what arrived or was used.",
+        "manglish": "Material request ippo Mesiri-il illa, athukondu onnum save cheythilla. Site-il vanna / use cheytha material ayakku.",
+        "malayalam": "മെറ്റീരിയൽ റിക്വസ്റ്റ് ഇപ്പോൾ Mesiri-യിൽ ഇല്ല, അതിനാൽ ഒന്നും സേവ് ചെയ്തില്ല.",
+        "hindi": "मटेरियल रिक्वेस्ट अभी Mesiri में नहीं है, इसलिए कुछ सेव नहीं हुआ.",
+        "hinglish": "Material request abhi Mesiri mein nahi hai, isliye kuch save nahi hua.",
+    },
     "material.direction_cancelled": {
         "english": "Okay, nothing saved.",
         "manglish": "Sheri, onnum save cheythilla.",
