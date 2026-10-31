@@ -30,7 +30,13 @@ from runtime.agent.cards import CardStore
 from runtime.agent.draft_store import MemoryDraftStore
 
 TEXT = {"save_material_receipt": "50 bag cement vannu", "save_labour": "3 mason 12 helper vannu", "save_expense": "paid 140 for tea"}
-LATER = (dt.date.today() + dt.timedelta(days=61)).isoformat()
+from canonicalization.occurred_date import today_for  # noqa: E402
+from channel.receipt.data import company_zone  # noqa: E402
+
+#: The company's day (India time), as the code decides it; ``date.today()`` is the machine's day,
+#: which is a day behind between 00:00 and 05:30 IST and made these tests fail then.
+TODAY = today_for(str(company_zone(None)))
+LATER = (TODAY + dt.timedelta(days=61)).isoformat()
 
 
 @pytest.fixture
@@ -96,7 +102,7 @@ async def test_a_day_after_today_is_asked_with_today_the_day_and_another_date(wo
     result = await world.say(FakeToolCallingProvider([[(tool, {**args, "date": LATER})], "Check it."]), TEXT[tool])
     (item,) = await open_items(world)
     assert item.state == dr.NEEDS_ANSWER and item.options[0] == "Today" and item.options[2] == "Another date"
-    later, now = dt.date.fromisoformat(LATER), dt.date.today()
+    later, now = dt.date.fromisoformat(LATER), TODAY
     assert f"{later.day} {later:%b}" in item.question and f"{now.day} {now:%b}" in item.question
     assert item.options[1] == f"{later.day} {later:%b}"
     assert set(item.options) <= set(titles(result.reply))
@@ -122,7 +128,7 @@ async def test_the_date_answers(world):
     assert "right date" in gone.text and await open_items(world) == []
 
 
-@pytest.mark.parametrize("day", [dt.date.today().isoformat(), (dt.date.today() - dt.timedelta(days=3)).isoformat()])
+@pytest.mark.parametrize("day", [TODAY.isoformat(), (TODAY - dt.timedelta(days=3)).isoformat()])
 async def test_today_and_past_dates_are_not_asked(world, day):
     await world.say(FakeToolCallingProvider([[("save_material_receipt", {**CEMENT[1], "date": day})], "Check it."]), "50 bag cement vannu")
     (item,) = await open_items(world)
