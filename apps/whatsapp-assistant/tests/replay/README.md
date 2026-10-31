@@ -2,12 +2,15 @@
 
 Each `cases/<id>.json` is one message a real user sent, what the AI understood, and what the
 assistant should have done. `test_replay_cases.py` runs it through the real pipeline after the AI
-step (context, canonicalization, gates, planner, workflow, reply), with the AI replaced by the
+step of the classic path (context, canonicalization, gates, planner, workflow, reply), with the AI replaced by the
 recorded understanding. That makes a case deterministic, offline, and fast.
 
 Run: `pytest apps/whatsapp-assistant/tests/replay` (same PYTHONPATH as the rest of the suite).
-Workflow cases need the `workflow` extra (LangGraph); without it they are **skipped**, and CI
+Workflow cases need the `workflow` extra; without it they are **skipped**, and CI
 does not install it today. See the WA-15 tracker note.
+
+> v2 (one agent + skills + tools) is tested by the skills' `evals.yaml` and `tests/agent_v2/`, not by these
+> cases; these replay the classic path (retiring). See [assistant-v2.md](../../../../docs/architecture/assistant-v2.md).
 
 ## Case format
 

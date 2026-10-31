@@ -198,6 +198,8 @@ Always prefer, in this order:
 Never duplicate: APIs · database tables · services · OCR pipelines · AI pipelines · WhatsApp
 workflows.
 
+Assistant features are v2 skills (docs/architecture/assistant-v2.md); never add a workflow, router or word list.
+
 ---
 
 ## Product Thinking

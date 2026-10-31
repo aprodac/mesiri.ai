@@ -1,3 +1,6 @@
+> **HISTORICAL (31 Oct 2026).** The WhatsApp assistant is now v2: one agent + skills + tools, see [../architecture/assistant-v2.md](../architecture/assistant-v2.md).
+> This document describes the classic chain (classifier / planner / workflows), now retiring; the body is unchanged.
+
 # Latency Optimization Roadmap
 
 **Status:** Phase 0 pending deployment · **Baseline report:** 2026-07-26 (~180 messages, 7 days)

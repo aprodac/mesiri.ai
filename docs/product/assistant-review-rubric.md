@@ -13,7 +13,7 @@ the one that creates the least work for them.**
 | Axis | 5 = | 1 = |
 | --- | --- | --- |
 | **Understood** | Got what they meant first time, including slang, mixed language, units ("bags", "nos", "sqft") | Misread the request, or asked them to restate something it already had |
-| **Right action** | Started the right workflow with the right project/site/material/people | Wrong workflow, wrong entity, or nothing happened |
+| **Right action** | Called the right tool / started the right workflow with the right project/site/material/people | Wrong workflow, wrong entity, or nothing happened |
 | **Reply quality** | Short (fits one phone screen), in the sender's language, plain words, one clear next step | Long, English to a non-English sender, jargon, several questions at once |
 | **Effort** | Fewest possible messages; nothing asked that the system already knew or could infer | Asked for things it had (project, date, unit), or made them repeat themselves |
 | **Speed** | Text reply in < 5 s, voice/photo in < 15 s (`wall_ms`) | > 20 s, or a stage that is far above its usual p95 in `stage_summary` |
@@ -38,12 +38,12 @@ These are signs that something went wrong, even when the system recorded success
 | Class | Meaning | Typical fix (WA-16/17) |
 | --- | --- | --- |
 | `copy` | Reply wording, length, language | Reply template / prompt text |
-| `understanding` | Misread text, voice, photo | Prompt, examples, classifier |
-| `routing` | Wrong workflow or entity | Planner examples, entity resolution |
-| `flow` | Too many turns, asked for known info | Workflow logic |
+| `understanding` | Misread text, voice, photo | `SKILL.md` rule / prompt (v2); classifier (classic, retiring) |
+| `routing` | Wrong workflow or entity | `SKILL.md` rule or the tool's check (v2); planner examples (classic, retiring); entity resolution |
+| `flow` | Too many turns, asked for known info | `SKILL.md` rule or tool logic (v2); workflow logic (classic, retiring) |
 | `speed` | Slow stage or provider | Latency fix |
 | `error` | Failure, exception, nothing sent | Bug fix |
-| `unmet` | They wanted something the assistant can't do | New workflow (WA-17) |
+| `unmet` | They wanted something the assistant can't do | New v2 skill: `SKILL.md` + tools + evals (WA-17) |
 
 Out of bounds for automatic fixes, so report only: Labour, Attendance, Payroll, Workforce, money
 calculations, auth/tenancy.

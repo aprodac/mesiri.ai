@@ -1,3 +1,6 @@
+> **HISTORICAL (31 Oct 2026).** The WhatsApp assistant is now v2: one agent + skills + tools, see [../architecture/assistant-v2.md](../architecture/assistant-v2.md).
+> This document describes the classic chain (classifier / planner / workflows), now retiring; the body is unchanged. Treat workflow / router / planner wording as the classic path.
+
 # Finance Module — Domain Design & LangGraph Workflow Roadmap
 
 **Status:** V1 (Slices 0–8) is complete as of 2026-07-25 (Slice 6 fully — account-admin and receipt-capture portions done out of order, missing-receipt-nudge portion done last — see notes below). Slices 9–12 + dashboard are V2, explicitly deferred.

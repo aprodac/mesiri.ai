@@ -1,3 +1,6 @@
+> **HISTORICAL (31 Oct 2026).** The WhatsApp assistant is now v2: one agent + skills + tools, see [../architecture/assistant-v2.md](../architecture/assistant-v2.md).
+> This document describes the classic chain (classifier / planner / workflows), now retiring; the body is unchanged. Treat workflow / router / planner wording as the classic path.
+
 # Materials Catalogue, Units-of-Measure & Movement Ledger — Plan
 
 **Status:** Done — backend, WhatsApp assistant, Alembic migrations (`0290`/`0300`/`0310`), canonical movement ledger, resolution gates, and dashboard catalogue UI all landed.

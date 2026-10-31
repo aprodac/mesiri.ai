@@ -1,3 +1,6 @@
+> **HISTORICAL (31 Oct 2026).** The WhatsApp assistant is now v2: one agent + skills + tools, see [../architecture/assistant-v2.md](../architecture/assistant-v2.md).
+> This document describes the classic chain (classifier / planner / workflows), now retiring; the body is unchanged. Treat workflow / router / planner wording as the classic path.
+
 # Composite Request Plan Layer — Design Doc
 
 **Status:** Phases 1–4 done (2026-07-30), including `EDIT` (drop a step and its dependents, re-preview). Decomposition, entity-linking, the generic executor, wiring into `process_inbound_message`, the member-create swap, and the §8 preview with Yes/No/Edit are all live. **The Paraclette/Starship message works end to end**, gated behind its own Yes/No/Edit before anything executes. Remaining: Phase 5 (migrate the other entity types), Phase 6 (whole-plan permission pre-check, separate security review — **now confirmed a real gap**: `plan_executor.py` has no role check at all, so a disallowed step is caught only by backend-layer defense-in-depth, not refused upfront the way the single-message path does), the known §9 gap (a segment missing a required field is silently dropped, not yet surfaced in the preview), and the fact that the material/unit/project/site gates from the single-message path never re-run per decomposed segment.

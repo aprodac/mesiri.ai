@@ -1,3 +1,6 @@
+> **Note (31 Oct 2026).** The draft card and Save tap described here are still valid in v2 (the agent's only write door); see [assistant-v2.md](assistant-v2.md). Classic-routing parts below are historical.
+> The body is unchanged.
+
 # ADR: one draft per message, written only on the Save tap
 
 **Status:** P0 done (request 123: docs and tests only). **P1 built** (request 124, 27 Oct 2026, approved by

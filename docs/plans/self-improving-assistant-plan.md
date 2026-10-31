@@ -1,3 +1,6 @@
+> **HISTORICAL (31 Oct 2026).** The WhatsApp assistant is now v2: one agent + skills + tools, see [../architecture/assistant-v2.md](../architecture/assistant-v2.md).
+> This document describes the classic chain (classifier / planner / workflows), now retiring; the body is unchanged.
+
 # Self-improving WhatsApp assistant — Implementation Plan
 
 > Status: **WA-14 and WA-15 built** (14 Oct). WA-16–17 await approval.

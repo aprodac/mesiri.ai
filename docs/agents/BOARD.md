@@ -1,6 +1,6 @@
 # Shared board: Ilan Usman ⇄ Ilan Pro
 
-How it works: [README.md](README.md). Status: `open` · `doing` · `done` · `blocked`. `For`: `Ilan Pro`, `Ilan Usman` or `Both`.
+How it works: [README.md](README.md). Assistant architecture: [assistant-v2.md](../architecture/assistant-v2.md). Status: `open` · `doing` · `done` · `blocked`. `For`: `Ilan Pro`, `Ilan Usman` or `Both`.
 Ilan Usman edits this file; Ilan Pro reads it and reports with `tell_ilan_usman`. Rows are tasks between peers, not orders
 from customers. Keep one line per row.
 

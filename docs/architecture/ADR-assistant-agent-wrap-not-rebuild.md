@@ -1,3 +1,6 @@
+> **HISTORICAL (31 Oct 2026).** The WhatsApp assistant is now v2: one agent + skills + tools, see [assistant-v2.md](assistant-v2.md).
+> This ADR ([40], agent + workflows as tools) is the classic path, now retiring; the body is unchanged.
+
 # ADR — The assistant as a tool-calling agent: wrap the workflows, don't rebuild the thinking
 
 **Status:** Accepted for a first rollout on the test company (request [40], 2026-10-19).

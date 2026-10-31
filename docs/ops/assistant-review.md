@@ -27,7 +27,7 @@ Fixing comes in WA-16/WA-17, and only after approval.
 1. `git checkout main && git pull origin main`.
 2. Set up Python if needed:
    `uv venv --python 3.11 && uv pip install -e ".[dev,infra,providers,reports,workflow]"`
-   (`workflow` = LangGraph, needed by the replay cases). Then fetch the last 24 h **into the
+   (`workflow` = the extra the classic-path replay cases need). Then fetch the last 24 h **into the
    scratchpad, never into the repo**:
    ```bash
    .venv/bin/python apps/whatsapp-assistant/scripts/fetch_review_export.py "$SCRATCH/export.json" --hours 24
@@ -44,9 +44,12 @@ Fixing comes in WA-16/WA-17, and only after approval.
    - Note signals that were wrong in **Rubric notes**, so the weights can be tuned.
    - For each conversation read, score the rubric axes and classify each problem
      ([rubric](../product/assistant-review-rubric.md)).
-   - `understanding` on each message is what the AI made of it. Compare it with the text to
-     tell `understanding` problems (the AI misread) from `routing`/`flow`/`copy` problems (the
-     AI read it right and the code did the wrong thing).
+   - In v2 the agent reads the message itself: look at which tools it called and its reply
+     (journey traces). Compare with the text to tell `understanding` problems (the agent
+     misread: fix the rule in `SKILL.md`) from `routing`/`flow`/`copy` problems (it read it right
+     and a tool or the code did the wrong thing). Real customers still run the classic path
+     (`understanding` = what the classic AI made of it); see
+     [assistant-v2.md](../architecture/assistant-v2.md).
 4. Before calling something a bug, look at the code (`apps/whatsapp-assistant/src/...`) to
    understand *why* it happened. A finding names the likely file or function.
 5. **Record findings.** One finding per *problem*, not per conversation. Give it a stable
@@ -68,8 +71,8 @@ Fixing comes in WA-16/WA-17, and only after approval.
    - Link it: `review_findings.py update <fingerprint> --replay-case <case-id>`.
    - Nothing else in the repo may change. Before pushing, run the replay suite once more, and
      `ruff check` if you touched any Python (you shouldn't have).
-7. **Trend.** From `trend.json`: friction rate per day and per workflow over 14 days. Say which
-   workflows got better or worse. Note any finding marked `fixed` in the last days whose
+7. **Trend.** From `trend.json`: friction rate per day and per workflow (or v2 skill) over 14 days. Say which
+   workflows / skills got better or worse. Note any finding marked `fixed` in the last days whose
    workflow's friction didn't drop.
 8. Write `docs/reviews/YYYY-MM-DD.md` (template below). Commit report and cases together:
    `docs(reviews): assistant review YYYY-MM-DD`. Then pull, re-run the replay suite if the pull

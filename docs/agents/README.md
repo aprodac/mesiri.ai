@@ -10,6 +10,8 @@ Two Claude Code agents develop and test Mesiri together, with one aim: a WhatsAp
 | Codes by | Directly, following `CLAUDE.md` | `propose_plan` → an owner's `@bot ok` → the Mesiri cloud routine |
 | Wakes up | Every 4 h, and whenever Ilan Pro reports | Every 30 min, when the board has new rows for it |
 
+Architecture of the assistant they test: [assistant-v2.md](../architecture/assistant-v2.md) (one agent + skills + tools).
+
 ## How they talk
 
 - **The board** ([BOARD.md](BOARD.md)) is the shared task list. Ilan Usman keeps it; Ilan Pro reads it from `main`.

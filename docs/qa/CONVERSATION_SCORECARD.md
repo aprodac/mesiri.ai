@@ -70,7 +70,7 @@ site share a name). Work row `Plastering · 2nd floor · 40%`. Checked offline i
 
 ## General conversation (auto-loop focus)
 
-Messages that don't fall into a main workflow. Goal: Mesiri never feels like a bot, and every kind of message gets a clean, natural reply.
+Messages that don't fall into a main skill or workflow (in v2: the `general` skill's rules in `SKILL.md`; each failure becomes an `evals.yaml` case; see [assistant-v2.md](../architecture/assistant-v2.md)). Goal: Mesiri never feels like a bot, and every kind of message gets a clean, natural reply.
 
 ### Scoring per reply (0 / 1 / 2 on each)
 

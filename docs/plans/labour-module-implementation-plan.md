@@ -1,3 +1,6 @@
+> **HISTORICAL (31 Oct 2026).** The WhatsApp assistant is now v2: one agent + skills + tools, see [../architecture/assistant-v2.md](../architecture/assistant-v2.md).
+> Banner only: the Labour content is unchanged. This document describes the classic chain (classifier / planner / workflows), now retiring; the body is unchanged.
+
 # Labour Module — Master Implementation Plan
 
 **Status:** In progress — Phases 0–6 substantially complete (Phase 6's routing/
