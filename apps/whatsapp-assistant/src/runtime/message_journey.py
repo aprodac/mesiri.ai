@@ -593,7 +593,7 @@ def build_message_handlers(
 
     async def _assistant_mode(ctx) -> str:  # type: ignore[no-untyped-def]
         """Request 174: which agent reads this sender's messages (``assistant_mode``:
-        "classic" | "v2_shadow" | "v2_materials"). Unset, unreadable or an error is "classic"."""
+        "classic" | "v2_shadow" | "v2"; the old "v2_materials" reads as "v2"). Unset, unreadable or an error is "classic"."""
         if org_settings_query is None or not getattr(ctx, "organization_id", None):
             return "classic"
         try:
@@ -1215,7 +1215,7 @@ def build_message_handlers(
             # Request 174: only a plain message is ever read by a v2 runner (never a tap).
             runner = _agent_runner
             if draft_tap is None and journal_tap is None and issue_tap is None:
-                if assistant_mode == "v2_materials" and _v2_runner is not None:
+                if assistant_mode in ("v2", "v2_materials") and _v2_runner is not None:
                     runner = _v2_runner
                 elif assistant_mode == "v2_shadow" and _v2_shadow_runner is not None:
                     runner = _v2_shadow_runner

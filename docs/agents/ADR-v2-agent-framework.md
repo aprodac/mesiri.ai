@@ -59,16 +59,32 @@ Revisit when a second skill needs real multi-agent routing. The skill layout (`S
 
 - v2 only reads a plain message of a company on draft cards (`gateway.draft_mode`), never a tap, a
   waiting site question, a pending Yes / No, or a held photo. Those belong to today's agent.
-- v2's tools are today's material tools under new names (`draft_receipt` = `save_material_receipt`,
-  `draft_usage`, `draft_stock_count` = `adjust_stock`, `stock_for` = `query_materials`, `ask` =
-  `ask_user`) and nothing else: no labour, work, issue, money tool is reachable. Their arguments are
-  today's specs (a test holds that).
-- A message is handled once. Any draft, question or stock answer by v2 means today's agent never
-  runs for it (`hand_back` after a draft is refused; a failure after a draft is `degraded`, never a
-  second pass). A hand-back, a run with no tool call, or a failure before any action runs today's
-  agent in the same turn with the same arguments.
-- Mixed messages (materials with labour, an issue, money...) are handed back WHOLE; v2 never drafts
-  half of a message.
+- **Request 180 (corrected design; supersedes the "wrap, route first" rules of 174/178).** ONE agent
+  reads EVERY eligible message of a `v2` company (`v2_materials` is the old name, read as `v2`), decides
+  and writes its own reply. There is no routing and no `hand_back`: v2 is not a materials-only step in
+  front of the classic agent (live 31 Oct, Paraclette: a complaint + weather + "did other engineers
+  report?" got an inventory dump, and "I never asked for inventory" got it again).
+- Old code is only tools. v2's tools: the materials skill (today's material tools under v2 names,
+  specs held equal by a test) + the EXISTING toolbox tools for the other record kinds, unchanged
+  (`save_labour`, `save_work_done`, `save_expense`, `report_issue`, `update_issue`,
+  `correct_work_quantity`, `note_for_engineer`, `set_site_conditions`, `request_dpr`, `set_work_site`)
+  + read tools (`query_work_log`, `query_labour`, `query_project`, `query_expenses`,
+  `query_open_needs`, `my_scope`, `stock_for`). Same specs, same draft card, same Save tap: no new
+  write path, nothing saves without the tap. Admin tools (create site/project, members, join code)
+  stay with the classic agent. Labour tools are called unchanged for the 2 test companies only
+  (owner decision on plan 180; labour data paths, rules and payroll are untouched).
+- The model writes the reply in the sender's language; the code still draws the card lines and keeps
+  the honesty rules (never claims saved/changed, number guard, no engineer promise, ...), by composing
+  with the same code as today's replies.
+- Rule files: `skills/general/SKILL.md` (every part of a message, feedback, questions, unknown things:
+  honest + offer) and `skills/materials/SKILL.md`. Context: last 10 turns including Mesiri's own
+  replies (`memory.requirements.RECENT_TURNS_MAX_ENTRIES`, `runtime/agent/history.py`), the open card,
+  today's saved records, catalog + aliases, the sender's sites.
+- Loop guard (code): a words-only reply identical to the previous one to the same sender within 10
+  minutes is replaced by a short "that is what I just said, tell me again in a few words" line.
+- Today's agent runs for an eligible message ONLY when v2 fails before any action (a model outage).
+  A failure after a line is on the card is `degraded`, never a second pass.
+- Time: v2 gets 20 s (today's agent 25 s) per run.
 - Every number of the message must be on the card or asked about: a figure on no tool call and in no
   question is added to the reply as "I did not put 176 on the card. What is it for?" (English /
   Manglish / Hinglish senders; not yet worded for Malayalam script or Hindi senders).
@@ -199,3 +215,11 @@ listener (designed in: its running day summary can become one more context line 
 
 Set the company's `assistant_mode` to `classic` (instant), or delete the setting. Code: revert the
 commits. No data migration; no existing record is touched.
+
+
+## Request 180 gate (before live)
+
+`pytest -m live tests/agent_v2/test_evals.py` (v2 eval set incl. the Paraclette cases 150-156 and the
+materials golden) and `tests/conversation/general_messages.yaml`: >= 90% right, 0 wrong saves, p95
+reply time <= classic. **Not run when this was written: no `GEMINI_API_KEY` in the cloud session.**
+Record the numbers here per candidate model (control panel row "WhatsApp assistant v2").

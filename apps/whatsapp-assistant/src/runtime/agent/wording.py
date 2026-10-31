@@ -312,6 +312,13 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "मटेरियल रिक्वेस्ट अभी Mesiri में नहीं है, इसलिए कुछ सेव नहीं हुआ.",
         "hinglish": "Material request abhi Mesiri mein nahi hai, isliye kuch save nahi hua.",
     },
+    "v2.repeat_reply": {
+        "english": "Sorry, that is what I just told you, so it is not what you need. Tell me again in a few words what you want and I will answer only that.",
+        "manglish": "Sorry, ithu thanneyaanu njan ippo paranjathu, athu ningalkku venda ennu manasilaayi. Enthaanu venamennu chuttathil onnu koodi parayamo, njan athinu mathram marupadi tharam.",
+        "malayalam": "ക്ഷമിക്കണം, ഞാൻ ഇപ്പോൾ പറഞ്ഞത് തന്നെയാണിത്, അത് നിങ്ങൾക്ക് വേണ്ടതല്ല. എന്താണ് വേണ്ടതെന്ന് ഒന്നുകൂടി ചുരുക്കി പറയാമോ, ഞാൻ അതിന് മാത്രം മറുപടി തരാം.",
+        "hindi": "माफ़ कीजिए, यही मैंने अभी कहा था, यह आपको नहीं चाहिए। कृपया थोड़े शब्दों में फिर बताइए, मैं सिर्फ़ उसी का जवाब दूँगा।",
+        "hinglish": "Sorry, yahi maine abhi bola tha, woh aapko nahi chahiye. Thode shabdon mein phir batao, main sirf usi ka jawab dunga.",
+    },
     "material.direction_cancelled": {
         "english": "Okay, nothing saved.",
         "manglish": "Sheri, onnum save cheythilla.",

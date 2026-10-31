@@ -12,7 +12,9 @@
 #              quantity / counted   exact
 #   ask      true: no line on the card, ONE question
 #   query    true: no line on the card, a stock answer
-#   handback true: v2 hands the WHOLE message to today's agent (it is not only about materials)
+#   other    true: not (only) about materials; right when no material line is drafted (request 180: v2 reads every message)
+#   mixed    true: material lines mixed with other parts; judged on the material lines only
+#   must_call / must_not_call  tool names the run must / must not call
 #   figure_ok true: a figure of the message is allowed to be left for a question
 #
 # A WRONG SAVE is a card line that is not in `expect` (or a line when none was expected).
@@ -30,7 +32,7 @@
 - {"id": 111, "lang": "manglish", "message": "cement 176", "calls": [["ask", {"question": "176 cement: received, used, or left on site?", "options": ["Received", "Used", "Left on site"]}]], "expect": [], "ask": true}
 - {"id": 112, "lang": "en", "message": "50 bags cement", "calls": [["ask", {"question": "Was that cement received or used?", "options": ["Received", "Used"]}]], "expect": [], "ask": true}
 - {"id": 113, "lang": "manglish", "message": "cement vannu", "calls": [["ask", {"question": "Ethra bag cement vannu?"}]], "expect": [], "ask": true}
-- {"id": 114, "lang": "manglish", "message": "Cement-um സിമൻറ്-um onnu thanne aano?", "calls": [["hand_back", {"reason": "catalog question"}]], "expect": [], "handback": true, "note": "a question about the catalog, not stock: today's agent"}
+- {"id": 114, "lang": "manglish", "message": "Cement-um സിമൻറ്-um onnu thanne aano?", "calls": [], "expect": [], "note": "a question about the catalog, not stock: today's agent", "other": true}
 - {"id": 115, "lang": "manglish", "message": "cement stock ethra und?", "calls": [["stock_for", {"material": "cement"}]], "expect": [], "query": true}
 - {"id": 116, "lang": "ml", "message": "എത്ര സിമൻറ് ബാക്കിയുണ്ട്?", "calls": [["stock_for", {"material": "cement"}]], "expect": [], "query": true}
 - {"id": 117, "lang": "en", "message": "how much cement was used yesterday?", "calls": [["stock_for", {"material": "cement", "asking": "used", "date": "yesterday"}]], "expect": [], "query": true}
@@ -38,12 +40,12 @@
 - {"id": 119, "lang": "manglish", "message": "innu 1000 brick vannu, 400 use cheythu", "calls": [["draft_receipt", {"material": "bricks", "quantity": 1000, "unit": "nos"}], ["draft_usage", {"material": "bricks", "quantity": 400, "unit": "nos"}]], "expect": [{"kind": "material_in", "material": ["brick", "bricks"], "quantity": 1000}, {"kind": "material_out", "material": ["brick", "bricks"], "quantity": 400}]}
 - {"id": 120, "lang": "manglish", "message": "2 load sand um 1 load metal um vannu", "calls": [["draft_receipt", {"material": "sand", "quantity": 2, "unit": "load"}], ["draft_receipt", {"material": "metal", "quantity": 1, "unit": "load"}]], "expect": [{"kind": "material_in", "material": ["sand", "riversand", "msand"], "quantity": 2}, {"kind": "material_in", "material": ["metal", "aggregate", "jelly"], "quantity": 1}]}
 - {"id": 121, "lang": "en", "message": "50 bags cement came, used 20 bags for the column", "calls": [["draft_receipt", {"material": "cement", "quantity": 50, "unit": "bags"}], ["draft_usage", {"material": "cement", "quantity": 20, "unit": "bags", "work_item": "column"}]], "expect": [{"kind": "material_in", "material": ["cement"], "quantity": 50}, {"kind": "material_out", "material": ["cement"], "quantity": 20}]}
-- {"id": 122, "lang": "manglish", "message": "Innu 6 mason vannu, 20 bag cement use cheythu", "calls": [["hand_back", {"reason": "labour and materials"}]], "expect": [], "handback": true}
-- {"id": 123, "lang": "en", "message": "3 masons worked today and rain stopped work", "calls": [["hand_back", {"reason": "labour and issue"}]], "expect": [], "handback": true}
-- {"id": 124, "lang": "en", "message": "thanks bro 👍", "calls": [["hand_back", {"reason": "chat"}]], "expect": [], "handback": true}
-- {"id": 125, "lang": "manglish", "message": "JCB breakdown aayi", "calls": [["hand_back", {"reason": "issue"}]], "expect": [], "handback": true}
-- {"id": 126, "lang": "manglish", "message": "engineer-inodu chodikku, nale slab cheyyamo?", "calls": [["hand_back", {"reason": "engineer question"}]], "expect": [], "handback": true}
-- {"id": 127, "lang": "manglish", "message": "500 rupees chaaya kudichu", "calls": [["hand_back", {"reason": "expense"}]], "expect": [], "handback": true}
+- {"id": 122, "lang": "manglish", "message": "Innu 6 mason vannu, 20 bag cement use cheythu", "calls": [["draft_usage", {"material": "cement", "quantity": 20, "unit": "bags"}], ["save_labour", {"workers": [{"trade": "mason", "headcount": 6}]}]], "expect": [{"kind": "material_out", "material": ["cement"], "quantity": 20}], "mixed": true}
+- {"id": 123, "lang": "en", "message": "3 masons worked today and rain stopped work", "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 3}]}], ["report_issue", {"category": "WEATHER", "description": "rain stopped work"}]], "expect": [], "other": true}
+- {"id": 124, "lang": "en", "message": "thanks bro 👍", "calls": [], "expect": [], "other": true}
+- {"id": 125, "lang": "manglish", "message": "JCB breakdown aayi", "calls": [["report_issue", {"category": "EQUIPMENT_BREAKDOWN", "description": "JCB breakdown"}]], "expect": [], "other": true}
+- {"id": 126, "lang": "manglish", "message": "engineer-inodu chodikku, nale slab cheyyamo?", "calls": [["note_for_engineer", {"question": "nale slab cheyyamo?"}]], "expect": [], "other": true}
+- {"id": 127, "lang": "manglish", "message": "500 rupees chaaya kudichu", "calls": [["save_expense", {"amount": 500, "description": "chaaya"}]], "expect": [], "other": true}
 - {"id": 128, "lang": "hindi", "message": "200 kg steel aaya", "calls": [["draft_receipt", {"material": "steel", "quantity": 200, "unit": "kg"}]], "expect": [{"kind": "material_in", "material": ["steel", "tmtsteel", "rod"], "quantity": 200}]}
 - {"id": 129, "lang": "en", "message": "received 2.5 tons M sand from Raju", "calls": [["draft_receipt", {"material": "M sand", "quantity": 2.5, "unit": "tons", "supplier": "Raju"}]], "expect": [{"kind": "material_in", "material": ["msand", "manufacturedsand"], "quantity": 2.5}]}
 - {"id": 130, "lang": "manglish", "message": "innale 15 bag cement use aayi", "calls": [["draft_usage", {"material": "cement", "quantity": 15, "unit": "bags", "date": "yesterday"}]], "expect": [{"kind": "material_out", "material": ["cement"], "quantity": 15}]}
@@ -63,6 +65,13 @@
 - {"id": 138, "lang": "manglish", "message": "cement venam", "calls": [["material_request_not_available", {}]], "expect": [], "not_built": true}
 - {"id": 139, "lang": "manglish", "message": "app-il 176 kaanikkunnu, 5 bag cement baakki", "calls": [["draft_stock_count", {"material": "cement", "counted": 5, "unit": "bags", "figures_placed": [5], "unplaced": [{"figure": 176, "reason": "176 is what the app shows, not a count"}]}]], "expect": [{"kind": "stock_count", "material": ["cement"], "counted": 5}]}
 - {"id": 140, "lang": "en", "message": "cement stock at all sites?", "calls": [["stock_for", {"material": "cement"}]], "expect": [], "query": true}
-- {"id": 141, "lang": "manglish", "message": "alla, 6 mason aanu", "calls": [["hand_back", {"reason": "labour correction, no material card open"}]], "expect": [], "handback": true, "note": "guard: a labour correction is never a material change_line"}
+- {"id": 141, "lang": "manglish", "message": "alla, 6 mason aanu", "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 6}]}]], "expect": [], "note": "guard: a labour correction is never a material change_line", "other": true}
 - {"id": 142, "lang": "manglish", "message": "2 box 1.5 sq mm wire um 20 switch um vannu", "calls": [["draft_receipt", {"material": "Switch", "quantity": 20, "unit": "nos", "figures_placed": [20]}], ["ask", {"question": "Electrical wire or binding wire?", "figures_placed": [2, 1.5]}]], "expect": [{"kind": "material_in", "material": ["switch"], "quantity": 20}], "note": "every item reaches the card or a question; 1.5 is a size"}
 - {"id": 143, "lang": "en", "message": "how much cement is left at Site A? and at all sites?", "calls": [["stock_for", {"material": "cement", "site": "all sites"}]], "expect": [], "query": true, "note": "all sites is an explicit scope"}
+- {"id": 150, "lang": "en", "message": "The last load was only half a truck, you should have asked me the load size. Also it is raining here. Did other engineers report today?", "calls": [["query_work_log", {"date": "today"}]], "expect": [], "other": true, "must_call": ["query_work_log"], "must_not_call": ["stock_for", "draft_receipt", "draft_usage"], "note": "Paraclette 31 Oct 18:53 as text: a complaint + weather + other engineers"}
+- {"id": 151, "lang": "en", "message": "I never asked for inventory", "calls": [], "expect": [], "other": true, "must_not_call": ["stock_for", "draft_receipt", "draft_usage"], "note": "Paraclette 31 Oct 18:55: a complaint about the last reply, no stock answer"}
+- {"id": 152, "lang": "en", "message": "that is not what I asked, why did you tell me about cement?", "calls": [], "expect": [], "other": true, "must_not_call": ["stock_for", "draft_receipt", "draft_usage"], "note": "sibling: complaint about the last reply"}
+- {"id": 153, "lang": "en", "message": "what is the weather going to be like tomorrow?", "calls": [], "expect": [], "other": true, "must_not_call": ["stock_for", "draft_receipt", "draft_usage", "save_work_done"], "note": "no weather data: honest, offer a site note"}
+- {"id": 154, "lang": "manglish", "message": "innu mattu engineers entengilum report cheythooo?", "calls": [["query_work_log", {"date": "today"}]], "expect": [], "other": true, "must_call": ["query_work_log"], "must_not_call": ["stock_for"]}
+- {"id": 155, "lang": "manglish", "message": "innu 8 mason vannu, 30 bag cement vannu, cement ethra und?", "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 8}]}], ["draft_receipt", {"material": "cement", "quantity": 30, "unit": "bags"}], ["stock_for", {"material": "cement"}]], "expect": [{"kind": "material_in", "material": ["cement"], "quantity": 30}], "mixed": true, "must_call": ["save_labour", "stock_for"], "note": "mixed labour + material + question voice note"}
+- {"id": 156, "lang": "en", "message": "good morning", "calls": [], "expect": [], "other": true, "must_not_call": ["stock_for", "draft_receipt", "draft_usage"], "note": "greeting: one friendly line, no inventory"}

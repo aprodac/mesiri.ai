@@ -1,10 +1,11 @@
 """The v2 main agent (request 174).
 
-One model run per message: it is given the sender's context (their sites, today's saved
-records, the open card, the last turns) plus the material catalog, the materials SKILL.md
-as its rules, and the skill's tools. It either takes the message (draft lines, a question,
-a stock answer) or hands it back untouched, and the caller then runs today's agent in the
-same turn. It never writes: the draft tools add lines to the card, the Save tap writes.
+One model run per message (request 180): it is given the sender's context (their sites,
+today's saved records, the open card, the last turns incl. Mesiri's own replies), the material
+catalog, the rule files (skills/general + skills/materials) and the tools: the materials
+tools, the existing record tools and the read tools. It decides, calls what the message needs
+and writes its own reply. It never writes a record: the draft tools add lines to the card, the
+Save tap writes.
 
 The framework is the existing ``ToolCallingProvider`` (google-genai function calling), see
 docs/agents/ADR-v2-agent-framework.md.
@@ -20,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from mesiri_ai.models import ChatMessage, ToolOutcome, ToolRunResult
+from runtime.agent import tools as classic
 from runtime.agent.entry_base import ALL_SITES
 from runtime.agent.prompt import MESIRI_VOICE, AgentContext, build_messages
 from runtime.agent.toolbox import AgentToolbox
@@ -30,7 +32,35 @@ from ..skills.materials import tools as skill
 
 _log = logging.getLogger("mesiri.agent_v2")
 
-SKILL_PATH = Path(__file__).resolve().parent.parent / "skills" / "materials" / "SKILL.md"
+SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
+SKILL_PATH = SKILLS_DIR / "materials" / "SKILL.md"
+GENERAL_SKILL_PATH = SKILLS_DIR / "general" / "SKILL.md"
+#: Plain-English rule files, in the order the model reads them.
+SKILL_FILES = (GENERAL_SKILL_PATH, SKILL_PATH)
+
+#: Request 180: the EXISTING toolbox tools v2 gets for the other record kinds, unchanged (same
+#: specs, same draft card, same Save tap), and the read tools. Anything not listed (creating
+#: sites, members, join codes, settings) stays with the classic agent. Labour is included by the
+#: owner's decision on plan 180; its data paths and rules are not touched.
+GENERAL_WRITE_TOOLS = frozenset({
+    classic.SAVE_LABOUR, classic.SAVE_WORK_DONE, classic.SAVE_EXPENSE, classic.REPORT_ISSUE,
+    classic.UPDATE_ISSUE, classic.CORRECT_WORK_QUANTITY, classic.NOTE_FOR_ENGINEER,
+    classic.SET_SITE_CONDITIONS, classic.REQUEST_DPR, classic.SET_WORK_SITE,
+})
+GENERAL_READ_TOOLS = frozenset({
+    classic.QUERY_LABOUR, classic.QUERY_WORK_LOG, classic.QUERY_PROJECT, classic.QUERY_EXPENSES,
+    classic.QUERY_OPEN_NEEDS, classic.MY_SCOPE,
+})
+GENERAL_TOOLS = GENERAL_WRITE_TOOLS | GENERAL_READ_TOOLS
+
+
+def general_specs() -> list[Any]:
+    """Today's specs of the tools above, in today's order."""
+    return [spec for spec in classic.tool_specs() if spec.name in GENERAL_TOOLS]
+
+
+def all_specs() -> list[Any]:
+    return [*skill.specs(), *general_specs()]
 
 #: Request 178: the budget of a v2 run. A message v2 takes is never run by today's agent too, so
 #: more room here does not double the time; only a hand-back (one quick round) or a failure
@@ -48,7 +78,8 @@ CATALOG_IN_PROMPT = 400
 
 
 def system_prompt() -> str:
-    return f"{SKILL_PATH.read_text(encoding='utf-8')}\n{MESIRI_VOICE}"
+    rules = "\n\n".join(path.read_text(encoding="utf-8").strip() for path in SKILL_FILES)
+    return f"{rules}\n\n{MESIRI_VOICE}"
 
 
 @dataclass(slots=True)
@@ -57,7 +88,7 @@ class V2Run:
 
     toolbox: AgentToolbox
     run: ToolRunResult | None = None
-    #: The model's reason for handing the message back, when it did.
+    #: Kept for the shadow report's older rows; v2 no longer hands a message back.
     handed_back: str | None = None
     #: Set when they asked for material to be sent or ordered (a request: not built yet).
     request_not_built: bool = False
@@ -67,11 +98,16 @@ class V2Run:
 
     @property
     def took_message(self) -> bool:
-        """v2 did something with the message: a line, a question, a stock answer. Then it
-        is v2's alone; today's agent never runs for it (a message is never handled twice)."""
+        """v2 did something with the message: any tool call, a line, a question. Then it is
+        v2's alone; today's agent never runs for it (a message is never handled twice)."""
         if self.toolbox.attempted_writes or self.toolbox.parked is not None:
             return True
-        return self.request_not_built or any(name in skill.TAKES_THE_MESSAGE for name, _ in self.calls)
+        return self.request_not_built or bool(self.calls)
+
+    @property
+    def answered(self) -> bool:
+        """v2 produced its own reply text (a chat answer, an honest 'no data')."""
+        return bool(self.run is not None and (self.run.text or "").strip())
 
     @property
     def asked(self) -> str:
@@ -214,11 +250,6 @@ class MainAgent:
         async def handle(name: str, raw_args: dict[str, Any]) -> ToolOutcome:
             state.calls.append((name, dict(raw_args)))  # with the account: the runner reads it
             args, _account = skill.split_account(raw_args)
-            if name == skill.HAND_BACK:
-                if state.took_message:
-                    return ToolOutcome(content={"status": "refused", "why": "you already took this message"})
-                state.handed_back = str(args.get("reason") or "not materials")
-                return ToolOutcome(content={"status": "ok"}, stop=True)
             if name == skill.CATALOG_MATCH:
                 return ToolOutcome(content=await self.match(organization_id, str(args.get("word") or "")))
             if name == skill.REQUEST_NOT_BUILT:
@@ -233,6 +264,10 @@ class MainAgent:
                 if name == skill.ASK:
                     return ToolOutcome(content={"status": "shadow"}, stop=True)
                 return ToolOutcome(content={"status": "drafted"}, done=True)
+            if name in GENERAL_TOOLS:
+                if shadow and name in GENERAL_WRITE_TOOLS:
+                    return ToolOutcome(content={"status": "drafted"})  # recorded in state.calls only
+                return await toolbox.handle(name, args)
             classic_name = skill.CLASSIC_NAME.get(name)
             if classic_name is None:
                 return ToolOutcome(content={"status": "unknown_tool", "name": name})
@@ -251,7 +286,7 @@ class MainAgent:
             state.run = await self._provider.run_tools(
                 system_prompt(),
                 messages,
-                skill.specs(),
+                all_specs(),
                 handle,
                 max_steps=MAX_STEPS,
                 timeout_seconds=TIMEOUT_SECONDS,

@@ -2,12 +2,12 @@
 journey swaps one object and everything around the turn (context, gateway, the reply, the
 Save card, outage handling) stays today's.
 
-- ``V2Runner`` (``assistant_mode = v2_materials``): the v2 main agent reads the message first.
-  When it takes it (a card line, a question, a stock answer) the reply is composed by the
-  same code that composes today's replies (honest wording, number guard, card), and today's
-  agent never runs for that message. When it hands the message back, has nothing to do with
-  it, or fails before doing anything, today's agent runs in the SAME turn with the same
-  arguments. A message is therefore handled by exactly one of them.
+- ``V2Runner`` (``assistant_mode = v2``, alias ``v2_materials``): request 180. ONE agent reads
+  EVERY eligible message (plain text or voice), decides and writes its own reply. There is no
+  routing and no hand-back: the old code is only tools (materials, the existing record tools,
+  reads). The reply is still composed by the same code as today's (honest wording, number guard,
+  the card). Today's agent runs only if v2 fails before any action (an outage), never as "not
+  my topic".
 - ``ShadowRunner`` (``assistant_mode = v2_shadow``): today's agent answers as usual; v2 then
   runs in the background on the same message with the draft tools stubbed (nothing is
   drafted, nothing is saved) and its proposed lines are logged next to what today's agent did.
@@ -19,6 +19,7 @@ import asyncio
 import json
 import logging
 import time
+from dataclasses import replace
 from typing import Any
 
 from channel.replies import ReplySpec
@@ -34,6 +35,13 @@ _log = logging.getLogger("mesiri.agent_v2")
 SHADOW_STAGE = "agent_v2_shadow"
 LIVE_STAGE = "agent_v2_live"
 EVENT_SOURCE = "agent_v2"
+#: Loop guard: sender -> (fingerprint of the last reply text, monotonic time).
+REPEAT_WINDOW_SECONDS = 600.0
+_LAST_REPLY: dict[str, tuple[str, float]] = {}
+
+
+def _fingerprint(text: str) -> str:
+    return " ".join((text or "").casefold().split())
 
 
 def _eligible(gateway: Any, ctx: Any, site_queue: Any, look_at_photo: Any) -> str | None:
@@ -95,18 +103,45 @@ class V2Runner:
             correlation_id=correlation_id, lap=lap, after_tool=after_tool, language=_language(ctx, user_text),
         )
         ms = int((time.perf_counter() - started) * 1000)
-        if not v2.took_message:
-            why = f"hand_back:{v2.handed_back}" if v2.handed_back is not None else (
-                f"error:{type(v2.error).__name__}" if v2.error is not None else "no_action")
-            await self._log(correlation_id, "classic", why, v2, ms)
+        if v2.error is not None and not v2.took_message:
+            # The ONLY way today's agent runs for an eligible message (request 180): v2 failed
+            # before any action (a model outage), so nothing is on the card and nothing was said.
+            await self._log(correlation_id, "classic", f"error:{type(v2.error).__name__}", v2, ms)
             return await classic()
-        await self._log(correlation_id, "v2", "took_message", v2, ms)
+        await self._log(correlation_id, "v2", "took_message" if v2.took_message else "answered", v2, ms)
         if v2.error is not None:
             # A failure after v2 began (a line is on the card, or a question is parked): never
             # run today's agent on top of it; say what is on the card, as today's runner does.
             _log.exception("agent_v2.degraded correlation_id=%s", correlation_id, exc_info=v2.error)
             return AgentResult("degraded", self._classic._fallback(v2.toolbox, partial=True), v2.toolbox, error=v2.error)
-        return await self._finish(v2, user_text, correlation_id)
+        result = await self._finish(v2, user_text, correlation_id)
+        return self._no_repeat(result, v2, gateway, ctx, user_text)
+
+    def _no_repeat(self, result: AgentResult, v2: V2Run, gateway: Any, ctx: Any, user_text: str) -> AgentResult:
+        """Loop guard (request 180): the same reply is never sent twice in a row to a sender
+        within 10 minutes. Only a words-only reply is guarded (no tool was called): a card or a
+        stock answer may legitimately read the same twice. The second one says so and asks for
+        the need in a few words."""
+        if v2.calls:
+            return result
+        reply = result.reply
+        sender = str(getattr(getattr(gateway, "actor", None), "user_id", "") or "")
+        if reply is None or not sender or not (reply.text or "").strip():
+            return result
+        now = time.monotonic()
+        key = _fingerprint(reply.text)
+        last = _LAST_REPLY.get(sender)
+        _LAST_REPLY[sender] = (key, now)
+        if len(_LAST_REPLY) > 2000:
+            for who in [w for w, (_, at) in _LAST_REPLY.items() if now - at > REPEAT_WINDOW_SECONDS]:
+                del _LAST_REPLY[who]
+        if last is None or last[0] != key or now - last[1] > REPEAT_WINDOW_SECONDS:
+            return result
+        _log.warning("agent_v2.repeat_reply_blocked sender=%s", sender)
+        language = _language(ctx, user_text)
+        return AgentResult(result.outcome, replace(reply, text=say("v2.repeat_reply", language)), result.toolbox,
+                           run=result.run, error=result.error)
+
 
     async def _finish(self, v2: V2Run, user_text: str, correlation_id: str | None) -> AgentResult:
         """The same closing steps as today's runner, over the same toolbox."""

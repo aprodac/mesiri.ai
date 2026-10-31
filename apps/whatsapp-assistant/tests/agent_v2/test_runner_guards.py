@@ -12,6 +12,7 @@ import pytest
 from tests.replay.test_agent_replay import _make_world
 from tests.replay.test_draft_per_message_p1 import open_items, press
 
+from agent_v2 import runner as _runner_module
 from agent_v2.runner import ShadowRunner, V2Runner
 from context import seed
 from mesiri_ai.fakes import FakeToolCallingProvider
@@ -22,6 +23,16 @@ from runtime.agent.runner import AgentRunner
 RECEIPT = ("draft_receipt", {"material": "cement", "quantity": 50, "unit": "bags"})
 USAGE = ("draft_usage", {"material": "cement", "quantity": 20, "unit": "bags"})
 LABOUR = ("save_labour", {"workers": [{"trade": "mason", "headcount": 6}]})
+
+
+@pytest.fixture(autouse=True)
+def _fresh_loop_guard():
+    _runner_module._LAST_REPLY.clear()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_loop_guard():
+    _runner_module._LAST_REPLY.clear()
 
 
 @pytest.fixture
@@ -72,35 +83,71 @@ async def test_receipt_and_usage_in_one_message_are_two_lines_of_one_card(world)
     assert [i.kind for i in await open_items(world)] == [dr.KIND_MATERIAL_IN, dr.KIND_MATERIAL_OUT]
 
 
-async def test_a_message_v2_hands_back_goes_to_todays_agent_in_the_same_turn(world):
+async def test_a_labour_message_is_v2s_through_the_existing_labour_tool_and_needs_the_save_tap(world):
+    result, v2, classic = await run_v2(world, [[LABOUR], "Check it."], ["never"], "6 mason vannu")
+    assert v2.calls == 1 and classic.calls == 0  # no routing: today's agent never runs
+    assert [i.kind for i in await open_items(world)] == [dr.KIND_LABOUR]
+    assert world.dispatcher.dispatched == []  # nothing saved before the tap
+
+
+async def test_a_mixed_message_is_done_whole_by_v2_in_one_step(world):
     result, v2, classic = await run_v2(
-        world, [[("hand_back", {"reason": "labour"})]], [[LABOUR], "Check it."], "6 mason vannu"
-    )
-    assert v2.calls == 1 and classic.calls == 1
-    assert [i.kind for i in await open_items(world)] == [dr.KIND_LABOUR]  # today's agent made it
-    assert result.outcome == "ok"
-
-
-async def test_a_mixed_message_is_handed_back_whole_and_nothing_is_lost(world):
-    classic_script = [[LABOUR, ("save_material_usage", USAGE[1])], "Check it."]
-    result, _, classic = await run_v2(
-        world, [[("hand_back", {"reason": "mixed"})]], classic_script, "6 mason, 20 bag cement use cheythu"
-    )
-    assert classic.calls == 1
-    assert [i.kind for i in await open_items(world)] == [dr.KIND_LABOUR, dr.KIND_MATERIAL_OUT]
-
-
-async def test_hand_back_after_a_draft_is_refused_so_nothing_is_handled_twice(world):
-    result, v2, classic = await run_v2(
-        world, [[RECEIPT, ("hand_back", {"reason": "oops"})], "Check it."], ["never"], "50 bag cement vannu"
+        world, [[LABOUR, USAGE], "Check it."], ["never"], "6 mason, 20 bag cement use cheythu"
     )
     assert classic.calls == 0
-    assert [i.kind for i in await open_items(world)] == [dr.KIND_MATERIAL_IN]
+    assert sorted(i.kind for i in await open_items(world)) == sorted([dr.KIND_LABOUR, dr.KIND_MATERIAL_OUT])
 
 
-async def test_no_tool_at_all_means_today_s_agent_reads_it(world):
-    result, v2, classic = await run_v2(world, ["thanks!"], ["Anytime 👍"], "thanks bro")
-    assert classic.calls == 1 and result.reply.text.startswith("Anytime")
+async def test_there_is_no_hand_back_tool(world):
+    result, _, classic = await run_v2(
+        world, [[("hand_back", {"reason": "labour"})], "Sorry."], ["never"], "6 mason vannu"
+    )
+    assert classic.calls == 0  # an unknown tool is told so, never routed to today's agent
+    assert await open_items(world) == []
+
+
+async def test_a_chat_message_is_answered_by_v2_in_its_own_words(world):
+    result, v2, classic = await run_v2(world, ["Anytime, bro 👍"], ["never"], "thanks bro")
+    assert classic.calls == 0 and v2.calls == 1
+    assert result.reply.text.startswith("Anytime")
+
+
+async def test_a_complaint_gets_v2s_own_acknowledgment_not_stock_and_not_todays_agent(world):
+    reply = "Sorry about that. I will ask the load size first next time."
+    result, v2, classic = await run_v2(world, [reply], ["never"], "the last load was only half a truck, you did not ask")
+    assert classic.calls == 0 and "ask the load size" in result.reply.text
+    assert await open_items(world) == []
+
+
+async def test_weather_is_answered_honestly_and_nothing_is_saved(world):
+    reply = "I do not have weather data. Want me to note 'no rain today' for the site?"
+    result, _, classic = await run_v2(world, [reply], ["never"], "what is the weather tomorrow?")
+    assert classic.calls == 0 and "do not have weather data" in result.reply.text
+    assert await open_items(world) == [] and world.dispatcher.dispatched == []
+
+
+async def test_other_engineers_question_reads_the_day_with_the_existing_read_tool(world):
+    result, v2, classic = await run_v2(
+        world, [[("query_work_log", {"date": "today"})], "Nobody else has reported yet today."], ["never"],
+        "did other engineers report today?",
+    )
+    assert classic.calls == 0 and v2.calls == 1
+    assert "Nobody else" in result.reply.text
+
+
+async def test_the_same_words_only_reply_is_never_sent_twice_in_a_row(world):
+    first, _, _ = await run_v2(world, ["I will answer only what you ask."], ["never"], "that is wrong")
+    second, _, classic = await run_v2(world, ["I will answer only what you ask."], ["never"], "that is wrong")
+    assert first.reply.text == "I will answer only what you ask."
+    assert second.reply.text != first.reply.text and "Sorry" in second.reply.text
+    third, _, _ = await run_v2(world, ["A different answer."], ["never"], "that is wrong")
+    assert third.reply.text == "A different answer."
+
+
+async def test_a_card_reply_may_read_the_same_twice(world):
+    await run_v2(world, [[RECEIPT], "Check it."], ["never"], "50 bag cement vannu")
+    two, _, _ = await run_v2(world, [[RECEIPT], "Check it."], ["never"], "50 bag cement vannu")
+    assert "Sorry" not in two.reply.text
 
 
 async def test_a_v2_failure_before_any_action_falls_back_to_todays_agent(world):
@@ -160,10 +207,10 @@ async def test_a_question_to_the_sender_is_v2s_and_saves_nothing(world):
 
 async def test_the_live_run_is_traced_with_who_handled_it(world):
     trace = Trace()
-    await run_v2(world, [[("hand_back", {"reason": "labour"})]], [[LABOUR], "ok"], "6 mason", trace=trace)
+    await run_v2(world, [[LABOUR], "ok"], ["never"], "6 mason", trace=trace)
     row = trace.rows[0]
-    assert row["stage"] == "agent_v2_live" and row["stage_payload"]["handled_by"] == "classic"
-    assert row["stage_payload"]["why"] == "hand_back:labour"
+    assert row["stage"] == "agent_v2_live" and row["stage_payload"]["handled_by"] == "v2"
+    assert row["stage_payload"]["calls"][0]["tool"] == "save_labour"
 
 
 # -- shadow ----------------------------------------------------------------------

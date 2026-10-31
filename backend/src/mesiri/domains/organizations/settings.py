@@ -61,15 +61,17 @@ DRAFT_V2 = "draft_v2"
 # Which agent handles a company's WhatsApp messages (request 174, v2 pilot).
 # "classic" (the default, and what every unreadable value means): today's agent only.
 # "v2_shadow": today's agent replies; the v2 materials agent then runs on the side,
-# saves nothing and only logs its proposed card. "v2_materials": the v2 agent handles
-# material messages (receipt, usage, stock count, stock question) and everything else
-# goes to today's agent in the same turn. Changed by the Mesiri team only.
+# saves nothing and only logs its proposed card. "v2" (request 180): ONE agent reads every
+# plain message, decides and writes its own reply; the old code is only its tools.
+# "v2_materials" is the older name of the same mode and is still accepted (it reads as "v2").
+# Changed by the Mesiri team only.
 ASSISTANT_MODE = "assistant_mode"
 ASSISTANT_MODE_CLASSIC = "classic"
 ASSISTANT_MODE_V2_SHADOW = "v2_shadow"
-ASSISTANT_MODE_V2_MATERIALS = "v2_materials"
+ASSISTANT_MODE_V2_MATERIALS = "v2_materials"  # alias of ASSISTANT_MODE_V2
+ASSISTANT_MODE_V2 = "v2"
 ASSISTANT_MODES: frozenset[str] = frozenset(
-    {ASSISTANT_MODE_CLASSIC, ASSISTANT_MODE_V2_SHADOW, ASSISTANT_MODE_V2_MATERIALS}
+    {ASSISTANT_MODE_CLASSIC, ASSISTANT_MODE_V2_SHADOW, ASSISTANT_MODE_V2, ASSISTANT_MODE_V2_MATERIALS}
 )
 
 # Product modules a company can have switched on (V1 tracker BE-06). Each key
@@ -209,9 +211,9 @@ _SPECS: dict[str, SettingSpec] = {
         description=(
             "Which agent answers WhatsApp messages: 'classic' (today's agent, the default), "
             "'v2_shadow' (today's agent replies; the v2 materials agent runs after it, saves "
-            "nothing and only logs what it would have proposed) or 'v2_materials' (the v2 agent "
-            "handles material messages; everything else goes to today's agent). Changed by the "
-            "Mesiri team only."
+            "nothing and only logs what it would have proposed) or 'v2' (one agent reads every "
+            "message and writes its own reply; 'v2_materials' is the same mode under its old "
+            "name). Changed by the Mesiri team only."
         ),
     ),
     BRANDING: SettingSpec(
@@ -404,7 +406,7 @@ def validate(key: str, value: object) -> object:
         mode = str(value).strip().lower() if isinstance(value, str) else ""
         if mode not in ASSISTANT_MODES:
             raise ValueError(f"assistant_mode must be one of {sorted(ASSISTANT_MODES)}")
-        return mode
+        return ASSISTANT_MODE_V2 if mode == ASSISTANT_MODE_V2_MATERIALS else mode
     return value
 
 
@@ -412,6 +414,8 @@ def assistant_mode(stored: object) -> str:
     """The company's agent mode. Anything unset, unreadable or from before this
     setting's values ("agent", "off") is "classic": production is unchanged."""
     mode = stored.strip().lower() if isinstance(stored, str) else ""
+    if mode == ASSISTANT_MODE_V2_MATERIALS:
+        return ASSISTANT_MODE_V2  # the old name of the same mode (no data migration)
     return mode if mode in ASSISTANT_MODES else ASSISTANT_MODE_CLASSIC
 
 

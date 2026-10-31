@@ -59,7 +59,7 @@ def golden_as_evals() -> list[dict[str, Any]]:
         elif case.get("query"):
             new.update(query=True, expect=[])
         elif case.get("chat") or case.get("card") or any(a not in MATERIAL_ACTIONS for a in actions):
-            new.update(handback=True, expect=[])
+            new.update(other=True, expect=[])
         else:
             new["expect"] = [
                 {"kind": KIND[e["action"]], "material": e["material"], "quantity": e["quantity"]}
@@ -124,17 +124,29 @@ class Recording:
 
 
 def judge(
-    case: dict[str, Any], items: list[dr.DraftItem], *, handed_back: bool, asked: bool, queried: bool,
-    v2_drafted: bool = False, not_built: bool = False,
+    case: dict[str, Any], items: list[dr.DraftItem], *, fell_back: bool, asked: bool, queried: bool,
+    v2_drafted: bool = False, not_built: bool = False, names: list[str] | None = None,
 ) -> Verdict:
+    """Request 180: v2 reads every message, so there is no 'hand back'. A message that is not (only)
+    about materials (``other``) is right when v2 put no material line on the card and called none
+    of ``must_not_call``; ``mixed`` cases are judged on their material lines only."""
+    names = names or []
     lines = [i for i in items if i.state != dr.UNREADABLE]
     expected = case.get("expect", [])
-    if case.get("handback"):
-        # (today's agent runs after a hand-back, so the card may hold ITS lines: only v2's count)
-        ok = handed_back and not v2_drafted
-        return Verdict(ok, v2_drafted, "" if ok else f"expected a hand-back; v2 drafted={v2_drafted}", handed_back)
-    if handed_back:
-        return Verdict(False, False, "handed back a message that is v2's", True)
+    if fell_back:
+        return Verdict(False, False, "today's agent ran: v2 failed before any action", True)
+    if case.get("mixed"):
+        material = (dr.KIND_MATERIAL_IN, dr.KIND_MATERIAL_OUT, dr.KIND_STOCK_COUNT, dr.KIND_TRANSFER_MATERIAL)
+        lines = [i for i in lines if i.kind in material]
+    bad = [n for n in case.get("must_not_call", []) if n in names]
+    if bad:
+        return Verdict(False, True, f"called {bad}, which this message must not trigger")
+    absent = [n for n in case.get("must_call", []) if n not in names]
+    if case.get("other"):
+        ok = not v2_drafted and not absent
+        return Verdict(ok, v2_drafted, "" if ok else f"v2 drafted a material line={v2_drafted}; missing calls {absent}")
+    if absent:
+        return Verdict(False, False, f"missing calls {absent}")
     left = list(lines)
     missing = []
     for want in expected:
@@ -191,9 +203,10 @@ async def run_case(case: dict[str, Any], v2_provider: Any) -> tuple[Verdict, Any
     verdict = judge(
         case,
         await open_items(world),
-        handed_back=classic.calls > 0,
+        fell_back=classic.calls > 0,
         asked=result.toolbox.parked is not None or "ask" in names,
         queried="stock_for" in names,
+        names=names,
         v2_drafted=any(n in ("draft_receipt", "draft_usage", "draft_stock_count", "transfer", "change_line", "remove_line") for n in names),
         not_built="material_request_not_available" in names,
     )

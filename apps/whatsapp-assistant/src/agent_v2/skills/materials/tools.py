@@ -1,7 +1,6 @@
 """The materials skill's tools (request 174).
 
-Every tool here either READS (``stock_for``, ``catalog_match``), ASKS (``ask``), hands the
-message back (``hand_back``), or adds ONE line to the sender's open draft card
+Every tool here either READS (``stock_for``, ``catalog_match``), ASKS (``ask``), or adds ONE line to the sender's open draft card
 (``draft_receipt`` / ``draft_usage`` / ``draft_stock_count``). Nothing writes a record: the
 card's Save tap is the only door (runtime/agent/draft_flow.py), and the draft tools run through
 the SAME toolbox as today's agent, so the site resolver, unit gate, repeat check and card
@@ -23,7 +22,6 @@ DRAFT_STOCK_COUNT = "draft_stock_count"
 STOCK_FOR = "stock_for"
 CATALOG_MATCH = "catalog_match"
 ASK = "ask"
-HAND_BACK = "hand_back"
 #: Request 178: the tools v1 of v2 lacked.
 TRANSFER = "transfer"
 CHANGE_LINE = "change_line"
@@ -183,18 +181,6 @@ def specs() -> list[ToolSpec]:
                 "type": "object",
                 "properties": {"word": {"type": "string", "description": "The material word as said."}},
                 "required": ["word"],
-            },
-        ),
-        ToolSpec(
-            name=HAND_BACK,
-            description=(
-                "The message is not (only) about materials: labour, work done, an issue, money, a "
-                "question for the engineer, chat, or materials mixed with any of those. Hands the WHOLE "
-                "message to the general assistant. Call it before any draft tool, never after one."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {"reason": {"type": "string"}},
             },
         ),
     ]

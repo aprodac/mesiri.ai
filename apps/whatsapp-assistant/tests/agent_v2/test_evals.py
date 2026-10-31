@@ -22,12 +22,12 @@ GOLDEN = golden_as_evals()
 
 
 def test_the_eval_set_is_well_formed():
-    assert len(EVALS) == 43 and len({c["id"] for c in EVALS}) == 43
+    assert len(EVALS) == 50 and len({c["id"] for c in EVALS}) == 50
     assert len(GOLDEN) == 25
     for case in EVALS:
-        kinds = [bool(case["expect"]), bool(case.get("ask")), bool(case.get("query")), bool(case.get("handback")), bool(case.get("not_built"))]
+        kinds = [bool(case["expect"]), bool(case.get("ask")), bool(case.get("query")), bool(case.get("other")), bool(case.get("not_built"))]
         assert sum(kinds) == 1, case["id"]
-        assert case["calls"], case["id"]
+        assert case["calls"] or case.get("other"), case["id"]
     langs = {c["lang"] for c in EVALS}
     assert {"en", "manglish", "ml", "hindi"} <= langs
 
@@ -35,14 +35,18 @@ def test_the_eval_set_is_well_formed():
 @pytest.mark.parametrize("case", EVALS, ids=[f"{c['id']}:{c['message'][:28]}" for c in EVALS])
 async def test_the_good_run_of_each_case_gives_exactly_the_expected_card(case):
     calls = [(name, args) for name, args in case["calls"]]
-    provider = FakeToolCallingProvider([calls, "Check it."] if not case.get("ask") else [calls])
+    if not calls:
+        script = ["I am sorry about that. I will answer only what you ask."]
+    else:
+        script = [calls, "Check it."] if not case.get("ask") else [calls]
+    provider = FakeToolCallingProvider(script)
     verdict, _ = await run_case(case, provider)
     assert verdict.right, verdict.why
     assert not verdict.wrong_save
 
 
-async def test_the_judge_calls_a_line_where_a_hand_back_was_expected_a_wrong_save():
-    case = next(c for c in EVALS if c["id"] == 122)  # labour + cement: whole message goes back
+async def test_the_judge_calls_a_wrong_material_line_in_a_non_material_message_a_wrong_save():
+    case = next(c for c in EVALS if c["id"] == 125)  # "JCB breakdown aayi" is an issue, never a material line
     provider = FakeToolCallingProvider([[("draft_usage", {"material": "cement", "quantity": 20, "unit": "bags"})], "ok"])
     verdict, _ = await run_case(case, provider)
     assert verdict.wrong_save and not verdict.right
@@ -108,3 +112,16 @@ async def test_live_model_on_the_v2_gate_set():
     assert not wrong_saves, f"wrong saves: {wrong_saves}"
     assert accuracy >= 0.90
     assert p95(times) <= p95(classic_times), "v2's p95 reply time is worse than today's agent"
+
+
+async def test_the_judge_fails_a_complaint_answered_with_a_stock_inventory():
+    case = next(c for c in EVALS if c["id"] == 151)  # Paraclette 31 Oct 18:55: "I never asked for inventory"
+    provider = FakeToolCallingProvider([[("stock_for", {"material": "cement"})], "176 bags"])
+    verdict, _ = await run_case(case, provider)
+    assert not verdict.right and "stock_for" in verdict.why
+
+
+async def test_the_judge_fails_other_engineers_asked_but_not_looked_up():
+    case = next(c for c in EVALS if c["id"] == 154)
+    verdict, _ = await run_case(case, FakeToolCallingProvider(["Nobody has."]))
+    assert not verdict.right and "query_work_log" in verdict.why
