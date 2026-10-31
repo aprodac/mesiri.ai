@@ -34,6 +34,7 @@ card, and the supervisor taps Save.
    could not be saved or ask them to send it again. If the same message also corrects or removes
    another line ("the 20 bags are cement"), do that too in the same turn. A message that is a NEW
    report (new work, new material) still adds lines as usual: it is not an answer.
+   "Today already 40 workers... Replace it with 10, or add to it?" is such a question too: "add cheyyu", "koottu", "replace", "പകരം" are its answer (`answer_question` with "Add" or "Replace"). The card shows the figures as said; never rewrite its day total yourself.
 7. **Asking for material** ("cement venam", "need 20 bags sand", "send bricks"): a request,
    not stock. Call `material_request_not_available` once. Do not draft anything for it.
 8. **Unclear**: you cannot tell receipt from usage, or the quantity or the material is

@@ -152,9 +152,47 @@ def test_an_answer_settles_the_item_and_a_second_answer_does_nothing():
                "event": {"fields": _fields([{"trade": "mason", "headcount": 6}], [{"trade": "mason", "headcount": 8}])}},
     )
     assert dr.apply_answer(item, 1)
-    assert item.state == dr.OK and item.question == "" and item.summary == "14 workers (14 mason)"
+    assert item.state == dr.OK and item.question == "" and item.summary == "6 workers (6 mason)"
     assert not dr.apply_answer(item, 0)
     assert not dr.apply_answer(dr.DraftItem(kind="x", tool="t", args={}, state=dr.NEEDS_ANSWER, options=["a"]), 3)
+
+
+def _crew_item() -> dr.DraftItem:
+    day = [{"trade": "worker", "headcount": 30}, {"trade": "mason", "headcount": 10}]
+    fields = _fields([{"trade": "worker", "headcount": 10}], day)
+    return dr.DraftItem(
+        kind=dr.KIND_LABOUR, tool="save_labour", args={}, state=dr.NEEDS_ANSWER, question="q?", options=[dr.REPLACE, dr.ADD],
+        summary=dr.preview("labour.attendance", fields),
+        ready={"decision": {"workflow_key": "labour.attendance"}, "event": {"fields": fields}},
+    )
+
+
+def test_request184_no_day_total_while_the_question_is_open():
+    assert "day total" not in _crew_item().summary
+
+
+def test_request184_add_shows_what_was_said_and_the_true_day_total():
+    item = _crew_item()
+    assert dr.apply_answer(item, 1)
+    assert item.summary == "10 workers (10 worker) \u00b7 day total 50 workers" or item.summary.endswith("day total 50 workers")
+    assert item.summary.startswith("10 workers")
+    assert item.ready["event"]["fields"]["lines"][0]["headcount"] == 40  # what Save writes, as before
+
+
+def test_request184_replace_total_is_ten_plus_the_other_trade():
+    item = _crew_item()
+    assert dr.apply_answer(item, 0)
+    assert item.summary.startswith("10 workers") and item.summary.endswith("day total 20 workers")
+
+
+def test_request184_typed_choice_in_three_languages():
+    o = [dr.REPLACE, dr.ADD]
+    for t in ("add cheyyu", "Add", "koottu", "\u0d15\u0d42\u0d1f\u0d4d\u0d1f\u0d3f \u0d1a\u0d47\u0d7c\u0d15\u0d4d\u0d15\u0d42"):
+        assert dr.labour_choice(t, o) == dr.ADD, t
+    for t in ("replace", "maattu", "\u0d2a\u0d15\u0d30\u0d02"):
+        assert dr.labour_choice(t, o) == dr.REPLACE, t
+    assert dr.labour_choice("add or replace?", o) is None
+    assert dr.labour_choice("hello", o) is None
 
 
 # -- Ready <-> JSON -----------------------------------------------------------------

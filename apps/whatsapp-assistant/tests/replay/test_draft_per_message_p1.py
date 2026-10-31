@@ -356,7 +356,7 @@ async def test_add_raises_the_repeated_trade_by_what_the_day_already_counts(worl
     )
     result = await world.say(provider, "6 more mason")
     card, _ = await press(world, result.reply, "Add")
-    assert "14 workers (14 mason)" in card.text
+    assert "6 workers (6 mason) · day total 19 workers" in card.text  # request 184: as said; Save still writes 14
     await press(world, card, "✅ Save")
     (written,) = world.dispatcher.dispatched
     assert [(x["trade"], x["headcount"]) for x in written.draft_action.fields["lines"]] == [("mason", 14)]

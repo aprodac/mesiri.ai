@@ -392,6 +392,9 @@ def preview(workflow_key: Any, fields: dict[str, Any], *, today: Any = None) -> 
         return _issue_status_line(fields)
     line = summarise_draft(SimpleNamespace(action_type=action, fields=dict(fields)), today=today)
     if line and action is DraftActionType.RECORD_LABOUR_ATTENDANCE:
+        if labour_question(fields) is not None:
+            # Request 184: while "replace or add?" is open the day total is not known yet.
+            return line
         return line + day_total_note(fields)
     return line
 
@@ -472,11 +475,17 @@ def apply_answer(item: DraftItem, choice: int, *, today: Any = None) -> bool:
     event = item.ready.get("event") or {}
     fields = dict(event.get("fields") or {})
     if item.kind == KIND_LABOUR:
+        as_sent = fields
         if answer == ADD:
             fields = add_to_day(fields)
             item.ready = {**item.ready, "event": {**event, "fields": fields}}
-        key = (item.ready.get("decision") or {}).get("workflow_key")
-        item.summary = preview(key, fields, today=today) or item.summary
+        # Request 184: the card shows the figures as the sender gave them ("10 workers"),
+        # with the day total the Save will leave ("day total 50"); after Add the stored
+        # figure is the day's new latest count for the trade (30 + 10 = 40), saved as before.
+        base = summarise_draft(
+            SimpleNamespace(action_type=DraftActionType.RECORD_LABOUR_ATTENDANCE, fields=as_sent), today=today
+        )
+        item.summary = (base + day_total_note(fields)) if base else item.summary
     item.state = OK
     item.question, item.options = "", []
     return True
@@ -806,3 +815,19 @@ def waiting_for(draft: MessageDraft, item: DraftItem) -> DraftItem | None:
     named = [i for i in same if material and str(i.args.get("material") or "").strip().casefold() == material]
     # "Which material?" is answered with another name: then the only waiting line of its kind is it.
     return named[0] if named else (same[0] if len(same) == 1 else None)
+
+
+_ADD_WORDS = ("add", "koottu", "kootti", "koodi", "cherkk", "chertt", "plus", "കൂട്ട", "ചേർ", "കൂടി", "ആഡ്")
+_REPLACE_WORDS = ("replace", "maattu", "mattu", "maatt", "pakaram", "overwrite", "മാറ്റ", "പകരം", "റീപ്ലേസ്")
+
+
+def labour_choice(text: str, options: list[str]) -> str | None:
+    """Request 184: Replace or Add from a typed/spoken reply in English, Manglish or
+    Malayalam ("add cheyyu", "replace", "പകരം"). None when it says neither or both."""
+    said = " ".join(str(text or "").lower().split())
+    add = any(w in said for w in _ADD_WORDS)
+    rep = any(w in said for w in _REPLACE_WORDS)
+    if add == rep:
+        return None
+    want = ADD if add else REPLACE
+    return want if want in options else None
