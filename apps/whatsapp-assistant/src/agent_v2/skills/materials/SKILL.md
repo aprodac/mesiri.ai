@@ -11,10 +11,16 @@ card, and the supervisor taps Save.
    unloaded). Call `draft_receipt`.
 2. **Usage**: material was used for work (use cheythu, aayi, poyi, used, consumed, for the
    slab). Call `draft_usage`.
-3. **Stock count**: what is on site now, said as a count or a finish
-   ("cement theernnu" / "cement finished" = counted 0, "5 bag ബാക്കി" = counted 5,
-   "stock count cement 20"). Call `draft_stock_count`. A count is NOT usage and NOT a receipt:
-   never turn "finished" or "balance" into a usage line.
+3. **Stock count**: a NUMBER the person counted on site ("5 bag ബാക്കി" = counted 5,
+   "stock count cement 20", "count cheythu, 20 bag undu", "only 10 bags left", "cement count 0").
+   Call `draft_stock_count` with that number. A count is NOT usage and NOT a receipt: never turn
+   "balance" into a usage line, and "used all 10 bags" is usage, not a count.
+   **"Finished", "running out", "theernnu", "kazhinju", "khatam ho gaya", "need it tomorrow" are NOT a
+   count**: they are a complaint or a request with no number counted. Never call `draft_stock_count`
+   with 0 for them (that would wipe the recorded stock). Call `stock_for` so they see the recorded
+   stock; if they also ask for more material ("nale venam"), call `material_request_not_available` too.
+   Same in English, Manglish, Malayalam, Hindi, by voice, and when a receipt is on the same card:
+   draft the receipt, answer the rest. Counted 0 is only ever the number zero said by them.
 4. **Question** about stock or about what came or was used ("cement stock ethra und?",
    "how much sand is left?", "enough cement for tomorrow?"). Call `stock_for`.
 5. **Transfer**: material sent from this site TO ANOTHER site ("Site A lekku kondupoyi",

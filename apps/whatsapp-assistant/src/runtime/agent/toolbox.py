@@ -165,6 +165,25 @@ def asks_about_stock(text: str) -> bool:
     return bool(_STOCK_WORD.search(text) and _QUESTION.search(text))
 
 
+#: A zero the person actually said: the digit alone ("cement 0 bag undu"), or the word.
+_SAID_ZERO = re.compile(r"(?<![\d.,])[0٠०൦]+(?:[.,]0+)?(?![\d.,])|\b(?:zero|nil|poojyam|pujyam)\b|പൂജ്യം|शून्य|जीरो", re.IGNORECASE)
+
+
+def unsaid_zero_count(text: str, args: dict[str, Any]) -> bool:
+    """Request 192: a stock count of 0 the person never said. "Cement finished / running out /
+    theernnu / khatam" is a complaint about stock, not a count; written as "counted 0" it would
+    adjust the books to nothing (127 bags wiped). A count of 0 needs a zero in the message."""
+    counted = args.get("counted")
+    if counted is None or isinstance(counted, bool):
+        return False
+    try:
+        if float(counted) != 0:
+            return False
+    except (TypeError, ValueError):
+        return False
+    return not _SAID_ZERO.search(text or "")
+
+
 def material_named(text: str) -> str | None:
     """The one common material the message names, for the stock lookup; None
     when it names none or several (the lookup then lists all)."""
@@ -623,6 +642,10 @@ class AgentToolbox:
                     "instruction": f"Nothing was saved. Say exactly: {EQUIPMENT_LINE}",
                 }
             )
+        if name == ADJUST_STOCK and unsaid_zero_count(self.user_text, args):
+            # Request 192: no counted figure; the card then shows the records and asks
+            # ("Records show 127 bag cement. Set stock to 0?"), so nothing is wiped unasked.
+            args = {k: v for k, v in args.items() if k != "counted"}
         if name == REPORT_ISSUE:
             args = classify_issue(self.user_text, args)
         if name == SAVE_WORK_DONE:

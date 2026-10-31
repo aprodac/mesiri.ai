@@ -59,8 +59,9 @@ _DESCRIPTIONS = {
         "Not for a count or 'finished' (draft_stock_count) and not for a delivery. One call per line."
     ),
     DRAFT_STOCK_COUNT: (
-        "Put a physical STOCK COUNT on the card: what is on site now ('cement theernnu' = counted 0, "
-        "'5 bag ബാക്കി' = counted 5, 'stock count cement 20'). Omit counted when no figure was said."
+        "Put a physical STOCK COUNT on the card: a number they counted ('5 bag ബാക്കി' = counted 5, "
+        "'stock count cement 20', 'only 10 bags left'). 'Finished / running out / theernnu / khatam' is NOT a "
+        "count: do not call this for it. Never counted 0 unless they said 0."
     ),
     TRANSFER: (
         "Material SENT FROM one site TO ANOTHER site of the company (kondupoyi, matti, shifted, "

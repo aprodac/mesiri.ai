@@ -514,7 +514,7 @@ def tool_specs() -> list[ToolSpec]:
             name=ADJUST_STOCK,
             description=(
                 "A physical STOCK COUNT: what is really on site now ('stock count: cement 20 bags', "
-                "'cement 20 bag undu, count cheythu', 'cement is finished' -> counted 0). Also the answer "
+                "'cement 20 bag undu, count cheythu'). A NUMBER they counted, never a complaint: finished, running out, theernnu, khatam say no number, so leave counted out. Also the answer "
                 "to the stock question buttons ('Set cement stock to 0', or a number after 'Enter cement "
                 "count'). The system compares with the books and writes only the difference as an "
                 "adjustment with a reason, after their Save tap. Never save_material_usage for this. "
@@ -526,7 +526,7 @@ def tool_specs() -> list[ToolSpec]:
                     "counted": {
                         "type": "number",
                         "description": (
-                            "What is on site now (0 when finished). Omit it when they have not said a figure: "
+                            "What is on site now: ONLY a number they said (0 only if they said zero or 0). Omit it when they have not said a figure (finished is not one): "
                             "the card then shows the records and asks."
                         ),
                     },
