@@ -174,6 +174,9 @@ class DraftItem:
     #: asked at Save (question -> the option picked), fed to it on the next Save.
     answers: dict[str, str] = field(default_factory=dict)
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
+    #: Request 164: the sender's words this item came from, to check that every
+    #: amount they said is on the card (``amount_check``).
+    said: str = ""
 
     @property
     def line(self) -> str:
@@ -241,6 +244,7 @@ class DraftItem:
                 answer_unit=str(raw.get("answer_unit") or ""),
                 answers={str(k): str(v) for k, v in (raw.get("answers") or {}).items()},
                 id=str(raw.get("id") or uuid.uuid4().hex[:8]),
+                said=str(raw.get("said") or ""),
             )
         except Exception:  # noqa: BLE001 -- an unreadable item is no item
             return None
@@ -482,6 +486,30 @@ def _line(item: DraftItem, *, show_site: bool) -> str:
     return f"{line} · {item.site}" if show_site and item.site else line
 
 
+def not_kept_line(draft: MessageDraft) -> str:
+    """Request 164: "❓ Not kept: ₹10000 (cost of cement?)" for an amount the sender
+    said that no item of the card carries; "" when all are kept."""
+    from . import amount_check
+
+    items = [i for i in draft.items if i.state != UNREADABLE]
+    said = " ".join(dict.fromkeys(i.said for i in items if i.said))
+    if not said:
+        return ""
+    sources = [(i.args, (i.ready or {}).get("event", {}).get("fields")) for i in items]
+    missing = amount_check.unkept(said, sources)
+    if not missing:
+        return ""
+    for_what = ""
+    materials = [str(i.args.get("material")) for i in items if i.kind == KIND_MATERIAL_IN and i.args.get("material")]
+    if materials and not any(i.kind == KIND_LABOUR for i in items):
+        for_what = f"cost of {materials[0].lower()}?"
+    elif any(i.kind == KIND_LABOUR for i in items) and not materials:
+        for_what = "wage?"
+    else:
+        for_what = "what is it for?"
+    return f"❓ Not kept: {', '.join(amount_check.show(a) for a in missing)} ({for_what})"
+
+
 def card_text(draft: MessageDraft, *, site: str | None = None) -> str:
     """The whole draft as one card: a line per ready item (under "To save:"),
     each open question, and what could not be read."""
@@ -505,6 +533,8 @@ def card_text(draft: MessageDraft, *, site: str | None = None) -> str:
     if where:
         parts.append(f"📍 {where}")
     parts.extend(f"❓ {i.question}" for i in draft.waiting_items if not (i.pending_answer or i.line))
+    if (missing := not_kept_line(draft)):
+        parts.append(missing)
     if draft.unreadable_items:
         parts.append(CANT_READ + "; ".join(i.label or i.summary or i.tool for i in draft.unreadable_items))
     return "\n".join(parts)

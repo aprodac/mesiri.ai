@@ -157,6 +157,43 @@ class MaterialInventoryQueryService:
             total["used"] += float(entry["used"])
         return totals
 
+    async def period_costs(
+        self,
+        *,
+        organization_id: str,
+        project_id: str | None,
+        site_id: str | None,
+        start_date: datetime.date,
+        end_date: datetime.date,
+    ) -> dict[tuple[str, str], float]:
+        """Request 164: the rate paid per unit for what was received in the period,
+        per (lower-cased material name, unit): the cost recorded with the
+        deliveries divided by their quantity (only deliveries that carry a cost).
+        Read-only."""
+        import sqlalchemy as sa
+
+        scope = ""
+        params: dict[str, Any] = {"org": uuid.UUID(organization_id), "start": start_date, "end": end_date}
+        if project_id:
+            scope += " AND r.project_id = :project"
+            params["project"] = uuid.UUID(project_id)
+        if site_id:
+            scope += " AND r.site_id = :site"
+            params["site"] = uuid.UUID(site_id)
+        sql = sa.text(
+            "SELECT lower(c.name) AS name, u.code AS unit, SUM(r.total_cost) AS cost, SUM(r.quantity) AS qty "
+            "FROM material_receipts r JOIN materials_catalog c ON c.id = r.material_id "
+            "JOIN units_of_measure u ON u.id = r.unit_id "
+            "WHERE r.organization_id = :org AND r.occurred_date BETWEEN :start AND :end "
+            "AND r.total_cost IS NOT NULL AND r.quantity > 0 "
+            "AND NOT EXISTS (SELECT 1 FROM material_usage x WHERE x.reverses_movement_id = r.id)"
+            + scope
+            + " GROUP BY 1, 2"
+        )
+        async with self._db.transaction() as conn:
+            rows = (await conn.execute(sql, params)).mappings().all()
+        return {(str(r["name"]), str(r["unit"])): float(r["cost"]) / float(r["qty"]) for r in rows if r["qty"]}
+
     async def usage_last_days(
         self,
         *,

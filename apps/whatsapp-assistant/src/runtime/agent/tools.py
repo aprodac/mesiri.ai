@@ -238,6 +238,28 @@ def look_at_photo_spec() -> ToolSpec:
     )
 
 
+def wage_per_person(workers: Any) -> Any:
+    """Request 164: a ``total_wage`` for a line ("30 workers, ₹3000 in all") is kept as
+    the day's wage of each person (the labour record has one wage per person), so it
+    is neither dropped nor shown as 30 x ₹3000."""
+    if not isinstance(workers, list):
+        return workers
+    out = []
+    for w in workers:
+        if isinstance(w, dict) and w.get("total_wage") not in (None, "") and w.get("daily_wage") in (None, ""):
+            try:
+                heads = int(w.get("headcount") or 1)
+                each = round(float(w["total_wage"]) / max(heads, 1), 2)
+                w = {k: v for k, v in w.items() if k != "total_wage"}
+                w["daily_wage"] = int(each) if each == int(each) else each
+            except (TypeError, ValueError):
+                pass
+        elif isinstance(w, dict) and "total_wage" in w:
+            w = {k: v for k, v in w.items() if k != "total_wage"}
+        out.append(w)
+    return out
+
+
 def tool_specs() -> list[ToolSpec]:
     """The tools handed to the model, in the order shown to it."""
     return [
@@ -265,7 +287,19 @@ def tool_specs() -> list[ToolSpec]:
                                     "type": "integer",
                                     "description": "People in this line; 1 for a named person.",
                                 },
-                                "daily_wage": {"type": "number"},
+                                "daily_wage": {
+                                    "type": "number",
+                                    "description": "Rupees for ONE person for the day ('₹500 each').",
+                                },
+                                "total_wage": {
+                                    "type": "number",
+                                    "description": (
+                                        "ONE amount for the whole line ('motham kooli ₹3000' for 30 workers). "
+                                        "If they give an amount for a group and it is not clear whether it is "
+                                        "per person or for all, ask first (ask_user with the options "
+                                        "'₹3000 total' and '₹3000 each')."
+                                    ),
+                                },
                                 "attendance_status": {
                                     "type": "string",
                                     "enum": ["present", "absent", "half_day"],
@@ -371,7 +405,21 @@ def tool_specs() -> list[ToolSpec]:
                         ),
                     },
                     "supplier": {"type": "string", "description": "Only if stated."},
+<<<<<<< HEAD
                     "name_en": _NAME_EN,
+=======
+                    "total_cost": {
+                        "type": "number",
+                        "description": (
+                            "What the whole delivery cost in rupees, when they say it ('motham 10000 "
+                            "aayi', 'for ₹10000'). Never drop an amount they said."
+                        ),
+                    },
+                    "unit_cost": {
+                        "type": "number",
+                        "description": "The price of ONE unit in rupees ('₹100 a bag'), when said instead of the total.",
+                    },
+>>>>>>> d34c49d12c78263e8b02f1e2847c925d38577c19
                     "new_material": _NEW_MATERIAL,
                     "date": _DATE,
                     "project": _PROJECT,
@@ -780,10 +828,12 @@ def tool_specs() -> list[ToolSpec]:
                     "date_range": _PERIOD,
                     "asking": {
                         "type": "string",
-                        "enum": ["used", "received"],
+                        "enum": ["used", "received", "loss"],
                         "description": (
                             "Which side the question is about: 'used' for 'cement used yesterday?', "
-                            "'received' for 'what came in today?'. Omit for stock or both."
+                            "'received' for 'what came in today?'. 'loss' for a loss / waste / "
+                            "nashtam / kalanju sheet ('cement nashtam sheet aakki ayakku'): in, used, "
+                            "wasted, rate and the value lost. Omit for stock or both."
                         ),
                     },
                     "as_pdf": _AS_PDF,
@@ -1120,7 +1170,7 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
     date = day_argument(args.get("date"))
     if name == SAVE_LABOUR:
         fields = {
-            "workers": args.get("workers"),
+            "workers": wage_per_person(args.get("workers")),
             "contractor": args.get("contractor"),
             "occurred_on": date,
             **sc,
@@ -1147,6 +1197,8 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             "unit": args.get("unit"),
             "direction": "received" if received else "used",
             "supplier": args.get("supplier") if received else None,
+            "total_cost": args.get("total_cost") if received else None,
+            "unit_cost": args.get("unit_cost") if received else None,
             "work_item": None if received else args.get("work_item"),
             "occurred_on": date,
             "name_en": args.get("name_en"),
@@ -1251,7 +1303,7 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             "material_name": args.get("material"),
             "date": date,
             "date_range": args.get("date_range"),
-            "asking": args.get("asking") if args.get("asking") in ("used", "received") else None,
+            "asking": args.get("asking") if args.get("asking") in ("used", "received", "loss") else None,
             **_output_format(args),
             **sc,
         }

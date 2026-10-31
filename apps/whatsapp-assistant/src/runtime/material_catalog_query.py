@@ -181,7 +181,16 @@ class MaterialCatalogQueryService:
 
         async with self._db.transaction() as conn:
             repo = UnitsOfMeasureRepository(conn)
-            return await repo.resolve_alias(text)
+            found = await repo.resolve_alias(text)
+            if found is None:
+                # Request 164: a local word ("chaakku", ചാക്ക്, "lod") through the one
+                # table of site words, then the same units list.
+                from runtime.unit_words import canonical_unit
+
+                canon = canonical_unit(text)
+                if canon is not None:
+                    found = await repo.resolve_alias(canon)
+            return found
 
     async def get_unit(self, unit_id: str) -> dict[str, Any] | None:
         from mesiri.infrastructure.postgres.repositories.materials import (
