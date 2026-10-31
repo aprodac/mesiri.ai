@@ -139,3 +139,28 @@ def test_the_newest_day_is_held_out_and_the_splits_do_not_overlap():
     assert [c.turns[0].text for c in held] == ["c"]
     assert [c.turns[0].text for c in tune] == ["a", "b"]
     assert len(cp.split(convs, "all")) == 3
+
+
+# ── family 6 (card jargon): the class guard ────────────────────────────────
+
+
+def test_no_reply_line_in_any_language_talks_about_a_card():
+    """They see a message, lines and buttons, never a 'card' (83 replies said it, 27-31 Oct)."""
+    import re
+
+    from runtime.agent.journey_gateway import NOTHING_TO_UNDO
+    from runtime.agent.wording import LINES
+
+    word = re.compile(r"\bcard\b|കാർഡ്|कार्ड", re.IGNORECASE)
+    offending = [(key, lang) for key, langs in LINES.items() for lang, text in langs.items() if word.search(text)]
+    assert not offending, offending
+    assert not word.search(NOTHING_TO_UNDO)
+
+
+def test_the_general_skill_tells_the_model_the_words_they_see():
+    from agent_v2.agents.main import system_prompt
+
+    rules = system_prompt("manglish")
+    assert "They never see a \"card\"" in rules
+    assert "Never ask a question they already answered" in rules
+    assert "unless a tool did it in this turn" in rules

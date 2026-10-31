@@ -1086,7 +1086,9 @@ class AgentToolbox:
                 return step
         undo_card = getattr(self.gateway, "undo_card", None)
         if undo_card is None:
-            return StepResult("info", text="Nothing to undo from your last card.")
+            from .journey_gateway import NOTHING_TO_UNDO
+
+            return StepResult("info", text=NOTHING_TO_UNDO)
         targets = args.get("targets")
         refs = [str(t) for t in targets] if isinstance(targets, list) else []
         return await undo_card(refs)

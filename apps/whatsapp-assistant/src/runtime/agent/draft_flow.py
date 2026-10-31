@@ -214,7 +214,7 @@ _SCOPE_QUESTIONS = ("site", "project")
 #: The one note when an old-style Yes / No question is still waiting while the
 #: sender's message went onto a draft card (request 127).
 PENDING_YES_NO = (
-    "Note: you still have a Yes / No question waiting above. Answer it first; a card cannot be saved while it waits."
+    "Note: you still have a Yes / No question waiting above. Answer it first; nothing can be saved while it waits."
 )
 #: The same, in the language of the sender's message (request 129: second person, not "of theirs").
 _PENDING_YES_NO_IN = {
@@ -1666,5 +1666,5 @@ async def _failed_reply(gw: Any, draft: dr.MessageDraft, failed: _Failed) -> Rep
     _keep(gw, draft)
     await _persist(gw, draft)
     what = f" Couldn't save {item.label}: {failed.reason}." if item is not None else f" {failed.reason}."
-    words = f"Nothing was saved.{what} It is marked on the card; tap Save to save the rest, or Cancel."
+    words = f"Nothing was saved.{what} It is marked below; tap Save to save the rest, or Cancel."
     return dr.card_reply(draft, words, site=_card_site(gw, draft))

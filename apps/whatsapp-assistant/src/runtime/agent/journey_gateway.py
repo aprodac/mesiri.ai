@@ -90,7 +90,7 @@ def undo_step(gone: list[CardItem], undone: Any) -> StepResult:
     return StepResult("info", text="That is already removed. Nothing more to undo.")
 
 
-NOTHING_TO_UNDO = "Nothing to undo from your last card."
+NOTHING_TO_UNDO = "There is nothing to undo."  # request 185: they never see a "card"
 
 
 async def undo_from_card(

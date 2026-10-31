@@ -145,7 +145,7 @@ async def test_a_reply_without_a_card_has_nothing_to_undo_from_the_agent():
     store = c.CardStore(_Redis())
     await store.put(ACTOR, c.new_card(c.LEGACY, []))
     step = await _gateway(store).undo_card([])
-    assert (step.status, step.text) == ("info", "Nothing to undo from your last card.")
+    assert (step.status, step.text) == ("info", "There is nothing to undo.")
 
 
 # -- the toolbox: undo_last and update_pending_card ----------------------------
