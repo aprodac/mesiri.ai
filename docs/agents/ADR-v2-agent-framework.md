@@ -104,12 +104,17 @@ The live test showed v2 was mostly today's parts renamed. What changed, and wher
 
 1. **Brain / budget.** `MAX_STEPS` 3 -> 6, `TIMEOUT_SECONDS` 9 -> 20 (a message v2 takes never also
    runs classic, so the room does not double a reply; only a hand-back, one quick round, or a failure
-   before any action falls back to classic). The v2 model is settable on its own: `MESIRI_V2_MODEL`
-   (the resolver's `run_tools(model=...)`; unset = the company's `agent` route, as classic). **The
+   before any action falls back to classic). The v2 model is settable on its own in the **control panel,
+   Providers page, row "WhatsApp assistant v2"** (capability `agent_v2`, model + fallback model,
+   audited like the other routes; no deploy). Unset, v2 uses the `agent` route like classic, which has
+   its own row there too. Offered Gemini ids: 2.5 flash / flash-lite / pro, 3.5 flash-lite, 3.5 flash,
+   3.6 flash (from Google's models pages, 31 Oct); "Custom model..." takes any other id (a newer
+   Gemini 3 Pro / preview). Note from the same pages: Google Cloud lists 2.5 Pro / Flash / Flash-Lite
+   to retire on 20 Oct 2026, so check `gemini-2.5-flash` (the default everywhere) is still served. **The
    measurement is NOT done:** the build session had no `GEMINI_API_KEY`. To pick the brain run
    `GEMINI_MODEL=<model> pytest -m live tests/agent_v2/test_evals.py -s` for `gemini-2.5-flash`,
    the strongest Pro / newer model on the key, record accuracy, wrong saves and v2 / classic p50 and
-   p95 in the table below, choose by accuracy then p95, set `MESIRI_V2_MODEL`.
+   p95 in the table below, choose by accuracy then p95, set the `agent_v2` row.
 
    | model | right | wrong saves | v2 p50 / p95 | classic p50 / p95 |
    |---|---|---|---|---|

@@ -229,3 +229,28 @@ async def test_a_stock_answer_for_all_sites_says_so():
     world.draft_v2, world.drafts, world.catalog, world.inventory = True, MemoryDraftStore(), _Catalog(), _Books()
     result, _, _ = await say_v2(world, "cement stock at all sites", [[("stock_for", {"material": "cement"})], "176 bags"])
     assert "📍" in result.reply.text and "All your sites" in result.reply.text
+
+
+# -- the brain is the control panel's "agent_v2" route ---------------------------------------
+
+
+class _RoutingProvider(FakeToolCallingProvider):
+    async def run_tools(self, system_prompt, messages, tools, handler, *, capability="agent", **kw):  # noqa: ANN001, ANN003
+        self.capability = capability
+        return await super().run_tools(system_prompt, messages, tools, handler, **kw)
+
+
+async def test_v2_asks_a_routing_provider_for_its_own_route(world):
+    provider = _RoutingProvider(["hello"])
+    await MainAgent(provider).run(
+        ctx=world.context(), user_text="hi", gateway=world.gateway("hi"), scope=world.scope(), organization_id=None
+    )
+    assert provider.capability == "agent_v2"
+
+
+async def test_a_plain_provider_is_called_as_before(world):  # guard: fakes and the bare live provider
+    provider = FakeToolCallingProvider(["hello"])
+    await MainAgent(provider).run(
+        ctx=world.context(), user_text="hi", gateway=world.gateway("hi"), scope=world.scope(), organization_id=None
+    )
+    assert provider.calls == 1

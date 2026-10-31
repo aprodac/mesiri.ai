@@ -12,8 +12,8 @@ docs/agents/ADR-v2-agent-framework.md.
 
 from __future__ import annotations
 
+import inspect
 import logging
-import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -38,10 +38,10 @@ SKILL_PATH = Path(__file__).resolve().parent.parent / "skills" / "materials" / "
 #: lookup or a correction.
 MAX_STEPS = 6
 TIMEOUT_SECONDS = 20.0
-#: The v2 brain: a Gemini model name for v2 runs only (``MESIRI_V2_MODEL``); unset = the model
-#: the company's ``agent`` route names, which today's agent uses. Measure with the live eval
+#: The v2 brain is the control panel's "agent_v2" route (Providers page); with none set the
+#: provider uses the "agent" route, as today's agent does. Measure with the live eval
 #: (tests/agent_v2/test_evals.py, ``GEMINI_MODEL=...``) and record the numbers in the ADR.
-V2_MODEL = (os.environ.get("MESIRI_V2_MODEL") or "").strip() or None
+CAPABILITY = "agent_v2"
 #: A company's catalog is a few dozen materials; this is a ceiling, not a cut (request 178:
 #: the old first-names line left out the names and aliases a message actually used).
 CATALOG_IN_PROMPT = 400
@@ -148,6 +148,15 @@ class MainAgent:
             return None
         return catalog_text(rows[:CATALOG_IN_PROMPT])
 
+    def _route_kwargs(self) -> dict[str, Any]:
+        """The control-panel route of v2, for a provider that routes by capability (the resolver);
+        a plain provider (a fake, a bare Gemini provider in the live eval) has one model."""
+        try:
+            takes = "capability" in inspect.signature(self._provider.run_tools).parameters
+        except (TypeError, ValueError):
+            takes = False
+        return {"capability": CAPABILITY} if takes else {}
+
     @staticmethod
     def _name_the_site(toolbox: AgentToolbox, outcome: ToolOutcome) -> None:
         """Request 178: a stock answer says which site it is for, or that it covers all of them.
@@ -247,7 +256,7 @@ class MainAgent:
                 max_steps=MAX_STEPS,
                 timeout_seconds=TIMEOUT_SECONDS,
                 correlation_id=correlation_id,
-                **({"model": V2_MODEL} if V2_MODEL else {}),
+                **self._route_kwargs(),
             )
         except Exception as exc:  # noqa: BLE001 -- the caller decides: fall back, or degrade after a write
             state.error = exc
