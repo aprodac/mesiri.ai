@@ -26,6 +26,7 @@ ASK = "ask"
 TRANSFER = "transfer"
 CHANGE_LINE = "change_line"
 REMOVE_LINE = "remove_line"
+ANSWER_QUESTION = "answer_question"
 REQUEST_NOT_BUILT = "material_request_not_available"
 
 #: v2 name -> today's tool name, for the tools that run through the toolbox.
@@ -38,9 +39,10 @@ CLASSIC_NAME = {
     TRANSFER: classic.TRANSFER_MATERIAL,
     CHANGE_LINE: classic.UPDATE_PENDING_CARD,
     REMOVE_LINE: classic.REMOVE_CARD_LINE,
+    ANSWER_QUESTION: classic.ANSWER_CARD_QUESTION,
 }
 #: The tools that put a line on the card (or move one on it).
-DRAFT_TOOLS = frozenset({DRAFT_RECEIPT, DRAFT_USAGE, DRAFT_STOCK_COUNT, TRANSFER, CHANGE_LINE, REMOVE_LINE})
+DRAFT_TOOLS = frozenset({DRAFT_RECEIPT, DRAFT_USAGE, DRAFT_STOCK_COUNT, TRANSFER, CHANGE_LINE, REMOVE_LINE, ANSWER_QUESTION})
 #: A call to one of these means v2 took the message: it is never handed to today's agent too.
 TAKES_THE_MESSAGE = DRAFT_TOOLS | {STOCK_FOR, ASK, REQUEST_NOT_BUILT}
 #: Arguments only v2 has: the model's own account of the figures of the message. They are
@@ -74,6 +76,15 @@ _DESCRIPTIONS = {
     REMOVE_LINE: (
         "Take ONE line off the open card ('cement venda', 'ath kalayu', 'remove the sand'). "
         "`item_index` is the line's number on the card. Nothing is saved either way."
+    ),
+    ANSWER_QUESTION: (
+        "Answer a QUESTION that waits on a line of the open card (the card in your context lists "
+        "'Waiting for their answer (item N): ...'). Use it whenever their message, typed, said in a voice "
+        "note or the text of a tapped button, answers that question: '50 bag = 1 load', 'yes', 'Green Villa', "
+        "'240 kg'. `item_index` is the line's number; `answer` is the answer to the question AS ASKED: for "
+        "'1 nos = how many load?' and 'one load is 20 nos' answer '0.05'; for a choice, the option's words. "
+        "If they also corrected or removed another line in the same message, call change_line / remove_line "
+        "for it as well. Never use change_line on a line that waits for an answer."
     ),
     REQUEST_NOT_BUILT: (
         "They are ASKING FOR material to be sent or ordered ('cement venam', 'need 20 bags sand', "
@@ -163,6 +174,20 @@ def specs() -> list[ToolSpec]:
                         }
                     },
                     "required": ["item_index"],
+                }
+            ),
+        ),
+        ToolSpec(
+            name=ANSWER_QUESTION,
+            description=_DESCRIPTIONS[ANSWER_QUESTION],
+            parameters=_with_account(
+                {
+                    "type": "object",
+                    "properties": {
+                        "item_index": {"type": "integer", "description": "The waiting line's number on the open card, from 1."},
+                        "answer": {"type": "string", "description": "Their answer to that line's question, as the question asked it."},
+                    },
+                    "required": ["item_index", "answer"],
                 }
             ),
         ),

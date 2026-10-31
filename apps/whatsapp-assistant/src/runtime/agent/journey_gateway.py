@@ -510,6 +510,17 @@ class JourneyGateway:
 
         return await draft_flow.answer_typed(self, draft, text)
 
+    async def answer_card_question(self, item_index: int, answer: str) -> Any:
+        """Request 184: the answer to one waiting line of the open card, by its number
+        (the v2 ``answer_question`` tool); the same code as the tap."""
+        from . import draft_flow
+        from .gateway import StepResult
+
+        draft = await self.open_draft()
+        if draft is None or not draft.live:
+            return StepResult("info", text="There is no open card with a question to answer.")
+        return await draft_flow.answer_by_text(self, draft, item_index, answer)
+
     async def answer_draft(self, draft: Any, item_id: str, choice: int) -> ReplySpec:
         from . import draft_flow
 

@@ -83,3 +83,11 @@ def reply_for_attempt(attempt: int | None) -> tuple[str, bool]:
         return GAVE_UP_REPLY, False
     # Told once, on the first try; later tries stay quiet until they succeed.
     return (QUEUED_REPLY if attempt == 1 else ""), True
+
+
+def is_provider_failure(error: BaseException) -> bool:
+    """False only when ``error`` carries an error code that is NOT a provider outage (a
+    validation / "no usable output" error): that call answered, so retrying it later would
+    give the same nothing. Any other error is treated as an outage, as before (request 184)."""
+    code = getattr(error, "error_code", None)
+    return not code or str(code) in _OUTAGE_CODES

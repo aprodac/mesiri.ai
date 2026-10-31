@@ -10,12 +10,12 @@ from runtime.agent import tools as classic
 def test_the_tools_are_todays_specs_under_the_v2_names():
     by_name = {s.name: s for s in skill.specs()}
     assert set(by_name) == {
-        "draft_receipt", "draft_usage", "draft_stock_count", "transfer", "change_line", "remove_line",
+        "draft_receipt", "draft_usage", "draft_stock_count", "transfer", "change_line", "remove_line", "answer_question",
         "stock_for", "ask", "catalog_match", "material_request_not_available",
     }
     old = {s.name: s for s in classic.tool_specs()}
     for v2_name, old_name in skill.CLASSIC_NAME.items():
-        if v2_name == skill.REMOVE_LINE:
+        if v2_name in (skill.REMOVE_LINE, skill.ANSWER_QUESTION):
             continue  # v2's own (the classic model has no such tool)
         mine = dict(by_name[v2_name].parameters["properties"])
         for key in skill.ACCOUNT_KEYS:
@@ -30,7 +30,7 @@ def test_v2_can_only_reach_material_tools_of_the_old_toolbox():
     assert set(skill.CLASSIC_NAME.values()) == {
         classic.SAVE_MATERIAL_RECEIPT, classic.SAVE_MATERIAL_USAGE, classic.ADJUST_STOCK,
         classic.QUERY_MATERIALS, classic.ASK_USER, classic.TRANSFER_MATERIAL, classic.UPDATE_PENDING_CARD,
-        classic.REMOVE_CARD_LINE,
+        classic.REMOVE_CARD_LINE, classic.ANSWER_CARD_QUESTION,
     }
 
 

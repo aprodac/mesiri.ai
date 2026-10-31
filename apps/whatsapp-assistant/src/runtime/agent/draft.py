@@ -573,6 +573,20 @@ def card_rows(draft: MessageDraft) -> list[ListRow]:
     return rows
 
 
+def open_questions_text(draft: MessageDraft | None, header: str) -> str:
+    """The card's open questions as one text, drawn by code from the card model (request 184):
+    ``header`` then one ``line: question`` per waiting item. The one place that words the list,
+    so no reply slices or rebuilds a question; empty when nothing waits."""
+    if draft is None:
+        return ""
+    rows = [
+        f"{n}. {' '.join(i.line.split())}: {' '.join(i.question.split())}" if i.line else f"{n}. {' '.join(i.question.split())}"
+        for n, i in enumerate(draft.items, 1)
+        if i.state == NEEDS_ANSWER and i.question
+    ]
+    return "\n".join([header, *rows]) if rows else ""
+
+
 def card_reply(draft: MessageDraft, words: str = "", *, site: str | None = None) -> ReplySpec:
     """``words`` above the card, with its buttons (a list when more than three)."""
     text = "\n\n".join(p for p in (words.strip(), card_text(draft, site=site)) if p)
@@ -594,7 +608,8 @@ def context_line(draft: MessageDraft | None) -> str | None:
         f"Their open card {draft.id[:6]} (Save / Cancel not tapped yet, nothing is written): {listed}. What you "
         "save now is added to it. If they correct a figure on it ('alla, 8 mason aanu'), call "
         f"update_pending_card with card_id {draft.id[:6]}, the item's number and only the fields that change: "
-        "the card is shown again with the change. Say a change was made only when the tool says so. "
+        "the card is shown again with the change. A line that waits for an answer is answered with "
+        "answer_question (its number and their answer), never changed. Say a change was made only when the tool says so. "
         "undo_last cancels the whole card."
     )
 

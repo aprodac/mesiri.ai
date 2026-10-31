@@ -1035,6 +1035,87 @@ async def _answer_where(gw: Any, draft: dr.MessageDraft, awaiting: str, option: 
     return dr.card_reply(draft, site=_card_site(gw, draft))
 
 
+async def _apply_amount(gw: Any, draft: dr.MessageDraft, item: dr.DraftItem, amount: Any) -> ReplySpec:
+    """The amount answered for "How many kg is 20 rod?": the line is prepared again with it."""
+    from . import draft_answer
+
+    plain = int(amount) if amount == amount.to_integral_value() else float(amount)
+    new = await _prepare_line(gw, item, {**item.args, "quantity": plain, "unit": item.answer_unit})
+    draft.items[draft.items.index(item)] = new
+    await _persist(gw, draft)
+    _log.info("draft.amount_answered draft=%s state=%s", draft.id, new.state)
+    asked = draft_answer._number(str(item.args.get("quantity") or ""))
+    shown = lambda n: format(n.normalize(), "f")  # noqa: E731 -- 20.0 -> "20", 2.4E+2 -> "240"
+    said = f"{shown(asked)} {item.args.get('unit')} = {shown(amount)} {item.answer_unit}." if asked is not None else ""
+    return dr.card_reply(draft, said if new.state == dr.OK else "", site=_card_site(gw, draft))
+
+
+async def answer_by_text(gw: Any, draft: dr.MessageDraft, item_index: int, answer: str) -> StepResult:
+    """Request 184: the answer to ONE waiting line of the open card, given by number and words
+    (the v2 ``answer_question`` tool): typed, said in a voice note, or the text of a tapped
+    button. One door for every kind of card question (unit conversion, amount, new material,
+    count, which site, a listed option); each goes to the same code as the tap, so the line is
+    prepared again with every check. Claimed only when it happened: an answer the question
+    cannot take comes back as a question, never as a failure."""
+    from . import draft_answer
+    from .material_entry import (
+        AWAIT_AMOUNT,
+        AWAIT_COUNT,
+        AWAIT_NEW_MATERIAL,
+        AWAIT_UNIT,
+        SET_ZERO,
+        typed_new_material_answer,
+    )
+
+    waiting = [i for i in draft.items if i.state == dr.NEEDS_ANSWER]
+    if not 1 <= item_index <= len(draft.items) or draft.items[item_index - 1] not in waiting:
+        return StepResult("error", text="That line is not waiting for an answer.")
+    item = draft.items[item_index - 1]
+    text = " ".join(str(answer or "").split())
+    if not text:
+        return StepResult("info", text=f"No answer was given. The question is: {item.question}")
+    before = len(draft.items)
+    picked = draft_answer.option_answer(text, item.options) if item.options else None
+    reply: ReplySpec | None = None
+    if item.needs_site:
+        site = draft_answer.site_answer(gw.actor, text, item.options)
+        if site is not None:
+            reply = await _answer_where(gw, draft, item.awaiting, site)
+    elif item.awaiting == AWAIT_AMOUNT:
+        amount = draft_answer.amount_answer(text, item.args, item.answer_unit)
+        if amount is not None:
+            reply = await _apply_amount(gw, draft, item, amount)
+    elif item.awaiting == AWAIT_UNIT:
+        figure = draft_answer._number(picked or text)
+        if figure is not None and figure > 0:
+            reply = await _answer_waiting(gw, draft, item, format(figure.normalize(), "f"))
+    elif item.awaiting == AWAIT_COUNT:
+        figure = count_figure(text)
+        if figure is not None:
+            reply = await _answer_waiting(gw, draft, item, SET_ZERO if figure == 0 else str(figure))
+    elif item.awaiting == AWAIT_NEW_MATERIAL:
+        choice = typed_new_material_answer(text, str(item.args.get("material") or ""), item.options) or picked
+        if choice is not None:
+            reply = await _answer_waiting(gw, draft, item, choice)
+    elif picked is not None:
+        reply = await _answer_waiting(gw, draft, item, picked)
+    if reply is None:
+        return StepResult("info", text=f"That does not answer it. The question is: {item.question}")
+    _keep(gw, draft)
+    new = draft.items[item_index - 1] if len(draft.items) == before else None
+    if new is None:
+        # The answer took the line off the card (a "No"): the card as it is now is the reply.
+        return StepResult("info", text=reply.text, changed=True)
+    gw.draft_new.append(new.id)
+    return StepResult(
+        "drafted",
+        summary=new.summary or new.label,
+        awaiting="answer" if new.state == dr.NEEDS_ANSWER else "",
+        reply=ReplySpec(text=new.question) if new.state == dr.NEEDS_ANSWER else None,
+        changed=True,
+    )
+
+
 async def answer_typed(gw: Any, draft: dr.MessageDraft, text: str) -> ReplySpec | None:
     """WA-81: a typed answer to a question on the open card, read by code before the
     model runs: the site's name for "which site?", the amount for "How many kg is 20
@@ -1073,15 +1154,7 @@ async def answer_typed(gw: Any, draft: dr.MessageDraft, text: str) -> ReplySpec 
         amount = draft_answer.amount_answer(text, item.args, item.answer_unit)
         if amount is None:
             continue
-        plain = int(amount) if amount == amount.to_integral_value() else float(amount)
-        new = await _prepare_line(gw, item, {**item.args, "quantity": plain, "unit": item.answer_unit})
-        draft.items[draft.items.index(item)] = new
-        await _persist(gw, draft)
-        _log.info("draft.amount_answered draft=%s state=%s", draft.id, new.state)
-        asked = draft_answer._number(str(item.args.get("quantity") or ""))
-        shown = lambda n: format(n.normalize(), "f")  # noqa: E731 -- 20.0 -> "20", 2.4E+2 -> "240"
-        said = f"{shown(asked)} {item.args.get('unit')} = {shown(amount)} {item.answer_unit}." if asked is not None else ""
-        return dr.card_reply(draft, said if new.state == dr.OK else "", site=_card_site(gw, draft))
+        return await _apply_amount(gw, draft, item, amount)
     return None
 
 

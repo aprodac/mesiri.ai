@@ -39,6 +39,7 @@ from .save_button import SAVE_TITLE
 from .site_match import short_title
 from .tools import (
     ADJUST_STOCK,
+    ANSWER_CARD_QUESTION,
     ASK_USER,
     CHANGE_OR_UNDO,
     CORRECT_WORK_QUANTITY,
@@ -1022,6 +1023,12 @@ class AgentToolbox:
             return await self._update_card(args)
         if name == REMOVE_CARD_LINE:
             return await self._remove_line(args)
+        if name == ANSWER_CARD_QUESTION:
+            try:
+                index = int(args.get("item_index"))
+            except (TypeError, ValueError):
+                index = 0
+            return await self.gateway.answer_card_question(index, str(args.get("answer") or ""))
         if name == CORRECT_WORK_QUANTITY and self.draft_mode:
             return await self._correct_work(args)
         if name == GET_JOIN_CODE:
@@ -1264,6 +1271,13 @@ class AgentToolbox:
             target.fact_type == ACTION_FACT if on_saved else (target.pending_answer or not target.ready)
         )
         if refused:
+            if target.pending_answer and not on_saved:
+                # Request 184: a line that waits on a question takes its ANSWER, not a change.
+                return StepResult(
+                    "error",
+                    text=f"That line waits for an answer to: {target.question} Call answer_question with the line's "
+                    "number and their answer (if they also corrected something else, change_line that line after).",
+                )
             return StepResult("error", text="That line cannot be changed this way, so nothing was changed.")
         unknown = sorted(set(changes) - _tool_fields(target.tool))
         if unknown:

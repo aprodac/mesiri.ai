@@ -23,6 +23,7 @@ from mesiri_contracts.assistant.normalized_message import NormalizedMessage
 from runtime.ai_outage import (
     QUICK_RETRY_PAUSE_SECONDS,
     AIUnavailableError,
+    is_provider_failure,
     reply_for_attempt,
     retry_attempt,
 )
@@ -35,6 +36,7 @@ from .runner import AgentResult, AgentRunner, default_now
 from .stale_questions import close_stale_questions
 from .stock_question import is_stock_question
 from .tools import QUERY_MATERIALS, ScopeLookup
+from .wording import say, usual_from
 
 _log = logging.getLogger("mesiri.agent")
 
@@ -45,7 +47,6 @@ _NOT_UNDERSTOOD = re.compile(
     re.IGNORECASE,
 )
 
-CANT_HEAR_REPLY = "I couldn't hear that clearly. Could you send it again?"
 UNREADABLE_REPLY = "Sorry, I couldn't make out that message. Please type it or send a voice note."
 CANT_READ_REPLY = "I couldn't read that. Could you send a clearer photo, or type the details?"
 
@@ -197,6 +198,18 @@ async def _outage(
     await _safe(deps.message_logger.mark_completed(correlation_id=correlation_id))
 
 
+async def _cant_hear_text(deps: AgentTurnDeps, user_id: str | None) -> str:
+    """The honest "couldn't hear that" line in the sender's usual language (request 184)."""
+    usual = None
+    store = deps.user_language_store
+    if store is not None and user_id:
+        try:
+            usual = usual_from(*await store.get_profile(user_id=user_id))
+        except Exception:  # noqa: BLE001 — wording never costs the reply
+            usual = None
+    return say("voice.cant_hear", usual or "english")
+
+
 async def _safe(coro: Awaitable[Any]) -> None:
     try:
         await coro
@@ -271,12 +284,18 @@ async def _run_agent_turn(
         try:
             transcript, translated, language = await deps.transcribe(message)
         except Exception as exc:  # noqa: BLE001 — a speech outage is an outage
-            await _outage(message, None, deps, exc)
-            return None
+            if not is_provider_failure(exc):
+                # Request 184: the call answered but gave no usable words (an empty or
+                # unreadable voice note): that is not an outage and nothing is queued.
+                transcript, translated = "", None
+            else:
+                await _outage(message, None, deps, exc)
+                return None
         user_text = (transcript or translated or "").strip()
         if not user_text:
-            await deps.send_spec(ReplySpec(text=CANT_HEAR_REPLY), wa_id)
-            await _safe(deps.message_logger.log_reply(correlation_id=correlation_id, reply=CANT_HEAR_REPLY))
+            heard = await _cant_hear_text(deps, actor.user_id)
+            await deps.send_spec(ReplySpec(text=heard), wa_id)
+            await _safe(deps.message_logger.log_reply(correlation_id=correlation_id, reply=heard))
             await _safe(deps.message_logger.mark_completed(correlation_id=correlation_id))
             return None
         # WEB-37: the English too, for the Live report (when it says something else).

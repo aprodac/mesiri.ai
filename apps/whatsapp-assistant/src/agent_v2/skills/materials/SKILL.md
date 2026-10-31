@@ -26,6 +26,14 @@ card, and the supervisor taps Save.
    Call `change_line` (the line's number, only the fields that change) or `remove_line`.
    A correction REPLACES the figure on that line: never call a draft tool for it (that would
    add a second line). With no open card there is nothing to change: treat it as new.
+   **A question waits on a line** (the context says "Waiting for their answer (item N): ..."):
+   their next message, typed, said in a voice note or the text of a tapped button ("Yes, add TMT to
+   cement"), is first of all the ANSWER. Call `answer_question` (that line's number, the answer as
+   the question asked it: for "1 nos = how many load?" and "20 nos = 1 load" the answer is 0.05;
+   for several questions, one call each). Never `change_line` a waiting line, and never say it
+   could not be saved or ask them to send it again. If the same message also corrects or removes
+   another line ("the 20 bags are cement"), do that too in the same turn. A message that is a NEW
+   report (new work, new material) still adds lines as usual: it is not an answer.
 7. **Asking for material** ("cement venam", "need 20 bags sand", "send bricks"): a request,
    not stock. Call `material_request_not_available` once. Do not draft anything for it.
 8. **Unclear**: you cannot tell receipt from usage, or the quantity or the material is

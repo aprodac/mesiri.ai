@@ -319,6 +319,27 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "माफ़ कीजिए, यही मैंने अभी कहा था, यह आपको नहीं चाहिए। कृपया थोड़े शब्दों में फिर बताइए, मैं सिर्फ़ उसी का जवाब दूँगा।",
         "hinglish": "Sorry, yahi maine abhi bola tha, woh aapko nahi chahiye. Thode shabdon mein phir batao, main sirf usi ka jawab dunga.",
     },
+    "voice.cant_hear": {
+        "english": "I couldn't hear that clearly. Could you say it once more?",
+        "manglish": "Shabdam vyakthamaayilla, onnu koodi parayamo?",
+        "malayalam": "ശബ്ദം വ്യക്തമായില്ല, ഒന്നു കൂടി പറയാമോ?",
+        "hindi": "आवाज़ साफ़ नहीं सुनाई दी, एक बार फिर बोलेंगे?",
+        "hinglish": "Awaaz saaf nahi aayi, ek baar phir bolenge?",
+    },
+    "card.still_open": {
+        "english": "The card still has:",
+        "manglish": "Card-il ippozhum ullathu:",
+        "malayalam": "കാർഡിൽ ഇപ്പോഴും ഉള്ളത്:",
+        "hindi": "कार्ड में अभी भी है:",
+        "hinglish": "Card mein abhi bhi hai:",
+    },
+    "card.answer_failed": {
+        "english": "I couldn't apply that answer.",
+        "manglish": "Aa utharam edukkan pattiyilla.",
+        "malayalam": "ആ ഉത്തരം എടുക്കാൻ കഴിഞ്ഞില്ല.",
+        "hindi": "वह जवाब लागू नहीं हो सका.",
+        "hinglish": "Woh jawab lagu nahi ho saka.",
+    },
     "material.direction_cancelled": {
         "english": "Okay, nothing saved.",
         "manglish": "Sheri, onnum save cheythilla.",

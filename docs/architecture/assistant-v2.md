@@ -73,7 +73,7 @@ line changes, stock questions).
 
 | Group | Tools | Behind it |
 |---|---|---|
-| Materials (skill tools) | `draft_receipt`, `draft_usage`, `draft_stock_count`, `transfer`, `change_line`, `remove_line`, `catalog_match`, `ask`, `material_request_not_available`, `stock_for` | the existing toolbox / draft card / `corrections.drop_from_open_card` |
+| Materials (skill tools) | `draft_receipt`, `draft_usage`, `draft_stock_count`, `transfer`, `change_line`, `remove_line`, `answer_question`, `catalog_match`, `ask`, `material_request_not_available`, `stock_for` | the existing toolbox / draft card / `corrections.drop_from_open_card` |
 | Other records (existing toolbox tools, unchanged) | `save_labour`, `save_work_done`, `save_expense`, `report_issue`, `update_issue`, `correct_work_quantity`, `note_for_engineer`, `set_site_conditions`, `request_dpr`, `set_work_site` | same specs, same draft card, same Save tap |
 | Reads | `query_work_log`, `query_labour`, `query_project`, `query_expenses`, `query_open_needs`, `my_scope`, `stock_for` | read-only |
 
@@ -105,6 +105,7 @@ with the same code as classic replies:
 - **Loop guard:** a words-only reply identical to the previous one to the same sender within 10
   minutes is replaced by "that is what I just said, tell me again in a few words".
 - A read tool's template text is facts for the agent, never the reply; if a message asked a stock question and the agent did not look it up, the code looks it up and puts the answer under the reply (ADR, "Request 180, live re-test").
+- **Card questions (request 184):** a line waiting on a question is answered with `answer_question` (typed, voice, or a button's text; same code as the tap, `draft_flow.answer_by_text`); `change_line` refuses a waiting line and says so. A failure on a card with open questions is worded by code from the card (`draft.open_questions_text`) with the card's buttons; never "send it again".
 - A complaint about the last reply gets a short sorry, what will be different, and the part they
   actually asked for, never the same text again.
 

@@ -59,6 +59,8 @@ CORRECT_WORK_QUANTITY = "correct_work_quantity"
 UPDATE_ISSUE = "update_issue"
 # Request 88: change one item of the card that is still open.
 UPDATE_PENDING_CARD = "update_pending_card"
+#: Request 184: v2 only (its spec is in agent_v2/skills/materials/tools.py); never offered to classic.
+ANSWER_CARD_QUESTION = "answer_card_question"
 # Request 178: take ONE line off the open card (the v2 agent offers it; the classic model does not).
 # Not in WRITE_TOOLS: it writes nothing, it only edits the unsaved card.
 REMOVE_CARD_LINE = "remove_card_line"

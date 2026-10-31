@@ -482,8 +482,27 @@ class AgentRunner:
             or _open_draft(toolbox) is not None
         ):
             return None
+        if (on_card := AgentRunner._card_failure(toolbox)) is not None:
+            _decided(toolbox, "reply", TEMPLATE)
+            return on_card
         _decided(toolbox, "reply", TEMPLATE)
         return ReplySpec(text=_FAILED[toolbox.language])
+
+    @staticmethod
+    def _card_failure(toolbox: AgentToolbox) -> ReplySpec | None:
+        """Request 184: a write or answer failed while the sender's card has open questions
+        (live 31 Oct: every answer got "send it again"). The reply names what is still open,
+        drawn by code from the card (``open_questions_text``), with the card's own buttons
+        for each question. Never "send it all again": they did what the card asked."""
+        draft = getattr(toolbox.gateway, "draft", None)
+        if getattr(toolbox.gateway, "draft_mode", False) is not True or draft is None or not draft.live:
+            return None
+        header = f"{say('card.answer_failed', toolbox.language)} {say('card.still_open', toolbox.language)}"
+        text = dr.open_questions_text(draft, header)
+        if not text:
+            return None
+        rows = dr.card_rows(draft)
+        return dr.pick_form(text, rows) if rows else ReplySpec(text=text)
 
     def _natural(self, text: str, toolbox: AgentToolbox) -> str:
         """Request 89: after every strip, the words above a Save card must
