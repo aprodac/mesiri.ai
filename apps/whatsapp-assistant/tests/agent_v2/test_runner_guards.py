@@ -278,3 +278,26 @@ async def test_a_stock_question_in_a_mixed_message_is_answered_even_if_the_model
     assert classic.calls == 0
     assert [i.kind for i in await open_items(world)] == [dr.KIND_LABOUR]
     assert "cement" in result.reply.text.casefold() or "stock" in result.reply.text.casefold()
+
+
+async def test_an_urgent_problem_inside_a_work_message_is_its_own_card_line(world):
+    """Live 31 Oct (re-test): "slab shuttering complete aayi. terrace il water leak und, urgent aanu"
+    got only the work line; the leak was dropped silently."""
+    work = ("save_work_done", {"description": "2nd floor slab shuttering complete"})
+    issue = ("report_issue", {"issue_type": "QUALITY", "description": "Water leak on the terrace", "severity": "HIGH"})
+    own = "Shuttering noted. Terrace leak added as urgent."
+    result, _, classic = await run_v2(
+        world, [[work, issue], own], ["never"], "2nd floor slab shuttering complete aayi. terrace il water leak und, urgent aanu"
+    )
+    assert classic.calls == 0
+    kinds = sorted(i.kind for i in await open_items(world))
+    assert kinds == sorted([dr.KIND_WORK, dr.KIND_ISSUE_OPEN])
+    assert "High" in result.reply.text  # the urgent issue is on the card, never dropped
+
+
+def test_the_general_skill_forbids_dropping_a_problem_and_says_to_name_an_open_match():
+    from agent_v2.agents.main import system_prompt
+
+    prompt = system_prompt("manglish")
+    assert "report_issue" in prompt and "Never drop it" in prompt
+    assert "already open" in prompt and "never silence" in prompt
