@@ -18,7 +18,7 @@ they are and passes the message here. The brain runs **one ongoing Claude Code s
 `permissionMode: "dontAsk"`: anything not on the list is refused, never asked. Always denied:
 force pushes, `--no-verify`, `git config` / `-c` / `remote`, reading `.env` files, printing the
 environment, `gh auth/secret/api`, editing `.git/`. A read-only pre-push hook (`hooks/pre-push`)
-lets each repo push only to its own branch (Mercon `ilan`, Mesiri `main`). Caps: turns per day,
+lets each repo push only to its own branch (Mercon `ilan`, Mesiri `main`). Caps: turns per day (`TEAMMATE_BRAIN_DAILY_TURNS`, default 100),
 dollars per turn. Refusals during a working turn are posted as **🔐 Needs your permission**, and
 Claude flags anything else that needs the owner (**👀 Please check Claude Code**, a decision, a
 credential) with its `needs_attention` tool.

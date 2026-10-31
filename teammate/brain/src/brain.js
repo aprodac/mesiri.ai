@@ -21,7 +21,7 @@ import { Watchdog } from "./watchdog.js";
 
 const MAX_CHUNK = 3800; // the listener refuses posts over 4,000 characters
 const TURN_TIMEOUT_MS = Number(process.env.TEAMMATE_BRAIN_TURN_TIMEOUT_MS || 60 * 60_000);
-const DAILY_TURNS = Number(process.env.TEAMMATE_BRAIN_DAILY_TURNS || 60);
+const DAILY_TURNS = Number(process.env.TEAMMATE_BRAIN_DAILY_TURNS || 100);
 // "@bot model <name>": short names for the current models; a full claude-* id also works.
 const MODEL_ALIASES = { opus: "claude-opus-5-5", sonnet: "claude-sonnet-5-5", haiku: "claude-haiku-5-5", fable: "claude-fable-5-1" };
 const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
