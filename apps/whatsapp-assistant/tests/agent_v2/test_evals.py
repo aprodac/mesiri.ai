@@ -22,7 +22,7 @@ GOLDEN = golden_as_evals()
 
 
 def test_the_eval_set_is_well_formed():
-    assert len(EVALS) == 41 and len({c["id"] for c in EVALS}) == 41
+    assert len(EVALS) == 43 and len({c["id"] for c in EVALS}) == 43
     assert len(GOLDEN) == 25
     for case in EVALS:
         kinds = [bool(case["expect"]), bool(case.get("ask")), bool(case.get("query")), bool(case.get("handback")), bool(case.get("not_built"))]

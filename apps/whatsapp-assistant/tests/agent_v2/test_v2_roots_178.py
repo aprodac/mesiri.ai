@@ -240,3 +240,55 @@ async def test_a_stock_answer_for_all_sites_says_so():
     world.draft_v2, world.drafts, world.catalog, world.inventory = True, MemoryDraftStore(), _Catalog(), _Books()
     result, _, _ = await say_v2(world, "cement stock at all sites", [[("stock_for", {"material": "cement"})], "176 bags"])
     assert "📍" in result.reply.text and "All your sites" in result.reply.text
+
+
+# -- live re-test of 31 Oct (second round) --------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text,placed",
+    [
+        ("2 box 1.5 sq mm wire um 20 switch um vannu", [2, 20]),  # the reported message
+        ("10 nos 4 inch pipe, 2 bag M20 mix vannu", [10, 2]),  # siblings: other size / grade words
+        ("12 mm TMT 3 ton vannu", [3]),
+    ],
+)
+def test_a_size_or_grade_is_not_a_figure_to_ask_about(text, placed):
+    calls = [("draft_receipt", {"material": "x", "quantity": n, "figures_placed": [n]}) for n in placed]
+    assert skill.unplaced_figures(text, calls) == []
+
+
+def test_a_real_quantity_next_to_a_size_is_still_asked_about():  # guard
+    calls = [("draft_receipt", {"material": "wire", "quantity": 2, "figures_placed": [2]})]
+    assert skill.unplaced_figures("2 box 1.5 sq mm wire, 20 switch vannu", calls) == ["20"]
+
+
+async def test_all_sites_beside_a_named_site_reads_every_site():
+    world = await _make_world(site_keys=(seed.SITE_A1, seed.SITE_A2))
+    world.draft_v2, world.drafts, world.catalog, world.inventory = True, MemoryDraftStore(), _Catalog(), _Books()
+    script = [[("stock_for", {"material": "cement", "site": "all sites"})], "176 bags"]
+    result, _, _ = await say_v2(world, "how much cement is left at Site A1? and at all sites?", script)
+    assert "All your sites" in result.reply.text
+# -- the brain is the control panel's "agent_v2" route ---------------------------------------
+
+
+class _RoutingProvider(FakeToolCallingProvider):
+    async def run_tools(self, system_prompt, messages, tools, handler, *, capability="agent", **kw):  # noqa: ANN001, ANN003
+        self.capability = capability
+        return await super().run_tools(system_prompt, messages, tools, handler, **kw)
+
+
+async def test_v2_asks_a_routing_provider_for_its_own_route(world):
+    provider = _RoutingProvider(["hello"])
+    await MainAgent(provider).run(
+        ctx=world.context(), user_text="hi", gateway=world.gateway("hi"), scope=world.scope(), organization_id=None
+    )
+    assert provider.capability == "agent_v2"
+
+
+async def test_a_plain_provider_is_called_as_before(world):  # guard: fakes and the bare live provider
+    provider = FakeToolCallingProvider(["hello"])
+    await MainAgent(provider).run(
+        ctx=world.context(), user_text="hi", gateway=world.gateway("hi"), scope=world.scope(), organization_id=None
+    )
+    assert provider.calls == 1

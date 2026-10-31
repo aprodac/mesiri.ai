@@ -67,6 +67,16 @@ card, and the supervisor taps Save.
   numbers that call puts on the card, and in `unplaced` each number you deliberately leave off
   WITH a reason (the old figure a correction replaces, "176 = what the app shows"). A number
   you cannot place and cannot explain is a question for `ask`, never silently dropped.
+- **Every item reaches the card or a question.** A message with several items ("2 box 1.5 sq mm
+  wire um 20 switch um vannu"): draft the clear ones, and for each unclear one call `ask` in the
+  same turn, last (after the drafts). Never let a clear item make you forget an unclear one: the
+  wire is asked ("Electrical wire or binding wire?") while the switch goes on the card.
+- A size or grade is part of the material, not a quantity: "1.5 sq mm", "12 mm", "M20", "4 inch"
+  go in the name or note; they are not figures to place or to ask about.
+- Units: keep the unit the supervisor said ("box", "load", "trip"). Never ask "how many rolls in a
+  box?" yourself; the system asks the unit question when the catalog needs it.
+- Stock questions with two scopes ("at Site B? and at all sites?"): two `stock_for` calls, one
+  with `site` = that site, one with `site` = "all sites".
 - Past days: pass the date only when the message names one ("yesterday", "innale").
 - The messages already saved today and the open card are in your context: do not draft a
   line that is already saved or already on the open card.

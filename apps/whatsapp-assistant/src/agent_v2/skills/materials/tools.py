@@ -209,6 +209,16 @@ def split_account(args: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]
 _DIGITS = re.compile(r"\d+(?:[.,]\d+)?")
 
 
+#: A number that is part of WHAT a thing is, not how much of it: "1.5 sq mm wire", "12 mm TMT",
+#: "M20 concrete", "4 inch pipe", "20 amp". Never a quantity, so never asked about (request 178:
+#: "2 box 1.5 sq mm wire" got "I did not put 1.5 on the card").
+_SPEC = re.compile(
+    r"\b\d+(?:[.,]\d+)?\s*(?:sq\.?\s*mm|sqmm|mm|cm|inch(?:es)?|in|ft|feet|mtr|metre|meter|amps?|a|w|kw|hp|v|mpa|core)\b"
+    r"|\b[mM]\s?\d{2}\b|\b\d+\s*(?:\"|'')",
+    re.IGNORECASE,
+)
+
+
 def figures(text: str) -> set[str]:
     """The numbers in a message, as plain strings ("1,500" -> "1500", "2.50" -> "2.5")."""
     found: set[str] = set()
@@ -248,7 +258,7 @@ def unplaced_figures(user_text: str, calls: list[tuple[str, dict[str, Any]]], as
         carried |= figures(_flatten(clean))
     carried |= figures(asked)
     carried |= explained_figures(calls)
-    return sorted(figures(user_text) - carried, key=lambda f: (len(f), f))
+    return sorted(figures(_SPEC.sub(" ", user_text or "")) - carried, key=lambda f: (len(f), f))
 
 
 def _flatten(value: Any) -> str:

@@ -179,6 +179,9 @@ FollowupsFn = Callable[[Any], Awaitable[None]]
 HeldPromptFn = Callable[[Any], ReplySpec]
 
 
+_ALL_SITES_WORDS = frozenset({"all", "all sites", "every site", "all my sites", "all_sites"})
+
+
 @dataclass(slots=True)
 class JourneyGateway:
     message: NormalizedMessage
@@ -355,10 +358,19 @@ class JourneyGateway:
 
         fields = dict(getattr(candidate, "fields", None) or {})
         said = str(fields.get("site_name") or "")
+        if said.strip().casefold() in _ALL_SITES_WORDS:
+            # Request 178: "and at all sites?" is an explicit scope; the resolver would otherwise
+            # keep reading the site named elsewhere in the same message.
+            decided(self, "read_site", draft_site.DECIDER, ALL_SITES)
+            self.read_scope = ALL_SITES
+            fields.pop("site_name", None)
+            fields[ALL_SITES] = True
+            return candidate.model_copy(update={"fields": fields})
         if fields.get("site_id"):
             decided(self, "read_site", draft_site.DECIDER, draft_site.NAMED)
             self.read_scope = next(
-                (str(x.name) for x in getattr(self.actor, "sites", None) or () if str(x.id) == str(fields["site_id"])), None
+                (str(x.name) for x in getattr(self.actor, "sites", None) or () if str(x.id) == str(fields["site_id"])),
+                said or None,
             )
             return candidate
         saved = None

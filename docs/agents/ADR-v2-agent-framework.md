@@ -104,12 +104,17 @@ The live test showed v2 was mostly today's parts renamed. What changed, and wher
 
 1. **Brain / budget.** `MAX_STEPS` 3 -> 6, `TIMEOUT_SECONDS` 9 -> 20 (a message v2 takes never also
    runs classic, so the room does not double a reply; only a hand-back, one quick round, or a failure
-   before any action falls back to classic). The v2 model is settable on its own: `MESIRI_V2_MODEL`
-   (the resolver's `run_tools(model=...)`; unset = the company's `agent` route, as classic). **The
+   before any action falls back to classic). The v2 model is settable on its own in the **control panel,
+   Providers page, row "WhatsApp assistant v2"** (capability `agent_v2`, model + fallback model,
+   audited like the other routes; no deploy). Unset, v2 uses the `agent` route like classic, which has
+   its own row there too. Offered Gemini ids: 2.5 flash / flash-lite / pro, 3.5 flash-lite, 3.5 flash,
+   3.6 flash (from Google's models pages, 31 Oct); "Custom model..." takes any other id (a newer
+   Gemini 3 Pro / preview). Note from the same pages: Google Cloud lists 2.5 Pro / Flash / Flash-Lite
+   to retire on 20 Oct 2026, so check `gemini-2.5-flash` (the default everywhere) is still served. **The
    measurement is NOT done:** the build session had no `GEMINI_API_KEY`. To pick the brain run
    `GEMINI_MODEL=<model> pytest -m live tests/agent_v2/test_evals.py -s` for `gemini-2.5-flash`,
    the strongest Pro / newer model on the key, record accuracy, wrong saves and v2 / classic p50 and
-   p95 in the table below, choose by accuracy then p95, set `MESIRI_V2_MODEL`.
+   p95 in the table below, choose by accuracy then p95, set the `agent_v2` row.
 
    | model | right | wrong saves | v2 p50 / p95 | classic p50 / p95 |
    |---|---|---|---|---|
@@ -175,6 +180,20 @@ listener (designed in: its running day summary can become one more context line 
   aliases.) The prompt now carries every active material (ceiling 400) with its aliases and a note of
   overlapping names; `catalog_match` stays for a word not in the line.
 - One extra read per message: the `assistant_mode` setting, as `draft_v2` already does.
+
+## Second round (request 178, live re-test 31 Oct: 12/15)
+
+- Size/grade words ("1.5 sq mm", "12 mm", "M20", "4 inch") are specifications, not quantities: the
+  figure check ignores them (`tools._SPEC`), and SKILL.md says so. Before, "2 box 1.5 sq mm wire" asked
+  "what is 1.5 for?".
+- "Every item reaches the card or a question": SKILL.md tells the model to draft the clear items and
+  `ask` about the unclear one in the same turn (the wire's Electrical/Binding question was lost behind
+  the switch line). Eval 142. Model behaviour: only the live gate proves it.
+- "...and at all sites?": `site: "all sites"` is an explicit scope in `JourneyGateway._reading_site`
+  (shared, read-only; classic gains the same). Two scopes in one message = two `stock_for` calls. Eval 143.
+- Not changed: "5 load M sand = 10 cum" comes from a company-saved conversion (the built-in table has
+  no load), so it is the company's own rule, not a guess. "1 box = how many rolls?" is the shared unit
+  gate asking because wire is stocked in rolls; the v2 prompt now says never to ask it itself.
 
 ## Rollback
 
