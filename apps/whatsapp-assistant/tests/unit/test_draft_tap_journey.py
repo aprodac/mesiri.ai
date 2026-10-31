@@ -99,7 +99,8 @@ async def test_a_tap_on_a_card_that_is_already_done_writes_nothing(monkeypatch):
 
     await on_normalized(_tap(dr.tap_id(dr.SAVE, draft.id), "✅ Save"), {})
 
-    assert dr.ALREADY_DONE in _said(deps)
+    # Request 162: a cancelled card's button says so (in code, never saves); a saved one stays ALREADY_DONE.
+    assert "cancelled" in " ".join(_said(deps))
     deps["workflow_runtime"].start.assert_not_awaited()
 
 

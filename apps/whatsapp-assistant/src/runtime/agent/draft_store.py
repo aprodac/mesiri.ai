@@ -47,6 +47,14 @@ class DraftStore(Protocol):
         """open -> discarded: False when it was not open."""
         ...
 
+    async def latest_closed(
+        self, organization_id: Any, user_id: Any, within_seconds: float
+    ) -> MessageDraft | None:
+        """Request 162: the sender's most recent draft that was cancelled or saved
+        within ``within_seconds`` (None when it is older, or one is open): what a
+        late word like "I didn't say workers" or a tap on its old button is about."""
+        ...
+
 
 def _items(raw: Any) -> list[DraftItem]:
     if isinstance(raw, str):
@@ -88,7 +96,17 @@ class MemoryDraftStore:
         if draft is None or draft.status != OPEN:
             return False
         draft.status = SAVED
+        draft.updated = time.time()
         return True
+
+    async def latest_closed(
+        self, organization_id: Any, user_id: Any, within_seconds: float
+    ) -> MessageDraft | None:
+        mine = [d for d in self.rows.values() if self._mine(d, organization_id, user_id)]
+        if any(d.status == OPEN and not d.expired() for d in mine):
+            return None
+        closed = [d for d in mine if d.status in (SAVED, DISCARDED) and time.time() - d.updated <= within_seconds]
+        return _copy(max(closed, key=lambda d: d.updated)) if closed else None
 
     @contextlib.asynccontextmanager
     async def transaction(self):
@@ -106,6 +124,7 @@ class MemoryDraftStore:
         if draft is None or draft.status != OPEN:
             return False
         draft.status = DISCARDED
+        draft.updated = time.time()
         return True
 
 
@@ -244,6 +263,31 @@ class PostgresDraftStore:
                 )
             ).first()
         return row is not None
+
+    async def latest_closed(
+        self, organization_id: Any, user_id: Any, within_seconds: float
+    ) -> MessageDraft | None:
+        from sqlalchemy import text
+
+        org, user = canonical_uuid(organization_id), canonical_uuid(user_id)
+        if org is None or user is None:
+            return None
+        async with self._db.transaction() as conn:
+            row = (
+                await conn.execute(
+                    text(
+                        f"SELECT {self._COLUMNS} FROM message_drafts "
+                        "WHERE organization_id = :org AND user_id = :user "
+                        "AND status IN ('saved', 'discarded') "
+                        "AND updated_at > now() - make_interval(secs => :secs) "
+                        "AND NOT EXISTS (SELECT 1 FROM message_drafts o WHERE o.organization_id = :org "
+                        "AND o.user_id = :user AND o.status = 'open') "
+                        "ORDER BY updated_at DESC LIMIT 1"
+                    ),
+                    {"org": org, "user": user, "secs": float(within_seconds)},
+                )
+            ).mappings().first()
+        return self._draft(row) if row is not None else None
 
     async def discard(self, draft_id: str) -> bool:
         from sqlalchemy import text
