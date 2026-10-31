@@ -405,9 +405,7 @@ def tool_specs() -> list[ToolSpec]:
                         ),
                     },
                     "supplier": {"type": "string", "description": "Only if stated."},
-<<<<<<< HEAD
                     "name_en": _NAME_EN,
-=======
                     "total_cost": {
                         "type": "number",
                         "description": (
@@ -419,7 +417,6 @@ def tool_specs() -> list[ToolSpec]:
                         "type": "number",
                         "description": "The price of ONE unit in rupees ('₹100 a bag'), when said instead of the total.",
                     },
->>>>>>> d34c49d12c78263e8b02f1e2847c925d38577c19
                     "new_material": _NEW_MATERIAL,
                     "date": _DATE,
                     "project": _PROJECT,
