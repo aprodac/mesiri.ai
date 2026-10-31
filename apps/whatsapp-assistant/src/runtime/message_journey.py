@@ -1225,6 +1225,10 @@ def build_message_handlers(
             if draft_tap is not None:
                 action, draft, extra = draft_tap
                 gateway = _gateway(message, None)
+                if draft.status == draft_card_mod.DISCARDED:
+                    from runtime.agent import corrections
+
+                    return await corrections.old_card_tap(gateway, draft, action, extra), gateway
                 if action == draft_card_mod.SAVE:
                     reply = await gateway.save_draft(draft)
                     reply = await _with_saved_card(reply, gateway)
@@ -1283,6 +1287,10 @@ def build_message_handlers(
             draft = await drafts.get(draft_id, ctx.organization_id, ctx.user_id)
             if draft is None:
                 return ReplySpec(text=draft_card.EXPIRED), None
+            if draft.status == draft_card.DISCARDED:
+                # Request 162: a button of a card that was cancelled never acts as a fresh
+                # one; Save does not save it, an answer goes to the same line of the open card.
+                return await _run_agent(message, ctx, None, timer, draft_tap=(action, draft, extra))
             if draft.status != draft_card.OPEN:
                 return ReplySpec(text=draft_card.ALREADY_DONE), None
             if draft.expired():
