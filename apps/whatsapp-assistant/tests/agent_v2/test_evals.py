@@ -85,7 +85,12 @@ async def test_live_model_on_the_v2_gate_set():
     provider = GeminiProvider(GeminiSettings(api_key=SecretStr(key), model=model))
     cases = [*EVALS, *GOLDEN]
     right, wrong_saves, times, classic_times = 0, [], [], []
+    import asyncio
+
+    pace = float(os.environ.get("MESIRI_LIVE_PACE_SECONDS", "0"))  # request 185: under the tokens-per-minute cap
     for case in cases:
+        if pace:
+            await asyncio.sleep(pace)
         started = time.perf_counter()
         verdict, _ = await run_case(case, provider)
         times.append(time.perf_counter() - started)

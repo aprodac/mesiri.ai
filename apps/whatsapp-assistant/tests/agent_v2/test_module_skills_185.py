@@ -76,7 +76,12 @@ async def test_live_model_on_the_module_skills():
     engine = os.environ.get("MESIRI_V2_ENGINE", "v2")  # v2 | adk
     provider = GeminiProvider(GeminiSettings(api_key=SecretStr(key), model=model))
     right, total, wrong = Counter(), Counter(), []
+    import asyncio
+
+    pace = float(os.environ.get("MESIRI_LIVE_PACE_SECONDS", "0"))  # stay under the tokens-per-minute cap
     for module, case in CASES:
+        if pace:
+            await asyncio.sleep(pace)
         verdict, _ = await run_case(case, provider, engine=engine)
         total[module] += 1
         right[module] += verdict.right

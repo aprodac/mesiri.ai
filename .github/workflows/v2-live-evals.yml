@@ -17,6 +17,11 @@ on:
         required: true
         default: "gemini-2.5-flash"
 
+# One run at a time: two at once went over the key's 1M input tokens per minute (31 Oct).
+concurrency:
+  group: v2-live-evals
+  cancel-in-progress: false
+
 jobs:
   live-evals:
     name: v2 evals (${{ inputs.engine }}, ${{ inputs.model }})
@@ -42,6 +47,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.TEAMMATE_GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ inputs.model }}
           MESIRI_V2_ENGINE: ${{ inputs.engine }}
+          MESIRI_LIVE_PACE_SECONDS: "4"
         run: |
           cd /tmp
           "$GITHUB_WORKSPACE/.venv/bin/python" -P -m pytest \
@@ -55,6 +61,7 @@ jobs:
           MESIRI_OBJECT_STORAGE__PROVIDER: fake
           GEMINI_API_KEY: ${{ secrets.TEAMMATE_GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ inputs.model }}
+          MESIRI_LIVE_PACE_SECONDS: "4"
         run: |
           cd /tmp
           "$GITHUB_WORKSPACE/.venv/bin/python" -P -m pytest \
