@@ -29,6 +29,8 @@ KIND = {
     "record_material_receipt": dr.KIND_MATERIAL_IN,
     "record_material_usage": dr.KIND_MATERIAL_OUT,
 }
+#: What a line of each kind is judged on (request 178: transfers have a quantity too).
+QUANTITY_KINDS = (dr.KIND_MATERIAL_IN, dr.KIND_MATERIAL_OUT, dr.KIND_TRANSFER_MATERIAL)
 MATERIAL_ACTIONS = frozenset(KIND)
 
 
@@ -77,6 +79,13 @@ def _line_matches(expected: dict[str, Any], item: dr.DraftItem) -> bool:
     if _name(item.args.get("material")) not in {_name(m) for m in expected["material"]}:
         return False
     key = "counted" if expected["kind"] == dr.KIND_STOCK_COUNT else "quantity"
+    # Request 178: the unit stays as said ("load" is not turned into cum); the rate is on the line.
+    if "unit" in expected and _name(item.args.get("unit")) != _name(expected["unit"]):
+        return False
+    if "unit_cost" in expected and float(item.args.get("unit_cost") or 0) != float(expected["unit_cost"]):
+        return False
+    if "to_site" in expected and _name(item.args.get("to_site")) != _name(expected["to_site"]):
+        return False
     try:
         return float(item.args.get(key)) == float(expected[key])
     except (TypeError, ValueError):
@@ -116,7 +125,7 @@ class Recording:
 
 def judge(
     case: dict[str, Any], items: list[dr.DraftItem], *, handed_back: bool, asked: bool, queried: bool,
-    v2_drafted: bool = False,
+    v2_drafted: bool = False, not_built: bool = False,
 ) -> Verdict:
     lines = [i for i in items if i.state != dr.UNREADABLE]
     expected = case.get("expect", [])
@@ -142,22 +151,41 @@ def judge(
         return Verdict(False, False, "expected a question")
     if case.get("query") and not queried:
         return Verdict(False, False, "expected a stock answer")
+    if case.get("not_built") and not not_built:
+        return Verdict(False, False, "expected the 'material requests are not in Mesiri yet' line")
     return Verdict(True, False)
 
 
+async def _given(world: Any, case: dict[str, Any]) -> None:
+    """The card the case starts from: each ``given`` entry is one earlier message whose lines are
+    put on the card by a scripted v2 run (so the live model is judged on the NEW message only)."""
+    for calls in case.get("given", []):
+        setup = V2Runner(FakeToolCallingProvider([[tuple(c) for c in calls], "ok"]), AgentRunner(FakeToolCallingProvider(["x"])))
+        await setup.run(
+            ctx=world.context(), user_text="setup", gateway=world.gateway("setup"), scope=world.scope(),
+            correlation_id="cor_setup",
+        )
+
+
 async def run_case(case: dict[str, Any], v2_provider: Any) -> tuple[Verdict, Any]:
-    world = await _make_world(site_keys=(seed.SITE_A1,))
+    sites = (seed.SITE_A1, seed.SITE_A2) if case.get("two_sites") else (seed.SITE_A1,)
+    world = await _make_world(site_keys=sites, usual_site=seed.SITE_A1 if case.get("two_sites") else None)
     world.draft_v2 = True
     world.drafts = MemoryDraftStore()
     world.catalog = _Catalog()
     world.inventory = _Books()
     world.actor = replace(world.actor, role="PROJECT_MANAGER")  # may adjust stock
+    await _given(world, case)
+    from runtime.agent import draft as draft_card
+
+    card_line = draft_card.context_line(await world.drafts.open_for(world.actor.organization_id, world.actor.user_id))
     classic = FakeToolCallingProvider(["Handled by today's agent."])
     recording = Recording(v2_provider)
     runner = V2Runner(recording, AgentRunner(classic))
     gateway = world.gateway(case["message"])
     result = await runner.run(
-        ctx=world.context(), user_text=case["message"], gateway=gateway, scope=world.scope(), correlation_id="cor_eval"
+        ctx=world.context(card_line=card_line), user_text=case["message"], gateway=gateway, scope=world.scope(),
+        correlation_id="cor_eval",
     )
     names = [name for name, _ in recording.calls]
     verdict = judge(
@@ -166,6 +194,25 @@ async def run_case(case: dict[str, Any], v2_provider: Any) -> tuple[Verdict, Any
         handed_back=classic.calls > 0,
         asked=result.toolbox.parked is not None or "ask" in names,
         queried="stock_for" in names,
-        v2_drafted=any(n in ("draft_receipt", "draft_usage", "draft_stock_count") for n in names),
+        v2_drafted=any(n in ("draft_receipt", "draft_usage", "draft_stock_count", "transfer", "change_line", "remove_line") for n in names),
+        not_built="material_request_not_available" in names,
     )
     return verdict, result
+
+
+async def run_classic_timing(case: dict[str, Any], provider: Any) -> float:
+    """Request 178 (gate): seconds today's agent takes on the same message in the same world,
+    so v2's reply time is compared with the real baseline, not a guess."""
+    import time
+
+    sites = (seed.SITE_A1, seed.SITE_A2) if case.get("two_sites") else (seed.SITE_A1,)
+    world = await _make_world(site_keys=sites, usual_site=seed.SITE_A1 if case.get("two_sites") else None)
+    world.draft_v2, world.drafts, world.catalog, world.inventory = True, MemoryDraftStore(), _Catalog(), _Books()
+    world.actor = replace(world.actor, role="PROJECT_MANAGER")
+    await _given(world, case)
+    started = time.perf_counter()
+    await AgentRunner(provider).run(
+        ctx=world.context(), user_text=case["message"], gateway=world.gateway(case["message"]), scope=world.scope(),
+        correlation_id="cor_classic_eval",
+    )
+    return time.perf_counter() - started

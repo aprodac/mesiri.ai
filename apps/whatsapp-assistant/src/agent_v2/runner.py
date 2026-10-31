@@ -21,9 +21,10 @@ import logging
 import time
 from typing import Any
 
+from channel.replies import ReplySpec
 from runtime.agent import runner as classic_runner
 from runtime.agent.runner import AgentResult, AgentRunner
-from runtime.agent.wording import language_of, usual_from
+from runtime.agent.wording import language_of, say, usual_from
 
 from .agents.main import MainAgent, V2Run
 from .skills.materials import tools as skill
@@ -111,10 +112,22 @@ class V2Runner:
         """The same closing steps as today's runner, over the same toolbox."""
         toolbox, run = v2.toolbox, v2.run
         assert run is not None  # took_message without a run only after an error, handled above
+        if v2.request_not_built:
+            # Request 178: "cement venam" is a request for material, which is not built. One fast,
+            # honest line (not 35 s and "I'll process this in a few minutes"). When the message also
+            # put lines on the card, the line goes under the card.
+            line = say("material_request.not_built", toolbox.language)
+            if not toolbox.attempted_writes and toolbox.parked is None:
+                return AgentResult("ok", ReplySpec(text=line), toolbox, run=run)
+            toolbox.system_lines.append(line)
         await toolbox.finish_site_queue()
         run = AgentRunner._one_script(run, user_text, correlation_id)
         classic_runner._park_plain_question(run, toolbox)
-        missing = skill.unplaced_figures(user_text, v2.calls, v2.asked)
+        # Request 178: the figures are the model's own account (what each call places, what it left
+        # off and why); the code asks only about a figure neither placed nor explained. A turn that
+        # drafted nothing (a lookup) has no card to put figures on.
+        drafted = any(name in skill.DRAFT_TOOLS for name, _ in v2.calls)
+        missing = skill.unplaced_figures(user_text, v2.calls, v2.asked) if drafted else []
         if missing and toolbox.parked is None and toolbox.language in ("english", "manglish", "hinglish"):
             # Every number in the message must end up on the card or be asked about.
             toolbox.system_lines.append("I did not put " + ", ".join(missing) + " on the card. What is it for?")

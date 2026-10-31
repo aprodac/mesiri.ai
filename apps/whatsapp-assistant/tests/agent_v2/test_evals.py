@@ -13,7 +13,7 @@ import statistics
 import time
 
 import pytest
-from tests.agent_v2.evalkit import golden_as_evals, load_evals, run_case
+from tests.agent_v2.evalkit import golden_as_evals, load_evals, run_case, run_classic_timing
 
 from mesiri_ai.fakes import FakeToolCallingProvider
 
@@ -22,10 +22,10 @@ GOLDEN = golden_as_evals()
 
 
 def test_the_eval_set_is_well_formed():
-    assert len(EVALS) == 30 and len({c["id"] for c in EVALS}) == 30
+    assert len(EVALS) == 41 and len({c["id"] for c in EVALS}) == 41
     assert len(GOLDEN) == 25
     for case in EVALS:
-        kinds = [bool(case["expect"]), bool(case.get("ask")), bool(case.get("query")), bool(case.get("handback"))]
+        kinds = [bool(case["expect"]), bool(case.get("ask")), bool(case.get("query")), bool(case.get("handback")), bool(case.get("not_built"))]
         assert sum(kinds) == 1, case["id"]
         assert case["calls"], case["id"]
     langs = {c["lang"] for c in EVALS}
@@ -64,7 +64,11 @@ async def test_the_judge_calls_split_cement_a_wrong_save():
 
 @pytest.mark.live
 async def test_live_model_on_the_v2_gate_set():
-    """The Phase C gate on the real model. Prints one line per case, accuracy, wrong saves, p50/p95."""
+    """The go-live gate on the real model (request 178). Prints one line per case, then accuracy, wrong
+    saves and p50/p95 of v2 and of today's agent on the same messages. Run it with
+    ``GEMINI_MODEL=<model>`` per candidate brain and put the numbers in
+    docs/agents/ADR-v2-agent-framework.md. Gate: >= 90% right, 0 wrong saves, v2 p95 no worse than
+    today's agent. No GEMINI_API_KEY: skipped, and v2 does not go to a team bot live run."""
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
         pytest.skip("GEMINI_API_KEY not set")
@@ -76,20 +80,31 @@ async def test_live_model_on_the_v2_gate_set():
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
     provider = GeminiProvider(GeminiSettings(api_key=SecretStr(key), model=model))
     cases = [*EVALS, *GOLDEN]
-    right, wrong_saves, times = 0, [], []
+    right, wrong_saves, times, classic_times = 0, [], [], []
     for case in cases:
         started = time.perf_counter()
         verdict, _ = await run_case(case, provider)
         times.append(time.perf_counter() - started)
+        classic_times.append(await run_classic_timing(case, provider))
         right += verdict.right
         if verdict.wrong_save:
             wrong_saves.append(case["id"])
-        print(f"{'PASS' if verdict.right else 'FAIL'} #{case['id']} {case['message']!r} ({times[-1]:.1f}s) {verdict.why}")
+        print(
+            f"{'PASS' if verdict.right else 'FAIL'} #{case['id']} {case['message']!r} "
+            f"(v2 {times[-1]:.1f}s, today's {classic_times[-1]:.1f}s) {verdict.why}"
+        )
     accuracy = right / len(cases)
     times.sort()
+    classic_times.sort()
+
+    def p95(values: list[float]) -> float:
+        return values[max(0, int(len(values) * 0.95) - 1)]
+
     print(
         f"MODEL {model} ACCURACY {accuracy:.0%} ({right}/{len(cases)}) WRONG SAVES {len(wrong_saves)} {wrong_saves} "
-        f"p50 {statistics.median(times):.1f}s p95 {times[int(len(times) * 0.95) - 1]:.1f}s"
+        f"v2 p50 {statistics.median(times):.1f}s p95 {p95(times):.1f}s | "
+        f"today's p50 {statistics.median(classic_times):.1f}s p95 {p95(classic_times):.1f}s"
     )
     assert not wrong_saves, f"wrong saves: {wrong_saves}"
     assert accuracy >= 0.90
+    assert p95(times) <= p95(classic_times), "v2's p95 reply time is worse than today's agent"

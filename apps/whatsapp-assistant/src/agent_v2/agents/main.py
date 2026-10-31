@@ -13,14 +13,18 @@ docs/agents/ADR-v2-agent-framework.md.
 from __future__ import annotations
 
 import logging
+import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from mesiri_ai.models import ChatMessage, ToolOutcome, ToolRunResult
+from runtime.agent.entry_base import ALL_SITES
 from runtime.agent.prompt import MESIRI_VOICE, AgentContext, build_messages
 from runtime.agent.toolbox import AgentToolbox
 from runtime.agent.tools import ScopeLookup
+from runtime.agent.wording import say
 
 from ..skills.materials import tools as skill
 
@@ -28,12 +32,19 @@ _log = logging.getLogger("mesiri.agent_v2")
 
 SKILL_PATH = Path(__file__).resolve().parent.parent / "skills" / "materials" / "SKILL.md"
 
-#: v2 gets less time than today's agent, so a fallback (v2 first, then today's agent) stays
-#: inside one reply's budget. A 3-line message is one model round plus its saves.
-MAX_STEPS = 3
-TIMEOUT_SECONDS = 9.0
-#: How many catalog materials go into the prompt (the rest are reachable by catalog_match).
-CATALOG_IN_PROMPT = 60
+#: Request 178: the budget of a v2 run. A message v2 takes is never run by today's agent too, so
+#: more room here does not double the time; only a hand-back (one quick round) or a failure
+#: before any action falls back to today's agent (25 s). 6 rounds fit a 4-line message plus a
+#: lookup or a correction.
+MAX_STEPS = 6
+TIMEOUT_SECONDS = 20.0
+#: The v2 brain: a Gemini model name for v2 runs only (``MESIRI_V2_MODEL``); unset = the model
+#: the company's ``agent`` route names, which today's agent uses. Measure with the live eval
+#: (tests/agent_v2/test_evals.py, ``GEMINI_MODEL=...``) and record the numbers in the ADR.
+V2_MODEL = (os.environ.get("MESIRI_V2_MODEL") or "").strip() or None
+#: A company's catalog is a few dozen materials; this is a ceiling, not a cut (request 178:
+#: the old first-names line left out the names and aliases a message actually used).
+CATALOG_IN_PROMPT = 400
 
 
 def system_prompt() -> str:
@@ -48,6 +59,8 @@ class V2Run:
     run: ToolRunResult | None = None
     #: The model's reason for handing the message back, when it did.
     handed_back: str | None = None
+    #: Set when they asked for material to be sent or ordered (a request: not built yet).
+    request_not_built: bool = False
     error: BaseException | None = None
     #: ``(v2 tool name, arguments)`` in call order.
     calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
@@ -58,11 +71,62 @@ class V2Run:
         is v2's alone; today's agent never runs for it (a message is never handled twice)."""
         if self.toolbox.attempted_writes or self.toolbox.parked is not None:
             return True
-        return any(name in skill.TAKES_THE_MESSAGE for name, _ in self.calls)
+        return self.request_not_built or any(name in skill.TAKES_THE_MESSAGE for name, _ in self.calls)
 
     @property
     def asked(self) -> str:
         return " ".join(str(a.get("question") or "") for n, a in self.calls if n == skill.ASK)
+
+
+def v2_card_words(text: str) -> str:
+    """The context's open-card paragraph names today's tools; v2's are ``change_line`` and
+    ``remove_line`` (one place writes that paragraph: runtime/agent/draft.py)."""
+    return (
+        text.replace("update_pending_card", "change_line")
+        .replace("undo_last cancels the whole card.", "remove_line takes one line off the open card.")
+        .replace("undo_last removes the saved card.", "")
+    )
+
+
+def _words(name: str) -> frozenset[str]:
+    return frozenset(re.findall(r"[a-z0-9]+", str(name).casefold()))
+
+
+def likely_duplicates(names: list[str]) -> list[tuple[str, str]]:
+    """Catalog names where one is wholly inside the other ("Steel" / "TMT Steel Bars") or that
+    read the same: a word that fits both is ambiguous, and the owner may want them merged.
+    Only listed, never merged here."""
+    found = []
+    for i, a in enumerate(names):
+        for b in names[i + 1 :]:
+            wa, wb = _words(a), _words(b)
+            if wa and wb and (wa < wb or wb < wa or wa == wb):
+                found.append((a, b))
+    return found
+
+
+def catalog_text(rows: list[dict[str, Any]]) -> str:
+    """The catalog line of the prompt: every name, its aliases, and the overlapping names."""
+    entries = []
+    names = []
+    for row in rows:
+        name = str(row.get("name") or "").strip()
+        if not name:
+            continue
+        names.append(name)
+        aliases = [str(a) for a in row.get("aliases") or [] if str(a).strip()]
+        entries.append(f"{name} (also called: {', '.join(aliases)})" if aliases else name)
+    if not entries:
+        return "Material catalog: (empty)."
+    text = "Material catalog (name, then what the company also calls it): " + "; ".join(entries) + "."
+    overlaps = likely_duplicates(names)
+    if overlaps:
+        text += (
+            " These catalog names overlap, so a word that fits both is a question, not a guess: "
+            + "; ".join(f"{a} / {b}" for a, b in overlaps)
+            + "."
+        )
+    return text
 
 
 class MainAgent:
@@ -71,15 +135,34 @@ class MainAgent:
         self._catalog = catalog
 
     async def catalog_line(self, organization_id: str | None) -> str | None:
+        """ALL active materials, each with the words the company uses for it (request 178)."""
         if self._catalog is None or not organization_id:
             return None
         try:
-            rows = await self._catalog.list_active_materials(organization_id=organization_id)
+            if hasattr(self._catalog, "catalog_with_aliases"):
+                rows = await self._catalog.catalog_with_aliases(organization_id=organization_id)
+            else:
+                rows = await self._catalog.list_active_materials(organization_id=organization_id)
         except Exception:  # noqa: BLE001 -- the catalog line is context; catalog_match still works
             _log.warning("agent_v2.catalog_unreadable", exc_info=True)
             return None
-        names = [str(r["name"]) for r in rows[:CATALOG_IN_PROMPT] if r.get("name")]
-        return ("Material catalog: " + "; ".join(names) + ".") if names else "Material catalog: (empty)."
+        return catalog_text(rows[:CATALOG_IN_PROMPT])
+
+    @staticmethod
+    def _name_the_site(toolbox: AgentToolbox, outcome: ToolOutcome) -> None:
+        """Request 178: a stock answer says which site it is for, or that it covers all of them.
+        The site is what ``JourneyGateway._reading_site`` decided; the line is the code's."""
+        scope = getattr(toolbox.gateway, "read_scope", None)
+        if not scope:
+            return
+        label = say("read.all_sites", toolbox.language) if scope == ALL_SITES else scope
+        answer = toolbox.answers[-1]
+        if answer.startswith("📍"):
+            return
+        named = f"📍 {label}\n{answer}"
+        toolbox.answers[-1] = named
+        if isinstance(outcome.content, dict) and "text" in outcome.content:
+            outcome.content["text"] = named
 
     async def match(self, organization_id: str | None, word: str) -> dict[str, Any]:
         """catalog_match: the materials this word means, by name, alias, then closeness."""
@@ -119,8 +202,9 @@ class MainAgent:
         )
         state = V2Run(toolbox=toolbox)
 
-        async def handle(name: str, args: dict[str, Any]) -> ToolOutcome:
-            state.calls.append((name, dict(args)))
+        async def handle(name: str, raw_args: dict[str, Any]) -> ToolOutcome:
+            state.calls.append((name, dict(raw_args)))  # with the account: the runner reads it
+            args, _account = skill.split_account(raw_args)
             if name == skill.HAND_BACK:
                 if state.took_message:
                     return ToolOutcome(content={"status": "refused", "why": "you already took this message"})
@@ -128,6 +212,12 @@ class MainAgent:
                 return ToolOutcome(content={"status": "ok"}, stop=True)
             if name == skill.CATALOG_MATCH:
                 return ToolOutcome(content=await self.match(organization_id, str(args.get("word") or "")))
+            if name == skill.REQUEST_NOT_BUILT:
+                state.request_not_built = True
+                return ToolOutcome(
+                    content={"status": "ok", "instruction": "Say nothing more about it: the system tells them."},
+                    stop=not (toolbox.attempted_writes or toolbox.parked is not None),
+                )
             if shadow and name in skill.TAKES_THE_MESSAGE:
                 # Shadow: the proposed call is recorded (state.calls); nothing is drafted,
                 # asked or read. A draft ends the run; the rest of the message follows.
@@ -137,9 +227,15 @@ class MainAgent:
             classic_name = skill.CLASSIC_NAME.get(name)
             if classic_name is None:
                 return ToolOutcome(content={"status": "unknown_tool", "name": name})
-            return await toolbox.handle(classic_name, args)
+            if name == skill.CHANGE_LINE:
+                args = {**args, "card_id": str(args.get("card_id") or "")}  # "" = the open card
+            answered = len(toolbox.answers)
+            outcome = await toolbox.handle(classic_name, args)
+            if name == skill.STOCK_FOR and len(toolbox.answers) > answered:
+                self._name_the_site(toolbox, outcome)
+            return outcome
 
-        messages = [ChatMessage(role=r, text=t) for r, t in build_messages(ctx, user_text)]
+        messages = [ChatMessage(role=r, text=v2_card_words(t)) for r, t in build_messages(ctx, user_text)]
         if (line := await self.catalog_line(organization_id)) and messages:
             messages[0] = ChatMessage(role=messages[0].role, text=f"{messages[0].text}\n{line}")
         try:
@@ -151,6 +247,7 @@ class MainAgent:
                 max_steps=MAX_STEPS,
                 timeout_seconds=TIMEOUT_SECONDS,
                 correlation_id=correlation_id,
+                **({"model": V2_MODEL} if V2_MODEL else {}),
             )
         except Exception as exc:  # noqa: BLE001 -- the caller decides: fall back, or degrade after a write
             state.error = exc

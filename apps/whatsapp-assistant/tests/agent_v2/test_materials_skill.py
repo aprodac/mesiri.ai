@@ -10,17 +10,27 @@ from runtime.agent import tools as classic
 def test_the_tools_are_todays_specs_under_the_v2_names():
     by_name = {s.name: s for s in skill.specs()}
     assert set(by_name) == {
-        "draft_receipt", "draft_usage", "draft_stock_count", "stock_for", "ask", "catalog_match", "hand_back"
+        "draft_receipt", "draft_usage", "draft_stock_count", "transfer", "change_line", "remove_line",
+        "stock_for", "ask", "catalog_match", "hand_back", "material_request_not_available",
     }
     old = {s.name: s for s in classic.tool_specs()}
     for v2_name, old_name in skill.CLASSIC_NAME.items():
-        assert by_name[v2_name].parameters == old[old_name].parameters  # one place owns the arguments
+        if v2_name == skill.REMOVE_LINE:
+            continue  # v2's own (the classic model has no such tool)
+        mine = dict(by_name[v2_name].parameters["properties"])
+        for key in skill.ACCOUNT_KEYS:
+            mine.pop(key)
+        if v2_name == skill.CHANGE_LINE:
+            mine["card_id"] = old[old_name].parameters["properties"]["card_id"]
+            mine["item_index"] = old[old_name].parameters["properties"]["item_index"]
+        assert mine == old[old_name].parameters["properties"]  # one place owns the arguments
 
 
 def test_v2_can_only_reach_material_tools_of_the_old_toolbox():
     assert set(skill.CLASSIC_NAME.values()) == {
         classic.SAVE_MATERIAL_RECEIPT, classic.SAVE_MATERIAL_USAGE, classic.ADJUST_STOCK,
-        classic.QUERY_MATERIALS, classic.ASK_USER,
+        classic.QUERY_MATERIALS, classic.ASK_USER, classic.TRANSFER_MATERIAL, classic.UPDATE_PENDING_CARD,
+        classic.REMOVE_CARD_LINE,
     }
 
 
