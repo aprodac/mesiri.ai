@@ -8,6 +8,28 @@ from ..state import WorkflowGraphState
 _fmt = format_quantity
 
 
+def is_negative(level: dict) -> bool:
+    try:
+        return float(level.get("current_stock") or 0) < -0.005
+    except (TypeError, ValueError):
+        return False
+
+
+def negative_line(level: dict) -> str:
+    """Request 171: more used than received is flagged, never a bare minus."""
+    return (
+        f"⚠️ {str(level['material_name']).title()} −{_fmt(abs(float(level['current_stock'])))} {level['unit']} "
+        "(used more than received: record a delivery?)"
+    )
+
+
+def stock_line(level: dict) -> str:
+    """One material's line in a list: "Cement — 176 bag", or the negative flag."""
+    if is_negative(level):
+        return negative_line(level)
+    return f"{str(level['material_name']).title()} — {_fmt(level['current_stock'])} {level['unit']}"
+
+
 def generate_inventory_reply(state: WorkflowGraphState) -> dict:
     """Read the injected stock levels and format the reply. No draft_action --
     this is read-only, so WorkflowRuntime completes it without a confirmation."""
@@ -15,10 +37,21 @@ def generate_inventory_reply(state: WorkflowGraphState) -> dict:
     levels: list[dict] = fields.get("inventory_levels") or []
     material_name = fields.get("material_name")
 
-    if not levels:
+    if not levels and fields.get("view") != "open_needs":
         if material_name:
             return {"pending_prompt": f"I don't have any recorded stock for {material_name} yet."}
         return {"pending_prompt": "I don't have any recorded material stock yet."}
+
+    if fields.get("view") == "open_needs":
+        from runtime.open_needs import needs_reply
+
+        return {
+            "pending_prompt": needs_reply(
+                requests=fields.get("open_requests") or [],
+                shortages=fields.get("open_shortages") or [],
+                levels=levels,
+            )
+        }
 
     period = fields.get("inventory_period")
     if period:
@@ -29,7 +62,7 @@ def generate_inventory_reply(state: WorkflowGraphState) -> dict:
         level = levels[0]
         lines = [
             f"📦 {level['material_name'].title()}",
-            f"In stock: {_fmt(level['current_stock'])} {level['unit']}",
+            negative_line(level) if is_negative(level) else f"In stock: {_fmt(level['current_stock'])} {level['unit']}",
             "",
             f"Received  {_fmt(level['received'])} {level['unit']}",
             f"Used      {_fmt(level['used'])} {level['unit']}",
@@ -38,9 +71,7 @@ def generate_inventory_reply(state: WorkflowGraphState) -> dict:
 
     lines = ["📦 *Current inventory*", ""]
     for level in levels:
-        lines.append(
-            f"{level['material_name'].title()} — {_fmt(level['current_stock'])} {level['unit']}"
-        )
+        lines.append(stock_line(level))
     return {"pending_prompt": "\n".join(lines)}
 
 
@@ -63,7 +94,11 @@ def _period_reply(label: str, levels: list[dict], material_name: str | None, ask
         level = levels[0]
         name = level["material_name"].lower()
         moved = _moved(level)
-        left = f"{_fmt(level['current_stock'])} {level['unit']} left now."
+        left = (
+            f"{negative_line(level)}."
+            if is_negative(level)
+            else f"{_fmt(level['current_stock'])} {level['unit']} left now."
+        )
         if asking == "loss":
             from runtime.loss_rules import loss_line
 
@@ -104,7 +139,12 @@ def _period_reply(label: str, levels: list[dict], material_name: str | None, ask
     for level in levels:
         moved = _moved(level)
         if moved:
-            lines.append(f"{level['material_name'].title()} — {moved} · {_fmt(level['current_stock'])} {level['unit']} now")
+            now = (
+                f"⚠️ −{_fmt(abs(float(level['current_stock'])))} {level['unit']} (used more than received)"
+                if is_negative(level)
+                else f"{_fmt(level['current_stock'])} {level['unit']} now"
+            )
+            lines.append(f"{level['material_name'].title()} — {moved} · {now}")
     if len(lines) == 2:
         return f"Nothing was received or used {label}."
     return "\n".join(lines)

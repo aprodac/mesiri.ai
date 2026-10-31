@@ -38,6 +38,7 @@ from trade_label import trade_label
 from .cards import CARD_TTL_SECONDS
 from .save_button import CANCEL_TITLE, SAVE_TITLE, TO_SAVE_HEADER
 from .tools import (
+    ADJUST_STOCK,
     REPORT_ISSUE,
     SAVE_EXPENSE,
     SAVE_LABOUR,
@@ -85,6 +86,8 @@ KIND_EXPENSE = "expense"
 KIND_TRANSFER_MATERIAL = "transfer_material"
 KIND_TRANSFER_MONEY = "transfer_money"
 KIND_OPENING_STOCK = "opening_stock"
+#: Request 171: a physical count, written as an adjustment for the difference.
+KIND_STOCK_COUNT = "stock_count"
 #: acknowledge / won't fix / cancel / reopen an issue (resolving is a pending action).
 KIND_ISSUE_STATUS = "issue_status"
 #: A pending action of request 104 (engineer question, day's conditions, issues to
@@ -105,6 +108,7 @@ KIND_BY_TOOL = {
     TRANSFER_MATERIAL: KIND_TRANSFER_MATERIAL,
     TRANSFER_MONEY: KIND_TRANSFER_MONEY,
     SAVE_OPENING_STOCK: KIND_OPENING_STOCK,
+    ADJUST_STOCK: KIND_STOCK_COUNT,
     UPDATE_ISSUE: KIND_ISSUE_STATUS,
 }
 DRAFT_TOOLS = frozenset(KIND_BY_TOOL)
@@ -633,6 +637,10 @@ def label_for(tool: str, args: dict[str, Any]) -> str:
             return " ".join(str(p) for p in ("₹" + str(args["amount"]) if args.get("amount") else "", args.get("description")) if p) or "expense"
         if tool == TRANSFER_MONEY:
             return f"transfer ₹{args['amount']}" if args.get("amount") else "money transfer"
+        if tool == ADJUST_STOCK:
+            return " ".join(
+                str(p) for p in ("Stock count:", args.get("material"), args.get("counted"), args.get("unit")) if p not in (None, "")
+            )
         if tool in (SAVE_MATERIAL_RECEIPT, SAVE_MATERIAL_USAGE, TRANSFER_MATERIAL, SAVE_OPENING_STOCK):
             return (
                 " ".join(

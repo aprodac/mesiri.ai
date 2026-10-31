@@ -139,10 +139,14 @@ class World:
     last_gateway: Any = None
     #: ARCH-01: None keeps materials on the classic route.
     catalog: Any = None
+    #: Request 171: the material entry's stock reads (``query``), when a test needs the books.
+    inventory: Any = None
     #: ARCH-01/02: the agent's direct routes (False: the classic pipeline).
     direct: bool = True
     #: The change entry's lookups (member_resolver, activity_query, ...).
     change: dict = field(default_factory=dict)
+    #: Request 171: the query entry's lookups (inventory_query, site_issue_query).
+    query: dict = field(default_factory=dict)
     #: The site entry's lookups (activity_query, ...).
     site: dict = field(default_factory=dict)
     #: Request 104: cards for what is not a record (an ``ActionService``), and
@@ -201,14 +205,16 @@ class World:
             language=None,
             material_entry=(
                 MaterialEntry(
-                    ContextResolver(self.deps), self.catalog, None, None, self.actor,
+                    ContextResolver(self.deps), self.catalog, self.inventory, None, self.actor,
                     active_context=self.deps.active_context,
                 )
                 if self.catalog is not None
                 else None
             ),
             query_entry=(
-                QueryEntry(ContextResolver(self.deps), None, self.actor, active_context=self.deps.active_context)
+                QueryEntry(
+                    ContextResolver(self.deps), None, self.actor, active_context=self.deps.active_context, **self.query
+                )
                 if self.direct
                 else None
             ),

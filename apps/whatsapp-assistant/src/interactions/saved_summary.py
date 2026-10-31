@@ -166,6 +166,16 @@ def _summary(draft: DraftActionV2 | Any, *, today: date | None = None) -> str | 
         sites = " → ".join(p for p in (_text(fields.get("from_site_name")), _text(fields.get("to_site_name"))) if p)
         head = f"Transfer: {material} {qty}".strip()
         return f"{head} · {sites}" if sites else head
+    if action in (DraftActionType.RECORD_MATERIAL_RECEIPT, DraftActionType.RECORD_MATERIAL_USAGE) and _text(
+        fields.get("movement_reason")
+    ).startswith("ADJUSTMENT_"):
+        # Request 171: a stock count -- "Stock count: Cement 0 bag (records 176)".
+        material = _title(fields.get("material_name")) or "Material"
+        unit = _text(fields.get("unit"))
+        counted = " ".join(p for p in (_num(fields.get("counted")), unit) if p)
+        book = _num(fields.get("book_stock"))
+        line = f"Stock count: {material} {counted}".strip()
+        return f"{line} (records {book})" if book else line
     if action is DraftActionType.RECORD_MATERIAL_RECEIPT and fields.get("movement_reason") == "OPENING_STOCK":
         material = _title(fields.get("material_name")) or "Material"
         qty = " ".join(p for p in (_num(fields.get("quantity")), _text(fields.get("unit"))) if p)

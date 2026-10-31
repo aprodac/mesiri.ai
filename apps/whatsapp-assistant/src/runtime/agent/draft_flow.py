@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import re
 import uuid
 from dataclasses import replace
 from types import SimpleNamespace
@@ -865,16 +866,51 @@ async def _typed_check(gw: Any, draft: dr.MessageDraft, text: str) -> ReplySpec 
 _TYPE_IT = {"Other": "Please type the number.", "Something else": "Please type the material name."}
 
 
+_COUNT = re.compile(
+    r"^\s*(\d+(?:[.,]\d+)?)\s*(?:bags?|kgs?|nos|pcs|pieces|tons?|tonnes?|loads?|cum|cft|ltrs?|litres?|liters?|rods?|sqft|trips?|brass)?\.?\s*$",
+    re.IGNORECASE,
+)
+_NONE_LEFT = frozenset({"zero", "nil", "none", "illa", "nothing", "0"})
+
+
+def count_figure(text: str) -> float | None:
+    """"20", "20 bags", "zero" as the stock count they give; None when it is not one."""
+    said = (text or "").strip()
+    if said.casefold() in _NONE_LEFT:
+        return 0.0
+    hit = _COUNT.match(said)
+    return float(hit.group(1).replace(",", ".")) if hit else None
+
+
 async def _answer_waiting(gw: Any, draft: dr.MessageDraft, item: dr.DraftItem, option: str) -> ReplySpec:
     """A tap on the question of a waiting line: the answer is put into the
     line's own tool arguments (a unit conversion is set for the company first,
     as the typed answer does) and the entry is prepared again, with every check
     it runs. Ready: the line becomes the entry. Asked again: the new question
     replaces the old. Nothing is written to a domain table here."""
-    from .material_entry import AWAIT_NEW_MATERIAL, AWAIT_UNIT, is_add_new
+    from .material_entry import (
+        AWAIT_COUNT,
+        AWAIT_NEW_MATERIAL,
+        AWAIT_UNIT,
+        ENTER_COUNT,
+        KEEP_RECORDS,
+        SET_ZERO,
+        is_add_new,
+    )
     from .toolbox import per_stock_unit
 
     site = _card_site(gw, draft)
+    if item.awaiting == AWAIT_COUNT and option == ENTER_COUNT:
+        return dr.card_reply(draft, "Type how much is there now (a number).", site=site)
+    if item.awaiting == AWAIT_COUNT and option == KEEP_RECORDS:
+        # "Keep": the books stay as they are; nothing is adjusted.
+        draft.items.remove(item)
+        if draft.live:
+            await gw.drafts.put(draft)
+        else:
+            await gw.drafts.discard(draft.id)
+        words = "Okay, the stock records stay as they are."
+        return dr.card_reply(draft, words, site=site) if draft.live else ReplySpec(text=words)
     if option in _TYPE_IT:
         return dr.card_reply(draft, _TYPE_IT[option], site=site)
     if item.needs_site:
@@ -905,6 +941,14 @@ async def _answer_waiting(gw: Any, draft: dr.MessageDraft, item: dr.DraftItem, o
         )
         if said.status != "answer":
             return dr.card_reply(draft, said.text, site=site)
+    elif item.awaiting == AWAIT_COUNT:
+        if option == SET_ZERO:
+            args["counted"] = 0
+        else:
+            figure = count_figure(option)
+            if figure is None:
+                return dr.card_reply(draft, "Type how much is there now (a number).", site=site)
+            args["counted"] = figure
     else:
         args[item.awaiting] = option
     candidate = to_candidate(item.tool, args, _scope(gw))
@@ -1017,8 +1061,14 @@ async def answer_typed(gw: Any, draft: dr.MessageDraft, text: str) -> ReplySpec 
         picked = draft_answer.site_answer(gw.actor, text, where.options)
         if picked is not None:
             return await _answer_where(gw, draft, where.awaiting, picked)
-    from .material_entry import AWAIT_AMOUNT
+    from .material_entry import AWAIT_AMOUNT, AWAIT_COUNT, SET_ZERO
 
+    for item in [i for i in draft.items if i.pending_answer and i.awaiting == AWAIT_COUNT]:
+        # Request 171: "20", "20 bags", "zero" after "Enter count" (or instead of a tap).
+        figure = count_figure(text)
+        if figure is None:
+            continue
+        return await _answer_waiting(gw, draft, item, SET_ZERO if figure == 0 else str(figure))
     for item in [i for i in draft.items if i.pending_answer and i.awaiting == AWAIT_AMOUNT]:
         amount = draft_answer.amount_answer(text, item.args, item.answer_unit)
         if amount is None:

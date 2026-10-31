@@ -103,3 +103,9 @@ class SiteIssueTargetQueryService:
                 )
             ).mappings().all()
         return [dict(row) for row in rows]
+
+    async def open_requests(self, **kwargs):  # type: ignore[no-untyped-def]
+        """Request 171: material requests asked and not delivered yet (see ``open_needs``)."""
+        from runtime.open_needs import OpenNeedsQueryService
+
+        return await OpenNeedsQueryService(self._db).open_requests(**kwargs)

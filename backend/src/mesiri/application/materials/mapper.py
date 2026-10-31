@@ -85,6 +85,7 @@ def build_command(
             total_cost=_decimal(fields["total_cost"]) if fields.get("total_cost") not in (None, "") else None,
             unit_cost=_decimal(fields["unit_cost"]) if fields.get("unit_cost") not in (None, "") else None,
             movement_reason=fields.get("movement_reason"),
+            notes=fields.get("notes") or None,
             media_object_key=str(fields["media_object_key"]) if fields.get("media_object_key") else None,
         )
     if draft.action_type is DraftActionType.TRANSFER_MATERIAL:
@@ -96,4 +97,6 @@ def build_command(
     return RecordMaterialUsageCommand(
         **common,
         work_item=fields.get("work_item"),
+        movement_reason=fields.get("movement_reason"),
+        notes=fields.get("notes") or None,
     )

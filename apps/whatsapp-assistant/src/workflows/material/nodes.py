@@ -104,6 +104,8 @@ def request_confirmation(state: WorkflowGraphState) -> dict:
     label = _ACTION_LABEL[draft.action_type]
     if draft.fields.get("movement_reason") == "OPENING_STOCK":
         label = "Opening Stock"
+    elif str(draft.fields.get("movement_reason") or "").startswith("ADJUSTMENT_"):
+        label = "Stock count (adjustment)"
     lines = ["*Confirm this record?*", "", f"📦 {label}"]
     date_line = _date_line(draft.fields)
     if date_line:

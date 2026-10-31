@@ -182,10 +182,10 @@ class PostgresMaterialExecutionRepository(MaterialExecutionRepository):
                     "INSERT INTO material_receipts "
                     "(id, organization_id, project_id, site_id, material_name, quantity, unit, "
                     "unit_id, material_id, supplier, occurred_date, occurred_date_source, "
-                    "movement_reason, correlation_id, created_by, unit_cost, total_cost) "
+                    "movement_reason, notes, correlation_id, created_by, unit_cost, total_cost) "
                     "VALUES (:id, :organization_id, :project_id, :site_id, :material_name, "
                     ":quantity, :unit, :unit_id, :material_id, :supplier, :occurred_date, "
-                    ":occurred_date_source, COALESCE(:movement_reason, 'RECEIVED'), "
+                    ":occurred_date_source, COALESCE(:movement_reason, 'RECEIVED'), :notes, "
                     ":correlation_id, :created_by, :unit_cost, :total_cost)"
                 ),
                 {
@@ -202,6 +202,7 @@ class PostgresMaterialExecutionRepository(MaterialExecutionRepository):
                     "unit_cost": unit_cost,
                     "total_cost": total_cost,
                     "movement_reason": cmd.movement_reason,
+                    "notes": cmd.notes,
                     "occurred_date": cmd.occurred_date,
                     "occurred_date_source": cmd.occurred_date_source,
                     "correlation_id": cmd.correlation_id,
@@ -218,10 +219,11 @@ class PostgresMaterialExecutionRepository(MaterialExecutionRepository):
                     "INSERT INTO material_usage "
                     "(id, organization_id, project_id, site_id, material_name, quantity, unit, "
                     "unit_id, material_id, work_item, occurred_date, occurred_date_source, "
-                    "correlation_id, created_by) "
+                    "movement_reason, notes, correlation_id, created_by) "
                     "VALUES (:id, :organization_id, :project_id, :site_id, :material_name, "
                     ":quantity, :unit, :unit_id, :material_id, :work_item, :occurred_date, "
-                    ":occurred_date_source, :correlation_id, :created_by)"
+                    ":occurred_date_source, COALESCE(:movement_reason, 'CONSUMED'), :notes, "
+                    ":correlation_id, :created_by)"
                 ),
                 {
                     "id": row_id,
@@ -234,6 +236,8 @@ class PostgresMaterialExecutionRepository(MaterialExecutionRepository):
                     "unit_id": unit_id,
                     "material_id": material_id,
                     "work_item": cmd.work_item,
+                    "movement_reason": cmd.movement_reason,
+                    "notes": cmd.notes,
                     "occurred_date": cmd.occurred_date,
                     "occurred_date_source": cmd.occurred_date_source,
                     "correlation_id": cmd.correlation_id,

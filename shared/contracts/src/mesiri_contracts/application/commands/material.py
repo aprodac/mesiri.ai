@@ -49,6 +49,8 @@ class RecordMaterialReceiptCommand(BaseModel):
     #: None is an ordinary delivery. "OPENING_STOCK" is what was already on
     #: site before Mesiri (entered once per site + material).
     movement_reason: str | None = None
+    #: Request 171: why, in words ("Stock count: records 176, counted 20"); kept on the row.
+    notes: str | None = None
 
     # Populated once the WhatsApp assistant's deterministic resolution gates
     # (or the Handler's defense-in-depth resolver, see application/materials/
@@ -86,6 +88,10 @@ class RecordMaterialUsageCommand(BaseModel):
     quantity: Decimal
     unit: str
     work_item: str | None = None
+    #: Request 171: None is an ordinary use (CONSUMED). "ADJUSTMENT_OUT" is a stock
+    #: count that found less than the books show; ``notes`` says why.
+    movement_reason: str | None = None
+    notes: str | None = None
 
     material_id: CanonicalUuid | None = None
     unit_id: CanonicalUuid | None = None

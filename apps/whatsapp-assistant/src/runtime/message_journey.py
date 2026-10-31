@@ -1111,6 +1111,7 @@ def build_message_handlers(
                         expense_query_service=expense_query_service,
                         money_account_query=money_account_query,
                         reversal_query=reversal_query,
+                        site_issue_query=site_issue_query,
                         object_storage=object_storage,
                         send_document=sender.send_document,
                         send_image=sender.send_image,

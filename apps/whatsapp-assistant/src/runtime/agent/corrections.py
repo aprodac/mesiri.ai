@@ -66,7 +66,7 @@ _KINDS: dict[str, tuple[re.Pattern[str], tuple[str, ...], str]] = {
     "issue": (_ISSUE, (dr.KIND_ISSUE_OPEN, dr.KIND_ISSUE_STATUS), "issue"),
     "material": (
         _MATERIAL,
-        (dr.KIND_MATERIAL_IN, dr.KIND_MATERIAL_OUT, dr.KIND_TRANSFER_MATERIAL, dr.KIND_OPENING_STOCK),
+        (dr.KIND_MATERIAL_IN, dr.KIND_MATERIAL_OUT, dr.KIND_TRANSFER_MATERIAL, dr.KIND_OPENING_STOCK, dr.KIND_STOCK_COUNT),
         "material",
     ),
 }

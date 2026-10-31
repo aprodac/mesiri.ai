@@ -131,6 +131,8 @@ class QueryEntry(EntryScope):
     expense_query_service: Any | None = None
     money_account_query: Any | None = None
     reversal_query: Any | None = None
+    #: Request 171: open issues and open material requests, for "what to get".
+    site_issue_query: Any | None = None
     object_storage: Any | None = None
     #: ``(wa_id, data, *, filename, caption) -> bool``: a lookup asked for as a PDF.
     send_document: Callable[..., Awaitable[Any]] | None = None
@@ -190,6 +192,8 @@ class QueryEntry(EntryScope):
         event, decision, actor, key = ready.event, ready.decision, self.actor, ready.decision.workflow_key
         if key is K.MATERIAL_INVENTORY_QUERY:
             seeds = [s._inject_inventory_context(event, self.inventory_query, timezone)]
+            if event.fields.get("view") == "open_needs":
+                seeds.append(self._seed_open_needs(event, timezone))
         elif key is K.LABOUR_QUERY:
             seeds = [s._seed_labour_query(event, decision, self.labour_query_service, actor, timezone)]
         elif key is K.ACTIVITY_QUERY:
@@ -234,6 +238,31 @@ class QueryEntry(EntryScope):
         elif key is K.ACTIVITY_QUERY:
             _one_name_per_trade((event.fields.get("activity_search_results") or {}).get("labour"))
 
+    async def _seed_open_needs(self, event: Any, timezone: str) -> None:
+        """Request 171: the open requests and shortages a "what to get" answer lists.
+        Each part that cannot be read is left out (the answer says what it has)."""
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        service = self.site_issue_query
+        if service is None:
+            return
+        scope = {
+            "organization_id": event.organization_id,
+            "project_id": event.project_id,
+            "site_id": event.site_id,
+        }
+        try:
+            today = datetime.now(ZoneInfo(timezone)).date()
+            event.fields["open_requests"] = await service.open_requests(**scope, today=today)
+        except Exception:  # noqa: BLE001
+            _log.warning("query_entry.open_requests_failed", exc_info=True)
+        try:
+            issues = await service.list_open(**scope)
+            event.fields["open_shortages"] = [i for i in issues if str(i.get("issue_type") or "").upper() == "MATERIAL_SHORTAGE"]
+        except Exception:  # noqa: BLE001
+            _log.warning("query_entry.open_shortages_failed", exc_info=True)
+
     async def _stock_card(self, ready: Ready) -> None:
         """Request 91: for an all-materials question (no one material named,
         2+ rows) draw the Stock card; the journey sends it with the reply as
@@ -273,7 +302,11 @@ class QueryEntry(EntryScope):
         ``report_entry``'s.)"""
         fields = ready.event.fields
         key = ready.decision.workflow_key
-        if key is K.MATERIAL_INVENTORY_QUERY and fields.get("output_format") not in ("pdf", "image"):
+        if (
+            key is K.MATERIAL_INVENTORY_QUERY
+            and fields.get("output_format") not in ("pdf", "image")
+            and fields.get("view") != "open_needs"
+        ):
             await self._stock_card(ready)
         fell_back = False
         if fields.get("output_format") == "image":

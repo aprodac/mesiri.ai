@@ -24,6 +24,8 @@ SAVE_MATERIAL_USAGE = "save_material_usage"
 # [103]: material sent to another site; stock that was on site before Mesiri.
 TRANSFER_MATERIAL = "transfer_material"
 SAVE_OPENING_STOCK = "save_opening_stock"
+# Request 171: a physical count ("stock count: cement 20", "set cement to 0") -> an adjustment.
+ADJUST_STOCK = "adjust_stock"
 SAVE_EXPENSE = "save_expense"
 REPORT_ISSUE = "report_issue"
 TRANSFER_MONEY = "transfer_money"
@@ -36,6 +38,8 @@ REQUEST_MATERIAL = "request_material"
 SET_UNIT_CONVERSION = "set_unit_conversion"
 QUERY_LABOUR = "query_labour"
 QUERY_MATERIALS = "query_materials"
+# Request 171: what is still to get -- open requests, shortages, materials at or below zero.
+QUERY_OPEN_NEEDS = "query_open_needs"
 QUERY_WORK_LOG = "query_work_log"
 QUERY_PROJECT = "query_project"
 # Request 160: the sender's own projects / sites / role, answered from who they are.
@@ -72,6 +76,7 @@ WRITE_TOOLS = frozenset(
         SAVE_MATERIAL_USAGE,
         TRANSFER_MATERIAL,
         SAVE_OPENING_STOCK,
+        ADJUST_STOCK,
         SAVE_EXPENSE,
         REPORT_ISSUE,
         NOTE_FOR_ENGINEER,
@@ -92,7 +97,7 @@ WRITE_TOOLS = frozenset(
 
 #: Tools that read. Their reply text is handed to the model to put in its answer.
 QUERY_TOOLS = frozenset(
-    {QUERY_LABOUR, QUERY_MATERIALS, QUERY_WORK_LOG, QUERY_PROJECT, QUERY_EXPENSES, REQUEST_DPR, MY_SCOPE}
+    {QUERY_LABOUR, QUERY_MATERIALS, QUERY_OPEN_NEEDS, QUERY_WORK_LOG, QUERY_PROJECT, QUERY_EXPENSES, REQUEST_DPR, MY_SCOPE}
 )
 
 #: ARCH-04: set only after the user said yes to adding it to the material list.
@@ -498,6 +503,44 @@ def tool_specs() -> list[ToolSpec]:
                 },
                 ["material", "quantity", "unit"],
             ),
+        ),
+        ToolSpec(
+            name=ADJUST_STOCK,
+            description=(
+                "A physical STOCK COUNT: what is really on site now ('stock count: cement 20 bags', "
+                "'cement 20 bag undu, count cheythu', 'cement is finished' -> counted 0). Also the answer "
+                "to the stock question buttons ('Set cement stock to 0', or a number after 'Enter cement "
+                "count'). The system compares with the books and writes only the difference as an "
+                "adjustment with a reason, after their Save tap. Never save_material_usage for this. "
+                "Not for a delivery or for work that used material."
+            ),
+            parameters=_obj(
+                {
+                    "material": _MATERIAL,
+                    "counted": {
+                        "type": "number",
+                        "description": (
+                            "What is on site now (0 when finished). Omit it when they have not said a figure: "
+                            "the card then shows the records and asks."
+                        ),
+                    },
+                    "unit": {"type": "string"},
+                    "name_en": _NAME_EN,
+                    "project": _PROJECT,
+                    "site": _SITE,
+                },
+                ["material"],
+            ),
+        ),
+        ToolSpec(
+            name=QUERY_OPEN_NEEDS,
+            description=(
+                "What is still to get or order: 'what to get tomorrow', 'what is out of stock', 'pending "
+                "requests', 'what did I ask to order', 'what is finished'. Lists the material requests "
+                "not yet delivered, the shortages reported, and materials at or below zero. Use it "
+                "instead of query_materials for these, and never ask which information: it has it."
+            ),
+            parameters=_obj({"project": _PROJECT, "site": _SITE}),
         ),
         ToolSpec(
             name=SAVE_EXPENSE,
@@ -1226,6 +1269,17 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             **sc,
         }
         return Candidate(semantic_type=SemanticType.MATERIAL_UPDATE, fields=_clean(fields))
+    if name == ADJUST_STOCK:
+        fields = {
+            "material_name": args.get("material"),
+            "quantity": args.get("counted"),
+            "unit": args.get("unit"),
+            "direction": "stock_count",
+            "reconcile": True if args.get("reconcile") is True else None,
+            "name_en": args.get("name_en"),
+            **sc,
+        }
+        return Candidate(semantic_type=SemanticType.MATERIAL_UPDATE, fields=_clean(fields))
     if name == SAVE_EXPENSE:
         fields = {
             "amount": args.get("amount"),
@@ -1305,6 +1359,12 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
             **sc,
         }
         return Candidate(semantic_type=SemanticType.INVENTORY_QUERY, fields=_clean(fields))
+    if name == QUERY_OPEN_NEEDS:
+        # Request 171: the stock lookup, as a list of what is still to get.
+        return Candidate(
+            semantic_type=SemanticType.INVENTORY_QUERY,
+            fields=_clean({"view": "open_needs", **sc}),
+        )
     if name == QUERY_WORK_LOG:
         fields = {
             "date": date,

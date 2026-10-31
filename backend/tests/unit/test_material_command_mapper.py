@@ -160,3 +160,36 @@ def test_missing_quantity_coerces_to_zero_not_a_crash():
     )
     cmd = build_command(confirmed)
     assert cmd.quantity == Decimal("0")  # will be caught by Domain validation, not the mapper
+
+
+def test_stock_count_adjustment_keeps_its_reason_and_note_on_both_sides():
+    """Request 171: a stock count is an adjustment with a reason, never a fake 'used'."""
+    down = build_command(
+        _confirmed(
+            DraftActionType.RECORD_MATERIAL_USAGE,
+            {
+                "material_name": "cement",
+                "quantity": 176,
+                "unit": "bags",
+                "movement_reason": "ADJUSTMENT_OUT",
+                "notes": "Stock count: records 176, counted 0",
+            },
+        )
+    )
+    assert isinstance(down, RecordMaterialUsageCommand)
+    assert (down.movement_reason, down.notes) == ("ADJUSTMENT_OUT", "Stock count: records 176, counted 0")
+    up = build_command(
+        _confirmed(
+            DraftActionType.RECORD_MATERIAL_RECEIPT,
+            {"material_name": "cement", "quantity": 5, "unit": "bags", "movement_reason": "ADJUSTMENT_IN", "notes": "n"},
+        )
+    )
+    assert isinstance(up, RecordMaterialReceiptCommand)
+    assert (up.movement_reason, up.notes) == ("ADJUSTMENT_IN", "n")
+
+
+def test_ordinary_usage_has_no_reason_so_it_stays_consumed():
+    cmd = build_command(
+        _confirmed(DraftActionType.RECORD_MATERIAL_USAGE, {"material_name": "sand", "quantity": 5, "unit": "tons"})
+    )
+    assert cmd.movement_reason is None and cmd.notes is None

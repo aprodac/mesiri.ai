@@ -38,6 +38,7 @@ from .reroute import NOT_A_CORRECTION
 from .save_button import SAVE_TITLE
 from .site_match import short_title
 from .tools import (
+    ADJUST_STOCK,
     ASK_USER,
     CHANGE_OR_UNDO,
     CORRECT_WORK_QUANTITY,
@@ -672,6 +673,8 @@ class AgentToolbox:
         if step.status == "choose" and step.awaiting == "site" and name in WRITE_TOOLS:
             self._hold_for_site(name, args)
         outcome = self._outcome(name, step)
+        if name == REPORT_ISSUE and step.status == "drafted":
+            await self._ask_to_reconcile(args)
         if behind and site:
             earlier += await self._replay_site(behind, site, args.get("project"))
         if earlier:
@@ -681,6 +684,26 @@ class AgentToolbox:
                 "Do not save them again and do not ask about them."
             )
         return outcome
+
+    async def _ask_to_reconcile(self, args: dict[str, Any]) -> None:
+        """Request 171: "cement stock kazhinju" is a shortage on the card, and the books may
+        still show 176 bags. A line of the same card asks "Records show 176 bag cement. Set
+        stock to 0?" (Set to 0 / Enter count / Keep). Only for a listed material the books
+        show above zero; nothing is adjusted before the Save tap. Never fails the report."""
+        if not self.draft_mode or str(args.get("issue_type") or "").upper() != "MATERIAL_SHORTAGE":
+            return
+        material = material_named(f"{self.user_text} {args.get('narrative') or ''}")
+        if material is None:
+            return
+        ask = {"material": material, "reconcile": True, **{k: args[k] for k in ("project", "site") if args.get(k)}}
+        try:
+            step = await self._run(ADJUST_STOCK, ask)
+        except Exception:  # noqa: BLE001 -- the shortage itself is already on the card
+            _log.warning("agent.reconcile_failed", exc_info=True)
+            return
+        if step.status == "drafted":
+            self.called.add(ADJUST_STOCK)
+            self._outcome(ADJUST_STOCK, step)
 
     @property
     def draft_mode(self) -> bool:

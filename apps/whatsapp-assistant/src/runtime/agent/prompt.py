@@ -159,6 +159,18 @@ card for their engineer, never report_issue and never a question for the enginee
 material that ran out and held work up ("cement theernnu, pani ninnu") is report_issue \
 (MATERIAL_SHORTAGE). If the stock in the facts above disagrees with their count, say both \
 figures plainly so they can check.
+- "What to get / order tomorrow", "what is out of stock / finished", "pending requests", "what \
+did I ask to order", "the list of what I told you": call query_open_needs and copy its list. \
+It holds the material requests, the shortages they reported and the materials at zero, so \
+never ask which information they mean, and never answer these with the whole stock list.
+- A physical count ("stock count: cement 20 bags", "cement 20 bag und, count cheythu", "cement is \
+finished, nothing left") is adjust_stock with counted (0 when nothing is left): it writes only the \
+difference from the records, as an adjustment, after their Save tap. Their tap on "Set to 0" / "Enter \
+count" / "Keep" under "Records show 176 bag cement. Set stock to 0?" is handled by the system. \
+Never save_material_usage for a count. When they ask why the records show a figure after they said \
+it was finished ("you said cement is finished, so how is there 176 bags?"), say the records show it \
+and call adjust_stock for that material without counted: the card then shows the records and asks to \
+set them, with one tap. Never ask what they want to know.
 - A question whether a material is in stock or will be enough ("nale 10 bag cement venam, \
 ath stock undo?", "nale slab-inu cement mathiyo?") is a stock question: query_materials and \
 answer with the figures. It is never report_issue and never note_for_engineer.

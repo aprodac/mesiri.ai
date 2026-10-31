@@ -320,14 +320,19 @@ def build_receipt_data(
         summary_value = hero_number
     elif draft.action_type is DraftActionType.RECORD_MATERIAL_RECEIPT:
         kind = ReceiptKind.MATERIAL_IN
-        category = "Opening stock" if fields.get("movement_reason") == "OPENING_STOCK" else "Material received"
+        category = (
+            "Opening stock"
+            if fields.get("movement_reason") == "OPENING_STOCK"
+            else "Stock adjustment" if str(fields.get("movement_reason") or "").startswith("ADJUSTMENT_")
+            else "Material received"
+        )
         hero_number, hero_unit = _number(fields.get("quantity", "")), str(fields.get("unit", "")).strip()
         rows = _rows(kind, ("Material", material_name.title()), ("Supplier", fields.get("supplier")))
         id_prefix = "MR"
         summary_text, summary_value = material_name.title(), _fmt_quantity(fields)
     elif draft.action_type is DraftActionType.RECORD_MATERIAL_USAGE:
         kind = ReceiptKind.MATERIAL_USED
-        category = "Material used"
+        category = "Stock adjustment" if str(fields.get("movement_reason") or "").startswith("ADJUSTMENT_") else "Material used"
         hero_number, hero_unit = _number(fields.get("quantity", "")), str(fields.get("unit", "")).strip()
         rows = _rows(kind, ("Material", material_name.title()), ("Used for", fields.get("work_item")))
         id_prefix = "MU"

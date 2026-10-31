@@ -57,7 +57,7 @@ FAMILIES: dict[str, tuple[re.Pattern[str], frozenset[str]]] = {
         _words(
             r"cement|sand|m-?sand|p-?sand|steel|tmt|rods?|bricks?|blocks?|aggregate|jelly|metal|bags?|loads?|"
             r"kgs?|tons?|tonnes?|litres?|brass|cft|stock|materials?|tiles?|pipes?|wire|paint|received|arrived|"
-            r"delivered|used|use|order\w*|venam|transfer\w*|shift\w*|opening|സിമന്റ്|മണൽ|കമ്പി|सीमेंट|रेत"
+            r"delivered|used|use|order\w*|venam|transfer\w*|shift\w*|opening|count\w*|pending|സിമന്റ്|മണൽ|കമ്പി|सीमेंट|रेत"
         ),
         frozenset(
             {
@@ -65,6 +65,10 @@ FAMILIES: dict[str, tuple[re.Pattern[str], frozenset[str]]] = {
                 t.SAVE_MATERIAL_USAGE,
                 t.TRANSFER_MATERIAL,
                 t.SAVE_OPENING_STOCK,
+                # "cement stock kazhinju": a material that ran out is a shortage report.
+                t.REPORT_ISSUE,
+                t.ADJUST_STOCK,
+                t.QUERY_OPEN_NEEDS,
                 t.QUERY_MATERIALS,
                 t.SET_UNIT_CONVERSION,
                 t.REQUEST_MATERIAL,
@@ -90,7 +94,17 @@ FAMILIES: dict[str, tuple[re.Pattern[str], frozenset[str]]] = {
             r"engineer|drawing\w*|question|ask|chodikku|rain\w*|mazha|weather|sunny|holiday|half ?day|"
             r"tomorrow|nale|naale|plan|jcb|crane|mixer|vibrator|machine|pump|generator|മഴ|കേടായി"
         ),
-        frozenset({t.REPORT_ISSUE, t.UPDATE_ISSUE, t.NOTE_FOR_ENGINEER, t.SET_SITE_CONDITIONS, t.REQUEST_MATERIAL}),
+        frozenset(
+            {
+                t.REPORT_ISSUE,
+                t.UPDATE_ISSUE,
+                t.NOTE_FOR_ENGINEER,
+                t.SET_SITE_CONDITIONS,
+                t.REQUEST_MATERIAL,
+                t.ADJUST_STOCK,
+                t.QUERY_OPEN_NEEDS,
+            }
+        ),
     ),
     "language": (
         _words(r"english|malayalam|manglish|hindi|hinglish|tamil|language|bhasha|bhaasha|reply|parayu|script"),
@@ -105,7 +119,9 @@ FAMILIES: dict[str, tuple[re.Pattern[str], frozenset[str]]] = {
             r"reports?|dpr|summary|enthokke|enthu|what|ethra|how|today|innu|innale|yesterday|week|month|"
             r"details?|status|show|send|ayakku|list|total|റിപ്പോർട്ട്"
         ),
-        frozenset({t.REQUEST_DPR, t.QUERY_WORK_LOG, t.QUERY_PROJECT, t.QUERY_LABOUR, t.QUERY_MATERIALS}),
+        frozenset(
+            {t.REQUEST_DPR, t.QUERY_WORK_LOG, t.QUERY_PROJECT, t.QUERY_LABOUR, t.QUERY_MATERIALS, t.QUERY_OPEN_NEEDS}
+        ),
     ),
     "team": (
         _words(

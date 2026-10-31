@@ -58,6 +58,11 @@ __all__ = ["MaterialEntry", "Ready", "Say"]
 
 _log = logging.getLogger("mesiri.agent")
 
+
+def _plain(value: Any) -> str:
+    number = float(value)
+    return str(int(round(number))) if abs(number - round(number)) < 0.005 else f"{number:.2f}".rstrip("0").rstrip(".")
+
 _MODULE = "materials"
 _BY_DIRECTION = {
     "received": (CanonicalEventType.MATERIAL_RECEIPT_REQUESTED, WorkflowKey.MATERIAL_RECEIPT),
@@ -65,6 +70,9 @@ _BY_DIRECTION = {
     # [103]: stock that was on site before Mesiri is a receipt with its own reason.
     "opening_stock": (CanonicalEventType.MATERIAL_RECEIPT_REQUESTED, WorkflowKey.MATERIAL_RECEIPT),
     "transfer": (CanonicalEventType.MATERIAL_TRANSFER_REQUESTED, WorkflowKey.MATERIAL_TRANSFER),
+    # Request 171: a count is a receipt or a use of the difference, whichever way it differs
+    # from the books (decided below, once the books are read).
+    "stock_count": (CanonicalEventType.MATERIAL_RECEIPT_REQUESTED, WorkflowKey.MATERIAL_RECEIPT),
 }
 
 #: [103]: the last choice of a long material list: they type the name instead.
@@ -77,6 +85,11 @@ AWAIT_NEW_MATERIAL = "new_material"
 #: The amount in the stock unit, typed (no conversion to ask for): a card line
 #: waits on it (request 129).
 AWAIT_AMOUNT = "amount"
+#: Request 171: "Records show 176 bag cement. Set stock to 0?" -- the card's question when
+#: a shortage is reported for a material the books still show. A tap or a typed figure fills
+#: ``counted``; nothing is adjusted before the Save tap.
+AWAIT_COUNT = "counted"
+SET_ZERO, ENTER_COUNT, KEEP_RECORDS = "Set to 0", "Enter count", "Keep"
 ADD_IT = "Yes, add it"
 #: Request 159 (part D): the add choice shown after the closest listed materials.
 ADD_NEW = "➕ Add "
@@ -180,9 +193,15 @@ class MaterialEntry(EntryScope):
             return None
         event_type, workflow_key = _BY_DIRECTION[direction]
         quantity = number(fields.get("quantity"))
-        if quantity is None or quantity <= 0 or not fields.get("material_name"):
+        counting = direction == "stock_count"
+        quiet = bool(fields.pop("reconcile", None))
+        if counting and quantity is None and fields.get("material_name"):
+            # Asked from a shortage report: no figure yet, the card asks (below).
+            fields["quantity"] = None
+        elif quantity is None or quantity < 0 or (quantity == 0 and not counting) or not fields.get("material_name"):
             return Say("error", "Not saved: the material and a quantity above zero are needed.")
-        fields["quantity"] = quantity
+        else:
+            fields["quantity"] = quantity
 
         opening = direction == "opening_stock"
         if opening and not role_can_adjust(str(getattr(self.actor, "role", "") or "")):
@@ -190,6 +209,15 @@ class MaterialEntry(EntryScope):
             return Say(
                 "info",
                 "Not saved: opening stock can only be entered by an admin or project manager.",
+            )
+        if counting and not role_can_adjust(str(getattr(self.actor, "role", "") or "")):
+            if quiet:
+                # Offered from a shortage report: nobody is asked what they may not do.
+                return Say("info", "")
+            return Say(
+                "info",
+                "Not saved: a stock count changes the stock figure, so only an admin or project manager can "
+                "enter it. Tell them what is on site, or record a delivery or use instead.",
             )
         transfer = direction == "transfer"
         to_name = str(fields.pop("to_site_name", "") or "").strip()
@@ -208,12 +236,16 @@ class MaterialEntry(EntryScope):
 
         found = await self._material(organization_id, str(fields["material_name"]), fields, ctx, message)
         if not isinstance(found, dict):
-            return found
+            # From a shortage report the count is only offered for a material that is listed.
+            return Say("info", "") if quiet else found
         material = found
         fields.pop("new_material", None)
         fields.pop("name_en", None)
         fields["material_id"] = str(material["id"])
         fields["material_name"] = material["name"]
+
+        if counting and fields.get("quantity") is None:
+            return await self._ask_count(organization_id, project_id, site_id, material, message, quiet=quiet)
 
         fit = await fit_stock_unit(
             fields,
@@ -251,7 +283,39 @@ class MaterialEntry(EntryScope):
             )
 
         site_name = self._site_name(site_id)
-        if transfer:
+        if counting:
+            # Request 171: write the difference from the books as an adjustment with a reason,
+            # never a made-up "used". Saved figures only: what is still on a card is not stock yet.
+            if self.inventory_query is None:
+                return Say("error", "Not saved: the stock now could not be read, so the count cannot be compared. Try again.")
+            row = await self._book_row(organization_id, project_id, site_id, fields["material_id"], message)
+            if row is None and not await self._books_readable(organization_id, project_id, site_id, fields["material_id"], message):
+                return Say("error", "Not saved: the stock now could not be read, so the count cannot be compared. Try again.")
+            book = float(row["current_stock"]) if row else 0.0
+            if row and not fields.get("unit") and row.get("unit"):
+                fields["unit"] = str(row["unit"])
+            counted = float(fields["quantity"])
+            if not fields.get("unit") and fields.get("unit_id") and self.catalog_query is not None:
+                # No unit said: the material's own (the same one the book is kept in).
+                try:
+                    stock_unit = await self.catalog_query.get_unit(str(fields["unit_id"]))
+                except Exception:  # noqa: BLE001 -- the note and line just carry no unit
+                    stock_unit = None
+                if stock_unit and stock_unit.get("code"):
+                    fields["unit"] = stock_unit["code"]
+            unit = fields.get("unit") or ""
+            if abs(counted - float(book)) < 0.005:
+                return Say("info", f"Nothing to change: the records already show {_plain(book)} {unit} {material['name']}.".replace("  ", " "))
+            gain = counted > float(book)
+            event_type, workflow_key = _BY_DIRECTION["received" if gain else "used"]
+            fields["direction"] = "received" if gain else "used"
+            fields["movement_reason"] = "ADJUSTMENT_IN" if gain else "ADJUSTMENT_OUT"
+            fields["quantity"] = round(abs(counted - float(book)), 4)
+            fields["counted"] = counted
+            fields["book_stock"] = float(book)
+            fields["notes"] = f"Stock count: records {_plain(book)}, counted {_plain(counted)} {unit}".strip()
+            fields["site_label"] = site_name
+        elif transfer:
             fields.update(destination)
             fields["from_site_name"] = site_name
         elif opening:
@@ -263,7 +327,7 @@ class MaterialEntry(EntryScope):
         # The card's rule: a blank or default "UTC" zone is India, so a 2:45 AM
         # entry lands on today, not yesterday (22 Oct).
         fields = resolve_occurred_date(fields, timezone_name=str(company_zone(ctx.timezone)))
-        if direction == "used":
+        if fields.get("direction") == "used" and not counting:
             stock = await self._stock(organization_id, project_id, site_id, fields["material_id"], message)
             if stock is not None:
                 fields["available_stock"] = stock
@@ -273,6 +337,29 @@ class MaterialEntry(EntryScope):
                     fields["no_opening_stock"] = True
 
         return self.ready(scoped, message, event_type, workflow_key, fields)
+
+    async def _ask_count(
+        self, organization_id: str, project_id: Any, site_id: Any, material: dict, message: Any, *, quiet: bool
+    ) -> Say:
+        """Request 171: a shortage was reported for ``material``. If the books still show
+        some, ask what is really there (a line of the card, answered by a tap); if they
+        show none there is nothing to reconcile."""
+        level = await self._book_row(organization_id, project_id, site_id, str(material["id"]), message)
+        stock = float(level["current_stock"]) if level else 0.0
+        if level is None or stock <= 0:
+            if quiet:
+                return Say("info", "")
+            return Say("info", f"Nothing to reconcile: the records show {_plain(stock)} {material['name']}.")
+        unit = str(level.get("unit") or "").strip()
+        name = str(material["name"])
+        question = f"Records show {_plain(stock)} {unit} {name}. Set stock to 0?".replace("  ", " ")
+        return Say(
+            "choose",
+            f"The records show {_plain(stock)} {unit} {name}; the question is on their card.",
+            question=question,
+            options=[SET_ZERO, ENTER_COUNT, KEEP_RECORDS],
+            awaiting=AWAIT_COUNT,
+        )
 
     def _site_name(self, site_id: Any) -> str:
         for site in getattr(self.actor, "sites", None) or []:
@@ -595,4 +682,39 @@ class MaterialEntry(EntryScope):
             _log.warning("material_entry.stock_failed correlation_id=%s", message.correlation_id, exc_info=True)
             return None
         return levels[0]["current_stock"] if levels else None
+
+    async def _books_readable(
+        self, organization_id: str, project_id: Any, site_id: Any, material_id: str, message: Any
+    ) -> bool:
+        """Whether the stock can be read at all (no rows is a readable zero, an error is not)."""
+        try:
+            await self.inventory_query.query(
+                organization_id=organization_id,
+                project_id=str(project_id) if project_id else None,
+                site_id=str(site_id) if site_id else None,
+                material_name=None,
+                material_id=material_id,
+            )
+        except Exception:  # noqa: BLE001
+            return False
+        return True
+
+    async def _book_row(
+        self, organization_id: str, project_id: Any, site_id: Any, material_id: str, message: Any
+    ) -> dict | None:
+        """The saved stock row of one material here (unit and figure), None when unread."""
+        if self.inventory_query is None:
+            return None
+        try:
+            levels = await self.inventory_query.query(
+                organization_id=organization_id,
+                project_id=str(project_id) if project_id else None,
+                site_id=str(site_id) if site_id else None,
+                material_name=None,
+                material_id=material_id,
+            )
+        except Exception:  # noqa: BLE001
+            _log.warning("material_entry.book_failed correlation_id=%s", message.correlation_id, exc_info=True)
+            return None
+        return levels[0] if levels else None
 
