@@ -240,3 +240,42 @@ Record the numbers here per candidate model (control panel row "WhatsApp assista
 - **Not verified:** the real-model gate (no `GEMINI_API_KEY`). Prompt-level fixes (1, 3, 5 wording)
   are proven only against a scripted model.
 
+
+
+## Request 185: framework revisited — v2 runs on Google ADK (owner decision, 31 Oct)
+
+**Decision: Google ADK as v2's engine, behind the company setting `assistant_mode = v2_adk`.**
+The Phase 0 decision above (google-genai through `ToolCallingProvider`) is superseded for v2;
+`v2` keeps today's loop until `v2_adk` passes the replay gate, then `v2_adk` becomes `v2`.
+
+Why the decision changed: the cross-check of 27-31 Oct (`docs/reviews/2026-10-31-v2-cross-check.md`)
+traced the worst failures to **memory**, not the model. `runtime/agent/history.py` sends a ≤400-char
+gist of each earlier reply with every question removed, 10 turns, from a Redis list. The model
+denied its own words, asked the same question again, and could not see a swiped message. ADK
+brings a session/event model (every turn whole: their words, the swiped message, tool calls and
+results, the reply as sent) with a pluggable store, callbacks for the code's guards, and an eval
+harness, without changing tools or the save door. The owner chose ADK over the Claude options
+(Agent SDK is a coding harness; Managed Agents hosts the loop and data off our server; the Tool
+Runner is only the loop) and keeps the model open (LiteLLM lets the same agent run on Claude).
+
+What ADK runs and what stays ours (`apps/whatsapp-assistant/src/agent_v2/adk/`):
+
+| Piece | Where | Note |
+|---|---|---|
+| Loop | ADK `Runner` + `LlmAgent` | per message; `before_model` callback keeps `stop` / `done` / `MAX_STEPS` exactly as the provider loop |
+| Tools | `SpecTool` = today's `ToolSpec` + `MainAgent.handler` | one code path for both engines (card, reads, guards) |
+| Memory | `memory.PostgresSessionService`, migration 0496 | one session per person per day (IST); RLS by `organization_id`; cascade on company delete |
+| State of the day | instructions, fresh each turn | sites, records, open card, catalog: never stored in the conversation |
+| Reply as sent | `AdkAgent.remember` | the code-drawn lines under the model's words are added to the conversation |
+| Model | `ResolvedGemini` | control panel route `agent_v2` (else `agent`), stored Gemini key, usage reported to the ledger |
+| Reply, Save card, honesty guards, outage fallback | `V2Runner` (unchanged) | `agent=` takes either engine |
+
+Measured here: unit 9 tests (`tests/agent_v2/test_adk_185.py`, scripted ADK model in the real
+journey World); integration 3 tests on Postgres 16 (`tests/integration/test_adk_memory_postgres.py`),
+migration chain 0001 -> 0496 and downgrade/upgrade of 0496. **Not measured: the real model** (no
+`GEMINI_API_KEY` in the build session). Gate before any company moves to `v2_adk`: the replay
+(`tests/agent_v2/test_replay_live.py`, held-out day) has fewer severe findings than production and
+no conversation got worse, then the team bot live run.
+
+Rollback: set the company back to `v2` or `classic` (instant); the two tables stay empty for
+everyone else; code revert removes the mode (`v2_adk` then reads as `v2`).

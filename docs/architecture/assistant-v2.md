@@ -109,6 +109,30 @@ with the same code as classic replies:
 - A complaint about the last reply gets a short sorry, what will be different, and the part they
   actually asked for, never the same text again.
 
+## Engine and memory (request 185)
+
+Two engines run the same agent (same tools, handler, rules, reply code):
+
+- `v2`: google-genai tool calling through `ToolCallingProvider`; memory = the last 10 turns as
+  gists (`runtime/agent/history.py`). Live on the 2 test companies.
+- `v2_adk`: **Google ADK** (`agent_v2/adk/`); memory = the whole day's conversation per person
+  in Postgres (`assistant_sessions` / `assistant_session_events`, migration 0496): what they said,
+  the message they swiped, tool calls and results, the reply as sent. The day's state (open card,
+  records, catalog) is in the instructions each turn, never in the conversation. Not on any
+  company yet: it waits for the replay gate (below) on the real model.
+
+Decision and details: ADR, section "Request 185".
+
+## Replay test (request 185)
+
+Real conversations, replayed and scored: `python3 scripts/v2_replay.py fetch --days 5` (read-only,
+kept in `~/.mesiri/replay`, never committed), `baseline` scores what production answered, and
+`tests/agent_v2/test_replay_live.py` replays them through `v2` or `v2_adk`
+(`MESIRI_REPLAY_ENGINE`) on the real model with the same checks (`agent_v2/replay/checks.py`: dead
+end, repeated question/reply, can't-see, unasked dump, no reply; card jargon, negative stock,
+outage, trial limit counted). The newest day is held out: fixes are tuned on the other days and
+the gate is judged on the held-out one, then on a fresh fetch.
+
 ## Model choice
 
 The control panel, **Providers** page, has a row **"WhatsApp assistant v2"** (capability
@@ -130,7 +154,7 @@ counts as a wrong save.
 ## The switch and rollback
 
 Per company: `PUT /admin/organizations/{org_id}/settings` (platform admin) with `assistant_mode`
-= `classic` | `v2_shadow` | `v2`. **Rollback is instant:** set the company to `classic` (or
+= `classic` | `v2_shadow` | `v2` | `v2_adk`. **Rollback is instant:** set the company to `classic` (or
 delete the setting). No data migration; no record is touched; code rollback is a revert.
 
 ## Retirement plan (module by module)

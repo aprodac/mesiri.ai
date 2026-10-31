@@ -129,3 +129,13 @@ async def test_a_conversation_replays_through_v2_and_a_save_tap_presses_the_card
     assert len(out.replies) == 3 and all(out.replies)
     assert "Saved" in out.replies[1]  # the tap went to the card's Save button, not the model
     assert out.kinds == [cp.TEXT, cp.TAP, cp.VOICE]
+
+
+def test_the_newest_day_is_held_out_and_the_splits_do_not_overlap():
+    convs = cp.group(
+        [_row("2026-10-29T07:00:00+00:00", "a"), _row("2026-10-30T07:00:00+00:00", "b"), _row("2026-10-31T07:00:00+00:00", "c")]
+    )
+    tune, held = cp.split(convs, "tune"), cp.split(convs, "holdout")
+    assert [c.turns[0].text for c in held] == ["c"]
+    assert [c.turns[0].text for c in tune] == ["a", "b"]
+    assert len(cp.split(convs, "all")) == 3

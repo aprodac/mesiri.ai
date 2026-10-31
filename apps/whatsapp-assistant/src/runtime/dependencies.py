@@ -1033,6 +1033,8 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         # Request 124: one draft per open card, written on the Save tap in one
         # transaction (only for a company with `draft_v2` on).
         drafts=PostgresDraftStore(material_db),
+        # Request 185: v2-on-ADK conversation memory (used only by ``assistant_mode`` = "v2_adk").
+        conversation_sessions=_conversation_sessions(material_db),
         # Request 142 (B): one journal entry per Save; undo and change read it.
         journal=PostgresJournalStore(material_db),
         shared_transaction=material_db.shared_transaction,
@@ -1133,3 +1135,16 @@ def get_container(request: Request) -> AppContainer:
 def get_receiver(request: Request) -> WhatsAppReceiver:
     """Resolve the WhatsApp ingress receiver."""
     return get_container(request).receiver
+
+
+def _conversation_sessions(db: Any) -> Any:
+    """Request 185: the v2-on-ADK memory store, or None when google-adk is not installed (then
+    ``v2_adk`` companies run today's v2)."""
+    try:
+        from agent_v2.adk.memory import PostgresSessionService
+    except Exception:  # noqa: BLE001
+        import logging
+
+        logging.getLogger("mesiri.startup").warning("agent_v2.adk.memory_unavailable", exc_info=True)
+        return None
+    return PostgresSessionService(db)

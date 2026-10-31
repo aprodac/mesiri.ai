@@ -70,14 +70,14 @@ def fetch(days: int, out: Path) -> None:
     print(f"{len(conversations)} conversations, {turns} turns -> {out}")
 
 
-def baseline(corpus: Path, show: bool) -> None:
+def baseline(corpus: Path, show: bool, which: str = "all") -> None:
     scored = []
-    for conv in cp.load(corpus):
+    for conv in cp.split(cp.load(corpus), which):
         texts = [t.text for t in conv.turns]
         replies = [t.reply for t in conv.turns]
         kinds = [t.kind for t in conv.turns]
         scored.append(Scored(conv.key, len(conv.turns), check_conversation(texts, replies, kinds)))
-    print(summary("production (what customers got)", scored))
+    print(summary(f"production (what customers got), split={which}", scored))
     if show:
         print()
         print(details(scored))
@@ -92,11 +92,12 @@ def main(argv: list[str] | None = None) -> None:
     b = sub.add_parser("baseline")
     b.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
     b.add_argument("--details", action="store_true")
+    b.add_argument("--split", choices=cp.SPLITS, default="all", help="tune: all but the newest day; holdout: the newest day")
     args = parser.parse_args(argv)
     if args.cmd == "fetch":
         fetch(args.days, args.out)
     else:
-        baseline(args.corpus, args.details)
+        baseline(args.corpus, args.details, args.split)
 
 
 if __name__ == "__main__":

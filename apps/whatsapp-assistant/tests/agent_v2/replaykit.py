@@ -124,3 +124,32 @@ class V2Engine:
             ctx=ctx, user_text=text, gateway=world.gateway(text), scope=world.scope(), correlation_id=correlation_id
         )
         return result.reply
+
+
+class AdkEngine:
+    """v2 on ADK (request 185): the conversation is ADK's own session (``history`` is not
+    used), the open card goes in the instructions. ``model`` is an ADK model (``gemini()``, a
+    ``ScriptedLlm``) or a ``GeminiProvider`` whose key and model are reused."""
+
+    def __init__(self, model: Any) -> None:
+        from agent_v2.adk.agent import AdkAgent
+        from agent_v2.runner import V2Runner
+        from mesiri_ai.fakes import FakeToolCallingProvider
+        from runtime.agent.runner import AgentRunner
+
+        if hasattr(model, "run_tools"):  # a GeminiProvider from the live test: same key, same model
+            from agent_v2.adk.models import gemini
+
+            settings = model._settings
+            model = gemini(settings.model, settings.api_key.get_secret_value())
+        self.agent = AdkAgent(model, catalog=_Catalog())
+        self.classic_calls = FakeToolCallingProvider(["(today's agent would answer here)"])
+        self.runner = V2Runner(None, AgentRunner(self.classic_calls), agent=self.agent)
+
+    async def reply(self, world: Any, history: list[Turn], text: str, correlation_id: str) -> Any:
+        card = await world.drafts.open_for(world.actor.organization_id, world.actor.user_id)
+        ctx = world.context(card_line=dr.context_line(card))
+        result = await self.runner.run(
+            ctx=ctx, user_text=text, gateway=world.gateway(text), scope=world.scope(), correlation_id=correlation_id
+        )
+        return result.reply

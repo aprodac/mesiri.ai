@@ -52,7 +52,8 @@ async def test_replay_real_conversations():
     engine_name = os.environ.get("MESIRI_REPLAY_ENGINE", "v2")
     limit = int(os.environ.get("MESIRI_REPLAY_LIMIT", "0")) or None
     provider = GeminiProvider(GeminiSettings(api_key=SecretStr(key), model=model))
-    conversations = cp.load(corpus_path)[:limit]
+    which = os.environ.get("MESIRI_REPLAY_SPLIT", "holdout")  # the gate is judged on days fixes never saw
+    conversations = cp.split(cp.load(corpus_path), which)[:limit]
 
     before, after, seconds, crashes = [], [], [], []
     for conv in conversations:
@@ -70,7 +71,7 @@ async def test_replay_real_conversations():
     report = "\n\n".join(
         [
             summary("production (what customers got)", before),
-            summary(f"{engine_name} on {model} (replayed)", after),
+            summary(f"{engine_name} on {model} (replayed, split={which})", after),
             f"reply time p50 {statistics.median(seconds):.1f}s  max {max(seconds):.1f}s" if seconds else "",
             "conversations that got worse: " + (", ".join(worse) or "none"),
             "crashes:\n" + ("\n".join(crashes) or "none"),
@@ -78,7 +79,7 @@ async def test_replay_real_conversations():
             "NOTE: replayed in the test company (one site, test catalog), not the real company's sites and materials.",
         ]
     )
-    out_path = cp.DEFAULT_DIR / f"report-{engine_name}-{model}.txt"
+    out_path = cp.DEFAULT_DIR / f"report-{engine_name}-{model}-{which}.txt"
     out_path.write_text(report, encoding="utf-8")
     print(report)
     print(f"report -> {out_path}")

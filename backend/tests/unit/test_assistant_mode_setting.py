@@ -12,7 +12,7 @@ def test_known_default_classic_and_superadmin_only():
     assert settings.ASSISTANT_MODE not in settings.DEDICATED_ENDPOINT_KEYS
 
 
-@pytest.mark.parametrize("value", ["classic", "v2_shadow", "v2", " V2 "])
+@pytest.mark.parametrize("value", ["classic", "v2_shadow", "v2", " V2 ", "v2_adk"])
 def test_valid_values_are_canonical(value):
     assert settings.validate(settings.ASSISTANT_MODE, value) == value.strip().lower()
 
@@ -37,3 +37,9 @@ def test_stored_modes_read_back():
     assert settings.assistant_mode("v2_shadow") == "v2_shadow"
     assert settings.assistant_mode("v2") == "v2"
     assert settings.assistant_mode("v2_materials") == "v2"  # stored under the old name: no migration
+
+
+def test_v2_on_adk_is_its_own_mode():
+    """Request 185: v2 run by Google ADK with the whole conversation kept."""
+    assert settings.assistant_mode("v2_adk") == "v2_adk"
+    assert settings.validate(settings.ASSISTANT_MODE, " V2_ADK ") == "v2_adk"

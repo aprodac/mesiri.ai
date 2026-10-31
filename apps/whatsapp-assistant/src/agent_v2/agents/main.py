@@ -254,24 +254,10 @@ class MainAgent:
         status = "none" if not names else "one" if len(names) == 1 else "several"
         return {"status": status, "materials": names}
 
-    async def run(
-        self,
-        *,
-        ctx: AgentContext,
-        user_text: str,
-        gateway: Any,
-        scope: ScopeLookup,
-        organization_id: str | None,
-        correlation_id: str | None = None,
-        lap: Any = None,
-        after_tool: Any = None,
-        language: str = "english",
-        shadow: bool = False,
-    ) -> V2Run:
-        toolbox = AgentToolbox(
-            gateway=gateway, scope=scope, user_text=user_text, language=language, lap=lap, after_tool=after_tool
-        )
-        state = V2Run(toolbox=toolbox)
+    def handler(self, state: V2Run, organization_id: str | None, *, shadow: bool = False) -> Any:
+        """The tool handler of one run: every engine (google-genai today, ADK) calls the same
+        tools through it, so the card, the reads and the guards are one code path."""
+        toolbox = state.toolbox
 
         async def handle(name: str, raw_args: dict[str, Any]) -> ToolOutcome:
             state.calls.append((name, dict(raw_args)))  # with the account: the runner reads it
@@ -311,6 +297,28 @@ class MainAgent:
                 self._name_the_site(toolbox, outcome)
             return outcome
 
+        return handle
+
+    async def run(
+        self,
+        *,
+        ctx: AgentContext,
+        user_text: str,
+        gateway: Any,
+        scope: ScopeLookup,
+        organization_id: str | None,
+        correlation_id: str | None = None,
+        lap: Any = None,
+        after_tool: Any = None,
+        language: str = "english",
+        shadow: bool = False,
+    ) -> V2Run:
+        toolbox = AgentToolbox(
+            gateway=gateway, scope=scope, user_text=user_text, language=language, lap=lap, after_tool=after_tool
+        )
+        state = V2Run(toolbox=toolbox)
+        handle = self.handler(state, organization_id, shadow=shadow)
+
         messages = [ChatMessage(role=r, text=v2_card_words(t)) for r, t in build_messages(ctx, user_text)]
         if (line := await self.catalog_line(organization_id)) and messages:
             messages[0] = ChatMessage(role=messages[0].role, text=f"{messages[0].text}\n{line}")
@@ -327,10 +335,16 @@ class MainAgent:
             )
         except Exception as exc:  # noqa: BLE001 -- the caller decides: fall back, or degrade after a write
             state.error = exc
+        await self.settle(state, user_text, shadow=shadow)
+        return state
+
+    async def settle(self, state: V2Run, user_text: str, *, shadow: bool = False) -> None:
+        """After the model is done: the toolbox settles, and a stock question it did not look up
+        is answered by the code (shared by every engine)."""
+        toolbox = state.toolbox
         await toolbox.settle()
         if not shadow and state.error is None and not toolbox.answers_only_stock() and skill.STOCK_FOR not in {n for n, _ in state.calls}:
             await self._answer_stock_part(state, user_text)
-        return state
 
     @staticmethod
     async def _answer_stock_part(state: V2Run, user_text: str) -> None:

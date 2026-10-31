@@ -70,8 +70,11 @@ ASSISTANT_MODE_CLASSIC = "classic"
 ASSISTANT_MODE_V2_SHADOW = "v2_shadow"
 ASSISTANT_MODE_V2_MATERIALS = "v2_materials"  # alias of ASSISTANT_MODE_V2
 ASSISTANT_MODE_V2 = "v2"
+# Request 185: "v2_adk" is v2 run by Google ADK with the whole day's conversation kept
+# (agent_v2/adk). Where ADK is not available it reads as "v2".
+ASSISTANT_MODE_V2_ADK = "v2_adk"
 ASSISTANT_MODES: frozenset[str] = frozenset(
-    {ASSISTANT_MODE_CLASSIC, ASSISTANT_MODE_V2_SHADOW, ASSISTANT_MODE_V2, ASSISTANT_MODE_V2_MATERIALS}
+    {ASSISTANT_MODE_CLASSIC, ASSISTANT_MODE_V2_SHADOW, ASSISTANT_MODE_V2, ASSISTANT_MODE_V2_MATERIALS, ASSISTANT_MODE_V2_ADK}
 )
 
 # Product modules a company can have switched on (V1 tracker BE-06). Each key

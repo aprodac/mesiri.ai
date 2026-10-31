@@ -53,6 +53,8 @@ infra = [
 # AI provider SDKs. Imported lazily inside provider adapters.
 providers = [
     "google-genai>=0.3",
+    # Request 185: v2 on Google ADK (agent_v2/adk). Imported lazily; without it v2_adk runs as v2.
+    "google-adk>=2.13,<3",
     "sarvamai>=0.1",
     # Downscales photos before the vision call (see the Gemini adapter's
     # _downscale_image). A full-resolution WhatsApp photo is 1-3MB and gets

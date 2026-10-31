@@ -120,3 +120,22 @@ def load(path: Path) -> list[Conversation]:
             Conversation(company=raw["company"], sender=raw["sender"], turns=[Turn(**t) for t in raw["turns"]])
         )
     return out
+
+
+#: Request 185: the newest days of a corpus are HELD OUT. Fixes are tuned on the rest ("tune");
+#: the gate is judged on days the fixes never saw ("holdout"), then on a fresh fetch, so a fix
+#: that only fits the conversations it was made from shows up as no gain on the held-out days.
+HOLDOUT_DAYS = 1
+SPLITS = ("all", "tune", "holdout")
+
+
+def split(conversations: list[Conversation], which: str = "all", *, holdout_days: int = HOLDOUT_DAYS) -> list[Conversation]:
+    """The conversations of one split, by the India-time day each conversation started."""
+    if which not in SPLITS:
+        raise ValueError(f"split must be one of {SPLITS}")
+    if which == "all":
+        return list(conversations)
+    days = sorted({c.turns[0].at[:10] for c in conversations if c.turns})
+    held = set(days[-holdout_days:]) if holdout_days > 0 else set()
+    keep_held = which == "holdout"
+    return [c for c in conversations if c.turns and (c.turns[0].at[:10] in held) == keep_held]

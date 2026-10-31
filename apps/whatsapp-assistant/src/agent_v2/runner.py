@@ -80,9 +80,14 @@ def _summary(result: AgentResult) -> dict[str, Any]:
 
 
 class V2Runner:
-    def __init__(self, provider: Any, classic: AgentRunner, *, catalog: Any | None = None, trace_logger: Any | None = None) -> None:
+    def __init__(
+        self, provider: Any, classic: AgentRunner, *, catalog: Any | None = None, trace_logger: Any | None = None,
+        agent: Any | None = None,
+    ) -> None:
         self._classic = classic
-        self._agent = MainAgent(provider, catalog=catalog)
+        # Request 185: ``agent`` is another engine with the same ``run`` (agent_v2.adk.AdkAgent);
+        # default today's google-genai loop.
+        self._agent = agent if agent is not None else MainAgent(provider, catalog=catalog)
         self._trace = trace_logger
 
     async def run(self, *, ctx, user_text, gateway, scope, correlation_id=None, lap=None, after_tool=None,  # noqa: ANN001
@@ -115,7 +120,12 @@ class V2Runner:
             _log.exception("agent_v2.degraded correlation_id=%s", correlation_id, exc_info=v2.error)
             return AgentResult("degraded", self._classic._fallback(v2.toolbox, partial=True), v2.toolbox, error=v2.error)
         result = await self._finish(v2, user_text, correlation_id)
-        return self._no_repeat(result, v2, gateway, ctx, user_text)
+        result = self._no_repeat(result, v2, gateway, ctx, user_text)
+        remember = getattr(self._agent, "remember", None)
+        if remember is not None and result.reply is not None:
+            # Request 185: the conversation keeps the reply as SENT (card lines included).
+            await remember(ctx=ctx, gateway=gateway, v2=v2, sent=result.reply.text or "")
+        return result
 
     def _no_repeat(self, result: AgentResult, v2: V2Run, gateway: Any, ctx: Any, user_text: str) -> AgentResult:
         """Loop guard (request 180): the same reply is never sent twice in a row to a sender
