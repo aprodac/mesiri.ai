@@ -1,0 +1,10 @@
+# Reports v2 eval set (request 185). One JSON object per line (valid YAML flow mapping, read
+# without a YAML dependency). CI runs each case's scripted `calls` through V2Runner and the real
+# card code (the card half); the live run (needs GEMINI_API_KEY) sends `message` to the real model.
+# expect: card lines (kind + the arguments that must hold); must_call / must_not_call: tool names;
+# given: earlier calls that built the open lines first. Cases name the cross-check family they
+# guard (docs/reviews/2026-10-31-v2-cross-check.md) or the guard that must NOT change.
+- {"id": 391, "lang": "manglish", "message": "innathe report ayakku", "calls": [["request_dpr", {}]], "expect": [], "must_call": ["request_dpr"]}
+- {"id": 392, "lang": "en", "message": "send yesterday's report", "calls": [["request_dpr", {"date": "yesterday"}]], "expect": [], "must_call": ["request_dpr"]}
+- {"id": 393, "lang": "manglish", "message": "innu 5 mason vannu, report ayakku", "calls": [["save_labour", {"workers": [{"trade": "mason", "headcount": 5}]}], ["request_dpr", {}]], "expect": [{"kind": "labour", "workers": {"mason": 5}}], "must_call": ["request_dpr"], "note": "entries and the report in one message"}
+- {"id": 394, "lang": "ml", "message": "ഹോസ്പിറ്റൽ പ്രൊജക്റ്റിന്റെ കറന്റ് സ്റ്റാറ്റസ് എന്താ?", "calls": [["query_project", {}]], "expect": [], "must_call": ["query_project"]}

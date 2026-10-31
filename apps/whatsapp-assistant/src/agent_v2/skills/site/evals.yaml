@@ -1,0 +1,11 @@
+# Site v2 eval set (request 185). One JSON object per line (valid YAML flow mapping, read
+# without a YAML dependency). CI runs each case's scripted `calls` through V2Runner and the real
+# card code (the card half); the live run (needs GEMINI_API_KEY) sends `message` to the real model.
+# expect: card lines (kind + the arguments that must hold); must_call / must_not_call: tool names;
+# given: earlier calls that built the open lines first. Cases name the cross-check family they
+# guard (docs/reviews/2026-10-31-v2-cross-check.md) or the guard that must NOT change.
+- {"id": 381, "lang": "en", "message": "tomorrow plan: 2nd floor slab casting, need 15 workers", "calls": [["set_site_conditions", {"tomorrow_plan": "2nd floor slab casting, need 15 workers"}]], "expect": [], "must_call": ["set_site_conditions"], "must_not_call": ["save_labour"]}
+- {"id": 382, "lang": "manglish", "message": "innu mazha peythilla", "calls": [["set_site_conditions", {"site_working": "full"}]], "expect": [], "must_not_call": ["report_issue"], "note": "only the weather they said; never 'sunny'"}
+- {"id": 383, "lang": "en", "message": "what's the weather tomorrow?", "calls": [], "expect": [], "must_not_call": ["set_site_conditions"], "note": "no weather data: say so, never guess"}
+- {"id": 384, "lang": "manglish", "message": "engineer-inodu chodikku drawings eppo varum ennu", "calls": [["note_for_engineer", {"question": "When will the drawings come?"}]], "expect": [], "must_call": ["note_for_engineer"]}
+- {"id": 385, "lang": "ml", "message": "എൻറെ പ്രൊജക്ട് ഏതാ, ഏത് പ്രൊജക്ട് ആണ് അസൈൻഡ്", "calls": [["my_scope", {}]], "expect": [], "must_call": ["my_scope"], "must_not_call": ["ask"], "note": "live 30 Oct: never a question back"}

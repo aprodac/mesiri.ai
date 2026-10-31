@@ -17,7 +17,6 @@ import inspect
 import logging
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from mesiri_ai.models import ChatMessage, ToolOutcome, ToolRunResult
@@ -32,25 +31,20 @@ from ..skills.materials import tools as skill
 
 _log = logging.getLogger("mesiri.agent_v2")
 
-SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
+from .. import skills as _skills
+
+SKILLS_DIR = _skills.DIR
 SKILL_PATH = SKILLS_DIR / "materials" / "SKILL.md"
 GENERAL_SKILL_PATH = SKILLS_DIR / "general" / "SKILL.md"
-#: Plain-English rule files, in the order the model reads them.
-SKILL_FILES = (GENERAL_SKILL_PATH, SKILL_PATH)
+#: Plain-English rule files, in the order the model reads them (request 185: every module).
+SKILL_FILES = _skills.rule_files()
 
-#: Request 180: the EXISTING toolbox tools v2 gets for the other record kinds, unchanged (same
-#: specs, same draft card, same Save tap), and the read tools. Anything not listed (creating
-#: sites, members, join codes, settings) stays with the classic agent. Labour is included by the
-#: owner's decision on plan 180; its data paths and rules are not touched.
-GENERAL_WRITE_TOOLS = frozenset({
-    classic.SAVE_LABOUR, classic.SAVE_WORK_DONE, classic.SAVE_EXPENSE, classic.REPORT_ISSUE,
-    classic.UPDATE_ISSUE, classic.CORRECT_WORK_QUANTITY, classic.NOTE_FOR_ENGINEER,
-    classic.SET_SITE_CONDITIONS, classic.REQUEST_DPR, classic.SET_WORK_SITE,
-})
-GENERAL_READ_TOOLS = frozenset({
-    classic.QUERY_LABOUR, classic.QUERY_WORK_LOG, classic.QUERY_PROJECT, classic.QUERY_EXPENSES,
-    classic.QUERY_OPEN_NEEDS, classic.MY_SCOPE,
-})
+#: Request 180 / 185: the EXISTING toolbox tools v2 gets for the other record kinds, unchanged
+#: (same specs, same draft card, same Save tap), and the read tools, as the module skills list
+#: them (skills/<module>/tools.py). Anything not listed (creating sites, members, join codes,
+#: settings) stays with the classic agent. Labour is included by the owner's decision on plan
+#: 180; its data paths and rules are not touched.
+GENERAL_WRITE_TOOLS, GENERAL_READ_TOOLS = _skills.module_tools()
 GENERAL_TOOLS = GENERAL_WRITE_TOOLS | GENERAL_READ_TOOLS
 
 

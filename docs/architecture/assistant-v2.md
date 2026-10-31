@@ -65,9 +65,15 @@ agent_v2/skills/<skill>/
     evals.yaml   input message(s) -> expected tool calls / reply facts; a "must not save" case counts
 ```
 
-Today: `skills/general` (every part of a message, feedback and complaints, questions, unknown
-things: be honest and offer) and `skills/materials` (receipts, usage, stock counts, transfers,
-line changes, stock questions).
+Today (request 185): `general` (every part of a message, feedback, unknown things, the words
+they see), then one skill per module: `labour`, `work`, `issues`, `expenses`, `site` (weather,
+plan, work site, engineer questions), `reports` (DPR, project status), and `materials` (its own
+v2 tool names). The module skills use today's tools under their own names
+(`skills/<module>/tools.py` lists them; `agents/main.py` reads the registry in
+`skills/__init__.py`), so their rules moved from the classic prompt (which v2 never read) into
+the skill files. Each has an `evals.yaml` (34 cases, the 27-31 Oct failure families and their
+guards; `tests/agent_v2/test_module_skills_185.py`, live gate per module).
+Not in v2 yet: photos and bill photos, documents, admin (classic until given a skill).
 
 ## Tools
 

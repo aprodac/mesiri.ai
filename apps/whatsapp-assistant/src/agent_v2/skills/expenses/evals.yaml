@@ -1,0 +1,10 @@
+# Expenses v2 eval set (request 185). One JSON object per line (valid YAML flow mapping, read
+# without a YAML dependency). CI runs each case's scripted `calls` through V2Runner and the real
+# card code (the card half); the live run (needs GEMINI_API_KEY) sends `message` to the real model.
+# expect: card lines (kind + the arguments that must hold); must_call / must_not_call: tool names;
+# given: earlier calls that built the open lines first. Cases name the cross-check family they
+# guard (docs/reviews/2026-10-31-v2-cross-check.md) or the guard that must NOT change.
+- {"id": 361, "lang": "en", "message": "paid 500 for diesel", "calls": [["save_expense", {"amount": 500, "description": "diesel"}]], "expect": [{"kind": "expense", "amount": 500}]}
+- {"id": 362, "lang": "manglish", "message": "innale tea-kku 140 rupa chelavaayi", "calls": [["save_expense", {"amount": 140, "description": "tea", "category": "Food & Beverages", "date": "yesterday"}]], "expect": [{"kind": "expense", "amount": 140}], "note": "family 10: the date said, never invented"}
+- {"id": 363, "lang": "en", "message": "paid the electrician", "calls": [["ask", {"question": "How much was it?"}]], "expect": [], "must_not_call": ["save_expense"], "note": "an amount is never invented"}
+- {"id": 364, "lang": "en", "message": "how much did we spend this week?", "calls": [["query_expenses", {"kind": "expenses", "date_range": "this_week"}]], "expect": [], "must_call": ["query_expenses"], "must_not_call": ["save_expense"]}
