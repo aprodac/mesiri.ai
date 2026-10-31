@@ -380,6 +380,23 @@ async def _run_agent_turn(
 
     gateway = deps.make_gateway(message, language)
     context = _context_of(actor, deps, pack, language, menu_hint, script, getattr(gateway, "draft_mode", False) is True)
+    corrected = await _code_correction(message, gateway, context, user_text)
+    if corrected is not None:
+        await deps.send_spec(corrected, wa_id)
+        if deps.on_conversational is not None:
+            deps.on_conversational()
+        await _safe(deps.message_logger.log_reply(correlation_id=correlation_id, reply=corrected.text))
+        await _safe(deps.message_logger.mark_completed(correlation_id=correlation_id))
+        if deps.memory_coordinator is not None:
+            await _safe(
+                deps.memory_coordinator.record_turn(
+                    user_id=actor.user_id,
+                    user_text=user_text,
+                    assistant_reply=_as_text(corrected),
+                    correlation_id=correlation_id,
+                )
+            )
+        return None
     # [68] / WA-36: read-only context lines, fetched together; a failure leaves one out.
     lines = await asyncio.gather(
         *(
@@ -530,6 +547,32 @@ async def _run_agent_turn(
         await gateway.finish()
         _lap(deps, "agent_followups")
     return result
+
+
+async def _code_correction(
+    message: NormalizedMessage, gateway: Any, context: AgentContext, user_text: str
+) -> ReplySpec | None:
+    """Request 162: what code can settle before the model reads the message, with draft
+    cards: a tap on an old button of the model's (its question is no longer the last
+    thing said), and words that take a line away ("I didn't say workers", "expense
+    venda"). None: the model reads the message as usual."""
+    if getattr(gateway, "draft_mode", False) is not True:
+        return None
+    from . import corrections
+
+    try:
+        tap = str((message.metadata or {}).get("interactive_reply_id") or "")
+        if tap:
+            last = context.turns[-1].assistant_reply if context.turns else None
+            if corrections.is_stale_option_tap(tap, user_text, last):
+                language = getattr(gateway, "wording_language", "english")
+                return await corrections.current_card_reply(gateway, language)
+            return None
+        if message.modality in (InputModality.TEXT, InputModality.VOICE) and user_text:
+            return await corrections.correct(gateway, user_text)
+    except Exception:  # noqa: BLE001 -- the model reads the message instead
+        _log.exception("agent.code_correction_failed")
+    return None
 
 
 async def _last_system_message(message: NormalizedMessage, pack: Any | None, deps: AgentTurnDeps) -> str | None:

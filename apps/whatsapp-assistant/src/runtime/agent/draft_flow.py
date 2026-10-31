@@ -38,7 +38,7 @@ from mesiri_contracts.assistant.v2.planner_decision import PlannerDecisionV2
 from runtime.day_facts import PROGRESS_UPDATE
 from workflows import WorkflowRunStatus
 
-from . import checks, draft_site
+from . import checks, corrections, draft_site
 from . import draft as dr
 from .cards import SAVED as CARD_SAVED
 from .cards import CardItem, merge_changes, new_card
@@ -254,6 +254,20 @@ async def add(gw: Any, candidate: Any, *, text: str) -> StepResult:
         await note_lost(gw, tool, args, "that can't be done here yet")
         return StepResult("error", text="Not saved: that can't be done here yet.")
     decided(gw, "item", ITEM_FROM_TOOL, tool)
+    # Request 162: a line is staged only from the current message (or the answer to a
+    # question of the card). Live 31 Oct: "10 workers" came back on a card whose message
+    # never said workers; an older message or draft is not a source.
+    kind = dr.KIND_BY_TOOL.get(tool, "")
+    current = await load(gw)
+    answering = current is not None and any(i.pending_answer and i.kind == kind for i in current.items)
+    if corrections.staging_refused(
+        kind, text, answering=answering, card_open=current is not None and current.live, tap=bool((getattr(gw.message, "metadata", None) or {}).get("interactive_reply_id"))
+    ):
+        _log.warning("draft.staging_refused tool=%s correlation_id=%s", tool, getattr(gw.message, "correlation_id", None))
+        return StepResult(
+            "error",
+            text="Not added: this message does not mention it. Say it again if you want it on the card.",
+        )
     # Request 136: THE site resolver decides the line's site before the entry runs, so
     # the entry's own fallbacks (today's site, the context layer's default) never do.
     choice = None if tool in dr.SITELESS_TOOLS else await _resolve_site(gw, args, text)

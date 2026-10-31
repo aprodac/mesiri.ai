@@ -211,6 +211,42 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "ठीक है, दो बार सेव नहीं होगा: {line} एक बार सेव है.",
         "hinglish": "Theek hai, do baar save nahi hoga: {line} ek baar save hai.",
     },
+    # -- request 162: a removal correction and a tap on an old card, in their language --
+    "remove.done": {
+        "english": "👍 Okay, {line} is off the card.",
+        "manglish": "👍 Sheri, {line} card-il ninnu maattiyittund.",
+        "malayalam": "👍 ശരി, {line} കാർഡിൽ നിന്ന് മാറ്റി.",
+        "hindi": "👍 ठीक है, {line} कार्ड से हटा दिया.",
+        "hinglish": "👍 Theek hai, {line} card se hata diya.",
+    },
+    "remove.rebuilt": {
+        "english": "👍 Okay, without {line}. Here is what's left, tap Save if it's right:",
+        "manglish": "👍 Sheri, {line} illathe. Baakki ithaanu, sheriyaanenkil Save tap cheyyu:",
+        "malayalam": "👍 ശരി, {line} ഒഴികെ. ബാക്കി ഇതാണ്, ശരിയാണെങ്കിൽ Save അമർത്തുക:",
+        "hindi": "👍 ठीक है, {line} के बिना. बाकी यह है, सही हो तो Save दबाएँ:",
+        "hinglish": "👍 Theek hai, {line} ke bina. Baaki yeh hai, sahi ho to Save dabayein:",
+    },
+    "remove.empty": {
+        "english": "👍 Okay, {line} is off, and nothing is left on the card. Nothing was saved.",
+        "manglish": "👍 Sheri, {line} maattiyittund, card-il onnum baakkiyilla. Onnum save aayittilla.",
+        "malayalam": "👍 ശരി, {line} മാറ്റി, കാർഡിൽ ഒന്നും ബാക്കിയില്ല. ഒന്നും സേവ് ആയിട്ടില്ല.",
+        "hindi": "👍 ठीक है, {line} हटा दिया, कार्ड पर कुछ नहीं बचा. कुछ सेव नहीं हुआ.",
+        "hinglish": "👍 Theek hai, {line} hata diya, card par kuch nahi bacha. Kuch save nahi hua.",
+    },
+    "tap.old_card": {
+        "english": "That card was cancelled. Here's what I have now:",
+        "manglish": "Aa card cancel cheythirunnu. Ippol ullath ithaanu:",
+        "malayalam": "ആ കാർഡ് ക്യാൻസൽ ചെയ്തിരുന്നു. ഇപ്പോൾ ഉള്ളത് ഇതാണ്:",
+        "hindi": "वह कार्ड कैंसल हो चुका था. अभी यह है:",
+        "hinglish": "Woh card cancel ho chuka tha. Abhi yeh hai:",
+    },
+    "tap.nothing_open": {
+        "english": "That card was cancelled, and nothing is open now. Nothing was saved. Send it again whenever you're ready.",
+        "manglish": "Aa card cancel cheythirunnu, ippol onnum open alla. Onnum save aayittilla. Ready aakumbol veendum ayakku.",
+        "malayalam": "ആ കാർഡ് ക്യാൻസൽ ചെയ്തിരുന്നു, ഇപ്പോൾ ഒന്നും തുറന്നിട്ടില്ല. ഒന്നും സേവ് ആയിട്ടില്ല. തയ്യാറാകുമ്പോൾ വീണ്ടും അയക്കുക.",
+        "hindi": "वह कार्ड कैंसल हो चुका था, अभी कुछ खुला नहीं है. कुछ सेव नहीं हुआ. तैयार हों तो फिर भेजें.",
+        "hinglish": "Woh card cancel ho chuka tha, abhi kuch open nahi hai. Kuch save nahi hua. Ready ho to dobara bhejein.",
+    },
     "cancel.rest": {
         "english": "❌ Cancelled the rest. Already saved: {saved}.",
         "manglish": "❌ Baakki cancel cheythu. Save aayath: {saved}.",
