@@ -98,6 +98,52 @@ Set `assistant_mode = v2_materials` for the TEST company only
 A wrong save is a card line that must not be there, or has wrong figures. A message that should be
 handed back and is drafted counts as one.
 
+## Request 178: the five roots of the 31 Oct live test (12/21 right, 3 would-be wrong saves)
+
+The live test showed v2 was mostly today's parts renamed. What changed, and where:
+
+1. **Brain / budget.** `MAX_STEPS` 3 -> 6, `TIMEOUT_SECONDS` 9 -> 20 (a message v2 takes never also
+   runs classic, so the room does not double a reply; only a hand-back, one quick round, or a failure
+   before any action falls back to classic). The v2 model is settable on its own: `MESIRI_V2_MODEL`
+   (the resolver's `run_tools(model=...)`; unset = the company's `agent` route, as classic). **The
+   measurement is NOT done:** the build session had no `GEMINI_API_KEY`. To pick the brain run
+   `GEMINI_MODEL=<model> pytest -m live tests/agent_v2/test_evals.py -s` for `gemini-2.5-flash`,
+   the strongest Pro / newer model on the key, record accuracy, wrong saves and v2 / classic p50 and
+   p95 in the table below, choose by accuracy then p95, set `MESIRI_V2_MODEL`.
+
+   | model | right | wrong saves | v2 p50 / p95 | classic p50 / p95 |
+   |---|---|---|---|---|
+   | gemini-2.5-flash | not run | not run | not run | not run |
+   | (strongest on the key) | not run | not run | not run | not run |
+
+2. **Real v2 tools** (all through today's toolbox, so site resolver, unit gate, repeat check and
+   card are the existing ones): `transfer` (-> `transfer_material`; no destination: `ask` for the
+   DESTINATION), `change_line` (-> `update_pending_card` on the open card; a saved card by its id),
+   `remove_line` (-> `remove_card_line`, new, built on `corrections.drop_from_open_card`, the one
+   place that takes lines off a card; classic's typed removal now calls the same function),
+   `material_request_not_available` ("cement venam": one fast line, no card, no second round).
+   `draft_receipt` already took `unit_cost` / `supplier`; the card line now shows the rate
+   (`interactions/saved_summary.py`). Units: the prompt says keep the unit as said; the shared unit
+   gate still converts when the COMPANY has saved a conversion (it never guesses a size), keeping what
+   was reported on the line: not changed here (shared with classic).
+3. **Context.** The prompt lists all active materials with their aliases (`catalog_with_aliases`,
+   read only: `list_aliases` in `repositories/materials.py`) and names the overlapping ones
+   (Steel / TMT Steel Bars): two fit -> ask. Duplicates are listed for the owner, not merged.
+4. **Number check.** Draft tools carry `figures_placed` and `unplaced` (figure + reason: "25 = the old
+   figure replaced", "176 = what the app shows"). The code asks only about a figure neither placed
+   nor explained (a reason is required); the account keys never reach the card line. Lookups carry no
+   figure check.
+5. **Gate before live.** `tests/agent_v2/test_evals.py` (live) now runs the 41 + 25 cases through v2
+   AND today's agent on the same messages and fails unless >= 90% right, 0 wrong saves, v2 p95 <=
+   classic p95. Without the key it is skipped, and the team bot's live re-run must not be asked for.
+   A person adds the `v2` case to `.github/workflows/claude-ops.yml` golden-live
+   (`v2) FILES="$T/../agent_v2/test_evals.py"`) and runs it with `gh workflow run`; bots never touch `.github`.
+
+Small, same files: a stock answer names its site ("📍 Site B") or "All your sites"
+(`JourneyGateway.read_scope`, set where `_reading_site` decides it). The stale "Not saved, because no
+site was picked" after "cement venam" came from the request being held for a site question; v2 now
+answers a request at once, so it is never held (classic's hold-then-notice is unchanged).
+
 ## Out of scope (separate approvals)
 
 Real customers, deleting old code, material requests / orders, sector hierarchy, the groups
@@ -108,8 +154,9 @@ listener (designed in: its running day summary can become one more context line 
 
 - A stock count needs a sender who may adjust stock (today's rule in the toolbox); for others the
   count line is not made by either agent.
-- The catalog line carries the first 60 active materials; `catalog_match` reaches the rest (name,
-  then alias). The material alias list itself is not in the prompt (no list-aliases read exists).
+- (Request 178 replaced the old catalog line, which in fact held only the first 10 names without
+  aliases.) The prompt now carries every active material (ceiling 400) with its aliases and a note of
+  overlapping names; `catalog_match` stays for a word not in the line.
 - One extra read per message: the `assistant_mode` setting, as `draft_v2` already does.
 
 ## Rollback
