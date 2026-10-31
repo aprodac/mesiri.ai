@@ -133,6 +133,17 @@ async def test_the_unit_stays_as_the_sender_said_it(world):
     assert item.args["unit"] == "load" and item.args["quantity"] == 5
 
 
+async def test_a_load_of_a_material_with_no_stock_unit_is_not_put_on_the_card(world):
+    """Live 31 Oct: "TMT steel bars oru load vannu" was saved as "1 load". Now the tool result
+    tells the model to ask how much first; a measure (kg) goes through as before."""
+    call = ("draft_receipt", {"material": "steel", "quantity": 1, "unit": "load"})
+    await say_v2(world, "steel oru load vannu", [[call], "How much is one load?"])
+    assert not [i for i in await open_items(world) if i.args.get("unit") == "load"]
+    kg = ("draft_receipt", {"material": "steel", "quantity": 500, "unit": "kg"})
+    await say_v2(world, "500 kg steel vannu", [[kg], "x"])
+    assert [i.args["unit"] for i in await open_items(world)] == ["kg"]
+
+
 # -- root 3: the catalog the model reads ------------------------------------------------------------
 
 

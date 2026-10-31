@@ -144,6 +144,23 @@ Small, same files: a stock answer names its site ("📍 Site B") or "All your si
 site was picked" after "cement venam" came from the request being held for a site question; v2 now
 answers a request at once, so it is never held (classic's hold-then-notice is unchanged).
 
+### Follow-ups of 31 Oct (evening)
+
+- **Control-panel model switch.** The panel (apps/control-panel Providers) has two new rows, `agent`
+  (classic assistant) and `agent_v2` (v2 materials), with the Gemini models. `run_tools(capability=
+  "agent_v2")` reads the `agent_v2` route and falls back to `agent` when it is unset; `MESIRI_V2_MODEL`
+  still wins. This is how the brain is switched without a deploy once the live numbers are in.
+- **A load is asked about before Save.** Live: "TMT steel bars oru load vannu" was saved as "1 load".
+  `material_units.fit_stock_unit` now returns `vague` for a load / trip / vandi / lorry / pickup /
+  truck / tipper of a material with NO stock unit (nothing to count it against); the tool result tells
+  the model to ask once and save again with the answer (nos / kg / tons). Measures (bag, kg, ton, nos,
+  cum, cft) never trigger it. With a stock unit that differs, the existing path applies: a company
+  conversion (0486) converts ("5 load M sand" -> 10 cum only with one saved), otherwise the card question
+  asks and stores the answer once. A material the company counts in loads (sand) takes loads as they are.
+  **Not done:** the answer for a material with no stock unit is not stored as a conversion (there is
+  nothing to convert into); it is asked each time until the material has a stock unit. Follow-up wording
+  after a save ("Updated: 1 load TMT = 100 nos") is not built.
+
 ## Out of scope (separate approvals)
 
 Real customers, deleting old code, material requests / orders, sector hierarchy, the groups

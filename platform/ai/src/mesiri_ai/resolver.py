@@ -506,6 +506,7 @@ class DynamicAIProviderResolver:
         timeout_seconds: float | None = None,
         correlation_id: str | None = None,
         model: str | None = None,
+        capability: str = "agent",
     ) -> Any:
         """Tool-calling for the WhatsApp assistant agent (request [40]).
 
@@ -516,7 +517,13 @@ class DynamicAIProviderResolver:
         like any other failure. A route with a fallback *model* on the same
         provider retries once on it when the first fails."""
         config = await self._resolve_config()
-        route = config["routing"].get("agent") or {}
+        # Request 178: ``capability="agent_v2"`` reads the control-panel row for the v2 agent and
+        # falls back to the ``agent`` row (so nothing changes until someone sets it).
+        route = (
+            (config["routing"].get(capability) if capability != "agent" else None)
+            or config["routing"].get("agent")
+            or {}
+        )
         gemini_key = config["secrets"].get("gemini", {}).get("api_key")
         provider_id = route.get("provider_id") or "gemini"
         if provider_id != "gemini" or not gemini_key:

@@ -73,3 +73,35 @@ def test_the_question_is_asked_the_way_people_know_it():
     fit = UnitFit("mismatch", stock_unit=NOS, reported_unit=LOAD)
     text = ask_amount_text(BRICKS, {"quantity": 1, "unit": "load"}, fit, role="ADMIN")
     assert "How many nos is 1 load of Holobricks (or how many load make 1 nos)?" in text
+
+
+# Request 178: "1 load" must be asked about before Save, never stored as "1 load".
+TMT_NO_UNIT = {"id": "m-3", "name": "TMT Steel Bars", "default_unit_id": None}
+TMT_IN_LOAD = {"id": "m-3", "name": "TMT Steel Bars", "default_unit_id": "u-load"}
+
+
+async def test_a_load_of_a_material_with_no_stock_unit_is_asked_not_saved():
+    for word in ("load", "loads", "vandi", "lorry", "trip", "pickup"):
+        fit = await fit_stock_unit({"quantity": 1, "unit": word}, TMT_NO_UNIT, catalog_query=_Catalog(None), organization_id="o")
+        assert fit.kind == "vague", word
+
+
+async def test_a_material_the_company_counts_in_loads_takes_loads_as_they_are():
+    fit = await fit_stock_unit({"quantity": 1, "unit": "load"}, TMT_IN_LOAD, catalog_query=_Catalog(None), organization_id="o")
+    assert fit.kind == "ok"
+
+
+async def test_measures_never_trigger_it():
+    for word in ("bags", "kg", "tons", "nos", "cum"):
+        fields = {"quantity": 5, "unit": word}
+        fit = await fit_stock_unit(fields, TMT_NO_UNIT, catalog_query=_Catalog(None), organization_id="o")
+        assert fit.kind == "ok", word
+
+
+async def test_a_load_with_a_saved_size_still_converts_and_without_asks_the_old_way():
+    sand = dict(SAND)
+    fields = {"quantity": 5, "unit": "load"}
+    fit = await fit_stock_unit(fields, sand, catalog_query=_Catalog(Decimal("0.5")), organization_id="o")
+    assert fit.kind == "ok" and fields["quantity"] == 10
+    fit = await fit_stock_unit({"quantity": 5, "unit": "load"}, sand, catalog_query=_Catalog(None), organization_id="o")
+    assert fit.kind == "mismatch"

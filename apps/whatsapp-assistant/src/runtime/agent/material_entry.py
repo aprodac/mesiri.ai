@@ -42,6 +42,7 @@ from runtime.material_units import (
     conversion_question,
     fit_stock_unit,
     stock_unit_code,
+    vague_unit_text,
 )
 
 from .entry_base import (
@@ -254,6 +255,9 @@ class MaterialEntry(EntryScope):
             organization_id=organization_id,
             correlation_id=message.correlation_id,
         )
+        if fit.kind == "vague":
+            # Request 178: nothing is held; the model asks once and the answer is a new save.
+            return Say("info", vague_unit_text(material, fields))
         if fit.kind == "mismatch":
             role = getattr(self.actor, "role", None)
             text = ask_amount_text(material, fields, fit, role=role)

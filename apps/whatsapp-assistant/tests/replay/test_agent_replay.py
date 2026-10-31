@@ -96,9 +96,20 @@ class _Catalog:
     async def list_active_materials(self, *, organization_id):  # noqa: ANN001
         return [self._row(n) for n in self.NAMES]
 
+    #: Request 178: sand and metal are counted in loads here (as a company may set them); the
+    #: rest have no stock unit. A load of a material with NO stock unit is asked about, not kept.
+    LOAD_MATERIALS = ("M sand", "sand", "metal")
+    LOAD = {"id": "u-load", "code": "load", "display_name": "Load"}
+
+    async def resolve_unit(self, text):  # noqa: ANN001
+        return self.LOAD if str(text).strip().lower() in ("load", "loads") else None
+
+    async def get_unit(self, unit_id):  # noqa: ANN001
+        return self.LOAD if unit_id == "u-load" else None
+
     def _row(self, name):  # noqa: ANN001
         return {"id": f"00000000-0000-4000-8000-{self.NAMES.index(name):012d}", "name": name,
-                "default_unit_id": None, "is_active": True}
+                "default_unit_id": "u-load" if name in self.LOAD_MATERIALS else None, "is_active": True}
 
 
 class _MemoryRedis:

@@ -89,6 +89,22 @@ const CAPABILITY_DEFS: {
       deepseek: ['deepseek-chat'],
     },
   },
+  {
+    key: 'agent',
+    label: 'WhatsApp assistant (classic agent)',
+    providers: [{ value: 'gemini', label: 'Gemini' }],
+    models: {
+      gemini: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-3-pro-preview', 'gemini-3-flash-preview'],
+    },
+  },
+  {
+    key: 'agent_v2',
+    label: 'WhatsApp assistant v2 (materials; empty = same as above)',
+    providers: [{ value: 'gemini', label: 'Gemini' }],
+    models: {
+      gemini: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-3-pro-preview', 'gemini-3-flash-preview'],
+    },
+  },
 ];
 
 function defaultModelForProvider(cap: string, pid: string): string {
@@ -286,6 +302,8 @@ export default function Providers() {
     extraction: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
     vision: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
     translation: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
+    agent: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
+    agent_v2: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
   });
 
   const [secretsInput, setSecretsInput] = useState<Record<string, { api_key: string; base_url: string }>>({

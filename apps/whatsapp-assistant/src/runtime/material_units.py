@@ -35,6 +35,21 @@ def counts_as_stock(unit_text: Any, stock_unit: dict | None) -> bool:
     return word in COUNT_WORDS and code in _COUNT_STOCK
 
 
+#: Request 178: words that name a vehicle load, not a measure: "1 load" says nothing about
+#: how much arrived. Asked about BEFORE Save unless the company has saved what one is.
+#: bag / kg / ton / nos / cum / cft are measures and never in this set.
+VAGUE_UNIT_WORDS = frozenset(
+    {"load", "loads", "trip", "trips", "vandi", "lorry", "lorries", "pickup", "pickups", "truck", "trucks", "tipper", "tippers"}
+)
+
+
+def is_vague_unit(unit_text: Any) -> bool:
+    from runtime.unit_words import canonical_unit, fold
+
+    word = fold(unit_text)
+    return bool(word) and (word in VAGUE_UNIT_WORDS or canonical_unit(unit_text) == "load")
+
+
 @dataclass(slots=True)
 class UnitFit:
     #: "ok": ``fields`` now carry ``unit_id`` (converted if needed).
@@ -58,6 +73,13 @@ async def fit_stock_unit(
 ) -> UnitFit:
     """Settle ``fields["unit_id"]`` for ``material``; mutates ``fields`` on "ok"."""
     stock_unit_id = material.get("default_unit_id")
+    if fields.get("unit_id") is None and is_vague_unit(fields.get("unit")):
+        # Request 178: "1 load" of a material with NO stock unit has nothing to count it
+        # against and was saved as said -- useless. Ask first. A material the company counts
+        # in loads (sand) takes loads as they are; with another stock unit the normal path
+        # below converts (saved answer) or asks.
+        if stock_unit_id is None:
+            return UnitFit("vague")
     if stock_unit_id is None or fields.get("unit_id") is not None:
         # No stock unit set up yet (nothing to enforce), or already settled.
         return UnitFit("ok")
@@ -106,6 +128,18 @@ async def fit_stock_unit(
             fields["unit_id"] = str(stock_unit_id)
             return UnitFit("ok")
     return UnitFit("mismatch", stock_unit=stock_unit, reported_unit=reported)
+
+
+def vague_unit_text(material: dict[str, Any], fields: dict[str, Any]) -> str:
+    """The tool result for a vague unit: nothing is saved; the model asks once, in plain words,
+    and the answer ("100 nos") comes back as a new save with the real unit."""
+    qty = fields.get("quantity")
+    said = " ".join(p for p in (f"{qty:g}" if isinstance(qty, (int, float)) else "", str(fields.get("unit") or "")) if p)
+    return (
+        f"Not saved yet: \"{said}\" of {material['name']} does not say how much arrived. Ask the sender "
+        f"how much {said} is, in a real unit (for example nos, kg or tons), then save again with that "
+        f"amount and unit. Do not guess a size."
+    )
 
 
 def ask_amount_text(

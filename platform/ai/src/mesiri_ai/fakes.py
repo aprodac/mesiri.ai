@@ -250,6 +250,8 @@ class FakeToolCallingProvider:
         max_steps: int = 3,
         timeout_seconds: float | None = None,
         correlation_id: str | None = None,
+        model: str | None = None,
+        capability: str = "agent",
     ):
         from .models import ToolCallRecord, ToolOutcome, ToolRunResult
 

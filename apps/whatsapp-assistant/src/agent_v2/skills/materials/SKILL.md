@@ -52,6 +52,9 @@ card, and the supervisor taps Save.
 - Quantity and unit are as said (bags, kg, tons, load, cum, nos). "5 load" stays `5` `load`:
   never convert a unit yourself and never guess what a load, trip or bag weighs. Do not add a
   unit that was not said when you can ask.
+  A tool result that says "Not saved yet ... does not say how much arrived" (a load / trip / lorry with
+  no saved size) means: ask the sender how much that is in nos, kg or tons, once, then save again
+  with their answer. Never save "1 load" as it is.
 - Supplier, work item and cost: only when said. A rate ("380 rupees a bag", "₹380/bag") is
   `unit_cost`; a whole-delivery amount ("motham 19000") is `total_cost`. Never drop either:
   the card shows it. The supplier ("Raju-nte", "from Raju") is `supplier`.

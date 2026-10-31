@@ -247,6 +247,7 @@ class MainAgent:
                 max_steps=MAX_STEPS,
                 timeout_seconds=TIMEOUT_SECONDS,
                 correlation_id=correlation_id,
+                capability="agent_v2",
                 **({"model": V2_MODEL} if V2_MODEL else {}),
             )
         except Exception as exc:  # noqa: BLE001 -- the caller decides: fall back, or degrade after a write

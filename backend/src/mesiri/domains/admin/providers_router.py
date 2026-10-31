@@ -164,6 +164,10 @@ async def get_ai_config(
         "extraction": {"provider_id": "gemini", "model": "gemini-2.5-flash"},
         "vision": {"provider_id": "gemini", "model": "gemini-2.5-flash"},
         "translation": {"provider_id": "gemini", "model": "gemini-2.5-flash"},
+        # Request 178: the WhatsApp assistant's brain, switchable from the panel.
+        # ``agent_v2`` is read by the v2 materials agent first, then ``agent``.
+        "agent": {"provider_id": "gemini", "model": "gemini-2.5-flash"},
+        "agent_v2": {"provider_id": "gemini", "model": "gemini-2.5-flash"},
     }
 
     resolved_routing = {}
