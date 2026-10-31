@@ -58,6 +58,20 @@ CAPTURE_MODES: frozenset[str] = frozenset({CAPTURE_MODE_SAVE_FIRST, CAPTURE_MODE
 # Mesiri team switches it on for one.
 DRAFT_V2 = "draft_v2"
 
+# Which agent handles a company's WhatsApp messages (request 174, v2 pilot).
+# "classic" (the default, and what every unreadable value means): today's agent only.
+# "v2_shadow": today's agent replies; the v2 materials agent then runs on the side,
+# saves nothing and only logs its proposed card. "v2_materials": the v2 agent handles
+# material messages (receipt, usage, stock count, stock question) and everything else
+# goes to today's agent in the same turn. Changed by the Mesiri team only.
+ASSISTANT_MODE = "assistant_mode"
+ASSISTANT_MODE_CLASSIC = "classic"
+ASSISTANT_MODE_V2_SHADOW = "v2_shadow"
+ASSISTANT_MODE_V2_MATERIALS = "v2_materials"
+ASSISTANT_MODES: frozenset[str] = frozenset(
+    {ASSISTANT_MODE_CLASSIC, ASSISTANT_MODE_V2_SHADOW, ASSISTANT_MODE_V2_MATERIALS}
+)
+
 # Product modules a company can have switched on (V1 tracker BE-06). Each key
 # gates one or more API routers (domains/shared/modules.py's require_module)
 # and the WhatsApp workflows of the same area. Company, projects, sites, users
@@ -94,7 +108,9 @@ DEFAULT_ENABLED_MODULES: list[str] = list(V1_MODULES)
 
 # Settings only a platform admin may change. Modules are tied to what a
 # customer pays for, so a company's own admin can read them but not edit them.
-SUPERADMIN_ONLY_KEYS: frozenset[str] = frozenset({ENABLED_MODULES, CAPTURE_MODE, DRAFT_V2})
+SUPERADMIN_ONLY_KEYS: frozenset[str] = frozenset(
+    {ENABLED_MODULES, CAPTURE_MODE, DRAFT_V2, ASSISTANT_MODE}
+)
 
 DEFAULT_FINANCE_SETTINGS = {
     "base_currency": "INR",
@@ -185,6 +201,17 @@ _SPECS: dict[str, SettingSpec] = {
             "message is held as one draft card and written only when the sender taps Save "
             "(Cancel writes nothing). false: the old flow, kept only as the per-company off "
             "switch. Changed by the Mesiri team only."
+        ),
+    ),
+    ASSISTANT_MODE: SettingSpec(
+        key=ASSISTANT_MODE,
+        default=ASSISTANT_MODE_CLASSIC,
+        description=(
+            "Which agent answers WhatsApp messages: 'classic' (today's agent, the default), "
+            "'v2_shadow' (today's agent replies; the v2 materials agent runs after it, saves "
+            "nothing and only logs what it would have proposed) or 'v2_materials' (the v2 agent "
+            "handles material messages; everything else goes to today's agent). Changed by the "
+            "Mesiri team only."
         ),
     ),
     BRANDING: SettingSpec(
@@ -373,7 +400,19 @@ def validate(key: str, value: object) -> object:
         if not isinstance(value, bool):
             raise ValueError("draft_v2 must be true or false")
         return value
+    if key == ASSISTANT_MODE:
+        mode = str(value).strip().lower() if isinstance(value, str) else ""
+        if mode not in ASSISTANT_MODES:
+            raise ValueError(f"assistant_mode must be one of {sorted(ASSISTANT_MODES)}")
+        return mode
     return value
+
+
+def assistant_mode(stored: object) -> str:
+    """The company's agent mode. Anything unset, unreadable or from before this
+    setting's values ("agent", "off") is "classic": production is unchanged."""
+    mode = stored.strip().lower() if isinstance(stored, str) else ""
+    return mode if mode in ASSISTANT_MODES else ASSISTANT_MODE_CLASSIC
 
 
 def draft_v2_enabled(stored: object) -> bool:
