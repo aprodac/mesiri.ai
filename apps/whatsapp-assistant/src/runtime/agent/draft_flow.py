@@ -1097,6 +1097,12 @@ async def answer_by_text(gw: Any, draft: dr.MessageDraft, item_index: int, answe
         choice = typed_new_material_answer(text, str(item.args.get("material") or ""), item.options) or picked
         if choice is not None:
             reply = await _answer_waiting(gw, draft, item, choice)
+    elif item.kind == dr.KIND_LABOUR and item.options:
+        # Request 184: "add cheyyu" / "replace" / "പകരം" answer "Replace it, or add to it?".
+        choice = dr.labour_choice(text, item.options) or picked
+        if choice is not None and dr.apply_answer(item, item.options.index(choice), today=_today(gw)):
+            await gw.drafts.put(draft)
+            reply = dr.card_reply(draft, site=_card_site(gw, draft))
     elif picked is not None:
         reply = await _answer_waiting(gw, draft, item, picked)
     if reply is None:
