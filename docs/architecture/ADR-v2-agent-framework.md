@@ -223,3 +223,20 @@ commits. No data migration; no existing record is touched.
 materials golden) and `tests/conversation/general_messages.yaml`: >= 90% right, 0 wrong saves, p95
 reply time <= classic. **Not run when this was written: no `GEMINI_API_KEY` in the cloud session.**
 Record the numbers here per candidate model (control panel row "WhatsApp assistant v2").
+
+## Request 180, live re-test 31 Oct (deploy 4f91795): what was wrong and what changed
+
+- **Root cause 1/5:** the existing read tools put their template text (Site log, site summary) on
+  `toolbox.answers`, and the composer's fallback sent it as the reply, so the model's own words were
+  lost. Now v2 removes a read tool's template from `answers` and tells the model "these are the
+  facts, not your reply; answer only what was asked; only today's records are today's" (`READ_INSTRUCTION`).
+- **Invented "Sunny":** the general skill now says the site note carries only the weather the sender said.
+- **Stock part dropped (2):** the model skipped `stock_for` in a mixed message, and "baakki" is not one of
+  the classic stock words. v2 now has its own left-over question detector; when the message asks and the
+  model did not look it up, the code looks it up and puts the answer under the reply.
+- **Language (3):** the system prompt now states the sender's language outright.
+- **Not changed (4):** "day total 40 workers" beside a Replace/Add question is the labour card
+  (`runtime/agent/draft.py`, shared with classic): it needs Alan's approval (Labour/shared component).
+- **Not verified:** the real-model gate (no `GEMINI_API_KEY`). Prompt-level fixes (1, 3, 5 wording)
+  are proven only against a scripted model.
+

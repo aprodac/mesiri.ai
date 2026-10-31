@@ -249,3 +249,32 @@ async def test_a_shadow_failure_never_reaches_the_sender(world):
     )
     await __import__("asyncio").gather(*runner._tasks)
     assert result.outcome == "ok"
+
+
+async def test_a_read_tools_template_is_never_the_reply_only_the_models_own_words_go_out(world):
+    """Live 31 Oct: query_work_log/query_project text went out as the reply, the model's words lost."""
+    text = "vere engineers report cheytho innu?"
+    own = "Innu aarum report cheythittilla."
+    result, _, classic = await run_v2(
+        world, [[("query_work_log", {})], own], ["never"], text
+    )
+    assert classic.calls == 0
+    assert own in result.reply.text
+    assert "Site log" not in result.reply.text
+
+
+async def test_the_system_prompt_names_the_senders_language():
+    from agent_v2.agents.main import system_prompt
+
+    assert "Manglish" in system_prompt("manglish")
+    assert "never in plain English" in system_prompt("manglish")
+    assert "English" in system_prompt("english")
+
+
+async def test_a_stock_question_in_a_mixed_message_is_answered_even_if_the_model_forgets_it(world):
+    result, _, classic = await run_v2(
+        world, [[LABOUR], "Check it."], ["never"], "6 mason vannu. innu ethra cement baakki und?"
+    )
+    assert classic.calls == 0
+    assert [i.kind for i in await open_items(world)] == [dr.KIND_LABOUR]
+    assert "cement" in result.reply.text.casefold() or "stock" in result.reply.text.casefold()

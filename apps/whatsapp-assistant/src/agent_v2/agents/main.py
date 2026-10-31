@@ -24,7 +24,7 @@ from mesiri_ai.models import ChatMessage, ToolOutcome, ToolRunResult
 from runtime.agent import tools as classic
 from runtime.agent.entry_base import ALL_SITES
 from runtime.agent.prompt import MESIRI_VOICE, AgentContext, build_messages
-from runtime.agent.toolbox import AgentToolbox
+from runtime.agent.toolbox import AgentToolbox, asks_about_stock
 from runtime.agent.tools import ScopeLookup
 from runtime.agent.wording import say
 
@@ -77,9 +77,35 @@ CAPABILITY = "agent_v2"
 CATALOG_IN_PROMPT = 400
 
 
-def system_prompt() -> str:
+#: Request 180 (live 31 Oct): the language of the sender, said to the model outright.
+_LANGUAGE_RULE = {
+    "manglish": "This sender writes Manglish (Malayalam in English letters): write your reply in Manglish, never in plain English.",
+    "malayalam": "This sender writes Malayalam script: write your reply in Malayalam script.",
+    "hinglish": "This sender writes Hinglish (Hindi in English letters): write your reply in Hinglish.",
+    "english": "This sender writes English: reply in English.",
+}
+
+#: A read tool's text is the facts, not the reply (live 31 Oct: the raw "Site log" and site
+#: summary went out as the answer and the model's own words were lost).
+READ_INSTRUCTION = (
+    "These are the facts, not your reply. Answer ONLY what they asked, in your own words and in the "
+    "sender's language, in one to three sentences. Say who reported what TODAY; anything dated "
+    "earlier is not today's: leave it out unless asked, or give its date. Copy no template, no list "
+    "of everything. Add no figure that is not here."
+)
+#: "ethra cement baakki und?", "how much cement is left?": a left-over question the classic stock
+#: words (mathi, enough, stock) do not cover. Kept here so today's agent is unchanged.
+_LEFT_QUESTION = re.compile(
+    r"(?:\bb(?:aa?)?kk?i\b|\bleft\b|\bremaining\b|ബാക്കി|बाकी).*(?:\?|\bund[oe]?\b|ഉണ്ടോ)"
+    r"|(?:\?|\bethra\b|\bhow (?:much|many)\b).*(?:\bb(?:aa?)?kk?i\b|\bleft\b|\bremaining\b)",
+    re.IGNORECASE | re.DOTALL,
+)
+_ANSWER_READS = GENERAL_READ_TOOLS - {classic.MY_SCOPE}
+
+
+def system_prompt(language: str = "english") -> str:
     rules = "\n\n".join(path.read_text(encoding="utf-8").strip() for path in SKILL_FILES)
-    return f"{rules}\n\n{MESIRI_VOICE}"
+    return f"{rules}\n\n{MESIRI_VOICE}\n\n{_LANGUAGE_RULE.get(language, _LANGUAGE_RULE['english'])}"
 
 
 @dataclass(slots=True)
@@ -267,7 +293,13 @@ class MainAgent:
             if name in GENERAL_TOOLS:
                 if shadow and name in GENERAL_WRITE_TOOLS:
                     return ToolOutcome(content={"status": "drafted"})  # recorded in state.calls only
-                return await toolbox.handle(name, args)
+                answered = len(toolbox.answers)
+                outcome = await toolbox.handle(name, args)
+                if name in _ANSWER_READS and len(toolbox.answers) > answered and isinstance(outcome.content, dict):
+                    # The facts go to the model; the template is never the reply.
+                    del toolbox.answers[answered:]
+                    outcome.content["instruction"] = READ_INSTRUCTION
+                return outcome
             classic_name = skill.CLASSIC_NAME.get(name)
             if classic_name is None:
                 return ToolOutcome(content={"status": "unknown_tool", "name": name})
@@ -284,7 +316,7 @@ class MainAgent:
             messages[0] = ChatMessage(role=messages[0].role, text=f"{messages[0].text}\n{line}")
         try:
             state.run = await self._provider.run_tools(
-                system_prompt(),
+                system_prompt(language),
                 messages,
                 all_specs(),
                 handle,
@@ -296,4 +328,20 @@ class MainAgent:
         except Exception as exc:  # noqa: BLE001 -- the caller decides: fall back, or degrade after a write
             state.error = exc
         await toolbox.settle()
+        if not shadow and state.error is None and not toolbox.answers_only_stock() and skill.STOCK_FOR not in {n for n, _ in state.calls}:
+            await self._answer_stock_part(state, user_text)
         return state
+
+    @staticmethod
+    async def _answer_stock_part(state: V2Run, user_text: str) -> None:
+        """Every part of a message is answered (live 31 Oct: "innu ethra cement baakki und?" at the
+        end of a site day got a card and no stock). When the message asks about stock and the model
+        did not look it up, the code does, and the answer goes under the reply."""
+        toolbox = state.toolbox
+        if not (asks_about_stock(user_text) or _LEFT_QUESTION.search(user_text or "")) or toolbox.parked is not None:
+            return
+        before = len(toolbox.answers)
+        answer = await toolbox.look_up_stock()
+        del toolbox.answers[before:]
+        if answer and answer not in toolbox.system_lines:
+            toolbox.system_lines.append(answer)
