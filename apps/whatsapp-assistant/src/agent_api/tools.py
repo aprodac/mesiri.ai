@@ -88,10 +88,23 @@ ALLOWED: tuple[Allowed, ...] = (
     Allowed("record_receipt", "POST", "/materials/inflows", "Prepare a material receipt (material that arrived at a site)." + _WRITE),
     Allowed("record_usage", "POST", "/materials/outflows", "Prepare a material usage (material used or issued at a site)." + _WRITE),
     Allowed("record_transfer", "POST", "/materials/transfers", "Prepare a transfer of material from one site to another." + _WRITE),
-    # Labour (read only: the API has no attendance write yet)
+    # Labour
     Allowed("labour_attendance", "GET", "/labour/attendance", "Labour attendance reported: per site and date, which trades, how many, who reported."),
+    Allowed("list_workers", "GET", "/labour/workers", "The company's worker register (names, trades, wages). Use a worker's id for a named person."),
+    Allowed(
+        "record_attendance", "POST", "/labour/attendance",
+        "Prepare a labour attendance report for one site and day: named workers and/or a headcount per trade. "
+        "If that site and day already has a report, ask whether this replaces it (corrects_report_id) or is "
+        "another crew." + _WRITE,
+        hide=("recorded_via",), fixed=(("recorded_via", "whatsapp_text"),),
+    ),
     # Work and issues
     Allowed("work_progress", "GET", "/progress/activities", "Work done / in progress per site, with dates and quantities."),
+    Allowed(
+        "record_work", "POST", "/progress/activities",
+        "Prepare work done at a site on a day: what was done, and quantities in the unit they said." + _WRITE,
+        hide=("source",), fixed=(("source", "whatsapp_text"),),
+    ),
     Allowed("list_issues", "GET", "/progress/issues", "Site issues (problems, delays), open or closed."),
     Allowed("report_issue", "POST", "/progress/issues", "Prepare a site issue (a problem or delay at a site)." + _WRITE),
     Allowed("resolve_issue", "POST", "/progress/issues/{issue_id}/resolve", "Prepare closing an issue as fixed." + _WRITE),

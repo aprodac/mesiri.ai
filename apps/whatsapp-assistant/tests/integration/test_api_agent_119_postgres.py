@@ -243,3 +243,57 @@ async def test_a_module_the_company_does_not_have_is_refused_by_the_api(database
     finally:
         await client.close()
     assert result.status == 403 and result.body["detail"]["code"] == "MODULE_DISABLED"
+
+
+async def test_attendance_and_work_are_recorded_through_the_new_endpoints(database: PostgresDatabase) -> None:
+    """WA-121: POST /labour/attendance and POST /progress/activities run the same save
+    handlers as WhatsApp; a repeated key records once; a bad report is refused with reasons."""
+    acme = await _company(database, "Acme Builders", modules=("dpr", "materials", "labour"))
+    app = build_api_app(database)
+    today = dt.date.today().isoformat()
+    attendance = {
+        "project_id": acme["project"], "site_id": acme["site"], "occurred_date": today,
+        "lines": [{"trade": "mason", "headcount": 6}, {"trade": "helper", "headcount": 4, "daily_wage": 700},
+                  {"worker_name": "Ravi", "trade": "electrician"}],
+        "recorded_via": "whatsapp_text",
+    }
+    work = {
+        "project_id": acme["project"], "site_id": acme["site"], "activity_date": today,
+        "work_type": "plastering", "narrative": "First floor east wall",
+        "quantities": [{"quantity": 180, "unit": "sqm"}], "source": "whatsapp_text",
+    }
+    client = ApiClient(_actor(acme), app=app)
+    try:
+        key = new_idempotency_key()
+        first = await client.call("POST", "/labour/attendance", json=attendance, idempotency_key=key)
+        again = await client.call("POST", "/labour/attendance", json=attendance, idempotency_key=key)
+        done = await client.call("POST", "/progress/activities", json=work, idempotency_key=new_idempotency_key())
+        empty = await client.call("POST", "/progress/activities", idempotency_key=new_idempotency_key(), json={
+            **work, "narrative": None, "quantities": []})
+        reported = await client.call("GET", "/labour/attendance", params={"site_id": acme["site"]})
+        activities = await client.call("GET", "/progress/activities", params={"site_id": acme["site"]})
+    finally:
+        await client.close()
+    assert (first.status, first.body["status"]) == (201, "created"), first.body
+    assert (again.status, again.body["status"]) == (200, "replayed") and again.body["id"] == first.body["id"]
+    assert (done.status, done.body["status"]) == (201, "created"), done.body
+    assert empty.status == 422 and "narrative or at least one quantity" in json.dumps(empty.body)
+    assert reported.ok and len(reported.body["items"]) == 1, reported.body
+    assert "plastering" in json.dumps(activities.body).lower()
+
+
+async def test_the_new_endpoints_refuse_another_companys_site(database: PostgresDatabase) -> None:
+    acme = await _company(database, "Acme Builders", modules=("dpr", "labour"))
+    other = await _company(database, "Other Co", modules=("dpr", "labour"))
+    today = dt.date.today().isoformat()
+    client = ApiClient(_actor(other), app=build_api_app(database))
+    try:
+        att = await client.call("POST", "/labour/attendance", json={
+            "project_id": acme["project"], "site_id": acme["site"], "occurred_date": today,
+            "lines": [{"trade": "mason", "headcount": 2}]})
+        mixed = await client.call("POST", "/progress/activities", json={
+            "project_id": other["project"], "site_id": acme["site"], "activity_date": today, "narrative": "x"})
+    finally:
+        await client.close()
+    assert att.status in (403, 404), att.body
+    assert mixed.status == 404, mixed.body  # a site of another project / company
