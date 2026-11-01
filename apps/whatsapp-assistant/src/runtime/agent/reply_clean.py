@@ -44,10 +44,20 @@ _NOTE = re.compile(
 _FRAGMENTS = (CLOSED.strip(" ()"), "not to be asked again", "[options:", "[context]", "User message:")
 
 
+_DOUBLE_STAR = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
+
+
+def whatsapp_bold(text: str) -> str:
+    """Request 200: WhatsApp bold is ``*single*``; the model's Markdown ``**double**`` shows as literal
+    stars ("Please tap **Yes** below"). Every reply the model's words reach is passed through here."""
+    text = _DOUBLE_STAR.sub(r"*\1*", text or "")
+    return text.replace("**", "")
+
+
 def clean_annotations(text: str) -> str:
     """``text`` without ``[options: ...]`` and parenthesised system notes: safe
     for every reply, whatever the mode."""
-    text = _OPTIONS.sub("", text or "")
+    text = whatsapp_bold(_OPTIONS.sub("", text or ""))
     text = _NOTE.sub("", text)
     text = re.sub(r"[ \t]+\n", "\n", text)
     text = re.sub(r"[ \t]{2,}", " ", text)

@@ -23,6 +23,8 @@ from workflows.registry import module_for_workflow
 
 from .actions import (
     CLOSE_ISSUES,
+    CREATE_PROJECT,
+    CREATE_SITE,
     ENGINEER_QUESTION,
     MATERIAL_REQUEST,
     SITE_CONDITIONS,
@@ -70,7 +72,82 @@ class ActionEntry(EntryScope):
             return await self._close_issues(message, understanding, candidate)
         if kind == MATERIAL_REQUEST:
             return await self._material_request(message, understanding, candidate)
+        if kind in (CREATE_PROJECT, CREATE_SITE):
+            return await self._create(kind, message, understanding, candidate)
         return Say("error", "Not done: that can't be done here yet.")
+
+    # -- a new project or site (request 200) ----------------------------------------
+
+    async def _create(self, kind: str, message: Any, understanding: Any, candidate: Any) -> PendingAction | Say:
+        """A card line ("🏗️ New project: Sahal A · 7,000 sq ft · Kerala") with Save / Cancel; nothing
+        is made before the tap. The role and the company are the code's, never the model's."""
+        from runtime.inbound_journey._shared import (
+            _PROJECT_CREATE_DENIED_REPLY,
+            _PROJECT_CREATE_ROLES,
+            _SITE_CREATE_DENIED_REPLY,
+        )
+
+        from .tools import project_description_parts
+
+        site = kind == CREATE_SITE
+        role = str(getattr(self.actor, "role", "") or "").strip().upper()
+        if role not in _PROJECT_CREATE_ROLES:
+            return Say("info", _SITE_CREATE_DENIED_REPLY if site else _PROJECT_CREATE_DENIED_REPLY)
+        fields = dict(candidate.fields)
+        if not site:
+            # Details already given (size, kind, place) are never asked again: those held from an
+            # earlier message fill what this call leaves out, and a call with no name yet holds them.
+            store = self.service.store
+            held = await store.held_details(self.actor)
+            for key in ("name", "location", "size_sqft", "project_type"):
+                if fields.get(key) in (None, "") and held.get(key) not in (None, ""):
+                    fields[key] = held[key]
+        name = " ".join(str(fields.get("name") or "").split())
+        if not name:
+            if not site:
+                given = {k: fields[k] for k in ("location", "size_sqft", "project_type") if fields.get(k) not in (None, "")}
+                await self.service.store.hold_details(self.actor, given)
+            return Say("error", "Not created yet: the new project's name is needed. Ask for the name only; the size and place they gave are kept.")
+        language = str(fields.get("language") or "english")
+        location = " ".join(str(fields.get("location") or "").split()) or None
+        scoped = await self.settle(
+            message,
+            understanding,
+            candidate,
+            module=module_for_workflow(WorkflowKey.SITE_CREATE if site else WorkflowKey.PROJECT_CREATE),
+            project="required" if site else "none",
+            ask_site=False,
+        )
+        if isinstance(scoped, Say):
+            return scoped
+        if site:
+            project_id = str(scoped.project_id or "")
+            project = next(
+                (str(p.name) for p in getattr(self.actor, "projects", None) or [] if str(p.id) == project_id), ""
+            )
+            if not project_id:
+                return Say("error", "Not created: say which project the site is for.")
+            payload = {
+                "name": name, "location": location, "project_id": project_id,
+                "project_name": project, "language": language,
+            }
+            line = f"📍 New site: {name}" + (f" · {project}" if project else "") + (f" · {location}" if location else "")
+            return new_action(CREATE_SITE, payload, line)
+        wanted = name.casefold()
+        existing = next(
+            (str(p.name) for p in getattr(self.actor, "projects", None) or [] if " ".join(str(p.name).split()).casefold() == wanted),
+            "",
+        )
+        if existing:
+            return Say("info", f"The project {existing} already exists, so I did not create it again. Send its updates, or tell me what's next.")
+        size_text, description = project_description_parts(fields)
+        payload = {
+            "name": name, "location": location, "description": description,
+            "size_text": size_text, "language": language,
+        }
+        extra = " · ".join(p for p in (description, location) if p)
+        await self.service.store.release_details(self.actor)
+        return new_action(CREATE_PROJECT, payload, f"🏗️ New project: {name}" + (f" · {extra}" if extra else ""))
 
     # -- material to order (request 143) ------------------------------------------
 

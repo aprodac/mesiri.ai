@@ -1142,7 +1142,13 @@ def _specs() -> list[ToolSpec]:
             ),
             parameters=_obj(
                 {
-                    "name": {"type": "string", "description": "The new project's name, as they said it. Never invent one."},
+                    "name": {
+                        "type": "string",
+                        "description": (
+                            "The new project's name, as they said it (today, in any earlier message). Never invent one; "
+                            "leave it out when they have not given it: the system keeps the other details."
+                        ),
+                    },
                     "location": {"type": "string", "description": "Only if they say where it is."},
                     "size_sqft": {"type": "number", "description": "Built-up size in square feet, only if they say it."},
                     "project_type": {
@@ -1150,26 +1156,31 @@ def _specs() -> list[ToolSpec]:
                         "description": "What is being built ('G+1 supermarket', 'villa'), only if they say it.",
                     },
                 },
-                ["name"],
+                [],
             ),
         ),
     ]
 
 
-def _project_description(args: dict[str, Any]) -> str | None:
-    """Request 197: the size and type a new project is described with ("5,000 sq ft · G+1 supermarket"),
-    kept in the project's existing description column (no new field, no migration)."""
+def project_description_parts(args: dict[str, Any]) -> tuple[str, str | None]:
+    """Request 197/200: ``("7,000 sq ft", "7,000 sq ft · G+1 supermarket")``: the size alone, and the size
+    and type a new project is described with, kept in the project's existing description column."""
     parts: list[str] = []
     try:
         size = float(args.get("size_sqft"))
     except (TypeError, ValueError):
         size = 0.0
-    if size > 0:
-        parts.append(f"{size:,.0f} sq ft")
+    size_text = f"{size:,.0f} sq ft" if size > 0 else ""
+    if size_text:
+        parts.append(size_text)
     kind = str(args.get("project_type") or "").strip()
     if kind:
         parts.append(kind)
-    return " · ".join(parts) or None
+    return size_text, (" · ".join(parts) or None)
+
+
+def _project_description(args: dict[str, Any]) -> str | None:
+    return project_description_parts(args)[1]
 
 
 @dataclass(frozen=True, slots=True)
@@ -1454,6 +1465,8 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
         )
     if name == CREATE_SITE:
         fields = {
+            # Request 200: a card line with Save / Cancel (actions.py), not the old Yes / No.
+            "_action": "create_site",
             "name": str(args.get("name") or "").strip(),
             "location": args.get("location"),
             # The project it goes under; the new site's own name is never a
@@ -1490,9 +1503,11 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
         return Candidate(semantic_type=SemanticType.SITE_ISSUE_UPDATE, fields=_clean(fields))
     if name == CREATE_PROJECT:
         fields = {
+            "_action": "create_project",
             "name": str(args.get("name") or "").strip(),
             "location": args.get("location"),
-            "description": _project_description(args),
+            "size_sqft": args.get("size_sqft"),
+            "project_type": args.get("project_type"),
         }
         return Candidate(semantic_type=SemanticType.PROJECT_CREATE, fields=_clean(fields))
     if name == UNDO_LAST:

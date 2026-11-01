@@ -355,6 +355,20 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "वह जवाब लागू नहीं हो सका.",
         "hinglish": "Woh jawab lagu nahi ho saka.",
     },
+    "project.created": {
+        "english": "Project {name} created ✅{size}. Send its updates now, or tell me what's next.",
+        "manglish": "Project {name} undaakki ✅{size}. Ini ithinte updates ayakkaam, allenkil adutha karyam parayoo.",
+        "malayalam": "പ്രോജക്റ്റ് {name} ഉണ്ടാക്കി ✅{size}. ഇനി ഇതിന്റെ അപ്ഡേറ്റുകൾ അയയ്ക്കാം, അല്ലെങ്കിൽ അടുത്തത് പറയൂ.",
+        "hindi": "प्रोजेक्ट {name} बन गया ✅{size}. अब इसके अपडेट भेजिए, या बताइए आगे क्या करना है.",
+        "hinglish": "Project {name} ban gaya ✅{size}. Ab iske updates bhejo, ya batao aage kya karna hai.",
+    },
+    "site.created": {
+        "english": "Site {name} created under {project} ✅. Send its updates now, or tell me what's next.",
+        "manglish": "{project}-il site {name} undaakki ✅. Ini ithinte updates ayakkaam, allenkil adutha karyam parayoo.",
+        "malayalam": "{project}-ൽ സൈറ്റ് {name} ഉണ്ടാക്കി ✅. ഇനി ഇതിന്റെ അപ്ഡേറ്റുകൾ അയയ്ക്കാം, അല്ലെങ്കിൽ അടുത്തത് പറയൂ.",
+        "hindi": "{project} में साइट {name} बन गई ✅. अब इसके अपडेट भेजिए, या बताइए आगे क्या करना है.",
+        "hinglish": "{project} mein site {name} ban gayi ✅. Ab iske updates bhejo, ya batao aage kya karna hai.",
+    },
     "material.direction_cancelled": {
         "english": "Okay, nothing saved.",
         "manglish": "Sheri, onnum save cheythilla.",

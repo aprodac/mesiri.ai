@@ -617,6 +617,11 @@ class JourneyGateway:
         if self.draft_mode:
             # Request 142: an ambiguous pick (which issue?) offers rows whose ids name the thing.
             candidate = candidate.model_copy(update={"fields": {**candidate.fields, "pick_ids": True}})
+        if (candidate.fields or {}).get("_action") in ("create_project", "create_site"):
+            # Request 200: the "created" line is worded by the code, in the sender's language.
+            candidate = candidate.model_copy(
+                update={"fields": {**candidate.fields, "language": self.wording_language or "english"}}
+            )
         understanding = tool_understanding(candidate, message, language=self.language)
         prepared = await self.action_entry.prepare(message, understanding, candidate)
         if isinstance(prepared, Say):

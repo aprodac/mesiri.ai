@@ -207,18 +207,18 @@ async def test_a_site_that_is_not_theirs_is_asked_never_guessed():
 def test_create_site_goes_to_the_site_create_workflow_under_the_named_project():
     candidate = to_candidate(CREATE_SITE, {"name": "Site C", "project": "project b"}, _scope())
     assert candidate.semantic_type is SemanticType.SITE_CREATE
-    assert candidate.fields == {"name": "Site C", "project_id": "pb"}
+    assert candidate.fields == {"_action": "create_site", "name": "Site C", "project_id": "pb"}
 
 
 def test_create_site_without_a_project_leaves_it_to_the_context():
     candidate = to_candidate(CREATE_SITE, {"name": " Site C ", "location": "Kakkanad"}, _scope())
-    assert candidate.fields == {"name": "Site C", "location": "Kakkanad"}
+    assert candidate.fields == {"_action": "create_site", "name": "Site C", "location": "Kakkanad"}
 
 
 def test_create_project_goes_to_the_project_create_workflow():
     candidate = to_candidate(CREATE_PROJECT, {"name": "Green Villa", "location": "Aluva"}, _scope())
     assert candidate.semantic_type is SemanticType.PROJECT_CREATE
-    assert candidate.fields == {"name": "Green Villa", "location": "Aluva"}
+    assert candidate.fields == {"_action": "create_project", "name": "Green Villa", "location": "Aluva"}
 
 
 def _confirmed(action_type, *, project_id="pb", site_id=None, row_id="new-site", status=ExecutionStatus.SUCCEEDED):

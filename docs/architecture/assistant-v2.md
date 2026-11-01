@@ -100,6 +100,8 @@ or correct something saved, any module) and `transfer_money` are v2 tools (skill
 tools (members, join code). Questions go through `ask` with 2-3 options
 (buttons) in every module (general SKILL "Asking: one tap, not typing").
 
+Request 200 (supersedes the "a Yes confirms" part below): both tools are pending actions like `close_issues`: one Save / Cancel card line ("🏗️ New project: Sahal A · 7,000 sq ft · Kerala"), created on the Save tap through the same dispatcher, and the code words "Project Sahal A created ✅ (7,000 sq ft). ..." in the sender's language (`wording` keys `project.created` / `site.created`). Details given before the name are held for the day (`ActionStore.hold_details`) and joined with the name; a create call without a name asks for the name only. Model-written `**bold**` becomes WhatsApp `*bold*` in every reply (`reply_clean.whatsapp_bold`).
+
 Request 197: `create_project` / `create_site` are v2 tools (skill `projects`): the same tools and `project_create` / `site_create` workflows as classic (role ADMIN / PROJECT_MANAGER and the sender's organisation checked in code at the query entry; a Yes confirms; size / type ride in the project's description; an exact existing name is pointed to, not created twice). Members and the join code stay with the classic agent. The labour
 tools are called unchanged for the 2 test companies only; Labour, Attendance, Payroll and
 Workforce rules and data paths are untouched.

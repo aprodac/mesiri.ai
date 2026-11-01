@@ -41,8 +41,13 @@ ENGINEER_QUESTION = "engineer_question"
 SITE_CONDITIONS = "site_conditions"
 CLOSE_ISSUES = "close_issues"
 MATERIAL_REQUEST = "material_request"
+#: Request 200: a new project / a new site is a card line with Save / Cancel, like every write.
+CREATE_PROJECT = "create_project"
+CREATE_SITE = "create_site"
 
 ACTION_TTL_SECONDS = 6 * 60 * 60
+#: A new project's details given before its name (request 200): a site day.
+DETAILS_TTL_SECONDS = 16 * 60 * 60
 
 #: Said when the tap finds nothing waiting (expired, or already tapped).
 GONE_LINE = "That one is already done or has expired. Please ask again."
@@ -116,6 +121,42 @@ class ActionStore:
             _log.warning("agent.action_read_failed", exc_info=True)
             return None
         return PendingAction.from_json(raw)
+
+    @staticmethod
+    def _held_key(actor: Any) -> str | None:
+        org = getattr(actor, "organization_id", None)
+        user = getattr(actor, "user_id", None)
+        return f"{org}:user:{user}:project_details" if org and user else None
+
+    async def hold_details(self, actor: Any, details: dict[str, Any]) -> None:
+        """Request 200: what they said about a new project that has no name yet (size, kind, place),
+        kept for the day, so the name arriving in the next message never makes them say it twice."""
+        key = self._held_key(actor)
+        if key is None or not details:
+            return
+        try:
+            await self._redis.set_json(key, details, ttl_seconds=DETAILS_TTL_SECONDS)
+        except Exception:  # noqa: BLE001 -- nothing held means the details are asked again, nothing worse
+            _log.warning("agent.details_write_failed", exc_info=True)
+
+    async def held_details(self, actor: Any) -> dict[str, Any]:
+        key = self._held_key(actor)
+        if key is None:
+            return {}
+        try:
+            raw = await self._redis.get_json(key)
+        except Exception:  # noqa: BLE001
+            _log.warning("agent.details_read_failed", exc_info=True)
+            return {}
+        return dict(raw) if isinstance(raw, dict) else {}
+
+    async def release_details(self, actor: Any) -> None:
+        key = self._held_key(actor)
+        if key is not None:
+            try:
+                await self._redis.delete(self._redis.namespaced(key))
+            except Exception:  # noqa: BLE001
+                _log.warning("agent.details_drop_failed", exc_info=True)
 
     async def drop(self, actor: Any, action_id: str) -> None:
         key = self._key(actor, action_id)
@@ -217,6 +258,8 @@ class ActionService:
                 return await self._close_issues(action, actor)
             if action.kind == MATERIAL_REQUEST:
                 return await self._send_material_request(action, actor, sender)
+            if action.kind in (CREATE_PROJECT, CREATE_SITE):
+                return await self._create(action, actor)
         except Exception:  # noqa: BLE001 -- said plainly, never "done"
             _log.exception("agent.action_failed kind=%s", action.kind)
             return "❌ That didn't go through, so nothing was changed. Please try again."
@@ -383,6 +426,59 @@ class ActionService:
         except ValueError as exc:
             return f"❌ Couldn't save it: {exc}."
         return f"✅ Saved: {action.summary}."
+
+    # -- a new project / a new site (request 200) -------------------------------
+
+    async def _create(self, action: PendingAction, actor: Any) -> str:
+        """Make the project (or site) through the same dispatcher the Yes tap used, then say
+        what was made, by the code, in the sender's language. A refusal is said as it is."""
+        if self._dispatcher is None:
+            return "❌ Creating this isn't available here just now. Nothing was created."
+        from mesiri_contracts.application.results.execution_result import ExecutionStatus
+        from mesiri_contracts.assistant.draft_action import DraftActionType
+        from mesiri_contracts.assistant.v2.confirmed_action import ConfirmedActionV2
+        from mesiri_contracts.assistant.v2.draft_action import DraftActionV2
+
+        from .wording import say
+
+        payload = action.payload
+        site = action.kind == CREATE_SITE
+        # Fixed by the card, so a repeated tap is a replay and never a second project.
+        instance = str(uuid.uuid5(uuid.NAMESPACE_URL, f"mesiri:create:{action.id}"))
+        fields: dict[str, Any] = {
+            "name": payload["name"],
+            "location": payload.get("location"),
+            "created_by_role": str(getattr(actor, "role", "") or ""),
+        }
+        if not site:
+            fields["description"] = payload.get("description")
+        draft = DraftActionV2(
+            draft_id=f"draft-{instance}",
+            correlation_id=instance,
+            workflow_instance_id=instance,
+            action_type=DraftActionType.CREATE_SITE if site else DraftActionType.CREATE_PROJECT,
+            organization_id=str(actor.organization_id),
+            user_id=str(actor.user_id),
+            project_id=payload.get("project_id") if site else None,
+            site_id=None,
+            fields={k: v for k, v in fields.items() if v not in (None, "")},
+        )
+        confirmed = ConfirmedActionV2(
+            confirmed_action_id=f"conf-{instance}",
+            workflow_instance_id=instance,
+            correlation_id=instance,
+            draft_action=draft,
+            confirmed_by_user_id=str(actor.user_id),
+        )
+        result = await self._dispatcher.dispatch(confirmed)
+        if result.status is not ExecutionStatus.SUCCEEDED:
+            reasons = "; ".join(str(r) for r in (getattr(result, "rejection_reasons", None) or [])) or "it was refused"
+            return f"❌ Not created: {reasons}. Nothing was changed."
+        language = str(payload.get("language") or "english")
+        if site:
+            return say("site.created", language, name=payload["name"], project=payload.get("project_name") or "")
+        size = f" ({payload['size_text']})" if payload.get("size_text") else ""
+        return say("project.created", language, name=payload["name"], size=size)
 
     # -- close issues -----------------------------------------------------------
 

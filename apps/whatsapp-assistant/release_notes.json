@@ -159,6 +159,17 @@
         "cor_0caf3a0ef27f46e8ab25cbd8b08fb156"
       ],
       "message": "You can now create a new project right here in chat. Try: 'Create a new project Supermarket Kerala, 7000 sq ft'"
+    },
+    {
+      "id": "create-project-card-en",
+      "date": "2026-11-01",
+      "for": [
+        "cor_d09b70b95c2e43f482179550616fa7e6",
+        "cor_91ee73af184a4b23a2c7b2719620c1ba",
+        "cor_0cdf8f212c7d47e49c257080f2c5243b",
+        "cor_e4be0ad4ad1e4e07bacdbbcc7ad7e7ff"
+      ],
+      "message": "Creating a project in chat now shows a card to confirm and tells you when it's done. Try: 'Create a new project Supermarket Kerala, 7000 sq ft'."
     }
   ]
 }

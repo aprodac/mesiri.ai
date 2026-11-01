@@ -22,7 +22,14 @@ from mesiri_ai.models import ToolOutcome
 from runtime.save_first import DRAFT_NOTE
 
 from . import reroute, site_wait
-from .actions import CLOSE_ISSUES, ENGINEER_QUESTION, MATERIAL_REQUEST, SITE_CONDITIONS
+from .actions import (
+    CLOSE_ISSUES,
+    CREATE_PROJECT,
+    CREATE_SITE,
+    ENGINEER_QUESTION,
+    MATERIAL_REQUEST,
+    SITE_CONDITIONS,
+)
 from .cards import CardItem, merge_changes
 from .equipment import EQUIPMENT_LINE, is_equipment_only
 from .gateway import StepResult, WorkflowGateway
@@ -71,7 +78,7 @@ from .wording import say
 
 _log = logging.getLogger("mesiri.agent")
 
-ACTION_KINDS = frozenset({ENGINEER_QUESTION, SITE_CONDITIONS, CLOSE_ISSUES, MATERIAL_REQUEST})
+ACTION_KINDS = frozenset({ENGINEER_QUESTION, SITE_CONDITIONS, CLOSE_ISSUES, MATERIAL_REQUEST, CREATE_PROJECT, CREATE_SITE})
 
 #: Most tool calls one message may make in total (steps are bounded separately
 #: by the provider loop). A note with many parts is still a handful of calls.
