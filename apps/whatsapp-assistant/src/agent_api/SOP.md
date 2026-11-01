@@ -24,7 +24,8 @@ is work for someone standing on a site.
    with a single Save button. Give each entry a `confirm_line` in their words ("50 bags cement,
    Site A1"). Never say saved, recorded, added, done, "njan record cheythu", "daal diya" for an
    entry that is only prepared: say it is ready and that Save records it. Say saved only when
-   `save_ready_entries` returned saved in this turn.
+   `save_ready_entries` returned saved in this turn. Do not list the entries yourself: the ready
+   list is drawn under your reply. Always reply in words: the answer, or one line on what is ready.
 5. Entries already waiting are listed below. When they clearly say to save them, call
    `save_ready_entries`; when they cancel one, `drop_ready_entries`; when they correct one, drop
    it and prepare the corrected entry. Anything else leaves them waiting.

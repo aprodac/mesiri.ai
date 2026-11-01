@@ -134,7 +134,7 @@ class ApiWhatsApp:
             turn = await self._agent.run(
                 client, text, history=history, ready=ready, sender_name=ctx.full_name or "",
                 timezone=getattr(ctx, "timezone", None) or "Asia/Kolkata", correlation_id=message.correlation_id,
-                facts=facts, photo_key=photo_key,
+                facts=facts, photo_key=photo_key, language=_language(text),
             )
         except Exception as exc:  # noqa: BLE001 -- the model or a tool failed: say so, keep what was waiting
             _log.exception("agent_api.run_failed user=%s", ctx.user_id)
@@ -224,7 +224,9 @@ class ApiWhatsApp:
         when it asked one (one tap answers it), else Save / Cancel for the list."""
         state["pending"] = [e.to_json() for e in pending]
         state["batch"] = uuid.uuid4().hex[:8] if pending else None  # a new list: older buttons no longer act
-        text = words or "OK."
+        from runtime.agent.reply_clean import whatsapp_bold
+
+        text = whatsapp_bold(words) or "OK."
         if pending:
             listed = "\n".join(f"{i}. {e.summary}" for i, e in enumerate(pending, 1))
             text = f"{text}\n\n*Ready to save:*\n{listed}"
@@ -262,6 +264,16 @@ class ApiWhatsApp:
             )
         except Exception:  # noqa: BLE001 -- diagnostics never break a message
             _log.warning("agent_api.trace_failed", exc_info=True)
+
+
+def _language(text: str) -> str | None:
+    """The person's language and script, decided by the code (the shared detector)."""
+    try:
+        from runtime.agent.wording import language_of
+
+        return language_of(text.split("What the photo shows:", 1)[0])
+    except Exception:  # noqa: BLE001 -- the model decides then
+        return None
 
 
 def _actor(ctx: Any) -> Actor:

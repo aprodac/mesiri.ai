@@ -79,6 +79,14 @@ class ApiTurn:
 
 
 SAVE_READY = "save_ready_entries"
+#: The language of the person's message (``runtime.agent.wording.language_of``) as told to the model.
+LANGUAGE_LINES = {
+    "english": "English",
+    "manglish": "Manglish (Malayalam words in Latin letters; never Malayalam script)",
+    "malayalam": "Malayalam script",
+    "hinglish": "Hinglish (Hindi words in Latin letters; never Devanagari)",
+    "hindi": "Hindi in Devanagari script",
+}
 ASK = "ask"
 #: Body field the code fills with the photo of this message (a bill), never the model.
 PHOTO_FIELD = "media_object_key"
@@ -130,7 +138,7 @@ class ApiAgent:
     async def run(self, client: ApiClient, text: str, *, history: list[ChatMessage] | None = None,
                   ready: list[PendingWrite] | None = None, sender_name: str = "",
                   timezone: str = "Asia/Kolkata", correlation_id: str | None = None,
-                  facts: str = "", photo_key: str | None = None) -> ApiTurn:
+                  facts: str = "", photo_key: str | None = None, language: str | None = None) -> ApiTurn:
         """``facts``: what the agent starts from (projects, sites, materials, units), read
         before the model runs. ``photo_key``: the photo this message carried; a write that
         takes a photo (an expense) gets it attached by the code."""
@@ -195,16 +203,34 @@ class ApiAgent:
             return ToolOutcome(content={"status": response.status, "result": content})
 
         specs = [t.spec for t in self._tools.values()] + [_ASK_TOOL] + (list(_READY_TOOLS) if waiting else [])
-        result = await self._provider.run_tools(
-            self.system_prompt(sender_name=sender_name, today=today, ready=list(ready or []), facts=facts),
-            [*(history or []), ChatMessage(role="user", text=text)],
-            specs,
-            handler,
-            max_steps=self._max_steps,
-            timeout_seconds=self._timeout,
-            correlation_id=correlation_id,
-            **({"capability": self._capability} if self._capability and _takes(self._provider, "capability") else {}),
-        )
+        system = self.system_prompt(sender_name=sender_name, today=today, ready=list(ready or []), facts=facts)
+        if language in LANGUAGE_LINES:
+            # Decided by the code from their words (the model mixed scripts on 1 Nov).
+            system += f"\n\nThis message is in {LANGUAGE_LINES[language]}. Reply in exactly that."
+        messages = [*(history or []), ChatMessage(role="user", text=text)]
+        extra = {"capability": self._capability} if self._capability and _takes(self._provider, "capability") else {}
+
+        def nothing_done() -> bool:
+            return not new and not saved and not asked and len(waiting) == len(ready or [])
+
+        async def ask_model(msgs: list[ChatMessage]) -> Any:
+            return await self._provider.run_tools(
+                system, msgs, specs, handler, max_steps=self._max_steps, timeout_seconds=self._timeout,
+                correlation_id=correlation_id, **extra)
+
+        try:
+            result = await ask_model(messages)
+        except Exception:
+            # A model error before anything was prepared or saved: one more try (compare run of
+            # 1 Nov: one expense message failed on the first call). After an effect, never again.
+            if not nothing_done():
+                raise
+            result = await ask_model(messages)
+        if not (result.text or "").strip() and not new and not asked and not saved:
+            # It looked something up and said nothing ("OK."): ask once for the answer in words.
+            again = await ask_model([*messages, ChatMessage(role="model", text="(looked it up)"),
+                                     ChatMessage(role="user", text="(answer my message now, in words)")])
+            result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
         calls = [{"tool": c.name, "arguments": c.arguments, "result": c.outcome.content if c.outcome else None}
                  for c in result.calls]
         still = [e for e in waiting if e is not None]

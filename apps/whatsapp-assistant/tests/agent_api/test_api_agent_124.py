@@ -290,3 +290,61 @@ async def test_a_provider_without_the_capability_setting_still_runs() -> None:
             await client.close()
         assert turn.reply == "Hello."
     assert provider.kw.get("capability") == "api_agent"
+
+
+# -- compare run of 1 Nov 19:41 (gemini-2.5-flash / 3.6-flash): the fixes ---------------------
+
+
+@pytest.mark.parametrize(("said", "told"), [
+    ("inn 50 bag cement vannu, 20 bag use cheythu", "Manglish (Malayalam words in Latin letters"),
+    ("plastering 180 sqm done on first floor east side", "This message is in English."),
+])
+async def test_the_code_tells_the_model_the_language_and_script(said: str, told: str) -> None:
+    model = FakeToolCallingProvider(["ok"])
+    service, _ = _service(model)
+    await service.handle(_message(said), CTX)
+    assert told in model.last_system_prompt
+
+
+async def test_a_model_error_before_anything_was_done_is_tried_once_more() -> None:
+    class Flaky:
+        calls = 0
+
+        async def run_tools(self, *a: Any, **k: Any):  # noqa: ANN204
+            from mesiri_ai.models import ToolRunResult
+
+            Flaky.calls += 1
+            if Flaky.calls == 1:
+                raise RuntimeError("malformed function call")
+            return ToolRunResult(text="Ready.")
+
+    client = ApiClient(ACTOR, app=stand_in_api([]))
+    try:
+        turn = await ApiAgent(Flaky(), {}).run(client, "tea 450")
+    finally:
+        await client.close()
+    assert turn.reply == "Ready." and Flaky.calls == 2
+
+
+async def test_no_words_after_a_lookup_gets_one_more_ask_for_the_answer() -> None:
+    model = FakeToolCallingProvider([[("list_projects", {})], ""])
+    service, sent = _service(model)
+    answered = FakeToolCallingProvider(["Cement stock is 0 at Main block."])
+
+    class Two:
+        n = 0
+
+        async def run_tools(self, *a: Any, **k: Any):  # noqa: ANN204
+            Two.n += 1
+            return await (model if Two.n == 1 else answered).run_tools(*a, **k)
+
+    service._agent._provider = Two()
+    await service.handle(_message("cement stock ethra und?"), CTX)
+    assert sent[-1].text == "Cement stock is 0 at Main block."
+    assert answered.last_messages[-1].text == "(answer my message now, in words)"
+
+
+async def test_double_star_bold_is_whatsapp_bold() -> None:
+    service, sent = _service(FakeToolCallingProvider(["Tap **Save** below."]))
+    await service.handle(_message("hi"), CTX)
+    assert sent[-1].text == "Tap *Save* below."
