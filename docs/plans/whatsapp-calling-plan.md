@@ -2,7 +2,7 @@
 
 > Asked by Ilan, 1 Nov 2026: *"Sarvam as main. Mesiri gets calls. Users mainly ask questions, or ask it to send a
 > PDF in chat: inventory, stock, workforce, anything like that."*
-> Tracker: [WA-118](V1_TRACKER.md) (request log [23]). Status: **step 0 done 2 Nov (facts in [ADR-whatsapp-calling.md](../architecture/ADR-whatsapp-calling.md)); nothing built.** Next: step 1, which needs Ilan's approval (section 5).
+> Tracker: [WA-118](V1_TRACKER.md) (request log [23]). Status: **step 0 done 2 Nov (facts in [ADR-whatsapp-calling.md](../architecture/ADR-whatsapp-calling.md)); nothing built.** Step 1 code is ready ([spike](../../spikes/whatsapp_call_echo/README.md)); it needs the server steps and a real call.
 > Governing process: the root [CLAUDE.md](../../CLAUDE.md) (phases, verification, `main` only, phase reports).
 
 ## 1. What the user gets
@@ -113,7 +113,7 @@ webhooks, whether the VPS needs TURN, reply speed, Malayalam and Manglish qualit
 | Step | What | Done when |
 | --- | --- | --- |
 | 0 | **Done 2 Nov.** Read the docs, fix this plan, record the facts in the ADR | every open question answered or marked "not available" |
-| 1 | **Spike, off production**: answer a real test call on a Meta test number (handshake + echo the audio back), on the VPS so the firewall is part of the test. Compare Pipecat with plain `aiortc`. Calling is off by default on test numbers, and the test number needs its calls routed to the spike without touching the live number | you hear yourself on WhatsApp; `calls` webhook delivery, TURN need and CPU per call recorded |
+| 1 | **Spike on the live number (Ilan, 2 Nov: use our number, not Meta's test number)**: answer a real call from an allow-listed phone (handshake + echo the audio back), on the VPS so the firewall is part of the test. The live webhook copies only `calls` events to the spike, while `WHATSAPP_CALLS_FORWARD_URL` is set; other callers ring out. Pipecat first; plain `aiortc` only if it fails | you hear yourself on WhatsApp; `calls` webhook delivery, TURN need and CPU per call recorded |
 | 2 | Sarvam in the loop: speech → text → a real read answer from the agent → speech, still on the spike | a Malayalam question gets a spoken Malayalam line, latency measured per stage including the agent |
 | 3 | Choose v2 agent or API agent (WA-121) on step 2's speed, then the voice skill: that agent, read tools only, short speakable answers, `send_as` to the chat; `evals.yaml` with real questions (stock, workers, DPR, workforce PDF) and guards ("10 bag cement vannu" is not saved on a call) | evals pass on fakes; live run on the real model |
 | 4 | Webhook + call service in the app, behind `calls_enabled` (off), systemd unit, health check, logs to `inbound_messages` | deploy with the switch off changes nothing |
@@ -150,6 +150,6 @@ call service unit; revert the commits. No data migration is planned (settings ke
 
 ## 10. Starting prompt for step 1
 
-> Read `docs/plans/whatsapp-calling-plan.md`, `docs/architecture/ADR-whatsapp-calling.md` and `CLAUDE.md`. Ilan has
-> approved the VPS UDP ports. Do step 1 on a Meta test number, off production: answer a call and echo the audio back.
-> Record webhook delivery, TURN need and CPU per call in the ADR. Then stop and show me what you found before step 2.
+> Read `docs/plans/whatsapp-calling-plan.md`, `docs/architecture/ADR-whatsapp-calling.md` and
+> `spikes/whatsapp_call_echo/README.md`. Ilan has run the server steps and made a test call. Read the spike's log, record
+> webhook delivery, TURN need and CPU per call in the ADR, then stop and show me what you found before step 2.

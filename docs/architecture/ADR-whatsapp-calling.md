@@ -19,6 +19,21 @@ been answered yet, so none of it is proven on a real call.
 | Answers | v2 agent, read tools only, for now | The API agent (WA-121) has no company on it. Revisit before step 3; see Open questions |
 | Files in chat | Existing `send_as`, during or after the call | A call opens the 24-hour window, even if we do not accept it |
 
+## Step 1 spike (2 Nov)
+
+Ilan chose the live number over Meta's test number. So the spike must not take over the webhook, which also carries every
+customer message. `ingress/calls_forward.py` copies only `calls` events to the spike, with Meta's body and signature,
+when `WHATSAPP_CALLS_FORWARD_URL` is set. It does not delay or fail the webhook. The spike answers allow-listed callers
+only. Tested so far: a simulated Meta peer on one machine did the full handshake and heard its audio echoed through Pipecat.
+**No real call yet.**
+
+Found while building it:
+
+- `aioice` binds random UDP ports and has no setting for a range. The spike wraps the event loop's bind to stay in
+  40000-40099, so the firewall opens 100 ports, not the whole ephemeral range.
+- Pipecat's models require `from` and the profile name, which Meta can omit. The spike fills both from `contacts[]`.
+- Pipecat's `WhatsAppApi.BASE_URL` is overridden to `v25.0`.
+
 ## How a call runs
 
 1. Meta posts a `calls` change with `event: "connect"`. Call id: `calls[].id`. Caller: `contacts[].wa_id`. Do not use
