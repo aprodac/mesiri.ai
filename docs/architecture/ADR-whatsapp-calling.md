@@ -28,8 +28,9 @@ only.
 
 **First real call, 2 Nov 2026 (Ilan's phone to the live number, spike on the VPS): worked; he heard himself.** So `calls`
 webhooks do reach an app shown as "In development", the Pipecat path works with Meta, and audio passed the firewall with no
-TURN server for that one call. Connect time and CPU per call are not recorded yet. One phone on one network; TURN may still
-be needed for other networks.
+TURN server for that one call. One phone on one network; TURN may still be needed for other networks. CPU: 11% of one core on
+average, 15.8% at peak, for echo only, and the average includes idle time because the spike missed the hang-up (fixed after
+this call). The log shows Meta's `terminate` about 12 s after audio connected.
 
 Found while building it:
 

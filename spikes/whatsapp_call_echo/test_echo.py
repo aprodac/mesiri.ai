@@ -111,6 +111,11 @@ async def test_udp_ports_stay_in_range() -> None:
     transport.close()
 
 
+async def terminated(actions: list[str]) -> None:
+    while "terminate" not in actions:
+        await asyncio.sleep(0.1)
+
+
 @pytest.mark.asyncio
 async def test_a_call_is_answered_and_the_caller_hears_themselves(monkeypatch) -> None:
     actions: list[str] = []
@@ -130,7 +135,7 @@ async def test_a_call_is_answered_and_the_caller_hears_themselves(monkeypatch) -
 
     monkeypatch.setattr(echo.WhatsAppApi, "answer_call_to_whatsapp", fake_graph)
     monkeypatch.setattr(echo.WhatsAppApi, "terminate_call_to_whatsapp", fake_terminate)
-    monkeypatch.setattr(echo, "MAX_CALL_SECONDS", 6)
+    monkeypatch.setattr(echo, "MAX_CALL_SECONDS", 60)
 
     meta.addTrack(Tone())
     heard = asyncio.get_running_loop().create_future()
@@ -157,7 +162,15 @@ async def test_a_call_is_answered_and_the_caller_hears_themselves(monkeypatch) -
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as client:
                 assert (await client.post("/calls", content=body, headers=headers)).status_code == 200
                 assert await asyncio.wait_for(heard, 15)
-            await asyncio.sleep(7)
+
+                # The caller hangs up: Meta says so, and the spike must not sit until its cap.
+                hang_up = connect_payload("")
+                call = hang_up["entry"][0]["changes"][0]["value"]["calls"][0]
+                call.update(event="terminate", status="COMPLETED", duration=9)
+                call.pop("session")
+                body, headers = signed(hang_up)
+                assert (await client.post("/calls", content=body, headers=headers)).status_code == 200
+                await asyncio.wait_for(terminated(actions), 8)
     finally:
         await meta.close()
 
