@@ -137,27 +137,50 @@ async def _seed(db: Any) -> dict[str, str]:
 
 
 async def _run_api(text: str, provider: Any, app: Any, company: dict[str, str]) -> dict[str, Any]:
-    from agent_api.agent import ApiAgent
-    from agent_api.client import Actor, ApiClient
-    from agent_api.tools import build_tools
-    from agent_api.whatsapp import MAX_STEPS
+    """Through v3's WhatsApp layer (facts up front, ready list, buttons), as a message would go."""
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
 
-    recording_calls: list[str] = []
-    client = ApiClient(Actor(company["user"], company["org"], "ADMIN", "Ravi"), app=app)
+    from agent_api import whatsapp as wa
+    from mesiri.infrastructure.redis.client import FakeRedis
+    from mesiri_contracts.assistant.enums import InputModality
+    from mesiri_contracts.assistant.normalized_message import NormalizedMessage, SenderInfo
+
+    traced: dict[str, Any] = {}
+
+    class _Trace:
+        async def log_stage(self, **kw: Any) -> None:
+            traced.update(kw["stage_payload"])
+
+    class _Log:
+        async def log_reply(self, **_: Any) -> None: ...
+        async def mark_completed(self, **_: Any) -> None: ...
+
+    sent: list[Any] = []
+
+    async def send(spec: Any, wa_id: str) -> None:
+        sent.append(spec)
+
+    ctx = SimpleNamespace(
+        user_id=company["user"], organization_id=company["org"], role="ADMIN", full_name="Ravi",
+        timezone="Asia/Kolkata", projects=[SimpleNamespace(id=company["project"], name="Project Alpha")],
+        sites=[SimpleNamespace(id=company["site"], name="Site A1", project_id=company["project"])],
+    )
+    service = wa.ApiWhatsApp(provider=provider, database=None, redis=FakeRedis(), send=send, transcribe=None,
+                             message_logger=_Log(), trace_logger=_Trace(), app=app)
+    message = NormalizedMessage(message_id=f"wamid.cmp.{uuid.uuid4().hex[:6]}", sender=SenderInfo(wa_id="919800000000"),
+                                timestamp=datetime.now(UTC), modality=InputModality.TEXT, text=text)
     started = time.perf_counter()
     try:
-        turn = await ApiAgent(provider, build_tools(app.openapi()), max_steps=MAX_STEPS).run(
-            client, text, sender_name="Ravi", correlation_id="cor_cmp_api")
-        reply, error = turn.reply, ""
-        would_save = [e.summary for e in turn.pending]
-        recording_calls = [c["tool"] for c in turn.calls]
+        await service.handle(message, ctx)
+        reply = sent[-1].text if sent else ""
+        buttons = [b.title for b in (sent[-1].buttons or ())] if sent else []
+        error = str(traced.get("error") or "")
     except Exception as exc:  # noqa: BLE001
-        reply, error, would_save = "", f"{type(exc).__name__}: {exc}"[:200], []
-    finally:
-        await client.close()
+        reply, buttons, error = "", [], f"{type(exc).__name__}: {exc}"[:200]
     return {
-        "reply": reply, "buttons": ["Save", "Cancel"] if would_save else [], "error": error,
-        "seconds": round(time.perf_counter() - started, 1), "would_save": would_save, "tools": recording_calls,
+        "reply": reply, "buttons": buttons, "error": error, "seconds": round(time.perf_counter() - started, 1),
+        "would_save": list(traced.get("pending") or []), "tools": [c["tool"] for c in traced.get("calls") or []],
     }
 
 

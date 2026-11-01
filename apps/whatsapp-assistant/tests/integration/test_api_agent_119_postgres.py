@@ -297,3 +297,61 @@ async def test_the_new_endpoints_refuse_another_companys_site(database: Postgres
         await client.close()
     assert att.status in (403, 404), att.body
     assert mixed.status == 404, mixed.body  # a site of another project / company
+
+
+async def _photo_arrived(db: PostgresDatabase, org: str, key: str) -> None:
+    async with db.transaction() as conn:
+        await conn.execute(sa.text(
+            "INSERT INTO inbound_messages (id, correlation_id, sender_wa_id, message_type, raw_payload, dedup_key, "
+            "media_object_key, organization_id) VALUES (:id, :cor, '919800000000', 'image', CAST('{}' AS json), "
+            ":dedup, :key, :org)"), {"id": uuid.uuid4(), "cor": f"cor_{uuid.uuid4().hex[:8]}",
+                                     "dedup": uuid.uuid4().hex, "key": key, "org": org})
+
+
+async def test_a_bill_photo_is_attached_to_the_expense_and_another_companys_is_refused(
+    database: PostgresDatabase,
+) -> None:
+    """WA-124: POST /expenses takes the bill photo, only one this company's WhatsApp received."""
+    acme = await _company(database, "Acme Builders")
+    other = await _company(database, "Other Co")
+    mine, theirs = f"media/wamid.{uuid.uuid4().hex[:6]}/m1", f"media/wamid.{uuid.uuid4().hex[:6]}/m2"
+    await _photo_arrived(database, acme["org"], mine)
+    await _photo_arrived(database, other["org"], theirs)
+    today = dt.date.today().isoformat()
+    body = {"project_id": acme["project"], "site_id": acme["site"], "amount": 1840, "occurred_date": today,
+            "vendor_text": "Sri Hardwares", "category_text": "Hardware", "source": "whatsapp"}
+    client = ApiClient(_actor(acme), app=build_api_app(database))
+    try:
+        ok = await client.call("POST", "/expenses", json={**body, "media_object_key": mine},
+                               idempotency_key=new_idempotency_key())
+        stolen = await client.call("POST", "/expenses", json={**body, "media_object_key": theirs},
+                                   idempotency_key=new_idempotency_key())
+    finally:
+        await client.close()
+    assert ok.ok, ok.body
+    assert stolen.status == 404, stolen.body
+    async with database.transaction() as conn:
+        keys = (await conn.execute(sa.text(
+            "SELECT a.media_object_key FROM expense_attachments a JOIN expenses e ON e.id = a.expense_id "
+            "WHERE e.organization_id = :o"), {"o": acme["org"]})).scalars().all()
+    assert keys == [mine]
+
+
+async def test_three_days_of_memory_in_the_day_store(database: PostgresDatabase) -> None:
+    """WA-124: v3's memory in the same Postgres day store as v2-on-ADK, its own app name."""
+    pytest.importorskip("google.adk")
+    from agent_api.memory import APP_NAME, DayMemory
+    from agent_v2.adk.memory import PostgresSessionService
+
+    acme = await _company(database, "Acme Builders")
+    ctx = SimpleNamespace(user_id=acme["user"], organization_id=acme["org"], timezone="Asia/Kolkata")
+    memory = DayMemory(PostgresSessionService(database), FakeRedis())
+    await memory.remember(ctx, "50 bag cement vannu", "Ready: 50 bags cement.")
+    await memory.remember(ctx, "ok save", "Saved.")
+    texts = [m.text for m in await memory.load(ctx)]
+    assert texts == ["50 bag cement vannu", "Ready: 50 bags cement.", "ok save", "Saved."]
+    async with database.transaction() as conn:
+        apps = (await conn.execute(sa.text(
+            "SELECT DISTINCT app_name FROM assistant_sessions WHERE organization_id = :o"),
+            {"o": acme["org"]})).scalars().all()
+    assert apps == [APP_NAME]

@@ -73,9 +73,22 @@ class ApiTurn:
     saved: list[WriteResult] = field(default_factory=list)
     calls: list[dict[str, Any]] = field(default_factory=list)
     stop_reason: str = "answered"
+    #: A question the model asked with ``ask``: its options become buttons (one tap).
+    question: str = ""
+    options: list[str] = field(default_factory=list)
 
 
 SAVE_READY = "save_ready_entries"
+ASK = "ask"
+#: Body field the code fills with the photo of this message (a bill), never the model.
+PHOTO_FIELD = "media_object_key"
+_ASK_TOOL = ToolSpec(name=ASK, description=(
+    "Ask the person ONE short question you cannot work out yourself. With options (2-3 short "
+    "choices) they answer with one tap. Put the question in your reply too."), parameters={
+    "type": "object", "required": ["question"],
+    "properties": {"question": {"type": "string"},
+                   "options": {"type": "array", "items": {"type": "string"}, "description": "2-3 short choices"}},
+})
 DROP_READY = "drop_ready_entries"
 _NUMBERS = {
     "type": "object",
@@ -103,9 +116,12 @@ class ApiAgent:
         #: The control-panel route the provider resolves the model by ("api_agent").
         self._capability = capability
 
-    def system_prompt(self, *, sender_name: str, today: dt.date, ready: list[PendingWrite] | None = None) -> str:
+    def system_prompt(self, *, sender_name: str, today: dt.date, ready: list[PendingWrite] | None = None,
+                      facts: str = "") -> str:
         who = f"You are talking to {sender_name}. " if sender_name else ""
         prompt = f"{self._sop}\n{who}Today is {today.isoformat()} ({today.strftime('%A')})."
+        if facts:
+            prompt += f"\n\n{facts}"
         if ready:
             listed = "\n".join(f"{i}. {e.summary}" for i, e in enumerate(ready, 1))
             prompt += f"\n\nReady, waiting for the person's confirmation (not saved):\n{listed}"
@@ -113,17 +129,26 @@ class ApiAgent:
 
     async def run(self, client: ApiClient, text: str, *, history: list[ChatMessage] | None = None,
                   ready: list[PendingWrite] | None = None, sender_name: str = "",
-                  timezone: str = "Asia/Kolkata", correlation_id: str | None = None) -> ApiTurn:
+                  timezone: str = "Asia/Kolkata", correlation_id: str | None = None,
+                  facts: str = "", photo_key: str | None = None) -> ApiTurn:
+        """``facts``: what the agent starts from (projects, sites, materials, units), read
+        before the model runs. ``photo_key``: the photo this message carried; a write that
+        takes a photo (an expense) gets it attached by the code."""
         today = dt.datetime.now(ZoneInfo(timezone or "Asia/Kolkata")).date()
         waiting: list[PendingWrite | None] = list(ready or [])  # None = saved or dropped this turn
         new: list[PendingWrite] = []
         saved: list[WriteResult] = []
+        asked: dict[str, Any] = {}
 
         def chosen(arguments: dict) -> list[int]:
             numbers = arguments.get("numbers") or range(1, len(waiting) + 1)
             return [n for n in (int(x) for x in numbers) if 1 <= n <= len(waiting) and waiting[n - 1] is not None]
 
         async def handler(name: str, arguments: dict) -> ToolOutcome:
+            if name == ASK:
+                asked["question"] = str(arguments.get("question") or "").strip()
+                asked["options"] = [str(o).strip()[:20] for o in (arguments.get("options") or []) if str(o).strip()][:3]
+                return ToolOutcome(content={"status": "the options are shown as buttons under your reply"})
             if name == SAVE_READY and waiting:
                 numbers = chosen(arguments)
                 results = await confirm(client, [waiting[n - 1] for n in numbers])  # type: ignore[misc]
@@ -150,6 +175,8 @@ class ApiAgent:
             params = {q: arguments[q] for q in tool.query_params if arguments.get(q) not in (None, "")}
             body = {f: arguments[f] for f in tool.body_fields if f in arguments}
             body.update(dict(tool.fixed))
+            if photo_key and tool.is_write and PHOTO_FIELD in tool.hidden and PHOTO_FIELD not in body:
+                body[PHOTO_FIELD] = photo_key
             if tool.is_write:
                 entry = PendingWrite(
                     tool=name, method=tool.method, path=path, params=params, body=body,
@@ -167,9 +194,9 @@ class ApiAgent:
                 content = content[:READ_LIMIT] + " ...(cut)"
             return ToolOutcome(content={"status": response.status, "result": content})
 
-        specs = [t.spec for t in self._tools.values()] + (list(_READY_TOOLS) if waiting else [])
+        specs = [t.spec for t in self._tools.values()] + [_ASK_TOOL] + (list(_READY_TOOLS) if waiting else [])
         result = await self._provider.run_tools(
-            self.system_prompt(sender_name=sender_name, today=today, ready=list(ready or [])),
+            self.system_prompt(sender_name=sender_name, today=today, ready=list(ready or []), facts=facts),
             [*(history or []), ChatMessage(role="user", text=text)],
             specs,
             handler,
@@ -182,7 +209,8 @@ class ApiAgent:
                  for c in result.calls]
         still = [e for e in waiting if e is not None]
         return ApiTurn(reply=(result.text or "").strip(), pending=still + new, saved=saved, calls=calls,
-                       stop_reason=result.stop_reason)
+                       stop_reason=result.stop_reason, question=asked.get("question", ""),
+                       options=asked.get("options", []))
 
 
 def _detail(body: Any) -> str:

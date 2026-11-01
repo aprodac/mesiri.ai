@@ -89,6 +89,34 @@ and severity, weather and site working (full / half / none), hours lost (0-24), 
 movement reasons are shown as `enum`s in the OpenAPI schema. Validation is unchanged. The dashboard's
 API docs and the agent both see the choices instead of guessing.
 
+## Fast, few taps, three days of memory (WA-124)
+
+Asked by Ilan, 1 Nov: "fewest clicks for the user" (a bill used to take: is it a bill? -> confirm ->
+account -> new vendor), "1 day memory always available, fast", "the past 2 days also".
+
+- **Facts up front.** Before the model runs, `whatsapp._facts` gives it the sender's projects and
+  sites (from the resolved sender; one site -> "never ask which site") and the company's materials
+  and units (read through the API as the sender, in parallel, cached 5 minutes per company). It no
+  longer spends rounds looking these up. The compare run of 1 Nov showed 2-4 lookups per message
+  and "which site?" with one site.
+- **One tap.** Everything prepared goes into one ready list with ONE Save. A question the model
+  must ask goes through `ask` with 2-3 options, shown as buttons; a tap is the answer (ids
+  `apiag:opt:<n>`, the button's text goes to the model). The SOP's first rule is the fewest taps:
+  work things out (the only site, today, the site used most recently), vendor and category as text
+  (the API matches or creates them: no separate "new vendor" step), never confirm what the ready
+  list already shows.
+- **Bill photos.** A photo or document is read by the existing vision step
+  (`pipeline.describe_media`) and goes to the model as words; the model prepares the expense; the
+  code attaches the photo (`media_object_key`, hidden from the model). `POST /expenses` now takes
+  `media_object_key`, accepted only when an inbound WhatsApp message of the same company carried it
+  (a key names no company). A bill = one Save tap.
+- **Memory: today and the two days before** (`memory.DayMemory`): the same Postgres day store as
+  v2-on-ADK (`assistant_sessions`, migration 0496), app name `mesiri_api`. Today in full (120
+  messages), the two days before their last 30 each, marked with their day. Read in parallel before
+  the model runs; written after the reply is sent. Without google-adk: the same per day in Redis.
+- **Wording.** SOP: "ready", never "saved / recorded / njan record cheythu / daal diya" before
+  Save; reply in their language and their script (Manglish stays in Latin letters).
+
 ## Safety
 
 - **Nothing is written without the person's confirmation.** A write tool only records the entry
@@ -112,7 +140,7 @@ are ordinary dashboard records.
 1. **Measure it**: real messages and voice-note transcripts from the test companies, through the
    API agent and through v2, same checks (`agent_v2/replay/checks.py`), on Flash and on Pro. Needs a
    working Gemini key (WA-111).
-2. Photos and documents (bills, attendance sheets) stay on the journey's existing path.
+2. Attendance-sheet photos: read as words, but no attendance-sheet parsing beyond what the vision step says.
 3. **Gaps the API has and the assistant's path covers**: material aliases in `search_materials`
    (the API searches names), unit conversion asked in words, duplicate-delivery warning, the morning
    site question. Found by step 1, fixed in the backend so the dashboard gets them too.

@@ -442,6 +442,8 @@ def build_message_handlers(
                 spec, wa, send_text=sender.send_text, send_list=sender.send_list, send_button=sender.send_button
             ),
             transcribe=pipeline.transcribe_voice, message_logger=message_logger, trace_logger=trace_logger,
+            # WA-124: bill photos read by the vision step; today + two days of memory in the day store.
+            describe=pipeline.describe_media, sessions=conversation_sessions,
         ))
         return _api_agent[0]
 
@@ -1573,8 +1575,8 @@ def build_message_handlers(
             await org_settings_query.enabled_modules(organization_id=str(ctx.organization_id))
         )
 
-        # WA-119: a company on the API agent: its text, voice and Save / Cancel taps are the
-        # API agent's (a photo or document carries on below, as before).
+        # WA-119 / WA-124: a company on the API agent: its text, voice, photos, documents and its
+        # own button taps are the API agent's.
         # Read once here and reused for the agent below (no second settings read).
         assistant_mode = await _assistant_mode(ctx) if material_db is not None else None
         if assistant_mode == "api":
