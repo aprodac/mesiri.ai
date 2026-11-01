@@ -9,6 +9,7 @@ go through ``httpx.ASGITransport`` into the same FastAPI app, no network).
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from dataclasses import dataclass
 from datetime import timedelta
@@ -74,7 +75,11 @@ class ApiClient:
     async def call(self, method: str, path: str, *, params: dict[str, Any] | None = None,
                    json: dict[str, Any] | None = None, idempotency_key: str | None = None) -> ApiResponse:
         headers = {"Idempotency-Key": idempotency_key} if idempotency_key else None
-        response = await self._http.request(method, path, params=params or None, json=json, headers=headers)
+        # Its own task = its own copy of the context: the company the API binds for the
+        # request (bind_tenant in get_auth_context) never leaks back into the caller.
+        response = await asyncio.create_task(
+            self._http.request(method, path, params=params or None, json=json, headers=headers)
+        )
         try:
             body: Any = response.json()
         except ValueError:

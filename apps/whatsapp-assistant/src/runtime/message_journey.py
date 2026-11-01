@@ -184,6 +184,8 @@ def build_message_handlers(
     shared_transaction: Any | None = None,
     day_facts: Any | None = None,
     group_chat: Any | None = None,
+    material_db: Any | None = None,
+    redis_client: Any | None = None,
 ) -> tuple[Any, Any]:
     """Build the `on_normalized`/`on_message_claimed` callbacks WhatsAppReceiver
     invokes for every inbound message, closing over the already-built services
@@ -423,6 +425,26 @@ def build_message_handlers(
             )
         except Exception:  # noqa: BLE001 -- ADK missing or broken: v2_adk companies get v2
             _log.warning("agent_v2.adk.unavailable", exc_info=True)
+    # WA-119: the API agent (assistant_mode "api"): one model + one SOP + the dashboard's
+    # API as tools. Built on first use, so nothing changes for a company not on it.
+    _api_agent: list[Any] = []
+
+    async def _api_agent_for():  # type: ignore[no-untyped-def]
+        if _api_agent:
+            return _api_agent[0]
+        if agent_provider is None or material_db is None or redis_client is None:
+            return None
+        from agent_api.whatsapp import ApiWhatsApp
+
+        _api_agent.append(ApiWhatsApp(
+            provider=agent_provider, database=material_db, redis=redis_client,
+            send=lambda spec, wa: send_reply_spec(
+                spec, wa, send_text=sender.send_text, send_list=sender.send_list, send_button=sender.send_button
+            ),
+            transcribe=pipeline.transcribe_voice, message_logger=message_logger, trace_logger=trace_logger,
+        ))
+        return _api_agent[0]
+
     #: Correlation ids whose reply ended on a question: the daily setup
     #: question must not pile a second one on top of it.
     _agent_parked: set[str] = set()
@@ -1550,6 +1572,18 @@ def build_message_handlers(
         workflow_registry.set_enabled_modules(
             await org_settings_query.enabled_modules(organization_id=str(ctx.organization_id))
         )
+
+        # WA-119: a company on the API agent: its text, voice and Save / Cancel taps are the
+        # API agent's (a photo or document carries on below, as before).
+        # Read once here and reused for the agent below (no second settings read).
+        assistant_mode = await _assistant_mode(ctx) if material_db is not None else None
+        if assistant_mode == "api":
+            api_agent = await _api_agent_for()
+            if api_agent is not None:
+                if message.modality in _PROCESSING_ACK_MODALITIES:
+                    _fire_processing_ack(message, wa_id)
+                if await api_agent.handle(message, ctx):
+                    return
 
         # Request [45]: a typed "undo" / "photo" / "skip" / option title / number
         # answering the choices on the last reply is the same as tapping it.
@@ -2991,7 +3025,8 @@ def build_message_handlers(
                 await message_logger.mark_completed(correlation_id=message.correlation_id)
                 return
             _fire_processing_ack(message, wa_id)
-            await _run_agent(message, ctx, category_hint, timer, assistant_mode=await _assistant_mode(ctx))
+            mode = assistant_mode if assistant_mode is not None else await _assistant_mode(ctx)
+            await _run_agent(message, ctx, category_hint, timer, assistant_mode=mode)
             return
 
         # Nothing the agent can read (an empty tap, an unknown kind of message).

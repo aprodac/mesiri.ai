@@ -14,15 +14,15 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from mesiri_ai.models import ChatMessage, ToolOutcome
+from mesiri_ai.models import ChatMessage, ToolOutcome, ToolSpec
 
 from .client import ApiClient, new_idempotency_key
-from .tools import SUMMARY_ARG, ApiTool
+from .tools import CONFIRM_ARG, ApiTool
 
 SOP = (Path(__file__).with_name("SOP.md")).read_text(encoding="utf-8")
 
@@ -44,6 +44,13 @@ class PendingWrite:
     summary: str
     idempotency_key: str
 
+    def to_json(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> PendingWrite:
+        return cls(**{k: data[k] for k in cls.__dataclass_fields__})
+
 
 @dataclass(frozen=True)
 class WriteResult:
@@ -59,31 +66,78 @@ class WriteResult:
 @dataclass
 class ApiTurn:
     reply: str
+    #: Entries waiting for the person's confirmation after this turn: the ones
+    #: still waiting from before (not saved or dropped) followed by the new ones.
     pending: list[PendingWrite] = field(default_factory=list)
+    #: Entries saved during this turn because the person said to (``save_ready_entries``).
+    saved: list[WriteResult] = field(default_factory=list)
     calls: list[dict[str, Any]] = field(default_factory=list)
     stop_reason: str = "answered"
 
 
+SAVE_READY = "save_ready_entries"
+DROP_READY = "drop_ready_entries"
+_NUMBERS = {
+    "type": "object",
+    "properties": {"numbers": {"type": "array", "items": {"type": "integer"},
+                               "description": "The entry numbers from the ready list; leave out for all."}},
+}
+_READY_TOOLS = (
+    ToolSpec(name=SAVE_READY, parameters=_NUMBERS, description=(
+        "Save entries from the ready list. Only when the person clearly says to save or confirm them.")),
+    ToolSpec(name=DROP_READY, parameters=_NUMBERS, description=(
+        "Remove entries from the ready list (the person cancels them, or they are being corrected: "
+        "drop the old one and prepare the corrected one).")),
+)
+
+
 class ApiAgent:
     def __init__(self, provider: Any, tools: dict[str, ApiTool], *, sop: str = SOP,
-                 max_steps: int = MAX_STEPS, timeout_seconds: float = TIMEOUT_SECONDS) -> None:
+                 max_steps: int = MAX_STEPS, timeout_seconds: float = TIMEOUT_SECONDS,
+                 capability: str | None = None) -> None:
         self._provider = provider
         self._tools = tools
         self._sop = sop
         self._max_steps = max_steps
         self._timeout = timeout_seconds
+        #: The control-panel route the provider resolves the model by ("api_agent").
+        self._capability = capability
 
-    def system_prompt(self, *, sender_name: str, today: dt.date) -> str:
+    def system_prompt(self, *, sender_name: str, today: dt.date, ready: list[PendingWrite] | None = None) -> str:
         who = f"You are talking to {sender_name}. " if sender_name else ""
-        return f"{self._sop}\n{who}Today is {today.isoformat()} ({today.strftime('%A')})."
+        prompt = f"{self._sop}\n{who}Today is {today.isoformat()} ({today.strftime('%A')})."
+        if ready:
+            listed = "\n".join(f"{i}. {e.summary}" for i, e in enumerate(ready, 1))
+            prompt += f"\n\nReady, waiting for the person's confirmation (not saved):\n{listed}"
+        return prompt
 
     async def run(self, client: ApiClient, text: str, *, history: list[ChatMessage] | None = None,
-                  sender_name: str = "", timezone: str = "Asia/Kolkata",
-                  correlation_id: str | None = None) -> ApiTurn:
-        today = dt.datetime.now(ZoneInfo(timezone)).date()
-        pending: list[PendingWrite] = []
+                  ready: list[PendingWrite] | None = None, sender_name: str = "",
+                  timezone: str = "Asia/Kolkata", correlation_id: str | None = None) -> ApiTurn:
+        today = dt.datetime.now(ZoneInfo(timezone or "Asia/Kolkata")).date()
+        waiting: list[PendingWrite | None] = list(ready or [])  # None = saved or dropped this turn
+        new: list[PendingWrite] = []
+        saved: list[WriteResult] = []
+
+        def chosen(arguments: dict) -> list[int]:
+            numbers = arguments.get("numbers") or range(1, len(waiting) + 1)
+            return [n for n in (int(x) for x in numbers) if 1 <= n <= len(waiting) and waiting[n - 1] is not None]
 
         async def handler(name: str, arguments: dict) -> ToolOutcome:
+            if name == SAVE_READY and waiting:
+                numbers = chosen(arguments)
+                results = await confirm(client, [waiting[n - 1] for n in numbers])  # type: ignore[misc]
+                saved.extend(results)
+                for n in numbers:
+                    waiting[n - 1] = None
+                return ToolOutcome(content={"results": [
+                    {"entry": n, "summary": r.pending.summary, "saved": r.ok,
+                     **({} if r.ok else {"refused": _detail(r.body)})} for n, r in zip(numbers, results, strict=True)]})
+            if name == DROP_READY and waiting:
+                numbers = chosen(arguments)
+                for n in numbers:
+                    waiting[n - 1] = None
+                return ToolOutcome(content={"dropped": numbers})
             tool = self._tools.get(name)
             if tool is None:
                 return ToolOutcome(content={"error": f"no tool named {name}"})
@@ -95,16 +149,16 @@ class ApiAgent:
                 path = path.replace("{" + p + "}", str(arguments[p]))
             params = {q: arguments[q] for q in tool.query_params if arguments.get(q) not in (None, "")}
             body = {f: arguments[f] for f in tool.body_fields if f in arguments}
+            body.update(dict(tool.fixed))
             if tool.is_write:
                 entry = PendingWrite(
                     tool=name, method=tool.method, path=path, params=params, body=body,
-                    summary=str(arguments.get(SUMMARY_ARG) or "").strip(),
+                    summary=str(arguments.get(CONFIRM_ARG) or "").strip(),
                     idempotency_key=new_idempotency_key(),
                 )
-                pending.append(entry)
+                new.append(entry)
                 return ToolOutcome(content={
                     "status": "ready, NOT saved",
-                    "entry": len(pending),
                     "note": "It saves when the person confirms. Do not say it is saved.",
                 })
             response = await client.call(tool.method, path, params=params)
@@ -113,19 +167,34 @@ class ApiAgent:
                 content = content[:READ_LIMIT] + " ...(cut)"
             return ToolOutcome(content={"status": response.status, "result": content})
 
+        specs = [t.spec for t in self._tools.values()] + (list(_READY_TOOLS) if waiting else [])
         result = await self._provider.run_tools(
-            self.system_prompt(sender_name=sender_name, today=today),
+            self.system_prompt(sender_name=sender_name, today=today, ready=list(ready or [])),
             [*(history or []), ChatMessage(role="user", text=text)],
-            [t.spec for t in self._tools.values()],
+            specs,
             handler,
             max_steps=self._max_steps,
             timeout_seconds=self._timeout,
             correlation_id=correlation_id,
+            **({"capability": self._capability} if self._capability else {}),
         )
         calls = [{"tool": c.name, "arguments": c.arguments, "result": c.outcome.content if c.outcome else None}
                  for c in result.calls]
-        return ApiTurn(reply=(result.text or "").strip(), pending=pending, calls=calls,
+        still = [e for e in waiting if e is not None]
+        return ApiTurn(reply=(result.text or "").strip(), pending=still + new, saved=saved, calls=calls,
                        stop_reason=result.stop_reason)
+
+
+def _detail(body: Any) -> str:
+    """The API's own reason for a refusal, short."""
+    if isinstance(body, dict):
+        detail = body.get("detail", body)
+        if isinstance(detail, dict):
+            detail = detail.get("message") or detail
+        if isinstance(detail, list):  # FastAPI validation errors
+            detail = "; ".join(str(d.get("msg", d)) if isinstance(d, dict) else str(d) for d in detail)
+        return str(detail)[:200]
+    return str(body)[:200]
 
 
 async def confirm(client: ApiClient, pending: list[PendingWrite]) -> list[WriteResult]:

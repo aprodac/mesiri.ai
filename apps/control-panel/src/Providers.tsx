@@ -112,6 +112,12 @@ const CAPABILITY_DEFS: {
     providers: [{ value: 'gemini', label: 'Gemini' }],
     models: { gemini: GEMINI_AGENT_MODELS },
   },
+  {
+    key: 'api_agent',
+    label: "WhatsApp API agent (companies on mode 'api' only)",
+    providers: [{ value: 'gemini', label: 'Gemini' }],
+    models: { gemini: GEMINI_AGENT_MODELS },
+  },
 ];
 
 function defaultModelForProvider(cap: string, pid: string): string {
@@ -311,6 +317,7 @@ export default function Providers() {
     translation: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
     agent: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
     agent_v2: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
+    api_agent: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
   });
 
   const [secretsInput, setSecretsInput] = useState<Record<string, { api_key: string; base_url: string }>>({

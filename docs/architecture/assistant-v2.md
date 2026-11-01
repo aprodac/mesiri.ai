@@ -199,7 +199,7 @@ counts as a wrong save.
 ## The switch and rollback
 
 Per company: `PUT /admin/organizations/{org_id}/settings` (platform admin) with `assistant_mode`
-= `classic` | `v2_shadow` | `v2` | `v2_adk`. **Rollback is instant:** set the company to `classic` (or
+= `classic` | `v2_shadow` | `v2` | `v2_adk` | `api` (the API agent, [assistant-api-agent.md](assistant-api-agent.md)). **Rollback is instant:** set the company to `classic` (or
 delete the setting). No data migration; no record is touched; code rollback is a revert.
 
 ## Retirement plan (module by module)

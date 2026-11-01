@@ -19,18 +19,24 @@ from typing import Any
 from mesiri_ai.models import ToolSpec
 
 #: Every write tool takes this extra argument: one line, in the person's own
-#: words, naming the change they are asked to confirm.
-SUMMARY_ARG = "summary"
+#: words, naming the change they are asked to confirm. (Not "summary": the
+#: issue API has a body field of that name.)
+CONFIRM_ARG = "confirm_line"
 
 
 @dataclass(frozen=True)
 class Allowed:
-    """One API route the agent may use, under a short name, with what it is for."""
+    """One API route the agent may use, under a short name, with what it is for.
+
+    ``hide``: body fields the model never sees (internal bookkeeping).
+    ``fixed``: body fields always sent with this value (e.g. ``source``)."""
 
     name: str
     method: str
     path: str
     description: str
+    hide: tuple[str, ...] = ()
+    fixed: tuple[tuple[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -45,51 +51,70 @@ class ApiTool:
     body_fields: tuple[str, ...]
     spec: ToolSpec
     required: tuple[str, ...] = field(default_factory=tuple)
+    fixed: tuple[tuple[str, Any], ...] = ()
 
     @property
     def is_write(self) -> bool:
         return self.method != "GET"
 
 
-# The materials pilot. Adding a module is adding its routes here.
+_WRITE = " Saved only after the person confirms."
+
+# Adding a module is adding its routes here (and its router to app.API_ROUTERS).
 ALLOWED: tuple[Allowed, ...] = (
+    # Projects and sites
     Allowed("list_projects", "GET", "/projects", "The projects this person can see."),
     Allowed("list_sites", "GET", "/projects/{project_id}/sites", "The sites of one project."),
+    # What happened (any module)
+    Allowed(
+        "day_summary", "GET", "/timeline/day-summary",
+        "What was reported on a day or date range, per site: work, labour, materials, issues, "
+        "conditions, and who reported. Use for 'what happened today' and 'did anyone report X'.",
+    ),
+    Allowed("timeline", "GET", "/timeline", "The detailed list of events (who reported what, when), filterable by type."),
+    # Materials
     Allowed(
         "search_materials", "GET", "/materials",
         "Find materials in the company's catalog by name (search). Gives each material's id and default unit.",
     ),
-    Allowed("list_units", "GET", "/materials/units-of-measure", "Units of measure (bag, kg, nos, ton, ...) and their ids."),
+    Allowed("list_units", "GET", "/materials/units-of-measure", "Units of measure (bags, kg, pieces, tons, ...) and their ids."),
     Allowed(
         "stock_levels", "GET", "/materials/inventory",
         "Current stock per site and material. Filter by project, site or material.",
     ),
     Allowed("stock_check", "GET", "/materials/stock-check", "Current stock of one material at one site."),
+    Allowed("list_receipts", "GET", "/materials/inflows", "Materials received: what, where, when, who recorded it."),
+    Allowed("list_usage", "GET", "/materials/outflows", "Materials used or issued: what, where, when, who recorded it."),
+    Allowed("record_receipt", "POST", "/materials/inflows", "Prepare a material receipt (material that arrived at a site)." + _WRITE),
+    Allowed("record_usage", "POST", "/materials/outflows", "Prepare a material usage (material used or issued at a site)." + _WRITE),
+    Allowed("record_transfer", "POST", "/materials/transfers", "Prepare a transfer of material from one site to another." + _WRITE),
+    # Labour (read only: the API has no attendance write yet)
+    Allowed("labour_attendance", "GET", "/labour/attendance", "Labour attendance reported: per site and date, which trades, how many, who reported."),
+    # Work and issues
+    Allowed("work_progress", "GET", "/progress/activities", "Work done / in progress per site, with dates and quantities."),
+    Allowed("list_issues", "GET", "/progress/issues", "Site issues (problems, delays), open or closed."),
+    Allowed("report_issue", "POST", "/progress/issues", "Prepare a site issue (a problem or delay at a site)." + _WRITE),
+    Allowed("resolve_issue", "POST", "/progress/issues/{issue_id}/resolve", "Prepare closing an issue as fixed." + _WRITE),
+    # Expenses
+    Allowed("list_expenses", "GET", "/expenses", "Expenses recorded, per project or site."),
+    Allowed("expense_categories", "GET", "/expenses/categories", "The company's expense categories and their ids."),
+    Allowed("money_accounts", "GET", "/finance/accounts", "The company's money accounts (petty cash, bank) and balances."),
     Allowed(
-        "list_receipts", "GET", "/materials/inflows",
-        "Materials received: who recorded what, where and when. Use for 'what came today'.",
+        "record_expense", "POST", "/expenses", "Prepare an expense (money spent)." + _WRITE,
+        hide=("source", "source_message_id", "correlation_id"), fixed=(("source", "whatsapp"),),
     ),
+    # Site day: weather and conditions, the DPR
+    Allowed("site_day", "GET", "/dpr/site-days/{site_id}", "One site's day: conditions (weather, hours lost), plan, what is reported."),
     Allowed(
-        "list_usage", "GET", "/materials/outflows",
-        "Materials used or issued: who recorded what, where and when.",
+        "set_site_conditions", "PATCH", "/dpr/site-days/{site_id}/conditions",
+        "Prepare a site's conditions for a day: weather, hours lost, whether the site worked, tomorrow's plan." + _WRITE,
     ),
-    Allowed(
-        "record_receipt", "POST", "/materials/inflows",
-        "Prepare a material receipt (material that arrived at a site). Saved only after the person confirms.",
-    ),
-    Allowed(
-        "record_usage", "POST", "/materials/outflows",
-        "Prepare a material usage (material used or issued at a site). Saved only after the person confirms.",
-    ),
-    Allowed(
-        "record_transfer", "POST", "/materials/transfers",
-        "Prepare a transfer of material from one site to another. Saved only after the person confirms.",
-    ),
+    Allowed("send_dpr", "POST", "/dpr/projects/{project_id}/send", "Prepare sending today's project DPR now." + _WRITE),
 )
 
 
 class ToolBuildError(RuntimeError):
-    """An allowed route is not in the API (renamed or removed)."""
+    """An allowed route is not in the API (renamed or removed), or clashes with the tool's own argument."""
 
 
 def build_tools(openapi: dict[str, Any], allowed: tuple[Allowed, ...] = ALLOWED) -> dict[str, ApiTool]:
@@ -100,6 +125,7 @@ def build_tools(openapi: dict[str, Any], allowed: tuple[Allowed, ...] = ALLOWED)
         operation = openapi.get("paths", {}).get(item.path, {}).get(item.method.lower())
         if operation is None:
             raise ToolBuildError(f"{item.method} {item.path} is not in the API")
+        hidden = set(item.hide) | {k for k, _ in item.fixed}
         properties: dict[str, Any] = {}
         required: list[str] = []
         path_params: list[str] = []
@@ -121,15 +147,19 @@ def build_tools(openapi: dict[str, Any], allowed: tuple[Allowed, ...] = ALLOWED)
         if body is not None:
             body = _clean(body, components)
             for name, schema in body.get("properties", {}).items():
+                if name in hidden:
+                    continue
                 properties[name] = schema
                 body_fields.append(name)
-            required.extend(n for n in body.get("required", []) if n not in required)
+            required.extend(n for n in body.get("required", []) if n not in required and n not in hidden)
         if item.method != "GET":
-            properties[SUMMARY_ARG] = {
+            if CONFIRM_ARG in properties:
+                raise ToolBuildError(f"{item.method} {item.path} has its own field named {CONFIRM_ARG}")
+            properties[CONFIRM_ARG] = {
                 "type": "string",
                 "description": "One line in the person's words naming this entry, shown when they confirm.",
             }
-            required.append(SUMMARY_ARG)
+            required.append(CONFIRM_ARG)
         parameters: dict[str, Any] = {"type": "object", "properties": properties}
         if required:
             parameters["required"] = required
@@ -142,6 +172,7 @@ def build_tools(openapi: dict[str, Any], allowed: tuple[Allowed, ...] = ALLOWED)
             body_fields=tuple(body_fields),
             spec=ToolSpec(name=item.name, description=item.description, parameters=parameters),
             required=tuple(required),
+            fixed=item.fixed,
         )
     return tools
 

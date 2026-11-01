@@ -168,6 +168,8 @@ async def get_ai_config(
         # "agent_v2" means it uses "agent"; shown here as the model it would use).
         "agent": {"provider_id": "gemini", "model": settings.gemini.model},
         "agent_v2": db_routes.get("agent") or {"provider_id": "gemini", "model": settings.gemini.model},
+        # WA-119: the API agent (assistant_mode "api"); unset it uses "agent", like agent_v2.
+        "api_agent": db_routes.get("agent") or {"provider_id": "gemini", "model": settings.gemini.model},
     }
 
     resolved_routing = {}

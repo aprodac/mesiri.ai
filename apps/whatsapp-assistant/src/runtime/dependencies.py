@@ -1035,6 +1035,10 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         drafts=PostgresDraftStore(material_db),
         # Request 185: v2-on-ADK conversation memory (used only by ``assistant_mode`` = "v2_adk").
         conversation_sessions=_conversation_sessions(material_db),
+        # WA-119: the API agent (``assistant_mode`` = "api") calls the dashboard's API on this pool
+        # and keeps each person's waiting entries and last turns in Redis.
+        material_db=material_db,
+        redis_client=redis_client,
         # Request 142 (B): one journal entry per Save; undo and change read it.
         journal=PostgresJournalStore(material_db),
         shared_transaction=material_db.shared_transaction,

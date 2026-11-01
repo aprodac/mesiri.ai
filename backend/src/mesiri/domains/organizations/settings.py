@@ -73,8 +73,13 @@ ASSISTANT_MODE_V2 = "v2"
 # Request 185: "v2_adk" is v2 run by Google ADK with the whole day's conversation kept
 # (agent_v2/adk). Where ADK is not available it reads as "v2".
 ASSISTANT_MODE_V2_ADK = "v2_adk"
+# WA-119: one model + one SOP + the dashboard's API as tools (apps/whatsapp-assistant/src/agent_api).
+ASSISTANT_MODE_API = "api"
 ASSISTANT_MODES: frozenset[str] = frozenset(
-    {ASSISTANT_MODE_CLASSIC, ASSISTANT_MODE_V2_SHADOW, ASSISTANT_MODE_V2, ASSISTANT_MODE_V2_MATERIALS, ASSISTANT_MODE_V2_ADK}
+    {
+        ASSISTANT_MODE_CLASSIC, ASSISTANT_MODE_V2_SHADOW, ASSISTANT_MODE_V2, ASSISTANT_MODE_V2_MATERIALS,
+        ASSISTANT_MODE_V2_ADK, ASSISTANT_MODE_API,
+    }
 )
 
 # Product modules a company can have switched on (V1 tracker BE-06). Each key
@@ -216,7 +221,8 @@ _SPECS: dict[str, SettingSpec] = {
             "'v2_shadow' (today's agent replies; the v2 materials agent runs after it, saves "
             "nothing and only logs what it would have proposed) or 'v2' (one agent reads every "
             "message and writes its own reply; 'v2_materials' is the same mode under its old "
-            "name). Changed by the Mesiri team only."
+            "name), or 'api' (WA-119: one model with one SOP using the dashboard's own API as its "
+            "tools; entries saved only on the person's confirmation). Changed by the Mesiri team only."
         ),
     ),
     BRANDING: SettingSpec(
