@@ -29,6 +29,7 @@ from mesiri.application.finance.transfer_handler import TransferMoneyHandler
 from mesiri.application.finance.transfer_resolution import PostgresTransferAccountResolver
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.domains.projects.router import get_auth_context
+from mesiri.domains.shared.idempotency import idempotency_uuid
 from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.repositories.expenses import (
@@ -846,7 +847,8 @@ async def transfer_money(
 ):
     """Transfer money between two money accounts in the organization."""
     cmd = TransferMoneyCommand(
-        idempotency_key=idempotency_key,
+        # Scoped by company: the idempotency_keys table is shared by all of them.
+        idempotency_key=idempotency_uuid(auth_context.organization_id, idempotency_key),
         organization_id=str(auth_context.organization_id),
         created_by=str(auth_context.user_id),
         created_by_role=auth_context.role,
@@ -891,7 +893,11 @@ async def reverse_transfer(
     if role_upper not in ("ADMIN", "FINANCE", "USER", "OWNER", "SUPER_ADMIN"):
         raise HTTPException(status_code=403, detail="Not authorized to reverse transfers")
 
-    ikey = idempotency_key or f"rev_rest_{transfer_id}_{uuid.uuid4().hex[:8]}"
+    ikey = (
+        idempotency_uuid(auth_context.organization_id, idempotency_key)
+        if idempotency_key
+        else f"rev_rest_{transfer_id}_{uuid.uuid4().hex[:8]}"
+    )
     cmd = ReverseTransactionCommand(
         idempotency_key=ikey,
         organization_id=str(auth_context.organization_id),

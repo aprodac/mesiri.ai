@@ -87,7 +87,8 @@ API docs and the agent both see the choices instead of guessing.
   company (`bind_tenant`), exactly as for a dashboard request.
 - **Only allowed routes.** A tool name not on `ALLOWED` is refused without a call.
 - **Repeated confirmation records once** (`Idempotency-Key`, supported by inflows, outflows and
-  transfers).
+  transfers). The API stores the key scoped by company (`idempotency_uuid(org, key)`, BE-52), so
+  two companies sending the same key never share a result.
 
 ## Switching a company on and off
 

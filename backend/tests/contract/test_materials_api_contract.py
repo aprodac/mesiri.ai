@@ -1585,3 +1585,73 @@ async def test_catalog_list_carries_the_stock_unit_id(client, admin_ctx):
     resp = await client.get("/materials", headers=_auth(admin_ctx["token"]))
     [item] = [m for m in resp.json()["items"] if m["name"] == "Cement UNIT"]
     assert item["default_unit_id"] == bags_id
+
+
+async def _second_company_ctx(test_engine) -> dict:
+    """A separate organization with its own admin, project and site."""
+    org_id = uuid.uuid4()
+    async with test_engine.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "INSERT INTO organizations (id, name, deployment_type, db_route, status, "
+                "created_at, updated_at) VALUES (:id, 'Company B', 'local', 'default', 'active', now(), now())"
+            ),
+            {"id": org_id},
+        )
+    user_id = await _make_user(test_engine, org_id, "admin")
+    project_id = await _make_project(test_engine, org_id)
+    site_id = await _make_site(test_engine, org_id, project_id)
+    token = _token(user_id, org_id, "admin")
+    return {"user_id": user_id, "project_id": project_id, "site_id": site_id, "token": token}
+
+
+def _inflow(ctx: dict, material_id: str, unit_id: str, quantity: str) -> dict:
+    return {
+        "project_id": str(ctx["project_id"]),
+        "site_id": str(ctx["site_id"]),
+        "material_id": material_id,
+        "unit_id": unit_id,
+        "quantity": quantity,
+        "movement_reason": "RECEIVED",
+        "occurred_date": str(datetime.date.today()),
+    }
+
+
+async def test_idempotency_key_is_scoped_to_the_company(client, test_engine, admin_ctx):
+    """idempotency_keys is one table for every company. Company B sending a key
+    company A already used must record B's own delivery -- never be handed A's
+    stored result (A's row id, A's quantity) with B's write silently skipped."""
+    key = f"shared-{uuid.uuid4()}"
+    bags_a = await _bags_unit_id(client, admin_ctx["token"])
+    cement_a = await _make_material(client, admin_ctx["token"], "Cement SCOPE", bags_a)
+    a_first = await client.post(
+        "/materials/inflows",
+        json=_inflow(admin_ctx, cement_a, bags_a, "40"),
+        headers={**_auth(admin_ctx["token"]), "Idempotency-Key": key},
+    )
+    assert a_first.status_code == 201, a_first.text
+
+    b_ctx = await _second_company_ctx(test_engine)
+    bags_b = await _bags_unit_id(client, b_ctx["token"])
+    cement_b = await _make_material(client, b_ctx["token"], "Cement SCOPE", bags_b)
+    b_resp = await client.post(
+        "/materials/inflows",
+        json=_inflow(b_ctx, cement_b, bags_b, "25"),
+        headers={**_auth(b_ctx["token"]), "Idempotency-Key": key},
+    )
+
+    assert b_resp.status_code == 201, b_resp.text
+    assert b_resp.json().get("status") != "replayed"
+    assert b_resp.json()["id"] != a_first.json()["id"]
+    assert await _stock(client, b_ctx, cement_b) == Decimal("25")
+    assert await _stock(client, admin_ctx, cement_a) == Decimal("40")
+
+    # The same company retrying still replays its own first result.
+    a_retry = await client.post(
+        "/materials/inflows",
+        json=_inflow(admin_ctx, cement_a, bags_a, "40"),
+        headers={**_auth(admin_ctx["token"]), "Idempotency-Key": key},
+    )
+    assert a_retry.json()["status"] == "replayed"
+    assert a_retry.json()["id"] == a_first.json()["id"]
+    assert await _stock(client, admin_ctx, cement_a) == Decimal("40")

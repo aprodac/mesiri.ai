@@ -40,6 +40,7 @@ from mesiri.authorization.context import AuthorizationContext
 from mesiri.authorization.roles import may_view_expenses
 from mesiri.domains.expenses.responses import ExpenseResponse, RecordExpenseResponse
 from mesiri.domains.projects.router import get_auth_context
+from mesiri.domains.shared.idempotency import idempotency_uuid
 from mesiri.domains.shared.media import assert_downloadable_url
 from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.objectstorage.dependency import get_object_storage
@@ -166,7 +167,8 @@ async def record_expense(
     _authorize_write(auth_context, body.project_id, body.site_id)
 
     cmd = RecordExpenseCommand(
-        idempotency_key=idempotency_key,
+        # Scoped by company: the idempotency_keys table is shared by all of them.
+        idempotency_key=idempotency_uuid(auth_context.organization_id, idempotency_key),
         organization_id=str(auth_context.organization_id),
         project_id=str(body.project_id),
         site_id=str(body.site_id) if body.site_id else None,
@@ -612,7 +614,11 @@ async def reverse_expense(
             status_code=403, detail="Not authorized to void expenses"
         )
 
-    ikey = idempotency_key or f"rev_rest_{expense_id}_{uuid.uuid4().hex[:8]}"
+    ikey = (
+        idempotency_uuid(auth_context.organization_id, idempotency_key)
+        if idempotency_key
+        else f"rev_rest_{expense_id}_{uuid.uuid4().hex[:8]}"
+    )
     cmd = ReverseTransactionCommand(
         idempotency_key=ikey,
         organization_id=str(auth_context.organization_id),

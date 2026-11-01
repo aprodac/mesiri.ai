@@ -49,6 +49,7 @@ from mesiri.domains.materials.validation import (
     role_can_adjust,
 )
 from mesiri.domains.projects.router import get_auth_context
+from mesiri.domains.shared.idempotency import idempotency_uuid
 from mesiri.domains.shared.media import assert_downloadable_url
 from mesiri.infrastructure.objectstorage.dependency import get_object_storage
 from mesiri.infrastructure.postgres.dependency import get_db_conn
@@ -134,9 +135,14 @@ async def _publish_outbox_event(
 
 
 async def _claim_idempotency_key(
-    conn: AsyncConnection, key: str, command_type: str
+    conn: AsyncConnection, organization_id: uuid.UUID, client_key: str, command_type: str
 ) -> dict | None:
-    """Claim `key` for this request, or return the completed original's result.
+    """Claim `client_key` for this company's request, or return the completed
+    original's result.
+
+    The stored key is `idempotency_uuid(organization_id, client_key)`, never the
+    raw header: the table is shared by every company, so a raw key let company B
+    replay company A's result (and skip B's write) by sending the same value.
 
     The REST materials path mints its own row id server-side, so a retried
     request -- a double tap, or a client timing out and resending on site wifi
@@ -150,6 +156,7 @@ async def _claim_idempotency_key(
     it instead of writing again. Runs on the request's existing connection, so
     the claim commits or rolls back with the movement it guards.
     """
+    key = idempotency_uuid(organization_id, client_key)
     row = (
         await conn.execute(
             text("SELECT status, result FROM idempotency_keys WHERE key = :key"),
@@ -181,7 +188,10 @@ async def _claim_idempotency_key(
     return None
 
 
-async def _complete_idempotency_key(conn: AsyncConnection, key: str, result: dict) -> None:
+async def _complete_idempotency_key(
+    conn: AsyncConnection, organization_id: uuid.UUID, client_key: str, result: dict
+) -> None:
+    key = idempotency_uuid(organization_id, client_key)
     await conn.execute(
         text(
             "UPDATE idempotency_keys SET status = 'completed', "
@@ -787,7 +797,9 @@ async def create_inflow(
     it keeps the previous behaviour exactly.
     """
     if idempotency_key:
-        replayed = await _claim_idempotency_key(conn, idempotency_key, "material_inflow_rest")
+        replayed = await _claim_idempotency_key(
+            conn, auth_context.organization_id, idempotency_key, "material_inflow_rest"
+        )
         if replayed is not None:
             return {**replayed, "status": "replayed"}
 
@@ -873,7 +885,9 @@ async def create_inflow(
     )
     result = {"id": row_id, "status": "success"}
     if idempotency_key:
-        await _complete_idempotency_key(conn, idempotency_key, result)
+        await _complete_idempotency_key(
+            conn, auth_context.organization_id, idempotency_key, result
+        )
     return result
 
 
@@ -893,7 +907,9 @@ async def create_outflow(
     dashboard opts in to the guard and asks the user to confirm instead.
     """
     if idempotency_key:
-        replayed = await _claim_idempotency_key(conn, idempotency_key, "material_outflow_rest")
+        replayed = await _claim_idempotency_key(
+            conn, auth_context.organization_id, idempotency_key, "material_outflow_rest"
+        )
         if replayed is not None:
             return {**replayed, "status": "replayed"}
 
@@ -999,7 +1015,9 @@ async def create_outflow(
     )
     result = {"id": row_id, "status": "success"}
     if idempotency_key:
-        await _complete_idempotency_key(conn, idempotency_key, result)
+        await _complete_idempotency_key(
+            conn, auth_context.organization_id, idempotency_key, result
+        )
     return result
 
 
@@ -1051,7 +1069,9 @@ async def create_invoice(
     Nobody re-keys the same document into two modules.
     """
     if idempotency_key:
-        replayed = await _claim_idempotency_key(conn, idempotency_key, "material_invoice_rest")
+        replayed = await _claim_idempotency_key(
+            conn, auth_context.organization_id, idempotency_key, "material_invoice_rest"
+        )
         if replayed is not None:
             return {**replayed, "status": "replayed"}
 
@@ -1170,7 +1190,9 @@ async def create_invoice(
         "status": "success",
     }
     if idempotency_key:
-        await _complete_idempotency_key(conn, idempotency_key, result)
+        await _complete_idempotency_key(
+            conn, auth_context.organization_id, idempotency_key, result
+        )
     return result
 
 
@@ -1398,7 +1420,9 @@ async def create_transfer(
     shuttering moved to the next job); the caller needs write access to both.
     """
     if idempotency_key:
-        replayed = await _claim_idempotency_key(conn, idempotency_key, "material_transfer_rest")
+        replayed = await _claim_idempotency_key(
+            conn, auth_context.organization_id, idempotency_key, "material_transfer_rest"
+        )
         if replayed is not None:
             return {**replayed, "status": "replayed"}
     if body.quantity <= 0:
@@ -1442,7 +1466,9 @@ async def create_transfer(
         "status": "success",
     }
     if idempotency_key:
-        await _complete_idempotency_key(conn, idempotency_key, result)
+        await _complete_idempotency_key(
+            conn, auth_context.organization_id, idempotency_key, result
+        )
     return result
 
 
