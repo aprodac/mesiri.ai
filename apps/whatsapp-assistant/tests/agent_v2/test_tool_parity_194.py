@@ -14,8 +14,6 @@ from runtime.agent import tools as t
 #: deciding about v2 makes this test fail.
 NOT_IN_V2 = {
     t.REQUEST_MATERIAL: "material requests: out of scope of v2 until the owner decides (ADR, Out of scope)",
-    t.CREATE_SITE: "admin: owner decision (ADR, Out of scope)",
-    t.CREATE_PROJECT: "admin: owner decision",
     t.ADD_MEMBER: "admin: owner decision",
     t.GET_JOIN_CODE: "admin: owner decision",
     t.SAVE_OPENING_STOCK: "draft_stock_count covers a count; opening stock is set in the dashboard",

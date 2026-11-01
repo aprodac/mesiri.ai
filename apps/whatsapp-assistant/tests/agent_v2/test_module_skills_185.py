@@ -33,7 +33,7 @@ def test_every_module_has_rules_tools_and_cases():
 def test_the_model_reads_every_module_rule_file_in_order():
     rules = system_prompt("english")
     heads = [f"# {name}" for name in ("General rules", "Labour rules", "Work done rules", "Issues rules",
-                                       "Expenses rules", "Site day rules", "Reports rules", "Materials rules")]
+                                       "Expenses rules", "Site day rules", "Projects rules", "Reports rules", "Materials rules")]
     positions = [rules.index(h) for h in heads]
     assert positions == sorted(positions)
 
@@ -41,8 +41,9 @@ def test_the_model_reads_every_module_rule_file_in_order():
 def test_the_module_tools_are_offered_to_the_model_and_nothing_else_changed():
     offered = {s.name for s in all_specs()}
     assert GENERAL_TOOLS <= offered
-    # Admin tools stay with the classic agent (request 180).
-    assert not offered & {"create_site", "create_project", "add_member", "get_join_code"}
+    # Request 197: create_project / create_site are the projects skill's. Members stay classic.
+    assert {"create_site", "create_project"} <= offered
+    assert not offered & {"add_member", "get_join_code"}
 
 
 @pytest.mark.parametrize(("module", "case"), CASES, ids=[f"{m}#{c['id']}:{c['message'][:24]}" for m, c in CASES])

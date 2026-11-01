@@ -307,6 +307,17 @@ class MainAgent:
                 if name == skill.ASK:
                     return ToolOutcome(content={"status": "shadow"}, stop=True)
                 return ToolOutcome(content={"status": "drafted"}, done=True)
+            if name == classic.CREATE_PROJECT and not shadow:
+                # Request 197: a name that is already one of the sender's projects is not made twice
+                # (projects have no uniqueness constraint): point to the existing one.
+                wanted = " ".join(str(args.get("name") or "").split()).casefold()
+                existing = next((n for _pid, n in toolbox.scope.projects if " ".join(n.split()).casefold() == wanted), "")
+                if wanted and existing:
+                    return ToolOutcome(content={
+                        "status": "already_exists",
+                        "project": existing,
+                        "instruction": f"Tell them the project \"{existing}\" already exists and offer to send updates for it. Create nothing.",
+                    })
             if name in GENERAL_TOOLS:
                 if shadow and name in GENERAL_WRITE_TOOLS:
                     return ToolOutcome(content={"status": "drafted"})  # recorded in state.calls only

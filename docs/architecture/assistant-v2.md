@@ -69,7 +69,7 @@ agent_v2/skills/<skill>/
 
 Today (request 185): `general` (every part of a message, feedback, unknown things, the words
 they see), then one skill per module: `labour`, `work`, `issues`, `expenses`, `site` (weather,
-plan, work site, engineer questions), `reports` (DPR, project status), and `materials` (its own
+plan, work site, engineer questions), `projects` (new project / site, request 197), `reports` (DPR, project status), and `materials` (its own
 v2 tool names). The module skills use today's tools under their own names
 (`skills/<module>/tools.py` lists them; `agents/main.py` reads the registry in
 `skills/__init__.py`), so their rules moved from the classic prompt (which v2 never read) into
@@ -97,10 +97,10 @@ or correct something saved, any module) and `transfer_money` are v2 tools (skill
 `expenses`). Still classic-only, each waiting for an owner decision and listed with its reason in
 `tests/agent_v2/test_tool_parity_194.py` (a new gap fails it): **`request_material`** (classic sends a
 "Material request" card to the engineer on Send; v2 says requests are not built), and the admin
-tools (create site / project, members, join code). Questions go through `ask` with 2-3 options
+tools (members, join code). Questions go through `ask` with 2-3 options
 (buttons) in every module (general SKILL "Asking: one tap, not typing").
 
-Admin tools (create site / project, members, join code) stay with the classic agent. The labour
+Request 197: `create_project` / `create_site` are v2 tools (skill `projects`): the same tools and `project_create` / `site_create` workflows as classic (role ADMIN / PROJECT_MANAGER and the sender's organisation checked in code at the query entry; a Yes confirms; size / type ride in the project's description; an exact existing name is pointed to, not created twice). Members and the join code stay with the classic agent. The labour
 tools are called unchanged for the 2 test companies only; Labour, Attendance, Payroll and
 Workforce rules and data paths are untouched.
 

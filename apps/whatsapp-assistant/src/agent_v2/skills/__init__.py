@@ -12,7 +12,7 @@ from pathlib import Path
 
 DIR = Path(__file__).resolve().parent
 #: The module skills whose tools are today's tools under their own names.
-MODULES = ("labour", "work", "issues", "expenses", "site", "reports")
+MODULES = ("labour", "work", "issues", "expenses", "site", "projects", "reports")
 #: Rule files in the order the model reads them.
 ORDER = ("general", *MODULES, "materials")
 

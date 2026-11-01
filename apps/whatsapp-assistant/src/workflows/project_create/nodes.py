@@ -49,9 +49,12 @@ def request_confirmation(state: WorkflowGraphState) -> dict:
     name = draft.fields.get("name")
     location = draft.fields.get("location")
     client = draft.fields.get("client")
+    description = draft.fields.get("description")
     lines = ["*Confirm this action?*", "", f"🏗️ Create a new project: *{name}*"]
     if location:
         lines.append(f"📍 Location: {location}")
+    if description:
+        lines.append(f"📐 {description}")
     if client:
         lines.append(f"🤝 Client: {client}")
     lines.extend(["", "Reply YES to confirm or NO to cancel."])

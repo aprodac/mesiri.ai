@@ -1142,13 +1142,34 @@ def _specs() -> list[ToolSpec]:
             ),
             parameters=_obj(
                 {
-                    "name": {"type": "string", "description": "The new project's name, as they said it."},
+                    "name": {"type": "string", "description": "The new project's name, as they said it. Never invent one."},
                     "location": {"type": "string", "description": "Only if they say where it is."},
+                    "size_sqft": {"type": "number", "description": "Built-up size in square feet, only if they say it."},
+                    "project_type": {
+                        "type": "string",
+                        "description": "What is being built ('G+1 supermarket', 'villa'), only if they say it.",
+                    },
                 },
                 ["name"],
             ),
         ),
     ]
+
+
+def _project_description(args: dict[str, Any]) -> str | None:
+    """Request 197: the size and type a new project is described with ("5,000 sq ft · G+1 supermarket"),
+    kept in the project's existing description column (no new field, no migration)."""
+    parts: list[str] = []
+    try:
+        size = float(args.get("size_sqft"))
+    except (TypeError, ValueError):
+        size = 0.0
+    if size > 0:
+        parts.append(f"{size:,.0f} sq ft")
+    kind = str(args.get("project_type") or "").strip()
+    if kind:
+        parts.append(kind)
+    return " · ".join(parts) or None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1468,7 +1489,11 @@ def to_candidate(name: str, args: dict[str, Any], scope: ScopeLookup) -> Candida
         fields = {"action": args.get("action"), "resolution_notes": args.get("notes"), **sc}
         return Candidate(semantic_type=SemanticType.SITE_ISSUE_UPDATE, fields=_clean(fields))
     if name == CREATE_PROJECT:
-        fields = {"name": str(args.get("name") or "").strip(), "location": args.get("location")}
+        fields = {
+            "name": str(args.get("name") or "").strip(),
+            "location": args.get("location"),
+            "description": _project_description(args),
+        }
         return Candidate(semantic_type=SemanticType.PROJECT_CREATE, fields=_clean(fields))
     if name == UNDO_LAST:
         what = str(args.get("what") or "latest_update")

@@ -29,7 +29,7 @@ FEEDBACK_KINDS = ("missing_feature", "bad_ux", "wrong_reply", "idea")
 
 _DESCRIPTION = (
     "Pass feedback to the team that builds Mesiri; they build or fix it and Mesiri tells this person when it works. "
-    "Call it when: (1) they ask for something Mesiri cannot do here yet (creating a project or site, adding a member, "
+    "Call it when: (1) they ask for something Mesiri cannot do here yet (adding a member, "
     "any feature you have no tool for): kind missing_feature; (2) they say a reply, the buttons, the card or the way "
     "you answered was bad, confusing, too long, annoying ('bad UX', 'this is confusing', 'too many buttons', 'ithu "
     "sheriyalla', 'enthaanu ithu'): kind bad_ux; (3) they say a reply was wrong in a way you cannot fix now: kind "
@@ -45,7 +45,7 @@ _PARAMETERS: dict[str, Any] = {
         "about": {
             "type": "string",
             "description": (
-                "In English, one line: what they wanted, or what was bad and in which reply ('create a project from "
+                "In English, one line: what they wanted, or what was bad and in which reply ('add a member from "
                 "WhatsApp', 'the Save / Cancel buttons under the stock answer')."
             ),
         },

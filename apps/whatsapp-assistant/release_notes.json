@@ -138,6 +138,27 @@
         "cor_00a28abb071f41dba2771b9bc6d45768"
       ],
       "message": "കാർഡിലെ ചോദ്യത്തിന് ഇനി ടൈപ്പ് ചെയ്തോ, പറഞ്ഞോ, ബട്ടൺ അമർത്തിയോ ഉത്തരം നൽകാം. പരീക്ഷിക്കാൻ: ചോദ്യം വന്നാൽ '50 ചാക്ക് = 1 ലോഡ്' എന്ന് അയക്കൂ."
+    },
+    {
+      "id": "create-project-in-chat-ml",
+      "date": "2026-11-01",
+      "for": [
+        "cor_bdccb9304d4840dcb86a2be43a843c22",
+        "cor_377f1460b0854af09d3aa4d0bdbbdddf"
+      ],
+      "message": "Ippo WhatsApp-il ninnu thanne puthiya project undaakkaam. Try: 'Ilan Testing ennoru puthiya project undaakku, 5000 sq ft'"
+    },
+    {
+      "id": "create-project-in-chat-en",
+      "date": "2026-11-01",
+      "for": [
+        "cor_ac56a5206e1d4e01af68437e19a8c7db",
+        "cor_1a617e6fd5574a548111b4540bec9498",
+        "cor_a824f4fa4f574856a2eb47aef44aa854",
+        "cor_702febd8fe5c4ef48b68166a6c37f118",
+        "cor_0caf3a0ef27f46e8ab25cbd8b08fb156"
+      ],
+      "message": "You can now create a new project right here in chat. Try: 'Create a new project Supermarket Kerala, 7000 sq ft'"
     }
   ]
 }
