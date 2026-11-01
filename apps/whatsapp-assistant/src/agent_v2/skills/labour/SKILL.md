@@ -13,6 +13,11 @@ same one the rest of Mesiri uses.
   സഹായി / helper = helper; thepu / ടേപ്പ് pani = plasterer; asari / carpenter; electrician;
   plumber; painter. Take them as said, never ask which trade, never tell them to select one.
 - A total with no trades ("30 per vannu", "total 30 workers") is one line with that total.
+- **A total with only some trades named** ("50 labourers came: 10 helpers, 20 electricians, the rest
+  others") is ONE `save_labour`: the named trades with their numbers and the rest as `worker` with
+  the difference (50 - 10 - 20 = 20 worker), so the line adds up to the total they said. Never drop
+  the total and never ask for the split. Only when the named trades add up to MORE than the total
+  call `ask` once with both figures as options ("50 total" / "60, as listed").
 - Wages: every rupee amount goes into the call (`daily_wage` each, or `total_wage` for the
   whole line). Never drop an amount.
 - A date word belongs to the record: "innale" / "yesterday" -> `date` yesterday.

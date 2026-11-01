@@ -134,6 +134,36 @@ class V2Run:
         return " ".join(str(a.get("question") or "") for n, a in self.calls if n == skill.ASK)
 
 
+#: Request 195: a message this short, with every figure placed, is finished after its card lines.
+ONE_PART_WORDS = 12
+MORE_TO_DO = (
+    "Other parts of their message are NOT done yet. Now, in this step, call the tools for every part "
+    "still open (each record, each figure, each question: read tools for 'did anyone report'), and "
+    "then write ONE reply that also answers their greeting and their questions."
+)
+
+
+def is_one_part(user_text: str, calls: list[tuple[str, dict[str, Any]]], asked: str = "") -> bool:
+    """Request 195 (live 1 Nov): a card-only round ended the run (request 143, speed) after ONE
+    call, so a long mixed message lost its other material, its labour, its question and the
+    greeting. The run may end there only when the message is plainly finished: every figure is
+    placed and it is one short sentence. Anything longer gets one more model round."""
+    if skill.unplaced_figures(user_text, calls, asked):
+        return False
+    text = " ".join(str(user_text or "").split())
+    sentences = [x for x in re.split(r"[.?!\n]+|,\s+(?=\S+\s+\S+)", text) if x.strip()]
+    return len(text.split()) <= ONE_PART_WORDS and len(sentences) <= 1
+
+
+def keep_going(outcome: ToolOutcome, user_text: str, state: V2Run) -> ToolOutcome:
+    """A card-line outcome that would end the run is kept open while the message has more."""
+    if not outcome.done or is_one_part(user_text, state.calls, state.asked):
+        return outcome
+    content = dict(outcome.content or {})
+    content["instruction"] = f"{content.get('instruction', '')} {MORE_TO_DO}".strip()
+    return outcome.model_copy(update={"done": False, "content": content})
+
+
 def v2_card_words(text: str) -> str:
     """The context's open-card paragraph names today's tools; v2's line tools are ``change_line``
     and ``remove_line`` (one place writes that paragraph: runtime/agent/draft.py). ``undo_last``
@@ -278,7 +308,7 @@ class MainAgent:
                     # The facts go to the model; the template is never the reply.
                     del toolbox.answers[answered:]
                     outcome.content["instruction"] = READ_INSTRUCTION
-                return outcome
+                return keep_going(outcome, toolbox.user_text, state)
             classic_name = skill.CLASSIC_NAME.get(name)
             if classic_name is None:
                 return ToolOutcome(content={"status": "unknown_tool", "name": name})
@@ -288,7 +318,7 @@ class MainAgent:
             outcome = await toolbox.handle(classic_name, args)
             if name == skill.STOCK_FOR and len(toolbox.answers) > answered:
                 self._name_the_site(toolbox, outcome)
-            return outcome
+            return keep_going(outcome, toolbox.user_text, state)
 
         return handle
 

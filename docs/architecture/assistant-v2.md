@@ -131,6 +131,14 @@ with the same code as classic replies:
 - A complaint about the last reply gets a short sorry, what will be different, and the part they
   actually asked for, never the same text again.
 
+## Long mixed messages (request 195)
+
+A round of calls that only put lines on the card ends the run without another model call (request
+143, speed), but only when the message is plainly finished: every figure placed and one short
+sentence (`agents/main.py`, `is_one_part`, at most 12 words). Otherwise the model gets the next round,
+told what is still open (`MORE_TO_DO`), so a voice note with a greeting, a question, two receipts,
+labour and "did anyone report" is done in one turn. Both engines (they share the handler).
+
 ## Engine and memory (request 185)
 
 Two engines run the same agent (same tools, handler, rules, reply code):
