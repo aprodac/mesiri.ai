@@ -25,7 +25,9 @@ test("a sentence that says what stays untouched is not a reason to hold", () => 
   const text = "Add create_project to v2. Labour, Attendance, Payroll and Workforce are untouched. No migration.";
   assert.doesNotMatch(touchedText(text), /Labour/);
   assert.equal(holdReason(plan(text)), null);
-  assert.match(holdReason(plan("Add create_project. Also change the labour card wording.")), /Labour/);
+  assert.match(holdReason(plan("Add create_project. Also change the attendance card wording.")), /Attendance/);
+  // Ilan, 1 Nov: Labour is a normal module.
+  assert.equal(holdReason(plan("Labour shift correction adds instead of replacing (20 -> day total 40): fix change_line for labour lines.")), null);
 });
 
 test("on by default, owners switch it in the team group, the daily cap holds, and it lasts across restarts", () => {
@@ -114,6 +116,24 @@ test("brain: a plan that touches Attendance is posted with the reason and waits 
     assert.equal(fired.length, 0);
     assert.match(sent.at(-1).text, /✋ \[81\][\s\S]*touches Attendance[\s\S]*@bot ok 81/);
     assert.equal(brain.planStore.plans[81].status, "proposed");
+  } finally {
+    done();
+  }
+});
+
+test("brain: after a restart a plan that is no longer held starts; one still held and old ones stay", async () => {
+  const { brain, sent, fired, done } = brainWith("unused");
+  try {
+    const at = "2026-11-01T05:00:00.000Z"; // the fake clock is 06:00
+    brain.planStore.plans[199] = { id: 199, project: "mesiri", chat_project: "mesiri", chat: "M@g.us", session: "watch", title: "Labour shift correction adds instead of replacing", plan: "Fix change_line for labour lines.", status: "proposed", at };
+    brain.planStore.plans[200] = { id: 200, project: "mesiri", chat_project: "mesiri", chat: "M@g.us", session: "watch", title: "Payroll card", plan: "Show payroll.", status: "proposed", at };
+    brain.planStore.plans[150] = { id: 150, project: "mesiri", chat_project: "mesiri", chat: "M@g.us", session: "main", title: "Old", plan: "x", status: "proposed", at: "2026-10-30T05:00:00.000Z" };
+    await brain.retryHeld();
+    assert.equal(fired.length, 1);
+    assert.match(fired[0], /Plan \[199\]/);
+    assert.match(sent[0].text, /🔓 \[199\][\s\S]*starting it now/);
+    assert.equal(brain.planStore.plans[200].status, "proposed");
+    assert.equal(brain.planStore.plans[150].status, "proposed");
   } finally {
     done();
   }

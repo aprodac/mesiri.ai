@@ -89,11 +89,13 @@ production watch ◄────────────────────
 - **Which plans:** every planning turn for the product: the production watch's, the shared board's, and those from
   approved people in the team group or a 1-on-1 chat. Not auto-loop cycles (they have their own check) and not bot
   upgrades (`@bot upgrade:` stays owner-approved).
-- **Held for an owner** (posted as `✋ [n] … Waiting for an owner because …`): Labour, Attendance, Payroll, Workforce;
+- **Held for an owner** (posted as `✋ [n] … Waiting for an owner because …`): Attendance, Payroll, Workforce (Labour is a
+  normal module since 1 Nov, Ilan);
   migrations that drop / rename / rewrite data; secrets and tokens; tenant isolation; login; `.github/`, `.env`;
   `teammate/`; more than `TEAMMATE_AUTOBUILD_PER_DAY` (12) builds a day. Sentences that say what stays untouched
   ("Labour untouched", "no migration") don't count. **Roles inside the product are not held** (Ilan: "admin roles,
-  site engineer roles, you can do; just report").
+  site engineer roles, you can do; just report"). After a restart, plans held in the last 6 h that are no longer held
+  start by themselves (`retryHeld`).
 - The watch reads **every company** now, the test companies too (their testers are the users today). The paid AI
   screen still skips them (TM-17); they are covered by the free code flags and by Mesiri's own `tell_the_team` call
   (`feedback` column of the watch SELECT: kind, what, and the reason when given).

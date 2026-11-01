@@ -60,10 +60,14 @@ const run = (sha, name, status, conclusion, at) => ({ sha: sha.padEnd(40, "0"), 
 
 test("collector: tracker ids, commit patterns (request n, [n], WA-86), deploy and CI state, heartbeat", () => {
   assert.deepEqual(trackerIds("WA-86 and TM-12, not UTF-8 or SHA-256, WA-86 again"), ["WA-86", "TM-12"]);
-  const pats = commitPatterns({ id: 139, title: "t", plan: PLAN_TEXT }, { log: [{ note: "see TM-12 too" }] });
+  const pats = commitPatterns({ id: 139, title: "WA-86 day facts", plan: PLAN_TEXT }, { log: [{ note: "see TM-12 too" }, { note: "approved_by: autobuild (TM-18)" }] });
   const re = (s) => pats.some((p) => new RegExp(p).test(s));
   assert.ok(re("fix: thing (request 139)") && re("[139] day facts") && re("feat: WA-86 day facts") && re("chore TM-12"));
   assert.ok(!re("request 1390") && !re("[1391]") && !re("WA-860") && !re("unrelated commit"));
+  // 1 Nov: an id the plan's body only mentions, or the bot's own note, never claims a commit.
+  const body = commitPatterns({ id: 197, title: "Create a project from WhatsApp", plan: "Like autobuild (TM-18) and the Requests page (TM-19)." }, { log: [{ note: "approved_by: autobuild (TM-18)" }] });
+  assert.ok(!body.some((p) => new RegExp(p).test("TM-18: Labour is a normal module for autobuild")));
+  assert.ok(body.some((p) => new RegExp(p).test("[197] v2 create_project")));
 
   assert.equal(deployState([]).state, "none");
   assert.equal(deployState([run("a", "Deploy to Production", "in_progress", null, "t")]).state, "running");

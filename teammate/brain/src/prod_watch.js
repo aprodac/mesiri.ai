@@ -53,7 +53,7 @@ export function skipPatterns(value) {
  * company. `is_test` marks the skip-list companies (no AI screen for them); `feedback` is what Mesiri passed on with
  * `tell_the_team` in that turn ("missing_feature: create a project from WhatsApp | bad_ux: ... / why: ...").
  */
-export function watchSql(since, limit = 400, skip = []) {
+export function watchSql(since, limit = 400, skip = [], newest = false) {
   const from = Number.isFinite(since) ? Number(since).toFixed(3) : "0";
   const pats = skipPatterns(skip.join(","));
   const isTest = pats.length ? `coalesce(o.name, '') ILIKE ANY (ARRAY[${pats.map((x) => `'${x}'`).join(", ")}])` : "false";
@@ -72,7 +72,7 @@ FROM inbound_messages m LEFT JOIN organizations o ON o.id = m.organization_id
 LEFT JOIN LATERAL (SELECT u.full_name, u.role FROM users u WHERE u.organization_id = m.organization_id
   AND regexp_replace(u.whatsapp_number, '\\D', '', 'g') = regexp_replace(m.sender_wa_id, '\\D', '', 'g') LIMIT 1) su ON true
 WHERE m.received_at > to_timestamp(${from}) AND m.received_at < now() - interval '2 minutes'
-ORDER BY m.received_at ASC LIMIT ${Math.max(1, Math.min(1000, Number(limit) || 400))}`;
+ORDER BY m.received_at ${newest ? "DESC" : "ASC"} LIMIT ${Math.max(1, Math.min(1000, Number(limit) || 400))}`;
 }
 
 /**
@@ -253,7 +253,7 @@ export function watchPrompt(project, convs, { minutes, autobuild = false }) {
     "   harness if you can), then the CLASS: the sibling cases that share the mechanism. Group failures that share a root",
     "   cause into ONE plan. Check docs/plans/V1_TRACKER.md first and name the existing item when there is one.",
     "3. Record one plan per root cause (the plan tool), scoped as FIX_APPROACH says: the root, the siblings, the UX, the",
-    "   guard tests. Never a one-message patch. Labour / Attendance / Payroll / Workforce, migrations that change data,",
+    "   guard tests. Never a one-message patch. Attendance / Payroll / Workforce, migrations that change data,",
     "   and security changes are marked as needing the owner's decision in the plan.",
     "   Pass asked_for = the correlation ids (in brackets below) of the messages where the person asked or complained:",
     "   that records who asked, so they are told when it is live and their next use is tracked.",
@@ -419,11 +419,11 @@ export class ProdWatch {
     }
   }
 
-  async read(source, since, limit = 400) {
+  async read(source, since, limit = 400, newest = false) {
     const res = await this.fetchFn(`${source.url}/claude-ops/sql`, {
       method: "POST",
       headers: { authorization: `Bearer ${source.token}`, "content-type": "application/json" },
-      body: JSON.stringify({ sql: watchSql(since, limit, this.skip) }),
+      body: JSON.stringify({ sql: watchSql(since, limit, this.skip, newest) }),
     });
     if (!res.ok) {
       let why = "";
@@ -527,7 +527,8 @@ export class ProdWatch {
     for (const [project, source] of Object.entries(this.sources)) {
       const since = state[project]?.since ?? this.now() / 1000 - FIRST_LOOK_MINUTES * 60;
       try {
-        const rows = await this.read(source, since, PROBE_ROWS);
+        // Newest first: with testers busy there can be far more than PROBE_ROWS since the cursor (1 Nov).
+        const rows = await this.read(source, since, PROBE_ROWS, true);
         await this.health(project);
         if (rows.some((r) => r.feedback)) return URGENT;
         if (rows.length) any = true;

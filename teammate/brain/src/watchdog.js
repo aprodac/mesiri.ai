@@ -7,7 +7,7 @@
 import { readFileSync, writeFileSync, renameSync, existsSync } from "node:fs";
 
 const MIN = 60_000;
-export const WATCH_DEFAULTS = { stallMs: 30 * MIN, reportAfterMs: 20 * MIN, deployWaitMs: 30 * MIN };
+export const WATCH_DEFAULTS = { stallMs: 30 * MIN, reportAfterMs: 20 * MIN, deployWaitMs: 30 * MIN, staleMs: 48 * 60 * MIN };
 
 function readJson(path, fallback) {
   try {
@@ -38,7 +38,19 @@ export class Watchdog {
     this.busy = true;
     try {
       const running = Object.values(this.brain.planStore.plans).filter((p) => p.status === "running_in_cloud");
+      const now = this.brain.now().getTime();
       for (const plan of running) {
+        // A job started more than 2 days ago is over, whatever it reported: it is closed quietly, never re-alerted
+        // (1 Nov: a matching change made 8 weeks-old jobs look newly silent and each got a "quiet for 20,000 min").
+        const started = Date.parse(plan.fired_at || plan.approved_at || plan.at || 0);
+        if (Number.isFinite(started) && now - started > (this.cfg.staleMs ?? WATCH_DEFAULTS.staleMs)) {
+          plan.status = "stale";
+          this.brain.savePlans();
+          delete this.s[plan.id];
+          this.save();
+          this.brain.log(`watchdog: [${plan.id}] started ${Math.round((now - started) / 3600_000)} h ago; closed as stale`);
+          continue;
+        }
         try {
           await this.check(plan);
         } catch (e) {

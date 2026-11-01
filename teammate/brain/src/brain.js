@@ -532,7 +532,7 @@ export class Brain {
       by === "auto"
         ? "Approved by: auto (the bot's auto loop; an owner switched auto on in WhatsApp, and the code checked the plan's area and guard words)"
         : by === "autobuild"
-        ? "Approved by: autobuild (TM-18; the owners chose no human ok for product plans on 1 Nov, and the code checked the plan holds none of Labour / Attendance / Payroll / Workforce, data-changing migrations, secrets, tenant isolation, login, CI files or teammate/)"
+        ? "Approved by: autobuild (TM-18; the owners chose no human ok for product plans on 1 Nov, and the code checked the plan holds none of Attendance / Payroll / Workforce (Labour is a normal module since 1 Nov), data-changing migrations, secrets, tenant isolation, login, CI files or teammate/)"
         : `Approved by: ${by} (in WhatsApp; the listener checked ${by} is on the approved list)`,
       `Request log item: ${typeof plan.id === "number" ? plan.id : "none"}`,
       `Reply group jid: ${reply_chat}`,
@@ -828,6 +828,30 @@ export class Brain {
   /** Does this turn's plans start by themselves? Planning turns for the product (not auto cycles, not bot upgrades). */
   autobuilds(req, mode) {
     return mode === "planning" && !req.auto && req.session !== "upgrade" && this.autobuild.isOn(req.reply_project || req.project);
+  }
+
+  /**
+   * After a restart (a deploy can change what autobuild holds, e.g. Labour on 1 Nov): plans still waiting from the last
+   * `hours` are checked again, and those autobuild may now start are started. Upgrades and auto cycles are left alone.
+   */
+  async retryHeld(hours = 6) {
+    const since = this.now().getTime() - hours * 3600_000;
+    const waiting = Object.values(this.planStore.plans).filter(
+      (p) => p.status === "proposed" && p.session !== "upgrade" && !p.cycle && Date.parse(p.at || 0) >= since,
+    );
+    for (const plan of waiting) {
+      const project = plan.chat_project || plan.project;
+      const why = this.autobuild.decide(plan, project);
+      if (why) {
+        this.log(`brain: plan [${plan.id}] still held after restart: ${why}`);
+        continue;
+      }
+      const reply_chat = plan.reply_chat || plan.chat;
+      const say = (text) => this.listener.send({ chat: reply_chat, project, text });
+      this.log(`brain: plan [${plan.id}] no longer held; starting it`);
+      await say(`🔓 [${plan.id}] ${plan.title} isn't held any more; starting it now.`).catch(() => {});
+      await this.autoBuild(plan.id, { reply_chat, reply_project: project, project: plan.project }, say);
+    }
   }
 
   /** TM-18: start plan `id` like an owner's "@bot ok", unless autobuild.js holds it; a held plan waits for an ok. */

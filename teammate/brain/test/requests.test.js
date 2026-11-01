@@ -110,3 +110,27 @@ test("watchdog: the session marked it done; the live check waits for a running d
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("watchdog: a job started more than 2 days ago is closed quietly, never alerted", async () => {
+  const sent = [];
+  const old = { id: 30, status: "running_in_cloud", fired_at: "2026-10-18T10:00:00Z" };
+  const fresh = { id: 197, status: "running_in_cloud", fired_at: "2026-11-01T14:56:00Z" };
+  const checked = [];
+  const brain = {
+    now: () => new Date("2026-11-01T15:20:00Z"),
+    planStore: { plans: { 30: old, 197: fresh } },
+    savePlans: () => {},
+    log: () => {},
+    listener: { send: async (b) => sent.push(b) },
+    workStatus: async (p) => (checked.push(p.id), { item: null, commits: [], lastActivityAt: null }),
+  };
+  const dir = mkdtempSync(join(tmpdir(), "wd-"));
+  try {
+    await new Watchdog(brain, { dir }).tick();
+    assert.equal(old.status, "stale");
+    assert.deepEqual(checked, [197]);
+    assert.equal(sent.length, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

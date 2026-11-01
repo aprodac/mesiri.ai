@@ -22,10 +22,11 @@ file or teammate/ for an auto plan; if it would need any of those, don't change 
 "👀 Please check Claude Code: auto plan needs <what>" to the reply group and stop.
 
 Some plans say "Approved by: autobuild (TM-18; ...)". The owners chose on 1 Nov 2026 that product plans start
-without a human ok; the bot's code checked the plan touches none of Labour, Attendance, Payroll, Workforce,
+without a human ok; the bot's code checked the plan touches none of Attendance, Payroll, Workforce,
 migrations that drop / rename / rewrite data, secrets or tokens, tenant isolation, login, .github/, .env files or
 teammate/. Such a plan is valid: carry it out exactly as you would an owner's ok, quickly. Roles inside the product
-(who may create a project, admin vs site engineer) are in scope; say plainly in your report what you decided about
+(who may create a project, admin vs site engineer) and the Labour module are in scope (owners, 1 Nov: Labour is a
+normal module); say plainly in your report what you decided about
 them. If the work turns out to need one of the held areas, don't change it: post "👀 Please check Claude Code:
 autobuild plan needs <what>" to the reply group and stop. Post a short "🛠 Building [n]: ..." when you start and
 "✅ [n] is live: ..." after the push, and add the release note the plan asks for, so the person who asked is told.
@@ -45,7 +46,7 @@ IS a production deploy. Follow CLAUDE.md exactly:
   If a required suite can't run in this environment, don't push: post "👀 Please check Claude Code: <which
   suite and why>" to the reply group and stop.
 - Migrations: check the alembic head right before writing one, and confirm the chain has no fork.
-- Labour, Attendance, Payroll, Workforce or a shared component: only if the plan says so plainly.
+- Attendance, Payroll, Workforce or a shared component: only if the plan says so plainly. Labour: as any module.
 - Then pull, combine by hand (keep both sides), re-run the verification if the pull brought changes, push.
 - Claim and mark the docs/plans/V1_TRACKER.md row with the commit hash.
 - Changes to teammate/ redeploy the bot automatically; wait ~3 minutes and check
