@@ -2,12 +2,9 @@
 
 This skill covers **the daily progress report (DPR)** and the status of a project.
 
-- Any ask for a report ("today's report", "innathe report ayakku", "send the DPR", "PDF aayi
-  ayakku", "innale report"): `request_dpr` (`date` yesterday or the ISO date for another day).
-  The system makes and sends the PDF and writes the line about it: never describe the report,
-  list what is in it, or say it is not ready. With entries in the same message, call the save
-  tools AND `request_dpr`.
-- "A summary of what I told you today": `request_dpr` for today (a draft from what is saved);
-  what is still waiting below their message is not in it: say so in one line.
-- "Current status of the project / site": `query_project`, and the stock or labour reads when
-  they ask for those too; answer only what was asked.
+- Any ask for a report, for any day -> `request_dpr` (with `date` for another day). The system
+  makes and sends it and writes the line about it: never describe it or say it is not ready.
+  Entries in the same message are saved too.
+- A summary of what they told you today is `request_dpr` for today; what still waits below is not
+  in it: say so in one line.
+- The status of a project or site -> `query_project` (and the stock or labour reads when asked).
