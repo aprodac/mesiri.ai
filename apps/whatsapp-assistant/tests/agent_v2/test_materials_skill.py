@@ -23,7 +23,10 @@ def test_the_tools_are_todays_specs_under_the_v2_names():
         if v2_name == skill.CHANGE_LINE:
             mine["card_id"] = old[old_name].parameters["properties"]["card_id"]
             mine["item_index"] = old[old_name].parameters["properties"]["item_index"]
-        assert mine == old[old_name].parameters["properties"]  # one place owns the arguments
+        theirs = dict(old[old_name].parameters["properties"])
+        if v2_name == skill.ASK:
+            theirs.pop("other_parts")  # request 196: v2 never parks a part for later
+        assert mine == theirs  # one place owns the arguments
 
 
 def test_v2_can_only_reach_material_tools_of_the_old_toolbox():

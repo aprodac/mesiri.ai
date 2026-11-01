@@ -112,6 +112,18 @@ write path in v2.
 
 ## Reply writing and honesty rules
 
+**v2 writes its own reply (request 196, `agent_v2/reply.py`).** The model's words go out: the
+greeting, every answer, every part of the message. The code only takes away what may not go out
+(a claimed save / change / send, a figure in no source, an engineer promise no tool made, tool or
+code words) and draws below them the lines, their questions, the system's lines and the buttons
+(today's card functions). It never swaps the words for a template because they do not repeat the
+lines: today's composer does that in four places (`_code_card`, `_one_sentence`, `_covering`,
+`_natural`) and drops sentences off a word list (`without_stray_sentences`), which is what lost the
+greeting, the weather answer and "who else reported" on 1 Nov. Today's agent keeps its composer
+unchanged. Code-owned replies stay the code's: report-only, module off, equipment, a failed write,
+a site question, and a turn where the model wrote nothing. v2's `ask` has no `other_parts`: a clear
+record never waits behind a question.
+
 The agent writes the reply in the sender's language. The code keeps the guarantees, by composing
 with the same code as classic replies:
 

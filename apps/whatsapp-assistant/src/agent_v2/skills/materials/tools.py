@@ -97,8 +97,9 @@ _DESCRIPTIONS = {
         "Reads the records; saves nothing."
     ),
     ASK: (
-        "Ask ONE short question when the direction (received or used), the material or a figure "
-        "is unclear. Ends your turn."
+        "Ask ONE short question for what you need and cannot work out (give 2-3 options when it is a "
+        "choice: they become buttons). It goes out with your reply; do every other part of the message "
+        "with its tools in the same turn: nothing waits for the answer."
     ),
 }
 
@@ -152,6 +153,12 @@ def _tool(name: str) -> ToolSpec:
             "description": "The line's number on that card, from 1 (the card is in your context).",
         }
         parameters = {**parameters, "properties": props, "required": ["item_index", "changes"]}
+    if name == ASK:
+        # Request 196: no "other parts for later". A clear record never waits behind a question
+        # (live 1 Nov: 50 workers were parked behind an unneeded question and lost).
+        props = {k: v for k, v in parameters["properties"].items() if k != "other_parts"}
+        required = [r for r in parameters.get("required", []) if r != "other_parts"]
+        parameters = {**parameters, "properties": props, "required": required}
     return ToolSpec(name=name, description=_DESCRIPTIONS[name], parameters=_with_account(parameters))
 
 

@@ -27,6 +27,7 @@ from runtime.agent import runner as classic_runner
 from runtime.agent.runner import AgentResult, AgentRunner
 from runtime.agent.wording import language_of, say, usual_from
 
+from . import reply as v2_reply
 from .agents.main import MainAgent, V2Run
 from .skills.materials import tools as skill
 
@@ -180,9 +181,8 @@ class V2Runner:
         for call in run.calls:
             sources.append(json.dumps(call.arguments, ensure_ascii=False, default=str))
             sources.append(json.dumps(call.outcome.content, ensure_ascii=False, default=str))
-        if not classic_runner.unbacked_numbers(run.text or "", sources):
-            run = AgentRunner._covering(run, toolbox, correlation_id)
-        return AgentResult("ok", self._classic._compose(run, toolbox, sources, correlation_id), toolbox, run=run)
+        # Request 196: v2's own reply (agent_v2/reply.py): the model's words, honest, then the lines.
+        return AgentResult("ok", v2_reply.compose(self._classic, run, toolbox, sources, correlation_id), toolbox, run=run)
 
     async def _log(self, correlation_id: str | None, handled_by: str, why: str, v2: V2Run | None, ms: int) -> None:
         payload = {
