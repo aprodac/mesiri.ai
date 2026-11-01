@@ -412,14 +412,14 @@ async def test_a_failed_item_rolls_the_whole_save_back_and_says_which(world):
     result = await world.say(FakeToolCallingProvider([[LABOUR, CEMENT, RAIN], "Check it."]), "labour, cement, rain")
     world.handler._dispatcher = _FailsOn(world.dispatcher, 2)  # the cement write fails
     out, gateway = await press(world, result.reply, "✅ Save")
-    assert out.text.startswith("Nothing was saved. Couldn't save")
-    assert "Cement in: 50 bags" in out.text
+    # Request 198: the system failed under a line that was read fine: it says which one and to tap Save again.
+    assert out.text.startswith("Nothing was saved.") and "Cement in: 50 bags" in out.text
+    assert "Tap Save to try again" in out.text and dr.CANT_READ not in out.text
     assert gateway.handled == []
     # The transaction (the memory store's, standing in for the database's) undid the claim:
     assert [r.status for r in world.drafts.rows.values()] == [dr.OPEN]
     items = await open_items(world)
-    assert [i.state for i in items] == [dr.OK, dr.UNREADABLE, dr.OK]
-    # The rest can still be saved once the bad one is out of the way.
+    assert [i.state for i in items] == [dr.OK, dr.OK, dr.OK]  # all stay ready: one more Save tries all three
     assert [b.title for b in out.buttons] == ["✅ Save", "❌ Cancel"]
 
 

@@ -1255,10 +1255,21 @@ def _card_site(gw: Any, draft: dr.MessageDraft) -> str | None:
 
 
 class _Failed(Exception):
-    def __init__(self, item: dr.DraftItem | None, reason: str) -> None:
+    def __init__(self, item: dr.DraftItem | None, reason: str, *, retry: bool = False) -> None:
         super().__init__(reason)
         self.item = item
         self.reason = reason
+        #: Request 198: the line was read fine and the system failed under it (the
+        #: write threw): it stays on the card as it is, so one more Save tries again.
+        self.retry = retry
+
+
+#: The generic apology the write path returns when it threw ("I couldn't save that just
+#: now, nothing was recorded, please send it again"): not a reason, and the wrong advice
+#: on a card, where the line is still there to Save.
+_SYSTEM_FAILURE = re.compile(
+    r"couldn.t save that just now|nothing was recorded|something in it wasn.t clear|couldn.t apply that update", re.I
+)
 
 
 class _Asks(Exception):
@@ -1368,6 +1379,8 @@ async def _write(gw: Any, item: dr.DraftItem) -> tuple[StepResult, tuple[str, uu
         if gw.abandon_question is not None:
             with contextlib.suppress(Exception):
                 await gw.abandon_question()
+        if _SYSTEM_FAILURE.search(step.text or ""):
+            raise _Failed(item, "something went wrong on our side while saving it", retry=True)
         raise _Failed(item, _clean(step.text))
     await entry.remember(ready, correlation_id=gw.message.correlation_id)
     if gw.handled:
@@ -1662,17 +1675,24 @@ async def _answer_save_question(gw: Any, draft: dr.MessageDraft, item: dr.DraftI
 
 
 async def _failed_reply(gw: Any, draft: dr.MessageDraft, failed: _Failed) -> ReplySpec:
-    """Nothing was written. The item that failed stays on the card, marked, so
-    the rest can still be saved or the card cancelled."""
+    """Nothing was written. The item that failed stays on the card, so the rest can
+    still be saved or the card cancelled. A line the system failed under (request 198)
+    stays a normal line, never "Couldn't read": the card says what failed and that
+    Save tries again."""
     item = failed.item
     _log.warning(
-        "draft.save_failed draft=%s kind=%s reason=%s", draft.id, item.kind if item is not None else "-", failed.reason
+        "draft.save_failed draft=%s kind=%s reason=%s retry=%s",
+        draft.id, item.kind if item is not None else "-", failed.reason, failed.retry,
     )
-    if item is not None:
+    retry = failed.retry and item is not None and item.ready is not None
+    if item is not None and not retry:
         item.state, item.reason = dr.UNREADABLE, failed.reason
         item.label = item.summary or item.label
     _keep(gw, draft)
     await _persist(gw, draft)
+    if retry:
+        words = say("save.failed_retry", getattr(gw, "wording_language", "english"), line=item.summary or item.label)
+        return dr.card_reply(draft, words, site=_card_site(gw, draft))
     what = f" Couldn't save {item.label}: {failed.reason}." if item is not None else f" {failed.reason}."
     words = f"Nothing was saved.{what} It is marked below; tap Save to save the rest, or Cancel."
     return dr.card_reply(draft, words, site=_card_site(gw, draft))
