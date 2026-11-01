@@ -232,6 +232,7 @@ add the eval case.
 
 ## Related
 
+- [assistant-api-agent.md](assistant-api-agent.md): the API agent pilot (WA-119): one model + one SOP + the dashboard's API as tools
 - [ADR-v2-agent-framework.md](ADR-v2-agent-framework.md): decisions, measurements, requests 174 / 176 / 178 / 180
 - [runtime-flow.md](runtime-flow.md): the short flow
 - [apps/whatsapp-assistant/AGENTS.md](../../apps/whatsapp-assistant/AGENTS.md): code rules and the classic path (retiring)
