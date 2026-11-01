@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from mesiri.domains.progress import validation
 from mesiri.infrastructure.postgres.database import PostgresDatabase
+from mesiri_contracts.application.commands.progress import CreateActivityCommand
 from mesiri_contracts.application.results.execution_result import ExecutionResult, as_replay
 from mesiri_contracts.assistant.v2.confirmed_action import ConfirmedActionV2
 
@@ -49,7 +50,11 @@ class ExecuteConfirmedCreateActivityHandler:
         self._resolver = resolver
 
     async def handle(self, confirmed: ConfirmedActionV2) -> ExecutionResult:
-        cmd = build_create_activity_command(confirmed)
+        return await self.execute(build_create_activity_command(confirmed))
+
+    async def execute(self, cmd: CreateActivityCommand) -> ExecutionResult:
+        """Validate, resolve units and save one Activity. The one save path for a
+        WhatsApp confirmation (``handle``) and the API (POST /progress/activities, WA-121)."""
         reasons = validation.validate_create_activity(cmd)
 
         async with self._db.transaction() as conn:

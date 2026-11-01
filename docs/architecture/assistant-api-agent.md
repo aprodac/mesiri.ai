@@ -2,8 +2,9 @@
 
 > Asked by Ilan, 1 Nov 2026: *"one base prompted model, and just that. The rest is the same
 > backend API calls the web dashboard uses, opened to the AI so it understands which to use when."*
-> Status: **wired to WhatsApp behind `assistant_mode = "api"` (WA-120); no company is on it yet.**
-> Pilot WA-119. Not measured on the real model (Gemini key cap, WA-111).
+> Status: **live behind `assistant_mode = "api"`; migration 0497 puts both test companies on it**
+> (Mesiri Test Builders, Paraclette; applied by the next deploy). WA-119 / WA-121 / WA-122.
+> Not measured on the real model (Gemini key cap, WA-111).
 
 ## The idea
 
@@ -67,11 +68,21 @@ duplicates the backend's rules, which is where most per-scenario fixes came from
 - `scripts/api_agent_chat.py`: try it in a terminal against a running server with a dashboard
   login and a Gemini key (`--model gemini-2.5-pro` to compare models).
 
-Tools (25): projects and sites; `day_summary` and `timeline` (what was reported, by whom);
+Tools (28): projects and sites; `day_summary` and `timeline` (what was reported, by whom);
 materials (catalog, units, stock, receipts, usage; record receipt / usage / transfer); labour
-attendance (read); work progress (read); issues (list, report, resolve); expenses (list,
-categories, money accounts, record); a site's day (read; set weather / hours lost / site working /
-tomorrow's plan); send the project DPR now.
+(attendance, worker register, **record attendance**); work (progress, **record work done**); issues
+(list, report, resolve); expenses (list, categories, money accounts, record); a site's day (read;
+set weather / hours lost / site working / tomorrow's plan); send the project DPR now.
+
+**Two new API endpoints (WA-122), for the dashboard and the agent alike:**
+`POST /labour/attendance` and `POST /progress/activities`. They run the same save handlers as a
+WhatsApp confirmation (`ExecuteConfirmedLabourAttendanceHandler.execute`,
+`ExecuteConfirmedCreateActivityHandler.execute`: `handle(confirmed)` now builds the command and
+calls `execute`), so totals, cost, DPR and timeline read them the same way. Access is checked as
+the other writes do; the site must belong to the project and company; a `worker_id` must be the
+company's. The client's `Idempotency-Key` is turned into a UUID scoped to the company
+(`domains/shared/execution.py`): a retry replays (200), two companies' keys never meet. 201
+recorded, 422 refused with the handler's reasons.
 
 **The API now lists its valid values** (WA-120, the same class of gap in four places): issue type
 and severity, weather and site working (full / half / none), hours lost (0-24), and material
@@ -93,7 +104,8 @@ API docs and the agent both see the choices instead of guessing.
 ## Switching a company on and off
 
 `assistant_mode` = `api` (company setting; `PUT /admin/organizations/{org_id}/settings`, platform admin).
-Rollback is instant: set it back (`v2` / `classic`). No data migration; records written through it
+Migration 0497 sets it for the two test companies (downgrade: back to `v2`, only where it still
+reads `api`). Rollback is instant: set it back (`v2` / `classic`). No data migration; records written through it
 are ordinary dashboard records.
 
 ## Not done yet
@@ -101,11 +113,7 @@ are ordinary dashboard records.
 1. **Measure it**: real messages and voice-note transcripts from the test companies, through the
    API agent and through v2, same checks (`agent_v2/replay/checks.py`), on Flash and on Pro. Needs a
    working Gemini key (WA-111).
-2. **The API has no write for two record kinds the assistant takes today**: labour attendance
-   (`/labour/attendance` is read-only) and work done (`/progress/activities` has no create). Until
-   the backend has them (for the dashboard too), the agent can read but not record these, and says
-   so. Labour is a protected module: the endpoint needs its own approved item.
-3. Photos and documents (bills, attendance sheets) stay on the journey's existing path.
-4. **Gaps the API has and the assistant's path covers**: material aliases in `search_materials`
+2. Photos and documents (bills, attendance sheets) stay on the journey's existing path.
+3. **Gaps the API has and the assistant's path covers**: material aliases in `search_materials`
    (the API searches names), unit conversion asked in words, duplicate-delivery warning, the morning
    site question. Found by step 1, fixed in the backend so the dashboard gets them too.

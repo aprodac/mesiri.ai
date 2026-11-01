@@ -23,8 +23,11 @@ from __future__ import annotations
 
 import datetime
 import uuid
+from decimal import Decimal
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.authorization.context import AuthorizationContext
@@ -92,6 +95,94 @@ def _site_filter_denied(
     if site_scope.grants_all_sites:
         return False
     return site_id not in site_scope.site_ids
+
+
+class RecordActivityQuantity(BaseModel):
+    """One measured quantity of the work, in the unit the person said ("sqm", "bags")."""
+
+    quantity: Decimal = Field(gt=0)
+    unit: str = Field(min_length=1)
+    work_type: str | None = None
+    measurement_type: Literal["ACHIEVED", "CUMULATIVE"] = "ACHIEVED"
+
+
+class RecordActivityRequest(BaseModel):
+    project_id: uuid.UUID
+    site_id: uuid.UUID
+    activity_date: datetime.date
+    work_type: str | None = None
+    narrative: str | None = None
+    contractor: str | None = None
+    started_at: str | None = Field(default=None, pattern=r"^\d{2}:\d{2}$")
+    ended_at: str | None = Field(default=None, pattern=r"^\d{2}:\d{2}$")
+    quantities: list[RecordActivityQuantity] = Field(default_factory=list)
+    source: Literal["dashboard", "whatsapp_text", "whatsapp_voice", "whatsapp_image"] = "dashboard"
+
+
+@router.post("/activities", status_code=201)
+async def record_activity(
+    body: RecordActivityRequest,
+    request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Record work done at a site (WA-121): the same save as a WhatsApp work report
+    (``ExecuteConfirmedCreateActivityHandler.execute``: units resolved, then saved),
+    so the DPR and progress read it the same way. A narrative, quantities, or both.
+    Send an ``Idempotency-Key`` to make a retry safe. 201 recorded, 200 the same key
+    again, 422 refused with the reasons."""
+    from mesiri.application.progress.handlers import ExecuteConfirmedCreateActivityHandler
+    from mesiri.application.progress.resolution import PostgresProgressUnitResolver
+    from mesiri.domains.shared.execution import (
+        assert_site_in_project,
+        execution_response,
+        handler_database,
+        idempotency_uuid,
+    )
+    from mesiri.infrastructure.postgres.repositories.progress_execution import (
+        PostgresProgressExecutionRepository,
+    )
+    from mesiri_contracts.application.commands.progress import (
+        ActivityQuantityInput,
+        CreateActivityCommand,
+    )
+
+    _, denied = _resolve_project_ids(auth_context, body.project_id)
+    if denied or _site_filter_denied(auth_context, body.project_id, body.site_id):
+        raise HTTPException(status_code=403, detail="Not authorized for this project or site")
+    await assert_site_in_project(conn, auth_context.organization_id, body.project_id, body.site_id)
+    key = idempotency_uuid(auth_context.organization_id, idempotency_key)
+    cmd = CreateActivityCommand(
+        command_id=f"cmd_{uuid.uuid4()}",
+        idempotency_key=key,
+        correlation_id=key,
+        organization_id=str(auth_context.organization_id),
+        project_id=str(body.project_id),
+        site_id=str(body.site_id),
+        work_type=body.work_type,
+        narrative=(body.narrative or "").strip() or None,
+        contractor=body.contractor,
+        started_at=body.started_at,
+        ended_at=body.ended_at,
+        quantities=[
+            ActivityQuantityInput(
+                quantity=q.quantity, unit=q.unit.strip(), work_type=q.work_type or body.work_type,
+                measurement_type=q.measurement_type,
+            )
+            for q in body.quantities
+        ],
+        activity_date=body.activity_date,
+        occurred_date_source="stated_by_user",
+        source=body.source,
+        created_by=str(auth_context.user_id),
+    )
+    handler = ExecuteConfirmedCreateActivityHandler(
+        db=handler_database(request),
+        repo=PostgresProgressExecutionRepository(),
+        resolver=PostgresProgressUnitResolver(),
+    )
+    return execution_response(await handler.execute(cmd))
 
 
 @router.get("/activities", response_model=ActivitiesListResponse)
