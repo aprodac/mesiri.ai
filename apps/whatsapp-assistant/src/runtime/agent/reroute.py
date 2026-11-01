@@ -31,6 +31,7 @@ from .tools import (
     SAVE_MATERIAL_RECEIPT,
     SAVE_MATERIAL_USAGE,
     SAVE_WORK_DONE,
+    SET_SITE_CONDITIONS,
     UPDATE_PENDING_CARD,
 )
 
@@ -150,7 +151,67 @@ def _request_from_words(call: Call) -> tuple[str, dict[str, Any]] | None:
     return REQUEST_MATERIAL, {**said, **when, **scope}
 
 
+#: Item 195: damage or a blocker named with the weather ("mazha karanam wall veenu") is an issue.
+_DAMAGE = re.compile(
+    r"\b(?:veenu|veezhn\w*|fell|fallen|collaps\w*|damag\w*|broke\w*|flood\w*|washed|leak\w*|crack\w*|"
+    r"nashtam|nashich\w*|injur\w*|accident|blocked|blocker|theernnu|ozhukki)\b|വീണു|തകർന്നു|നശിച്ചു|ഒലിച്ചു",
+    re.IGNORECASE,
+)
+_RAIN = re.compile(r"\b(?:rain\w*|mazha\w*|barish|baarish)\b|മഴ|बारिश", re.IGNORECASE)
+_HEAT = re.compile(r"\b(?:heat|hot|chood\w*|garmi)\b|ചൂട്|गर्मी", re.IGNORECASE)
+_WIND = re.compile(r"\b(?:wind\w*|kaattu|kattu)\b|കാറ്റ്", re.IGNORECASE)
+
+
+#: Work that STOPPED is a blocker with hours lost (request 104's weather issue and its hours question).
+_STOPPED = re.compile(
+    r"\b(?:stopp?ed|halt\w*|ninn\w*|nirth\w*|nilach\w*|since|from|till|until|hours?|hrs?|mani\w*|pm|am)\b|നിന്നു|നിർത്തി|मणि|रुका|रुक",
+    re.IGNORECASE,
+)
+
+
+def _weather_issue_is_day_condition(call: Call) -> bool:
+    """Weather with less work (or none stated as stopped) is the day's conditions; damage, or work
+    stopped for hours (a blocker), stays an issue."""
+    kind = str(call.args.get("issue_type") or "").strip().casefold()
+    if kind != "weather" or call.args.get("delay_duration_minutes"):
+        return False
+    text = call.text or ""
+    says_weather = bool(_RAIN.search(text) or _HEAT.search(text) or _WIND.search(text))
+    return says_weather and not _DAMAGE.search(text) and not _STOPPED.search(text)
+
+
+def _conditions_from_weather_issue(call: Call) -> tuple[str, dict[str, Any]] | None:
+    text = call.text or ""
+    args: dict[str, Any] = {}
+    if _RAIN.search(text):
+        args["weather"] = "rainy"
+    elif _HEAT.search(text):
+        args["weather"] = "extreme_heat"
+    elif _WIND.search(text):
+        args["weather"] = "windy"
+    minutes = call.args.get("delay_duration_minutes")
+    if isinstance(minutes, (int, float)) and minutes > 0:
+        args["hours_lost"] = round(float(minutes) / 60, 2)
+    for key in ("date", "project", "site"):
+        if call.args.get(key):
+            args[key] = call.args[key]
+    return (SET_SITE_CONDITIONS, args) if args.get("weather") else None
+
+
 RULES: tuple[Rule, ...] = (
+    Rule(
+        # Item 195: weather / 'little work today' is the day's conditions; only damage or a blocker is an issue.
+        name="weather_not_issue",
+        tool=REPORT_ISSUE,
+        when=_weather_issue_is_day_condition,
+        to=_conditions_from_weather_issue,
+        reason="weather without damage is the day's conditions, not an issue",
+        instruction=(
+            "Nothing was saved as an issue. Weather or little work today is the day's conditions: call "
+            "set_site_conditions with what they said (weather, site_working, hours_lost). Only damage or a "
+            "blocker is an issue."
+        ),
+    ),
     Rule(
         name="received_not_used",
         tool=SAVE_MATERIAL_USAGE,

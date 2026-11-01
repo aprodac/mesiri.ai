@@ -107,6 +107,12 @@ async def fit_stock_unit(
         fields["unit"] = stock_unit["code"]
         fields["unit_id"] = str(stock_unit_id)
         return UnitFit("ok")
+    if reported is not None and stock_unit is not None and str(unit_text or "").strip().casefold().rstrip(".") in COUNT_WORDS:
+        # Item 195: a count the sender gave ("50 nos" of TMT bars) is never turned into a weight or
+        # any other unit they did not say (live 1 Nov: "TMT steel bar 50 ennam" showed 2.5 tons).
+        # The line keeps what was said; the stock unit stays the catalog's.
+        fields["unit_id"] = str(reported["id"])
+        return UnitFit("ok")
     if reported is not None and stock_unit is not None and qty is not None:
         # WA-41: the company said (or physics says) how many of this unit make
         # one stock unit: convert, keep what was reported, no question.

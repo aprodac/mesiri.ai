@@ -47,3 +47,36 @@ def words_for(code: object) -> frozenset[str]:
     """Every folded spelling of a unit code or any of its words ("bag" -> all of bags)."""
     canon = canonical_unit(code) or fold(code)
     return frozenset(w for w, c in _INDEX.items() if c == canon) | {fold(code)}
+
+
+#: Item 195: the words that say "a number of pieces" on a site ("50 ennam", "50 എണ്ണം", "50 nos").
+_COUNT_SAID = re.compile(
+    r"(?P<n>\d+(?:[.,]\d+)?)\s*(?:nos|no|numbers?|pcs?|pieces?|ennam|enam|ennu|എണ്ണം|എണ്ണ)\b",
+    re.IGNORECASE,
+)
+
+
+def unit_the_sender_gave(unit: object, quantity: object, text: str) -> str | None:
+    """"nos" when the model put a unit the sender never said on a figure the sender gave as a plain
+    count ("TMT steel bar 50 ennam" drafted as 2.5 tons); None when the unit is fine.
+
+    A unit is fine when its word (or a spelling of it) is in the message, or when the figure is
+    not said as a count. Pure; no I/O.
+    """
+    try:
+        qty = float(quantity)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    if not str(unit or "").strip():
+        return None
+    folded = fold(text)
+    if any(w and w in folded for w in words_for(unit)):
+        return None
+    for found in _COUNT_SAID.finditer(text or ""):
+        try:
+            said = float(found.group("n").replace(",", "."))
+        except ValueError:
+            continue
+        if said == qty:
+            return "nos"
+    return None

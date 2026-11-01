@@ -53,6 +53,8 @@ from .tools import (
     REPORT_ISSUE,
     REQUEST_DPR,
     SAVE_LABOUR,
+    SAVE_MATERIAL_RECEIPT,
+    SAVE_MATERIAL_USAGE,
     SAVE_WORK_DONE,
     SET_REPLY_LANGUAGE,
     SET_UNIT_CONVERSION,
@@ -423,6 +425,8 @@ class AgentToolbox:
     #: while the model writes the reply.
     after_tool: Callable[[], None] | None = None
     failed: int = 0
+    #: Item 195: why the last correction of a card line changed nothing (None: it did, or none was made).
+    change_refused: str | None = None
     #: Request 143: what request_dpr answered (the code's sentence, in the sender's
     #: language) and how many PDFs it sent. The reply says it, never the model.
     report_text: str | None = None
@@ -568,12 +572,20 @@ class AgentToolbox:
                 }
             )
         self.called.add(name)
+        if name != UPDATE_PENDING_CARD and (name in WRITE_TOOLS or name == ANSWER_CARD_QUESTION):
+            self.change_refused = None  # item 195: a later write is its own answer
         self.calls += 1
         if self.calls > MAX_CALLS:
             await self._note_lost(name, args, "too many in one message")
             return ToolOutcome(
                 content={"status": "skipped", "reason": "too many actions in one message"}
             )
+        if name in (SAVE_MATERIAL_RECEIPT, SAVE_MATERIAL_USAGE, ADJUST_STOCK):
+            from runtime.unit_words import unit_the_sender_gave
+
+            # Item 195: a unit the sender never said, on a figure they gave as a count, is theirs ("nos").
+            if given := unit_the_sender_gave(args.get("unit"), args.get("quantity"), self.user_text):
+                args = {**args, "unit": given}
         if not rerouted:
             redirect = reroute.before(name, args, self.user_text)
             if redirect is not None:
@@ -649,7 +661,9 @@ class AgentToolbox:
         if name == ADJUST_STOCK and unsaid_zero_count(self.user_text, args):
             # Request 192: no counted figure; the card then shows the records and asks
             # ("Records show 127 bag cement. Set stock to 0?"), so nothing is wiped unasked.
-            args = {k: v for k, v in args.items() if k != "counted"}
+            # Item 195: and no "Couldn't read: Stock count" line for it: the shortage is on the card and
+            # the question (when the books show stock) is the only line this part may leave.
+            args = {**{k: v for k, v in args.items() if k != "counted"}, "reconcile": True}
         if name == REPORT_ISSUE:
             args = classify_issue(self.user_text, args)
         if name == SAVE_WORK_DONE:
@@ -1047,7 +1061,13 @@ class AgentToolbox:
         if name == UNDO_LAST and str(args.get("what") or "latest_update") == "latest_update":
             return await self._undo(args)
         if name == UPDATE_PENDING_CARD:
-            return await self._update_card(args)
+            step = await self._update_card(args)
+            if step.status in ("error", "info") and not step.changed and "waits for an answer" not in (step.text or ""):
+                # Item 195: a correction that changed nothing is said by the code, never "Got it".
+                self.change_refused = step.text or "nothing was changed"
+            elif step.changed or step.status in ("drafted", "saved"):
+                self.change_refused = None
+            return step
         if name == REMOVE_CARD_LINE:
             return await self._remove_line(args)
         if name == ANSWER_CARD_QUESTION:

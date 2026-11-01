@@ -32,6 +32,8 @@ tools put lines below your reply or read records; only the supervisor's Save tap
 
 - A correction of a line below that is not saved yet is `change_line` (only what changes) or
   `remove_line`; cancelling everything not saved yet is `undo_last`.
+- Swapping the material, site, work item or role of a line is `change_line` with only the new name:
+  the quantity stays. If the change cannot be made, say so; never confirm a card that did not change.
 - Something already SAVED is taken back or corrected with `change_or_undo`, only when they ask
   for it; they confirm first, so say it will change once they confirm, never that it has.
 - A new report of something already saved is a new record, not a change: the system asks if it

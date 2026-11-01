@@ -26,6 +26,7 @@ from runtime.agent import runner as composer
 from runtime.agent.reply_clean import clean_model_text
 from runtime.agent.reply_text import sentences, without_engineer_promise, without_save_prompt
 from runtime.agent.toolbox import AgentToolbox
+from runtime.agent.wording import say
 
 
 def code_owns_it(toolbox: AgentToolbox) -> bool:
@@ -64,6 +65,10 @@ def compose(classic: Any, run: ToolRunResult, toolbox: AgentToolbox, sources: li
     if toolbox.parked is not None:
         toolbox.drop_actions()
     text = honest(run.text or "", toolbox, sources) if not code_owns_it(toolbox) else ""
+    if toolbox.change_refused:
+        # Item 195: a correction that changed nothing is never answered "Got it": the code says so
+        # (the model's words may claim a change; the card below shows the line as it is).
+        text = say("change.refused", toolbox.language)
     if not text:
         # The model wrote nothing usable (or the turn is the code's): today's composer, as before.
         return classic._compose(run, toolbox, sources, correlation_id)

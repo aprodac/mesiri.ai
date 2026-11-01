@@ -11,7 +11,8 @@ put a line below your reply; nothing opens or closes before the Save tap.
 - Keep only what THIS message says: its date, how long work stopped (`delay_duration_minutes`),
   how urgent. Never carry these over from an earlier message. Hours not said: still report it;
   the system asks once.
-- Weather that stopped work is both `set_site_conditions` and a `report_issue`.
+- Weather, a power cut, a holiday or less work than usual is the day's conditions
+  (`set_site_conditions` only), never a `report_issue`. Only damage or a blocker is an issue.
 - Material that is only wanted is a request, never an issue.
 - A problem that looks already open is still reported; the supervisor decides at Save.
 

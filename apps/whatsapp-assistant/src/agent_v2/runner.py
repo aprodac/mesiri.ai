@@ -165,7 +165,8 @@ class V2Runner:
             line = say("material_request.not_built", toolbox.language)
             if not toolbox.attempted_writes and toolbox.parked is None:
                 return AgentResult("ok", ReplySpec(text=line), toolbox, run=run)
-            toolbox.system_lines.append(line)
+            # Item 195: under a card that has lines, never "nothing was saved".
+            toolbox.system_lines.append(say("material_request.not_built_card", toolbox.language))
         await toolbox.finish_site_queue()
         run = AgentRunner._one_script(run, user_text, correlation_id)
         classic_runner._park_plain_question(run, toolbox)

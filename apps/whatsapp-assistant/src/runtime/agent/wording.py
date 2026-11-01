@@ -305,12 +305,27 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "आपकी सभी साइट",
         "hinglish": "Aapki saari sites",
     },
+    "material_request.not_built_card": {
+        # Item 195: said under a card that HAS lines, so it never says "nothing was saved".
+        "english": "Material requests aren't in Mesiri yet, so that part is not added below.",
+        "manglish": "Material request ippo Mesiri-il illa, athukondu aa bhagam thazhe cherkkunnilla.",
+        "malayalam": "മെറ്റീരിയൽ റിക്വസ്റ്റ് ഇപ്പോൾ Mesiri-യിൽ ഇല്ല, അതിനാൽ ആ ഭാഗം താഴെ ചേർക്കുന്നില്ല.",
+        "hindi": "मटेरियल रिक्वेस्ट अभी Mesiri में नहीं है, इसलिए वह हिस्सा नीचे नहीं जोड़ा.",
+        "hinglish": "Material request abhi Mesiri mein nahi hai, isliye woh hissa neeche nahi joda.",
+    },
     "material_request.not_built": {
         "english": "Material requests aren't in Mesiri yet, so nothing was saved. To record what is on site, send what arrived or was used.",
         "manglish": "Material request ippo Mesiri-il illa, athukondu onnum save cheythilla. Site-il vanna / use cheytha material ayakku.",
         "malayalam": "മെറ്റീരിയൽ റിക്വസ്റ്റ് ഇപ്പോൾ Mesiri-യിൽ ഇല്ല, അതിനാൽ ഒന്നും സേവ് ചെയ്തില്ല.",
         "hindi": "मटेरियल रिक्वेस्ट अभी Mesiri में नहीं है, इसलिए कुछ सेव नहीं हुआ.",
         "hinglish": "Material request abhi Mesiri mein nahi hai, isliye kuch save nahi hua.",
+    },
+    "change.refused": {
+        "english": "I couldn't change that line, so it stays as it is below. Tell me the new name or figure once more.",
+        "manglish": "Aa line maattan pattiyilla, athu thazhe pazhayathu thanne. Puthiya peru/figure onnu koodi parayamo.",
+        "malayalam": "ആ വരി മാറ്റാൻ കഴിഞ്ഞില്ല, താഴെ പഴയതുപോലെ തന്നെ. പുതിയ പേരോ കണക്കോ ഒന്നുകൂടി പറയാമോ.",
+        "hindi": "वह लाइन बदली नहीं जा सकी, नीचे वह पहले जैसी ही है। नया नाम या आँकड़ा एक बार फिर बताइए।",
+        "hinglish": "Woh line change nahi ho saki, neeche woh pehle jaisi hi hai. Naya naam ya figure ek baar phir batao.",
     },
     "v2.repeat_reply": {
         "english": "Sorry, that is what I just told you, so it is not what you need. Tell me again in a few words what you want and I will answer only that.",

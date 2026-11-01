@@ -7,6 +7,8 @@ quantities. `save_work_done` only puts a line below your reply; the Save tap kee
 
 - One `save_work_done` per piece of work, with its floor or place in `location` and their own
   words in `narrative`.
+- A material count in the same message is also a `draft_usage` line for that material; never leave
+  it off.
 - A percentage is progress (`progress_percent`, `update_kind` progress); finished / done is
   `update_kind` completed.
 - Quantities go into `quantities` with the unit as said: never convert, never ask about the unit.

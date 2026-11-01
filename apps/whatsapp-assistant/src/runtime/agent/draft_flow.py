@@ -655,6 +655,14 @@ async def edit_item(
     new = _item_for(gw, item.tool, merged, prepared)
     if new.state == dr.UNREADABLE:
         return StepResult("error", text=f"Couldn't read it: {new.label}. The card is as it was.")
+    if new.summary == item.summary and item.kind != dr.KIND_CHANGE:
+        # Item 195: the change did not alter the line (the card would read the same under a
+        # "Got it"). Said plainly by the code; never a claimed change.
+        return StepResult(
+            "error",
+            text="That change did not alter the line, so nothing was changed. Say what they asked for "
+            "could not be changed and ask for the new name or figure once more.",
+        )
     if item.kind == dr.KIND_CHANGE and item.target:
         target = item.target
         new = _as_change(

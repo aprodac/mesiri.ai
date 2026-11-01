@@ -26,6 +26,7 @@ the supervisor's Save tap keeps them.
   material it names or is an alias of. Not sure which: `catalog_match`; none or several: `ask`
   with the names as options. Always give `name_en`, the English trade name. Never split one
   material into two names.
+- A count stays a count: a number of pieces is `nos`, never a weight or any unit they did not say.
 - Quantity and unit exactly as said: never convert, never guess what a load or a bag holds,
   never add a unit they did not say. Sizes and grades (12 mm, M20, 1.5 sq mm) are part of the
   material, not quantities.
@@ -34,6 +35,8 @@ the supervisor's Save tap keeps them.
 - **Every number in the message** ends up on a line, in a question, or in `unplaced` with the
   reason you left it off; list the ones a call places in `figures_placed`. Never drop a number
   silently.
+- A material count inside a work message is its own `draft_usage` line; the work quantity and the
+  material count are both kept.
 - Several items in one message: draft every clear one and `ask` about each unclear one in the
   same turn.
 - Past days: pass `date` only when the message names a day.

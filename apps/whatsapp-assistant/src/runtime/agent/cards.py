@@ -213,6 +213,11 @@ def merge_changes(tool: str, args: dict[str, Any], changes: dict[str, Any]) -> d
             merged[key] = _merge_workers(list(merged.get("workers") or []), value)
         else:
             merged[key] = value
+    if changes.get("material") is not None and changes.get("name_en") is None:
+        # Request 195 (item 195): a swapped material ("TMT maatti 12mm steel rod") must not keep
+        # the old English name the line was drafted with: the line is named from name_en first,
+        # so the swap changed nothing on the card and "Got it" went out over the old line.
+        merged.pop("name_en", None)
     return merged
 
 

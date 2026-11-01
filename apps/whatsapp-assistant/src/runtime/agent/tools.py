@@ -688,8 +688,9 @@ def _specs() -> list[ToolSpec]:
                 "Set the day's site conditions or tomorrow's plan: the weather today (rain, sunny, "
                 "cloudy, windy, extreme heat), whether the site worked a full day, half a day or not "
                 "at all, and 'tomorrow plan: ...'. It shows a card; nothing is kept until they tap "
-                "Save. 'Rain since 2 pm, work stopped 2 hours' is this tool AND report_issue (WEATHER, "
-                "with the hours). A plan for tomorrow is ALWAYS this tool, never just noted."
+                "Save. 'Rain since 2 pm, work stopped 2 hours' is this tool ONLY (weather rainy, hours_lost): "
+                "weather and little work are the day's conditions, never an issue; damage or a blocker "
+                "('mazha karanam wall veenu') is report_issue. A plan for tomorrow is ALWAYS this tool, never just noted."
             ),
             parameters=_obj(
                 {

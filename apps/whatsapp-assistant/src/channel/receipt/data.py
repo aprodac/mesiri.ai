@@ -467,8 +467,13 @@ def build_receipt_data(
         kind = ReceiptKind.WORK
         category = "Site activity"
         pct = _progress_percent(fields)
+        # Item 195: the work quantity is saved under `quantities` too ("100 sq ft brickwork"): the card
+        # shows it, never a Brickwork line with no figure.
+        said = _quantity_said(fields)
         if _present(fields.get("quantity")):
             hero_number, hero_unit = _number(fields["quantity"]), str(fields.get("unit") or "").strip()
+        elif said:
+            hero_number, hero_unit = said
         elif pct:
             hero_number, hero_unit = pct.rstrip("%"), "% done"
         else:
@@ -491,7 +496,9 @@ def build_receipt_data(
                 ("Contractor", fields.get("contractor")),
             )
             summary_text = work_type
-            summary_value = _fmt_quantity(fields) if hero_number else ""
+            summary_value = (
+                _fmt_quantity(fields) if _present(fields.get("quantity")) else f"{hero_number} {hero_unit}".strip()
+            ) if hero_number else ""
         id_prefix = "AL"
     elif draft.action_type is DraftActionType.ADD_PROGRESS_UPDATE:
         update_kind = str(fields.get("update_kind") or "PROGRESS").replace("_", " ").title()
