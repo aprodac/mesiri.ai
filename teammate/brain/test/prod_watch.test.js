@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { ProdWatch, QUIET, MAX_CONVERSATIONS, SCREEN_PROMPT, Screener, parseInterval, asObjects, chatHtml, conversations, flagRows, opsSources, screenFlags, screenItems, watchPrompt, watchSql } from "../src/prod_watch.js";
+import { DEFAULT_SKIP, ProdWatch, QUIET, MAX_CONVERSATIONS, SCREEN_PROMPT, Screener, parseInterval, asObjects, chatHtml, conversations, flagRows, opsSources, screenFlags, screenItems, skipPatterns, watchPrompt, watchSql } from "../src/prod_watch.js";
 
 const T0 = 1_761_700_000; // epoch seconds
 const msg = (over) => ({
@@ -300,34 +300,90 @@ test("intervals people type become minutes, between 5 minutes and a day", () => 
   for (const t of ["1m", "2 days", "soon", "", "25h"]) assert.equal(parseInterval(t), null, t);
 });
 
-test("anyone sees the watch; only an owner in the team group changes it; it lasts and runs on its new interval", async () => {
+test("anyone sees the watch; only an owner in the team group changes it; the setting lasts", async () => {
   const dir = mkdtempSync(join(tmpdir(), "pw-"));
   try {
-    let t = T0 * 1000;
     const { fetchFn } = fakeOps([]);
     const file = join(dir, "s.json");
-    const make = () => new ProdWatch({ sources: { mesiri: { url: "u", token: "t" } }, ask: async () => {}, file, fetchFn, now: () => t, minutes: 5 });
+    const make = () => new ProdWatch({ sources: { mesiri: { url: "u", token: "t" } }, ask: async () => {}, file, fetchFn, now: () => T0 * 1000, minutes: 5 });
     const watch = make();
     const member = { text: "watch", sender: "Ravi", sender_role: "member" };
-    assert.match(watch.command(member), /on, every \*5 min\*/);
+    assert.match(watch.command(member), /when a real company messages, one look \*5 min\* later \(test companies skipped\)/);
     assert.equal(watch.command({ text: "show me the dpr" }), undefined); // not a watch command
     assert.equal(watch.command({ ...member, text: "watch 1h" }), "Only an owner can change the production watch.");
     assert.equal(watch.command({ text: "watch 1h", sender_role: "owner", dm: true }), "The production watch can be changed in the team group only.");
-    assert.match(watch.command({ text: "watch 1h", sender: "Ilan", sender_role: "owner" }), /Now every 1 hour/);
+    assert.match(watch.command({ text: "watch 10m", sender: "Ilan", sender_role: "owner" }), /one look 10 min after/);
     assert.match(watch.command({ text: "watch forever", sender_role: "owner" }), /didn't understand/);
 
-    assert.equal(await watch.maybeTick(), true); // first look
-    t += 30 * 60_000;
-    assert.equal(await watch.maybeTick(), false); // 30 min later: not due at 1 hour
-    t += 31 * 60_000;
-    assert.equal(await watch.maybeTick(), true);
-
     const restarted = make(); // the setting survives a restart
-    assert.match(restarted.command(member), /every \*1 hour\*/);
+    assert.match(restarted.command(member), /one look \*10 min\* later/);
     assert.match(restarted.command({ text: "watch off", sender_role: "owner" }), /Paused/);
     assert.equal(await restarted.maybeTick(), false);
     assert.match(restarted.command({ text: "watch on", sender_role: "owner" }), /On again/);
     assert.match(restarted.command(member), /today: \d+ look\(s\)/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// -- 1 Nov (Ilan): the test companies' own testing spent the Gemini key all day. The watch reads real companies only,
+// wakes when one messages, and takes ONE look 5 minutes later. Idle: one free SELECT every 2 minutes, nothing else. --
+
+test("the SQL never reads the test companies, and a skip list cannot inject SQL", () => {
+  const sql = watchSql(T0, 400, DEFAULT_SKIP);
+  assert.match(sql, /NOT ILIKE ALL \(ARRAY\['Mesiri Test Builders', '%paraclet%'\]\)/);
+  assert.deepEqual(skipPatterns(undefined), DEFAULT_SKIP);
+  assert.deepEqual(skipPatterns("Acme Test, x'); DROP TABLE y;--"), ["Acme Test", "x DROP TABLE y--"]);
+  assert.deepEqual(skipPatterns(""), []); // an empty value reads every company
+  assert.doesNotMatch(watchSql(T0, 400, []), /NOT ILIKE/);
+});
+
+function counting(pages) {
+  const ops = fakeOps(pages);
+  let screens = 0;
+  const screener = { screen: async () => (screens++, new Map()) };
+  return { ...ops, screener, screens: () => screens };
+}
+
+test("idle: only the free check runs, every 2 minutes; no AI screen, no Claude turn", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pw-"));
+  try {
+    let t = T0 * 1000;
+    const { fetchFn, calls, screener, screens } = counting([]);
+    const asked = [];
+    const watch = new ProdWatch({ sources: { mesiri: { url: "u", token: "t" } }, ask: async () => asked.push(1), file: join(dir, "s.json"), fetchFn, now: () => t, screener });
+    for (let minute = 0; minute < 60; minute++, t += 60_000) await watch.maybeTick();
+    assert.equal(calls.length, 30); // one SELECT every 2 minutes for an hour
+    assert.ok(calls.every((c) => /LIMIT 1$/.test(JSON.parse(c.init.body).sql))); // the check reads one row at most
+    assert.equal(screens(), 0);
+    assert.equal(asked.length, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a real company's message opens the watch: one look 5 minutes later, then idle again", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pw-"));
+  try {
+    let t = (T0 + 60) * 1000;
+    const bad = msg({ at: T0 + 10, status: "failed", error_code: "X" });
+    // probe finds a message -> 5 min later the look reads the burst -> the next probe finds nothing new
+    const { fetchFn, screener, screens } = counting([[bad], [msg({}), bad], []]);
+    const asked = [];
+    const watch = new ProdWatch({ sources: { mesiri: { url: "u", token: "t" } }, ask: async () => asked.push(1), file: join(dir, "s.json"), fetchFn, now: () => t, screener, minutes: 5 });
+    assert.equal(await watch.maybeTick(), false); // the check sees a message: the watch opens, nothing screened yet
+    assert.equal(screens(), 0);
+    for (let i = 0; i < 4; i++) {
+      t += 60_000;
+      assert.equal(await watch.maybeTick(), false); // inside the 5 minutes: no look
+    }
+    t += 60_000;
+    assert.equal(await watch.maybeTick(), true); // 5 minutes: ONE look at the whole burst
+    assert.equal(screens(), 1);
+    assert.equal(asked.length, 1);
+    t += 2 * 60_000;
+    assert.equal(await watch.maybeTick(), false); // nothing new: idle again
+    assert.equal(screens(), 1);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

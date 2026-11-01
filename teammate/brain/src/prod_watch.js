@@ -22,10 +22,25 @@ export const MAX_CONVERSATIONS = 12;
 export const SLOW_SECONDS = 15;
 const FIRST_LOOK_MINUTES = 60;
 const WINDOW_SECONDS = 15 * 60;
+/** How often the free check runs (one SELECT, no AI): is there a new message of a real company? */
+export const PROBE_MINUTES = 2;
+/**
+ * Companies the watch never reads (Ilan, 1 Nov: the test companies' own testing spent the Gemini key all day).
+ * ILIKE patterns; TEAMMATE_PROD_WATCH_SKIP (comma-separated) replaces them.
+ */
+export const DEFAULT_SKIP = ["Mesiri Test Builders", "%paraclet%"];
+
+/** The skip list from the env value, as safe ILIKE patterns (letters, digits, spaces, % _ - only). */
+export function skipPatterns(value) {
+  const list = value === undefined || value === null ? DEFAULT_SKIP : String(value).split(",");
+  return list.map((x) => x.replace(/[^\p{L}\p{N} %_-]/gu, "").trim()).filter(Boolean);
+}
 
 /** The one read: the newest messages since `since` (epoch seconds), settled for 2 minutes, oldest first. */
-export function watchSql(since, limit = 400) {
+export function watchSql(since, limit = 400, skip = []) {
   const from = Number.isFinite(since) ? Number(since).toFixed(3) : "0";
+  const pats = skipPatterns(skip.join(","));
+  const notTest = pats.length ? `\n  AND coalesce(o.name, '') NOT ILIKE ALL (ARRAY[${pats.map((x) => `'${x}'`).join(", ")}])` : "";
   return `SELECT m.correlation_id, extract(epoch FROM m.received_at)::float8 AS at,
        extract(epoch FROM m.processed_at)::float8 AS done_at,
        o.name AS company, md5(coalesce(m.sender_wa_id, '')) AS who, right(coalesce(m.sender_wa_id, ''), 4) AS last4,
@@ -35,7 +50,7 @@ export function watchSql(since, limit = 400) {
 FROM inbound_messages m LEFT JOIN organizations o ON o.id = m.organization_id
 LEFT JOIN LATERAL (SELECT u.full_name, u.role FROM users u WHERE u.organization_id = m.organization_id
   AND regexp_replace(u.whatsapp_number, '\\D', '', 'g') = regexp_replace(m.sender_wa_id, '\\D', '', 'g') LIMIT 1) su ON true
-WHERE m.received_at > to_timestamp(${from}) AND m.received_at < now() - interval '2 minutes'
+WHERE m.received_at > to_timestamp(${from}) AND m.received_at < now() - interval '2 minutes'${notTest}
 ORDER BY m.received_at ASC LIMIT ${Math.max(1, Math.min(1000, Number(limit) || 400))}`;
 }
 
@@ -312,8 +327,8 @@ export class ProdWatch {
    * @param ask       (project, text) => void: run the planning turn in the project's team group ("watch" conversation)
    * @param file      where the cursor and the reported ids are kept
    */
-  constructor({ sources, ask, file, log = () => {}, fetchFn = fetch, now = () => Date.now(), minutes = 30, screener = null, lookBackMinutes = 30 }) {
-    Object.assign(this, { sources, ask, file, log, fetchFn, now, minutes, screener, lookBackMinutes, started: false });
+  constructor({ sources, ask, file, log = () => {}, fetchFn = fetch, now = () => Date.now(), minutes = 5, screener = null, lookBackMinutes = 30, skip = DEFAULT_SKIP }) {
+    Object.assign(this, { sources, ask, file, log, fetchFn, now, minutes, screener, lookBackMinutes, skip, started: false, burstAt: null });
   }
 
   /** The code flags plus the AI screen's, for the fresh rows; the screen failing leaves the code flags. */
@@ -352,11 +367,11 @@ export class ProdWatch {
     }
   }
 
-  async read(source, since) {
+  async read(source, since, limit = 400) {
     const res = await this.fetchFn(`${source.url}/claude-ops/sql`, {
       method: "POST",
       headers: { authorization: `Bearer ${source.token}`, "content-type": "application/json" },
-      body: JSON.stringify({ sql: watchSql(since) }),
+      body: JSON.stringify({ sql: watchSql(since, limit, this.skip) }),
     });
     if (!res.ok) throw new Error(`ops API HTTP ${res.status}`);
     return asObjects(await res.json());
@@ -375,13 +390,41 @@ export class ProdWatch {
     return state._settings;
   }
 
-  /** Called every minute: one look when it is on and its interval has passed since the last. */
+  /**
+   * Called every minute (Ilan, 1 Nov: "when someone starts messaging, watch for 5 minutes"). Idle, it only runs the
+   * free check (one SELECT, no AI) every PROBE_MINUTES. When a real company's message is there, the watch opens for
+   * `minutes` and then takes ONE look at the whole burst (the AI screen and Claude only then). No message, no cost.
+   */
   async maybeTick() {
     const st = this.settings();
-    const last = this.lastLookAt || 0;
-    if (!st.on || this.now() - last < st.minutes * 60_000) return false;
+    if (!st.on) return false;
+    const now = this.now();
+    if (this.burstAt === null) {
+      if (now - (this.probedAt || 0) < PROBE_MINUTES * 60_000) return false;
+      this.probedAt = now;
+      if (!(await this.anyNew())) return false;
+      this.burstAt = now;
+      this.log(`prod-watch: a real company is messaging; one look in ${st.minutes} min`);
+      return false;
+    }
+    if (now - this.burstAt < st.minutes * 60_000) return false;
+    this.burstAt = null;
     await this.tick();
     return true;
+  }
+
+  /** The free check: is there any message of a real company after the cursor? Never throws. */
+  async anyNew() {
+    const state = this.state();
+    for (const [project, source] of Object.entries(this.sources)) {
+      const since = state[project]?.since ?? this.now() / 1000 - FIRST_LOOK_MINUTES * 60;
+      try {
+        if ((await this.read(source, since, 1)).length) return true;
+      } catch (e) {
+        this.log(`prod-watch ${project}: ${e.message}`);
+      }
+    }
+    return false;
   }
 
   /**
@@ -398,7 +441,7 @@ export class ProdWatch {
     const today = this.today();
     const ago = this.lastLookAt ? `${Math.max(0, Math.round((this.now() - this.lastLookAt) / 60_000))} min ago` : "not yet since the last restart";
     const show = (head = "") =>
-      `${head}🔎 *Production watch*: ${st.on ? `on, every *${every(st.minutes)}*` : "*off*"}\n` +
+      `${head}🔎 *Production watch*: ${st.on ? `on: when a real company messages, one look *${every(st.minutes)}* later (test companies skipped)` : "*off*"}\n` +
       `Last look: ${ago} · today: ${today.looks} look(s), ${today.flagged} flagged, ${today.reported} sent to Claude\n` +
       "Owners: @bot watch 5m | 30m | 1h | 2h · @bot watch off | on · @bot watch now";
     if (!arg || /^(status|\?)$/.test(arg)) return show();
@@ -420,7 +463,7 @@ export class ProdWatch {
     const minutes = parseInterval(arg);
     if (minutes === null) return `I didn't understand "${arg}". Try: @bot watch 5m, 30m, 1h, 2h, off, on or now.`;
     Object.assign(st, this.saveSettings({ minutes, on: true, by: who, at: new Date(this.now()).toISOString() }));
-    return show(`✅ Now every ${every(minutes)}. `);
+    return show(`✅ Now one look ${every(minutes)} after a real company starts messaging. `);
   }
 
   /** Today's counts (UTC day), kept in the state file. */
