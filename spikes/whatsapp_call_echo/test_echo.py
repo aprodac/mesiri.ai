@@ -111,6 +111,29 @@ async def test_udp_ports_stay_in_range() -> None:
     transport.close()
 
 
+def test_sarvam_pipeline_builds_for_malayalam() -> None:
+    processors = echo.sarvam_processors("key", echo.Language.ML_IN, "shubh")
+    names = [type(p).__name__ for p in processors]
+    assert names == ["VADProcessor", "SarvamRealtimeSTTService", "RepeatBack", "SarvamTTSService", "FirstAudio"]
+
+
+@pytest.mark.asyncio
+async def test_repeat_back_says_what_it_heard() -> None:
+    clock = echo.Clock()
+    repeat = echo.RepeatBack(clock)
+    pushed: list = []
+
+    async def capture(frame, direction=echo.FrameDirection.DOWNSTREAM):
+        pushed.append(frame)
+
+    repeat.push_frame = capture
+    frame = echo.TranscriptionFrame(text="സിമന്റ് എത്ര", user_id="u", timestamp="t")
+    await repeat.process_frame(frame, echo.FrameDirection.DOWNSTREAM)
+    assert isinstance(pushed[-1], echo.TTSSpeakFrame)
+    assert pushed[-1].text == "സിമന്റ് എത്ര"
+    assert clock.waiting_for_audio
+
+
 async def terminated(actions: list[str]) -> None:
     while "terminate" not in actions:
         await asyncio.sleep(0.1)

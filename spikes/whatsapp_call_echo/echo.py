@@ -1,4 +1,7 @@
-"""WA-118 step 1: answer a WhatsApp call and play the caller's voice back.
+"""WA-118 steps 1 and 2: answer a WhatsApp call, then echo it or repeat it through Sarvam.
+
+CALL_SPIKE_MODE=echo plays the caller's voice back. CALL_SPIKE_MODE=sarvam listens with
+Sarvam and says back what it heard, timing each stage. No assistant and no company data.
 
 A spike, not product code: it answers only the numbers in CALL_SPIKE_ALLOWED, one
 call at a time, for two minutes at most. Everyone else is left alone, so their
@@ -26,11 +29,24 @@ import aiohttp
 import psutil
 import uvicorn
 from fastapi import FastAPI, Request, Response
-from pipecat.frames.frames import Frame, InputAudioRawFrame, OutputAudioRawFrame
+from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.frames.frames import (
+    Frame,
+    InputAudioRawFrame,
+    OutputAudioRawFrame,
+    TranscriptionFrame,
+    TTSAudioRawFrame,
+    TTSSpeakFrame,
+    VADUserStoppedSpeakingFrame,
+)
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
-from pipecat.pipeline.task import PipelineTask
+from pipecat.pipeline.task import PipelineParams, PipelineTask
+from pipecat.processors.audio.vad_processor import VADProcessor
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from pipecat.services.sarvam.stt import SarvamRealtimeSTTService
+from pipecat.services.sarvam.tts import SarvamTTSService
+from pipecat.transcriptions.language import Language
 from pipecat.transports.base_transport import TransportParams
 from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
 from pipecat.transports.whatsapp.api import WhatsAppApi, WhatsAppWebhookRequest
@@ -43,6 +59,8 @@ MAX_CALL_SECONDS = 120
 # minute: an older `connect` is a call nobody is waiting on.
 MAX_CONNECT_AGE_SECONDS = 60
 UDP_PORTS = range(40000, 40100)
+SAMPLE_RATE = 16000
+GREETING = "നമസ്കാരം, പറയൂ."
 
 # Pipecat hard-codes v23.0; use the version the app's webhooks are on.
 WhatsAppApi.BASE_URL = "https://graph.facebook.com/v25.0/"
@@ -120,16 +138,78 @@ class Echo(FrameProcessor):
             await self.push_frame(frame, direction)
 
 
-async def run_echo(connection: Any, call_id: str, started: float, ended: asyncio.Event) -> None:
+class Clock:
+    """Times one turn: end of speech, then the text, then the first audio back."""
+
+    def __init__(self) -> None:
+        self.stopped_speaking: float | None = None
+        self.waiting_for_audio = False
+
+
+class RepeatBack(FrameProcessor):
+    """Stand-in for the assistant: say back what Sarvam heard."""
+
+    def __init__(self, clock: Clock) -> None:
+        super().__init__()
+        self._clock = clock
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+        if isinstance(frame, VADUserStoppedSpeakingFrame):
+            self._clock.stopped_speaking = time.monotonic()
+        if isinstance(frame, TranscriptionFrame):
+            if self._clock.stopped_speaking is not None:
+                logger.info("heard after %.2fs: %d characters", time.monotonic() - self._clock.stopped_speaking, len(frame.text))
+            self._clock.waiting_for_audio = True
+            await self.push_frame(TTSSpeakFrame(frame.text), direction)
+        else:
+            await self.push_frame(frame, direction)
+
+
+class FirstAudio(FrameProcessor):
+    def __init__(self, clock: Clock) -> None:
+        super().__init__()
+        self._clock = clock
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+        if isinstance(frame, TTSAudioRawFrame) and self._clock.waiting_for_audio:
+            self._clock.waiting_for_audio = False
+            if self._clock.stopped_speaking is not None:
+                logger.info("first audio back after %.2fs", time.monotonic() - self._clock.stopped_speaking)
+        await self.push_frame(frame, direction)
+
+
+def sarvam_processors(api_key: str, language: Language, voice: str) -> list[FrameProcessor]:
+    clock = Clock()
+    return [
+        VADProcessor(vad_analyzer=SileroVADAnalyzer()),
+        SarvamRealtimeSTTService(api_key=api_key, settings=SarvamRealtimeSTTService.Settings(language=language)),
+        RepeatBack(clock),
+        SarvamTTSService(
+            api_key=api_key,
+            sample_rate=SAMPLE_RATE,
+            settings=SarvamTTSService.Settings(model="bulbul:v3", voice=voice, language=language),
+        ),
+        FirstAudio(clock),
+    ]
+
+
+async def run_call(connection: Any, call_id: str, started: float, ended: asyncio.Event, processors: list[FrameProcessor], greeting: str = "") -> None:
     transport = SmallWebRTCTransport(
         webrtc_connection=connection,
-        params=TransportParams(audio_in_enabled=True, audio_out_enabled=True, audio_in_sample_rate=16000, audio_out_sample_rate=16000),
+        params=TransportParams(audio_in_enabled=True, audio_out_enabled=True, audio_in_sample_rate=SAMPLE_RATE, audio_out_sample_rate=SAMPLE_RATE),
     )
-    task = PipelineTask(Pipeline([transport.input(), Echo(), transport.output()]))
+    task = PipelineTask(
+        Pipeline([transport.input(), *processors, transport.output()]),
+        params=PipelineParams(audio_in_sample_rate=SAMPLE_RATE, audio_out_sample_rate=SAMPLE_RATE),
+    )
 
     @transport.event_handler("on_client_connected")
     async def on_connected(_transport: Any, _client: Any) -> None:
         logger.info("audio connected after %.2fs", time.monotonic() - started)
+        if greeting:
+            await task.queue_frames([TTSSpeakFrame(greeting)])
 
     @transport.event_handler("on_client_disconnected")
     async def on_disconnected(_transport: Any, _client: Any) -> None:
@@ -152,7 +232,7 @@ async def run_echo(connection: Any, call_id: str, started: float, ended: asyncio
             logger.info("call %s cpu%% one core: avg %.1f max %.1f", call_id, sum(samples) / len(samples), max(samples))
 
 
-def build_app(*, token: str, secret: str, phone_number_id: str, allowed: set[str]) -> FastAPI:
+def build_app(*, token: str, secret: str, phone_number_id: str, allowed: set[str], sarvam_key: str = "", language: Language = Language.ML_IN, voice: str = "shubh") -> FastAPI:
     state: dict[str, Any] = {"busy": False}
 
     @asynccontextmanager
@@ -172,7 +252,8 @@ def build_app(*, token: str, secret: str, phone_number_id: str, allowed: set[str
 
         async def on_connection(connection: Any, _call: Any) -> None:
             logger.info("accepted after %.2fs", time.monotonic() - started)
-            await run_echo(connection, call_id, started, state["ended"])
+            processors = sarvam_processors(sarvam_key, language, voice) if sarvam_key else [Echo()]
+            await run_call(connection, call_id, started, state["ended"], processors, GREETING if sarvam_key else "")
 
         try:
             await client.handle_webhook_request(request, on_connection, raw_body=body, sha256_signature=signature)
@@ -222,5 +303,8 @@ if __name__ == "__main__":
         secret=os.environ["WHATSAPP_APP_SECRET"],
         phone_number_id=os.environ["WHATSAPP_PHONE_NUMBER_ID"],
         allowed=allowed_callers(),
+        sarvam_key=os.environ["MESIRI_SARVAM__API_KEY"] if os.environ.get("CALL_SPIKE_MODE") == "sarvam" else "",
+        language=Language(os.environ.get("CALL_SPIKE_LANGUAGE", "ml-IN")),
+        voice=os.environ.get("CALL_SPIKE_VOICE", "shubh"),
     )
     uvicorn.run(application, host="127.0.0.1", port=int(os.environ.get("CALL_SPIKE_PORT", "8795")))

@@ -16,7 +16,7 @@ been answered yet, so none of it is proven on a real call.
 | Webhook | Ours stays the owner: `ingress/webhook.py` verifies the signature, then passes `calls` changes on | One verification path. Pipecat's client has no server of its own, so this fits |
 | Speech-to-text | `wss://api.sarvam.ai/speech-to-text-realtime/ws`, `saaras:v3-realtime`, 16 kHz `linear16`, `endpointing=vad` | Server sends speech start and end, so no second detector is needed unless it proves weak |
 | Text-to-speech | `wss://api.sarvam.ai/text-to-speech/ws`, **`bulbul:v3`**, voices `shubh` / `pooja` for Malayalam | Malayalam is not on `bulbul:v4-flash`. `bulbul:v4-flash` can serve Hindi, Tamil and English later |
-| Answers | v2 agent, read tools only, for now | The API agent (WA-121) has no company on it. Revisit before step 3; see Open questions |
+| Answers | **API agent**, reads only (changed 2 Nov) | It went live on both test companies (WA-124). Reads run as the caller and writes are held, which suits a read-only call. Part B of step 2 tests it |
 | Files in chat | Existing `send_as`, during or after the call | A call opens the 24-hour window, even if we do not accept it |
 
 ## Step 1 spike (2 Nov)
@@ -90,7 +90,8 @@ Found while building it:
 5. Malayalam quality, and Manglish. Sarvam never mentions Manglish; `codemix` is documented with Hindi examples and
    applies only to the final transcript. Team listening test in step 2.
 6. CPU per call. No figure anywhere. Measure in step 1.
-7. v2 agent or API agent. Choose before step 3, on whichever gives faster read answers.
+7. Answered 2 Nov: API agent, subject to step 2 part B's speed. Its model time limit was set for chat, not calls.
+8. Pipecat's realtime STT uses its own socket, so the `sarvamai` 0.1.28 pin does not matter.
 
 ## Rollback
 

@@ -1,4 +1,4 @@
-pipecat-ai[webrtc]==1.15.0
+pipecat-ai[webrtc,sarvam]==1.15.0
 fastapi
 uvicorn
 psutil

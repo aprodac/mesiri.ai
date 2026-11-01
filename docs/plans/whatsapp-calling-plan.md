@@ -2,7 +2,7 @@
 
 > Asked by Ilan, 1 Nov 2026: *"Sarvam as main. Mesiri gets calls. Users mainly ask questions, or ask it to send a
 > PDF in chat: inventory, stock, workforce, anything like that."*
-> Tracker: [WA-118](V1_TRACKER.md) (request log [23]). Status: **step 0 done 2 Nov (facts in [ADR-whatsapp-calling.md](../architecture/ADR-whatsapp-calling.md)); nothing built.** Step 1 worked on a real call 2 Nov ([spike](../../spikes/whatsapp_call_echo/README.md)); CPU figures still to record. Next: step 2.
+> Tracker: [WA-118](V1_TRACKER.md) (request log [23]). Status: **step 0 done 2 Nov (facts in [ADR-whatsapp-calling.md](../architecture/ADR-whatsapp-calling.md)); nothing built.** Step 1 worked on a real call 2 Nov ([spike](../../spikes/whatsapp_call_echo/README.md)). Step 2 part A (Sarvam repeats what it heard) is ready for a real call; part B (real answers) needs Ilan's approval.
 > Governing process: the root [CLAUDE.md](../../CLAUDE.md) (phases, verification, `main` only, phase reports).
 
 ## 1. What the user gets
@@ -113,7 +113,7 @@ TURN from one phone. **Still to show:** other networks, reply speed, Malayalam a
 | --- | --- | --- |
 | 0 | **Done 2 Nov.** Read the docs, fix this plan, record the facts in the ADR | every open question answered or marked "not available" |
 | 1 | **Spike on the live number (Ilan, 2 Nov: use our number, not Meta's test number)**: answer a real call from an allow-listed phone (handshake + echo the audio back), on the VPS so the firewall is part of the test. The live webhook copies only `calls` events to the spike, while `WHATSAPP_CALLS_FORWARD_URL` is set; other callers ring out. Pipecat first; plain `aiortc` only if it fails | you hear yourself on WhatsApp; `calls` webhook delivery, TURN need and CPU per call recorded |
-| 2 | Sarvam in the loop: speech → text → a real read answer from the agent → speech, still on the spike | a Malayalam question gets a spoken Malayalam line, latency measured per stage including the agent |
+| 2 | Sarvam in the loop, still on the spike. **A:** speech → text → repeated back → speech, no company data. **B (needs Ilan's approval: reads company data as the caller):** a real read answer from the API agent, now live on both test companies | a Malayalam question gets a spoken Malayalam line, latency measured per stage including the agent |
 | 3 | Choose v2 agent or API agent (WA-121) on step 2's speed, then the voice skill: that agent, read tools only, short speakable answers, `send_as` to the chat; `evals.yaml` with real questions (stock, workers, DPR, workforce PDF) and guards ("10 bag cement vannu" is not saved on a call) | evals pass on fakes; live run on the real model |
 | 4 | Webhook + call service in the app, behind `calls_enabled` (off), systemd unit, health check, logs to `inbound_messages` | deploy with the switch off changes nothing |
 | 5 | Switch on for **Mesiri Test Builders**; team tests by calling | 10 test calls, each answered; PDF arrives in chat |

@@ -32,6 +32,22 @@ set -a; . /opt/mesiri/.env; set +a; CALL_SPIKE_PORT=8795 CALL_SPIKE_ALLOWED=91XX
 
 The `.env` must hold `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET` and `WHATSAPP_PHONE_NUMBER_ID`.
 
+## Step 2: Sarvam repeats what it heard
+
+Install the Sarvam extra, then start the spike in `sarvam` mode. It needs `MESIRI_SARVAM__API_KEY` in the `.env`.
+
+```bash
+/opt/call-spike-venv/bin/pip install -r /opt/mesiri/spikes/whatsapp_call_echo/requirements.txt
+```
+
+```bash
+set -a; . /opt/mesiri/.env; set +a; CALL_SPIKE_MODE=sarvam CALL_SPIKE_PORT=8795 CALL_SPIKE_ALLOWED=91XXXXXXXXXX /opt/call-spike-venv/bin/python /opt/mesiri/spikes/whatsapp_call_echo/echo.py
+```
+
+Mesiri greets you in Malayalam. Say something in Malayalam and it repeats what it heard. The log prints `heard after` and
+`first audio back after`, in seconds from when you stopped talking. `CALL_SPIKE_VOICE=pooja` tries the other voice, and
+`CALL_SPIKE_LANGUAGE=hi-IN` or `en-IN` another language. Interrupting is not wired up yet.
+
 ## What to look for
 
 Call Mesiri's WhatsApp number from the allowed phone and speak.
