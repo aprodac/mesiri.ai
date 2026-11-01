@@ -7,13 +7,14 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
+from ingress.calls_forward import forward_calls, has_calls_change
 from ingress.receiver import WhatsAppReceiver
 from ingress.verification import (
     WebhookVerificationError,
     verify_request_signature,
     verify_subscription_challenge,
 )
-from runtime.dependencies import Settings, get_receiver, get_settings
+from runtime.dependencies import Settings, get_container, get_receiver, get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,14 @@ async def receive_webhook(
     if payload.get("object") != "whatsapp_business_account":
         logger.info("Ignored webhook for unsupported object=%s", payload.get("object"))
         return Response(status_code=200)
+
+    if settings.calls_forward_url and has_calls_change(payload):
+        forward_calls(
+            get_container(request).http_client,
+            settings.calls_forward_url,
+            payload_bytes,
+            request.headers["X-Hub-Signature-256"],
+        )
 
     await receiver.handle_payload(payload)
     return Response(status_code=200)

@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     # WA-87: Mesiri inside site WhatsApp groups (runtime/group_chat.py). Off:
     # group messages are dropped at ingress and no group can be created.
     groups_enabled: bool = False
+    # WA-118 step 1: where to copy Meta's `calls` events (ingress/calls_forward.py).
+    # Empty = ignored, as they have always been.
+    calls_forward_url: str = ""
 
     model_config = SettingsConfigDict(
         env_prefix="WHATSAPP_",

@@ -1,0 +1,5 @@
+pipecat-ai[webrtc]==1.15.0
+fastapi
+uvicorn
+psutil
+aiohttp
