@@ -32,6 +32,9 @@ export const FAIL_ALERT = 3;
 const WINDOW_SECONDS = 15 * 60;
 /** How often the free check runs (one SELECT, no AI): is there a new message (any company, TM-18)? */
 export const PROBE_MINUTES = 2;
+/** Rows the free check reads (enough to see a request among them); what anyNew returns for a request to Mesiri. */
+const PROBE_ROWS = 50;
+export const URGENT = "urgent";
 /**
  * Companies the watch never reads (Ilan, 1 Nov: the test companies' own testing spent the Gemini key all day).
  * ILIKE patterns; TEAMMATE_PROD_WATCH_SKIP (comma-separated) replaces them.
@@ -483,35 +486,57 @@ export class ProdWatch {
     const st = this.settings();
     if (!st.on) return false;
     const now = this.now();
+    // TM-19: the open burst is kept in the state file, so a restart (every bot deploy) never drops a pending look.
+    if (this.burstAt === null) this.burstAt = this.state()._burstAt ?? null;
     if (this.burstAt === null) {
       if (now - (this.probedAt || 0) < PROBE_MINUTES * 60_000) return false;
       this.probedAt = now;
-      if (!(await this.anyNew())) return false;
-      this.burstAt = now;
+      const found = await this.anyNew();
+      if (!found) return false;
+      if (found === URGENT) {
+        // Someone asked Mesiri for something (tell_the_team): look now, don't wait for the burst to end.
+        this.log("prod-watch: a request to Mesiri; looking now");
+        await this.tick();
+        return true;
+      }
+      this.setBurst(now);
       this.log(`prod-watch: someone is messaging; one look in ${st.minutes} min`);
       return false;
     }
     if (now - this.burstAt < st.minutes * 60_000) return false;
-    this.burstAt = null;
+    this.setBurst(null);
     await this.tick();
     return true;
   }
 
-  /** The free check: is there any message after the cursor (any company)? Never throws. */
+  setBurst(at) {
+    this.burstAt = at;
+    const state = this.state();
+    if (at === null) delete state._burstAt;
+    else state._burstAt = at;
+    writeFileSync(this.file, JSON.stringify(state));
+  }
+
+  /**
+   * The free check: is there any message after the cursor (any company)? Never throws. Returns URGENT when one of them
+   * is a request someone made to Mesiri (its tell_the_team call), true for other messages, false for none.
+   */
   async anyNew() {
     const state = this.state();
+    let any = false;
     for (const [project, source] of Object.entries(this.sources)) {
       const since = state[project]?.since ?? this.now() / 1000 - FIRST_LOOK_MINUTES * 60;
       try {
-        const rows = await this.read(source, since, 1);
+        const rows = await this.read(source, since, PROBE_ROWS);
         await this.health(project);
-        if (rows.length) return true;
+        if (rows.some((r) => r.feedback)) return URGENT;
+        if (rows.length) any = true;
       } catch (e) {
         this.log(`prod-watch ${project}: ${e.message}`);
         await this.health(project, e.message);
       }
     }
-    return false;
+    return any;
   }
 
   /**

@@ -392,7 +392,7 @@ test("idle: only the free check runs, every 2 minutes; no AI screen, no Claude t
     const watch = new ProdWatch({ sources: { mesiri: { url: "u", token: "t" } }, ask: async () => asked.push(1), file: join(dir, "s.json"), fetchFn, now: () => t, screener });
     for (let minute = 0; minute < 60; minute++, t += 60_000) await watch.maybeTick();
     assert.equal(calls.length, 30); // one SELECT every 2 minutes for an hour
-    assert.ok(calls.every((c) => /LIMIT 1$/.test(JSON.parse(c.init.body).sql))); // the check reads one row at most
+    assert.ok(calls.every((c) => /LIMIT 50$/.test(JSON.parse(c.init.body).sql))) // TM-19: enough rows to see a request; // the check reads one row at most
     assert.equal(screens(), 0);
     assert.equal(asked.length, 0);
   } finally {
@@ -459,6 +459,31 @@ test("TM-18: a watch that can't read production says so once after 3 failures, a
     await watch.anyNew();
     assert.equal(said.length, 2);
     assert.match(said[1], /reads production again/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("TM-19: a pending look survives a restart, and a request to Mesiri is looked at right away", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pw-"));
+  try {
+    const file = join(dir, "s.json");
+    let t = T0 * 1000;
+    const plain = msg({ text: "25 bag cement vannu", reply: "Below: 25 bags cement.", at: T0 - 200, done_at: T0 - 195 });
+    const asks = [];
+    const make = (pages) => new ProdWatch({ sources: { mesiri: { url: "u", token: "t" } }, ask: async () => asks.push(1), file, fetchFn: fakeOps(pages).fetchFn, now: () => t, minutes: 5 });
+    const first = make([[plain]]);
+    assert.equal(await first.maybeTick(), false); // the burst opens
+    t += 3 * 60_000;
+    const restarted = make([[plain]]); // a deploy restarted the bot
+    assert.equal(await restarted.maybeTick(), false); // still waiting, not forgotten
+    t += 3 * 60_000;
+    assert.equal(await restarted.maybeTick(), true); // the look happens on time
+
+    const told = msg({ who: "w9", text: "create project", reply: "Not here yet; passed on.", feedback: "missing_feature: create a project", at: T0 + 300, done_at: T0 + 305 });
+    t += 10 * 60_000;
+    const urgent = make([[told], [told]]);
+    assert.equal(await urgent.maybeTick(), true); // no 5-minute wait for a request
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
