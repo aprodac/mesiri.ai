@@ -25,10 +25,11 @@ import datetime
 import logging
 import uuid
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.authorization.context import AuthorizationContext
@@ -622,6 +623,112 @@ async def update_worker(
 # ---------------------------------------------------------------------------
 # Attendance reports (read-only)
 # ---------------------------------------------------------------------------
+
+class RecordAttendanceLine(BaseModel):
+    """One line of an attendance report: a named worker, or a headcount of a trade."""
+
+    worker_name: str | None = None
+    #: A worker from GET /labour/workers; leave out for someone not in the register
+    #: (attendance never writes the register).
+    worker_id: uuid.UUID | None = None
+    trade: str | None = None
+    headcount: int = Field(default=1, ge=1)
+    daily_wage: Decimal | None = Field(default=None, ge=0)
+    contractor: str | None = None
+    activity: str | None = None
+    attendance_status: Literal["present", "absent", "half_day"] = "present"
+    overtime_hours: Decimal | None = Field(default=None, ge=0)
+    remarks: str | None = None
+
+
+class RecordAttendanceRequest(BaseModel):
+    project_id: uuid.UUID
+    site_id: uuid.UUID
+    occurred_date: datetime.date
+    lines: list[RecordAttendanceLine] = Field(min_length=1)
+    notes: str | None = None
+    #: The report this one replaces (the same day sent again). Leave out for a
+    #: separate crew or shift: both then count.
+    corrects_report_id: uuid.UUID | None = None
+    recorded_via: Literal["dashboard", "whatsapp_text", "whatsapp_voice", "whatsapp_image"] = "dashboard"
+
+
+@router.post("/attendance", status_code=201)
+async def record_attendance(
+    body: RecordAttendanceRequest,
+    request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """Record who worked at a site on a day (WA-121): the same save as a WhatsApp
+    attendance (``ExecuteConfirmedLabourAttendanceHandler.execute``), so totals,
+    cost and the DPR read it the same way. Send an ``Idempotency-Key`` to make a
+    retry safe. 201 recorded, 200 the same key again, 422 refused with the reasons."""
+    from mesiri.application.labour.handlers import ExecuteConfirmedLabourAttendanceHandler
+    from mesiri.domains.shared.execution import (
+        assert_site_in_project,
+        execution_response,
+        handler_database,
+        idempotency_uuid,
+    )
+    from mesiri.infrastructure.postgres.repositories.labour_execution import (
+        PostgresLabourExecutionRepository,
+    )
+    from mesiri_contracts.application.commands.labour import (
+        LabourAttendanceLine,
+        RecordLabourAttendanceCommand,
+    )
+
+    _, denied = _resolve_project_ids(auth_context, body.project_id)
+    if denied or _site_filter_denied(auth_context, body.project_id, body.site_id):
+        raise HTTPException(status_code=403, detail="Not authorized for this project or site")
+    await assert_site_in_project(conn, auth_context.organization_id, body.project_id, body.site_id)
+    worker_ids = {line.worker_id for line in body.lines if line.worker_id is not None}
+    if worker_ids:
+        known = (
+            await conn.execute(
+                text("SELECT id FROM workforce_workers WHERE organization_id = :org AND id = ANY(:ids)"),
+                {"org": auth_context.organization_id, "ids": list(worker_ids)},
+            )
+        ).scalars().all()
+        if set(known) != worker_ids:
+            raise HTTPException(status_code=404, detail="Worker not found")
+    key = idempotency_uuid(auth_context.organization_id, idempotency_key)
+    cmd = RecordLabourAttendanceCommand(
+        command_id=f"cmd_{uuid.uuid4()}",
+        idempotency_key=key,
+        correlation_id=key,
+        organization_id=str(auth_context.organization_id),
+        project_id=str(body.project_id),
+        site_id=str(body.site_id),
+        lines=[
+            LabourAttendanceLine(
+                worker_name=line.worker_name.strip() if line.worker_name else None,
+                worker_id=str(line.worker_id) if line.worker_id else None,
+                trade=normalize_trade(line.trade) if line.trade else None,
+                headcount=line.headcount,
+                daily_wage=line.daily_wage,
+                contractor=line.contractor,
+                activity=line.activity,
+                attendance_status=line.attendance_status,
+                overtime_hours=line.overtime_hours,
+                remarks=line.remarks,
+            )
+            for line in body.lines
+        ],
+        notes=body.notes,
+        occurred_date=body.occurred_date,
+        occurred_date_source="stated_by_user",
+        recorded_via=body.recorded_via,
+        corrects_report_id=str(body.corrects_report_id) if body.corrects_report_id else None,
+        created_by=str(auth_context.user_id),
+    )
+    handler = ExecuteConfirmedLabourAttendanceHandler(
+        db=handler_database(request), repo=PostgresLabourExecutionRepository()
+    )
+    return execution_response(await handler.execute(cmd))
+
 
 @router.get("/attendance", response_model=LabourAttendanceReportsListResponse)
 async def list_attendance(

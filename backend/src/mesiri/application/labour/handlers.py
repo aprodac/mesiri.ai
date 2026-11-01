@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from mesiri.domains.workforce import validation
 from mesiri.infrastructure.postgres.database import PostgresDatabase
+from mesiri_contracts.application.commands.labour import RecordLabourAttendanceCommand
 from mesiri_contracts.application.results.execution_result import ExecutionResult, as_replay
 from mesiri_contracts.assistant.v2.confirmed_action import ConfirmedActionV2
 
@@ -35,7 +36,11 @@ class ExecuteConfirmedLabourAttendanceHandler:
         self._repo = repo
 
     async def handle(self, confirmed: ConfirmedActionV2) -> ExecutionResult:
-        cmd = build_command(confirmed)
+        return await self.execute(build_command(confirmed))
+
+    async def execute(self, cmd: RecordLabourAttendanceCommand) -> ExecutionResult:
+        """Validate and save one attendance report. The one save path for a
+        WhatsApp confirmation (``handle``) and the API (POST /labour/attendance, WA-121)."""
         reasons = validation.validate(cmd)
 
         async with self._db.transaction() as conn:

@@ -76,6 +76,11 @@ def _database_for(request: Request) -> Any | None:
     return None
 
 
+#: Public name (WA-121): the record endpoints run the same save handlers as WhatsApp,
+#: which open their own transaction on this database.
+database_for = _database_for
+
+
 async def read_enabled_modules(request: Request, organization_id: uuid.UUID) -> object:
     """The company's stored `enabled_modules` value (or the default), read in
     a transaction that is fully closed when this returns."""
