@@ -2,7 +2,7 @@
 
 > Asked by Ilan, 1 Nov 2026: *"Sarvam as main. Mesiri gets calls. Users mainly ask questions, or ask it to send a
 > PDF in chat: inventory, stock, workforce, anything like that."*
-> Tracker: [WA-118](V1_TRACKER.md) (request log [23]). Status: **planned, nothing built.** Pick it up from here.
+> Tracker: [WA-118](V1_TRACKER.md) (request log [23]). Status: **step 0 done 2 Nov (facts in [ADR-whatsapp-calling.md](../architecture/ADR-whatsapp-calling.md)); nothing built.** Next: step 1, which needs Ilan's approval (section 5).
 > Governing process: the root [CLAUDE.md](../../CLAUDE.md) (phases, verification, `main` only, phase reports).
 
 ## 1. What the user gets
@@ -24,7 +24,7 @@ Save tap as chat.
 | Decision | Choice |
 | --- | --- |
 | Speech | **Sarvam**: speech-to-text and text-to-speech (Malayalam, Manglish, Hindi, English) |
-| Direction | **Inbound only**: users call Mesiri (Meta does not charge the business for user-initiated calls, to be confirmed in the docs). Mesiri never calls out |
+| Direction | **Inbound only**: users call Mesiri (Meta does not charge the business for user-initiated calls, confirmed 2 Nov). Mesiri never calls out |
 | What a call does | **Read-only**: questions and "send X as PDF / image in chat" |
 | Who first | The two test companies (Mesiri Test Builders, Paraclette), then a per-company switch |
 
@@ -57,8 +57,8 @@ Meta Cloud API ──"calls" webhook (SDP offer)──► Mesiri webhook (apps/w
 | Piece | Where | Reuse or new |
 | --- | --- | --- |
 | Call webhook handling | `ingress/webhook.py` gets the `calls` field; hands it to the call service | **extend** (same verification, dedupe, user lookup) |
-| Call service: SDP answer, WebRTC media, audio in/out | `apps/whatsapp-assistant/src/calls/` (new package), run as its own systemd unit next to `mesiri` | **new**. Python `aiortc` is the first candidate (Opus, DTLS-SRTP, ICE in pure Python); measure its CPU on the VPS before committing |
-| Speech-to-text | `platform/ai/src/mesiri_ai/adapters/sarvam/` already wraps `sarvamai` (verified 0.1.28, REST `speech_to_text`) | **extend** with the streaming call |
+| Call service: SDP answer, WebRTC media, audio in/out | `apps/whatsapp-assistant/src/calls/` (new package), run as its own systemd unit next to `mesiri` | **new**. Pipecat is the first candidate (built on `aiortc`, already does Meta's handshake, voice detection and interruption); plain `aiortc` is the fallback. Measure CPU on the VPS before committing |
+| Speech-to-text | `platform/ai/src/mesiri_ai/adapters/sarvam/` already wraps `sarvamai` (0.1.28, REST `speech_to_text`) | **extend** with the realtime socket. 0.1.28 has no realtime helper; see the ADR |
 | Text-to-speech | same Sarvam adapter | **new method** (`speak`), streamed |
 | Understanding and answers | the v2 agent (`agent_v2/agents/main.py`) with `GENERAL_READ_TOOLS` + materials `stock_for`; a `voice` flag removes every write tool and asks for short speakable sentences (no lists, no emoji, no "below") | **reuse**, as a v2 skill: `agent_v2/skills/voice/SKILL.md` + `tools.py` + `evals.yaml` (CLAUDE.md: a feature is a skill, never a new workflow) |
 | "Send as PDF / image" | `send_as` on every lookup (WA-93, `runtime/agent/tools.py`) already sends text / PDF / image to the chat | **reuse**: the call turn sends to the caller's chat, the spoken line says it is on its way |
@@ -68,53 +68,54 @@ Meta Cloud API ──"calls" webhook (SDP offer)──► Mesiri webhook (apps/w
 
 ### Turn-taking (what makes it feel like a call)
 
-- **End of speech**: Sarvam's streaming end-of-speech signal if it has one; otherwise a local voice-activity detector
-  (about 700 ms of silence). To check in the docs.
-- **Barge-in**: if the caller speaks while Mesiri is talking, stop the playback and listen.
+- **End of speech**: Sarvam's `vad.speech_end` event (`endpointing=vad`, default 500 ms of silence). A local detector
+  only if that proves weak.
+- **Barge-in**: if the caller speaks while Mesiri is talking, stop the playback and listen. Sarvam TTS has no cancel
+  message, so drop the queued audio on our side.
 - **Filler**: if the answer takes more than about 1.5 s (a PDF lookup), say a short "Nokkatte…" / "One second" first.
 - **Language**: answer in the caller's language and script, as chat does (`runtime/agent/wording.language_of`).
 - **Limits**: 10-minute call cap; hang up politely after 20 s of silence; one call per user at a time.
 
-## 4. Must verify before writing code (docs were unreachable from the cloud session)
+## 4. What the docs say (step 0, 2 Nov)
 
-The cloud session could not open `developers.facebook.com` or `docs.sarvam.ai`. **Nothing below is confirmed.** Read
-the docs on your computer first and correct this section.
+Full details, sources and open questions: [ADR-whatsapp-calling.md](../architecture/ADR-whatsapp-calling.md).
 
-**Meta WhatsApp Cloud API: Calling** (developers.facebook.com/docs/whatsapp/cloud-api/calling)
-1. Is calling available for **India (+91)** business numbers and users? Any messaging-tier or verification prerequisite?
-2. How to switch calling on for the number (call settings endpoint and fields); call icon visibility.
-3. The `calls` webhook payload: call id, caller wa_id, where the SDP offer is.
-4. Endpoints and order for `pre_accept` / `accept` / `reject` / `terminate`, body fields (`session.sdp_type`, `sdp`),
-   and timeouts.
-5. Media: Opus? sample rate? ICE candidates in the SDP? who is the offerer? DTLS role?
-6. Pricing of user-initiated calls; limits (concurrent calls, duration).
-7. Any official sample (Node or Python) to copy the SDP handshake from.
+| Question | Answer |
+| --- | --- |
+| India (+91) | Allowed. Needs a messaging limit of at least 2,000; ours is 2,000 |
+| Switching calling on | Done 1 Nov (INF-17). `calls` webhook field was already subscribed |
+| Handshake | `connect` webhook with SDP offer, then `pre_accept`, then `accept` with the same SDP answer, then audio after the 200 OK |
+| Media | WebRTC, Opus by default. Meta is the offerer |
+| Price of user-initiated calls | Free; a valid payment method is required |
+| Limits | 1,000 concurrent calls per number; no call length limit found |
+| Sending a PDF | Allowed: a call opens the 24-hour window, even unanswered |
+| Official sample code | None for the SDP handshake; Pipecat has one |
+| Sarvam live speech-to-text | `speech-to-text-realtime/ws`, 16 kHz PCM, `ml-IN`, server signals end of speech |
+| Sarvam text-to-speech | `text-to-speech/ws`, `bulbul:v3` for Malayalam (not on `v4-flash`), voices `shubh` / `pooja` |
+| Sarvam cost | About ₹0.49 a minute to listen, ₹3 per 1,000 characters to speak `bulbul:v3`, before GST |
+| Sarvam limit | 20 live speech-to-text connections on pay-as-you-go |
 
-**Sarvam** (docs.sarvam.ai)
-1. Streaming speech-to-text: WebSocket URL, auth header, audio format (8 / 16 kHz PCM?), partial / final messages,
-   end-of-speech signal, model (`saarika` / `saaras`), `ml-IN` support, translate-to-English option.
-2. Text-to-speech: REST and streaming endpoints, model (`bulbul`), `ml-IN` and `hi-IN` voices, sample rate, output
-   format (base64 WAV vs PCM chunks), max text length, latency.
-3. Prices (per minute STT, per character TTS) and rate limits.
-4. Does `sarvamai` (we pin `>=0.1`, verified 0.1.28) cover streaming, or is raw WebSocket needed?
+**Not answered by any doc, so steps 1 and 2 must show it:** whether an app in "In development" mode gets `calls`
+webhooks, whether the VPS needs TURN, reply speed, Malayalam and Manglish quality, CPU per call.
 
 ## 5. Owner steps (ops, outside the code)
 
-1. **Meta**: switch calling on for the Mesiri business number in WhatsApp Manager (after checking India eligibility).
+1. **Meta**: done 1 Nov (INF-17). Check a valid payment method is on the WhatsApp account (error `131044` without one).
+   Publish the app only if step 1 shows `calls` webhooks do not arrive.
 2. **VPS**: open the UDP port range the call service uses for WebRTC media (and TURN if the docs need it) in the firewall
    and the cloud provider's security group. Infrastructure / security: approve explicitly.
-3. **Sarvam**: confirm the API key's plan covers streaming and the expected minutes; set a spend alert.
+3. **Sarvam**: confirm the account can use `saaras:v3-realtime` (a refused account closes with code `4000`); set a spend alert.
 4. **Cloud sessions** (optional): allow `developers.facebook.com`, `docs.sarvam.ai`, `api.sarvam.ai` under the
-   environment's Network access, so cloud sessions can work on this too.
+   environment's Network access. Sessions on Ilan's computer already reach them.
 
 ## 6. Build order (each step: test, commit, push, phase report, as CLAUDE.md says)
 
 | Step | What | Done when |
 | --- | --- | --- |
-| 0 | Read the docs (section 4), fix this plan, record the facts in an ADR (`docs/architecture/ADR-whatsapp-calling.md`) | every open question answered or marked "not available" |
-| 1 | **Spike, off production**: a local script answers a real test call on a test number (SDP handshake + echo the audio back) | you hear yourself on WhatsApp |
-| 2 | Sarvam in the loop: speech → text → fixed reply → speech, still on the spike | a Malayalam question gets a spoken Malayalam line, latency measured per stage |
-| 3 | The voice skill: v2 agent, read tools only, short speakable answers, `send_as` to the chat; `evals.yaml` with real questions (stock, workers, DPR, workforce PDF) and guards ("10 bag cement vannu" is not saved on a call) | evals pass on fakes; live run on the real model |
+| 0 | **Done 2 Nov.** Read the docs, fix this plan, record the facts in the ADR | every open question answered or marked "not available" |
+| 1 | **Spike, off production**: answer a real test call on a Meta test number (handshake + echo the audio back), on the VPS so the firewall is part of the test. Compare Pipecat with plain `aiortc`. Calling is off by default on test numbers, and the test number needs its calls routed to the spike without touching the live number | you hear yourself on WhatsApp; `calls` webhook delivery, TURN need and CPU per call recorded |
+| 2 | Sarvam in the loop: speech → text → a real read answer from the agent → speech, still on the spike | a Malayalam question gets a spoken Malayalam line, latency measured per stage including the agent |
+| 3 | Choose v2 agent or API agent (WA-121) on step 2's speed, then the voice skill: that agent, read tools only, short speakable answers, `send_as` to the chat; `evals.yaml` with real questions (stock, workers, DPR, workforce PDF) and guards ("10 bag cement vannu" is not saved on a call) | evals pass on fakes; live run on the real model |
 | 4 | Webhook + call service in the app, behind `calls_enabled` (off), systemd unit, health check, logs to `inbound_messages` | deploy with the switch off changes nothing |
 | 5 | Switch on for **Mesiri Test Builders**; team tests by calling | 10 test calls, each answered; PDF arrives in chat |
 | 6 | Costs page: per call minutes, Sarvam spend; production watch reads call turns | numbers match Sarvam's dashboard |
@@ -133,7 +134,9 @@ the docs on your computer first and correct this section.
 
 | Risk | Mitigation |
 | --- | --- |
-| India not eligible for the Calling API, or only for some tiers | step 0 decides; if not available, stop here and say so |
+| An app in "In development" mode gets no `calls` webhooks (Meta's page warns of this; no calling doc settles it) | first check in step 1; if so, publish the app |
+| Sarvam live speech-to-text is called beta on one page | older `/speech-to-text/ws` endpoint as fallback |
+| Messaging limit falls below 2,000; effect on calling not documented | watch it; ask Meta if it happens |
 | WebRTC behind the VPS firewall / NAT does not connect | step 1 spike on the real VPS; TURN if needed |
 | Latency too long for a natural call | streaming STT and TTS, filler line, short answers; measure per stage |
 | Malayalam speech quality | step 2 listening test with the team before building more |
@@ -145,8 +148,8 @@ the docs on your computer first and correct this section.
 `calls_enabled` off for the company (instant: calls are then rejected politely or ring out, chat unaffected); stop the
 call service unit; revert the commits. No data migration is planned (settings key + `inbound_messages` kind).
 
-## 10. Starting prompt for Claude Code on your computer
+## 10. Starting prompt for step 1
 
-> Read `docs/plans/whatsapp-calling-plan.md` and `CLAUDE.md`. Do step 0: read the Meta WhatsApp Cloud API Calling docs
-> and the Sarvam speech-to-text streaming and text-to-speech docs, answer every question in section 4, update the plan,
-> and write `docs/architecture/ADR-whatsapp-calling.md`. Then stop and show me what you found before step 1.
+> Read `docs/plans/whatsapp-calling-plan.md`, `docs/architecture/ADR-whatsapp-calling.md` and `CLAUDE.md`. Ilan has
+> approved the VPS UDP ports. Do step 1 on a Meta test number, off production: answer a call and echo the audio back.
+> Record webhook delivery, TURN need and CPU per call in the ADR. Then stop and show me what you found before step 2.
