@@ -27,6 +27,7 @@ from runtime.agent.toolbox import AgentToolbox, asks_about_stock
 from runtime.agent.tools import ScopeLookup
 from runtime.agent.wording import say
 
+from ..skills.general import tools as general
 from ..skills.materials import tools as skill
 
 _log = logging.getLogger("mesiri.agent_v2")
@@ -54,7 +55,8 @@ def general_specs() -> list[Any]:
 
 
 def all_specs() -> list[Any]:
-    return [*skill.specs(), *general_specs()]
+    # TM-18: tell_the_team (general skill) is v2's own tool, handled below; it never reaches the toolbox.
+    return [*skill.specs(), *general_specs(), *general.specs()]
 
 #: Request 178: the budget of a v2 run. A message v2 takes is never run by today's agent too, so
 #: more room here does not double the time; only a hand-back (one quick round) or a failure
@@ -287,6 +289,12 @@ class MainAgent:
             args, _account = skill.split_account(raw_args)
             if name == skill.CATALOG_MATCH:
                 return ToolOutcome(content=await self.match(organization_id, str(args.get("word") or "")))
+            if name == general.TELL_THE_TEAM:
+                # TM-18: nothing is written; the call itself (in the agent_v2_live trace) is what the
+                # team bot's production watch reads. The model writes the words; the run goes on.
+                if shadow:
+                    return ToolOutcome(content={"status": "shadow"})
+                return ToolOutcome(content={"status": "passed_on", "instruction": general.feedback_instruction(args)})
             if name == skill.REQUEST_NOT_BUILT:
                 state.request_not_built = True
                 return ToolOutcome(

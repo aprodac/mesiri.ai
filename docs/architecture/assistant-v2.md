@@ -83,6 +83,7 @@ Not in v2 yet: photos and bill photos, documents, admin (classic until given a s
 |---|---|---|
 | Materials (skill tools) | `draft_receipt`, `draft_usage`, `draft_stock_count`, `transfer`, `change_line`, `remove_line`, `answer_question`, `catalog_match`, `ask`, `material_request_not_available`, `stock_for` | the existing toolbox / draft card / `corrections.drop_from_open_card` |
 | Other records (existing toolbox tools, unchanged) | `save_labour`, `save_work_done`, `save_expense`, `report_issue`, `update_issue`, `correct_work_quantity`, `note_for_engineer`, `set_site_conditions`, `request_dpr`, `set_work_site` | same specs, same draft card, same Save tap |
+| Feedback (TM-18, skill `general`) | `tell_the_team` (kind `missing_feature` / `bad_ux` / `wrong_reply` / `idea`, `about`, `why`) | nothing is written: the call is in the turn's `agent_v2_live` trace, which the team bot's production watch reads; the bot builds it and the person is told when it is live (`teammate/brain/README.md`, Autobuild). A bad-UX complaint with no reason gets one short question about what was bad |
 | Reads | `query_work_log`, `query_labour`, `query_project`, `query_expenses`, `query_open_needs`, `my_scope`, `stock_for` | read-only |
 
 `change_line` (like classic `update_pending_card`) takes every figure a line shows: the
