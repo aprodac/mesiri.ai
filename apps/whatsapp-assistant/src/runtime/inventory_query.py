@@ -246,3 +246,49 @@ class MaterialInventoryQueryService:
             key = (str(row["name"]), str(row["unit"]))
             usage[key] = usage.get(key, 0.0) + float(row["used"])
         return usage
+
+
+#: A sender with more sites than this is read for the first ones only (a reply
+#: line per site stays short; the combined total still covers what was read).
+MAX_SITES_READ = 12
+
+
+async def query_sites(
+    service: Any,
+    *,
+    organization_id: str,
+    sites: list[tuple[str | None, str | None, str]],
+    material_name: str | None,
+    include_unsaved: bool = False,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Request 202: stock across every site the sender can see, the one read
+    for "what's left", "stock of X", the prompt's stock line and the stock tool.
+
+    ``sites``: (project_id, site_id, site name). Returns (combined levels, one
+    {"site", "levels"} row per site, in the order given). A site that holds
+    nothing is still listed (with no levels), so a new empty project never hides
+    the others and the reply can say "Site B: none". One site failing to read
+    is left out, not fatal."""
+    per_site: list[dict[str, Any]] = []
+    totals: dict[tuple[str, str], dict[str, Any]] = {}
+    for project_id, site_id, name in sites[:MAX_SITES_READ]:
+        try:
+            levels = await service.query(
+                organization_id=organization_id,
+                project_id=project_id,
+                site_id=site_id,
+                material_name=material_name,
+                include_unsaved=include_unsaved,
+            )
+        except Exception:  # noqa: BLE001 -- the other sites still answer
+            continue
+        per_site.append({"site": name, "levels": levels})
+        for lvl in levels:
+            key = (str(lvl["material_name"]).lower(), str(lvl["unit"]))
+            row = totals.setdefault(
+                key,
+                {"material_name": lvl["material_name"], "unit": lvl["unit"], "received": 0.0, "used": 0.0, "current_stock": 0.0},
+            )
+            for field in ("received", "used", "current_stock"):
+                row[field] += float(lvl.get(field) or 0)
+    return list(totals.values()), per_site

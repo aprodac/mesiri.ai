@@ -172,6 +172,8 @@ class QueryEntry(EntryScope):
             if not str(fields.get("name") or "").strip():
                 return Say("error", "Not saved: the name is needed.")
 
+        # Request 202: no project or site named -> a stock question reads every site.
+        broad = not any(fields.get(k) for k in SCOPE_KEYS) or bool(fields.get(ALL_SITES))
         scoped = await self.settle(
             message, understanding, candidate, module=module_for_event(workflow_key, fields), **options
         )
@@ -181,17 +183,27 @@ class QueryEntry(EntryScope):
             fields.pop(key, None)
         ready = self.ready(scoped, message, event_type, workflow_key, fields)
         timezone = project_zone_name(scoped.ctx.timezone)
-        await self._seed(ready, message, timezone=timezone)
+        await self._seed(ready, message, timezone=timezone, broad=broad)
         return ready
 
-    async def _seed(self, ready: Ready, message: Any, *, timezone: str) -> None:
+    def _all_sites(self) -> list[tuple[str | None, str | None, str]]:
+        """(project, site, name) of every site the sender can see, for a read
+        that names none (request 202)."""
+        return [
+            (str(s.project_id) if getattr(s, "project_id", None) else None, str(s.id), str(s.name or ""))
+            for s in getattr(self.actor, "sites", None) or []
+            if getattr(s, "id", None)
+        ]
+
+    async def _seed(self, ready: Ready, message: Any, *, timezone: str, broad: bool = False) -> None:
         """The data the workflow answers from, by the pipeline's own seeds.
         Never raises: a failed seed answers from what it has, as before."""
         from runtime.inbound_journey import seeding as s
 
         event, decision, actor, key = ready.event, ready.decision, self.actor, ready.decision.workflow_key
         if key is K.MATERIAL_INVENTORY_QUERY:
-            seeds = [s._inject_inventory_context(event, self.inventory_query, timezone)]
+            sites = self._all_sites() if broad else None
+            seeds = [s._inject_inventory_context(event, self.inventory_query, timezone, sites)]
             if event.fields.get("view") == "open_needs":
                 seeds.append(self._seed_open_needs(event, timezone))
         elif key is K.LABOUR_QUERY:
@@ -273,6 +285,8 @@ class QueryEntry(EntryScope):
         levels = fields.get("inventory_levels") or []
         if self.card_renderer is None or fields.get("material_name") or len(levels) < 2:
             return
+        if len(fields.get("inventory_by_site") or []) > 1:
+            return  # request 202: the card is one site's; the text lists every site
         try:
             from channel.cards import build_stock_card, render_png, stock_html
 

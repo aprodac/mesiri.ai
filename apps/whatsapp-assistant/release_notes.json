@@ -182,6 +182,15 @@
         "cor_e4be0ad4ad1e4e07bacdbbcc7ad7e7ff"
       ],
       "message": "Creating a project in chat now shows a card to confirm and tells you when it's done. Try: 'Create a new project Supermarket Kerala, 7000 sq ft'."
+    },
+    {
+      "id": "multi-site-stock-en",
+      "date": "2026-11-01",
+      "for": [
+        "cor_6874af59bb664540b57a1c26866218a3",
+        "cor_4f7a0ebdf5cb4751ae385ebc57eaf65f"
+      ],
+      "message": "Asking 'how much cement is left?' now shows the stock of every site you have. Try: 'how much cement is left?'"
     }
   ]
 }

@@ -401,7 +401,7 @@ async def test_sit10_stock_and_today_lines_are_read_for_the_chosen_site():
     me = actor(A_SITE_A, B_SITE_B)
     stock, search = _Inventory(), _Search()
 
-    assert await build_stock_line(stock, me) is None  # no chosen site: nothing guessed
+    assert await build_stock_line(stock, me) is not None  # request 202: no chosen site -> every site
     line = await build_stock_line(stock, me, site_id="b2")
     await build_today_line(search, me, timezone_name="Asia/Kolkata", site_id="b2")
 

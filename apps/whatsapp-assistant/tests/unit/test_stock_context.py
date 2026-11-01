@@ -50,12 +50,14 @@ async def test_the_line_is_the_senders_one_site():
     }
 
 
-async def test_several_sites_or_none_means_no_line():
+async def test_no_sites_means_no_line_and_several_sites_list_each():
     query = AsyncMock(return_value=[_level("Cement", 140.0, "bag")])
     service = SimpleNamespace(query=query)
     assert await build_stock_line(service, _actor()) is None
-    assert await build_stock_line(service, _actor(SITE, SITE)) is None
     query.assert_not_awaited()
+    other = SimpleNamespace(id="site-2", name="Site B", project_id="proj-1")
+    line = await build_stock_line(service, _actor(SITE, other))  # request 202
+    assert line is not None and "Green Villa" in line and "Site B" in line
 
 
 async def test_a_slow_failing_or_missing_lookup_is_left_out():

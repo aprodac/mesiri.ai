@@ -150,7 +150,32 @@ async def build_stock_line(
     sites = list(getattr(actor, "sites", None) or [])
     site = sites[0] if len(sites) == 1 else _chosen(sites, site_id)
     if site is None:
-        return None
+        if len(sites) < 2:
+            return None
+        # Request 202: several sites, none chosen -> every site's stock, not nothing.
+        from runtime.inventory_query import query_sites
+
+        try:
+            _total, by_site = await asyncio.wait_for(
+                query_sites(
+                    inventory_query,
+                    organization_id=str(actor.organization_id),
+                    sites=[
+                        (str(s.project_id) if getattr(s, "project_id", None) else None, str(s.id), str(s.name or ""))
+                        for s in sites
+                    ],
+                    material_name=None,
+                ),
+                timeout=timeout,
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("stock_context.skipped", exc_info=True)
+            return None
+        parts = [
+            f"{row['site']}: " + (render_stock_line(None, row["levels"]) or "none").removeprefix("Stock now (from the records): ").rstrip(".")
+            for row in by_site
+        ]
+        return "Stock by site (from the records): " + "; ".join(parts) + "." if any(r["levels"] for r in by_site) else None
     try:
         levels = await asyncio.wait_for(
             inventory_query.query(

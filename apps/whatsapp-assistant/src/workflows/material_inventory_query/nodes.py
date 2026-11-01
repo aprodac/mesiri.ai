@@ -53,6 +53,10 @@ def generate_inventory_reply(state: WorkflowGraphState) -> dict:
             )
         }
 
+    by_site = fields.get("inventory_by_site") or []
+    if len(by_site) > 1 and not fields.get("inventory_period"):
+        return {"pending_prompt": _by_site_reply(by_site, levels, material_name)}
+
     period = fields.get("inventory_period")
     if period:
         asking = fields.get("asking")
@@ -73,6 +77,27 @@ def generate_inventory_reply(state: WorkflowGraphState) -> dict:
     for level in levels:
         lines.append(stock_line(level))
     return {"pending_prompt": "\n".join(lines)}
+
+
+def _by_site_reply(by_site: list[dict], levels: list[dict], material_name: str | None) -> str:
+    """Request 202: the sender has several sites and named none -> each site's
+    stock, a site with none said so ("Site B — none"), then the total."""
+    if material_name:
+        head = f"📦 *{material_name.strip().title()}*"
+        lines = [head, ""]
+        for row in by_site:
+            have = row["levels"]
+            lines.append(
+                f"{row['site']} — " + (", ".join(f"{_fmt(lv['current_stock'])} {lv['unit']}" for lv in have) if have else "none")
+            )
+        if len(levels) == 1:
+            lines += ["", f"Total: {_fmt(levels[0]['current_stock'])} {levels[0]['unit']}"]
+        return "\n".join(lines)
+    lines = ["📦 *Current inventory*"]
+    for row in by_site:
+        lines += ["", f"*{row['site']}*"]
+        lines += [stock_line(lv) for lv in row["levels"]] or ["none"]
+    return "\n".join(lines)
 
 
 def _moved(level: dict) -> str:

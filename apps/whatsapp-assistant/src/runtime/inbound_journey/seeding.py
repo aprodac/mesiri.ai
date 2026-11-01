@@ -126,6 +126,7 @@ async def _add_period(
     event: CanonicalEventV2,
     inventory_query: MaterialInventoryQueryService,
     timezone_name: str | None,
+    sites: list[tuple[str | None, str | None, str]] | None = None,
 ) -> None:
     """MAT-03: "cement used today?", "received yesterday?", "this week?" are
     answered from the movements of that period (project zone), not from the
@@ -138,20 +139,30 @@ async def _add_period(
     if period is None or not hasattr(inventory_query, "period_totals"):
         return
     start, end, label = period
-    totals = await inventory_query.period_totals(
-        organization_id=event.organization_id,
-        project_id=event.project_id,
-        site_id=event.site_id,
-        start_date=start,
-        end_date=end,
-        timezone_name=zone,
-    )
+    # Request 202: several sites -> each one's period, added up.
+    scopes = [(p, s) for p, s, _n in sites] if sites else [(event.project_id, event.site_id)]
+    totals: dict = {}
     costs: dict = {}
-    if event.fields.get("asking") == "loss" and hasattr(inventory_query, "period_costs"):
-        costs = await inventory_query.period_costs(
-            organization_id=event.organization_id, project_id=event.project_id, site_id=event.site_id,
-            start_date=start, end_date=end,
+    for project_id, site_id in scopes:
+        part = await inventory_query.period_totals(
+            organization_id=event.organization_id,
+            project_id=project_id,
+            site_id=site_id,
+            start_date=start,
+            end_date=end,
+            timezone_name=zone,
         )
+        for key, moved in part.items():
+            into = totals.setdefault(key, {"received": 0.0, "used": 0.0})
+            into["received"] += moved.get("received", 0.0)
+            into["used"] += moved.get("used", 0.0)
+        if event.fields.get("asking") == "loss" and hasattr(inventory_query, "period_costs"):
+            costs.update(
+                await inventory_query.period_costs(
+                    organization_id=event.organization_id, project_id=project_id, site_id=site_id,
+                    start_date=start, end_date=end,
+                )
+            )
     for level in event.fields.get("inventory_levels") or []:
         key = (str(level["material_name"]).lower(), str(level["unit"]))
         if costs.get(key):
@@ -166,6 +177,7 @@ async def _inject_inventory_context(
     event: CanonicalEventV2,
     inventory_query: MaterialInventoryQueryService | None,
     timezone_name: str | None = None,
+    sites: list[tuple[str | None, str | None, str]] | None = None,
 ) -> None:
     """Populate inventory_levels (for INVENTORY_QUERY_ASKED) / available_stock
     (for MATERIAL_USAGE_REQUESTED's low-stock warning) on the event's fields.
@@ -182,13 +194,28 @@ async def _inject_inventory_context(
     if inventory_query is None:
         return
     if event.event_type is CanonicalEventType.INVENTORY_QUERY_ASKED:
-        event.fields["inventory_levels"] = await inventory_query.query(
-            organization_id=event.organization_id,
-            project_id=event.project_id,
-            site_id=event.site_id,
-            material_name=event.fields.get("material_name"),
-        )
-        await _add_period(event, inventory_query, timezone_name)
+        if sites and len(sites) > 1:
+            # Request 202: no site named and several to read -> all of them
+            # (not the one project the context layer happened to pick).
+            from runtime.inventory_query import query_sites
+
+            levels, by_site = await query_sites(
+                inventory_query,
+                organization_id=event.organization_id,
+                sites=sites,
+                material_name=event.fields.get("material_name"),
+            )
+            event.fields["inventory_levels"] = levels
+            event.fields["inventory_by_site"] = by_site
+        else:
+            sites = None
+            event.fields["inventory_levels"] = await inventory_query.query(
+                organization_id=event.organization_id,
+                project_id=event.project_id,
+                site_id=event.site_id,
+                material_name=event.fields.get("material_name"),
+            )
+        await _add_period(event, inventory_query, timezone_name, sites)
     elif (
         event.event_type is CanonicalEventType.MATERIAL_USAGE_REQUESTED
         and event.fields.get("material_name")
