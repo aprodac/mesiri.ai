@@ -98,6 +98,9 @@ export function reportingFooter(plan, reply_chat) {
       : "- This plan has no request-log item: post short progress to the reply group instead.",
     `- Put "[${id}]" in every commit message.`,
     `- When it is pushed and verified, finish with: python3 teammate/inbox.py item done ${id} --ref <commit sha>, then post the result: python3 teammate/inbox.py post --chat "${reply_chat}" "<short update>".`,
+    "- Never say it is live or built before the \"Deploy to Production\" run of your last commit has succeeded: until then say",
+    "  \"pushed, deploying\". If that run fails, say \"pushed, deploy failed: <the failing step and its reason>\" (1 Nov: a group was",
+    "  told project creation was built while every deploy was failing on the Gemini spending cap).",
     "- If you stop early or are blocked, say so with an item note and a group post; never go silent.",
   ].join("\n");
 }
