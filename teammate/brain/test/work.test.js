@@ -324,6 +324,8 @@ test("payload footer: heartbeats, [n] in commits, finishing with item done and a
   assert.match(footer, /Put "\[139\]" in every commit message/);
   assert.match(footer, /item done 139 --ref <commit sha>[\s\S]*inbox\.py post --chat "G@g\.us"/);
   assert.match(reportingFooter({ id: "P3" }, "G@g.us"), /no request-log item/);
+  assert.doesNotMatch(footer, /release_notes\.json/);
+  assert.match(reportingFooter({ id: 197, asked_for: ["cor_1"], asked_by: "Ilan (admin, Paraclette)" }, "G@g.us"), /Ilan \(admin, Paraclette\) asked for this in production[\s\S]*for = \["cor_1"\]/);
   assert.match(footer, /Never say it is live or built before the "Deploy to Production" run[\s\S]*pushed, deploy failed/);
 
   const s = setup();

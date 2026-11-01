@@ -5,6 +5,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Brain } from "../src/brain.js";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { whoAsked } from "../src/tools.js";
 import { Watchdog } from "../src/watchdog.js";
 
@@ -132,5 +133,36 @@ test("watchdog: a job started more than 2 days ago is closed quietly, never aler
     assert.equal(sent.length, 0);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("owner, 1 Nov: a shipped plan whose asker has no 'it works now' message gets one at once; one that has it doesn't", async () => {
+  const root = mkdtempSync(join(tmpdir(), "repo-"));
+  try {
+    mkdirSync(join(root, "apps/whatsapp-assistant"), { recursive: true });
+    const notes = (ids) => writeFileSync(join(root, "apps/whatsapp-assistant/release_notes.json"), JSON.stringify({ notes: [{ id: "x", date: "2026-11-01", for: ids, message: "works now" }] }));
+    const { brain, sent, prompts, done } = setup(async () => [ok("✅", "V")]);
+    try {
+      brain.projects.mesiri.cwd = root;
+      brain.prepare = () => {};
+      const base = { project: "mesiri", chat_project: "mesiri", chat: "M@g.us", title: "Create a project", plan: "p", asked_for: ["cor_1"], asked_by: "Ilan (admin, Paraclette)" };
+      notes(["cor_other"]);
+      brain.plans.save({ id: 81, ...base });
+      await brain.verifyLive(brain.planStore.plans[81]);
+      assert.match(sent.find((m) => /⚠️/.test(m.text)).text, /\[81\] is live, but no "it works now" message names Ilan \(admin, Paraclette\)/);
+      assert.match(prompts.at(-1), /FIRST: apps\/whatsapp-assistant\/release_notes\.json has no note for their messages \(cor_1\)[\s\S]*Release note for \[81\]/);
+
+      notes(["cor_2", "cor_1"]);
+      brain.plans.save({ id: 82, ...base });
+      const warned = () => sent.filter((m) => /⚠️/.test(m.text)).length;
+      const before = warned();
+      await brain.verifyLive(brain.planStore.plans[82]);
+      assert.equal(warned(), before);
+      assert.doesNotMatch(prompts.at(-1), /FIRST:/);
+    } finally {
+      done();
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });

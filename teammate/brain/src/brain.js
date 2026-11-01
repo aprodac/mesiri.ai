@@ -28,6 +28,8 @@ const MODEL_ALIASES = { opus: "claude-opus-5-5", sonnet: "claude-sonnet-5-5", ha
 const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 // The bot's own repo: "@bot upgrade: …" plans changes to the bot there (TM-09).
 const UPGRADE_PROJECT = process.env.TEAMMATE_UPGRADE_PROJECT || "mesiri";
+/** TM-19: where a project keeps its "it works now" messages (Mesiri: sent by its scheduler right after the deploy). */
+const RELEASE_NOTES = { mesiri: "apps/whatsapp-assistant/release_notes.json" };
 const BUDGET = { planning: Number(process.env.TEAMMATE_BRAIN_PLAN_USD || 3), working: Number(process.env.TEAMMATE_BRAIN_WORK_USD || 25) };
 
 // The pair (TM-12): this bot is "Ilan Pro"; "Ilan Usman" is a Claude Code session in the cloud. They share a task
@@ -102,6 +104,13 @@ export function reportingFooter(plan, reply_chat) {
     "  \"pushed, deploying\". If that run fails, say \"pushed, deploy failed: <the failing step and its reason>\" (1 Nov: a group was",
     "  told project creation was built while every deploy was failing on the Gemini spending cap).",
     "- If you stop early or are blocked, say so with an item note and a group post; never go silent.",
+    ...(plan.asked_for?.length
+      ? [
+          `- ${plan.asked_by || "Someone"} asked for this in production. In the same push, add a note to apps/whatsapp-assistant/release_notes.json`,
+          `  with for = ${JSON.stringify(plan.asked_for)} and a message in their language: it works now, and what to send to try it.`,
+          "  Mesiri sends it to them right after the deploy; without it they are never told.",
+        ]
+      : []),
   ].join("\n");
 }
 
@@ -909,6 +918,12 @@ export class Brain {
       this.log(`brain: verify [${plan.id}]: couldn't list chats: ${e.message}`);
     }
     const chat = team?.jid || plan.reply_chat || plan.chat;
+    // Owner, 1 Nov: the person who hit it must hear "it works now" as soon as it is deployed. That message exists only
+    // if the job added a release note naming their messages; checked here in code, and made at once when missing.
+    const missingNote = this.releaseNoteMissing(plan);
+    if (missingNote) {
+      await this.listener.send({ chat, project, text: `⚠️ [${plan.id}] is live, but no "it works now" message names ${plan.asked_by || "the person who asked"}. Adding it now.` }).catch(() => {});
+    }
     const text = [
       `LIVE CHECK for plan [${plan.id}] "${plan.title}"${sha ? ` (deployed ${sha})` : ""}. Make sure it is not down and really works now.`,
       plan.asked_by ? `It was asked for by ${plan.asked_by}.` : "",
@@ -919,12 +934,43 @@ export class Brain {
       "3. Post ONE short line here: \"✅ [n] verified live: <what works>\" or \"❌ [n] still not working: <what happened>\". When",
       "   broken, find the cause and call propose_plan for the fix (it starts by itself).",
       "",
+      ...(missingNote
+        ? [
+            `FIRST: ${RELEASE_NOTES[project] || "the release notes file"} has no note for their messages (${plan.asked_for.join(", ")}), so they`,
+            "will never be told it works. Call propose_plan now (before the live test) for exactly that: one entry in that file",
+            "(id kebab-case, date = today, for = those correlation ids, message = one or two lines in THEIR language and letters:",
+            "what they asked for works now, and exactly what to send to try it). Title it \"Release note for [" + plan.id + "]\".",
+          ]
+        : []),
       "The plan:",
       String(plan.plan || "").slice(0, 3000),
     ].filter(Boolean).join("\n");
     const req = { project: plan.project, reply_project: project, chat, chat_name: team?.name || plan.chat_name || project, chat_role: "team", reply_chat: chat, sender: "the live check", n: null, text, session: "verify", verify_plan: plan.id };
     this.log(`brain: live check for [${plan.id}]`);
     return this.enqueue(`${chat}::verify`, () => this.turn(req, "planning"));
+  }
+
+  /**
+   * TM-19: true when the plan came from people's production messages and the project's release notes (on GitHub's
+   * main, freshly fetched) name none of them, so nobody would tell them it works now. False when it can't be checked.
+   */
+  releaseNoteMissing(plan) {
+    const file = RELEASE_NOTES[plan.reply_project || plan.chat_project || plan.project];
+    const project = this.projects[plan.project];
+    if (!file || !project || !plan.asked_for?.length) return false;
+    try {
+      this.prepare(project);
+    } catch (e) {
+      this.log(`brain: release-note check [${plan.id}]: prepare: ${e.message}`);
+    }
+    try {
+      const notes = JSON.parse(readFileSync(join(project.cwd, file), "utf8")).notes || [];
+      const named = new Set(notes.flatMap((n) => n.for || []).map(String));
+      return !plan.asked_for.some((c) => named.has(String(c)));
+    } catch (e) {
+      this.log(`brain: release-note check [${plan.id}]: ${e.message}`);
+      return false;
+    }
   }
 
   /**
