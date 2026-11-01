@@ -9,7 +9,7 @@ const MIN = 60_000;
 // "WA-86", "TM-12": a tracker id. Words that look like one but aren't (UTF-8, SHA-256…) are skipped.
 const NOT_TRACKER = new Set(["UTF", "SHA", "ISO", "HTTP", "TLS", "AES", "MD", "RFC", "PNG", "GPT", "TS", "ES", "H"]);
 // Notes the bot writes itself; they are not the session's heartbeats.
-const BOT_NOTE = /^(OK from |cloud session|watchdog:)/i;
+const BOT_NOTE = /^(OK from |cloud session|watchdog:|approved_by:|live:|the person who asked)/i;
 
 /** Tracker ids named in some text, upper-cased, once each. */
 export function trackerIds(...texts) {
@@ -18,11 +18,15 @@ export function trackerIds(...texts) {
   return [...out];
 }
 
-/** The text a commit message has to contain for it to count as this plan's: "request n", "[n]" or a tracker id. */
+/**
+ * The text a commit message has to contain for it to count as this plan's: "request n", "[n]" or a tracker id from the
+ * plan's TITLE or the session's own notes. Not the plan's body: it names other work for context ("autobuild, TM-18"),
+ * and on 1 Nov that credited an unrelated TM-18 commit to plans [197] and [198] ("pushed d93a2ae, deploy red").
+ */
 export function commitPatterns(plan, item) {
   const id = String(plan.id);
-  const notes = (item?.log || []).map((l) => l.note).join("\n");
-  const ids = trackerIds(plan.title, plan.plan, notes);
+  const notes = (item?.log || []).filter((l) => l.note && !BOT_NOTE.test(String(l.note))).map((l) => l.note).join("\n");
+  const ids = trackerIds(plan.title, notes);
   const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return [`request ${esc(id)}([^0-9]|$)`, `\\[${esc(id)}\\]`, ...ids.map((t) => `${esc(t)}([^0-9]|$)`)];
 }

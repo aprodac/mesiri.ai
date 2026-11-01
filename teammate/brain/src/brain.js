@@ -841,7 +841,11 @@ export class Brain {
     );
     for (const plan of waiting) {
       const project = plan.chat_project || plan.project;
-      if (!this.autobuild.isOn(project) || this.autobuild.decide(plan, project)) continue;
+      const why = this.autobuild.decide(plan, project);
+      if (why) {
+        this.log(`brain: plan [${plan.id}] still held after restart: ${why}`);
+        continue;
+      }
       const reply_chat = plan.reply_chat || plan.chat;
       const say = (text) => this.listener.send({ chat: reply_chat, project, text });
       this.log(`brain: plan [${plan.id}] no longer held; starting it`);
