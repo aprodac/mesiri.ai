@@ -29,7 +29,7 @@ from mesiri.application.finance.transfer_handler import TransferMoneyHandler
 from mesiri.application.finance.transfer_resolution import PostgresTransferAccountResolver
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.domains.projects.router import get_auth_context
-from mesiri.domains.shared.idempotency import idempotency_uuid
+from mesiri.domains.shared.execution import idempotency_uuid
 from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.postgres.dependency import get_db_conn
 from mesiri.infrastructure.postgres.repositories.expenses import (

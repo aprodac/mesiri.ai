@@ -40,7 +40,7 @@ from mesiri.authorization.context import AuthorizationContext
 from mesiri.authorization.roles import may_view_expenses
 from mesiri.domains.expenses.responses import ExpenseResponse, RecordExpenseResponse
 from mesiri.domains.projects.router import get_auth_context
-from mesiri.domains.shared.idempotency import idempotency_uuid
+from mesiri.domains.shared.execution import idempotency_uuid
 from mesiri.domains.shared.media import assert_downloadable_url
 from mesiri.domains.shared.modules import require_module
 from mesiri.infrastructure.objectstorage.dependency import get_object_storage

@@ -49,7 +49,7 @@ from mesiri.domains.materials.validation import (
     role_can_adjust,
 )
 from mesiri.domains.projects.router import get_auth_context
-from mesiri.domains.shared.idempotency import idempotency_uuid
+from mesiri.domains.shared.execution import idempotency_uuid
 from mesiri.domains.shared.media import assert_downloadable_url
 from mesiri.infrastructure.objectstorage.dependency import get_object_storage
 from mesiri.infrastructure.postgres.dependency import get_db_conn

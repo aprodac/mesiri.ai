@@ -12,7 +12,9 @@ import uuid
 from mesiri.domains.expenses import router as expenses_router
 from mesiri.domains.finance import router as finance_router
 from mesiri.domains.materials import router as materials_router
-from mesiri.domains.shared.idempotency import idempotency_uuid
+from mesiri.domains.progress import router as progress_router
+from mesiri.domains.shared.execution import idempotency_uuid
+from mesiri.domains.workforce import router as workforce_router
 
 ORG_A = uuid.UUID("11111111-1111-1111-1111-111111111111")
 ORG_B = uuid.UUID("22222222-2222-2222-2222-222222222222")
@@ -42,7 +44,9 @@ def test_derived_key_cannot_collide_with_a_workflow_instance_id():
 def test_every_rest_idempotency_key_header_goes_through_the_scoping():
     """Guard for the class: a router that accepts an `Idempotency-Key` header
     must scope it. A new endpoint that forgets fails here."""
-    for module in (materials_router, expenses_router, finance_router):
+    for module in (
+        materials_router, expenses_router, finance_router, progress_router, workforce_router
+    ):
         source = inspect.getsource(module)
         assert 'alias="Idempotency-Key"' in source
         assert "idempotency_uuid(" in source, module.__name__
