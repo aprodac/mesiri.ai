@@ -8,9 +8,10 @@
 // note once it is live.
 //
 // Code decides, not the model, and holds back for a human ok only what CLAUDE.md still reserves for the owner:
-// Labour / Attendance / Payroll / Workforce, migrations that drop or rename data, secrets and tokens, tenant
+// Attendance / Payroll / Workforce, migrations that drop or rename data, secrets and tokens, tenant
 // isolation, login, CI / deploy files, the bot itself (teammate/), and the daily cap. Roles and permissions inside the
 // product (who may create a project, admin vs site engineer) are NOT held: Ilan, 1 Nov: "those you can do; report it".
+// Labour is NOT held either (Ilan, 1 Nov: "Labour is a normal module like the others; do it without asking").
 // A held plan is posted with the reason and waits for "@bot ok <n>" as before.
 
 import { readFileSync, writeFileSync, renameSync } from "node:fs";
@@ -19,7 +20,6 @@ export const AUTOBUILD_PER_DAY = Number(process.env.TEAMMATE_AUTOBUILD_PER_DAY |
 
 /** What keeps a plan on "@bot ok". Each entry: [pattern, reason in plain words]. */
 const HOLD = [
-  [/\blabou?r\b/i, "Labour"],
   [/\battendance\b/i, "Attendance"],
   [/\bpayroll\b|\bwages?\b|\bsalar(?:y|ies)\b/i, "Payroll"],
   [/\bworkforce\b/i, "Workforce"],
@@ -108,7 +108,7 @@ export class AutoBuild {
     const arg = String(m[1] || "").trim().toLowerCase();
     const show = (head = "") => {
       const on = this.isOn(project);
-      return `${head}🛠 *Autobuild*: ${on ? "*on*: plans from the production watch and from your messages start building by themselves; Labour / Attendance / Payroll / Workforce, data-changing migrations, secrets, tenant isolation, login and the bot itself still wait for @bot ok" : "*off*: every plan waits for @bot ok <n>"}\n` +
+      return `${head}🛠 *Autobuild*: ${on ? "*on*: plans from the production watch and from your messages start building by themselves; Attendance / Payroll / Workforce, data-changing migrations, secrets, tenant isolation, login and the bot itself still wait for @bot ok" : "*off*: every plan waits for @bot ok <n>"}\n` +
         `Today: ${this.today(project).n} of ${this.perDay} started\nOwners: @bot autobuild on | off`;
     };
     if (!arg || /^(status|\?)$/.test(arg)) return show();

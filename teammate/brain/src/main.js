@@ -328,6 +328,8 @@ if (prodWatchMinutes > 0 && Object.keys(opsByProject).length) {
   setTimeout(() => (beat(), setInterval(beat, 60_000)), 120_000);
   log(`prod-watch: one look ${prodWatch.settings().minutes} min after anyone messages${prodWatch.settings().on ? "" : " (paused)"}; AI screen skips ${prodWatch.skip.join(", ") || "none"}; ${Object.keys(opsByProject).join(", ")}; AI screen ${process.env.TEAMMATE_GEMINI_API_KEY ? "on" : "off"}`);
 }
+// TM-19: plans held before a restart that autobuild may start now (1 Nov: Labour stopped being held).
+setTimeout(() => brain.retryHeld().catch((e) => log(`retry held: ${e.message}`)), 90_000);
 // Request 139: the watchdog over cloud jobs (commits, deploys, silence); TEAMMATE_WATCH_MINUTES, default 10, 0 = off.
 const watchMinutes = Number(process.env.TEAMMATE_WATCH_MINUTES ?? 10);
 if (watchMinutes > 0) {

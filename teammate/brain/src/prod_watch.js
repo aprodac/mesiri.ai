@@ -253,7 +253,7 @@ export function watchPrompt(project, convs, { minutes, autobuild = false }) {
     "   harness if you can), then the CLASS: the sibling cases that share the mechanism. Group failures that share a root",
     "   cause into ONE plan. Check docs/plans/V1_TRACKER.md first and name the existing item when there is one.",
     "3. Record one plan per root cause (the plan tool), scoped as FIX_APPROACH says: the root, the siblings, the UX, the",
-    "   guard tests. Never a one-message patch. Labour / Attendance / Payroll / Workforce, migrations that change data,",
+    "   guard tests. Never a one-message patch. Attendance / Payroll / Workforce, migrations that change data,",
     "   and security changes are marked as needing the owner's decision in the plan.",
     "   Pass asked_for = the correlation ids (in brackets below) of the messages where the person asked or complained:",
     "   that records who asked, so they are told when it is live and their next use is tracked.",
