@@ -262,3 +262,31 @@ def test_the_instructions_say_ready_never_recorded_and_their_script() -> None:
     assert "njan record cheythu" in SOP and "Never say saved, recorded" in SOP
     assert "their script" in SOP and "Manglish in Latin letters gets Manglish in Latin" in SOP
     assert "never ask \"is this a bill?\"" in SOP
+
+
+async def test_a_provider_without_the_capability_setting_still_runs() -> None:
+    """Compare run of 1 Nov: v3 sent capability= to the plain Gemini provider -> TypeError on every
+    message. The router takes it (the control-panel row); a single provider does not."""
+    class Plain:
+        def __init__(self) -> None:
+            self.kw: dict = {}
+
+        async def run_tools(self, system_prompt, messages, tools, handler, *, max_steps=3,  # noqa: ANN001
+                            timeout_seconds=None, correlation_id=None):
+            from mesiri_ai.models import ToolRunResult
+
+            return ToolRunResult(text="Hello.")
+
+    class Router(Plain):
+        async def run_tools(self, system_prompt, messages, tools, handler, **kw):  # noqa: ANN001, ANN003
+            self.kw = kw
+            return await super().run_tools(system_prompt, messages, tools, handler)
+
+    for provider in (Plain(), Router()):
+        client = ApiClient(ACTOR, app=stand_in_api([]))
+        try:
+            turn = await ApiAgent(provider, {}, capability="api_agent").run(client, "hi")
+        finally:
+            await client.close()
+        assert turn.reply == "Hello."
+    assert provider.kw.get("capability") == "api_agent"
