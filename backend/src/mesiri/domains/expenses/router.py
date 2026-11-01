@@ -27,6 +27,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.application.expenses.commands import RecordExpenseCommand
@@ -140,6 +141,9 @@ class RecordExpenseRequest(BaseModel):
     tax_rate: Decimal | None = None
     tax_amount: Decimal | None = None
     is_tax_inclusive: bool = True
+    #: WA-124: the bill photo, as stored when it arrived on this company's WhatsApp
+    #: (``inbound_messages.media_object_key``). Attached to the expense as its receipt.
+    media_object_key: str | None = None
 
 
 def _authorize_write(
@@ -187,7 +191,23 @@ async def record_expense(
         tax_rate=body.tax_rate,
         tax_amount=body.tax_amount,
         is_tax_inclusive=body.is_tax_inclusive,
+        media_object_key=body.media_object_key,
     )
+
+    if body.media_object_key:
+        # Only a file this company's own WhatsApp received: a key names no company, so
+        # without this a caller could attach (and then read) another company's photo.
+        owned = (
+            await conn.execute(
+                text(
+                    "SELECT 1 FROM inbound_messages "
+                    "WHERE organization_id = :org AND media_object_key = :key LIMIT 1"
+                ),
+                {"org": auth_context.organization_id, "key": body.media_object_key},
+            )
+        ).first()
+        if owned is None:
+            raise HTTPException(status_code=404, detail="Photo not found")
 
     # Resolvers wired in (previously absent on the REST path -- a request
     # with no category_id and no matching category_text would have hit

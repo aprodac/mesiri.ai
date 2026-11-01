@@ -52,6 +52,8 @@ class ApiTool:
     spec: ToolSpec
     required: tuple[str, ...] = field(default_factory=tuple)
     fixed: tuple[tuple[str, Any], ...] = ()
+    #: Body fields the API takes but the model never sees (some the code fills, e.g. a photo).
+    hidden: tuple[str, ...] = ()
 
     @property
     def is_write(self) -> bool:
@@ -113,8 +115,9 @@ ALLOWED: tuple[Allowed, ...] = (
     Allowed("expense_categories", "GET", "/expenses/categories", "The company's expense categories and their ids."),
     Allowed("money_accounts", "GET", "/finance/accounts", "The company's money accounts (petty cash, bank) and balances."),
     Allowed(
-        "record_expense", "POST", "/expenses", "Prepare an expense (money spent)." + _WRITE,
-        hide=("source", "source_message_id", "correlation_id"), fixed=(("source", "whatsapp"),),
+        "record_expense", "POST", "/expenses", "Prepare an expense (money spent), from words or a bill photo; the photo is attached by itself. "
+        "Vendor and category as text, as they said or as the bill shows." + _WRITE,
+        hide=("source", "source_message_id", "correlation_id", "media_object_key"), fixed=(("source", "whatsapp"),),
     ),
     # Site day: weather and conditions, the DPR
     Allowed("site_day", "GET", "/dpr/site-days/{site_id}", "One site's day: conditions (weather, hours lost), plan, what is reported."),
@@ -186,6 +189,7 @@ def build_tools(openapi: dict[str, Any], allowed: tuple[Allowed, ...] = ALLOWED)
             spec=ToolSpec(name=item.name, description=item.description, parameters=parameters),
             required=tuple(required),
             fixed=item.fixed,
+            hidden=tuple(sorted(hidden)),
         )
     return tools
 
