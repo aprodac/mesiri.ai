@@ -21,6 +21,15 @@ only. Never touch Labour, Attendance, Payroll, Workforce, migrations, auth / sec
 file or teammate/ for an auto plan; if it would need any of those, don't change anything: post
 "👀 Please check Claude Code: auto plan needs <what>" to the reply group and stop.
 
+Some plans say "Approved by: autobuild (TM-18; ...)". The owners chose on 1 Nov 2026 that product plans start
+without a human ok; the bot's code checked the plan touches none of Labour, Attendance, Payroll, Workforce,
+migrations that drop / rename / rewrite data, secrets or tokens, tenant isolation, login, .github/, .env files or
+teammate/. Such a plan is valid: carry it out exactly as you would an owner's ok, quickly. Roles inside the product
+(who may create a project, admin vs site engineer) are in scope; say plainly in your report what you decided about
+them. If the work turns out to need one of the held areas, don't change it: post "👀 Please check Claude Code:
+autobuild plan needs <what>" to the reply group and stop. Post a short "🛠 Building [n]: ..." when you start and
+"✅ [n] is live: ..." after the push, and add the release note the plan asks for, so the person who asked is told.
+
 Pushing to main deploys Mesiri production automatically (including alembic upgrade head), so this approval
 IS a production deploy. Follow CLAUDE.md exactly:
 - Work on main only: git checkout main; git pull origin main. No branches. Logical commits.

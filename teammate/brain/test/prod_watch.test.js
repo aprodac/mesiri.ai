@@ -308,7 +308,7 @@ test("anyone sees the watch; only an owner in the team group changes it; the set
     const make = () => new ProdWatch({ sources: { mesiri: { url: "u", token: "t" } }, ask: async () => {}, file, fetchFn, now: () => T0 * 1000, minutes: 5 });
     const watch = make();
     const member = { text: "watch", sender: "Ravi", sender_role: "member" };
-    assert.match(watch.command(member), /when a real company messages, one look \*5 min\* later \(test companies skipped\)/);
+    assert.match(watch.command(member), /when anyone messages, one look \*5 min\* later \(AI screen skips the test companies\)/);
     assert.equal(watch.command({ text: "show me the dpr" }), undefined); // not a watch command
     assert.equal(watch.command({ ...member, text: "watch 1h" }), "Only an owner can change the production watch.");
     assert.equal(watch.command({ text: "watch 1h", sender_role: "owner", dm: true }), "The production watch can be changed in the team group only.");
@@ -329,13 +329,48 @@ test("anyone sees the watch; only an owner in the team group changes it; the set
 // -- 1 Nov (Ilan): the test companies' own testing spent the Gemini key all day. The watch reads real companies only,
 // wakes when one messages, and takes ONE look 5 minutes later. Idle: one free SELECT every 2 minutes, nothing else. --
 
-test("the SQL never reads the test companies, and a skip list cannot inject SQL", () => {
+test("TM-18: the SQL reads every company, marks the test ones, and a skip list cannot inject SQL", () => {
   const sql = watchSql(T0, 400, DEFAULT_SKIP);
-  assert.match(sql, /NOT ILIKE ALL \(ARRAY\['Mesiri Test Builders', '%paraclet%'\]\)/);
+  assert.doesNotMatch(sql, /NOT ILIKE/); // the test companies' testers are the users today
+  assert.match(sql, /ILIKE ANY \(ARRAY\['Mesiri Test Builders', '%paraclet%'\]\) AS is_test/);
+  assert.match(sql, /jt\.stage = 'agent_v2_live' AND c->>'tool' = 'tell_the_team'\) AS feedback/);
   assert.deepEqual(skipPatterns(undefined), DEFAULT_SKIP);
   assert.deepEqual(skipPatterns("Acme Test, x'); DROP TABLE y;--"), ["Acme Test", "x DROP TABLE y--"]);
-  assert.deepEqual(skipPatterns(""), []); // an empty value reads every company
-  assert.doesNotMatch(watchSql(T0, 400, []), /NOT ILIKE/);
+  assert.deepEqual(skipPatterns(""), []);
+  assert.match(watchSql(T0, 400, []), /false AS is_test/);
+});
+
+test("TM-18: Mesiri's tell_the_team is always a flag, and the paid screen never reads the test companies", async () => {
+  const told = msg({ text: "this is bad UX", reply: "Sorry! What was not good: the words, the buttons, or too long?", feedback: "bad_ux: the last reply" });
+  const flagged = flagRows([told]);
+  assert.equal(flagged.length, 1);
+  assert.equal(flagged[0].flags[0].kind, "feedback");
+  assert.match(flagged[0].flags[0].why, /they told Mesiri: bad_ux: the last reply/);
+
+  const dir = mkdtempSync(join(tmpdir(), "pw-"));
+  try {
+    const test = msg({ company: "Mesiri Test Builders", is_test: true, text: "hi", reply: "Hi!", at: T0 - 30, done_at: T0 - 28 });
+    const real = msg({ company: "Acme", is_test: false, who: "w2", text: "hi", reply: "Hi!", at: T0 - 30, done_at: T0 - 28 });
+    const { fetchFn } = fakeOps([[test, real]]);
+    const read = [];
+    const screener = { screen: async (rows) => (read.push(...rows.map((r) => r.company)), new Map()) };
+    const watch = new ProdWatch({ sources: { mesiri: { url: "u", token: "t" } }, ask: async () => {}, file: join(dir, "s.json"), fetchFn, now: () => T0 * 1000, screener });
+    await watch.tick();
+    assert.deepEqual(read, ["Acme"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("TM-18: with autobuild the report says it is being built; without it, it asks for @bot ok", () => {
+  const conv = conversations([msg({ text: "create project Skyline", reply: "Not here yet; passed on.", feedback: "missing_feature: create a project" })], flagRows([msg({ feedback: "x" })]));
+  const convs = [{ who: "w1", company: "Acme", person: "Ravi", role: "admin", last4: "3210", messages: [msg({ text: "create project" })], flags: new Map(), at: T0 }];
+  assert.ok(Array.isArray(conv));
+  const on = watchPrompt("mesiri", convs, { minutes: 5, autobuild: true });
+  assert.match(on, /starts building by itself/);
+  assert.doesNotMatch(on, /Reply @bot ok/);
+  assert.match(on, /A `feedback` flag is different/);
+  assert.match(watchPrompt("mesiri", convs, { minutes: 5 }), /Reply @bot ok <n> to build it/);
 });
 
 function counting(pages) {

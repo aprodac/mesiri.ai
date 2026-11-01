@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { BRAIN_TOOL_NAMES } from "./tools.js";
 import { AutoLoop, usageLimit, clock } from "./auto.js";
 import { Accounts } from "./accounts.js";
+import { AutoBuild } from "./autobuild.js";
 import { collectWorkStatus, formatWorkStatus } from "./work_status.js";
 import { Watchdog } from "./watchdog.js";
 
@@ -148,7 +149,8 @@ export function systemAppend({ project, flow, owner, dm = false, partner = false
     "Two kinds of turn, enforced by your tool permissions:",
     "- Planning (normal messages): you can read but not change anything. Answer questions directly. For a change,",
     "  investigate, then show it: post a mockup with preview_html, or a screenshot of the current page with",
-    "  screenshot_url, whenever the change is visible. Then call propose_plan and end by asking for \"@bot ok <number>\".",
+    "  screenshot_url, whenever the change is visible. Then call propose_plan; its answer says whether the plan starts by itself",
+    "  (autobuild, TM-18) or waits for \"@bot ok <number>\": end your reply accordingly.",
     "- Working (after someone approves a plan): do exactly that plan. Post progress with post_message on long work,",
     "  show the result (screenshot_url / preview_html) when it's visible, update the request log",
     "  (`python3 teammate/inbox.py item start|done <id> --ref <PR>`), and finish with what changed and the links.",
@@ -254,6 +256,8 @@ export class Brain {
     this.today = { day: "", turns: 0 };
     // The auto loop (request 61): "@bot auto on [hours]"; see auto.js. landed(plan, sinceIso): is that work on main?
     this.auto = new AutoLoop(this, { dir, ...(landed ? { landed } : {}) });
+    // TM-18: plans start building by themselves (no "@bot ok"), except what autobuild.js holds for an owner.
+    this.autobuild = new AutoBuild({ file: `${dir}/autobuild.json`, now: () => this.now().getTime() });
     // Request 139: work = { commits(plan, sinceIso, item), runs(shas) } (git / GitHub, main.js); without it a job's status
     // is what the request log says. The watchdog posts when a cloud job pushes, goes quiet or lands unreported.
     this.work = work || { commits: async () => [], runs: async () => [] };
@@ -521,6 +525,8 @@ export class Brain {
       `Project: ${project}`,
       by === "auto"
         ? "Approved by: auto (the bot's auto loop; an owner switched auto on in WhatsApp, and the code checked the plan's area and guard words)"
+        : by === "autobuild"
+        ? "Approved by: autobuild (TM-18; the owners chose no human ok for product plans on 1 Nov, and the code checked the plan holds none of Labour / Attendance / Payroll / Workforce, data-changing migrations, secrets, tenant isolation, login, CI files or teammate/)"
         : `Approved by: ${by} (in WhatsApp; the listener checked ${by} is on the approved list)`,
       `Request log item: ${typeof plan.id === "number" ? plan.id : "none"}`,
       `Reply group jid: ${reply_chat}`,
@@ -679,6 +685,8 @@ export class Brain {
       if (auto !== undefined) return auto ? say(auto) : undefined;
       const watch = this.prodWatch?.command(req); // TM-16: "@bot watch …"
       if (watch !== undefined) return say(watch);
+      const build = this.autobuild.command(req); // TM-18: "@bot autobuild [on|off]"
+      if (build !== undefined) return say(build);
       const answer = this.accounts.command(req) || this.settingsCommand(req) || this.sessionCommand(req);
       if (answer) return say(answer);
     }
@@ -695,7 +703,7 @@ export class Brain {
     const header = `[WhatsApp · ${where} · #${req.n ?? "-"} · from ${req.sender}]`;
     const quoted = req.quoted_text ? `\nReplying to: "${String(req.quoted_text).slice(0, 1500)}"` : "";
     const prompt = `${header}${quoted}\n${req.text}`;
-    const ctx = { project: req.project, chat_project: req.reply_project || req.project, chat: req.chat, chat_name: req.chat_name, reply_chat: req.reply_chat, sender: req.sender, session: req.session, ...(req.watch_conversations?.length ? { watch_conversations: req.watch_conversations } : {}), ...(req.auto ? { auto_cycle: req.auto_cycle, auto_report: req.auto_report, auto_attention: req.auto_attention } : {}) };
+    const ctx = { project: req.project, chat_project: req.reply_project || req.project, chat: req.chat, chat_name: req.chat_name, reply_chat: req.reply_chat, sender: req.sender, session: req.session, ...(req.watch_conversations?.length ? { watch_conversations: req.watch_conversations } : {}), ...(req.auto ? { auto_cycle: req.auto_cycle, auto_report: req.auto_report, auto_attention: req.auto_attention } : {}), ...(this.autobuilds(req, mode) ? { autobuild: true, new_plans: [] } : {}) };
     // What the auto loop needs to know about how the turn ended.
     const outcome = { ok: false, limit: null, budget: false, denied: [], error: null };
     let limitSeen = null;
@@ -799,7 +807,39 @@ export class Brain {
           "If one of these is needed, tell me how you'd like to handle it, or check Claude Code on the server.",
       );
     }
+    // TM-18: the plans this planning turn recorded start building now (the report above was posted first).
+    if (outcome.ok && ctx.autobuild) for (const id of ctx.new_plans) await this.autoBuild(id, req, say);
     return outcome;
+  }
+
+  /** Does this turn's plans start by themselves? Planning turns for the product (not auto cycles, not bot upgrades). */
+  autobuilds(req, mode) {
+    return mode === "planning" && !req.auto && req.session !== "upgrade" && this.autobuild.isOn(req.reply_project || req.project);
+  }
+
+  /** TM-18: start plan `id` like an owner's "@bot ok", unless autobuild.js holds it; a held plan waits for an ok. */
+  async autoBuild(id, req, say) {
+    const plan = this.planStore.plans[id];
+    if (!plan || plan.status !== "proposed") return;
+    const project = req.reply_project || req.project;
+    const why = this.autobuild.decide(plan, project);
+    if (why) {
+      this.log(`brain: plan [${plan.id}] not autobuilt: ${why}`);
+      return say(`✋ [${plan.id}] ${plan.title}\nWaiting for an owner because ${why}. Reply @bot ok ${plan.id} to build it.`);
+    }
+    plan.status = "approved";
+    plan.approved_by = "autobuild";
+    plan.approved_at = this.now().toISOString();
+    writeJson(this.plansFile, this.planStore);
+    this.autobuild.started(project);
+    if (typeof plan.id === "number") this.listener.updateItem(plan.id, { status: "in_progress", note: "approved_by: autobuild (TM-18)", project }).catch(() => {});
+    if (this.routineFor(plan.chat, plan.project) && this.fireFn) return this.runInCloud(plan, { project, by: "autobuild", reply_chat: req.reply_chat, say });
+    const key = `${plan.chat}::${plan.session || "main"}`;
+    const text = `Autobuild (TM-18) started plan [${plan.id}] "${plan.title}". Go ahead with exactly this plan now.\n\nThe plan:\n${plan.plan}`;
+    // Queued behind the turn that is running now (never awaited here: that turn holds the same queue).
+    void this.enqueue(key, () =>
+      this.turn({ project: plan.project, reply_project: project, chat: plan.chat, chat_name: plan.chat_name, chat_role: "team", reply_chat: req.reply_chat, dm: Boolean(req.dm), sender: "autobuild", n: null, text, session: plan.session || "main" }, "working", plan),
+    );
   }
 
   /** What a human sees when their own message hits the usage limit. */

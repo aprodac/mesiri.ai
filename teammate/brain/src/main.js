@@ -301,9 +301,9 @@ if (boardMinutes > 0) {
   log(`board: every ${boardMinutes} min; partner ${Object.keys(projects).filter((p) => accounts.list.some((a) => a.partners[p])).join(", ") || "none"}`);
 }
 // TM-16: the production watch. Per project TEAMMATE_OPS_<PROJECT>_URL / _TOKEN (read-only ops API, kept out of
-// Claude's environment). Ilan, 1 Nov: it wakes only when a REAL company messages (test companies skipped:
-// TEAMMATE_PROD_WATCH_SKIP, default Mesiri Test Builders + Paraclette) and takes one look TEAMMATE_PROD_WATCH_MINUTES
-// (default 5, 0 = off) later. Idle it is one free SELECT every 2 min: no AI screen, no Claude turn.
+// Claude's environment). It wakes when anyone messages (TM-18: every company, the test companies too; the paid AI
+// screen still skips TEAMMATE_PROD_WATCH_SKIP, default Mesiri Test Builders + Paraclette) and takes one look
+// TEAMMATE_PROD_WATCH_MINUTES (default 5, 0 = off) later. Idle it is one free SELECT every 2 min: no AI, no Claude turn.
 const prodWatchMinutes = Number(process.env.TEAMMATE_PROD_WATCH_MINUTES ?? 5);
 const opsByProject = opsSources(process.env, Object.keys(projects));
 if (prodWatchMinutes > 0 && Object.keys(opsByProject).length) {
@@ -314,6 +314,7 @@ if (prodWatchMinutes > 0 && Object.keys(opsByProject).length) {
     log,
     minutes: prodWatchMinutes,
     skip: skipPatterns(process.env.TEAMMATE_PROD_WATCH_SKIP),
+    autobuildOn: (project) => brain.autobuild.isOn(project), // TM-18: the report says "building it now", not "@bot ok"
     // The AI screen (TEAMMATE_GEMINI_API_KEY, the listener's key): catches the "I can't" a word list misses.
     screener: process.env.TEAMMATE_GEMINI_API_KEY
       ? new Screener({ apiKey: process.env.TEAMMATE_GEMINI_API_KEY, model: process.env.TEAMMATE_GEMINI_MODEL || undefined })
@@ -323,7 +324,7 @@ if (prodWatchMinutes > 0 && Object.keys(opsByProject).length) {
   // Every minute: a look when it is on and its interval (TEAMMATE_PROD_WATCH_MINUTES, or what an owner set) has passed.
   const beat = () => prodWatch.maybeTick().catch((e) => log(`prod-watch: ${e.message}`));
   setTimeout(() => (beat(), setInterval(beat, 60_000)), 120_000);
-  log(`prod-watch: one look ${prodWatch.settings().minutes} min after a real company messages${prodWatch.settings().on ? "" : " (paused)"}; skipping ${prodWatch.skip.join(", ") || "none"}; ${Object.keys(opsByProject).join(", ")}; AI screen ${process.env.TEAMMATE_GEMINI_API_KEY ? "on" : "off"}`);
+  log(`prod-watch: one look ${prodWatch.settings().minutes} min after anyone messages${prodWatch.settings().on ? "" : " (paused)"}; AI screen skips ${prodWatch.skip.join(", ") || "none"}; ${Object.keys(opsByProject).join(", ")}; AI screen ${process.env.TEAMMATE_GEMINI_API_KEY ? "on" : "off"}`);
 }
 // Request 139: the watchdog over cloud jobs (commits, deploys, silence); TEAMMATE_WATCH_MINUTES, default 10, 0 = off.
 const watchMinutes = Number(process.env.TEAMMATE_WATCH_MINUTES ?? 10);

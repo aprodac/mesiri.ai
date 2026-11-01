@@ -3,7 +3,7 @@
 //   post_message        progress / notes to the project's team group
 //   preview_html        render an HTML mockup to a PNG and post it ("this is what it will look like")
 //   screenshot_url      screenshot an allowed dev / staging page and post it
-//   propose_plan        record a plan for approval; the team replies "@bot ok <n>"
+//   propose_plan        record a plan; autobuild (TM-18) starts it after the turn, else the team replies "@bot ok <n>"
 //   test_assistant      message the Mesiri assistant's test chat as a worker and read its replies
 //   tell_ilan_usman     report to Ilan Usman, the partner Claude Code session in the cloud (TM-12), when set up
 //   status_of_work      a cloud job's commits, deploys, notes and links (request 139)
@@ -215,6 +215,8 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
           // the request log is a convenience; the plan still stands
         }
         const saved = plans.save({ id: itemId, project: ctx.project, chat_project: chatProject, chat: ctx.chat, chat_name: ctx.chat_name, session: ctx.session, title, plan, by: ctx.sender, ...(ctx.auto_cycle ? { auto: auto || null, cycle: ctx.auto_cycle } : {}) });
+        if (ctx.new_plans) ctx.new_plans.push(saved.id); // TM-18: autobuild starts it after this turn
+        if (ctx.autobuild) return { content: [{ type: "text", text: `Plan [${saved.id}] recorded. Autobuild is on: right after this turn the code checks it and starts building it (anything it holds back is posted with the reason). Don't ask for an ok; say it is being built.` }] };
         if (ctx.auto_cycle) return { content: [{ type: "text", text: `Plan [${saved.id}] recorded. The system decides about auto-approval (scope and guard words are checked in code); don't ask anyone for an ok. Now call cycle_report.` }] };
         return { content: [{ type: "text", text: `Plan [${saved.id}] recorded. Ask the team to reply "@bot ok ${saved.id}" to go ahead.` }] };
       },

@@ -136,6 +136,7 @@ In a project's **team** group, approved people @-mention the linked number:
 | `@bot <what to do>` (best as a reply to the message it's about) | approved | logs a request (TM-08) and confirms in the group |
 | `@bot ok <request number>` | approved | approves it: status → in progress, "OK from …" in its history |
 | `@bot who` · `@bot help` | approved | who is approved · the commands |
+| `@bot autobuild` · `@bot autobuild on` / `off` | anyone sees; owners switch | TM-18: plans start building by themselves, no ok (held areas still wait); see `brain/README.md` |
 | `@bot auto on [hours]` · `@bot auto` · `@bot auto off` / `@bot stop` | owners start; anyone approved stops | the auto loop (request 61): test → one in-scope fix → push → verify, by itself; see `brain/README.md` |
 | `@bot approve @person` · `@bot remove @person` · `@bot make owner @person` | owners | manage approvals from the group |
 

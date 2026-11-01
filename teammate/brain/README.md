@@ -71,6 +71,34 @@ run side by side in one group.
 - **Watching cloud jobs (request 139, `src/work_status.js`, `src/watchdog.js`):** after `@bot ok n` the work runs in a Claude Code cloud session and the routine API only returns its link, so the bot reads the job from outside: commits on the project's branch since the start that name `request n`, `[n]` or any tracker id in the plan / the log item's notes (`WA-86`), the CI and *Deploy to Production* runs of those commits (GitHub REST, read-only, the project's own token), the request-log item (status, notes) and the links. Every cloud payload ends with a fixed **reporting footer**: `inbox.py item note <id> "<step>"` at each step (the heartbeats), `[n]` in every commit message, finish with `inbox.py item done <id> --ref <sha>` and a group post. Planning turns may also run `gh run list/view` and `gh api repos/<repo>/commits…` (write flags such as `-X`, `-f`, `--input` are denied; no other endpoint is allowed). The **watchdog** (`TEAMMATE_WATCH_MINUTES`, default 10, 0 = off) checks every `running_in_cloud` plan: a new commit → `[n] pushed <sha>, deploy green/red` (once per commit, when its deploy has a result, or after 30 min); 30 min with no note and no commit → one post with the link (again only after new activity and a new silence); deploy green and 20 min of silence with no note after it → `landed but didn't report`, item marked done with the sha. State: `<dir>/watch.json`.
 - **Status and tell (request 139), answered by code with no AI turn (free, work under a usage limit):** `@bot status` lists the running jobs, `@bot status <n>` one job (commits, deploy, last note, links, follow-ups). `@bot tell <n> <message>` (owners): the routine API can't type into a running session, so it starts a **follow-up session** on the same routine and account (switching account on a usage limit like any start). Its payload carries the original plan, the collector's status, the earlier session link and the message, and tells it to pull, read the earlier commits, continue (not restart) and keep the request id, heartbeats and rules. The bot posts `💬 [n] follow-up started: <link>` and records it on the item; `status` shows both sessions. The bot can do the same itself with the `tell_job` tool after a live re-test, but only while the plan is still running, with `scope` quoting a passage of the plan that covers the problem, at most 3 times per plan; otherwise it proposes a new plan. `status_of_work` gives the planning turn the same view as `@bot status`. **Not possible:** reading a session's live chat or typing into the same running session (the API has no read or send for sessions).
 
+## Autobuild: no "@bot ok" (TM-18, Ilan 1 Nov)
+
+*"A tester's WhatsApp message should reach production with no human in the loop. If we need correction, we will tell."*
+
+```
+tester → Mesiri (v2) ──► "not built yet / bad UX"? tell_the_team ──► agent_v2_live trace
+                                                                       │ (one free SELECT, every company)
+production watch ◄─────────────────────────────────────────────────────┘
+   └─ planning turn: root cause, one plan per cause, report + chat picture in the team group
+        └─ autobuild.js checks the plan in code ──► cloud routine ("Approved by: autobuild") ──► push to main
+             └─ "▶️ Working on [n]" in the group … "✅ live" … release note → the tester, in their own chat
+```
+
+- **On by default** (`TEAMMATE_AUTOBUILD=0` starts it off). `@bot autobuild` shows it; owners, in the team group:
+  `@bot autobuild on | off`. Off = every plan waits for `@bot ok <n>` as before.
+- **Which plans:** every planning turn for the product: the production watch's, the shared board's, and those from
+  approved people in the team group or a 1-on-1 chat. Not auto-loop cycles (they have their own check) and not bot
+  upgrades (`@bot upgrade:` stays owner-approved).
+- **Held for an owner** (posted as `✋ [n] … Waiting for an owner because …`): Labour, Attendance, Payroll, Workforce;
+  migrations that drop / rename / rewrite data; secrets and tokens; tenant isolation; login; `.github/`, `.env`;
+  `teammate/`; more than `TEAMMATE_AUTOBUILD_PER_DAY` (12) builds a day. Sentences that say what stays untouched
+  ("Labour untouched", "no migration") don't count. **Roles inside the product are not held** (Ilan: "admin roles,
+  site engineer roles, you can do; just report").
+- The watch reads **every company** now, the test companies too (their testers are the users today). The paid AI
+  screen still skips them (TM-17); they are covered by the free code flags and by Mesiri's own `tell_the_team` call
+  (`feedback` column of the watch SELECT: kind, what, and the reason when given).
+- Rollback: `@bot autobuild off`; or revert (no data change; `autobuild.json` is ignored without the code).
+
 ## Running it
 
 A systemd service (`../deploy/teammate-brain.service`) as its own user, writing only to

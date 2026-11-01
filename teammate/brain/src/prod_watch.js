@@ -1,5 +1,5 @@
 // Production watch (TM-16, Ilan 29 Oct 2026): Claude watches what the assistant actually said in production, and
-// reports what went wrong to the team group as plans an owner can approve with `@bot ok <n>`.
+// reports what went wrong to the team group as plans; with autobuild (TM-18) they start building by themselves.
 //
 // Two layers, so it costs little and never touches the reply path:
 //   1. Code, every TEAMMATE_PROD_WATCH_MINUTES: reads the newest production messages through the project's read-only
@@ -8,6 +8,12 @@
 //   2. Claude, only when something was flagged: one planning turn in the team group ("watch" conversation) judges
 //      whether the bot really failed the user, finds the root cause and its class (docs/engineering/FIX_APPROACH.md),
 //      records one plan per root cause, and posts a short report. Nothing real -> it answers QUIET and nothing is posted.
+//
+// TM-18 (Ilan, 1 Nov: "we are all testers; any company; no @bot ok"): every company is read, the test companies too
+// (their testers ARE the users today). The paid AI screen still skips the test companies (TM-17's saving); the free
+// signals cover them: the code flags, and Mesiri's own `tell_the_team` call (a missing feature, "bad UX" and its
+// reason), read from the turn's agent_v2_live trace in the same SELECT. Plans then start building by themselves
+// (autobuild.js) and the people who hit it are told when it is live (release notes).
 //
 // The ops token stays in this process: Claude gets the flagged conversations in its prompt, never the token, so it
 // cannot query production itself. Per project: TEAMMATE_OPS_<PROJECT>_URL and TEAMMATE_OPS_<PROJECT>_TOKEN.
@@ -22,13 +28,14 @@ export const MAX_CONVERSATIONS = 12;
 export const SLOW_SECONDS = 15;
 const FIRST_LOOK_MINUTES = 60;
 const WINDOW_SECONDS = 15 * 60;
-/** How often the free check runs (one SELECT, no AI): is there a new message of a real company? */
+/** How often the free check runs (one SELECT, no AI): is there a new message (any company, TM-18)? */
 export const PROBE_MINUTES = 2;
 /**
  * Companies the watch never reads (Ilan, 1 Nov: the test companies' own testing spent the Gemini key all day).
  * ILIKE patterns; TEAMMATE_PROD_WATCH_SKIP (comma-separated) replaces them.
  */
 export const DEFAULT_SKIP = ["Mesiri Test Builders", "%paraclet%"];
+// TM-18: the skip list now only keeps the AI screen off these companies; their messages are read and flagged for free.
 
 /** The skip list from the env value, as safe ILIKE patterns (letters, digits, spaces, % _ - only). */
 export function skipPatterns(value) {
@@ -36,21 +43,30 @@ export function skipPatterns(value) {
   return list.map((x) => x.replace(/[^\p{L}\p{N} %_-]/gu, "").trim()).filter(Boolean);
 }
 
-/** The one read: the newest messages since `since` (epoch seconds), settled for 2 minutes, oldest first. */
+/**
+ * The one read: the newest messages since `since` (epoch seconds), settled for 2 minutes, oldest first, of every
+ * company. `is_test` marks the skip-list companies (no AI screen for them); `feedback` is what Mesiri passed on with
+ * `tell_the_team` in that turn ("missing_feature: create a project from WhatsApp | bad_ux: ... / why: ...").
+ */
 export function watchSql(since, limit = 400, skip = []) {
   const from = Number.isFinite(since) ? Number(since).toFixed(3) : "0";
   const pats = skipPatterns(skip.join(","));
-  const notTest = pats.length ? `\n  AND coalesce(o.name, '') NOT ILIKE ALL (ARRAY[${pats.map((x) => `'${x}'`).join(", ")}])` : "";
+  const isTest = pats.length ? `coalesce(o.name, '') ILIKE ANY (ARRAY[${pats.map((x) => `'${x}'`).join(", ")}])` : "false";
   return `SELECT m.correlation_id, extract(epoch FROM m.received_at)::float8 AS at,
        extract(epoch FROM m.processed_at)::float8 AS done_at,
-       o.name AS company, md5(coalesce(m.sender_wa_id, '')) AS who, right(coalesce(m.sender_wa_id, ''), 4) AS last4,
+       o.name AS company, ${isTest} AS is_test, md5(coalesce(m.sender_wa_id, '')) AS who, right(coalesce(m.sender_wa_id, ''), 4) AS last4,
        su.full_name AS person, su.role AS person_role,
        m.message_type AS kind, m.processing_status AS status, m.error_code,
-       left(m.body_text, 400) AS text, left(m.assistant_reply, 700) AS reply
+       left(m.body_text, 400) AS text, left(m.assistant_reply, 700) AS reply,
+       (SELECT left(string_agg((c->'args'->>'kind') || ': ' || coalesce(c->'args'->>'about', '')
+                 || coalesce(' / why: ' || (c->'args'->>'why'), ''), ' | '), 400)
+          FROM journey_traces jt,
+               json_array_elements(CASE WHEN json_typeof(jt.stage_payload->'calls') = 'array' THEN jt.stage_payload->'calls' ELSE '[]'::json END) c
+         WHERE jt.correlation_id = m.correlation_id AND jt.stage = 'agent_v2_live' AND c->>'tool' = 'tell_the_team') AS feedback
 FROM inbound_messages m LEFT JOIN organizations o ON o.id = m.organization_id
 LEFT JOIN LATERAL (SELECT u.full_name, u.role FROM users u WHERE u.organization_id = m.organization_id
   AND regexp_replace(u.whatsapp_number, '\\D', '', 'g') = regexp_replace(m.sender_wa_id, '\\D', '', 'g') LIMIT 1) su ON true
-WHERE m.received_at > to_timestamp(${from}) AND m.received_at < now() - interval '2 minutes'${notTest}
+WHERE m.received_at > to_timestamp(${from}) AND m.received_at < now() - interval '2 minutes'
 ORDER BY m.received_at ASC LIMIT ${Math.max(1, Math.min(1000, Number(limit) || 400))}`;
 }
 
@@ -95,6 +111,8 @@ export function flagRows(rows) {
     else if (row.status && !["completed", "failed"].includes(row.status)) flags.push({ kind: "stuck", why: `status ${row.status}` });
     const took = Number(row.done_at) - at;
     if (Number.isFinite(took) && took > SLOW_SECONDS) flags.push({ kind: "slow", why: `${Math.round(took)} s to reply` });
+    // TM-18: the person told Mesiri itself (a missing feature, "bad UX", their reason): always worth a look.
+    if (row.feedback) flags.push({ kind: "feedback", why: `they told Mesiri: ${String(row.feedback).slice(0, 300)}` });
     if (row.reply && CANT.test(row.reply)) flags.push({ kind: "dead_end", why: "the reply says it can't do that: a bug or a missing feature" });
     const asked = norm(row.reply);
     if (asked && asked.includes("?") && asked === prev.reply && at - prev.replyAt < WINDOW_SECONDS) {
@@ -183,7 +201,7 @@ export function chatHtml(conv) {
 }
 
 /** The planning turn's text: the conversations, then what to do with them. */
-export function watchPrompt(project, convs, { minutes }) {
+export function watchPrompt(project, convs, { minutes, autobuild = false }) {
   const blocks = convs.map((c, i) => {
     const lines = c.messages.map((m) => {
       const flags = c.flags.get(m.correlation_id);
@@ -205,7 +223,11 @@ export function watchPrompt(project, convs, { minutes }) {
     "Do this, following docs/engineering/FIX_APPROACH.md (read it first) and CLAUDE.md:",
     "1. For each conversation decide whether the assistant really failed the user: a wrong or unhelpful reply, a loop,",
     "   a dead end, an error, a slow reply, a feature that is missing or did not work, a confusing UX. The flags are",
-    "   hints from simple code and are often false alarms; drop those silently.",
+    "   hints from simple code and are often false alarms; drop those silently. A `feedback` flag is different: the",
+    "   person told Mesiri directly (a missing feature, \"bad UX\", their reason). It is always real: plan it. For bad UX,",
+    "   work out from Mesiri's replies above which reply, buttons or card they meant; their reason (`why`) is the spec.",
+    "   When a running or recent plan already covers the same thing (the request log, `inbox.py items`), don't plan it",
+    "   again: add their new detail to that job with tell_job, or say in the report that it is already being built.",
     "2. For each real failure find the mechanism in the code (read it, reproduce it in your head or with the replay",
     "   harness if you can), then the CLASS: the sibling cases that share the mechanism. Group failures that share a root",
     "   cause into ONE plan. Check docs/plans/V1_TRACKER.md first and name the existing item when there is one.",
@@ -222,7 +244,12 @@ export function watchPrompt(project, convs, { minutes }) {
     "   (\"[n] <who> · <what they hit>\"). It draws the real production messages; never retype or retell them.",
     "6. Then post ONE short report in this team group: for each plan, its number, WHO hit it (the person's name, role",
     "   and company, and the time; never a phone number), what they tried and got, the root cause in plain words, and",
-    "   how big the fix is. End with \"Reply @bot ok <n> to build it.\" WhatsApp formatting (*bold*), no tables.",
+    autobuild
+      ? "   how big the fix is. Each plan starts building by itself right after this turn (autobuild: code checks it), so"
+      : "   how big the fix is. End with \"Reply @bot ok <n> to build it.\" WhatsApp formatting (*bold*), no tables.",
+    ...(autobuild
+      ? ["   don't ask for an ok: end with \"Building it now; I'll post here when it's live.\" WhatsApp formatting (*bold*), no tables."]
+      : []),
     `If nothing is really wrong, answer with exactly ${QUIET} and nothing else; then nothing is posted.`,
     "",
     ...blocks,
@@ -327,8 +354,8 @@ export class ProdWatch {
    * @param ask       (project, text) => void: run the planning turn in the project's team group ("watch" conversation)
    * @param file      where the cursor and the reported ids are kept
    */
-  constructor({ sources, ask, file, log = () => {}, fetchFn = fetch, now = () => Date.now(), minutes = 5, screener = null, lookBackMinutes = 30, skip = DEFAULT_SKIP }) {
-    Object.assign(this, { sources, ask, file, log, fetchFn, now, minutes, screener, lookBackMinutes, skip, started: false, burstAt: null });
+  constructor({ sources, ask, file, log = () => {}, fetchFn = fetch, now = () => Date.now(), minutes = 5, screener = null, lookBackMinutes = 30, skip = DEFAULT_SKIP, autobuildOn = null }) {
+    Object.assign(this, { sources, ask, file, log, fetchFn, now, minutes, screener, lookBackMinutes, skip, autobuildOn, started: false, burstAt: null });
   }
 
   /** The code flags plus the AI screen's, for the fresh rows; the screen failing leaves the code flags. */
@@ -337,7 +364,8 @@ export class ProdWatch {
     if (!this.screener) return flagged;
     let ai;
     try {
-      ai = await this.screener.screen(rows.filter((r) => fresh.has(r.correlation_id)));
+      // TM-17: the paid screen never reads the test companies (TM-18 still flags them for free).
+      ai = await this.screener.screen(rows.filter((r) => fresh.has(r.correlation_id) && !r.is_test));
     } catch (e) {
       this.log(`prod-watch: screen failed (${e.message}); code flags only`);
       return flagged;
@@ -392,7 +420,7 @@ export class ProdWatch {
 
   /**
    * Called every minute (Ilan, 1 Nov: "when someone starts messaging, watch for 5 minutes"). Idle, it only runs the
-   * free check (one SELECT, no AI) every PROBE_MINUTES. When a real company's message is there, the watch opens for
+   * free check (one SELECT, no AI) every PROBE_MINUTES. When a message is there (any company), the watch opens for
    * `minutes` and then takes ONE look at the whole burst (the AI screen and Claude only then). No message, no cost.
    */
   async maybeTick() {
@@ -404,7 +432,7 @@ export class ProdWatch {
       this.probedAt = now;
       if (!(await this.anyNew())) return false;
       this.burstAt = now;
-      this.log(`prod-watch: a real company is messaging; one look in ${st.minutes} min`);
+      this.log(`prod-watch: someone is messaging; one look in ${st.minutes} min`);
       return false;
     }
     if (now - this.burstAt < st.minutes * 60_000) return false;
@@ -413,7 +441,7 @@ export class ProdWatch {
     return true;
   }
 
-  /** The free check: is there any message of a real company after the cursor? Never throws. */
+  /** The free check: is there any message after the cursor (any company)? Never throws. */
   async anyNew() {
     const state = this.state();
     for (const [project, source] of Object.entries(this.sources)) {
@@ -441,7 +469,7 @@ export class ProdWatch {
     const today = this.today();
     const ago = this.lastLookAt ? `${Math.max(0, Math.round((this.now() - this.lastLookAt) / 60_000))} min ago` : "not yet since the last restart";
     const show = (head = "") =>
-      `${head}🔎 *Production watch*: ${st.on ? `on: when a real company messages, one look *${every(st.minutes)}* later (test companies skipped)` : "*off*"}\n` +
+      `${head}🔎 *Production watch*: ${st.on ? `on: when anyone messages, one look *${every(st.minutes)}* later (AI screen skips the test companies)` : "*off*"}\n` +
       `Last look: ${ago} · today: ${today.looks} look(s), ${today.flagged} flagged, ${today.reported} sent to Claude\n` +
       "Owners: @bot watch 5m | 30m | 1h | 2h · @bot watch off | on · @bot watch now";
     if (!arg || /^(status|\?)$/.test(arg)) return show();
@@ -463,7 +491,7 @@ export class ProdWatch {
     const minutes = parseInterval(arg);
     if (minutes === null) return `I didn't understand "${arg}". Try: @bot watch 5m, 30m, 1h, 2h, off, on or now.`;
     Object.assign(st, this.saveSettings({ minutes, on: true, by: who, at: new Date(this.now()).toISOString() }));
-    return show(`✅ Now one look ${every(minutes)} after a real company starts messaging. `);
+    return show(`✅ Now one look ${every(minutes)} after someone starts messaging. `);
   }
 
   /** Today's counts (UTC day), kept in the state file. */
@@ -509,7 +537,8 @@ export class ProdWatch {
       s.reported = [...reported].slice(-2000);
       writeFileSync(this.file, JSON.stringify(state));
       this.log(`prod-watch ${project}: ${fresh.length} new message(s), ${convs.length} flagged conversation(s)`);
-      if (convs.length) await this.ask(project, watchPrompt(project, convs, { minutes: this.minutes }), convs);
+      const autobuild = Boolean(this.autobuildOn?.(project));
+      if (convs.length) await this.ask(project, watchPrompt(project, convs, { minutes: this.minutes, autobuild }), convs);
     }
   }
 }
