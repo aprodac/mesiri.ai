@@ -203,7 +203,7 @@ class ApiAgent:
             max_steps=self._max_steps,
             timeout_seconds=self._timeout,
             correlation_id=correlation_id,
-            **({"capability": self._capability} if self._capability else {}),
+            **({"capability": self._capability} if self._capability and _takes(self._provider, "capability") else {}),
         )
         calls = [{"tool": c.name, "arguments": c.arguments, "result": c.outcome.content if c.outcome else None}
                  for c in result.calls]
@@ -211,6 +211,18 @@ class ApiAgent:
         return ApiTurn(reply=(result.text or "").strip(), pending=still + new, saved=saved, calls=calls,
                        stop_reason=result.stop_reason, question=asked.get("question", ""),
                        options=asked.get("options", []))
+
+
+def _takes(provider: Any, name: str) -> bool:
+    """Whether ``provider.run_tools`` accepts ``name``: the model router takes ``capability``
+    (the control-panel row), a single provider (Gemini) does not."""
+    import inspect
+
+    try:
+        params = inspect.signature(provider.run_tools).parameters
+    except (TypeError, ValueError):
+        return False
+    return name in params or any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
 
 
 def _detail(body: Any) -> str:
