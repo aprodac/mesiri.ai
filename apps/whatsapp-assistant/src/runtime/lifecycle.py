@@ -276,6 +276,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Branding admin router not loaded: %s", exc)
 
+    # What people asked Mesiri for and what happened to it (TM-19): the team bot's
+    # request log, read server-side; the backend's router, mounted here like branding.
+    try:
+        from mesiri.domains.admin.requests_router import router as requests_admin_router
+
+        app.include_router(requests_admin_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Requests admin router not loaded: %s", exc)
+
     # What Mesiri costs to run, per company, day and message, for the control
     # panel (SA-05); the backend's router, mounted here like branding.
     try:

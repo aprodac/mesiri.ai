@@ -188,6 +188,12 @@ class Settings(BaseSettings):
     #: the API is off: every /claude-ops/ path answers 404.
     claude_ops_token: SecretStr | None = None
 
+    #: TM-19: the team bot's request log (teammate/listener on the same server), read by the
+    #: control panel's Requests page. MESIRI_TEAMMATE_API_TOKEN is the bot's API token (set by
+    #: the deploy from the TEAMMATE_API_TOKEN secret); unset means the page says "not connected".
+    teammate_api_url: str = "http://127.0.0.1:8790"
+    teammate_api_token: SecretStr | None = None
+
     log: LogSettings = Field(default_factory=LogSettings)
     postgres: PostgresSettings = Field(default_factory=PostgresSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)

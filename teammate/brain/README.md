@@ -99,6 +99,17 @@ production watch ◄────────────────────
   (`feedback` column of the watch SELECT: kind, what, and the reason when given).
 - Rollback: `@bot autobuild off`; or revert (no data change; `autobuild.json` is ignored without the code).
 
+### Who asked, live check, used again (TM-19)
+
+- `propose_plan` takes `asked_for` (the watch's correlation ids): the request-log item records **who asked** (name, role,
+  company; never a phone number) and their pseudonymous sender id.
+- When such a plan (or any autobuild plan) is deployed, the watchdog starts **one live check**: a planning turn in the team
+  group re-sends what was asked to the assistant's test chat (`test_assistant`) and records `verification_result`
+  (verified ok / broken). Broken is re-planned and autobuilt; at most 2 rounds, then people decide.
+- The production watch records when the person who asked **uses Mesiri again** after it went live (`tried_at`).
+- `@bot requests` lists it all in the group; the control panel's **Requests** page (`/admin/requests`, platform admins)
+  reads the same log server-side with `MESIRI_TEAMMATE_API_TOKEN`.
+
 ## Running it
 
 A systemd service (`../deploy/teammate-brain.service`) as its own user, writing only to

@@ -217,6 +217,25 @@ jobs:
           printf '%s' "${CLAUDE_OPS_TOKEN}" | ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
             "python3 /tmp/set_env_value.py /opt/mesiri/.env MESIRI_CLAUDE_OPS_TOKEN && rm -f /tmp/set_env_value.py"
 
+      # TM-19: the control panel's Requests page reads the team bot's request
+      # log (127.0.0.1:8790) server-side with the bot's API token. Owner-approved
+      # in chat 1 Nov. Same pattern as above: stdin, never in a log; the restart
+      # below loads it. Secret empty = the .env is left as it is (the page says
+      # "not connected").
+      - name: Team bot request log token
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          TEAMMATE_API_TOKEN: ${{ secrets.TEAMMATE_API_TOKEN }}
+        run: |
+          if [ -z "${TEAMMATE_API_TOKEN}" ]; then
+            echo "TEAMMATE_API_TOKEN secret not set; .env unchanged"
+            exit 0
+          fi
+          scp -i ~/.ssh/deploy_key infra/deploy/set_env_value.py "${VPS_USER}@${VPS_HOST}:/tmp/set_env_value.py"
+          printf '%s' "${TEAMMATE_API_TOKEN}" | ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
+            "python3 /tmp/set_env_value.py /opt/mesiri/.env MESIRI_TEAMMATE_API_TOKEN && rm -f /tmp/set_env_value.py"
+
       # WA-87: Mesiri inside site WhatsApp groups (runtime/group_chat.py).
       # Switched on 29 Oct (Ilan). To switch off: set GROUPS_ENABLED to false
       # and push; the restarts below load it (app + worker).

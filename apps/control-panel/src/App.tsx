@@ -13,6 +13,7 @@ import TestMessage from './TestMessage';
 import OrganizationDetail from './OrganizationDetail';
 import Companies from './Companies';
 import BrandingRequests from './BrandingRequests';
+import Requests from './Requests';
 import Costs from './Costs';
 import Trials from './Trials';
 import Perf from './Perf';
@@ -32,6 +33,7 @@ function AppLayout() {
             <Route path="/organizations" element={<Companies />} />
             <Route path="/organizations/:id" element={<OrganizationDetail />} />
             <Route path="/branding-requests" element={<BrandingRequests />} />
+            <Route path="/requests" element={<Requests />} />
             <Route path="/costs" element={<Costs />} />
             <Route path="/trials" element={<Trials />} />
             <Route path="/logs" element={<Logs />} />
