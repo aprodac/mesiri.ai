@@ -218,4 +218,4 @@ if __name__ == "__main__":
         phone_number_id=os.environ["WHATSAPP_PHONE_NUMBER_ID"],
         allowed=allowed_callers(),
     )
-    uvicorn.run(application, host="127.0.0.1", port=int(os.environ.get("CALL_SPIKE_PORT", "8791")))
+    uvicorn.run(application, host="127.0.0.1", port=int(os.environ.get("CALL_SPIKE_PORT", "8795")))

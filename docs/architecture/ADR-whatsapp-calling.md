@@ -24,8 +24,12 @@ been answered yet, so none of it is proven on a real call.
 Ilan chose the live number over Meta's test number. So the spike must not take over the webhook, which also carries every
 customer message. `ingress/calls_forward.py` copies only `calls` events to the spike, with Meta's body and signature,
 when `WHATSAPP_CALLS_FORWARD_URL` is set. It does not delay or fail the webhook. The spike answers allow-listed callers
-only. Tested so far: a simulated Meta peer on one machine did the full handshake and heard its audio echoed through Pipecat.
-**No real call yet.**
+only.
+
+**First real call, 2 Nov 2026 (Ilan's phone to the live number, spike on the VPS): worked; he heard himself.** So `calls`
+webhooks do reach an app shown as "In development", the Pipecat path works with Meta, and audio passed the firewall with no
+TURN server for that one call. Connect time and CPU per call are not recorded yet. One phone on one network; TURN may still
+be needed for other networks.
 
 Found while building it:
 
@@ -77,10 +81,9 @@ Found while building it:
 
 ## Open questions, for step 1 and 2
 
-1. Does an app in "In development" mode get `calls` webhooks? Meta's Webhooks page warns that unpublished apps get test
-   webhooks only, and no calling page settles it. Real WhatsApp messages do reach production through the same app's
-   webhook, which suggests calls may too. It needs a real call to prove.
-2. Does audio get through the VPS without TURN? Meta does not say. Pipecat recommends TURN for production.
+1. Answered 2 Nov: an app in "In development" mode does get `calls` webhooks.
+2. Audio passed without TURN on the first call. Test other networks (mobile data, site Wi-Fi) before real users; Pipecat
+   recommends TURN for production.
 3. Meta's DTLS role rules are not documented. Pipecat's handshake should cover it.
 4. Reply speed. Sarvam publishes no latency figures. Goal stays under 2.5 s from end of speech to first audio.
 5. Malayalam quality, and Manglish. Sarvam never mentions Manglish; `codemix` is documented with Hindi examples and
