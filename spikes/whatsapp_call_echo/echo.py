@@ -120,7 +120,7 @@ class Echo(FrameProcessor):
             await self.push_frame(frame, direction)
 
 
-async def run_echo(connection: Any, call_id: str, started: float) -> None:
+async def run_echo(connection: Any, call_id: str, started: float, ended: asyncio.Event) -> None:
     transport = SmallWebRTCTransport(
         webrtc_connection=connection,
         params=TransportParams(audio_in_enabled=True, audio_out_enabled=True, audio_in_sample_rate=16000, audio_out_sample_rate=16000),
@@ -141,8 +141,8 @@ async def run_echo(connection: Any, call_id: str, started: float) -> None:
     process.cpu_percent()
     try:
         deadline = time.monotonic() + MAX_CALL_SECONDS
-        while not runner.done() and time.monotonic() < deadline:
-            await asyncio.wait([runner], timeout=5)
+        while not runner.done() and not ended.is_set() and time.monotonic() < deadline:
+            await asyncio.wait([runner], timeout=1)
             samples.append(process.cpu_percent())
     finally:
         if not runner.done():
@@ -172,7 +172,7 @@ def build_app(*, token: str, secret: str, phone_number_id: str, allowed: set[str
 
         async def on_connection(connection: Any, _call: Any) -> None:
             logger.info("accepted after %.2fs", time.monotonic() - started)
-            await run_echo(connection, call_id, started)
+            await run_echo(connection, call_id, started, state["ended"])
 
         try:
             await client.handle_webhook_request(request, on_connection, raw_body=body, sha256_signature=signature)
@@ -199,10 +199,15 @@ def build_app(*, token: str, secret: str, phone_number_id: str, allowed: set[str
                     continue
                 value = change.get("value") or {}
                 logger.info("calls webhook arrived: %s", [c.get("event") for c in value.get("calls") or []])
+                for ended in value.get("calls") or []:
+                    if ended.get("event") == "terminate":
+                        logger.info("call ended status=%s duration=%s errors=%s", ended.get("status"), ended.get("duration"), ended.get("errors"))
+                        if state.get("ended") and ended.get("id") == state.get("call_id"):
+                            state["ended"].set()
                 call = answerable_call(value, phone_number_id=phone_number_id, allowed=allowed, now=time.time())
                 if call is None or state["busy"]:
                     continue
-                state["busy"] = True
+                state.update(busy=True, ended=asyncio.Event(), call_id=call["id"])
                 pipecat_request = as_pipecat_request(payload, change, call)
                 asyncio.create_task(answer(pipecat_request, body, signature, call["id"]))
         return Response(status_code=200)
@@ -218,4 +223,4 @@ if __name__ == "__main__":
         phone_number_id=os.environ["WHATSAPP_PHONE_NUMBER_ID"],
         allowed=allowed_callers(),
     )
-    uvicorn.run(application, host="127.0.0.1", port=int(os.environ.get("CALL_SPIKE_PORT", "8791")))
+    uvicorn.run(application, host="127.0.0.1", port=int(os.environ.get("CALL_SPIKE_PORT", "8795")))

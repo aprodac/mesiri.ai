@@ -2,7 +2,7 @@
 
 > Asked by Ilan, 1 Nov 2026: *"Sarvam as main. Mesiri gets calls. Users mainly ask questions, or ask it to send a
 > PDF in chat: inventory, stock, workforce, anything like that."*
-> Tracker: [WA-118](V1_TRACKER.md) (request log [23]). Status: **step 0 done 2 Nov (facts in [ADR-whatsapp-calling.md](../architecture/ADR-whatsapp-calling.md)); nothing built.** Step 1 code is ready ([spike](../../spikes/whatsapp_call_echo/README.md)); it needs the server steps and a real call.
+> Tracker: [WA-118](V1_TRACKER.md) (request log [23]). Status: **step 0 done 2 Nov (facts in [ADR-whatsapp-calling.md](../architecture/ADR-whatsapp-calling.md)); nothing built.** Step 1 worked on a real call 2 Nov ([spike](../../spikes/whatsapp_call_echo/README.md)); CPU figures still to record. Next: step 2.
 > Governing process: the root [CLAUDE.md](../../CLAUDE.md) (phases, verification, `main` only, phase reports).
 
 ## 1. What the user gets
@@ -95,13 +95,12 @@ Full details, sources and open questions: [ADR-whatsapp-calling.md](../architect
 | Sarvam cost | About ₹0.49 a minute to listen, ₹3 per 1,000 characters to speak `bulbul:v3`, before GST |
 | Sarvam limit | 20 live speech-to-text connections on pay-as-you-go |
 
-**Not answered by any doc, so steps 1 and 2 must show it:** whether an app in "In development" mode gets `calls`
-webhooks, whether the VPS needs TURN, reply speed, Malayalam and Manglish quality, CPU per call.
+**Shown by the first real call (2 Nov):** `calls` webhooks reach the app in "In development" mode, and audio passed without
+TURN from one phone. **Still to show:** other networks, reply speed, Malayalam and Manglish quality, CPU per call.
 
 ## 5. Owner steps (ops, outside the code)
 
 1. **Meta**: done 1 Nov (INF-17). Check a valid payment method is on the WhatsApp account (error `131044` without one).
-   Publish the app only if step 1 shows `calls` webhooks do not arrive.
 2. **VPS**: open the UDP port range the call service uses for WebRTC media (and TURN if the docs need it) in the firewall
    and the cloud provider's security group. Infrastructure / security: approve explicitly.
 3. **Sarvam**: confirm the account can use `saaras:v3-realtime` (a refused account closes with code `4000`); set a spend alert.
@@ -134,7 +133,6 @@ webhooks, whether the VPS needs TURN, reply speed, Malayalam and Manglish qualit
 
 | Risk | Mitigation |
 | --- | --- |
-| An app in "In development" mode gets no `calls` webhooks (Meta's page warns of this; no calling doc settles it) | first check in step 1; if so, publish the app |
 | Sarvam live speech-to-text is called beta on one page | older `/speech-to-text/ws` endpoint as fallback |
 | Messaging limit falls below 2,000; effect on calling not documented | watch it; ask Meta if it happens |
 | WebRTC behind the VPS firewall / NAT does not connect | step 1 spike on the real VPS; TURN if needed |
