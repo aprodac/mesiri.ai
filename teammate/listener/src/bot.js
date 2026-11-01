@@ -34,6 +34,11 @@ export function parseCommand(text) {
   if (["approve", "allow", "add"].includes(verb) && !rest) return { verb: "approve", rest };
   if (["remove", "disallow", "revoke"].includes(verb) && !rest) return { verb: "remove", rest };
   if (["who", "list"].includes(verb) && !rest) return { verb: "who", rest };
+  // TM-19: the request list (counts + numbered), answered by code. "list requests" / "send the list of requests" too.
+  if (["requests", "request", "features", "feature", "fixes"].includes(verb) && /^(list|all|open|done|users|asked|waiting|building|live|verified|broken|dropped)?$/i.test(rest)) {
+    return { verb: "requests", rest: rest === "list" ? "" : rest.toLowerCase() };
+  }
+  if (/^(?:send\s+(?:me\s+)?(?:the\s+)?)?list\s+(?:of\s+)?(?:all\s+)?(?:the\s+)?(?:requests|features|fixes)$/i.test(words)) return { verb: "requests", rest: "" };
   if (["help", "commands"].includes(verb) && !rest) return { verb: "help", rest };
   if (["ok", "okay", "approved", "go", "yes"].includes(verb) && /^(\[?#?\d+\]?)?$/.test(rest)) {
     const id = rest.match(/(\d+)/)?.[1];
@@ -66,6 +71,7 @@ const HELP = [
   "• @me account: which Claude account this group runs on (A, B, C…) · owners: @me account <letter> (this group), @me account default <letter>, @me account reset, @me account auto on|off",
   "• @me auto on [hours] (owners): test, fix and verify small Conversation / report issues by itself · @me auto: its state · @me auto off or @me stop (anyone)",
   "• @me watch: the production watch (how often, what it found today) · owners: @me watch 5m|30m|1h|2h, @me watch off|on, @me watch now",
+  "• @me requests: everything asked for and where it is (asked, building, live, verified, broken), numbered, with who asked · @me requests open | done | users | all",
   "• @me autobuild: plans start building by themselves, no ok needed (TM-18; Labour, Attendance, Payroll, Workforce, data-changing migrations, secrets, tenant isolation, login and the bot itself still wait for @me ok) · owners: @me autobuild on|off",
   "• @me status: the jobs running in the cloud · @me status <n>: one job (commits, deploy, last note) · owners: @me tell <n> <message> starts a follow-up session for job n",
   "• @me who: who is approved here",
@@ -135,6 +141,12 @@ export class Bot {
       } catch (e) {
         return this.reply(replyTo, `⚠️ Couldn't translate #${target}: ${String(e.message || e).slice(0, 200)}`);
       }
+    }
+
+    // TM-19: the request list, by code (no Claude turn), in the team group.
+    if (cmd.verb === "requests") {
+      if (!replyTo) return;
+      return this.reply(replyTo, this.store.requestsText(project, cmd.rest));
     }
 
     // TM-09: owners plan upgrades to the bot itself, in the bot's own repo.
@@ -250,6 +262,7 @@ export class Bot {
     }
     if (cmd.verb === "who") return say(this.whoText(project));
     if (cmd.verb === "help") return say(HELP);
+    if (cmd.verb === "requests") return say(this.store.requestsText(project, cmd.rest)); // TM-19
     // 'ok <n>' approves a plan of the project this person is approved for; the working turn reports back here.
     if (cmd.verb === "ok") {
       if (!team) return;

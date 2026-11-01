@@ -252,6 +252,8 @@ export function watchPrompt(project, convs, { minutes, autobuild = false }) {
     "3. Record one plan per root cause (the plan tool), scoped as FIX_APPROACH says: the root, the siblings, the UX, the",
     "   guard tests. Never a one-message patch. Labour / Attendance / Payroll / Workforce, migrations that change data,",
     "   and security changes are marked as needing the owner's decision in the plan.",
+    "   Pass asked_for = the correlation ids (in brackets below) of the messages where the person asked or complained:",
+    "   that records who asked, so they are told when it is live and their next use is tracked.",
     "   A reply that says it can't do something the user asked for (a photo, a list, a report) is a missing feature:",
     "   plan the feature itself, done properly, not a nicer refusal.",
     "4. Every plan ends with this step, so the people who hit it hear it works: add an entry to",
@@ -372,9 +374,9 @@ export class ProdWatch {
    * @param ask       (project, text) => void: run the planning turn in the project's team group ("watch" conversation)
    * @param file      where the cursor and the reported ids are kept
    */
-  constructor({ sources, ask, file, log = () => {}, fetchFn = fetch, now = () => Date.now(), minutes = 5, screener = null, lookBackMinutes = 30, skip = DEFAULT_SKIP, autobuildOn = null, notify = null }) {
+  constructor({ sources, ask, file, log = () => {}, fetchFn = fetch, now = () => Date.now(), minutes = 5, screener = null, lookBackMinutes = 30, skip = DEFAULT_SKIP, autobuildOn = null, notify = null, seen = null }) {
     // notify(project, text): a code-posted line in the project's team group (TM-18: no silence; no AI turn).
-    Object.assign(this, { sources, ask, file, log, fetchFn, now, minutes, screener, lookBackMinutes, skip, autobuildOn, notify, started: false, burstAt: null, failing: {} });
+    Object.assign(this, { sources, ask, file, log, fetchFn, now, minutes, screener, lookBackMinutes, skip, autobuildOn, notify, seen, started: false, burstAt: null, failing: {} });
   }
 
   /** The code flags plus the AI screen's, for the fresh rows; the screen failing leaves the code flags. */
@@ -584,6 +586,11 @@ export class ProdWatch {
       }
       const fresh = rows.filter((r) => Number(r.at) > s.since);
       if (!fresh.length) continue;
+      try {
+        this.seen?.(project, fresh); // TM-19: did someone who asked use Mesiri again after it went live?
+      } catch (e) {
+        this.log(`prod-watch ${project}: seen: ${e.message}`);
+      }
       const reported = new Set(s.reported);
       const flagged = await this.flagged(rows, new Set(fresh.map((r) => r.correlation_id)));
       const all = conversations(rows, flagged, reported);

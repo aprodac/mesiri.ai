@@ -14,7 +14,7 @@
 //   GET  /items?chat=&project=&status=&type=     what groups asked for (TM-08)
 //   POST /items        {chat, type, title, summary?, source?, created_by?, project?}
 //   GET  /items/:id?project=          one request with its history
-//   POST /items/:id    {status?, ref?, note?, title?, summary?, type?, project?}
+//   POST /items/:id    {status?, ref?, note?, title?, summary?, type?, project?, + TM-19 asked_by / asked_ref / asked_who / held / live_at / verified / tried_at}
 //   GET  /people?project=             who may tag the bot (TM-03)
 //   POST /people       {project, phone, name?, role?}   approve someone (role owner | member)
 //   POST /people/remove {project, phone}
@@ -36,7 +36,7 @@
 import { createReadStream, existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { timingSafeEqual } from "node:crypto";
-import { istStarts } from "./store.js";
+import { ITEM_TRACKING, istStarts } from "./store.js";
 
 function send(res, status, body) {
   const json = JSON.stringify(body);
@@ -199,7 +199,8 @@ export function createApi({ store, wa, token, ai = null }) {
         if (req.method === "GET") return send(res, 200, { item });
         try {
           const { status, ref, note, title, summary, type } = body;
-          return send(res, 200, { item: store.updateItem(item.id, { status, ref, note, title, summary, type }) });
+          const tracking = Object.fromEntries(ITEM_TRACKING.filter((k) => k in body).map((k) => [k, body[k]]));
+          return send(res, 200, { item: store.updateItem(item.id, { status, ref, note, title, summary, type, ...tracking }) });
         } catch (err) {
           return send(res, 400, { error: err.message });
         }

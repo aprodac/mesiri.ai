@@ -1,0 +1,62 @@
+// TM-19: who asked, what happened after it shipped, and "@bot requests".
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { Store, itemStage } from "../src/store.js";
+import { parseCommand } from "../src/bot.js";
+
+function store() {
+  const s = new Store(":memory:");
+  s.upsertChat({ jid: "T@g.us", name: "Mesiri team", is_group: true });
+  s.db.prepare("UPDATE chats SET role = 'team', project = 'mesiri' WHERE jid = 'T@g.us'").run();
+  return s;
+}
+
+test("a request keeps who asked, and every later step: held, building, live, verified, tried", () => {
+  const s = store();
+  const id = s.addItem({ chat_jid: "T@g.us", type: "feature", title: "Create a project from WhatsApp", created_by: "the production watch via bot", asked_by: "Ilan (admin, Paraclette)", asked_ref: "cor_1", asked_who: "abc" });
+  assert.equal(s.getItem(id).stage, "asked");
+  assert.match(s.getItem(id).log[0].note, /asked by Ilan \(admin, Paraclette\)/);
+  s.updateItem(id, { held: "it touches Attendance" });
+  assert.equal(s.getItem(id).stage, "waiting");
+  s.updateItem(id, { status: "in_progress", note: "approved_by: autobuild" });
+  assert.equal(s.getItem(id).held, null); // starting work clears the hold
+  assert.equal(s.getItem(id).stage, "building");
+  s.updateItem(id, { status: "done", ref: "7798f73", live_at: "2026-11-01T15:00:00Z" });
+  assert.equal(s.getItem(id).stage, "live");
+  s.updateItem(id, { verified: "ok", note: "re-sent the request: it creates the project" });
+  const it = s.getItem(id);
+  assert.equal(it.stage, "verified");
+  assert.ok(it.verified_at);
+  s.updateItem(id, { tried_at: "2026-11-01T16:00:00Z" });
+  assert.equal(s.listItems({ project: "mesiri" })[0].tried_at, "2026-11-01T16:00:00Z");
+  assert.throws(() => s.updateItem(id, { verified: "maybe" }), /verified must be one of/);
+  assert.equal(itemStage({ status: "done", verified: "broken" }), "broken");
+  assert.equal(itemStage({ status: "wont_do" }), "dropped");
+});
+
+test("@bot requests: counts by stage, a numbered list with who asked, and filters", () => {
+  const s = store();
+  const a = s.addItem({ chat_jid: "T@g.us", type: "feature", title: "Create a project from WhatsApp", asked_by: "Ilan (admin, Paraclette)" });
+  const b = s.addItem({ chat_jid: "T@g.us", type: "bug", title: "Report date is wrong", created_by: "Ravi via bot" });
+  s.updateItem(b, { status: "done", ref: "abc1234", live_at: "2026-11-01T15:00:00Z" });
+  const all = s.requestsText("mesiri");
+  assert.match(all, /📋 \*Requests · mesiri\* \(2\)/);
+  assert.match(all, /📥 asked 1 · 🚀 live 1/);
+  assert.match(all, /1\. \[\d+\] .+\n    /);
+  assert.match(all, new RegExp(`\\[${a}\\] Create a project from WhatsApp · 📥 asked\\n    asked by Ilan \\(admin, Paraclette\\)`));
+  assert.match(all, /from Ravi via bot .* commit abc1234/);
+  assert.doesNotMatch(s.requestsText("mesiri", "open"), /Report date/);
+  assert.doesNotMatch(s.requestsText("mesiri", "done"), /Create a project/);
+  assert.doesNotMatch(s.requestsText("mesiri", "users"), /Report date/);
+  assert.match(s.requestsText("mesiri", "verified"), /Nothing "verified" to list/);
+});
+
+test("the request-list command, in its usual wordings; 'list' alone stays 'who is approved'", () => {
+  assert.deepEqual(parseCommand("@bot requests"), { verb: "requests", rest: "" });
+  assert.deepEqual(parseCommand("@bot requests open"), { verb: "requests", rest: "open" });
+  assert.deepEqual(parseCommand("@bot features"), { verb: "requests", rest: "" });
+  assert.deepEqual(parseCommand("@bot list requests"), { verb: "requests", rest: "" });
+  assert.deepEqual(parseCommand("@bot send the list of requests"), { verb: "requests", rest: "" });
+  assert.deepEqual(parseCommand("@bot list"), { verb: "who", rest: "" });
+  assert.equal(parseCommand("@bot requests for the dashboard should be faster").verb, "request"); // a sentence is for Claude
+});

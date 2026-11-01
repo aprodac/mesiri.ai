@@ -60,10 +60,15 @@ export class Watchdog {
 
     // The session reported by itself (item done / dropped): nothing for the watchdog to say.
     if (ws.item?.status === "done" || ws.item?.status === "wont_do") {
+      const last = ws.commits.at(-1);
+      const verify = ws.item.status === "done" && b.needsVerify?.(plan);
+      // TM-19: a live check needs the deploy finished first; keep looking while it runs.
+      if (verify && last?.deploy.state === "running") return;
       plan.status = ws.item.status === "done" ? "done" : "failed";
       b.savePlans();
       delete this.s[plan.id];
       this.save();
+      if (verify) await b.verifyLive(plan, last?.short || null);
       return;
     }
 
@@ -89,6 +94,7 @@ export class Watchdog {
         delete this.s[plan.id];
         this.save();
         await say(`${tag} landed but didn't report: ${last.short} is deployed (green) and the session said nothing for ${Math.round(this.cfg.reportAfterMs / MIN)} min. Marked done with ${last.short}.`);
+        if (b.needsVerify?.(plan)) await b.verifyLive(plan, last.short); // TM-19
         return;
       }
     }

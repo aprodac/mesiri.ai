@@ -85,6 +85,36 @@ export const afterSeconds = (sentMs, atIso) => {
 const PARTNER_PER_HOUR = Number(process.env.TEAMMATE_PARTNER_PER_HOUR || 12);
 const partnerSent = [];
 
+/**
+ * TM-19: who asked for a plan. From the production watch's conversations (asked_for = their correlation ids): the person
+ * ("Name (role, company)", never a phone number), their pseudonymous sender id and what they sent. A live check's fix
+ * (ctx.verify_plan) inherits the original plan's asker and counts one more round.
+ */
+export function whoAsked(ctx, askedFor = [], plans = null) {
+  const out = {};
+  const ids = (askedFor || []).map(String).filter(Boolean);
+  for (const c of ctx.watch_conversations || []) {
+    const mine = c.messages.filter((m) => ids.includes(String(m.correlation_id)));
+    if (!mine.length) continue;
+    Object.assign(out, {
+      asked_for: mine.map((m) => String(m.correlation_id)),
+      asked_by: `${c.person || "Someone"} (${[c.role, c.company].filter(Boolean).join(", ")})`,
+      asked_who: c.who,
+      asked_text: mine.map((m) => m.text || `(${m.kind || "message"})`).join(" / ").slice(0, 1000),
+    });
+    break;
+  }
+  if (ctx.verify_plan != null) {
+    const orig = plans?.get?.(ctx.verify_plan);
+    if (orig) {
+      for (const k of ["asked_for", "asked_by", "asked_who", "asked_text"]) if (out[k] === undefined && orig[k] !== undefined) out[k] = orig[k];
+      out.fix_of = orig.id;
+      out.round = (orig.round || 0) + 1;
+    }
+  }
+  return out;
+}
+
 export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait = sleep, partner = null, workStatus = null, tellJob = null }) {
   // Group-side calls use the group's project; ctx.project is the repo this conversation works in.
   const chatProject = ctx.chat_project || ctx.project;
@@ -96,6 +126,21 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
   const fail = (text) => ({ content: [{ type: "text", text }], isError: true });
 
   const tools = [
+    // TM-19: only in a live check of a shipped plan.
+    ...(ctx.verify_plan != null
+      ? [
+          tool(
+            "verification_result",
+            "Record the live check of the shipped plan: ok true only when the assistant now really does what was asked. Call once, after test_assistant.",
+            { ok: z.boolean(), note: z.string().min(3).max(500).describe("What you sent and what it did, in a sentence") },
+            async ({ ok, note }) => {
+              plans.update?.(ctx.verify_plan, { verified: ok ? "ok" : "broken", verified_note: note });
+              if (typeof ctx.verify_plan === "number") await listener.updateItem(ctx.verify_plan, { verified: ok ? "ok" : "broken", note, project: chatProject }).catch(() => {});
+              return { content: [{ type: "text", text: ok ? "Recorded: verified live. Post the ✅ line." : "Recorded: still broken. Post the ❌ line and propose_plan the fix." }] };
+            },
+          ),
+        ]
+      : []),
     tool(
       "post_message",
       "Post a short message to the project's WhatsApp team group now (progress on long work, a heads-up). Your final answer is posted automatically; don't repeat it here.",
@@ -205,16 +250,18 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
         plan: z.string().min(10).max(6000).describe("What you'll change, where, how you'll test it, and the git steps"),
         type: z.enum(["bug", "feature", "task"]).optional(),
         auto: z.object({ area: z.string().max(40) }).optional().describe("Only in an unattended auto cycle: area is \"conversation\" or \"getting_out\". Anything else (or missing) is left for a human ok."),
+        asked_for: z.array(z.string().max(80)).max(20).optional().describe("Production watch: the correlation ids (shown in brackets) of the messages where people asked for this or complained. Records who asked, so they are told and their use is tracked."),
       },
-      async ({ title, plan, type, auto }) => {
+      async ({ title, plan, type, auto, asked_for }) => {
         let itemId = null;
+        const asked = whoAsked(ctx, asked_for, plans);
         try {
-          const r = await listener.addItem({ chat: ctx.chat, project: chatProject, type: type || "task", title: ctx.project !== chatProject ? `[bot upgrade] ${title}` : title, summary: plan, created_by: `${ctx.sender} via bot` });
+          const r = await listener.addItem({ chat: ctx.chat, project: chatProject, type: type || "task", title: ctx.project !== chatProject ? `[bot upgrade] ${title}` : title, summary: plan, created_by: `${ctx.sender} via bot`, ...(asked.asked_by ? { asked_by: asked.asked_by, asked_ref: asked.asked_for.join(","), asked_who: asked.asked_who } : {}) });
           itemId = r?.item?.id ?? null;
         } catch {
           // the request log is a convenience; the plan still stands
         }
-        const saved = plans.save({ id: itemId, project: ctx.project, chat_project: chatProject, chat: ctx.chat, chat_name: ctx.chat_name, session: ctx.session, title, plan, by: ctx.sender, ...(ctx.auto_cycle ? { auto: auto || null, cycle: ctx.auto_cycle } : {}) });
+        const saved = plans.save({ id: itemId, project: ctx.project, chat_project: chatProject, chat: ctx.chat, chat_name: ctx.chat_name, session: ctx.session, title, plan, by: ctx.sender, ...asked, ...(ctx.auto_cycle ? { auto: auto || null, cycle: ctx.auto_cycle } : {}) });
         if (ctx.new_plans) ctx.new_plans.push(saved.id); // TM-18: autobuild starts it after this turn
         if (ctx.autobuild) return { content: [{ type: "text", text: `Plan [${saved.id}] recorded. Autobuild is on: right after this turn the code checks it and starts building it (anything it holds back is posted with the reason). Don't ask for an ok; say it is being built.` }] };
         if (ctx.auto_cycle) return { content: [{ type: "text", text: `Plan [${saved.id}] recorded. The system decides about auto-approval (scope and guard words are checked in code); don't ask anyone for an ok. Now call cycle_report.` }] };
@@ -402,4 +449,4 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
   return createSdkMcpServer({ name: "whatsapp", version: "1.0.0", tools });
 }
 
-export const BRAIN_TOOL_NAMES = ["post_message", "post_image", "preview_html", "post_watch_chat", "screenshot_url", "view_media", "translate_message", "propose_plan", "test_assistant", "tell_ilan_usman", "needs_attention", "cycle_report", "status_of_work", "tell_job"].map((t) => `mcp__whatsapp__${t}`);
+export const BRAIN_TOOL_NAMES = ["verification_result", "post_message", "post_image", "preview_html", "post_watch_chat", "screenshot_url", "view_media", "translate_message", "propose_plan", "test_assistant", "tell_ilan_usman", "needs_attention", "cycle_report", "status_of_work", "tell_job"].map((t) => `mcp__whatsapp__${t}`);

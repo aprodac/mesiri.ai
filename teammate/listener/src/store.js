@@ -94,9 +94,35 @@ CREATE TABLE IF NOT EXISTS item_log (
   note     TEXT
 );
 `;
+const clip = (v, n) => (v === null || v === undefined ? null : String(v).slice(0, n));
 export const ITEM_TYPES = ["bug", "feature", "question", "complaint", "task"];
 export const ITEM_STATUSES = ["open", "in_progress", "done", "wont_do"];
 export const PEOPLE_ROLES = ["owner", "member"];
+/**
+ * TM-19: per request, who asked in production and what happened after it shipped.
+ *   asked_by   "Name (role, company)"; never a phone number
+ *   asked_ref  the production message ids (correlation ids), comma-separated
+ *   asked_who  the sender's pseudonymous id from the production watch (md5), to see them use Mesiri again
+ *   held       why autobuild is waiting for an owner's ok (cleared once it starts)
+ *   live_at    when it was deployed;  verified "ok" | "broken" (+ verified_at): the bot's live re-test
+ *   tried_at   when the person who asked used Mesiri again after it went live
+ */
+export const ITEM_TRACKING = ["asked_by", "asked_ref", "asked_who", "held", "live_at", "verified", "verified_at", "tried_at"];
+export const VERIFIED = ["ok", "broken"];
+
+/** One request's stage, for lists and counts (TM-19). */
+export function itemStage(i) {
+  if (i.status === "wont_do") return "dropped";
+  if (i.verified === "broken") return "broken";
+  if (i.verified === "ok") return "verified";
+  if (i.status === "done") return "live";
+  if (i.status === "in_progress") return "building";
+  return i.held ? "waiting" : "asked";
+}
+export const STAGES = {
+  asked: "📥 asked", waiting: "✋ waiting for ok", building: "🛠 building", live: "🚀 live", verified: "✅ verified",
+  broken: "❌ broken", dropped: "🚫 dropped",
+};
 
 /** Start of today and of this month in India time (UTC+5:30), as ISO strings. */
 export function istStarts(now = Date.now()) {
@@ -154,6 +180,11 @@ export class Store {
       ["options_json", "TEXT"], // menu/button options of an interactive message
     ]) {
       if (!mcols.includes(name)) this.db.exec(`ALTER TABLE messages ADD COLUMN ${name} ${type}`);
+    }
+    // ...and before TM-19 nothing about who asked (from production) or what happened after it shipped.
+    const icols = this.db.prepare("PRAGMA table_info(items)").all().map((c) => c.name);
+    for (const name of ITEM_TRACKING) {
+      if (!icols.includes(name)) this.db.exec(`ALTER TABLE items ADD COLUMN ${name} TEXT`);
     }
   }
 
@@ -385,7 +416,7 @@ export class Store {
   }
 
   /** Logs a request from a group (TM-08). `source`: message numbers, e.g. "6,7". */
-  addItem({ chat_jid, type, title, summary = null, source = null, created_by = null }) {
+  addItem({ chat_jid, type, title, summary = null, source = null, created_by = null, asked_by = null, asked_ref = null, asked_who = null }) {
     if (!ITEM_TYPES.includes(type)) throw new Error(`type must be one of ${ITEM_TYPES.join(", ")}`);
     if (!String(title || "").trim()) throw new Error("title is required");
     const now = nowIso();
@@ -396,12 +427,13 @@ export class Store {
       )
       .run(chat_jid, type, String(title).trim(), summary, source, created_by, now, now);
     const id = Number(res.lastInsertRowid);
-    this.db.prepare("INSERT INTO item_log (item_id, at, status, note) VALUES (?, ?, 'open', ?)").run(id, now, "logged");
+    this.db.prepare("UPDATE items SET asked_by = ?, asked_ref = ?, asked_who = ? WHERE id = ?").run(clip(asked_by, 200), clip(asked_ref, 1000), clip(asked_who, 64), id);
+    this.db.prepare("INSERT INTO item_log (item_id, at, status, note) VALUES (?, ?, 'open', ?)").run(id, now, asked_by ? `logged; asked by ${clip(asked_by, 200)}` : "logged");
     return id;
   }
 
   /** Changes status / details; every change is kept in the item's log. */
-  updateItem(id, { status, ref = null, note = null, title, summary, type } = {}) {
+  updateItem(id, { status, ref = null, note = null, title, summary, type, ...tracking } = {}) {
     const item = this.getItem(id);
     if (!item) return null;
     if (status !== undefined && !ITEM_STATUSES.includes(status)) throw new Error(`status must be one of ${ITEM_STATUSES.join(", ")}`);
@@ -413,15 +445,28 @@ export class Store {
         status ?? item.status, type ?? item.type, title ?? item.title, summary ?? item.summary,
         ref ? (item.done_ref ? `${item.done_ref}, ${ref}` : ref) : item.done_ref, now, id,
       );
-    this.db.prepare("INSERT INTO item_log (item_id, at, status, ref, note) VALUES (?, ?, ?, ?, ?)").run(id, now, status ?? null, ref, note);
+    if (tracking.verified !== undefined && tracking.verified !== null && !VERIFIED.includes(tracking.verified)) {
+      throw new Error(`verified must be one of ${VERIFIED.join(", ")}`);
+    }
+    // TM-19 fields: a value sets it, null clears it, absent leaves it. Starting work clears "held".
+    const set = Object.entries(tracking).filter(([k, v]) => ITEM_TRACKING.includes(k) && v !== undefined);
+    if (status === "in_progress" && !set.some(([k]) => k === "held")) set.push(["held", null]);
+    if (tracking.verified && tracking.verified_at === undefined) set.push(["verified_at", now]);
+    for (const [k, v] of set) this.db.prepare(`UPDATE items SET ${k} = ? WHERE id = ?`).run(v === null ? null : clip(v, 1000), id);
+    const what = set.filter(([k, v]) => v !== null && k !== "asked_who").map(([k, v]) => `${k}=${clip(v, 80)}`).join(", ");
+    this.db.prepare("INSERT INTO item_log (item_id, at, status, ref, note) VALUES (?, ?, ?, ?, ?)").run(id, now, status ?? null, ref, [note, what].filter(Boolean).join(" · ") || null);
     return this.getItem(id);
   }
 
+  /** getItem with its stage (TM-19). */
   getItem(id) {
     const item = this.db
       .prepare("SELECT i.*, c.name AS chat_name, c.project AS project FROM items i JOIN chats c ON c.jid = i.chat_jid WHERE i.id = ?")
       .get(Number(id));
-    if (item) item.log = this.db.prepare("SELECT at, status, ref, note FROM item_log WHERE item_id = ? ORDER BY at, rowid").all(item.id);
+    if (item) {
+      item.log = this.db.prepare("SELECT at, status, ref, note FROM item_log WHERE item_id = ? ORDER BY at, rowid").all(item.id);
+      item.stage = itemStage(item);
+    }
     return item;
   }
 
@@ -442,12 +487,42 @@ export class Store {
     return this.db
       .prepare(
         `SELECT i.id, i.chat_jid, c.name AS chat_name, c.project, i.type, i.title, i.summary, i.source,
-                i.status, i.done_ref, i.created_at, i.updated_at
+                i.status, i.done_ref, i.created_by, i.created_at, i.updated_at, ${ITEM_TRACKING.map((k) => `i.${k}`).join(", ")}
          FROM items i JOIN chats c ON c.jid = i.chat_jid
          ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
          ORDER BY i.updated_at DESC, i.id DESC`,
       )
-      .all(...params);
+      .all(...params)
+      .map((i) => ({ ...i, stage: itemStage(i) }));
+  }
+
+  /**
+   * TM-19 "@bot requests [open|done|all|<stage>]": counts by stage, then a numbered list, newest first (at most 25).
+   * Plain code, no AI. `open` = not live yet; `done` = live, verified or broken.
+   */
+  requestsText(project, filter = "") {
+    const all = this.listItems({ project });
+    const f = String(filter || "").trim().toLowerCase();
+    const counts = Object.fromEntries(Object.keys(STAGES).map((k) => [k, 0]));
+    for (const i of all) counts[i.stage] += 1;
+    const pick = {
+      open: (i) => ["asked", "waiting", "building"].includes(i.stage),
+      done: (i) => ["live", "verified", "broken"].includes(i.stage),
+      users: (i) => Boolean(i.asked_by),
+    }[f] || (STAGES[f] ? (i) => i.stage === f : () => true);
+    const list = all.filter(pick);
+    const head = `📋 *Requests · ${project}* (${all.length})\n` +
+      Object.entries(STAGES).filter(([k]) => counts[k]).map(([k, label]) => `${label} ${counts[k]}`).join(" · ");
+    if (!list.length) return `${head}\n\nNothing ${f ? `"${f}" ` : ""}to list.`;
+    const day = (iso) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
+    const lines = list.slice(0, 25).map((i, n) => {
+      const who = i.asked_by ? `asked by ${i.asked_by}` : `from ${i.created_by || i.chat_name}`;
+      const extra = [i.held && i.stage === "waiting" ? `held: ${i.held}` : null, i.done_ref ? `commit ${i.done_ref}` : null, i.tried_at ? "they used it after ✓" : null]
+        .filter(Boolean).join(" · ");
+      return `${n + 1}. [${i.id}] ${i.title} · ${STAGES[i.stage]}\n    ${who} · ${day(i.created_at)}${extra ? ` · ${extra}` : ""}`;
+    });
+    const more = list.length > 25 ? `\n…and ${list.length - 25} more (the control panel's Requests page has them all).` : "";
+    return `${head}\n\n${lines.join("\n")}${more}\n\n@bot requests open | done | users | all`;
   }
 
   /** The active approval matching any of these ids (jid or phone-number jid), or null. Project "*" = every project. */
