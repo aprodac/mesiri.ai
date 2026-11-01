@@ -45,6 +45,10 @@ _VALID_ISSUE_TYPES = frozenset(
     }
 )
 _VALID_ISSUE_SEVERITIES = frozenset({"LOW", "MEDIUM", "HIGH", "CRITICAL"})
+#: Public names for the API schema (WA-119: the request lists the valid values, so a
+#: client -- the dashboard or the API agent -- can pick one instead of guessing).
+ISSUE_TYPES = _VALID_ISSUE_TYPES
+ISSUE_SEVERITIES = _VALID_ISSUE_SEVERITIES
 
 
 def validate_create_activity(cmd: CreateActivityCommand) -> list[str]:

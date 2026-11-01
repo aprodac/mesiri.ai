@@ -9,7 +9,7 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -42,6 +42,8 @@ from mesiri.domains.materials.validation import (
     ADJUSTMENT_REASONS,
     ELEVATED_REASONS,
     OPENING_STOCK,
+    RECEIPT_REASONS,
+    USAGE_REASONS,
     is_valid_receipt_reason,
     is_valid_usage_reason,
     role_can_adjust,
@@ -664,7 +666,8 @@ class MaterialInflowCreate(BaseModel):
     material_id: uuid.UUID
     unit_id: uuid.UUID
     quantity: Decimal
-    movement_reason: str = "RECEIVED"
+    # WA-119: valid values shown in the schema; validation unchanged (422 on another value).
+    movement_reason: str = Field(default="RECEIVED", json_schema_extra={"enum": list(RECEIPT_REASONS)})
     supplier: str | None = None
     notes: str | None = None
     occurred_date: datetime.date
@@ -684,7 +687,7 @@ class MaterialOutflowCreate(BaseModel):
     material_id: uuid.UUID
     unit_id: uuid.UUID
     quantity: Decimal
-    movement_reason: str = "CONSUMED"
+    movement_reason: str = Field(default="CONSUMED", json_schema_extra={"enum": list(USAGE_REASONS)})
     work_item: str | None = None
     notes: str | None = None
     occurred_date: datetime.date

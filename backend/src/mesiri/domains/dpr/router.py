@@ -28,11 +28,16 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.application.dpr.fact_review import FactReviewError
-from mesiri.application.dpr.site_day import InvalidSiteDayTransition
+from mesiri.application.dpr.site_day import (
+    MAX_HOURS_LOST,
+    SITE_WORKING_VALUES,
+    WEATHER_VALUES,
+    InvalidSiteDayTransition,
+)
 from mesiri.authorization.context import AuthorizationContext
 from mesiri.domains.dpr.pdf import render_dpr_pdf_bytes
 from mesiri.domains.projects.router import get_auth_context
@@ -432,9 +437,10 @@ async def list_site_day_questions(
 class SiteDayConditionsRequest(BaseModel):
     """Only the fields sent are changed; null clears one (BE-14)."""
 
-    weather: str | None = None
-    hours_lost: float | None = None
-    site_working: str | None = None
+    # WA-119: the valid values are shown in the schema; validation is unchanged (validate_conditions).
+    weather: str | None = Field(default=None, json_schema_extra={"enum": sorted(WEATHER_VALUES)})
+    hours_lost: float | None = Field(default=None, json_schema_extra={"minimum": 0, "maximum": MAX_HOURS_LOST})
+    site_working: str | None = Field(default=None, json_schema_extra={"enum": sorted(SITE_WORKING_VALUES)})
     tomorrow_plan: str | None = None
 
 

@@ -7,7 +7,9 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from .validation import ISSUE_SEVERITIES, ISSUE_TYPES
 
 
 class ActivityQuantityResponse(BaseModel):
@@ -109,8 +111,9 @@ class SiteIssuesListResponse(BaseModel):
 class CreateSiteIssueRequest(BaseModel):
     project_id: uuid.UUID
     site_id: uuid.UUID
-    issue_type: str
-    severity: str
+    # WA-119: the valid values are shown in the schema; validation is unchanged (400 on another value).
+    issue_type: str = Field(json_schema_extra={"enum": sorted(ISSUE_TYPES)})
+    severity: str = Field(json_schema_extra={"enum": sorted(ISSUE_SEVERITIES)})
     narrative: str | None = None
     delay_duration_minutes: int | None = None
 
