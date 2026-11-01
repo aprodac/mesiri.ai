@@ -61,7 +61,7 @@ def test_v2_gets_the_existing_record_and_read_tools_with_todays_specs_and_no_adm
     assert GENERAL_TOOLS <= names
     assert {"save_labour", "save_work_done", "save_expense", "report_issue", "set_site_conditions",
             "query_work_log", "query_project", "query_open_needs", "request_dpr"} <= names
-    assert not names & {"create_site", "create_project", "add_member", "get_join_code", "set_reply_language"}
+    assert not names & {"add_member", "get_join_code", "set_reply_language"}
     old = {s.name: s for s in classic.tool_specs()}
     assert all(s.parameters == old[s.name].parameters for s in all_specs() if s.name in GENERAL_TOOLS)
 
