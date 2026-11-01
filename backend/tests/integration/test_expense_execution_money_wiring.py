@@ -418,3 +418,47 @@ async def test_expense_without_vendor_id_leaves_it_null(engine: AsyncEngine, sce
             )
         ).scalar_one()
     assert stored_vendor_id is None
+
+
+async def test_expense_with_a_new_vendor_name_creates_the_vendor_and_saves_in_one_transaction(
+    engine: AsyncEngine, scenario: dict
+):
+    """Request 198: "Yes, add new vendor" -- the vendor row and the expense row are
+    written together, with the account the sender picked."""
+    from mesiri.application.vendors.resolution import PostgresVendorResolver
+
+    handler = RecordExpenseHandler(PostgresExpenseExecutionRepository(), vendor_resolver=PostgresVendorResolver())
+    cmd = _command(scenario, account_id=str(scenario["account_id"]), vendor_text="Irani Cafe NIBM")
+    async with engine.begin() as conn:
+        result = await handler.handle(conn, cmd)
+    assert result.status == ExecutionStatus.SUCCEEDED
+    async with engine.connect() as conn:
+        row = (
+            await conn.execute(
+                sa.text("SELECT v.name, v.status FROM expenses e JOIN vendors v ON v.id = e.vendor_id WHERE e.id = :id"),
+                {"id": uuid.UUID(result.material_row_id)},
+            )
+        ).first()
+    assert row is not None and tuple(row) == ("Irani Cafe NIBM", "active")
+
+
+async def test_a_new_vendor_whose_name_belongs_to_a_deactivated_vendor_still_saves(
+    engine: AsyncEngine, scenario: dict
+):
+    """Request 198: the unique (organization, name) row of a deactivated vendor must not make
+    "add new vendor" blow up (the create used to assert on a row it could not see)."""
+    from mesiri.application.vendors.resolution import PostgresVendorResolver
+
+    async with engine.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "INSERT INTO vendors (id, organization_id, name, status, created_by) "
+                "VALUES (:id, :org_id, 'Irani Cafe NIBM', 'inactive', :user_id)"
+            ),
+            {"id": uuid.uuid4(), "org_id": scenario["org_id"], "user_id": scenario["user_id"]},
+        )
+    handler = RecordExpenseHandler(PostgresExpenseExecutionRepository(), vendor_resolver=PostgresVendorResolver())
+    cmd = _command(scenario, vendor_text="Irani Cafe NIBM")
+    async with engine.begin() as conn:
+        result = await handler.handle(conn, cmd)
+    assert result.status == ExecutionStatus.SUCCEEDED

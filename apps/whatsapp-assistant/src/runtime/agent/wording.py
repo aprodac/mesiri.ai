@@ -197,6 +197,14 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "{time} पर सेव हो चुका. फिर से सेव करें?",
         "hinglish": "{time} par save ho chuka. Phir se save karein?",
     },
+    # -- request 198: a Save the system failed under keeps the line and says what to tap --
+    "save.failed_retry": {
+        "english": "Nothing was saved. {line} is still here: something went wrong on our side. Tap Save to try again, or Cancel.",
+        "manglish": "Onnum save aayilla. {line} ivide thanne und: nammude bhagath ninnu oru prashnam vannu. Veendum Save tap cheyyu, allenkil Cancel.",
+        "malayalam": "ഒന്നും സേവ് ആയില്ല. {line} ഇവിടെ തന്നെയുണ്ട്: ഞങ്ങളുടെ ഭാഗത്ത് ഒരു പ്രശ്നം വന്നു. വീണ്ടും Save അമർത്തുക, അല്ലെങ്കിൽ Cancel.",
+        "hindi": "कुछ सेव नहीं हुआ. {line} यहीं है: हमारी तरफ़ से कोई गड़बड़ हुई. फिर से Save दबाएं, या Cancel.",
+        "hinglish": "Kuch save nahi hua. {line} yahin hai: hamari taraf se kuch gadbad hui. Phir se Save dabaiye, ya Cancel.",
+    },
     "check.change_date": {
         "english": "Okay, {line} is off the list. Send it again with the right date.",
         "manglish": "Sheri, {line} list-il ninnu maatti. Shariyaaya date koode ayakku.",

@@ -153,7 +153,19 @@ class PostgresVendorRepository:
             },
         )
         existing = await self.find_by_name_exact_active(organization_id, name)
-        assert existing is not None
+        if existing is None:
+            # Request 198: the name belongs to a deactivated vendor (unique per company, so the
+            # insert did nothing). The sender just said "add it": bring that vendor back, never fail.
+            await self.conn.execute(
+                sa.text(
+                    "UPDATE vendors SET status = 'active', updated_by = :by, updated_at = now() "
+                    "WHERE organization_id = :org AND name = :name"
+                ),
+                {"by": created_by, "org": organization_id, "name": name},
+            )
+            existing = await self.find_by_name_exact_active(organization_id, name)
+        if existing is None:
+            raise RuntimeError(f"vendor {name!r} could not be created or found")
         return existing
 
     async def update(

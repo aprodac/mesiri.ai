@@ -159,6 +159,18 @@
         "cor_0caf3a0ef27f46e8ab25cbd8b08fb156"
       ],
       "message": "You can now create a new project right here in chat. Try: 'Create a new project Supermarket Kerala, 7000 sq ft'"
+    },
+    {
+      "id": "new-vendor-expense-saves",
+      "date": "2026-11-01",
+      "for": [
+        "cor_1d8fa90f3bb344129090b1dfd5a6e341",
+        "cor_646f488871d94076aab22572706e1234",
+        "cor_35bb0b27ed6e4789a03290b8477b4f8f",
+        "cor_b642cb7ce3fd4efaadcb082903dad9af",
+        "cor_8833cb296f6941ff9dd1e90aba47b809"
+      ],
+      "message": "Bill photo ayachu puthiya vendor add cheythaalum expense ippo save aakum. Try: oru bill photo ayakku."
     }
   ]
 }
