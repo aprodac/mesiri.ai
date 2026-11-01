@@ -1,0 +1,70 @@
+# WA-123: the same site messages through classic, v2 and the API agent on the REAL model, side by
+# side (Actions -> "Compare agents" -> Run). The table is in the run's summary and the JSON is an
+# artifact. Nothing is saved anywhere (every engine stops at "ready to save"); the API agent reads a
+# throwaway Postgres in the runner. Never part of a deploy; costs a few cents per run.
+name: Compare agents
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Gemini model (the same one for all three)"
+        required: true
+        default: "gemini-2.5-flash"
+
+concurrency:
+  group: v2-live-evals  # shares the key's per-minute token cap with the v2 live evals
+  cancel-in-progress: false
+
+jobs:
+  compare:
+    name: classic vs v2 vs API agent (${{ inputs.model }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PYTHONSAFEPATH: "1"
+      TEST_PYTHONPATH: >-
+        ${{ github.workspace }}/shared/contracts/src:${{ github.workspace }}/platform/ai/src:${{ github.workspace }}/backend/src:${{ github.workspace }}/apps/whatsapp-assistant/src:${{ github.workspace }}/apps/whatsapp-assistant
+      MESIRI_ENVIRONMENT: test
+      MESIRI_POSTGRES__HOST: localhost
+      MESIRI_POSTGRES__PASSWORD: mesiri_ci
+      MESIRI_OBJECT_STORAGE__PROVIDER: fake
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: mesiri
+          POSTGRES_PASSWORD: mesiri_ci
+          POSTGRES_DB: mesiri
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U mesiri" --health-interval 5s
+          --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.11'
+          enable-cache: true
+      - run: uv venv --python 3.11 --clear
+      - run: uv pip install -e ".[dev,infra,providers,reports,workflow,receipt]"
+      - name: Apply migrations
+        run: uv run alembic -c backend/alembic.ini upgrade head
+      - name: Same messages, three engines, real model
+        env:
+          PYTHONPATH: ${{ env.TEST_PYTHONPATH }}
+          GEMINI_API_KEY: ${{ secrets.TEAMMATE_GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ inputs.model }}
+          MESIRI_LIVE_PACE_SECONDS: "2"
+          MESIRI_COMPARE_OUT: ${{ runner.temp }}/compare.json
+        run: |
+          cd /tmp
+          "$GITHUB_WORKSPACE/.venv/bin/python" -P -m pytest \
+            "$GITHUB_WORKSPACE/apps/whatsapp-assistant/tests/compare/test_three_agents_live.py" \
+            --rootdir=/tmp -s -ra -m live --import-mode=importlib -o asyncio_mode=auto
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compare-${{ inputs.model }}
+          path: ${{ runner.temp }}/compare.json
+          if-no-files-found: ignore
