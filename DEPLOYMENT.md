@@ -14,7 +14,8 @@ This project uses GitHub Actions for automated CI/CD. Every push to `main` that 
 > - Migrations run from `/opt/mesiri` (`alembic -c backend/alembic.ini`) so the real `.env` is read.
 > - The old names `mesiri.mercon.tech` / `mesiriweb.mercon.tech` still work: the old server
 >   (`187.127.180.98`) forwards them here until Meta's webhook and users have moved. Everything
->   below that mentions those names or that IP describes the old setup.
+>   below that still mentions those names or that IP (the nginx site steps for `mercon.tech`)
+>   describes the old setup; every other command uses the current server.
 
 Previously:
 
@@ -67,7 +68,7 @@ This only needs to be done once (or when provisioning a new server).
 
 ```bash
 # Run from your local machine
-ssh root@187.127.180.98 'bash -s' < scripts/setup_vps.sh
+ssh root@82.29.167.128 'bash -s' < scripts/setup_vps.sh
 ```
 
 This will:
@@ -80,7 +81,7 @@ This will:
 ### 2. Create the production `.env`
 
 ```bash
-ssh root@187.127.180.98
+ssh root@82.29.167.128
 cp /opt/mesiri/.env.example /opt/mesiri/.env
 nano /opt/mesiri/.env
 ```
@@ -107,7 +108,7 @@ ssh-keygen -t ed25519 -C "github-actions-deploy" -f ~/.ssh/github_deploy -N ""
 
 Add the **public key** to the VPS:
 ```bash
-ssh root@187.127.180.98 "echo '$(cat ~/.ssh/github_deploy.pub)' >> ~/.ssh/authorized_keys"
+ssh root@82.29.167.128 "echo '$(cat ~/.ssh/github_deploy.pub)' >> ~/.ssh/authorized_keys"
 ```
 
 ### 4. Add GitHub Secrets
@@ -117,7 +118,7 @@ Go to: **Repo → Settings → Secrets and variables → Actions → New reposit
 | Secret name | Value |
 |---|---|
 | `VPS_SSH_KEY` | Contents of `~/.ssh/github_deploy` (the private key) |
-| `VPS_HOST` | `187.127.180.98` |
+| `VPS_HOST` | `82.29.167.128` |
 | `VPS_USER` | `root` |
 
 ### 5. Create a GitHub Environment (optional but recommended)
@@ -133,10 +134,10 @@ Name it `production`. You can add required reviewers or deployment protection ru
 You don't need to wait for CI to inspect or fix things on the box directly — the same deploy key GitHub Actions uses (`VPS_SSH_KEY` secret) works for a normal SSH session if you have a local copy of the private key.
 
 ```bash
-ssh -i ~/.ssh/<your-copy-of-the-deploy-key> root@187.127.180.98
+ssh -i ~/.ssh/<your-copy-of-the-deploy-key> root@82.29.167.128
 ```
 
-- **Host**: `187.127.180.98` (same as the `VPS_HOST` secret)
+- **Host**: `82.29.167.128` (same as the `VPS_HOST` secret)
 - **User**: `root`
 - **Key**: the same keypair from [First-time VPS setup](#first-time-vps-setup) step 3 (`~/.ssh/github_deploy` there). If you don't have a local copy, get the private key from wherever the team stores secrets, or generate a new keypair and append its public half to `~/.ssh/authorized_keys` on the VPS (you'll need an existing session to do that once).
 - **Gotcha**: if `ssh -i` fails with `Load key "...": invalid format`, the key file has picked up CRLF line endings (common after copy-pasting on Windows) — re-save it with LF-only line endings, or run it through `tr -d '\r'` into a fresh file, before retrying.
@@ -171,7 +172,7 @@ ssh -i ~/.ssh/<key> root@187.127.180.98 "cat /etc/nginx/sites-available/<subdoma
 `scripts/` has a number of ad hoc scripts (`deploy_*.py`, `check_*.py`, `fix_*.py`, `verify_*.py`, ...) written during past incidents that SSH into the VPS directly via `paramiko` using password auth, bypassing the key-based access above. They used to have the root password hardcoded in the file — that has been removed. They now read three required environment variables instead of embedding a credential in source:
 
 ```bash
-export MESIRI_VPS_HOST=187.127.180.98
+export MESIRI_VPS_HOST=82.29.167.128
 export MESIRI_VPS_USER=root
 export MESIRI_VPS_PASSWORD=<current root password>
 python scripts/<script_name>.py
@@ -232,7 +233,7 @@ make migrate
 ### Apply migrations in production (done automatically by CD)
 
 ```bash
-ssh root@187.127.180.98
+ssh root@82.29.167.128
 cd /opt/mesiri/backend
 PYTHONPATH=/opt/mesiri/shared/contracts/src:/opt/mesiri/platform/ai/src:/opt/mesiri/backend/src:/opt/mesiri/apps/whatsapp-assistant/src \
   /opt/mesiri/.venv/bin/alembic upgrade head
@@ -241,7 +242,7 @@ PYTHONPATH=/opt/mesiri/shared/contracts/src:/opt/mesiri/platform/ai/src:/opt/mes
 ### Roll back one migration
 
 ```bash
-ssh root@187.127.180.98
+ssh root@82.29.167.128
 cd /opt/mesiri/backend
 PYTHONPATH=... /opt/mesiri/.venv/bin/alembic downgrade -1
 ```
@@ -324,7 +325,7 @@ If you need to deploy without waiting for CI:
 Or directly on the VPS (backend only — this does not rebuild/redeploy either frontend, see below for that):
 
 ```bash
-ssh root@187.127.180.98
+ssh root@82.29.167.128
 cd /opt/mesiri
 git pull origin main
 .venv/bin/uv pip install -e ".[infra,providers,workflow]" --quiet
@@ -337,8 +338,8 @@ To manually deploy a frontend without CI, build it locally and `rsync` the `dist
 ```bash
 # From the repo root, for either app
 pnpm --filter @mesiri/dashboard build      # or: pnpm --filter control-panel build
-rsync -avz --delete apps/dashboard/dist/ root@187.127.180.98:/var/www/mesiriweb/
-ssh root@187.127.180.98 "chown -R www-data:www-data /var/www/mesiriweb/"
+rsync -avz --delete apps/dashboard/dist/ root@82.29.167.128:/var/www/mesiriweb/
+ssh root@82.29.167.128 "chown -R www-data:www-data /var/www/mesiriweb/"
 ```
 
 ---
