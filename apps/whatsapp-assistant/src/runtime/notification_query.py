@@ -11,7 +11,19 @@ thing in this codebase does.
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING, Any
+
+#: The test companies, as ILIKE patterns (the team bot's production watch uses the same two).
+#: MESIRI_TEST_COMPANIES (comma-separated) replaces them.
+DEFAULT_TEST_COMPANIES = ("Mesiri Test Builders", "%paraclet%")
+
+
+def test_company_patterns() -> tuple[str, ...]:
+    raw = os.environ.get("MESIRI_TEST_COMPANIES")
+    if raw is None:
+        return DEFAULT_TEST_COMPANIES
+    return tuple(p.strip() for p in raw.split(",") if p.strip())
 
 if TYPE_CHECKING:
     from backend.ports import ActorReader
@@ -101,6 +113,25 @@ class NotificationSendQueueService:
         return pick_notification_timezone(
             project_timezone=row["project_timezone"], org_timezone=row["org_timezone"]
         )
+
+    async def is_test_company(self, *, organization_id: Any) -> bool:
+        """Is this one of the test companies (``test_company_patterns``)? Used only to let
+        "it works now" release notes skip quiet hours for testers (owner, 1 Nov)."""
+        if organization_id is None:
+            return False
+        from sqlalchemy import text
+
+        async with self._db.transaction() as conn:
+            found = (
+                await conn.execute(
+                    text(
+                        "SELECT coalesce(name, '') ILIKE ANY (CAST(:patterns AS text[])) "
+                        "FROM organizations WHERE id = :organization_id"
+                    ),
+                    {"organization_id": organization_id, "patterns": list(test_company_patterns())},
+                )
+            ).scalar()
+        return bool(found)
 
     async def last_inbound_at(self, wa_id: str):
         """The recipient's most recent inbound message time, for the

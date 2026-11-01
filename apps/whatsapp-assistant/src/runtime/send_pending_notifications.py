@@ -72,6 +72,25 @@ _CAPTION_MAX = 1024
 # the owner's cutoff and send deadline.
 # Request 104: so is a question the sender asked their engineer on WhatsApp.
 _QUIET_HOURS_EXEMPT_PREFIXES = ("project_dpr_send:", "site_day_", "engineer_question:")
+# Owner, 1 Nov: "it works now" release notes reach TESTERS at once, quiet hours or not (they are
+# waiting to try what they asked for); real customers keep quiet hours.
+_TESTER_QUIET_EXEMPT_PREFIXES = ("release:",)
+
+
+async def _tester_exempt(row: dict[str, Any], queue: Any, cache: dict[str, bool]) -> bool:
+    """A release note to a test company skips quiet hours. Never raises: unsure -> keep quiet hours."""
+    if not str(row.get("rule_key") or "").startswith(_TESTER_QUIET_EXEMPT_PREFIXES):
+        return False
+    check = getattr(queue, "is_test_company", None)
+    org = str(row.get("organization_id"))
+    if check is None or not row.get("organization_id"):
+        return False
+    if org not in cache:
+        try:
+            cache[org] = bool(await check(organization_id=row.get("organization_id")))
+        except Exception:  # noqa: BLE001
+            cache[org] = False
+    return cache[org]
 
 
 def _render(row: dict[str, Any]) -> str:
@@ -238,6 +257,7 @@ async def drain_and_send(
     queue = NotificationSendQueueService(db, actor_reader)
     counts = {"sent": 0, "skipped": 0}
     timezones: dict[tuple[str, str], str] = {}
+    testers: dict[str, bool] = {}  # organization id -> is a test company (release notes skip quiet hours)
 
     pending = await queue.list_pending()
     if only_ids is not None:
@@ -291,7 +311,9 @@ async def drain_and_send(
                     counts["skipped"] += 1
                     continue
 
-        if not str(row.get("rule_key") or "").startswith(_QUIET_HOURS_EXEMPT_PREFIXES):
+        if not str(row.get("rule_key") or "").startswith(_QUIET_HOURS_EXEMPT_PREFIXES) and not await _tester_exempt(
+            row, queue, testers
+        ):
             # BE-38: in the row's local time, never server UTC.
             tz_key = (str(row.get("organization_id")), str(row.get("project_id")))
             if tz_key not in timezones:

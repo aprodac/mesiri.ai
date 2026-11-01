@@ -659,3 +659,70 @@ async def test_a_post_into_a_site_group_skips_the_per_person_checks(queue):
     assert await _drain(sender) == {"sent": 1, "skipped": 0}
     assert sender.templates == []
     assert sender.texts[0][0] == "group:120363000000000001"
+
+
+# Owner, 1 Nov: "it works now" release notes reach testers at once; real customers keep quiet hours.
+
+
+def _release(n="n1"):
+    return {
+        "id": n,
+        "organization_id": "org1",
+        "project_id": None,
+        "rule_key": "release:create-project-in-chat-ml",
+        "recipient_user_id": "u1",
+        "payload": {"message": "Ippo WhatsApp-il ninnu thanne puthiya project undaakkaam."},
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_release_note_to_a_test_company_is_sent_in_quiet_hours(quiet, monkeypatch):
+    from runtime import notification_query
+
+    async def is_test(self, *, organization_id):
+        return organization_id == "org1"
+
+    monkeypatch.setattr(notification_query.NotificationSendQueueService, "is_test_company", is_test, raising=False)
+    quiet["rows"] = [_release()]
+    counts, sender = await _drain_at(quiet, datetime(2026, 11, 1, 16, 0, tzinfo=UTC))  # 21:30 India time
+
+    assert counts == {"sent": 1, "skipped": 0}
+    assert sender.texts
+
+
+@pytest.mark.asyncio
+async def test_a_release_note_to_a_real_customer_still_waits_for_morning(quiet, monkeypatch):
+    from runtime import notification_query
+
+    async def is_test(self, *, organization_id):
+        return False
+
+    monkeypatch.setattr(notification_query.NotificationSendQueueService, "is_test_company", is_test, raising=False)
+    quiet["rows"] = [_release()]
+    counts, sender = await _drain_at(quiet, datetime(2026, 11, 1, 16, 0, tzinfo=UTC))
+
+    assert counts == {"sent": 0, "skipped": 0}  # left pending, not lost
+    assert sender.texts == []
+
+
+@pytest.mark.asyncio
+async def test_other_messages_to_a_test_company_keep_quiet_hours(quiet, monkeypatch):
+    from runtime import notification_query
+
+    async def is_test(self, *, organization_id):
+        return True
+
+    monkeypatch.setattr(notification_query.NotificationSendQueueService, "is_test_company", is_test, raising=False)
+    quiet["rows"] = [_nudge()]
+    counts, _ = await _drain_at(quiet, datetime(2026, 11, 1, 16, 0, tzinfo=UTC))
+
+    assert counts == {"sent": 0, "skipped": 0}
+
+
+def test_the_test_companies_are_the_two_the_bot_skips(monkeypatch):
+    from runtime.notification_query import test_company_patterns
+
+    monkeypatch.delenv("MESIRI_TEST_COMPANIES", raising=False)
+    assert test_company_patterns() == ("Mesiri Test Builders", "%paraclet%")
+    monkeypatch.setenv("MESIRI_TEST_COMPANIES", "Acme Test, %demo%")
+    assert test_company_patterns() == ("Acme Test", "%demo%")
