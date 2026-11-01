@@ -273,6 +273,38 @@ def wage_per_person(workers: Any) -> Any:
 
 def tool_specs() -> list[ToolSpec]:
     """The tools handed to the model, in the order shown to it."""
+    return _with_open_card_fields(_specs())
+
+
+#: Request 193: fields the draft tools take that ``_CHANGES`` lacked, so the model could not
+#: send "rate 420 alla 400", "count 15 alla 12" or "Site C-lekk alla" as a change of a card
+#: line (the code already accepted them: it checks the line's own save tool). Offered on
+#: update_pending_card (and v2's change_line, built from it) with each one's own definition;
+#: change_or_undo keeps ``_CHANGES`` as it was.
+OPEN_CARD_ONLY_FIELDS = ("counted", "total_cost", "unit_cost", "to_site", "issue_type")
+
+
+def _with_open_card_fields(specs: list[ToolSpec]) -> list[ToolSpec]:
+    extra: dict[str, Any] = {}
+    for spec in specs:
+        for key, definition in ((spec.parameters or {}).get("properties") or {}).items():
+            if key in OPEN_CARD_ONLY_FIELDS:
+                extra.setdefault(key, definition)
+    out = []
+    for spec in specs:
+        if spec.name == UPDATE_PENDING_CARD:
+            params = dict(spec.parameters)
+            props = dict(params["properties"])
+            changes = dict(props["changes"])
+            changes["properties"] = {**changes["properties"], **extra}
+            props["changes"] = changes
+            params["properties"] = props
+            spec = spec.model_copy(update={"parameters": params})
+        out.append(spec)
+    return out
+
+
+def _specs() -> list[ToolSpec]:
     return [
         ToolSpec(
             name=SAVE_LABOUR,

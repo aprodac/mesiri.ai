@@ -22,8 +22,10 @@ supervisor's tap on Save is the only thing that writes records.
 - **Real customers run the classic path**: today's agent (request [40]) which calls the old
   workflows as tools.
 - v2's **live gate is not passed yet**: >= 90% right and 0 wrong saves on the eval sets, reply
-  time not worse than classic. The live run needs `GEMINI_API_KEY` and has not been done.
-  Until it is, v2 does not go to a real customer.
+  time not worse than classic. The live run needs `GEMINI_API_KEY` and has not been done:
+  the 31 Oct runs scored 0% because the key (`TEAMMATE_GEMINI_API_KEY`) hit its monthly
+  spending cap, which also blocks every deploy's live gate since then (tracker WA-111).
+  Until it runs, v2 does not go to a real customer.
 
 ## Message flow
 
@@ -82,6 +84,11 @@ Not in v2 yet: photos and bill photos, documents, admin (classic until given a s
 | Materials (skill tools) | `draft_receipt`, `draft_usage`, `draft_stock_count`, `transfer`, `change_line`, `remove_line`, `answer_question`, `catalog_match`, `ask`, `material_request_not_available`, `stock_for` | the existing toolbox / draft card / `corrections.drop_from_open_card` |
 | Other records (existing toolbox tools, unchanged) | `save_labour`, `save_work_done`, `save_expense`, `report_issue`, `update_issue`, `correct_work_quantity`, `note_for_engineer`, `set_site_conditions`, `request_dpr`, `set_work_site` | same specs, same draft card, same Save tap |
 | Reads | `query_work_log`, `query_labour`, `query_project`, `query_expenses`, `query_open_needs`, `my_scope`, `stock_for` | read-only |
+
+`change_line` (like classic `update_pending_card`) takes every figure a line shows: the
+`_CHANGES` fields plus `counted`, `total_cost`, `unit_cost`, `to_site`, `issue_type`
+(`tools.OPEN_CARD_ONLY_FIELDS`, request 193). A failed call's reason is kept in the
+`agent_tools` trace (`vps-agent-trace`).
 
 Admin tools (create site / project, members, join code) stay with the classic agent. The labour
 tools are called unchanged for the 2 test companies only; Labour, Attendance, Payroll and

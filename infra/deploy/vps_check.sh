@@ -51,6 +51,12 @@ section "Databases (container: ${PG_CONTAINER:-none found}, database ${DB_NAME})
 psql_app -At -c "SELECT datname, pg_size_pretty(pg_database_size(datname)) FROM pg_database WHERE NOT datistemplate ORDER BY 1"
 psql_app -At -c "SELECT 'alembic head: ' || version_num FROM alembic_version"
 
+# Request 193: 1 Nov 00:25-01:34 UTC every scheduler tick failed with "remaining connection
+# slots are reserved". Who holds the connections (counts only, no query text).
+section "Database connections (of max_connections)"
+psql_app -At -c "SELECT 'max_connections: ' || current_setting('max_connections') || ', in use: ' || count(*) FROM pg_stat_activity"
+psql_app -P pager=off -c "SELECT coalesce(datname, '-') AS db, coalesce(usename, '-') AS login, coalesce(nullif(application_name, ''), '-') AS app, coalesce(state, '-') AS state, count(*) AS n, max(now() - state_change)::interval(0) AS oldest FROM pg_stat_activity GROUP BY 1, 2, 3, 4 ORDER BY n DESC LIMIT 20"
+
 section "Backups"
 ls -la /var/backups/mesiri 2>&1 | tail -20
 echo "--- other recent dump files (last 30 days)"

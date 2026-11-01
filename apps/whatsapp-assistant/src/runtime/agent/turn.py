@@ -822,6 +822,19 @@ async def _guarded(
     return reply if not guarded.hits else ReplySpec(text=guarded.text)
 
 
+#: Request 193: a failed or refused call keeps WHY in the trace (it held only "error").
+_REASONED = frozenset({"error", "not_a_correction", "not_a_move"})
+_REASON_MAX = 80
+
+
+def trace_reason(text: Any) -> str:
+    """The code's own words for a failed call, cut before any detail it quotes (the part
+    after a colon), digits masked and at most 80 characters: why, never what was said."""
+    reason = " ".join(str(text or "").split()).split(":", 1)[0]
+    reason = re.sub(r"\d", "#", reason)
+    return reason[:_REASON_MAX]
+
+
 async def _trace_tools(correlation_id: str, result: AgentResult, deps: AgentTurnDeps) -> None:
     """INF-14: what the model decided this turn, for `vps-agent-trace`: each
     tool call's name, the names of its arguments and its outcome. No values
@@ -829,14 +842,14 @@ async def _trace_tools(correlation_id: str, result: AgentResult, deps: AgentTurn
     if deps.trace_logger is None:
         return
     box = result.toolbox
-    calls = [
-        {
-            "tool": call.name,
-            "args": sorted(call.arguments),
-            "status": str((call.outcome.content or {}).get("status") or ("error" if call.error else "")),
-        }
-        for call in getattr(result.run, "calls", None) or []
-    ]
+    calls = []
+    for call in getattr(result.run, "calls", None) or []:
+        content = call.outcome.content or {}
+        status = str(content.get("status") or ("error" if call.error else ""))
+        entry = {"tool": call.name, "args": sorted(call.arguments), "status": status}
+        if status in _REASONED:
+            entry["reason"] = trace_reason(content.get("message") or content.get("reason") or call.error)
+        calls.append(entry)
     await _safe(
         deps.trace_logger.log_stage(
             correlation_id=correlation_id,

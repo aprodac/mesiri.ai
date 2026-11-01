@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Read-only trace of what the assistant decided, per message (INF-14): which
 # tools the model called, with which argument NAMES, and what each answered
-# (saved / waiting_for_user / held / noted ...), plus the parked question, the
+# (saved / waiting_for_user / held / noted ...; a failed call with the code's reason,
+# digits masked, request 193), plus the parked question, the
 # held calls and the parts left "still to do" (WA-57). From the agent_tools
 # rows of journey_traces. Changes nothing; prints no message text and no
 # argument values; the sender is shown by the last 4 digits of the number.
@@ -26,7 +27,7 @@ q "What the assistant decided, per message (last ${HOURS} h, India time)" "
 SELECT to_char(t.created_at AT TIME ZONE 'Asia/Kolkata', 'DD Mon HH24:MI:SS') AS at_ist,
        right(coalesce(m.sender_wa_id, ''), 4) AS sender,
        m.message_type AS kind,
-       (SELECT string_agg(c->>'tool' || '(' || coalesce((SELECT string_agg(a, ',') FROM jsonb_array_elements_text(c->'args') a), '') || ')=' || coalesce(c->>'status', ''), '  ')
+       (SELECT string_agg(c->>'tool' || '(' || coalesce((SELECT string_agg(a, ',') FROM jsonb_array_elements_text(c->'args') a), '') || ')=' || coalesce(c->>'status', '') || coalesce(' [' || (c->>'reason') || ']', ''), '  ')
           FROM jsonb_array_elements(t.stage_payload::jsonb->'calls') c) AS tools,
        t.stage_payload::jsonb->>'parked_by' AS parked,
        t.stage_payload::jsonb->'held' AS held,
