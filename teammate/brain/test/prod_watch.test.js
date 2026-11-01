@@ -341,6 +341,8 @@ test("TM-18: the SQL reads every company, marks the test ones, and a skip list c
   assert.deepEqual(skipPatterns("Acme Test, x'); DROP TABLE y;--"), ["Acme Test", "x DROP TABLE y--"]);
   assert.deepEqual(skipPatterns(""), []);
   assert.match(watchSql(T0, 400, []), /false AS is_test/);
+  assert.match(watchSql(T0, 50, [], true), /ORDER BY m\.received_at DESC LIMIT 50/); // the probe: newest first
+  assert.match(sql, /ORDER BY m\.received_at ASC LIMIT 400/);
 });
 
 test("TM-18: Mesiri's tell_the_team is always a flag, and the paid screen never reads the test companies", async () => {
