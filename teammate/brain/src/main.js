@@ -314,6 +314,7 @@ if (prodWatchMinutes > 0 && Object.keys(opsByProject).length) {
     log,
     minutes: prodWatchMinutes,
     skip: skipPatterns(process.env.TEAMMATE_PROD_WATCH_SKIP),
+    notify: (project, text) => brain.notifyTeam(project, text), // TM-18: request notices, "watch is blind" alerts
     autobuildOn: (project) => brain.autobuild.isOn(project), // TM-18: the report says "building it now", not "@bot ok"
     // The AI screen (TEAMMATE_GEMINI_API_KEY, the listener's key): catches the "I can't" a word list misses.
     screener: process.env.TEAMMATE_GEMINI_API_KEY

@@ -629,6 +629,13 @@ export class Brain {
     }
   }
 
+  /** TM-18: a code-posted line in the project's team group (the watch's request notices and health). */
+  async notifyTeam(project, text) {
+    const team = ((await this.listener.chats(project)).chats || []).find((c) => c.role === "team" && c.project === project);
+    if (!team) throw new Error("no team group");
+    return this.listener.send({ chat: team.jid, project, text });
+  }
+
   /**
    * The production watch (TM-16, prod_watch.js) found something: one planning turn on it in the project's team group,
    * in a separate "watch" conversation. Posts nothing when Claude answers the quiet word.

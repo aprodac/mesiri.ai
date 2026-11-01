@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { DEFAULT_SKIP, ProdWatch, QUIET, MAX_CONVERSATIONS, SCREEN_PROMPT, Screener, parseInterval, asObjects, chatHtml, conversations, flagRows, opsSources, screenFlags, screenItems, skipPatterns, watchPrompt, watchSql } from "../src/prod_watch.js";
+import { FAIL_ALERT, requestLines, DEFAULT_SKIP, ProdWatch, QUIET, MAX_CONVERSATIONS, SCREEN_PROMPT, Screener, parseInterval, asObjects, chatHtml, conversations, flagRows, opsSources, screenFlags, screenItems, skipPatterns, watchPrompt, watchSql } from "../src/prod_watch.js";
 
 const T0 = 1_761_700_000; // epoch seconds
 const msg = (over) => ({
@@ -334,6 +334,9 @@ test("TM-18: the SQL reads every company, marks the test ones, and a skip list c
   assert.doesNotMatch(sql, /NOT ILIKE/); // the test companies' testers are the users today
   assert.match(sql, /ILIKE ANY \(ARRAY\['Mesiri Test Builders', '%paraclet%'\]\) AS is_test/);
   assert.match(sql, /jt\.stage = 'agent_v2_live' AND c->>'tool' = 'tell_the_team'\) AS feedback/);
+  // Production's journey_traces.stage_payload is jsonb: json_typeof(jsonb) failed every read on 1 Nov (HTTP 400).
+  assert.match(sql, /jsonb_array_elements\(CASE WHEN jsonb_typeof\(jt\.stage_payload::jsonb->'calls'\)/);
+  assert.doesNotMatch(sql, /\bjson_typeof|\bjson_array_elements|'\[\]'::json\b/);
   assert.deepEqual(skipPatterns(undefined), DEFAULT_SKIP);
   assert.deepEqual(skipPatterns("Acme Test, x'); DROP TABLE y;--"), ["Acme Test", "x DROP TABLE y--"]);
   assert.deepEqual(skipPatterns(""), []);
@@ -419,6 +422,43 @@ test("a real company's message opens the watch: one look 5 minutes later, then i
     t += 2 * 60_000;
     assert.equal(await watch.maybeTick(), false); // nothing new: idle again
     assert.equal(screens(), 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("TM-18: a request to Mesiri is announced in the group at once, by code, before Claude's turn", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pw-"));
+  try {
+    const told = msg({ text: "(voice) puthiya project create cheyyanam", reply: "Not here yet; shared with the team.", feedback: "missing_feature: create a new project from WhatsApp chat", person: "Ilan", person_role: "admin", company: "Paraclette", is_test: true, at: T0 - 30, done_at: T0 - 25 });
+    const { fetchFn } = fakeOps([[told]]);
+    const events = [];
+    const watch = new ProdWatch({ sources: { mesiri: { url: "u", token: "t" } }, ask: async () => events.push("ask"), notify: async (p, t) => events.push(t), file: join(dir, "s.json"), fetchFn, now: () => T0 * 1000 });
+    await watch.tick();
+    assert.equal(events.length, 2);
+    assert.match(events[0], /📥 \*Ilan\* \(admin, Paraclette\) told Mesiri: missing feature: create a new project from WhatsApp chat/);
+    assert.equal(events[1], "ask");
+    assert.deepEqual(requestLines([]), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("TM-18: a watch that can't read production says so once after 3 failures, and once when it reads again", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pw-"));
+  try {
+    let fail = true;
+    const fetchFn = async () => (fail ? { ok: false, status: 400, json: async () => ({ detail: "function json_typeof(jsonb) does not exist" }) } : { ok: true, json: async () => ({ columns: [], rows: [] }) });
+    const said = [];
+    const watch = new ProdWatch({ sources: { mesiri: { url: "u", token: "t" } }, ask: async () => {}, notify: async (p, t) => said.push(t), file: join(dir, "s.json"), fetchFn, now: () => T0 * 1000 });
+    for (let i = 0; i < FAIL_ALERT + 2; i++) await watch.anyNew();
+    assert.equal(said.length, 1);
+    assert.match(said[0], /⚠️ The production watch can't read production \(ops API HTTP 400: function json_typeof\(jsonb\) does not exist\)/);
+    fail = false;
+    await watch.anyNew();
+    await watch.anyNew();
+    assert.equal(said.length, 2);
+    assert.match(said[1], /reads production again/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -27,6 +27,8 @@ export const MAX_CONVERSATIONS = 12;
 /** A reply slower than this (seconds from received to processed) is flagged. */
 export const SLOW_SECONDS = 15;
 const FIRST_LOOK_MINUTES = 60;
+/** Failed reads in a row before the team group is told the watch is blind (TM-18). */
+export const FAIL_ALERT = 3;
 const WINDOW_SECONDS = 15 * 60;
 /** How often the free check runs (one SELECT, no AI): is there a new message (any company, TM-18)? */
 export const PROBE_MINUTES = 2;
@@ -61,13 +63,29 @@ export function watchSql(since, limit = 400, skip = []) {
        (SELECT left(string_agg((c->'args'->>'kind') || ': ' || coalesce(c->'args'->>'about', '')
                  || coalesce(' / why: ' || (c->'args'->>'why'), ''), ' | '), 400)
           FROM journey_traces jt,
-               json_array_elements(CASE WHEN json_typeof(jt.stage_payload->'calls') = 'array' THEN jt.stage_payload->'calls' ELSE '[]'::json END) c
+               jsonb_array_elements(CASE WHEN jsonb_typeof(jt.stage_payload::jsonb->'calls') = 'array' THEN jt.stage_payload::jsonb->'calls' ELSE '[]'::jsonb END) c
          WHERE jt.correlation_id = m.correlation_id AND jt.stage = 'agent_v2_live' AND c->>'tool' = 'tell_the_team') AS feedback
 FROM inbound_messages m LEFT JOIN organizations o ON o.id = m.organization_id
 LEFT JOIN LATERAL (SELECT u.full_name, u.role FROM users u WHERE u.organization_id = m.organization_id
   AND regexp_replace(u.whatsapp_number, '\\D', '', 'g') = regexp_replace(m.sender_wa_id, '\\D', '', 'g') LIMIT 1) su ON true
 WHERE m.received_at > to_timestamp(${from}) AND m.received_at < now() - interval '2 minutes'
 ORDER BY m.received_at ASC LIMIT ${Math.max(1, Math.min(1000, Number(limit) || 400))}`;
+}
+
+/**
+ * TM-18: one group line per request someone made to Mesiri (its tell_the_team call), posted by code as soon as the watch
+ * sees it: who, what, and that it is being looked at. Name, role and company only; never a phone number.
+ */
+export function requestLines(convs) {
+  const out = [];
+  for (const c of convs) {
+    for (const m of c.messages) {
+      if (!m.feedback || !c.flags.has(m.correlation_id)) continue;
+      const who = `*${c.person || "Someone"}*${c.role ? ` (${c.role}, ${c.company})` : ` (${c.company})`}`;
+      out.push(`📥 ${who} told Mesiri: ${String(m.feedback).replace(/_/g, " ").slice(0, 300)}\nLooking into it now; the plan follows here in a few minutes.`);
+    }
+  }
+  return out;
 }
 
 /** The ops API's { columns, rows } as objects. */
@@ -354,8 +372,9 @@ export class ProdWatch {
    * @param ask       (project, text) => void: run the planning turn in the project's team group ("watch" conversation)
    * @param file      where the cursor and the reported ids are kept
    */
-  constructor({ sources, ask, file, log = () => {}, fetchFn = fetch, now = () => Date.now(), minutes = 5, screener = null, lookBackMinutes = 30, skip = DEFAULT_SKIP, autobuildOn = null }) {
-    Object.assign(this, { sources, ask, file, log, fetchFn, now, minutes, screener, lookBackMinutes, skip, autobuildOn, started: false, burstAt: null });
+  constructor({ sources, ask, file, log = () => {}, fetchFn = fetch, now = () => Date.now(), minutes = 5, screener = null, lookBackMinutes = 30, skip = DEFAULT_SKIP, autobuildOn = null, notify = null }) {
+    // notify(project, text): a code-posted line in the project's team group (TM-18: no silence; no AI turn).
+    Object.assign(this, { sources, ask, file, log, fetchFn, now, minutes, screener, lookBackMinutes, skip, autobuildOn, notify, started: false, burstAt: null, failing: {} });
   }
 
   /** The code flags plus the AI screen's, for the fresh rows; the screen failing leaves the code flags. */
@@ -401,8 +420,43 @@ export class ProdWatch {
       headers: { authorization: `Bearer ${source.token}`, "content-type": "application/json" },
       body: JSON.stringify({ sql: watchSql(since, limit, this.skip) }),
     });
-    if (!res.ok) throw new Error(`ops API HTTP ${res.status}`);
+    if (!res.ok) {
+      let why = "";
+      try {
+        why = String((await res.json())?.detail || "").slice(0, 160);
+      } catch {
+        // no body
+      }
+      throw new Error(`ops API HTTP ${res.status}${why ? `: ${why}` : ""}`);
+    }
     return asObjects(await res.json());
+  }
+
+  /**
+   * TM-18 (Ilan, 1 Nov: "I did not get notified"): a watch that can't read production says so in the team group, once,
+   * after FAIL_ALERT reads in a row, and once again when it reads again. Never throws.
+   */
+  async health(project, error = null) {
+    const f = (this.failing[project] ||= { n: 0, alerted: false });
+    if (!error) {
+      if (f.alerted) await this.say(project, "✅ The production watch reads production again; requests from WhatsApp are picked up.");
+      this.failing[project] = { n: 0, alerted: false };
+      return;
+    }
+    f.n += 1;
+    if (f.n >= FAIL_ALERT && !f.alerted) {
+      f.alerted = true;
+      await this.say(project, `⚠️ The production watch can't read production (${String(error).slice(0, 200)}). Requests and "bad UX" sent to Mesiri are NOT being picked up until this is fixed.`);
+    }
+  }
+
+  async say(project, text) {
+    if (!this.notify) return;
+    try {
+      await this.notify(project, text);
+    } catch (e) {
+      this.log(`prod-watch ${project}: couldn't post to the team group: ${e.message}`);
+    }
   }
 
   /** One look at every project with an ops source. Never throws for one project's failure. */
@@ -447,9 +501,12 @@ export class ProdWatch {
     for (const [project, source] of Object.entries(this.sources)) {
       const since = state[project]?.since ?? this.now() / 1000 - FIRST_LOOK_MINUTES * 60;
       try {
-        if ((await this.read(source, since, 1)).length) return true;
+        const rows = await this.read(source, since, 1);
+        await this.health(project);
+        if (rows.length) return true;
       } catch (e) {
         this.log(`prod-watch ${project}: ${e.message}`);
+        await this.health(project, e.message);
       }
     }
     return false;
@@ -519,8 +576,10 @@ export class ProdWatch {
       try {
         // Re-read the last window too: a flag needs the sender's earlier messages.
         rows = await this.read(source, s.since - WINDOW_SECONDS);
+        await this.health(project);
       } catch (e) {
         this.log(`prod-watch ${project}: ${e.message}`);
+        await this.health(project, e.message);
         continue;
       }
       const fresh = rows.filter((r) => Number(r.at) > s.since);
@@ -537,6 +596,8 @@ export class ProdWatch {
       s.reported = [...reported].slice(-2000);
       writeFileSync(this.file, JSON.stringify(state));
       this.log(`prod-watch ${project}: ${fresh.length} new message(s), ${convs.length} flagged conversation(s)`);
+      // TM-18: what people asked Mesiri for is announced at once, by code, before Claude starts on it.
+      for (const line of requestLines(convs)) await this.say(project, line);
       const autobuild = Boolean(this.autobuildOn?.(project));
       if (convs.length) await this.ask(project, watchPrompt(project, convs, { minutes: this.minutes, autobuild }), convs);
     }
