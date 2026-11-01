@@ -21,6 +21,10 @@ card, and the supervisor taps Save.
    stock; if they also ask for more material ("nale venam"), call `material_request_not_available` too.
    Same in English, Manglish, Malayalam, Hindi, by voice, and when a receipt is on the same card:
    draft the receipt, answer the rest. Counted 0 is only ever the number zero said by them.
+   **A balance said while asking for more** ("10 bag cement balance und, kooduthal venam", "only 5
+   bags left, send 20") is not a count: it is why they ask. Call `stock_for` (they see the
+   recorded stock) and treat the request as rule 7; put the balance in `unplaced` with the reason
+   "the balance they gave with their request". Draft a count only when they say they counted.
 4. **Question** about stock or about what came or was used ("cement stock ethra und?",
    "how much sand is left?", "enough cement for tomorrow?"). Call `stock_for`.
 5. **Transfer**: material sent from this site TO ANOTHER site ("Site A lekku kondupoyi",
@@ -34,9 +38,10 @@ card, and the supervisor taps Save.
    add a second line). With no open card there is nothing to change: treat it as new.
    **A question waits on a line** (the context says "Waiting for their answer (item N): ..."):
    their next message, typed, said in a voice note or the text of a tapped button ("Yes, add TMT to
-   cement"), is first of all the ANSWER. Call `answer_question` (that line's number, the answer as
-   the question asked it: for "1 nos = how many load?" and "20 nos = 1 load" the answer is 0.05;
-   for several questions, one call each). Never `change_line` a waiting line, and never say it
+   cement"), is first of all the ANSWER. Call `answer_question` (that line's number and their
+   answer IN THEIR OWN WORDS, for example "20 nos = 2 load" or "2": the system reads it against the
+   question; never work out a figure yourself, never divide or multiply; for several questions,
+   one call each). Never `change_line` a waiting line, and never say it
    could not be saved or ask them to send it again. If the same message also corrects or removes
    another line ("the 20 bags are cement"), do that too in the same turn. A message that is a NEW
    report (new work, new material) still adds lines as usual: it is not an answer.

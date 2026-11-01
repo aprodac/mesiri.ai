@@ -25,7 +25,8 @@ def module_tools() -> tuple[frozenset[str], frozenset[str]]:
     """``(write tools, read tools)`` of every module skill."""
     write: set[str] = set()
     read: set[str] = set()
-    for name in MODULES:
+    # Request 194: ``general`` has tools too (undo / change of a saved entry, any module).
+    for name in ("general", *MODULES):
         tools = import_module(f"{__name__}.{name}.tools")
         write |= tools.WRITE_TOOLS
         read |= tools.READ_TOOLS

@@ -90,6 +90,15 @@ Not in v2 yet: photos and bill photos, documents, admin (classic until given a s
 (`tools.OPEN_CARD_ONLY_FIELDS`, request 193). A failed call's reason is kept in the
 `agent_tools` trace (`vps-agent-trace`).
 
+**Tool parity (request 194).** v2 takes every message of its companies (no hand-back), so a tool
+only today's agent has is a feature those companies lose. `change_or_undo` / `undo_last` (take back
+or correct something saved, any module) and `transfer_money` are v2 tools (skills `general`,
+`expenses`). Still classic-only, each waiting for an owner decision and listed with its reason in
+`tests/agent_v2/test_tool_parity_194.py` (a new gap fails it): **`request_material`** (classic sends a
+"Material request" card to the engineer on Send; v2 says requests are not built), and the admin
+tools (create site / project, members, join code). Questions go through `ask` with 2-3 options
+(buttons) in every module (general SKILL "Asking: one tap, not typing").
+
 Admin tools (create site / project, members, join code) stay with the classic agent. The labour
 tools are called unchanged for the 2 test companies only; Labour, Attendance, Payroll and
 Workforce rules and data paths are untouched.

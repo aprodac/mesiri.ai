@@ -135,12 +135,11 @@ class V2Run:
 
 
 def v2_card_words(text: str) -> str:
-    """The context's open-card paragraph names today's tools; v2's are ``change_line`` and
-    ``remove_line`` (one place writes that paragraph: runtime/agent/draft.py)."""
-    return (
-        text.replace("update_pending_card", "change_line")
-        .replace("undo_last cancels the whole card.", "remove_line takes one line off the open card.")
-        .replace("undo_last removes the saved card.", "")
+    """The context's open-card paragraph names today's tools; v2's line tools are ``change_line``
+    and ``remove_line`` (one place writes that paragraph: runtime/agent/draft.py). ``undo_last``
+    is v2's too since request 194, so its words stay."""
+    return text.replace("update_pending_card", "change_line").replace(
+        "undo_last cancels the whole card.", "remove_line takes one line off; undo_last cancels the whole card."
     )
 
 

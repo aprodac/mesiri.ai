@@ -97,7 +97,9 @@ async def test_remove_line_with_no_open_card_says_so_and_changes_nothing(world):
 def test_the_open_card_paragraph_names_the_v2_tools():
     text = "call update_pending_card with card_id abc. undo_last cancels the whole card."
     out = v2_card_words(text)
-    assert "change_line" in out and "update_pending_card" not in out and "undo_last" not in out
+    assert "change_line" in out and "update_pending_card" not in out
+    # Request 194: undo_last is a v2 tool now, so the card paragraph keeps it (with remove_line).
+    assert "undo_last" in out and "remove_line" in out
 
 
 # -- root 2: transfer, rate, unit ---------------------------------------------------------------

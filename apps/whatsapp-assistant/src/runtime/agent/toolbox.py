@@ -642,6 +642,10 @@ class AgentToolbox:
                     "instruction": f"Nothing was saved. Say exactly: {EQUIPMENT_LINE}",
                 }
             )
+        if name == ADJUST_STOCK and args.get("counted") is None and args.get("quantity") is not None:
+            # Request 194 (live gate #109): "stock count: sand 3 loads" came as quantity 3, so the
+            # count was lost and the card asked for it. On a count, the figure said IS the count.
+            args = {**{k: v for k, v in args.items() if k != "quantity"}, "counted": args["quantity"]}
         if name == ADJUST_STOCK and unsaid_zero_count(self.user_text, args):
             # Request 192: no counted figure; the card then shows the records and asks
             # ("Records show 127 bag cement. Set stock to 0?"), so nothing is wiped unasked.

@@ -8,5 +8,5 @@ from __future__ import annotations
 
 from runtime.agent import tools as classic
 
-WRITE_TOOLS = frozenset({classic.SAVE_EXPENSE})
+WRITE_TOOLS = frozenset({classic.SAVE_EXPENSE, classic.TRANSFER_MONEY})
 READ_TOOLS = frozenset({classic.QUERY_EXPENSES})

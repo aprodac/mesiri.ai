@@ -32,6 +32,7 @@ KIND = {
 #: What a line of each kind is judged on (request 178: transfers have a quantity too).
 QUANTITY_KINDS = (dr.KIND_MATERIAL_IN, dr.KIND_MATERIAL_OUT, dr.KIND_TRANSFER_MATERIAL)
 MATERIAL_ACTIONS = frozenset(KIND)
+MATERIAL_KINDS = (dr.KIND_MATERIAL_IN, dr.KIND_MATERIAL_OUT, dr.KIND_STOCK_COUNT, dr.KIND_TRANSFER_MATERIAL)
 
 
 def _load(path: Path) -> list[dict[str, Any]]:
@@ -58,8 +59,15 @@ def golden_as_evals() -> list[dict[str, Any]]:
             new.update(ask=True, expect=[])
         elif case.get("query"):
             new.update(query=True, expect=[])
-        elif case.get("chat") or case.get("card") or any(a not in MATERIAL_ACTIONS for a in actions):
+        elif case.get("chat") or case.get("card") or not any(a in MATERIAL_ACTIONS for a in actions):
             new.update(other=True, expect=[])
+        elif any(a not in MATERIAL_ACTIONS for a in actions):
+            # Request 194: v2 reads every message (request 180), so "6 mason, 10 helper vannu, 20 bag
+            # cement use cheythu" is judged on its material lines (mixed), not as "draft nothing".
+            new.update(mixed=True, expect=[
+                {"kind": KIND[e["action"]], "material": e["material"], "quantity": e["quantity"]}
+                for e in case["expect"] if e["action"] in MATERIAL_ACTIONS
+            ])
         else:
             new["expect"] = [
                 {"kind": KIND[e["action"]], "material": e["material"], "quantity": e["quantity"]}
@@ -188,6 +196,7 @@ async def run_case(case: dict[str, Any], v2_provider: Any) -> tuple[Verdict, Any
     world.inventory = _Books()
     world.actor = replace(world.actor, role="PROJECT_MANAGER")  # may adjust stock
     await _given(world, case)
+    before = {(i.id, json.dumps(i.args, sort_keys=True, default=str)) for i in await open_items(world)}
     from runtime.agent import draft as draft_card
 
     card_line = draft_card.context_line(await world.drafts.open_for(world.actor.organization_id, world.actor.user_id))
@@ -200,14 +209,21 @@ async def run_case(case: dict[str, Any], v2_provider: Any) -> tuple[Verdict, Any
         correlation_id="cor_eval",
     )
     names = [name for name, _ in recording.calls]
+    items = await open_items(world)
+    # Request 194: a wrong save is a material line that is ON the card and was not there before
+    # (or was changed), never a call the code refused (change_line with no open card adds nothing).
+    drafted = any(
+        i.kind in MATERIAL_KINDS and (i.id, json.dumps(i.args, sort_keys=True, default=str)) not in before
+        for i in items
+    )
     verdict = judge(
         case,
-        await open_items(world),
+        items,
         fell_back=classic.calls > 0,
         asked=result.toolbox.parked is not None or "ask" in names,
         queried="stock_for" in names,
         names=names,
-        v2_drafted=any(n in ("draft_receipt", "draft_usage", "draft_stock_count", "transfer", "change_line", "remove_line") for n in names),
+        v2_drafted=drafted,
         not_built="material_request_not_available" in names,
     )
     return verdict, result

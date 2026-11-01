@@ -91,6 +91,10 @@ def amount_answer(text: str, args: dict[str, Any], stock_unit: str) -> Decimal |
     if per_one:
         each = numbers[-1]
         return each * quantity if quantity is not None else None
+    if len(numbers) == 2 and quantity is not None and numbers[0] == quantity:
+        # Request 194 (live gate #1842): "20 nos = 2 load aanu" to "How many load is 20 nos?" is
+        # the line's own figure, then the answer: 2 (never 2 / 20).
+        return numbers[1]
     if len(numbers) != 1:
         return None
     return numbers[0]
