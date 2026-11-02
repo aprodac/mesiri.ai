@@ -48,6 +48,7 @@ from runtime.ai_outage import (
     retry_attempt,
 )
 from runtime.release_notes import request_ref
+from runtime.team_notify import poke_watch_soon
 
 from .agent import SOP, ApiAgent, PendingWrite, WriteResult, _detail, confirm
 from .app import build_api_app
@@ -306,6 +307,7 @@ class ApiWhatsApp:
             self._just_saved[message.correlation_id] = list(turn.saved)
         words = turn.reply or turn.question or (_saved_text(turn.saved, state.get("language")) if turn.saved else "")
         if any(c.get("tool") == TELL_THE_TEAM for c in calls):
+            poke_watch_soon(message.correlation_id)  # TM-22: the team bot looks now, not at its next check
             # TM-21: the request's reference, the same one the team group sees, so both can talk about it.
             ref = request_ref(message.correlation_id)
             if ref and ref not in words:

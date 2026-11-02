@@ -72,6 +72,23 @@ class TeamNotifier:
             _log.exception("team_notify.failed")
             return False
 
+    async def poke_watch(self, correlation_id: str | None = None) -> bool:
+        """TM-22: a request was just made to Mesiri: the team bot's production watch looks as soon as the
+        message has settled, not at its next 2-minute check. Best-effort; never raises."""
+        if not self._token:
+            return False
+        try:
+            async with self._session() as client:
+                response = await client.post(
+                    f"{self._api}/watch/poke",
+                    json={"project": self._project, "correlation_id": correlation_id or ""},
+                    headers=self._headers(),
+                )
+                return response.status_code == 202
+        except Exception:  # noqa: BLE001 -- the watch still finds it on its own check
+            _log.warning("team_notify.poke_failed", exc_info=True)
+            return False
+
     def _session(self) -> httpx.AsyncClient:
         if self._client is not None:
             return _Borrowed(self._client)  # type: ignore[return-value]
@@ -111,3 +128,18 @@ class _Borrowed:
 
     async def __aexit__(self, *exc: object) -> None:
         return None
+
+
+def poke_watch_soon(correlation_id: str | None = None) -> None:
+    """TM-22: fire-and-forget :meth:`TeamNotifier.poke_watch` (after the reply; never on the reply's wait)."""
+    import asyncio
+
+    try:
+        task = asyncio.get_running_loop().create_task(TeamNotifier().poke_watch(correlation_id))
+    except RuntimeError:
+        return
+    _POKES.add(task)
+    task.add_done_callback(_POKES.discard)
+
+
+_POKES: set = set()

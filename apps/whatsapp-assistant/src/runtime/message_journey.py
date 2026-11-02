@@ -694,6 +694,10 @@ def build_message_handlers(
                 _log.warning("release_feedback.trace_failed correlation_id=%s", message.correlation_id, exc_info=True)
             await message_logger.log_reply(correlation_id=message.correlation_id, reply=reply)
             await message_logger.mark_completed(correlation_id=message.correlation_id)
+            if not works:
+                from runtime.team_notify import poke_watch_soon
+
+                poke_watch_soon(message.correlation_id)  # TM-22: re-planned now, not at the next check
             return True
 
         async def _photo_language(ctx, message) -> str:  # type: ignore[no-untyped-def]

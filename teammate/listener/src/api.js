@@ -91,7 +91,7 @@ function pickOption(store, chat, { message_n, option } = {}) {
 /**
  * @param {{ store: import('./store.js').Store, wa: { status(): object, requestPairingCode(phone: string): Promise<string> }, token: string }} deps
  */
-export function createApi({ store, wa, token, ai = null }) {
+export function createApi({ store, wa, token, ai = null, brain = null }) {
   if (!token || token.length < 16) throw new Error("TEAMMATE_API_TOKEN must be at least 16 characters");
   const sentAt = [];
   const testSentAt = [];
@@ -147,6 +147,16 @@ export function createApi({ store, wa, token, ai = null }) {
       }
       // TM-20: Gemini calls made outside the listener: the brain's watch screen, or a CI run's total (`calls`, and `usd`
       // when the sender knows that model's price). Otherwise priced like the listener's own.
+      if (req.method === "POST" && path === "/watch/poke") {
+        // TM-22: Mesiri has just passed a request on (tell_the_team, a "Still wrong" tap): the production watch
+        // looks as soon as the message has settled, instead of at its next 2-minute check.
+        const body = await readJson(req);
+        const proj = String(body.project || "");
+        if (!/^[a-z0-9_-]{1,40}$/.test(proj)) return send(res, 400, { error: "project is required" });
+        if (!brain?.poke) return send(res, 503, { error: "no brain connected" });
+        brain.poke({ project: proj, correlation_id: String(body.correlation_id || "").slice(0, 64) });
+        return send(res, 202, { ok: true });
+      }
       if (req.method === "POST" && path === "/ai/usage") {
         const body = await readJson(req);
         if (!/^[a-z_]{1,40}$/.test(String(body.kind || ""))) return send(res, 400, { error: "kind is required" });

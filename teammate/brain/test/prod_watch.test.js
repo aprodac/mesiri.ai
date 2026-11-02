@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { FAIL_ALERT, requestLines, requestRef, DEFAULT_SKIP, ProdWatch, QUIET, MAX_CONVERSATIONS, SCREEN_PROMPT, Screener, parseInterval, asObjects, chatHtml, conversations, flagRows, opsSources, screenFlags, screenItems, skipPatterns, watchPrompt, watchSql } from "../src/prod_watch.js";
+import { FAIL_ALERT, SETTLE_MS, requestLines, requestRef, DEFAULT_SKIP, ProdWatch, QUIET, MAX_CONVERSATIONS, SCREEN_PROMPT, Screener, parseInterval, asObjects, chatHtml, conversations, flagRows, opsSources, screenFlags, screenItems, skipPatterns, watchPrompt, watchSql } from "../src/prod_watch.js";
 
 const T0 = 1_761_700_000; // epoch seconds
 const msg = (over) => ({
@@ -495,4 +495,24 @@ test("TM-21: the request reference is the one Mesiri shows the person", () => {
   assert.equal(requestRef("cor_a838368708e5476aa92a8224e25b9038"), "#a83836");
   assert.equal(requestRef("x"), "");
   assert.equal(requestRef(null), "");
+});
+
+test("TM-22: a poke makes one check after the settle time, and several pokes make one", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const dir = mkdtempSync(join(tmpdir(), "pw-"));
+  try {
+    let ticks = 0;
+    const watch = new ProdWatch({ sources: { mesiri: { url: "u", token: "t" } }, ask: async () => {}, file: join(dir, "s.json"), log: () => {} });
+    watch.maybeTick = async () => { ticks += 1; };
+    assert.equal(watch.poke("mesiri"), true);
+    assert.equal(watch.poke("mesiri"), true);
+    assert.equal(watch.poke("other"), false); // not a watched project
+    t.mock.timers.tick(SETTLE_MS - 1);
+    assert.equal(ticks, 0);
+    t.mock.timers.tick(1);
+    assert.equal(ticks, 1);
+    assert.equal(watch.probedAt, 0); // the 2-minute probe wait is skipped
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

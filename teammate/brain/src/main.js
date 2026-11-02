@@ -4,6 +4,7 @@
 //   POST /ask       {project, chat, chat_name, chat_role, reply_chat, sender, n, text, quoted_text}   a planning turn
 //   POST /approve   {project, item_id?, by, reply_chat}                                             a working turn
 //   POST /cost      {project, since, until?}                                                        production AI spend (TM-20)
+//   POST /poke      {project, correlation_id?}                                                       a request was just made (TM-22)
 //   GET  /health
 // All POSTs need `Authorization: Bearer <TEAMMATE_API_TOKEN>` and come from the
 // listener, which has already checked that the sender is approved.
@@ -277,7 +278,7 @@ createServer(async (req, res) => {
   };
   if (req.method === "GET" && req.url === "/health") return reply(200, { ok: true, projects: Object.keys(projects), previews: Boolean(render) });
   if (!authorized(req)) return reply(401, { error: "unauthorized" });
-  if (req.method !== "POST" || !["/ask", "/approve", "/cost"].includes(req.url)) return reply(404, { error: "not found" });
+  if (req.method !== "POST" || !["/ask", "/approve", "/cost", "/poke"].includes(req.url)) return reply(404, { error: "not found" });
   let raw = "";
   for await (const c of req) {
     raw += c;
@@ -289,7 +290,7 @@ createServer(async (req, res) => {
   } catch {
     return reply(400, { error: "bad json" });
   }
-  const required = { "/ask": ["project", "chat", "reply_chat", "text", "sender"], "/approve": ["project", "reply_chat", "by"], "/cost": ["project", "since"] }[req.url];
+  const required = { "/ask": ["project", "chat", "reply_chat", "text", "sender"], "/approve": ["project", "reply_chat", "by"], "/cost": ["project", "since"], "/poke": ["project"] }[req.url];
   for (const k of required) if (!body[k]) return reply(400, { error: `${k} is required` });
   if (req.url === "/cost") {
     const source = opsByProject[body.project];
@@ -299,6 +300,12 @@ createServer(async (req, res) => {
     } catch (e) {
       return reply(502, { error: String(e.message || e).slice(0, 160) });
     }
+  }
+  if (req.url === "/poke") {
+    // TM-22: a request was just made to Mesiri; the watch looks once it has settled.
+    if (!brain.prodWatch) return reply(404, { error: "production watch is off" });
+    brain.prodWatch.poke(body.project);
+    return reply(202, { ok: true });
   }
   if (req.url === "/ask") brain.ask(body);
   else brain.approve(body);

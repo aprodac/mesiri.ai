@@ -56,12 +56,12 @@ const brain = brainUrl
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return (await res.json()).rows;
       };
-      return { ask: (req) => call("/ask", req), approve: (req) => call("/approve", req), cost };
+      return { ask: (req) => call("/ask", req), approve: (req) => call("/approve", req), poke: (req) => call("/poke", req), cost };
     })()
   : null;
 const bot = new Bot({ store, wa, log, brain, ai });
 wa.onLive = (rec, n) => bot.handle(rec, n).catch((e) => log(`bot failed on #${n}: ${e}`));
-const api = createApi({ store, wa, token: process.env.TEAMMATE_API_TOKEN, ai });
+const api = createApi({ store, wa, token: process.env.TEAMMATE_API_TOKEN, ai, brain });
 
 api.listen(port, host, () => log(`inbox API on http://${host}:${port}`));
 await wa.start();
