@@ -53,6 +53,9 @@ test("brain: planning turns are read-only, keep one session per group, answer in
     assert.ok(o.allowedTools.includes("Read") && o.allowedTools.includes("mcp__whatsapp__preview_html"));
     assert.ok(!o.allowedTools.includes("Edit") && !o.allowedTools.some((t) => t.startsWith("Bash(git *)")));
     assert.ok(o.disallowedTools.includes("Bash(git push --force*)") && o.disallowedTools.includes("Read(**/.env)"));
+    // 2 Nov: "sed -n 1,120p file" was refused while planning; its writing forms stay refused there.
+    assert.ok(o.allowedTools.includes("Bash(sed -n *)") && o.allowedTools.includes("Bash(find *)"));
+    assert.ok(o.disallowedTools.includes("Bash(sed -i*)") && o.disallowedTools.includes("Bash(find *-delete*)"));
     assert.ok(o.allowedTools.includes("Bash(gh workflow run testflight-feedback.yml *)"));
     assert.ok(!o.allowedTools.some((t) => t === "Bash(gh workflow run *)"));
     assert.ok(o.allowedTools.includes("Bash(gh run download * -D /tmp/*)") && !o.allowedTools.includes("Bash(gh run download *)"));

@@ -13,7 +13,8 @@
 
 import { readFileSync, writeFileSync, renameSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { BRAIN_TOOL_NAMES } from "./tools.js";
+import { BRAIN_TOOL_NAMES, PREVIEW_KINDS } from "./tools.js";
+import { requestRef } from "./prod_watch.js";
 import { AutoLoop, usageLimit, clock } from "./auto.js";
 import { Accounts } from "./accounts.js";
 import { AutoBuild } from "./autobuild.js";
@@ -58,6 +59,10 @@ const READ = [
   "Bash(cd *)", "Bash(cat *)", "Bash(head *)", "Bash(tail *)", "Bash(grep *)", "Bash(rg *)", "Bash(wc *)",
   "Bash(sort *)", "Bash(uniq *)", "Bash(jq *)", "Bash(echo *)", "Bash(pwd)", "Bash(tree *)", "Bash(file *)",
   "Bash(git ls-files *)", "Bash(git grep *)", "Bash(git rev-parse *)",
+  // 2 Nov (blocked: "cd apps/whatsapp-assistant; cat …; sed -n 1,120p …"; owner: "always give permission for these"):
+  // the other ways of viewing a file or a listing. Their writing forms are denied below.
+  "Bash(sed -n *)", "Bash(nl *)", "Bash(cut *)", "Bash(diff *)", "Bash(find *)", "Bash(stat *)", "Bash(du *)",
+  "Bash(less *)", "Bash(column *)", "Bash(basename *)", "Bash(dirname *)", "Bash(realpath *)", "Bash(git describe *)",
   // TestFlight feedback (owner's OK, 15 Oct): start only that workflow, read its runs, download files to /tmp.
   "Bash(gh workflow run testflight-feedback.yml *)", "Bash(gh workflow run testflight-feedback.yml)",
   "Bash(gh run watch *)", "Bash(gh run download * -D /tmp/*)", "Bash(gh run download * --dir /tmp/*)",
@@ -76,6 +81,8 @@ const WORK = [
   "Bash(mkdir *)", "Bash(cp *)", "Bash(mv *)", "Bash(rm *)", "Bash(touch *)",
   "Bash(printf *)", "Bash(which *)", "Bash(xargs *)", "Bash(test *)", "Bash(true)", "Bash(tsc *)",
 ];
+/** Planning (read-only) turns only: the writing forms of READ's viewers (sed -i, sed … w file, find -delete / -exec). */
+const READ_DENY = ["Bash(sed -i*)", "Bash(sed * -i*)", "Bash(sed *w /*)", "Bash(find *-delete*)", "Bash(find *-exec*)", "Bash(find *-fprint*)"];
 const DENY = [
   "Bash(git push --force*)", "Bash(git push -f*)", "Bash(git push * --force*)", "Bash(git push * -f *)",
   "Bash(* --no-verify*)", "Bash(git config *)", "Bash(git -c *)", "Bash(git remote *)",
@@ -83,6 +90,7 @@ const DENY = [
   // gh api is only open for repos/*/commits (READ); anything that could write is refused, any other endpoint is not allowed.
   "Bash(gh api *-X*)", "Bash(gh api *--method*)", "Bash(gh api * -f*)", "Bash(gh api * -F*)", "Bash(gh api *--field*)", "Bash(gh api *--raw-field*)", "Bash(gh api *--input*)",
   "Read(**/.env)", "Read(**/.env.*)", "Bash(cat *.env*)",
+  "Bash(sed *.env*)", "Bash(diff *.env*)",
   "Edit(**/.git/**)", "Write(**/.git/**)",
   // Plan 25: the deploy pipeline / CI and secrets stay human-only.
   "Edit(**/.github/**)", "Write(**/.github/**)", "Edit(**/.env*)", "Write(**/.env*)",
@@ -792,8 +800,40 @@ export class Brain {
     } catch (e) {
       this.log(`brain: prod-watch prepare ${project}: ${e.message}`);
     }
-    const req = { project, reply_project: project, chat: team.jid, chat_name: team.name || project, chat_role: "team", reply_chat: team.jid, sender: "the production watch", n: null, text, session: "watch", quiet, watch_conversations: conversations };
-    return this.enqueue(`${team.jid}::watch`, () => this.turn(req, "planning"));
+    const previewed = new Set();
+    const previewFailed = [];
+    const req = { project, reply_project: project, chat: team.jid, chat_name: team.name || project, chat_role: "team", reply_chat: team.jid, sender: "the production watch", n: null, text, session: "watch", quiet, watch_conversations: conversations, previewed, preview_failed: previewFailed };
+    return this.enqueue(`${team.jid}::watch`, async () => {
+      const out = await this.turn(req, "planning");
+      await this.previewCheck({ project, team, req, conversations, previewed, previewFailed });
+      return out;
+    });
+  }
+
+  /**
+   * TM-44 (2 Nov: Ilan said "bad ux" twice and got no "Is this how you want it?"; the watch prompt asked for a preview
+   * but the turn didn't send one, and nothing noticed). The model reads, the code checks: a bad-UX, missing-feature
+   * or idea request without a preview gets ONE short follow-up turn to send it; still none, the group is told why.
+   */
+  async previewCheck({ project, team, req, conversations, previewed, previewFailed }) {
+    if (!this.previewsOn) return;
+    const missing = [];
+    conversations.forEach((conv, i) => {
+      const request = [...(conv.messages || [])].reverse().find((m) => PREVIEW_KINDS.test(String(m.feedback || "")));
+      if (request && !previewed.has(request.correlation_id)) missing.push({ n: i + 1, conv, request });
+    });
+    if (!missing.length) return;
+    const list = missing.map((m) => `conversation ${m.n} (${m.conv.person || "someone"}, ${requestRef(m.request.correlation_id)})`).join(", ");
+    if (!previewFailed.length) {
+      const text = `Check by code (TM-44): no "Is this how you want it?" preview went out for ${list}. The plan is made: `
+        + "draw the reply Mesiri will give after the fix and send_preview it now, one per conversation. If one can't be drawn "
+        + "(nothing visible changes for the person), say so in one line instead. Post nothing else.";
+      await this.turn({ ...req, text, sender: "the production watch (preview check)" }, "planning");
+    }
+    const still = missing.filter((m) => !previewed.has(m.request.correlation_id));
+    if (!still.length) return;
+    const why = previewFailed.length ? previewFailed.join("; ") : "the watch turn did not send one";
+    await this.listener.send({ chat: team.jid, project, text: `⚠️ No preview went to ${still.map((m) => `${m.conv.person || "the person"} for ${requestRef(m.request.correlation_id)}`).join(", ")} (${why.slice(0, 300)}).` }).catch(() => {});
   }
 
   enqueue(key, fn) {
@@ -873,7 +913,7 @@ export class Brain {
           ...(this.modelFor(req.project).effort ? { effort: this.modelFor(req.project).effort } : {}),
           permissionMode: "dontAsk",
           allowedTools: mode === "working" ? WORK : READ,
-          disallowedTools: DENY,
+          disallowedTools: mode === "working" ? DENY : [...DENY, ...READ_DENY],
           mcpServers: { whatsapp: this.tools(ctx, this.plans) },
           maxBudgetUsd: req.budget || BUDGET[mode],
           settingSources: ["project"],

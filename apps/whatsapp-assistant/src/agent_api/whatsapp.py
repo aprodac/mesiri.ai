@@ -299,7 +299,13 @@ class ApiWhatsApp:
             _lap("v3_facts_memory")
             if state.get("pending") and state.get("pending_at") and time.time() - float(state["pending_at"]) > PENDING_MAX_AGE_S:
                 state["pending"], state["batch"] = [], None  # waiting for hours: never rides on a new card
-            ready = dropping_stale_sends([PendingWrite.from_json(e) for e in state.get("pending", [])])
+            ready = dropping_stale_sends([PendingWrite.from_json(e) for e in state.get("pending") or []])
+            last = next((m.text for m in reversed(history) if m.role == "model"), "")
+            if calls := command_call(text, message, last):
+                # 2 Nov (Ilan, Paraclette: "mesiri fix it" came back with the same "Ready to save" list, twice): the
+                # explicit command is the whole message, so the code answers it at once (no model turn) and asks
+                # how it should be instead; the waiting list is kept as it is, not drawn again.
+                return await self._feedback_only(message, ctx, state, calls, text, started)
             run = dict(
                 text=text, history=history, ready=ready, sender_name=ctx.full_name or "",
                 timezone=getattr(ctx, "timezone", None) or "Asia/Kolkata", correlation_id=message.correlation_id,
@@ -324,10 +330,17 @@ class ApiWhatsApp:
         finally:
             await client.close()
         calls = [{**c, "args": c.get("arguments")} for c in turn.calls]
-        if not any(c.get("tool") == TELL_THE_TEAM for c in calls):
-            # The explicit command always reaches the team bot, even when the model did not pass it on.
-            last = next((m.text for m in reversed(history) if m.role == "model"), "")
-            calls.extend(command_call(text, message, last))
+        unchanged = not turn.saved and [e.summary for e in turn.pending] == [e.summary for e in ready]
+        awaiting = state.pop("awaiting_why", None)
+        got_why = bool(awaiting and time.time() - float(awaiting.get("at") or 0) < AWAIT_WHY_SECONDS
+                       and not calls and unchanged and not turn.question)
+        if got_why:
+            # The answer to "how should it be instead?": a message that made Mesiri do nothing else is the
+            # person's preferred experience, and goes to the same request (the team bot adds it to the plan).
+            calls.append({"tool": TELL_THE_TEAM, "by": "code", "args": {
+                "kind": awaiting.get("kind") or "bad_ux",
+                "about": f"their answer to 'how should it be instead?' for request {awaiting.get('ref') or ''}".strip(),
+                "why": text[:500]}})
         await self._trace_turn(message, {
             # `args` as the old v2 trace had it: the team bot's watch reads tell_the_team from it (TM-18).
             "text": text, "calls": calls,
@@ -341,15 +354,43 @@ class ApiWhatsApp:
         if turn.saved:
             self._just_saved[message.correlation_id] = list(turn.saved)
         words = turn.reply or turn.question or (_saved_text(turn.saved, state.get("language")) if turn.saved else "")
-        if any(c.get("tool") == TELL_THE_TEAM for c in calls):
+        if got_why:
+            words = _in(state.get("language"), "api.feedback_got_why", FEEDBACK_GOT_WHY)
+        passed_on = any(c.get("tool") == TELL_THE_TEAM for c in calls)
+        if passed_on:
             self._requested.add(message.correlation_id)  # TM-22 / TM-28: the team bot is poked once it is answered
             # TM-21: the request's reference, the same one the team group sees, so both can talk about it.
             ref = request_ref(message.correlation_id)
             if ref and ref not in words:
                 words = f"{words}\n\n{ref}".strip()
+        if passed_on and unchanged and not turn.options:
+            # Feedback only: the waiting list (and its buttons) stays as it was; drawing it again under "passed to
+            # the team" read as Mesiri ignoring the complaint (2 Nov).
+            from runtime.agent.reply_clean import whatsapp_bold
+
+            await self._save_state(ctx, state)
+            return ReplySpec(text=without_ready_block(whatsapp_bold(words)) or "OK.")
         reply = self._reply(words, turn.pending, state, turn.options)
         await self._save_state(ctx, state)
         return reply
+
+    async def _feedback_only(self, message: Any, ctx: Any, state: dict, calls: list[dict[str, Any]], text: str,
+                             started: float) -> ReplySpec:
+        """"mesiri bad ux / fix it": passed to the team by the code, no model turn. Without a reason, the person is
+        asked how it should be instead (their next message goes to the same request); the waiting list is kept."""
+        kept = [e.get("summary") for e in state.get("pending") or []]
+        await self._trace_turn(message, {"text": text, "calls": calls, "feedback_only": True, "saved": [],
+                                         "pending": kept, "asked": None}, started)
+        self._requested.add(message.correlation_id)
+        language = state.get("language") or _language(text)
+        ref = request_ref(message.correlation_id)
+        if calls[0]["args"].get("why"):
+            words = _in(language, "api.feedback_noted", FEEDBACK_NOTED)
+        else:
+            words = _in(language, "api.feedback_ask", FEEDBACK_ASK)
+            state["awaiting_why"] = {"kind": calls[0]["args"].get("kind"), "at": time.time(), "ref": ref}
+        await self._save_state(ctx, state)
+        return ReplySpec(text=f"{words}\n\n{ref}".strip() if ref else words)
 
     async def _failed(self, exc: Exception, text: str, message: Any, ctx: Any, state: dict,
                       started: float) -> ReplySpec:
@@ -429,7 +470,7 @@ class ApiWhatsApp:
         words = turn.reply or turn.question
         if turn.pending:
             state = await self._state(ctx)
-            waiting = [PendingWrite.from_json(e) for e in state.get("pending", [])]
+            waiting = [PendingWrite.from_json(e) for e in state.get("pending") or []]
             card = self._reply(words, [*waiting, *turn.pending], state, [])
             await self._save_state(ctx, state)
             await self._send(card, wa_id)
@@ -577,6 +618,7 @@ class ApiWhatsApp:
         """The model's words, the ready list under them, and the buttons: the question's options
         when it asked one (one tap answers it), else Save / Cancel for the list."""
         had = bool(state.get("pending"))
+        pending = _distinct(pending)
         state["pending"] = [e.to_json() for e in pending]
         if pending and not (had and state.get("pending_at")):
             state["pending_at"] = time.time()
@@ -608,7 +650,8 @@ class ApiWhatsApp:
 
     async def _save_state(self, ctx: Any, state: dict) -> None:
         try:
-            await self._redis.set_json(self._key(ctx), {k: state.get(k) for k in ("pending", "batch", "language", "cancelled")},
+            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "cancelled", "pending_at", "awaiting_why")
+                                    if state.get(k) is not None},
                                        ttl_seconds=STATE_TTL_SECONDS)
         except Exception:  # noqa: BLE001
             _log.warning("agent_api.state_unsaved user=%s", ctx.user_id, exc_info=True)
@@ -656,6 +699,26 @@ def for_memory(sent: str) -> str:
     return f"{words}\n(under this reply, waiting for the Save button: {'; '.join(items)})".strip()
 
 
+#: How long Mesiri waits for the answer to "how should it be instead?" after a feedback command.
+AWAIT_WHY_SECONDS = 30 * 60
+FEEDBACK_ASK = ("Sorry 🙏 I've passed it to the team. How should it be instead? Send it as a message or a voice note; "
+                "you'll see how it will look before it changes.")
+FEEDBACK_NOTED = "Thanks 🙏 I've passed it to the team. You'll see how it will look, and I'll tell you here when it's fixed."
+FEEDBACK_GOT_WHY = "Thanks 👍 Added to your request. You'll see how it will look before it changes."
+
+
+def _distinct(pending: list[PendingWrite]) -> list[PendingWrite]:
+    """The same entry prepared twice (2 Nov: "10 TMT steel bars used at Tower A" listed as 1. and 2.) is one entry."""
+    seen: set[str] = set()
+    out: list[PendingWrite] = []
+    for e in pending:
+        key = json.dumps([e.tool, e.method, e.path, e.params, e.body, e.summary], sort_keys=True, default=str)
+        if key not in seen:
+            seen.add(key)
+            out.append(e)
+    return out
+
+
 def command_call(text: str, message: Any, last_reply: str) -> list[dict[str, Any]]:
     """The code's ``tell_the_team`` call for an explicit "mesiri bad ux / fix it" command, or none.
 
@@ -668,7 +731,8 @@ def command_call(text: str, message: Any, last_reply: str) -> list[dict[str, Any
     kind, why = command
     about = f"Mesiri's reply before this: {without_ready_block(last_reply)[:200]}" if last_reply else "the last reply"
     if getattr(message, "modality", None) in (InputModality.IMAGE, InputModality.DOCUMENT):
-        about = f"{about} (they sent a screenshot with it)"
+        seen = text.split("What the photo shows:", 1)[1].strip()[:300] if "What the photo shows:" in text else ""
+        about = f"{about} (they sent a screenshot with it{': ' + seen if seen else ''})"
     return [{"tool": TELL_THE_TEAM, "by": "code", "args": {"kind": kind, "about": about, **({"why": why} if why else {})}}]
 
 

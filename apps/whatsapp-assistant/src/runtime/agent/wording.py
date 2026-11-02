@@ -370,6 +370,27 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "धन्यवाद। क्या गलत था? मैसेज या वॉइस नोट भेजिए।",
         "hinglish": "Thanks. Kya galat tha? Message ya voice note bhejiye.",
     },
+    "api.feedback_ask": {
+        "english": "Sorry 🙏 I've passed it to the team. How should it be instead? Send it as a message or a voice note; you'll see how it will look before it changes.",
+        "manglish": "Sorry 🙏 Team-nu koduthu. Ithu engane aayirikkanam? Message aayo voice note aayo ayakkoo; maattunnathinu munpu ethu pole aakum ennu kaanikkaam.",
+        "malayalam": "ക്ഷമിക്കണം 🙏 ടീമിന് കൊടുത്തു. ഇത് എങ്ങനെ ആയിരിക്കണം? മെസ്സേജ് ആയോ വോയ്സ് നോട്ട് ആയോ അയക്കൂ; മാറ്റുന്നതിനു മുൻപ് എങ്ങനെ ആകുമെന്ന് കാണിക്കാം.",
+        "hindi": "माफ़ कीजिए 🙏 मैंने टीम को बता दिया है। इसे कैसा होना चाहिए? मैसेज या वॉइस नोट भेजिए; बदलने से पहले आपको दिखा देंगे कि यह कैसा दिखेगा।",
+        "hinglish": "Sorry 🙏 Maine team ko bata diya. Ise kaisa hona chahiye? Message ya voice note bhejiye; badalne se pehle aapko dikha denge ki ye kaisa dikhega.",
+    },
+    "api.feedback_noted": {
+        "english": "Thanks 🙏 I've passed it to the team. You'll see how it will look, and I'll tell you here when it's fixed.",
+        "manglish": "Thanks 🙏 Team-nu koduthu. Ethu pole aakum ennu kaanikkaam, sheriyaakumbol ivide ariyikkaam.",
+        "malayalam": "നന്ദി 🙏 ടീമിന് കൊടുത്തു. എങ്ങനെ ആകുമെന്ന് കാണിക്കാം, ശരിയാകുമ്പോൾ ഇവിടെ അറിയിക്കാം.",
+        "hindi": "धन्यवाद 🙏 मैंने टीम को बता दिया है। आपको दिखा देंगे कि यह कैसा दिखेगा, और ठीक होने पर यहीं बताएँगे।",
+        "hinglish": "Thanks 🙏 Maine team ko bata diya. Aapko dikha denge ki ye kaisa dikhega, aur theek hone par yahin batayenge.",
+    },
+    "api.feedback_got_why": {
+        "english": "Thanks 👍 Added to your request. You'll see how it will look before it changes.",
+        "manglish": "Thanks 👍 Ningalude request-il cherthu. Maattunnathinu munpu ethu pole aakum ennu kaanikkaam.",
+        "malayalam": "നന്ദി 👍 നിങ്ങളുടെ അഭ്യർത്ഥനയിൽ ചേർത്തു. മാറ്റുന്നതിനു മുൻപ് എങ്ങനെ ആകുമെന്ന് കാണിക്കാം.",
+        "hindi": "धन्यवाद 👍 आपकी रिक्वेस्ट में जोड़ दिया। बदलने से पहले आपको दिखा देंगे कि यह कैसा दिखेगा।",
+        "hinglish": "Thanks 👍 Aapki request mein jod diya. Badalne se pehle aapko dikha denge ki ye kaisa dikhega.",
+    },
     "api.thanks": {
         "english": "Thanks 👍",
         "manglish": "Thanks 👍",

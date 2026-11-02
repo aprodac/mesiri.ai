@@ -72,12 +72,15 @@ async def test_the_command_reaches_the_team_even_when_the_model_calls_nothing() 
     assert passed[0]["args"]["about"] == "Mesiri's reply before this: Which unit?"
 
 
-async def test_no_second_entry_when_the_model_passed_it_on_itself() -> None:
-    service, trace = _service(FakeToolCallingProvider([
-        [(TELL_THE_TEAM, {"kind": "bad_ux", "about": "the list printed twice"})], "Sorry, passed on."]))
+async def test_the_command_is_answered_by_the_code_without_a_model_turn() -> None:
+    """2 Nov: the command is the whole message, so the code answers it: one entry, no model call."""
+    model = FakeToolCallingProvider([
+        [(TELL_THE_TEAM, {"kind": "bad_ux", "about": "the list printed twice"})], "Sorry, passed on."])
+    service, trace = _service(model)
     await service.handle(_message("mesiri bad ux the list printed twice"), CTX)
     calls = trace.log_stage.await_args.kwargs["stage_payload"]["calls"]
-    assert [c.get("by") for c in calls if c["tool"] == TELL_THE_TEAM] == [None]
+    assert [c.get("by") for c in calls if c["tool"] == TELL_THE_TEAM] == ["code"]
+    assert model.calls == 0
 
 
 async def test_ordinary_messages_add_nothing() -> None:
@@ -141,12 +144,9 @@ async def test_a_screenshot_that_cannot_be_read_still_reaches_the_team() -> None
     assert [p["args"]["kind"] for p in _passed(trace)] == ["wrong_reply"]
 
 
-async def test_the_command_reaches_the_team_when_the_model_fails() -> None:
-    from runtime.ai_outage import FallBackToClassic
-
+async def test_the_command_reaches_the_team_when_the_model_is_down() -> None:
     service, trace = _service(FakeToolCallingProvider([], error=KeyError("tool bug")))
-    with pytest.raises(FallBackToClassic):
-        await service.handle(_message("mesiri fix it"), CTX)
+    await service.handle(_message("mesiri fix it"), CTX)  # no model turn, so nothing to fail
     assert [p["args"]["kind"] for p in _passed(trace)] == ["wrong_reply"]
 
 
@@ -154,3 +154,68 @@ async def test_guard_a_captioned_photo_without_the_command_passes_nothing_on() -
     service, trace = _photo_service(FakeToolCallingProvider(["Got it: 20 bags cement."]), "Cement bags at the gate")
     await service.handle(_photo("cement vannu"), CTX)
     assert _passed(trace) == []
+
+
+# 2 Nov (Ilan, Paraclette): after "mesiri fix it" / "bad ux" Mesiri repeated the same "Ready to save" list, with the
+# same TMT line twice, and never asked what he wanted instead.
+
+
+async def _with_list(service, *entries: str) -> None:  # noqa: ANN001
+    from agent_api.agent import PendingWrite
+
+    state = {"pending": [PendingWrite(tool="record_usage", method="POST", path="/materials/outflows", params={},
+                                      body={"n": i}, summary=e, idempotency_key=f"k{i}").to_json()
+                         for i, e in enumerate(entries)], "batch": "b1", "language": "english"}
+    await service._save_state(CTX, state)
+
+
+async def test_the_command_keeps_the_waiting_list_and_asks_how_it_should_be() -> None:
+    sent = AsyncMock()
+    service = wa.ApiWhatsApp(provider=FakeToolCallingProvider([]), database=None, redis=FakeRedis(), send=sent,
+                             transcribe=None, message_logger=AsyncMock(), trace_logger=AsyncMock(), app=stand_in_api([]))
+    await _with_list(service, "10 TMT steel bars used at Tower A")
+    await service.handle(_message("mesiri fix it"), CTX)
+    reply = sent.await_args.args[0]
+    assert "Ready to save" not in reply.text and not reply.buttons
+    assert "How should it be instead?" in reply.text and "#" in reply.text
+    state = await service._state(CTX)
+    assert state["batch"] == "b1" and len(state["pending"]) == 1  # the list and its buttons still work
+    assert state["awaiting_why"]["kind"] == "wrong_reply"
+
+
+async def test_the_next_message_is_their_preferred_experience_for_the_same_request() -> None:
+    trace = AsyncMock()
+    sent = AsyncMock()
+    service = wa.ApiWhatsApp(provider=FakeToolCallingProvider(["Got it."]), database=None, redis=FakeRedis(),
+                             send=sent, transcribe=None, message_logger=AsyncMock(), trace_logger=trace,
+                             app=stand_in_api([]))
+    await _with_list(service, "10 TMT steel bars used at Tower A")
+    await service.handle(_message("mesiri bad ux"), CTX)
+    await service.handle(_message("ask me the unit with buttons, kg or pieces"), CTX)
+    passed = _passed(trace)
+    assert passed[0]["args"]["why"] == "ask me the unit with buttons, kg or pieces"
+    assert "their answer to 'how should it be instead?'" in passed[0]["args"]["about"]
+    assert "Added to your request" in sent.await_args.args[0].text
+    assert "awaiting_why" not in await service._state(CTX)
+
+
+async def test_guard_an_ordinary_entry_after_the_question_is_not_taken_as_feedback() -> None:
+    trace = AsyncMock()
+    service = wa.ApiWhatsApp(provider=FakeToolCallingProvider([]), database=None, redis=FakeRedis(),
+                             send=AsyncMock(), transcribe=None, message_logger=AsyncMock(), trace_logger=trace,
+                             app=stand_in_api([]))
+    await service.handle(_message("mesiri bad ux"), CTX)
+    service._agent._provider = FakeToolCallingProvider([[("list_projects", {})], "Green Villa."])
+    await service.handle(_message("which projects do I have?"), CTX)
+    assert _passed(trace) == []  # it looked something up: an ordinary message, not the reason
+
+
+def test_the_same_entry_prepared_twice_is_listed_once() -> None:
+    from agent_api.agent import PendingWrite
+
+    one = PendingWrite(tool="record_usage", method="POST", path="/materials/outflows", params={},
+                       body={"material": "TMT", "quantity": 10}, summary="10 TMT steel bars used at Tower A",
+                       idempotency_key="a")
+    again = PendingWrite(**{**one.to_json(), "idempotency_key": "b"})
+    other = PendingWrite(**{**one.to_json(), "body": {"material": "TMT", "quantity": 12}, "idempotency_key": "c"})
+    assert [e.idempotency_key for e in wa._distinct([one, again, other])] == ["a", "c"]

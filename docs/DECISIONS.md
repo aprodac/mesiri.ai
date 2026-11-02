@@ -18,6 +18,7 @@
 | 2 Nov 2026 | A demo company can be reset in one tap (control panel, platform admins, demo companies only). | Ilan | SA-30 |
 | 2 Nov 2026 | "Is this how you want it?" previews are **on** in production. | Alan (relayed) | TM-33 |
 | 2 Nov 2026 | The team bot builds on its own server (warm build copy), not only in cloud sessions. | Ilan | TM-29 |
+| 2 Nov 2026 | The team bot's planning turns may run read-only viewing commands without asking (`cat`, `sed -n`, `find`, `diff` …); writing forms stay refused. | Ilan | TM-44 |
 | 2 Nov 2026 | "mesiri bad ux" / "mesiri fix this / fix it" is an explicit command: the code always passes it to the team. | Ilan | WA-130, TM-35 |
 
 ## Architecture

@@ -248,8 +248,10 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
                     try {
                       result = await sendPreview({ correlation_id: request.correlation_id, image_base64: png.toString("base64"), caption, request_ref: requestRef(request.correlation_id) });
                     } catch (e) {
+                      ctx.preview_failed?.push(`${requestRef(request.correlation_id)}: ${String(e.message).slice(0, 160)}`);
                       return fail(`Mesiri didn't send it: ${String(e.message).slice(0, 200)}. Say so in the report; the plan still builds.`);
                     }
+                    if (result?.sent) ctx.previewed?.add(request.correlation_id); // TM-44: the code checks every request got one
                     await image(png, `👀 Preview sent to ${conv.person || "the person who asked"} ${requestRef(request.correlation_id)}: ${caption}`.slice(0, 1000));
                     return { content: [{ type: "text", text: result?.sent ? "Sent to the person who asked, and posted here." : "Mesiri answered but WhatsApp did not take it; say so in the report." }] };
                   },

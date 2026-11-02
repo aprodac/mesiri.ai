@@ -295,6 +295,9 @@ const brain = new Brain({
   log,
 });
 
+// TM-44: the code checks each bad-UX / missing-feature / idea request got its preview (only when previews can be sent).
+brain.previewsOn = Boolean(render && token && Object.keys(opsByProject).length);
+
 function authorized(req) {
   const given = Buffer.from((req.headers.authorization || "").replace(/^Bearer /, ""));
   const expected = Buffer.from(token);
