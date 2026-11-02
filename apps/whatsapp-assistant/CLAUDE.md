@@ -6,4 +6,4 @@ siblings and the end-to-end UX, never a one-off patch.
 
 @../../docs/engineering/FIX_APPROACH.md
 
-The assistant is v2: one agent + skills + tools. Read [assistant-v2.md](../../docs/architecture/assistant-v2.md) and the skill rule files (`src/agent_v2/skills/*/SKILL.md`) before changing assistant behaviour. A feature is a skill (SKILL.md + tools.py + evals.yaml); never a new workflow, router or word list.
+The assistant is v3 (locked 2 Nov 2026): one model + one SOP + the dashboard's own API as tools. Read [assistant-v3.md](../../docs/architecture/assistant-v3.md) and `src/agent_api/SOP.md` before changing assistant behaviour. A feature is an API route in `src/agent_api/tools.py` `ALLOWED` (the dashboard gets it too) plus, when needed, a rule in `SOP.md`, with a scripted test in `tests/agent_api/`; never a new workflow, router or word list. v2 is removed; classic (`src/runtime/agent/`, workflows) serves real customers until they move, and gets no new features.

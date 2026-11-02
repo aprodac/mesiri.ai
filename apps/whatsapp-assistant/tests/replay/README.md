@@ -9,8 +9,8 @@ Run: `pytest apps/whatsapp-assistant/tests/replay` (same PYTHONPATH as the rest 
 Workflow cases need the `workflow` extra; without it they are **skipped**, and CI
 does not install it today. See the WA-15 tracker note.
 
-> v2 (one agent + skills + tools) is tested by the skills' `evals.yaml` and `tests/agent_v2/`, not by these
-> cases; these replay the classic path (retiring). See [assistant-v2.md](../../../../docs/architecture/assistant-v2.md).
+> v3 (the API agent) is tested by `tests/agent_api/`, not by these cases; these replay the classic
+> path, which serves real customers until they move to v3. See [assistant-v3.md](../../../../docs/architecture/assistant-v3.md).
 
 ## Case format
 

@@ -37,9 +37,17 @@ owns it, and prove the neighbours are covered. A fix that only makes the reporte
    ends found on the way (things that say "check the card" with no card, a question asked twice, an
    apology instead of an action, a reply that waits on something the user doesn't need yet).
 
-## Where a fix belongs in v2
+## Where a fix belongs in v3
 
-The assistant is [v2](../architecture/assistant-v2.md): one agent + skills + tools. Put a fix in the first of these that can own it: (1) a **rule in `SKILL.md`** (plain English; the model reads it); if the model cannot be trusted to follow it, (2) **a decision the code must enforce** in the runner or the tool (a check, a guard, a code-drawn line); if neither can express it, (3) **a new tool** that reuses the existing write path. Never a new workflow, router or word list. **Every fix adds an `evals.yaml` case** (the reported message, a sibling, and the guard that must not change).
+The assistant is [v3](../architecture/assistant-v3.md) (locked 2 Nov 2026): one model + one SOP + the
+dashboard's API as tools. Put a fix in the first of these that can own it: (1) **the backend API**,
+when the rule is a business rule (the dashboard then gets it too); (2) **a rule in
+`agent_api/SOP.md`** (plain English; the model reads it); if the model cannot be trusted to follow it,
+(3) **a decision the code must enforce** in `agent_api/agent.py` or `whatsapp.py` (a check, a fixed
+field, a code-drawn line); if none can express it, (4) **a route added to `ALLOWED`** in
+`agent_api/tools.py`. Never a new workflow, router or word list. **Every fix adds a scripted test in
+`tests/agent_api/`** (the reported message, a sibling, and the guard that must not change). Classic
+gets fixes only for live customer breakage until it is deleted.
 
 ## Non-negotiables
 

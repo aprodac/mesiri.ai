@@ -10,14 +10,16 @@ The primary human-facing interface of Mesiri. Construction site workers send Wha
 
 A site engineer sends a voice note: *"received 20 bags cement today"*
 
-The assistant (v2): one agent reads the message, decides what it holds, calls tools (put a receipt line on the
-draft card, look up stock, ...) and writes its own reply in the sender's language. The worker taps **Save**
-and only then is anything written. Before that, the message is verified (Meta HMAC-SHA256), the sender is
-checked as a registered, active Mesiri user, and a voice note is transcribed.
+The assistant (v3, locked 2 Nov 2026): one model reads the message with the facts it needs up front
+(the sender's sites, materials, today's records), calls **the same API routes the web dashboard uses**,
+and writes its own reply in the sender's language. Writes are prepared, not saved: the worker taps
+**Save** and only then do they go to the API as that person. Before that, the message is verified
+(Meta HMAC-SHA256), the sender is checked as a registered, active Mesiri user, and a voice note is
+transcribed.
 
-> Status: v2 is live **only on the 2 test companies**; real customers still run the classic path. v2's live
-> gate (>= 90% right, 0 wrong saves) is not passed yet. Full architecture:
-> [docs/architecture/assistant-v2.md](../../docs/architecture/assistant-v2.md).
+> Status: v3 runs on the 2 test companies; real customers still run the classic path until they are
+> moved. v2 is removed. Full architecture:
+> [docs/architecture/assistant-v3.md](../../docs/architecture/assistant-v3.md).
 
 ---
 
@@ -59,8 +61,8 @@ The assistant is the **front door for field workers**. The backend is the **sour
         │
         ▼
   assistant_mode     ✅  per-company setting
-     ├─ v2 / v2_shadow ⚠️  agent_v2: ONE agent + skills + tools        (2 test companies only)
-     └─ classic        ✅  today's agent [40] → workflows as tools       (every real customer, retiring)
+     ├─ api (v3)       ✅  agent_api: ONE model + SOP + the dashboard's API  (2 test companies; the direction)
+     └─ classic        ✅  today's agent [40] → workflows as tools       (every real customer, until moved)
         │
         ▼
   Draft card         ✅  tools add lines; the worker's Save tap is the only write
@@ -69,10 +71,9 @@ The assistant is the **front door for field workers**. The backend is the **sour
   Reply              ✅  send WhatsApp message back
 ```
 
-v2 and classic share everything above and below the agent: ingress, identity gate, the draft card, the Save
-tap, journal / undo, the toolbox tools and the backend handlers. The old chain (understanding → canonicalization
-→ planner → workflows) is the **classic path (retiring)**, replaced module by module once a module passes the
-v2 gate. See [AGENTS.md](./AGENTS.md) §0 and §4.
+v3 and classic share ingress, the identity gate and the reply. v3 writes only through the API (one
+Save for the whole ready list); classic writes through the draft card and its workflows. Classic is
+deleted once every customer is on v3. See [AGENTS.md](./AGENTS.md) §0.
 
 ---
 
@@ -81,9 +82,10 @@ v2 gate. See [AGENTS.md](./AGENTS.md) §0 and §4.
 | Area | Status | Notes |
 |---|---|---|
 | Ingress, Identity Gate, Reply | ✅ | Signature verify, dedup, media, Postgres-backed identity |
-| v2 agent + skills (general, materials) | ⚠️ test companies only | Live gate (>= 90% right, 0 wrong saves, reply time) **not passed**; needs `GEMINI_API_KEY` run |
-| Classic path (agent [40] → workflows) | ✅ real customers | Retiring module by module; old code deleted only after a module passes in v2 |
-| Draft card + Save tap + journal / undo | ✅ | The only write door, shared by both paths |
+| v3 API agent (`agent_api`) | ✅ test companies | The locked direction; real customers move one at a time (WA-137) |
+| v2 agent + skills | removed | WA-134 (2 Nov 2026) |
+| Classic path (agent [40] → workflows) | ✅ real customers | Deleted once every customer is on v3 (WA-138) |
+| Draft card + Save tap + journal / undo | ✅ | Classic's write door; v3 saves through the API |
 | LangGraph workflow runtime | dropped | The agent calls tools; there is no graph runtime to build |
 
 ---

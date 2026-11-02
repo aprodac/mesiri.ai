@@ -9,7 +9,7 @@
 
 ## Table of Contents
 
-0. [The assistant today: v2 (read first)](#0-the-assistant-today-v2-read-first)
+0. [The assistant today: v3 (read first)](#0-the-assistant-today-v3-read-first)
 1. [What This Folder Owns](#1-what-this-folder-owns)
 2. [What This Folder Must NOT Do](#2-what-this-folder-must-not-do)
 3. [Folder Structure and Module Responsibilities](#3-folder-structure-and-module-responsibilities)
@@ -26,41 +26,41 @@
 
 ---
 
-## 0. The assistant today: v2 (read first)
+## 0. The assistant today: v3 (read first)
 
-**One agent reads every message, decides, and writes its own reply**, working through **skills**
-(`SKILL.md` plain-English rules + `tools.py` + `evals.yaml`). The old code is only **tools**: the
-`AgentToolbox` tools, the draft card, the Save tap, journal / undo and the backend handlers are what
-the agent calls to save and read. **Nothing saves without the Save tap.**
+**Locked 2 Nov 2026 (Alan and Ilan).** One model + one SOP + **the dashboard's own API as tools**.
+GET routes answer at once; POST / PATCH are prepared, never saved, until the person taps the one
+**Save** button, and then go to the API as that person (same checks as the dashboard). Business
+rules live only in the backend.
 
-The full architecture (flow, context, tools, save door, honesty rules, model choice, evals and gate,
-switch and rollback, retirement plan, how to add a feature) is
-[docs/architecture/assistant-v2.md](../../docs/architecture/assistant-v2.md); decisions and history are in
-[ADR-v2-agent-framework.md](../../docs/architecture/ADR-v2-agent-framework.md). Code: `src/agent_v2/`.
+The full document (flow, facts up front, tools, saving, memory, feedback, failures, safety, code map,
+history, classic vs v2 vs v3) is [docs/architecture/assistant-v3.md](../../docs/architecture/assistant-v3.md).
+Code: `src/agent_api/`.
 
 ```
-src/agent_v2/
-  runner.py            V2Runner (the switch side, eligibility, loop guard) and ShadowRunner
-  agents/main.py       MainAgent: context + rule files + tools -> one model run
-  skills/general/      SKILL.md  (every part of a message, feedback, questions)
-  skills/materials/    SKILL.md + tools.py + evals.yaml
-  report.py            shadow side-by-side
+src/agent_api/
+  SOP.md        the whole prompt
+  tools.py      ALLOWED: the API routes the model may call, built from the OpenAPI document
+  agent.py      one model run: tools, ready list, ask, feedback, retries
+  whatsapp.py   facts, reply, buttons, Save, memory, SAVED card, failures
+  memory.py     today + the 2 days before; day_store.py is its Postgres store
+  feedback.py   tell_the_team (to the team bot)
 ```
 
-**Status (31 Oct 2026, do not overclaim):** v2 is live **only on the 2 test companies**
-(`assistant_mode = v2`, migration 0495). **Real customers run the classic path.** v2's live gate
-(>= 90% right, 0 wrong saves, reply time not worse) has **not been passed**; the live run needs
-`GEMINI_API_KEY`. Retirement is module by module, old code deleted only after a module passes.
+**Status (2 Nov 2026, do not overclaim):** v3 runs on the 2 test companies (`assistant_mode =
+api`, migration 0497). **Real customers still run classic** until they are moved one at a time.
+**v2 is removed** (WA-134): its stored modes read as `api` (`v2_shadow` as `classic`); a non-outage
+v3 failure is answered by classic.
 
 **Rules for a change here:**
 
-- An assistant feature is a **v2 skill**: a new folder (or an edit) with `SKILL.md`, `tools.py`
-  reusing the existing write paths, and `evals.yaml`. **Never add a new workflow, router, classifier or
-  word list.**
-- Where a fix belongs: rule in `SKILL.md` -> a decision the code must enforce in the runner / tool ->
-  a new tool, plus an `evals.yaml` case ([FIX_APPROACH](../../docs/engineering/FIX_APPROACH.md)).
-- Write paths stay the existing ones (toolbox -> draft card -> Save tap); v2 adds none.
-- Labour, Attendance, Payroll, Workforce: untouched by v2 work unless a plan says so plainly.
+- An assistant feature is **an API route added to `ALLOWED`** (the dashboard gets it too) and, only
+  when the model needs it, a rule in `SOP.md`, with a scripted test in `tests/agent_api/`. **Never add
+  a new workflow, router, classifier or word list.**
+- Where a fix belongs: the backend API -> `SOP.md` -> a decision the code enforces in `agent.py` /
+  `whatsapp.py` -> a new route ([FIX_APPROACH](../../docs/engineering/FIX_APPROACH.md)).
+- Classic gets no new features, only fixes for live customer breakage, until it is deleted.
+- Labour, Attendance, Payroll, Workforce: v3 reaches them only through their own API routes.
 
 Sections 3 to 6 below describe the **classic path (retiring)** and the shared plumbing (ingress,
 identity, channel, ports). Code-style rules in sections 2, 7 to 12 still hold.

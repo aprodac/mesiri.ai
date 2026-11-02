@@ -3,7 +3,10 @@
 > The one document for v3 (the "API agent"). Asked by Ilan, 1 Nov 2026: *"one base prompted
 > model, and just that. The rest is the same backend API calls the web dashboard uses, opened to
 > the AI so it understands which to use when."* Tracker WA-119 … WA-132 (and [203], [204]).
-> Code: `apps/whatsapp-assistant/src/agent_api/`. v2: [assistant-v2.md](assistant-v2.md).
+> Code: `apps/whatsapp-assistant/src/agent_api/`. v2 (removed): [assistant-v2.md](assistant-v2.md).
+>
+> **Locked 2 Nov 2026: v3 is the assistant's architecture** (Alan and Ilan approved). v2 is removed
+> (WA-134); classic serves real customers until they are moved (WA-137), then it is deleted (WA-138).
 
 ## In one picture
 
@@ -25,6 +28,8 @@ WhatsApp message (text, voice note, photo, button tap)
 
 ## Status
 
+- **The locked direction** (2 Nov 2026). Every new assistant feature is built here; classic gets
+  only fixes for live breakage; v2's code is gone.
 - **Live on the two test companies** (Mesiri Test Builders, Paraclette): `assistant_mode = "api"`,
   set by migration 0497 (deployed 1 Nov). Every real customer is still on **classic**.
 - Model: the `api_agent` row in the control panel (Providers page, "WhatsApp API agent"); unset,
@@ -47,9 +52,11 @@ WhatsApp message (text, voice note, photo, button tap)
 | Memory | Last turns (2 h) | Last 10 turns (v2) / the day (v2_adk) | **Today + the 2 days before** (ADK day store) |
 | Taps to save | Save (+ questions per field) | Save (+ card questions) | **One Save**; a needed question comes with buttons |
 | Bill photo | Is it a bill? -> confirm -> account -> vendor | As classic (photos stay classic) | Read by vision -> one expense, photo attached -> **one Save** |
+| Attendance sheet photo | Rows read -> labour card | As classic | Rows read by vision -> **one attendance report**, every row a line, recorded as a photo -> **one Save** (WA-135) |
+| Status | Real customers (until moved) | **Removed** (WA-134) | **Locked direction** |
 | Feedback "mesiri bad ux" | — | `tell_the_team` -> team bot | Same tool, and the explicit command is passed on by code too |
 | Receipt card after Save | Yes | Yes | Yes (same builder) |
-| When the model fails | Retry, queue | Falls back to classic | Retry + queue on an outage; any other error falls back to **v2** |
+| When the model fails | Retry, queue | Falls back to classic | Retry + queue on an outage; any other error falls back to **classic** (v2 until WA-134) |
 
 **Why v3 does better on mixed messages** (the WA-123 runs): nothing between the model and the
 reply cuts the message up, its tools are general reads ("what was reported", "the site's day")
@@ -70,7 +77,7 @@ slower (about 2-5 s against 1-2 s), and it depends more on the model following t
 - The **language and script** of the message, decided by the code (the shared detector,
   `runtime.agent.wording.language_of`): Manglish stays in Latin letters.
 - The **conversation of today and the two days before** (`memory.DayMemory`): the same Postgres day
-  store as v2-on-ADK (`assistant_sessions`, migration 0496), app name `mesiri_api`. Today in full
+  store (`day_store.py`; `assistant_sessions`, migration 0496), app name `mesiri_api`. Today in full
   (120 messages), the two days before their last 30, each marked with its day. Read in parallel
   before the model; written after the reply is sent (never on the wait). The ready list is kept
   as a short note, not its format (the model used to copy it). Without google-adk: Redis per day.
@@ -93,7 +100,7 @@ build and the test. Every write also takes `confirm_line`: the line the person c
 
 Plus three tools of v3 itself: `ask` (one question, 2-3 options as buttons),
 `save_ready_entries` / `drop_ready_entries` (only offered when entries wait), and `tell_the_team`
-(v2's feedback tool, one definition).
+(`feedback.py`; v2's tool until WA-134, one definition).
 
 ## Saving
 
@@ -106,7 +113,7 @@ Plus three tools of v3 itself: `ask` (one question, 2-3 options as buttons),
    idempotency key (a repeated tap records once). The API's own checks decide; a refused entry
    stays in the list with a plain reason in their language, the saved ones go.
 4. The **"Saved" line, then the green SAVED card** (`receipts.py` -> the same
-   `RecordReceiptBuilder` classic and v2 use; within 4 s, never blocking the Save). Material in /
+   `RecordReceiptBuilder` classic uses; within 4 s, never blocking the Save). Material in /
    used / transfer, expense, labour, work done and issues have a card.
 5. Units: a unit the model names ("bags", "chaakku", "nos", "rod") is turned into the active
    unit id in code (`units.py`, the shared `runtime.unit_words` table), when prepared and when
@@ -126,6 +133,11 @@ Entries wait per person in Redis for a day (an older list's buttons do nothing).
 ## Photos, voice notes, calls
 
 - **Voice notes**: transcribed first (the existing pipeline), then handled as text.
+- **Attendance sheets** (WA-135): the vision step transcribes every row (`workers`); `SOP.md` rule 2
+  makes it ONE `record_attendance` with every row a line; a row it could not read ("?") becomes a
+  headcount line of its trade, never a person named "?". Entries record how the message came:
+  `whatsapp_image` for a photo or document, `whatsapp_voice` for a voice note (the tools' fixed
+  `whatsapp_text` is replaced by the code: `whatsapp._channel` -> `agent.run(channel=...)`).
 - **Photos / documents**: read by the existing vision step (`pipeline.describe_media`), then
   handled as words; the photo's key is attached to an expense by the code.
 - **Calls** (WA-118, `call.py`): the same checks as a message; on a call v3 gets **read tools
@@ -136,7 +148,7 @@ Entries wait per person in Redis for a day (an older list's buttons do nothing).
 ## Feedback goes straight to the team bot
 
 - "mesiri bad ux", "this is confusing", a wrong reply, something Mesiri cannot do yet: the model
-  calls `tell_the_team` (v2's tool and reply wording), then does the rest of the message.
+  calls `tell_the_team` (`feedback.py`), then does the rest of the message.
 - **The explicit command** "mesiri bad ux / bad ui / fix this / fix it" (+ the reason after it) is
   passed on by the code too, when the model did not (approved by Ilan 2 Nov as the one word-list
   exception, a command like "undo"): kind bad_ux / wrong_reply, about = Mesiri's previous reply.
@@ -147,8 +159,9 @@ Entries wait per person in Redis for a day (an older list's buttons do nothing).
 ## When something fails
 
 - A **provider outage** (quota, auth, timeout): one quick retry, then the queued reply in their
-  language and a worker retry (v2's outage handling, `runtime.ai_outage`).
-- **Any other error** (a bug in v3 or a tool): `FallBackToV2`: the message is answered by v2.
+  language and a worker retry (the shared outage handling, `runtime.ai_outage`).
+- **Any other error** (a bug in v3 or a tool): `FallBackToClassic`: the message is answered by classic
+  (traced `handled: classic_fallback`; v2 answered it until WA-134).
 - A **greeting** is answered by the code (the greeting menu): never needs the model.
 - A model error before anything was prepared: one more try; no words after a lookup: asked once
   for the answer.
@@ -190,7 +203,8 @@ Two side-by-side runs on the real model, 8 site messages, same company for all t
 ## Switching and rollback
 
 Per company: `PUT /admin/organizations/{org_id}/settings` (platform admin) with `assistant_mode`
-= `classic` | `v2_shadow` | `v2` | `v2_adk` | `api`. Instant; no data changes; records saved
+= `classic` | `api`. The retired v2 values can no longer be set; stored ones read as `api` (`v2`,
+`v2_materials`, `v2_adk`) or `classic` (`v2_shadow`). Instant; no data changes; records saved
 through v3 are ordinary dashboard records. Migration 0497's downgrade puts the two test companies
 back on `v2`. Code rollback: revert.
 
@@ -205,6 +219,8 @@ back on `v2`. Code rollback: revert.
 | `agent_api/agent.py` | One model run: tools, waiting list, ask, feedback, retries |
 | `agent_api/whatsapp.py` | WhatsApp side: facts, reply, buttons, Save, memory, card, failures, feedback command |
 | `agent_api/memory.py` | Today + 2 days in the ADK day store |
+| `agent_api/day_store.py` | The Postgres day store (ADK session service; moved from v2 by WA-134) |
+| `agent_api/feedback.py` | `tell_the_team`: feedback to the team bot (moved from v2 by WA-134) |
 | `agent_api/units.py` | Unit words -> unit ids |
 | `agent_api/receipts.py` | Saved entries -> the SAVED card |
 | `agent_api/call.py` | WhatsApp calls (read-only) |
@@ -216,17 +232,25 @@ back on `v2`. Code rollback: revert.
 - `tests/agent_api/` (scripted model, no cost): tools from the real OpenAPI, the WhatsApp flow,
   facts, memory, receipts, feedback, units, outages. `tests/integration/test_api_agent_119_postgres.py`:
   the real routers on Postgres.
-- Real model: `Compare agents` workflow (manual). Every push also runs the deploy's live gate.
+- Real model: `Compare agents` workflow (manual). (The deploy's live gate was taken off 2 Nov: the Gemini key's monthly cap, WA-111.)
   Both use the same Gemini key: mind its monthly cap (WA-111).
 
 ## Not done / next
 
-- Measure on the testers' real messages for a few days; decide whether real customers move.
-- Model: `gemini-3.6-flash` looked better in the one run; price to check before switching.
-- Attendance-sheet photos: read as words only (no sheet parsing like classic's).
-- Roles and access for a company's non-admin users have not been exercised through v3 on real data.
-- CLAUDE.md still says "assistant features are v2 skills": needs Alan / Ilan's update if v3
-  becomes the direction.
+Tracked in [V1_TRACKER.md](../plans/V1_TRACKER.md):
+
+- **WA-136 Speed** (2-5 s against classic's 1-2 s): facts, memory and the catalog are already read
+  in parallel and cached, tools are built once and thinking is off on tool calls; the next cut needs
+  the per-turn timings from production (`agent_api_turn` traces) to see where the seconds go.
+- **WA-137 Move real customers**, one company at a time, after a few days of the testers' messages
+  and a `Compare agents` run (ops: Alan / Ilan choose the first company; rollback is the setting).
+- **WA-138 Delete classic** once no company is on it (needs approval: it holds the Labour and
+  Attendance save paths classic customers use today).
+- **WA-139 Roles on real data**: a non-admin tester (site supervisor on one site) through v3 in
+  production. Scripted tests already check the token carries their role and a refused write is
+  said plainly.
+- **WA-140 Model**: `gemini-3.6-flash` looked better in the one run; price to check before switching
+  (the `api_agent` row in the control panel).
 
 ## History
 
@@ -244,3 +268,5 @@ back on `v2`. Code rollback: revert.
 | WA-131 [203] | `send_dpr` only when asked, one turn |
 | WA-132 | The SAVED card after a Save |
 | WA-118 | Calls (read-only) |
+| WA-134 | **v3 locked** (Alan and Ilan, 2 Nov); v2 removed, failures fall back to classic |
+| WA-135 | Attendance-sheet photos; entries record photo / voice / text |

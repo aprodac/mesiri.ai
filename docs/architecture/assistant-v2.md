@@ -1,5 +1,9 @@
 # The WhatsApp assistant, v2: one agent + skills + tools
 
+> **HISTORICAL (2 Nov 2026). v2 is removed (WA-134); v3 is locked** (Alan and Ilan). The assistant is
+> [assistant-v3.md](assistant-v3.md). Stored v2 modes read as `api` (`v2_shadow` as `classic`). This
+> page is kept for history; its code (`agent_v2/`) is gone.
+
 > The one architecture document for the assistant. Decisions and history of v2 are in
 > [ADR-v2-agent-framework.md](ADR-v2-agent-framework.md). Everything older (classifier, planner,
 > workflow graphs, "wrap not rebuild") is **classic / retiring**, see [Status](#status-today).

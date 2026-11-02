@@ -3,6 +3,8 @@
 > Asked by Ilan, 1 Nov 2026: *"Sarvam as main. Mesiri gets calls. Users mainly ask questions, or ask it to send a
 > PDF in chat: inventory, stock, workforce, anything like that."*
 > Tracker: [WA-118](V1_TRACKER.md) (request log [23]). Status: **step 0 done 2 Nov (facts in [ADR-whatsapp-calling.md](../architecture/ADR-whatsapp-calling.md)); nothing built.** Step 1 worked on a real call 2 Nov ([spike](../../spikes/whatsapp_call_echo/README.md)). Step 2 worked on a real call 2 Nov. Ilan then changed read-only: entries on a call go to the chat as a Save card and PDFs go to the chat, open to everyone on the API agent.
+> **2 Nov 2026:** v2 is removed (WA-134); calls run on the API agent (`agent_api/call.py`). References to the
+> v2 agent below are history.
 > Governing process: the root [CLAUDE.md](../../CLAUDE.md) (phases, verification, `main` only, phase reports).
 
 ## 1. What the user gets

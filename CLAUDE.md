@@ -118,7 +118,8 @@ cd platform/ai && python -m pytest tests/ -q
 **WhatsApp assistant — needs PYTHONPATH, and Windows uses `;` not `:`.** Without
 it the suite dies at `conftest` with `ModuleNotFoundError: No module named
 'mesiri'`, which looks like a broken environment and is easy to mistake for
-"this suite cannot be run here". It can. It takes ~9 minutes:
+"this suite cannot be run here". It can. It took 75 s on Linux on 2 Nov 2026 (4,090 tests, after v2's
+tests went with WA-134); older notes said ~9 minutes:
 
 ```bash
 cd apps/whatsapp-assistant
@@ -198,7 +199,11 @@ Always prefer, in this order:
 Never duplicate: APIs · database tables · services · OCR pipelines · AI pipelines · WhatsApp
 workflows.
 
-Assistant features are v2 skills (docs/architecture/assistant-v2.md); never add a workflow, router or word list.
+Assistant features are **v3** (locked 2 Nov 2026: Alan and Ilan approved, relayed in session by the
+team; [assistant-v3.md](docs/architecture/assistant-v3.md)): a feature is an API route the dashboard
+uses, added to `agent_api/tools.py` `ALLOWED`, plus a rule in `agent_api/SOP.md` when the model needs
+one. Never add a workflow, router or word list. v2 is removed; classic stays only until every
+customer has moved to v3, then it is deleted.
 
 ---
 

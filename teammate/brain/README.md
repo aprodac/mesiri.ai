@@ -76,7 +76,7 @@ run side by side in one group.
 *"A tester's WhatsApp message should reach production with no human in the loop. If we need correction, we will tell."*
 
 ```
-tester → Mesiri (v2) ──► "not built yet / bad UX"? tell_the_team ──► agent_v2_live trace
+tester → Mesiri (v3) ──► "not built yet / bad UX"? tell_the_team ──► agent_api_turn trace (older rows: agent_v2_live)
                                                                        │ (one free SELECT, every company)
 production watch ◄─────────────────────────────────────────────────────┘
    └─ planning turn: root cause, one plan per cause, report + chat picture in the team group

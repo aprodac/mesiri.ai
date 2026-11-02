@@ -547,6 +547,9 @@ Implement business approval logic
 
 # 10. Assistant Agent Boundary (agent_v2)
 
+> **HISTORICAL (2 Nov 2026).** `agent_v2` is removed (WA-134); the assistant is v3, `src/agent_api/`
+> ([assistant-v3.md](../architecture/assistant-v3.md)). Sections 10 and 12 describe v2 and are kept for history.
+
 > Replaces the former "Understanding Module" section. The assistant is now **one agent + skills + tools**
 > ([assistant-v2.md](../architecture/assistant-v2.md)). The classic understanding pipeline is retiring.
 > Status: v2 is live on the 2 test companies only; real customers run classic.

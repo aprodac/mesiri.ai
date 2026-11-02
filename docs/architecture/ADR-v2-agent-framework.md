@@ -1,5 +1,8 @@
 # ADR: v2 agent framework and pilot (request 174)
 
+> **SUPERSEDED (2 Nov 2026)** by v3, the API agent ([assistant-v3.md](assistant-v3.md)): v3 locked by
+> Alan and Ilan, v2 removed (WA-134). Kept for history.
+
 Status: accepted for the Materials pilot (1 Nov 2026). Owner approval: Ilan, in WhatsApp, request 174.
 Decided in the team chat 31 Oct (#5982-#6059): go module by module, old and new side by side,
 delete old code only after a module passes. Materials first (most wrong saves: split
