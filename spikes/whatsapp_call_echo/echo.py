@@ -85,7 +85,7 @@ def answerable_call(value: dict[str, Any], *, phone_number_id: str, allowed: set
         return None
     contacts = value.get("contacts") or []
     wa_id = contacts[0].get("wa_id") if contacts else None
-    if wa_id not in allowed:
+    if "*" not in allowed and wa_id not in allowed:
         return None
     for call in value.get("calls") or []:
         if call.get("event") != "connect":
