@@ -149,6 +149,9 @@ Entries wait per person in Redis for a day (an older list's buttons do nothing).
 
 - "mesiri bad ux", "this is confusing", a wrong reply, something Mesiri cannot do yet: the model
   calls `tell_the_team` (`feedback.py`), then does the rest of the message.
+- **Reference and verdict (TM-21):** a reply that passed something on ends with its reference (`#a83836`),
+  the same one the team group sees; for an unclear request Mesiri asks one question with buttons first.
+  The "it works now" note has **Works ✅ / Still wrong ❌**; "Still wrong" goes back to the team bot.
 - **The explicit command** "mesiri bad ux / bad ui / fix this / fix it" (+ the reason after it) is
   passed on by the code too, when the model did not (approved by Ilan 2 Nov as the one word-list
   exception, a command like "undo"): kind bad_ux / wrong_reply, about = Mesiri's previous reply.

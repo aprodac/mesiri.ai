@@ -45,7 +45,7 @@ async def test_each_person_a_note_names_gets_it_once():
     assert await rn.queue_release_notes(None, today=TODAY, notes=notes, requester=_requester, claim=claims) == 1
     (row,) = claims.rows.values()
     assert row["rule_key"] == "release:attendance-photo" and row["recipient_user_id"] == RAVI
-    assert row["payload"] == {"message": NOTE["message"]}
+    assert row["payload"] == {"message": NOTE["message"], "buttons": rn.verdict_buttons(NOTE["id"])}  # TM-21
     # The next tick, and every one after: nothing again.
     assert await rn.queue_release_notes(None, today=TODAY, notes=notes, requester=_requester, claim=claims) == 0
 

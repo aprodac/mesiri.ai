@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { FAIL_ALERT, requestLines, DEFAULT_SKIP, ProdWatch, QUIET, MAX_CONVERSATIONS, SCREEN_PROMPT, Screener, parseInterval, asObjects, chatHtml, conversations, flagRows, opsSources, screenFlags, screenItems, skipPatterns, watchPrompt, watchSql } from "../src/prod_watch.js";
+import { FAIL_ALERT, requestLines, requestRef, DEFAULT_SKIP, ProdWatch, QUIET, MAX_CONVERSATIONS, SCREEN_PROMPT, Screener, parseInterval, asObjects, chatHtml, conversations, flagRows, opsSources, screenFlags, screenItems, skipPatterns, watchPrompt, watchSql } from "../src/prod_watch.js";
 
 const T0 = 1_761_700_000; // epoch seconds
 const msg = (over) => ({
@@ -333,7 +333,7 @@ test("TM-18: the SQL reads every company, marks the test ones, and a skip list c
   const sql = watchSql(T0, 400, DEFAULT_SKIP);
   assert.doesNotMatch(sql, /NOT ILIKE/); // the test companies' testers are the users today
   assert.match(sql, /ILIKE ANY \(ARRAY\['Mesiri Test Builders', '%paraclet%'\]\) AS is_test/);
-  assert.match(sql, /jt\.stage IN \('agent_v2_live', 'agent_api_turn'\) AND c->>'tool' = 'tell_the_team'\) AS feedback/);
+  assert.match(sql, /jt\.stage IN \('agent_v2_live', 'agent_api_turn', 'release_feedback'\) AND c->>'tool' = 'tell_the_team'\) AS feedback/);
   // Production's journey_traces.stage_payload is jsonb: json_typeof(jsonb) failed every read on 1 Nov (HTTP 400).
   assert.match(sql, /jsonb_array_elements\(CASE WHEN jsonb_typeof\(jt\.stage_payload::jsonb->'calls'\)/);
   assert.doesNotMatch(sql, /\bjson_typeof|\bjson_array_elements|'\[\]'::json\b/);
@@ -438,7 +438,7 @@ test("TM-18: a request to Mesiri is announced in the group at once, by code, bef
     const watch = new ProdWatch({ sources: { mesiri: { url: "u", token: "t" } }, ask: async () => events.push("ask"), notify: async (p, t) => events.push(t), file: join(dir, "s.json"), fetchFn, now: () => T0 * 1000 });
     await watch.tick();
     assert.equal(events.length, 2);
-    assert.match(events[0], /📥 \*Ilan\* \(admin, Paraclette\) told Mesiri: missing feature: create a new project from WhatsApp chat/);
+    assert.match(events[0], /📥 #[0-9a-f]{6} · \*Ilan\* \(admin, Paraclette\) told Mesiri: missing feature: create a new project from WhatsApp chat/);
     assert.equal(events[1], "ask");
     assert.deepEqual(requestLines([]), []);
   } finally {
@@ -489,4 +489,10 @@ test("TM-19: a pending look survives a restart, and a request to Mesiri is looke
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("TM-21: the request reference is the one Mesiri shows the person", () => {
+  assert.equal(requestRef("cor_a838368708e5476aa92a8224e25b9038"), "#a83836");
+  assert.equal(requestRef("x"), "");
+  assert.equal(requestRef(null), "");
 });

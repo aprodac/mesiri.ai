@@ -29,6 +29,14 @@ logger = logging.getLogger(__name__)
 #: The notes file, shipped with the app (apps/whatsapp-assistant/release_notes.json).
 NOTES_PATH = Path(__file__).resolve().parents[2] / "release_notes.json"
 RULE_PREFIX = "release:"
+#: TM-21: the two buttons under an "it works now" note. A tap is the person's own verdict: "Still wrong"
+#: goes back to the team bot as feedback (journey stage ``release_feedback``, read by the production watch).
+WORKS_PREFIX = "release_ok:"
+STILL_WRONG_PREFIX = "release_bad:"
+WORKS_TITLE = "Works ✅"
+STILL_WRONG_TITLE = "Still wrong ❌"
+#: The journey trace stage of such a tap (teammate/brain/src/prod_watch.js reads its tell_the_team call).
+FEEDBACK_STAGE = "release_feedback"
 MAX_AGE_DAYS = 7
 MAX_CHARS = 700
 _ID = re.compile(r"^[a-z0-9][a-z0-9-]{2,60}$")
@@ -138,7 +146,7 @@ async def queue_release_notes(
                     subject_id=str(who.user_id),
                     occurred_on=note.date,
                     recipient_user_id=who.user_id,
-                    payload={"message": note.message},
+                    payload={"message": note.message, "buttons": verdict_buttons(note.id)},
                 )
                 if claimed is not None:
                     queued += 1
@@ -146,3 +154,36 @@ async def queue_release_notes(
             except Exception:  # noqa: BLE001 -- one person's lookup must not stop the others
                 logger.exception("release_notes.failed note=%s correlation_id=%s", note.id, cid)
     return queued
+
+
+def verdict_buttons(note_id: str) -> list[dict[str, str]]:
+    """TM-21: "Works ✅" / "Still wrong ❌" under a note (ids fit WhatsApp's 256-character limit)."""
+    return [{"id": f"{WORKS_PREFIX}{note_id}", "title": WORKS_TITLE},
+            {"id": f"{STILL_WRONG_PREFIX}{note_id}", "title": STILL_WRONG_TITLE}]
+
+
+def parse_verdict(tap: str) -> tuple[bool, str] | None:
+    """``(works, note_id)`` for a tap on a note's buttons, else None."""
+    for prefix, works in ((WORKS_PREFIX, True), (STILL_WRONG_PREFIX, False)):
+        if tap.startswith(prefix):
+            note_id = tap[len(prefix):].strip()
+            return (works, note_id) if _ID.match(note_id) else None
+    return None
+
+
+def verdict_trace(works: bool, note_id: str) -> dict[str, Any]:
+    """The trace payload of a verdict tap. "Still wrong" is a ``tell_the_team`` call (kind wrong_reply), the
+    shape the production watch already reads, so it is re-planned like any other request."""
+    if works:
+        return {"verdict": "works", "note": note_id, "calls": [{"tool": "release_confirmed", "by": "code",
+                                                               "args": {"note": note_id}}]}
+    return {"verdict": "still_wrong", "note": note_id, "calls": [{"tool": "tell_the_team", "by": "code", "args": {
+        "kind": "wrong_reply", "about": f"still not working after the release note '{note_id}' was sent",
+    }}]}
+
+
+def request_ref(correlation_id: str | None) -> str:
+    """TM-21: the short reference of a request: the first 6 hex characters of its message's correlation id
+    (``cor_a83f...`` -> ``#a83f..``). The tester and the team group see the same one."""
+    hexpart = re.sub(r"[^0-9a-f]", "", str(correlation_id or "").lower().removeprefix("cor_"))
+    return f"#{hexpart[:6]}" if len(hexpart) >= 6 else ""

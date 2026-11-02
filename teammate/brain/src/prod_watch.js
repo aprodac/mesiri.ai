@@ -67,7 +67,7 @@ export function watchSql(since, limit = 400, skip = [], newest = false) {
                  || coalesce(' / why: ' || (c->'args'->>'why'), ''), ' | '), 400)
           FROM journey_traces jt,
                jsonb_array_elements(CASE WHEN jsonb_typeof(jt.stage_payload::jsonb->'calls') = 'array' THEN jt.stage_payload::jsonb->'calls' ELSE '[]'::jsonb END) c
-         WHERE jt.correlation_id = m.correlation_id AND jt.stage IN ('agent_v2_live', 'agent_api_turn') AND c->>'tool' = 'tell_the_team') AS feedback
+         WHERE jt.correlation_id = m.correlation_id AND jt.stage IN ('agent_v2_live', 'agent_api_turn', 'release_feedback') AND c->>'tool' = 'tell_the_team') AS feedback
 FROM inbound_messages m LEFT JOIN organizations o ON o.id = m.organization_id
 LEFT JOIN LATERAL (SELECT u.full_name, u.role FROM users u WHERE u.organization_id = m.organization_id
   AND regexp_replace(u.whatsapp_number, '\\D', '', 'g') = regexp_replace(m.sender_wa_id, '\\D', '', 'g') LIMIT 1) su ON true
@@ -85,10 +85,20 @@ export function requestLines(convs) {
     for (const m of c.messages) {
       if (!m.feedback || !c.flags.has(m.correlation_id)) continue;
       const who = `*${c.person || "Someone"}*${c.role ? ` (${c.role}, ${c.company})` : ` (${c.company})`}`;
-      out.push(`📥 ${who} told Mesiri: ${String(m.feedback).replace(/_/g, " ").slice(0, 300)}\nLooking into it now; the plan follows here in a few minutes.`);
+      const ref = requestRef(m.correlation_id);
+      out.push(`📥 ${ref ? `${ref} · ` : ""}${who} told Mesiri: ${String(m.feedback).replace(/_/g, " ").slice(0, 300)}\nLooking into it now; the plan follows here in a few minutes.`);
     }
   }
   return out;
+}
+
+/**
+ * TM-21: a request's short reference, the same one Mesiri shows the person (runtime/release_notes.py request_ref):
+ * the first 6 hex characters of its message's correlation id.
+ */
+export function requestRef(correlationId) {
+  const hex = String(correlationId || "").toLowerCase().replace(/^cor_/, "").replace(/[^0-9a-f]/g, "");
+  return hex.length >= 6 ? `#${hex.slice(0, 6)}` : "";
 }
 
 /** The ops API's { columns, rows } as objects. */
@@ -259,6 +269,14 @@ export function watchPrompt(project, convs, { minutes, autobuild = false }) {
     "   that records who asked, so they are told when it is live and their next use is tracked.",
     "   A reply that says it can't do something the user asked for (a photo, a list, a report) is a missing feature:",
     "   plan the feature itself, done properly, not a nicer refusal.",
+    "   v3 (docs/architecture/assistant-v3.md): when the web dashboard already does it, the fix is usually that route",
+    "   added to ALLOWED in apps/whatsapp-assistant/src/agent_api/tools.py (plus an SOP.md line only if the model needs",
+    "   one): a small plan, never a new workflow. Routes that grant access (members, users, roles) need the owner.",
+    "   Every plan's tests start from the person's own messages: a scripted test in apps/whatsapp-assistant/tests/agent_api/",
+    "   that replays them (what they said, the tool calls the fix needs) and fails before the fix, plus a sibling and a guard.",
+    "   An AI_UNAVAILABLE / \"AI is paused\" reply from a used-up AI budget (WA-143) is not a code bug: say so in the",
+    "   report (the owner raises the cap), plan nothing for it. A `still not working after the release note` feedback",
+    "   (the person tapped \"Still wrong ❌\", TM-21) re-opens that note's plan: find it, fix what is still wrong.",
     "4. Every plan ends with this step, so the people who hit it hear it works: add an entry to",
     "   apps/whatsapp-assistant/release_notes.json (see src/runtime/release_notes.py) with id, date = the deploy day,",
     "   for = the correlation ids of their messages (shown below in full), and message = one or two lines in THEIR",

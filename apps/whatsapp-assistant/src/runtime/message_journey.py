@@ -669,6 +669,33 @@ def build_message_handlers(
     async def _run_journey_steps(message, raw_payload, retry_of_id, timer) -> None:  # type: ignore[no-untyped-def]
         wa_id = message.sender.wa_id
 
+        async def _release_verdict(message, ctx, wa_id) -> bool:  # type: ignore[no-untyped-def]
+            from runtime.agent.wording import say, usual_from
+            from runtime.release_notes import FEEDBACK_STAGE, parse_verdict, verdict_trace
+
+            verdict = parse_verdict(str((message.metadata or {}).get("interactive_reply_id") or ""))
+            if verdict is None:
+                return False
+            works, note_id = verdict
+            language = "english"
+            if user_language_store is not None:
+                try:
+                    language = usual_from(*await user_language_store.get_profile(user_id=ctx.user_id)) or "english"
+                except Exception:  # noqa: BLE001 -- English wording
+                    language = "english"
+            reply = say("release.works" if works else "release.still_wrong", language)
+            await sender.send_text(wa_id, reply)
+            try:
+                await trace_logger.log_stage(
+                    correlation_id=message.correlation_id, stage=FEEDBACK_STAGE,
+                    stage_payload=verdict_trace(works, note_id), duration_ms=0, succeeded=True,
+                )
+            except Exception:  # noqa: BLE001 -- the reply already went
+                _log.warning("release_feedback.trace_failed correlation_id=%s", message.correlation_id, exc_info=True)
+            await message_logger.log_reply(correlation_id=message.correlation_id, reply=reply)
+            await message_logger.mark_completed(correlation_id=message.correlation_id)
+            return True
+
         async def _photo_language(ctx, message) -> str:  # type: ignore[no-untyped-def]
             """The language a photo's question is asked in: the caption's, else their usual."""
             if user_language_store is None:
@@ -1545,6 +1572,12 @@ def build_message_handlers(
         workflow_registry.set_enabled_modules(
             await org_settings_query.enabled_modules(organization_id=str(ctx.organization_id))
         )
+
+        # TM-21: a tap on "Works ✅" / "Still wrong ❌" under an "it works now" note, whatever the
+        # company's mode: thanked or asked what is still wrong, and traced so the team bot's
+        # production watch re-plans a "Still wrong" like any other request. No AI involved.
+        if await _release_verdict(message, ctx, wa_id):
+            return
 
         # WA-119 / WA-124: a company on the API agent: its text, voice, photos, documents and its
         # own button taps are the API agent's.

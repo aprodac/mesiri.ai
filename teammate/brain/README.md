@@ -101,6 +101,18 @@ production watch ◄────────────────────
   (`feedback` column of the watch SELECT: kind, what, and the reason when given).
 - Rollback: `@bot autobuild off`; or revert (no data change; `autobuild.json` is ignored without the code).
 
+### The person closes the loop (TM-21, 2 Nov)
+
+- **Same reference both sides:** when Mesiri passes a request on (`tell_the_team`), its reply ends with a short
+  reference (`#a83836`, from the message's correlation id); the group's 📥 line shows the same one (`requestRef`).
+- **Ask before building:** for a missing feature that could mean two things, Mesiri asks ONE question with buttons and
+  passes the answer on (`why`), so the plan builds the right thing.
+- **Their verdict:** every "it works now" note comes with **Works ✅ / Still wrong ❌** buttons. The tap is answered by
+  code in every mode and traced as `release_feedback`; "Still wrong" is a `tell_the_team` call (kind `wrong_reply`),
+  so the watch reads it like any request and re-opens that note's plan.
+- **Watch rules for v3:** a missing feature the dashboard already has is usually one route added to `ALLOWED`; every
+  plan's test replays the person's own messages; a used-up AI budget (WA-143) is reported, never planned as a code fix.
+
 ### Who asked, live check, used again (TM-19)
 
 - `propose_plan` takes `asked_for` (the watch's correlation ids): the request-log item records **who asked** (name, role,

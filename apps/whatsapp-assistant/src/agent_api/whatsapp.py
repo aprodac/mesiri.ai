@@ -47,6 +47,7 @@ from runtime.ai_outage import (
     reply_for_attempt,
     retry_attempt,
 )
+from runtime.release_notes import request_ref
 
 from .agent import SOP, ApiAgent, PendingWrite, WriteResult, _detail, confirm
 from .app import build_api_app
@@ -304,6 +305,11 @@ class ApiWhatsApp:
         if turn.saved:
             self._just_saved[message.correlation_id] = list(turn.saved)
         words = turn.reply or turn.question or (_saved_text(turn.saved, state.get("language")) if turn.saved else "")
+        if any(c.get("tool") == TELL_THE_TEAM for c in calls):
+            # TM-21: the request's reference, the same one the team group sees, so both can talk about it.
+            ref = request_ref(message.correlation_id)
+            if ref and ref not in words:
+                words = f"{words}\n\n{ref}".strip()
         reply = self._reply(words, turn.pending, state, turn.options)
         await self._save_state(ctx, state)
         return reply

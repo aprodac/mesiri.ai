@@ -349,6 +349,20 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "आवाज़ साफ़ नहीं सुनाई दी, एक बार फिर बोलेंगे?",
         "hinglish": "Awaaz saaf nahi aayi, ek baar phir bolenge?",
     },
+    "release.works": {
+        "english": "Thank you 👍 Glad it works.",
+        "manglish": "Thanks 👍 Work aakunnundallo, santhosham.",
+        "malayalam": "നന്ദി 👍 ശരിയായി പ്രവർത്തിക്കുന്നതിൽ സന്തോഷം.",
+        "hindi": "धन्यवाद 👍 अच्छा लगा कि यह चल रहा है।",
+        "hinglish": "Thanks 👍 Accha laga ki ye chal raha hai.",
+    },
+    "release.still_wrong": {
+        "english": "Sorry 🙏 I've told the team it's still not right. What is still wrong? Send it as a message or a voice note.",
+        "manglish": "Sorry 🙏 Ippozhum sheriyalla ennu team-ne ariyichu. Enthaanu ippozhum thettu? Message aayo voice note aayo ayakkoo.",
+        "malayalam": "ക്ഷമിക്കണം 🙏 ഇപ്പോഴും ശരിയല്ലെന്ന് ടീമിനെ അറിയിച്ചു. എന്താണ് ഇപ്പോഴും തെറ്റ്? മെസ്സേജ് ആയോ വോയ്സ് നോട്ട് ആയോ അയക്കൂ.",
+        "hindi": "माफ़ कीजिए 🙏 मैंने टीम को बता दिया है कि यह अभी भी ठीक नहीं है। क्या अभी भी गलत है? मैसेज या वॉइस नोट भेजिए।",
+        "hinglish": "Sorry 🙏 Maine team ko bata diya ki ye abhi bhi theek nahi hai. Kya abhi bhi galat hai? Message ya voice note bhejiye.",
+    },
     "outage.budget": {
         "english": "Got it 👍 Mesiri's AI is paused for a short while (the team has been told). Your message is kept and I'll do it as soon as it's back.",
         "manglish": "Sheri 👍 Mesiri-yude AI kurachu neram nirthi vechirikkunnu (team-ne ariyichu). Message sookshichittundu, thirichu vannal udane cheyyaam.",

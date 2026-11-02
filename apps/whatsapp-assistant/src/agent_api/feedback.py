@@ -61,8 +61,10 @@ def feedback_instruction(args: dict[str, Any]) -> str:
         return (
             "Passed to the team. In your reply say plainly, in one or two short sentences, that Mesiri cannot do this "
             "here yet, that you have passed it to the team to build, and that you will message them here when it "
-            "works. If there is a way to do it today (the web dashboard), name it in a few words as the way for now. "
-            "Do every other part of their message as usual."
+            "works. If there is a way to do it today (the web dashboard), name it in a few words as the way for now "
+            "(with `web_link` when there is a page for it). If what they want could mean two different things, ask "
+            "ONE short question with `ask` and 2-3 options, and pass their answer on with `tell_the_team` again "
+            "(same kind, with `why`), so the team builds the right thing. Do every other part of their message as usual."
         )
     if kind == "bad_ux" and not has_reason:
         return (
