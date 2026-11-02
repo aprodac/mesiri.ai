@@ -157,9 +157,11 @@ production watch ◄────────────────────
 
 After a passing live check the bot posts ONE picture in the team group (`post_fixed_card`, `src/cards.js`): the
 real assistant-test conversation since the check started (drawn by code from the stored messages, never retyped)
-next to **Now works**, **Also covered** (the related cases the fix handles too: other wordings, languages, voice /
-photo, record kinds, states; the check tries one or two of them first) and **Still not** (on purpose). An empty
-"also covered" prints "this is a patch", so the whole group sees it.
+for **Now works**, and **Also covered** as messages too: the check tries 2-4 related cases (another wording, their
+language and script, a voice note, another record kind or state) and each is drawn as its own real exchange (what
+it sent, what Mesiri answered), matched by the exact text sent (`(voice)` / `(photo)` by kind). A case it never
+tried shows in red as "not tried: not proven"; no related cases prints "this is a patch". **Still not** lists what
+it deliberately leaves out.
 
 ### Who asked, live check, used again (TM-19)
 

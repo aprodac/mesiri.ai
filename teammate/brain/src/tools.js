@@ -15,7 +15,7 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { chatHtml } from "./prod_watch.js";
-import { fixedCardHtml } from "./cards.js";
+import { fixedCardHtml, splitCases } from "./cards.js";
 
 const MAX_TEXT = 3800;
 // test_assistant: how long to wait for the assistant, and how long a quiet gap means it has finished.
@@ -142,10 +142,16 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
           ),
           tool(
             "post_fixed_card",
-            "TM-32: after a passing live check, post ONE picture to the team group: the real test-chat conversation (drawn by the code from the stored messages since this check started) next to what now works, the related cases the fix also covers (the class: other wordings, languages, voice / photo, record kinds, states it handles), and what it deliberately does not. Fill also_covered honestly from the plan and what you tried: an empty list says this was a patch.",
+            "TM-32: after a passing live check, post ONE picture to the team group: the real test-chat conversation (drawn by the code from the stored messages since this check started) for what now works, and for EACH related case the fix also covers (the class: another wording, their language, a voice note, another record kind or state) the real exchange you had for it. So first try each related case with test_assistant (2-4 of them), then list them here with the exact text you sent: the card shows that message and Mesiri's replies. A case you did not try shows as \"not tried\"; no related cases says this was a patch.",
             {
               now_works: z.array(z.string().min(2).max(160)).min(1).max(6).describe("What the person asked for, now working, in plain words"),
-              also_covered: z.array(z.string().min(2).max(160)).max(8).describe("The sibling cases the fix covers too (you tried or the tests prove)"),
+              also_covered: z
+                .array(z.object({
+                  case: z.string().min(2).max(120).describe("The related case in plain words, e.g. 'Malayalam script'"),
+                  sent: z.string().min(1).max(2000).describe("Exactly the text you sent for it with test_assistant; \"(voice)\" for a voice note, \"(photo)\" for an image"),
+                }))
+                .max(8)
+                .describe("The related cases the fix covers too, each tried in the test chat"),
               still_not: z.array(z.string().min(2).max(160)).max(5).describe("What it deliberately does not do yet"),
             },
             async ({ now_works, also_covered, still_not }) => {
@@ -159,8 +165,10 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
                 messages = [];
               }
               const html = fixedCardHtml({ id: ctx.verify_plan, title: plan.title || "", sha: plan.live_sha || null, messages, nowWorks: now_works, alsoCovered: also_covered, stillNot: still_not });
-              const caption = `✅ [${ctx.verify_plan}] ${plan.title || ""}: works now${also_covered.length ? ` (+${also_covered.length} related)` : " (only the reported case)"}`;
+              const caption = `✅ [${ctx.verify_plan}] ${plan.title || ""}: works now${also_covered.length ? ` · ${tried} of ${also_covered.length} related cases shown working` : " · only the reported case (a patch)"}`;
               plans.update?.(ctx.verify_plan, { fixed_card: { now_works, also_covered, still_not } });
+              const { cases } = splitCases(messages, also_covered);
+              const tried = cases.filter((c) => c.exchange && c.exchange.replies.length).length;
               return image(await render.html(html, 1100), caption);
             },
           ),

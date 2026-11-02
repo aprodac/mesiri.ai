@@ -1021,9 +1021,10 @@ export class Brain {
       "1. Send what they asked (or the closest test message for it) to the assistant's test chat with test_assistant, the way a",
       "   worker would, and follow any menu it gives. Use the plan's own test message when it names one.",
       "2. Judge the replies as that person would. Then call verification_result once: ok true only if it does what they asked.",
-      "3. When it works: post_fixed_card (TM-32): the real conversation next to what now works, the related cases the fix",
-      "   also covers (try one or two of them with test_assistant first: another wording, their language, a voice note) and",
-      "   what it does not do yet. Then post ONE short line here: \"✅ [n] verified live: <what works>\". When broken:",
+      "3. When it works: try 2-4 RELATED cases with test_assistant too (another wording, their language and script, a voice",
+      "   note, another record kind or state the fix covers), then post_fixed_card (TM-32) with each case and the exact text",
+      "   you sent: the card shows every exchange as real messages. Then post ONE short line here: \"✅ [n] verified live:",
+      "   <what works>\". When broken:",
       "   \"❌ [n] still not working: <what happened>\", find the cause and call propose_plan for the fix (it starts by itself).",
       "",
       ...(missingNote
