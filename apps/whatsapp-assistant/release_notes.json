@@ -212,6 +212,17 @@
         "cor_9a42df2c766b46a9a5fb4bed2ddd924b"
       ],
       "message": "Mesiri answers again, and if it's ever slow it keeps your message and replies a little later. Try: 'Hi'."
+    },
+    {
+      "id": "v3-stale-line",
+      "date": "2026-11-03",
+      "for": [
+        "cor_ac9c4bccd35943ac811911293ca88c1c",
+        "cor_7e07211b36f540cbbcb3da6f901f67e6",
+        "cor_8fa51b8f47ec4ac89bf50acbc880491d",
+        "cor_6cd3f05df6f64e51b55949b5f0ca9dac"
+      ],
+      "message": "Steel bar, TMT okke ippo nos aayi save aakum. Save aakatha line list-il thanne nilkilla. Try: '10 TMT steel bar use aaki'"
     }
   ]
 }

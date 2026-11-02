@@ -65,11 +65,11 @@ _PLAIN = {
     "hindi": "यह लाइन सेव नहीं हो सकी। बताइए क्या कमी है, मैं ठीक कर दूंगा।",
 }
 _UNIT = {
-    "english": "I am not sure which unit this is (bags, kg, nos...). Tell me the unit and I will fix this line.",
-    "manglish": "Ethu unit aanennu urappilla (bag, kg, nos...). Unit para, njan ee line sheriyakkam.",
-    "malayalam": "ഏത് യൂണിറ്റ് ആണെന്ന് ഉറപ്പില്ല (ചാക്ക്, കിലോ, എണ്ണം...). യൂണിറ്റ് പറയൂ, ഞാൻ ശരിയാക്കാം.",
-    "hinglish": "Yeh kaunsa unit hai pata nahi (bag, kg, nos...). Unit bataiye, main line theek kar dunga.",
-    "hindi": "यह कौन सी इकाई है पता नहीं (बैग, किलो, नग...)। इकाई बताइए, मैं ठीक कर दूंगा।",
+    "english": "I am not sure which unit this is (bags, kg, nos...). Send this line again with its unit.",
+    "manglish": "Ethu unit aanennu urappilla (bag, kg, nos...). Ee line unit koodi ayakkoo.",
+    "malayalam": "ഏത് യൂണിറ്റ് ആണെന്ന് ഉറപ്പില്ല (ചാക്ക്, കിലോ, എണ്ണം...). യൂണിറ്റ് സഹിതം ഈ വരി വീണ്ടും അയയ്ക്കൂ.",
+    "hinglish": "Yeh kaunsa unit hai pata nahi (bag, kg, nos...). Yeh line unit ke saath dobara bhejiye.",
+    "hindi": "यह कौन सी इकाई है पता नहीं (बैग, किलो, नग...)। यह लाइन इकाई के साथ फिर भेजिए।",
 }
 
 

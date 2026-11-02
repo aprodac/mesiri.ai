@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -325,6 +326,25 @@ async def settle_unit(client: ApiClient, body: dict[str, Any]) -> str:
     return ""
 
 
+UNIT_UNSETTLED = "unit_id is not a valid active unit"
+
+
+async def unit_from_summary(client: ApiClient, entry: PendingWrite) -> str:
+    """A held line whose unit id cannot be settled (the model wrote something else) still says its
+    unit in its words ("10 TMT steel bars"): try each word through the same resolver. "" = settled."""
+    try:
+        response = await client.call("GET", "/materials/units-of-measure")
+    except Exception:  # noqa: BLE001
+        return "no units"
+    units = unit_rows(response.body) if response.ok else []
+    for word in re.findall(r"[^\W\d_]+", entry.summary or ""):
+        unit = resolve_unit(units, word)
+        if unit is not None:
+            entry.body["unit_id"] = str(unit["id"])
+            return ""
+    return "no unit in the words"
+
+
 async def unit_buttons(client: ApiClient) -> list[str]:
     """Up to three unit buttons (nos / kg / tons first) for a unit the code could not settle, so the
     person taps one before Save instead of meeting a refusal after it."""
@@ -346,7 +366,9 @@ async def confirm(client: ApiClient, pending: list[PendingWrite]) -> list[WriteR
         if "unit_id" in entry.body:  # an entry held before this check, or an id gone stale
             problem = await settle_unit(client, entry.body)
             if problem:
-                results.append(WriteResult(entry, 422, {"detail": "unit_id is not a valid active unit"}))
+                problem = await unit_from_summary(client, entry)  # "10 TMT steel bars": bars -> nos
+            if problem:
+                results.append(WriteResult(entry, 422, {"detail": UNIT_UNSETTLED}))
                 continue
         response = await client.call(entry.method, entry.path, params=entry.params, json=entry.body,
                                      idempotency_key=entry.idempotency_key)

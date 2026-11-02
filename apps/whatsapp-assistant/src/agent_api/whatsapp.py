@@ -50,7 +50,7 @@ from runtime.ai_outage import (
 from runtime.release_notes import request_ref
 from runtime.team_notify import poke_watch_soon
 
-from .agent import SOP, ApiAgent, PendingWrite, WriteResult, _detail, confirm
+from .agent import SOP, UNIT_UNSETTLED, ApiAgent, PendingWrite, WriteResult, _detail, confirm
 from .app import build_api_app
 from .client import Actor, ApiClient
 from .memory import DayMemory
@@ -290,6 +290,8 @@ class ApiWhatsApp:
             state, history, facts = await asyncio.gather(
                 self._state(ctx), self._memory.load(ctx), self._facts(ctx, client))
             _lap("v3_facts_memory")
+            if state.get("pending") and state.get("pending_at") and time.time() - float(state["pending_at"]) > PENDING_MAX_AGE_S:
+                state["pending"], state["batch"] = [], None  # waiting for hours: never rides on a new card
             ready = dropping_stale_sends([PendingWrite.from_json(e) for e in state.get("pending", [])])
             run = dict(
                 text=text, history=history, ready=ready, sender_name=ctx.full_name or "",
@@ -531,7 +533,9 @@ class ApiWhatsApp:
             await client.close()
         self._just_saved[correlation_id] = results
         # Refused entries stay waiting (they can be corrected and saved); saved ones go.
-        left = [r.pending for r in results if not r.ok]
+        # A line whose unit nobody could settle comes off the list (it would ride along on every new
+        # card for hours, 2 Nov): the text below says so and asks for it again with the unit.
+        left = [r.pending for r in results if not r.ok and r.body != {"detail": UNIT_UNSETTLED}]
         state["pending"] = [e.to_json() for e in left]
         state["batch"] = uuid.uuid4().hex[:8] if left else None
         text = _saved_text(results, state.get("language"))
@@ -564,7 +568,12 @@ class ApiWhatsApp:
     def _reply(self, words: str, pending: list[PendingWrite], state: dict, options: list[str]) -> ReplySpec:
         """The model's words, the ready list under them, and the buttons: the question's options
         when it asked one (one tap answers it), else Save / Cancel for the list."""
+        had = bool(state.get("pending"))
         state["pending"] = [e.to_json() for e in pending]
+        if pending and not (had and state.get("pending_at")):
+            state["pending_at"] = time.time()
+        elif not pending:
+            state.pop("pending_at", None)
         state["batch"] = uuid.uuid4().hex[:8] if pending else None  # a new list: older buttons no longer act
         from runtime.agent.reply_clean import whatsapp_bold
 
@@ -611,6 +620,7 @@ class ApiWhatsApp:
 
 
 SEND_TOOLS = ("send_dpr",)
+PENDING_MAX_AGE_S = 4 * 3600  # a ready list nobody saved in four hours is dropped, not carried
 
 
 def dropping_stale_sends(entries: list[PendingWrite]) -> list[PendingWrite]:

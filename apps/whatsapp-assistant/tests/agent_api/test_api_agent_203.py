@@ -145,3 +145,49 @@ def test_a_save_tap_never_sends_a_dpr_nobody_asked_for() -> None:
     assert [e.tool for e in _without_stale_sends(mixed)] == ["record_receipt"]
     assert [e.tool for e in _without_stale_sends([_entry("send_dpr")])] == ["send_dpr"]
     assert [e.tool for e in dropping_stale_sends(mixed)] == ["record_receipt"]
+
+
+async def _hold(h, summary: str, unit: str) -> None:  # noqa: ANN001
+    """Put one waiting receipt in the state, as an earlier turn would have (a unit the code cannot settle)."""
+    from tests.agent_api.standin import ORG, PROJECT, SITE, USER
+
+    entry = PendingWrite("record_receipt", "POST", "/materials/inflows", {},
+                         {"material_id": TMT, "quantity": 10, "unit_id": unit, "site_id": SITE,
+                          "project_id": PROJECT, "occurred_date": "2026-11-02"}, summary, "k1")
+    await h.redis.set_json(f"agent_api:{ORG}:{USER}", {"pending": [entry.to_json()], "batch": "b1",
+                                                      "pending_at": __import__("time").time()})
+
+
+async def test_a_held_line_with_an_unsettled_unit_takes_it_from_its_words() -> None:
+    """Ilan 2 Nov 21:45: "10 TMT steel bars" sat for hours; its words say bars -> nos."""
+    h = Harness(FakeToolCallingProvider(["Ok."]))
+    await _hold(h, "10 TMT steel bars used", "steel")
+    await h.service.handle(_message("Save", tap="apiag:save:b1"), CTX)
+    assert h.sent[-1].text.startswith("Saved.") and h.posts() == 1
+
+
+async def test_a_held_line_nobody_can_settle_leaves_the_list_with_plain_words() -> None:
+    from tests.agent_api.standin import ORG, USER
+
+    h = Harness(FakeToolCallingProvider(["Ok."]))
+    await _hold(h, "10 TMT used", "steel")
+    await h.service.handle(_message("Save", tap="apiag:save:b1"), CTX)
+    text = h.sent[-1].text
+    assert "unit_id" not in text and h.posts() == 0 and not h.sent[-1].buttons
+    state = await h.redis.get_json(f"agent_api:{ORG}:{USER}")
+    assert state["pending"] == []  # it does not ride along on the next card
+
+
+async def test_a_list_nobody_saved_for_hours_is_dropped_on_the_next_message() -> None:
+    import time
+
+    from tests.agent_api.standin import ORG, USER
+
+    h = Harness(FakeToolCallingProvider(["Hello."]))
+    await _hold(h, "10 TMT used", "steel")
+    state = await h.redis.get_json(f"agent_api:{ORG}:{USER}")
+    state["pending_at"] = time.time() - 5 * 3600
+    await h.redis.set_json(f"agent_api:{ORG}:{USER}", state)
+    await h.service.handle(_message("hi"), CTX)
+    assert "10 TMT used" not in (h.model_system() if hasattr(h, "model_system") else "")
+    assert (await h.redis.get_json(f"agent_api:{ORG}:{USER}"))["pending"] == []
