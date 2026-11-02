@@ -111,7 +111,13 @@ production watch ◄────────────────────
   code in every mode and traced as `release_feedback`; "Still wrong" is a `tell_the_team` call (kind `wrong_reply`),
   so the watch reads it like any request and re-opens that note's plan.
 - **Watch rules for v3:** a missing feature the dashboard already has is usually one route added to `ALLOWED`; every
-  plan's test replays the person's own messages; a used-up AI budget (WA-143) is reported, never planned as a code fix.
+  plan's test replays the person's own messages (`scripts/replay_to_test.py <correlation id>`, TM-25); a used-up AI
+  budget (WA-143) is reported, never planned as a code fix.
+- **Picked up at once (TM-22):** when Mesiri passes a request on (or someone taps "Still wrong"), it pokes the listener
+  (`POST /watch/poke`), which tells the brain (`POST /poke`): the watch looks as soon as the message has settled
+  (about 2 min 10 s), instead of at its next 2-minute check.
+- **Loop numbers (TM-23):** the control panel's Requests page shows asked → live time (median, slowest tenth), live
+  checks passed, and the testers' Works / Still wrong taps (last 30 days).
 
 ### Who asked, live check, used again (TM-19)
 
