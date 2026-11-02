@@ -40,6 +40,7 @@ import { createRenderer } from "./render.js";
 import { commitPatterns, formatWorkStatus } from "./work_status.js";
 import { ProdWatch, QUIET, Screener, opsSources, skipPatterns } from "./prod_watch.js";
 import { costRows } from "./cost.js";
+import { Digest } from "./digest.js";
 
 const log = (m) => console.log(`[brain] ${m}`);
 const token = process.env.TEAMMATE_API_TOKEN || "";
@@ -152,6 +153,8 @@ const listener = {
   addItem: (b) => call("POST", "/items", b),
   updateItem: (id, b) => call("POST", `/items/${id}`, b),
   getItem: (id, project) => call("GET", `/items/${id}?project=${encodeURIComponent(project)}`),
+  /** TM-26: the project's whole request log (the weekly digest). */
+  items: (project) => call("GET", `/items?project=${encodeURIComponent(project)}`),
   /** Translate one message on request (Gemini, in the listener); returns text + cost. */
   translate: (n, project) => call("POST", `/messages/${n}/translate?project=${encodeURIComponent(project)}`),
   /** A group photo / file by message number: { data: Buffer, mime }. */
@@ -351,6 +354,20 @@ if (prodWatchMinutes > 0 && Object.keys(opsByProject).length) {
       : null,
   });
   brain.prodWatch = prodWatch; // "@bot watch …" (owners change how often, pause, look now)
+  // TM-26: the weekly digest in each project's team group (Monday morning, India time); "@bot digest" posts one now.
+  // TEAMMATE_DIGEST=0 turns the weekly post off (the command still works).
+  const digest = new Digest({
+    sources: opsByProject,
+    items: async (project) => (await listener.items(project)).items || [],
+    notify: (project, text) => brain.notifyTeam(project, text),
+    file: join(dir, "digest.json"),
+    log,
+  });
+  brain.digest = digest;
+  if (process.env.TEAMMATE_DIGEST !== "0") {
+    setInterval(() => digest.maybeSend().catch((e) => log(`digest: ${e.message}`)), 60 * 60_000).unref?.();
+    log("digest: weekly, Monday from 9:00 IST, in each project's team group");
+  }
   // Every minute: a look when it is on and its interval (TEAMMATE_PROD_WATCH_MINUTES, or what an owner set) has passed.
   const beat = () => prodWatch.maybeTick().catch((e) => log(`prod-watch: ${e.message}`));
   setTimeout(() => (beat(), setInterval(beat, 60_000)), 120_000);
