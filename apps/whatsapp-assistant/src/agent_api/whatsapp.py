@@ -159,6 +159,8 @@ class ApiWhatsApp:
         #: WA-132: the SAVED card after a Save (the channel.receipt builder classic uses).
         self._receipts = receipt_builder
         self._send_image = send_image
+        #: TM-28: messages that passed a request on; poked after they are answered.
+        self._requested: set[str] = set()
         self._just_saved: dict[str, list[WriteResult]] = {}
         self._send_document = send_document
         self._send = send
@@ -226,6 +228,10 @@ class ApiWhatsApp:
         await _safe(self._log_store.log_reply(correlation_id=message.correlation_id, reply=reply.text))
         await _safe(self._log_store.mark_completed(correlation_id=message.correlation_id))
         _lap("v3_log")
+        if message.correlation_id in self._requested:
+            # TM-28: after the reply and the "answered" mark, so the team bot can read this request at once.
+            self._requested.discard(message.correlation_id)
+            poke_watch_soon(message.correlation_id)
         if said:
             await self._memory.remember(ctx, said, for_memory(reply.text))  # after the send: never on the wait
             _lap("v3_memory_write")
@@ -331,7 +337,7 @@ class ApiWhatsApp:
             self._just_saved[message.correlation_id] = list(turn.saved)
         words = turn.reply or turn.question or (_saved_text(turn.saved, state.get("language")) if turn.saved else "")
         if any(c.get("tool") == TELL_THE_TEAM for c in calls):
-            poke_watch_soon(message.correlation_id)  # TM-22: the team bot looks now, not at its next check
+            self._requested.add(message.correlation_id)  # TM-22 / TM-28: the team bot is poked once it is answered
             # TM-21: the request's reference, the same one the team group sees, so both can talk about it.
             ref = request_ref(message.correlation_id)
             if ref and ref not in words:
@@ -546,7 +552,7 @@ class ApiWhatsApp:
             "kind": "wrong_reply", "about": f"cancelled the ready list ({what}): {reason}"}}
         await self._trace_turn(message, {"text": f"(cancel reason: {reason})", "calls": [call],
                                          "cancel_reason": code, "cancelled": cancelled}, started)
-        poke_watch_soon(message.correlation_id)  # TM-22: looked at now
+        self._requested.add(message.correlation_id)  # TM-22 / TM-28: poked once it is answered
         if code == "other":
             return ReplySpec(text=_in(state.get("language"), "api.cancel_other",
                                       "Thanks. What was wrong? Send it as a message or a voice note."))

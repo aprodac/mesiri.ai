@@ -307,7 +307,7 @@ createServer(async (req, res) => {
   if (req.url === "/poke") {
     // TM-22: a request was just made to Mesiri; the watch looks once it has settled.
     if (!brain.prodWatch) return reply(404, { error: "production watch is off" });
-    brain.prodWatch.poke(body.project);
+    brain.prodWatch.poke(body.project, body.correlation_id || null);
     return reply(202, { ok: true });
   }
   if (req.url === "/ask") brain.ask(body);

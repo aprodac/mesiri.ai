@@ -530,3 +530,45 @@ test("WA-147: a cancel and a take-back are flagged as quiet failures, and the re
   assert.match(sql, /'undo_receipt', 'undo_usage', 'undo_transfer', 'undo_expense', 'correct_work'/);
   assert.match(sql, /AS cancelled/);
 });
+
+test("TM-28: a poked request is read at once, handed to Claude once, and skipped by the next look", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pw-"));
+  try {
+    const CID = "cor_0123456789abcdef0123456789abcdef";
+    const sqls = [];
+    const row = { correlation_id: CID, at: 100, done_at: 101, who: "w", status: "completed", text: "add a member",
+                  reply: "Passed to the team. #012345", feedback: "missing_feature: add a member from WhatsApp", company: "Paraclette", person: "Ilan" };
+    const cols = Object.keys(row);
+    const fetchFn = async (url, init) => {
+      sqls.push(JSON.parse(init.body).sql);
+      return { ok: true, json: async () => ({ columns: cols, rows: [cols.map((c) => row[c])] }) };
+    };
+    const asked = [];
+    const said = [];
+    const watch = new ProdWatch({ sources: { mesiri: { url: "u", token: "t" } }, ask: async (p, text) => asked.push(text), file: join(dir, "s.json"), fetchFn, log: () => {}, notify: async (p, t) => said.push(t) });
+    assert.equal(await watch.lookAtRequest("mesiri", CID), true);
+    assert.equal(await watch.lookAtRequest("mesiri", CID), false); // already reported
+    assert.equal(asked.length, 1);
+    assert.match(sqls[0], new RegExp(`r.correlation_id = '${CID}'`));
+    assert.doesNotMatch(sqls[0], /interval '2 minutes'/); // no settle for a known request
+    assert.throws(() => watchSql(0, 50, [], false, "cor_x'; DROP"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("TM-28: a message that is not a request is left to the regular look", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pw-"));
+  try {
+    const CID = "cor_0123456789abcdef0123456789abcdee";
+    const row = { correlation_id: CID, at: 100, done_at: 101, who: "w", status: "completed", text: "hi", reply: "Hello", feedback: null };
+    const cols = Object.keys(row);
+    const fetchFn = async () => ({ ok: true, json: async () => ({ columns: cols, rows: [cols.map((c) => row[c])] }) });
+    const asked = [];
+    const watch = new ProdWatch({ sources: { mesiri: { url: "u", token: "t" } }, ask: async (p, t) => asked.push(t), file: join(dir, "s.json"), fetchFn, log: () => {} });
+    assert.equal(await watch.lookAtRequest("mesiri", CID), false);
+    assert.equal(asked.length, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -55,7 +55,7 @@ export function skipPatterns(value) {
  * company. `is_test` marks the skip-list companies (no AI screen for them); `feedback` is what Mesiri passed on with
  * `tell_the_team` in that turn ("missing_feature: create a project from WhatsApp | bad_ux: ... / why: ...").
  */
-export function watchSql(since, limit = 400, skip = [], newest = false) {
+export function watchSql(since, limit = 400, skip = [], newest = false, request = null) {
   const from = Number.isFinite(since) ? Number(since).toFixed(3) : "0";
   const pats = skipPatterns(skip.join(","));
   const isTest = pats.length ? `coalesce(o.name, '') ILIKE ANY (ARRAY[${pats.map((x) => `'${x}'`).join(", ")}])` : "false";
@@ -83,8 +83,22 @@ export function watchSql(since, limit = 400, skip = [], newest = false) {
 FROM inbound_messages m LEFT JOIN organizations o ON o.id = m.organization_id
 LEFT JOIN LATERAL (SELECT u.full_name, u.role FROM users u WHERE u.organization_id = m.organization_id
   AND regexp_replace(u.whatsapp_number, '\\D', '', 'g') = regexp_replace(m.sender_wa_id, '\\D', '', 'g') LIMIT 1) su ON true
-WHERE m.received_at > to_timestamp(${from}) AND m.received_at < now() - interval '2 minutes'
+WHERE ${request ? requestWhere(request) : `m.received_at > to_timestamp(${from}) AND m.received_at < now() - interval '2 minutes'`}
 ORDER BY m.received_at ${newest ? "DESC" : "ASC"} LIMIT ${Math.max(1, Math.min(1000, Number(limit) || 400))}`;
+}
+
+/** A correlation id as the assistant writes it (checked before it goes into SQL). */
+export const CORRELATION_ID = /^cor_[0-9a-f]{8,40}$/;
+
+/**
+ * TM-28: the messages of ONE request, read at once (no 2-minute settle): the message itself and the same sender's
+ * earlier messages of the WINDOW before it, only those already answered (the request was passed on in its reply).
+ */
+export function requestWhere(correlationId) {
+  if (!CORRELATION_ID.test(String(correlationId))) throw new Error("bad correlation id");
+  return `m.processed_at IS NOT NULL AND EXISTS (SELECT 1 FROM inbound_messages r WHERE r.correlation_id = '${correlationId}'
+    AND r.sender_wa_id = m.sender_wa_id AND m.received_at <= r.received_at
+    AND m.received_at > r.received_at - interval '${WINDOW_SECONDS} seconds')`;
 }
 
 /**
@@ -295,7 +309,10 @@ export function watchPrompt(project, convs, { minutes, autobuild = false }) {
     "   plan the feature itself, done properly, not a nicer refusal.",
     "   v3 (docs/architecture/assistant-v3.md): when the web dashboard already does it, the fix is usually that route",
     "   added to ALLOWED in apps/whatsapp-assistant/src/agent_api/tools.py (plus an SOP.md line only if the model needs",
-    "   one): a small plan, never a new workflow. Routes that grant access (members, users, roles) need the owner.",
+    "   one): a small plan, never a new workflow. Name the route in the plan: the whole change is then",
+    "   `python3 scripts/allow_route.py <METHOD> <path> <tool_name> \"<what it is for>\" --ref <#ref>` (TM-30; it checks",
+    "   the route exists, refuses access / deletes / held modules, adds the entry and its test). Routes that grant",
+    "   access (members, users, roles) need the owner.",
     "   Every plan's tests start from the person's own messages: `python3 scripts/replay_to_test.py <correlation id>` (TM-25)",
     "   writes a test in apps/whatsapp-assistant/tests/agent_api/replays/ that replays their v3 turn (words, tool calls, API",
     "   answers); change its expectations to what should happen so it fails before the fix; add a sibling and a guard.",
@@ -558,9 +575,14 @@ export class ProdWatch {
    * TM-22: Mesiri has just passed a request on. The watch reads only settled messages (2 minutes old), so it checks
    * once SETTLE_MS from now, skipping the wait for its next 2-minute probe. Several pokes in a row make one check.
    */
-  poke(project) {
+  poke(project, correlationId = null) {
     if (!this.settings().on) return false;
     if (project && !this.sources[project]) return false;
+    // TM-28: a known request is read at once, on its own (its reply is already sent), without the 2-minute settle.
+    if (project && correlationId && CORRELATION_ID.test(String(correlationId))) {
+      this.lookAtRequest(project, correlationId).catch((e) => this.log(`prod-watch: request ${correlationId}: ${e.message}`));
+      return true;
+    }
     if (this.pokeTimer) return true;
     this.log(`prod-watch: a request was just made${project ? ` (${project})` : ""}; looking in ${Math.round(SETTLE_MS / 1000)} s`);
     this.pokeTimer = setTimeout(() => {
@@ -570,6 +592,36 @@ export class ProdWatch {
     }, SETTLE_MS);
     this.pokeTimer.unref?.();
     return true;
+  }
+
+  /**
+   * TM-28: one request, now: read its messages, and when it carries feedback not yet reported, announce it and hand it
+   * to Claude like any tick would. Marked reported, so the regular look skips it. Returns true when it was handed on.
+   */
+  async lookAtRequest(project, correlationId) {
+    const source = this.sources[project];
+    const res = await this.fetchFn(`${source.url}/claude-ops/sql`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${source.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ sql: watchSql(0, 50, this.skip, false, correlationId) }),
+    });
+    if (!res.ok) throw new Error(`ops API HTTP ${res.status}`);
+    const rows = asObjects(await res.json());
+    const state = this.state();
+    const s = (state[project] ||= { since: this.now() / 1000 - FIRST_LOOK_MINUTES * 60, reported: [] });
+    const reported = new Set(s.reported);
+    if (reported.has(correlationId)) return false;
+    const flagged = flagRows(rows).filter((f) => f.row.correlation_id === correlationId && f.row.feedback);
+    if (!flagged.length) return false; // not (yet) a request: the regular look will see it
+    const convs = conversations(rows, flagged, reported).slice(0, 1);
+    for (const c of convs) for (const id of c.flags.keys()) reported.add(id);
+    s.reported = [...reported].slice(-2000);
+    writeFileSync(this.file, JSON.stringify(state));
+    this.log(`prod-watch ${project}: request ${correlationId} read at once`);
+    for (const line of requestLines(convs)) await this.say(project, line);
+    const autobuild = Boolean(this.autobuildOn?.(project));
+    if (convs.length) await this.ask(project, watchPrompt(project, convs, { minutes: this.minutes, autobuild }), convs);
+    return convs.length > 0;
   }
 
   setBurst(at) {
