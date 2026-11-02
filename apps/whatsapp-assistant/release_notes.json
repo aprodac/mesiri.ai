@@ -191,6 +191,18 @@
         "cor_4f7a0ebdf5cb4751ae385ebc57eaf65f"
       ],
       "message": "Asking 'how much cement is left?' now shows the stock of every site you have. Try: 'how much cement is left?'"
+    },
+    {
+      "id": "v3-material-units",
+      "date": "2026-11-02",
+      "for": [
+        "cor_10bb7eaf90ff48f7bc2e3766c136e03d",
+        "cor_57367d47ed7444aea3254ba94bb66cbf",
+        "cor_8d4f6b73366b4c3fafe507f66b364445",
+        "cor_db2ea9ac7ae54250b1c9ff8d8f8d39c7",
+        "cor_225927bd33184891abc7b8c79e573f5a"
+      ],
+      "message": "Cement, steel okke ippo correct aayi save aakum. Try: '50 bag cement vannu, 10 TMT use aaki'"
     }
   ]
 }

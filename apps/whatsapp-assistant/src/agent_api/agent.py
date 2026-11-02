@@ -23,6 +23,7 @@ from mesiri_ai.models import ChatMessage, ToolOutcome, ToolSpec
 
 from .client import ApiClient, new_idempotency_key
 from .tools import CONFIRM_ARG, ApiTool
+from .units import resolve_unit, unit_choices, unit_rows
 
 SOP = (Path(__file__).with_name("SOP.md")).read_text(encoding="utf-8")
 
@@ -185,6 +186,10 @@ class ApiAgent:
             body.update(dict(tool.fixed))
             if photo_key and tool.is_write and PHOTO_FIELD in tool.hidden and PHOTO_FIELD not in body:
                 body[PHOTO_FIELD] = photo_key
+            if tool.is_write and "unit_id" in tool.body_fields:
+                problem = await settle_unit(client, body)
+                if problem:
+                    return ToolOutcome(content={"error": problem})
             if tool.is_write:
                 entry = PendingWrite(
                     tool=name, method=tool.method, path=path, params=params, body=body,
@@ -263,11 +268,34 @@ def _detail(body: Any) -> str:
     return str(body)[:200]
 
 
+async def settle_unit(client: ApiClient, body: dict[str, Any]) -> str:
+    """Make ``body["unit_id"]`` the id of an active unit (it may be "bags", a code or a wrong id).
+    Returns "" when it is settled, else what to tell the model (it then asks one question)."""
+    try:
+        response = await client.call("GET", "/materials/units-of-measure")
+    except Exception:  # noqa: BLE001 -- the API's own check still decides
+        return ""
+    units = unit_rows(response.body) if response.ok else []
+    if not units:
+        return ""
+    unit = resolve_unit(units, body.get("unit_id"))
+    if unit is None:
+        return (f"unit_id {str(body.get('unit_id'))[:40]!r} is not one of the company's units. Use the id of one of: "
+                f"{unit_choices(units)}. If you cannot tell which unit they mean, ask them with `ask` and those units as options.")
+    body["unit_id"] = str(unit["id"])
+    return ""
+
+
 async def confirm(client: ApiClient, pending: list[PendingWrite]) -> list[WriteResult]:
     """Send the held entries to the API, in order. The API's own checks
     (access, validation, stock guard) decide; a refusal comes back as-is."""
     results: list[WriteResult] = []
     for entry in pending:
+        if "unit_id" in entry.body:  # an entry held before this check, or an id gone stale
+            problem = await settle_unit(client, entry.body)
+            if problem:
+                results.append(WriteResult(entry, 422, {"detail": "unit_id is not a valid active unit"}))
+                continue
         response = await client.call(entry.method, entry.path, params=entry.params, json=entry.body,
                                      idempotency_key=entry.idempotency_key)
         results.append(WriteResult(entry, response.status, response.body))

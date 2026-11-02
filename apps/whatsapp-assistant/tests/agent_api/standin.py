@@ -64,7 +64,8 @@ def stand_in_api(seen: list[tuple[str, str, dict, str | None]], *, refuse_tmt: b
     @app.get("/materials/units-of-measure")
     async def units(jwt: dict = Depends(get_current_user)):
         note("GET", "/materials/units-of-measure", jwt)
-        return [{"id": BAG, "code": "bag"}, {"id": NOS, "code": "nos"}]
+        return {"items": [{"id": BAG, "code": "bag", "display_name": "Bags", "is_active": True},
+                          {"id": NOS, "code": "nos", "display_name": "Numbers", "is_active": True}]}
 
     @app.post("/materials/inflows", status_code=201)
     async def inflow(body: Inflow, jwt: dict = Depends(get_current_user),
