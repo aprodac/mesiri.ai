@@ -35,7 +35,7 @@ name: Claude ops
 #                     in the assistant-test chat; `text` = scenario ids and/or repeats, e.g. "S02,S04 x3"
 #                     (empty: all, once). Same token and chat as bot-test; TEST company only.
 #   golden-live       the agent golden sets on the real model (`pytest -m live`, ARCH-02 gate; `text` = site |
-#                     materials | empty for both). Uses TEAMMATE_GEMINI_API_KEY (approved by Ilan 22 Oct); no VPS.
+#                     materials | photos | draft (the old deploy live gate) | empty for site+materials+photos). Uses TEAMMATE_GEMINI_API_KEY (approved by Ilan 22 Oct); no VPS.
 #
 # Never prints secrets; long digit runs (phone numbers) are cut to their last 4 digits. Customer groups are
 # not readable through this workflow.
@@ -176,8 +176,9 @@ jobs:
                 site) FILES="$T/test_site_golden.py" ;;
                 materials) FILES="$T/test_materials_golden.py" ;;
                 photos) FILES="$T/test_photo_golden.py" ;;
+                draft) FILES="$T/test_draft_golden.py" ;;
                 "") FILES="$T/test_site_golden.py $T/test_materials_golden.py $T/test_photo_golden.py" ;;
-                *) echo "text must be site, materials, photos or empty"; exit 2 ;;
+                *) echo "text must be site, materials, photos, draft or empty"; exit 2 ;;
               esac
               W="$GITHUB_WORKSPACE"
               cd /tmp

@@ -713,6 +713,12 @@ open card, "innu enthokke cheythu?", a two-part note). `test_draft_golden.py` ru
   (gemini-2.5-flash, the settings default) before `deploy`; a case that fails twice in a row stops the deploy; a
   miss followed by a pass is printed as flaky. Fails closed without the key.
 
+**Removed from the deploy, 2 Nov (Ilan).** The `TEAMMATE_GEMINI_API_KEY` project kept hitting its monthly
+spending cap (WA-111), and every deploy failed at this gate on a 429, not on a real regression. The `live-gate`
+job is gone from `deploy.yml`; the scripted half above still runs in every CI and deploy unit job. The live half
+is manual: `claude-ops.yml`, task `golden-live`, text `draft`. Gap: a model-behaviour regression on the draft
+golden set no longer stops a deploy.
+
 Limits: production chooses its model at runtime (`DynamicAIProviderResolver`); the gate tests the default Gemini
 model. Each deploy spends a few model calls (about 20).
 
