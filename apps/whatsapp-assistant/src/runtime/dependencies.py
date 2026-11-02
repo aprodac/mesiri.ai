@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     # WA-118 step 1: where to copy Meta's `calls` events (ingress/calls_forward.py).
     # Empty = ignored, as they have always been.
     calls_forward_url: str = ""
+    # WA-118 step 2: comma-separated numbers the assistant may answer on a call.
+    # Empty = the endpoint does not exist.
+    call_answers_allowed: str = ""
 
     model_config = SettingsConfigDict(
         env_prefix="WHATSAPP_",
@@ -133,6 +136,8 @@ class AppContainer:
     ops_alerts: Any = None
     # WA-87: site WhatsApp groups (whatsapp_groups/router.py reads it).
     group_chat: Any = None
+    # WA-118 step 2: read-only answers on a call (agent_api/call.py).
+    call_answers: Any = None
 
 
 def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppContainer:
@@ -1100,6 +1105,8 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         groups_enabled=settings.groups_enabled,
         on_group_event=group_chat.handle_event if settings.groups_enabled else None,
     )
+    from agent_api.call import CallAnswers
+
     return AppContainer(
         settings=settings,
         http_client=http_client,
@@ -1126,6 +1133,12 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         simulate_handler=simulate_handler,
         ops_alerts=ops_alerts,
         group_chat=group_chat,
+        call_answers=CallAnswers(
+            provider=ai_resolver, database=material_db, redis=redis_client,
+            sessions=_conversation_sessions(material_db), actor_reader=actor_reader,
+            org_settings=org_settings_query, usage_guard=TrialUsageGuard(material_db),
+            message_logger=message_logger,
+        ),
     )
 
 

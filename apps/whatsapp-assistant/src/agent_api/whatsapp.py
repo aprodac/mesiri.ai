@@ -28,7 +28,7 @@ from typing import Any
 from channel.replies import ListRow, ReplySpec
 from mesiri_contracts.assistant.enums import InputModality
 
-from .agent import ApiAgent, PendingWrite, WriteResult, _detail, confirm
+from .agent import SOP, ApiAgent, PendingWrite, WriteResult, _detail, confirm
 from .app import build_api_app
 from .client import Actor, ApiClient
 from .memory import DayMemory
@@ -46,6 +46,16 @@ OPTION_PREFIX = "apiag:opt:"
 MAX_STEPS = 10
 #: The materials and units of a company, read once per this many seconds.
 CATALOG_SECONDS = 300
+#: WA-118: a call is a live conversation, so fewer rounds and a shorter wait than a message.
+CALL_MAX_STEPS = 4
+CALL_TIMEOUT_SECONDS = 10.0
+CALL_RULES = """
+
+This is a live phone call, not WhatsApp. What you write is spoken aloud. One or two short spoken
+sentences, no lists, no symbols, no formatting, no ids. On a call you can only look things up: to
+record or send anything, tell them to send it as a WhatsApp message."""
+#: The speech-to-text gives script; a reply in Latin letters would be read badly aloud.
+SPOKEN_LANGUAGE = {"manglish": "malayalam", "hinglish": "hindi"}
 
 COULD_NOT_HEAR = "I couldn't hear that voice note. Please send it again or type it."
 COULD_NOT_READ = "I couldn't read that photo. Please send it again, or type what it is."
@@ -69,8 +79,11 @@ class ApiWhatsApp:
         self._trace = trace_logger
         self._memory = DayMemory(sessions, redis)
         self._app = app if app is not None else build_api_app(database)
-        self._agent = ApiAgent(provider, build_tools(self._app.openapi()), max_steps=MAX_STEPS,
-                               capability="api_agent")
+        tools = build_tools(self._app.openapi())
+        self._agent = ApiAgent(provider, tools, max_steps=MAX_STEPS, capability="api_agent")
+        self._call_agent = ApiAgent(provider, {n: t for n, t in tools.items() if not t.is_write}, sop=SOP + CALL_RULES,
+                                    max_steps=CALL_MAX_STEPS, timeout_seconds=CALL_TIMEOUT_SECONDS,
+                                    capability="api_agent")
         self._catalog: dict[str, tuple[float, str]] = {}
 
     # -- entry point -----------------------------------------------------------------------
@@ -151,6 +164,24 @@ class ApiWhatsApp:
         reply = self._reply(words, turn.pending, state, turn.options)
         await self._save_state(ctx, state)
         return reply
+
+    async def on_call(self, text: str, ctx: Any, correlation_id: str) -> str:
+        """WA-118: one turn of a phone call. The agent here has no write tool and no ready list."""
+        client = ApiClient(_actor(ctx), app=self._app)
+        try:
+            history, facts = await asyncio.gather(self._memory.load(ctx), self._facts(ctx, client))
+            language = _language(text)
+            turn = await self._call_agent.run(
+                client, text, history=history, sender_name=ctx.full_name or "",
+                timezone=getattr(ctx, "timezone", None) or "Asia/Kolkata", correlation_id=correlation_id,
+                facts=facts, language=SPOKEN_LANGUAGE.get(language or "", language),
+            )
+        finally:
+            await client.close()
+        words = turn.reply or turn.question
+        if words:
+            await self._memory.remember(ctx, text, words)
+        return words
 
     async def _facts(self, ctx: Any, client: ApiClient) -> str:
         """What the model starts from: the sender's projects and sites, the company's materials

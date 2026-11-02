@@ -134,6 +134,33 @@ async def test_repeat_back_says_what_it_heard() -> None:
     assert clock.waiting_for_audio
 
 
+@pytest.mark.asyncio
+async def test_the_assistant_answer_is_what_gets_spoken() -> None:
+    heard: list[str] = []
+
+    async def ask(text: str) -> str:
+        heard.append(text)
+        return "ഇന്ന് 12 മേസൺ"
+
+    step = echo.AskAssistant(echo.Clock(), ask)
+    pushed: list = []
+
+    async def capture(frame, direction=echo.FrameDirection.DOWNSTREAM):
+        pushed.append(frame)
+
+    step.push_frame = capture
+    await step.process_frame(echo.TranscriptionFrame(text="ഇന്ന് എത്ര പേർ", user_id="u", timestamp="t"), echo.FrameDirection.DOWNSTREAM)
+    assert heard == ["ഇന്ന് എത്ര പേർ"]
+    assert pushed[-1].text == "ഇന്ന് 12 മേസൺ"
+
+
+def test_the_assistant_step_replaces_repeat_back() -> None:
+    async def ask(_text: str) -> str:
+        return ""
+
+    assert "AskAssistant" in [type(p).__name__ for p in echo.sarvam_processors("key", echo.Language.ML_IN, "shubh", ask)]
+
+
 async def terminated(actions: list[str]) -> None:
     while "terminate" not in actions:
         await asyncio.sleep(0.1)

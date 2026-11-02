@@ -48,6 +48,15 @@ Mesiri greets you in Malayalam. Say something in Malayalam and it repeats what i
 `first audio back after`, in seconds from when you stopped talking. `CALL_SPIKE_VOICE=pooja` tries the other voice, and
 `CALL_SPIKE_LANGUAGE=hi-IN` or `en-IN` another language. Interrupting is not wired up yet.
 
+## Step 2 part B: real answers, reads only
+
+On the server, set `WHATSAPP_CALL_ANSWERS_ALLOWED=91XXXXXXXXXX` in `/opt/mesiri/.env` and restart `mesiri`. Empty means
+`/webhook/call-answer` does not exist. Then start the spike as above with `CALL_SPIKE_MODE=assistant`. It finds the app
+through `MESIRI_APP_PORT`, which the `.env` sets when the app is not on 8000.
+
+Ask something the site records answer. The log prints `assistant answered in` and `first audio back after`. Asking it to
+record something should get a request to send a WhatsApp message instead. To stop, empty the setting and restart.
+
 ## What to look for
 
 Call Mesiri's WhatsApp number from the allowed phone and speak.

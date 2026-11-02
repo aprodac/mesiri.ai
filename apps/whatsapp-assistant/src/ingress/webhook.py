@@ -7,6 +7,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
+from ingress.call_answer import CallAnswerRefused, read_call_question
 from ingress.calls_forward import forward_calls, has_calls_change
 from ingress.receiver import WhatsAppReceiver
 from ingress.verification import (
@@ -41,6 +42,23 @@ async def verify_webhook(
 
     logger.info("WhatsApp webhook subscription verified")
     return Response(content=challenge, media_type="text/plain")
+
+
+@router.post("/call-answer")
+async def call_answer(request: Request, settings: Settings = Depends(get_settings)) -> dict:
+    """WA-118 step 2: what the assistant says to what the caller said. Off until numbers are listed."""
+    if not settings.call_answers_allowed:
+        raise HTTPException(status_code=404)
+    try:
+        wa_id, text = read_call_question(
+            await request.body(),
+            request.headers.get("X-Hub-Signature-256"),
+            app_secret=settings.app_secret,
+            allowed=settings.call_answers_allowed,
+        )
+    except CallAnswerRefused as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return {"text": await get_container(request).call_answers.answer(wa_id, text)}
 
 
 @router.post("")

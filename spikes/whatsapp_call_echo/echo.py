@@ -61,6 +61,8 @@ MAX_CONNECT_AGE_SECONDS = 60
 UDP_PORTS = range(40000, 40100)
 SAMPLE_RATE = 16000
 GREETING = "നമസ്കാരം, പറയൂ."
+NOT_NOW = "ഇപ്പോൾ നോക്കാൻ പറ്റിയില്ല. ഒന്നുകൂടി പറയൂ."
+ANSWER_TIMEOUT_SECONDS = 25
 
 # Pipecat hard-codes v23.0; use the version the app's webhooks are on.
 WhatsAppApi.BASE_URL = "https://graph.facebook.com/v25.0/"
@@ -146,6 +148,46 @@ class Clock:
         self.waiting_for_audio = False
 
 
+class AskAssistant(FrameProcessor):
+    """Say what the assistant answers to what Sarvam heard."""
+
+    def __init__(self, clock: Clock, ask: Any) -> None:
+        super().__init__()
+        self._clock = clock
+        self._ask = ask
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+        if isinstance(frame, VADUserStoppedSpeakingFrame):
+            self._clock.stopped_speaking = time.monotonic()
+        if isinstance(frame, TranscriptionFrame):
+            asked = time.monotonic()
+            answer = await self._ask(frame.text)
+            logger.info("assistant answered in %.2fs: %d characters", time.monotonic() - asked, len(answer))
+            self._clock.waiting_for_audio = True
+            await self.push_frame(TTSSpeakFrame(answer), direction)
+        else:
+            await self.push_frame(frame, direction)
+
+
+def assistant_ask(session: aiohttp.ClientSession, url: str, secret: str, wa_id: str) -> Any:
+    """Ask the app, signed the way `ingress/call_answer.py` checks it."""
+
+    async def ask(text: str) -> str:
+        body = json.dumps({"wa_id": wa_id, "text": text, "at": time.time()}, ensure_ascii=False).encode()
+        digest = hmac.new(secret.encode(), b"call-answer:" + body, hashlib.sha256).hexdigest()
+        try:
+            async with session.post(url, data=body, headers={"X-Hub-Signature-256": f"sha256={digest}"},
+                                    timeout=aiohttp.ClientTimeout(total=ANSWER_TIMEOUT_SECONDS)) as response:
+                response.raise_for_status()
+                return (await response.json())["text"]
+        except Exception:
+            logger.exception("the assistant did not answer")
+            return NOT_NOW
+
+    return ask
+
+
 class RepeatBack(FrameProcessor):
     """Stand-in for the assistant: say back what Sarvam heard."""
 
@@ -180,12 +222,12 @@ class FirstAudio(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
-def sarvam_processors(api_key: str, language: Language, voice: str) -> list[FrameProcessor]:
+def sarvam_processors(api_key: str, language: Language, voice: str, ask: Any = None) -> list[FrameProcessor]:
     clock = Clock()
     return [
         VADProcessor(vad_analyzer=SileroVADAnalyzer()),
         SarvamRealtimeSTTService(api_key=api_key, settings=SarvamRealtimeSTTService.Settings(language=language)),
-        RepeatBack(clock),
+        AskAssistant(clock, ask) if ask else RepeatBack(clock),
         SarvamTTSService(
             api_key=api_key,
             sample_rate=SAMPLE_RATE,
@@ -232,7 +274,7 @@ async def run_call(connection: Any, call_id: str, started: float, ended: asyncio
             logger.info("call %s cpu%% one core: avg %.1f max %.1f", call_id, sum(samples) / len(samples), max(samples))
 
 
-def build_app(*, token: str, secret: str, phone_number_id: str, allowed: set[str], sarvam_key: str = "", language: Language = Language.ML_IN, voice: str = "shubh") -> FastAPI:
+def build_app(*, token: str, secret: str, phone_number_id: str, allowed: set[str], sarvam_key: str = "", language: Language = Language.ML_IN, voice: str = "shubh", answer_url: str = "") -> FastAPI:
     state: dict[str, Any] = {"busy": False}
 
     @asynccontextmanager
@@ -252,7 +294,8 @@ def build_app(*, token: str, secret: str, phone_number_id: str, allowed: set[str
 
         async def on_connection(connection: Any, _call: Any) -> None:
             logger.info("accepted after %.2fs", time.monotonic() - started)
-            processors = sarvam_processors(sarvam_key, language, voice) if sarvam_key else [Echo()]
+            ask = assistant_ask(state["session"], answer_url, secret, state["caller"]) if answer_url else None
+            processors = sarvam_processors(sarvam_key, language, voice, ask) if sarvam_key else [Echo()]
             await run_call(connection, call_id, started, state["ended"], processors, GREETING if sarvam_key else "")
 
         try:
@@ -288,7 +331,7 @@ def build_app(*, token: str, secret: str, phone_number_id: str, allowed: set[str
                 call = answerable_call(value, phone_number_id=phone_number_id, allowed=allowed, now=time.time())
                 if call is None or state["busy"]:
                     continue
-                state.update(busy=True, ended=asyncio.Event(), call_id=call["id"])
+                state.update(busy=True, ended=asyncio.Event(), call_id=call["id"], caller=value["contacts"][0]["wa_id"])
                 pipecat_request = as_pipecat_request(payload, change, call)
                 asyncio.create_task(answer(pipecat_request, body, signature, call["id"]))
         return Response(status_code=200)
@@ -303,7 +346,8 @@ if __name__ == "__main__":
         secret=os.environ["WHATSAPP_APP_SECRET"],
         phone_number_id=os.environ["WHATSAPP_PHONE_NUMBER_ID"],
         allowed=allowed_callers(),
-        sarvam_key=os.environ["MESIRI_SARVAM__API_KEY"] if os.environ.get("CALL_SPIKE_MODE") == "sarvam" else "",
+        sarvam_key=os.environ["MESIRI_SARVAM__API_KEY"] if os.environ.get("CALL_SPIKE_MODE") in ("sarvam", "assistant") else "",
+        answer_url=f"http://127.0.0.1:{os.environ.get('MESIRI_APP_PORT', '8000')}/webhook/call-answer" if os.environ.get("CALL_SPIKE_MODE") == "assistant" else "",
         language=Language(os.environ.get("CALL_SPIKE_LANGUAGE", "ml-IN")),
         voice=os.environ.get("CALL_SPIKE_VOICE", "shubh"),
     )
