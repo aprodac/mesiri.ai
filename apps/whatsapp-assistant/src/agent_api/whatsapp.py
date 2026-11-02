@@ -21,6 +21,7 @@ import asyncio
 import datetime as dt
 import json
 import logging
+import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -430,6 +431,8 @@ class ApiWhatsApp:
         from runtime.agent.reply_clean import whatsapp_bold
 
         text = whatsapp_bold(words) or "OK."
+        # The list is drawn here; a copy the model wrote itself (it echoed the history) is cut.
+        text = without_ready_block(text) or "OK."
         if pending:
             listed = "\n".join(f"{i}. {e.summary}" for i, e in enumerate(pending, 1))
             text = f"{text}\n\n*Ready to save:*\n{listed}"
@@ -467,6 +470,11 @@ class ApiWhatsApp:
             )
         except Exception:  # noqa: BLE001 -- diagnostics never break a message
             _log.warning("agent_api.trace_failed", exc_info=True)
+
+
+def without_ready_block(text: str) -> str:
+    """The model's words without a "Ready to save:" list it wrote itself (the code draws the list)."""
+    return re.split(r"[\s*_]*Ready to save[:*_ \t]*\n", text, maxsplit=1, flags=re.IGNORECASE)[0].strip()
 
 
 def _language(text: str) -> str | None:
