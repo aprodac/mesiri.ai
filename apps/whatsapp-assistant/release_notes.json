@@ -215,14 +215,14 @@
     },
     {
       "id": "v3-stale-line",
-      "date": "2026-11-03",
+      "date": "2026-11-02",
       "for": [
         "cor_ac9c4bccd35943ac811911293ca88c1c",
         "cor_7e07211b36f540cbbcb3da6f901f67e6",
         "cor_8fa51b8f47ec4ac89bf50acbc880491d",
         "cor_6cd3f05df6f64e51b55949b5f0ca9dac"
       ],
-      "message": "Steel bar, TMT okke ippo nos aayi save aakum. Save aakatha line list-il thanne nilkilla. Try: '10 TMT steel bar use aaki'"
+      "message": "Ningal paranja moonnu karyangal sheriyaakki 👍\n1. TMT steel bar ippo nos aayi save aakum; save aakatha line list-il kudungi nilkilla.\n2. Project-nte peru maattiyaal (voice aayalum) athu list-il thanne maarum, kaanaathe pokilla.\n3. 'mesiri bad ux' / 'mesiri fix it' paranjaal list veendum kaanikkilla; engane venam ennu chodikkum.\nTry: 'Rana Mart ennu oru project undaakku', pinne 'peru Rana Mall aakku'."
     }
   ]
 }

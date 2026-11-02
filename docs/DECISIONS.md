@@ -19,6 +19,7 @@
 | 2 Nov 2026 | "Is this how you want it?" previews are **on** in production. | Alan (relayed) | TM-33 |
 | 2 Nov 2026 | The team bot builds on its own server (warm build copy), not only in cloud sessions. | Ilan | TM-29 |
 | 2 Nov 2026 | The team bot's planning turns may run read-only viewing commands without asking (`cat`, `sed -n`, `find`, `diff` …); writing forms stay refused. | Ilan | TM-44 |
+| 2 Nov 2026 | The request reference stays in Mesiri's reply when something is passed to the team, shown as "Ref #xxxxxx" (the same reference the team group sees). Never remove it as "internal text". | Ilan (relayed) | TM-21, [205] |
 | 2 Nov 2026 | "mesiri bad ux" / "mesiri fix this / fix it" is an explicit command: the code always passes it to the team. | Ilan | WA-130, TM-35 |
 
 ## Architecture

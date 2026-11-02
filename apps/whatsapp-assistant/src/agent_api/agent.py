@@ -109,6 +109,17 @@ _ASK_TOOL = ToolSpec(name=ASK, description=(
                    "options": {"type": "array", "items": {"type": "string"}, "description": "2-3 short choices"}},
 })
 DROP_READY = "drop_ready_entries"
+#: 2 Nov ([205], Paraclette: a project renamed by voice vanished from the list): a correction to a waiting entry
+#: is ONE step the code applies in place. Drop-then-prepare let the model stop halfway and still say "ready".
+CHANGE_READY = "change_ready_entry"
+_CHANGE = {
+    "type": "object", "required": ["number", "changes", "confirm_line"],
+    "properties": {
+        "number": {"type": "integer", "description": "The entry number from the ready list."},
+        "changes": {"type": "object", "description": "Only the fields that change, with their new values (field names as in the entry)."},
+        "confirm_line": {"type": "string", "description": "The entry's new one-line summary in their words."},
+    },
+}
 _NUMBERS = {
     "type": "object",
     "properties": {"numbers": {"type": "array", "items": {"type": "integer"},
@@ -118,8 +129,10 @@ _READY_TOOLS = (
     ToolSpec(name=SAVE_READY, parameters=_NUMBERS, description=(
         "Save entries from the ready list. Only when the person clearly says to save or confirm them.")),
     ToolSpec(name=DROP_READY, parameters=_NUMBERS, description=(
-        "Remove entries from the ready list (the person cancels them, or they are being corrected: "
-        "drop the old one and prepare the corrected one).")),
+        "Remove entries from the ready list: only when the person cancels them. To correct one, use change_ready_entry.")),
+    ToolSpec(name=CHANGE_READY, parameters=_CHANGE, description=(
+        "Correct ONE entry in the ready list in place (a new name, quantity, site, unit, date ...): it stays in the "
+        "list with the changes. Use this for every correction of a waiting entry; never drop it to correct it.")),
 )
 
 
@@ -142,7 +155,8 @@ class ApiAgent:
         if facts:
             prompt += f"\n\n{facts}"
         if ready:
-            listed = "\n".join(f"{i}. {e.summary}" for i, e in enumerate(ready, 1))
+            listed = "\n".join(f"{i}. {e.summary}  ({e.tool}: {json.dumps(e.body, ensure_ascii=False, default=str)[:400]})"
+                               for i, e in enumerate(ready, 1))
             prompt += f"\n\nReady, waiting for the person's confirmation (not saved):\n{listed}"
         return prompt
 
@@ -166,10 +180,36 @@ class ApiAgent:
         acted: list[str] = []
         unit_ask: list[str] = []  # buttons for a unit nobody could settle (cleared once a line settles)
         links: list[str] = []  # WA-141: dashboard links built this turn
+        changed: list[int] = []  # [205]: waiting entries corrected in place this turn
 
         def chosen(arguments: dict) -> list[int]:
             numbers = arguments.get("numbers") or range(1, len(waiting) + 1)
             return [n for n in (int(x) for x in numbers) if 1 <= n <= len(waiting) and waiting[n - 1] is not None]
+
+        async def change_entry(arguments: dict) -> dict[str, Any]:
+            try:
+                n = int(arguments.get("number") or 0)
+            except (TypeError, ValueError):
+                n = 0
+            if not 1 <= n <= len(waiting) or waiting[n - 1] is None:
+                return {"error": f"there is no waiting entry {arguments.get('number')}"}
+            entry = waiting[n - 1]
+            tool = self._tools.get(entry.tool)
+            changes = dict(arguments.get("changes") or {})
+            unknown = [k for k in changes if tool is None or k not in tool.body_fields]
+            if unknown or not changes:
+                return {"error": f"cannot change {', '.join(unknown) or 'nothing'}; fields: {', '.join(tool.body_fields) if tool else '-'}"}
+            body = {**entry.body, **changes}
+            if "unit_id" in body and ("unit_id" in changes or "unit" in changes):
+                problem = await settle_unit(client, body)
+                if problem:
+                    unit_ask[:] = await unit_buttons(client)
+                    return {"error": problem}
+            summary = str(arguments.get("confirm_line") or "").strip() or entry.summary
+            waiting[n - 1] = PendingWrite(tool=entry.tool, method=entry.method, path=entry.path, params=entry.params,
+                                          body=body, summary=summary, idempotency_key=new_idempotency_key())
+            changed.append(n)
+            return {"status": "changed in the ready list, NOT saved", "entry": n, "now": summary}
 
         async def handler(name: str, arguments: dict) -> ToolOutcome:
             if name == TELL_THE_TEAM:
@@ -200,6 +240,8 @@ class ApiAgent:
                 for n in numbers:
                     waiting[n - 1] = None
                 return ToolOutcome(content={"dropped": numbers})
+            if name == CHANGE_READY and waiting:
+                return ToolOutcome(content=await change_entry(arguments))
             if actions and name in actions:
                 acted.append(name)
                 return ToolOutcome(content=await actions[name][1](arguments))
@@ -251,7 +293,7 @@ class ApiAgent:
         extra = {"capability": self._capability} if self._capability and _takes(self._provider, "capability") else {}
 
         def nothing_done() -> bool:
-            return not new and not saved and not asked and not acted and len(waiting) == len(ready or [])
+            return not new and not saved and not asked and not acted and not changed and len(waiting) == len(ready or [])
 
         async def ask_model(msgs: list[ChatMessage]) -> Any:
             return await self._provider.run_tools(

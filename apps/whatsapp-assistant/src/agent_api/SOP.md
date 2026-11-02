@@ -33,8 +33,9 @@ is work for someone standing on a site.
    `save_ready_entries` returned saved in this turn. Do not list the entries yourself: the ready
    list is drawn under your reply. Always reply in words: the answer, or one line on what is ready.
 5. Entries already waiting are listed below. When they clearly say to save them, call
-   `save_ready_entries`; when they cancel one, `drop_ready_entries`; when they correct one, drop
-   it and prepare the corrected entry. Anything else leaves them waiting.
+   `save_ready_entries`; when they cancel one, `drop_ready_entries`; when they correct one (a new
+   name, number, site, unit, date), `change_ready_entry` with only the changed fields: it stays in
+   the list, corrected. Never drop an entry to correct it. Anything else leaves them waiting.
 6. Quantities and dates are what they said. Do not convert units or do arithmetic they did not
    ask for. A material not in the list: use the closest one only when it is plainly the same thing
    ("steel rods" -> steel); otherwise ask with the likely ones as options.

@@ -362,7 +362,7 @@ class ApiWhatsApp:
             # TM-21: the request's reference, the same one the team group sees, so both can talk about it.
             ref = request_ref(message.correlation_id)
             if ref and ref not in words:
-                words = f"{words}\n\n{ref}".strip()
+                words = f"{words}\n\nRef {ref}".strip()  # [205]: a bare "#8fa51b" read as internal text
         if passed_on and unchanged and not turn.options:
             # Feedback only: the waiting list (and its buttons) stays as it was; drawing it again under "passed to
             # the team" read as Mesiri ignoring the complaint (2 Nov).
@@ -390,7 +390,7 @@ class ApiWhatsApp:
             words = _in(language, "api.feedback_ask", FEEDBACK_ASK)
             state["awaiting_why"] = {"kind": calls[0]["args"].get("kind"), "at": time.time(), "ref": ref}
         await self._save_state(ctx, state)
-        return ReplySpec(text=f"{words}\n\n{ref}".strip() if ref else words)
+        return ReplySpec(text=f"{words}\n\nRef {ref}".strip() if ref else words)
 
     async def _failed(self, exc: Exception, text: str, message: Any, ctx: Any, state: dict,
                       started: float) -> ReplySpec:
@@ -695,6 +695,8 @@ def for_memory(sent: str) -> str:
     if words == sent.strip():
         return sent
     parts = re.split(r"[\s*_]*Ready to save[:*_ \t]*\n", sent, maxsplit=1, flags=re.IGNORECASE)
+    if len(parts) < 2:
+        return words
     items = [re.sub(r"^\d+\.\s*", "", line).strip() for line in parts[1].splitlines() if line.strip()]
     return f"{words}\n(under this reply, waiting for the Save button: {'; '.join(items)})".strip()
 
@@ -754,8 +756,11 @@ _FEEDBACK_COMMAND = re.compile(r"^\s*mesiri\b[\s,:.-]*(bad\s*ux|bad\s*ui|fix\s+t
 
 
 def without_ready_block(text: str) -> str:
-    """The model's words without a "Ready to save:" list it wrote itself (the code draws the list)."""
-    return re.split(r"[\s*_]*Ready to save[:*_ \t]*\n", text, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+    """The model's words without a "Ready to save:" list it wrote itself (the code draws the list), and without
+    the memory's own note about that list ([205], 2 Nov: Ilan was shown "(under this reply, waiting for the Save
+    button: ...)", copied by the model from the conversation)."""
+    words = re.split(r"[\s*_]*Ready to save[:*_ \t]*\n", text, maxsplit=1, flags=re.IGNORECASE)[0]
+    return re.sub(r"\s*\(under this reply, waiting for the Save button[^)]*\)?", "", words).strip()
 
 
 def _language(text: str) -> str | None:
