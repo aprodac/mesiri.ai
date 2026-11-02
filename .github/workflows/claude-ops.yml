@@ -135,7 +135,7 @@ jobs:
             vps-agent-log)
               H="$(printf '%s' "$HOURS" | tr -dc 0-9)"
               ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
-                "bash -s -- '${H:-2}' 300 'agent\.|agent_api\.|team_notify\.|assistant_mode|outage|entry\.|site_entry|material_entry|whatsapp_groups|group\.|Traceback|ERROR|Error|WARNING' mesiri mesiri-worker" \
+                "bash -s -- '${H:-2}' 300 'agent\.|agent_api\.|team_notify\.|release_notes\.|notification|assistant_mode|outage|entry\.|site_entry|material_entry|whatsapp_groups|group\.|Traceback|ERROR|Error|WARNING' mesiri mesiri-worker" \
                   < infra/deploy/service_log.sh 2>&1 | mask ;;
             vps-brain-log)
               # TM-16: is the production watch running, and what did it see? Only its own lines and errors
