@@ -3,6 +3,9 @@
 > **You are an AI coding agent working in this monorepo.**  
 > Follow these rules on every task unless a folder-specific `AGENTS.md` overrides them.
 
+> ## Decisions already taken: [docs/DECISIONS.md](docs/DECISIONS.md)
+> Read it before any task; never re-ask or contradict a decision listed there.
+
 > ## ⚠️ Read [CLAUDE.md](CLAUDE.md) first — it governs *process* on every task
 >
 > [CLAUDE.md](CLAUDE.md) is the **Mesiri Development Protocol**: the mandatory
