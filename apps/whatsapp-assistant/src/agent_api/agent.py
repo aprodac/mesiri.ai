@@ -21,6 +21,8 @@ from zoneinfo import ZoneInfo
 
 from agent_api.feedback import TELL_THE_TEAM, feedback_instruction
 from agent_api.feedback import specs as feedback_specs
+from agent_api.links import WEB_LINK, build_link
+from agent_api.links import spec as web_link_spec
 from mesiri_ai.models import ChatMessage, ToolOutcome, ToolSpec
 
 from .client import ApiClient, new_idempotency_key
@@ -161,6 +163,7 @@ class ApiAgent:
         asked: dict[str, Any] = {}
         acted: list[str] = []
         unit_ask: list[str] = []  # buttons for a unit nobody could settle (cleared once a line settles)
+        links: list[str] = []  # WA-141: dashboard links built this turn
 
         def chosen(arguments: dict) -> list[int]:
             numbers = arguments.get("numbers") or range(1, len(waiting) + 1)
@@ -171,6 +174,12 @@ class ApiAgent:
                 # TM-18 / WA-126: the same feedback tool as v2. It writes nothing: the call is in the
                 # turn's trace, which the team bot's production watch reads, builds, and reports back.
                 return ToolOutcome(content={"status": feedback_instruction(arguments)})
+            if name == WEB_LINK:
+                # WA-141: the dashboard address is built by the code, never written by the model.
+                built = build_link(arguments, today=today.isoformat())
+                if "url" in built:
+                    links.append(built["url"])
+                return ToolOutcome(content=built)
             if name == ASK:
                 asked["question"] = str(arguments.get("question") or "").strip()
                 asked["options"] = [str(o).strip()[:20] for o in (arguments.get("options") or []) if str(o).strip()][:3]
@@ -229,7 +238,7 @@ class ApiAgent:
                 content = content[:READ_LIMIT] + " ...(cut)"
             return ToolOutcome(content={"status": response.status, "result": content})
 
-        specs = [t.spec for t in self._tools.values()] + [_ASK_TOOL, *feedback_specs()] + (
+        specs = [t.spec for t in self._tools.values()] + [_ASK_TOOL, *feedback_specs(), web_link_spec()] + (
             list(_READY_TOOLS) if waiting else [])
         specs += [spec for spec, _ in (actions or {}).values()]
         system = self.system_prompt(sender_name=sender_name, today=today, ready=list(ready or []), facts=facts)
@@ -264,7 +273,11 @@ class ApiAgent:
                  for c in result.calls]
         still = [e for e in waiting if e is not None]
         options = asked.get("options", []) or (unit_ask if not asked else [])
-        return ApiTurn(reply=(result.text or "").strip(), pending=still + new, saved=saved, calls=calls,
+        reply = (result.text or "").strip()
+        missing = [u for u in dict.fromkeys(links) if u not in reply]
+        if missing:  # WA-141: a link the code built always reaches the person, even if the model left it out
+            reply = "\n".join([reply, *missing]).strip()
+        return ApiTurn(reply=reply, pending=still + new, saved=saved, calls=calls,
                        stop_reason=result.stop_reason, question=asked.get("question", ""), options=options)
 
 

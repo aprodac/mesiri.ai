@@ -1555,8 +1555,9 @@ def build_message_handlers(
             if api_agent is not None:
                 if message.modality in _PROCESSING_ACK_MODALITIES:
                     _fire_processing_ack(message, wa_id)
+                timer.lap("v3_before")  # WA-136: everything up to v3 (sender, settings, ack)
                 try:
-                    if await api_agent.handle(message, ctx):
+                    if await api_agent.handle(message, ctx, lap=timer.lap):
                         return
                 except FallBackToClassic:
                     # request 204 / WA-134: v3 failed for a reason that is not an outage: classic

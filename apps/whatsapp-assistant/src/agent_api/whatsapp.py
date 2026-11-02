@@ -25,6 +25,7 @@ import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -53,6 +54,19 @@ from .tools import build_tools
 from .units import plain_refusal, unit_rows
 
 _log = logging.getLogger(__name__)
+
+#: WA-136: the journey's step timer for the message being handled (``StepTimer.lap``), so v3's own
+#: steps show in the perf report instead of one "_unaccounted_ms". Per message (concurrent turns).
+_LAP: ContextVar[Callable[[str], None] | None] = ContextVar("agent_api_lap", default=None)
+
+
+def _lap(name: str) -> None:
+    lap = _LAP.get()
+    if lap is not None:
+        try:
+            lap(name)
+        except Exception:  # noqa: BLE001 -- timing never breaks a message
+            pass
 
 MODE = "api"
 EVENT_SOURCE = "agent_api"
@@ -144,13 +158,17 @@ class ApiWhatsApp:
 
     # -- entry point -----------------------------------------------------------------------
 
-    async def handle(self, message: Any, ctx: Any) -> bool:
+    async def handle(self, message: Any, ctx: Any, *, lap: Callable[[str], None] | None = None) -> bool:
         """True when the message was answered here; False leaves it to the journey. Raises
-        ``AIUnavailableError`` (the worker retries) or ``FallBackToClassic`` (the journey runs classic)."""
+        ``AIUnavailableError`` (the worker retries) or ``FallBackToClassic`` (the journey runs classic).
+        ``lap``: the journey's step timer (WA-136); v3's steps are recorded as ``v3_*`` laps."""
+        token = _LAP.set(lap)
         try:
             return await self._handle(message, ctx)
         except _Answered:
             return True
+        finally:
+            _LAP.reset(token)
 
     async def _handle(self, message: Any, ctx: Any) -> bool:
         tap = str((message.metadata or {}).get("interactive_reply_id") or "")
@@ -164,21 +182,27 @@ class ApiWhatsApp:
             reply = await self._on_words(said, message, ctx)
         elif message.modality is InputModality.VOICE and self._transcribe is not None:
             said = await self._voice(message, ctx)
+            _lap("v3_transcribe")
             reply = (await self._on_words(said, message, ctx) if said
                      else ReplySpec(text=_in(await self._language_of_sender(ctx), "voice.cant_hear", COULD_NOT_HEAR)))
         elif message.modality in (InputModality.IMAGE, InputModality.DOCUMENT) and self._describe is not None:
             said = await self._photo(message, ctx)
+            _lap("v3_vision")
             key = getattr(getattr(message, "media", None), "object_key", None)
             reply = (await self._on_words(said, message, ctx, photo_key=key) if said
                      else ReplySpec(text=_in(await self._language_of_sender(ctx), "photo.cant_read", COULD_NOT_READ)))
         else:
             return False
         await self._send(reply, message.sender.wa_id)
+        _lap("v3_send")
         await self._send_saved_card(message, ctx)  # after the "Saved" line: the reply never waits for it
+        _lap("v3_saved_card")
         await _safe(self._log_store.log_reply(correlation_id=message.correlation_id, reply=reply.text))
         await _safe(self._log_store.mark_completed(correlation_id=message.correlation_id))
+        _lap("v3_log")
         if said:
             await self._memory.remember(ctx, said, for_memory(reply.text))  # after the send: never on the wait
+            _lap("v3_memory_write")
         return True
 
     async def _send_saved_card(self, message: Any, ctx: Any) -> None:
@@ -233,6 +257,7 @@ class ApiWhatsApp:
         try:
             state, history, facts = await asyncio.gather(
                 self._state(ctx), self._memory.load(ctx), self._facts(ctx, client))
+            _lap("v3_facts_memory")
             ready = dropping_stale_sends([PendingWrite.from_json(e) for e in state.get("pending", [])])
             run = dict(
                 text=text, history=history, ready=ready, sender_name=ctx.full_name or "",
@@ -242,13 +267,16 @@ class ApiWhatsApp:
             )
             try:
                 turn = await self._agent.run(client, **run)
+                _lap("v3_model_tools")
             except Exception as exc:  # noqa: BLE001
+                _lap("v3_model_tools")
                 if not is_outage_error(exc) or is_greeting_trigger(text):
                     raise
                 # One quick second try before the sender hears anything (request 57, A5).
                 _log.warning("agent_api.quick_retry user=%s error=%r", ctx.user_id, exc)
                 await asyncio.sleep(QUICK_RETRY_PAUSE_SECONDS)
                 turn = await self._agent.run(client, **run)
+                _lap("v3_model_retry")
         except Exception as exc:  # noqa: BLE001 -- the model or a tool failed
             _log.exception("agent_api.run_failed user=%s", ctx.user_id)
             return await self._failed(exc, text, message, ctx, state, started)

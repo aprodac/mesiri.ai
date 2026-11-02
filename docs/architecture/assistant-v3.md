@@ -17,7 +17,7 @@ WhatsApp message (text, voice note, photo, button tap)
         facts up front (read through the API as the sender, in parallel):
             projects + sites, materials + aliases, units, what is recorded today,
             entries waiting for Save, the message's language, today + 2 days of conversation
-        one model + SOP.md + 28 tools = the dashboard's API routes
+        one model + SOP.md + 43 tools = the dashboard's API routes (+ web_link, ask, feedback)
             GET  -> runs at once (answers questions)
             POST / PATCH -> prepared, NOT saved: goes into the ready list
         reply = the model's words + the ready list (drawn by code) + ONE Save button
@@ -43,7 +43,7 @@ WhatsApp message (text, voice note, photo, button tap)
 |---|---|---|---|
 | Who understands the message | Code: classifier, planner, word lists; the model fills slots | One agent reads the whole message | One agent reads the whole message |
 | Instructions | Spread through code and prompts | Skill files per module (`agent_v2/skills/*/SKILL.md`, ~270 lines) | One page, `agent_api/SOP.md` (principles) |
-| What it calls | Workflows | Tools on the assistant's own toolbox | **The dashboard's API routes** (28) |
+| What it calls | Workflows | Tools on the assistant's own toolbox | **The dashboard's API routes** (43) |
 | How it saves | Its own workflows -> draft card -> Save | Draft card (classic's save path) -> Save | API request held -> Save -> the API |
 | Business rules live in | The assistant | The assistant (shared with classic) | **The backend only** (same as the dashboard) |
 | Code around the model | A lot (composer, templates, word lists) | Reply guards, number guard, early stop | Almost none: ready list, buttons, language line, feedback command |
@@ -178,6 +178,21 @@ Entries wait per person in Redis for a day (an older list's buttons do nothing).
   another's).
 - **A bill photo** is accepted only if that company's own WhatsApp received it.
 
+## Links, corrections and set-up (WA-141, WA-142)
+
+- **`web_link`** (`links.py`): a link to a dashboard page (today, a site's or project's day, issues,
+  labour, workers, materials, projects, a project, team, company, expenses, an expense, accounts,
+  vendors, analytics, photos). The model names the page and ids; the **code** builds the address from
+  a fixed table (`MESIRI_DASHBOARD_URL`, default `https://app.whatsapp.mesiri.ai`), refuses an unknown
+  page, a bad id or date, and adds the link to the reply if the model left it out. The dashboard
+  still asks for login and shows only what the role allows.
+- **Corrections and set-up**, all held for Save and run as the person: correct a work entry, see /
+  acknowledge / won't-fix an issue, take back a receipt, usage, transfer or expense, add or change a
+  material (and its aliases), add an expense category, create or change a project, add or change a
+  site (project and site edits: admins, as on the dashboard).
+- **Not on the list on purpose:** project members, users and roles (they grant access), Workforce /
+  Attendance deletes, and company modules (platform admins only today: WA-144 is the decision).
+
 ## API changes made for v3 (the dashboard benefits too)
 
 | Change | Item |
@@ -239,9 +254,11 @@ back on `v2`. Code rollback: revert.
 
 Tracked in [V1_TRACKER.md](../plans/V1_TRACKER.md):
 
-- **WA-136 Speed** (2-5 s against classic's 1-2 s): facts, memory and the catalog are already read
-  in parallel and cached, tools are built once and thinking is off on tool calls; the next cut needs
-  the per-turn timings from production (`agent_api_turn` traces) to see where the seconds go.
+- **WA-136 Speed** (2-5 s against classic's 1-2 s): v3 now records its steps (`v3_before`,
+  `v3_facts_memory`, `v3_model_tools`, `v3_send`, `v3_saved_card`, `v3_memory_write`, ...) on the
+  journey timer, so `vps-perf` shows where the seconds go; cut the largest next. Production, 2 Nov
+  (72 h): v3 turn p50 2.8 s, model round p50 1.7 s; the 10 failed of 16 v3 turns were all the Gemini
+  monthly spending cap (WA-143).
 - **WA-137 Move real customers**, one company at a time, after a few days of the testers' messages
   and a `Compare agents` run (ops: Alan / Ilan choose the first company; rollback is the setting).
 - **WA-138 Delete classic** once no company is on it (needs approval: it holds the Labour and

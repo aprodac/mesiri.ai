@@ -126,6 +126,38 @@ ALLOWED: tuple[Allowed, ...] = (
         "Prepare a site's conditions for a day: weather, hours lost, whether the site worked, tomorrow's plan." + _WRITE,
     ),
     Allowed("send_dpr", "POST", "/dpr/projects/{project_id}/send", "Prepare sending today's project DPR now." + _WRITE),
+    # WA-142: corrections and set-up the dashboard already offers. Each one is prepared like any write
+    # and runs only on Save, as the person (the API applies their role). Not here on purpose: anything
+    # that grants access (project members, users, roles), Workforce / Attendance deletes, modules.
+    Allowed("work_item", "GET", "/progress/activities/{activity_id}", "One work entry with its quantities and ids."),
+    Allowed("correct_work", "PATCH", "/progress/activities/{activity_id}",
+            "Prepare a correction of a work entry already saved (its quantity, description or date): find it with "
+            "work_progress first." + _WRITE),
+    Allowed("acknowledge_issue", "POST", "/progress/issues/{issue_id}/acknowledge",
+            "Prepare marking an issue as seen / being handled." + _WRITE),
+    Allowed("wont_fix_issue", "POST", "/progress/issues/{issue_id}/wont-fix",
+            "Prepare closing an issue that will not be fixed (with the reason)." + _WRITE),
+    Allowed("undo_receipt", "POST", "/materials/inflows/{receipt_id}/reverse",
+            "Prepare taking back a material receipt saved by mistake (find it with list_receipts); then prepare the "
+            "right one if they said it." + _WRITE),
+    Allowed("undo_usage", "POST", "/materials/outflows/{usage_id}/reverse",
+            "Prepare taking back a material usage saved by mistake (find it with list_usage)." + _WRITE),
+    Allowed("undo_transfer", "POST", "/materials/transfers/{transfer_id}/reverse",
+            "Prepare taking back a material transfer saved by mistake." + _WRITE),
+    Allowed("undo_expense", "POST", "/expenses/{expense_id}/reverse",
+            "Prepare taking back an expense saved by mistake (find it with list_expenses)." + _WRITE),
+    Allowed("add_material", "POST", "/materials",
+            "Prepare adding a material to the company's list (name, default unit, other names it is called)." + _WRITE),
+    Allowed("update_material", "PATCH", "/materials/{material_id}",
+            "Prepare changing a material in the list: its name, default unit, or the other names it is called "
+            "(aliases, e.g. 'kambi' for steel)." + _WRITE),
+    Allowed("add_expense_category", "POST", "/expenses/categories", "Prepare a new expense category." + _WRITE),
+    Allowed("create_project", "POST", "/projects", "Prepare a new project (name, client, address, dates)." + _WRITE),
+    Allowed("update_project", "PUT", "/projects/{project_id}",
+            "Prepare changing a project's details (name, client, address, dates, status)." + _WRITE),
+    Allowed("add_site", "POST", "/projects/{project_id}/sites", "Prepare a new site in a project." + _WRITE),
+    Allowed("update_site", "PUT", "/projects/{project_id}/sites/{site_id}",
+            "Prepare changing a site's details (name, address, status)." + _WRITE),
 )
 
 
