@@ -14,6 +14,8 @@ from ingress.verification import WebhookVerificationError, verify_request_signat
 
 SIGNED_PREFIX = b"call-answer:"
 MAX_AGE_SECONDS = 30
+#: In the allow-list: every number. The assistant's own checks still decide who gets an answer.
+EVERYONE = "*"
 
 
 class CallAnswerRefused(Exception):
@@ -34,7 +36,8 @@ def read_call_question(body: bytes, signature: str | None, *, app_secret: str, a
         raise CallAnswerRefused("bad question") from exc
     if abs((time.time() if now is None else now) - at) > MAX_AGE_SECONDS:
         raise CallAnswerRefused("stale")
-    if wa_id not in {n.strip().lstrip("+") for n in allowed.split(",") if n.strip()}:
+    listed = {n.strip().lstrip("+") for n in allowed.split(",") if n.strip()}
+    if EVERYONE not in listed and wa_id not in listed:
         raise CallAnswerRefused("not allowed")
     if not text:
         raise CallAnswerRefused("nothing said")

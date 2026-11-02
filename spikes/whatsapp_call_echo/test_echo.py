@@ -161,6 +161,13 @@ def test_the_assistant_step_replaces_repeat_back() -> None:
     assert "AskAssistant" in [type(p).__name__ for p in echo.sarvam_processors("key", echo.Language.ML_IN, "shubh", ask)]
 
 
+def test_star_answers_any_number() -> None:
+    value = {"metadata": {"phone_number_id": NUMBER_ID}, "contacts": [{"wa_id": "919111111111"}],
+             "calls": [{"event": "connect", "timestamp": str(int(time.time()))}]}
+    assert echo.answerable_call(value, phone_number_id=NUMBER_ID, allowed={"*"}, now=time.time())
+    assert echo.answerable_call(value, phone_number_id=NUMBER_ID, allowed={CALLER}, now=time.time()) is None
+
+
 async def terminated(actions: list[str]) -> None:
     while "terminate" not in actions:
         await asyncio.sleep(0.1)

@@ -28,6 +28,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from channel.replies import ListRow, ReplySpec
+from mesiri_ai.models import ToolSpec
 from mesiri_contracts.assistant.enums import InputModality
 
 from .agent import SOP, ApiAgent, PendingWrite, WriteResult, _detail, confirm
@@ -52,13 +53,25 @@ TODAY_ENTRIES = 40
 #: The materials and units of a company, read once per this many seconds.
 CATALOG_SECONDS = 300
 #: WA-118: a call is a live conversation, so fewer rounds and a shorter wait than a message.
-CALL_MAX_STEPS = 4
-CALL_TIMEOUT_SECONDS = 10.0
+CALL_MAX_STEPS = 5
+CALL_TIMEOUT_SECONDS = 12.0
 CALL_RULES = """
 
 This is a live phone call, not WhatsApp. What you write is spoken aloud. One or two short spoken
-sentences, no lists, no symbols, no formatting, no ids. On a call you can only look things up: to
-record or send anything, tell them to send it as a WhatsApp message."""
+sentences, no lists, no symbols, no formatting, no ids. Prepare entries as usual: they go to their
+WhatsApp with a Save button, so say in one line that it is ready on WhatsApp to save; nothing saves
+on the call, and you cannot save or cancel entries here. When they ask for a list or report as a
+PDF or on WhatsApp, look it up, call send_pdf, then say it is sent."""
+SEND_PDF = "send_pdf"
+PDF_MAX_ROWS = 200
+_SEND_PDF_TOOL = ToolSpec(name=SEND_PDF, description=(
+    "Send a list or report to the person's WhatsApp as a PDF, from what the tools returned. "
+    "Write the title, columns and rows in English."), parameters={
+    "type": "object", "required": ["title", "columns", "rows"],
+    "properties": {"title": {"type": "string"},
+                   "columns": {"type": "array", "items": {"type": "string"}},
+                   "rows": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}}},
+})
 #: The speech-to-text gives script; a reply in Latin letters would be read badly aloud.
 SPOKEN_LANGUAGE = {"manglish": "malayalam", "hinglish": "hindi"}
 
@@ -75,8 +88,9 @@ class ApiWhatsApp:
                  transcribe: Callable[[Any], Awaitable[tuple[str, str | None, str | None]]] | None,
                  message_logger: Any, trace_logger: Any | None = None, app: Any | None = None,
                  describe: Callable[..., Awaitable[str | None]] | None = None,
-                 sessions: Any | None = None) -> None:
+                 sessions: Any | None = None, send_document: Callable[..., Awaitable[Any]] | None = None) -> None:
         self._redis = redis
+        self._send_document = send_document
         self._send = send
         self._transcribe = transcribe
         self._describe = describe
@@ -86,9 +100,8 @@ class ApiWhatsApp:
         self._app = app if app is not None else build_api_app(database)
         tools = build_tools(self._app.openapi())
         self._agent = ApiAgent(provider, tools, max_steps=MAX_STEPS, capability="api_agent")
-        self._call_agent = ApiAgent(provider, {n: t for n, t in tools.items() if not t.is_write}, sop=SOP + CALL_RULES,
-                                    max_steps=CALL_MAX_STEPS, timeout_seconds=CALL_TIMEOUT_SECONDS,
-                                    capability="api_agent")
+        self._call_agent = ApiAgent(provider, tools, sop=SOP + CALL_RULES, max_steps=CALL_MAX_STEPS,
+                                    timeout_seconds=CALL_TIMEOUT_SECONDS, capability="api_agent")
         self._catalog: dict[str, tuple[float, str]] = {}
 
     # -- entry point -----------------------------------------------------------------------
@@ -173,9 +186,14 @@ class ApiWhatsApp:
         await self._save_state(ctx, state)
         return reply
 
-    async def on_call(self, text: str, ctx: Any, correlation_id: str) -> str:
-        """WA-118: one turn of a phone call. The agent here has no write tool and no ready list."""
+    async def on_call(self, text: str, ctx: Any, correlation_id: str, wa_id: str) -> str:
+        """WA-118: one turn of a phone call. Entries join the ready list and go to the chat as the
+        usual Save card; the agent is not given that list, so nothing saves from speech alone."""
         client = ApiClient(_actor(ctx), app=self._app)
+
+        async def send_pdf(arguments: dict) -> dict:
+            return await self._call_pdf(wa_id, arguments)
+
         try:
             history, facts = await asyncio.gather(self._memory.load(ctx), self._facts(ctx, client))
             language = _language(text)
@@ -183,13 +201,36 @@ class ApiWhatsApp:
                 client, text, history=history, sender_name=ctx.full_name or "",
                 timezone=getattr(ctx, "timezone", None) or "Asia/Kolkata", correlation_id=correlation_id,
                 facts=facts, language=SPOKEN_LANGUAGE.get(language or "", language),
+                actions={SEND_PDF: (_SEND_PDF_TOOL, send_pdf)},
             )
         finally:
             await client.close()
         words = turn.reply or turn.question
+        if turn.pending:
+            state = await self._state(ctx)
+            waiting = [PendingWrite.from_json(e) for e in state.get("pending", [])]
+            card = self._reply(words, [*waiting, *turn.pending], state, [])
+            await self._save_state(ctx, state)
+            await self._send(card, wa_id)
         if words:
             await self._memory.remember(ctx, text, words)
         return words
+
+    async def _call_pdf(self, wa_id: str, arguments: dict) -> dict:
+        """The table the model read out, as a PDF in the caller's chat."""
+        from mesiri.domains.reports.pdf_table import render_table_pdf
+
+        title = str(arguments.get("title") or "Mesiri report")
+        columns = [str(c) for c in arguments.get("columns") or []]
+        rows = [[str(v) for v in row] for row in (arguments.get("rows") or [])[:PDF_MAX_ROWS]]
+        try:
+            data = await asyncio.to_thread(render_table_pdf, title=title, subtitle=None, columns=columns, rows=rows)
+            sent = await self._send_document(wa_id, data, filename=f"{title.replace(' ', '_')[:40]}.pdf",  # type: ignore[misc]
+                                             shows=f"PDF list {title}")
+        except Exception:  # noqa: BLE001 -- the model tells them it did not go
+            _log.exception("agent_api.call_pdf_failed")
+            sent = False
+        return {"status": "sent to their WhatsApp"} if sent else {"status": "not sent; tell them to ask again"}
 
     async def _facts(self, ctx: Any, client: ApiClient) -> str:
         """What the model starts from: the sender's projects and sites, the company's materials

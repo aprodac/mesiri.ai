@@ -141,15 +141,18 @@ class ApiAgent:
     async def run(self, client: ApiClient, text: str, *, history: list[ChatMessage] | None = None,
                   ready: list[PendingWrite] | None = None, sender_name: str = "",
                   timezone: str = "Asia/Kolkata", correlation_id: str | None = None,
-                  facts: str = "", photo_key: str | None = None, language: str | None = None) -> ApiTurn:
+                  facts: str = "", photo_key: str | None = None, language: str | None = None,
+                  actions: dict[str, tuple[ToolSpec, Any]] | None = None) -> ApiTurn:
         """``facts``: what the agent starts from (projects, sites, materials, units), read
         before the model runs. ``photo_key``: the photo this message carried; a write that
-        takes a photo (an expense) gets it attached by the code."""
+        takes a photo (an expense) gets it attached by the code. ``actions``: tools the caller
+        runs itself, by name: ``(spec, async handler(arguments) -> content)``."""
         today = dt.datetime.now(ZoneInfo(timezone or "Asia/Kolkata")).date()
         waiting: list[PendingWrite | None] = list(ready or [])  # None = saved or dropped this turn
         new: list[PendingWrite] = []
         saved: list[WriteResult] = []
         asked: dict[str, Any] = {}
+        acted: list[str] = []
 
         def chosen(arguments: dict) -> list[int]:
             numbers = arguments.get("numbers") or range(1, len(waiting) + 1)
@@ -178,6 +181,9 @@ class ApiAgent:
                 for n in numbers:
                     waiting[n - 1] = None
                 return ToolOutcome(content={"dropped": numbers})
+            if actions and name in actions:
+                acted.append(name)
+                return ToolOutcome(content=await actions[name][1](arguments))
             tool = self._tools.get(name)
             if tool is None:
                 return ToolOutcome(content={"error": f"no tool named {name}"})
@@ -215,6 +221,7 @@ class ApiAgent:
 
         specs = [t.spec for t in self._tools.values()] + [_ASK_TOOL, *feedback_specs()] + (
             list(_READY_TOOLS) if waiting else [])
+        specs += [spec for spec, _ in (actions or {}).values()]
         system = self.system_prompt(sender_name=sender_name, today=today, ready=list(ready or []), facts=facts)
         if language in LANGUAGE_LINES:
             # Decided by the code from their words (the model mixed scripts on 1 Nov).
@@ -223,7 +230,7 @@ class ApiAgent:
         extra = {"capability": self._capability} if self._capability and _takes(self._provider, "capability") else {}
 
         def nothing_done() -> bool:
-            return not new and not saved and not asked and len(waiting) == len(ready or [])
+            return not new and not saved and not asked and not acted and len(waiting) == len(ready or [])
 
         async def ask_model(msgs: list[ChatMessage]) -> Any:
             return await self._provider.run_tools(
@@ -238,7 +245,7 @@ class ApiAgent:
             if not nothing_done():
                 raise
             result = await ask_model(messages)
-        if not (result.text or "").strip() and not new and not asked and not saved:
+        if not (result.text or "").strip() and not new and not asked and not saved and not acted:
             # It looked something up and said nothing ("OK."): ask once for the answer in words.
             again = await ask_model([*messages, ChatMessage(role="model", text="(looked it up)"),
                                      ChatMessage(role="user", text="(answer my message now, in words)")])

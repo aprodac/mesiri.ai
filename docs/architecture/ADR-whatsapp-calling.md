@@ -90,9 +90,10 @@ Found while building it:
 5. Malayalam quality, and Manglish. Sarvam never mentions Manglish; `codemix` is documented with Hindi examples and
    applies only to the final transcript. Team listening test in step 2.
 6. CPU per call. No figure anywhere. Measure in step 1.
-7. Answered 2 Nov: API agent, subject to step 2 part B's speed. A call gets its own agent with GET tools only, 4 rounds
-   and a 10 s limit (`agent_api/call.py`). The spike reaches it over a signed route, off until
-   `WHATSAPP_CALL_ANSWERS_ALLOWED` lists a number. Speed is not measured until a real call.
+7. Answered 2 Nov: API agent, subject to step 2 part B's speed. A call gets 5 rounds and a 12 s limit (`agent_api/call.py`) over
+   a signed route, off until `WHATSAPP_CALL_ANSWERS_ALLOWED` lists a number or `*`. Real call 2 Nov: first audio
+   2.6-4.1 s. Changed by Ilan 2 Nov: no longer read-only. Entries go to the chat as a Save card, and the call agent
+   never gets the ready list, so a misheard word cannot save anything.
 8. Pipecat's realtime STT uses its own socket, so the `sarvamai` 0.1.28 pin does not matter.
 
 ## Rollback

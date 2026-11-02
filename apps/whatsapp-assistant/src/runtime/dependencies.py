@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     # WA-118 step 1: where to copy Meta's `calls` events (ingress/calls_forward.py).
     # Empty = ignored, as they have always been.
     calls_forward_url: str = ""
-    # WA-118 step 2: comma-separated numbers the assistant may answer on a call.
+    # WA-118 step 2: comma-separated numbers the assistant may answer on a call, or * for all.
     # Empty = the endpoint does not exist.
     call_answers_allowed: str = ""
 
@@ -1106,6 +1106,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         on_group_event=group_chat.handle_event if settings.groups_enabled else None,
     )
     from agent_api.call import CallAnswers
+    from runtime.reply_dispatch import send_reply_spec
 
     return AppContainer(
         settings=settings,
@@ -1137,7 +1138,11 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
             provider=ai_resolver, database=material_db, redis=redis_client,
             sessions=_conversation_sessions(material_db), actor_reader=actor_reader,
             org_settings=org_settings_query, usage_guard=TrialUsageGuard(material_db),
-            message_logger=message_logger,
+            send=lambda spec, wa: send_reply_spec(
+                spec, wa, send_text=whatsapp_sender.send_text, send_list=whatsapp_sender.send_list,
+                send_button=whatsapp_sender.send_button,
+            ),
+            send_document=whatsapp_sender.send_document, message_logger=message_logger,
         ),
     )
 

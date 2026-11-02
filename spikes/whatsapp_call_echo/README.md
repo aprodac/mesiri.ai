@@ -57,6 +57,15 @@ through `MESIRI_APP_PORT`, which the `.env` sets when the app is not on 8000.
 Ask something the site records answer. The log prints `assistant answered in` and `first audio back after`. Asking it to
 record something should get a request to send a WhatsApp message instead. To stop, empty the setting and restart.
 
+## Open to everyone
+
+`mesiri-call-spike.service` keeps the spike running. Set both lists to `*` (`WHATSAPP_CALL_ANSWERS_ALLOWED` in the `.env`,
+`CALL_SPIKE_ALLOWED` in the service), then restart `mesiri`. The assistant's checks still apply: only a known number on a
+company with `assistant_mode` "api" gets answers. It takes one call at a time and each call is cut at 2 minutes.
+
+Entries go to the caller's chat as the usual Save card, and PDFs arrive in the chat. To stop:
+`systemctl disable --now mesiri-call-spike`.
+
 ## What to look for
 
 Call Mesiri's WhatsApp number from the allowed phone and speak.

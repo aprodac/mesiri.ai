@@ -1,0 +1,15 @@
+[Unit]
+Description=Mesiri WhatsApp call spike (WA-118)
+After=network.target mesiri.service
+
+[Service]
+EnvironmentFile=/opt/mesiri/.env
+Environment=CALL_SPIKE_MODE=assistant
+Environment=CALL_SPIKE_PORT=8795
+Environment=CALL_SPIKE_ALLOWED=*
+ExecStart=/opt/call-spike-venv/bin/python /opt/mesiri/spikes/whatsapp_call_echo/echo.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

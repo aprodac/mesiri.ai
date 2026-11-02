@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 from agent_api import call as call_module
+from agent_api.agent import PendingWrite
 from agent_api.call import NOT_KNOWN, NOT_NOW, NOT_ON_CALLS, CallAnswers
 from agent_api.tools import ApiTool
 from agent_api.whatsapp import CALL_RULES
@@ -103,7 +104,7 @@ class Agent:
         self.fail = fail
         self.asked: list[str] = []
 
-    async def on_call(self, text, _ctx, _correlation):
+    async def on_call(self, text, _ctx, _correlation, _wa_id):
         self.asked.append(text)
         if self.fail:
             raise RuntimeError("model down")
@@ -159,17 +160,115 @@ def tool(name: str, method: str) -> ApiTool:
                    spec=ToolSpec(name=name, description=name, parameters={"type": "object", "properties": {}}))
 
 
-def test_the_call_agent_has_no_tool_that_writes(monkeypatch) -> None:
+class Redis:
+    def __init__(self, stored=None) -> None:
+        self.stored = stored or {}
+
+    async def get_json(self, _key):
+        return self.stored
+
+    async def set_json(self, _key, value, ttl_seconds):
+        self.stored = value
+
+
+def call_app(monkeypatch, *, reply, pending=(), redis=None, documents=None, turn_hook=None):
     import agent_api.whatsapp as module
 
-    tools = {"read": tool("read", "GET"), "post": tool("post", "POST"), "patch": tool("patch", "PATCH"),
-             "delete": tool("delete", "DELETE")}
-    monkeypatch.setattr(module, "build_tools", lambda _openapi: tools)
-    built = module.ApiWhatsApp(provider=None, database=None, redis=None, send=None, transcribe=None,
-                               message_logger=None, app=SimpleNamespace(openapi=lambda: {}))
-    assert list(built._call_agent._tools) == ["read"]
-    assert len(built._agent._tools) == 4
+    monkeypatch.setattr(module, "build_tools", lambda _openapi: {"read": tool("read", "GET")})
+    cards: list = []
+
+    async def send(card, wa_id):
+        cards.append((card, wa_id))
+
+    async def send_document(wa_id, data, *, filename, shows):
+        documents.append((wa_id, data, filename))
+        return True
+
+    built = module.ApiWhatsApp(provider=None, database=None, redis=redis or Redis(), send=send, transcribe=None,
+                               message_logger=None, app=SimpleNamespace(openapi=lambda: {}),
+                               send_document=send_document)
+    seen: dict = {}
+
+    async def run(_client, _text, **kwargs):
+        seen.update(kwargs)
+        if turn_hook:
+            await turn_hook(kwargs)
+        return SimpleNamespace(reply=reply, question="", pending=list(pending))
+
+    async def nothing(*_args):
+        return [] if len(_args) == 1 else ""
+
+    async def forget(*_args):
+        return None
+
+    async def closed():
+        return None
+
+    built._call_agent.run = run
+    monkeypatch.setattr(built._memory, "load", nothing)
+    monkeypatch.setattr(built._memory, "remember", forget)
+    monkeypatch.setattr(built, "_facts", nothing)
+    monkeypatch.setattr(module, "ApiClient", lambda *_a, **_k: SimpleNamespace(close=closed))
+    return built, cards, seen
+
+
+CTX = SimpleNamespace(organization_id="o", user_id="u", full_name="Ilan", role="owner", timezone="Asia/Kolkata")
+
+
+def entry(summary: str) -> PendingWrite:
+    return PendingWrite(tool="record_usage", method="POST", path="/materials/outflows", params={}, body={},
+                        summary=summary, idempotency_key=summary)
+
+
+def test_the_call_agent_is_told_it_is_on_a_call(monkeypatch) -> None:
+    built, _, _ = call_app(monkeypatch, reply="ok")
     assert CALL_RULES in built._call_agent._sop
+    assert CALL_RULES not in built._agent._sop
+
+
+@pytest.mark.asyncio
+async def test_an_entry_on_a_call_goes_to_the_chat_as_a_save_card_with_what_was_waiting(monkeypatch) -> None:
+    waiting = entry("10 bags, Site B")
+    redis = Redis({"pending": [waiting.to_json()], "batch": "old"})
+    built, cards, _ = call_app(monkeypatch, reply="WhatsApp il ready", pending=[entry("50 bags, Site A")], redis=redis)
+    assert await built.on_call("50 cement", CTX, "c", CALLER) == "WhatsApp il ready"
+    card, wa_id = cards[0]
+    assert wa_id == CALLER
+    assert "10 bags, Site B" in card.text and "50 bags, Site A" in card.text
+    assert card.buttons[0].id == f"apiag:save:{redis.stored['batch']}"
+    assert len(redis.stored["pending"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_a_call_never_gets_the_ready_list_so_speech_cannot_save(monkeypatch) -> None:
+    redis = Redis({"pending": [entry("10 bags").to_json()], "batch": "old"})
+    built, cards, seen = call_app(monkeypatch, reply="stock is 40", redis=redis)
+    await built.on_call("save it", CTX, "c", CALLER)
+    assert "ready" not in seen
+    assert cards == []
+    assert len(redis.stored["pending"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_pdf_asked_for_on_a_call_reaches_the_callers_chat(monkeypatch) -> None:
+    documents: list = []
+
+    async def asks_for_pdf(kwargs):
+        _spec, handler = kwargs["actions"]["send_pdf"]
+        assert await handler({"title": "Stock today", "columns": ["Material", "Qty"], "rows": [["Cement", "40"]]}) == {
+            "status": "sent to their WhatsApp"}
+
+    built, _, _ = call_app(monkeypatch, reply="sent", documents=documents, turn_hook=asks_for_pdf)
+    await built.on_call("send stock as pdf", CTX, "c", CALLER)
+    wa_id, data, filename = documents[0]
+    assert wa_id == CALLER and data.startswith(b"%PDF") and filename == "Stock_today.pdf"
+
+
+def test_star_lets_every_number_past_the_list_only() -> None:
+    body = question(wa_id="919111111111")
+    assert read(body, signed(body), allowed="*")[0] == "919111111111"
+    with pytest.raises(CallAnswerRefused):
+        read(body, "sha256=bad", allowed="*")
 
 
 async def post_question(client, body: bytes, signature: str):
