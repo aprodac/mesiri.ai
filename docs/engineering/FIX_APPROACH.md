@@ -46,7 +46,9 @@ when the rule is a business rule (the dashboard then gets it too); (2) **a rule 
 (3) **a decision the code must enforce** in `agent_api/agent.py` or `whatsapp.py` (a check, a fixed
 field, a code-drawn line); if none can express it, (4) **a route added to `ALLOWED`** in
 `agent_api/tools.py`. Never a new workflow, router or word list. **Every fix adds a scripted test in
-`tests/agent_api/`** (the reported message, a sibling, and the guard that must not change). Classic
+`tests/agent_api/`** (the reported message, a sibling, and the guard that must not change); a fix for a
+production message starts from `scripts/replay_to_test.py <correlation id>`, whose live test then guards the
+SOP on the real model (`SOP eval` workflow, WA-148). Classic
 gets fixes only for live customer breakage until it is deleted.
 
 ## Non-negotiables

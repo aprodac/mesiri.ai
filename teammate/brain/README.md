@@ -119,6 +119,16 @@ production watch ◄────────────────────
 - **Loop numbers (TM-23):** the control panel's Requests page shows asked → live time (median, slowest tenth), live
   checks passed, and the testers' Works / Still wrong taps (last 30 days).
 
+### Quiet failures and the weekly digest (WA-147, TM-26)
+
+- The watch also flags **cancelled** ready lists and entries **taken back / corrected** after saving (`undo_*`,
+  `correct_work`): quiet failures nobody complained about. Claude judges whether Mesiri got something wrong or the
+  person changed their mind. A Cancel's one-tap reason (WA-146) arrives as ordinary feedback.
+- **Weekly digest** (`src/digest.js`): Monday from 9:00 IST in each project's team group, from one read-only SELECT
+  and the request log: top complaints, the tools cancelled / taken back most (and why), the slowest step of a v3
+  reply, requests shipped, live checks and the testers' Works / Still wrong taps. `@bot digest` posts it now.
+  `TEAMMATE_DIGEST=0` stops the weekly post. No AI, no cost.
+
 ### Who asked, live check, used again (TM-19)
 
 - `propose_plan` takes `asked_for` (the watch's correlation ids): the request-log item records **who asked** (name, role,

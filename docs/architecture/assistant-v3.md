@@ -149,6 +149,13 @@ Entries wait per person in Redis for a day (an older list's buttons do nothing).
 
 - "mesiri bad ux", "this is confusing", a wrong reply, something Mesiri cannot do yet: the model
   calls `tell_the_team` (`feedback.py`), then does the rest of the message.
+- **Why a Cancel (WA-146):** "Cancelled" comes with *Wrong site · Wrong amount · Something else*; the tap goes to
+  the team bot as feedback naming the cancelled entries and tools. Every Cancel is traced (`cancelled`), and the
+  production watch flags cancels and take-backs / corrections (`undo_*`, `correct_work`) as quiet failures (WA-147).
+- **Saved conversations on the real model (WA-148):** a complaint becomes a replay test
+  (`scripts/replay_to_test.py`); its live half runs the real model on today's `SOP.md` with the same words, facts
+  (kept in the trace, 6,000 characters) and API answers. The `SOP eval` workflow runs them all whenever
+  `agent_api/` or a replay changes, and posts a failure in the team group (not a deploy gate).
 - **Reference and verdict (TM-21):** a reply that passed something on ends with its reference (`#a83836`),
   the same one the team group sees; for an unclear request Mesiri asks one question with buttons first.
   The "it works now" note has **Works ✅ / Still wrong ❌**; "Still wrong" goes back to the team bot.
