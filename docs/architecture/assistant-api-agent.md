@@ -135,6 +135,20 @@ yet: v3 calls `tell_the_team`, the same tool and reply wording as v2
 v3's stage as well as v2's (`teammate/brain/src/prod_watch.js`). From there it is TM-18's Autobuild:
 plan, build, push, and the person is told in their own chat when it is live.
 
+## The feedback command always reaches the team; memory keeps no list format (WA-130)
+
+Production, Paraclette 2 Nov 10:52: "Mesiri bad ux" got an apology but the model called no tool, so
+nothing reached the team; the reply also printed the Ready-to-save list twice.
+
+- **"mesiri bad ux" / "mesiri bad ui" / "mesiri fix this" / "mesiri fix it"** (+ anything after it
+  as the reason) is an explicit command, like "undo" (approved by Ilan, 2 Nov, as the one exception
+  to "no word list"): when the model did not call `tell_the_team`, the code adds the call to the
+  turn's trace itself (`"by": "code"`, kind bad_ux / wrong_reply, about = Mesiri's previous reply),
+  so the team bot always gets it. Softer feedback ("this is confusing") stays the model's judgement.
+- The conversation memory keeps the model's words, and the drawn list only as a note ("under this
+  reply, waiting for the Save button: ..."): with whole replies kept, the model copied the list
+  format into its own words.
+
 ## Safety
 
 - **Nothing is written without the person's confirmation.** A write tool only records the entry

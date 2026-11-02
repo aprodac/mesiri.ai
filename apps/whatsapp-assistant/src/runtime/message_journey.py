@@ -44,7 +44,7 @@ from mesiri_ai.undo_classifier import UNDO_SEMANTIC_HINT, is_undo_trigger
 from mesiri_contracts.assistant.enums import InputModality
 from runtime import forward_batch
 from runtime.account_admin_journey import try_handle_account_admin_command
-from runtime.ai_outage import AIUnavailableError, retry_attempt
+from runtime.ai_outage import AIUnavailableError, FallBackToV2, retry_attempt
 from runtime.persona import is_what_can_you_do
 from runtime.reply_composer import (
     QUESTION,
@@ -1584,8 +1584,12 @@ def build_message_handlers(
             if api_agent is not None:
                 if message.modality in _PROCESSING_ACK_MODALITIES:
                     _fire_processing_ack(message, wa_id)
-                if await api_agent.handle(message, ctx):
-                    return
+                try:
+                    if await api_agent.handle(message, ctx):
+                        return
+                except FallBackToV2:
+                    # request 204: v3 failed for a reason that is not an outage: v2 answers this message.
+                    assistant_mode = "v2"
 
         # Request [45]: a typed "undo" / "photo" / "skip" / option title / number
         # answering the choices on the last reply is the same as tapping it.

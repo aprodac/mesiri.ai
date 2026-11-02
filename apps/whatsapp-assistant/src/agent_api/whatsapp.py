@@ -28,9 +28,22 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from agent_v2.skills.general.tools import TELL_THE_TEAM
 from channel.replies import ListRow, ReplySpec
+from mesiri_ai.greeting_classifier import is_greeting_trigger
 from mesiri_ai.models import ToolSpec
 from mesiri_contracts.assistant.enums import InputModality
+from runtime.ai_outage import (
+    GAVE_UP_REPLY,
+    QUEUED_REPLY,
+    QUICK_RETRY_PAUSE_SECONDS,
+    RESEND_REPLY,
+    AIUnavailableError,
+    FallBackToV2,
+    is_outage_error,
+    reply_for_attempt,
+    retry_attempt,
+)
 
 from .agent import SOP, ApiAgent, PendingWrite, WriteResult, _detail, confirm
 from .app import build_api_app
@@ -83,6 +96,23 @@ NOTHING_WAITING = "There is nothing waiting to save."
 CANCELLED = "Cancelled. Nothing was saved."
 
 
+class _Answered(Exception):
+    """The outage reply was already sent and the message closed (no retry left): nothing more to send."""
+
+
+#: The outage wording by its English text (``reply_for_attempt`` picks the text).
+_OUTAGE_LINES = {QUEUED_REPLY: "outage.queued", GAVE_UP_REPLY: "outage.gave_up", RESEND_REPLY: "outage.resend"}
+
+
+def _in(language: str | None, key: str, english: str) -> str:
+    """The line in the person's language (the English constant for English or unknown)."""
+    if not language or language == "english":
+        return english
+    from runtime.agent.wording import say
+
+    return say(key, language)
+
+
 class ApiWhatsApp:
     def __init__(self, *, provider: Any, database: Any, redis: Any,
                  send: Callable[[ReplySpec, str], Awaitable[Any]],
@@ -108,7 +138,14 @@ class ApiWhatsApp:
     # -- entry point -----------------------------------------------------------------------
 
     async def handle(self, message: Any, ctx: Any) -> bool:
-        """True when the message was answered here; False leaves it to the journey."""
+        """True when the message was answered here; False leaves it to the journey. Raises
+        ``AIUnavailableError`` (the worker retries) or ``FallBackToV2`` (the journey runs v2)."""
+        try:
+            return await self._handle(message, ctx)
+        except _Answered:
+            return True
+
+    async def _handle(self, message: Any, ctx: Any) -> bool:
         tap = str((message.metadata or {}).get("interactive_reply_id") or "")
         said = (message.text or "").strip()
         if tap.startswith((SAVE_PREFIX, CANCEL_PREFIX)):
@@ -120,26 +157,29 @@ class ApiWhatsApp:
             reply = await self._on_words(said, message, ctx)
         elif message.modality is InputModality.VOICE and self._transcribe is not None:
             said = await self._voice(message, ctx)
-            reply = await self._on_words(said, message, ctx) if said else ReplySpec(text=COULD_NOT_HEAR)
+            reply = (await self._on_words(said, message, ctx) if said
+                     else ReplySpec(text=_in(await self._language_of_sender(ctx), "voice.cant_hear", COULD_NOT_HEAR)))
         elif message.modality in (InputModality.IMAGE, InputModality.DOCUMENT) and self._describe is not None:
             said = await self._photo(message, ctx)
             key = getattr(getattr(message, "media", None), "object_key", None)
             reply = (await self._on_words(said, message, ctx, photo_key=key) if said
-                     else ReplySpec(text=COULD_NOT_READ))
+                     else ReplySpec(text=_in(await self._language_of_sender(ctx), "photo.cant_read", COULD_NOT_READ)))
         else:
             return False
         await self._send(reply, message.sender.wa_id)
         await _safe(self._log_store.log_reply(correlation_id=message.correlation_id, reply=reply.text))
         await _safe(self._log_store.mark_completed(correlation_id=message.correlation_id))
         if said:
-            await self._memory.remember(ctx, said, reply.text)  # after the send: never on the wait
+            await self._memory.remember(ctx, said, for_memory(reply.text))  # after the send: never on the wait
         return True
 
     async def _voice(self, message: Any, ctx: Any) -> str:
         try:
             transcript, translated, _ = await self._transcribe(message)  # type: ignore[misc]
-        except Exception:  # noqa: BLE001 -- said plainly, never silence
+        except Exception as exc:  # noqa: BLE001 -- said plainly, never silence
             _log.exception("agent_api.transcribe_failed user=%s", ctx.user_id)
+            if is_outage_error(exc):
+                await self._outage(message, ctx, "", exc)
             return ""
         return (transcript or translated or "").strip()
 
@@ -147,8 +187,10 @@ class ApiWhatsApp:
         caption = (message.text or "").strip()
         try:
             seen = await self._describe(message, hint=caption or None)  # type: ignore[misc]
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             _log.exception("agent_api.photo_unreadable user=%s", ctx.user_id)
+            if is_outage_error(exc):
+                await self._outage(message, ctx, caption, exc)
             return ""
         if not seen:
             return ""
@@ -159,24 +201,42 @@ class ApiWhatsApp:
     async def _on_words(self, text: str, message: Any, ctx: Any, *, photo_key: str | None = None) -> ReplySpec:
         started = time.monotonic()
         client = ApiClient(_actor(ctx), app=self._app)
+        state: dict = {}
         try:
             state, history, facts = await asyncio.gather(
                 self._state(ctx), self._memory.load(ctx), self._facts(ctx, client))
             ready = dropping_stale_sends([PendingWrite.from_json(e) for e in state.get("pending", [])])
-            turn = await self._agent.run(
-                client, text, history=history, ready=ready, sender_name=ctx.full_name or "",
+            run = dict(
+                text=text, history=history, ready=ready, sender_name=ctx.full_name or "",
                 timezone=getattr(ctx, "timezone", None) or "Asia/Kolkata", correlation_id=message.correlation_id,
                 facts=facts, photo_key=photo_key, language=_language(text),
             )
-        except Exception as exc:  # noqa: BLE001 -- the model or a tool failed: say so, keep what was waiting
+            try:
+                turn = await self._agent.run(client, **run)
+            except Exception as exc:  # noqa: BLE001
+                if not is_outage_error(exc) or is_greeting_trigger(text):
+                    raise
+                # One quick second try before the sender hears anything (as v2: request 57, A5).
+                _log.warning("agent_api.quick_retry user=%s error=%r", ctx.user_id, exc)
+                await asyncio.sleep(QUICK_RETRY_PAUSE_SECONDS)
+                turn = await self._agent.run(client, **run)
+        except Exception as exc:  # noqa: BLE001 -- the model or a tool failed
             _log.exception("agent_api.run_failed user=%s", ctx.user_id)
-            await self._trace_turn(message, {"error": type(exc).__name__, "text": text}, started)
-            return ReplySpec(text=NOT_NOW)
+            return await self._failed(exc, text, message, ctx, state, started)
         finally:
             await client.close()
+        calls = [{**c, "args": c.get("arguments")} for c in turn.calls]
+        command = feedback_command(text)
+        if command and not any(c.get("tool") == TELL_THE_TEAM for c in calls):
+            # The explicit command always reaches the team bot, even when the model did not pass it on.
+            last = next((m.text for m in reversed(history) if m.role == "model"), "")
+            kind, why = command
+            calls.append({"tool": TELL_THE_TEAM, "by": "code", "args": {
+                "kind": kind, "about": f"Mesiri's reply before this: {without_ready_block(last)[:200]}" if last
+                else "the last reply", **({"why": why} if why else {})}})
         await self._trace_turn(message, {
             # `args` as v2's trace has it: the team bot's watch reads tell_the_team from it (TM-18).
-            "text": text, "calls": [{**c, "args": c.get("arguments")} for c in turn.calls],
+            "text": text, "calls": calls,
             "stop_reason": turn.stop_reason,
             "saved": [{"summary": r.pending.summary, "status": r.status} for r in turn.saved],
             "pending": [e.summary for e in turn.pending], "asked": turn.question,
@@ -186,6 +246,55 @@ class ApiWhatsApp:
         reply = self._reply(words, turn.pending, state, turn.options)
         await self._save_state(ctx, state)
         return reply
+
+    async def _failed(self, exc: Exception, text: str, message: Any, ctx: Any, state: dict,
+                      started: float) -> ReplySpec:
+        """request 204: a v3 failure goes through v2's outage handling, never a bare "send it again".
+
+        - a greeting is answered by the code (the greeting menu): it never needs the model;
+        - a provider outage (quota, auth, timeout): queued in their language + an ARQ retry;
+        - anything else (a bug in v3 or a tool): the message is answered by v2 instead.
+        Whatever was waiting to save is kept (state is untouched here)."""
+        outage = is_outage_error(exc)
+        greeting = is_greeting_trigger(text)
+        handled = "greeting" if greeting else "queued" if outage else "v2_fallback"
+        await self._trace_turn(message, {"error": type(exc).__name__, "text": text, "handled": handled,
+                                         "outage": outage}, started)
+        if greeting:
+            from channel.replies import render_greeting_menu
+
+            return render_greeting_menu(timezone=getattr(ctx, "timezone", None))
+        if outage:
+            await self._outage(message, ctx, text, exc, state=state)
+        raise FallBackToV2(type(exc).__name__) from exc
+
+    async def _language_of_sender(self, ctx: Any, text: str = "") -> str | None:
+        """The language of their words, else the last one they used (kept with the waiting list)."""
+        found = _language(text) if text else None
+        if found:
+            return found
+        return (await self._state(ctx)).get("language")
+
+    async def _outage(self, message: Any, ctx: Any, text: str, error: BaseException, *,
+                      state: dict | None = None) -> None:
+        """The provider is down: say it is queued (their language) and raise, so the worker retries
+        the message (runtime/ai_outage.py). The last try says plainly it could not be processed."""
+        attempt = retry_attempt.get()
+        english, will_retry = reply_for_attempt(attempt)
+        _log.error("agent_api.outage correlation_id=%s attempt=%s error=%r", message.correlation_id, attempt,
+                   error, exc_info=error)
+        if english:
+            language = _language(text) if text else None
+            language = language or (state or {}).get("language") or (await self._state(ctx)).get("language")
+            line = _in(language, _OUTAGE_LINES[english], english)
+            await self._send(ReplySpec(text=line), message.sender.wa_id)
+            await _safe(self._log_store.log_reply(correlation_id=message.correlation_id, reply=line))
+        if will_retry:
+            await _safe(self._log_store.mark_failed(correlation_id=message.correlation_id,
+                                                    error_code="AI_UNAVAILABLE"))
+            raise AIUnavailableError(f"agent_api: the AI is unavailable for {message.correlation_id}") from error
+        await _safe(self._log_store.mark_completed(correlation_id=message.correlation_id))
+        raise _Answered
 
     async def on_call(self, text: str, ctx: Any, correlation_id: str, wa_id: str) -> str:
         """WA-118: one turn of a phone call. Entries join the ready list and go to the chat as the
@@ -388,6 +497,35 @@ def _without_stale_sends(entries: list[PendingWrite]) -> list[PendingWrite]:
     if len(entries) > 1:
         return [e for e in entries if e.tool not in SEND_TOOLS]
     return entries
+
+
+def for_memory(sent: str) -> str:
+    """What the conversation keeps of a reply (WA-130): the words, and the drawn list only as a
+    short note. Kept whole, the model saw the list's format in the history and wrote it again
+    itself (Paraclette 2 Nov 10:52: the list twice)."""
+    words = without_ready_block(sent)
+    if words == sent.strip():
+        return sent
+    parts = re.split(r"[\s*_]*Ready to save[:*_ \t]*\n", sent, maxsplit=1, flags=re.IGNORECASE)
+    items = [re.sub(r"^\d+\.\s*", "", line).strip() for line in parts[1].splitlines() if line.strip()]
+    return f"{words}\n(under this reply, waiting for the Save button: {'; '.join(items)})".strip()
+
+
+def feedback_command(text: str) -> tuple[str, str] | None:
+    """WA-130 (approved by Ilan, 2 Nov: an explicit command, like "undo"): "mesiri bad ux ..." /
+    "mesiri fix this ..." is passed to the team by the code whatever the model does. Returns
+    ``(kind, why)``; anything softer ("this is confusing") stays the model's judgement."""
+    m = _FEEDBACK_COMMAND.match(text or "")
+    if m is None:
+        return None
+    kind = "bad_ux" if m.group(1).lower().startswith("bad") else "wrong_reply"
+    return kind, m.group(2).strip(" :,-.")
+
+
+#: The whole list of explicit feedback commands. Not a word list for understanding messages:
+#: these are commands to Mesiri, as "undo" is.
+_FEEDBACK_COMMAND = re.compile(r"^\s*mesiri\b[\s,:.-]*(bad\s*ux|bad\s*ui|fix\s+this|fix\s+it)\b(.*)$",
+                               re.IGNORECASE | re.DOTALL)
 
 
 def without_ready_block(text: str) -> str:

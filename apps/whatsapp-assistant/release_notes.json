@@ -203,6 +203,15 @@
         "cor_225927bd33184891abc7b8c79e573f5a"
       ],
       "message": "Cement, steel okke ippo correct aayi save aakum. Try: '50 bag cement vannu, 10 TMT use aaki'"
+    },
+    {
+      "id": "v3-answers-again",
+      "date": "2026-11-02",
+      "for": [
+        "cor_0138b0dab6304209acb7d3a169d1a6e9",
+        "cor_9a42df2c766b46a9a5fb4bed2ddd924b"
+      ],
+      "message": "Mesiri answers again, and if it's ever slow it keeps your message and replies a little later. Try: 'Hi'."
     }
   ]
 }
