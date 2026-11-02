@@ -1,0 +1,246 @@
+# The WhatsApp assistant, v3: one model, one SOP, the dashboard's own API
+
+> The one document for v3 (the "API agent"). Asked by Ilan, 1 Nov 2026: *"one base prompted
+> model, and just that. The rest is the same backend API calls the web dashboard uses, opened to
+> the AI so it understands which to use when."* Tracker WA-119 … WA-132 (and [203], [204]).
+> Code: `apps/whatsapp-assistant/src/agent_api/`. v2: [assistant-v2.md](assistant-v2.md).
+
+## In one picture
+
+```
+WhatsApp message (text, voice note, photo, button tap)
+   -> journey: sender known? company active? trial cap? assistant_mode = "api"?
+   -> v3
+        facts up front (read through the API as the sender, in parallel):
+            projects + sites, materials + aliases, units, what is recorded today,
+            entries waiting for Save, the message's language, today + 2 days of conversation
+        one model + SOP.md + 28 tools = the dashboard's API routes
+            GET  -> runs at once (answers questions)
+            POST / PATCH -> prepared, NOT saved: goes into the ready list
+        reply = the model's words + the ready list (drawn by code) + ONE Save button
+   -> person taps Save (or says "save it")
+        -> the entries go to the API as that person (same checks as the dashboard)
+        -> "Saved" line, then the green SAVED card
+```
+
+## Status
+
+- **Live on the two test companies** (Mesiri Test Builders, Paraclette): `assistant_mode = "api"`,
+  set by migration 0497 (deployed 1 Nov). Every real customer is still on **classic**.
+- Model: the `api_agent` row in the control panel (Providers page, "WhatsApp API agent"); unset,
+  it uses the `agent` row (gemini-2.5-flash today).
+- Not yet measured on real traffic beyond a few days of tester messages and two side-by-side
+  runs (below). The real proof is the testers' messages.
+
+## Classic vs v2 vs v3
+
+| | **Classic** | **v2** | **v3 (API agent)** |
+|---|---|---|---|
+| Who understands the message | Code: classifier, planner, word lists; the model fills slots | One agent reads the whole message | One agent reads the whole message |
+| Instructions | Spread through code and prompts | Skill files per module (`agent_v2/skills/*/SKILL.md`, ~270 lines) | One page, `agent_api/SOP.md` (principles) |
+| What it calls | Workflows | Tools on the assistant's own toolbox | **The dashboard's API routes** (28) |
+| How it saves | Its own workflows -> draft card -> Save | Draft card (classic's save path) -> Save | API request held -> Save -> the API |
+| Business rules live in | The assistant | The assistant (shared with classic) | **The backend only** (same as the dashboard) |
+| Code around the model | A lot (composer, templates, word lists) | Reply guards, number guard, early stop | Almost none: ready list, buttons, language line, feedback command |
+| A new feature | Workflow + prompt + card | Skill + tools + evals | Add the API route to `ALLOWED` (the dashboard gets it too) |
+| What it starts with | Today's records, card | Sites, card, catalog, last turns | Sites, materials + aliases, units, today's records, waiting list, 3 days of conversation |
+| Memory | Last turns (2 h) | Last 10 turns (v2) / the day (v2_adk) | **Today + the 2 days before** (ADK day store) |
+| Taps to save | Save (+ questions per field) | Save (+ card questions) | **One Save**; a needed question comes with buttons |
+| Bill photo | Is it a bill? -> confirm -> account -> vendor | As classic (photos stay classic) | Read by vision -> one expense, photo attached -> **one Save** |
+| Feedback "mesiri bad ux" | — | `tell_the_team` -> team bot | Same tool, and the explicit command is passed on by code too |
+| Receipt card after Save | Yes | Yes | Yes (same builder) |
+| When the model fails | Retry, queue | Falls back to classic | Retry + queue on an outage; any other error falls back to **v2** |
+
+**Why v3 does better on mixed messages** (the WA-123 runs): nothing between the model and the
+reply cuts the message up, its tools are general reads ("what was reported", "the site's day")
+rather than one tool per scenario, and it starts from the facts. **Where it is weaker:** it is
+slower (about 2-5 s against 1-2 s), and it depends more on the model following the SOP.
+
+## What the model starts with (`whatsapp._facts`)
+
+- The person's projects and sites with ids (from the resolved sender). One site: "use it; never
+  ask which site".
+- The company's materials with their default unit and **aliases** ("Steel … also called: kambi,
+  TMT"), and the units with ids: read through the API, cached 5 minutes per company.
+- **What is already recorded today**: the newest 40 timeline entries, shown oldest first (who,
+  what, when, which site). "Did anyone report labour?" needs no lookup; a repeated delivery is
+  pointed out before it is prepared. Never cached.
+- The entries **waiting for Save** (numbered), so "save it", "cancel the second one" and
+  corrections work.
+- The **language and script** of the message, decided by the code (the shared detector,
+  `runtime.agent.wording.language_of`): Manglish stays in Latin letters.
+- The **conversation of today and the two days before** (`memory.DayMemory`): the same Postgres day
+  store as v2-on-ADK (`assistant_sessions`, migration 0496), app name `mesiri_api`. Today in full
+  (120 messages), the two days before their last 30, each marked with its day. Read in parallel
+  before the model; written after the reply is sent (never on the wait). The ready list is kept
+  as a short note, not its format (the model used to copy it). Without google-adk: Redis per day.
+
+## The tools (`tools.py`, `ALLOWED`)
+
+Each tool is one route the dashboard calls, built from the app's OpenAPI document (path, query and
+body fields; `$ref` inlined; valid values shown as enums). A route missing from the API fails the
+build and the test. Every write also takes `confirm_line`: the line the person confirms.
+
+| Area | Reads (run at once) | Writes (held until Save) |
+|---|---|---|
+| Projects / sites | `list_projects`, `list_sites` | — |
+| What happened | `day_summary`, `timeline` | — |
+| Materials | `search_materials` (name or alias), `list_units`, `stock_levels`, `stock_check`, `list_receipts`, `list_usage` | `record_receipt`, `record_usage`, `record_transfer` |
+| Labour | `labour_attendance`, `list_workers` | `record_attendance` |
+| Work and issues | `work_progress`, `list_issues` | `record_work`, `report_issue`, `resolve_issue` |
+| Money | `list_expenses`, `expense_categories`, `money_accounts` | `record_expense` (bill photo attached by code) |
+| Site day, DPR | `site_day` | `set_site_conditions`, `send_dpr` (only when asked, this turn only) |
+
+Plus three tools of v3 itself: `ask` (one question, 2-3 options as buttons),
+`save_ready_entries` / `drop_ready_entries` (only offered when entries wait), and `tell_the_team`
+(v2's feedback tool, one definition).
+
+## Saving
+
+1. A write tool prepares an entry (`PendingWrite`: route, body, confirm line, idempotency key) and
+   tells the model "ready, NOT saved". The SOP forbids "saved / recorded / njan record cheythu"
+   until it is.
+2. The reply shows the model's words, then **Ready to save:** with the entries, and one **Save /
+   Cancel** button row. A question asked with `ask` shows its options as buttons instead.
+3. **Save** (or "save it" in words) sends each entry to the API as the person, with its
+   idempotency key (a repeated tap records once). The API's own checks decide; a refused entry
+   stays in the list with a plain reason in their language, the saved ones go.
+4. The **"Saved" line, then the green SAVED card** (`receipts.py` -> the same
+   `RecordReceiptBuilder` classic and v2 use; within 4 s, never blocking the Save). Material in /
+   used / transfer, expense, labour, work done and issues have a card.
+5. Units: a unit the model names ("bags", "chaakku", "nos", "rod") is turned into the active
+   unit id in code (`units.py`, the shared `runtime.unit_words` table), when prepared and when
+   saved; an unknown unit gets unit buttons before Save.
+
+Entries wait per person in Redis for a day (an older list's buttons do nothing).
+
+## Fewest taps (SOP rule 1)
+
+- Work it out instead of asking: the only site, the site used most recently, today's date,
+  vendor / category / work item as their words (the API matches or creates them: no "new vendor"
+  step).
+- One question at most, with buttons. Never ask to confirm what the ready list already shows.
+- A bill photo: no "is this a bill?"; the expense is prepared from what the photo shows and the
+  photo is attached: one Save.
+
+## Photos, voice notes, calls
+
+- **Voice notes**: transcribed first (the existing pipeline), then handled as text.
+- **Photos / documents**: read by the existing vision step (`pipeline.describe_media`), then
+  handled as words; the photo's key is attached to an expense by the code.
+- **Calls** (WA-118, `call.py`): the same checks as a message; on a call v3 gets **read tools
+  only** (4 rounds, 10 s), so a call never writes; anything to record goes to the chat as the
+  usual Save list. Off until a number is listed in `WHATSAPP_CALL_ANSWERS_ALLOWED`. No real call
+  tested yet.
+
+## Feedback goes straight to the team bot
+
+- "mesiri bad ux", "this is confusing", a wrong reply, something Mesiri cannot do yet: the model
+  calls `tell_the_team` (v2's tool and reply wording), then does the rest of the message.
+- **The explicit command** "mesiri bad ux / bad ui / fix this / fix it" (+ the reason after it) is
+  passed on by the code too, when the model did not (approved by Ilan 2 Nov as the one word-list
+  exception, a command like "undo"): kind bad_ux / wrong_reply, about = Mesiri's previous reply.
+- The turn's trace (`agent_api_turn`, calls with `args`) is read by the team bot's production
+  watch (`teammate/brain/src/prod_watch.js`), then TM-18 Autobuild: plan -> build -> push -> the
+  person is told in their chat when it works.
+
+## When something fails
+
+- A **provider outage** (quota, auth, timeout): one quick retry, then the queued reply in their
+  language and a worker retry (v2's outage handling, `runtime.ai_outage`).
+- **Any other error** (a bug in v3 or a tool): `FallBackToV2`: the message is answered by v2.
+- A **greeting** is answered by the code (the greeting menu): never needs the model.
+- A model error before anything was prepared: one more try; no words after a lookup: asked once
+  for the answer.
+
+## Safety
+
+- **Nothing is saved without the person's Save** (or their clear "save it").
+- **Same access as the dashboard**: every call carries a 5-minute token for the sender
+  (`create_access_token`, the login's claims); the API reloads the user, checks role, project and
+  site access and binds the company, as for a dashboard request. Calls run in-process
+  (`httpx.ASGITransport`) in their own task, so the company binding never leaks.
+- **Only allowed routes**; a tool name not on the list is refused without a call.
+- **Idempotency keys per company** on the new endpoints (a key from one company never meets
+  another's).
+- **A bill photo** is accepted only if that company's own WhatsApp received it.
+
+## API changes made for v3 (the dashboard benefits too)
+
+| Change | Item |
+|---|---|
+| Valid values in the schema: issue type / severity, weather, site working, hours lost, movement reason | WA-121 |
+| `POST /labour/attendance` and `POST /progress/activities` (same save handlers as WhatsApp) | WA-122 |
+| `POST /expenses` takes the bill photo (`media_object_key`, own company only) | WA-124 |
+| `GET /materials` lists `aliases`; `search` matches an alias | WA-127 |
+
+## Measured so far
+
+Two side-by-side runs on the real model, 8 site messages, same company for all three
+(`Compare agents` workflow; a run costs model calls: start it only when needed):
+
+- **gemini-2.5-flash, 1 Nov** (before the WA-124 fixes): classic 7 good / 1 partly, v2 6 / 1 / 1
+  missed, v3 5 good / 3 partly; average reply 1.2 s / 1.6 s / 3.5 s.
+- **gemini-3.6-flash, 1 Nov 19:41** (after WA-124): v3 7 of 8 right, the only one that answered
+  every part of the mixed message; one miss ("OK." to a stock question, fixed since);
+  2-5 s per reply.
+- **Production, 2 Nov**: a units bug (fixed, WA-125), a list printed twice and "mesiri bad ux" not
+  passed on (fixed, WA-130).
+
+## Switching and rollback
+
+Per company: `PUT /admin/organizations/{org_id}/settings` (platform admin) with `assistant_mode`
+= `classic` | `v2_shadow` | `v2` | `v2_adk` | `api`. Instant; no data changes; records saved
+through v3 are ordinary dashboard records. Migration 0497's downgrade puts the two test companies
+back on `v2`. Code rollback: revert.
+
+## Code map
+
+| File | What it does |
+|---|---|
+| `agent_api/SOP.md` | The whole prompt |
+| `agent_api/tools.py` | `ALLOWED` routes -> tools from OpenAPI |
+| `agent_api/app.py` | The API inside the worker: the routers the live app mounts, on the worker's pool |
+| `agent_api/client.py` | Calls the API as the sender (token, in-process, own task) |
+| `agent_api/agent.py` | One model run: tools, waiting list, ask, feedback, retries |
+| `agent_api/whatsapp.py` | WhatsApp side: facts, reply, buttons, Save, memory, card, failures, feedback command |
+| `agent_api/memory.py` | Today + 2 days in the ADK day store |
+| `agent_api/units.py` | Unit words -> unit ids |
+| `agent_api/receipts.py` | Saved entries -> the SAVED card |
+| `agent_api/call.py` | WhatsApp calls (read-only) |
+| `runtime/message_journey.py` | Routes a company on `api` to v3 after the sender checks |
+| `scripts/api_agent_chat.py` | Try v3 from a terminal (dashboard login + Gemini key) |
+
+## Testing
+
+- `tests/agent_api/` (scripted model, no cost): tools from the real OpenAPI, the WhatsApp flow,
+  facts, memory, receipts, feedback, units, outages. `tests/integration/test_api_agent_119_postgres.py`:
+  the real routers on Postgres.
+- Real model: `Compare agents` workflow (manual). Every push also runs the deploy's live gate.
+  Both use the same Gemini key: mind its monthly cap (WA-111).
+
+## Not done / next
+
+- Measure on the testers' real messages for a few days; decide whether real customers move.
+- Model: `gemini-3.6-flash` looked better in the one run; price to check before switching.
+- Attendance-sheet photos: read as words only (no sheet parsing like classic's).
+- Roles and access for a company's non-admin users have not been exercised through v3 on real data.
+- CLAUDE.md still says "assistant features are v2 skills": needs Alan / Ilan's update if v3
+  becomes the direction.
+
+## History
+
+| Item | What |
+|---|---|
+| WA-119 | Pilot: tools from OpenAPI, API as the sender, writes held (materials) |
+| WA-121 | On WhatsApp (`api` mode), all modules the API can write, schema enums |
+| WA-122 | Attendance and work-done endpoints; both test companies switched (0497) |
+| WA-123 | `Compare agents` workflow |
+| WA-124 | Facts up front, one-tap questions, bill photos, 3-day memory, wording, language |
+| WA-125, WA-128 [203] | Units from `items`, unit words in code, list printed once |
+| WA-126, WA-130 | Feedback to the team bot; the explicit command; memory without list format |
+| WA-127 | Aliases and today's records up front |
+| WA-129 [204] | Outages queued, other errors fall back to v2, greetings by code |
+| WA-131 [203] | `send_dpr` only when asked, one turn |
+| WA-132 | The SAVED card after a Save |
+| WA-118 | Calls (read-only) |

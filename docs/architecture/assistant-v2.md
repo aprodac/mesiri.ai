@@ -199,7 +199,7 @@ counts as a wrong save.
 ## The switch and rollback
 
 Per company: `PUT /admin/organizations/{org_id}/settings` (platform admin) with `assistant_mode`
-= `classic` | `v2_shadow` | `v2` | `v2_adk` | `api` (the API agent, [assistant-api-agent.md](assistant-api-agent.md)). **Rollback is instant:** set the company to `classic` (or
+= `classic` | `v2_shadow` | `v2` | `v2_adk` | `api` (v3, [assistant-v3.md](assistant-v3.md)). **Rollback is instant:** set the company to `classic` (or
 delete the setting). No data migration; no record is touched; code rollback is a revert.
 
 ## Retirement plan (module by module)
@@ -232,7 +232,7 @@ add the eval case.
 
 ## Related
 
-- [assistant-api-agent.md](assistant-api-agent.md): the API agent pilot (WA-119): one model + one SOP + the dashboard's API as tools
+- [assistant-v3.md](assistant-v3.md): v3, the API agent (one model + one SOP + the dashboard's API), and how classic, v2 and v3 compare
 - [ADR-v2-agent-framework.md](ADR-v2-agent-framework.md): decisions, measurements, requests 174 / 176 / 178 / 180
 - [runtime-flow.md](runtime-flow.md): the short flow
 - [apps/whatsapp-assistant/AGENTS.md](../../apps/whatsapp-assistant/AGENTS.md): code rules and the classic path (retiring)
