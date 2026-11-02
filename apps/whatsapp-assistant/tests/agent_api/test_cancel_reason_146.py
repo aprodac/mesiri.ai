@@ -64,3 +64,15 @@ async def test_guard_a_second_or_unknown_reason_is_only_thanked() -> None:
 def test_every_reason_title_fits_a_whatsapp_button() -> None:
     assert all(len(t) <= 20 for titles in wa._REASON_TITLES.values() for t in titles.values())
     assert all(set(titles) == set(wa.CANCEL_REASONS) for titles in wa._REASON_TITLES.values())
+
+
+async def test_tm45_every_save_tap_is_traced_with_what_was_refused_and_why() -> None:
+    """2 Nov (Ilan's loop): three refused Saves left no trace, so nobody saw the same line refused again and again."""
+    h = Harness(two_receipts_model(), refuse_tmt=True)
+    await h.service.handle(_message(), CTX)
+    save, _cancel = h.buttons()
+    await h.service.handle(_message("Save", tap=save), CTX)
+    payload = h.trace.log_stage.await_args.kwargs["stage_payload"]
+    results = payload["save_results"]
+    assert results[0]["status"] == 201 and results[1]["status"] >= 400
+    assert "reason" not in results[0] and results[1]["reason"] and "TMT" in results[1]["summary"]

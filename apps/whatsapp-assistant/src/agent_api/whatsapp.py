@@ -200,6 +200,13 @@ class ApiWhatsApp:
             said = "(tapped Save)" if tap.startswith(SAVE_PREFIX) else "(tapped Cancel)"
             started = time.monotonic()
             reply = await self._on_tap(tap, ctx, message.correlation_id)
+            if tap.startswith(SAVE_PREFIX):
+                # 2 Nov (Ilan's loop: three refused Saves left no trace at all): every Save's outcome is traced, so
+                # the team bot sees the same line refused twice and looks at once (TM-45).
+                results = self._just_saved.get(message.correlation_id) or []
+                await self._trace_turn(message, {"text": said, "calls": [], "save_results": [
+                    {"summary": r.pending.summary, "tool": r.pending.tool, "status": r.status,
+                     **({} if r.ok else {"reason": _detail(r.body)[:300]})} for r in results]}, started)
             if tap.startswith(CANCEL_PREFIX) and reply.buttons:
                 # WA-147: every Cancel is counted (the weekly digest, the production watch), reason or not.
                 cancelled = (await self._state(ctx)).get("cancelled") or []
@@ -347,7 +354,8 @@ class ApiWhatsApp:
             # WA-148: what the model started from, so a replay on the real model sees the same sites and materials.
             "facts": facts[:FACTS_IN_TRACE],
             "stop_reason": turn.stop_reason,
-            "saved": [{"summary": r.pending.summary, "status": r.status} for r in turn.saved],
+            "saved": [{"summary": r.pending.summary, "status": r.status,
+                       **({} if r.ok else {"reason": _detail(r.body)[:300]})} for r in turn.saved],
             "pending": [e.summary for e in turn.pending], "asked": turn.question,
         }, started)
         state["language"] = _language(text)

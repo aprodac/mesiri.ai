@@ -151,6 +151,11 @@ ALLOWED: tuple[Allowed, ...] = (
     Allowed("update_material", "PATCH", "/materials/{material_id}",
             "Prepare changing a material in the list: its name, default unit, or the other names it is called "
             "(aliases, e.g. 'kambi' for steel)." + _WRITE),
+    Allowed("set_unit_conversion", "PUT", "/materials/{material_id}/unit-conversions",
+            "Prepare setting, for the whole company, how much ONE of the unit they count in is in the material's "
+            "stock unit (1 bar of TMT 12mm = 10.67 kg; 1 load of sand = 3 m3). Use when a line was refused because "
+            "the material is stocked in another unit and they told you the size; the refused line then saves "
+            "converted. Admin or project manager only." + _WRITE),
     Allowed("add_expense_category", "POST", "/expenses/categories", "Prepare a new expense category." + _WRITE),
     Allowed("create_project", "POST", "/projects", "Prepare a new project (name, client, address, dates)." + _WRITE),
     Allowed("update_project", "PUT", "/projects/{project_id}",

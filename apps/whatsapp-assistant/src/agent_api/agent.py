@@ -394,6 +394,8 @@ async def settle_unit(client: ApiClient, body: dict[str, Any]) -> str:
 
 
 UNIT_UNSETTLED = "unit_id is not a valid active unit"
+#: Writes that change how other entries are read; saved first in one Save.
+SETTINGS_FIRST = frozenset({"set_unit_conversion"})
 #: The name of the Save button, as every reply about a ready list says it (any language).
 SAVE_WORD = "save"
 
@@ -428,18 +430,23 @@ async def unit_buttons(client: ApiClient) -> list[str]:
 
 
 async def confirm(client: ApiClient, pending: list[PendingWrite]) -> list[WriteResult]:
-    """Send the held entries to the API, in order. The API's own checks
-    (access, validation, stock guard) decide; a refusal comes back as-is."""
-    results: list[WriteResult] = []
-    for entry in pending:
-        if "unit_id" in entry.body:  # an entry held before this check, or an id gone stale
-            problem = await settle_unit(client, entry.body)
-            if problem:
-                problem = await unit_from_summary(client, entry)  # "10 TMT steel bars": bars -> nos
-            if problem:
-                results.append(WriteResult(entry, 422, {"detail": UNIT_UNSETTLED}))
-                continue
-        response = await client.call(entry.method, entry.path, params=entry.params, json=entry.body,
-                                     idempotency_key=entry.idempotency_key)
-        results.append(WriteResult(entry, response.status, response.body))
-    return results
+    """Send the held entries to the API, in order (a unit conversion first: it is often prepared after the
+    material lines it lets through). The API's own checks (access, validation, stock guard) decide; a refusal
+    comes back as-is. Results come back in the order given."""
+    order = sorted(range(len(pending)), key=lambda i: pending[i].tool not in SETTINGS_FIRST)
+    done: dict[int, WriteResult] = {}
+    for i in order:
+        done[i] = await _confirm_one(client, pending[i])
+    return [done[i] for i in range(len(pending))]
+
+
+async def _confirm_one(client: ApiClient, entry: PendingWrite) -> WriteResult:
+    if "unit_id" in entry.body:  # an entry held before this check, or an id gone stale
+        problem = await settle_unit(client, entry.body)
+        if problem:
+            problem = await unit_from_summary(client, entry)  # "10 TMT steel bars": bars -> nos
+        if problem:
+            return WriteResult(entry, 422, {"detail": UNIT_UNSETTLED})
+    response = await client.call(entry.method, entry.path, params=entry.params, json=entry.body,
+                                 idempotency_key=entry.idempotency_key)
+    return WriteResult(entry, response.status, response.body)

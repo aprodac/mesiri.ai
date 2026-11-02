@@ -10,6 +10,7 @@ an admin or project manager) or, for conversions that never vary, from
 
 from __future__ import annotations
 
+import re
 from decimal import ROUND_HALF_UP, Decimal
 
 #: (reported unit, stock unit) -> how many reported units make one stock unit.
@@ -28,6 +29,29 @@ _FIXED: dict[tuple[str, str], Decimal] = {
 CEMENT_BAG_KG = Decimal("50")
 
 
+#: 2 Nov 2026 (Ilan, Paraclette: "10 TMT steel bars used", TMT stocked in kg): a steel bar's weight follows from its
+#: diameter: D x D / 162 kg per metre (IS 1786 unit mass), and bars come in 12 m lengths. Only when the material's
+#: name gives the diameter ("TMT 12mm", "Fe500 16 mm rod"); otherwise the company says it once.
+BAR_LENGTH_M = Decimal("12")
+_COUNT_UNITS = frozenset({"nos", "pieces", "pcs", "no", "numbers"})
+_WEIGHT_IN_KG = {"kg": Decimal(1), "mt": Decimal(1000), "tons": Decimal(1000)}
+_STEEL = re.compile(r"\b(tmt|steel|rebar|rod|rods|bar|bars|fe\s?\d{3}d?)\b", re.IGNORECASE)
+_DIAMETER = re.compile(r"(\d{1,2}(?:\.\d)?)\s*mm\b", re.IGNORECASE)
+
+
+def steel_bar_kg(material_name: str) -> Decimal | None:
+    """The weight of one 12 m bar of this steel material, from the diameter in its name; None when not given."""
+    if not _STEEL.search(material_name or ""):
+        return None
+    found = _DIAMETER.search(material_name or "")
+    if not found:
+        return None
+    d = Decimal(found.group(1))
+    if not Decimal(6) <= d <= Decimal(40):
+        return None
+    return (d * d / Decimal(162) * BAR_LENGTH_M).quantize(Decimal("0.001"))
+
+
 def built_in_per_stock_unit(reported_unit: str, stock_unit: str, material_name: str) -> Decimal | None:
     """The fixed conversion between two unit codes for this material, or None."""
     pair = (reported_unit.lower(), stock_unit.lower())
@@ -35,6 +59,11 @@ def built_in_per_stock_unit(reported_unit: str, stock_unit: str, material_name: 
         return _FIXED[pair]
     if pair[::-1] in _FIXED:
         return Decimal(1) / _FIXED[pair[::-1]]
+    if pair[0] in _COUNT_UNITS and pair[1] in _WEIGHT_IN_KG:
+        bar = steel_bar_kg(material_name)
+        if bar:
+            # How many bars make one stock unit (1 kg, or 1 tonne).
+            return _WEIGHT_IN_KG[pair[1]] / bar
     if "cement" in material_name.lower():
         if pair == ("kg", "bags"):
             return CEMENT_BAG_KG

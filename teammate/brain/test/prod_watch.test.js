@@ -592,3 +592,22 @@ test("TM-28: a message that is not a request is left to the regular look", async
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("TM-45: the same line refused twice for one person is a loop, flagged and announced by code", () => {
+  const refused = "10 TMT steel bars used at Tower A :: unit_id does not match TMT's Stock Unit (expected kg)";
+  const rows = [
+    msg({ correlation_id: "cor_aaaaaa01", at: T0, refused }),
+    msg({ correlation_id: "cor_bbbbbb02", at: T0 + 30, text: "Nos" }),
+    msg({ correlation_id: "cor_cccccc03", at: T0 + 60, refused }),
+  ];
+  const flagged = flagRows(rows);
+  const loop = flagged.flatMap((f) => f.flags).filter((f) => f.kind === "loop");
+  assert.equal(loop.length, 1);
+  assert.match(loop[0].why, /stuck: Save refused 2 times for "10 TMT steel bars used at Tower A" \(unit_id does not match/);
+  const lines = requestLines(conversations(rows, flagged));
+  assert.match(lines.at(-1), /🔁 #cccccc · \*.*\* .* is stuck: Save refused 2 times/);
+  // guard: one refusal, or two different lines, is not a loop
+  assert.equal(flagRows(rows.slice(0, 2)).flatMap((f) => f.flags).filter((f) => f.kind === "loop").length, 0);
+  const other = [msg({ at: T0, refused }), msg({ at: T0 + 60, refused: "50 bags cement :: stock too low" })];
+  assert.equal(flagRows(other).flatMap((f) => f.flags).filter((f) => f.kind === "loop").length, 0);
+});

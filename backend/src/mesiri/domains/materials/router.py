@@ -263,6 +263,52 @@ async def list_materials(
     return {"items": items, "total": total}
 
 
+class UnitConversionSet(BaseModel):
+    """How much ONE of the reported unit is in the material's Stock Unit ("1 bar = 10.67 kg")."""
+
+    from_unit_id: uuid.UUID
+    one_unit_equals: Decimal = Field(gt=0, description="How many Stock Units one `from_unit` is, e.g. 10.67 (kg per bar)")
+
+
+@router.put("/{material_id}/unit-conversions")
+async def set_unit_conversion(
+    material_id: uuid.UUID,
+    body: UnitConversionSet,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """2 Nov 2026 (WA-151): set, for the whole company, how much one unit sites count in (a bar, a load) is in the
+    material's Stock Unit; receipts, usage and transfers in that unit are converted from then on. The same table
+    WhatsApp classic writes (WA-41); only an admin or a project manager may (Ilan, 21 Oct)."""
+    from mesiri.authorization.roles import may_set_unit_conversions
+    from mesiri.infrastructure.postgres.repositories.material_unit_conversions import (
+        PostgresMaterialUnitConversionRepository,
+    )
+
+    if not may_set_unit_conversions(auth_context.role):
+        raise HTTPException(status_code=403, detail="Only an admin or a project manager can set a unit conversion.")
+    material = await PostgresMaterialCatalogRepository(conn).get_by_id(auth_context.organization_id, material_id)
+    if material is None or material.get("default_unit_id") is None:
+        raise HTTPException(status_code=404, detail="Material not found")
+    units = UnitsOfMeasureRepository(conn)
+    unit, stock = await units.get_by_id(body.from_unit_id), await units.get_by_id(material["default_unit_id"])
+    if unit is None or stock is None:
+        raise HTTPException(status_code=422, detail="from_unit_id is not a valid active unit")
+    if str(unit["id"]) == str(stock["id"]):
+        raise HTTPException(status_code=422, detail=f"{material['name']} is already counted in {stock['display_name']}.")
+    per_stock_unit = (Decimal(1) / body.one_unit_equals).quantize(Decimal("0.0000001"))
+    await PostgresMaterialUnitConversionRepository(conn).upsert(
+        organization_id=auth_context.organization_id, material_id=material["id"], from_unit_id=unit["id"],
+        per_stock_unit=per_stock_unit, user_id=auth_context.user_id,
+    )
+    return {
+        "material": material["name"], "from_unit": unit["display_name"], "stock_unit": stock["display_name"],
+        "one_unit_equals": str(body.one_unit_equals.normalize()),
+        "message": f"Saved for the company: 1 {unit['display_name']} of {material['name']} = "
+                   f"{body.one_unit_equals.normalize():f} {stock['display_name']}.",
+    }
+
+
 @router.get("/units-of-measure")
 async def list_units_of_measure(
     auth_context: AuthorizationContext = Depends(get_auth_context),
@@ -733,6 +779,37 @@ def _resolve_costs(
     return unit_cost, total_cost
 
 
+async def _convert_to_stock_unit(conn: AsyncConnection, organization_id: uuid.UUID, body: Any) -> None:
+    """2 Nov 2026 (Ilan, Paraclette: "10 TMT steel bars used", TMT stocked in kg): a quantity reported in another
+    unit is converted into the material's Stock Unit when the conversion is known -- the company's own
+    (material_unit_conversions, WA-41) or a fixed one (kg/tonnes, cft/m3/brass, cement bags, steel bars by
+    diameter). The body is rewritten in place (quantity, unit, a rate per unit) and the note keeps what was
+    reported. Unknown: nothing changes, and the Stock Unit check below refuses with the unit it needs."""
+    from mesiri.domains.materials.unit_conversion import built_in_per_stock_unit, to_stock_quantity
+    from mesiri.infrastructure.postgres.repositories.material_unit_conversions import (
+        PostgresMaterialUnitConversionRepository,
+    )
+
+    material = await PostgresMaterialCatalogRepository(conn).get_by_id(organization_id, body.material_id)
+    if not material or material.get("default_unit_id") is None or str(material["default_unit_id"]) == str(body.unit_id):
+        return
+    units = UnitsOfMeasureRepository(conn)
+    unit, stock = await units.get_by_id(body.unit_id), await units.get_by_id(material["default_unit_id"])
+    if not unit or not stock:
+        return
+    per = await PostgresMaterialUnitConversionRepository(conn).get(
+        organization_id=organization_id, material_id=material["id"], from_unit_id=unit["id"]
+    ) or built_in_per_stock_unit(str(unit["code"]), str(stock["code"]), str(material["name"]))
+    if per is None or per <= 0:
+        return
+    reported = f"reported as {Decimal(str(body.quantity)).normalize():f} {unit['display_name']}"
+    body.quantity = to_stock_quantity(body.quantity, per)
+    body.unit_id = stock["id"]
+    if getattr(body, "unit_cost", None) is not None:
+        body.unit_cost = (Decimal(str(body.unit_cost)) * per).quantize(Decimal("0.01"))
+    body.notes = f"{body.notes.strip()} ({reported})" if getattr(body, "notes", None) else reported
+
+
 async def _resolve_and_validate_material_unit(
     conn: AsyncConnection,
     organization_id: uuid.UUID,
@@ -753,11 +830,15 @@ async def _resolve_and_validate_material_unit(
         raise HTTPException(status_code=422, detail="unit_id is not a valid active unit")
 
     if material["default_unit_id"] is not None and unit["id"] != material["default_unit_id"]:
+        # 2 Nov: the material row carries only the unit's id, so this said "(expected None)".
+        stock = await units_repo.get_by_id(material["default_unit_id"])
+        expected = (stock or {}).get("code") or material.get("default_unit") or "its stock unit"
         raise HTTPException(
             status_code=422,
             detail=(
                 f"unit_id does not match {material['name']}'s Stock Unit "
-                f"(expected {material['default_unit']}); no unit conversion is supported"
+                f"(expected {expected}); no conversion from {unit['display_name']} is set "
+                f"(PUT /materials/{material['id']}/unit-conversions sets one)"
             ),
         )
     return material, unit
@@ -810,6 +891,7 @@ async def create_inflow(
             conn, auth_context.organization_id, body.project_id, body.site_id
         )
 
+    await _convert_to_stock_unit(conn, auth_context.organization_id, body)
     material, unit = await _resolve_and_validate_material_unit(
         conn, auth_context.organization_id, body.material_id, body.unit_id
     )
@@ -916,6 +998,7 @@ async def create_outflow(
             conn, auth_context.organization_id, body.project_id, body.site_id
         )
 
+    await _convert_to_stock_unit(conn, auth_context.organization_id, body)
     material, unit = await _resolve_and_validate_material_unit(
         conn, auth_context.organization_id, body.material_id, body.unit_id
     )
@@ -1416,6 +1499,7 @@ async def create_transfer(
     _authorize_write(auth_context, from_project_id, body.from_site_id)
     _authorize_write(auth_context, to_project_id, body.to_site_id)
 
+    await _convert_to_stock_unit(conn, org_id, body)
     material, unit = await _resolve_and_validate_material_unit(
         conn, org_id, body.material_id, body.unit_id
     )

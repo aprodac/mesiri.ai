@@ -77,13 +77,22 @@ _UNIT = {
 #: 2 Nov (Ilan, Paraclette: "10 TMT steel bars used" refused again and again): the material is counted in another
 #: unit in the stock (TMT in kg), so no unit word they send in the old way can save it. Say which unit it needs.
 _STOCK_UNIT = {
-    "english": "{material} is counted in {unit} in your stock. How many {unit} was it? Send the line with {unit}.",
-    "manglish": "{material} stock-il {unit} aayittaanu ezhuthunnathu. Ethra {unit} aayirunnu? {unit} vechu line ayakkoo.",
-    "malayalam": "{material} സ്റ്റോക്കിൽ {unit} ആയിട്ടാണ് എഴുതുന്നത്. എത്ര {unit} ആയിരുന്നു? {unit} വെച്ച് വരി അയക്കൂ.",
-    "hinglish": "{material} stock mein {unit} mein gina jata hai. Kitna {unit} tha? {unit} ke saath line bhejiye.",
-    "hindi": "{material} स्टॉक में {unit} में गिना जाता है। कितना {unit} था? {unit} के साथ लाइन भेजिए।",
+    "english": "{material} is counted in {unit} in your stock. How many {unit} is one {said}? Tell me once and I'll convert it from now on (or send it in {unit}).",
+    "manglish": "{material} stock-il {unit} aayittaanu. Oru {said} ethra {unit} aanu? Onnu paranjaal ini muthal njan maattikkollaam ({unit}-il ayachaalum mathi).",
+    "malayalam": "{material} സ്റ്റോക്കിൽ {unit} ആയിട്ടാണ്. ഒരു {said} എത്ര {unit} ആണ്? ഒരിക്കൽ പറഞ്ഞാൽ ഇനി മുതൽ ഞാൻ മാറ്റിക്കോളാം ({unit}-ൽ അയച്ചാലും മതി).",
+    "hinglish": "{material} stock mein {unit} mein hai. Ek {said} kitna {unit} hai? Ek baar bata dijiye, aage se main badal dunga (ya {unit} mein bhejiye).",
+    "hindi": "{material} स्टॉक में {unit} में है। एक {said} कितना {unit} है? एक बार बता दीजिए, आगे से मैं बदल दूँगा (या {unit} में भेजिए)।",
 }
-_STOCK_UNIT_REASON = re.compile(r"does not match (.+?)'s Stock Unit \(expected ([^)]+)\)", re.IGNORECASE)
+_STOCK_UNIT_REASON = re.compile(
+    r"does not match (.+?)'s Stock Unit \(expected ([^)]+)\)(?:; no conversion from (.+?) is set)?", re.IGNORECASE)
+
+
+def _one_of(unit_name: str, material: str) -> str:
+    """'one ___' as a site says it: a steel material counted in numbers is a bar; Numbers / Pieces is a piece."""
+    low = unit_name.casefold()
+    if low in ("numbers", "pieces", "nos", "pcs", ""):
+        return "bar" if re.search(r"\b(tmt|steel|rod|rebar|bar)", material, re.IGNORECASE) else "piece"
+    return {"bags": "bag", "loads": "load", "boxes": "box", "rolls": "roll"}.get(low, unit_name)
 
 
 def plain_refusal(reason: str, language: str | None) -> str:
@@ -92,7 +101,9 @@ def plain_refusal(reason: str, language: str | None) -> str:
     low = reason.casefold()
     stock = _STOCK_UNIT_REASON.search(reason)
     if stock:
-        return _STOCK_UNIT[lang].format(material=stock.group(1).strip(), unit=stock.group(2).strip())
+        material = stock.group(1).strip()
+        said = _one_of((stock.group(3) or "").strip(), material)
+        return _STOCK_UNIT[lang].format(material=material, unit=stock.group(2).strip(), said=said)
     if "unit" in low and ("valid" in low or "match" in low or "stock unit" in low):
         return _UNIT[lang]
     if reason and not any(t in low for t in ("_id", "valid", "uuid", "field", "422", "must be")):

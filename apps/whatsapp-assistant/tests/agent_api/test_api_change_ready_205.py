@@ -92,9 +92,13 @@ def test_the_drop_tool_is_for_cancelling_only() -> None:
 def test_a_stock_unit_refusal_says_which_unit_the_stock_needs() -> None:
     from agent_api.units import plain_refusal
 
-    reason = "unit_id does not match TMT Steel's Stock Unit (expected kg); no unit conversion is supported"
-    assert plain_refusal(reason, "english") == ("TMT Steel is counted in kg in your stock. How many kg was it? "
-                                                "Send the line with kg.")
+    reason = ("unit_id does not match TMT Steel's Stock Unit (expected kg); no conversion from Numbers is set "
+              "(PUT /materials/x/unit-conversions sets one)")
+    assert plain_refusal(reason, "english") == (
+        "TMT Steel is counted in kg in your stock. How many kg is one bar? Tell me once and I'll convert it from now "
+        "on (or send it in kg).")
+    sand = "unit_id does not match River sand's Stock Unit (expected cum); no conversion from Loads is set"
+    assert "How many cum is one load?" in plain_refusal(sand, "english")
     assert "kg" in plain_refusal(reason, "malayalam") and "TMT Steel" in plain_refusal(reason, "manglish")
     # guard: a unit that is not a unit at all keeps the old answer
     assert "which unit" in plain_refusal("unit_id is not a valid active unit", "english")

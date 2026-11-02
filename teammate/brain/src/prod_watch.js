@@ -37,6 +37,8 @@ export const SETTLE_MS = 2 * 60_000 + 10_000;
 /** Rows the free check reads (enough to see a request among them); what anyNew returns for a request to Mesiri. */
 const PROBE_ROWS = 50;
 export const URGENT = "urgent";
+/** TM-45: the same line refused this many times for one person is a loop: looked at at once. */
+export const LOOP_AFTER = 2;
 /**
  * Companies the watch never reads (Ilan, 1 Nov: the test companies' own testing spent the Gemini key all day).
  * ILIKE patterns; TEAMMATE_PROD_WATCH_SKIP (comma-separated) replaces them.
@@ -79,7 +81,15 @@ export function watchSql(since, limit = 400, skip = [], newest = false, request 
           FROM journey_traces jt,
                jsonb_array_elements(CASE WHEN jsonb_typeof(jt.stage_payload::jsonb->'cancelled') = 'array' THEN jt.stage_payload::jsonb->'cancelled' ELSE '[]'::jsonb END) x
          WHERE jt.correlation_id = m.correlation_id AND jt.stage = 'agent_api_turn' AND jt.stage_payload::jsonb ? 'cancelled'
-           AND NOT jt.stage_payload::jsonb ? 'cancel_reason') AS cancelled
+           AND NOT jt.stage_payload::jsonb ? 'cancel_reason') AS cancelled,
+       (SELECT left(string_agg((x->>'summary') || ' :: ' || coalesce(x->>'reason', ''), ' | '), 600)
+          FROM journey_traces jt,
+               jsonb_array_elements(coalesce(jt.stage_payload::jsonb->'save_results', '[]'::jsonb)
+                                    || coalesce(jt.stage_payload::jsonb->'saved', '[]'::jsonb)) x
+         WHERE jt.correlation_id = m.correlation_id AND jt.stage = 'agent_api_turn'
+           AND jsonb_typeof(coalesce(jt.stage_payload::jsonb->'save_results', '[]'::jsonb)) = 'array'
+           AND jsonb_typeof(coalesce(jt.stage_payload::jsonb->'saved', '[]'::jsonb)) = 'array'
+           AND (x->>'status')::int >= 400) AS refused
 FROM inbound_messages m LEFT JOIN organizations o ON o.id = m.organization_id
 LEFT JOIN LATERAL (SELECT u.full_name, u.role FROM users u WHERE u.organization_id = m.organization_id
   AND regexp_replace(u.whatsapp_number, '\\D', '', 'g') = regexp_replace(m.sender_wa_id, '\\D', '', 'g') LIMIT 1) su ON true
@@ -113,6 +123,15 @@ export function requestLines(convs) {
       const who = `*${c.person || "Someone"}*${c.role ? ` (${c.role}, ${c.company})` : ` (${c.company})`}`;
       const ref = requestRef(m.correlation_id);
       out.push(`📥 ${ref ? `${ref} · ` : ""}${who} told Mesiri: ${String(m.feedback).replace(/_/g, " ").slice(0, 300)}\nLooking into it now; the plan follows here in a few minutes.`);
+    }
+  }
+  // TM-45: a loop nobody reported yet (the same line refused again), said by code like a request.
+  for (const c of convs) {
+    for (const m of c.messages) {
+      const loop = (c.flags.get(m.correlation_id) || []).find((f) => f.kind === "loop");
+      if (!loop) continue;
+      const who = `*${c.person || "Someone"}*${c.role ? ` (${c.role}, ${c.company})` : ` (${c.company})`}`;
+      out.push(`🔁 ${requestRef(m.correlation_id) ? `${requestRef(m.correlation_id)} · ` : ""}${who} is ${loop.why}\nLooking into it now, before they have to ask.`);
     }
   }
   return out;
@@ -177,6 +196,18 @@ export function flagRows(rows) {
     // TM-18: the person told Mesiri itself (a missing feature, "bad UX", their reason): always worth a look.
     if (row.feedback) flags.push({ kind: "feedback", why: `they told Mesiri: ${String(row.feedback).slice(0, 300)}` });
     // WA-147: the quiet failures: they cancelled what Mesiri prepared, or took back / corrected a saved entry.
+    // TM-45 (2 Nov, Ilan: the same TMT line refused on Save 4 times, nobody told): a loop is flagged by code, before
+    // anyone complains: the same line refused again for the same person.
+    if (row.refused) {
+      const seen = (prev.refused ||= new Map());
+      for (const part of String(row.refused).split(" | ")) {
+        const [line, reason = ""] = part.split(" :: ");
+        const key = norm(line);
+        const n = (seen.get(key) || 0) + 1;
+        seen.set(key, n);
+        if (n >= LOOP_AFTER) flags.push({ kind: "loop", why: `stuck: Save refused ${n} times for "${line.slice(0, 80)}"${reason ? ` (${reason.slice(0, 160)})` : ""}` });
+      }
+    }
     if (row.cancelled) flags.push({ kind: "cancelled", why: `they cancelled what Mesiri prepared (${row.cancelled}): what did it get wrong?` });
     if (row.took_back) flags.push({ kind: "took_back", why: `they took back or corrected a saved entry (${row.took_back}): was it saved wrong?` });
     if (row.reply && CANT.test(row.reply)) flags.push({ kind: "dead_end", why: "the reply says it can't do that: a bug or a missing feature" });
@@ -195,6 +226,7 @@ export function flagRows(rows) {
       textAt: said ? at : prev.textAt,
       reply: asked || prev.reply,
       replyAt: row.reply ? Number(row.done_at) || at : prev.replyAt,
+      refused: prev.refused,
     });
   }
   return out;
@@ -668,6 +700,8 @@ export class ProdWatch {
         const rows = await this.read(source, since, PROBE_ROWS, true);
         await this.health(project);
         if (rows.some((r) => r.feedback)) return URGENT;
+        // TM-45: a loop is looked at at once too (rows come newest first here).
+        if (flagRows([...rows].reverse()).some((f) => f.flags.some((x) => x.kind === "loop"))) return URGENT;
         if (rows.length) any = true;
       } catch (e) {
         this.log(`prod-watch ${project}: ${e.message}`);
