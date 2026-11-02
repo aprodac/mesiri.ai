@@ -32,6 +32,8 @@ export const FAIL_ALERT = 3;
 const WINDOW_SECONDS = 15 * 60;
 /** How often the free check runs (one SELECT, no AI): is there a new message (any company, TM-18)? */
 export const PROBE_MINUTES = 2;
+/** TM-22: how long after a poke the watch checks: the read's 2-minute settle plus a margin. */
+export const SETTLE_MS = 2 * 60_000 + 10_000;
 /** Rows the free check reads (enough to see a request among them); what anyNew returns for a request to Mesiri. */
 const PROBE_ROWS = 50;
 export const URGENT = "urgent";
@@ -272,8 +274,9 @@ export function watchPrompt(project, convs, { minutes, autobuild = false }) {
     "   v3 (docs/architecture/assistant-v3.md): when the web dashboard already does it, the fix is usually that route",
     "   added to ALLOWED in apps/whatsapp-assistant/src/agent_api/tools.py (plus an SOP.md line only if the model needs",
     "   one): a small plan, never a new workflow. Routes that grant access (members, users, roles) need the owner.",
-    "   Every plan's tests start from the person's own messages: a scripted test in apps/whatsapp-assistant/tests/agent_api/",
-    "   that replays them (what they said, the tool calls the fix needs) and fails before the fix, plus a sibling and a guard.",
+    "   Every plan's tests start from the person's own messages: `python3 scripts/replay_to_test.py <correlation id>` (TM-25)",
+    "   writes a test in apps/whatsapp-assistant/tests/agent_api/replays/ that replays their v3 turn (words, tool calls, API",
+    "   answers); change its expectations to what should happen so it fails before the fix; add a sibling and a guard.",
     "   An AI_UNAVAILABLE / \"AI is paused\" reply from a used-up AI budget (WA-143) is not a code bug: say so in the",
     "   report (the owner raises the cap), plan nothing for it. A `still not working after the release note` feedback",
     "   (the person tapped \"Still wrong ❌\", TM-21) re-opens that note's plan: find it, fix what is still wrong.",
@@ -526,6 +529,24 @@ export class ProdWatch {
     if (now - this.burstAt < st.minutes * 60_000) return false;
     this.setBurst(null);
     await this.tick();
+    return true;
+  }
+
+  /**
+   * TM-22: Mesiri has just passed a request on. The watch reads only settled messages (2 minutes old), so it checks
+   * once SETTLE_MS from now, skipping the wait for its next 2-minute probe. Several pokes in a row make one check.
+   */
+  poke(project) {
+    if (!this.settings().on) return false;
+    if (project && !this.sources[project]) return false;
+    if (this.pokeTimer) return true;
+    this.log(`prod-watch: a request was just made${project ? ` (${project})` : ""}; looking in ${Math.round(SETTLE_MS / 1000)} s`);
+    this.pokeTimer = setTimeout(() => {
+      this.pokeTimer = null;
+      this.probedAt = 0;
+      this.maybeTick().catch((e) => this.log(`prod-watch: ${e.message}`));
+    }, SETTLE_MS);
+    this.pokeTimer.unref?.();
     return true;
   }
 
