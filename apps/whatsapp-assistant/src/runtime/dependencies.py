@@ -1163,13 +1163,13 @@ def get_receiver(request: Request) -> WhatsAppReceiver:
 
 
 def _conversation_sessions(db: Any) -> Any:
-    """Request 185: the v2-on-ADK memory store, or None when google-adk is not installed (then
-    ``v2_adk`` companies run today's v2)."""
+    """Request 185 / WA-124: the API agent's day store, or None when google-adk is not installed (then
+    v3 keeps its memory in Redis per day)."""
     try:
-        from agent_v2.adk.memory import PostgresSessionService
+        from agent_api.day_store import PostgresSessionService
     except Exception:  # noqa: BLE001
         import logging
 
-        logging.getLogger("mesiri.startup").warning("agent_v2.adk.memory_unavailable", exc_info=True)
+        logging.getLogger("mesiri.startup").warning("agent_api.day_store_unavailable", exc_info=True)
         return None
     return PostgresSessionService(db)

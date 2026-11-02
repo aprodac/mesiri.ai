@@ -19,8 +19,8 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from agent_v2.skills.general.tools import TELL_THE_TEAM, feedback_instruction
-from agent_v2.skills.general.tools import specs as feedback_specs
+from agent_api.feedback import TELL_THE_TEAM, feedback_instruction
+from agent_api.feedback import specs as feedback_specs
 from mesiri_ai.models import ChatMessage, ToolOutcome, ToolSpec
 
 from .client import ApiClient, new_idempotency_key
@@ -93,6 +93,10 @@ LANGUAGE_LINES = {
 ASK = "ask"
 #: Body field the code fills with the photo of this message (a bill), never the model.
 PHOTO_FIELD = "media_object_key"
+#: WA-135: the channel value the tools fix (``recorded_via`` / ``source``) is replaced by the one
+#: the message really came by, so a sheet photo or a voice note is not recorded as typed text.
+TEXT_CHANNEL = "whatsapp_text"
+CHANNELS = frozenset({TEXT_CHANNEL, "whatsapp_voice", "whatsapp_image"})
 _ASK_TOOL = ToolSpec(name=ASK, description=(
     "Ask the person ONE short question you cannot work out yourself. With options (2-3 short "
     "choices) they answer with one tap. Put the question in your reply too."), parameters={
@@ -142,11 +146,14 @@ class ApiAgent:
                   ready: list[PendingWrite] | None = None, sender_name: str = "",
                   timezone: str = "Asia/Kolkata", correlation_id: str | None = None,
                   facts: str = "", photo_key: str | None = None, language: str | None = None,
-                  actions: dict[str, tuple[ToolSpec, Any]] | None = None) -> ApiTurn:
+                  actions: dict[str, tuple[ToolSpec, Any]] | None = None,
+                  channel: str = TEXT_CHANNEL) -> ApiTurn:
         """``facts``: what the agent starts from (projects, sites, materials, units), read
         before the model runs. ``photo_key``: the photo this message carried; a write that
         takes a photo (an expense) gets it attached by the code. ``actions``: tools the caller
-        runs itself, by name: ``(spec, async handler(arguments) -> content)``."""
+        runs itself, by name: ``(spec, async handler(arguments) -> content)``. ``channel``: how the
+        message came (``whatsapp_text`` | ``whatsapp_voice`` | ``whatsapp_image``), recorded on the entry."""
+        channel = channel if channel in CHANNELS else TEXT_CHANNEL
         today = dt.datetime.now(ZoneInfo(timezone or "Asia/Kolkata")).date()
         waiting: list[PendingWrite | None] = list(ready or [])  # None = saved or dropped this turn
         new: list[PendingWrite] = []
@@ -196,7 +203,7 @@ class ApiAgent:
                 path = path.replace("{" + p + "}", str(arguments[p]))
             params = {q: arguments[q] for q in tool.query_params if arguments.get(q) not in (None, "")}
             body = {f: arguments[f] for f in tool.body_fields if f in arguments}
-            body.update(dict(tool.fixed))
+            body.update({k: (channel if v == TEXT_CHANNEL else v) for k, v in tool.fixed})
             if photo_key and tool.is_write and PHOTO_FIELD in tool.hidden and PHOTO_FIELD not in body:
                 body[PHOTO_FIELD] = photo_key
             if tool.is_write and "unit_id" in tool.body_fields:

@@ -16,7 +16,7 @@ import pytest
 from tests.agent_api.standin import ORG, PROJECT, SITE, STAND_IN_TOOLS, USER, stand_in_api
 
 from agent_api import whatsapp as wa
-from agent_v2.skills.general.tools import TELL_THE_TEAM
+from agent_api.feedback import TELL_THE_TEAM
 from mesiri.infrastructure.redis.client import FakeRedis
 from mesiri_ai.fakes import FakeToolCallingProvider
 from mesiri_contracts.assistant.enums import InputModality

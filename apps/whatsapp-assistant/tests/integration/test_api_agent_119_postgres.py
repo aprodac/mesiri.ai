@@ -338,10 +338,10 @@ async def test_a_bill_photo_is_attached_to_the_expense_and_another_companys_is_r
 
 
 async def test_three_days_of_memory_in_the_day_store(database: PostgresDatabase) -> None:
-    """WA-124: v3's memory in the same Postgres day store as v2-on-ADK, its own app name."""
+    """WA-124: v3's memory in the Postgres day store, under its own app name."""
     pytest.importorskip("google.adk")
+    from agent_api.day_store import PostgresSessionService
     from agent_api.memory import APP_NAME, DayMemory
-    from agent_v2.adk.memory import PostgresSessionService
 
     acme = await _company(database, "Acme Builders")
     ctx = SimpleNamespace(user_id=acme["user"], organization_id=acme["org"], timezone="Asia/Kolkata")

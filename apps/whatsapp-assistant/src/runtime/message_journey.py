@@ -44,7 +44,7 @@ from mesiri_ai.undo_classifier import UNDO_SEMANTIC_HINT, is_undo_trigger
 from mesiri_contracts.assistant.enums import InputModality
 from runtime import forward_batch
 from runtime.account_admin_journey import try_handle_account_admin_command
-from runtime.ai_outage import AIUnavailableError, FallBackToV2, retry_attempt
+from runtime.ai_outage import AIUnavailableError, FallBackToClassic, retry_attempt
 from runtime.persona import is_what_can_you_do
 from runtime.reply_composer import (
     QUESTION,
@@ -158,8 +158,8 @@ def build_message_handlers(
     opt_in_journey: Any = None,
     forward_batcher: Any = None,
     contact_share: ContactShareJourney | None = None,
-    #: Request 185: the conversation memory of v2 on ADK (agent_v2/adk/memory.py's
-    #: PostgresSessionService); None leaves the ``v2_adk`` mode off (it reads as ``v2``).
+    #: Request 185 / WA-124: the API agent's day store (agent_api/day_store.py's
+    #: PostgresSessionService); None keeps v3's memory in Redis.
     conversation_sessions: Any | None = None,
     join_journey: Any = None,
     setup_questions: SetupQuestions | None = None,
@@ -402,29 +402,6 @@ def build_message_handlers(
         from runtime.agent.runner import AgentRunner
 
         _agent_runner = AgentRunner(agent_provider)
-    # Request 174 (v2 pilot): the v2 runners wrap today's runner and are used only for a
-    # company whose ``assistant_mode`` says so (default "classic": nothing changes).
-    _v2_runner = None
-    _v2_shadow_runner = None
-    if _agent_runner is not None:
-        from agent_v2.runner import ShadowRunner, V2Runner
-
-        _v2_runner = V2Runner(agent_provider, _agent_runner, catalog=catalog_query, trace_logger=trace_logger)
-        _v2_shadow_runner = ShadowRunner(agent_provider, _agent_runner, catalog=catalog_query, trace_logger=trace_logger)
-    # Request 185: v2 run by Google ADK with the whole conversation kept (``assistant_mode`` = "v2_adk").
-    _v2_adk_runner = None
-    if _agent_runner is not None and conversation_sessions is not None:
-        try:
-            from agent_v2.adk.agent import AdkAgent
-            from agent_v2.adk.models import ResolvedGemini
-            from agent_v2.runner import V2Runner as _V2Runner
-
-            _v2_adk_runner = _V2Runner(
-                agent_provider, _agent_runner, catalog=catalog_query, trace_logger=trace_logger,
-                agent=AdkAgent(ResolvedGemini(agent_provider), catalog=catalog_query, sessions=conversation_sessions),
-            )
-        except Exception:  # noqa: BLE001 -- ADK missing or broken: v2_adk companies get v2
-            _log.warning("agent_v2.adk.unavailable", exc_info=True)
     # WA-119: the API agent (assistant_mode "api"): one model + one SOP + the dashboard's
     # API as tools. Built on first use, so nothing changes for a company not on it.
     _api_agent: list[Any] = []
@@ -444,7 +421,7 @@ def build_message_handlers(
             transcribe=pipeline.transcribe_voice, message_logger=message_logger, trace_logger=trace_logger,
             # WA-124: bill photos read by the vision step; today + two days of memory in the day store.
             describe=pipeline.describe_media, sessions=conversation_sessions,
-            # WA-132: the SAVED card after a Save, drawn by the same builder classic and v2 use.
+            # WA-132: the SAVED card after a Save, drawn by the same builder classic uses.
             receipt_builder=getattr(interaction_handler, "_receipt_builder", None),
             send_image=getattr(sender, "send_image", None),
         ))
@@ -636,8 +613,8 @@ def build_message_handlers(
             return False
 
     async def _assistant_mode(ctx) -> str:  # type: ignore[no-untyped-def]
-        """Request 174: which agent reads this sender's messages (``assistant_mode``:
-        "classic" | "v2_shadow" | "v2"; the old "v2_materials" reads as "v2"). Unset, unreadable or an error is "classic"."""
+        """Request 174 / WA-134: which agent reads this sender's messages (``assistant_mode``:
+        "classic" | "api"; the retired v2 values read as "api"). Unset, unreadable or an error is "classic"."""
         if org_settings_query is None or not getattr(ctx, "organization_id", None):
             return "classic"
         try:
@@ -1256,17 +1233,8 @@ def build_message_handlers(
                 )
                 return early["gateway"]
 
-            # Request 174: only a plain message is ever read by a v2 runner (never a tap).
-            runner = _agent_runner
-            if draft_tap is None and journal_tap is None and issue_tap is None:
-                if assistant_mode == "v2_adk" and _v2_adk_runner is not None:
-                    runner = _v2_adk_runner
-                elif assistant_mode in ("v2", "v2_materials", "v2_adk") and _v2_runner is not None:
-                    runner = _v2_runner
-                elif assistant_mode == "v2_shadow" and _v2_shadow_runner is not None:
-                    runner = _v2_shadow_runner
             deps = AgentTurnDeps(
-                runner=runner,
+                runner=_agent_runner,
                 make_gateway=_gateway,
                 send_spec=_send_spec,
                 send_agent_reply=_send_agent_reply,
@@ -1590,9 +1558,10 @@ def build_message_handlers(
                 try:
                     if await api_agent.handle(message, ctx):
                         return
-                except FallBackToV2:
-                    # request 204: v3 failed for a reason that is not an outage: v2 answers this message.
-                    assistant_mode = "v2"
+                except FallBackToClassic:
+                    # request 204 / WA-134: v3 failed for a reason that is not an outage: classic
+                    # answers this message (v2, the old fallback, is retired).
+                    assistant_mode = "classic"
 
         # Request [45]: a typed "undo" / "photo" / "skip" / option title / number
         # answering the choices on the last reply is the same as tapping it.

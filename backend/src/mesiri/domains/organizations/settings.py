@@ -58,29 +58,25 @@ CAPTURE_MODES: frozenset[str] = frozenset({CAPTURE_MODE_SAVE_FIRST, CAPTURE_MODE
 # Mesiri team switches it on for one.
 DRAFT_V2 = "draft_v2"
 
-# Which agent handles a company's WhatsApp messages (request 174, v2 pilot).
-# "classic" (the default, and what every unreadable value means): today's agent only.
-# "v2_shadow": today's agent replies; the v2 materials agent then runs on the side,
-# saves nothing and only logs its proposed card. "v2" (request 180): ONE agent reads every
-# plain message, decides and writes its own reply; the old code is only its tools.
-# "v2_materials" is the older name of the same mode and is still accepted (it reads as "v2").
+# Which agent handles a company's WhatsApp messages (request 174; v3 locked by WA-134, 2 Nov 2026).
+# "classic" (the default, and what every unreadable value means): today's agent, every real customer
+# until they move. "api": v3, one model + one SOP + the dashboard's API as tools
+# (apps/whatsapp-assistant/src/agent_api; docs/architecture/assistant-v3.md).
+# v2 is retired (WA-134): its stored values still read, never fail: "v2", "v2_materials" and
+# "v2_adk" (a company that had opted into the new agent) read as "api"; "v2_shadow" (classic
+# answered, v2 only ran on the side) reads as "classic". They can no longer be set.
 # Changed by the Mesiri team only.
 ASSISTANT_MODE = "assistant_mode"
 ASSISTANT_MODE_CLASSIC = "classic"
-ASSISTANT_MODE_V2_SHADOW = "v2_shadow"
-ASSISTANT_MODE_V2_MATERIALS = "v2_materials"  # alias of ASSISTANT_MODE_V2
-ASSISTANT_MODE_V2 = "v2"
-# Request 185: "v2_adk" is v2 run by Google ADK with the whole day's conversation kept
-# (agent_v2/adk). Where ADK is not available it reads as "v2".
-ASSISTANT_MODE_V2_ADK = "v2_adk"
-# WA-119: one model + one SOP + the dashboard's API as tools (apps/whatsapp-assistant/src/agent_api).
 ASSISTANT_MODE_API = "api"
-ASSISTANT_MODES: frozenset[str] = frozenset(
-    {
-        ASSISTANT_MODE_CLASSIC, ASSISTANT_MODE_V2_SHADOW, ASSISTANT_MODE_V2, ASSISTANT_MODE_V2_MATERIALS,
-        ASSISTANT_MODE_V2_ADK, ASSISTANT_MODE_API,
-    }
-)
+ASSISTANT_MODES: frozenset[str] = frozenset({ASSISTANT_MODE_CLASSIC, ASSISTANT_MODE_API})
+#: Stored values of the retired v2 modes and what each reads as now (no data migration).
+RETIRED_ASSISTANT_MODES: dict[str, str] = {
+    "v2": ASSISTANT_MODE_API,
+    "v2_materials": ASSISTANT_MODE_API,
+    "v2_adk": ASSISTANT_MODE_API,
+    "v2_shadow": ASSISTANT_MODE_CLASSIC,
+}
 
 # Product modules a company can have switched on (V1 tracker BE-06). Each key
 # gates one or more API routers (domains/shared/modules.py's require_module)
@@ -415,16 +411,17 @@ def validate(key: str, value: object) -> object:
         mode = str(value).strip().lower() if isinstance(value, str) else ""
         if mode not in ASSISTANT_MODES:
             raise ValueError(f"assistant_mode must be one of {sorted(ASSISTANT_MODES)}")
-        return ASSISTANT_MODE_V2 if mode == ASSISTANT_MODE_V2_MATERIALS else mode
+        return mode
     return value
 
 
 def assistant_mode(stored: object) -> str:
     """The company's agent mode. Anything unset, unreadable or from before this
-    setting's values ("agent", "off") is "classic": production is unchanged."""
+    setting's values ("agent", "off") is "classic": production is unchanged. A retired
+    v2 value reads as its replacement (``RETIRED_ASSISTANT_MODES``)."""
     mode = stored.strip().lower() if isinstance(stored, str) else ""
-    if mode == ASSISTANT_MODE_V2_MATERIALS:
-        return ASSISTANT_MODE_V2  # the old name of the same mode (no data migration)
+    if mode in RETIRED_ASSISTANT_MODES:
+        return RETIRED_ASSISTANT_MODES[mode]
     return mode if mode in ASSISTANT_MODES else ASSISTANT_MODE_CLASSIC
 
 

@@ -28,7 +28,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from agent_v2.skills.general.tools import TELL_THE_TEAM
+from agent_api.feedback import TELL_THE_TEAM
 from channel.replies import ListRow, ReplySpec
 from mesiri_ai.greeting_classifier import is_greeting_trigger
 from mesiri_ai.models import ToolSpec
@@ -39,7 +39,7 @@ from runtime.ai_outage import (
     QUICK_RETRY_PAUSE_SECONDS,
     RESEND_REPLY,
     AIUnavailableError,
-    FallBackToV2,
+    FallBackToClassic,
     is_outage_error,
     reply_for_attempt,
     retry_attempt,
@@ -124,7 +124,7 @@ class ApiWhatsApp:
                  sessions: Any | None = None, send_document: Callable[..., Awaitable[Any]] | None = None,
                  receipt_builder: Any | None = None, send_image: Callable[..., Awaitable[Any]] | None = None) -> None:
         self._redis = redis
-        #: WA-132: the SAVED card after a Save (the channel.receipt builder classic and v2 use).
+        #: WA-132: the SAVED card after a Save (the channel.receipt builder classic uses).
         self._receipts = receipt_builder
         self._send_image = send_image
         self._just_saved: dict[str, list[WriteResult]] = {}
@@ -146,7 +146,7 @@ class ApiWhatsApp:
 
     async def handle(self, message: Any, ctx: Any) -> bool:
         """True when the message was answered here; False leaves it to the journey. Raises
-        ``AIUnavailableError`` (the worker retries) or ``FallBackToV2`` (the journey runs v2)."""
+        ``AIUnavailableError`` (the worker retries) or ``FallBackToClassic`` (the journey runs classic)."""
         try:
             return await self._handle(message, ctx)
         except _Answered:
@@ -183,7 +183,7 @@ class ApiWhatsApp:
 
     async def _send_saved_card(self, message: Any, ctx: Any) -> None:
         """WA-132: the green SAVED card of what this message saved (a Save tap, or "save it"), as
-        classic and v2 send it after the "Saved" line. Never raises."""
+        classic sends it after the "Saved" line. Never raises."""
         results = self._just_saved.pop(message.correlation_id, None)
         if not results or self._receipts is None or self._send_image is None:
             return
@@ -238,13 +238,14 @@ class ApiWhatsApp:
                 text=text, history=history, ready=ready, sender_name=ctx.full_name or "",
                 timezone=getattr(ctx, "timezone", None) or "Asia/Kolkata", correlation_id=message.correlation_id,
                 facts=facts, photo_key=photo_key, language=_language(text),
+                channel=_channel(message),
             )
             try:
                 turn = await self._agent.run(client, **run)
             except Exception as exc:  # noqa: BLE001
                 if not is_outage_error(exc) or is_greeting_trigger(text):
                     raise
-                # One quick second try before the sender hears anything (as v2: request 57, A5).
+                # One quick second try before the sender hears anything (request 57, A5).
                 _log.warning("agent_api.quick_retry user=%s error=%r", ctx.user_id, exc)
                 await asyncio.sleep(QUICK_RETRY_PAUSE_SECONDS)
                 turn = await self._agent.run(client, **run)
@@ -263,7 +264,7 @@ class ApiWhatsApp:
                 "kind": kind, "about": f"Mesiri's reply before this: {without_ready_block(last)[:200]}" if last
                 else "the last reply", **({"why": why} if why else {})}})
         await self._trace_turn(message, {
-            # `args` as v2's trace has it: the team bot's watch reads tell_the_team from it (TM-18).
+            # `args` as the old v2 trace had it: the team bot's watch reads tell_the_team from it (TM-18).
             "text": text, "calls": calls,
             "stop_reason": turn.stop_reason,
             "saved": [{"summary": r.pending.summary, "status": r.status} for r in turn.saved],
@@ -279,15 +280,15 @@ class ApiWhatsApp:
 
     async def _failed(self, exc: Exception, text: str, message: Any, ctx: Any, state: dict,
                       started: float) -> ReplySpec:
-        """request 204: a v3 failure goes through v2's outage handling, never a bare "send it again".
+        """request 204: a v3 failure is queued on an outage or answered by classic, never a bare "send it again".
 
         - a greeting is answered by the code (the greeting menu): it never needs the model;
         - a provider outage (quota, auth, timeout): queued in their language + an ARQ retry;
-        - anything else (a bug in v3 or a tool): the message is answered by v2 instead.
+        - anything else (a bug in v3 or a tool): the message is answered by classic instead (WA-134; v2 before).
         Whatever was waiting to save is kept (state is untouched here)."""
         outage = is_outage_error(exc)
         greeting = is_greeting_trigger(text)
-        handled = "greeting" if greeting else "queued" if outage else "v2_fallback"
+        handled = "greeting" if greeting else "queued" if outage else "classic_fallback"
         await self._trace_turn(message, {"error": type(exc).__name__, "text": text, "handled": handled,
                                          "outage": outage}, started)
         if greeting:
@@ -296,7 +297,7 @@ class ApiWhatsApp:
             return render_greeting_menu(timezone=getattr(ctx, "timezone", None))
         if outage:
             await self._outage(message, ctx, text, exc, state=state)
-        raise FallBackToV2(type(exc).__name__) from exc
+        raise FallBackToClassic(type(exc).__name__) from exc
 
     async def _language_of_sender(self, ctx: Any, text: str = "") -> str | None:
         """The language of their words, else the last one they used (kept with the waiting list)."""
@@ -596,3 +597,13 @@ async def _safe(awaitable: Awaitable[Any]) -> None:
         await awaitable
     except Exception:  # noqa: BLE001 -- logging never breaks the reply
         _log.warning("agent_api.log_failed", exc_info=True)
+
+
+def _channel(message: Any) -> str:
+    """WA-135: how the message came, as the API records it (``recorded_via`` / ``source``)."""
+    modality = getattr(message, "modality", None)
+    if modality is InputModality.VOICE:
+        return "whatsapp_voice"
+    if modality in (InputModality.IMAGE, InputModality.DOCUMENT):
+        return "whatsapp_image"
+    return "whatsapp_text"

@@ -1,4 +1,4 @@
-"""Request 174: the per-company ``assistant_mode`` switch of the v2 pilot."""
+"""Request 174 / WA-134: the per-company ``assistant_mode`` switch (classic or v3 "api")."""
 
 import pytest
 
@@ -12,18 +12,14 @@ def test_known_default_classic_and_superadmin_only():
     assert settings.ASSISTANT_MODE not in settings.DEDICATED_ENDPOINT_KEYS
 
 
-@pytest.mark.parametrize("value", ["classic", "v2_shadow", "v2", " V2 ", "v2_adk"])
+@pytest.mark.parametrize("value", ["classic", "api", " API ", "Classic"])
 def test_valid_values_are_canonical(value):
     assert settings.validate(settings.ASSISTANT_MODE, value) == value.strip().lower()
 
 
-@pytest.mark.parametrize("value", ["v2_materials", " V2_Materials "])
-def test_the_old_name_is_an_alias_of_v2(value):
-    assert settings.validate(settings.ASSISTANT_MODE, value) == "v2"
-
-
-@pytest.mark.parametrize("value", ["agent", "off", "", None, True, 3])
-def test_invalid_values_are_refused(value):
+@pytest.mark.parametrize("value", ["v2", "v2_shadow", "v2_adk", "v2_materials", "agent", "off", "", None, True, 3])
+def test_retired_and_invalid_values_are_refused(value):
+    """WA-134: v2 is retired, so none of its modes can be set any more."""
     with pytest.raises(ValueError):
         settings.validate(settings.ASSISTANT_MODE, value)
 
@@ -34,12 +30,16 @@ def test_anything_unreadable_is_classic(stored):
 
 
 def test_stored_modes_read_back():
-    assert settings.assistant_mode("v2_shadow") == "v2_shadow"
-    assert settings.assistant_mode("v2") == "v2"
-    assert settings.assistant_mode("v2_materials") == "v2"  # stored under the old name: no migration
+    assert settings.assistant_mode("classic") == "classic"
+    assert settings.assistant_mode("api") == "api"
 
 
-def test_v2_on_adk_is_its_own_mode():
-    """Request 185: v2 run by Google ADK with the whole conversation kept."""
-    assert settings.assistant_mode("v2_adk") == "v2_adk"
-    assert settings.validate(settings.ASSISTANT_MODE, " V2_ADK ") == "v2_adk"
+@pytest.mark.parametrize("stored", ["v2", "v2_materials", " V2_ADK "])
+def test_a_company_left_on_v2_reads_as_v3(stored):
+    """WA-134: a company that had opted into the new agent keeps the new agent (no data migration)."""
+    assert settings.assistant_mode(stored) == "api"
+
+
+def test_v2_shadow_reads_as_classic():
+    """In shadow mode classic answered and v2 only ran on the side: nothing changes for that company."""
+    assert settings.assistant_mode("v2_shadow") == "classic"

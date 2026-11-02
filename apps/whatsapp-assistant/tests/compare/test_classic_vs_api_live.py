@@ -1,12 +1,14 @@
-"""WA-123: the same messages through classic, v2 and the API agent, on the REAL model, side by side.
+"""WA-123: the same messages through classic and the API agent (v3), on the REAL model, side by side.
+
+v2 was dropped from the comparison when it was retired (WA-134).
 
 Run by the "Compare agents" workflow (Actions -> Compare agents -> Run). Not a gate: it prints,
-for every message and every engine, the reply as written, what would be saved (classic / v2: the
+for every message and every engine, the reply as written, what would be saved (classic: the
 draft card's lines; API agent: the entries waiting for Save), which tools ran and how long it took.
 The table goes to the job summary and ``$MESIRI_COMPARE_OUT`` (JSON).
 
-Same data for all three: the test company of the replay world (Project Alpha, Site A1; cement,
-M sand, sand, steel, bricks, metal). Classic and v2 run in that world; the API agent runs on a
+Same data for both: the test company of the replay world (Project Alpha, Site A1; cement,
+M sand, sand, steel, bricks, metal). Classic runs in that world; the API agent runs on a
 Postgres seeded with the same names (it reads them through the real API). Nothing is saved:
 every engine stops at "ready to save".
 
@@ -52,11 +54,32 @@ def _provider() -> Any:
     return GeminiProvider(GeminiSettings(api_key=SecretStr(key), model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")))
 
 
-# -- classic and v2: the replay world -------------------------------------------------------
+# -- classic: the replay world -------------------------------------------------------
+
+
+class _Books:
+    """The books show 176 bags of cement, as at Paraclette on 31 Oct (a count needs them)."""
+
+    async def query(self, **kwargs: Any) -> list[dict]:
+        return [{"current_stock": 176, "unit": "bag", "material_name": "Cement", "received": 176, "used": 0}]
+
+
+class _Recording:
+    """Wraps a provider and records the tool calls (their names and arguments)."""
+
+    def __init__(self, inner: Any) -> None:
+        self.inner = inner
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def run_tools(self, system_prompt, messages, tools, handler, **kw):  # noqa: ANN001, ANN003
+        async def record(name: str, args: dict[str, Any]):
+            self.calls.append((name, dict(args)))
+            return await handler(name, args)
+
+        return await self.inner.run_tools(system_prompt, messages, tools, record, **kw)
 
 
 async def _world() -> Any:
-    from tests.agent_v2.evalkit import _Books
     from tests.replay.test_agent_replay import _Catalog, _make_world
 
     from context import seed
@@ -72,18 +95,14 @@ async def _world() -> Any:
 
 
 async def _run_in_world(engine: str, text: str, provider: Any) -> dict[str, Any]:
-    from tests.agent_v2.evalkit import Recording
     from tests.replay.test_draft_per_message_p1 import open_items
 
-    from agent_v2 import runner as v2_runner
-    from agent_v2.runner import V2Runner
     from runtime.agent import draft as draft_card
     from runtime.agent.runner import AgentRunner
 
-    v2_runner._LAST_REPLY.clear()  # each message is a fresh conversation for every engine
     world = await _world()
-    recording = Recording(provider)
-    runner = AgentRunner(recording) if engine == "classic" else V2Runner(recording, AgentRunner(provider))
+    recording = _Recording(provider)
+    runner = AgentRunner(recording)
     card_line = draft_card.context_line(await world.drafts.open_for(world.actor.organization_id, world.actor.user_id))
     started = time.perf_counter()
     try:
@@ -187,7 +206,7 @@ async def _run_api(text: str, provider: Any, app: Any, company: dict[str, str]) 
 # -- the run --------------------------------------------------------------------------------
 
 
-async def test_compare_classic_v2_and_the_api_agent() -> None:
+async def test_compare_classic_and_the_api_agent() -> None:
     import asyncio
 
     from agent_api.app import build_api_app
@@ -204,7 +223,7 @@ async def test_compare_classic_v2_and_the_api_agent() -> None:
         rows = []
         for label, text in MESSAGES:
             row: dict[str, Any] = {"label": label, "message": text}
-            for engine in ("classic", "v2", "api"):
+            for engine in ("classic", "api"):
                 if pace:
                     await asyncio.sleep(pace)
                 row[engine] = (await _run_api(text, provider, app, company) if engine == "api"
@@ -222,11 +241,11 @@ def _report(rows: list[dict[str, Any]]) -> None:
         with open(out, "w", encoding="utf-8") as fh:
             json.dump({"model": os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"), "rows": rows}, fh,
                       ensure_ascii=False, indent=1)
-    lines = [f"# Classic vs v2 vs API agent ({os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')})", ""]
+    lines = [f"# Classic vs API agent ({os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')})", ""]
     for row in rows:
         lines += [f"## {row['label']}: “{row['message']}”", "", "| | Reply | Would save | Tools | Time |",
                   "|---|---|---|---|---|"]
-        for engine, name in (("classic", "Classic"), ("v2", "v2"), ("api", "API agent")):
+        for engine, name in (("classic", "Classic"), ("api", "API agent")):
             r = row[engine]
             reply = (r["reply"] or f"*(no words{': ' + r['error'] if r['error'] else ''})*").replace("\n", "<br>")
             saves = "<br>".join(r["would_save"]) or "—"

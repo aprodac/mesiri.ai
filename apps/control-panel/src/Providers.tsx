@@ -107,12 +107,6 @@ const CAPABILITY_DEFS: {
     models: { gemini: GEMINI_AGENT_MODELS },
   },
   {
-    key: 'agent_v2',
-    label: 'WhatsApp assistant v2 (pilot companies only)',
-    providers: [{ value: 'gemini', label: 'Gemini' }],
-    models: { gemini: GEMINI_AGENT_MODELS },
-  },
-  {
     key: 'api_agent',
     label: "WhatsApp API agent (companies on mode 'api' only)",
     providers: [{ value: 'gemini', label: 'Gemini' }],
@@ -316,7 +310,6 @@ export default function Providers() {
     vision: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
     translation: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
     agent: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
-    agent_v2: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
     api_agent: { provider_id: 'gemini', model: 'gemini-2.5-flash', fallback_provider_id: null, fallback_model: null },
   });
 

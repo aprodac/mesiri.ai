@@ -516,8 +516,8 @@ class DynamicAIProviderResolver:
         like any other failure. A route with a fallback *model* on the same
         provider retries once on it when the first fails."""
         config = await self._resolve_config()
-        # Request 178: a caller may have its own route in the control panel ("agent_v2": the v2
-        # agent's brain); with none set it uses the "agent" route, as before.
+        # Request 178: a caller may have its own route in the control panel ("api_agent": v3's
+        # brain); with none set it uses the "agent" route, as before.
         route = (config["routing"].get(capability) if capability != "agent" else None) or config["routing"].get("agent") or {}
         gemini_key = config["secrets"].get("gemini", {}).get("api_key")
         provider_id = route.get("provider_id") or "gemini"

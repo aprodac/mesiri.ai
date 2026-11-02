@@ -63,9 +63,9 @@ class AIUnavailableError(Exception):
     """Every AI provider failed for this message; the job should be retried."""
 
 
-class FallBackToV2(Exception):
+class FallBackToClassic(Exception):
     """The v3 agent failed for a reason that is not a provider outage (a bug in it or in a tool):
-    the journey answers this message with the v2 runner instead (request 204)."""
+    the journey answers this message with the classic agent instead (request 204; v2 until WA-134)."""
 
 
 def is_ai_outage(understanding: UnderstandingResult) -> bool:

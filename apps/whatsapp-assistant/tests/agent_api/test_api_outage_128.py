@@ -1,8 +1,8 @@
-"""request 204: a v3 failure goes through v2's outage handling, never a bare "send it again".
+"""request 204: a v3 failure is queued on an outage or answered by classic (v2 until WA-134), never a bare "send it again".
 
 Live 2 Nov 11:02: "Hy" and "Its really bad" both got "I couldn't work on that just now" because
 the model failed (Gemini cap). Now: a provider outage is retried quickly, then queued in the
-sender's language with an ARQ retry; a bug in v3 or a tool falls back to v2; a greeting is
+sender's language with an ARQ retry; a bug in v3 or a tool falls back to classic; a greeting is
 answered by the code.
 """
 
@@ -24,7 +24,7 @@ from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage, SenderInfo
 from mesiri_contracts.common.errors import ErrorCategory, MesiriError
 from runtime import ai_outage
-from runtime.ai_outage import AIUnavailableError, FallBackToV2
+from runtime.ai_outage import AIUnavailableError, FallBackToClassic
 
 CTX = SimpleNamespace(user_id=USER, organization_id=ORG, role="PROJECT_MANAGER", full_name="Adarsh",
                       timezone="Asia/Kolkata", projects=[], sites=[])
@@ -112,15 +112,15 @@ async def test_outside_the_worker_the_sender_is_asked_to_resend() -> None:
     assert [s.text for s in sent] == [ai_outage.RESEND_REPLY]
 
 
-async def test_a_bug_in_v3_or_a_tool_falls_back_to_v2_and_is_traced() -> None:
+async def test_a_bug_in_v3_or_a_tool_falls_back_to_classic_and_is_traced() -> None:
     sent: list[ReplySpec] = []
     service, _ = _service(KeyError("tool bug"), sent)
-    with pytest.raises(FallBackToV2):
+    with pytest.raises(FallBackToClassic):
         await service.handle(_message("Its really bad"), CTX)
     assert sent == []
     traced = service._trace.log_stage.await_args.kwargs
     assert traced["stage"] == "agent_api_turn" and traced["succeeded"] is False
-    assert traced["stage_payload"]["handled"] == "v2_fallback"
+    assert traced["stage_payload"]["handled"] == "classic_fallback"
 
 
 @pytest.mark.parametrize("error", [_quota(), KeyError("bug")])

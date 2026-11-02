@@ -1,6 +1,6 @@
 """WA-126: "mesiri bad ux" / "mesiri fix this" in v3 goes to the team bot, as in v2 (TM-18).
 
-v3 offers the same ``tell_the_team`` tool as v2 (``agent_v2.skills.general.tools``: one
+v3 offers the ``tell_the_team`` tool (``agent_api.feedback``, v2's until WA-134: one
 definition), its reply follows v2's feedback wording, it writes nothing, and the turn's trace
 (``agent_api_turn``) carries the call with ``args``, the shape the production watch reads
 (``teammate/brain/src/prod_watch.js``: stage agent_v2_live or agent_api_turn).
@@ -17,7 +17,7 @@ import pytest
 from tests.agent_api.standin import ORG, PROJECT, SITE, STAND_IN_TOOLS, USER, stand_in_api
 
 from agent_api import whatsapp as wa
-from agent_v2.skills.general.tools import TELL_THE_TEAM
+from agent_api.feedback import TELL_THE_TEAM
 from channel.replies import ReplySpec
 from mesiri.infrastructure.redis.client import FakeRedis
 from mesiri_ai.fakes import FakeToolCallingProvider

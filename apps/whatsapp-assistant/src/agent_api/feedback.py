@@ -1,13 +1,7 @@
-"""The general skill's tools.
+"""``tell_the_team``: feedback passed to the team that builds Mesiri (TM-18, WA-126).
 
-Request 194: taking back or correcting something already SAVED, whatever its module. Today's
-tools under their own names and specs (runtime/agent/tools.py): a removal is confirmed with a
-Yes card first; a change of a saved entry is a Change line saved by tap. Nothing is removed or
-changed before the tap.
-
-TM-18 (Ilan, 1 Nov: "if a feature is not there it should understand, add it, and come back"):
-``tell_the_team`` is v2's own tool (no toolbox, no write path, no table). It records nothing by
-itself: the call is in the turn's ``agent_v2_live`` trace (``journey_traces``), which the team
+Moved from v2's general skill when v2 was retired (WA-134); unchanged. It records nothing by
+itself: the call is in the turn's ``agent_api_turn`` trace (``journey_traces``), which the team
 bot's production watch reads with one free SELECT, and the bot builds the change and tells the
 person when it is live. Its result tells the model what to say: it is not built yet, it has been
 passed on, and (for bad UX with no reason given) one short question about what was bad.
@@ -18,10 +12,6 @@ from __future__ import annotations
 from typing import Any
 
 from mesiri_ai.models import ToolSpec
-from runtime.agent import tools as classic
-
-WRITE_TOOLS = frozenset({classic.CHANGE_OR_UNDO, classic.UNDO_LAST})
-READ_TOOLS: frozenset[str] = frozenset()
 
 TELL_THE_TEAM = "tell_the_team"
 #: What the feedback is about. The watch reads these words from the trace: keep them stable.
@@ -59,7 +49,7 @@ _PARAMETERS: dict[str, Any] = {
 
 
 def specs() -> list[ToolSpec]:
-    """v2's own general tools (handled in agents/main.py, never by the toolbox)."""
+    """The feedback tool (handled by ``agent.ApiAgent``; it calls no API route)."""
     return [ToolSpec(name=TELL_THE_TEAM, description=_DESCRIPTION, parameters=_PARAMETERS)]
 
 

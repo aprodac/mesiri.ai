@@ -28,7 +28,7 @@ from mesiri.infrastructure.redis.client import FakeRedis
 from mesiri_ai.fakes import FakeToolCallingProvider
 from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage, SenderInfo
-from runtime.ai_outage import FallBackToV2
+from runtime.ai_outage import FallBackToClassic
 
 CTX = SimpleNamespace(user_id=USER, organization_id=ORG, role="SITE_SUPERVISOR", full_name="Ravi",
                       timezone="Asia/Kolkata", org_active=True)
@@ -165,11 +165,11 @@ async def test_a_photo_is_left_to_the_journey() -> None:
     assert h.sent == []
 
 
-async def test_a_model_bug_falls_back_to_v2_and_keeps_what_was_waiting() -> None:
+async def test_a_model_bug_falls_back_to_classic_and_keeps_what_was_waiting() -> None:
     h = Harness(two_receipts_model())
     await h.service.handle(_message(), CTX)
     h.service._agent._provider = FakeToolCallingProvider([], error=RuntimeError("model down"))
-    with pytest.raises(FallBackToV2):  # request 204: v2 answers it; never a bare "send it again"
+    with pytest.raises(FallBackToClassic):  # request 204 / WA-134: classic answers it; never a bare "send it again"
         await h.service.handle(_message("and 10 bags sand"), CTX)
     state = await h.redis.get_json(f"agent_api:{ORG}:{USER}")
     assert len(state["pending"]) == 2
@@ -223,7 +223,7 @@ async def test_a_company_on_api_mode_gets_the_api_agent(monkeypatch) -> None:
     deps["memory_coordinator"].record_turn.assert_not_awaited()  # the classic turn never ran
 
 
-@pytest.mark.parametrize("mode", ["classic", "v2", None])
+@pytest.mark.parametrize("mode", ["classic", "v2_shadow", None])  # WA-134: v2_shadow reads as classic
 async def test_any_other_mode_never_reaches_the_api_agent(monkeypatch, mode) -> None:
     from tests.unit.test_agent_routing import ASK
 

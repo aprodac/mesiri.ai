@@ -2,7 +2,7 @@
 tool call says why in the trace.
 
 Root cause: the change schema the model sees (``tools._CHANGES``, shared by
-update_pending_card and v2's change_line) lacked fields the draft tools themselves take, so
+update_pending_card and, until WA-134, v2's change_line) lacked fields the draft tools themselves take, so
 the model had no way to send "rate 420 alla 400", "count 15 alla 12" or "Site C-lekk alla"
 as a change (the code behind it already accepted them). The trace kept only "error", never
 the reason.
@@ -17,7 +17,6 @@ import pytest
 from tests.replay.test_agent_replay import _make_world, _MemoryRedis
 from tests.replay.test_draft_per_message_p1 import open_items
 
-from agent_v2.skills.materials import tools as v2_tools
 from context import seed
 from mesiri_ai.fakes import FakeToolCallingProvider
 from runtime.agent import tools as t
@@ -57,8 +56,6 @@ def test_every_figure_a_draft_tool_takes_is_changeable_on_the_open_card():
     """The class: stock count, delivery cost, transfer destination, issue kind."""
     open_card = _changes(t.UPDATE_PENDING_CARD, t.tool_specs())
     assert set(t.OPEN_CARD_ONLY_FIELDS) <= open_card
-    # v2's change_line is built from the same spec, so it offers them too.
-    assert set(t.OPEN_CARD_ONLY_FIELDS) <= _changes(v2_tools.CHANGE_LINE, v2_tools.specs())
 
 
 def test_guard_change_or_undo_offers_the_same_fields_as_before():

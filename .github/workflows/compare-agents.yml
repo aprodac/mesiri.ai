@@ -1,4 +1,4 @@
-# WA-123: the same site messages through classic, v2 and the API agent on the REAL model, side by
+# WA-123: the same site messages through classic and the API agent (v3) on the REAL model, side by
 # side (Actions -> "Compare agents" -> Run). The table is in the run's summary and the JSON is an
 # artifact. Nothing is saved anywhere (every engine stops at "ready to save"); the API agent reads a
 # throwaway Postgres in the runner. Never part of a deploy; costs a few cents per run.
@@ -8,17 +8,17 @@ on:
   workflow_dispatch:
     inputs:
       model:
-        description: "Gemini model (the same one for all three)"
+        description: "Gemini model (the same one for both)"
         required: true
         default: "gemini-2.5-flash"
 
 concurrency:
-  group: v2-live-evals  # shares the key's per-minute token cap with the v2 live evals
+  group: live-model-runs  # one live-model run at a time: the key has a per-minute token cap
   cancel-in-progress: false
 
 jobs:
   compare:
-    name: classic vs v2 vs API agent (${{ inputs.model }})
+    name: classic vs API agent (${{ inputs.model }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -51,7 +51,7 @@ jobs:
       - run: uv pip install -e ".[dev,infra,providers,reports,workflow,receipt]"
       - name: Apply migrations
         run: uv run alembic -c backend/alembic.ini upgrade head
-      - name: Same messages, three engines, real model
+      - name: Same messages, two engines, real model
         env:
           PYTHONPATH: ${{ env.TEST_PYTHONPATH }}
           GEMINI_API_KEY: ${{ secrets.CI_GEMINI_API_KEY || secrets.TEAMMATE_GEMINI_API_KEY }}
@@ -61,7 +61,7 @@ jobs:
         run: |
           cd /tmp
           "$GITHUB_WORKSPACE/.venv/bin/python" -P -m pytest \
-            "$GITHUB_WORKSPACE/apps/whatsapp-assistant/tests/compare/test_three_agents_live.py" \
+            "$GITHUB_WORKSPACE/apps/whatsapp-assistant/tests/compare/test_classic_vs_api_live.py" \
             --rootdir=/tmp -s -ra -m live --import-mode=importlib -o asyncio_mode=auto
       - name: Report this run's Gemini spend to the team bot
         if: ${{ always() }}

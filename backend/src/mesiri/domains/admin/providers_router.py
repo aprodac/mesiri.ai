@@ -164,11 +164,10 @@ async def get_ai_config(
         "extraction": {"provider_id": "gemini", "model": "gemini-2.5-flash"},
         "vision": {"provider_id": "gemini", "model": "gemini-2.5-flash"},
         "translation": {"provider_id": "gemini", "model": "gemini-2.5-flash"},
-        # The WhatsApp assistant's tool-calling brain, and the v2 agent's own (request 178: unset
-        # "agent_v2" means it uses "agent"; shown here as the model it would use).
+        # The WhatsApp assistant's tool-calling brain (classic).
         "agent": {"provider_id": "gemini", "model": settings.gemini.model},
-        "agent_v2": db_routes.get("agent") or {"provider_id": "gemini", "model": settings.gemini.model},
-        # WA-119: the API agent (assistant_mode "api"); unset it uses "agent", like agent_v2.
+        # WA-119: the API agent (assistant_mode "api"); unset it uses "agent" (shown here as the
+        # model it would use). v2's own "agent_v2" route is gone with v2 (WA-134).
         "api_agent": db_routes.get("agent") or {"provider_id": "gemini", "model": settings.gemini.model},
     }
 

@@ -1,7 +1,7 @@
 """WA-124: what the API agent remembers of a person: today and the two days before.
 
-The conversation is kept in the day store v2-on-ADK already uses (``assistant_sessions`` /
-``assistant_session_events``, migration 0496, ``agent_v2.adk.memory.PostgresSessionService``):
+The conversation is kept in the Postgres day store (``assistant_sessions`` /
+``assistant_session_events``, migration 0496, ``agent_api.day_store.PostgresSessionService``):
 one session per person per day, under this agent's own app name so the two never mix. Each
 turn is two events: what the person said and what Mesiri sent (with the ready list).
 

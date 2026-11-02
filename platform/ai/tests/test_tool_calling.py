@@ -187,23 +187,23 @@ async def test_resolver_uses_the_agent_route_model(monkeypatch) -> None:
 
 
 async def test_a_caller_with_its_own_route_uses_it_else_the_agent_route(monkeypatch) -> None:
-    """Request 178: the control panel's "agent_v2" route is v2's brain; unset, v2 uses "agent"."""
+    """Request 178: the control panel's "api_agent" route is v3's brain; unset, v3 uses "agent"."""
     both = _resolver(
         {
             "agent": {"provider_id": "gemini", "model": "flash"},
-            "agent_v2": {"provider_id": "gemini", "model": "pro", "fallback_provider_id": "gemini", "fallback_model": "flash"},
+            "api_agent": {"provider_id": "gemini", "model": "pro", "fallback_provider_id": "gemini", "fallback_model": "flash"},
         }
     )
     used: list[str] = []
     monkeypatch.setattr(both, "_cached_gemini_provider", lambda c, m: (used.append(m), FakeToolCallingProvider(["ok"]))[1])
-    await both.run_tools("s", MESSAGES, TOOLS, _echo, capability="agent_v2")
-    await both.run_tools("s", MESSAGES, TOOLS, _echo)  # today's agent is unchanged by the v2 route
+    await both.run_tools("s", MESSAGES, TOOLS, _echo, capability="api_agent")
+    await both.run_tools("s", MESSAGES, TOOLS, _echo)  # classic is unchanged by the v3 route
     assert used == ["pro", "flash"]
 
     only_agent = _resolver({"agent": {"provider_id": "gemini", "model": "flash"}})
     used.clear()
     monkeypatch.setattr(only_agent, "_cached_gemini_provider", lambda c, m: (used.append(m), FakeToolCallingProvider(["ok"]))[1])
-    await only_agent.run_tools("s", MESSAGES, TOOLS, _echo, capability="agent_v2")
+    await only_agent.run_tools("s", MESSAGES, TOOLS, _echo, capability="api_agent")
     assert used == ["flash"]
 
 

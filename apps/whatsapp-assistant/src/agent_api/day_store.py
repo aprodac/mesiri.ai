@@ -1,13 +1,8 @@
-"""The conversation memory of v2 on ADK (request 185).
+"""The Postgres day store behind the API agent's memory (request 185; kept for v3 by WA-134).
 
-One ADK *session* per person per day (India time): ``user_id`` = ``<organization>:<user>``,
-``session_id`` = ``<YYYY-MM-DD>``. A session keeps every turn whole: what they said (with the
-message they swiped and replied to), each tool call and its result, and Mesiri's reply as it
-was SENT (the card lines the code draws under the model's words are added by ``remember``).
-What the day holds is read with tools, so yesterday is not carried in the conversation.
-
-The state of the day (open card, today's records, catalog) is NOT stored here: it is given to
-the model fresh each turn in its instructions, so the conversation never carries a stale card.
+An ADK ``BaseSessionService``: one session per person per day, ``user_id`` =
+``<organization>:<user>``, ``session_id`` = ``<YYYY-MM-DD>``, under the caller's app name
+(``agent_api.memory.APP_NAME``). What goes into a day is decided by ``agent_api.memory``.
 
 ``PostgresSessionService``: tables ``assistant_sessions`` / ``assistant_session_events``
 (migration 0496), through the same ``PostgresDatabase.transaction()`` the draft store uses.
@@ -18,7 +13,6 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from google.adk.events import Event
@@ -28,18 +22,6 @@ from google.adk.sessions.base_session_service import (
     GetSessionConfig,
     ListSessionsResponse,
 )
-
-APP_NAME = "mesiri_v2"
-#: What the model is sent of today's session at most (events: a turn is 2-6 of them).
-RECENT_EVENTS = 120
-#: India time: a site day ends at local midnight.
-_IST = timezone(timedelta(hours=5, minutes=30))
-
-
-def session_keys(organization_id: Any, user_id: Any, now: datetime | None = None) -> tuple[str, str]:
-    """``(user_id, session_id)`` of this person's conversation today."""
-    day = (now or datetime.now(tz=_IST)).astimezone(_IST).date().isoformat()
-    return f"{organization_id}:{user_id}", day
 
 
 def _organization(user_id: str) -> str:
