@@ -5,7 +5,7 @@ import { normalizeMessage } from "../src/normalize.js";
 import { Store, istStarts } from "../src/store.js";
 import { WhatsAppListener, buildChoice } from "../src/whatsapp.js";
 import { AiWorker, Transcriber, needsTranslation } from "../src/transcribe.js";
-import { Bot, parseCommand } from "../src/bot.js";
+import { Bot, costPeriod, parseCommand } from "../src/bot.js";
 
 const GROUP = "120363000000000001@g.us";
 const TOKEN = "test-token-0123456789";
@@ -814,10 +814,99 @@ test("bot: '@bot translate' as a reply, '#n', and '@bot cost' in rupees", async 
 
   m = msg(TEAM, "@bot cost");
   await bot.handle(m.rec, m.n);
-  assert.match(sent.at(-1).text, /Today: ₹0\.18 · 2 call\(s\)[\s\S]*This month: ₹0\.18/);
+  assert.match(sent.at(-1).text, /Gemini spend · mercon · this month[\s\S]*Total: ₹0\.18 · 2 calls[\s\S]*Team bot: voice notes and translation: ₹0\.18/);
+  assert.match(sent.at(-1).text, /Production isn't connected/);
 
   assert.equal(parseCommand("@1 translate this paragraph into arabic please").verb, "request"); // that's for Claude
   assert.equal(parseCommand("@1 gemini cost").verb, "cost");
+});
+
+test("cost (TM-20): which messages ask, and the India-time periods", () => {
+  for (const [text, period] of [["@1 cost", ""], ["@1 gemini spend october", "october"], ["@1 cost last 7 days", "last 7 days"], ["@1 usage yesterday", "yesterday"],
+    ["@1 cost for last month", "last month"], ["@1 what did we spend on gemini in october", "october"], ["@1 how much is the AI costing... what is the ai bill today", "today"]]) {
+    const c = parseCommand(text);
+    assert.equal(c.verb, "cost", text);
+    assert.equal(c.period, period, text);
+  }
+  for (const text of ["@1 what is the cost of steel", "@1 cost of cement in the report", "@1 add gemini cost to the dashboard", "@1 cost sheet for october is wrong"]) {
+    assert.equal(parseCommand(text).verb, "request", text);
+  }
+  const now = Date.parse("2026-11-02T20:00:00Z"); // 3 Nov 01:30 in India
+  assert.deepEqual(costPeriod("today", now), { label: "today", since: "2026-11-02T18:30:00.000Z", until: null });
+  assert.deepEqual(costPeriod("yesterday", now), { label: "yesterday", since: "2026-11-01T18:30:00.000Z", until: "2026-11-02T18:30:00.000Z" });
+  assert.deepEqual(costPeriod("", now), { label: "this month", since: "2026-10-31T18:30:00.000Z", until: null });
+  assert.deepEqual(costPeriod("last 7 days", now).since, "2026-10-27T18:30:00.000Z");
+  assert.deepEqual(costPeriod("october", now), { label: "October 2026", since: "2026-09-30T18:30:00.000Z", until: "2026-10-31T18:30:00.000Z" });
+  assert.equal(costPeriod("december", now).label, "December 2025"); // never a month still to come
+  assert.equal(costPeriod("last month", Date.parse("2026-01-15T12:00:00Z")).since, "2025-11-30T18:30:00.000Z");
+});
+
+const costRows = [
+  { section: "work", name: "run_tools", calls: 400, inr: 80, unpriced: 0 },
+  { section: "work", name: "transcribe", calls: 2, inr: 1, unpriced: 0 },
+  { section: "work", name: "understand_voice", calls: 3, inr: 2, unpriced: 0 },
+  { section: "work", name: "dpr_summary", calls: 5, inr: 4.5, unpriced: 0 },
+  { section: "work", name: "deepseek", calls: 9, inr: 3, unpriced: 0 },
+  { section: "company", name: "Acme", calls: 300, inr: 60, unpriced: 0 },
+  { section: "company", name: null, calls: 10, inr: 1, unpriced: 0 },
+  { section: "day", name: "2026-11-01", calls: 100, inr: 20, unpriced: 0 },
+  { section: "day", name: "2026-11-02", calls: 310, inr: 67.5, unpriced: 0 },
+  { section: "unpriced", name: "gemini-3.8-flash", calls: 4, inr: 0, unpriced: 4 },
+];
+
+test("bot (TM-20): '@bot cost' adds production by work, company and day to the bot's own spend", async () => {
+  const { store, TEAM, sent, msg } = botSetup();
+  store.addAiUsage({ kind: "watch_screen", project: "mercon", model: "m", input_tokens: 10, output_tokens: 5, usd: 0.01, inr: 0.5 });
+  store.addAiUsage({ kind: "watch_screen", project: "other", model: "m", input_tokens: 10, output_tokens: 5, usd: 0.01, inr: 9 }); // another project's
+  const asked = [];
+  const wa = { ownIds: () => ["919544376072@s.whatsapp.net", "56672747843793@lid"], pnFor: async () => null, send: async (jid, c) => (sent.push({ jid, ...c }), "id") };
+  const bot = new Bot({ store, wa, brain: { ask: async () => assert.fail("cost must not go to Claude"), cost: async (r) => (asked.push(r), costRows) } });
+
+  const past = msg(TEAM, "@bot cost october");
+  await bot.handle(past.rec, past.n);
+  assert.ok(asked[0].until, "a past month has an end");
+  assert.doesNotMatch(sent.at(-1).text, /production watch screen/); // today's call isn't October's
+
+  const m = msg(TEAM, "@bot cost");
+  await bot.handle(m.rec, m.n);
+  const text = sent.at(-1).text;
+  assert.equal(asked[1].project, "mercon");
+  assert.equal(asked[1].until, null);
+  assert.match(text, /Total: ₹88\.00 · 411 calls/); // Gemini only: deepseek is apart
+  assert.match(text, /By work\*\n• Assistant replies: ₹80\.00 · 400 calls\n• DPR summaries: ₹4\.50 · 5 calls\n• Voice notes: ₹3\.00 · 5 calls\n• Team bot: production watch screen: ₹0\.50 · 1 call/);
+  assert.match(text, /• Acme: ₹60\.00[\s\S]*• No company/);
+  assert.match(text, /By day \(production\)\*\n• 2026-11-02: ₹67\.50\n• 2026-11-01/);
+  assert.match(text, /Other AI, not in the total: deepseek ₹3\.00/);
+  assert.match(text, /4 calls on gemini-3\.8-flash have no price yet, so the total is short/);
+  assert.match(text, /Not counted: CI tests and evals/);
+});
+
+test("bot (TM-20): production unreadable still answers with the bot's spend, and says so", async () => {
+  const { store, TEAM, sent, msg } = botSetup();
+  const wa = { ownIds: () => ["919544376072@s.whatsapp.net", "56672747843793@lid"], pnFor: async () => null, send: async (jid, c) => (sent.push({ jid, ...c }), "id") };
+  const bot = new Bot({ store, wa, brain: { ask: async () => {}, cost: async () => { throw new Error("HTTP 502"); } } });
+  const m = msg(TEAM, "@bot cost");
+  await bot.handle(m.rec, m.n);
+  assert.match(sent.at(-1).text, /Couldn't read production \(HTTP 502\): this is the team bot's spend only/);
+});
+
+test("api (TM-20): POST /ai/usage counts a call made elsewhere, priced here", async () => {
+  const store = new Store(":memory:");
+  const api = createApi({ store, wa: { state: "open", ownIds: () => [] }, token: "x".repeat(20), ai: { transcriber: { prices: { priceIn: 1, priceOut: 2, usdInr: 100 } } } });
+  await new Promise((ok) => api.listen(0, "127.0.0.1", ok));
+  const url = `http://127.0.0.1:${api.address().port}/ai/usage`;
+  const post = (body, token = "x".repeat(20)) => fetch(url, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(body) });
+  try {
+    assert.equal((await post({ kind: "watch_screen" }, "wrong")).status, 401);
+    assert.equal((await post({ usage: {} })).status, 400);
+    assert.equal((await post({ kind: "watch_screen", project: "mesiri", model: "m", usage: { promptTokenCount: 1_000_000, candidatesTokenCount: 500_000 } })).status, 200);
+    const [row] = store.aiUsageByKind("2000-01-01T00:00:00.000Z", "mesiri");
+    assert.equal(row.kind, "watch_screen");
+    assert.equal(row.inr, 200);
+  } finally {
+    api.close();
+    store.close();
+  }
 });
 
 test("bot (TM-09): '@bot upgrade: ...' is for owners and starts an upgrade conversation", async () => {

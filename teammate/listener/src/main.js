@@ -44,7 +44,19 @@ const brain = brainUrl
         })
           .then((r) => r.ok || log(`brain refused ${path}: HTTP ${r.status}`))
           .catch((e) => log(`brain unreachable: ${e.message}`));
-      return { ask: (req) => call("/ask", req), approve: (req) => call("/approve", req) };
+      // TM-20: production spend for "@bot cost"; null = this project has no production data.
+      const cost = async (req) => {
+        const res = await fetch(`${brainUrl}/cost`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${process.env.TEAMMATE_API_TOKEN}`, "content-type": "application/json" },
+          body: JSON.stringify(req),
+          signal: AbortSignal.timeout(25_000),
+        });
+        if (res.status === 404) return null;
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return (await res.json()).rows;
+      };
+      return { ask: (req) => call("/ask", req), approve: (req) => call("/approve", req), cost };
     })()
   : null;
 const bot = new Bot({ store, wa, log, brain, ai });

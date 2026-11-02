@@ -181,6 +181,11 @@ export class Store {
     ]) {
       if (!mcols.includes(name)) this.db.exec(`ALTER TABLE messages ADD COLUMN ${name} ${type}`);
     }
+    // ...and before TM-20 every Gemini call was a translation of one message.
+    const ucols = this.db.prepare("PRAGMA table_info(ai_usage)").all().map((c) => c.name);
+    for (const name of ["kind", "project"]) {
+      if (!ucols.includes(name)) this.db.exec(`ALTER TABLE ai_usage ADD COLUMN ${name} TEXT`);
+    }
     // ...and before TM-19 nothing about who asked (from production) or what happened after it shipped.
     const icols = this.db.prepare("PRAGMA table_info(items)").all().map((c) => c.name);
     for (const name of ITEM_TRACKING) {
@@ -288,23 +293,33 @@ export class Store {
     return Number(this.db.prepare("UPDATE messages SET ai_attempts = 0 WHERE ai_done = 0 AND ai_attempts > 0").run().changes);
   }
 
-  addAiUsage({ n = null, model = null, input_tokens = 0, output_tokens = 0, usd = 0, inr = 0 }) {
+  /** `kind`: what the call was for (empty = translating message `n`); `project` for a call tied to no message. */
+  addAiUsage({ n = null, model = null, input_tokens = 0, output_tokens = 0, usd = 0, inr = 0, kind = null, project = null }) {
     this.db
-      .prepare("INSERT INTO ai_usage (at, n, model, input_tokens, output_tokens, usd, inr) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .run(nowIso(), n, model, input_tokens, output_tokens, usd, inr);
+      .prepare("INSERT INTO ai_usage (at, n, model, input_tokens, output_tokens, usd, inr, kind, project) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(nowIso(), n, model, input_tokens, output_tokens, usd, inr, kind, project);
   }
 
-  /** Gemini spend since a time (ISO), optionally only for one project's chats. */
-  aiUsageSince(since, project) {
-    const where = project ? "AND c.project = ?" : "";
+  aiUsageRows(select, tail, since, project, until) {
+    const params = [since, ...(until ? [until] : []), ...(project ? [project] : [])];
     return this.db
       .prepare(
-        `SELECT COUNT(*) AS calls, COALESCE(SUM(u.input_tokens), 0) AS input_tokens, COALESCE(SUM(u.output_tokens), 0) AS output_tokens,
+        `SELECT ${select}, COUNT(*) AS calls, COALESCE(SUM(u.input_tokens), 0) AS input_tokens, COALESCE(SUM(u.output_tokens), 0) AS output_tokens,
                 COALESCE(SUM(u.usd), 0) AS usd, COALESCE(SUM(u.inr), 0) AS inr
          FROM ai_usage u LEFT JOIN messages m ON m.rowid = u.n LEFT JOIN chats c ON c.jid = m.chat_jid
-         WHERE u.at >= ? ${where}`,
+         WHERE u.at >= ? ${until ? "AND u.at < ?" : ""} ${project ? "AND COALESCE(u.project, c.project) = ?" : ""} ${tail}`,
       )
-      .get(...(project ? [since, project] : [since]));
+      .all(...params);
+  }
+
+  /** Gemini spend in [since, until), optionally only for one project. */
+  aiUsageSince(since, project, until) {
+    return this.aiUsageRows("1 AS scope", "", since, project, until)[0];
+  }
+
+  /** The same per kind of work, most expensive first. */
+  aiUsageByKind(since, project, until) {
+    return this.aiUsageRows("COALESCE(u.kind, 'translate') AS kind", "GROUP BY 1 ORDER BY inr DESC", since, project, until);
   }
 
   countPendingAi() {

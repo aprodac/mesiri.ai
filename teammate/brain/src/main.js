@@ -3,8 +3,9 @@
 //
 //   POST /ask       {project, chat, chat_name, chat_role, reply_chat, sender, n, text, quoted_text}   a planning turn
 //   POST /approve   {project, item_id?, by, reply_chat}                                             a working turn
+//   POST /cost      {project, since, until?}                                                        production AI spend (TM-20)
 //   GET  /health
-// Both POSTs need `Authorization: Bearer <TEAMMATE_API_TOKEN>` and come from the
+// All POSTs need `Authorization: Bearer <TEAMMATE_API_TOKEN>` and come from the
 // listener, which has already checked that the sender is approved.
 //
 // Environment:
@@ -37,6 +38,7 @@ import { brainTools } from "./tools.js";
 import { createRenderer } from "./render.js";
 import { commitPatterns, formatWorkStatus } from "./work_status.js";
 import { ProdWatch, QUIET, Screener, opsSources, skipPatterns } from "./prod_watch.js";
+import { costRows } from "./cost.js";
 
 const log = (m) => console.log(`[brain] ${m}`);
 const token = process.env.TEAMMATE_API_TOKEN || "";
@@ -275,7 +277,7 @@ createServer(async (req, res) => {
   };
   if (req.method === "GET" && req.url === "/health") return reply(200, { ok: true, projects: Object.keys(projects), previews: Boolean(render) });
   if (!authorized(req)) return reply(401, { error: "unauthorized" });
-  if (req.method !== "POST" || !["/ask", "/approve"].includes(req.url)) return reply(404, { error: "not found" });
+  if (req.method !== "POST" || !["/ask", "/approve", "/cost"].includes(req.url)) return reply(404, { error: "not found" });
   let raw = "";
   for await (const c of req) {
     raw += c;
@@ -287,8 +289,17 @@ createServer(async (req, res) => {
   } catch {
     return reply(400, { error: "bad json" });
   }
-  const required = req.url === "/ask" ? ["project", "chat", "reply_chat", "text", "sender"] : ["project", "reply_chat", "by"];
+  const required = { "/ask": ["project", "chat", "reply_chat", "text", "sender"], "/approve": ["project", "reply_chat", "by"], "/cost": ["project", "since"] }[req.url];
   for (const k of required) if (!body[k]) return reply(400, { error: `${k} is required` });
+  if (req.url === "/cost") {
+    const source = opsByProject[body.project];
+    if (!source) return reply(404, { error: "no production data for this project" });
+    try {
+      return reply(200, { rows: await costRows(source, body) });
+    } catch (e) {
+      return reply(502, { error: String(e.message || e).slice(0, 160) });
+    }
+  }
   if (req.url === "/ask") brain.ask(body);
   else brain.approve(body);
   return reply(202, { ok: true }); // answered asynchronously through the listener
@@ -319,7 +330,17 @@ if (prodWatchMinutes > 0 && Object.keys(opsByProject).length) {
     autobuildOn: (project) => brain.autobuild.isOn(project), // TM-18: the report says "building it now", not "@bot ok"
     // The AI screen (TEAMMATE_GEMINI_API_KEY, the listener's key): catches the "I can't" a word list misses.
     screener: process.env.TEAMMATE_GEMINI_API_KEY
-      ? new Screener({ apiKey: process.env.TEAMMATE_GEMINI_API_KEY, model: process.env.TEAMMATE_GEMINI_MODEL || undefined })
+      ? new Screener({
+          apiKey: process.env.TEAMMATE_GEMINI_API_KEY,
+          model: process.env.TEAMMATE_GEMINI_MODEL || undefined,
+          // TM-20: counted with the listener's other Gemini spend; losing a report must not stop the watch.
+          onUsage: ({ project, model, usage }) =>
+            fetch(`${api}/ai/usage`, {
+              method: "POST",
+              headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+              body: JSON.stringify({ project, kind: "watch_screen", model, usage }),
+            }).catch((e) => log(`prod-watch: usage report failed (${e.message})`)),
+        })
       : null,
   });
   brain.prodWatch = prodWatch; // "@bot watch …" (owners change how often, pause, look now)

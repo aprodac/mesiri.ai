@@ -324,11 +324,12 @@ export function screenFlags(items, answer) {
 
 /** Gemini, as the listener's transcriber calls it (JSON out, temperature 0). */
 export class Screener {
-  constructor({ apiKey, model = "gemini-3.8-flash", fetchFn = fetch, timeoutMs = 45_000 }) {
-    Object.assign(this, { apiKey, model, fetchFn, timeoutMs });
+  /** @param onUsage ({project, model, usage}) after each answer, so the screen's spend is counted (TM-20). */
+  constructor({ apiKey, model = "gemini-3.8-flash", fetchFn = fetch, timeoutMs = 45_000, onUsage = null }) {
+    Object.assign(this, { apiKey, model, fetchFn, timeoutMs, onUsage });
   }
 
-  async screen(rows) {
+  async screen(rows, project = null) {
     const items = screenItems(rows);
     if (!items.length) return new Map();
     const res = await this.fetchFn(`https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent`, {
@@ -342,6 +343,7 @@ export class Screener {
     });
     if (!res.ok) throw new Error(`Gemini ${res.status}`);
     const body = await res.json();
+    this.onUsage?.({ project, model: this.model, usage: body?.usageMetadata });
     const raw = body?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
     const json = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
     return screenFlags(items, json ? JSON.parse(json) : {});
@@ -383,13 +385,13 @@ export class ProdWatch {
   }
 
   /** The code flags plus the AI screen's, for the fresh rows; the screen failing leaves the code flags. */
-  async flagged(rows, fresh) {
+  async flagged(rows, fresh, project = null) {
     const flagged = flagRows(rows).filter((f) => fresh.has(f.row.correlation_id));
     if (!this.screener) return flagged;
     let ai;
     try {
       // TM-17: the paid screen never reads the test companies (TM-18 still flags them for free).
-      ai = await this.screener.screen(rows.filter((r) => fresh.has(r.correlation_id) && !r.is_test));
+      ai = await this.screener.screen(rows.filter((r) => fresh.has(r.correlation_id) && !r.is_test), project);
     } catch (e) {
       this.log(`prod-watch: screen failed (${e.message}); code flags only`);
       return flagged;
@@ -618,7 +620,7 @@ export class ProdWatch {
         this.log(`prod-watch ${project}: seen: ${e.message}`);
       }
       const reported = new Set(s.reported);
-      const flagged = await this.flagged(rows, new Set(fresh.map((r) => r.correlation_id)));
+      const flagged = await this.flagged(rows, new Set(fresh.map((r) => r.correlation_id)), project);
       const all = conversations(rows, flagged, reported);
       counts.flagged += flagged.length;
       counts.reported += Math.min(all.length, MAX_CONVERSATIONS);

@@ -20,6 +20,7 @@
 //   POST /people/remove {project, phone}
 //   POST /messages/:n/translate?project=&force=1   translate one message on request; returns text + cost
 //   GET  /ai/usage?project=           Gemini spend today / this month (USD and INR)
+//   POST /ai/usage     {kind, usage, model?, project?}   count a Gemini call made elsewhere (TM-20)
 //   POST /pair         {phone}        start linking the spare number; returns the code
 //   POST /send         {chat, project?, text?, image_base64?, caption?}
 //                                     post into a chat labelled "team" -- refused anywhere else, except:
@@ -37,6 +38,7 @@ import { createReadStream, existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { ITEM_TRACKING, istStarts } from "./store.js";
+import { costOf } from "./transcribe.js";
 
 function send(res, status, body) {
   const json = JSON.stringify(body);
@@ -142,6 +144,16 @@ export function createApi({ store, wa, token, ai = null }) {
         } catch (err) {
           return send(res, 409, { error: String(err.message || err).slice(0, 300) });
         }
+      }
+      // TM-20: a Gemini call made outside the listener (the brain's watch screen), priced like the listener's own.
+      if (req.method === "POST" && path === "/ai/usage") {
+        const body = await readJson(req);
+        const prices = ai?.transcriber?.prices;
+        if (!prices) return send(res, 409, { error: "no Gemini prices on this server" });
+        if (!/^[a-z_]{1,40}$/.test(String(body.kind || ""))) return send(res, 400, { error: "kind is required" });
+        const cost = costOf(body.usage, prices);
+        store.addAiUsage({ ...cost, kind: body.kind, project: body.project ? String(body.project) : null, model: body.model ? String(body.model) : null });
+        return send(res, 200, { ok: true, inr: cost.inr });
       }
       if (req.method === "GET" && path === "/ai/usage") {
         const { day, month } = istStarts(); // India time

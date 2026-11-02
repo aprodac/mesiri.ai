@@ -104,7 +104,12 @@ with Gemini (`gemini-3.8-flash`; `TEAMMATE_GEMINI_MODEL` overrides it).
 - Voice note as a reply to the bot (you can't @-mention in a voice note): it's transcribed (Gemini, ~₹0.10-0.50),
   the bot posts `🗣 Heard: "…" · ₹x.xx`, and Claude answers. Team groups only; a voice note is never a command
   (approvals still need typed `@bot ok <n>`).
-- `@bot cost`: Gemini spend today and this month (India time), in rupees.
+- `@bot cost` (TM-20): Gemini spend in rupees, by work, company and day (India time). Add a period: `today`,
+  `yesterday`, `last 7 days`, `last month`, `october`. Questions work too: "what did we spend on gemini in october".
+  Team groups only. Production's figures come from `provider_executions` through the brain's read-only ops token
+  (the listener never holds it); the team bot's own spend, including the production watch's AI screen, comes from
+  `ai_usage`. CI tests and evals are not recorded anywhere here: they are in Google's billing page for
+  the project that owns `CI_GEMINI_API_KEY`. Calls on a model with no price are counted and called out, never shown as free.
 - The WhatsApp brain (Claude) has the same as a tool, used only for the messages a question is about.
 - Here: `inbox.py translate 123`, `inbox.py cost`.
 - A translated message is stored; asking again is free.

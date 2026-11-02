@@ -22,6 +22,54 @@ import { istStarts } from "./store.js";
 const REPLIES_PER_HOUR = Number(process.env.TEAMMATE_BOT_REPLIES_PER_HOUR || 20);
 const TITLE_MAX = 120;
 
+const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+const COST_PERIOD = new RegExp(`\\b(?:today|yesterday|this week|week|this month|last month|month|last \\d{1,3} days|${MONTHS.join("|")})\\b`, "i");
+const DAY_MS = 86_400_000;
+const IST_MS = 330 * 60_000;
+
+/** "october", "last 7 days", "" (this month) -> { label, since, until } in India days; until null = up to now. */
+export function costPeriod(text = "", now = Date.now()) {
+  const { day, month } = istStarts(now);
+  const today = Date.parse(day);
+  const iso = (ms) => new Date(ms).toISOString();
+  const local = new Date(now + IST_MS);
+  const monthStart = (year, m) => iso(Date.UTC(year, m, 1) - IST_MS);
+  const t = String(text).toLowerCase();
+  const days = t.match(/last (\d+) days/)?.[1];
+  if (t === "today") return { label: "today", since: day, until: null };
+  if (t === "yesterday") return { label: "yesterday", since: iso(today - DAY_MS), until: day };
+  if (days) return { label: `last ${Number(days)} days`, since: iso(today - (Math.max(Number(days), 1) - 1) * DAY_MS), until: null };
+  if (t.endsWith("week")) return { label: "last 7 days", since: iso(today - 6 * DAY_MS), until: null };
+  if (t === "last month") return { label: "last month", since: monthStart(local.getUTCFullYear(), local.getUTCMonth() - 1), until: month };
+  const named = MONTHS.indexOf(t);
+  if (named >= 0) {
+    // The most recent such month: in November, "december" is last year's.
+    const year = local.getUTCFullYear() - (named > local.getUTCMonth() ? 1 : 0);
+    const name = t[0].toUpperCase() + t.slice(1);
+    return named === local.getUTCMonth() ? { label: name, since: month, until: null } : { label: `${name} ${year}`, since: monthStart(year, named), until: monthStart(year, named + 1) };
+  }
+  return { label: "this month", since: month, until: null };
+}
+
+const COST_LABELS = {
+  run_tools: "Assistant replies",
+  extract: "Reading messages",
+  decompose: "Splitting messages",
+  analyze_image: "Reading photos",
+  understand_voice: "Voice notes",
+  transcribe: "Voice notes",
+  translate: "Translation",
+  generate_json: "Structured answers",
+  dpr_summary: "DPR summaries",
+};
+const BOT_LABELS = { translate: "Team bot: voice notes and translation", watch_screen: "Team bot: production watch screen" };
+const OTHER_AI = new Set(["deepseek", "sarvam"]);
+const COMPANIES_SHOWN = 6;
+const DAYS_SHOWN = 7;
+
+const rupees = (n) => `₹${Number(n).toFixed(2)}`;
+const calls = (n) => `${n} call${n === 1 ? "" : "s"}`;
+
 /** "@919544376072 approve @9198…" -> { verb: "approve", rest: "…" }; leading mentions dropped. */
 export function parseCommand(text) {
   const words = String(text || "").replace(/@\S+/g, " ").trim();
@@ -49,7 +97,11 @@ export function parseCommand(text) {
     const id = rest.match(/(\d+)/)?.[1];
     return { verb: "translate", id: id ? Number(id) : null, rest };
   }
-  if (/^(gemini\s+)?(cost|costs|spend|usage)(\s+(today|month|this month))?$/i.test(words)) return { verb: "cost", rest };
+  // TM-20: "cost", "cost october", "gemini spend last 7 days"; or a question about Gemini spend, not any cost ("cost of steel").
+  const period = words.match(COST_PERIOD)?.[0].toLowerCase() || "";
+  const bare = new RegExp(`^(?:(?:gemini|ai)\\s+)?(?:cost|costs|spend|spent|usage)(?:\\s+(?:for|in|of))?(?:\\s+${COST_PERIOD.source})?$`, "i");
+  const asked = /^(?:how much|what|where|which)\b/i.test(words) && /\b(?:gemini|ai)\b/i.test(words) && /\b(?:cost|costs|spend|spent|spending|bill)\b/i.test(words);
+  if (bare.test(words) || asked) return { verb: "cost", rest, period };
   // Upgrading the bot itself (TM-09): "upgrade: make the cost command show yesterday too".
   const up = words.match(/^upgrade\b[\s:,-]*([\s\S]*)$/i);
   if (up) return { verb: "upgrade", rest: up[1].trim() };
@@ -65,7 +117,7 @@ const HELP = [
   "• @me sessions / @me switch <name> / @me reset",
   "• send a voice note as a reply to me: it's transcribed (Gemini, ~₹0.10-0.50) and answered",
   "• reply to a voice note with @me translate (or @me translate #123): transcript + English + what it cost",
-  "• @me cost: Gemini spend today and this month, in ₹",
+  "• @me cost: Gemini spend in ₹ by work, company and day · also @me cost today | yesterday | last 7 days | last month | october",
   "• @me upgrade: <what to change in the bot> (owners): plan → @me ok <n> → it updates and redeploys itself",
   "• @me settings: Claude's model and effort · owners: @me model opus|sonnet|haiku|fable, @me effort low…max",
   "• @me account: which Claude account this group runs on (A, B, C…) · owners: @me account <letter> (this group), @me account default <letter>, @me account reset, @me account auto on|off",
@@ -129,7 +181,10 @@ export class Bot {
     // Translation and its cost: handled here (fast, no Claude), answered in the team group.
     if (cmd.verb === "translate" || cmd.verb === "cost") {
       if (!replyTo) return;
-      if (cmd.verb === "cost") return this.reply(replyTo, this.costText(project));
+      if (cmd.verb === "cost") {
+        this.wa.typing?.(replyTo);
+        return this.reply(replyTo, await this.costReply(project, cmd.period));
+      }
       const target = cmd.id ?? (rec.quoted_id ? this.store.messageNumber(rec.chat_jid, rec.quoted_id) : null);
       if (!target) return this.reply(replyTo, "Reply to the voice note (or message) with @bot translate, or write @bot translate #123.");
       if (!this.ai?.translate) return this.reply(replyTo, "Translation is off (no Gemini key on the server).");
@@ -340,17 +395,62 @@ export class Bot {
     return lines.join(String.fromCharCode(10)).slice(0, 3900);
   }
 
-  costText(project) {
-    const { day, month } = istStarts();
-    const t = this.store.aiUsageSince(day, project);
-    const mo = this.store.aiUsageSince(month, project);
-    const rate = this.ai?.transcriber?.prices?.usdInr;
-    return [
-      `💰 Gemini spend (${project})`,
-      `• Today: ₹${t.inr.toFixed(2)} · ${t.calls} call(s)`,
-      `• This month: ₹${mo.inr.toFixed(2)} · ${mo.calls} call(s)`,
-      rate ? `Prices: $${this.ai.transcriber.prices.priceIn} in / $${this.ai.transcriber.prices.priceOut} out per 1M tokens, ₹${rate} = $1` : "",
-    ].filter(Boolean).join(String.fromCharCode(10));
+  /** TM-20: production's spend (through the brain) plus the bot's own. A production read failing still shows the bot's. */
+  async costReply(project, text) {
+    const period = costPeriod(text);
+    let rows = null;
+    let failed = null;
+    if (this.brain?.cost) {
+      try {
+        rows = await this.brain.cost({ project, since: period.since, until: period.until });
+      } catch (e) {
+        failed = String(e.message || e).slice(0, 120);
+      }
+    }
+    return this.costText(project, period, rows, failed);
+  }
+
+  costText(project, period, rows, failed = null) {
+    const nl = String.fromCharCode(10);
+    const section = (name) => (rows || []).filter((r) => r.section === name);
+    const bot = this.store.aiUsageByKind(period.since, project, period.until || undefined);
+    const work = section("work").filter((r) => !OTHER_AI.has(r.name));
+    const lines = [
+      ...work.map((r) => ({ label: COST_LABELS[r.name] || r.name, inr: r.inr, calls: r.calls })),
+      ...bot.map((r) => ({ label: BOT_LABELS[r.kind] || `Team bot: ${r.kind}`, inr: r.inr, calls: r.calls })),
+    ];
+    // Two operations can share a label (the voice ones).
+    const merged = new Map();
+    for (const l of lines) {
+      const have = merged.get(l.label) || { label: l.label, inr: 0, calls: 0 };
+      merged.set(l.label, { ...have, inr: have.inr + Number(l.inr), calls: have.calls + Number(l.calls) });
+    }
+    const byWork = [...merged.values()].sort((a, b) => b.inr - a.inr);
+    const total = byWork.reduce((sum, l) => sum + l.inr, 0);
+    const out = [`💰 Gemini spend · ${project} · ${period.label}`, `Total: ${rupees(total)} · ${calls(byWork.reduce((sum, l) => sum + l.calls, 0))}`];
+    if (byWork.length) out.push("", "*By work*", ...byWork.map((l) => `• ${l.label}: ${rupees(l.inr)} · ${calls(l.calls)}`));
+    const companies = section("company").sort((a, b) => b.inr - a.inr);
+    if (companies.length) {
+      const name = (r) => r.name || "No company (signups, scheduled jobs)";
+      out.push("", "*By company (production)*", ...companies.slice(0, COMPANIES_SHOWN).map((r) => `• ${name(r)}: ${rupees(r.inr)} · ${calls(r.calls)}`));
+      if (companies.length > COMPANIES_SHOWN) out.push(`• and ${companies.length - COMPANIES_SHOWN} more`);
+    }
+    const days = section("day").sort((a, b) => String(b.name).localeCompare(String(a.name)));
+    if (days.length > 1) {
+      out.push("", "*By day (production)*", ...days.slice(0, DAYS_SHOWN).map((r) => `• ${r.name}: ${rupees(r.inr)}`));
+      if (days.length > DAYS_SHOWN) out.push(`• and ${days.length - DAYS_SHOWN} earlier days`);
+    }
+    const other = section("work").filter((r) => OTHER_AI.has(r.name));
+    if (other.length) out.push("", `Other AI, not in the total: ${other.map((r) => `${r.name} ${rupees(r.inr)}`).join(" · ")}`);
+    const unpriced = section("unpriced");
+    if (unpriced.length) {
+      const n = unpriced.reduce((sum, r) => sum + Number(r.calls), 0);
+      out.push("", `⚠️ ${calls(n)} on ${unpriced.map((r) => r.name || "an unknown model").join(", ")} ${n === 1 ? "has" : "have"} no price yet, so the total is short.`);
+    }
+    if (failed) out.push("", `⚠️ Couldn't read production (${failed}): this is the team bot's spend only.`);
+    else if (rows === null) out.push("", "Production isn't connected for this project: this is the team bot's spend only.");
+    out.push("", "Not counted: CI tests and evals. They are in the Google billing page of the testing project.");
+    return out.join(nl).slice(0, 3900);
   }
 
   whoText(project) {
