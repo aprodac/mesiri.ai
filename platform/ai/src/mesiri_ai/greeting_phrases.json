@@ -2,6 +2,7 @@
   "_comment": "Trigger vocabulary for the deterministic greeting/menu classifier. Language data only — no logic. Add more languages/variants here without touching greeting_classifier.py. Match is whole-token, case-folded, same rule as apps/whatsapp-assistant/src/interactions/confirmation_phrases.json. Malayalam entries below are limited to the most common, unambiguous greetings — a native speaker should extend this list rather than trust this as exhaustive.",
   "greeting": [
     "hi", "hii", "hiii", "hy", "hyy", "hey", "hello", "hallo", "yo",
+    "hlo", "hlw", "hllo", "helo", "hellow", "hiya", "heya", "hai", "haii",
     "menu", "help", "start", "options",
     "namaskaram", "namaskaaram",
     "ഹായ്", "നമസ്കാരം"

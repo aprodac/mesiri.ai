@@ -16,7 +16,7 @@ from mesiri_ai.greeting_classifier import is_greeting_trigger
 
 @pytest.mark.parametrize(
     "text",
-    ["hi", "Hi", "HI", "hii", "hey", "hello", "menu", "help", "start", "namaskaram"],
+    ["hi", "Hi", "HI", "hii", "hey", "hello", "menu", "help", "start", "namaskaram", "Hlo", "hy", "helo"],
 )
 def test_recognizes_configured_greeting_phrases_case_insensitively(text):
     assert is_greeting_trigger(text) is True
