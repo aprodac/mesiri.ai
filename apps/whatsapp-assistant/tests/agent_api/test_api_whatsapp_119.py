@@ -28,6 +28,7 @@ from mesiri.infrastructure.redis.client import FakeRedis
 from mesiri_ai.fakes import FakeToolCallingProvider
 from mesiri_contracts.assistant.enums import InputModality
 from mesiri_contracts.assistant.normalized_message import NormalizedMessage, SenderInfo
+from runtime.ai_outage import FallBackToV2
 
 CTX = SimpleNamespace(user_id=USER, organization_id=ORG, role="SITE_SUPERVISOR", full_name="Ravi",
                       timezone="Asia/Kolkata", org_active=True)
@@ -164,12 +165,12 @@ async def test_a_photo_is_left_to_the_journey() -> None:
     assert h.sent == []
 
 
-async def test_a_model_failure_says_so_and_keeps_what_was_waiting() -> None:
+async def test_a_model_bug_falls_back_to_v2_and_keeps_what_was_waiting() -> None:
     h = Harness(two_receipts_model())
     await h.service.handle(_message(), CTX)
     h.service._agent._provider = FakeToolCallingProvider([], error=RuntimeError("model down"))
-    await h.service.handle(_message("and 10 bags sand"), CTX)
-    assert h.sent[-1].text == wa.NOT_NOW
+    with pytest.raises(FallBackToV2):  # WA-128: v2 answers it; never a bare "send it again"
+        await h.service.handle(_message("and 10 bags sand"), CTX)
     state = await h.redis.get_json(f"agent_api:{ORG}:{USER}")
     assert len(state["pending"]) == 2
 
