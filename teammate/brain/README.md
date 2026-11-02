@@ -153,6 +153,14 @@ production watch ◄────────────────────
   seen by the watchdog) next to `created_at` and `live_at`; the Requests page and the digest show the median
   minutes for plan, build and deploy.
 
+### "What's fixed" cards (TM-32, 2 Nov)
+
+After a passing live check the bot posts ONE picture in the team group (`post_fixed_card`, `src/cards.js`): the
+real assistant-test conversation since the check started (drawn by code from the stored messages, never retyped)
+next to **Now works**, **Also covered** (the related cases the fix handles too: other wordings, languages, voice /
+photo, record kinds, states; the check tries one or two of them first) and **Still not** (on purpose). An empty
+"also covered" prints "this is a patch", so the whole group sees it.
+
 ### Who asked, live check, used again (TM-19)
 
 - `propose_plan` takes `asked_for` (the watch's correlation ids): the request-log item records **who asked** (name, role,

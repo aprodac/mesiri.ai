@@ -15,6 +15,7 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { chatHtml } from "./prod_watch.js";
+import { fixedCardHtml } from "./cards.js";
 
 const MAX_TEXT = 3800;
 // test_assistant: how long to wait for the assistant, and how long a quiet gap means it has finished.
@@ -136,7 +137,31 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
             async ({ ok, note }) => {
               plans.update?.(ctx.verify_plan, { verified: ok ? "ok" : "broken", verified_note: note });
               if (typeof ctx.verify_plan === "number") await listener.updateItem(ctx.verify_plan, { verified: ok ? "ok" : "broken", note, project: chatProject }).catch(() => {});
-              return { content: [{ type: "text", text: ok ? "Recorded: verified live. Post the ✅ line." : "Recorded: still broken. Post the ❌ line and propose_plan the fix." }] };
+              return { content: [{ type: "text", text: ok ? "Recorded: verified live. Now post_fixed_card, then the ✅ line." : "Recorded: still broken. Post the ❌ line and propose_plan the fix." }] };
+            },
+          ),
+          tool(
+            "post_fixed_card",
+            "TM-32: after a passing live check, post ONE picture to the team group: the real test-chat conversation (drawn by the code from the stored messages since this check started) next to what now works, the related cases the fix also covers (the class: other wordings, languages, voice / photo, record kinds, states it handles), and what it deliberately does not. Fill also_covered honestly from the plan and what you tried: an empty list says this was a patch.",
+            {
+              now_works: z.array(z.string().min(2).max(160)).min(1).max(6).describe("What the person asked for, now working, in plain words"),
+              also_covered: z.array(z.string().min(2).max(160)).max(8).describe("The sibling cases the fix covers too (you tried or the tests prove)"),
+              still_not: z.array(z.string().min(2).max(160)).max(5).describe("What it deliberately does not do yet"),
+            },
+            async ({ now_works, also_covered, still_not }) => {
+              if (!render) return fail("Pictures aren't available on this server (no browser installed); list the three in your ✅ line instead.");
+              const plan = plans?.get?.(ctx.verify_plan) || {};
+              let messages = [];
+              try {
+                const chat = ((await listener.chats(chatProject)).chats || []).find((c) => c.role === "assistant-test" && c.project === chatProject);
+                if (chat) messages = ((await listener.messages({ chat: chat.jid, project: chatProject, limit: 60, ...(ctx.verify_since ? { since: ctx.verify_since } : {}) })).messages || []).sort((a, b) => a.n - b.n);
+              } catch {
+                messages = [];
+              }
+              const html = fixedCardHtml({ id: ctx.verify_plan, title: plan.title || "", sha: plan.live_sha || null, messages, nowWorks: now_works, alsoCovered: also_covered, stillNot: still_not });
+              const caption = `✅ [${ctx.verify_plan}] ${plan.title || ""}: works now${also_covered.length ? ` (+${also_covered.length} related)` : " (only the reported case)"}`;
+              plans.update?.(ctx.verify_plan, { fixed_card: { now_works, also_covered, still_not } });
+              return image(await render.html(html, 1100), caption);
             },
           ),
         ]
@@ -449,4 +474,4 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
   return createSdkMcpServer({ name: "whatsapp", version: "1.0.0", tools });
 }
 
-export const BRAIN_TOOL_NAMES = ["verification_result", "post_message", "post_image", "preview_html", "post_watch_chat", "screenshot_url", "view_media", "translate_message", "propose_plan", "test_assistant", "tell_ilan_usman", "needs_attention", "cycle_report", "status_of_work", "tell_job"].map((t) => `mcp__whatsapp__${t}`);
+export const BRAIN_TOOL_NAMES = ["verification_result", "post_fixed_card", "post_message", "post_image", "preview_html", "post_watch_chat", "screenshot_url", "view_media", "translate_message", "propose_plan", "test_assistant", "tell_ilan_usman", "needs_attention", "cycle_report", "status_of_work", "tell_job"].map((t) => `mcp__whatsapp__${t}`);
