@@ -1,139 +1,181 @@
-# Requests from many companies: sort first, then build (TM-34)
+# Requests from many companies: build it, switch it on for the company that asked (TM-34)
 
-> Asked 2 Nov 2026: *"One contractor's wish shouldn't change everyone's product. Lets ideate on this and set this up
-> properly, cause this itself is its own thing."* Status: **design, for Alan / Ilan's decisions** (the open questions
-> at the end). Nothing here is built yet; the phases say what is.
+> Asked 2 Nov 2026: *"One contractor's wish shouldn't change everyone's product ... set this up properly, cause this
+> itself is its own thing."* Revised the same day around the team's idea: *"everything gets built, but when a company
+> asks, it's built for that company; from the control panel we can see it and turn it on for others if they need it
+> too."* Status: **design**. Phase 1 changes a shared component (the module gate), so it waits for an owner's ok.
 
-## The problem
+## The principle
 
-Today a request that reaches the team bot (`tell_the_team`, a Cancel reason, "Still wrong", a watch flag) becomes a plan,
-and the plan is built **for everyone**. With two test companies that is right. With fifty paying contractors it breaks
-three ways:
+**Say yes, build it, switch it on only for the company that asked.**
 
-1. **One company's habit becomes everyone's behaviour.** Contractor A wants the DPR at 6 pm with labour first;
-   contractor B relies on 8 pm and materials first. Building A's wish breaks B.
-2. **The product grows sideways.** Every one-off ("add my brother-in-law's supplier list to the stock answer") becomes
-   code nobody else uses, which slows every later fix.
-3. **Many requests need no build at all.** "Can Mesiri send the PDF?" is often already possible: the person needs to
-   be shown how, not a new feature.
+- The contractor who asked gets it, fast. Nobody hears "no" because of other companies.
+- Every other company keeps exactly what it had, because a new feature is **off** for them.
+- The team sees every feature in the control panel: who asked, who has it on, whether it is used. Turning it on for
+  another company (or for all) is one tap and no build.
+- Features that prove themselves **graduate**: on for everyone, switch removed from the code. Features nobody uses
+  are **retired**. This is what stops "everything gets built" turning into a pile of switches.
 
-## The outcomes
+It reuses what exists. Mesiri already switches **modules** per company (`enabled_modules`, `require_module` on every
+router, switches in the control panel, a polite refusal on WhatsApp). A feature is the same thing one size smaller.
 
-Every request is sorted into exactly one of these before anything is built:
+## What gets a switch, what doesn't
 
-| Outcome | When | What happens | Who is told what |
+The bot sorts each request into one of five kinds. Only one of them asks anything of an owner.
+
+| Kind | Example | What happens | Switch? |
 |---|---|---|---|
-| **Already possible** | It works today; they didn't know how | No build. The answer, an example message and a `web_link` | The person, at once: "You can already: send *…*" |
-| **Product** | Good for every construction company; adds without changing what others rely on, or fixes something wrong for everyone | Built for everyone (as today) | The person: "it works now"; the group: the "what's fixed" card |
-| **Company preference** | Their way of working; another company could reasonably want the opposite | Built as a **per-company switch** with the old behaviour as the default; switched on for the company that asked | The person: "switched on for *your company*" |
-| **Needs a decision** | Changes what every company relies on, touches a held area (Attendance, Payroll, Workforce, money, data), costs a lot, or conflicts with another company's preference | Held for an owner, with the reason (as autobuild holds today) | The person: "passed to the team; we'll tell you"; the owner: the plan with the reason |
-| **Not now** | A one-off, out of scope (not construction site work), or not worth its complexity | No build. Logged as demand; it comes back when more companies ask | The person, politely: what Mesiri does instead, and that it's noted |
+| **Fix** | the DPR total is wrong; Mesiri misread "50 bags" | Fixed for everyone (wrong is wrong everywhere) | No |
+| **Already possible** | "can Mesiri send the labour PDF?" (it can) | No build. Mesiri shows how, with an example and a link | No |
+| **New feature** | DPR at 6 pm; stock answers by site; a weekly cement summary | Built behind a feature switch; **on for the company that asked**, off for the rest | **Yes** |
+| **Held** | anything that changes attendance, payroll, workforce, money totals, or deletes data | Planned and built behind a switch like any feature, but **switched on only after an owner's ok** (CLAUDE.md's held areas) | Yes |
+| **Not Mesiri** | not construction site work ("book my train ticket") | Declined politely, with what Mesiri does do; logged | No |
 
-"Not now" is never a dead end: the request stays in the log with the company, and **demand is counted across
-companies** (below), so a "not now" that three companies ask for becomes a product request by itself.
+The test between *fix* and *new feature* is one question: **could another company reasonably want it the old way?**
+If yes, it's a feature with a switch. When unsure, it's a feature: a switch costs a little code; breaking another
+company costs a customer.
 
-## How a request is sorted
+"Not Mesiri" is the only no, and it is rare. One-offs that *are* construction work are built as features: they cost
+little because they are off for everyone else, and retirement removes them if they go unused.
 
-The production watch's planning turn already reads the request, the conversation and the code. It gains a sorting
-step **before** `propose_plan`, and the code checks the result, because the model reads and the code decides
-(FIX_APPROACH):
+## A feature switch
 
-1. **Is it already possible?** Look for an existing tool, route, dashboard page or SOP rule that does it. If yes:
-   answer, no plan.
-2. **Who else asked?** The request log is searched for the same need across companies (the bot already merges
-   duplicates within a running plan; this widens it to the whole log). The count goes on the plan: *asked by 3
-   companies (Acme, Paraclette, …)*.
-3. **Does it change what others rely on?** An *addition* (a new answer, a new tool, a new field) changes nothing for
-   others. A *behaviour change* (a default, a wording others see daily, an order, a time, a rule) does. The plan must
-   say which, and list the existing behaviours it changes.
-4. **Sort**, by a written rubric in the watch prompt:
-   - additions and plain bugs → **Product**;
-   - behaviour changes asked by one company → **Company preference**;
-   - behaviour changes asked by several companies with none relying on the old way → **Product**, but **Needs a
-     decision** when it touches a held area or a company has the opposite preference switched on;
-   - out of scope, a one-off, or complexity that outweighs the value → **Not now**.
-5. **The code checks the label** (autobuild.js, like `holdReason` today):
-   - **Company preference** must add an entry to the preference registry (below) with the old behaviour as its
-     default; a plan that edits a default without one is held.
-   - **Product** that says "behaviour change" with demand from a single company is held.
-   - **Not now** and **Already possible** never build.
-   - Every label and its reason is stored on the request (`category`, `reason`, `companies`).
+**Registry, one file**: `backend/src/mesiri/domains/organizations/features.py`. Each feature is declared once:
 
-## Per-company switches: "company preferences"
-
-One mechanism for every per-company difference, so preferences don't become scattered `if company == …` branches.
-
-**Registry, one file** (`backend/src/mesiri/domains/organizations/preferences.py`): each preference declared once.
-
-```
-DPR_SEND_TIME   = Preference(key="dpr_send_time", type=time, default="19:00",
-                    who_may_change="company_admin", label="When the daily report is sent",
-                    since="#a83836 (Acme, 2 Nov 2026)")
-STOCK_ANSWER_ORDER = Preference(key="stock_answer_order", type=enum("by_material", "by_site"),
-                    default="by_material", who_may_change="company_admin", ...)
+```python
+DPR_EVENING_TIME = Feature(
+    key="dpr_send_time",
+    label="Daily report at a chosen time",
+    module="dpr",                       # it lives inside a module; off when the module is off
+    kind="choice", options=("19:00", "18:00", "20:00"), default="19:00",   # or kind="on_off"
+    asked_by="#a83836 Acme Builders, 2 Nov 2026",
+    held=False,                         # True: switching on needs an owner (held areas)
+)
 ```
 
-- **Default = today's behaviour**, so adding a preference changes nothing for any company until it is switched on.
-- **Stored in `organization_settings`** (the existing table, one row per company per key): no new table, no migration.
-  The registry is a thin layer over the settings catalogue that already validates keys and types (`settings.py`).
-- **Read in one place.** Backend code reads a preference through one call, `preference(org_id, KEY)`, which returns
-  the default when unset (one query per request, cached like the settings query today). The **business rule lives in
-  the API** (FIX_APPROACH: backend first), so the dashboard and v3 both get it.
-- **v3 sees the ones that matter to its words.** A preference that changes how Mesiri talks (order, detail, language
-  style) is listed in v3's facts only when it differs from the default (*"This company prefers: stock answers by
-  site"*), with an SOP rule to follow company preferences. Everything else is enforced in code.
-- **Who switches it.** `who_may_change` per preference: `company_admin` (dashboard *Company → Preferences*, generated
-  from the registry; and on WhatsApp through the same settings API for admins) or `mesiri_team` (control panel only).
-- **Tested both ways.** Every preference ships with a test of its default (nothing changed for others) and of its
-  switched-on behaviour; a test fails if a registry entry has no such pair.
-- **Kept small.** Each preference records which companies use it. The weekly digest lists preferences no company has
-  switched on for 60 days; those are removed. A preference switched on by most companies becomes the default (a
-  product decision, held for an owner).
+- **Off / old way by default.** Adding a feature changes nothing for any company until it is switched on.
+- **On / off, or a choice.** When two companies want opposite things (6 pm vs 8 pm) it is one feature with options,
+  not two features.
+- **Stored in `organization_settings`** next to `enabled_modules`: one `features` row per company
+  (`{"dpr_send_time": "18:00", "stock_by_site": true}`). No new table, no migration.
+- **Read in one place.** `feature(org_id, KEY)` returns the company's value or the default; the read is cached per
+  request like the module read. **The rule lives in the API** (FIX_APPROACH: backend first), so the dashboard and
+  WhatsApp both get it.
+- **A whole new route** (a new report, a new answer) is gated like a module: `require_feature("weekly_cement")`
+  next to `require_module(...)`. A company without it gets the same polite "not switched on" as a module that's off.
+
+### How v3 sees features
+
+v3 is "an API route plus an SOP rule", so a feature needs both parts to switch:
+
+- **Tools.** A route gated by `require_feature` is left out of the company's tool list when the feature is off, so
+  the model never offers it (today a switched-off module's routes stay in the list and answer 403; this fixes that
+  for modules too).
+- **SOP rules.** A rule that belongs to a feature is marked in `SOP.md` with `<!-- feature: key -->` and is included
+  only for companies that have it on.
+- **Facts.** Features that change how Mesiri *talks* (order, detail) are listed in the facts only when not default:
+  *"This company has on: stock answers by site."*
+
+### Tested both ways
+
+Every feature ships with two tests: switched off, behaviour is exactly as before (others unharmed); switched on, it
+does what was asked. A registry test fails if a feature has no such pair, and autobuild refuses a feature plan without
+it.
+
+## The control panel: Features
+
+One new page, plus a tab on each company.
+
+**Features page** (every feature, one row each):
+
+| Feature | Asked by | On for | Used (30 days) | Age | Actions |
+|---|---|---|---|---|---|
+| Daily report at a chosen time | Acme, 2 Nov | Acme, Paraclette | 41 | 3 w | *Turn on for… · On for all · Graduate · Retire* |
+
+- **Turn on for…**: pick companies. One tap, no build, written to the audit log.
+- **On for all**: every company, including new signups (the default flips). Still a switch, still reversible.
+- **Graduate**: it has been on for all for a while with no complaints; the bot removes the switch from the code (the
+  old way and its test go), leaving one path. This is the step that keeps the code clean.
+- **Retire**: unused; the bot removes the feature and its code.
+- **Held** features show "needs owner ok" and only a platform admin can switch them on.
+
+**Company tab**: that company's switches, with who turned each on and when.
+
+The page is also a **sales tool**: walking into a new contractor, the list of features other contractors asked for
+is the demo. A feature can be switched on for the demo company in one tap.
+
+## Offering it to others
+
+When a feature has been on for its first company for a week, the weekly digest lists it: *"Daily report at a chosen
+time: Acme uses it daily. Offer to others?"* The team can then:
+
+- switch it on for chosen companies, or
+- let Mesiri **offer it**: each company admin gets a WhatsApp message, *"New in Mesiri: send the daily report at a time
+  you choose. Want it? [Yes] [No thanks]"*. Yes switches it on (an ordinary feature switch, by the admin). The message
+  never names the company that asked.
+
+## From request to switch (the bot)
+
+The production watch already plans from the request, the conversation and the code. It changes in small ways:
+
+1. **Sort** into the five kinds above, with the reason. "Already possible" and "Not Mesiri" are answered at once, no
+   plan.
+2. **Same feature already exists?** Search the registry and the request log across companies. If another company asked
+   for the same thing and it was built, **no build: switch it on** for this company (an ordinary switch, logged) and
+   tell the person. This is the fastest reply there is, and it gets faster as the product grows.
+3. **New feature plan** names the feature key, its default, the company to switch on, and its two tests.
+4. **Code checks** (autobuild.js, like `holdReason` today):
+   - a *new feature* plan must add a registry entry and both tests; a plan that changes existing behaviour without a
+     switch is held;
+   - a *fix* that changes something another company relies on is held (it should have been a feature);
+   - *held* features build, but are left off and the owner is asked to switch them on;
+   - every kind and reason is stored on the request (`kind`, `feature`, `company`).
+5. **After deploy** the bot switches the feature on for the company that asked (through the same settings API, logged
+   as "the bot, for request #ref") and sends the usual "is this how you want it?" preview and "it works now".
 
 ## What the person hears
 
-The reply comes from Mesiri on WhatsApp, in their language, by outcome (new wording lines, five languages):
+New wording lines, five languages:
 
-- *Already possible:* "You can already do this: send *'today's labour PDF'*." + an example or a link.
-- *Product / preference:* as today: the reference, the preview (UX and features), "it works now".
-- *Preference:* "Switched on for your company. Others keep the old way."
-- *Needs a decision:* "Passed to the team; this changes things for every company, so the owners decide. I'll tell you."
-- *Not now:* "Mesiri doesn't do this; here's what it does instead: … I've noted it; if more companies ask, we'll
-  build it."
+- *New feature:* "Done: switched on for *your company*." (+ preview, "it works now")
+- *Already existed for others:* "Switched on for you; it's ready now."
+- *Already possible:* "You can already do this: send *'today's labour PDF'*."
+- *Held:* "Built. It changes attendance, so an owner switches it on; I'll tell you."
+- *Not Mesiri:* "Mesiri is for site work, so it can't do this. It can: …"
 
 ## What changes where
 
 | Part | Change |
 |---|---|
-| Watch prompt (`prod_watch.js`) | The sorting step and rubric; "already possible" and "not now" answers |
-| `propose_plan` (`tools.js`) | Required `category`, `changes_existing` (list), `companies` (from the log) |
-| `autobuild.js` | Code checks per category (above); preference plans must touch the registry |
-| Request log (listener store) | `category`, `reason`, `companies`; demand search across companies |
-| Requests page | Filter and counts by category; "asked by N companies" |
-| `preferences.py` (new) + settings catalogue | The registry, `preference()` reader, validation |
-| Dashboard | *Company → Preferences*, generated from the registry |
-| v3 (`whatsapp.py` facts, `SOP.md`) | Non-default preferences listed; one SOP rule |
-| Mesiri replies | "Already possible" / "not now" / "switched on for your company" lines |
-| Digest | Requests by category, top unbuilt demand, unused preferences |
+| `features.py` (new) | The registry, `feature()` reader, validation of stored values |
+| `settings.py` | A `features` setting (validated against the registry), platform-admin only to start |
+| `domains/shared/modules.py` | `require_feature` beside `require_module` (**shared component: owner's ok**) |
+| `agent_api/tools.py`, `whatsapp.py`, `SOP.md` | Per-company tool list (modules and features); feature-tagged SOP rules; non-default features in facts |
+| Control panel | Features page; company tab; turn on / on for all / graduate / retire |
+| `prod_watch.js`, `tools.js`, `autobuild.js` | The five kinds; reuse-before-build; plan fields; code checks; switch on after deploy |
+| Request log, Requests page | `kind`, `feature`; counts by kind |
+| Digest | New features to offer; unused features to retire; on-for-all features to graduate |
+| Wording | The lines above |
 
 ## Phases
 
-1. **Preferences, the mechanism** (no bot changes): registry, reader, settings validation, dashboard page, v3 facts,
-   the both-ways test rule. One real preference to prove it (the first that a company asks for).
-2. **Sorting in the bot**: the rubric, `category` on plans and requests, demand counting, "already possible" and "not
-   now" replies.
-3. **Code checks** in autobuild per category; Requests page and digest by category.
-4. **Pruning and promotion**: unused preferences, most-used preferences proposed as defaults.
+1. **The switch** (no bot change): registry, `feature()`, `require_feature`, the `features` setting, per-company v3
+   tool list, feature-tagged SOP rules, the both-ways test rule, the control panel page. Proven with the first real
+   feature a company asks for. Useful at once: the team can build a feature for one company by hand.
+2. **The bot builds features**: the five kinds, reuse-before-build, plan fields, code checks, switch on after deploy,
+   the replies.
+3. **Offering**: digest section and the WhatsApp "want it?" offer to company admins.
+4. **Keeping it clean**: graduate and retire, driven from the control panel and the digest.
 
-Each phase ships on its own; phase 1 is useful before the bot sorts anything (the team can add a preference by hand).
+## Decisions taken
 
-## Open decisions (Alan / Ilan)
+- Everything that is construction work gets built; a company's request is built **for that company** and switched
+  on for others from the control panel (the team, 2 Nov 2026).
 
-1. **Self-serve switches?** May a company admin change preferences themselves (dashboard and WhatsApp), or only the
-   Mesiri team on request? *Suggested: company admins, for preferences marked `company_admin`.*
-2. **Behaviour changes for everyone:** always held for an owner, or autobuilt when N companies asked and none has the
-   opposite preference? *Suggested: autobuild at 3 companies; held otherwise.*
-3. **"Not now" wording:** may Mesiri say "if more companies ask, we'll build it"? It is a soft promise.
-4. **Promotion:** a preference switched on by most companies becomes the default after an owner's ok, or by itself?
-   *Suggested: owner's ok (it changes things for the rest).*
-5. **Pricing:** may some preferences belong to a paid plan later? (Affects whether `who_may_change` needs a plan check.)
+## Still open (Alan / Ilan), none blocks phase 1
+
+1. **May company admins switch features themselves** (from an offer, or a dashboard page), or only the Mesiri team?
+   *Suggested: only the team at first; the WhatsApp offer (phase 3) lets admins say yes to what the team offers.*
+2. **Graduate when?** *Suggested: on for all for 4 weeks with no "Still wrong" or Cancel on it; the team taps
+   Graduate, the bot does the cleanup.*
+3. **Paid features later?** A feature can name a plan; the switch then also checks the plan. Not needed now.
