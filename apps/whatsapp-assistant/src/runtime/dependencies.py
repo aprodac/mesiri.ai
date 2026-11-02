@@ -134,6 +134,8 @@ class AppContainer:
     # SA-11: error alerts to the super admins on WhatsApp. Installed on the
     # root logger by the app and the worker (runtime/ops_alerts.py).
     ops_alerts: Any = None
+    #: TM-33: the WhatsApp sender itself (runtime/previews.py sends a preview to the person who asked).
+    whatsapp_sender: Any = None
     # WA-87: site WhatsApp groups (whatsapp_groups/router.py reads it).
     group_chat: Any = None
     # WA-118 step 2: read-only answers on a call (agent_api/call.py).
@@ -1133,6 +1135,7 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
         dpr_summary_writer=dpr_summary_writer,
         simulate_handler=simulate_handler,
         ops_alerts=ops_alerts,
+        whatsapp_sender=whatsapp_sender,  # TM-33
         group_chat=group_chat,
         call_answers=CallAnswers(
             provider=ai_resolver, database=material_db, redis=redis_client,

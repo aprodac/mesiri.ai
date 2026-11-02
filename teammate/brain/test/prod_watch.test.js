@@ -333,7 +333,7 @@ test("TM-18: the SQL reads every company, marks the test ones, and a skip list c
   const sql = watchSql(T0, 400, DEFAULT_SKIP);
   assert.doesNotMatch(sql, /NOT ILIKE/); // the test companies' testers are the users today
   assert.match(sql, /ILIKE ANY \(ARRAY\['Mesiri Test Builders', '%paraclet%'\]\) AS is_test/);
-  assert.match(sql, /jt\.stage IN \('agent_v2_live', 'agent_api_turn', 'release_feedback'\) AND c->>'tool' = 'tell_the_team'\) AS feedback/);
+  assert.match(sql, /jt\.stage IN \('agent_v2_live', 'agent_api_turn', 'release_feedback', 'preview_feedback'\) AND c->>'tool' = 'tell_the_team'\) AS feedback/);
   // Production's journey_traces.stage_payload is jsonb: json_typeof(jsonb) failed every read on 1 Nov (HTTP 400).
   assert.match(sql, /jsonb_array_elements\(CASE WHEN jsonb_typeof\(jt\.stage_payload::jsonb->'calls'\)/);
   assert.doesNotMatch(sql, /\bjson_typeof|\bjson_array_elements|'\[\]'::json\b/);

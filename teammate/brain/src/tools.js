@@ -14,7 +14,7 @@
 
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-import { chatHtml } from "./prod_watch.js";
+import { chatHtml, requestRef } from "./prod_watch.js";
 import { fixedCardHtml, splitCases } from "./cards.js";
 
 const MAX_TEXT = 3800;
@@ -116,7 +116,10 @@ export function whoAsked(ctx, askedFor = [], plans = null) {
   return out;
 }
 
-export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait = sleep, partner = null, workStatus = null, tellJob = null }) {
+/** TM-33: feedback kinds that get an "Is this how you want it?" preview (a plain bug does not). */
+export const PREVIEW_KINDS = /^(bad_ux|missing_feature|idea)\b/;
+
+export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait = sleep, partner = null, workStatus = null, tellJob = null, sendPreview = null }) {
   // Group-side calls use the group's project; ctx.project is the repo this conversation works in.
   const chatProject = ctx.chat_project || ctx.project;
   const post = (body) => listener.send({ chat: ctx.reply_chat, project: chatProject, ...body });
@@ -224,6 +227,35 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
               return image(await render.html(chatHtml(conv), 430), caption);
             },
           ),
+          ...(sendPreview
+            ? [
+                tool(
+                  "send_preview",
+                  "TM-33: for a bad-UX, missing-feature or idea request ONLY (never a plain bug), send the person who asked an \"Is this how you want it?\" picture of the reply Mesiri will give after the fix, with Confirm / Change it buttons. Draw it as a phone-width WhatsApp chat (390 px, inline CSS) with a visible PREVIEW label; show exactly what the plan builds, nothing more. Don't wait for their answer: the plan builds anyway; Change it comes back as feedback to add to the running build. At most one per request; it goes only to companies on v3, inside WhatsApp's 24-hour window, and only when the owners switched previews on.",
+                  {
+                    conversation: z.number().int().min(1).describe("The conversation number from the watch message"),
+                    html: z.string().min(1).max(200_000).describe("Self-contained HTML of the proposed WhatsApp reply (390 px wide), with a PREVIEW label"),
+                    caption: z.string().max(280).describe("One line under the question in their language: what changes, e.g. 'Two buttons instead of five'"),
+                  },
+                  async ({ conversation, html, caption }) => {
+                    const conv = ctx.watch_conversations[conversation - 1];
+                    if (!conv) return fail(`There is no conversation ${conversation}.`);
+                    const request = [...conv.messages].reverse().find((m) => PREVIEW_KINDS.test(String(m.feedback || "")));
+                    if (!request) return fail("This conversation has no bad-UX, missing-feature or idea request: no preview for a plain bug.");
+                    if (!render) return fail("Pictures aren't available on this server (no browser installed).");
+                    const png = await render.html(html, 390);
+                    let result;
+                    try {
+                      result = await sendPreview({ correlation_id: request.correlation_id, image_base64: png.toString("base64"), caption, request_ref: requestRef(request.correlation_id) });
+                    } catch (e) {
+                      return fail(`Mesiri didn't send it: ${String(e.message).slice(0, 200)}. Say so in the report; the plan still builds.`);
+                    }
+                    await image(png, `👀 Preview sent to ${conv.person || "the person who asked"} ${requestRef(request.correlation_id)}: ${caption}`.slice(0, 1000));
+                    return { content: [{ type: "text", text: result?.sent ? "Sent to the person who asked, and posted here." : "Mesiri answered but WhatsApp did not take it; say so in the report." }] };
+                  },
+                ),
+              ]
+            : []),
         ]
       : []),
     tool(
@@ -482,4 +514,4 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
   return createSdkMcpServer({ name: "whatsapp", version: "1.0.0", tools });
 }
 
-export const BRAIN_TOOL_NAMES = ["verification_result", "post_fixed_card", "post_message", "post_image", "preview_html", "post_watch_chat", "screenshot_url", "view_media", "translate_message", "propose_plan", "test_assistant", "tell_ilan_usman", "needs_attention", "cycle_report", "status_of_work", "tell_job"].map((t) => `mcp__whatsapp__${t}`);
+export const BRAIN_TOOL_NAMES = ["verification_result", "post_fixed_card", "send_preview", "post_message", "post_image", "preview_html", "post_watch_chat", "screenshot_url", "view_media", "translate_message", "propose_plan", "test_assistant", "tell_ilan_usman", "needs_attention", "cycle_report", "status_of_work", "tell_job"].map((t) => `mcp__whatsapp__${t}`);

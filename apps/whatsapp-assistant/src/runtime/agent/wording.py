@@ -377,6 +377,33 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "धन्यवाद 👍",
         "hinglish": "Thanks 👍",
     },
+    "preview.ask": {
+        "english": "👀 *Preview* of the change you asked for. Is this how you want it? We're already building it.",
+        "manglish": "👀 Ningal chodicha maattathinte *preview*. Ingane aano venda? Njangal ithu undaakki thudangi.",
+        "malayalam": "👀 നിങ്ങൾ ചോദിച്ച മാറ്റത്തിന്റെ *പ്രിവ്യൂ*. ഇങ്ങനെയാണോ വേണ്ടത്? ഞങ്ങൾ ഇത് ഉണ്ടാക്കി തുടങ്ങി.",
+        "hindi": "👀 आपने जो बदलाव माँगा, उसका *प्रीव्यू*। क्या आपको ऐसा ही चाहिए? हम इसे बना रहे हैं।",
+        "hinglish": "👀 Aapne jo badlav maanga, uska *preview*. Kya aapko aisa hi chahiye? Hum ise bana rahe hain.",
+    },
+    "preview.confirm": {
+        "english": "Confirm ✅", "manglish": "Sheri ✅", "malayalam": "ശരി ✅", "hindi": "ठीक है ✅", "hinglish": "Theek hai ✅",
+    },
+    "preview.change": {
+        "english": "Change it ✏️", "manglish": "Maattanam ✏️", "malayalam": "മാറ്റണം ✏️", "hindi": "बदलना है ✏️", "hinglish": "Badalna hai ✏️",
+    },
+    "preview.confirmed": {
+        "english": "Thanks 👍 We'll finish it like that and message you here when it's live.",
+        "manglish": "Thanks 👍 Ingane thanne theerkkaam, live aakumbol ivide ariyikkaam.",
+        "malayalam": "നന്ദി 👍 ഇങ്ങനെ തന്നെ തീർക്കാം, ലൈവ് ആകുമ്പോൾ ഇവിടെ അറിയിക്കാം.",
+        "hindi": "धन्यवाद 👍 हम इसे ऐसे ही पूरा करेंगे और लाइव होने पर यहीं बताएँगे।",
+        "hinglish": "Thanks 👍 Hum ise aise hi poora karenge aur live hone par yahin batayenge.",
+    },
+    "preview.what_change": {
+        "english": "Sure. What should be different? Send it as a message or a voice note and I'll pass it to the team building it.",
+        "manglish": "Sheri. Enthaanu maattendathu? Message aayo voice note aayo ayakkoo, njan team-nu kodukkaam.",
+        "malayalam": "ശരി. എന്താണ് മാറ്റേണ്ടത്? മെസ്സേജ് ആയോ വോയ്സ് നോട്ട് ആയോ അയക്കൂ, ഞാൻ ടീമിന് കൊടുക്കാം.",
+        "hindi": "ठीक है। क्या अलग होना चाहिए? मैसेज या वॉइस नोट भेजिए, मैं टीम को दे दूँगा।",
+        "hinglish": "Theek hai. Kya alag hona chahiye? Message ya voice note bhejiye, main team ko de dunga.",
+    },
     "release.works": {
         "english": "Thank you 👍 Glad it works.",
         "manglish": "Thanks 👍 Work aakunnundallo, santhosham.",

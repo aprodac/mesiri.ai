@@ -328,6 +328,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Database admin router not loaded: %s", exc)
 
+    # TM-33: the team bot's "Is this how you want it?" preview; off until MESIRI_PREVIEWS=on.
+    try:
+        from runtime.previews import router as previews_router
+
+        app.include_router(previews_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Previews router not loaded: %s", exc)
+
     # Claude's read-only control-plane API (SA-16); off until MESIRI_CLAUDE_OPS_TOKEN is set.
     try:
         from mesiri.domains.admin.claude_ops_router import router as claude_ops_router

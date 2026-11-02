@@ -669,6 +669,37 @@ def build_message_handlers(
     async def _run_journey_steps(message, raw_payload, retry_of_id, timer) -> None:  # type: ignore[no-untyped-def]
         wa_id = message.sender.wa_id
 
+        async def _preview_tap(message, ctx, wa_id) -> bool:  # type: ignore[no-untyped-def]
+            from runtime.agent.wording import say, usual_from
+            from runtime.previews import FEEDBACK_STAGE, parse_tap, tap_trace
+
+            tapped = parse_tap(str((message.metadata or {}).get("interactive_reply_id") or ""))
+            if tapped is None:
+                return False
+            confirmed, request_id = tapped
+            language = "english"
+            if user_language_store is not None:
+                try:
+                    language = usual_from(*await user_language_store.get_profile(user_id=ctx.user_id)) or "english"
+                except Exception:  # noqa: BLE001 -- English wording
+                    language = "english"
+            reply = say("preview.confirmed" if confirmed else "preview.what_change", language)
+            await sender.send_text(wa_id, reply)
+            try:
+                await trace_logger.log_stage(
+                    correlation_id=message.correlation_id, stage=FEEDBACK_STAGE,
+                    stage_payload=tap_trace(confirmed, request_id), duration_ms=0, succeeded=True,
+                )
+            except Exception:  # noqa: BLE001 -- the reply already went
+                _log.warning("preview_feedback.trace_failed correlation_id=%s", message.correlation_id, exc_info=True)
+            await message_logger.log_reply(correlation_id=message.correlation_id, reply=reply)
+            await message_logger.mark_completed(correlation_id=message.correlation_id)
+            if not confirmed:
+                from runtime.team_notify import poke_watch_soon
+
+                poke_watch_soon(message.correlation_id)  # TM-28: the change reaches the running build now
+            return True
+
         async def _release_verdict(message, ctx, wa_id) -> bool:  # type: ignore[no-untyped-def]
             from runtime.agent.wording import say, usual_from
             from runtime.release_notes import FEEDBACK_STAGE, parse_verdict, verdict_trace
@@ -1581,6 +1612,9 @@ def build_message_handlers(
         # company's mode: thanked or asked what is still wrong, and traced so the team bot's
         # production watch re-plans a "Still wrong" like any other request. No AI involved.
         if await _release_verdict(message, ctx, wa_id):
+            return
+        # TM-33: Confirm / Change it under an "Is this how you want it?" preview, the same way.
+        if await _preview_tap(message, ctx, wa_id):
             return
 
         # WA-119 / WA-124: a company on the API agent: its text, voice, photos, documents and its

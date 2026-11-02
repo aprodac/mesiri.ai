@@ -695,3 +695,32 @@ test("TM-29: an autobuild plan's payload starts from the found cause and the per
   assert.doesNotMatch(text, /bad'id/);
   assert.match(fastPathSection({ id: 7 }), /a scripted test that fails without the fix/);
 });
+
+test("TM-33: send_preview goes to the person who asked a UX / feature request, never for a plain bug", async () => {
+  const sent = [];
+  const previews = [];
+  const listener = { send: async (b) => sent.push(b) };
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+  const render = { html: async (html, width) => (assert.equal(width, 390), png) };
+  const conv = (feedback) => ({ person: "Ravi", messages: [{ correlation_id: "cor_0123456789abcdef0123456789abcdef", feedback }] });
+  const ctx = { project: "mesiri", chat: "T@g.us", reply_chat: "T@g.us", sender: "the production watch",
+    watch_conversations: [conv("bad_ux: too many buttons under the stock answer"), conv("wrong_reply: cancelled the ready list: wrong site")] };
+  const make = (sendPreview) => {
+    const server = brainTools({ ctx, listener, render, plans: { save: (p) => p }, screenshotHosts: [], sendPreview });
+    const tools = Object.fromEntries(Object.entries(server.instance._registeredTools || {}));
+    return (name, args) => (tools[name].callback || tools[name].handler)(args, {});
+  };
+  const call = make(async (body) => (previews.push(body), { sent: true }));
+  const ok = await call("send_preview", { conversation: 1, html: "<b>PREVIEW</b>", caption: "Two buttons instead of five" });
+  assert.match(ok.content[0].text, /Sent to the person who asked/);
+  assert.deepEqual(previews[0], { correlation_id: "cor_0123456789abcdef0123456789abcdef", image_base64: png.toString("base64"), caption: "Two buttons instead of five", request_ref: "#012345" });
+  assert.match(sent.at(-1).caption, /👀 Preview sent to Ravi #012345/);
+  const bug = await call("send_preview", { conversation: 2, html: "<b>x</b>", caption: "x" });
+  assert.equal(bug.isError, true); // a plain bug gets no preview
+  const off = await make(async () => { throw new Error("previews are switched off on Mesiri (MESIRI_PREVIEWS)"); })("send_preview", { conversation: 1, html: "x", caption: "x" });
+  assert.match(off.content[0].text, /switched off/);
+  assert.equal(off.isError, true);
+  // Without a way to send (no ops source or token), the tool isn't offered at all.
+  const none = brainTools({ ctx, listener, render, plans: { save: (p) => p }, screenshotHosts: [] });
+  assert.ok(!Object.keys(none.instance._registeredTools || {}).includes("send_preview"));
+});

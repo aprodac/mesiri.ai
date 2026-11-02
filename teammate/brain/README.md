@@ -163,6 +163,20 @@ it sent, what Mesiri answered), matched by the exact text sent (`(voice)` / `(ph
 tried shows in red as "not tried: not proven"; no related cases prints "this is a patch". **Still not** lists what
 it deliberately leaves out.
 
+### "Is this how you want it?" previews (TM-33, 2 Nov; OFF until an owner switches it on)
+
+For a bad-UX, missing-feature or idea request (never a plain bug), after recording the plan the watch's turn draws the
+reply Mesiri will give after the fix (phone width, labelled PREVIEW) and calls `send_preview`. Mesiri sends it to the
+person who asked from its own number, with **Confirm** / **Change it**, and the same picture is posted in the team
+group. The build never waits: Confirm is recorded; Change it comes back as feedback (`preview_feedback`, read by the
+watch) with their next message, and is added to the running plan.
+
+Mesiri's side (`apps/whatsapp-assistant/src/runtime/previews.py`, `POST /teammate-api/preview`) checks everything,
+whatever the bot asks: **off** unless `MESIRI_PREVIEWS=on` on the server; the bot's token only
+(`MESIRI_TEAMMATE_API_TOKEN`); the recipient read from the request's own message (never given by the bot); companies
+on v3 only; inside the 24-hour window; once per request; a PNG of at most 1 MB. Switching it on is an owner's call
+(CLAUDE.md: security-sensitive): add `MESIRI_PREVIEWS=on` to the server's environment and restart the app.
+
 ### Who asked, live check, used again (TM-19)
 
 - `propose_plan` takes `asked_for` (the watch's correlation ids): the request-log item records **who asked** (name, role,

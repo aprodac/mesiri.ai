@@ -69,7 +69,7 @@ export function watchSql(since, limit = 400, skip = [], newest = false, request 
                  || coalesce(' / why: ' || (c->'args'->>'why'), ''), ' | '), 400)
           FROM journey_traces jt,
                jsonb_array_elements(CASE WHEN jsonb_typeof(jt.stage_payload::jsonb->'calls') = 'array' THEN jt.stage_payload::jsonb->'calls' ELSE '[]'::jsonb END) c
-         WHERE jt.correlation_id = m.correlation_id AND jt.stage IN ('agent_v2_live', 'agent_api_turn', 'release_feedback') AND c->>'tool' = 'tell_the_team') AS feedback,
+         WHERE jt.correlation_id = m.correlation_id AND jt.stage IN ('agent_v2_live', 'agent_api_turn', 'release_feedback', 'preview_feedback') AND c->>'tool' = 'tell_the_team') AS feedback,
        (SELECT left(string_agg(DISTINCT c->>'tool', ', '), 200)
           FROM journey_traces jt,
                jsonb_array_elements(CASE WHEN jsonb_typeof(jt.stage_payload::jsonb->'calls') = 'array' THEN jt.stage_payload::jsonb->'calls' ELSE '[]'::jsonb END) c
@@ -319,6 +319,10 @@ export function watchPrompt(project, convs, { minutes, autobuild = false }) {
     "   An AI_UNAVAILABLE / \"AI is paused\" reply from a used-up AI budget (WA-143) is not a code bug: say so in the",
     "   report (the owner raises the cap), plan nothing for it. A `still not working after the release note` feedback",
     "   (the person tapped \"Still wrong ❌\", TM-21) re-opens that note's plan: find it, fix what is still wrong.",
+    "   For a bad-UX, missing-feature or idea request (never a plain bug): after propose_plan, draw the reply Mesiri will",
+    "   give after the fix and send_preview it (TM-33): the person sees \"Is this how you want it?\" with Confirm / Change",
+    "   it. Don't wait: the plan builds. A \"preview ... is not what they want\" feedback (they tapped Change it) plus their",
+    "   next message is added to that running plan with tell_job.",
     "4. Every plan ends with this step, so the people who hit it hear it works: add an entry to",
     "   apps/whatsapp-assistant/release_notes.json (see src/runtime/release_notes.py) with id, date = the deploy day,",
     "   for = the correlation ids of their messages (shown below in full), and message = one or two lines in THEIR",

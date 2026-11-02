@@ -99,6 +99,19 @@ function ensureRepo({ repo, branch, cwd, ghToken }) {
   git(cwd, "config", "core.hooksPath", hooksDir);
 }
 
+/** TM-33: ask Mesiri to send a preview to the person who asked (Mesiri checks every guard; errors come back). */
+async function sendPreview(baseUrl, body) {
+  const res = await fetch(`${baseUrl.replace(/\/$/, "")}/teammate-api/preview`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(res.status === 404 ? "previews are switched off on Mesiri (MESIRI_PREVIEWS)" : `HTTP ${res.status}: ${data.detail || ""}`);
+  return data;
+}
+
 /**
  * TM-31: before a build here, the project's build worktree follows GitHub and has its Python packages (uv). Throws when
  * it can't be made ready; the brain then builds in the cloud.
@@ -256,8 +269,11 @@ const brain = new Brain({
   prepareBuild, // TM-31: "@bot build here"
   tools: (ctx, plans) => {
     const p = brain.partnerFor(ctx.chat, ctx.chat_project || ctx.project); // on this group's account, at the time of the turn
+    const ops = opsByProject[ctx.chat_project || ctx.project];
     return brainTools({
       ctx, listener, render, plans, screenshotHosts, partner: p ? (text) => fireRoutine(p, text) : null,
+      // TM-33: the preview goes through Mesiri's own number (its /teammate-api/preview, off unless MESIRI_PREVIEWS=on).
+      sendPreview: ops && token ? (body) => sendPreview(ops.url, body) : null,
       workStatus: async (id) => {
         const plan = brain.planStore.plans[id];
         return plan ? formatWorkStatus(await brain.workStatus(plan), Date.now()) : `No plan [${id}].`;
