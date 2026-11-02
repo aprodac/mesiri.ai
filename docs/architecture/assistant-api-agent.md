@@ -117,6 +117,15 @@ account -> new vendor), "1 day memory always available, fast", "the past 2 days 
 - **Wording.** SOP: "ready", never "saved / recorded / njan record cheythu / daal diya" before
   Save; reply in their language and their script (Manglish stays in Latin letters).
 
+## Feedback reaches the team bot (WA-126)
+
+"mesiri bad ux", "mesiri fix this", "this is confusing", a wrong reply, or something Mesiri cannot do
+yet: v3 calls `tell_the_team`, the same tool and reply wording as v2
+(`agent_v2/skills/general/tools.py`, one definition). It writes nothing. The turn's trace
+(`agent_api_turn`, calls with `args`) is read by the team bot's production watch, which now reads
+v3's stage as well as v2's (`teammate/brain/src/prod_watch.js`). From there it is TM-18's Autobuild:
+plan, build, push, and the person is told in their own chat when it is live.
+
 ## Safety
 
 - **Nothing is written without the person's confirmation.** A write tool only records the entry

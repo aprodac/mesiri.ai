@@ -12,7 +12,7 @@
 // TM-18 (Ilan, 1 Nov: "we are all testers; any company; no @bot ok"): every company is read, the test companies too
 // (their testers ARE the users today). The paid AI screen still skips the test companies (TM-17's saving); the free
 // signals cover them: the code flags, and Mesiri's own `tell_the_team` call (a missing feature, "bad UX" and its
-// reason), read from the turn's agent_v2_live trace in the same SELECT. Plans then start building by themselves
+// reason), read from the turn's agent_v2_live (v2) or agent_api_turn (v3, WA-126) trace in the same SELECT. Plans then start building by themselves
 // (autobuild.js) and the people who hit it are told when it is live (release notes).
 //
 // The ops token stays in this process: Claude gets the flagged conversations in its prompt, never the token, so it
@@ -67,7 +67,7 @@ export function watchSql(since, limit = 400, skip = [], newest = false) {
                  || coalesce(' / why: ' || (c->'args'->>'why'), ''), ' | '), 400)
           FROM journey_traces jt,
                jsonb_array_elements(CASE WHEN jsonb_typeof(jt.stage_payload::jsonb->'calls') = 'array' THEN jt.stage_payload::jsonb->'calls' ELSE '[]'::jsonb END) c
-         WHERE jt.correlation_id = m.correlation_id AND jt.stage = 'agent_v2_live' AND c->>'tool' = 'tell_the_team') AS feedback
+         WHERE jt.correlation_id = m.correlation_id AND jt.stage IN ('agent_v2_live', 'agent_api_turn') AND c->>'tool' = 'tell_the_team') AS feedback
 FROM inbound_messages m LEFT JOIN organizations o ON o.id = m.organization_id
 LEFT JOIN LATERAL (SELECT u.full_name, u.role FROM users u WHERE u.organization_id = m.organization_id
   AND regexp_replace(u.whatsapp_number, '\\D', '', 'g') = regexp_replace(m.sender_wa_id, '\\D', '', 'g') LIMIT 1) su ON true

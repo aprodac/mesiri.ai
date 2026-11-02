@@ -157,7 +157,9 @@ class ApiWhatsApp:
         finally:
             await client.close()
         await self._trace_turn(message, {
-            "text": text, "calls": turn.calls, "stop_reason": turn.stop_reason,
+            # `args` as v2's trace has it: the team bot's watch reads tell_the_team from it (TM-18).
+            "text": text, "calls": [{**c, "args": c.get("arguments")} for c in turn.calls],
+            "stop_reason": turn.stop_reason,
             "saved": [{"summary": r.pending.summary, "status": r.status} for r in turn.saved],
             "pending": [e.summary for e in turn.pending], "asked": turn.question,
         }, started)

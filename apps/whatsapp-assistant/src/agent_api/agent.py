@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from agent_v2.skills.general.tools import TELL_THE_TEAM, feedback_instruction
+from agent_v2.skills.general.tools import specs as feedback_specs
 from mesiri_ai.models import ChatMessage, ToolOutcome, ToolSpec
 
 from .client import ApiClient, new_idempotency_key
@@ -154,6 +156,10 @@ class ApiAgent:
             return [n for n in (int(x) for x in numbers) if 1 <= n <= len(waiting) and waiting[n - 1] is not None]
 
         async def handler(name: str, arguments: dict) -> ToolOutcome:
+            if name == TELL_THE_TEAM:
+                # TM-18 / WA-126: the same feedback tool as v2. It writes nothing: the call is in the
+                # turn's trace, which the team bot's production watch reads, builds, and reports back.
+                return ToolOutcome(content={"status": feedback_instruction(arguments)})
             if name == ASK:
                 asked["question"] = str(arguments.get("question") or "").strip()
                 asked["options"] = [str(o).strip()[:20] for o in (arguments.get("options") or []) if str(o).strip()][:3]
@@ -207,7 +213,8 @@ class ApiAgent:
                 content = content[:READ_LIMIT] + " ...(cut)"
             return ToolOutcome(content={"status": response.status, "result": content})
 
-        specs = [t.spec for t in self._tools.values()] + [_ASK_TOOL] + (list(_READY_TOOLS) if waiting else [])
+        specs = [t.spec for t in self._tools.values()] + [_ASK_TOOL, *feedback_specs()] + (
+            list(_READY_TOOLS) if waiting else [])
         system = self.system_prompt(sender_name=sender_name, today=today, ready=list(ready or []), facts=facts)
         if language in LANGUAGE_LINES:
             # Decided by the code from their words (the model mixed scripts on 1 Nov).
