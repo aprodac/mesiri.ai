@@ -116,7 +116,9 @@ _CHANGE = {
     "type": "object", "required": ["number", "changes", "confirm_line"],
     "properties": {
         "number": {"type": "integer", "description": "The entry number from the ready list."},
-        "changes": {"type": "object", "description": "Only the fields that change, with their new values (field names as in the entry)."},
+        "changes": {"type": "array", "description": "Only the fields that change (field names as in the entry).",
+                    "items": {"type": "object", "required": ["field", "value"],
+                              "properties": {"field": {"type": "string"}, "value": {"type": "string"}}}},
         "confirm_line": {"type": "string", "description": "The entry's new one-line summary in their words."},
     },
 }
@@ -195,7 +197,9 @@ class ApiAgent:
                 return {"error": f"there is no waiting entry {arguments.get('number')}"}
             entry = waiting[n - 1]
             tool = self._tools.get(entry.tool)
-            changes = dict(arguments.get("changes") or {})
+            raw = arguments.get("changes") or []
+            pairs = raw.items() if isinstance(raw, dict) else ((c.get("field"), c.get("value")) for c in raw if isinstance(c, dict))
+            changes = {str(k): _typed(entry.body.get(str(k)), v) for k, v in pairs if k}
             unknown = [k for k in changes if tool is None or k not in tool.body_fields]
             if unknown or not changes:
                 return {"error": f"cannot change {', '.join(unknown) or 'nothing'}; fields: {', '.join(tool.body_fields) if tool else '-'}"}
@@ -309,6 +313,13 @@ class ApiAgent:
             if not nothing_done() or is_budget_error(exc):
                 raise
             result = await ask_model(messages)
+        if not result.calls and SAVE_WORD in (result.text or "").casefold() and nothing_done():
+            # 2 Nov (Ilan, 23:10, three times): "ready, tap Save" with no tool called, so nothing was prepared.
+            # The code checks: one more try, told plainly that nothing is in the list.
+            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), ChatMessage(
+                role="user", text="(You called no tool, so nothing is in the list: nothing can be saved. Do what my "
+                                  "message asks now with the tools, or say plainly what you need.)")])
+            result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
         if not (result.text or "").strip() and not new and not asked and not saved and not acted:
             # It looked something up and said nothing ("OK."): ask once for the answer in words.
             again = await ask_model([*messages, ChatMessage(role="model", text="(looked it up)"),
@@ -324,6 +335,20 @@ class ApiAgent:
             reply = "\n".join([reply, *missing]).strip()
         return ApiTurn(reply=reply, pending=still + new, saved=saved, calls=calls,
                        stop_reason=result.stop_reason, question=asked.get("question", ""), options=options)
+
+
+def _typed(old: Any, value: Any) -> Any:
+    """A changed value as the field had it (a quantity stays a number; the tool's values come as text)."""
+    if isinstance(old, bool) or not isinstance(value, str):
+        return value
+    try:
+        if isinstance(old, int):
+            return int(value) if value.strip().lstrip("-").isdigit() else float(value)
+        if isinstance(old, float):
+            return float(value)
+    except ValueError:
+        return value
+    return value
 
 
 def _takes(provider: Any, name: str) -> bool:
@@ -369,6 +394,8 @@ async def settle_unit(client: ApiClient, body: dict[str, Any]) -> str:
 
 
 UNIT_UNSETTLED = "unit_id is not a valid active unit"
+#: The name of the Save button, as every reply about a ready list says it (any language).
+SAVE_WORD = "save"
 
 
 async def unit_from_summary(client: ApiClient, entry: PendingWrite) -> str:

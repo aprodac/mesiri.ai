@@ -9,6 +9,7 @@ the card path uses (``runtime.unit_words``), so there is one resolver, not a sec
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any
 
@@ -73,10 +74,25 @@ _UNIT = {
 }
 
 
+#: 2 Nov (Ilan, Paraclette: "10 TMT steel bars used" refused again and again): the material is counted in another
+#: unit in the stock (TMT in kg), so no unit word they send in the old way can save it. Say which unit it needs.
+_STOCK_UNIT = {
+    "english": "{material} is counted in {unit} in your stock. How many {unit} was it? Send the line with {unit}.",
+    "manglish": "{material} stock-il {unit} aayittaanu ezhuthunnathu. Ethra {unit} aayirunnu? {unit} vechu line ayakkoo.",
+    "malayalam": "{material} സ്റ്റോക്കിൽ {unit} ആയിട്ടാണ് എഴുതുന്നത്. എത്ര {unit} ആയിരുന്നു? {unit} വെച്ച് വരി അയക്കൂ.",
+    "hinglish": "{material} stock mein {unit} mein gina jata hai. Kitna {unit} tha? {unit} ke saath line bhejiye.",
+    "hindi": "{material} स्टॉक में {unit} में गिना जाता है। कितना {unit} था? {unit} के साथ लाइन भेजिए।",
+}
+_STOCK_UNIT_REASON = re.compile(r"does not match (.+?)'s Stock Unit \(expected ([^)]+)\)", re.IGNORECASE)
+
+
 def plain_refusal(reason: str, language: str | None) -> str:
     """The API's refusal as something a site person can act on; never the raw validation text."""
     lang = language if language in _PLAIN else "english"
     low = reason.casefold()
+    stock = _STOCK_UNIT_REASON.search(reason)
+    if stock:
+        return _STOCK_UNIT[lang].format(material=stock.group(1).strip(), unit=stock.group(2).strip())
     if "unit" in low and ("valid" in low or "match" in low or "stock unit" in low):
         return _UNIT[lang]
     if reason and not any(t in low for t in ("_id", "valid", "uuid", "field", "422", "must be")):

@@ -30,7 +30,7 @@ async def test_a_correction_changes_the_waiting_entry_in_place() -> None:
     app = stand_in_api(seen)
     ready = await _two_waiting(app)
     model = FakeToolCallingProvider([
-        [(CHANGE_READY, {"number": 1, "changes": {"quantity": 40}, "confirm_line": "40 bags cement, Green Villa"})],
+        [(CHANGE_READY, {"number": 1, "changes": [{"field": "quantity", "value": "40"}], "confirm_line": "40 bags cement, Green Villa"})],
         "Changed to 40 bags.",
     ])
     turn = await _run(model, ready, app)
@@ -46,7 +46,7 @@ async def test_sibling_a_new_unit_is_settled_like_a_new_entry() -> None:
     app = stand_in_api([])
     ready = await _two_waiting(app)
     model = FakeToolCallingProvider([
-        [(CHANGE_READY, {"number": 2, "changes": {"unit_id": "bars"}, "confirm_line": "50 TMT bars (nos), Green Villa"})],
+        [(CHANGE_READY, {"number": 2, "changes": [{"field": "unit_id", "value": "bars"}], "confirm_line": "50 TMT bars (nos), Green Villa"})],
         "Changed.",
     ])
     turn = await _run(model, ready, app, "unit is nos")
@@ -57,8 +57,8 @@ async def test_guard_an_unknown_field_or_entry_changes_nothing() -> None:
     app = stand_in_api([])
     ready = await _two_waiting(app)
     model = FakeToolCallingProvider([
-        [(CHANGE_READY, {"number": 1, "changes": {"colour": "red"}, "confirm_line": "x"}),
-         (CHANGE_READY, {"number": 9, "changes": {"quantity": 1}, "confirm_line": "y"})],
+        [(CHANGE_READY, {"number": 1, "changes": [{"field": "colour", "value": "red"}], "confirm_line": "x"}),
+         (CHANGE_READY, {"number": 9, "changes": [{"field": "quantity", "value": "1"}], "confirm_line": "y"})],
         "Sorry.",
     ])
     turn = await _run(model, ready, app)
@@ -83,3 +83,62 @@ def test_the_drop_tool_is_for_cancelling_only() -> None:
     specs = {s.name: s.description for s in _READY_TOOLS}
     assert "only when the person cancels" in specs["drop_ready_entries"]
     assert "never drop it to correct it" in specs[CHANGE_READY]
+
+
+# 2 Nov 23:10 (Ilan): the loop. TMT is counted in kg in Paraclette's stock, so "10 TMT bars" in nos was refused on
+# every Save with "not sure which unit", and Mesiri said "ready, tap Save" three times without calling any tool.
+
+
+def test_a_stock_unit_refusal_says_which_unit_the_stock_needs() -> None:
+    from agent_api.units import plain_refusal
+
+    reason = "unit_id does not match TMT Steel's Stock Unit (expected kg); no unit conversion is supported"
+    assert plain_refusal(reason, "english") == ("TMT Steel is counted in kg in your stock. How many kg was it? "
+                                                "Send the line with kg.")
+    assert "kg" in plain_refusal(reason, "malayalam") and "TMT Steel" in plain_refusal(reason, "manglish")
+    # guard: a unit that is not a unit at all keeps the old answer
+    assert "which unit" in plain_refusal("unit_id is not a valid active unit", "english")
+
+
+class _Turns:
+    """One fake model per call (the fake replays its whole script on every call)."""
+
+    def __init__(self, *models: FakeToolCallingProvider) -> None:
+        self._models, self.calls, self.last_messages = list(models), 0, []
+
+    async def run_tools(self, system, messages, tools, handler, **kw):  # noqa: ANN001, ANN003, ANN201
+        model = self._models[min(self.calls, len(self._models) - 1)]
+        self.calls += 1
+        self.last_messages = list(messages)
+        return await model.run_tools(system, messages, tools, handler, **kw)
+
+
+async def test_saying_save_without_preparing_anything_gets_one_more_try() -> None:
+    app = stand_in_api([])
+    model = _Turns(FakeToolCallingProvider(["Rana Mart project is ready, tap Save."]),  # claims it, calls nothing
+                   FakeToolCallingProvider([[("list_projects", {})], "Done looking: tell me the project details."]))
+    client = ApiClient(ACTOR, app=app)
+    try:
+        turn = await ApiAgent(model, stand_in_tools(app)).run(client, "Rana Mart ennu project undaakku")
+    finally:
+        await client.close()
+    assert model.calls == 2 and "You called no tool" in model.last_messages[-1].text
+    assert [c["tool"] for c in turn.calls] == ["list_projects"]
+
+
+async def test_guard_a_plain_answer_is_not_asked_again() -> None:
+    app = stand_in_api([])
+    model = FakeToolCallingProvider(["Hello Ilan."])
+    client = ApiClient(ACTOR, app=app)
+    try:
+        await ApiAgent(model, stand_in_tools(app)).run(client, "hi")
+    finally:
+        await client.close()
+    assert model.calls == 1
+
+
+def test_a_changed_value_keeps_its_type() -> None:
+    from agent_api.agent import _typed
+
+    assert _typed(50, "40") == 40 and _typed(2.5, "3") == 3.0 and _typed(50, "40.5") == 40.5
+    assert _typed("Maatt", "Rana Mart") == "Rana Mart" and _typed(None, "x") == "x" and _typed(50, "forty") == "forty"
