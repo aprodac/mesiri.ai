@@ -342,7 +342,16 @@ export class Brain {
     const project = req.reply_project || req.project;
     const plan = this.planStore.plans[m[1]];
     if (!plan || (plan.chat_project || plan.project) !== project) return `I have no plan [${m[1]}].`;
-    if (!plan.session_url) return `Plan [${plan.id}] has not been started in the cloud, so there is no job to follow up.`;
+    if (plan.status === "running_here" || (!plan.session_url && plan.build_turn)) {
+      // TM-43 (2 Nov: "@bot tell 205" answered "not started in the cloud"): a plan built on this server takes the
+      // message as a new build turn here, after any turn still running (the same queue).
+      const busy = plan.build_turn === "running";
+      this.buildHere(plan, { project, by: req.sender, reply_chat: req.reply_chat, say, announce: false,
+        note: `${req.sender} (owner) adds: ${m[2].trim()}\nPull first: whatever was pushed for this plan is on main. Do what this message asks within the plan.` })
+        .catch((e) => this.log(`brain: tell [${plan.id}] here: ${e.message}`));
+      return busy ? `📝 [${plan.id}] is building here; your message goes in as soon as the current build turn ends.` : `▶️ [${plan.id}] continues here on the bot's server with your message.`;
+    }
+    if (!plan.session_url) return `Plan [${plan.id}] has not been started yet, so there is no job to follow up.`;
     const r = await this.followUp(plan, { message: m[2].trim(), by: req.sender, reply_chat: req.reply_chat, project, say });
     return r.ok ? "" : `⚠️ Couldn't start the follow-up for [${plan.id}] (${String(r.error).slice(0, 150)}).`;
   }
@@ -569,15 +578,18 @@ export class Brain {
    * repo and the packages are already there) and at once. One build per project at a time (its own queue), each in a
    * fresh "build" conversation. When the worktree can't be made ready, the plan goes to the cloud as before.
    */
-  async buildHere(plan, { project, by, reply_chat, dm = false, say }) {
+  async buildHere(plan, { project, by, reply_chat, dm = false, say, note = null, announce = true }) {
     const repo = this.projects[plan.project];
     const at = this.now().toISOString();
-    Object.assign(plan, { status: "running_here", reply_chat, reply_project: project, started_at: plan.started_at || at, fired_at: at });
+    // TM-43: "running" until the build turn ends, whatever its outcome. A restart that finds a build still "running"
+    // knows it was cut off (resumeInterrupted), instead of waiting forever in silence (2 Nov, [205]).
+    Object.assign(plan, { status: "running_here", build_turn: "running", reply_chat, reply_project: project, started_at: plan.started_at || at, fired_at: at });
     writeJson(this.plansFile, this.planStore);
     if (typeof plan.id === "number") this.listener.updateItem(plan.id, { status: "in_progress", started_at: plan.started_at, note: "building on the bot server (TM-31)", project }).catch(() => {});
-    await say(`▶️ Building [${plan.id}] ${plan.title} here on the bot's server (warm build copy). I'll post progress and the result here.`);
+    if (announce) await say(`▶️ Building [${plan.id}] ${plan.title} here on the bot's server (warm build copy). I'll post progress and the result here.`);
     const text = [
       `${by === "autobuild" ? "Autobuild (TM-18)" : by} started plan [${plan.id}] "${plan.title}". Go ahead with exactly this plan now.`,
+      ...(note ? ["", note] : []),
       "",
       "You are in the bot server's BUILD copy of the repository (TM-31), on the local branch bot-build that follows",
       `origin/${repo.branch}. Never check out ${repo.branch} here (another copy has it). Pull with \`git pull origin ${repo.branch}\`,`,
@@ -603,8 +615,41 @@ export class Brain {
         return say(`⚠️ Couldn't build [${plan.id}]: the build copy isn't ready (${String(e.message).slice(0, 120)}).`);
       }
       this.sessions.ids[`${plan.chat}::build`] = null; // each build starts a fresh conversation
-      return this.turn({ project: plan.project, reply_project: project, chat: plan.chat, chat_name: plan.chat_name, chat_role: "team", reply_chat, dm, sender: by, n: null, text, session: "build", build_here: true }, "working", plan);
+      try {
+        return await this.turn({ project: plan.project, reply_project: project, chat: plan.chat, chat_name: plan.chat_name, chat_role: "team", reply_chat, dm, sender: by, n: null, text, session: "build", build_here: true }, "working", plan);
+      } finally {
+        plan.build_turn = "finished";
+        writeJson(this.plansFile, this.planStore);
+      }
     });
+  }
+
+  /**
+   * TM-43 (2 Nov: a bot deploy restarted the brain in the middle of [205]'s build; the group heard nothing for 36
+   * minutes). Called once at start-up: a build here whose turn was still running was cut off by the restart. It is
+   * said in the group and started again on the current main (its commits so far are kept); twice at most.
+   */
+  async resumeInterrupted({ say, maxRestarts = 2, withinMs = 6 * 3600_000 } = {}) {
+    const now = this.now().getTime();
+    const cut = Object.values(this.planStore.plans).filter((p) => p.status === "running_here" && p.build_turn !== "finished"
+      && now - Date.parse(p.fired_at || p.started_at || 0) < withinMs);
+    for (const plan of cut) {
+      const project = plan.reply_project || plan.chat_project || plan.project;
+      const tell = (text) => say({ chat: plan.reply_chat || plan.chat, project, text });
+      plan.restarts = (plan.restarts || 0) + 1;
+      if (plan.restarts > maxRestarts) {
+        Object.assign(plan, { status: "failed", build_turn: "finished" });
+        writeJson(this.plansFile, this.planStore);
+        await tell(`⚠️ [${plan.id}] ${plan.title}: its build was cut off by a restart ${maxRestarts + 1} times; stopped. @bot tell ${plan.id} <message> starts it again.`);
+        continue;
+      }
+      writeJson(this.plansFile, this.planStore);
+      await tell(`↩️ [${plan.id}] ${plan.title}: the build was cut off when the bot restarted. Starting it again from the current main (anything it already pushed is kept).`);
+      this.buildHere(plan, { project, by: plan.approved_by || "autobuild", reply_chat: plan.reply_chat || plan.chat, say: tell, announce: false,
+        note: "This build was interrupted by a restart of the bot. Pull first: whatever you already pushed is on main. Check what of the plan is done and finish the rest." })
+        .catch((e) => this.log(`brain: resume [${plan.id}]: ${e.message}`));
+    }
+    return cut.map((p) => p.id);
   }
 
   /** Starts the approved plan as a cloud routine session and posts its link, so the owner can watch it. */
