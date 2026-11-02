@@ -217,8 +217,15 @@ class ApiWhatsApp:
             said = await self._photo(message, ctx)
             _lap("v3_vision")
             key = getattr(getattr(message, "media", None), "object_key", None)
-            reply = (await self._on_words(said, message, ctx, photo_key=key) if said
-                     else ReplySpec(text=_in(await self._language_of_sender(ctx), "photo.cant_read", COULD_NOT_READ)))
+            if said:
+                reply = await self._on_words(said, message, ctx, photo_key=key)
+            else:
+                reply = ReplySpec(text=_in(await self._language_of_sender(ctx), "photo.cant_read", COULD_NOT_READ))
+                # A screenshot captioned "mesiri bad ux" still reaches the team when the photo can't be read.
+                if calls := command_call("", message, ""):
+                    await self._trace_turn(message, {"text": f"(sent a photo: {message.text})", "calls": calls},
+                                           time.monotonic())
+                    self._requested.add(message.correlation_id)
         else:
             return False
         await self._send(reply, message.sender.wa_id)
@@ -317,14 +324,10 @@ class ApiWhatsApp:
         finally:
             await client.close()
         calls = [{**c, "args": c.get("arguments")} for c in turn.calls]
-        command = feedback_command(text)
-        if command and not any(c.get("tool") == TELL_THE_TEAM for c in calls):
+        if not any(c.get("tool") == TELL_THE_TEAM for c in calls):
             # The explicit command always reaches the team bot, even when the model did not pass it on.
             last = next((m.text for m in reversed(history) if m.role == "model"), "")
-            kind, why = command
-            calls.append({"tool": TELL_THE_TEAM, "by": "code", "args": {
-                "kind": kind, "about": f"Mesiri's reply before this: {without_ready_block(last)[:200]}" if last
-                else "the last reply", **({"why": why} if why else {})}})
+            calls.extend(command_call(text, message, last))
         await self._trace_turn(message, {
             # `args` as the old v2 trace had it: the team bot's watch reads tell_the_team from it (TM-18).
             "text": text, "calls": calls,
@@ -359,8 +362,13 @@ class ApiWhatsApp:
         outage = is_outage_error(exc)
         greeting = is_greeting_trigger(text)
         handled = "greeting" if greeting else "queued" if outage else "classic_fallback"
+        # 2 Nov: "mesiri fix it" reaches the team even when the model failed (an outage, a bug): the code
+        # passes it on, so the trace carries it and the team bot is poked as for any request.
+        calls = command_call(text, message, "")
         await self._trace_turn(message, {"error": type(exc).__name__, "text": text, "handled": handled,
-                                         "outage": outage}, started)
+                                         "outage": outage, "calls": calls}, started)
+        if calls:
+            poke_watch_soon(message.correlation_id)
         if greeting:
             from channel.replies import render_greeting_menu
 
@@ -646,6 +654,22 @@ def for_memory(sent: str) -> str:
     parts = re.split(r"[\s*_]*Ready to save[:*_ \t]*\n", sent, maxsplit=1, flags=re.IGNORECASE)
     items = [re.sub(r"^\d+\.\s*", "", line).strip() for line in parts[1].splitlines() if line.strip()]
     return f"{words}\n(under this reply, waiting for the Save button: {'; '.join(items)})".strip()
+
+
+def command_call(text: str, message: Any, last_reply: str) -> list[dict[str, Any]]:
+    """The code's ``tell_the_team`` call for an explicit "mesiri bad ux / fix it" command, or none.
+
+    Checked on what the person typed or said, and on a photo's or document's caption (2 Nov: a screenshot
+    captioned "mesiri bad ux" reached the model as "(sent a photo: mesiri bad ux) ...", which the command
+    did not match, so it depended on the model passing it on)."""
+    command = feedback_command(text) or feedback_command(getattr(message, "text", None) or "")
+    if command is None:
+        return []
+    kind, why = command
+    about = f"Mesiri's reply before this: {without_ready_block(last_reply)[:200]}" if last_reply else "the last reply"
+    if getattr(message, "modality", None) in (InputModality.IMAGE, InputModality.DOCUMENT):
+        about = f"{about} (they sent a screenshot with it)"
+    return [{"tool": TELL_THE_TEAM, "by": "code", "args": {"kind": kind, "about": about, **({"why": why} if why else {})}}]
 
 
 def feedback_command(text: str) -> tuple[str, str] | None:

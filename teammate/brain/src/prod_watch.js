@@ -569,7 +569,14 @@ export class ProdWatch {
       this.log(`prod-watch: someone is messaging; one look in ${st.minutes} min`);
       return false;
     }
-    if (now - this.burstAt < st.minutes * 60_000) return false;
+    if (now - this.burstAt < st.minutes * 60_000) {
+      // 2 Nov (Ilan: "mesiri fix it" reached the group 8 minutes late): a request made while the watch waits out a
+      // burst is not left until the burst ends. The same free probe keeps running; a request ends the wait.
+      if (now - (this.probedAt || 0) < PROBE_MINUTES * 60_000) return false;
+      this.probedAt = now;
+      if ((await this.anyNew()) !== URGENT) return false;
+      this.log("prod-watch: a request to Mesiri during a burst; looking now");
+    }
     this.setBurst(null);
     await this.tick();
     return true;
@@ -584,7 +591,18 @@ export class ProdWatch {
     if (project && !this.sources[project]) return false;
     // TM-28: a known request is read at once, on its own (its reply is already sent), without the 2-minute settle.
     if (project && correlationId && CORRELATION_ID.test(String(correlationId))) {
-      this.lookAtRequest(project, correlationId).catch((e) => this.log(`prod-watch: request ${correlationId}: ${e.message}`));
+      this.log(`prod-watch: request ${correlationId} poked; reading it now`);
+      this.lookAtRequest(project, correlationId)
+        .then((handed) => {
+          if (handed) return;
+          // Not readable as a request yet (or already reported): never silent, and the settled check still runs.
+          this.log(`prod-watch: request ${correlationId}: no new request in it yet; checking again once it settles`);
+          this.poke(project);
+        })
+        .catch((e) => {
+          this.log(`prod-watch: request ${correlationId}: ${e.message}`);
+          this.poke(project);
+        });
       return true;
     }
     if (this.pokeTimer) return true;

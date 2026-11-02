@@ -408,7 +408,8 @@ test("a real company's message opens the watch: one look 5 minutes later, then i
     let t = (T0 + 60) * 1000;
     const bad = msg({ at: T0 + 10, status: "failed", error_code: "X" });
     // probe finds a message -> 5 min later the look reads the burst -> the next probe finds nothing new
-    const { fetchFn, screener, screens } = counting([[bad], [msg({}), bad], []]);
+    // (the two free probes inside the burst read [bad] again: no request, so the wait goes on)
+    const { fetchFn, screener, screens } = counting([[bad], [bad], [bad], [msg({}), bad], []]);
     const asked = [];
     const watch = new ProdWatch({ sources: { mesiri: { url: "u", token: "t" } }, ask: async () => asked.push(1), file: join(dir, "s.json"), fetchFn, now: () => t, screener, minutes: 5 });
     assert.equal(await watch.maybeTick(), false); // the check sees a message: the watch opens, nothing screened yet
@@ -486,6 +487,25 @@ test("TM-19: a pending look survives a restart, and a request to Mesiri is looke
     t += 10 * 60_000;
     const urgent = make([[told], [told]]);
     assert.equal(await urgent.maybeTick(), true); // no 5-minute wait for a request
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("2 Nov: a request made while the watch waits out a burst is looked at by the next probe, not when the burst ends", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pw-"));
+  try {
+    let t = T0 * 1000;
+    const plain = msg({ text: "25 bag cement vannu", reply: "Below: 25 bags cement.", at: T0 - 200, done_at: T0 - 195 });
+    const told = msg({ who: "w9", text: "mesiri fix it", reply: "Passed to the team.", feedback: "wrong_reply: the TMT unit", at: T0 + 30, done_at: T0 + 35 });
+    const asks = [];
+    const watch = new ProdWatch({ sources: { mesiri: { url: "u", token: "t" } }, ask: async () => asks.push(1), file: join(dir, "s.json"), fetchFn: fakeOps([[plain], [told, plain], [told, plain]]).fetchFn, now: () => t, minutes: 5 });
+    assert.equal(await watch.maybeTick(), false); // a plain message: the 5-minute burst opens
+    t += 60_000;
+    assert.equal(await watch.maybeTick(), false); // under 2 minutes since the last probe: nothing read
+    t += 60_000;
+    assert.equal(await watch.maybeTick(), true); // the next probe sees the request: the look happens now
+    assert.equal(asks.length, 1);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

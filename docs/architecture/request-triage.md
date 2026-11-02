@@ -21,14 +21,13 @@ router, switches in the control panel, a polite refusal on WhatsApp). A feature 
 
 ## What gets a switch, what doesn't
 
-The bot sorts each request into one of five kinds. Only one of them asks anything of an owner.
+The bot sorts each request into one of four kinds. None of them waits for an owner.
 
 | Kind | Example | What happens | Switch? |
 |---|---|---|---|
 | **Fix** | the DPR total is wrong; Mesiri misread "50 bags" | Fixed for everyone (wrong is wrong everywhere) | No |
 | **Already possible** | "can Mesiri send the labour PDF?" (it can) | No build. Mesiri shows how, with an example and a link | No |
 | **New feature** | DPR at 6 pm; stock answers by site; a weekly cement summary | Built behind a feature switch; **on for the company that asked**, off for the rest | **Yes** |
-| **Held** | anything that changes attendance, payroll, workforce, money totals, or deletes data | Planned and built behind a switch like any feature, but **switched on only after an owner's ok** (CLAUDE.md's held areas) | Yes |
 | **Not Mesiri** | not construction site work ("book my train ticket") | Declined politely, with what Mesiri does do; logged | No |
 
 The test between *fix* and *new feature* is one question: **could another company reasonably want it the old way?**
@@ -49,7 +48,6 @@ DPR_EVENING_TIME = Feature(
     module="dpr",                       # it lives inside a module; off when the module is off
     kind="choice", options=("19:00", "18:00", "20:00"), default="19:00",   # or kind="on_off"
     asked_by="#a83836 Acme Builders, 2 Nov 2026",
-    held=False,                         # True: switching on needs an owner (held areas)
 )
 ```
 
@@ -97,7 +95,6 @@ One new page, plus a tab on each company.
 - **Graduate**: it has been on for all for a while with no complaints; the bot removes the switch from the code (the
   old way and its test go), leaving one path. This is the step that keeps the code clean.
 - **Retire**: unused; the bot removes the feature and its code.
-- **Held** features show "needs owner ok" and only a platform admin can switch them on.
 
 **Company tab**: that company's switches, with who turned each on and when.
 
@@ -118,7 +115,7 @@ time: Acme uses it daily. Offer to others?"* The team can then:
 
 The production watch already plans from the request, the conversation and the code. It changes in small ways:
 
-1. **Sort** into the five kinds above, with the reason. "Already possible" and "Not Mesiri" are answered at once, no
+1. **Sort** into the four kinds above, with the reason. "Already possible" and "Not Mesiri" are answered at once, no
    plan.
 2. **Same feature already exists?** Search the registry and the request log across companies. If another company asked
    for the same thing and it was built, **no build: switch it on** for this company (an ordinary switch, logged) and
@@ -128,7 +125,6 @@ The production watch already plans from the request, the conversation and the co
    - a *new feature* plan must add a registry entry and both tests; a plan that changes existing behaviour without a
      switch is held;
    - a *fix* that changes something another company relies on is held (it should have been a feature);
-   - *held* features build, but are left off and the owner is asked to switch them on;
    - every kind and reason is stored on the request (`kind`, `feature`, `company`).
 5. **After deploy** the bot switches the feature on for the company that asked (through the same settings API, logged
    as "the bot, for request #ref") and sends the usual "is this how you want it?" preview and "it works now".
@@ -140,7 +136,6 @@ New wording lines, five languages:
 - *New feature:* "Done: switched on for *your company*." (+ preview, "it works now")
 - *Already existed for others:* "Switched on for you; it's ready now."
 - *Already possible:* "You can already do this: send *'today's labour PDF'*."
-- *Held:* "Built. It changes attendance, so an owner switches it on; I'll tell you."
 - *Not Mesiri:* "Mesiri is for site work, so it can't do this. It can: …"
 
 ## What changes where
@@ -152,7 +147,7 @@ New wording lines, five languages:
 | `domains/shared/modules.py` | `require_feature` beside `require_module` (**shared component: owner's ok**) |
 | `agent_api/tools.py`, `whatsapp.py`, `SOP.md` | Per-company tool list (modules and features); feature-tagged SOP rules; non-default features in facts |
 | Control panel | Features page; company tab; turn on / on for all / graduate / retire |
-| `prod_watch.js`, `tools.js`, `autobuild.js` | The five kinds; reuse-before-build; plan fields; code checks; switch on after deploy |
+| `prod_watch.js`, `tools.js`, `autobuild.js` | The four kinds; reuse-before-build; plan fields; code checks; switch on after deploy |
 | Request log, Requests page | `kind`, `feature`; counts by kind |
 | Digest | New features to offer; unused features to retire; on-for-all features to graduate |
 | Wording | The lines above |
@@ -162,7 +157,7 @@ New wording lines, five languages:
 1. **The switch** (no bot change): registry, `feature()`, `require_feature`, the `features` setting, per-company v3
    tool list, feature-tagged SOP rules, the both-ways test rule, the control panel page. Proven with the first real
    feature a company asks for. Useful at once: the team can build a feature for one company by hand.
-2. **The bot builds features**: the five kinds, reuse-before-build, plan fields, code checks, switch on after deploy,
+2. **The bot builds features**: the four kinds, reuse-before-build, plan fields, code checks, switch on after deploy,
    the replies.
 3. **Offering**: digest section and the WhatsApp "want it?" offer to company admins.
 4. **Keeping it clean**: graduate and retire, driven from the control panel and the digest.
@@ -171,6 +166,9 @@ New wording lines, five languages:
 
 - Everything that is construction work gets built; a company's request is built **for that company** and switched
   on for others from the control panel (the team, 2 Nov 2026).
+- **No owner's ok to switch a feature on**, attendance, payroll, workforce and money included: the switch only
+  affects the company that asked, its off path is tested, and it is one tap to turn off (the team, 2 Nov 2026).
+- Requests that are not construction work are declined politely (the team, 2 Nov 2026).
 
 ## Still open (Alan / Ilan), none blocks phase 1
 
