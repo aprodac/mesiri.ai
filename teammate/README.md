@@ -108,8 +108,9 @@ with Gemini (`gemini-3.8-flash`; `TEAMMATE_GEMINI_MODEL` overrides it).
   `yesterday`, `last 7 days`, `last month`, `october`. Questions work too: "what did we spend on gemini in october".
   Team groups only. Production's figures come from `provider_executions` through the brain's read-only ops token
   (the listener never holds it); the team bot's own spend, including the production watch's AI screen, comes from
-  `ai_usage`. CI tests and evals are not recorded anywhere here: they are in Google's billing page for
-  the project that owns `CI_GEMINI_API_KEY`. Calls on a model with no price are counted and called out, never shown as free.
+  `ai_usage`. CI runs and evals appear as a Testing line: `MESIRI_USAGE_LOG` makes the live tests log each call, and
+  `scripts/report_ci_gemini_usage.py` posts the run's totals to `POST /ai/usage` when it ends. That line is an estimate from
+  token counts; tests on people's own computers are not counted. Calls on a model with no price are called out, never shown as free.
 - The WhatsApp brain (Claude) has the same as a tool, used only for the messages a question is about.
 - Here: `inbox.py translate 123`, `inbox.py cost`.
 - A translated message is stored; asking again is free.

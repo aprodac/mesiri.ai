@@ -38,7 +38,7 @@ import { createReadStream, existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { ITEM_TRACKING, istStarts } from "./store.js";
-import { costOf } from "./transcribe.js";
+import { costOf, geminiPrices } from "./transcribe.js";
 
 function send(res, status, body) {
   const json = JSON.stringify(body);
@@ -145,14 +145,17 @@ export function createApi({ store, wa, token, ai = null }) {
           return send(res, 409, { error: String(err.message || err).slice(0, 300) });
         }
       }
-      // TM-20: a Gemini call made outside the listener (the brain's watch screen), priced like the listener's own.
+      // TM-20: Gemini calls made outside the listener: the brain's watch screen, or a CI run's total (`calls`, and `usd`
+      // when the sender knows that model's price). Otherwise priced like the listener's own.
       if (req.method === "POST" && path === "/ai/usage") {
         const body = await readJson(req);
-        const prices = ai?.transcriber?.prices;
-        if (!prices) return send(res, 409, { error: "no Gemini prices on this server" });
         if (!/^[a-z_]{1,40}$/.test(String(body.kind || ""))) return send(res, 400, { error: "kind is required" });
+        const prices = ai?.transcriber?.prices || geminiPrices();
         const cost = costOf(body.usage, prices);
-        store.addAiUsage({ ...cost, kind: body.kind, project: body.project ? String(body.project) : null, model: body.model ? String(body.model) : null });
+        const usd = Number(body.usd);
+        if (body.usd != null && Number.isFinite(usd) && usd >= 0) Object.assign(cost, { usd, inr: usd * prices.usdInr });
+        const calls = Number.isInteger(body.calls) && body.calls > 0 ? body.calls : 1;
+        store.addAiUsage({ ...cost, calls, kind: body.kind, project: body.project ? String(body.project) : null, model: body.model ? String(body.model) : null });
         return send(res, 200, { ok: true, inr: cost.inr });
       }
       if (req.method === "GET" && path === "/ai/usage") {

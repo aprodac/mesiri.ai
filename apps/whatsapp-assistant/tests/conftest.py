@@ -27,6 +27,35 @@ from httpx import ASGITransport, AsyncClient
 from runtime.dependencies import Settings
 from runtime.lifecycle import create_app
 
+# TM-20: a CI run with live tests names a file here; scripts/report_ci_gemini_usage.py reports it afterwards.
+_USAGE_LOG = os.environ.get("MESIRI_USAGE_LOG")
+
+
+def _log_usage(report: Any) -> None:
+    with open(_USAGE_LOG, "a", encoding="utf-8") as fh:
+        fh.write(
+            json.dumps(
+                {
+                    "provider": report.provider,
+                    "model": report.model,
+                    "input_tokens": report.input_tokens,
+                    "cached_input_tokens": report.cached_input_tokens,
+                    "audio_input_tokens": report.audio_input_tokens,
+                    "output_tokens": report.output_tokens,
+                }
+            )
+            + "\n"
+        )
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_call(item: pytest.Item) -> None:
+    # Before each test body, not once: a fixture that starts the app installs its own sink.
+    if _USAGE_LOG:
+        from mesiri_ai import usage
+
+        usage.set_usage_sink(_log_usage)
+
 
 @pytest.fixture
 def settings() -> Settings:

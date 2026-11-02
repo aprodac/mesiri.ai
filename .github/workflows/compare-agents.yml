@@ -23,6 +23,7 @@ jobs:
     timeout-minutes: 30
     env:
       PYTHONSAFEPATH: "1"
+      MESIRI_USAGE_LOG: /tmp/mesiri-gemini-usage.jsonl
       TEST_PYTHONPATH: >-
         ${{ github.workspace }}/shared/contracts/src:${{ github.workspace }}/platform/ai/src:${{ github.workspace }}/backend/src:${{ github.workspace }}/apps/whatsapp-assistant/src:${{ github.workspace }}/apps/whatsapp-assistant
       MESIRI_ENVIRONMENT: test
@@ -62,6 +63,12 @@ jobs:
           "$GITHUB_WORKSPACE/.venv/bin/python" -P -m pytest \
             "$GITHUB_WORKSPACE/apps/whatsapp-assistant/tests/compare/test_three_agents_live.py" \
             --rootdir=/tmp -s -ra -m live --import-mode=importlib -o asyncio_mode=auto
+      - name: Report this run's Gemini spend to the team bot
+        if: ${{ always() }}
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend/src
+          TEAMMATE_TOKEN: ${{ secrets.TEAMMATE_API_TOKEN }}
+        run: .venv/bin/python scripts/report_ci_gemini_usage.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

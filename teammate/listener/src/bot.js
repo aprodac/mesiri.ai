@@ -62,7 +62,7 @@ const COST_LABELS = {
   generate_json: "Structured answers",
   dpr_summary: "DPR summaries",
 };
-const BOT_LABELS = { translate: "Team bot: voice notes and translation", watch_screen: "Team bot: production watch screen" };
+const BOT_LABELS = { translate: "Team bot: voice notes and translation", watch_screen: "Team bot: production watch screen", ci_tests: "Testing: CI runs and evals (estimate)" };
 const OTHER_AI = new Set(["deepseek", "sarvam"]);
 const COMPANIES_SHOWN = 6;
 const DAYS_SHOWN = 7;
@@ -449,7 +449,7 @@ export class Bot {
     }
     if (failed) out.push("", `⚠️ Couldn't read production (${failed}): this is the team bot's spend only.`);
     else if (rows === null) out.push("", "Production isn't connected for this project: this is the team bot's spend only.");
-    out.push("", "Not counted: CI tests and evals. They are in the Google billing page of the testing project.");
+    out.push("", "Not counted: tests run on people's own computers. Google's billing page is the exact bill.");
     return out.join(nl).slice(0, 3900);
   }
 

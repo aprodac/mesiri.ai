@@ -183,8 +183,8 @@ export class Store {
     }
     // ...and before TM-20 every Gemini call was a translation of one message.
     const ucols = this.db.prepare("PRAGMA table_info(ai_usage)").all().map((c) => c.name);
-    for (const name of ["kind", "project"]) {
-      if (!ucols.includes(name)) this.db.exec(`ALTER TABLE ai_usage ADD COLUMN ${name} TEXT`);
+    for (const [name, type] of [["kind", "TEXT"], ["project", "TEXT"], ["calls", "INTEGER"]]) {
+      if (!ucols.includes(name)) this.db.exec(`ALTER TABLE ai_usage ADD COLUMN ${name} ${type}`);
     }
     // ...and before TM-19 nothing about who asked (from production) or what happened after it shipped.
     const icols = this.db.prepare("PRAGMA table_info(items)").all().map((c) => c.name);
@@ -293,18 +293,18 @@ export class Store {
     return Number(this.db.prepare("UPDATE messages SET ai_attempts = 0 WHERE ai_done = 0 AND ai_attempts > 0").run().changes);
   }
 
-  /** `kind`: what the call was for (empty = translating message `n`); `project` for a call tied to no message. */
-  addAiUsage({ n = null, model = null, input_tokens = 0, output_tokens = 0, usd = 0, inr = 0, kind = null, project = null }) {
+  /** `kind`: what the call was for (empty = translating message `n`); `project` for a call tied to no message; `calls` when one row totals a CI run. */
+  addAiUsage({ n = null, model = null, input_tokens = 0, output_tokens = 0, usd = 0, inr = 0, kind = null, project = null, calls = 1 }) {
     this.db
-      .prepare("INSERT INTO ai_usage (at, n, model, input_tokens, output_tokens, usd, inr, kind, project) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(nowIso(), n, model, input_tokens, output_tokens, usd, inr, kind, project);
+      .prepare("INSERT INTO ai_usage (at, n, model, input_tokens, output_tokens, usd, inr, kind, project, calls) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(nowIso(), n, model, input_tokens, output_tokens, usd, inr, kind, project, calls);
   }
 
   aiUsageRows(select, tail, since, project, until) {
     const params = [since, ...(until ? [until] : []), ...(project ? [project] : [])];
     return this.db
       .prepare(
-        `SELECT ${select}, COUNT(*) AS calls, COALESCE(SUM(u.input_tokens), 0) AS input_tokens, COALESCE(SUM(u.output_tokens), 0) AS output_tokens,
+        `SELECT ${select}, COALESCE(SUM(COALESCE(u.calls, 1)), 0) AS calls, COALESCE(SUM(u.input_tokens), 0) AS input_tokens, COALESCE(SUM(u.output_tokens), 0) AS output_tokens,
                 COALESCE(SUM(u.usd), 0) AS usd, COALESCE(SUM(u.inr), 0) AS inr
          FROM ai_usage u LEFT JOIN messages m ON m.rowid = u.n LEFT JOIN chats c ON c.jid = m.chat_jid
          WHERE u.at >= ? ${until ? "AND u.at < ?" : ""} ${project ? "AND COALESCE(u.project, c.project) = ?" : ""} ${tail}`,

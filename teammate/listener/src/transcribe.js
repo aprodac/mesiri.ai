@@ -39,6 +39,14 @@ export function costOf(usage, { priceIn, priceOut, usdInr }) {
   return { input_tokens: input, output_tokens: output, usd, inr: usd * usdInr };
 }
 
+export function geminiPrices(prices = {}) {
+  return {
+    priceIn: Number(prices.priceIn ?? process.env.TEAMMATE_GEMINI_PRICE_IN ?? 0.75),
+    priceOut: Number(prices.priceOut ?? process.env.TEAMMATE_GEMINI_PRICE_OUT ?? 3.75),
+    usdInr: Number(prices.usdInr ?? process.env.TEAMMATE_USD_INR ?? 88),
+  };
+}
+
 export class Transcriber {
   /** @param {{ apiKey: string, model?: string, fetchImpl?: typeof fetch, prices?: { priceIn: number, priceOut: number, usdInr: number } }} opts */
   constructor({ apiKey, model = "gemini-3.8-flash", fetchImpl = fetch, prices = {} }) {
@@ -46,11 +54,7 @@ export class Transcriber {
     this.apiKey = apiKey;
     this.model = model;
     this.fetch = fetchImpl;
-    this.prices = {
-      priceIn: Number(prices.priceIn ?? process.env.TEAMMATE_GEMINI_PRICE_IN ?? 0.75),
-      priceOut: Number(prices.priceOut ?? process.env.TEAMMATE_GEMINI_PRICE_OUT ?? 3.75),
-      usdInr: Number(prices.usdInr ?? process.env.TEAMMATE_USD_INR ?? 88),
-    };
+    this.prices = geminiPrices(prices);
   }
 
   /** Confirms the key and model work; throws a readable error if not. */

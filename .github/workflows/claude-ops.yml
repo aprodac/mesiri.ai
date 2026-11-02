@@ -105,6 +105,7 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
           TEAMMATE_TOKEN: ${{ secrets.TEAMMATE_API_TOKEN }}
           TEAMMATE_PROJECT: mesiri
+          MESIRI_USAGE_LOG: /tmp/mesiri-gemini-usage.jsonl
           GEMINI_API_KEY: ${{ inputs.task == 'golden-live' && (secrets.CI_GEMINI_API_KEY || secrets.TEAMMATE_GEMINI_API_KEY) || '' }}
         run: |
           set -o pipefail
@@ -186,3 +187,11 @@ jobs:
                 "$W/.venv/bin/python" -P -m pytest $FILES --rootdir=/tmp -m live -s -q \
                 --import-mode=importlib -o asyncio_mode=auto -p no:cacheprovider 2>&1 | mask ;;
           esac
+
+      - name: Report this run's Gemini spend to the team bot
+        if: ${{ always() && inputs.task == 'golden-live' }}
+        env:
+          MESIRI_USAGE_LOG: /tmp/mesiri-gemini-usage.jsonl
+          PYTHONPATH: ${{ github.workspace }}/backend/src
+          TEAMMATE_TOKEN: ${{ secrets.TEAMMATE_API_TOKEN }}
+        run: .venv/bin/python scripts/report_ci_gemini_usage.py

@@ -857,6 +857,7 @@ const costRows = [
 test("bot (TM-20): '@bot cost' adds production by work, company and day to the bot's own spend", async () => {
   const { store, TEAM, sent, msg } = botSetup();
   store.addAiUsage({ kind: "watch_screen", project: "mercon", model: "m", input_tokens: 10, output_tokens: 5, usd: 0.01, inr: 0.5 });
+  store.addAiUsage({ kind: "ci_tests", project: "mercon", model: "m", calls: 40, usd: 0.1, inr: 2 });
   store.addAiUsage({ kind: "watch_screen", project: "other", model: "m", input_tokens: 10, output_tokens: 5, usd: 0.01, inr: 9 }); // another project's
   const asked = [];
   const wa = { ownIds: () => ["919544376072@s.whatsapp.net", "56672747843793@lid"], pnFor: async () => null, send: async (jid, c) => (sent.push({ jid, ...c }), "id") };
@@ -872,13 +873,13 @@ test("bot (TM-20): '@bot cost' adds production by work, company and day to the b
   const text = sent.at(-1).text;
   assert.equal(asked[1].project, "mercon");
   assert.equal(asked[1].until, null);
-  assert.match(text, /Total: ₹88\.00 · 411 calls/); // Gemini only: deepseek is apart
-  assert.match(text, /By work\*\n• Assistant replies: ₹80\.00 · 400 calls\n• DPR summaries: ₹4\.50 · 5 calls\n• Voice notes: ₹3\.00 · 5 calls\n• Team bot: production watch screen: ₹0\.50 · 1 call/);
+  assert.match(text, /Total: ₹90\.00 · 451 calls/); // Gemini only: deepseek is apart
+  assert.match(text, /By work\*\n• Assistant replies: ₹80\.00 · 400 calls\n• DPR summaries: ₹4\.50 · 5 calls\n• Voice notes: ₹3\.00 · 5 calls\n• Testing: CI runs and evals \(estimate\): ₹2\.00 · 40 calls\n• Team bot: production watch screen: ₹0\.50 · 1 call/);
   assert.match(text, /• Acme: ₹60\.00[\s\S]*• No company/);
   assert.match(text, /By day \(production\)\*\n• 2026-11-02: ₹67\.50\n• 2026-11-01/);
   assert.match(text, /Other AI, not in the total: deepseek ₹3\.00/);
   assert.match(text, /4 calls on gemini-3\.8-flash have no price yet, so the total is short/);
-  assert.match(text, /Not counted: CI tests and evals/);
+  assert.match(text, /Not counted: tests run on people's own computers/);
 });
 
 test("bot (TM-20): production unreadable still answers with the bot's spend, and says so", async () => {
@@ -903,6 +904,11 @@ test("api (TM-20): POST /ai/usage counts a call made elsewhere, priced here", as
     const [row] = store.aiUsageByKind("2000-01-01T00:00:00.000Z", "mesiri");
     assert.equal(row.kind, "watch_screen");
     assert.equal(row.inr, 200);
+    // A CI run's total: its calls are kept, and the sender's price wins over the listener's.
+    assert.equal((await post({ kind: "ci_tests", project: "mesiri", model: "m", calls: 40, usd: 0.5, usage: { promptTokenCount: 9 } })).status, 200);
+    const ci = store.aiUsageByKind("2000-01-01T00:00:00.000Z", "mesiri").find((r) => r.kind === "ci_tests");
+    assert.equal(ci.calls, 40);
+    assert.equal(ci.inr, 50);
   } finally {
     api.close();
     store.close();
