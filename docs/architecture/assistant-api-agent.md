@@ -149,6 +149,17 @@ nothing reached the team; the reply also printed the Ready-to-save list twice.
   reply, waiting for the Save button: ..."): with whole replies kept, the model copied the list
   format into its own words.
 
+## The SAVED card after a Save (WA-131)
+
+A Save (the button, or "save it" in words) is answered as in classic and v2: the "Saved" line,
+then the green SAVED card of what was saved, drawn by the same builder
+(`channel.receipt.RecordReceiptBuilder.build_combined`, the one wired into the interaction
+handler). `agent_api/receipts.py` turns each saved API entry into the draft action the builder
+reads (material / unit names through the API, site names from the sender), with the id the API
+returned. Material in / used / transfer, expense, labour, work done and issues have a card; a
+site's conditions, sending the DPR and closing an issue have none (as in classic). Drawn within
+4 s after the line went out; a failure leaves the card out, never the Save.
+
 ## Safety
 
 - **Nothing is written without the person's confirmation.** A write tool only records the entry
