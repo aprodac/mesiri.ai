@@ -24,6 +24,7 @@ from agent_api.feedback import specs as feedback_specs
 from agent_api.links import WEB_LINK, build_link
 from agent_api.links import spec as web_link_spec
 from mesiri_ai.models import ChatMessage, ToolOutcome, ToolSpec
+from runtime.ai_outage import is_budget_error
 
 from .client import ApiClient, new_idempotency_key
 from .tools import CONFIRM_ARG, ApiTool
@@ -258,10 +259,11 @@ class ApiAgent:
 
         try:
             result = await ask_model(messages)
-        except Exception:
+        except Exception as exc:
             # A model error before anything was prepared or saved: one more try (compare run of
-            # 1 Nov: one expense message failed on the first call). After an effect, never again.
-            if not nothing_done():
+            # 1 Nov: one expense message failed on the first call). After an effect, never again;
+            # nor when the AI budget is used up (WA-143): the same refusal would come back.
+            if not nothing_done() or is_budget_error(exc):
                 raise
             result = await ask_model(messages)
         if not (result.text or "").strip() and not new and not asked and not saved and not acted:

@@ -18,6 +18,7 @@ from arq import Retry
 
 from mesiri.bootstrap.settings import get_settings as get_backend_settings
 from runtime.ai_outage import (
+    BUDGET_RETRY_DEFER_STEP_SECONDS,
     MAX_ATTEMPTS,
     RETRY_DEFER_STEP_SECONDS,
     AIUnavailableError,
@@ -90,13 +91,16 @@ async def process_claimed_message_job(ctx: dict, envelope: dict) -> None:
     token = retry_attempt.set(attempt)
     try:
         result = await container.receiver.process_claimed_message(context)
-    except AIUnavailableError:
+    except AIUnavailableError as exc:
         # Every AI provider failed and the sender has been told it is queued
         # (runtime/ai_outage.py). ARQ only retries a job that raises Retry --
         # a plain exception just marks it failed -- so ask for it explicitly,
-        # a little later each time.
-        logger.warning("whatsapp.ingress_job_deferred message_id=%s try=%s", message_id, attempt)
-        raise Retry(defer=RETRY_DEFER_STEP_SECONDS * attempt) from None
+        # a little later each time; much later when the AI budget is used up
+        # (WA-143: a person has to raise the cap first).
+        step = BUDGET_RETRY_DEFER_STEP_SECONDS if exc.budget_exhausted else RETRY_DEFER_STEP_SECONDS
+        logger.warning("whatsapp.ingress_job_deferred message_id=%s try=%s budget=%s", message_id, attempt,
+                       exc.budget_exhausted)
+        raise Retry(defer=step * attempt) from None
     finally:
         retry_attempt.reset(token)
     if result is None:

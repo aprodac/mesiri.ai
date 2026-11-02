@@ -61,6 +61,7 @@ async def call_with_resilience(
                             error_code=err.error_code,
                             status_code=err.details.get("status_code"),
                             correlation_id=correlation_id,
+                            budget_exhausted=bool(err.details.get("budget_exhausted")),
                         )
                     )
                 raise err from exc

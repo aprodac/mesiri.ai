@@ -35,12 +35,14 @@ from mesiri_ai.greeting_classifier import is_greeting_trigger
 from mesiri_ai.models import ToolSpec
 from mesiri_contracts.assistant.enums import InputModality
 from runtime.ai_outage import (
+    BUDGET_REPLY,
     GAVE_UP_REPLY,
     QUEUED_REPLY,
     QUICK_RETRY_PAUSE_SECONDS,
     RESEND_REPLY,
     AIUnavailableError,
     FallBackToClassic,
+    is_budget_error,
     is_outage_error,
     reply_for_attempt,
     retry_attempt,
@@ -117,7 +119,7 @@ class _Answered(Exception):
 
 
 #: The outage wording by its English text (``reply_for_attempt`` picks the text).
-_OUTAGE_LINES = {QUEUED_REPLY: "outage.queued", GAVE_UP_REPLY: "outage.gave_up", RESEND_REPLY: "outage.resend"}
+_OUTAGE_LINES = {QUEUED_REPLY: "outage.queued", BUDGET_REPLY: "outage.budget", GAVE_UP_REPLY: "outage.gave_up", RESEND_REPLY: "outage.resend"}
 
 
 def _in(language: str | None, key: str, english: str) -> str:
@@ -270,8 +272,8 @@ class ApiWhatsApp:
                 _lap("v3_model_tools")
             except Exception as exc:  # noqa: BLE001
                 _lap("v3_model_tools")
-                if not is_outage_error(exc) or is_greeting_trigger(text):
-                    raise
+                if not is_outage_error(exc) or is_budget_error(exc) or is_greeting_trigger(text):
+                    raise  # WA-143: a used-up budget is not a blip: no quick second try
                 # One quick second try before the sender hears anything (request 57, A5).
                 _log.warning("agent_api.quick_retry user=%s error=%r", ctx.user_id, exc)
                 await asyncio.sleep(QUICK_RETRY_PAUSE_SECONDS)
@@ -339,7 +341,8 @@ class ApiWhatsApp:
         """The provider is down: say it is queued (their language) and raise, so the worker retries
         the message (runtime/ai_outage.py). The last try says plainly it could not be processed."""
         attempt = retry_attempt.get()
-        english, will_retry = reply_for_attempt(attempt)
+        budget = is_budget_error(error)
+        english, will_retry = reply_for_attempt(attempt, budget=budget)
         _log.error("agent_api.outage correlation_id=%s attempt=%s error=%r", message.correlation_id, attempt,
                    error, exc_info=error)
         if english:
@@ -351,7 +354,8 @@ class ApiWhatsApp:
         if will_retry:
             await _safe(self._log_store.mark_failed(correlation_id=message.correlation_id,
                                                     error_code="AI_UNAVAILABLE"))
-            raise AIUnavailableError(f"agent_api: the AI is unavailable for {message.correlation_id}") from error
+            raise AIUnavailableError(f"agent_api: the AI is unavailable for {message.correlation_id}",
+                                     budget_exhausted=budget) from error
         await _safe(self._log_store.mark_completed(correlation_id=message.correlation_id))
         raise _Answered
 

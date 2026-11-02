@@ -52,6 +52,13 @@ _OUTAGE_CODES = frozenset(
 )
 
 QUEUED_REPLY = "Got it 👍 I'll process this in a few minutes."
+#: WA-143: the AI account's spending budget is used up: the message is kept for longer (below), and
+#: the sender is told plainly, not "a few minutes".
+BUDGET_REPLY = ("Got it 👍 Mesiri's AI is paused for a short while (the team has been told). "
+                "Your message is kept and I'll do it as soon as it's back.")
+#: Seconds a retry waits per attempt when the budget is used up (20 min, then 40 min): time for a
+#: person to raise the cap, instead of three tries inside three minutes.
+BUDGET_RETRY_DEFER_STEP_SECONDS = 20 * 60
 GAVE_UP_REPLY = (
     "Sorry, I couldn't process that message — nothing was saved. "
     "Please send it again in a little while."
@@ -60,7 +67,19 @@ RESEND_REPLY = "I can't process messages right now — nothing was saved. Please
 
 
 class AIUnavailableError(Exception):
-    """Every AI provider failed for this message; the job should be retried."""
+    """Every AI provider failed for this message; the job should be retried.
+
+    ``budget_exhausted``: the provider's spending budget is used up (WA-143): retried later."""
+
+    def __init__(self, *args: object, budget_exhausted: bool = False) -> None:
+        super().__init__(*args)
+        self.budget_exhausted = budget_exhausted
+
+
+def is_budget_error(error: BaseException | None) -> bool:
+    """WA-143: the AI account's spending budget is used up (``mesiri_ai.core.errors``)."""
+    details = getattr(error, "details", None)
+    return isinstance(details, dict) and bool(details.get("budget_exhausted"))
 
 
 class FallBackToClassic(Exception):
@@ -79,15 +98,16 @@ def is_ai_outage(understanding: UnderstandingResult) -> bool:
     )
 
 
-def reply_for_attempt(attempt: int | None) -> tuple[str, bool]:
+def reply_for_attempt(attempt: int | None, *, budget: bool = False) -> tuple[str, bool]:
     """(text, retry): what to tell the sender on this attempt, and whether the
-    message will be retried (so the journey should raise)."""
+    message will be retried (so the journey should raise). ``budget``: the AI account's
+    spending budget is used up (WA-143): the queued line says so."""
     if attempt is None:
         return RESEND_REPLY, False
     if attempt >= MAX_ATTEMPTS:
         return GAVE_UP_REPLY, False
     # Told once, on the first try; later tries stay quiet until they succeed.
-    return (QUEUED_REPLY if attempt == 1 else ""), True
+    return ((BUDGET_REPLY if budget else QUEUED_REPLY) if attempt == 1 else ""), True
 
 
 def is_provider_failure(error: BaseException) -> bool:

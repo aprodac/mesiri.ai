@@ -162,6 +162,9 @@ Entries wait per person in Redis for a day (an older list's buttons do nothing).
   language and a worker retry (the shared outage handling, `runtime.ai_outage`).
 - **Any other error** (a bug in v3 or a tool): `FallBackToClassic`: the message is answered by classic
   (traced `handled: classic_fallback`; v2 answered it until WA-134).
+- The AI account's **spending budget used up** (WA-143): no quick retries; the sender is told plainly
+  that Mesiri's AI is paused and the message is kept; the team is alerted at once with what to do;
+  the worker retries after 20 and 40 minutes.
 - A **greeting** is answered by the code (the greeting menu): never needs the model.
 - A model error before anything was prepared: one more try; no words after a lookup: asked once
   for the answer.

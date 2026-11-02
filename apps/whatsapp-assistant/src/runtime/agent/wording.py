@@ -349,6 +349,13 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "आवाज़ साफ़ नहीं सुनाई दी, एक बार फिर बोलेंगे?",
         "hinglish": "Awaaz saaf nahi aayi, ek baar phir bolenge?",
     },
+    "outage.budget": {
+        "english": "Got it 👍 Mesiri's AI is paused for a short while (the team has been told). Your message is kept and I'll do it as soon as it's back.",
+        "manglish": "Sheri 👍 Mesiri-yude AI kurachu neram nirthi vechirikkunnu (team-ne ariyichu). Message sookshichittundu, thirichu vannal udane cheyyaam.",
+        "malayalam": "ശരി 👍 Mesiri-യുടെ AI കുറച്ചു നേരം നിർത്തിയിരിക്കുന്നു (ടീമിനെ അറിയിച്ചു). സന്ദേശം സൂക്ഷിച്ചിട്ടുണ്ട്, തിരിച്ചു വന്നാൽ ഉടനെ ചെയ്യാം.",
+        "hindi": "ठीक है 👍 Mesiri का AI थोड़ी देर के लिए रुका है (टीम को बता दिया है)। आपका संदेश रखा है, वापस आते ही कर दूँगा।",
+        "hinglish": "Theek hai 👍 Mesiri ka AI thodi der ke liye ruka hai (team ko bata diya hai). Aapka message rakha hai, wapas aate hi kar dunga.",
+    },
     "outage.queued": {
         "english": "Got it 👍 I'll process this in a few minutes.",
         "manglish": "Sheri 👍 njan ithu kurachu minutil cheyyaam.",

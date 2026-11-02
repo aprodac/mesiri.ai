@@ -26,6 +26,20 @@ def _is_timeout(exc: BaseException) -> bool:
 AUTH_OR_QUOTA_STATUSES = frozenset({401, 402, 403})
 AUTH_OR_QUOTA_ERROR_CODE = "PROVIDER_AUTH_OR_QUOTA"
 
+#: WA-143: words a provider uses when the account's spending budget is used up. It answers 429
+#: like a rate limit, but nothing works until a person raises the cap (2 Nov: Gemini "Your project
+#: has exceeded its monthly spending cap" failed every v3 turn for two hours).
+_BUDGET_WORDS = ("spending cap", "billing", "exceeded your current quota", "insufficient_quota",
+                 "credit balance is too low")
+
+
+def is_budget_exhausted(exc: BaseException) -> bool:
+    """True when the provider refused because the account's budget is used up (needs a person)."""
+    if provider_status_code(exc) not in (402, 429):
+        return False
+    text = str(exc).lower()
+    return any(word in text for word in _BUDGET_WORDS)
+
 
 def provider_status_code(exc: BaseException) -> int | None:
     """The HTTP status a provider SDK exception carries, whichever shape it
@@ -61,6 +75,16 @@ def map_provider_error(
             details={"provider": provider},
         )
     status = provider_status_code(exc)
+    if is_budget_exhausted(exc):
+        return MesiriError(
+            error_code=AUTH_OR_QUOTA_ERROR_CODE,
+            category=ErrorCategory.PROVIDER,
+            retryable=False,
+            user_safe_message="The AI service is temporarily unavailable.",
+            internal_message=f"{provider} spending budget used up (HTTP {status}): {type(exc).__name__}",
+            correlation_id=correlation_id,
+            details={"provider": provider, "status_code": status, "budget_exhausted": True},
+        )
     if status in AUTH_OR_QUOTA_STATUSES:
         return MesiriError(
             error_code=AUTH_OR_QUOTA_ERROR_CODE,

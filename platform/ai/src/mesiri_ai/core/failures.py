@@ -37,10 +37,12 @@ class ProviderFailure:
     error_code: str
     status_code: int | None = None
     correlation_id: str | None = None
+    #: WA-143: the account's spending budget is used up (a 429 that no retry will fix).
+    budget_exhausted: bool = False
 
     @property
     def needs_a_person(self) -> bool:
-        return self.status_code in AUTH_OR_QUOTA_STATUSES
+        return self.budget_exhausted or self.status_code in AUTH_OR_QUOTA_STATUSES
 
 
 class FailureAlertPolicy:
@@ -67,6 +69,14 @@ class FailureAlertPolicy:
         if self._last_alert is not None and now - self._last_alert < self._cooldown:
             return None
 
+        if failure.budget_exhausted:
+            self._last_alert = now
+            return (
+                f"AI provider problem: {failure.provider}'s spending budget is used up (HTTP "
+                f"{failure.status_code}). Every call to it fails until someone raises the cap (Gemini: AI "
+                "Studio -> Spend) or sets another key. Messages are queued and retried; testers see a "
+                "'processing in a few minutes' reply."
+            )
         if failure.needs_a_person:
             reason = (
                 f"{failure.provider} answered HTTP {failure.status_code} "
