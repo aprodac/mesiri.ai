@@ -46,6 +46,33 @@ ORDER BY m.received_at"""
         print(f"  MESIRI: {r['reply']}")
         print(f"  v3 tools: {r['tools'] or '-'}   waiting after: {r['waiting']}")
     print(f"\n{len(res['rows'])} message(s)")
+    # 2 Nov: what was actually saved (a converted line says so in its notes), and the company's unit conversions.
+    saved = cp._call("POST", "/claude-ops/sql", {"sql": f"""
+SELECT 'usage' AS kind, to_char(u.created_at AT TIME ZONE 'Asia/Kolkata', 'HH24:MI:SS') AS at_ist, u.material_name,
+       u.quantity, u.unit, u.notes
+FROM material_usage u JOIN organizations o ON o.id = u.organization_id
+WHERE o.name ILIKE {name} AND u.created_at > now() - interval '{hours} hours'
+UNION ALL
+SELECT 'receipt', to_char(r.created_at AT TIME ZONE 'Asia/Kolkata', 'HH24:MI:SS'), r.material_name, r.quantity, r.unit, r.notes
+FROM material_receipts r JOIN organizations o ON o.id = r.organization_id
+WHERE o.name ILIKE {name} AND r.created_at > now() - interval '{hours} hours'
+ORDER BY at_ist"""})
+    print("\n== Material records saved in the window ==")
+    cp.print_result(saved)
+    conv = cp._call("POST", "/claude-ops/sql", {"sql": f"""
+SELECT m.name AS material, s.code AS stock_unit, f.code AS from_unit, c.per_stock_unit,
+       to_char(c.updated_at AT TIME ZONE 'Asia/Kolkata', 'DD Mon HH24:MI') AS set_at
+FROM material_unit_conversions c JOIN organizations o ON o.id = c.organization_id
+JOIN materials_catalog m ON m.id = c.material_id LEFT JOIN units_of_measure s ON s.id = m.default_unit_id
+LEFT JOIN units_of_measure f ON f.id = c.from_unit_id
+WHERE o.name ILIKE {name}"""})
+    print("\n== The company's unit conversions ==")
+    cp.print_result(conv)
+    cat = cp._call("POST", "/claude-ops/sql", {"sql": f"""
+SELECT m.name, u.code AS stock_unit FROM materials_catalog m JOIN organizations o ON o.id = m.organization_id
+LEFT JOIN units_of_measure u ON u.id = m.default_unit_id WHERE o.name ILIKE {name} AND m.is_active ORDER BY m.name"""})
+    print("\n== The company's materials and their stock units ==")
+    cp.print_result(cat)
 
 
 if __name__ == "__main__":
