@@ -67,17 +67,22 @@ test("a shipped plan someone asked for gets ONE live check: marked live, re-test
   }
 });
 
-test("the person who asked using Mesiri again after it went live is recorded once", () => {
+test("the person who asked using Mesiri again after it went live is recorded once", async () => {
   const { brain, items, done } = setup(async () => []);
   try {
     brain.plans.save({ id: 81, project: "mesiri", chat_project: "mesiri", title: "x", plan: "y", asked_who: "h1", live_at: "2026-11-01T15:00:00Z" });
     const live = Date.parse("2026-11-01T15:00:00Z") / 1000;
+    const reviewed = [];
+    brain.reviewInUse = async (plan, rows) => reviewed.push([plan.id, rows.length]); // TM-46, tested below
     brain.markTried("mesiri", [{ who: "h1", at: live - 60 }, { who: "h2", at: live + 60 }]);
     assert.equal(brain.planStore.plans[81].tried_at, undefined);
     brain.markTried("mesiri", [{ who: "h1", at: live + 120 }]);
     assert.equal(brain.planStore.plans[81].tried_at, "2026-11-01T15:02:00.000Z");
+    await new Promise((r) => setImmediate(r)); // the first check has finished
     brain.markTried("mesiri", [{ who: "h1", at: live + 999 }]);
+    await new Promise((r) => setImmediate(r));
     assert.equal(items.filter((i) => i.tried_at).length, 1);
+    assert.deepEqual(reviewed, [[81, 1], [81, 1]]); // each new use goes to the real-use check
   } finally {
     done();
   }
@@ -164,5 +169,38 @@ test("owner, 1 Nov: a shipped plan whose asker has no 'it works now' message get
     }
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("TM-46: the person's real use after 'it works now' is judged once per use, with what they did and what Mesiri said", async () => {
+  const { brain, prompts, ctx, done } = setup(async ({ plans }) => {
+    plans.update(81, { in_use: "broken", in_use_note: "Save still refused", in_use_at: "2026-11-01T15:05:00Z" });
+    return [ok("🔧 [81] not right in real use", "R")];
+  });
+  try {
+    brain.plans.save({ id: 81, project: "mesiri", chat_project: "mesiri", chat: "M@g.us", reply_chat: "M@g.us", title: "TMT saves", plan: "bars convert", asked_by: "Ilan (admin, Paraclette)", asked_who: "h1", live_at: "2026-11-01T14:00:00Z" });
+    const plan = brain.planStore.plans[81];
+    await brain.reviewInUse(plan, [{ who: "h1", at: Date.parse("2026-11-01T14:30:00Z") / 1000, kind: "text", text: "10 TMT bar use aaki", reply: "Ready.", refused: "10 TMT :: expected load" }], "mesiri");
+    assert.match(prompts[0], /REAL-USE CHECK for plan \[81\] "TMT saves" \(round 1 of 3\)[\s\S]*Ilan \(admin, Paraclette\)[\s\S]*10 TMT bar use aaki[\s\S]*REFUSED ON SAVE: 10 TMT :: expected load[\s\S]*in_use_verdict/);
+    assert.equal(ctx().verify_plan, 81);
+    assert.equal(plan.in_use_reviews, 1);
+    assert.equal(plan.use_since, "2026-11-01T15:00:00.000Z"); // broken: their next use is judged again
+  } finally {
+    done();
+  }
+});
+
+test("TM-46 guard: a plan that works in real use is not judged again; three rounds at most", () => {
+  const { brain, done } = setup(async () => []);
+  try {
+    const reviewed = [];
+    brain.reviewInUse = async (plan) => reviewed.push(plan.id);
+    const live = Date.parse("2026-11-01T14:00:00Z") / 1000;
+    brain.plans.save({ id: 82, project: "mesiri", chat_project: "mesiri", title: "a", plan: "b", asked_who: "h1", live_at: "2026-11-01T14:00:00Z", in_use: "works" });
+    brain.plans.save({ id: 83, project: "mesiri", chat_project: "mesiri", title: "a", plan: "b", asked_who: "h1", live_at: "2026-11-01T14:00:00Z", in_use_reviews: 3 });
+    brain.markTried("mesiri", [{ who: "h1", at: live + 60 }]);
+    assert.deepEqual(reviewed, []);
+  } finally {
+    done();
   }
 });

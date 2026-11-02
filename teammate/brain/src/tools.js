@@ -144,6 +144,28 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
             },
           ),
           tool(
+            "in_use_verdict",
+            "TM-46: after a REAL-USE CHECK, record whether the shipped plan does what the person asked, in what they actually did. Call once.",
+            {
+              verdict: z.enum(["works", "broken", "more", "untouched"]).describe("works: it does what they asked; broken: it does not; more: it works and the next improvement is clear; untouched: what they did never used this change"),
+              note: z.string().min(3).max(500).describe("What they did and what happened, in a sentence; for more, the next improvement"),
+            },
+            async ({ verdict, note }) => {
+              const id = ctx.verify_plan;
+              const at = new Date().toISOString();
+              plans.update?.(id, { in_use: verdict, in_use_note: note, in_use_at: at, ...(verdict === "works" ? { status: "done" } : {}) });
+              if (typeof id === "number") await listener.updateItem(id, { verified: { works: "in_use_ok", more: "in_use_ok", broken: "in_use_broken", untouched: undefined }[verdict], note: `real use: ${verdict}: ${note}`, ...(verdict === "works" ? { status: "done" } : {}), project: chatProject }).catch(() => {});
+              const line = {
+                works: `✅ [${id}] works in real use: ${note}`,
+                more: `➕ [${id}] works in real use; next: ${note}`,
+                broken: `🔧 [${id}] not right in real use: ${note}\nFixing it now; their next use is checked again.`,
+                untouched: `👀 [${id}] they used Mesiri, but not this change yet; watching their next use.`,
+              }[verdict];
+              await listener.send({ chat: ctx.reply_chat, project: chatProject, text: line }).catch(() => {});
+              return { content: [{ type: "text", text: { works: "Recorded and closed. Nothing else to do.", more: "Recorded. Now propose_plan the next improvement.", broken: "Recorded. Now fix it (or propose_plan the fix).", untouched: "Recorded. Nothing else to do now." }[verdict] }] };
+            },
+          ),
+          tool(
             "post_fixed_card",
             "TM-32: after a passing live check, post ONE picture to the team group: the real test-chat conversation (drawn by the code from the stored messages since this check started) for what now works, and for EACH related case the fix also covers (the class: another wording, their language, a voice note, another record kind or state) the real exchange you had for it. So first try each related case with test_assistant (2-4 of them), then list them here with the exact text you sent: the card shows that message and Mesiri's replies. A case you did not try shows as \"not tried\"; no related cases says this was a patch.",
             {
@@ -516,4 +538,4 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
   return createSdkMcpServer({ name: "whatsapp", version: "1.0.0", tools });
 }
 
-export const BRAIN_TOOL_NAMES = ["verification_result", "post_fixed_card", "send_preview", "post_message", "post_image", "preview_html", "post_watch_chat", "screenshot_url", "view_media", "translate_message", "propose_plan", "test_assistant", "tell_ilan_usman", "needs_attention", "cycle_report", "status_of_work", "tell_job"].map((t) => `mcp__whatsapp__${t}`);
+export const BRAIN_TOOL_NAMES = ["verification_result", "in_use_verdict", "post_fixed_card", "send_preview", "post_message", "post_image", "preview_html", "post_watch_chat", "screenshot_url", "view_media", "translate_message", "propose_plan", "test_assistant", "tell_ilan_usman", "needs_attention", "cycle_report", "status_of_work", "tell_job"].map((t) => `mcp__whatsapp__${t}`);
