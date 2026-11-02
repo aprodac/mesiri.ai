@@ -137,7 +137,7 @@ production watch ◄────────────────────
 - **Starts from the found cause (TM-29):** an autobuild payload ends with a "Fast path" section: confirm the cause
   in the named files, write the failing test from the person's own message (`scripts/replay_to_test.py`), fix,
   push within ~15 minutes.
-- **Build here (TM-31):** `@bot build here | cloud` (owners, team group; default cloud, or `TEAMMATE_BUILD_HERE=1`).
+- **Build here (TM-31, on since 2 Nov):** `@bot build here | cloud` (owners, team group); the bot deploy sets `TEAMMATE_BUILD_HERE=1` and installs uv.
   "Here" builds on this server in a separate **build worktree** (`<dir>/build/<project>`, branch `bot-build` following
   `origin/main`, pushes with `git push origin HEAD:main`; `src/build_tree.js`): the shared copy's reset never touches
   it, leftovers go to an `unpushed-build/<time>` branch, the Python packages stay in its `.venv` and are installed
