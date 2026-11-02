@@ -1,7 +1,7 @@
 # Request 185: the v2 eval sets on the REAL model, on demand (Actions -> "v2 live evals" -> Run).
 # Runs the module skills (labour, work, issues, expenses, site, reports) and the materials gate
 # for one engine (v2 = google-genai loop, adk = Google ADK with whole-conversation memory) and one
-# Gemini model, with the team bot's key. Prints one line per case and the per-module score.
+# Gemini model, with the CI key (CI_GEMINI_API_KEY; the team bot's until that is set). Prints one line per case and the per-module score.
 # Never part of a deploy; costs a few cents per run.
 name: v2 live evals
 
@@ -44,7 +44,7 @@ jobs:
           PYTHONPATH: ${{ env.TEST_PYTHONPATH }}
           MESIRI_ENVIRONMENT: test
           MESIRI_OBJECT_STORAGE__PROVIDER: fake
-          GEMINI_API_KEY: ${{ secrets.TEAMMATE_GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.CI_GEMINI_API_KEY || secrets.TEAMMATE_GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ inputs.model }}
           MESIRI_V2_ENGINE: ${{ inputs.engine }}
           MESIRI_LIVE_PACE_SECONDS: "4"
@@ -59,7 +59,7 @@ jobs:
           PYTHONPATH: ${{ env.TEST_PYTHONPATH }}
           MESIRI_ENVIRONMENT: test
           MESIRI_OBJECT_STORAGE__PROVIDER: fake
-          GEMINI_API_KEY: ${{ secrets.TEAMMATE_GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.CI_GEMINI_API_KEY || secrets.TEAMMATE_GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ inputs.model }}
           MESIRI_LIVE_PACE_SECONDS: "4"
         run: |

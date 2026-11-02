@@ -35,7 +35,7 @@ name: Claude ops
 #                     in the assistant-test chat; `text` = scenario ids and/or repeats, e.g. "S02,S04 x3"
 #                     (empty: all, once). Same token and chat as bot-test; TEST company only.
 #   golden-live       the agent golden sets on the real model (`pytest -m live`, ARCH-02 gate; `text` = site |
-#                     materials | photos | draft (the old deploy live gate) | empty for site+materials+photos). Uses TEAMMATE_GEMINI_API_KEY (approved by Ilan 22 Oct); no VPS.
+#                     materials | photos | draft (the old deploy live gate) | empty for site+materials+photos). Uses CI_GEMINI_API_KEY, else TEAMMATE_GEMINI_API_KEY (approved by Ilan 22 Oct); no VPS.
 #
 # Never prints secrets; long digit runs (phone numbers) are cut to their last 4 digits. Customer groups are
 # not readable through this workflow.
@@ -105,7 +105,7 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
           TEAMMATE_TOKEN: ${{ secrets.TEAMMATE_API_TOKEN }}
           TEAMMATE_PROJECT: mesiri
-          GEMINI_API_KEY: ${{ inputs.task == 'golden-live' && secrets.TEAMMATE_GEMINI_API_KEY || '' }}
+          GEMINI_API_KEY: ${{ inputs.task == 'golden-live' && (secrets.CI_GEMINI_API_KEY || secrets.TEAMMATE_GEMINI_API_KEY) || '' }}
         run: |
           set -o pipefail
           mask() { sed -E 's/[0-9]{6,}([0-9]{4})/…\1/g'; }

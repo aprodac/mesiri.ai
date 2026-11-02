@@ -53,7 +53,7 @@ jobs:
       - name: Same messages, three engines, real model
         env:
           PYTHONPATH: ${{ env.TEST_PYTHONPATH }}
-          GEMINI_API_KEY: ${{ secrets.TEAMMATE_GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.CI_GEMINI_API_KEY || secrets.TEAMMATE_GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ inputs.model }}
           MESIRI_LIVE_PACE_SECONDS: "2"
           MESIRI_COMPARE_OUT: ${{ runner.temp }}/compare.json
