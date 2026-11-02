@@ -33,12 +33,15 @@ def resolve_unit(units: list[dict[str, Any]], value: Any) -> dict[str, Any] | No
     for unit in units:
         if word and word in (fold(unit.get("code")), fold(unit.get("display_name"))):
             return unit
-    canon = canonical_unit(text)
+    canon = canonical_unit(text) or ("nos" if word in _COUNT_WORDS else None)  # v3 only: v2 keeps "rod" a non-unit
     if canon:
         for unit in units:
             if canonical_unit(unit.get("code")) == canon or fold(unit.get("code")) == fold(canon):
                 return unit
     return None
+
+
+_COUNT_WORDS = frozenset({"rod", "rods"})
 
 
 def is_uuid(value: Any) -> bool:

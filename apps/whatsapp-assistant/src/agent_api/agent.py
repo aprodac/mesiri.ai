@@ -153,6 +153,7 @@ class ApiAgent:
         saved: list[WriteResult] = []
         asked: dict[str, Any] = {}
         acted: list[str] = []
+        unit_ask: list[str] = []  # buttons for a unit nobody could settle (cleared once a line settles)
 
         def chosen(arguments: dict) -> list[int]:
             numbers = arguments.get("numbers") or range(1, len(waiting) + 1)
@@ -201,7 +202,9 @@ class ApiAgent:
             if tool.is_write and "unit_id" in tool.body_fields:
                 problem = await settle_unit(client, body)
                 if problem:
+                    unit_ask[:] = await unit_buttons(client)
                     return ToolOutcome(content={"error": problem})
+                unit_ask.clear()
             if tool.is_write:
                 entry = PendingWrite(
                     tool=name, method=tool.method, path=path, params=params, body=body,
@@ -253,9 +256,9 @@ class ApiAgent:
         calls = [{"tool": c.name, "arguments": c.arguments, "result": c.outcome.content if c.outcome else None}
                  for c in result.calls]
         still = [e for e in waiting if e is not None]
+        options = asked.get("options", []) or (unit_ask if not asked else [])
         return ApiTurn(reply=(result.text or "").strip(), pending=still + new, saved=saved, calls=calls,
-                       stop_reason=result.stop_reason, question=asked.get("question", ""),
-                       options=asked.get("options", []))
+                       stop_reason=result.stop_reason, question=asked.get("question", ""), options=options)
 
 
 def _takes(provider: Any, name: str) -> bool:
@@ -298,6 +301,19 @@ async def settle_unit(client: ApiClient, body: dict[str, Any]) -> str:
                 f"{unit_choices(units)}. If you cannot tell which unit they mean, ask them with `ask` and those units as options.")
     body["unit_id"] = str(unit["id"])
     return ""
+
+
+async def unit_buttons(client: ApiClient) -> list[str]:
+    """Up to three unit buttons (nos / kg / tons first) for a unit the code could not settle, so the
+    person taps one before Save instead of meeting a refusal after it."""
+    try:
+        response = await client.call("GET", "/materials/units-of-measure")
+        units = unit_rows(response.body) if response.ok else []
+    except Exception:  # noqa: BLE001
+        return []
+    codes = [str(u.get("code") or u.get("display_name")) for u in units]
+    first = [c for want in ("nos", "kg", "tons") for c in codes if c.casefold() == want]
+    return (first + [c for c in codes if c not in first])[:3]
 
 
 async def confirm(client: ApiClient, pending: list[PendingWrite]) -> list[WriteResult]:

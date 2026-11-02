@@ -24,7 +24,10 @@ _WORDS: dict[str, tuple[str, ...]] = {
     "load": ("load", "loads", "lod", "lode", "lood", "ലോഡ്", "ലോഡ", "लोड"),
     "ft": ("ft", "feet", "foot", "adi", "aadi", "അടി", "फ़ुट", "फुट"),
     "kg": ("kg", "kgs", "kilo", "kilos", "kilogram", "kilograms", "കിലോ", "കിലോഗ്രാം", "किलो"),
-    "nos": ("no", "nos", "number", "numbers", "ennam", "enam", "എണ്ണം", "नग", "संख्या"),
+    "nos": (
+        "no", "nos", "number", "numbers", "ennam", "enam", "എണ്ണം", "नग", "संख्या",
+        "bar", "bars", "pc", "pcs", "piece", "pieces", "each", "unit", "units", "nug",
+    ),
     "tons": ("ton", "tons", "tonne", "tonnes", "tonn", "ടൺ", "टन"),
 }
 

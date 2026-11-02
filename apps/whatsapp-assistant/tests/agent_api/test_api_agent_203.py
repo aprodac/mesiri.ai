@@ -45,7 +45,7 @@ def test_units_read_from_the_items_answer_and_from_a_list() -> None:
 def test_the_words_sites_use_name_the_org_unit() -> None:
     for said in ("bags", "Bag", "chaakku", "ചാക്ക്", BAG, "Bags"):
         assert resolve_unit(UNITS, said)["id"] == BAG, said
-    for said in ("nos", "ennam", "എണ്ണം", "numbers"):
+    for said in ("nos", "ennam", "എണ്ണം", "numbers", "bars", "rod", "pcs"):
         assert resolve_unit(UNITS, said)["id"] == NOS, said
     assert resolve_unit(UNITS, "furlongs") is None and resolve_unit(UNITS, "") is None
 
@@ -123,3 +123,11 @@ async def test_a_refusal_the_person_sees_is_never_the_validation_text() -> None:
     entry = PendingWrite("record_receipt", "POST", "/x", {}, {}, "50 bags cement", "k")
     text = _saved_text([WriteResult(entry, 422, {"detail": "unit_id is not a valid active unit"})], "manglish")
     assert "unit_id" not in text and "Ethu unit" in text and text.startswith("Not everything")
+
+
+def test_a_copied_ready_block_in_the_models_words_is_not_printed_twice() -> None:
+    from agent_api.whatsapp import without_ready_block
+
+    block = "Done.\n\n*Ready to save:*\n1. 50 bags cement received"
+    assert without_ready_block(block) == "Done."
+    assert without_ready_block("Cement is ready.") == "Cement is ready."
