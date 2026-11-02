@@ -124,7 +124,7 @@ class ApiWhatsApp:
                  sessions: Any | None = None, send_document: Callable[..., Awaitable[Any]] | None = None,
                  receipt_builder: Any | None = None, send_image: Callable[..., Awaitable[Any]] | None = None) -> None:
         self._redis = redis
-        #: WA-131: the SAVED card after a Save (the channel.receipt builder classic and v2 use).
+        #: WA-132: the SAVED card after a Save (the channel.receipt builder classic and v2 use).
         self._receipts = receipt_builder
         self._send_image = send_image
         self._just_saved: dict[str, list[WriteResult]] = {}
@@ -182,7 +182,7 @@ class ApiWhatsApp:
         return True
 
     async def _send_saved_card(self, message: Any, ctx: Any) -> None:
-        """WA-131: the green SAVED card of what this message saved (a Save tap, or "save it"), as
+        """WA-132: the green SAVED card of what this message saved (a Save tap, or "save it"), as
         classic and v2 send it after the "Saved" line. Never raises."""
         results = self._just_saved.pop(message.correlation_id, None)
         if not results or self._receipts is None or self._send_image is None:

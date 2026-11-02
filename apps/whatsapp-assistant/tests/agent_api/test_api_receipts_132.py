@@ -1,4 +1,4 @@
-"""WA-131: a v3 Save sends the green SAVED card, as classic and v2 do.
+"""WA-132: a v3 Save sends the green SAVED card, as classic and v2 do.
 
 - the Save tap: the "Saved" line first, then the card (the reply never waits for the picture);
 - "save it" in words (save_ready_entries): the same card;

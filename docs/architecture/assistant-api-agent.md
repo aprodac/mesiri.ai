@@ -149,7 +149,7 @@ nothing reached the team; the reply also printed the Ready-to-save list twice.
   reply, waiting for the Save button: ..."): with whole replies kept, the model copied the list
   format into its own words.
 
-## The SAVED card after a Save (WA-131)
+## The SAVED card after a Save (WA-132)
 
 A Save (the button, or "save it" in words) is answered as in classic and v2: the "Saved" line,
 then the green SAVED card of what was saved, drawn by the same builder

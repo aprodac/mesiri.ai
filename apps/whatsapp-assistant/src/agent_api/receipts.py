@@ -1,4 +1,4 @@
-"""WA-131: the green SAVED card after a v3 Save, the same card classic and v2 send.
+"""WA-132: the green SAVED card after a v3 Save, the same card classic and v2 send.
 
 The card is drawn by the existing ``channel.receipt`` builder (``RecordReceiptBuilder.build_combined``)
 from a draft action and the saved row's id. v3's entries are API requests, so this turns each saved
