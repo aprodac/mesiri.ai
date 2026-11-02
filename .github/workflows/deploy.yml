@@ -215,6 +215,19 @@ jobs:
           printf '%s' "${GROUPS_ENABLED}" | ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
             "python3 /tmp/set_env_value.py /opt/mesiri/.env WHATSAPP_GROUPS_ENABLED && rm -f /tmp/set_env_value.py"
 
+      # TM-33: the team bot's "Is this how you want it?" previews (runtime/previews.py).
+      # Switched on 2 Nov 2026 (Alan approved; relayed in the Claude Code session).
+      # To switch off: set PREVIEWS to off and push; the restarts below load it.
+      - name: Previews switch
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          PREVIEWS: "on"
+        run: |
+          scp -i ~/.ssh/deploy_key infra/deploy/set_env_value.py "${VPS_USER}@${VPS_HOST}:/tmp/set_env_value.py"
+          printf '%s' "${PREVIEWS}" | ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
+            "python3 /tmp/set_env_value.py /opt/mesiri/.env MESIRI_PREVIEWS && rm -f /tmp/set_env_value.py"
+
       # ── Step 1: update code + deps + run migrations + restart ──────────────
       - name: Deploy backend
         env:

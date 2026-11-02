@@ -156,7 +156,7 @@ Entries wait per person in Redis for a day (an older list's buttons do nothing).
   (`scripts/replay_to_test.py`); its live half runs the real model on today's `SOP.md` with the same words, facts
   (kept in the trace, 6,000 characters) and API answers. The `SOP eval` workflow runs them all whenever
   `agent_api/` or a replay changes, and posts a failure in the team group (not a deploy gate).
-- **"Is this how you want it?" (TM-33, off until `MESIRI_PREVIEWS=on`):** for a UX or feature request the team bot
+- **"Is this how you want it?" (TM-33, on since 2 Nov, Alan approved; `MESIRI_PREVIEWS`):** for a UX or feature request the team bot
   sends a picture of the planned reply with *Confirm* / *Change it* through `runtime/previews.py` (only to the person
   who asked, v3 companies, 24-hour window, once); the taps are answered by code in every mode (`preview_feedback`).
 - **Reference and verdict (TM-21):** a reply that passed something on ends with its reference (`#a83836`),
