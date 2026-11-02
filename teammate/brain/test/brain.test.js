@@ -686,3 +686,12 @@ test("brain: '@bot watch …' is answered by code (the production watch), never 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("TM-29: an autobuild plan's payload starts from the found cause and the person's own message", async () => {
+  const { fastPathSection } = await import("../src/brain.js");
+  const text = fastPathSection({ id: 42, asked_for: ["cor_0123456789abcdef0123456789abcdef", "bad'id"] });
+  assert.match(text, /Fast path \(TM-29/);
+  assert.match(text, /python3 scripts\/replay_to_test\.py cor_0123456789abcdef0123456789abcdef --name plan-42/);
+  assert.doesNotMatch(text, /bad'id/);
+  assert.match(fastPathSection({ id: 7 }), /a scripted test that fails without the fix/);
+});

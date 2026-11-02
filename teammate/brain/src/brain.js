@@ -230,6 +230,27 @@ function writeJson(path, data) {
   renameSync(`${path}.tmp`, path);
 }
 
+
+/**
+ * TM-29: an autobuild plan's cloud session starts from the cause the planning turn already found, so it does not
+ * spend its first ten minutes re-investigating. The person's own messages become the failing test first (TM-25).
+ */
+export function fastPathSection(plan) {
+  const ids = (plan.asked_for || []).filter((c) => /^cor_[0-9a-f]{8,40}$/.test(String(c)));
+  return [
+    "",
+    "Fast path (TM-29: the person is waiting; aim to push within 15 minutes):",
+    "- The root cause and the change are already worked out above. Open only the files the plan names to confirm",
+    "  them; don't re-investigate the area. If the plan turns out wrong, say so in the group and stop.",
+    ids.length
+      ? `- First the failing test from their own messages: python3 scripts/replay_to_test.py ${ids[0]} --name plan-${plan.id}` +
+        " (set its EXPECT to what should happen), then the fix."
+      : "- First a scripted test that fails without the fix (tests/agent_api/ for the assistant), then the fix.",
+    "- When the plan names a dashboard route for v3, the change is scripts/allow_route.py with it (TM-30): one step.",
+    "- Post \"🛠 Building [n]\" now; run only the CLAUDE.md checks for the areas you touched; push; then the release note.",
+  ].join("\n");
+}
+
 export class Brain {
   /**
    * @param {{
@@ -551,6 +572,7 @@ export class Brain {
       `Plan [${plan.id}]: ${plan.title}`,
       "",
       plan.plan,
+      ...(!followUp && by === "autobuild" ? [fastPathSection(plan)] : []),
       ...(followUp ? [followUpSection(followUp)] : []),
       reportingFooter(plan, reply_chat),
     ].join("\n");
@@ -572,11 +594,12 @@ export class Brain {
       } else {
         plan.session_url = url;
         plan.fired_at = at;
+        plan.started_at ||= at; // TM-27: when the build started
       }
       writeJson(this.plansFile, this.planStore);
       this.log(`brain: plan [${plan.id}] ${followUp ? "follow-up" : "started"} in the cloud: ${url}`);
       if (typeof plan.id === "number" && url) {
-        this.listener.updateItem(plan.id, { ...(followUp && before === "done" ? { status: "in_progress" } : {}), note: `cloud session${followUp ? " (follow-up)" : ""} ${url}`, project }).catch(() => {});
+        this.listener.updateItem(plan.id, { ...(followUp ? (before === "done" ? { status: "in_progress" } : {}) : { started_at: plan.started_at }), note: `cloud session${followUp ? " (follow-up)" : ""} ${url}`, project }).catch(() => {});
       }
       if (followUp) {
         await say(`💬 [${plan.id}] follow-up started: ${url || "(link not returned)"}`);
@@ -887,6 +910,9 @@ export class Brain {
     if (typeof plan.id === "number") this.listener.updateItem(plan.id, { status: "in_progress", note: "approved_by: autobuild (TM-18)", project }).catch(() => {});
     if (this.routineFor(plan.chat, plan.project) && this.fireFn) return this.runInCloud(plan, { project, by: "autobuild", reply_chat: req.reply_chat, say });
     const key = `${plan.chat}::${plan.session || "main"}`;
+    plan.started_at ||= this.now().toISOString(); // TM-27
+    writeJson(this.plansFile, this.planStore);
+    if (typeof plan.id === "number") this.listener.updateItem(plan.id, { started_at: plan.started_at, project }).catch(() => {});
     const text = `Autobuild (TM-18) started plan [${plan.id}] "${plan.title}". Go ahead with exactly this plan now.\n\nThe plan:\n${plan.plan}`;
     // Queued behind the turn that is running now (never awaited here: that turn holds the same queue).
     void this.enqueue(key, () =>

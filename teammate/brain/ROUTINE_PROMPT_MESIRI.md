@@ -31,6 +31,10 @@ them. If the work turns out to need one of the held areas, don't change it: post
 autobuild plan needs <what>" to the reply group and stop. Post a short "🛠 Building [n]: ..." when you start and
 "✅ [n] is live: ..." after the push, and add the release note the plan asks for, so the person who asked is told.
 
+An autobuild payload ends with a "Fast path" section (TM-29): the cause is already found, so confirm it in the
+files the plan names and go straight to the failing test (scripts/replay_to_test.py with the person's message id)
+and the fix. Someone is waiting for it on WhatsApp: aim to push within 15 minutes.
+
 Pushing to main deploys Mesiri production automatically (including alembic upgrade head), so this approval
 IS a production deploy. Follow CLAUDE.md exactly:
 - Work on main only: git checkout main; git pull origin main. No branches. Logical commits.
@@ -41,7 +45,7 @@ IS a production deploy. Follow CLAUDE.md exactly:
               python -m ruff check backend/src backend/tests backend/migrations
     dashboard: cd apps/dashboard && npx tsc -b --noEmit && npx oxlint src/ && npx vite build
     platform/ai or shared contracts: cd platform/ai && python -m pytest tests/ -q
-    whatsapp-assistant: the PYTHONPATH command in CLAUDE.md (~9 minutes)
+    whatsapp-assistant: the PYTHONPATH command in CLAUDE.md (~75 seconds)
     teammate/: cd teammate/listener && npm ci && npm test; cd ../brain && npm ci && npm test
   If a required suite can't run in this environment, don't push: post "👀 Please check Claude Code: <which
   suite and why>" to the reply group and stop.
