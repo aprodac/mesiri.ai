@@ -117,6 +117,15 @@ account -> new vendor), "1 day memory always available, fast", "the past 2 days 
 - **Wording.** SOP: "ready", never "saved / recorded / njan record cheythu / daal diya" before
   Save; reply in their language and their script (Manglish stays in Latin letters).
 
+## Feedback reaches the team bot (WA-126)
+
+"mesiri bad ux", "mesiri fix this", "this is confusing", a wrong reply, or something Mesiri cannot do
+yet: v3 calls `tell_the_team`, the same tool and reply wording as v2
+(`agent_v2/skills/general/tools.py`, one definition). It writes nothing. The turn's trace
+(`agent_api_turn`, calls with `args`) is read by the team bot's production watch, which now reads
+v3's stage as well as v2's (`teammate/brain/src/prod_watch.js`). From there it is TM-18's Autobuild:
+plan, build, push, and the person is told in their own chat when it is live.
+
 ## Safety
 
 - **Nothing is written without the person's confirmation.** A write tool only records the entry
@@ -144,3 +153,13 @@ are ordinary dashboard records.
 3. **Gaps the API has and the assistant's path covers**: material aliases in `search_materials`
    (the API searches names), unit conversion asked in words, duplicate-delivery warning, the morning
    site question. Found by step 1, fixed in the backend so the dashboard gets them too.
+
+## Units are settled in code (request 203, 2 Nov 2026)
+
+The model writes a unit by word ("bags", "chaakku") or even an invented id; the API wants the id of an
+active unit. `agent_api/units.py` turns the word / code / wrong id into the real id (through the shared
+`runtime.unit_words` table) when an entry is prepared and again when it is saved. A unit that matches
+nothing goes back to the model, which asks one question with the unit names as buttons. The units
+route answers `{"items": [...]}`; the facts read that shape (a bare-list check once left the model with no
+ids and every material line failed). A refused line shows plain words in the sender's language
+(`plain_refusal`), never the API's validation text.

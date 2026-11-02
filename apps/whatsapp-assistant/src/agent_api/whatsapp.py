@@ -34,6 +34,7 @@ from .app import build_api_app
 from .client import Actor, ApiClient
 from .memory import DayMemory
 from .tools import build_tools
+from .units import plain_refusal, unit_rows
 
 _log = logging.getLogger(__name__)
 
@@ -169,11 +170,14 @@ class ApiWhatsApp:
         finally:
             await client.close()
         await self._trace_turn(message, {
-            "text": text, "calls": turn.calls, "stop_reason": turn.stop_reason,
+            # `args` as v2's trace has it: the team bot's watch reads tell_the_team from it (TM-18).
+            "text": text, "calls": [{**c, "args": c.get("arguments")} for c in turn.calls],
+            "stop_reason": turn.stop_reason,
             "saved": [{"summary": r.pending.summary, "status": r.status} for r in turn.saved],
             "pending": [e.summary for e in turn.pending], "asked": turn.question,
         }, started)
-        words = turn.reply or turn.question or (_saved_text(turn.saved) if turn.saved else "")
+        state["language"] = _language(text)
+        words = turn.reply or turn.question or (_saved_text(turn.saved, state.get("language")) if turn.saved else "")
         reply = self._reply(words, turn.pending, state, turn.options)
         await self._save_state(ctx, state)
         return reply
@@ -252,8 +256,8 @@ class ApiWhatsApp:
             return ""
         unit_name = {}
         lines = []
-        if units.ok and isinstance(units.body, list):
-            unit_name = {u.get("id"): u.get("code") for u in units.body if isinstance(u, dict)}
+        if units.ok:  # the API answers {"items": [...]} (request 203: a bare-list check read it as empty)
+            unit_name = {u.get("id"): u.get("code") for u in unit_rows(units.body)}
             lines.append("Units (unit_id): " + ", ".join(f"{code} ({uid})" for uid, code in unit_name.items()))
         if materials.ok and isinstance(materials.body, dict):
             items = materials.body.get("items") or []
@@ -285,7 +289,7 @@ class ApiWhatsApp:
         left = [r.pending for r in results if not r.ok]
         state["pending"] = [e.to_json() for e in left]
         state["batch"] = uuid.uuid4().hex[:8] if left else None
-        text = _saved_text(results)
+        text = _saved_text(results, state.get("language"))
         await self._save_state(ctx, state)
         return _save_buttons(text, state["batch"]) if left else ReplySpec(text=text)
 
@@ -319,7 +323,7 @@ class ApiWhatsApp:
 
     async def _save_state(self, ctx: Any, state: dict) -> None:
         try:
-            await self._redis.set_json(self._key(ctx), {k: state.get(k) for k in ("pending", "batch")},
+            await self._redis.set_json(self._key(ctx), {k: state.get(k) for k in ("pending", "batch", "language")},
                                        ttl_seconds=STATE_TTL_SECONDS)
         except Exception:  # noqa: BLE001
             _log.warning("agent_api.state_unsaved user=%s", ctx.user_id, exc_info=True)
@@ -358,8 +362,9 @@ def _save_buttons(text: str, batch: str) -> ReplySpec:
                                           ListRow(id=f"{CANCEL_PREFIX}{batch}", title="Cancel")))
 
 
-def _saved_text(results: list[WriteResult]) -> str:
-    lines = [f"✅ {r.pending.summary}" if r.ok else f"❌ {r.pending.summary}: {_detail(r.body)}" for r in results]
+def _saved_text(results: list[WriteResult], language: str | None = None) -> str:
+    lines = [f"✅ {r.pending.summary}" if r.ok else f"❌ {r.pending.summary}: {plain_refusal(_detail(r.body), language)}"
+             for r in results]
     head = "Saved." if all(r.ok for r in results) else "Not everything could be saved:"
     return head + "\n" + "\n".join(lines)
 
