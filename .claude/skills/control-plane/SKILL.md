@@ -55,6 +55,6 @@ Times in the built-in commands are India time; phone numbers are cut to the last
 
 Useful tables: `organizations`, `users`, `projects`, `sites`, `inbound_messages` (every WhatsApp
 message: `processing_status`, `error_code`, `assistant_reply`), `journey_traces` (per-stage trace,
-`stage = 'agent_tools'` holds the assistant's tool calls), `provider_executions` (every AI /
+`stage = 'agent_api_turn'` holds v3's tool calls, `stage = 'agent_tools'` classic's; `traces` reads both), `provider_executions` (every AI /
 WhatsApp call, cost, failures), `daily_reports` (DPRs: `status`, `missing_sections`),
 `timeline_entries`, `activities`, `admin_audit_log`, `organization_settings`.

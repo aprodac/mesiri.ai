@@ -390,6 +390,20 @@ QUESTION_TOOLS: dict[str, str] = {
     "query_work_log": "work",
     "query_project": "project",
     "request_dpr": "report",
+    # TM-41 (2 Nov): v3's lookups are the dashboard's own GET routes (agent_api/tools.py ALLOWED). A v3 turn counts
+    # as a question only when it saved and prepared nothing (fact_reviews.questions), since v3 also looks things
+    # up while recording an entry. Expenses stay out, as above.
+    "labour_attendance": "manpower",
+    "stock_levels": "stock",
+    "stock_check": "stock",
+    "list_receipts": "stock",
+    "list_usage": "stock",
+    "work_progress": "work",
+    "work_item": "work",
+    "day_summary": "project",
+    "timeline": "project",
+    "site_day": "project",
+    "list_issues": "project",
 }
 
 

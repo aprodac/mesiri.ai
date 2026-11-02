@@ -37,7 +37,7 @@ async def conn():
     await engine.dispose()
 
 
-async def _message(conn, org, *, text_, reply, tools, project=None, site=None, minutes=0) -> str:
+async def _message(conn, org, *, text_, reply, tools, project=None, site=None, minutes=0, v3=None) -> str:
     correlation = f"cor_{uuid.uuid4().hex[:10]}"
     await conn.execute(
         text(
@@ -49,6 +49,17 @@ async def _message(conn, org, *, text_, reply, tools, project=None, site=None, m
         {"id": uuid.uuid4(), "c": correlation, "s": SENDER, "b": text_, "o": org, "p": project,
          "site": site, "r": reply, "at": NOW + dt.timedelta(minutes=minutes)},
     )
+    if v3 is not None:
+        # TM-41: a v3 turn (stage agent_api_turn): its calls, and what it saved or prepared.
+        await conn.execute(
+            text(
+                "INSERT INTO journey_traces (id, correlation_id, stage, stage_payload, succeeded)"
+                " VALUES (:id, :c, 'agent_api_turn', CAST(:p AS jsonb), true)"
+            ),
+            {"id": uuid.uuid4(), "c": correlation, "p": json.dumps({
+                "calls": [{"tool": t, "arguments": {}, "result": {"status": 200}} for t in tools], **v3})},
+        )
+        return correlation
     if tools:
         await conn.execute(
             text(
@@ -81,3 +92,27 @@ async def test_a_question_answered_by_a_lookup_is_listed(conn) -> None:
     )
 
     assert [(r["text"], r["reply"], r["tools"]) for r in rows] == [("ആരൊക്കെ വന്നു?", "ഇന്ന് 4 പേർ", ["query_labour"])]
+
+
+async def test_v3_a_lookup_only_turn_is_a_question_and_an_entry_is_not(conn) -> None:
+    """TM-41 (2 Nov): v3 traces its turns as agent_api_turn, so v3 companies' questions never reached Live."""
+    created = await create_company(
+        conn,
+        NewCompany(name="Ask Builders v3", owner_name="Owner", owner_phone="+" + SENDER,
+                   project_name="Hospital", site_names=("Tower A",), auto_dpr=False),
+        now=NOW,
+    )
+    org, project, site = created.organization_id, created.project_id, created.sites[0].site_id
+    await _message(conn, org, text_="how many came today?", reply="4 masons", tools=["labour_attendance"],
+                   project=project, site=site, v3={"saved": [], "pending": []})
+    # An entry also looks things up (the material's id) but prepares a save: not a question.
+    await _message(conn, org, text_="50 bags cement came", reply="Ready to save", tools=["search_materials", "stock_check"],
+                   project=project, site=site, minutes=2, v3={"saved": [], "pending": ["50 bags cement received"]})
+
+    rows = await PostgresFactReviewRepository(conn).questions(
+        organization_id=org, project_id=project, site_id=site,
+        since=NOW - dt.timedelta(hours=1), until=NOW + dt.timedelta(hours=1),
+        workflow_keys=list(QUESTION_KINDS), tool_names=list(QUESTION_TOOLS),
+    )
+
+    assert [(r["text"], r["tools"]) for r in rows] == [("how many came today?", ["labour_attendance"])]

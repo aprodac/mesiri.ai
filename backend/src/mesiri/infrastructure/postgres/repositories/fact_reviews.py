@@ -421,7 +421,12 @@ class PostgresFactReviewRepository:
                     " COALESCE(wi.workflow_key, wi_origin.workflow_key) AS workflow_key, "
                     " (SELECT array_agg(c ->> 'tool') FROM journey_traces jt, "
                     "   jsonb_array_elements(jt.stage_payload::jsonb -> 'calls') c "
-                    "   WHERE jt.correlation_id = im.correlation_id AND jt.stage = 'agent_tools') AS tools "
+                    "   WHERE jt.correlation_id = im.correlation_id AND (jt.stage = 'agent_tools' "
+                    # TM-41: a v3 turn that only looked things up (saved and prepared nothing) is a question.
+                    "     OR (jt.stage = 'agent_api_turn' "
+                    "       AND jsonb_typeof(jt.stage_payload::jsonb -> 'calls') = 'array' "
+                    "       AND COALESCE(jsonb_array_length(jt.stage_payload::jsonb -> 'saved'), 0) = 0 "
+                    "       AND COALESCE(jsonb_array_length(jt.stage_payload::jsonb -> 'pending'), 0) = 0))) AS tools "
                     " FROM inbound_messages im "
                     # One name per message, even if two people share a number.
                     " LEFT JOIN LATERAL (SELECT u.full_name FROM users u "

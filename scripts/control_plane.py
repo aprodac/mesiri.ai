@@ -62,19 +62,42 @@ ORDER BY m.received_at DESC LIMIT {int(limit)}"""
 
 
 def q_traces(hours: int, limit: int) -> str:
+    """What the assistant decided per message: v3 (agent_api_turn) and classic (agent_tools). TM-41: this read
+    only classic, so every v3 company looked like it had done nothing."""
+    calls = ("jsonb_array_elements(CASE WHEN jsonb_typeof(t.stage_payload::jsonb->'calls') = 'array' "
+             "THEN t.stage_payload::jsonb->'calls' ELSE '[]'::jsonb END) c")
     return f"""
 SELECT to_char(t.created_at AT TIME ZONE 'Asia/Kolkata', 'DD Mon HH24:MI:SS') AS at_ist,
+       CASE t.stage WHEN 'agent_api_turn' THEN 'v3' ELSE 'classic' END AS agent,
        o.name AS company, right(coalesce(m.sender_wa_id, ''), 4) AS sender, m.message_type AS kind,
-       (SELECT string_agg(c->>'tool' || '=' || coalesce(c->>'status', ''), '  ')
-          FROM jsonb_array_elements(t.stage_payload::jsonb->'calls') c) AS tools,
-       t.stage_payload::jsonb->>'parked_by' AS parked,
-       t.stage_payload::jsonb->'still_to_do' AS still_to_do,
-       t.correlation_id
+       (SELECT string_agg(c->>'tool' || '=' || left(coalesce(c->>'status', c->'result'->>'status', ''), 24)
+               || coalesce(' [by ' || (c->>'by') || ']', ''), '  ') FROM {calls}) AS tools,
+       CASE WHEN t.stage = 'agent_api_turn' THEN concat_ws(' ',
+           'FAILED ' || (t.stage_payload::jsonb->>'error') || ' -> ' || (t.stage_payload::jsonb->>'handled'),
+           'saved ' || nullif(jsonb_array_length(coalesce(t.stage_payload::jsonb->'saved', '[]'::jsonb)), 0),
+           'waiting ' || nullif(jsonb_array_length(coalesce(t.stage_payload::jsonb->'pending', '[]'::jsonb)), 0),
+           'asked: ' || nullif(t.stage_payload::jsonb->>'asked', ''))
+       ELSE concat_ws(' ', 'parked: ' || (t.stage_payload::jsonb->>'parked_by'),
+                      'still to do: ' || (t.stage_payload::jsonb->>'still_to_do'))
+       END AS outcome,
+       t.duration_ms, t.correlation_id
 FROM journey_traces t
 LEFT JOIN inbound_messages m ON m.correlation_id = t.correlation_id
 LEFT JOIN organizations o ON o.id = m.organization_id
-WHERE t.stage = 'agent_tools' AND t.created_at > {_hours(hours)}
+WHERE t.stage IN ('agent_tools', 'agent_api_turn') AND t.created_at > {_hours(hours)}
 ORDER BY t.created_at DESC LIMIT {int(limit)}"""
+
+
+def q_why_empty(hours: int) -> str:
+    """TM-41: what was there in the window, so an empty answer says whether nothing happened or the query missed it."""
+    since = _hours(hours)
+    return f"""
+SELECT (SELECT count(*) FROM inbound_messages WHERE received_at > {since}) AS messages,
+       (SELECT count(*) FROM journey_traces WHERE stage = 'agent_api_turn' AND created_at > {since}) AS v3_turns,
+       (SELECT count(*) FROM journey_traces WHERE stage = 'agent_tools' AND created_at > {since}) AS classic_turns,
+       (SELECT count(*) FROM journey_traces WHERE created_at > {since} AND succeeded = false) AS failed_stages,
+       (SELECT to_char(max(received_at) AT TIME ZONE 'Asia/Kolkata', 'DD Mon HH24:MI') FROM inbound_messages)
+         AS last_message_ever_ist"""
 
 
 def q_failures(hours: int, limit: int) -> str:
@@ -257,6 +280,11 @@ def main(argv: list[str] | None = None) -> None:
     print(json.dumps(res, indent=2) if args.json else "", end="")
     if not args.json:
         print_result(res)
+        if not res.get("rows") and args.cmd in ("messages", "traces", "failures"):
+            # TM-41: "nothing" is never left unexplained: was there no traffic, or does the query miss it?
+            why = _call("POST", "/claude-ops/sql", {"sql": q_why_empty(args.hours)})
+            print("\nNothing found. In the same window:")
+            print_result(why)
 
 
 if __name__ == "__main__":
