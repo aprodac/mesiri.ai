@@ -444,6 +444,9 @@ def build_message_handlers(
             transcribe=pipeline.transcribe_voice, message_logger=message_logger, trace_logger=trace_logger,
             # WA-124: bill photos read by the vision step; today + two days of memory in the day store.
             describe=pipeline.describe_media, sessions=conversation_sessions,
+            # WA-132: the SAVED card after a Save, drawn by the same builder classic and v2 use.
+            receipt_builder=getattr(interaction_handler, "_receipt_builder", None),
+            send_image=getattr(sender, "send_image", None),
         ))
         return _api_agent[0]
 

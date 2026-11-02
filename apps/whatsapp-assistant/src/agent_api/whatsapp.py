@@ -62,6 +62,8 @@ CANCEL_PREFIX = "apiag:cancel:"
 OPTION_PREFIX = "apiag:opt:"
 #: A tool round can read several things; a mixed voice note needs room.
 MAX_STEPS = 10
+#: The SAVED card is drawn within this many seconds, or left out (as classic's RECEIPT_TIMEOUT_S).
+RECEIPT_SECONDS = 4.0
 #: Today's recorded entries given to the model up front (WA-127).
 TODAY_ENTRIES = 40
 #: The materials and units of a company, read once per this many seconds.
@@ -119,8 +121,13 @@ class ApiWhatsApp:
                  transcribe: Callable[[Any], Awaitable[tuple[str, str | None, str | None]]] | None,
                  message_logger: Any, trace_logger: Any | None = None, app: Any | None = None,
                  describe: Callable[..., Awaitable[str | None]] | None = None,
-                 sessions: Any | None = None, send_document: Callable[..., Awaitable[Any]] | None = None) -> None:
+                 sessions: Any | None = None, send_document: Callable[..., Awaitable[Any]] | None = None,
+                 receipt_builder: Any | None = None, send_image: Callable[..., Awaitable[Any]] | None = None) -> None:
         self._redis = redis
+        #: WA-132: the SAVED card after a Save (the channel.receipt builder classic and v2 use).
+        self._receipts = receipt_builder
+        self._send_image = send_image
+        self._just_saved: dict[str, list[WriteResult]] = {}
         self._send_document = send_document
         self._send = send
         self._transcribe = transcribe
@@ -150,7 +157,7 @@ class ApiWhatsApp:
         said = (message.text or "").strip()
         if tap.startswith((SAVE_PREFIX, CANCEL_PREFIX)):
             said = "(tapped Save)" if tap.startswith(SAVE_PREFIX) else "(tapped Cancel)"
-            reply = await self._on_tap(tap, ctx)
+            reply = await self._on_tap(tap, ctx, message.correlation_id)
         elif tap.startswith(OPTION_PREFIX) and said:
             reply = await self._on_words(said, message, ctx)
         elif message.modality is InputModality.TEXT and said:
@@ -167,11 +174,32 @@ class ApiWhatsApp:
         else:
             return False
         await self._send(reply, message.sender.wa_id)
+        await self._send_saved_card(message, ctx)  # after the "Saved" line: the reply never waits for it
         await _safe(self._log_store.log_reply(correlation_id=message.correlation_id, reply=reply.text))
         await _safe(self._log_store.mark_completed(correlation_id=message.correlation_id))
         if said:
             await self._memory.remember(ctx, said, for_memory(reply.text))  # after the send: never on the wait
         return True
+
+    async def _send_saved_card(self, message: Any, ctx: Any) -> None:
+        """WA-132: the green SAVED card of what this message saved (a Save tap, or "save it"), as
+        classic and v2 send it after the "Saved" line. Never raises."""
+        results = self._just_saved.pop(message.correlation_id, None)
+        if not results or self._receipts is None or self._send_image is None:
+            return
+        from .receipts import saved_card
+
+        client = ApiClient(_actor(ctx), app=self._app)
+        try:
+            image = await asyncio.wait_for(
+                saved_card(self._receipts, results, ctx, client, message.correlation_id), timeout=RECEIPT_SECONDS)
+            if image:
+                await self._send_image(message.sender.wa_id, image,
+                                       shows="Saved card: what was just saved (green SAVED card)")
+        except Exception:  # noqa: BLE001 -- the Save and its line already went through
+            _log.warning("agent_api.saved_card_not_sent user=%s", ctx.user_id, exc_info=True)
+        finally:
+            await client.close()
 
     async def _voice(self, message: Any, ctx: Any) -> str:
         try:
@@ -242,6 +270,8 @@ class ApiWhatsApp:
             "pending": [e.summary for e in turn.pending], "asked": turn.question,
         }, started)
         state["language"] = _language(text)
+        if turn.saved:
+            self._just_saved[message.correlation_id] = list(turn.saved)
         words = turn.reply or turn.question or (_saved_text(turn.saved, state.get("language")) if turn.saved else "")
         reply = self._reply(words, turn.pending, state, turn.options)
         await self._save_state(ctx, state)
@@ -408,7 +438,7 @@ class ApiWhatsApp:
 
     # -- a tap -------------------------------------------------------------------------------
 
-    async def _on_tap(self, tap: str, ctx: Any) -> ReplySpec:
+    async def _on_tap(self, tap: str, ctx: Any, correlation_id: str | None = None) -> ReplySpec:
         state = await self._state(ctx)
         batch = tap.split(":", 2)[2]
         if not state.get("pending") or state.get("batch") != batch:
@@ -424,6 +454,7 @@ class ApiWhatsApp:
             results = await confirm(client, entries)
         finally:
             await client.close()
+        self._just_saved[correlation_id] = results
         # Refused entries stay waiting (they can be corrected and saved); saved ones go.
         left = [r.pending for r in results if not r.ok]
         state["pending"] = [e.to_json() for e in left]
