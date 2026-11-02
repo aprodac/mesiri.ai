@@ -129,6 +129,22 @@ production watch ◄────────────────────
   reply, requests shipped, live checks and the testers' Works / Still wrong taps. `@bot digest` posts it now.
   `TEAMMATE_DIGEST=0` stops the weekly post. No AI, no cost.
 
+### Faster round trips (TM-27 .. TM-30, 2 Nov)
+
+- **Read at once (TM-28):** a poke that names the request's correlation id reads just that person's last
+  messages, without the 2-minute settle, once Mesiri has answered; it is announced and handed to Claude, and
+  marked reported so the regular look skips it. Mesiri pokes only after the reply is sent and marked answered.
+- **Starts from the found cause (TM-29):** an autobuild payload ends with a "Fast path" section: confirm the cause
+  in the named files, write the failing test from the person's own message (`scripts/replay_to_test.py`), fix,
+  push within ~15 minutes. Building on this server instead of a fresh cloud session is NOT done: every turn resets
+  the shared checkout (a build could lose its edits), and the server has 3 GB / 1.5 CPUs.
+- **One-step v3 fixes (TM-30):** `scripts/allow_route.py <METHOD> <path> <name> "<what for>" --ref <#ref>` gives v3 a
+  dashboard route: checks it exists, refuses access / deletes / admin / held modules, adds the ALLOWED entry and
+  its test.
+- **Where the time goes (TM-27):** the request log stamps `started_at` (build fired) and `pushed_at` (first commit
+  seen by the watchdog) next to `created_at` and `live_at`; the Requests page and the digest show the median
+  minutes for plan, build and deploy.
+
 ### Who asked, live check, used again (TM-19)
 
 - `propose_plan` takes `asked_for` (the watch's correlation ids): the request-log item records **who asked** (name, role,
