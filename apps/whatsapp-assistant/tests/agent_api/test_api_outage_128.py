@@ -124,7 +124,7 @@ async def test_a_bug_in_v3_or_a_tool_falls_back_to_v2_and_is_traced() -> None:
 
 
 @pytest.mark.parametrize("error", [_quota(), KeyError("bug")])
-@pytest.mark.parametrize("hello", ["Hy", "Hi", "hello!"])
+@pytest.mark.parametrize("hello", ["Hy", "Hi", "hello!", "Hlo", "namaskaram"])
 async def test_a_greeting_never_fails_loudly(error, hello) -> None:
     """Replay of 2 Nov 11:02: "Hy" -> the greeting, whatever the model does."""
     sent: list[ReplySpec] = []
