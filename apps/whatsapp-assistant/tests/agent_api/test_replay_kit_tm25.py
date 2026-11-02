@@ -7,7 +7,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-from tests.agent_api.replaykit import replay
+from tests.agent_api.replaykit import check, replay
 
 SITE = "11111111-1111-1111-1111-111111111111"
 RECORDED = {
@@ -50,4 +50,24 @@ def test_the_generated_test_records_what_happened_and_masks_numbers() -> None:
     assert "async def test_replay_cement_and_stock" in text
     assert "['stock_check', 'record_receipt']" in text and "['50 bags cement']" in text
     assert "9876543210" not in text and "xxxxxxxxxx" in text
+    assert "33333333-3333-3333-3333-333333333333" in text  # ids are never masked
+    assert "@pytest.mark.live" in text and "async def test_replay_cement_and_stock_live" in text
+    assert "EXPECT = {" in text and "'record_receipt'" in text
     compile(text, "generated.py", "exec")
+
+
+async def test_check_says_what_the_turn_got_wrong() -> None:
+    """WA-148: the live test's verdict on a turn against EXPECT."""
+    turn, _ = await replay(RECORDED)
+    assert check(turn, {"must_call": ["record_receipt"], "pending": ["cement"]}) == []
+    wrong = check(turn, {"must_call": ["record_usage"], "must_not_call": ["stock_check"], "pending": ["steel", "cement"]})
+    assert "did not call record_usage" in wrong and "called stock_check" in wrong
+    assert any("1 entries waiting, expected 2" in w for w in wrong) and "no waiting entry mentions 'steel'" in wrong
+
+
+async def test_guard_the_live_replay_skips_without_a_key(monkeypatch) -> None:
+    import pytest
+
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    with pytest.raises(pytest.skip.Exception):
+        await replay(RECORDED, live=True)

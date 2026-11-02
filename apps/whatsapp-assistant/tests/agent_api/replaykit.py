@@ -11,6 +11,7 @@ the expectations to what SHOULD happen, so the test fails before the fix and pas
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -61,17 +62,51 @@ def recorded_api(recorded: dict[str, Any], tools: dict[str, Any]) -> RecordedApi
     return api
 
 
-async def replay(recorded: dict[str, Any], *, facts: str = "", reply: str | None = None) -> tuple[ApiTurn, RecordedApi]:
-    """Run the recorded turn again: same words, same tool calls, same API answers."""
+def live_provider() -> Any:
+    """WA-148: the real model (GEMINI_API_KEY, GEMINI_MODEL), for the replays' live run; skips without a key."""
+    import pytest
+
+    key = os.environ.get("GEMINI_API_KEY")
+    if not key:
+        pytest.skip("GEMINI_API_KEY not set")
+    from pydantic import SecretStr
+
+    from mesiri.bootstrap.settings import GeminiSettings
+    from mesiri_ai.adapters.gemini.adapter import GeminiProvider
+
+    return GeminiProvider(GeminiSettings(api_key=SecretStr(key), model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")))
+
+
+async def replay(recorded: dict[str, Any], *, facts: str = "", reply: str | None = None,
+                 live: bool = False) -> tuple[ApiTurn, RecordedApi]:
+    """Run the recorded turn again: same words and API answers; the same tool calls (scripted) or the
+    real model reading today's SOP.md (``live``, WA-148). GETs the recording has no answer for get {}."""
     tools = _real_tools()
     calls = [(c["tool"], c.get("arguments") or c.get("args") or {}) for c in recorded.get("calls") or []
              if c.get("tool") in tools or c.get("tool") in _OWN]
     script: list[Any] = ([calls] if calls else []) + [reply if reply is not None else recorded.get("reply", "")]
     api = recorded_api(recorded, tools)
-    turn = await ApiAgent(FakeToolCallingProvider(script), tools).run(
+    model = live_provider() if live else FakeToolCallingProvider(script)
+    facts = facts or str(recorded.get("facts") or "")
+    turn = await ApiAgent(model, tools).run(
         api, recorded.get("text", ""), facts=facts, correlation_id=recorded.get("correlation_id"))  # type: ignore[arg-type]
     return turn, api
 
 
 def load(text: str) -> dict[str, Any]:
     return json.loads(text)
+
+
+def check(turn: ApiTurn, expect: dict[str, Any]) -> list[str]:
+    """WA-148: what a turn got wrong against ``EXPECT`` (empty = right): tools it must / must not call,
+    and the entries that must be waiting for Save (their summary contains each given text)."""
+    called = [c["tool"] for c in turn.calls]
+    wrong = [f"did not call {t}" for t in expect.get("must_call") or [] if t not in called]
+    wrong += [f"called {t}" for t in expect.get("must_not_call") or [] if t in called]
+    if expect.get("pending") is not None:
+        summaries = " | ".join(e.summary.lower() for e in turn.pending)
+        want = expect["pending"]
+        if len(turn.pending) != len(want):
+            wrong.append(f"{len(turn.pending)} entries waiting, expected {len(want)}: {summaries}")
+        wrong += [f"no waiting entry mentions {w!r}" for w in want if w.lower() not in summaries]
+    return wrong

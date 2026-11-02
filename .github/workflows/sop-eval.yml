@@ -1,0 +1,82 @@
+# WA-148: the real model on the saved production conversations, whenever what it reads changes.
+# Every complaint that became a replay test (scripts/replay_to_test.py, tests/agent_api/replays/) is one case:
+# the real model reads today's SOP.md and tools on the person's own words and the API's recorded answers, and must
+# do what the test's EXPECT says. A change to SOP.md that fixes one conversation and breaks another shows here.
+# Not a deploy gate (Ilan, 2 Nov: the Gemini key's monthly cap failed every gated deploy): it runs next to the
+# deploy and a failure is posted in the team group. Costs one model turn per saved conversation.
+name: SOP eval
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/whatsapp-assistant/src/agent_api/**
+      - apps/whatsapp-assistant/tests/agent_api/replays/**
+      - apps/whatsapp-assistant/tests/agent_api/replaykit.py
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Gemini model"
+        required: true
+        default: "gemini-2.5-flash"
+
+# One live-model run at a time: the key has a per-minute token cap.
+concurrency:
+  group: live-model-runs
+  cancel-in-progress: false
+
+jobs:
+  replays:
+    name: Saved conversations on the real model
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONSAFEPATH: "1"
+      MESIRI_USAGE_LOG: /tmp/mesiri-gemini-usage.jsonl
+      TEST_PYTHONPATH: >-
+        ${{ github.workspace }}/shared/contracts/src:${{ github.workspace }}/platform/ai/src:${{ github.workspace }}/backend/src:${{ github.workspace }}/apps/whatsapp-assistant/src:${{ github.workspace }}/apps/whatsapp-assistant
+      MESIRI_ENVIRONMENT: test
+      MESIRI_OBJECT_STORAGE__PROVIDER: fake
+    steps:
+      - uses: actions/checkout@v4
+      - name: Any saved conversations?
+        id: corpus
+        run: |
+          n=$(ls apps/whatsapp-assistant/tests/agent_api/replays/test_replay_*.py 2>/dev/null | wc -l)
+          echo "count=$n" >> "$GITHUB_OUTPUT"
+          echo "$n saved conversation(s)"
+      - uses: astral-sh/setup-uv@v5
+        if: steps.corpus.outputs.count != '0'
+        with:
+          python-version: '3.11'
+          enable-cache: true
+      - if: steps.corpus.outputs.count != '0'
+        run: uv venv --python 3.11 --clear && uv pip install -e ".[dev,infra,providers,reports,workflow,receipt]"
+      - name: Real model, today's SOP.md
+        id: run
+        if: steps.corpus.outputs.count != '0'
+        env:
+          PYTHONPATH: ${{ env.TEST_PYTHONPATH }}
+          GEMINI_API_KEY: ${{ secrets.CI_GEMINI_API_KEY || secrets.TEAMMATE_GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ inputs.model || 'gemini-2.5-flash' }}
+        run: |
+          set -o pipefail
+          cd /tmp
+          "$GITHUB_WORKSPACE/.venv/bin/python" -P -m pytest \
+            "$GITHUB_WORKSPACE/apps/whatsapp-assistant/tests/agent_api/replays" \
+            --rootdir=/tmp -ra -m live --import-mode=importlib -o asyncio_mode=auto 2>&1 | tee /tmp/sop-eval.txt
+      - name: Tell the team group when a saved conversation now goes wrong
+        if: failure() && steps.run.outcome == 'failure'
+        env:
+          TEAMMATE_TOKEN: ${{ secrets.TEAMMATE_API_TOKEN }}
+          TEAMMATE_PROJECT: mesiri
+        run: |
+          failed=$(grep -E '^FAILED' /tmp/sop-eval.txt | sed -E 's#.*/test_replay_([a-z0-9_]+)\.py::.*#\1#' | sort -u | head -8 | tr '\n' ' ')
+          msg="🧪 SOP eval: the real model now gets saved conversation(s) wrong after ${GITHUB_SHA::7}: ${failed}. Details: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          python3 teammate/inbox.py post "$msg" || echo "::warning::Team WhatsApp group not reached"
+      - name: Report this run's Gemini spend to the team bot
+        if: ${{ always() && steps.corpus.outputs.count != '0' }}
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend/src
+          TEAMMATE_TOKEN: ${{ secrets.TEAMMATE_API_TOKEN }}
+        run: .venv/bin/python scripts/report_ci_gemini_usage.py
