@@ -12,6 +12,8 @@ name: Claude ops
 #   vps-smoke         infra/deploy/smoke_test.sh against the live build (read-only; INF-04)
 #   vps-perf          infra/deploy/perf_report.sh: where reply time goes, last `hours` (read-only; B-7)
 #   vps-evening       infra/deploy/evening_report.sh: tonight's evening review messages (`text` = yyyy-mm-dd, read-only; WA-05)
+#   test-conversation the team's own test company `text` (Paraclette, Mesiri Test Builders, demos only): messages,
+#                     Mesiri's replies and v3's tools, last `hours` (through the read-only ops API)
 #   bot-status        is the bot linked and receiving
 #   bot-chats         chats with their labels (names only)
 #   bot-test          send `text` to the Mesiri assistant's assistant-test chat and print its replies
@@ -47,7 +49,7 @@ on:
         description: What to run
         required: true
         type: choice
-        options: [vps-check, vps-backup-now, vps-staging, vps-app-login, vps-smoke, vps-perf, vps-evening, bot-status, bot-chats, bot-test, bot-recent-test, bot-recent-team, bot-items, bot-label-test, bot-scenarios, golden-live, vps-agent-log, vps-agent-trace, vps-scope, vps-templates, vps-brain-log]
+        options: [test-conversation, vps-check, vps-backup-now, vps-staging, vps-app-login, vps-smoke, vps-perf, vps-evening, bot-status, bot-chats, bot-test, bot-recent-test, bot-recent-team, bot-items, bot-label-test, bot-scenarios, golden-live, vps-agent-log, vps-agent-trace, vps-scope, vps-templates, vps-brain-log]
       text:
         description: "bot-test: the message (or choose:<n|title>); bot-label-test: the chat jid"
         required: false
@@ -104,6 +106,7 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
           TEAMMATE_TOKEN: ${{ secrets.TEAMMATE_API_TOKEN }}
+          MESIRI_CLAUDE_OPS_TOKEN: ${{ inputs.task == 'test-conversation' && secrets.MESIRI_CLAUDE_OPS_TOKEN || '' }}
           TEAMMATE_PROJECT: mesiri
           MESIRI_USAGE_LOG: /tmp/mesiri-gemini-usage.jsonl
           GEMINI_API_KEY: ${{ inputs.task == 'golden-live' && (secrets.CI_GEMINI_API_KEY || secrets.TEAMMATE_GEMINI_API_KEY) || '' }}
@@ -161,6 +164,10 @@ jobs:
             vps-evening)
               ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "bash -s -- $(printf '%s' "$TEXT" | tr -dc 0-9-)" \
                 < infra/deploy/evening_report.sh 2>&1 | mask ;;
+            test-conversation)
+              # 2 Nov: the team's OWN test companies only (Paraclette, Mesiri Test Builders, demo companies):
+              # each message with Mesiri's full reply and what v3 did, last `hours`. `text` = the company name.
+              python3 scripts/test_conversation.py "$TEXT" "$HOURS" 2>&1 | mask ;;
             bot-status) inbox status ;;
             bot-chats) inbox chats | mask ;;
             bot-test)
