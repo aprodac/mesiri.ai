@@ -34,8 +34,11 @@ TIMEOUT_SECONDS = 5.0
 #: The fields the page shows; anything else the bot stores (e.g. the watch's sender pseudonym) stays out.
 FIELDS = (
     "id", "chat_name", "project", "type", "title", "summary", "status", "stage", "done_ref", "created_by",
-    "created_at", "updated_at", "asked_by", "asked_ref", "held", "live_at", "verified", "verified_at", "tried_at",
+    "created_at", "updated_at", "asked_by", "asked_ref", "held", "started_at", "pushed_at", "live_at", "verified",
+    "verified_at", "tried_at",
 )
+#: TM-27: the stages of a request, in order, and their names on the page.
+STAGE_STAMPS = (("created_at", "started_at", "plan"), ("started_at", "pushed_at", "build"), ("pushed_at", "live_at", "deploy"))
 
 
 def _source() -> tuple[str, str]:
@@ -113,7 +116,16 @@ def loop_numbers(items: list[dict[str, Any]]) -> dict[str, Any]:
         if asked and live and live >= asked:
             hours.append((live - asked).total_seconds() / 3600)
     checked = [i for i in items if i.get("verified") in ("ok", "broken")]
+    stages: dict[str, float | None] = {}
+    for start, end, name in STAGE_STAMPS:  # TM-27: where the time goes, median minutes per stage
+        spans = []
+        for item in items:
+            a, b = _when(item.get(start)), _when(item.get(end))
+            if item.get("asked_by") and a and b and b >= a:
+                spans.append((b - a).total_seconds() / 60)
+        stages[name] = _percentile(spans, 0.5)
     return {
+        "minutes_by_stage": stages,
         "shipped_from_users": len(hours),
         "hours_to_live_median": _percentile(hours, 0.5),
         "hours_to_live_p90": _percentile(hours, 0.9),

@@ -133,3 +133,14 @@ async def test_tm23_verdicts_are_counted_and_an_unreadable_table_never_breaks_th
             raise RuntimeError("no table")
 
     assert await rr.verdicts(_Broken()) is None
+
+
+def test_tm27_minutes_per_stage() -> None:
+    items = [
+        {"asked_by": "A", "created_at": "2026-11-02T10:00:00Z", "started_at": "2026-11-02T10:06:00Z",
+         "pushed_at": "2026-11-02T10:26:00Z", "live_at": "2026-11-02T10:30:00Z"},
+        {"asked_by": "B", "created_at": "2026-11-02T10:00:00Z", "started_at": "2026-11-02T10:04:00Z"},  # still building
+        {"created_by": "team", "created_at": "2026-11-02T10:00:00Z", "started_at": "2026-11-02T12:00:00Z"},  # not from a user
+    ]
+    stages = rr.loop_numbers(items)["minutes_by_stage"]
+    assert stages == {"plan": 6.0, "build": 20.0, "deploy": 4.0}

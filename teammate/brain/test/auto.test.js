@@ -134,7 +134,7 @@ test("auto: a full cycle — test, plan in scope, code approves, fire as 'auto',
     assert.match(fired[0], /Approved by: auto \(the bot's auto loop/);
     assert.equal(brain.planStore.plans[61].approved_by, "auto");
     assert.deepEqual(items.at(-2), { id: 61, status: "in_progress", note: "approved_by: auto (cycle 1, area getting_out)", project: "mesiri" });
-    assert.deepEqual(items.at(-1), { id: 61, note: "cloud session https://claude.ai/code/session_1", project: "mesiri" });
+    assert.deepEqual(items.at(-1), { id: 61, started_at: "2026-10-19T04:00:00.000Z", note: "cloud session https://claude.ai/code/session_1", project: "mesiri" });
     assert.match(sent.at(-1).text, /Auto cycle #1: plan \[61\].*auto-approved and started\.\nWatch it: https:\/\/claude\.ai\/code\/session_1/);
     assert.equal(auto.s.cycle.phase, "working");
     assert.deepEqual(auto.s.seen, ["labour reply is slow"]);

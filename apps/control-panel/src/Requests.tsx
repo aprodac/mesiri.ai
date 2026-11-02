@@ -44,6 +44,7 @@ interface Loop {
   hours_to_live_p90: number | null;
   live_checked: number;
   live_check_ok: number;
+  minutes_by_stage?: { plan: number | null; build: number | null; deploy: number | null };
   verdicts: { works: number; still_wrong: number; days: number } | null;
 }
 
@@ -157,6 +158,17 @@ export default function Requests() {
             <span className="kpi-row"><span className="kpi-value">{hours(loop.hours_to_live_median)}</span></span>
             <span className="kpi-compare">slowest tenth {hours(loop.hours_to_live_p90)} · {loop.shipped_from_users} shipped for users</span>
           </div>
+          {loop.minutes_by_stage && (
+            <div className="kpi">
+              <span className="kpi-label">Where the time goes (median)</span>
+              <span className="kpi-row">
+                <span className="kpi-value" style={{ fontSize: '18px' }}>
+                  {(['plan', 'build', 'deploy'] as const).map((s) => `${s} ${hours(loop.minutes_by_stage![s] == null ? null : loop.minutes_by_stage![s]! / 60)}`).join(' · ')}
+                </span>
+              </span>
+              <span className="kpi-compare">asked → build started → pushed → live</span>
+            </div>
+          )}
           <div className="kpi">
             <span className="kpi-label">Live check passed</span>
             <span className="kpi-row"><span className="kpi-value">{loop.live_checked ? `${loop.live_check_ok} / ${loop.live_checked}` : '—'}</span></span>

@@ -102,6 +102,13 @@ export function digestText({ rows, items = [], since, until = new Date() }) {
     `Shipped: ${shipped.length} (${fromUsers} asked by users) · live check ${checked.filter((i) => i.verified === "ok").length} ok, ${checked.filter((i) => i.verified === "broken").length} broken`,
   );
   lines.push(`Testers said: ${n("verdict", "works")} Works ✅ · ${n("verdict", "still_wrong")} Still wrong ❌`);
+  // TM-27: where a request's time went this week (median minutes per stage, requests from users).
+  const mid = (xs) => (xs.length ? xs.sort((a, b) => a - b)[Math.floor(xs.length / 2)] : null);
+  const span = (a, b) => shipped.filter((i) => i.asked_by && at(i[a]) <= at(i[b])).map((i) => (at(i[b]) - at(i[a])) / 60_000);
+  const parts = [["plan", "created_at", "started_at"], ["build", "started_at", "pushed_at"], ["deploy", "pushed_at", "live_at"]]
+    .map(([name, a, b]) => [name, mid(span(a, b))])
+    .filter(([, m]) => m != null);
+  if (parts.length) lines.push(`Time per request (median): ${parts.map(([name, m]) => `${name} ${Math.round(m)} min`).join(" · ")}`);
   return lines.join("\n");
 }
 

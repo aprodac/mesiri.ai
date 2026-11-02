@@ -23,7 +23,8 @@ const ROWS = [
 const SINCE = new Date("2026-10-26T03:30:00Z");
 const UNTIL = new Date("2026-11-02T03:30:00Z");
 const ITEMS = [
-  { asked_by: "Ravi (site engineer, Paraclette)", live_at: "2026-10-30T10:00:00Z", verified: "ok", verified_at: "2026-10-30T11:00:00Z" },
+  { asked_by: "Ravi (site engineer, Paraclette)", created_at: "2026-10-30T09:20:00Z", started_at: "2026-10-30T09:26:00Z",
+    pushed_at: "2026-10-30T09:56:00Z", live_at: "2026-10-30T10:00:00Z", verified: "ok", verified_at: "2026-10-30T11:00:00Z" },
   { created_by: "Ilan", live_at: "2026-10-31T10:00:00Z" },
   { asked_by: "A", live_at: "2026-10-01T10:00:00Z" }, // an older week
 ];
@@ -38,6 +39,7 @@ test("the digest says the four things, in order, without the person's own words"
   assert.match(text, /model_tools: median 2\.1 s \(then facts_memory 420 ms\)/); // v3_before is the journey's, not v3's
   assert.match(text, /Shipped: 2 \(1 asked by users\) · live check 1 ok, 0 broken/);
   assert.match(text, /Testers said: 5 Works ✅ · 1 Still wrong ❌/);
+  assert.match(text, /Time per request \(median\): plan 6 min · build 30 min · deploy 4 min/);
 });
 
 test("an empty week still reads well", () => {

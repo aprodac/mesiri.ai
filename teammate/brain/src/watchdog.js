@@ -90,6 +90,12 @@ export class Watchdog {
       if (!decided && now - Date.parse(c.at) < this.cfg.deployWaitMs) continue; // wait for the deploy's result
       st.posted.push(c.sha);
       this.save();
+      if (!plan.pushed_at) {
+        // TM-27: when the build's first commit reached main (the request log's "pushed" stage).
+        plan.pushed_at = c.at;
+        b.savePlans();
+        if (typeof plan.id === "number") await b.listener.updateItem(plan.id, { pushed_at: c.at, project: plan.reply_project || plan.chat_project || plan.project }).catch(() => {});
+      }
       const how = { green: "deploy green ✅", red: "deploy red ❌", running: "deploy still running", none: "no deploy run seen" }[c.deploy.state];
       const link = c.deploy.state === "red" && c.deploy.url ? `\n${c.deploy.url}` : "";
       await say(`${tag} pushed ${c.short} “${String(c.subject).slice(0, 80)}”, ${how}.${link}`);

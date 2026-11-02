@@ -107,7 +107,7 @@ export const PEOPLE_ROLES = ["owner", "member"];
  *   live_at    when it was deployed;  verified "ok" | "broken" (+ verified_at): the bot's live re-test
  *   tried_at   when the person who asked used Mesiri again after it went live
  */
-export const ITEM_TRACKING = ["asked_by", "asked_ref", "asked_who", "held", "live_at", "verified", "verified_at", "tried_at"];
+export const ITEM_TRACKING = ["asked_by", "asked_ref", "asked_who", "held", "started_at", "pushed_at", "live_at", "verified", "verified_at", "tried_at"];
 export const VERIFIED = ["ok", "broken"];
 
 /** One request's stage, for lists and counts (TM-19). */
