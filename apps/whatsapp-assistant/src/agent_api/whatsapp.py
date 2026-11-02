@@ -28,6 +28,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from agent_v2.skills.general.tools import TELL_THE_TEAM
 from channel.replies import ListRow, ReplySpec
 from mesiri_ai.greeting_classifier import is_greeting_trigger
 from mesiri_ai.models import ToolSpec
@@ -169,7 +170,7 @@ class ApiWhatsApp:
         await _safe(self._log_store.log_reply(correlation_id=message.correlation_id, reply=reply.text))
         await _safe(self._log_store.mark_completed(correlation_id=message.correlation_id))
         if said:
-            await self._memory.remember(ctx, said, reply.text)  # after the send: never on the wait
+            await self._memory.remember(ctx, said, for_memory(reply.text))  # after the send: never on the wait
         return True
 
     async def _voice(self, message: Any, ctx: Any) -> str:
@@ -224,9 +225,18 @@ class ApiWhatsApp:
             return await self._failed(exc, text, message, ctx, state, started)
         finally:
             await client.close()
+        calls = [{**c, "args": c.get("arguments")} for c in turn.calls]
+        command = feedback_command(text)
+        if command and not any(c.get("tool") == TELL_THE_TEAM for c in calls):
+            # The explicit command always reaches the team bot, even when the model did not pass it on.
+            last = next((m.text for m in reversed(history) if m.role == "model"), "")
+            kind, why = command
+            calls.append({"tool": TELL_THE_TEAM, "by": "code", "args": {
+                "kind": kind, "about": f"Mesiri's reply before this: {without_ready_block(last)[:200]}" if last
+                else "the last reply", **({"why": why} if why else {})}})
         await self._trace_turn(message, {
             # `args` as v2's trace has it: the team bot's watch reads tell_the_team from it (TM-18).
-            "text": text, "calls": [{**c, "args": c.get("arguments")} for c in turn.calls],
+            "text": text, "calls": calls,
             "stop_reason": turn.stop_reason,
             "saved": [{"summary": r.pending.summary, "status": r.status} for r in turn.saved],
             "pending": [e.summary for e in turn.pending], "asked": turn.question,
@@ -470,6 +480,35 @@ class ApiWhatsApp:
             )
         except Exception:  # noqa: BLE001 -- diagnostics never break a message
             _log.warning("agent_api.trace_failed", exc_info=True)
+
+
+def for_memory(sent: str) -> str:
+    """What the conversation keeps of a reply (WA-130): the words, and the drawn list only as a
+    short note. Kept whole, the model saw the list's format in the history and wrote it again
+    itself (Paraclette 2 Nov 10:52: the list twice)."""
+    words = without_ready_block(sent)
+    if words == sent.strip():
+        return sent
+    parts = re.split(r"[\s*_]*Ready to save[:*_ \t]*\n", sent, maxsplit=1, flags=re.IGNORECASE)
+    items = [re.sub(r"^\d+\.\s*", "", line).strip() for line in parts[1].splitlines() if line.strip()]
+    return f"{words}\n(under this reply, waiting for the Save button: {'; '.join(items)})".strip()
+
+
+def feedback_command(text: str) -> tuple[str, str] | None:
+    """WA-130 (approved by Ilan, 2 Nov: an explicit command, like "undo"): "mesiri bad ux ..." /
+    "mesiri fix this ..." is passed to the team by the code whatever the model does. Returns
+    ``(kind, why)``; anything softer ("this is confusing") stays the model's judgement."""
+    m = _FEEDBACK_COMMAND.match(text or "")
+    if m is None:
+        return None
+    kind = "bad_ux" if m.group(1).lower().startswith("bad") else "wrong_reply"
+    return kind, m.group(2).strip(" :,-.")
+
+
+#: The whole list of explicit feedback commands. Not a word list for understanding messages:
+#: these are commands to Mesiri, as "undo" is.
+_FEEDBACK_COMMAND = re.compile(r"^\s*mesiri\b[\s,:.-]*(bad\s*ux|bad\s*ui|fix\s+this|fix\s+it)\b(.*)$",
+                               re.IGNORECASE | re.DOTALL)
 
 
 def without_ready_block(text: str) -> str:

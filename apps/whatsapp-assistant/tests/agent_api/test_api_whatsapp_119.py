@@ -183,7 +183,7 @@ async def test_the_conversation_is_remembered_for_the_next_message() -> None:
     h.service._agent._provider = nxt
     await h.service.handle(_message("what did I just send?"), CTX)
     texts = [m.text for m in nxt.last_messages]
-    assert texts[0] == "50 bag cement, 50 TMT vannu" and "Ready to save" in texts[1]
+    assert texts[0] == "50 bag cement, 50 TMT vannu" and "waiting for the Save button" in texts[1]  # WA-130: the list as a note
     assert texts[-1] == "what did I just send?"
 
 
