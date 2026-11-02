@@ -69,7 +69,17 @@ export function watchSql(since, limit = 400, skip = [], newest = false) {
                  || coalesce(' / why: ' || (c->'args'->>'why'), ''), ' | '), 400)
           FROM journey_traces jt,
                jsonb_array_elements(CASE WHEN jsonb_typeof(jt.stage_payload::jsonb->'calls') = 'array' THEN jt.stage_payload::jsonb->'calls' ELSE '[]'::jsonb END) c
-         WHERE jt.correlation_id = m.correlation_id AND jt.stage IN ('agent_v2_live', 'agent_api_turn', 'release_feedback') AND c->>'tool' = 'tell_the_team') AS feedback
+         WHERE jt.correlation_id = m.correlation_id AND jt.stage IN ('agent_v2_live', 'agent_api_turn', 'release_feedback') AND c->>'tool' = 'tell_the_team') AS feedback,
+       (SELECT left(string_agg(DISTINCT c->>'tool', ', '), 200)
+          FROM journey_traces jt,
+               jsonb_array_elements(CASE WHEN jsonb_typeof(jt.stage_payload::jsonb->'calls') = 'array' THEN jt.stage_payload::jsonb->'calls' ELSE '[]'::jsonb END) c
+         WHERE jt.correlation_id = m.correlation_id AND jt.stage = 'agent_api_turn'
+           AND c->>'tool' IN (${TAKE_BACK_TOOLS.map((t) => `'${t}'`).join(", ")})) AS took_back,
+       (SELECT left(string_agg(DISTINCT x->>'tool', ', '), 200)
+          FROM journey_traces jt,
+               jsonb_array_elements(CASE WHEN jsonb_typeof(jt.stage_payload::jsonb->'cancelled') = 'array' THEN jt.stage_payload::jsonb->'cancelled' ELSE '[]'::jsonb END) x
+         WHERE jt.correlation_id = m.correlation_id AND jt.stage = 'agent_api_turn' AND jt.stage_payload::jsonb ? 'cancelled'
+           AND NOT jt.stage_payload::jsonb ? 'cancel_reason') AS cancelled
 FROM inbound_messages m LEFT JOIN organizations o ON o.id = m.organization_id
 LEFT JOIN LATERAL (SELECT u.full_name, u.role FROM users u WHERE u.organization_id = m.organization_id
   AND regexp_replace(u.whatsapp_number, '\\D', '', 'g') = regexp_replace(m.sender_wa_id, '\\D', '', 'g') LIMIT 1) su ON true
@@ -126,6 +136,12 @@ export const CANT = new RegExp(
   ].join("|"),
   "i",
 );
+/**
+ * WA-147: v3 tools that take back or correct something already saved. A person using one soon after Mesiri saved
+ * it usually means Mesiri saved the wrong thing: a quiet failure nobody complained about.
+ */
+export const TAKE_BACK_TOOLS = ["undo_receipt", "undo_usage", "undo_transfer", "undo_expense", "correct_work"];
+
 /** A user pushing back on the last reply. */
 export const PUSHBACK = /\b(?:alla|allaa|wrong|thettu|thett\w*|galat|not correct|no no|why|enthu patti|enthanu ith|i said|njan paranju|already (?:said|sent|told)|again\??|nahi)\b|\?\?|ayyo/i;
 
@@ -146,6 +162,9 @@ export function flagRows(rows) {
     if (Number.isFinite(took) && took > SLOW_SECONDS) flags.push({ kind: "slow", why: `${Math.round(took)} s to reply` });
     // TM-18: the person told Mesiri itself (a missing feature, "bad UX", their reason): always worth a look.
     if (row.feedback) flags.push({ kind: "feedback", why: `they told Mesiri: ${String(row.feedback).slice(0, 300)}` });
+    // WA-147: the quiet failures: they cancelled what Mesiri prepared, or took back / corrected a saved entry.
+    if (row.cancelled) flags.push({ kind: "cancelled", why: `they cancelled what Mesiri prepared (${row.cancelled}): what did it get wrong?` });
+    if (row.took_back) flags.push({ kind: "took_back", why: `they took back or corrected a saved entry (${row.took_back}): was it saved wrong?` });
     if (row.reply && CANT.test(row.reply)) flags.push({ kind: "dead_end", why: "the reply says it can't do that: a bug or a missing feature" });
     const asked = norm(row.reply);
     if (asked && asked.includes("?") && asked === prev.reply && at - prev.replyAt < WINDOW_SECONDS) {
@@ -259,6 +278,9 @@ export function watchPrompt(project, convs, { minutes, autobuild = false }) {
     "   hints from simple code and are often false alarms; drop those silently. A `feedback` flag is different: the",
     "   person told Mesiri directly (a missing feature, \"bad UX\", their reason). It is always real: plan it. For bad UX,",
     "   work out from Mesiri's replies above which reply, buttons or card they meant; their reason (`why`) is the spec.",
+    "   `cancelled` and `took_back` are quiet failures (WA-147): they cancelled what Mesiri prepared, or took back /",
+    "   corrected an entry it saved. Look at what they had said: if Mesiri got the site, item, amount or date wrong,",
+    "   it is real (plan the cause); if they simply changed their mind, drop it.",
     "   When a running or recent plan already covers the same thing (the request log, `inbox.py items`), don't plan it",
     "   again: add their new detail to that job with tell_job, or say in the report that it is already being built.",
     "2. For each real failure find the mechanism in the code (read it, reproduce it in your head or with the replay",

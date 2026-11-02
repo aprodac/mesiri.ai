@@ -516,3 +516,17 @@ test("TM-22: a poke makes one check after the settle time, and several pokes mak
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("WA-147: a cancel and a take-back are flagged as quiet failures, and the read asks for both", () => {
+  const rows = [
+    { who: "a", at: 100, done_at: 101, status: "completed", text: "(tapped Cancel)", reply: "Cancelled.", cancelled: "record_receipt" },
+    { who: "b", at: 200, done_at: 202, status: "completed", text: "athu thettanu, edukku", reply: "Ready.", took_back: "undo_receipt" },
+    { who: "c", at: 300, done_at: 301, status: "completed", text: "50 bags", reply: "Ready." },
+  ];
+  const flagged = flagRows(rows);
+  assert.deepEqual(flagged.map((f) => f.flags.map((x) => x.kind)), [["cancelled"], ["took_back"]]);
+  const sql = watchSql(0);
+  assert.match(sql, /AS took_back/);
+  assert.match(sql, /'undo_receipt', 'undo_usage', 'undo_transfer', 'undo_expense', 'correct_work'/);
+  assert.match(sql, /AS cancelled/);
+});

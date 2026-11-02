@@ -78,6 +78,17 @@ STATE_TTL_SECONDS = 24 * 3600
 SAVE_PREFIX = "apiag:save:"
 CANCEL_PREFIX = "apiag:cancel:"
 OPTION_PREFIX = "apiag:opt:"
+#: WA-146: one tap on why a ready list was cancelled ("apiag:why:<reason>").
+WHY_PREFIX = "apiag:why:"
+CANCEL_REASONS = {"site": "wrong site", "amount": "wrong amount or quantity", "other": "something else"}
+#: Button titles (WhatsApp: at most 3 buttons, 20 characters each), per language; English otherwise.
+_REASON_TITLES = {
+    "english": {"site": "Wrong site", "amount": "Wrong amount", "other": "Something else"},
+    "manglish": {"site": "Site thettu", "amount": "Ennam thettu", "other": "Vere enthenkilum"},
+    "malayalam": {"site": "സൈറ്റ് തെറ്റ്", "amount": "എണ്ണം തെറ്റ്", "other": "വേറെ എന്തെങ്കിലും"},
+    "hindi": {"site": "गलत साइट", "amount": "गलत मात्रा", "other": "कुछ और"},
+    "hinglish": {"site": "Site galat", "amount": "Quantity galat", "other": "Kuch aur"},
+}
 #: A tool round can read several things; a mixed voice note needs room.
 MAX_STEPS = 10
 #: The SAVED card is drawn within this many seconds, or left out (as classic's RECEIPT_TIMEOUT_S).
@@ -114,6 +125,9 @@ COULD_NOT_READ = "I couldn't read that photo. Please send it again, or type what
 NOT_NOW = "I couldn't work on that just now. Please send it again in a minute."
 NOTHING_WAITING = "There is nothing waiting to save."
 CANCELLED = "Cancelled. Nothing was saved."
+#: WA-148: how much of the facts a turn's trace keeps (for replays on the real model).
+FACTS_IN_TRACE = 6000
+CANCELLED_WHY = "Cancelled. Nothing was saved. What was wrong? (one tap helps us fix it)"
 
 
 class _Answered(Exception):
@@ -177,9 +191,17 @@ class ApiWhatsApp:
     async def _handle(self, message: Any, ctx: Any) -> bool:
         tap = str((message.metadata or {}).get("interactive_reply_id") or "")
         said = (message.text or "").strip()
-        if tap.startswith((SAVE_PREFIX, CANCEL_PREFIX)):
+        if tap.startswith(WHY_PREFIX):
+            said = "(tapped why it was cancelled)"
+            reply = await self._on_why(tap[len(WHY_PREFIX):], message, ctx)
+        elif tap.startswith((SAVE_PREFIX, CANCEL_PREFIX)):
             said = "(tapped Save)" if tap.startswith(SAVE_PREFIX) else "(tapped Cancel)"
+            started = time.monotonic()
             reply = await self._on_tap(tap, ctx, message.correlation_id)
+            if tap.startswith(CANCEL_PREFIX) and reply.buttons:
+                # WA-147: every Cancel is counted (the weekly digest, the production watch), reason or not.
+                cancelled = (await self._state(ctx)).get("cancelled") or []
+                await self._trace_turn(message, {"text": said, "calls": [], "cancelled": cancelled}, started)
         elif tap.startswith(OPTION_PREFIX) and said:
             reply = await self._on_words(said, message, ctx)
         elif message.modality is InputModality.TEXT and said:
@@ -298,6 +320,8 @@ class ApiWhatsApp:
         await self._trace_turn(message, {
             # `args` as the old v2 trace had it: the team bot's watch reads tell_the_team from it (TM-18).
             "text": text, "calls": calls,
+            # WA-148: what the model started from, so a replay on the real model sees the same sites and materials.
+            "facts": facts[:FACTS_IN_TRACE],
             "stop_reason": turn.stop_reason,
             "saved": [{"summary": r.pending.summary, "status": r.status} for r in turn.saved],
             "pending": [e.summary for e in turn.pending], "asked": turn.question,
@@ -488,8 +512,12 @@ class ApiWhatsApp:
         entries = _without_stale_sends(entries)
         if tap.startswith(CANCEL_PREFIX):
             state["pending"], state["batch"] = [], None
+            # WA-146: what was cancelled, so a reason tapped next tells the team which entries and tools.
+            state["cancelled"] = [{"tool": e.tool, "summary": e.summary} for e in entries][:10]
             await self._save_state(ctx, state)
-            return ReplySpec(text=CANCELLED)
+            titles = _REASON_TITLES.get(state.get("language") or "english", _REASON_TITLES["english"])
+            return ReplySpec(text=_in(state.get("language"), "api.cancelled_why", CANCELLED_WHY), buttons=tuple(
+                ListRow(id=f"{WHY_PREFIX}{code}", title=titles[code]) for code in CANCEL_REASONS))
         client = ApiClient(_actor(ctx), app=self._app)
         try:
             results = await confirm(client, entries)
@@ -503,6 +531,27 @@ class ApiWhatsApp:
         text = _saved_text(results, state.get("language"))
         await self._save_state(ctx, state)
         return _save_buttons(text, state["batch"]) if left else ReplySpec(text=text)
+
+    async def _on_why(self, code: str, message: Any, ctx: Any) -> ReplySpec:
+        """WA-146: the reason for a Cancel, as feedback to the team bot (the shape its watch reads)."""
+        started = time.monotonic()
+        state = await self._state(ctx)
+        cancelled = state.pop("cancelled", None) or []
+        await self._save_state(ctx, state)
+        reason = CANCEL_REASONS.get(code)
+        if reason is None or not cancelled:
+            return ReplySpec(text=_in(state.get("language"), "api.thanks", "Thanks 👍"))
+        what = "; ".join(f"{c.get('summary') or c.get('tool')} ({c.get('tool')})" for c in cancelled)[:300]
+        call = {"tool": TELL_THE_TEAM, "by": "code", "args": {
+            "kind": "wrong_reply", "about": f"cancelled the ready list ({what}): {reason}"}}
+        await self._trace_turn(message, {"text": f"(cancel reason: {reason})", "calls": [call],
+                                         "cancel_reason": code, "cancelled": cancelled}, started)
+        poke_watch_soon(message.correlation_id)  # TM-22: looked at now
+        if code == "other":
+            return ReplySpec(text=_in(state.get("language"), "api.cancel_other",
+                                      "Thanks. What was wrong? Send it as a message or a voice note."))
+        return ReplySpec(text=_in(state.get("language"), "api.cancel_noted",
+                                  "Thanks 👍 I've told the team. Send it again the right way and I'll get it ready."))
 
     # -- helpers -----------------------------------------------------------------------------
 
@@ -536,7 +585,7 @@ class ApiWhatsApp:
 
     async def _save_state(self, ctx: Any, state: dict) -> None:
         try:
-            await self._redis.set_json(self._key(ctx), {k: state.get(k) for k in ("pending", "batch", "language")},
+            await self._redis.set_json(self._key(ctx), {k: state.get(k) for k in ("pending", "batch", "language", "cancelled")},
                                        ttl_seconds=STATE_TTL_SECONDS)
         except Exception:  # noqa: BLE001
             _log.warning("agent_api.state_unsaved user=%s", ctx.user_id, exc_info=True)

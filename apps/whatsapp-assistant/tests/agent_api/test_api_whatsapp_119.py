@@ -129,7 +129,7 @@ async def test_cancel_and_an_older_lists_button_save_nothing() -> None:
     await h.service.handle(_message(), CTX)
     old_save, cancel = h.buttons()
     await h.service.handle(_message("Cancel", tap=cancel), CTX)
-    assert h.sent[-1].text == wa.CANCELLED and h.posts() == 0
+    assert h.sent[-1].buttons and h.sent[-1].buttons[0].id.startswith(wa.WHY_PREFIX) and h.posts() == 0  # WA-146
     await h.service.handle(_message("Save", tap=old_save), CTX)
     assert h.sent[-1].text == wa.NOTHING_WAITING and h.posts() == 0
 
