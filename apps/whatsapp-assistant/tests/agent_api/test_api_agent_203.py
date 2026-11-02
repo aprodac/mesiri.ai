@@ -26,7 +26,7 @@ from tests.agent_api.test_api_whatsapp_119 import (
     _stand_in_tools,  # noqa: F401
 )
 
-from agent_api.agent import ApiAgent
+from agent_api.agent import ApiAgent, PendingWrite
 from agent_api.client import ApiClient
 from agent_api.units import plain_refusal, resolve_unit, unit_rows
 from mesiri_ai.fakes import FakeToolCallingProvider
@@ -131,3 +131,17 @@ def test_a_copied_ready_block_in_the_models_words_is_not_printed_twice() -> None
     block = "Done.\n\n*Ready to save:*\n1. 50 bags cement received"
     assert without_ready_block(block) == "Done."
     assert without_ready_block("Cement is ready.") == "Cement is ready."
+
+
+def _entry(tool: str) -> PendingWrite:
+    return PendingWrite(tool=tool, method="POST", path="/x", params={}, body={}, summary=tool, idempotency_key=tool)
+
+
+def test_a_save_tap_never_sends_a_dpr_nobody_asked_for() -> None:
+    """Production 2 Nov: a Save tap listed "today's DPR PDF" as saved beside material lines."""
+    from agent_api.whatsapp import _without_stale_sends, dropping_stale_sends
+
+    mixed = [_entry("record_receipt"), _entry("send_dpr")]
+    assert [e.tool for e in _without_stale_sends(mixed)] == ["record_receipt"]
+    assert [e.tool for e in _without_stale_sends([_entry("send_dpr")])] == ["send_dpr"]
+    assert [e.tool for e in dropping_stale_sends(mixed)] == ["record_receipt"]

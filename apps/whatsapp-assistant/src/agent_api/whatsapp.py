@@ -162,7 +162,7 @@ class ApiWhatsApp:
         try:
             state, history, facts = await asyncio.gather(
                 self._state(ctx), self._memory.load(ctx), self._facts(ctx, client))
-            ready = [PendingWrite.from_json(e) for e in state.get("pending", [])]
+            ready = dropping_stale_sends([PendingWrite.from_json(e) for e in state.get("pending", [])])
             turn = await self._agent.run(
                 client, text, history=history, ready=ready, sender_name=ctx.full_name or "",
                 timezone=getattr(ctx, "timezone", None) or "Asia/Kolkata", correlation_id=message.correlation_id,
@@ -305,6 +305,7 @@ class ApiWhatsApp:
         if not state.get("pending") or state.get("batch") != batch:
             return ReplySpec(text=NOTHING_WAITING)
         entries = [PendingWrite.from_json(e) for e in state["pending"]]
+        entries = _without_stale_sends(entries)
         if tap.startswith(CANCEL_PREFIX):
             state["pending"], state["batch"] = [], None
             await self._save_state(ctx, state)
@@ -371,6 +372,22 @@ class ApiWhatsApp:
             )
         except Exception:  # noqa: BLE001 -- diagnostics never break a message
             _log.warning("agent_api.trace_failed", exc_info=True)
+
+
+SEND_TOOLS = ("send_dpr",)
+
+
+def dropping_stale_sends(entries: list[PendingWrite]) -> list[PendingWrite]:
+    """A DPR send waits only for the reply to the message that prepared it: a later message
+    (a question, a new entry) drops it, so a Save tap never sends a report nobody asked for."""
+    return [e for e in entries if e.tool not in SEND_TOOLS]
+
+
+def _without_stale_sends(entries: list[PendingWrite]) -> list[PendingWrite]:
+    """A Save tap saves records; a send goes out only when it is the only thing waiting."""
+    if len(entries) > 1:
+        return [e for e in entries if e.tool not in SEND_TOOLS]
+    return entries
 
 
 def without_ready_block(text: str) -> str:
