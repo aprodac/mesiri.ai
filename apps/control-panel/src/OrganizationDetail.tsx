@@ -76,9 +76,11 @@ const ROLE_LIST_SETTINGS = new Set(['whatsapp_material_create_roles']);
 
 // On/off switches. Same save-and-show-back pattern as the Modules card; the
 // backend enforces superadmin for draft_v2, this only exposes the control.
-const BOOLEAN_SETTINGS = new Set(['draft_v2']);
+const BOOLEAN_SETTINGS = new Set(['draft_v2', 'demo_company']);
 
 const BOOLEAN_CONFIRM: Record<string, string> = {
+  demo_company:
+    "A demo company for showing Mesiri to prospects. 'Reset demo' DELETES it and creates it again with the same people and fresh sample data. Only for a company made for demos.",
   draft_v2:
     "On for every company: WhatsApp updates are held as one card and saved on the Save tap. Turn off only to put this company back on the old flow.",
 };
@@ -202,6 +204,25 @@ export default function OrganizationDetail() {
       .catch((err) => setError(err.response?.data?.detail || 'Failed to load organization'))
       .finally(() => setLoading(false));
   }, [id]);
+
+  // SA-30: a demo company, deleted and created again with the same people and fresh sample data.
+  const [resettingDemo, setResettingDemo] = useState(false);
+  const isDemo = orgSettings?.settings?.demo_company === true;
+  const resetDemo = () => {
+    if (!org) return;
+    if (!window.confirm(`Reset the demo "${org.name}"?\n\nIts records are DELETED and it is created again with the same people and fresh sample data of the last 3 days.`)) return;
+    setResettingDemo(true);
+    setError(null);
+    api
+      .post<{ organization_id: string; seeded: Record<string, number>; failed: string[] }>(`/admin/organizations/${org.id}/demo-reset`)
+      .then((res) => {
+        const made = Object.entries(res.data.seeded).map(([k, n]) => `${n} ${k}`).join(', ');
+        window.alert(`Demo reset.\n${made || 'No sample records'}${res.data.failed.length ? `\n\nNot added: ${res.data.failed.join('; ')}` : ''}`);
+        navigate(`/organizations/${res.data.organization_id}`);
+      })
+      .catch((err) => setError(err.response?.data?.detail || 'Failed to reset the demo'))
+      .finally(() => setResettingDemo(false));
+  };
 
   const executeDelete = () => {
     if (!org) return;
@@ -411,6 +432,11 @@ export default function OrganizationDetail() {
           >
             <Sparkles size={16} /> {seeding ? 'Seeding…' : 'Seed Finance Data'}
           </button>
+          {isDemo && (
+            <button className="btn-secondary" onClick={resetDemo} disabled={resettingDemo}>
+              <Sparkles size={16} /> {resettingDemo ? 'Resetting…' : 'Reset demo'}
+            </button>
+          )}
           <button
             className="btn-secondary od-danger"
             style={{ color: 'var(--error)', borderColor: 'var(--error)' }}

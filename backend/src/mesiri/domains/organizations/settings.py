@@ -66,6 +66,10 @@ DRAFT_V2 = "draft_v2"
 # "v2_adk" (a company that had opted into the new agent) read as "api"; "v2_shadow" (classic
 # answered, v2 only ran on the side) reads as "classic". They can no longer be set.
 # Changed by the Mesiri team only.
+# SA-30: a demo company (for showing Mesiri to prospects) that a platform admin can reset in one tap: it is deleted
+# and created again with the same people and fresh sample data. Only a company with this set to true can be reset.
+DEMO_COMPANY = "demo_company"
+
 ASSISTANT_MODE = "assistant_mode"
 ASSISTANT_MODE_CLASSIC = "classic"
 ASSISTANT_MODE_API = "api"
@@ -115,7 +119,7 @@ DEFAULT_ENABLED_MODULES: list[str] = list(V1_MODULES)
 # Settings only a platform admin may change. Modules are tied to what a
 # customer pays for, so a company's own admin can read them but not edit them.
 SUPERADMIN_ONLY_KEYS: frozenset[str] = frozenset(
-    {ENABLED_MODULES, CAPTURE_MODE, DRAFT_V2, ASSISTANT_MODE}
+    {ENABLED_MODULES, CAPTURE_MODE, DRAFT_V2, ASSISTANT_MODE, DEMO_COMPANY}
 )
 
 DEFAULT_FINANCE_SETTINGS = {
@@ -207,6 +211,14 @@ _SPECS: dict[str, SettingSpec] = {
             "message is held as one draft card and written only when the sender taps Save "
             "(Cancel writes nothing). false: the old flow, kept only as the per-company off "
             "switch. Changed by the Mesiri team only."
+        ),
+    ),
+    DEMO_COMPANY: SettingSpec(
+        key=DEMO_COMPANY,
+        default=False,
+        description=(
+            "true: a demo company for showing Mesiri to prospects. The control panel's 'Reset demo' deletes "
+            "it and creates it again with the same people and fresh sample data. Changed by the Mesiri team only."
         ),
     ),
     ASSISTANT_MODE: SettingSpec(
@@ -406,6 +418,10 @@ def validate(key: str, value: object) -> object:
     if key == DRAFT_V2:
         if not isinstance(value, bool):
             raise ValueError("draft_v2 must be true or false")
+        return value
+    if key == DEMO_COMPANY:
+        if not isinstance(value, bool):
+            raise ValueError("demo_company must be true or false")
         return value
     if key == ASSISTANT_MODE:
         mode = str(value).strip().lower() if isinstance(value, str) else ""

@@ -28,6 +28,8 @@ ACTOR_KINDS = (ACTOR_PLATFORM_ADMIN, ACTOR_SELF_SIGNUP, ACTOR_SYSTEM)
 COMPANY_CREATED = "company.created"
 COMPANY_DELETED = "company.deleted"
 COMPANY_FINANCE_SEEDED = "company.finance_seeded"
+# SA-30: a demo company deleted and created again with the same people and fresh sample data.
+COMPANY_DEMO_RESET = "company.demo_reset"
 COMPANY_SETTING_CHANGED = "company.setting_changed"
 # Name or primary contact changed in the control panel (SA-03).
 COMPANY_UPDATED = "company.updated"
@@ -60,6 +62,7 @@ ACTIONS = frozenset(
         COMPANY_CREATED,
         COMPANY_DELETED,
         COMPANY_FINANCE_SEEDED,
+        COMPANY_DEMO_RESET,
         COMPANY_SETTING_CHANGED,
         COMPANY_UPDATED,
         COMPANY_TRIAL_EXTENDED,

@@ -7,7 +7,7 @@ from datetime import datetime
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import delete, insert, select
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.application.organizations import trial_controls
@@ -29,7 +29,6 @@ from mesiri.infrastructure.postgres.models.organization import (
     OrganizationModel,
     OrganizationStatus,
 )
-from mesiri.infrastructure.postgres.models.user import UserModel
 from mesiri.infrastructure.postgres.repositories.timeline import PostgresTimelineReadRepository
 
 router = APIRouter(prefix="/admin/organizations", tags=["admin"])
@@ -252,8 +251,9 @@ async def delete_organization(
     if result.first() is None:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    await conn.execute(delete(UserModel).where(UserModel.organization_id == org_id))
-    await conn.execute(delete(OrganizationModel).where(OrganizationModel.id == org_id))
+    from mesiri.application.organizations.delete_company import delete_company
+
+    await delete_company(conn, org_id)  # SA-30: the one delete step (people first used to fail on any real company)
 
 
 class OrganizationUserResponse(BaseModel):

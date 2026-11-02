@@ -7,7 +7,7 @@ import uuid
 from datetime import UTC, date, datetime
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -360,38 +360,17 @@ async def delete_organization(org_id: uuid.UUID, _admin: dict = Depends(require_
         if org_row is None:
             raise HTTPException(status_code=404, detail="Organization not found")
 
-        # 1. Fetch user IDs belonging to this organization
-        user_rows = await conn.execute(
-            sa.select(users_table.c.id).where(users_table.c.organization_id == org_id)
-        )
-        user_ids = [r[0] for r in user_rows.fetchall()]
+        user_ids = [r[0] for r in (await conn.execute(
+            sa.select(users_table.c.id).where(users_table.c.organization_id == org_id))).fetchall()]
+        # SA-30: the one delete step (application/organizations/delete_company.py): the links that block a cascade,
+        # then the company and every record it has, then its people (before, they were left behind with their
+        # WhatsApp numbers still taken).
+        from mesiri.application.organizations.delete_company import delete_company
 
-        # 2. Interactions reference users without cascading
-        if user_ids:
-            await conn.execute(
-                sa.text(
-                    "DELETE FROM interactions WHERE user_id IN :uids"
-                ).bindparams(sa.bindparam("uids", expanding=True)),
-                {"uids": user_ids},
-            )
-
-        # BE-44: budgets (and, by their cascade, budget_allocations) first. In
-        # the one cascading delete below, an allocation still pointing at an
-        # expense category being swept blocks it (budget_allocations_category_id_fkey
-        # has no ON DELETE action).
-        await conn.execute(
-            sa.text("DELETE FROM budgets WHERE organization_id = :org"), {"org": org_id}
-        )
-
-        # 3. Delete main organization row (ON DELETE CASCADE sweeps all domain tables)
         try:
-            await conn.execute(
-                organizations_table.delete().where(organizations_table.c.id == org_id)
-            )
+            await delete_company(conn, org_id)
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(
-                status_code=500, detail=f"Failed to delete organization: {exc}"
-            ) from exc
+            raise HTTPException(status_code=500, detail=f"Failed to delete organization: {exc}") from exc
 
         # The audit log has no foreign key to organizations, so this entry
         # outlives the company it describes.
@@ -1188,6 +1167,28 @@ async def provision_tenant(
         materials_seeded=created.materials_seeded,
         sites=[ProvisionedSite(site_id=s.site_id, name=s.name) for s in created.sites],
     )
+
+
+class DemoResetResponse(BaseModel):
+    organization_id: uuid.UUID
+    name: str
+    people: int
+    seeded: dict[str, int]
+    failed: list[str]
+
+
+@router.post("/{org_id}/demo-reset", response_model=DemoResetResponse)
+async def reset_demo_company(org_id: uuid.UUID, request: Request, _admin: dict = Depends(require_platform_admin)):
+    """SA-30: a demo company (demo_company = true) deleted and created again with the same people and fresh
+    sample data, in one tap. The company gets a new id: the control panel moves to it."""
+    from admin.demo import DemoResetError, reset_demo
+
+    try:
+        result = await reset_demo(get_engine(), request.app.state.container.material_db, org_id, actor=actor_from_admin(_admin))
+    except DemoResetError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    return DemoResetResponse(organization_id=result.organization_id, name=result.name, people=result.people,
+                             seeded=result.seeded, failed=result.failed)
 
 
 @router.post("/{org_id}/seed-finance", response_model=FinanceSeedResponse)
