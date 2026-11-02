@@ -37,7 +37,7 @@ export class Watchdog {
     if (this.busy) return;
     this.busy = true;
     try {
-      const running = Object.values(this.brain.planStore.plans).filter((p) => p.status === "running_in_cloud");
+      const running = Object.values(this.brain.planStore.plans).filter((p) => p.status === "running_in_cloud" || p.status === "running_here"); // TM-31: builds here too
       const now = this.brain.now().getTime();
       for (const plan of running) {
         // A job started more than 2 days ago is over, whatever it reported: it is closed quietly, never re-alerted
@@ -70,6 +70,16 @@ export class Watchdog {
     const say = (text) => b.listener.send({ chat: plan.reply_chat || plan.chat, project: plan.reply_project || plan.chat_project || plan.project, text }).catch(() => null);
     const tag = `[${plan.id}]`;
 
+    if (!plan.pushed_at && ws.commits.length) {
+      // TM-27: when the build's first commit reached main (the request log's "pushed" stage).
+      plan.pushed_at = ws.commits[0].at;
+      b.savePlans();
+      if (typeof plan.id === "number") {
+        // A stamp never breaks the watchdog.
+        await Promise.resolve(b.listener.updateItem?.(plan.id, { pushed_at: plan.pushed_at, project: plan.reply_project || plan.chat_project || plan.project })).catch(() => {});
+      }
+    }
+
     // The session reported by itself (item done / dropped): nothing for the watchdog to say.
     if (ws.item?.status === "done" || ws.item?.status === "wont_do") {
       const last = ws.commits.at(-1);
@@ -90,12 +100,6 @@ export class Watchdog {
       if (!decided && now - Date.parse(c.at) < this.cfg.deployWaitMs) continue; // wait for the deploy's result
       st.posted.push(c.sha);
       this.save();
-      if (!plan.pushed_at) {
-        // TM-27: when the build's first commit reached main (the request log's "pushed" stage).
-        plan.pushed_at = c.at;
-        b.savePlans();
-        if (typeof plan.id === "number") await b.listener.updateItem(plan.id, { pushed_at: c.at, project: plan.reply_project || plan.chat_project || plan.project }).catch(() => {});
-      }
       const how = { green: "deploy green ✅", red: "deploy red ❌", running: "deploy still running", none: "no deploy run seen" }[c.deploy.state];
       const link = c.deploy.state === "red" && c.deploy.url ? `\n${c.deploy.url}` : "";
       await say(`${tag} pushed ${c.short} “${String(c.subject).slice(0, 80)}”, ${how}.${link}`);

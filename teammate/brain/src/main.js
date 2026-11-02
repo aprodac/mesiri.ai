@@ -40,6 +40,7 @@ import { createRenderer } from "./render.js";
 import { commitPatterns, formatWorkStatus } from "./work_status.js";
 import { ProdWatch, QUIET, Screener, opsSources, skipPatterns } from "./prod_watch.js";
 import { costRows } from "./cost.js";
+import { buildPath, prepareBuildTree } from "./build_tree.js";
 import { Digest } from "./digest.js";
 
 const log = (m) => console.log(`[brain] ${m}`);
@@ -78,7 +79,7 @@ function parseProjects(spec) {
     const [, name, repo, branch] = m;
     // Each project's own GitHub token (TEAMMATE_GITHUB_TOKEN_<NAME>), else the default GH_TOKEN.
     const ghToken = process.env[`TEAMMATE_GITHUB_TOKEN_${name.toUpperCase()}`] || process.env.GH_TOKEN || "";
-    out[name] = { name, repo, branch, ghToken, cwd: join(dir, "repos", name), flow: FLOWS[name] || `work on branch ${branch}; open a PR; never merge to main unless told.` };
+    out[name] = { name, repo, branch, ghToken, cwd: join(dir, "repos", name), buildCwd: buildPath(dir, name), flow: FLOWS[name] || `work on branch ${branch}; open a PR; never merge to main unless told.` };
   }
   return out;
 }
@@ -96,6 +97,15 @@ function ensureRepo({ repo, branch, cwd, ghToken }) {
   }
   execFileSync("gh", ["auth", "setup-git"], { stdio: "inherit", env: withToken(ghToken) });
   git(cwd, "config", "core.hooksPath", hooksDir);
+}
+
+/**
+ * TM-31: before a build here, the project's build worktree follows GitHub and has its Python packages (uv). Throws when
+ * it can't be made ready; the brain then builds in the cloud.
+ */
+function prepareBuild(project) {
+  const run = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, stdio: "pipe", timeout: 20 * 60_000, env: withToken(project.ghToken) });
+  return prepareBuildTree(project, { git: gitAs(project.ghToken), run, log });
 }
 
 /** Before each turn: latest code on the project's branch, without touching uncommitted work. */
@@ -243,6 +253,7 @@ const brain = new Brain({
   projects,
   dir,
   listener,
+  prepareBuild, // TM-31: "@bot build here"
   tools: (ctx, plans) => {
     const p = brain.partnerFor(ctx.chat, ctx.chat_project || ctx.project); // on this group's account, at the time of the turn
     return brainTools({

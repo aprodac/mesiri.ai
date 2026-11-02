@@ -74,6 +74,33 @@ export class AutoBuild {
     return p ? Boolean(p.on) : this.defaultOn;
   }
 
+  /**
+   * TM-31: where an automatic build runs: "here" (this server's build worktree: warm, starts at once, Claude runs the
+   * checks itself) or "cloud" (a fresh cloud routine session per plan, as before). Default cloud, or
+   * TEAMMATE_BUILD_HERE=1; owners switch it with "@bot build here | cloud".
+   */
+  buildHere(project) {
+    const w = this.s.where?.[project];
+    return w ? w.where === "here" : process.env.TEAMMATE_BUILD_HERE === "1";
+  }
+
+  /** "@bot build" (the state) and, for owners in the team group, "build here" / "build cloud". */
+  whereCommand(req) {
+    const m = String(req.text || "").trim().match(/^build(?:\s+(here|cloud|status|\?))?$/i);
+    if (!m) return undefined;
+    const project = req.reply_project || req.project;
+    const arg = String(m[1] || "").toLowerCase();
+    const show = (head = "") =>
+      `${head}🏗️ *Builds run ${this.buildHere(project) ? "here*: on this server's build copy (warm, starts at once; one at a time)" : "in the cloud*: a fresh Claude Code cloud session per plan"}\n` +
+      "Owners: @bot build here | cloud";
+    if (!arg || arg === "status" || arg === "?") return show();
+    if (req.dm) return "Where builds run can be changed in the team group only.";
+    if (req.sender_role !== "owner") return "Only an owner can change where builds run.";
+    (this.s.where ||= {})[project] = { where: arg, by: req.sender || "an owner", at: new Date(this.now()).toISOString() };
+    this.save();
+    return show(arg === "here" ? "▶️ " : "☁️ ");
+  }
+
   /** Builds started today (India day) for this project. */
   today(project) {
     const day = new Date(this.now() + 5.5 * 3600_000).toISOString().slice(0, 10);

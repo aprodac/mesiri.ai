@@ -263,13 +263,13 @@ export class Brain {
    *   owner?: string, model?: string, env?: Record<string, string>, log?: (m: string) => void, now?: () => Date,
    * }} opts
    */
-  constructor({ queryFn, projects, dir, listener, tools, prepare = () => {}, owner = "Ilan", model, env = process.env, log = () => {}, now = () => new Date(), routines = {}, fireFn = null, partners = {}, landed, accounts = null, work = null }) {
+  constructor({ queryFn, projects, dir, listener, tools, prepare = () => {}, prepareBuild = null, owner = "Ilan", model, env = process.env, log = () => {}, now = () => new Date(), routines = {}, fireFn = null, partners = {}, landed, accounts = null, work = null }) {
     // routines: { project: { url, token } } -- approved work runs as a cloud routine session the owner can
     // watch in Claude Code (hybrid, TM-03b); projects without one run the working turn here.
     // partners: { project: { url, token } } -- the routine bound to Ilan Usman's cloud session (TM-12).
     // accounts: several Claude accounts, each with its own login, routines and partners (TM-14); without it,
     // one account made of `routines` / `partners` and whatever login `env` carries.
-    Object.assign(this, { queryFn, projects, listener, tools, prepare, owner, model, env, log, now, fireFn });
+    Object.assign(this, { queryFn, projects, listener, tools, prepare, prepareBuild, owner, model, env, log, now, fireFn });
     this.accounts = accounts || new Accounts({ list: [{ id: "a", token: null, routines, partners }], now: () => this.now().getTime() });
     this.boardFile = `${dir}/board.json`;
     this.sessionsFile = `${dir}/sessions.json`;
@@ -323,7 +323,7 @@ export class Brain {
       if (plan.status === "proposed") return `[${plan.id}] ${plan.title} is a plan waiting for @bot ok ${plan.id}.`;
       return formatWorkStatus(await this.workStatus(plan), now);
     }
-    const running = Object.values(this.planStore.plans).filter((p) => mine(p) && p.status === "running_in_cloud");
+    const running = Object.values(this.planStore.plans).filter((p) => mine(p) && (p.status === "running_in_cloud" || p.status === "running_here"));
     if (!running.length) return "No job is running in the cloud. @bot status <n> shows any earlier one.";
     const parts = [];
     for (const p of running) parts.push(formatWorkStatus(await this.workStatus(p), now, { short: true }));
@@ -550,12 +550,61 @@ export class Brain {
     plan.approved_at = this.now().toISOString();
     writeJson(this.plansFile, this.planStore);
     if (typeof plan.id === "number") this.listener.updateItem(plan.id, { status: "in_progress", note: `OK from ${by} in WhatsApp`, project }).catch(() => {});
+    if (this.buildsHere(plan.project, project)) return this.buildHere(plan, { project, by, reply_chat, dm, say: sayPlan });
     if (this.routineFor(plan.chat, plan.project) && this.fireFn) return this.runInCloud(plan, { project, by, reply_chat, say: sayPlan });
     const text =
       `${by} approved plan [${plan.id}] "${plan.title}". Go ahead with exactly this plan now.\n\nThe plan:\n${plan.plan}`;
     return this.enqueue(key, () =>
       this.turn({ project: repo, reply_project: project, chat: plan.chat, chat_name: plan.chat_name, chat_role: "team", reply_chat, dm, sender: by, n: null, text, session: plan.session || "main" }, "working", plan),
     );
+  }
+
+  /** TM-31: does this project's approved work build on this server's build worktree? */
+  buildsHere(repoProject, chatProject = repoProject) {
+    return Boolean(this.prepareBuild && this.projects[repoProject]?.buildCwd && this.autobuild.buildHere(chatProject));
+  }
+
+  /**
+   * TM-31: build the plan here, in the project's build worktree (its own copy, never reset by other turns): warm (the
+   * repo and the packages are already there) and at once. One build per project at a time (its own queue), each in a
+   * fresh "build" conversation. When the worktree can't be made ready, the plan goes to the cloud as before.
+   */
+  async buildHere(plan, { project, by, reply_chat, dm = false, say }) {
+    const repo = this.projects[plan.project];
+    const at = this.now().toISOString();
+    Object.assign(plan, { status: "running_here", reply_chat, reply_project: project, started_at: plan.started_at || at, fired_at: at });
+    writeJson(this.plansFile, this.planStore);
+    if (typeof plan.id === "number") this.listener.updateItem(plan.id, { status: "in_progress", started_at: plan.started_at, note: "building on the bot server (TM-31)", project }).catch(() => {});
+    await say(`▶️ Building [${plan.id}] ${plan.title} here on the bot's server (warm build copy). I'll post progress and the result here.`);
+    const text = [
+      `${by === "autobuild" ? "Autobuild (TM-18)" : by} started plan [${plan.id}] "${plan.title}". Go ahead with exactly this plan now.`,
+      "",
+      "You are in the bot server's BUILD copy of the repository (TM-31), on the local branch bot-build that follows",
+      `origin/${repo.branch}. Never check out ${repo.branch} here (another copy has it). Pull with \`git pull origin ${repo.branch}\`,`,
+      `push with \`git push origin HEAD:${repo.branch}\`. The Python packages are in .venv (on PATH); install Node packages with`,
+      "npm ci / pnpm install where a check needs them. Follow CLAUDE.md: run its checks for what you touched before pushing.",
+      "",
+      "The plan:",
+      plan.plan,
+      fastPathSection(plan),
+    ].join("\n");
+    const key = `build::${plan.project}`;
+    return this.enqueue(key, async () => {
+      try {
+        this.prepareBuild(repo);
+      } catch (e) {
+        this.log(`brain: build copy for ${plan.project} not ready: ${e.message}; using the cloud`);
+        plan.status = "approved";
+        writeJson(this.plansFile, this.planStore);
+        if (this.routineFor(plan.chat, plan.project) && this.fireFn) {
+          await say(`⚠️ The build copy on the server isn't ready (${String(e.message).slice(0, 120)}); building [${plan.id}] in the cloud instead.`);
+          return this.runInCloud(plan, { project, by, reply_chat, say });
+        }
+        return say(`⚠️ Couldn't build [${plan.id}]: the build copy isn't ready (${String(e.message).slice(0, 120)}).`);
+      }
+      this.sessions.ids[`${plan.chat}::build`] = null; // each build starts a fresh conversation
+      return this.turn({ project: plan.project, reply_project: project, chat: plan.chat, chat_name: plan.chat_name, chat_role: "team", reply_chat, dm, sender: by, n: null, text, session: "build", build_here: true }, "working", plan);
+    });
   }
 
   /** Starts the approved plan as a cloud routine session and posts its link, so the owner can watch it. */
@@ -737,17 +786,24 @@ export class Brain {
       if (digest !== undefined) return say(digest);
       const build = this.autobuild.command(req); // TM-18: "@bot autobuild [on|off]"
       if (build !== undefined) return say(build);
+      const where = this.autobuild.whereCommand(req); // TM-31: "@bot build here | cloud"
+      if (where !== undefined) return say(where);
       const answer = this.accounts.command(req) || this.settingsCommand(req) || this.sessionCommand(req);
       if (answer) return say(answer);
     }
     // Auto cycles have their own caps (pushes and cycles a day), so they don't use the daily turn allowance.
     if (!req.auto && this.overDailyCap()) return say(`⏸️ I've hit today's limit of ${DAILY_TURNS} runs. Ask again tomorrow, or raise TEAMMATE_BRAIN_DAILY_TURNS.`);
 
-    try {
-      this.prepare(project); // e.g. fetch the latest code before reading it
-    } catch (e) {
-      this.log(`brain: prepare ${req.project}: ${e.message}`);
+    // TM-31: a build here runs in the build worktree, made ready by buildHere(); every other turn in the shared copy.
+    const cwd = req.build_here ? project.buildCwd : project.cwd;
+    if (!req.build_here) {
+      try {
+        this.prepare(project); // e.g. fetch the latest code before reading it
+      } catch (e) {
+        this.log(`brain: prepare ${req.project}: ${e.message}`);
+      }
     }
+    const venv = req.build_here ? { VIRTUAL_ENV: join(cwd, ".venv"), PATH: `${join(cwd, ".venv", "bin")}:${this.env.PATH || process.env.PATH || ""}` } : {};
 
     const where = req.dm ? `${req.chat_name} (direct message)` : req.chat_role === "customer" ? `${req.chat_name} (customer; answer goes to the team group)` : `${req.chat_name} (team)`;
     const header = `[WhatsApp · ${where} · #${req.n ?? "-"} · from ${req.sender}]`;
@@ -766,7 +822,7 @@ export class Brain {
       const stream = this.queryFn({
         prompt,
         options: {
-          cwd: project.cwd,
+          cwd,
           resume: sessionId || undefined,
           model: this.modelFor(req.project).model,
           ...(this.modelFor(req.project).effort ? { effort: this.modelFor(req.project).effort } : {}),
@@ -777,7 +833,7 @@ export class Brain {
           maxBudgetUsd: req.budget || BUDGET[mode],
           settingSources: ["project"],
           systemPrompt: { type: "preset", preset: "claude_code", append: systemAppend({ project: req.project, flow: project.flow, owner: this.owner, dm: Boolean(req.dm), partner: Boolean(this.partnerFor(req.chat, req.reply_project || req.project)) }) },
-          env: { ...this.env, ...this.accounts.env(req.chat), TEAMMATE_PROJECT: req.reply_project || req.project, ...(project.ghToken ? { GH_TOKEN: project.ghToken } : {}) },
+          env: { ...this.env, ...this.accounts.env(req.chat), ...venv, TEAMMATE_PROJECT: req.reply_project || req.project, ...(project.ghToken ? { GH_TOKEN: project.ghToken } : {}) },
           abortController: abort,
         },
       });
@@ -823,8 +879,13 @@ export class Brain {
       return this.turn(req, mode, plan);
     }
     if (plan) {
-      plan.status = result?.subtype === "success" ? "done" : "failed";
+      // TM-31: a build here stays "running_here" so the watchdog follows its commit, deploy and live check.
+      plan.status = result?.subtype === "success" ? (req.build_here ? "running_here" : "done") : "failed";
       writeJson(this.plansFile, this.planStore);
+      if (req.build_here && typeof plan.id === "number") {
+        const project = req.reply_project || req.project;
+        this.listener.updateItem(plan.id, plan.status === "failed" ? { note: "build here failed", project } : { status: "done", note: "built here (TM-31)", project }).catch(() => {});
+      }
     }
     outcome.denied = result?.permission_denials || [];
     if (failed) {
@@ -908,6 +969,7 @@ export class Brain {
     writeJson(this.plansFile, this.planStore);
     this.autobuild.started(project);
     if (typeof plan.id === "number") this.listener.updateItem(plan.id, { status: "in_progress", note: "approved_by: autobuild (TM-18)", project }).catch(() => {});
+    if (this.buildsHere(plan.project, project)) return this.buildHere(plan, { project, by: "autobuild", reply_chat: req.reply_chat, dm: Boolean(req.dm), say });
     if (this.routineFor(plan.chat, plan.project) && this.fireFn) return this.runInCloud(plan, { project, by: "autobuild", reply_chat: req.reply_chat, say });
     const key = `${plan.chat}::${plan.session || "main"}`;
     plan.started_at ||= this.now().toISOString(); // TM-27

@@ -138,3 +138,87 @@ test("brain: after a restart a plan that is no longer held starts; one still hel
     done();
   }
 });
+
+function hereBrain({ prepareBuild }) {
+  const dir = mkdtempSync(join(tmpdir(), "abh-"));
+  const sent = [];
+  const fired = [];
+  const items = [];
+  const cwds = [];
+  let lastCtx = null;
+  let plansApi = null;
+  const brain = new Brain({
+    queryFn: ({ options }) =>
+      (async function* () {
+        cwds.push({ cwd: options.cwd, venv: options.env.VIRTUAL_ENV || null });
+        if (cwds.length === 1) {
+          const saved = plansApi.save({ id: 81, project: "mesiri", chat_project: "mesiri", chat: lastCtx.chat, chat_name: "Mesiri team", session: lastCtx.session, title: "Add a tool", plan: "Add the expense route to v3.", by: lastCtx.sender });
+          lastCtx.new_plans?.push(saved.id);
+        }
+        yield ok(cwds.length === 1 ? "Building it now." : "Pushed abc1234.", `S${cwds.length}`);
+      })(),
+    projects: { mesiri: { name: "mesiri", branch: "main", cwd: "/r/mesiri", buildCwd: "/b/mesiri", flow: "claude.md" } },
+    dir,
+    listener: { send: async (b) => (sent.push(b), { ok: true }), addItem: async () => ({ item: { id: 81 } }), updateItem: async (id, b) => items.push({ id, ...b }) },
+    tools: (ctx, plans) => ((lastCtx = ctx), (plansApi = plans), {}),
+    routines: { mesiri: { url: "https://x/fire", token: "t" } },
+    fireFn: async (routine, text) => (fired.push(text), { claude_code_session_id: "cse_9" }),
+    prepareBuild,
+    now: () => new Date("2026-11-01T06:00:00Z"),
+  });
+  brain.listener.chats = async () => ({ chats: [{ jid: "M@g.us", role: "team", project: "mesiri", name: "Mesiri team" }] });
+  brain.autobuild.whereCommand({ text: "build here", project: "mesiri", sender_role: "owner", sender: "Ilan" });
+  const ask = () => brain.askWatch("mesiri", "Production watch …", "NOTHING_TO_REPORT", []);
+  return { brain, sent, fired, items, cwds, ask, done: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
+test("TM-31: with 'build here' the plan is built in the build copy, not in the cloud, and stays followed", async () => {
+  let prepared = 0;
+  const { brain, sent, fired, items, cwds, ask, done } = hereBrain({ prepareBuild: () => (prepared += 1, "warm") });
+  try {
+    await ask();
+    for (let i = 0; i < 20 && cwds.length < 2; i++) await new Promise((r) => setTimeout(r, 5)); // the build queue
+    assert.equal(fired.length, 0);
+    assert.equal(prepared, 1);
+    assert.deepEqual(cwds.map((c) => c.cwd), ["/r/mesiri", "/b/mesiri"]); // planning in the shared copy, build in its own
+    assert.equal(cwds[1].venv, "/b/mesiri/.venv");
+    assert.ok(sent.some((m) => /▶️ Building \[81\][\s\S]*bot's server/.test(m.text)));
+    assert.equal(brain.planStore.plans[81].status, "running_here"); // the watchdog follows its commit and deploy
+    assert.ok(items.some((i) => i.id === 81 && i.status === "done" && /built here/.test(i.note)));
+    assert.ok(items.some((i) => i.id === 81 && i.started_at));
+  } finally {
+    done();
+  }
+});
+
+test("TM-31: when the build copy can't be made ready, the plan is built in the cloud as before", async () => {
+  const { brain, sent, fired, cwds, ask, done } = hereBrain({ prepareBuild: () => { throw new Error("uv: not found"); } });
+  try {
+    await ask();
+    for (let i = 0; i < 20 && fired.length < 1; i++) await new Promise((r) => setTimeout(r, 5));
+    assert.equal(fired.length, 1);
+    assert.equal(cwds.length, 1); // no build turn here
+    assert.ok(sent.some((m) => /build copy on the server isn't ready \(uv: not found\)/.test(m.text)));
+    assert.equal(brain.planStore.plans[81].status, "running_in_cloud");
+  } finally {
+    done();
+  }
+});
+
+test("TM-31: '@bot build here | cloud' is the owners' switch, in the team group", () => {
+  const dir = mkdtempSync(join(tmpdir(), "abw-"));
+  try {
+    const ab = new AutoBuild({ file: join(dir, "a.json") });
+    const req = { project: "mesiri", sender_role: "member" };
+    assert.match(ab.whereCommand({ ...req, text: "build" }), /in the cloud/);
+    assert.equal(ab.whereCommand({ ...req, text: "build here" }), "Only an owner can change where builds run.");
+    assert.equal(ab.whereCommand({ ...req, text: "build here", sender_role: "owner", dm: true }), "Where builds run can be changed in the team group only.");
+    assert.match(ab.whereCommand({ ...req, text: "build here", sender_role: "owner" }), /Builds run here/);
+    assert.equal(ab.buildHere("mesiri"), true);
+    assert.match(ab.whereCommand({ ...req, text: "build cloud", sender_role: "owner" }), /in the cloud/);
+    assert.equal(ab.buildHere("mesiri"), false);
+    assert.equal(ab.whereCommand({ ...req, text: "build me a house" }), undefined);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

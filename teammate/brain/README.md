@@ -136,8 +136,16 @@ production watch ◄────────────────────
   marked reported so the regular look skips it. Mesiri pokes only after the reply is sent and marked answered.
 - **Starts from the found cause (TM-29):** an autobuild payload ends with a "Fast path" section: confirm the cause
   in the named files, write the failing test from the person's own message (`scripts/replay_to_test.py`), fix,
-  push within ~15 minutes. Building on this server instead of a fresh cloud session is NOT done: every turn resets
-  the shared checkout (a build could lose its edits), and the server has 3 GB / 1.5 CPUs.
+  push within ~15 minutes.
+- **Build here (TM-31):** `@bot build here | cloud` (owners, team group; default cloud, or `TEAMMATE_BUILD_HERE=1`).
+  "Here" builds on this server in a separate **build worktree** (`<dir>/build/<project>`, branch `bot-build` following
+  `origin/main`, pushes with `git push origin HEAD:main`; `src/build_tree.js`): the shared copy's reset never touches
+  it, leftovers go to an `unpushed-build/<time>` branch, the Python packages stay in its `.venv` and are installed
+  again (uv) only when `pyproject.toml` changes. Builds run one at a time per project, each in a fresh "build"
+  conversation, on the group's Claude account (usage limits switch accounts as usual). The plan stays
+  `running_here`, so the watchdog follows its commit, deploy and live check. When the copy can't be made ready
+  (e.g. no `uv` on the server) the plan goes to the cloud. Needs `uv` and Python 3.11 on the server; the service's
+  3 GB / 1.5 CPU limits are shared with the turns.
 - **One-step v3 fixes (TM-30):** `scripts/allow_route.py <METHOD> <path> <name> "<what for>" --ref <#ref>` gives v3 a
   dashboard route: checks it exists, refuses access / deletes / admin / held modules, adds the ALLOWED entry and
   its test.
