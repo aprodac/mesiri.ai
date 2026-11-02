@@ -37,6 +37,18 @@ interface Counts extends Record<Stage, number> {
   tried: number;
 }
 
+/** TM-23: how fast and how well the loop works (from the request log and the testers' own taps). */
+interface Loop {
+  shipped_from_users: number;
+  hours_to_live_median: number | null;
+  hours_to_live_p90: number | null;
+  live_checked: number;
+  live_check_ok: number;
+  verdicts: { works: number; still_wrong: number; days: number } | null;
+}
+
+const hours = (h: number | null) => (h == null ? '—' : h < 1 ? `${Math.round(h * 60)} min` : h < 48 ? `${h.toFixed(1)} h` : `${(h / 24).toFixed(1)} days`);
+
 interface LogEntry {
   at: string;
   status: string | null;
@@ -63,6 +75,7 @@ const muted = { fontSize: '13px', color: 'var(--neutral-600)' };
 export default function Requests() {
   const [items, setItems] = useState<RequestItem[] | null>(null);
   const [counts, setCounts] = useState<Counts | null>(null);
+  const [loop, setLoop] = useState<Loop | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stage, setStage] = useState<Stage | 'all' | 'open' | 'shipped'>('all');
   const [usersOnly, setUsersOnly] = useState(false);
@@ -72,10 +85,11 @@ export default function Requests() {
 
   useEffect(() => {
     api
-      .get<{ counts: Counts; items: RequestItem[] }>('/admin/requests')
+      .get<{ counts: Counts; loop?: Loop; items: RequestItem[] }>('/admin/requests')
       .then((res) => {
         setItems(res.data.items);
         setCounts(res.data.counts);
+        setLoop(res.data.loop ?? null);
       })
       .catch((err) => setError(getErrorMessage(err, 'Could not load the requests')));
   }, []);
@@ -135,6 +149,33 @@ export default function Requests() {
           </button>
         ))}
       </div>
+
+      {loop && (
+        <div className="kpis" style={{ marginBottom: 'var(--space-5)' }} aria-label="How the loop is doing">
+          <div className="kpi">
+            <span className="kpi-label">Asked → live (median)</span>
+            <span className="kpi-row"><span className="kpi-value">{hours(loop.hours_to_live_median)}</span></span>
+            <span className="kpi-compare">slowest tenth {hours(loop.hours_to_live_p90)} · {loop.shipped_from_users} shipped for users</span>
+          </div>
+          <div className="kpi">
+            <span className="kpi-label">Live check passed</span>
+            <span className="kpi-row"><span className="kpi-value">{loop.live_checked ? `${loop.live_check_ok} / ${loop.live_checked}` : '—'}</span></span>
+            <span className="kpi-compare">the bot re-sent what was asked after deploy</span>
+          </div>
+          <div className="kpi">
+            <span className="kpi-label">
+              {loop.verdicts && <span className={`kpi-dot ${loop.verdicts.still_wrong ? 'critical' : 'good'}`} />}
+              Testers said
+            </span>
+            <span className="kpi-row">
+              <span className="kpi-value">{loop.verdicts ? `${loop.verdicts.works} ✅ · ${loop.verdicts.still_wrong} ❌` : '—'}</span>
+            </span>
+            <span className="kpi-compare">
+              {loop.verdicts ? `Works / Still wrong taps, last ${loop.verdicts.days} days` : 'taps could not be read'}
+            </span>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
         <input

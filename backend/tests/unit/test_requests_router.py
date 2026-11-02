@@ -101,3 +101,35 @@ def test_every_route_is_platform_admin_only() -> None:
     for route in rr.router.routes:
         deps = [d.call for d in route.dependant.dependencies]
         assert rr.require_platform_admin in deps, route.path
+
+
+def test_tm23_loop_numbers_from_the_request_log() -> None:
+    items = [
+        {"asked_by": "A", "created_at": "2026-11-01T10:00:00Z", "live_at": "2026-11-01T12:00:00Z", "verified": "ok"},
+        {"asked_by": "B", "created_at": "2026-11-01T10:00:00Z", "live_at": "2026-11-01T20:00:00+00:00", "verified": "broken"},
+        {"asked_by": "C", "created_at": "2026-11-01T10:00:00Z", "live_at": None},           # not live yet
+        {"created_by": "team", "created_at": "2026-11-01T10:00:00Z", "live_at": "2026-11-01T11:00:00Z"},  # not from a user
+        {"asked_by": "D", "created_at": "bad", "live_at": "2026-11-01T11:00:00Z"},           # unreadable: skipped
+    ]
+    loop = rr.loop_numbers(items)
+    assert loop["shipped_from_users"] == 2
+    assert loop["hours_to_live_median"] == 10.0 and loop["hours_to_live_p90"] == 10.0
+    assert loop["live_checked"] == 2 and loop["live_check_ok"] == 1
+    assert rr.loop_numbers([])["hours_to_live_median"] is None
+
+
+async def test_tm23_verdicts_are_counted_and_an_unreadable_table_never_breaks_the_page() -> None:
+    from types import SimpleNamespace
+
+    class _Conn:
+        async def execute(self, *a: Any, **k: Any) -> Any:
+            return SimpleNamespace(all=lambda: [SimpleNamespace(verdict="works", n=3),
+                                                SimpleNamespace(verdict="still_wrong", n=1)])
+
+    assert await rr.verdicts(_Conn()) == {"works": 3, "still_wrong": 1, "days": 30}
+
+    class _Broken:
+        async def execute(self, *a: Any, **k: Any) -> Any:
+            raise RuntimeError("no table")
+
+    assert await rr.verdicts(_Broken()) is None

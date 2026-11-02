@@ -13,12 +13,19 @@ like the other admin routers.
 
 from __future__ import annotations
 
+import datetime as dt
+import logging
 from typing import Any
 
 import httpx
+import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 from mesiri.domains.shared.auth import require_platform_admin
+from mesiri.infrastructure.postgres.dependency import get_db_conn
+
+_log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -80,15 +87,71 @@ def counts(items: list[dict[str, Any]]) -> dict[str, int]:
     }
 
 
+def _when(value: Any) -> dt.datetime | None:
+    try:
+        when = dt.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return when if when.tzinfo else when.replace(tzinfo=dt.UTC)
+
+
+def _percentile(values: list[float], share: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    return round(ordered[min(len(ordered) - 1, int(share * len(ordered)))], 1)
+
+
+def loop_numbers(items: list[dict[str, Any]]) -> dict[str, Any]:
+    """TM-23: how fast and how well the loop works, for requests people made: hours from asked to live
+    (median and slowest tenth), and how the bot's own live check came out."""
+    hours = []
+    for item in items:
+        if not item.get("asked_by"):
+            continue
+        asked, live = _when(item.get("created_at")), _when(item.get("live_at"))
+        if asked and live and live >= asked:
+            hours.append((live - asked).total_seconds() / 3600)
+    checked = [i for i in items if i.get("verified") in ("ok", "broken")]
+    return {
+        "shipped_from_users": len(hours),
+        "hours_to_live_median": _percentile(hours, 0.5),
+        "hours_to_live_p90": _percentile(hours, 0.9),
+        "live_checked": len(checked),
+        "live_check_ok": sum(1 for i in checked if i.get("verified") == "ok"),
+    }
+
+
+#: TM-21 / TM-23: the person's own verdict on an "it works now" note (journey stage written by the assistant).
+VERDICT_SQL = sa.text(
+    "SELECT (stage_payload::jsonb)->>'verdict' AS verdict, count(*) AS n FROM journey_traces "
+    "WHERE stage = 'release_feedback' AND created_at > :since GROUP BY 1"
+)
+
+
+async def verdicts(conn: AsyncConnection, days: int = 30) -> dict[str, int] | None:
+    """Works / Still wrong taps in the last ``days`` days; None when they cannot be read."""
+    since = dt.datetime.now(dt.UTC) - dt.timedelta(days=days)
+    try:
+        rows = (await conn.execute(VERDICT_SQL, {"since": since})).all()
+    except Exception:  # noqa: BLE001 -- the page still shows the request log
+        _log.warning("requests.verdicts_unreadable", exc_info=True)
+        return None
+    by = {str(r.verdict): int(r.n) for r in rows}
+    return {"works": by.get("works", 0), "still_wrong": by.get("still_wrong", 0), "days": days}
+
+
 @router.get("/requests")
 async def list_requests(
     project: str = Query("mesiri", max_length=40, pattern=r"^[a-z0-9_-]+$"),
+    conn: AsyncConnection = Depends(get_db_conn),
     _admin: dict = Depends(require_platform_admin),
 ) -> dict[str, Any]:
-    """Every request of the project, newest first, with counts per stage."""
+    """Every request of the project, newest first, with counts per stage and the loop's numbers (TM-23)."""
     data = await _get("/items", {"project": project})
     items = [_public(i) for i in data.get("items", [])]
-    return {"project": project, "counts": counts(items), "items": items}
+    loop = {**loop_numbers(items), "verdicts": await verdicts(conn)}
+    return {"project": project, "counts": counts(items), "loop": loop, "items": items}
 
 
 @router.get("/requests/{item_id}")
