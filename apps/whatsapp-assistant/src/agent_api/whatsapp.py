@@ -239,7 +239,7 @@ class ApiWhatsApp:
 
     async def _failed(self, exc: Exception, text: str, message: Any, ctx: Any, state: dict,
                       started: float) -> ReplySpec:
-        """WA-128: a v3 failure goes through v2's outage handling, never a bare "send it again".
+        """request 204: a v3 failure goes through v2's outage handling, never a bare "send it again".
 
         - a greeting is answered by the code (the greeting menu): it never needs the model;
         - a provider outage (quota, auth, timeout): queued in their language + an ARQ retry;

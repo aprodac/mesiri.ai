@@ -1,4 +1,4 @@
-"""WA-128: a v3 failure goes through v2's outage handling, never a bare "send it again".
+"""request 204: a v3 failure goes through v2's outage handling, never a bare "send it again".
 
 Live 2 Nov 11:02: "Hy" and "Its really bad" both got "I couldn't work on that just now" because
 the model failed (Gemini cap). Now: a provider outage is retried quickly, then queued in the

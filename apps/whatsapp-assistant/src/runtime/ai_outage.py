@@ -65,7 +65,7 @@ class AIUnavailableError(Exception):
 
 class FallBackToV2(Exception):
     """The v3 agent failed for a reason that is not a provider outage (a bug in it or in a tool):
-    the journey answers this message with the v2 runner instead (WA-128)."""
+    the journey answers this message with the v2 runner instead (request 204)."""
 
 
 def is_ai_outage(understanding: UnderstandingResult) -> bool:
@@ -101,7 +101,7 @@ def is_provider_failure(error: BaseException) -> bool:
 def is_outage_error(error: BaseException) -> bool:
     """True only for a real provider outage (quota, auth, timeout, provider error). Unlike
     ``is_provider_failure`` an error with no code is NOT one: a bug in a tool or in the agent
-    must fall back to another engine, not be queued and retried three times (WA-128)."""
+    must fall back to another engine, not be queued and retried three times (request 204)."""
     if isinstance(error, TimeoutError):
         return True
     return str(getattr(error, "error_code", "") or "") in _OUTAGE_CODES

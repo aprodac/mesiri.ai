@@ -169,7 +169,7 @@ async def test_a_model_bug_falls_back_to_v2_and_keeps_what_was_waiting() -> None
     h = Harness(two_receipts_model())
     await h.service.handle(_message(), CTX)
     h.service._agent._provider = FakeToolCallingProvider([], error=RuntimeError("model down"))
-    with pytest.raises(FallBackToV2):  # WA-128: v2 answers it; never a bare "send it again"
+    with pytest.raises(FallBackToV2):  # request 204: v2 answers it; never a bare "send it again"
         await h.service.handle(_message("and 10 bags sand"), CTX)
     state = await h.redis.get_json(f"agent_api:{ORG}:{USER}")
     assert len(state["pending"]) == 2

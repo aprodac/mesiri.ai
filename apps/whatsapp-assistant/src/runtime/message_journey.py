@@ -1588,7 +1588,7 @@ def build_message_handlers(
                     if await api_agent.handle(message, ctx):
                         return
                 except FallBackToV2:
-                    # WA-128: v3 failed for a reason that is not an outage: v2 answers this message.
+                    # request 204: v3 failed for a reason that is not an outage: v2 answers this message.
                     assistant_mode = "v2"
 
         # Request [45]: a typed "undo" / "photo" / "skip" / option title / number
