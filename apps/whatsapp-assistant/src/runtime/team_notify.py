@@ -33,7 +33,11 @@ class TeamNotifier:
         project: str | None = None,
         client: httpx.AsyncClient | None = None,
     ) -> None:
-        self._token = token if token is not None else os.environ.get("TEAMMATE_TOKEN")
+        # 2 Nov: production had no TEAMMATE_TOKEN, so every poke and post was skipped in silence (requests
+        # waited for the watch's own check). The listener has one API token; the server already holds it
+        # as MESIRI_TEAMMATE_API_TOKEN (the Requests page, approved 1 Nov), so that one is used too.
+        self._token = token if token is not None else (
+            os.environ.get("TEAMMATE_TOKEN") or os.environ.get("MESIRI_TEAMMATE_API_TOKEN"))
         self._api = (api or os.environ.get("TEAMMATE_API") or _DEFAULT_API).rstrip("/")
         self._project = project or os.environ.get("TEAMMATE_PROJECT") or "mesiri"
         self._client = client
@@ -76,6 +80,8 @@ class TeamNotifier:
         """TM-22: a request was just made to Mesiri: the team bot's production watch looks as soon as the
         message has settled, not at its next 2-minute check. Best-effort; never raises."""
         if not self._token:
+            # 2 Nov: never silent. Without TEAMMATE_TOKEN on this server, requests wait for the watch's own check.
+            _log.warning("team_notify.poke_skipped reason=no_token correlation_id=%s", correlation_id)
             return False
         try:
             async with self._session() as client:
@@ -84,6 +90,8 @@ class TeamNotifier:
                     json={"project": self._project, "correlation_id": correlation_id or ""},
                     headers=self._headers(),
                 )
+                if response.status_code != 202:
+                    _log.warning("team_notify.poke_refused status=%s", response.status_code)
                 return response.status_code == 202
         except Exception:  # noqa: BLE001 -- the watch still finds it on its own check
             _log.warning("team_notify.poke_failed", exc_info=True)

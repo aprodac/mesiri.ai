@@ -31,3 +31,18 @@ async def test_guard_no_token_and_failures_are_quiet() -> None:
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(boom))
     assert await TeamNotifier(token="t" * 20, api="https://x", client=client).poke_watch() is False
+
+
+def test_the_servers_bot_token_is_used_when_teammate_token_is_unset(monkeypatch) -> None:
+    """2 Nov: production had only MESIRI_TEAMMATE_API_TOKEN (the listener's one API token), so every poke was
+    skipped in silence and requests waited for the watch's own check."""
+    from runtime.team_notify import TeamNotifier
+
+    monkeypatch.delenv("TEAMMATE_TOKEN", raising=False)
+    monkeypatch.setenv("MESIRI_TEAMMATE_API_TOKEN", "bot-token")
+    assert TeamNotifier().configured
+    monkeypatch.setenv("TEAMMATE_TOKEN", "own-token")
+    assert TeamNotifier()._token == "own-token"
+    monkeypatch.delenv("TEAMMATE_TOKEN")
+    monkeypatch.delenv("MESIRI_TEAMMATE_API_TOKEN")
+    assert not TeamNotifier().configured

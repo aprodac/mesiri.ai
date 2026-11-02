@@ -99,3 +99,58 @@ async def test_the_conversation_stores_the_note_not_the_list() -> None:
     service._agent._provider = FakeToolCallingProvider(["Hi again."])
     texts = [m.text for m in await service._memory.load(CTX)]
     assert all("*Ready to save:*" not in t for t in texts)
+
+
+# 2 Nov (Ilan, Paraclette): "mesiri fix it" / "mesiri bad ux" reached the team group 8 minutes late. The class:
+# every way the explicit command can arrive must be passed on by the code, whatever happens to the model.
+
+
+def _photo(caption: str) -> NormalizedMessage:
+    from mesiri_contracts.assistant.normalized_message import MediaReference
+
+    return NormalizedMessage(message_id=f"wamid.{uuid.uuid4().hex[:6]}", sender=SenderInfo(wa_id="919800000000"),
+                             timestamp=dt.datetime(2026, 11, 2, 6, tzinfo=dt.UTC), modality=InputModality.IMAGE,
+                             text=caption, media=MediaReference(object_key="in/shot.jpg", mime_type="image/jpeg"))
+
+
+def _photo_service(model, seen: str | None) -> tuple[wa.ApiWhatsApp, AsyncMock]:  # noqa: ANN001
+    trace = AsyncMock()
+    service = wa.ApiWhatsApp(provider=model, database=None, redis=FakeRedis(), send=AsyncMock(), transcribe=None,
+                             message_logger=AsyncMock(), trace_logger=trace, app=stand_in_api([]),
+                             describe=AsyncMock(return_value=seen))
+    return service, trace
+
+
+def _passed(trace: AsyncMock) -> list[dict]:
+    calls = trace.log_stage.await_args.kwargs["stage_payload"].get("calls") or []
+    return [c for c in calls if c["tool"] == TELL_THE_TEAM]
+
+
+async def test_a_screenshot_captioned_with_the_command_reaches_the_team() -> None:
+    service, trace = _photo_service(FakeToolCallingProvider(["Sorry, I'll pass it on."]), "A WhatsApp chat screenshot")
+    await service.handle(_photo("mesiri bad ux the save button failed"), CTX)
+    passed = _passed(trace)
+    assert len(passed) == 1 and passed[0]["by"] == "code"
+    assert passed[0]["args"]["kind"] == "bad_ux" and passed[0]["args"]["why"] == "the save button failed"
+    assert "screenshot" in passed[0]["args"]["about"]
+
+
+async def test_a_screenshot_that_cannot_be_read_still_reaches_the_team() -> None:
+    service, trace = _photo_service(FakeToolCallingProvider([]), None)
+    await service.handle(_photo("Mesiri fix it"), CTX)
+    assert [p["args"]["kind"] for p in _passed(trace)] == ["wrong_reply"]
+
+
+async def test_the_command_reaches_the_team_when_the_model_fails() -> None:
+    from runtime.ai_outage import FallBackToClassic
+
+    service, trace = _service(FakeToolCallingProvider([], error=KeyError("tool bug")))
+    with pytest.raises(FallBackToClassic):
+        await service.handle(_message("mesiri fix it"), CTX)
+    assert [p["args"]["kind"] for p in _passed(trace)] == ["wrong_reply"]
+
+
+async def test_guard_a_captioned_photo_without_the_command_passes_nothing_on() -> None:
+    service, trace = _photo_service(FakeToolCallingProvider(["Got it: 20 bags cement."]), "Cement bags at the gate")
+    await service.handle(_photo("cement vannu"), CTX)
+    assert _passed(trace) == []
