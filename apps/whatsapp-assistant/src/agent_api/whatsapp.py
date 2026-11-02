@@ -792,8 +792,13 @@ def _save_buttons(text: str, batch: str) -> ReplySpec:
 
 
 def _saved_text(results: list[WriteResult], language: str | None = None) -> str:
-    lines = [f"✅ {r.pending.summary}" if r.ok else f"❌ {r.pending.summary}: {plain_refusal(_detail(r.body), language)}"
-             for r in results]
+    def converted(r: WriteResult) -> str:
+        # WA-151: a line saved in another unit says what went into stock ("10 Numbers = 0.5 load").
+        note = r.body.get("converted") if isinstance(r.body, dict) else None
+        return f" ({note} in stock)" if note else ""
+
+    lines = [f"✅ {r.pending.summary}{converted(r)}" if r.ok
+             else f"❌ {r.pending.summary}: {plain_refusal(_detail(r.body), language)}" for r in results]
     head = "Saved." if all(r.ok for r in results) else "Not everything could be saved:"
     return head + "\n" + "\n".join(lines)
 

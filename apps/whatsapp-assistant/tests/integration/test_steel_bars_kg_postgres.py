@@ -85,6 +85,10 @@ async def test_bars_of_a_sized_tmt_convert_into_kg_by_themselves(database) -> No
     finally:
         await client.close()
     assert result.ok, result.body
+    assert result.body["converted"] == "10 Numbers = 106.67 kg"
+    from agent_api.whatsapp import _saved_text
+
+    assert _saved_text([result]) == "Saved.\n✅ 10 TMT bars used (10 Numbers = 106.67 kg in stock)"
     [(qty, unit, notes)] = await _used(database, co, tmt)
     assert (Decimal(qty), unit) == (Decimal("106.67"), "kg") and "reported as 10 Numbers" in notes
 

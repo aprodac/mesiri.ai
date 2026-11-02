@@ -779,7 +779,7 @@ def _resolve_costs(
     return unit_cost, total_cost
 
 
-async def _convert_to_stock_unit(conn: AsyncConnection, organization_id: uuid.UUID, body: Any) -> None:
+async def _convert_to_stock_unit(conn: AsyncConnection, organization_id: uuid.UUID, body: Any) -> str | None:
     """2 Nov 2026 (Ilan, Paraclette: "10 TMT steel bars used", TMT stocked in kg): a quantity reported in another
     unit is converted into the material's Stock Unit when the conversion is known -- the company's own
     (material_unit_conversions, WA-41) or a fixed one (kg/tonnes, cft/m3/brass, cement bags, steel bars by
@@ -792,22 +792,25 @@ async def _convert_to_stock_unit(conn: AsyncConnection, organization_id: uuid.UU
 
     material = await PostgresMaterialCatalogRepository(conn).get_by_id(organization_id, body.material_id)
     if not material or material.get("default_unit_id") is None or str(material["default_unit_id"]) == str(body.unit_id):
-        return
+        return None
     units = UnitsOfMeasureRepository(conn)
     unit, stock = await units.get_by_id(body.unit_id), await units.get_by_id(material["default_unit_id"])
     if not unit or not stock:
-        return
+        return None
     per = await PostgresMaterialUnitConversionRepository(conn).get(
         organization_id=organization_id, material_id=material["id"], from_unit_id=unit["id"]
     ) or built_in_per_stock_unit(str(unit["code"]), str(stock["code"]), str(material["name"]))
     if per is None or per <= 0:
-        return
-    reported = f"reported as {Decimal(str(body.quantity)).normalize():f} {unit['display_name']}"
+        return None
+    said = f"{Decimal(str(body.quantity)).normalize():f} {unit['display_name']}"
+    reported = f"reported as {said}"
     body.quantity = to_stock_quantity(body.quantity, per)
     body.unit_id = stock["id"]
     if getattr(body, "unit_cost", None) is not None:
         body.unit_cost = (Decimal(str(body.unit_cost)) * per).quantize(Decimal("0.01"))
     body.notes = f"{body.notes.strip()} ({reported})" if getattr(body, "notes", None) else reported
+    # Said back to the person (2 Nov: Ilan saw only "Saved ✅ 10 TMT steel bars", not that it went in as 0.5 load).
+    return f"{said} = {Decimal(str(body.quantity)).normalize():f} {stock['code']}"
 
 
 async def _resolve_and_validate_material_unit(
@@ -891,7 +894,7 @@ async def create_inflow(
             conn, auth_context.organization_id, body.project_id, body.site_id
         )
 
-    await _convert_to_stock_unit(conn, auth_context.organization_id, body)
+    converted = await _convert_to_stock_unit(conn, auth_context.organization_id, body)
     material, unit = await _resolve_and_validate_material_unit(
         conn, auth_context.organization_id, body.material_id, body.unit_id
     )
@@ -957,7 +960,7 @@ async def create_inflow(
             "occurred_date_source": "reported",
         },
     )
-    result = {"id": row_id, "status": "success"}
+    result = {"id": row_id, "status": "success", **({"converted": converted} if converted else {})}
     if idempotency_key:
         await _complete_idempotency_key(conn, idempotency_key, result)
     return result
@@ -998,7 +1001,7 @@ async def create_outflow(
             conn, auth_context.organization_id, body.project_id, body.site_id
         )
 
-    await _convert_to_stock_unit(conn, auth_context.organization_id, body)
+    converted = await _convert_to_stock_unit(conn, auth_context.organization_id, body)
     material, unit = await _resolve_and_validate_material_unit(
         conn, auth_context.organization_id, body.material_id, body.unit_id
     )
@@ -1084,7 +1087,7 @@ async def create_outflow(
             "occurred_date_source": "reported",
         },
     )
-    result = {"id": row_id, "status": "success"}
+    result = {"id": row_id, "status": "success", **({"converted": converted} if converted else {})}
     if idempotency_key:
         await _complete_idempotency_key(conn, idempotency_key, result)
     return result
@@ -1499,7 +1502,7 @@ async def create_transfer(
     _authorize_write(auth_context, from_project_id, body.from_site_id)
     _authorize_write(auth_context, to_project_id, body.to_site_id)
 
-    await _convert_to_stock_unit(conn, org_id, body)
+    converted = await _convert_to_stock_unit(conn, org_id, body)
     material, unit = await _resolve_and_validate_material_unit(
         conn, org_id, body.material_id, body.unit_id
     )
@@ -1528,6 +1531,7 @@ async def create_transfer(
         "outflow_id": ids.outflow_id,
         "inflow_id": ids.inflow_id,
         "status": "success",
+        **({"converted": converted} if converted else {}),
     }
     if idempotency_key:
         await _complete_idempotency_key(conn, idempotency_key, result)
