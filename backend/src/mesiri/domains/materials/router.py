@@ -247,7 +247,8 @@ async def list_materials(
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
-    """List Materials accessible to the caller's organization."""
+    """List Materials accessible to the caller's organization, each with what its people call it
+    (aliases); ``search`` matches the name or an alias (WA-127)."""
     repo = PostgresMaterialCatalogRepository(conn)
     items, total = await repo.list_materials(
         organization_id=auth_context.organization_id,
@@ -256,6 +257,9 @@ async def list_materials(
         limit=limit,
         offset=offset,
     )
+    aliases = await repo.list_aliases(auth_context.organization_id) if items else {}
+    for item in items:
+        item["aliases"] = aliases.get(str(item["id"]), [])
     return {"items": items, "total": total}
 
 

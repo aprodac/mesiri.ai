@@ -115,6 +115,9 @@ class MaterialCatalogResponse(BaseModel):
     is_active: bool
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    #: WA-127: what this company's people call it on WhatsApp ("kambi", "ചെങ്കല്ല്"), from
+    #: material_aliases. Listed by GET /materials; empty elsewhere.
+    aliases: list[str] = []
 
 
 class MaterialCatalogListResponse(BaseModel):

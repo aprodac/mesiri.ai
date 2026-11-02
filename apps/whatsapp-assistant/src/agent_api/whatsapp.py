@@ -18,12 +18,14 @@ The waiting entries are kept per person in Redis for a day.
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import json
 import logging
 import time
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from channel.replies import ListRow, ReplySpec
 from mesiri_contracts.assistant.enums import InputModality
@@ -45,6 +47,8 @@ CANCEL_PREFIX = "apiag:cancel:"
 OPTION_PREFIX = "apiag:opt:"
 #: A tool round can read several things; a mixed voice note needs room.
 MAX_STEPS = 10
+#: Today's recorded entries given to the model up front (WA-127).
+TODAY_ENTRIES = 40
 #: The materials and units of a company, read once per this many seconds.
 CATALOG_SECONDS = 300
 #: WA-118: a call is a live conversation, so fewer rounds and a shorter wait than a message.
@@ -200,7 +204,30 @@ class ApiWhatsApp:
                   for s in sites if s.project_id not in {p.id for p in projects}]
         if len(sites) == 1:
             lines.append(f"Only one site: {sites[0].name}. Use it; never ask which site.")
-        return "\n".join(lines) + "\n\n" + await self._catalog_for(ctx, client)
+        catalog, today = await asyncio.gather(self._catalog_for(ctx, client), self._today(ctx, client, sites))
+        return "\n".join(lines) + "\n\n" + catalog + "\n\n" + today
+
+    async def _today(self, ctx: Any, client: ApiClient, sites: list[Any]) -> str:
+        """WA-127: what is already recorded today (the timeline, newest last), so "did anyone report
+        X?" needs no lookup and a second entry of the same delivery can be pointed out. Never cached."""
+        day = dt.datetime.now(ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")).date().isoformat()
+        try:
+            got = await client.call("GET", "/timeline", params={"date_from": day, "date_to": day, "limit": TODAY_ENTRIES})
+        except Exception:  # noqa: BLE001 -- the model can still look it up
+            return ""
+        rows = got.body.get("items") if got.ok and isinstance(got.body, dict) else None
+        if rows is None:
+            return ""
+        if not rows:
+            return f"Recorded today ({day}) so far: nothing yet."
+        site_name = {str(s.id): s.name for s in sites}
+        lines = []
+        for row in sorted(rows, key=lambda r: str(r.get("occurred_at") or ""))[-TODAY_ENTRIES:]:
+            at = str(row.get("occurred_at") or "")[11:16]
+            where = site_name.get(str(row.get("site_id")), "")
+            lines.append(f"- {at} {where + ' · ' if where else ''}{row.get('event_type')}: {row.get('summary')}")
+        return (f"Recorded today ({day}) so far, oldest first (answer 'did anyone report X' from this; if a new "
+                "entry repeats one of these, say so before preparing it):\n" + "\n".join(lines))
 
     async def _catalog_for(self, ctx: Any, client: ApiClient) -> str:
         org = str(ctx.organization_id)
@@ -222,6 +249,7 @@ class ApiWhatsApp:
             items = materials.body.get("items") or []
             lines.append("Materials (material_id, default unit):")
             lines += [f"- {m.get('name')} ({m.get('id')}, {unit_name.get(m.get('default_unit_id'), '?')})"
+                      + (f" also called: {', '.join(m['aliases'])}" if m.get("aliases") else "")
                       for m in items if isinstance(m, dict)]
         text = "\n".join(lines)
         self._catalog[org] = (time.monotonic(), text)

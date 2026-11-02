@@ -680,7 +680,13 @@ class PostgresMaterialCatalogRepository:
     ) -> tuple[list[dict], int]:
         where_clauses = [_materials_catalog.c.organization_id == organization_id]
         if search is not None:
-            where_clauses.append(_materials_catalog.c.name.ilike(f"%{search}%"))
+            # WA-127: what people call it counts too ("kambi" finds Steel), from material_aliases.
+            by_alias = sa.exists().where(
+                _material_aliases.c.material_id == _materials_catalog.c.id,
+                _material_aliases.c.organization_id == organization_id,
+                _material_aliases.c.alias_text.ilike(f"%{search}%"),
+            )
+            where_clauses.append(sa.or_(_materials_catalog.c.name.ilike(f"%{search}%"), by_alias))
         if is_active is not None:
             where_clauses.append(_materials_catalog.c.is_active == is_active)
 

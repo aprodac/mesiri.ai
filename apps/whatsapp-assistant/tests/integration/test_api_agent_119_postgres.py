@@ -355,3 +355,21 @@ async def test_three_days_of_memory_in_the_day_store(database: PostgresDatabase)
             "SELECT DISTINCT app_name FROM assistant_sessions WHERE organization_id = :o"),
             {"o": acme["org"]})).scalars().all()
     assert apps == [APP_NAME]
+
+
+async def test_materials_list_their_aliases_and_search_finds_them(database: PostgresDatabase) -> None:
+    """WA-127: GET /materials carries what people call each material; search matches an alias."""
+    acme = await _company(database, "Acme Builders")
+    async with database.transaction() as conn:
+        await conn.execute(sa.text(
+            "INSERT INTO material_aliases (organization_id, material_id, alias_key, alias_text) "
+            "VALUES (:org, :m, 'kambi', 'kambi')"), {"org": acme["org"], "m": acme["tmt"]})
+    client = ApiClient(_actor(acme), app=build_api_app(database))
+    try:
+        listed = await client.call("GET", "/materials")
+        found = await client.call("GET", "/materials", params={"search": "kamb"})
+    finally:
+        await client.close()
+    by_id = {m["id"]: m for m in listed.body["items"]}
+    assert by_id[acme["tmt"]]["aliases"] == ["kambi"] and by_id[acme["cement"]]["aliases"] == []
+    assert [m["id"] for m in found.body["items"]] == [acme["tmt"]]

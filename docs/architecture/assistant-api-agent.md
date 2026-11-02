@@ -117,6 +117,15 @@ account -> new vendor), "1 day memory always available, fast", "the past 2 days 
 - **Wording.** SOP: "ready", never "saved / recorded / njan record cheythu / daal diya" before
   Save; reply in their language and their script (Manglish stays in Latin letters).
 
+## Aliases and today's records up front (WA-127)
+
+- `GET /materials` now lists each material's `aliases` (what this company's people call it,
+  `material_aliases`, request 165) and `search` matches an alias as well as the name; the dashboard
+  gets both too. v3's facts show them ("Steel ... also called: kambi, TMT").
+- v3's facts include what is already recorded today (`GET /timeline`, the newest 40, shown oldest
+  first, never cached): "did anyone report X?" needs no lookup, and a delivery that repeats one
+  already recorded is pointed out before it is prepared.
+
 ## Feedback reaches the team bot (WA-126)
 
 "mesiri bad ux", "mesiri fix this", "this is confusing", a wrong reply, or something Mesiri cannot do
