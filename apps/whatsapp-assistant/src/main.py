@@ -6,6 +6,7 @@ import uvicorn
 
 from runtime.lifecycle import create_app
 
+raise RuntimeError("deliberately broken build: proves the staging gate stops it (3 Nov, never on main)")
 app = create_app()
 
 
