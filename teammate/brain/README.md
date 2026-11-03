@@ -153,6 +153,33 @@ production watch ◄────────────────────
   seen by the watchdog) next to `created_at` and `live_at`; the Requests page and the digest show the median
   minutes for plan, build and deploy.
 
+### Fixed in one round (TM-63 .. TM-68, 3 Nov)
+
+3 Nov: of 6 requests first made that day, 3 needed another round. Half of the re-opens were plumbing (refused pushes,
+cut-off builds; fixed by TM-50 .. TM-62); the rest passed their own tests and failed at the person's next step, or
+the same mistake came in another way, or the real model ignored a prompt-only fix.
+
+```
+plan (accept: end state) ──► build here: commit, push refused ──► breaker review (fresh Opus, never saw the build)
+                                    ▲                                 │ break tests: other wordings, Manglish/Malayalam,
+                                    └──── fix round (≤ 2) ◄── fails ──┤ next step through Save, other way in, a guard
+                                                                      └── passes ──► build session pushes ──► live check
+```
+
+- **`accept` (TM-63):** a product plan names what is true after the person's whole journey (through Save and the
+  step after), as saved records or calls. The code refuses the plan without it (autobuild plans and live/real-use
+  fixes; not upgrades or auto cycles).
+- **Breaker review (TM-64):** the build commits; `git push` is refused in that turn. A fresh `review` session reads the
+  plan, the accept lines and `git diff origin/main...HEAD`, writes `test_break_<n>_*.py`, commits the passing ones and
+  calls `review_result`. Failures go back to the build session; 2 rounds at most (`TEAMMATE_REVIEW_ROUNDS`), then ❌ in
+  the group and nothing is pushed (`@bot tell <n> push` ships as is). A review that can't run doesn't block; the ship
+  turn says "not reviewed". Review turns cap at `TEAMMATE_REVIEW_USD` (8). Builds, fixes and reviews always run on
+  `TEAMMATE_BUILD_MODEL` (Opus 5.5). Cloud builds get the same steps as a subagent in their payload.
+- **Code decides (TM-65):** a fix where what decides saved data is only an SOP / prompt line fails the review.
+- **Holds (TM-66):** CLASS / GUARDS / SIBLINGS / RELEASE NOTE / WHO / LIVE / REPRO lines don't hold a plan.
+- **First time right (TM-67):** in the weekly digest and the 19:00 summary (7 days).
+- **Real model before the push (TM-68):** blocked: needs a Gemini key (with its own cap) in the build environment.
+
 ### "What's fixed" cards (TM-32, 2 Nov)
 
 After a passing live check the bot posts ONE picture in the team group (`post_fixed_card`, `src/cards.js`): the
