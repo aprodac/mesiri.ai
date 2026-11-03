@@ -184,9 +184,9 @@ async def test_create_project_grants_creator_membership_for_non_admin(monkeypatc
     explicit project_members row for a project they just created -- otherwise
     list_projects/get_project's membership scoping hides it from them."""
     user_id = uuid.uuid4()
-    # 1: insert project, 2: _is_org_wide's access_policy lookup (no row -> {}),
-    # 3: project_members insert for the creator.
-    conn = _Conn([[], [], []])
+    # 1: the company's projects (WA-158: no other project has this name), 2: insert project,
+    # 3: _is_org_wide's access_policy lookup (no row -> {}), 4: project_members insert for the creator.
+    conn = _Conn([[], [], [], []])
     monkeypatch.setattr(projects_router, "get_engine", lambda: _Engine(conn))
 
     await projects_router.create_project(
@@ -194,8 +194,8 @@ async def test_create_project_grants_creator_membership_for_non_admin(monkeypatc
         {"org": str(uuid.uuid4()), "role": "PROJECT_MANAGER", "sub": str(user_id)},
     )
 
-    assert len(conn.executed) == 3
-    insert_stmt = conn.executed[2]
+    assert len(conn.executed) == 4
+    insert_stmt = conn.executed[3]
     compiled = insert_stmt.compile()
     assert compiled.params["user_id"] == str(user_id)
     assert compiled.params["site_access_mode"] == "all_sites"
@@ -204,7 +204,7 @@ async def test_create_project_grants_creator_membership_for_non_admin(monkeypatc
 @pytest.mark.asyncio
 async def test_create_project_skips_membership_row_for_admin(monkeypatch):
     """An ADMIN is already org-wide -- no project_members row needed."""
-    conn = _Conn([[]])
+    conn = _Conn([[], []])
     monkeypatch.setattr(projects_router, "get_engine", lambda: _Engine(conn))
 
     await projects_router.create_project(
@@ -212,7 +212,23 @@ async def test_create_project_skips_membership_row_for_admin(monkeypatch):
         {"org": str(uuid.uuid4()), "role": "ADMIN", "sub": str(uuid.uuid4())},
     )
 
-    assert len(conn.executed) == 1
+    assert len(conn.executed) == 2  # WA-158: the duplicate-name look, then the insert
+
+
+@pytest.mark.asyncio
+async def test_create_project_refuses_a_name_the_company_already_has(monkeypatch):
+    """WA-158 ([207]): "Rana Mart" was created three times in one evening; case and spacing don't make it new."""
+    conn = _Conn([[SimpleNamespace(id=uuid.uuid4(), name="Rana Mart")]])
+    monkeypatch.setattr(projects_router, "get_engine", lambda: _Engine(conn))
+
+    with pytest.raises(HTTPException) as exc:
+        await projects_router.create_project(
+            projects_router.ProjectCreate(name="  rana   MART "),
+            {"org": str(uuid.uuid4()), "role": "ADMIN", "sub": str(uuid.uuid4())},
+        )
+
+    assert exc.value.status_code == 409 and exc.value.detail == "Rana Mart already exists"
+    assert len(conn.executed) == 1  # nothing inserted
 
 
 @pytest.mark.asyncio

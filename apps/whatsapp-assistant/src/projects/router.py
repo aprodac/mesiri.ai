@@ -377,6 +377,57 @@ def _member_project_ids_clause(user_id: uuid.UUID):
     )
 
 
+# [207], ported 3 Nov (WA-158): [207] put these rules in backend/src/mesiri/domains/projects/router.py, which the
+# live app does not mount for /projects (this module is the one runtime/lifecycle.py mounts). So the assistant's
+# people lookup answered 404 and every "add Rajesh to Zeta Plaza" was refused. They live here now.
+_MEMBER_ROLES = frozenset({"ADMIN", "PROJECT_MANAGER", "SITE_ENGINEER", "FINANCE"})
+
+
+class MemberCandidate(BaseModel):
+    userId: uuid.UUID
+    fullName: str
+    role: str
+
+
+def same_project_name(name: str | None) -> str:
+    """A project name as compared for duplicates: case, spaces and width don't count ("Rana Mart" = "rana  mart")."""
+    import unicodedata
+
+    return " ".join(unicodedata.normalize("NFKC", str(name or "")).casefold().split())
+
+
+async def _existing_project_named(conn, org_id, name: str, *, other_than: uuid.UUID | None = None) -> str | None:
+    """The name of this company's project with the same name, else None (archived ones count too)."""
+    wanted = same_project_name(name)
+    if not wanted:
+        return None
+    rows = await conn.execute(
+        sa.select(projects_table.c.id, projects_table.c.name).where(projects_table.c.organization_id == org_id)
+    )
+    for row in rows.fetchall():
+        if row.id != other_than and same_project_name(row.name) == wanted:
+            return row.name
+    return None
+
+
+async def _may_manage_members(conn, payload: dict, project_id: uuid.UUID) -> bool:
+    """An admin, or a project manager who is on this project (or sees every project), may add people to it."""
+    role = (payload.get("role") or "").upper()
+    if role == "ADMIN":
+        return True
+    if role != "PROJECT_MANAGER":
+        return False
+    if await _is_org_wide(conn, payload):
+        return True
+    user_id = payload.get("sub")
+    if not user_id:
+        return False
+    found = await conn.execute(
+        sa.select(projects_table.c.id).where(projects_table.c.id == project_id, _member_project_ids_clause(user_id))
+    )
+    return found.first() is not None
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -446,6 +497,9 @@ async def update_project(
 
         values: dict = {}
         if project_in.name is not None:
+            existing = await _existing_project_named(conn, org_id, project_in.name, other_than=project_id)
+            if existing is not None:
+                raise HTTPException(status_code=409, detail=f"{existing} already exists")
             values["name"] = project_in.name
         if project_in.location is not None:
             values["location"] = project_in.location
@@ -780,6 +834,10 @@ async def create_project(project_in: ProjectCreate, payload: dict = Depends(get_
 
     engine = get_engine()
     async with engine.begin() as conn:
+        existing = await _existing_project_named(conn, org_id, project_in.name)
+        if existing is not None:
+            # [207]: "Rana Mart" was created three times in one evening from WhatsApp.
+            raise HTTPException(status_code=409, detail=f"{existing} already exists")
         await conn.execute(
             projects_table.insert().values(
                 id=project_id,
@@ -895,20 +953,47 @@ async def list_project_members(project_id: uuid.UUID, payload: dict = Depends(ge
     return [_to_member_response(r) for r in rows]
 
 
+@router.get("/{project_id}/member-candidates", response_model=list[MemberCandidate])
+async def member_candidates(project_id: uuid.UUID, payload: dict = Depends(get_current_user)):
+    """[207]: the company's active people, for whoever may add them to this project (the WhatsApp assistant
+    matches a spoken name against them; it never creates a person)."""
+    org_id = payload.get("org")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="User has no organization")
+    engine = get_engine()
+    async with engine.begin() as conn:
+        if not await _may_manage_members(conn, payload, project_id):
+            raise HTTPException(status_code=403, detail="Only an admin or this project's manager can add people to it")
+        rows = await conn.execute(
+            sa.select(users_table.c.id, users_table.c.full_name, users_table.c.role).where(
+                users_table.c.organization_id == org_id, users_table.c.status == "active"
+            )
+        )
+        return [MemberCandidate(userId=r.id, fullName=r.full_name or "", role=r.role or "") for r in rows.fetchall()]
+
+
 @router.post("/{project_id}/members", response_model=ProjectMemberResponse, status_code=201)
 async def add_project_member(
     project_id: uuid.UUID,
     body: ProjectMemberAdd,
     payload: dict = Depends(get_current_user),
 ):
-    if (payload.get("role") or "").upper() != "ADMIN":
-        raise HTTPException(status_code=403, detail="Admin access required to add member")
     org_id = payload.get("org")
     if not org_id:
         raise HTTPException(status_code=400, detail="User has no organization")
+    from mesiri.authorization.roles import may_grant_role
+
+    role = (body.role or "").strip().upper()
+    if role not in _MEMBER_ROLES:
+        raise HTTPException(status_code=422, detail=f"role must be one of {', '.join(sorted(_MEMBER_ROLES))}")
+    if not may_grant_role(payload.get("role"), role):
+        raise HTTPException(status_code=403, detail=f"Only an admin can add someone as {role}")
+    body = body.model_copy(update={"role": role})
 
     engine = get_engine()
     async with engine.begin() as conn:
+        if not await _may_manage_members(conn, payload, project_id):
+            raise HTTPException(status_code=403, detail="Only an admin or this project's manager can add people to it")
         project_result = await conn.execute(
             sa.select(projects_table.c.id).where(
                 projects_table.c.id == project_id,
