@@ -141,6 +141,8 @@ COULD_NOT_READ = "I couldn't read that photo. Please send it again, or type what
 NOT_NOW = "I couldn't work on that just now. Please send it again in a minute."
 NOTHING_WAITING = "There is nothing waiting to save."
 CANCELLED = "Cancelled. Nothing was saved."
+#: TM-69: the open-requests read never holds a reply up longer than this.
+OPEN_REQUESTS_TIMEOUT_S = 0.8
 #: WA-148: how much of the facts a turn's trace keeps (for replays on the real model).
 FACTS_IN_TRACE = 6000
 CANCELLED_WHY = "Cancelled. Nothing was saved. What was wrong? (one tap helps us fix it)"
@@ -172,6 +174,8 @@ class ApiWhatsApp:
                  sessions: Any | None = None, send_document: Callable[..., Awaitable[Any]] | None = None,
                  receipt_builder: Any | None = None, send_image: Callable[..., Awaitable[Any]] | None = None) -> None:
         self._redis = redis
+        #: TM-69: read for the person's open requests (the team is fixing what they told us).
+        self._database = database
         #: WA-132: the SAVED card after a Save (the channel.receipt builder classic uses).
         self._receipts = receipt_builder
         self._send_image = send_image
@@ -321,8 +325,10 @@ class ApiWhatsApp:
         client = ApiClient(_actor(ctx), app=self._app)
         state: dict = {}
         try:
-            state, history, facts, sizes = await asyncio.gather(
-                self._state(ctx), self._memory.load(ctx), self._facts(ctx, client), self._sizes(ctx))
+            state, history, facts, sizes, open_requests = await asyncio.gather(
+                self._state(ctx), self._memory.load(ctx), self._facts(ctx, client), self._sizes(ctx),
+                self._open_requests(message))
+            facts = f"{facts}\n\n{open_requests}" if open_requests else facts
             _lap("v3_facts_memory")
             if state.get("pending") and state.get("pending_at") and time.time() - float(state["pending_at"]) > PENDING_MAX_AGE_S:
                 state["pending"], state["batch"] = [], None  # waiting for hours: never rides on a new card
@@ -576,6 +582,22 @@ class ApiWhatsApp:
             _log.exception("agent_api.call_pdf_failed")
             sent = False
         return {"status": "sent to their WhatsApp"} if sent else {"status": "not sent; tell them to ask again"}
+
+    async def _open_requests(self, message: Any) -> str:
+        """TM-69: what this person told the team about and is being fixed, so "is the primer thing fixed?" or the same
+        complaint again is answered as someone who knows (SOP "Open requests"). One indexed read, in parallel with the
+        facts, at most ``OPEN_REQUESTS_TIMEOUT_S``; anything wrong is simply no block."""
+        if self._database is None or not hasattr(self._database, "transaction"):
+            return ""
+        from runtime import request_progress
+
+        try:
+            rows = await asyncio.wait_for(request_progress.open_requests(self._database, str(message.sender.wa_id)),
+                                          timeout=OPEN_REQUESTS_TIMEOUT_S)
+        except Exception:  # noqa: BLE001 -- a reply without the block is still a reply
+            _log.warning("agent_api.open_requests_unreadable", exc_info=True)
+            return ""
+        return request_progress.context_block(rows)
 
     async def _facts(self, ctx: Any, client: ApiClient) -> str:
         """What the model starts from: the sender's projects and sites, the company's materials

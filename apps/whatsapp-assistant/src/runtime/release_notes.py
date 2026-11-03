@@ -81,6 +81,11 @@ def due_notes(notes: list[ReleaseNote], today: datetime.date) -> list[ReleaseNot
     return [n for n in notes if 0 <= (today - n.date).days <= MAX_AGE_DAYS]
 
 
+def live_correlation_ids(notes: list[ReleaseNote] | None = None) -> set[str]:
+    """TM-69: the requests a shipped note names: they are live, no longer open (``request_progress.open_requests``)."""
+    return {cid for n in (load_notes() if notes is None else notes) for cid in n.correlation_ids}
+
+
 @dataclass(frozen=True)
 class Requester:
     organization_id: uuid.UUID

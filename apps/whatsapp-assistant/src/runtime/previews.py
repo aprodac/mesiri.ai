@@ -105,20 +105,18 @@ async def _request_row(db: Any, correlation_id: str) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
-@router.post("/preview")
-async def send_preview(body: PreviewRequest, request: Request, authorization: str | None = Header(default=None)) -> dict:
+def check_caller(authorization: str | None) -> None:
+    """The team bot may message a customer only with the switch on and its own token (previews and TM-69 progress)."""
     if not enabled():
         raise HTTPException(status_code=404, detail="Not Found")
     if not _authorized(authorization):
         raise HTTPException(status_code=401, detail="unauthorized")
-    try:
-        png = base64.b64decode(body.image_base64, validate=True)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="image_base64 is not base64") from exc
-    if not png.startswith(_PNG) or len(png) > MAX_PNG_BYTES:
-        raise HTTPException(status_code=400, detail="a PNG of at most 1 MB")
-    container = request.app.state.container
-    row = await _request_row(container.material_db, body.correlation_id)
+
+
+async def checked_request(container: Any, correlation_id: str, *, once_key: str) -> dict[str, Any]:
+    """The request's own message, after every guard the team bot's messages to a customer share (TM-33, TM-69): the
+    recipient read from the request itself, a company on v3, inside the 24-hour window, ``once_key`` not used yet."""
+    row = await _request_row(container.material_db, correlation_id)
     if row is None or not row.get("sender_wa_id") or not row.get("organization_id"):
         raise HTTPException(status_code=404, detail="no such request")
     from mesiri.domains.organizations import settings as settings_spec
@@ -129,8 +127,22 @@ async def send_preview(body: PreviewRequest, request: Request, authorization: st
     last = row.get("last_at")
     if last is None or (dt.datetime.now(dt.UTC) - (last if last.tzinfo else last.replace(tzinfo=dt.UTC))) > dt.timedelta(hours=WINDOW_HOURS):
         raise HTTPException(status_code=409, detail="outside the 24-hour window")
-    if not await container.redis_client.set_if_absent(f"preview:{body.correlation_id}", "1", ttl_seconds=7 * 86400):
-        raise HTTPException(status_code=409, detail="a preview was already sent for this request")
+    if not await container.redis_client.set_if_absent(once_key, "1", ttl_seconds=7 * 86400):
+        raise HTTPException(status_code=409, detail="already sent for this request")
+    return row
+
+
+@router.post("/preview")
+async def send_preview(body: PreviewRequest, request: Request, authorization: str | None = Header(default=None)) -> dict:
+    check_caller(authorization)
+    try:
+        png = base64.b64decode(body.image_base64, validate=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="image_base64 is not base64") from exc
+    if not png.startswith(_PNG) or len(png) > MAX_PNG_BYTES:
+        raise HTTPException(status_code=400, detail="a PNG of at most 1 MB")
+    container = request.app.state.container
+    row = await checked_request(container, body.correlation_id, once_key=f"preview:{body.correlation_id}")
     from runtime.agent.wording import language_of, say
 
     language = language_of(str(row.get("body_text") or "")) or "english"

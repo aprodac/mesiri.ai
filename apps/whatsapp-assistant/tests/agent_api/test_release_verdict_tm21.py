@@ -68,12 +68,13 @@ async def test_a_note_is_queued_with_the_two_buttons() -> None:
 
 @pytest.mark.parametrize("mode", ["api", "classic"])
 @pytest.mark.parametrize(("tap", "words"), [("release_ok:lookup-as-image", "Glad it works"),
-                                            ("release_bad:lookup-as-image", "still not right")])
+                                            ("release_bad:lookup-as-image", "looking at what went wrong")])
 async def test_a_tap_is_answered_and_traced_in_every_mode(monkeypatch, mode, tap, words) -> None:
     on_normalized, deps, harness = _journey(monkeypatch, mode, FakeToolCallingProvider(list(ASK._script)))
     await on_normalized(_message("Works ✅", tap=tap), {})
     texts = [c.args[1] for c in deps["sender"].send_text.await_args_list]
     assert any(words in t for t in texts), texts
+    assert not any("?" in t for t in texts), texts  # TM-69: never a question back; the team finds out and tells them
     assert harness.seen == []  # no model, no API call
     stages = [c.kwargs.get("stage") for c in deps["trace_logger"].log_stage.await_args_list]
     assert FEEDBACK_STAGE in stages

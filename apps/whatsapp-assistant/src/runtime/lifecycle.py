@@ -338,6 +338,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Previews router not loaded: %s", exc)
 
+    # TM-69: the team bot tells the person who asked that they were understood, and where their request is.
+    try:
+        from runtime.request_progress import router as progress_router
+
+        app.include_router(progress_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Progress router not loaded: %s", exc)
+
     # Claude's read-only control-plane API (SA-16); off until MESIRI_CLAUDE_OPS_TOKEN is set.
     try:
         from mesiri.domains.admin.claude_ops_router import router as claude_ops_router

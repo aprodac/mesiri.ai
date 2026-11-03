@@ -447,12 +447,35 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "धन्यवाद 👍 अच्छा लगा कि यह चल रहा है।",
         "hinglish": "Thanks 👍 Accha laga ki ye chal raha hai.",
     },
+    # TM-69 (3 Nov): never "what is still wrong?" -- the team reads what happened, finds it and tells them.
     "release.still_wrong": {
-        "english": "Sorry 🙏 I've told the team it's still not right. What is still wrong? Send it as a message or a voice note.",
-        "manglish": "Sorry 🙏 Ippozhum sheriyalla ennu team-ne ariyichu. Enthaanu ippozhum thettu? Message aayo voice note aayo ayakkoo.",
-        "malayalam": "ക്ഷമിക്കണം 🙏 ഇപ്പോഴും ശരിയല്ലെന്ന് ടീമിനെ അറിയിച്ചു. എന്താണ് ഇപ്പോഴും തെറ്റ്? മെസ്സേജ് ആയോ വോയ്സ് നോട്ട് ആയോ അയക്കൂ.",
-        "hindi": "माफ़ कीजिए 🙏 मैंने टीम को बता दिया है कि यह अभी भी ठीक नहीं है। क्या अभी भी गलत है? मैसेज या वॉइस नोट भेजिए।",
-        "hinglish": "Sorry 🙏 Maine team ko bata diya ki ye abhi bhi theek nahi hai. Kya abhi bhi galat hai? Message ya voice note bhejiye.",
+        "english": "Sorry 🙏 You're right. The team is looking at what went wrong now; I'll tell you here what we find.",
+        "manglish": "Sorry 🙏 Sheriyaanu. Enthaanu thettiyathennu team ippo nokkunnu; kandupidichathu ivide parayaam.",
+        "malayalam": "ക്ഷമിക്കണം 🙏 ശരിയാണ്. എന്താണ് തെറ്റിയതെന്ന് ടീം ഇപ്പോൾ നോക്കുന്നു; കണ്ടെത്തിയത് ഇവിടെ പറയാം.",
+        "hindi": "माफ़ कीजिए 🙏 आप सही हैं। टीम अभी देख रही है कि क्या गलत हुआ; जो मिलेगा, यहीं बताऊँगा।",
+        "hinglish": "Sorry 🙏 Aap sahi hain. Team abhi dekh rahi hai ki kya galat hua; jo milega, yahin bataunga.",
+    },
+    # TM-69: the team bot's progress messages to the person who asked (runtime/request_progress.py).
+    "progress.fixing": {
+        "english": "🛠 The team is fixing it now. I'll message you here when it works. {ref}",
+        "manglish": "🛠 Team ithu ippo sheriyaakkunnu. Work aakumbol ivide message cheyyaam. {ref}",
+        "malayalam": "🛠 ടീം ഇത് ഇപ്പോൾ ശരിയാക്കുന്നു. ശരിയാകുമ്പോൾ ഇവിടെ അറിയിക്കാം. {ref}",
+        "hindi": "🛠 टीम अभी इसे ठीक कर रही है। ठीक होते ही यहीं बताऊँगा। {ref}",
+        "hinglish": "🛠 Team abhi ise theek kar rahi hai. Theek hote hi yahin bataunga. {ref}",
+    },
+    "progress.again_head": {
+        "english": "Update: the first fix wasn't fully right. Here's what we found:",
+        "manglish": "Update: aadyathe fix muzhuvan sheriyaayilla. Njangal kandupidichathu:",
+        "malayalam": "അപ്ഡേറ്റ്: ആദ്യത്തെ ഫിക്സ് പൂർണ്ണമായി ശരിയായില്ല. ഞങ്ങൾ കണ്ടെത്തിയത്:",
+        "hindi": "अपडेट: पहला फ़िक्स पूरी तरह ठीक नहीं था। हमें यह मिला:",
+        "hinglish": "Update: pehla fix poori tarah theek nahi tha. Humein ye mila:",
+    },
+    "progress.slow": {
+        "english": "⏳ Still working on {ref}: it needs more work than a quick fix. I haven't forgotten; I'll tell you here when it's done.",
+        "manglish": "⏳ {ref} ippozhum cheythukondirikkunnu: oru cheriya fix-ne kaal pani undu. Marannittilla; theerumbol ivide parayaam.",
+        "malayalam": "⏳ {ref} ഇപ്പോഴും ചെയ്തുകൊണ്ടിരിക്കുന്നു: ഒരു ചെറിയ ഫിക്സിനേക്കാൾ പണിയുണ്ട്. മറന്നിട്ടില്ല; തീരുമ്പോൾ ഇവിടെ പറയാം.",
+        "hindi": "⏳ {ref} पर अभी काम चल रहा है: यह छोटे फ़िक्स से ज़्यादा काम है। भूला नहीं हूँ; पूरा होते ही यहीं बताऊँगा।",
+        "hinglish": "⏳ {ref} par abhi kaam chal raha hai: ye chhote fix se zyada kaam hai. Bhoola nahi hoon; poora hote hi yahin bataunga.",
     },
     "outage.budget": {
         "english": "Got it 👍 Mesiri's AI is paused for a short while (the team has been told). Your message is kept and I'll do it as soon as it's back.",
