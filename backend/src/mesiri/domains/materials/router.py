@@ -423,6 +423,33 @@ async def update_material(
     return updated
 
 
+class MaterialAliasCreate(BaseModel):
+    """Another name this company's people call the material ("primer" for Paint, "സിമന്റ്" for Cement)."""
+
+    alias: str = Field(min_length=1, max_length=120)
+
+
+@router.post("/{material_id}/aliases", status_code=201)
+async def add_material_alias(
+    material_id: uuid.UUID,
+    body: MaterialAliasCreate,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """[210]: remember a word for a material, for the whole company, so it finds that material next time.
+    Any script (the catalogue name stays English). A word already used for another material is refused."""
+    repo = PostgresMaterialCatalogRepository(conn)
+    existing = await repo.get_by_id(auth_context.organization_id, material_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Material not found")
+    alias = body.alias.strip()
+    other = await repo.find_by_alias(auth_context.organization_id, alias)
+    if other is not None and str(other["id"]) != str(material_id):
+        raise HTTPException(status_code=409, detail=f"'{alias}' is already a name for {other['name']}.")
+    await repo.add_alias(auth_context.organization_id, material_id, alias, auth_context.user_id)
+    return {"material_id": str(material_id), "name": existing["name"], "alias": alias}
+
+
 @router.delete("/{material_id}", status_code=204)
 async def delete_material(
     material_id: uuid.UUID,
