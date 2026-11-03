@@ -222,6 +222,7 @@ class ApiAgent:
         links: list[str] = []  # WA-141: dashboard links built this turn
         changed: list[int] = []  # [205]: waiting entries corrected in place this turn
         repeat_asked: list[str] = []  # WA-154: creates asked about this turn
+        code_told: list[dict[str, Any]] = []  # WA-155: passed to the team by the code
         tz = ZoneInfo(timezone or "Asia/Kolkata")
 
         def chosen(arguments: dict) -> list[int]:
@@ -368,13 +369,25 @@ class ApiAgent:
                 role="user", text="(You called no tool, so nothing is in the list: nothing can be saved. Do what my "
                                   "message asks now with the tools, or say plainly what you need.)")])
             result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
+        if claims_team(result.text) and not told(result.calls):
+            # WA-155 (3 Nov): nothing checked that "I've told the team" was true. One more try, told plainly; if it
+            # still says so without calling, the code passes it on itself, so what the person was told is true.
+            again = await ask_model([*messages, ChatMessage(role="model", text=result.text or ""), ChatMessage(
+                role="user", text="(You said the team was told, but you did not call tell_the_team, so nobody was told. "
+                                  "If I asked for something you can't do, or complained, call tell_the_team now; "
+                                  "otherwise answer without saying the team was told.)")])
+            result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
+            if claims_team(result.text) and not told(result.calls):
+                code_told.append({"tool": TELL_THE_TEAM, "by": "code", "arguments": {
+                    "kind": "missing_feature", "about": f"Mesiri told them the team was told; passed on by the code: {text[:300]}"},
+                    "result": {"status": "passed on by the code (WA-155)"}})
         if not (result.text or "").strip() and not new and not asked and not saved and not acted:
             # It looked something up and said nothing ("OK."): ask once for the answer in words.
             again = await ask_model([*messages, ChatMessage(role="model", text="(looked it up)"),
                                      ChatMessage(role="user", text="(answer my message now, in words)")])
             result = again.model_copy(update={"calls": [*result.calls, *again.calls]})
         calls = [{"tool": c.name, "arguments": c.arguments, "result": c.outcome.content if c.outcome else None}
-                 for c in result.calls]
+                 for c in result.calls] + code_told
         still = [e for e in waiting if e is not None]
         options = asked.get("options", []) or (unit_ask if not asked else [])
         reply = (result.text or "").strip()
@@ -447,6 +460,19 @@ UNIT_UNSETTLED = "unit_id is not a valid active unit"
 SETTINGS_FIRST = frozenset({"set_unit_conversion"})
 #: The name of the Save button, as every reply about a ready list says it (any language).
 SAVE_WORD = "save"
+#: WA-155: a reply that says the team (or "our team", in Malayalam / Hindi script too) was told / will look at it.
+_TEAM = re.compile(r"\b(?:team|teamine|teamil|teaminu)\b|ടീ[മം]|टीम", re.IGNORECASE)
+_TOLD = re.compile(r"\b(?:told|tell|inform\w*|pass\w*|forward\w*|report\w*|notif\w*|looking|look into|fix|ariyich\w*|"
+                   r"paranj\w*|bata\w*|bhej\w*)\b|അറിയിച്ച|പറഞ്ഞ|बता|भेज", re.IGNORECASE)
+
+
+def claims_team(text: str | None) -> bool:
+    """The reply says the team was told (or is on it)."""
+    return bool(text) and bool(_TEAM.search(text)) and bool(_TOLD.search(text))
+
+
+def told(calls: list[Any]) -> bool:
+    return any(getattr(c, "name", None) == TELL_THE_TEAM for c in calls)
 
 
 async def unit_from_summary(client: ApiClient, entry: PendingWrite) -> str:
