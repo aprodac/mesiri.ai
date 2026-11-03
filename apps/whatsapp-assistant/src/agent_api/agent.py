@@ -83,6 +83,43 @@ class ApiTurn:
     #: A question the model asked with ``ask``: its options become buttons (one tap).
     question: str = ""
     options: list[str] = field(default_factory=list)
+    #: WA-154: fingerprints of creates the person was just asked about ("already saved at 22:44, another?").
+    repeat_asked: list[str] = field(default_factory=list)
+
+
+#: WA-154 (3 Nov, Paraclette: "Rana Mart" re-sent three times made three empty projects): a create the same person
+#: already saved, the same within this many hours, is asked about once before it is prepared again.
+REPEAT_WINDOW_S = 24 * 3600
+#: Body fields that say how or when it was sent, not what it is.
+_NOT_WHAT = frozenset({"channel", "source", "photo_object_key", "receipt_photo_key", "notes", "client_ref"})
+
+
+def create_fingerprint(tool: str, method: str, path: str, body: dict[str, Any]) -> str | None:
+    """What a create IS (tool, route, its fields; text case- and space-insensitive), or None for anything that isn't a
+    create. Two prepares with the same fingerprint make the same record twice."""
+    if method != "POST":
+        return None
+
+    def norm(v: Any) -> Any:
+        if isinstance(v, str):
+            return " ".join(v.casefold().split())
+        if isinstance(v, dict):
+            return {k: norm(x) for k, x in sorted(v.items()) if k not in _NOT_WHAT}
+        if isinstance(v, list):
+            return [norm(x) for x in v]
+        return v
+
+    return json.dumps([tool, path, norm(body)], sort_keys=True, default=str, ensure_ascii=False)
+
+
+def remember_saves(recent: list[dict[str, Any]] | None, results: list[WriteResult], now: float) -> list[dict[str, Any]]:
+    """The person's saved creates of the last REPEAT_WINDOW_S, newest last (kept in the conversation state)."""
+    kept = [r for r in (recent or []) if now - float(r.get("at") or 0) < REPEAT_WINDOW_S]
+    for r in results:
+        fp = create_fingerprint(r.pending.tool, r.pending.method, r.pending.path, r.pending.body) if r.ok else None
+        if fp:
+            kept.append({"fp": fp, "summary": r.pending.summary, "at": now})
+    return kept[-30:]
 
 
 SAVE_READY = "save_ready_entries"
@@ -167,7 +204,8 @@ class ApiAgent:
                   timezone: str = "Asia/Kolkata", correlation_id: str | None = None,
                   facts: str = "", photo_key: str | None = None, language: str | None = None,
                   actions: dict[str, tuple[ToolSpec, Any]] | None = None,
-                  channel: str = TEXT_CHANNEL) -> ApiTurn:
+                  channel: str = TEXT_CHANNEL, recent_saves: list[dict[str, Any]] | None = None,
+                  repeat_ok: list[str] | None = None) -> ApiTurn:
         """``facts``: what the agent starts from (projects, sites, materials, units), read
         before the model runs. ``photo_key``: the photo this message carried; a write that
         takes a photo (an expense) gets it attached by the code. ``actions``: tools the caller
@@ -183,6 +221,8 @@ class ApiAgent:
         unit_ask: list[str] = []  # buttons for a unit nobody could settle (cleared once a line settles)
         links: list[str] = []  # WA-141: dashboard links built this turn
         changed: list[int] = []  # [205]: waiting entries corrected in place this turn
+        repeat_asked: list[str] = []  # WA-154: creates asked about this turn
+        tz = ZoneInfo(timezone or "Asia/Kolkata")
 
         def chosen(arguments: dict) -> list[int]:
             numbers = arguments.get("numbers") or range(1, len(waiting) + 1)
@@ -270,6 +310,14 @@ class ApiAgent:
                     return ToolOutcome(content={"error": problem})
                 unit_ask.clear()
             if tool.is_write:
+                fp = create_fingerprint(name, tool.method, path, body)
+                same = next((r for r in reversed(recent_saves or []) if fp and r.get("fp") == fp), None)
+                if same and fp not in (repeat_ok or []) and fp not in repeat_asked:
+                    repeat_asked.append(fp)
+                    when = dt.datetime.fromtimestamp(float(same.get("at") or 0), tz).strftime("%H:%M")
+                    return ToolOutcome(content={"error": (
+                        f"Already saved at {when}: {same.get('summary') or 'the same thing'}. Ask the person whether they "
+                        "want another one; nothing was prepared. If they say yes, prepare it again (it then goes through).")})
                 entry = PendingWrite(
                     tool=name, method=tool.method, path=path, params=params, body=body,
                     summary=str(arguments.get(CONFIRM_ARG) or "").strip(),
@@ -334,7 +382,8 @@ class ApiAgent:
         if missing:  # WA-141: a link the code built always reaches the person, even if the model left it out
             reply = "\n".join([reply, *missing]).strip()
         return ApiTurn(reply=reply, pending=still + new, saved=saved, calls=calls,
-                       stop_reason=result.stop_reason, question=asked.get("question", ""), options=options)
+                       stop_reason=result.stop_reason, question=asked.get("question", ""), options=options,
+                       repeat_asked=repeat_asked)
 
 
 def _typed(old: Any, value: Any) -> Any:

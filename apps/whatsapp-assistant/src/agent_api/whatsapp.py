@@ -50,7 +50,16 @@ from runtime.ai_outage import (
 from runtime.release_notes import request_ref
 from runtime.team_notify import poke_watch_soon
 
-from .agent import SOP, UNIT_UNSETTLED, ApiAgent, PendingWrite, WriteResult, _detail, confirm
+from .agent import (
+    SOP,
+    UNIT_UNSETTLED,
+    ApiAgent,
+    PendingWrite,
+    WriteResult,
+    _detail,
+    confirm,
+    remember_saves,
+)
 from .app import build_api_app
 from .client import Actor, ApiClient
 from .memory import DayMemory
@@ -318,6 +327,8 @@ class ApiWhatsApp:
                 timezone=getattr(ctx, "timezone", None) or "Asia/Kolkata", correlation_id=message.correlation_id,
                 facts=facts, photo_key=photo_key, language=_language(text),
                 channel=_channel(message),
+                # WA-154: the person's creates of the last day, and the ones they were just asked about.
+                recent_saves=state.get("recent_saves") or [], repeat_ok=state.get("repeat_asked") or [],
             )
             try:
                 turn = await self._agent.run(client, **run)
@@ -359,6 +370,8 @@ class ApiWhatsApp:
             "pending": [e.summary for e in turn.pending], "asked": turn.question,
         }, started)
         state["language"] = _language(text)
+        state["repeat_asked"] = list(turn.repeat_asked)  # the yes comes in the next message only
+        state["recent_saves"] = remember_saves(state.get("recent_saves"), turn.saved, time.time())
         if turn.saved:
             self._just_saved[message.correlation_id] = list(turn.saved)
         words = turn.reply or turn.question or (_saved_text(turn.saved, state.get("language")) if turn.saved else "")
@@ -589,6 +602,7 @@ class ApiWhatsApp:
         finally:
             await client.close()
         self._just_saved[correlation_id] = results
+        state["recent_saves"] = remember_saves(state.get("recent_saves"), results, time.time())  # WA-154
         # Refused entries stay waiting (they can be corrected and saved); saved ones go.
         # A line whose unit nobody could settle comes off the list (it would ride along on every new
         # card for hours, 2 Nov): the text below says so and asks for it again with the unit.
@@ -658,7 +672,7 @@ class ApiWhatsApp:
 
     async def _save_state(self, ctx: Any, state: dict) -> None:
         try:
-            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "cancelled", "pending_at", "awaiting_why")
+            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked")
                                     if state.get(k) is not None},
                                        ttl_seconds=STATE_TTL_SECONDS)
         except Exception:  # noqa: BLE001

@@ -32,6 +32,9 @@ is work for someone standing on a site.
    entry that is only prepared: say it is ready and that Save records it. Say saved only when
    `save_ready_entries` returned saved in this turn. Do not list the entries yourself: the ready
    list is drawn under your reply. Always reply in words: the answer, or one line on what is ready.
+   A prepare that comes back "Already saved at <time>" means this person saved the same thing earlier
+   (a re-sent message is the usual reason): ask in one line whether they want another one. Prepare it
+   again only when they say yes; then it goes through.
 5. Entries already waiting are listed below. When they clearly say to save them, call
    `save_ready_entries`; when they cancel one, `drop_ready_entries`; when they correct one (a new
    name, number, site, unit, date), `change_ready_entry` with only the changed fields: it stays in
