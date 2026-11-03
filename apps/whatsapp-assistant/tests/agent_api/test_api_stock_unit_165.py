@@ -33,10 +33,11 @@ from agent_api.tools import ALLOWED, CONFIRM_ARG, MATERIAL_SAID, build_tools
 from agent_api.units import is_stock_unit_refusal
 from mesiri_ai.fakes import FakeToolCallingProvider
 
-BAG, LOAD, KG, NOS = (str(uuid.uuid4()) for _ in range(4))
+BAG, LOAD, KG, NOS, CFT = (str(uuid.uuid4()) for _ in range(5))
 MSAND, CEMENT, TMT = (str(uuid.uuid4()) for _ in range(3))
 TOOLS = ("record_receipt", "set_unit_conversion")
-UNITS = {BAG: ("bags", "Bags"), LOAD: ("load", "Loads"), KG: ("kg", "Kilograms"), NOS: ("nos", "Numbers")}
+UNITS = {BAG: ("bags", "Bags"), LOAD: ("load", "Loads"), KG: ("kg", "Kilograms"), NOS: ("nos", "Numbers"),
+         CFT: ("cft", "Cubic Feet")}
 
 
 class Inflow(BaseModel):
@@ -46,11 +47,18 @@ class Inflow(BaseModel):
     unit_id: uuid.UUID
     quantity: float
     occurred_date: str
+    notes: str | None = None
+    unit_cost: float | None = None
 
 
 class Conversion(BaseModel):
     from_unit_id: uuid.UUID
     one_unit_equals: float
+
+
+class NewMaterial(BaseModel):
+    name: str
+    default_unit_id: uuid.UUID
 
 
 class Store:
@@ -63,6 +71,7 @@ class Store:
                         {"id": TMT, "name": "TMT 12mm", "aliases": [], "default_unit_id": KG}]
         self.one_unit: dict[tuple[str, str], float] = {(TMT, NOS): 10.67}  # stock units in ONE of the unit
         self.received: list[tuple[str, float]] = []
+        self.notes: list[str | None] = []
         self.checks = 0
 
     def row(self, material_id: str) -> dict:
@@ -95,8 +104,15 @@ class Store:
             row, per = self.row(material_id), self.factor(material_id, unit_id)
             stock = UNITS[row["default_unit_id"]]
             return {"material": row["name"], "unit": UNITS[unit_id][0], "unit_name": UNITS[unit_id][1],
-                    "stock_unit": stock[0], "stock_unit_name": stock[1], "fits": per is not None,
+                    "stock_unit": stock[0], "stock_unit_name": stock[1], "stock_unit_id": row["default_unit_id"],
+                    "fits": per is not None,
                     "one_unit_equals": None if per is None else str(per)}
+
+        @app.post("/materials", status_code=201)
+        async def add(body: NewMaterial, jwt: dict = Depends(get_current_user)):
+            row = {"id": str(uuid.uuid4()), "name": body.name, "aliases": [], "default_unit_id": str(body.default_unit_id)}
+            self.catalog.append(row)
+            return row
 
         @app.put("/materials/{material_id}/unit-conversions")
         async def conversion(material_id: str, body: Conversion, jwt: dict = Depends(get_current_user)):
@@ -115,6 +131,7 @@ class Store:
                     f"unit_id does not match {row['name']}'s Stock Unit (expected {stock}); no conversion from "
                     f"{UNITS[str(body.unit_id)][1]} is set (PUT /materials/{row['id']}/unit-conversions sets one)"))
             self.received.append((row["name"], body.quantity * per))
+            self.notes.append(body.notes)
             return {"id": str(uuid.uuid4())}
 
         return app

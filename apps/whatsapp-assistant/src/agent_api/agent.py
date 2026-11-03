@@ -16,6 +16,7 @@ import datetime as dt
 import json
 import re
 from dataclasses import asdict, dataclass, field
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -89,6 +90,9 @@ class ApiTurn:
     repeat_asked: list[str] = field(default_factory=list)
     #: [219]: the open question this message did not answer (dropped; the model was told it is a new request).
     dropped_question: str = ""
+    #: WA-166: sizes this person told ("1 load M-sand = 60 bags") who may not set one for the company: kept for them,
+    #: so the code converts their lines and never asks again ({"<material_id>:<unit_id>": size}).
+    sizes_said: dict[str, float] = field(default_factory=dict)
 
 
 #: WA-154 (3 Nov, Paraclette: "Rana Mart" re-sent three times made three empty projects): a create the same person
@@ -359,7 +363,8 @@ class ApiAgent:
                   actions: dict[str, tuple[ToolSpec, Any]] | None = None,
                   channel: str = TEXT_CHANNEL, recent_saves: list[dict[str, Any]] | None = None,
                   repeat_ok: list[str] | None = None, places: Places | None = None,
-                  open_question: dict[str, Any] | None = None) -> ApiTurn:
+                  open_question: dict[str, Any] | None = None, sizes: dict[str, Any] | None = None,
+                  may_set_sizes: bool = True) -> ApiTurn:
         """``facts``: what the agent starts from (projects, sites, materials, units), read
         before the model runs. ``photo_key``: the photo this message carried; a write that
         takes a photo (an expense) gets it attached by the code. ``actions``: tools the caller
@@ -367,7 +372,8 @@ class ApiAgent:
         message came (``whatsapp_text`` | ``whatsapp_voice`` | ``whatsapp_image``), recorded on the entry.
         ``places``: the person's projects and sites; with it, the code decides the site of every report ([213]).
         ``open_question``: the question Mesiri asked last ({question, options}); a message that does not answer it
-        drops it ([219])."""
+        drops it ([219]). ``sizes``: the sizes this person told before (WA-166); ``may_set_sizes``: whether they may
+        set a size for the whole company (an admin or a project manager); if not, their size converts their own lines."""
         channel = channel if channel in CHANNELS else TEXT_CHANNEL
         today = dt.datetime.now(ZoneInfo(timezone or "Asia/Kolkata")).date()
         waiting: list[PendingWrite | None] = list(ready or [])  # None = saved or dropped this turn
@@ -382,6 +388,7 @@ class ApiAgent:
         code_told: list[dict[str, Any]] = []  # WA-155: passed to the team by the code
         site_ask: list[str] = []  # [213]: site names to ask about when the code cannot tell the site
         exists: list[str] = []  # [219]: what the code says about a project that already exists
+        sizes_said: dict[str, float] = {}  # WA-166: sizes told this turn by someone who may not set the company's
         dropped = "" if answers_question(text, open_question) else str(
             (open_question or {}).get("question") or " / ".join((open_question or {}).get("options") or []))
         decides_site = places is not None and (len(places.sites) > 1 or len(places.projects) > 1)
@@ -418,12 +425,14 @@ class ApiAgent:
                 if problem:
                     unit_ask[:] = await unit_buttons(client)
                     return {"error": problem}
-            if "unit_id" in body and {"unit_id", "unit", "material_id"} & set(changes):
-                # WA-165: a corrected unit or material is checked against the stock unit like a new line.
-                problem = await settle_stock_unit(client, body, [*waiting, *new])
+            unit_note = ""
+            if "unit_id" in body and {"unit_id", "unit", "material_id", "quantity"} & set(changes):
+                # WA-165: a corrected unit, material or quantity is checked against the stock unit like a new line.
+                problem, unit_note = await settle_stock_unit(
+                    client, body, [*waiting, *new], {**(sizes or {}), **sizes_said}, sender_name)
                 if problem:
                     return {"error": problem.replace("Nothing is prepared for it.", "The entry was NOT changed.")}
-            summary = str(arguments.get("confirm_line") or "").strip() or entry.summary
+            summary = (str(arguments.get("confirm_line") or "").strip() + unit_note) or entry.summary
             waiting[n - 1] = PendingWrite(tool=entry.tool, method=entry.method, path=entry.path, params=entry.params,
                                           body=body, summary=summary, idempotency_key=new_idempotency_key())
             changed.append(n)
@@ -467,6 +476,8 @@ class ApiAgent:
             if tool is None:
                 return ToolOutcome(content={"error": f"no tool named {name}"})
             site_note = ""
+            unit_note = ""  # WA-166: "(= 60 bags)" -- what a line in another unit is in stock, seen before Save
+            size_hint = ""  # WA-166: a held line for a new material that needs its size asked in this turn
             if decides_site and site_scoped(tool):
                 # [213]: the code decides where a report goes, never the model (it took the project just created).
                 working = working_place(places, [e for e in waiting if e is not None] + new)
@@ -491,6 +502,11 @@ class ApiAgent:
                 new_ref = pending_ref(arguments.get("material_id"), adding) or pending_ref(arguments.get(MATERIAL_SAID), adding)
                 if new_ref:
                     arguments = {**arguments, "material_id": new_ref}
+            if name == ADD_TOOL and not arguments.get("default_unit_id"):
+                from mesiri.domains.materials.unit_conversion import natural_stock_unit
+
+                if natural := natural_stock_unit(str(arguments.get("name") or "")):  # WA-166: filled by the code below
+                    arguments = {**arguments, "default_unit_id": natural}
             missing = [r for r in tool.required if arguments.get(r) in (None, "")]
             if missing:
                 return ToolOutcome(content={"error": f"missing: {', '.join(missing)}"})
@@ -518,14 +534,40 @@ class ApiAgent:
                     return ToolOutcome(content={"error": problem})
                 unit_ask.clear()
                 if body.get("material_id") and not new_ref:  # WA-165: a unit the material cannot be saved in
-                    problem = await settle_stock_unit(client, body, [*waiting, *new])
+                    problem, unit_note = await settle_stock_unit(
+                        client, body, [*waiting, *new], {**(sizes or {}), **sizes_said}, sender_name)
                     if problem:
                         return ToolOutcome(content={"error": problem})
+                elif new_ref:  # WA-166: a line for a material waiting to be added, in a unit it will not be counted in
+                    size_hint = await settle_new_line_unit(client, body, new_ref, [*waiting, *new])
             if tool.is_write and "from_unit_id" in tool.body_fields:
                 problem = await settle_unit(client, body, "from_unit_id")
                 if problem:
                     unit_ask[:] = await unit_buttons(client)
                     return ToolOutcome(content={"error": problem})
+            if name == CONVERSION_TOOL:
+                material_id = str(arguments.get("material_id") or "")
+                size = _decimal(body.get("one_unit_equals"))
+                check = await size_check(client, material_id, str(body.get("from_unit_id") or ""), size)
+                if check.get("error"):
+                    return ToolOutcome(content={"error": check["error"]})
+                if not may_set_sizes and is_uuid(material_id) and size is not None:
+                    # WA-166: only an admin or a project manager sets a size for the company (a Save of it was refused
+                    # for everyone else, so their line was refused again). Their size converts their own lines.
+                    sizes_said[size_key(material_id, body.get("from_unit_id"))] = float(size)
+                    return ToolOutcome(content={"status": (
+                        "Noted for this person's own lines (only an admin or a project manager can set a size for the "
+                        "whole company). Now prepare the line exactly as they said it: the code converts it with this "
+                        "size. Do not talk about company settings.")})
+                if check.get("line"):
+                    arguments = {**arguments, CONFIRM_ARG: check["line"]}  # drawn by the code, never the model's
+            if name == ADD_TOOL:
+                problem, counted = await settle_new_material_unit(client, body)
+                if problem:
+                    unit_ask[:] = await unit_buttons(client)
+                    return ToolOutcome(content={"error": problem})
+                if counted:
+                    unit_note = f" · counted in {counted}"
             if name == MEMBER_TOOL:
                 problem, buttons = await settle_member(client, path, body)
                 if problem:
@@ -550,7 +592,7 @@ class ApiAgent:
                         "want another one; nothing was prepared. If they say yes, prepare it again (it then goes through).")})
                 entry = PendingWrite(
                     tool=name, method=tool.method, path=path, params=params, body=body,
-                    summary=str(arguments.get(CONFIRM_ARG) or "").strip() + site_note,
+                    summary=str(arguments.get(CONFIRM_ARG) or "").strip() + unit_note + site_note,
                     idempotency_key=new_idempotency_key(),
                 )
                 new.append(entry)
@@ -558,7 +600,7 @@ class ApiAgent:
                 if name == ADD_TOOL and body.get("name"):
                     note += (f" Lines for it (what came, a unit size) name it material_id \"{NEW}{body['name']}\": "
                              "prepare them now, in this turn; they save after it.")
-                return ToolOutcome(content={"status": "ready, NOT saved", "note": note})
+                return ToolOutcome(content={"status": "ready, NOT saved", "note": note + size_hint})
             response = await client.call(tool.method, path, params=params)
             content = json.dumps(response.body, default=str, ensure_ascii=False)
             if len(content) > READ_LIMIT:
@@ -639,7 +681,7 @@ class ApiAgent:
                 options = []
         return ApiTurn(reply=reply, pending=still + new, saved=saved, calls=calls,
                        stop_reason=result.stop_reason, question=asked.get("question", ""), options=options,
-                       repeat_asked=repeat_asked, dropped_question=dropped)
+                       repeat_asked=repeat_asked, dropped_question=dropped, sizes_said=sizes_said)
 
 
 def _typed(old: Any, value: Any) -> Any:
@@ -702,35 +744,157 @@ async def settle_unit(client: ApiClient, body: dict[str, Any], field: str = "uni
 CONVERSION_TOOL = "set_unit_conversion"
 
 
-def _converts(entry: PendingWrite | None, material_id: str, unit_id: str) -> bool:
-    """A waiting ``set_unit_conversion`` for this material from this unit (it saves first, so the line converts)."""
-    return (entry is not None and entry.tool == CONVERSION_TOOL and f"/materials/{material_id}/" in entry.path
-            and str(entry.body.get("from_unit_id") or "") == unit_id)
+def _size_waiting(entry: PendingWrite | None, material_id: str, unit_id: str) -> Decimal | None:
+    """The size in a waiting ``set_unit_conversion`` for this material from this unit (it saves first, so the line
+    converts at Save), else None."""
+    if (entry is None or entry.tool != CONVERSION_TOOL or f"/materials/{material_id}/" not in entry.path
+            or str(entry.body.get("from_unit_id") or "") != unit_id):
+        return None
+    return _decimal(entry.body.get("one_unit_equals"))
 
 
-async def settle_stock_unit(client: ApiClient, body: dict[str, Any], others: list[PendingWrite | None]) -> str:
-    """WA-165 (3 Nov, Paraclette: "1 load M-sand" was prepared, then refused at every Save: M-sand is stocked in
-    bags and no load size was known). Before a line is prepared, the API says whether its unit can be recorded for
-    the material (``GET /materials/{id}/unit-check``, the decision saving makes). "" when it can (or a conversion
-    for it is waiting in the list, or the API cannot tell: its own check still decides at Save); else what to tell
-    the model: nothing is prepared, ONE question about the size, then the conversion and the line together."""
+def _decimal(value: Any) -> Decimal | None:
+    try:
+        found = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    return found if found > 0 else None
+
+
+def size_key(material_id: Any, unit_id: Any) -> str:
+    return f"{material_id}:{unit_id}"
+
+
+def _amount(value: Decimal) -> str:
+    return f"{value.quantize(Decimal('0.001')).normalize():f}"
+
+
+async def settle_stock_unit(client: ApiClient, body: dict[str, Any], others: list[PendingWrite | None],
+                            sizes: dict[str, Any] | None = None, who: str = "") -> tuple[str, str]:
+    """WA-165 / WA-166: a line in a unit its material is not counted in. The API says whether that unit can be
+    recorded (``GET /materials/{id}/unit-check``, the decision saving makes). Returns ``(problem, note)``:
+
+    - it can (the stock unit, or the company knows the size), or a size for it waits in the list: ("", " (= 60 bags)")
+      -- the note goes on the ready line, so a wrong size is seen before Save;
+    - the person told their own size before (``sizes``: they may not set one for the company): the code converts
+      the line itself into the stock unit, their words kept in its notes: ("", note);
+    - no size is known: what to tell the model (nothing is prepared; ONE question; then the size and the line);
+    - the API cannot tell: ("", ""), and its own check decides at Save."""
     material_id, unit_id = str(body.get("material_id") or ""), str(body.get("unit_id") or "")
-    if not (is_uuid(material_id) and is_uuid(unit_id)) or any(_converts(e, material_id, unit_id) for e in others):
-        return ""
+    if not (is_uuid(material_id) and is_uuid(unit_id)):
+        return "", ""
     try:
         response = await client.call("GET", f"/materials/{material_id}/unit-check", params={"unit_id": unit_id})
     except Exception:  # noqa: BLE001
-        return ""
+        return "", ""
     found = response.body if response.ok and isinstance(response.body, dict) else {}
-    if found.get("fits", True):
-        return ""
+    if not found:
+        return "", ""
     material, stock, said = found.get("material"), found.get("stock_unit_name"), found.get("unit_name")
+    quantity = _decimal(body.get("quantity"))
+    if found.get("unit") == found.get("stock_unit"):
+        return "", ""
+    size = next((z for e in others if (z := _size_waiting(e, material_id, unit_id)) is not None), None)
+    if size is None and found.get("fits"):
+        size = _decimal(found.get("one_unit_equals"))
+    if size is not None:
+        return "", f" (= {_amount(quantity * size)} {stock})" if quantity else ""
+    own = _decimal((sizes or {}).get(size_key(material_id, unit_id)))
+    if own is not None and found.get("stock_unit_id"):
+        # Converted here, as the person said it: the API records the stock unit; their words stay in the notes.
+        reported = f"reported as {_amount(quantity) if quantity else ''} {said} (1 {said} = {_amount(own)} {stock}" + (
+            f", as {who} said)" if who else ")")
+        if quantity:
+            body["quantity"] = float(quantity * own)
+        if _decimal(body.get("unit_cost")):
+            body["unit_cost"] = float((_decimal(body["unit_cost"]) / own).quantize(Decimal("0.01")))  # type: ignore[operator]
+        body["unit_id"] = str(found["stock_unit_id"])
+        body["notes"] = f"{body['notes'].strip()} ({reported})" if str(body.get("notes") or "").strip() else reported
+        return "", f" (= {_amount(quantity * own)} {stock})" if quantity else ""
     return (f"{material} is counted in {stock} in their stock, and how many {stock} one {said} is is not known, so "
             f"this line cannot be saved yet. Nothing is prepared for it. Ask ONE question with `ask`, in their "
-            f"language: how many {stock} is one {said} of {material}? (for steel bars, the bar size is enough: use the "
-            f"sizes in your instructions as options). When they answer, prepare first `set_unit_conversion` (material_id "
-            f"{material_id}, from_unit_id {unit_id}, one_unit_equals their number), THEN this line again exactly as "
-            f"they said it, in {said}: they save together, converted. Prepare everything else in their message as usual.")
+            f"language, in their direction: \"1 {said} {material} = how many {stock}?\" (for steel bars, the bar size "
+            f"is enough: use the sizes in your instructions as options). When they answer, prepare first "
+            f"`set_unit_conversion` (material_id {material_id}, from_unit_id {unit_id}, one_unit_equals their number), "
+            f"THEN this line again exactly as they said it, in {said}: the code converts it. Prepare everything else "
+            f"in their message as usual."), ""
+
+
+async def _units(client: ApiClient) -> list[dict[str, Any]]:
+    try:
+        response = await client.call("GET", "/materials/units-of-measure")
+    except Exception:  # noqa: BLE001
+        return []
+    return unit_rows(response.body) if response.ok else []
+
+
+async def size_check(client: ApiClient, material_id: str, from_unit_id: str, size: Decimal | None) -> dict[str, str]:
+    """WA-166: a size ("1 load = 60 bags") before it is held. ``{"error": ...}`` for one that cannot be right (none
+    given, the material is already counted in that unit, or fewer than one piece in a load of a counted material:
+    Paraclette's "1 load holobricks = 0.33 nos"); else ``{"line": "📏 1 Loads എംസാന്റ് = 60 Bags"}``, the ready line
+    the code draws, so the person sees the size the company will use."""
+    from mesiri.domains.materials.unit_conversion import COUNT_UNITS
+
+    if size is None:
+        return {"error": "one_unit_equals must be the number they said: how many of the stock unit are in ONE of theirs."}
+    if not (is_uuid(material_id) and is_uuid(from_unit_id)):
+        return {}
+    try:
+        response = await client.call("GET", f"/materials/{material_id}/unit-check", params={"unit_id": from_unit_id})
+    except Exception:  # noqa: BLE001
+        return {}
+    found = response.body if response.ok and isinstance(response.body, dict) else {}
+    if not found:
+        return {}
+    material, unit, stock = found.get("material"), found.get("unit_name"), found.get("stock_unit_name")
+    if found.get("unit") == found.get("stock_unit"):
+        return {"error": f"{material} is already counted in {stock}: no size is needed. Prepare the line in {stock}."}
+    if str(found.get("stock_unit") or "").lower() in COUNT_UNITS and size < 1:
+        return {"error": (f"1 {unit} of {material} cannot be less than 1 {stock}: the size is the wrong way round. "
+                          f"Nothing is prepared. Ask again, in their language: how many {stock} are in 1 {unit}?")}
+    return {"line": f"📏 1 {unit} {material} = {_amount(size)} {stock}"}
+
+
+async def settle_new_material_unit(client: ApiClient, body: dict[str, Any]) -> tuple[str, str]:
+    """WA-166 (Paraclette, 31 Oct: "1 load TMT" made TMT a material counted in loads): a new material is counted in
+    the unit its kind is counted in (TMT -> kg, M-sand -> cft, cement -> bags), not the unit of the first message;
+    lines in other units convert into it. Unknown kinds keep the unit given. Returns (problem, the unit's name)."""
+    from mesiri.domains.materials.unit_conversion import natural_stock_unit
+
+    code = natural_stock_unit(str(body.get("name") or ""))
+    unit = next((u for u in await _units(client) if code and str(u.get("code")).lower() == code), None)
+    if unit is not None:
+        body["default_unit_id"] = str(unit["id"])
+        return "", str(unit.get("display_name") or code)
+    if body.get("default_unit_id"):
+        return await settle_unit(client, body, "default_unit_id"), ""
+    return "", ""
+
+
+async def settle_new_line_unit(client: ApiClient, body: dict[str, Any], ref: str, others: list[PendingWrite | None]) -> str:
+    """WA-166: a line for a material waiting to be added ([217]), in a unit the new material will not be counted in,
+    with no size waiting and no fixed one. The line is held (the new material and its line stay together); this is
+    what to tell the model: ask the size now, in the same reply. "" when nothing is missing."""
+    from mesiri.domains.materials.unit_conversion import built_in_per_stock_unit
+
+    name = ref.removeprefix(NEW)
+    adding = next((e for e in others if e is not None and e.tool == ADD_TOOL
+                   and alias_key(str(e.body.get("name") or "")) == alias_key(name)), None)
+    unit_id, stock_id = str(body.get("unit_id") or ""), str((adding.body if adding else {}).get("default_unit_id") or "")
+    if not (is_uuid(unit_id) and is_uuid(stock_id)) or unit_id == stock_id:
+        return ""
+    if any(_size_waiting(e, ref, unit_id) is not None for e in others):
+        return ""
+    units = {str(u["id"]): u for u in await _units(client)}
+    unit, stock = units.get(unit_id), units.get(stock_id)
+    if unit is None or stock is None or built_in_per_stock_unit(str(unit["code"]), str(stock["code"]), name):
+        return ""
+    said, counted = unit.get("display_name"), stock.get("display_name")
+    return (f" {name} will be counted in {counted} (how it is counted everywhere), and how many {counted} one {said} is "
+            f"is not known yet: unless a set_unit_conversion for it is prepared in this turn, ask ONE question with `ask` "
+            f"now, in their language: \"1 {said} {name} = how many {counted}?\". When they answer, prepare "
+            f"`set_unit_conversion` (material_id \"{ref}\", from_unit_id {unit_id}, one_unit_equals their number); "
+            f"this line stays waiting and saves converted.")
 
 
 MEMBER_TOOL = "add_project_member"

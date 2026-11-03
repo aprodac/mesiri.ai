@@ -87,6 +87,8 @@ def _lap(name: str) -> None:
 MODE = "api"
 EVENT_SOURCE = "agent_api"
 STATE_TTL_SECONDS = 24 * 3600
+#: WA-166: a person's own sizes outlive the day's state; renewed whenever they tell another.
+SIZES_TTL_SECONDS = 180 * 24 * 3600
 SAVE_PREFIX = "apiag:save:"
 CANCEL_PREFIX = "apiag:cancel:"
 OPTION_PREFIX = "apiag:opt:"
@@ -314,8 +316,8 @@ class ApiWhatsApp:
         client = ApiClient(_actor(ctx), app=self._app)
         state: dict = {}
         try:
-            state, history, facts = await asyncio.gather(
-                self._state(ctx), self._memory.load(ctx), self._facts(ctx, client))
+            state, history, facts, sizes = await asyncio.gather(
+                self._state(ctx), self._memory.load(ctx), self._facts(ctx, client), self._sizes(ctx))
             _lap("v3_facts_memory")
             if state.get("pending") and state.get("pending_at") and time.time() - float(state["pending_at"]) > PENDING_MAX_AGE_S:
                 state["pending"], state["batch"] = [], None  # waiting for hours: never rides on a new card
@@ -336,6 +338,7 @@ class ApiWhatsApp:
                 recent_saves=state.get("recent_saves") or [], repeat_ok=state.get("repeat_asked") or [],
                 places=places,  # [213]: the code decides the site of a report
                 open_question=state.get("asked"),  # [219]: a message that doesn't answer it drops it
+                sizes=sizes, may_set_sizes=_may_set_sizes(ctx),  # WA-166: who may set a size for the company
             )
             try:
                 turn = await self._agent.run(client, **run)
@@ -378,6 +381,8 @@ class ApiWhatsApp:
             **({"dropped_question": turn.dropped_question} if turn.dropped_question else {}),
         }, started)
         state["language"] = _language(text, state.get("language"))  # WA-165: "Tower A" keeps their language
+        if turn.sizes_said:
+            await self._remember_sizes(ctx, turn.sizes_said)
         state["repeat_asked"] = list(turn.repeat_asked)  # the yes comes in the next message only
         state["asked"] = question_left_open(turn.question, turn.options, turn.reply)  # [219]: answered next, or dropped
         state["recent_saves"] = remember_saves(state.get("recent_saves"), turn.saved, time.time())
@@ -680,6 +685,23 @@ class ApiWhatsApp:
     def _key(self, ctx: Any) -> str:
         return f"agent_api:{ctx.organization_id}:{ctx.user_id}"
 
+    def _sizes_key(self, ctx: Any) -> str:
+        return f"agent_api_sizes:{ctx.organization_id}:{ctx.user_id}"
+
+    async def _sizes(self, ctx: Any) -> dict[str, float]:
+        """WA-166: the sizes this person told ("1 load M-sand = 60 bags") when they may not set one for the company."""
+        try:
+            return dict(await self._redis.get_json(self._sizes_key(ctx)) or {})
+        except Exception:  # noqa: BLE001 -- asked again rather than no reply
+            return {}
+
+    async def _remember_sizes(self, ctx: Any, said: dict[str, float]) -> None:
+        try:
+            sizes = {**await self._sizes(ctx), **said}
+            await self._redis.set_json(self._sizes_key(ctx), sizes, ttl_seconds=SIZES_TTL_SECONDS)
+        except Exception:  # noqa: BLE001
+            _log.warning("agent_api.sizes_unsaved user=%s", ctx.user_id, exc_info=True)
+
     async def _state(self, ctx: Any) -> dict:
         try:
             return dict(await self._redis.get_json(self._key(ctx)) or {})
@@ -877,6 +899,13 @@ def _working_fact(places: Places) -> str:
         return ""
     return (f"\nTheir site today: {places.working.name} (an update that names no site goes there; never ask which "
             "site for it).")
+
+
+def _may_set_sizes(ctx: Any) -> bool:
+    """WA-166: whether this person may set a size for the whole company (the API's own rule)."""
+    from mesiri.authorization.roles import may_set_unit_conversions
+
+    return may_set_unit_conversions(getattr(ctx, "role", None))
 
 
 def _actor(ctx: Any) -> Actor:
