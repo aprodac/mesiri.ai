@@ -161,6 +161,19 @@ GROUP_INVITE = TemplateSpec(
     body_param_count=4,
 )
 
+#: WA-156: "what you asked for works now" (a release note, TM-16) to someone who has not messaged in 24 h; a fix
+#: that ships later than that reached nobody. Body (submitted text, docs/ops/whatsapp-templates.md):
+#:   "Update on what you asked Mesiri for: {{1}} Try it now by replying here."
+#: {{1}} is the note's own message (their language). The taps carry the same ids as the in-window buttons
+#: (runtime/release_notes.py verdict_buttons), so "Still wrong" reaches the team the same way.
+REQUEST_FIXED = TemplateSpec(
+    name="mesiri_request_fixed",
+    language="en",
+    category="UTILITY",
+    body_param_count=1,
+    quick_replies=("Works ✅", "Still wrong ❌"),
+)
+
 TEMPLATES: dict[str, TemplateSpec] = {
     spec.name: spec
     for spec in (
@@ -170,6 +183,7 @@ TEMPLATES: dict[str, TemplateSpec] = {
         JOIN_REQUEST,
         LOGIN_CODE,
         OPS_ALERT,
+        REQUEST_FIXED,
         SITE_DAY_REVIEW,
         SITE_NO_UPDATE,
         TRIAL_ENDING,

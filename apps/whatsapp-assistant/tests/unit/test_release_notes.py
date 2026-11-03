@@ -45,7 +45,17 @@ async def test_each_person_a_note_names_gets_it_once():
     assert await rn.queue_release_notes(None, today=TODAY, notes=notes, requester=_requester, claim=claims) == 1
     (row,) = claims.rows.values()
     assert row["rule_key"] == "release:attendance-photo" and row["recipient_user_id"] == RAVI
-    assert row["payload"] == {"message": NOTE["message"], "buttons": rn.verdict_buttons(NOTE["id"])}  # TM-21
+    assert row["payload"]["message"] == NOTE["message"]
+    assert row["payload"]["buttons"] == rn.verdict_buttons(NOTE["id"])  # TM-21
+    # WA-156: outside the 24-hour window the same note goes as the approved template, with the same taps.
+    from channel.whatsapp.templates import choose_template
+
+    choice = choose_template(row["payload"], frozenset({"mesiri_request_fixed"}))
+    assert choice.spec is not None and choice.spec.name == "mesiri_request_fixed"
+    assert choice.body_params == (NOTE["message"],)
+    assert choice.button_payloads == tuple(b["id"] for b in rn.verdict_buttons(NOTE["id"]))
+    # guard: not approved yet: skipped with the reason, as before
+    assert choose_template(row["payload"], frozenset()).skip_reason == "template_not_approved:mesiri_request_fixed"
     # The next tick, and every one after: nothing again.
     assert await rn.queue_release_notes(None, today=TODAY, notes=notes, requester=_requester, claim=claims) == 0
 

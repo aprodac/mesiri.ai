@@ -58,6 +58,7 @@ Submitted on the **Mesiri** WhatsApp account (named Paraclete until 24 Oct) (ID 
 | `mesiri_site_day_review` | In review |
 | `mesiri_join_request` | In review |
 | `mesiri_ops_alert` | In review |
+| `mesiri_request_fixed` | **To submit** (WA-156, 3 Nov) |
 | `mesiri_group_invite` | In review (submitted 29 Oct, WA-87; reworded to pass as Utility, see below) |
 | `mesiri_dpr_delivery` | In review |
 | `mesiri_dpr_optin` | In review (reworded, see above) |
@@ -245,6 +246,26 @@ when nobody was reached the alert goes to the team WhatsApp group instead.
 Sample values: `{{1}}` = `worker`, `{{2}}` = `dpr.render_failed project=Skyline Towers`.
 
 To switch it on: add `mesiri_ops_alert` to `WHATSAPP_APPROVED_TEMPLATES`.
+
+### `mesiri_request_fixed` — "what you asked for works now" (WA-156)
+
+A release note (TM-16 / TM-21) to the person who asked for the change, when they haven't messaged Mesiri in the
+last 24 hours (inside the window it goes as a normal message with the same two buttons). Until it is approved, a
+fix that ships more than a day after the request reaches nobody.
+
+| Field | Value |
+| --- | --- |
+| Name | `mesiri_request_fixed` |
+| Category | Utility |
+| Language | English (`en`) |
+| Header | None |
+| Body | `Update on what you asked Mesiri for: {{1}} Try it now by replying here.` |
+| Footer | `Sent by Mesiri` |
+| Buttons | Quick reply `Works ✅`, quick reply `Still wrong ❌` |
+
+Sample value: `{{1}}` = `Adding a team member to a project from WhatsApp works now. Send: add Ravi to Green Villa as site engineer.`
+
+To switch it on: `bash infra/deploy/whatsapp_templates.sh add mesiri_request_fixed` (claude-ops task `vps-templates`).
 
 ### `mesiri_group_invite` — invite to a site's WhatsApp group (WA-87)
 

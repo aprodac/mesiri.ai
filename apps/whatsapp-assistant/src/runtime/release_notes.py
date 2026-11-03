@@ -146,7 +146,9 @@ async def queue_release_notes(
                     subject_id=str(who.user_id),
                     occurred_on=note.date,
                     recipient_user_id=who.user_id,
-                    payload={"message": note.message, "buttons": verdict_buttons(note.id)},
+                    payload={"message": note.message, "buttons": verdict_buttons(note.id),
+                             # WA-156: outside the 24-hour window it goes as the approved template instead.
+                             "template": fixed_template(note)},
                 )
                 if claimed is not None:
                     queued += 1
@@ -154,6 +156,12 @@ async def queue_release_notes(
             except Exception:  # noqa: BLE001 -- one person's lookup must not stop the others
                 logger.exception("release_notes.failed note=%s correlation_id=%s", note.id, cid)
     return queued
+
+
+def fixed_template(note: ReleaseNote) -> dict[str, Any]:
+    """WA-156: the note as ``mesiri_request_fixed`` (its message, the same two verdict taps)."""
+    return {"name": "mesiri_request_fixed", "body_params": [note.message],
+            "button_payloads": [b["id"] for b in verdict_buttons(note.id)]}
 
 
 def verdict_buttons(note_id: str) -> list[dict[str, str]]:

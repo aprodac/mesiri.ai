@@ -13,7 +13,7 @@ set -euo pipefail
 
 ENV_FILE="${ENV_FILE:-/opt/mesiri/.env}"
 KEY="WHATSAPP_APPROVED_TEMPLATES"
-KNOWN="mesiri_dpr_delivery mesiri_dpr_optin mesiri_join_request mesiri_login_code mesiri_ops_alert mesiri_site_day_review mesiri_site_no_update mesiri_trial_ending"
+KNOWN="mesiri_dpr_delivery mesiri_dpr_optin mesiri_join_request mesiri_login_code mesiri_ops_alert mesiri_request_fixed mesiri_site_day_review mesiri_site_no_update mesiri_trial_ending"
 
 env_val() { { grep -E "^$1=" "${ENV_FILE}" 2>/dev/null || true; } | tail -1 | cut -d= -f2- | tr -d '"'"'"' \r'; }
 die() { echo "ERROR: $*" >&2; exit 1; }
