@@ -102,8 +102,15 @@ CREATE FUNCTION pg_temp.scrub_json(j json) RETURNS json LANGUAGE sql STABLE AS $
     '("profile"\s*:\s*\{\s*"name"\s*:\s*)"[^"]*"', '\1"Someone"', 'g'),
     '"(profile_name|sender_name)"\s*:\s*"[^"]*"', '"\1": "Someone"', 'g')::json
 $f$;
+-- The same for jsonb (production keeps some of these columns as jsonb, others as json: one name, both types).
+CREATE FUNCTION pg_temp.scrub_json(j jsonb) RETURNS jsonb LANGUAGE sql STABLE AS $f$
+  SELECT pg_temp.scrub_json(j::json)::jsonb
+$f$;
 CREATE FUNCTION pg_temp.scrub_jsonb(j jsonb) RETURNS jsonb LANGUAGE sql STABLE AS $f$
   SELECT pg_temp.scrub(j::text, '9999999999')::jsonb
+$f$;
+CREATE FUNCTION pg_temp.scrub_jsonb(j json) RETURNS json LANGUAGE sql STABLE AS $f$
+  SELECT pg_temp.scrub(j::text, '9999999999')::json
 $f$;
 
 -- People and companies, in their own columns.
