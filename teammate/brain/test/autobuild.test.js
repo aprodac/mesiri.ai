@@ -11,7 +11,8 @@ const plan = (text, title = "Create a project from WhatsApp", extra = {}) => ({ 
 test("a product plan, roles included, is not held; the reserved modules and data changes are", () => {
   assert.equal(holdReason(plan("Add create_project to v2 for admins and site engineers (a role check in the tool). Tests: evals.")), null);
   assert.equal(holdReason(plan("Additive migration 0497: a new nullable column for the project code.")), null);
-  assert.match(holdReason(plan("Change how attendance is counted for the day.")), /Attendance/);
+  // Alan and Ilan, 3 Nov: Attendance is a normal module.
+  assert.equal(holdReason(plan("Change how attendance is counted for the day.")), null);
   assert.match(holdReason(plan("Show the payroll total on the card.")), /Payroll/);
   assert.match(holdReason(plan("Migration: drop column legacy_code and backfill the codes.")), /existing data/);
   assert.match(holdReason(plan("Rotate the API key the webhook uses.")), /secrets/);
@@ -25,7 +26,7 @@ test("a sentence that says what stays untouched is not a reason to hold", () => 
   const text = "Add create_project to v2. Labour, Attendance, Payroll and Workforce are untouched. No migration.";
   assert.doesNotMatch(touchedText(text), /Labour/);
   assert.equal(holdReason(plan(text)), null);
-  assert.match(holdReason(plan("Add create_project. Also change the attendance card wording.")), /Attendance/);
+  assert.match(holdReason(plan("Add create_project. Also change the payroll card wording.")), /Payroll/);
   // Ilan, 1 Nov: Labour is a normal module.
   assert.equal(holdReason(plan("Labour shift correction adds instead of replacing (20 -> day total 40): fix change_line for labour lines.")), null);
 });
@@ -109,12 +110,12 @@ test("brain: the watch's plan is built right after the report, approved by autob
   }
 });
 
-test("brain: a plan that touches Attendance is posted with the reason and waits for @bot ok", async () => {
-  const { brain, sent, fired, ask, done } = brainWith("Change how attendance is counted for the day.");
+test("brain: a plan that touches Workforce is posted with the reason and waits for @bot ok", async () => {
+  const { brain, sent, fired, ask, done } = brainWith("Change how the workforce register is merged.");
   try {
     await ask();
     assert.equal(fired.length, 0);
-    assert.match(sent.at(-1).text, /✋ \[81\][\s\S]*touches Attendance[\s\S]*@bot ok 81/);
+    assert.match(sent.at(-1).text, /✋ \[81\][\s\S]*touches Workforce[\s\S]*@bot ok 81/);
     assert.equal(brain.planStore.plans[81].status, "proposed");
   } finally {
     done();

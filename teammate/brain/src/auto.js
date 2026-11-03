@@ -32,9 +32,10 @@ export const AUTO_DEFAULTS = {
 /** Areas auto may touch. propose_plan's auto.area must be one of these, else a human has to say "@bot ok". */
 export const AUTO_AREAS = ["conversation", "getting_out"];
 
-/** Words that keep a plan on "@bot ok" (CLAUDE.md module isolation, migrations, security, the bot itself). */
+/** Words that keep a plan on "@bot ok" (CLAUDE.md module isolation, migrations, security, the bot itself). Labour and
+ * Attendance are normal modules (Alan and Ilan, 3 Nov). */
 const GUARD = [
-  /labou?r/i, /attendance/i, /payroll/i, /workforce/i, /migration/i, /alembic/i, /\bdrop(s|ped|ping)?\b/i, /\brenam\w*/i,
+  /payroll/i, /workforce/i, /migration/i, /alembic/i, /\bdrop(s|ped|ping)?\b/i, /\brenam\w*/i,
   /\bauth\w*/i, /\btokens?\b/i, /\bpermissions?\b/i, /\btenant\w*/i, /\bsecurity\b/i, /\.github/i, /\.env\b/i, /teammate\//i,
   /shared[- ]component/i,
 ];
@@ -146,7 +147,7 @@ export function cyclePrompt({ cycle, pending = [], recent = [], seen = [] }) {
     "   cycle summary as \"seen, not fixed: …\" and in cycle_report.seen_not_fixed.",
     "3) If you picked one: investigate the code read-only, then call propose_plan ONCE with auto: { area: \"conversation\" } or",
     "   { area: \"getting_out\" }. The plan must be small, self-contained (problem, files, exact change, tests, tracker row) and",
-    "   must not touch Labour, Attendance, Payroll, Workforce, migrations, auth / tokens / permissions / tenants / security,",
+    "   must not touch Payroll, Workforce, migrations, auth / tokens / permissions / tenants / security,",
     "   .github, .env, teammate/ or a shared component: code checks for those words and sends such a plan to a human instead.",
     "4) ALWAYS finish with cycle_report (outcome planned | no_issue_found | blocked), then a summary of at most 8 lines:",
     "   what you tested, what you found, and \"seen, not fixed: …\" for anything out of scope. Plain WhatsApp style.",
@@ -249,7 +250,7 @@ export class AutoLoop {
     setImmediate(() => this.tick());
     return (
       `🤖 *Auto is on* for ${hours} h (until ${clock(this.s.expiresAt)}). Small cycles: test → pick one issue in Conversation or Getting things out → ` +
-      `work → verify live, at most ${this.cfg.pushesPerDay} pushes a day, one at a time. Plans that touch Labour, Attendance, Payroll, Workforce, ` +
+      `work → verify live, at most ${this.cfg.pushesPerDay} pushes a day, one at a time. Plans that touch Payroll, Workforce, ` +
       "migrations, auth / security, .github, .env, teammate/ or a shared component still wait for @bot ok.\n" +
       "Stop it: @bot auto off (or @bot stop). It also stops after 2 failed cycles in a row, at the spending cap, or on a permission denial. " +
       "A Claude usage limit only pauses it."

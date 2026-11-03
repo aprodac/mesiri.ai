@@ -7,7 +7,8 @@
 > Read this **before** `AGENTS.md`'s task-level conventions. Where the two overlap, this
 > document governs process; `AGENTS.md` governs code style and the Module Placement Log.
 >
-> **Authority:** set by Alan, 2026-07-30; autonomous mode added by Alan, 2026-10-19.
+> **Authority:** set by Alan, 2026-07-30; autonomous mode added by Alan, 2026-10-19; Labour and
+> Attendance no longer need approval (Alan and Ilan, 2026-11-03, relayed in session).
 > Do not amend without his approval.
 
 ---
@@ -183,8 +184,10 @@ Say plainly what was **not** verified. A test that could not run locally is a ga
 
 ## Module Isolation
 
-Never modify another module unless absolutely necessary. **Especially: Labour, Attendance,
-Payroll, Workforce.**
+Never modify another module unless absolutely necessary. **Especially: Payroll, Workforce.**
+
+Labour and Attendance are normal modules (Alan and Ilan, 3 Nov 2026): change them like any other,
+without waiting for approval, and say plainly in the phase report what changed in them.
 
 If a shared component must change: **stop, explain why, wait for approval.**
 
@@ -241,8 +244,8 @@ phases or between tracker items. At the end of every phase:
 
 **Stop and wait for Alan's approval only when an item:**
 
-1. Changes Labour, Attendance, Payroll or Workforce behaviour, or a shared component
-   (Module Isolation still applies).
+1. Changes Payroll or Workforce behaviour, or a shared component (Module Isolation still
+   applies). Labour and Attendance do not need approval (3 Nov 2026).
 2. Needs a database migration that drops, renames or rewrites existing data
    (additive migrations may proceed).
 3. Depends on an open product decision, or its tracker row says it needs approval,

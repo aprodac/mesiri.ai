@@ -69,7 +69,9 @@ function cycleModel({ title = "Report reply names the date", area = "getting_out
 }
 
 test("auto: helpers (guard words, usage limits, reset times, rotating test messages)", () => {
-  assert.equal(guardWord("Fix the labour count reply"), "labour");
+  assert.equal(guardWord("Fix the payroll total reply"), "payroll");
+  assert.equal(guardWord("Fix the labour count reply"), null); // Alan and Ilan, 3 Nov: Labour and Attendance are normal
+  assert.equal(guardWord("Fix the attendance card"), null);
   assert.equal(guardWord("Rename the PDF", "x"), "rename");
   assert.equal(guardWord("edit teammate/brain"), "teammate/");
   assert.equal(guardWord("Say the report date in the reply"), null);
@@ -159,7 +161,7 @@ test("auto: a full cycle — test, plan in scope, code approves, fire as 'auto',
 });
 
 test("auto: out-of-scope area or a guard word leaves the plan for a human ok; it isn't fired", async () => {
-  for (const model of [cycleModel({ area: "labour" }), cycleModel({ area: null }), cycleModel({ plan: "Change the attendance reply" })]) {
+  for (const model of [cycleModel({ area: "labour" }), cycleModel({ area: null }), cycleModel({ plan: "Change the payroll reply" })]) {
     const { sent, fired, brain, auto, say, done } = setup(model);
     try {
       const realTick = auto.tick.bind(auto);

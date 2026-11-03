@@ -907,7 +907,7 @@ export class Brain {
       by === "auto"
         ? "Approved by: auto (the bot's auto loop; an owner switched auto on in WhatsApp, and the code checked the plan's area and guard words)"
         : by === "autobuild"
-        ? "Approved by: autobuild (TM-18; the owners chose no human ok for product plans on 1 Nov, and the code checked the plan holds none of Attendance / Payroll / Workforce (Labour is a normal module since 1 Nov), data-changing migrations, secrets, tenant isolation, login, CI files or teammate/)"
+        ? "Approved by: autobuild (TM-18; the owners chose no human ok for product plans on 1 Nov, and the code checked the plan holds none of Payroll / Workforce (Labour since 1 Nov and Attendance since 3 Nov are normal modules), data-changing migrations, secrets, tenant isolation, login, CI files or teammate/)"
         : `Approved by: ${by} (in WhatsApp; the listener checked ${by} is on the approved list)`,
       `Request log item: ${typeof plan.id === "number" ? plan.id : "none"}`,
       `Reply group jid: ${reply_chat}`,

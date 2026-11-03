@@ -23,9 +23,14 @@ test("TM-66: [218]'s CLASS line naming attendance no longer holds a materials fi
   assert.equal(holdReason(plan), null);
 });
 
-test("guard TM-66: a plan that changes attendance is still held, wherever the FIX line says it", () => {
-  assert.match(holdReason({ title: "Fix shift totals", plan: "FIX: attendance correction replaces the shift instead of adding.\nCLASS: voice/text." }), /Attendance/);
-  assert.match(holdReason({ title: "Attendance: shift correction adds instead of replacing", plan: "CLASS: labour." }), /Attendance/);
+test("guard TM-66: a plan that changes payroll is still held, wherever the FIX line says it", () => {
+  assert.match(holdReason({ title: "Fix wage totals", plan: "FIX: payroll correction replaces the total instead of adding.\nCLASS: voice/text." }), /Payroll/);
+  assert.match(holdReason({ title: "Payroll: correction adds instead of replacing", plan: "CLASS: labour." }), /Payroll/);
+});
+
+test("3 Nov (Alan and Ilan): a plan that changes Attendance or Labour builds without an owner's ok", () => {
+  assert.equal(holdReason({ title: "Fix shift totals", plan: "FIX: attendance correction replaces the shift instead of adding." }), null);
+  assert.equal(holdReason({ title: "Shifts in attendance (5 morning + 5 afternoon)", plan: "FIX: labour lines carry a shift." }), null);
 });
 
 // ---------- TM-63: propose_plan needs the end state ----------

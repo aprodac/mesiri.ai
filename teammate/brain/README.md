@@ -89,8 +89,8 @@ production watch ◄────────────────────
 - **Which plans:** every planning turn for the product: the production watch's, the shared board's, and those from
   approved people in the team group or a 1-on-1 chat. Not auto-loop cycles (they have their own check) and not bot
   upgrades (`@bot upgrade:` stays owner-approved).
-- **Held for an owner** (posted as `✋ [n] … Waiting for an owner because …`): Attendance, Payroll, Workforce (Labour is a
-  normal module since 1 Nov, Ilan);
+- **Held for an owner** (posted as `✋ [n] … Waiting for an owner because …`): Payroll, Workforce (Labour is a
+  normal module since 1 Nov, Ilan; Attendance since 3 Nov, Alan and Ilan);
   migrations that drop / rename / rewrite data; secrets and tokens; tenant isolation; login; `.github/`, `.env`;
   `teammate/`; more than `TEAMMATE_AUTOBUILD_PER_DAY` (12) builds a day. Sentences that say what stays untouched
   ("Labour untouched", "no migration") don't count. **Roles inside the product are not held** (Ilan: "admin roles,

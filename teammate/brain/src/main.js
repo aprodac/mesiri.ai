@@ -68,8 +68,8 @@ const FLOWS = {
     "--ignore=tests/integration + ruff on backend/src, backend/tests, backend/migrations; dashboard tsc -b --noEmit, oxlint, " +
     "vite build; platform/ai pytest; whatsapp-assistant pytest with PYTHONPATH (~9 min); teammate/ npm test in listener and " +
     "brain. Then pull, combine by hand, re-verify if the pull brought changes, push. Migrations: check the alembic head right " +
-    "before writing one and confirm there's no fork. Labour / Attendance / Payroll / Workforce or a shared component: say so " +
-    "plainly in the plan. Claim and mark the docs/plans/V1_TRACKER.md row with the commit hash, end with the CLAUDE.md phase " +
+    "before writing one and confirm there's no fork. Payroll / Workforce or a shared component: say so plainly in the plan " +
+    "(Labour and Attendance are normal modules since 3 Nov: change them, and say what changed). Claim and mark the docs/plans/V1_TRACKER.md row with the commit hash, end with the CLAUDE.md phase " +
     "report (Executive / Technical / Git summary, verified against the remote SHA) and say plainly what wasn't verified. " +
     "Never touch .github/ or .env files. Changes under teammate/ are bot upgrades: label them so in the plan.",
 };
@@ -534,7 +534,7 @@ if (prodWatchMinutes > 0 && Object.keys(opsByProject).length) {
 setTimeout(() => brain.resumeInterrupted({ say: (m) => listener.send(m) })
   .then((ids) => ids.length && log(`brain: resumed interrupted build(s) ${ids.join(", ")}`))
   .catch((e) => log(`resume: ${e.message}`)), 60_000);
-// TM-19: plans held before a restart that autobuild may start now (1 Nov: Labour stopped being held).
+// TM-19: plans held before a restart that autobuild may start now (1 Nov: Labour, 3 Nov: Attendance stopped being held).
 setTimeout(() => brain.retryHeld().catch((e) => log(`retry held: ${e.message}`)), 90_000);
 // Request 139: the watchdog over cloud jobs (commits, deploys, silence); TEAMMATE_WATCH_MINUTES, default 10, 0 = off.
 const watchMinutes = Number(process.env.TEAMMATE_WATCH_MINUTES ?? 10);
