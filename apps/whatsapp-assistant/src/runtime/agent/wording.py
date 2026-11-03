@@ -377,6 +377,21 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "माफ़ कीजिए 🙏 मैंने टीम को बता दिया है। इसे कैसा होना चाहिए? मैसेज या वॉइस नोट भेजिए; बदलने से पहले आपको दिखा देंगे कि यह कैसा दिखेगा।",
         "hinglish": "Sorry 🙏 Maine team ko bata diya. Ise kaisa hona chahiye? Message ya voice note bhejiye; badalne se pehle aapko dikha denge ki ye kaisa dikhega.",
     },
+    # -- [219]: a project they already have (said by the code; never an offer to make another) --
+    "api.project_exists": {
+        "english": "{name} already exists ✅",
+        "manglish": "{name} ippo thanne undu ✅",
+        "malayalam": "{name} ഇപ്പോൾ തന്നെ ഉണ്ട് ✅",
+        "hindi": "{name} पहले से है ✅",
+        "hinglish": "{name} pehle se hai ✅",
+    },
+    "api.project_twins": {
+        "english": "({count} of them: please tidy them up on the dashboard)",
+        "manglish": "({count} ennam undu: dashboard-il onnaakkoo)",
+        "malayalam": "({count} എണ്ണം ഉണ്ട്: ഡാഷ്ബോർഡിൽ ഒന്നാക്കൂ)",
+        "hindi": "({count} हैं: कृपया डैशबोर्ड पर ठीक कर लें)",
+        "hinglish": "({count} hain: please dashboard par theek kar lein)",
+    },
     "api.feedback_noted": {
         "english": "Thanks 🙏 I've passed it to the team. You'll see how it will look, and I'll tell you here when it's fixed.",
         "manglish": "Thanks 🙏 Team-nu koduthu. Ethu pole aakum ennu kaanikkaam, sheriyaakumbol ivide ariyikkaam.",

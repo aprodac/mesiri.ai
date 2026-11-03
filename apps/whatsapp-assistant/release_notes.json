@@ -280,6 +280,16 @@
         "cor_3602ada156104299a6c1ede1f256d90c"
       ],
       "message": "Sheriyaakki 👍 Puthiya project undaakkiyaalum update ippo ningal report cheyyunna site-il thanne pokum. Vere site-il aanenkil message-il athinte peru parayoo (eg '20 bag cement vannu, Zeta Plaza'); Save-nu munpu list-il 📍 aayi kaanikkum. Try: oru project undaakki, pinne '20 bag cement vannu'."
+    },
+    {
+      "id": "v3-new-request-drops-open-question",
+      "date": "2026-11-03",
+      "for": [
+        "cor_265397fe84b54674995b5392fec962b0",
+        "cor_185e1f193bc14e6e964377948dac62f1",
+        "cor_80b70d142f8f4f1cb94ac242d6f7639c"
+      ],
+      "message": "Mesiri no longer mixes up a new request with an earlier question. Try: 'Add Rajesh to Live Mart B as site engineer'"
     }
   ]
 }

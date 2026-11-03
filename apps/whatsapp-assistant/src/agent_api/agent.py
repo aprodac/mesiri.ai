@@ -87,6 +87,8 @@ class ApiTurn:
     options: list[str] = field(default_factory=list)
     #: WA-154: fingerprints of creates the person was just asked about ("already saved at 22:44, another?").
     repeat_asked: list[str] = field(default_factory=list)
+    #: [219]: the open question this message did not answer (dropped; the model was told it is a new request).
+    dropped_question: str = ""
 
 
 #: WA-154 (3 Nov, Paraclette: "Rana Mart" re-sent three times made three empty projects): a create the same person
@@ -200,6 +202,37 @@ def decide_site(text: str, places: Places, site_id: Any, project_id: Any, workin
     rank = {pid: i for i, pid in enumerate(places.recent)}
     every.sort(key=lambda p: rank.get(p.site_id or p.project_id or "", len(rank)))
     return [p.name for p in every]
+
+
+#: [219]: a reply this short answers the open question ("the second one", "yes", "randaamathe").
+SHORT_ANSWER_WORDS = 4
+
+
+def answers_question(text: str, question: dict[str, Any] | None) -> bool:
+    """[219]: whether this message answers the question Mesiri asked last ({question, options}), decided by the code: a
+    tap (it comes as the option's title), a reply naming one of its options, or a short reply. Anything else is a new
+    request, and the open question is dropped ("Add Mohanlal to Live Mart B…" is not "which Rana Mart?")."""
+    if not question or not (question.get("question") or question.get("options")):
+        return True
+    said = " ".join(text.casefold().split())
+    if any(_named(str(o), said) or said == " ".join(str(o).casefold().split()) for o in question.get("options") or []):
+        return True
+    return len(said.split()) <= SHORT_ANSWER_WORDS
+
+
+def question_left_open(question: str, options: list[str], reply: str) -> dict[str, Any] | None:
+    """The question this turn leaves open: one asked with ``ask`` (or buttons the code built), else a reply that ends
+    with a question (a plain-text "another one?")."""
+    if question or options:
+        return {"question": question or reply, "options": list(options)}
+    last = (reply or "").strip().splitlines()[-1:] or [""]
+    return {"question": last[0], "options": []} if last[0].rstrip("* _").endswith("?") else None
+
+
+def same_name(name: Any, places: Places | None) -> list[str]:
+    """[219]: the person's projects already called ``name`` (case and spacing aside)."""
+    key = " ".join(str(name or "").casefold().split())
+    return [n for _, n in (places.projects if places else ()) if key and " ".join(n.casefold().split()) == key]
 
 
 #: [215]: at most this many sites as buttons, then "Other" (they say the site in words).
@@ -325,13 +358,16 @@ class ApiAgent:
                   facts: str = "", photo_key: str | None = None, language: str | None = None,
                   actions: dict[str, tuple[ToolSpec, Any]] | None = None,
                   channel: str = TEXT_CHANNEL, recent_saves: list[dict[str, Any]] | None = None,
-                  repeat_ok: list[str] | None = None, places: Places | None = None) -> ApiTurn:
+                  repeat_ok: list[str] | None = None, places: Places | None = None,
+                  open_question: dict[str, Any] | None = None) -> ApiTurn:
         """``facts``: what the agent starts from (projects, sites, materials, units), read
         before the model runs. ``photo_key``: the photo this message carried; a write that
         takes a photo (an expense) gets it attached by the code. ``actions``: tools the caller
         runs itself, by name: ``(spec, async handler(arguments) -> content)``. ``channel``: how the
         message came (``whatsapp_text`` | ``whatsapp_voice`` | ``whatsapp_image``), recorded on the entry.
-        ``places``: the person's projects and sites; with it, the code decides the site of every report ([213])."""
+        ``places``: the person's projects and sites; with it, the code decides the site of every report ([213]).
+        ``open_question``: the question Mesiri asked last ({question, options}); a message that does not answer it
+        drops it ([219])."""
         channel = channel if channel in CHANNELS else TEXT_CHANNEL
         today = dt.datetime.now(ZoneInfo(timezone or "Asia/Kolkata")).date()
         waiting: list[PendingWrite | None] = list(ready or [])  # None = saved or dropped this turn
@@ -345,6 +381,9 @@ class ApiAgent:
         repeat_asked: list[str] = []  # WA-154: creates asked about this turn
         code_told: list[dict[str, Any]] = []  # WA-155: passed to the team by the code
         site_ask: list[str] = []  # [213]: site names to ask about when the code cannot tell the site
+        exists: list[str] = []  # [219]: what the code says about a project that already exists
+        dropped = "" if answers_question(text, open_question) else str(
+            (open_question or {}).get("question") or " / ".join((open_question or {}).get("options") or []))
         decides_site = places is not None and (len(places.sites) > 1 or len(places.projects) > 1)
         tz = ZoneInfo(timezone or "Asia/Kolkata")
         their_words = " ".join([*(m.text or "" for m in history or [] if m.role == "user"), text])
@@ -479,6 +518,13 @@ class ApiAgent:
                     unit_ask[:] = buttons
                     return ToolOutcome(content={"error": problem})
                 unit_ask.clear()
+            if name == PROJECT_TOOL and (twins := same_name(body.get("name"), places)):
+                # [219]: a project they already have is said by the code, in their language; never "I made a mistake",
+                # never an offer to make a second one with the same name.
+                exists[:] = [_project_exists(twins, language)]
+                return ToolOutcome(content={"status": (
+                    f"{twins[0]} already exists; nothing was prepared. The code tells the person; say nothing about "
+                    "it and do not offer to create another one with the same name.")})
             if tool.is_write:
                 fp = create_fingerprint(name, tool.method, path, body)
                 same = next((r for r in reversed(recent_saves or []) if fp and r.get("fp") == fp), None)
@@ -512,11 +558,17 @@ class ApiAgent:
         if language in LANGUAGE_LINES:
             # Decided by the code from their words (the model mixed scripts on 1 Nov).
             system += f"\n\nThis message is in {LANGUAGE_LINES[language]}. Reply in exactly that."
-        messages = [*(history or []), ChatMessage(role="user", text=text)]
+        if dropped:
+            # [219]: decided by the code; the question only lived in the history, so the model took any message as its answer.
+            system += (f"\n\nThis message is NOT an answer to your last question (\"{dropped}\"): that question is dropped. "
+                       "It is a new, separate request: do exactly what it asks. Do not ask that question again unless "
+                       "this new request needs it.")
+        messages =[*(history or []), ChatMessage(role="user", text=text)]
         extra = {"capability": self._capability} if self._capability and _takes(self._provider, "capability") else {}
 
         def nothing_done() -> bool:
-            return not new and not saved and not asked and not acted and not changed and len(waiting) == len(ready or [])
+            return (not new and not saved and not asked and not acted and not changed and not exists
+                    and len(waiting) == len(ready or []))
 
         async def ask_model(msgs: list[ChatMessage]) -> Any:
             return await self._provider.run_tools(
@@ -551,7 +603,7 @@ class ApiAgent:
                 code_told.append({"tool": TELL_THE_TEAM, "by": "code", "arguments": {
                     "kind": "missing_feature", "about": f"Mesiri told them the team was told; passed on by the code: {text[:300]}"},
                     "result": {"status": "passed on by the code (WA-155)"}})
-        if not (result.text or "").strip() and not new and not asked and not saved and not acted:
+        if not (result.text or "").strip() and not new and not asked and not saved and not acted and not exists:
             # It looked something up and said nothing ("OK."): ask once for the answer in words.
             again = await ask_model([*messages, ChatMessage(role="model", text="(looked it up)"),
                                      ChatMessage(role="user", text="(answer my message now, in words)")])
@@ -565,9 +617,15 @@ class ApiAgent:
         missing = [u for u in dict.fromkeys(links) if u not in reply]
         if missing:  # WA-141: a link the code built always reaches the person, even if the model left it out
             reply = "\n".join([reply, *missing]).strip()
+        if exists:  # [219]: the code's line; the model's words only when it did something else too
+            busy = bool(new or saved or acted or changed)
+            reply = "\n\n".join([exists[0], reply] if busy and reply else [exists[0]])
+            if not busy:
+                asked.clear()
+                options = []
         return ApiTurn(reply=reply, pending=still + new, saved=saved, calls=calls,
                        stop_reason=result.stop_reason, question=asked.get("question", ""), options=options,
-                       repeat_asked=repeat_asked)
+                       repeat_asked=repeat_asked, dropped_question=dropped)
 
 
 def _typed(old: Any, value: Any) -> Any:
@@ -628,6 +686,16 @@ async def settle_unit(client: ApiClient, body: dict[str, Any]) -> str:
 
 MEMBER_TOOL = "add_project_member"
 ALIAS_TOOL = "add_material_alias"
+PROJECT_TOOL = "create_project"
+
+
+def _project_exists(twins: list[str], language: str | None) -> str:
+    """[219]: "Rana Mart already exists ✅", and when there are several, that they can tidy them up on the dashboard."""
+    from runtime.agent.wording import say
+
+    lang = language or "english"
+    line = say("api.project_exists", lang, name=twins[0])
+    return f"{line} {say('api.project_twins', lang, count=str(len(twins)))}" if len(twins) > 1 else line
 
 
 async def settle_member(client: ApiClient, path: str, body: dict[str, Any]) -> tuple[str, list[str]]:

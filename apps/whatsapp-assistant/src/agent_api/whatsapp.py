@@ -60,6 +60,7 @@ from .agent import (
     _detail,
     confirm,
     last_reported,
+    question_left_open,
     remember_saves,
 )
 from .app import build_api_app
@@ -334,6 +335,7 @@ class ApiWhatsApp:
                 # WA-154: the person's creates of the last day, and the ones they were just asked about.
                 recent_saves=state.get("recent_saves") or [], repeat_ok=state.get("repeat_asked") or [],
                 places=places,  # [213]: the code decides the site of a report
+                open_question=state.get("asked"),  # [219]: a message that doesn't answer it drops it
             )
             try:
                 turn = await self._agent.run(client, **run)
@@ -373,9 +375,11 @@ class ApiWhatsApp:
             "saved": [{"summary": r.pending.summary, "status": r.status,
                        **({} if r.ok else {"reason": _detail(r.body)[:300]})} for r in turn.saved],
             "pending": [e.summary for e in turn.pending], "asked": turn.question,
+            **({"dropped_question": turn.dropped_question} if turn.dropped_question else {}),
         }, started)
         state["language"] = _language(text)
         state["repeat_asked"] = list(turn.repeat_asked)  # the yes comes in the next message only
+        state["asked"] = question_left_open(turn.question, turn.options, turn.reply)  # [219]: answered next, or dropped
         state["recent_saves"] = remember_saves(state.get("recent_saves"), turn.saved, time.time())
         state["working_site"] = last_reported(turn.saved, state.get("working_site"), _today(ctx))
         if turn.saved:
@@ -680,7 +684,7 @@ class ApiWhatsApp:
 
     async def _save_state(self, ctx: Any, state: dict) -> None:
         try:
-            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site")
+            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked")
                                     if state.get(k) is not None},
                                        ttl_seconds=STATE_TTL_SECONDS)
         except Exception:  # noqa: BLE001
