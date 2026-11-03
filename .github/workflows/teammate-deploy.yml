@@ -29,6 +29,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 3 Nov: a bot change that crashed at start-up (a ReferenceError in main.js) was deployed with no test run and
+      # crash-looped all night: no request reached the team group. Both suites run first, including the start-up test.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test the bot and the listener before deploying
+        run: |
+          (cd teammate/brain && npm ci --no-audit --no-fund && npm test)
+          (cd teammate/listener && npm ci --no-audit --no-fund && npm test)
+
       - name: Check token secret
         env:
           TEAMMATE_API_TOKEN: ${{ secrets.TEAMMATE_API_TOKEN }}
@@ -260,6 +270,29 @@ jobs:
             echo "nginx: /teammate/ already present"
           fi
           ENDSSH
+
+      # 3 Nov: "deployed" is not "running": the brain must still be up 30 s after the restart, not restarting in a loop.
+      - name: The bot stays up after the restart
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          sleep 30
+          ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" '
+            for unit in teammate-brain teammate; do
+              systemctl list-unit-files "$unit.service" >/dev/null 2>&1 || continue
+              state=$(systemctl is-active "$unit" || true)
+              restarts=$(systemctl show -p NRestarts --value "$unit" 2>/dev/null || echo 0)
+              since=$(systemctl show -p ActiveEnterTimestampMonotonic --value "$unit")
+              now=$(cat /proc/uptime | cut -d" " -f1 | cut -d. -f1)
+              up=$(( now - since / 1000000 ))
+              echo "$unit: $state, up ${up}s, restarts $restarts"
+              if [ "$state" != "active" ] || [ "$up" -lt 25 ]; then
+                echo "::error::$unit is not staying up after the deploy:"
+                journalctl -u "$unit" --since "2 minutes ago" --no-pager | tail -20
+                exit 1
+              fi
+            done'
 
       - name: Check from outside
         run: |

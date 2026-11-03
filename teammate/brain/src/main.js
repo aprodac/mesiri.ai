@@ -295,9 +295,6 @@ const brain = new Brain({
   log,
 });
 
-// TM-44: the code checks each bad-UX / missing-feature / idea request got its preview (only when previews can be sent).
-brain.previewsOn = Boolean(render && token && Object.keys(opsByProject).length);
-
 function authorized(req) {
   const given = Buffer.from((req.headers.authorization || "").replace(/^Bearer /, ""));
   const expected = Buffer.from(token);
@@ -357,6 +354,9 @@ if (boardMinutes > 0) {
 // TEAMMATE_PROD_WATCH_MINUTES (default 5, 0 = off) later. Idle it is one free SELECT every 2 min: no AI, no Claude turn.
 const prodWatchMinutes = Number(process.env.TEAMMATE_PROD_WATCH_MINUTES ?? 5);
 const opsByProject = opsSources(process.env, Object.keys(projects));
+// TM-44: the code checks each bad-UX / missing-feature / idea request got its preview (only when previews can be sent).
+// 3 Nov: this line once sat above opsByProject's declaration and crash-looped the bot all night (startup test below).
+brain.previewsOn = Boolean(render && token && Object.keys(opsByProject).length);
 if (prodWatchMinutes > 0 && Object.keys(opsByProject).length) {
   const prodWatch = new ProdWatch({
     sources: opsByProject,
