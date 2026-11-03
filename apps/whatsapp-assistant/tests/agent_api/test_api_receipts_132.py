@@ -106,7 +106,7 @@ def _service(model, cards: Cards, order: list):  # noqa: ANN001, ANN202
 async def test_the_save_tap_sends_the_saved_card_after_the_saved_line() -> None:
     cards, order = Cards(), []
     service, sent = _service(two_receipts_model(), cards, order)
-    await service.handle(_message("50 bag cement, 50 TMT vannu"), CTX)
+    await service.handle(_message("50 bag cement, 50 TMT vannu, Main block"), CTX)  # [213]: two sites, so named
     order.clear()
     await service.handle(_message("Save", tap=sent[-1].buttons[0].id), CTX)
     assert order[0] == "text" and order[1][0] == "image" and order[1][1] == b"PNG"
@@ -121,7 +121,7 @@ async def test_the_save_tap_sends_the_saved_card_after_the_saved_line() -> None:
 async def test_saying_save_it_sends_the_card_too() -> None:
     cards, order = Cards(), []
     service, _ = _service(two_receipts_model(), cards, order)
-    await service.handle(_message("50 bag cement, 50 TMT vannu"), CTX)
+    await service.handle(_message("50 bag cement, 50 TMT vannu, Main block"), CTX)
     service._agent._provider = FakeToolCallingProvider([[(SAVE_READY, {})], "Saved both."])
     order.clear()
     await service.handle(_message("ok save cheyyu"), CTX)

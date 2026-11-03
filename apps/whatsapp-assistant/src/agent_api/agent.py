@@ -123,6 +123,124 @@ def remember_saves(recent: list[dict[str, Any]] | None, results: list[WriteResul
     return kept[-30:]
 
 
+@dataclass(frozen=True)
+class Place:
+    """A site (or a project with no site) an entry is reported to."""
+
+    site_id: str | None
+    project_id: str | None
+    name: str
+
+
+@dataclass(frozen=True)
+class Places:
+    """[213] (re-opens [209], 3 Nov: "Puthiya project undaakku, peru Zeta Plaza", then "20 bag cement vannu" went to the
+    new, empty Zeta Plaza): the person's projects and sites, and the site they last reported to, so the CODE decides
+    where an update goes. ``projects``: (id, name); ``sites``: (id, name, project_id)."""
+
+    projects: tuple[tuple[str, str], ...]
+    sites: tuple[tuple[str, str, str], ...]
+    working: Place | None = None
+    #: [215]: site / project ids they reported to, newest first (the order the site buttons come in).
+    recent: tuple[str, ...] = ()
+
+    def place(self, site_id: Any, project_id: Any) -> Place | None:
+        for sid, name, pid in self.sites:
+            if site_id and sid == str(site_id):
+                return Place(sid, pid, name)
+        for pid, name in self.projects:
+            if project_id and pid == str(project_id):
+                return Place(None, pid, name)
+        return None
+
+
+def site_scoped(tool: ApiTool) -> bool:
+    """A write that reports something at a site (a receipt, labour, work, an issue, an expense, conditions); not one
+    that creates or changes a project or site itself."""
+    return tool.is_write and ("site_id" in tool.body_fields or tool.path_params == ("site_id",))
+
+
+def _named(name: str, said: str) -> bool:
+    whole = " ".join(name.casefold().split())
+    return any(len(n) >= 3 and re.search(rf"(?<!\w){re.escape(n)}(?!\w)", said)
+               for n in {whole, whole.split(",")[0].strip()})
+
+
+def decide_site(text: str, places: Places, site_id: Any, project_id: Any, working: Place | None) -> Place | list[str]:
+    """Where an update goes, decided by the code: the site or project named in this message, else the one they last
+    reported to (``working``), else their only site; else the names to ask about (buttons). Creating or naming a
+    project in an earlier message never makes it the reporting site."""
+    said = " ".join(text.casefold().split())
+    chosen = places.place(site_id, project_id)
+    sites = [Place(sid, pid, name) for sid, name, pid in places.sites]
+    named_sites = [s for s in sites if _named(s.name, said)]
+    named_projects = [Place(None, pid, name) for pid, name in places.projects if _named(name, said)]
+    if named_sites or named_projects:
+        if chosen and chosen.site_id and chosen.site_id in {s.site_id for s in named_sites}:
+            return chosen
+        if len(named_sites) == 1:
+            return named_sites[0]
+        if len(named_projects) == 1 and not named_sites:
+            project = named_projects[0]
+            inside = [s for s in sites if s.project_id == project.project_id]
+            if chosen and chosen.site_id and chosen.project_id == project.project_id:
+                return chosen
+            if len(inside) <= 1:
+                return inside[0] if inside else project
+            return [s.name for s in inside]
+        return [s.name for s in named_sites] or [p.name for p in named_projects]
+    if working is not None:
+        return working
+    # [215]: a project with no site yet is a place too; the ones they reported to recently come first.
+    with_site = {s.project_id for s in sites}
+    every = sites + [Place(None, pid, name) for pid, name in places.projects if pid not in with_site]
+    if len(every) == 1:
+        return every[0]
+    rank = {pid: i for i, pid in enumerate(places.recent)}
+    every.sort(key=lambda p: rank.get(p.site_id or p.project_id or "", len(rank)))
+    return [p.name for p in every]
+
+
+#: [215]: at most this many sites as buttons, then "Other" (they say the site in words).
+SITE_BUTTONS = 3
+OTHER_SITE = "Other"
+
+
+def site_options(names: list[str]) -> list[str]:
+    return names if len(names) <= SITE_BUTTONS else [*names[:SITE_BUTTONS], OTHER_SITE]
+
+
+def working_place(places: Places | None, entries: list[PendingWrite]) -> Place | None:
+    """The site they are reporting to now: the last one in the ready list, else the last one they saved to."""
+    if places is None:
+        return None
+    for e in reversed(entries):
+        found = places.place(e.body.get("site_id") or _path_site(e.path), e.body.get("project_id"))
+        if found is not None:
+            return found
+    return places.working
+
+
+def last_reported(results: list[WriteResult], old: dict[str, Any] | None, day: str | None = None) -> dict[str, Any] | None:
+    """The site of the last saved report ({site_id, project_id, date, recent}), kept in the conversation state.
+    Creating a project, adding a site or a member (routes under /projects) never changes it ([215])."""
+    for r in reversed(results):
+        if not r.ok or (r.pending.path or "").startswith("/projects"):
+            continue
+        site, project = r.pending.body.get("site_id") or _path_site(r.pending.path), r.pending.body.get("project_id")
+        if site or project:
+            key = str(site or project)
+            recent = [key, *(k for k in (old or {}).get("recent") or [] if k != key)][:10]
+            return {"site_id": str(site) if site else None, "project_id": str(project) if project else None,
+                    "date": day, "recent": recent}
+    return old
+
+
+def _path_site(path: str) -> str | None:
+    m = re.match(r"^/dpr/site-days/([^/]+)/", path or "")
+    return m.group(1) if m else None
+
+
 SAVE_READY = "save_ready_entries"
 #: The language of the person's message (``runtime.agent.wording.language_of``) as told to the model.
 LANGUAGE_LINES = {
@@ -206,12 +324,13 @@ class ApiAgent:
                   facts: str = "", photo_key: str | None = None, language: str | None = None,
                   actions: dict[str, tuple[ToolSpec, Any]] | None = None,
                   channel: str = TEXT_CHANNEL, recent_saves: list[dict[str, Any]] | None = None,
-                  repeat_ok: list[str] | None = None) -> ApiTurn:
+                  repeat_ok: list[str] | None = None, places: Places | None = None) -> ApiTurn:
         """``facts``: what the agent starts from (projects, sites, materials, units), read
         before the model runs. ``photo_key``: the photo this message carried; a write that
         takes a photo (an expense) gets it attached by the code. ``actions``: tools the caller
         runs itself, by name: ``(spec, async handler(arguments) -> content)``. ``channel``: how the
-        message came (``whatsapp_text`` | ``whatsapp_voice`` | ``whatsapp_image``), recorded on the entry."""
+        message came (``whatsapp_text`` | ``whatsapp_voice`` | ``whatsapp_image``), recorded on the entry.
+        ``places``: the person's projects and sites; with it, the code decides the site of every report ([213])."""
         channel = channel if channel in CHANNELS else TEXT_CHANNEL
         today = dt.datetime.now(ZoneInfo(timezone or "Asia/Kolkata")).date()
         waiting: list[PendingWrite | None] = list(ready or [])  # None = saved or dropped this turn
@@ -224,6 +343,8 @@ class ApiAgent:
         changed: list[int] = []  # [205]: waiting entries corrected in place this turn
         repeat_asked: list[str] = []  # WA-154: creates asked about this turn
         code_told: list[dict[str, Any]] = []  # WA-155: passed to the team by the code
+        site_ask: list[str] = []  # [213]: site names to ask about when the code cannot tell the site
+        decides_site = places is not None and (len(places.sites) > 1 or len(places.projects) > 1)
         tz = ZoneInfo(timezone or "Asia/Kolkata")
         their_words = " ".join([*(m.text or "" for m in history or [] if m.role == "user"), text])
 
@@ -300,6 +421,24 @@ class ApiAgent:
             tool = self._tools.get(name)
             if tool is None:
                 return ToolOutcome(content={"error": f"no tool named {name}"})
+            site_note = ""
+            if decides_site and site_scoped(tool):
+                # [213]: the code decides where a report goes, never the model (it took the project just created).
+                working = working_place(places, [e for e in waiting if e is not None] + new)
+                place = decide_site(text, places, arguments.get("site_id"), arguments.get("project_id"), working)  # type: ignore[arg-type]
+                if isinstance(place, list) or (place.site_id is None and "site_id" in tool.required):
+                    names = place if isinstance(place, list) else [place.name]
+                    site_ask[:] = site_options(names)
+                    return ToolOutcome(content={"error": (
+                        "Which site is this for? Nothing was prepared. Ask the person with `ask`, these as the options: "
+                        + ", ".join(site_ask))})
+                arguments = {k: v for k, v in arguments.items() if k != "site_id"}
+                if place.site_id:
+                    arguments["site_id"] = place.site_id
+                if "project_id" in tool.body_fields and place.project_id:
+                    arguments["project_id"] = place.project_id
+                if working is not None and place != working:
+                    site_note = f" · 📍 *{place.name}* (not {working.name})"
             missing = [r for r in tool.required if arguments.get(r) in (None, "")]
             if missing:
                 return ToolOutcome(content={"error": f"missing: {', '.join(missing)}"})
@@ -343,7 +482,7 @@ class ApiAgent:
                         "want another one; nothing was prepared. If they say yes, prepare it again (it then goes through).")})
                 entry = PendingWrite(
                     tool=name, method=tool.method, path=path, params=params, body=body,
-                    summary=str(arguments.get(CONFIRM_ARG) or "").strip(),
+                    summary=str(arguments.get(CONFIRM_ARG) or "").strip() + site_note,
                     idempotency_key=new_idempotency_key(),
                 )
                 new.append(entry)
@@ -411,7 +550,7 @@ class ApiAgent:
         calls = [{"tool": c.name, "arguments": c.arguments, "result": c.outcome.content if c.outcome else None}
                  for c in result.calls] + code_told
         still = [e for e in waiting if e is not None]
-        options = asked.get("options", []) or (unit_ask if not asked else [])
+        options = asked.get("options", []) or (unit_ask or site_ask if not asked else [])
         reply = (result.text or "").strip()
         missing = [u for u in dict.fromkeys(links) if u not in reply]
         if missing:  # WA-141: a link the code built always reaches the person, even if the model left it out
