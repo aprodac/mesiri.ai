@@ -75,7 +75,11 @@ slower (about 2-5 s against 1-2 s), and it depends more on the model following t
 - The entries **waiting for Save** (numbered), so "save it", "cancel the second one" and
   corrections work.
 - The **language and script** of the message, decided by the code (the shared detector,
-  `runtime.agent.wording.language_of`): Manglish stays in Latin letters.
+  `runtime.agent.wording.language_of`): Manglish stays in Latin letters. **A language the person
+  chose wins** (WA-169): `users.reply_language` (migration 0501; english / manglish / malayalam /
+  hindi / hinglish, NULL = follow each message), read each turn with `GET /me/preferences` beside the
+  facts (0.8 s cap; unreadable = the last one known). One decision, `whatsapp._turn_language`. Set with
+  `PUT /me/reply-language` (tool `set_reply_language`, a normal Save; `auto` clears it).
 - The **conversation of today and the two days before** (`memory.DayMemory`): the same Postgres day
   store (`day_store.py`; `assistant_sessions`, migration 0496), app name `mesiri_api`. Today in full
   (120 messages), the two days before their last 30, each marked with its day. Read in parallel
@@ -222,6 +226,7 @@ Entries wait per person in Redis for a day (an older list's buttons do nothing).
 | `POST /labour/attendance` and `POST /progress/activities` (same save handlers as WhatsApp) | WA-122 |
 | `POST /expenses` takes the bill photo (`media_object_key`, own company only) | WA-124 |
 | `GET /materials` lists `aliases`; `search` matches an alias | WA-127 |
+| `GET /me/preferences`, `PUT /me/reply-language`: the caller's own reply language (`users.reply_language`) | WA-169 |
 
 ## Measured so far
 
@@ -308,3 +313,4 @@ Tracked in [V1_TRACKER.md](../plans/V1_TRACKER.md):
 | WA-118 | Calls (read-only) |
 | WA-134 | **v3 locked** (Alan and Ilan, 2 Nov); v2 removed, failures fall back to classic |
 | WA-135 | Attendance-sheet photos; entries record photo / voice / text |
+| WA-169 | A chosen reply language is kept in the database and always wins |
