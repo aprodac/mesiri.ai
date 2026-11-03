@@ -156,12 +156,56 @@ class ProjectMemberAdd(BaseModel):
     role: str = "SITE_ENGINEER"
 
 
+_MEMBER_ROLES = frozenset({"ADMIN", "PROJECT_MANAGER", "SITE_ENGINEER", "FINANCE"})
+
+
+class MemberCandidate(BaseModel):
+    userId: uuid.UUID
+    fullName: str
+    role: str
+
+
 class ProjectMemberResponse(BaseModel):
     userId: uuid.UUID
     email: str
     fullName: str
     role: str
     status: str
+
+
+def same_project_name(name: str | None) -> str:
+    """[207]: a project name as compared for duplicates: case, spaces and width do not count
+    ("Rana Mart", "rana  mart", "RANA MART" are one project)."""
+    import unicodedata
+
+    return " ".join(unicodedata.normalize("NFKC", str(name or "")).casefold().split())
+
+
+async def _existing_project_named(
+    conn: AsyncConnection, org_id: object, name: str, *, other_than: uuid.UUID | None = None
+) -> str | None:
+    """The name of a project of this company that has the same name, else None."""
+    wanted = same_project_name(name)
+    if not wanted:
+        return None
+    rows = await conn.execute(
+        sa.select(_projects.c.id, _projects.c.name).where(_projects.c.organization_id == org_id)
+    )
+    for row in rows.fetchall():
+        if row.id != other_than and same_project_name(row.name) == wanted:
+            return row.name
+    return None
+
+
+async def _may_manage_members(auth_context: AuthorizationContext, project_id: uuid.UUID) -> bool:
+    """[207]: an admin, or a project manager of this project, may add people to it."""
+    role = auth_context.role.upper()
+    if role == "ADMIN":
+        return True
+    if role != "PROJECT_MANAGER":
+        return False
+    scope = auth_context.project_scope
+    return scope.grants_all_org_projects or project_id in scope.project_ids
 
 
 def _valid_send_deadline(value: str) -> str:
@@ -232,6 +276,10 @@ async def create_project(
     conn: AsyncConnection = Depends(get_db_conn),
 ):
     org_id = admin.get("org")
+    existing = await _existing_project_named(conn, org_id, body.name)
+    if existing is not None:
+        # [207]: "Rana Mart" was created three times in one evening from WhatsApp.
+        raise HTTPException(status_code=409, detail=f"{existing} already exists")
     project_id = uuid.uuid4()
     await conn.execute(
         _projects.insert().values(
@@ -332,6 +380,11 @@ async def update_project(
 
     values = {}
     if body.name is not None:
+        existing = await _existing_project_named(
+            conn, auth_context.organization_id, body.name, other_than=project_id
+        )
+        if existing is not None:
+            raise HTTPException(status_code=409, detail=f"{existing} already exists")
         values["name"] = body.name
     if body.code is not None:
         values["code"] = body.code
@@ -603,6 +656,27 @@ async def list_project_members(
     ]
 
 
+@router.get("/{project_id}/member-candidates", response_model=list[MemberCandidate])
+async def member_candidates(
+    project_id: uuid.UUID,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """[207]: the company's active people, for whoever may add them to this project (the
+    WhatsApp assistant matches a spoken name against them; it never creates a person)."""
+    if not await _may_manage_members(auth_context, project_id):
+        raise HTTPException(
+            status_code=403, detail="Only an admin or this project's manager can add people to it"
+        )
+    result = await conn.execute(
+        sa.text(
+            "SELECT id, full_name, role FROM users WHERE organization_id = :org_id AND status = 'active'"
+        ),
+        {"org_id": auth_context.organization_id},
+    )
+    return [MemberCandidate(userId=r.id, fullName=r.full_name or "", role=r.role or "") for r in result.fetchall()]
+
+
 @router.post("/{project_id}/members", response_model=ProjectMemberResponse, status_code=201)
 async def add_project_member(
     project_id: uuid.UUID,
@@ -610,8 +684,18 @@ async def add_project_member(
     auth_context: AuthorizationContext = Depends(get_auth_context),
     conn: AsyncConnection = Depends(get_db_conn),
 ):
-    if auth_context.role.upper() != "ADMIN":
-        raise HTTPException(status_code=403, detail="Admin access required to add member")
+    if not await _may_manage_members(auth_context, project_id):
+        raise HTTPException(
+            status_code=403, detail="Only an admin or this project's manager can add people to it"
+        )
+    from mesiri.authorization.roles import may_grant_role
+
+    role = body.role.strip().upper()
+    if role not in _MEMBER_ROLES:
+        raise HTTPException(status_code=422, detail=f"role must be one of {', '.join(sorted(_MEMBER_ROLES))}")
+    if not may_grant_role(auth_context.role, role):
+        raise HTTPException(status_code=403, detail=f"Only an admin can add someone as {role}")
+    body = body.model_copy(update={"role": role})
 
     proj_result = await conn.execute(
         sa.select(_projects.c.id).where(
