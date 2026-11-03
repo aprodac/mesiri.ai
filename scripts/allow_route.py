@@ -34,11 +34,15 @@ REFUSED = [
 HELD_WRITES = [(re.compile(r"^/labour/(attendance|workers)"), "Attendance / Workforce writes need the owner")]
 
 
-def refusal(method: str, path: str) -> str | None:
+#: The one refusal an owner-approved plan may lift (--owner-approved): a route that grants access.
+ACCESS = REFUSED[0][1]
+
+
+def refusal(method: str, path: str, *, owner_approved: bool = False) -> str | None:
     if method == "DELETE":
         return "deletes stay on the dashboard"
     for pattern, why in REFUSED:
-        if pattern.search(path):
+        if pattern.search(path) and not (owner_approved and why == ACCESS):
             return why
     if method != "GET":
         for pattern, why in HELD_WRITES:
@@ -92,10 +96,14 @@ def main() -> int:
     parser.add_argument("name")
     parser.add_argument("description")
     parser.add_argument("--ref", default="", help="the request's reference, e.g. #a83836")
+    parser.add_argument("--owner-approved", action="store_true",
+                        help="an owner approved this access route in the plan named by --ref (the API checks who may)")
     args = parser.parse_args()
     if not _NAME.match(args.name):
         parser.error("name: lower_snake_case, 3-41 characters")
-    why = refusal(args.method, args.path)
+    if args.owner_approved and not args.ref:
+        parser.error("--owner-approved needs --ref: the plan the owner approved")
+    why = refusal(args.method, args.path, owner_approved=args.owner_approved)
     if why:
         print(f"Refused: {args.method} {args.path}: {why}. Plan it for an owner instead.", file=sys.stderr)
         return 2
