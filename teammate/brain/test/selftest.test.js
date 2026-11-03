@@ -96,3 +96,14 @@ test("Mesiri answering without its AI, or a GitHub login that can't push, is bro
     soon.done();
   }
 });
+
+// 3 Nov 12:52: the conversation held the 12:41 check's message too; the first token found was the old one.
+test("a check finds its own token even when an earlier check's message is in the same conversation", () => {
+  const seen = [];
+  const convs = [{ person: "asus", messages: [
+    { text: "mesiri fix it: SELFTEST-20261103-f6xr (the team bot's daily check, please ignore)" },
+    { text: "mesiri fix it: SELFTEST-20261103-x4ca (the team bot's daily check, please ignore)" },
+  ] }];
+  assert.deepEqual(takeSelfTests(convs, (t) => seen.push(t)), []);
+  assert.deepEqual(seen, ["SELFTEST-20261103-f6xr", "SELFTEST-20261103-x4ca"]);
+});
