@@ -888,6 +888,8 @@ export class Brain {
       if (auto !== undefined) return auto ? say(auto) : undefined;
       const watch = this.prodWatch?.command(req); // TM-16: "@bot watch …"
       if (watch !== undefined) return say(watch);
+      const check = await this.selftest?.command(req); // TM-37: "@bot selftest"
+      if (check !== undefined) return check ? say(check) : undefined;
       const digest = await this.digest?.command(req); // TM-26: "@bot digest"
       if (digest !== undefined) return say(digest);
       const build = this.autobuild.command(req); // TM-18: "@bot autobuild [on|off]"

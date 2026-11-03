@@ -43,6 +43,7 @@ import { costRows } from "./cost.js";
 import { buildPath, prepareBuildTree, pushLeftovers } from "./build_tree.js";
 import { quietSend } from "./quiet.js";
 import { Evening } from "./board.js";
+import { SelfTest } from "./selftest.js";
 import { Digest } from "./digest.js";
 
 const log = (m) => console.log(`[brain] ${m}`);
@@ -418,9 +419,24 @@ if (prodWatchMinutes > 0 && Object.keys(opsByProject).length) {
     setInterval(() => digest.maybeSend().catch((e) => log(`digest: ${e.message}`)), 60 * 60_000).unref?.();
     log("digest: weekly, Monday from 9:00 IST, in each project's team group");
   }
+  // TM-37: the whole feedback loop tried for real every morning (08:00 IST); only a broken step is posted.
+  // TEAMMATE_SELFTEST=0 turns the daily run off ("@bot selftest" still works).
+  const selftest = new SelfTest({
+    listener,
+    projects: Object.keys(opsByProject),
+    notify: (project, text) => brain.notifyTeam(project, text),
+    file: join(dir, "selftest.json"),
+    log,
+  });
+  prodWatch.selfTestSeen = (token) => selftest.seen(token);
+  brain.selftest = selftest;
+  if (process.env.TEAMMATE_SELFTEST !== "0") {
+    setInterval(() => selftest.maybeRun().catch((e) => log(`selftest: ${e.message}`)), 10 * 60_000).unref?.();
+  }
   // TM-49: the day in four lines in each team group, from 19:00 IST (TEAMMATE_EVENING=0 turns it off).
   if (process.env.TEAMMATE_EVENING !== "0") {
     const evening = new Evening({
+      loopLine: (project) => selftest.line(project),
       projects: Object.keys(projects),
       items: async (project) => (await listener.items(project)).items || [],
       notify: (project, text) => brain.notifyTeam(project, text),

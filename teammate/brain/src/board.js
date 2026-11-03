@@ -71,8 +71,8 @@ export function eveningText(items, now = Date.now()) {
 
 export class Evening {
   /** @param {{projects: string[], items: (p) => Promise<object[]>, notify: (p, text) => Promise<any>, file: string, now?: () => number, log?: Function}} o */
-  constructor({ projects, items, notify, file, now = () => Date.now(), log = () => {} }) {
-    Object.assign(this, { projects, items, notify, file, now, log });
+  constructor({ projects, items, notify, file, now = () => Date.now(), log = () => {}, loopLine = () => null }) {
+    Object.assign(this, { projects, items, notify, file, now, log, loopLine });
   }
 
   state() {
@@ -94,7 +94,8 @@ export class Evening {
       if (state[project] === today) continue;
       try {
         const text = eveningText(await this.items(project), this.now());
-        if (text) await this.notify(project, text);
+        const loop = this.loopLine(project); // TM-37: this morning's check of the feedback loop
+        if (text) await this.notify(project, loop ? text.replace(/\n@bot status/, `\n${loop}\n@bot status`) : text);
         state[project] = today;
         writeFileSync(this.file, JSON.stringify(state));
         sent += text ? 1 : 0;

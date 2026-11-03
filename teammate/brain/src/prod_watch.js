@@ -18,6 +18,7 @@
 // The ops token stays in this process: Claude gets the flagged conversations in its prompt, never the token, so it
 // cannot query production itself. Per project: TEAMMATE_OPS_<PROJECT>_URL and TEAMMATE_OPS_<PROJECT>_TOKEN.
 
+import { takeSelfTests } from "./selftest.js";
 import { readFileSync, writeFileSync } from "node:fs";
 
 /** What a watch turn answers when nothing is worth reporting; the brain posts nothing for it. */
@@ -671,8 +672,9 @@ export class ProdWatch {
     if (reported.has(correlationId)) return false;
     const flagged = flagRows(rows).filter((f) => f.row.correlation_id === correlationId && f.row.feedback);
     if (!flagged.length) return false; // not (yet) a request: the regular look will see it
-    const convs = conversations(rows, flagged, reported).slice(0, 1);
+    let convs = conversations(rows, flagged, reported).slice(0, 1);
     for (const c of convs) for (const id of c.flags.keys()) reported.add(id);
+    convs = takeSelfTests(convs, (t) => this.selfTestSeen?.(t)); // TM-37: the daily check stops here
     s.reported = [...reported].slice(-2000);
     writeFileSync(this.file, JSON.stringify(state));
     this.log(`prod-watch ${project}: request ${correlationId} read at once`);
@@ -797,10 +799,11 @@ export class ProdWatch {
       const all = conversations(rows, flagged, reported);
       counts.flagged += flagged.length;
       counts.reported += Math.min(all.length, MAX_CONVERSATIONS);
-      const convs = all.slice(0, MAX_CONVERSATIONS);
+      let convs = all.slice(0, MAX_CONVERSATIONS);
       // More than one turn's worth: the rest wait for the next tick (the reported ids keep these from repeating).
       s.since = all.length > MAX_CONVERSATIONS ? all[MAX_CONVERSATIONS].at - 0.001 : Math.max(...fresh.map((r) => Number(r.at)));
       for (const c of convs) for (const id of c.flags.keys()) reported.add(id);
+      convs = takeSelfTests(convs, (t) => this.selfTestSeen?.(t)); // TM-37: the daily check stops here
       s.reported = [...reported].slice(-2000);
       writeFileSync(this.file, JSON.stringify(state));
       this.log(`prod-watch ${project}: ${fresh.length} new message(s), ${convs.length} flagged conversation(s)`);
