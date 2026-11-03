@@ -699,7 +699,7 @@ test("TM-29: an autobuild plan's payload starts from the found cause and the per
   assert.match(fastPathSection({ id: 7 }), /a scripted test that fails without the fix/);
 });
 
-test("TM-33: send_preview goes to the person who asked a UX / feature request, never for a plain bug", async () => {
+test("TM-33 / TM-69: send_preview goes to the person who asked, for a UX / feature request and for a bug fix too", async () => {
   const sent = [];
   const previews = [];
   const listener = { send: async (b) => sent.push(b) };
@@ -718,8 +718,10 @@ test("TM-33: send_preview goes to the person who asked a UX / feature request, n
   assert.match(ok.content[0].text, /Sent to the person who asked/);
   assert.deepEqual(previews[0], { correlation_id: "cor_0123456789abcdef0123456789abcdef", image_base64: png.toString("base64"), caption: "Two buttons instead of five", request_ref: "#012345" });
   assert.match(sent.at(-1).caption, /👀 Preview sent to Ravi #012345/);
-  const bug = await call("send_preview", { conversation: 2, html: "<b>x</b>", caption: "x" });
-  assert.equal(bug.isError, true); // a plain bug gets no preview
+  // TM-69 (3 Nov: "add that preview also, in between"): a bug fix shows them what Mesiri will answer after it.
+  const bug = await call("send_preview", { conversation: 2, html: "<b>x</b>", caption: "Saved at Green Villa" });
+  assert.match(bug.content[0].text, /Sent to the person who asked/);
+  assert.equal(previews[1].correlation_id, "cor_0123456789abcdef0123456789abcdef");
   const off = await make(async () => { throw new Error("previews are switched off on Mesiri (MESIRI_PREVIEWS)"); })("send_preview", { conversation: 1, html: "x", caption: "x" });
   assert.match(off.content[0].text, /switched off/);
   assert.equal(off.isError, true);

@@ -35,6 +35,9 @@ const RELEASE_NOTES = { mesiri: "apps/whatsapp-assistant/release_notes.json" };
 /** TM-64: fix rounds after a failed breaker review before a human decides; the review turn's own spending cap. */
 /** TM-64 (asked 3 Nov: "go for Opus 5.5 always for a fix"): the model of every build, fix and breaker review here. */
 const BUILD_MODEL = process.env.TEAMMATE_BUILD_MODEL || "claude-opus-5-5";
+/** TM-69: when the person who asked hears "still working on it": not live after this, or stuck after STUCK_MS. */
+const SLOW_MS = Number(process.env.TEAMMATE_SLOW_NOTE_MINUTES || 120) * 60_000;
+const STUCK_MS = 30 * 60_000;
 const REVIEW_ROUNDS = Number(process.env.TEAMMATE_REVIEW_ROUNDS || 2);
 const REVIEW_USD = Number(process.env.TEAMMATE_REVIEW_USD || 8);
 const BUDGET = { planning: Number(process.env.TEAMMATE_BRAIN_PLAN_USD || 3), working: Number(process.env.TEAMMATE_BRAIN_WORK_USD || 25) };
@@ -390,13 +393,13 @@ export class Brain {
    *   owner?: string, model?: string, env?: Record<string, string>, log?: (m: string) => void, now?: () => Date,
    * }} opts
    */
-  constructor({ queryFn, projects, dir, listener, tools, prepare = () => {}, prepareBuild = null, pushBuild = null, pendingWork = null, saveReplays = null, owner = "Ilan", model, env = process.env, log = () => {}, now = () => new Date(), routines = {}, fireFn = null, partners = {}, landed, accounts = null, work = null }) {
+  constructor({ queryFn, projects, dir, listener, tools, prepare = () => {}, prepareBuild = null, pushBuild = null, pendingWork = null, saveReplays = null, progress = null, owner = "Ilan", model, env = process.env, log = () => {}, now = () => new Date(), routines = {}, fireFn = null, partners = {}, landed, accounts = null, work = null }) {
     // routines: { project: { url, token } } -- approved work runs as a cloud routine session the owner can
     // watch in Claude Code (hybrid, TM-03b); projects without one run the working turn here.
     // partners: { project: { url, token } } -- the routine bound to Ilan Usman's cloud session (TM-12).
     // accounts: several Claude accounts, each with its own login, routines and partners (TM-14); without it,
     // one account made of `routines` / `partners` and whatever login `env` carries.
-    Object.assign(this, { queryFn, projects, listener, tools, prepare, prepareBuild, pushBuild, pendingWork, saveReplays, owner, model, env, log, now, fireFn });
+    Object.assign(this, { queryFn, projects, listener, tools, prepare, prepareBuild, pushBuild, pendingWork, saveReplays, progress, owner, model, env, log, now, fireFn });
     this.accounts = accounts || new Accounts({ list: [{ id: "a", token: null, routines, partners }], now: () => this.now().getTime() });
     this.boardFile = `${dir}/board.json`;
     this.sessionsFile = `${dir}/sessions.json`;
@@ -837,6 +840,36 @@ export class Brain {
       if (plan.status === "failed") return { ok: false, review, stuck: true };
     }
     return { ok: null, why: "no review round ran" };
+  }
+
+  /**
+   * TM-69 (3 Nov: "nothing waits unseen" for the person too). A request someone asked for that isn't live after
+   * `slowMs` (2 h), or sooner once it is stuck (held for an owner, still wrong after the breaker review, a failed or
+   * refused push), gets ONE honest "still working on it, I haven't forgotten" from Mesiri, in their language, with
+   * its reference. Called from the watchdog's tick. Returns the plan ids told.
+   */
+  async tellSlow({ slowMs = SLOW_MS, stuckMs = STUCK_MS, maxAgeMs = 2 * 86_400_000 } = {}) {
+    if (!this.progress) return [];
+    const now = this.now().getTime();
+    const told = [];
+    for (const plan of Object.values(this.planStore.plans)) {
+      const cid = (plan.asked_for || []).at(-1);
+      if (!cid || plan.slow_told || plan.live_at || plan.deployed_at || plan.session === "upgrade") continue;
+      if (["done", "wont_do", "stale", "dropped"].includes(plan.status) || plan.told?.stage === "slow") continue;
+      const age = now - Date.parse(plan.at || plan.started_at || 0);
+      if (!Number.isFinite(age) || age > maxAgeMs) continue;
+      const stuck = Boolean(plan.held) || ["review_failed", "failed", "unpushed"].includes(plan.status);
+      if (age < slowMs && !(stuck && age >= stuckMs)) continue;
+      plan.slow_told = this.now().toISOString(); // once, even if Mesiri refuses it (window, switch off)
+      writeJson(this.plansFile, this.planStore);
+      try {
+        await this.progress(plan.reply_project || plan.chat_project || plan.project, { correlation_id: cid, stage: "slow", line: "", request_ref: requestRef(cid) });
+        told.push(plan.id);
+      } catch (e) {
+        this.log(`brain: slow note [${plan.id}]: ${e.message}`);
+      }
+    }
+    return told;
   }
 
   /**
@@ -1291,6 +1324,8 @@ export class Brain {
     const why = this.autobuild.decide(plan, project);
     if (why) {
       this.log(`brain: plan [${plan.id}] not autobuilt: ${why}`);
+      plan.held = why; // TM-69: the person who asked hears honestly that it takes longer (tellSlow)
+      writeJson(this.plansFile, this.planStore);
       if (typeof plan.id === "number") this.listener.updateItem(plan.id, { held: why, project }).catch(() => {});
       return say(`🙋 *Needs you* ✋ [${plan.id}] ${plan.title}\nWaiting for an owner because ${why}. Reply @bot ok ${plan.id} to build it.`);
     }

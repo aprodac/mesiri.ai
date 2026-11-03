@@ -111,8 +111,11 @@ function ensureRepo({ repo, branch, cwd, ghToken }) {
 }
 
 /** TM-33: ask Mesiri to send a preview to the person who asked (Mesiri checks every guard; errors come back). */
-async function sendPreview(baseUrl, body) {
-  const res = await fetch(`${baseUrl.replace(/\/$/, "")}/teammate-api/preview`, {
+/** TM-69: the same call for the progress messages (understood / again / slow) to the person who asked. */
+const sendProgress = (baseUrl, body) => sendPreview(baseUrl, body, "progress");
+
+async function sendPreview(baseUrl, body, route = "preview") {
+  const res = await fetch(`${baseUrl.replace(/\/$/, "")}/teammate-api/${route}`, {
     method: "POST",
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -334,6 +337,12 @@ const brain = new Brain({
   prepareBuild, // TM-31: "@bot build here"
   pushBuild: (project) => pushLeftovers(project, { git: gitAs(project.ghToken), log }), // TM-56
   pendingWork: (project) => pendingWork(project, { git: gitAs(project.ghToken) }), // TM-64: the breaker review reads it
+  // TM-69: "still working on it" to the person who asked, through Mesiri (its route checks everything).
+  progress: (project, body) => {
+    const ops = opsByProject[project];
+    if (!ops || !token) throw new Error(`no Mesiri API for ${project}`);
+    return sendProgress(ops.url, body);
+  },
   // TM-54: the askers' real v3 turns (read-only ops API, which builds don't have) into the build copy for their test.
   saveReplays: async (project, plan) => {
     const source = opsByProject[plan.reply_project || plan.chat_project || plan.project];
@@ -352,6 +361,7 @@ const brain = new Brain({
       ctx, listener, render, plans, screenshotHosts, partner: p ? (text) => fireRoutine(p, text) : null,
       // TM-33: the preview goes through Mesiri's own number (its /teammate-api/preview, off unless MESIRI_PREVIEWS=on).
       sendPreview: ops && token ? (body) => sendPreview(ops.url, body) : null,
+      sendProgress: ops && token ? (body) => sendProgress(ops.url, body) : null, // TM-69
       workStatus: async (id) => {
         const plan = brain.planStore.plans[id];
         return plan ? formatWorkStatus(await brain.workStatus(plan), Date.now()) : `No plan [${id}].`;

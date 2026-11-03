@@ -37,6 +37,8 @@ export class Watchdog {
     if (this.busy) return;
     this.busy = true;
     try {
+      // TM-69: the people still waiting hear once that it takes longer (never throws).
+      await Promise.resolve(this.brain.tellSlow?.()).catch((e) => this.brain.log(`watchdog: slow notes: ${e.message}`));
       const running = Object.values(this.brain.planStore.plans).filter((p) => p.status === "running_in_cloud" || p.status === "running_here"); // TM-31: builds here too
       const now = this.brain.now().getTime();
       for (const plan of running) {
@@ -95,6 +97,10 @@ export class Watchdog {
     }
 
     for (const c of ws.commits) {
+      if (c.deploy.state === "green" && !plan.deployed_at) {
+        plan.deployed_at = c.deploy.at || new Date(now).toISOString(); // TM-69: deployed is no longer "slow"
+        b.savePlans();
+      }
       if (st.posted.includes(c.sha)) continue;
       const decided = c.deploy.state === "green" || c.deploy.state === "red";
       if (!decided && now - Date.parse(c.at) < this.cfg.deployWaitMs) continue; // wait for the deploy's result

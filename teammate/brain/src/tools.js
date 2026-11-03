@@ -111,6 +111,28 @@ export function acceptanceRequired(ctx) {
   return Boolean((ctx.autobuild || ctx.verify_plan != null) && !ctx.auto_cycle && ctx.session !== "upgrade");
 }
 
+/**
+ * TM-69: the person who asked hears at once that they were understood (stage "understood"), or, for a fix of a fix,
+ * what was found this time ("again"); a plan held for an owner says honestly that it takes longer ("slow"). Mesiri
+ * checks and sends it (POST /teammate-api/progress). Returns a sentence for the planner ("" when nothing was sent).
+ */
+export async function tellAsker({ sendProgress, saved, asked, understood, earlier = [], held = null, ctx = {} }) {
+  const cid = (asked.asked_for || []).at(-1);
+  const line = String(understood || "").trim();
+  if (!sendProgress || !cid || !line) return "";
+  const refix = earlier.length > 0 || ctx.verify_plan != null;
+  const stage = held ? "slow" : refix ? "again" : "understood";
+  const round = refix ? Math.min(5, (asked.round || earlier.length || 1) + 1) : 1;
+  try {
+    const r = await sendProgress({ correlation_id: cid, stage, line, request_ref: requestRef(cid), round });
+    saved.told = { stage, at: new Date().toISOString(), sent: Boolean(r?.sent) };
+    return r?.sent ? ` ${asked.asked_by || "The person who asked"} was told (in their language) what you understood.` : "";
+  } catch (e) {
+    saved.told = { stage, error: String(e.message).slice(0, 160) };
+    return ` Telling them didn't work (${String(e.message).slice(0, 120)}); say so in the report.`;
+  }
+}
+
 /** TM-53: the plan names the mechanism and the test that fails because of it. */
 export function refixReady(plan) {
   return /^\s*[*_-]*\s*root cause\s*[*_]*\s*:/im.test(plan) && /^\s*[*_-]*\s*failing test\s*[*_]*\s*:/im.test(plan);
@@ -141,10 +163,10 @@ export function whoAsked(ctx, askedFor = [], plans = null) {
   return out;
 }
 
-/** TM-33: feedback kinds that get an "Is this how you want it?" preview (a plain bug does not). */
+/** TM-33: feedback kinds that must get an "Is this how you want it?" preview (TM-44 checks it); since TM-69 a bug fix may have one too. */
 export const PREVIEW_KINDS = /^(bad_ux|missing_feature|idea)\b/;
 
-export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait = sleep, partner = null, workStatus = null, tellJob = null, sendPreview = null }) {
+export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait = sleep, partner = null, workStatus = null, tellJob = null, sendPreview = null, sendProgress = null }) {
   // Group-side calls use the group's project; ctx.project is the repo this conversation works in.
   const chatProject = ctx.chat_project || ctx.project;
   const post = (body) => listener.send({ chat: ctx.reply_chat, project: chatProject, ...body });
@@ -305,7 +327,7 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
             ? [
                 tool(
                   "send_preview",
-                  "TM-33: for a bad-UX, missing-feature or idea request ONLY (never a plain bug), send the person who asked an \"Is this how you want it?\" picture of the reply Mesiri will give after the fix, with Confirm / Change it buttons. Draw it as a phone-width WhatsApp chat (390 px, inline CSS) with a visible PREVIEW label; show exactly what the plan builds, nothing more. Don't wait for their answer: the plan builds anyway; Change it comes back as feedback to add to the running build. At most one per request; it goes only to companies on v3, inside WhatsApp's 24-hour window, and only when the owners switched previews on.",
+                  "TM-33 / TM-69: for any request where what the person sees will change (a bug fix included: what Mesiri will answer them after it), send the person who asked an \"Is this how you want it?\" picture of the reply Mesiri will give after the fix, with Confirm / Change it buttons. Draw it as a phone-width WhatsApp chat (390 px, inline CSS) with a visible PREVIEW label; show exactly what the plan builds, nothing more. Don't wait for their answer: the plan builds anyway; Change it comes back as feedback to add to the running build. At most one per request; it goes only to companies on v3, inside WhatsApp's 24-hour window, and only when the owners switched previews on.",
                   {
                     conversation: z.number().int().min(1).describe("The conversation number from the watch message"),
                     html: z.string().min(1).max(200_000).describe("Self-contained HTML of the proposed WhatsApp reply (390 px wide), with a PREVIEW label"),
@@ -314,8 +336,12 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
                   async ({ conversation, html, caption }) => {
                     const conv = ctx.watch_conversations[conversation - 1];
                     if (!conv) return fail(`There is no conversation ${conversation}.`);
-                    const request = [...conv.messages].reverse().find((m) => PREVIEW_KINDS.test(String(m.feedback || "")));
-                    if (!request) return fail("This conversation has no bad-UX, missing-feature or idea request: no preview for a plain bug.");
+                    // TM-69: their feedback message when there is one, else the message where it went wrong (a bug).
+                    const flagged = (m) => Boolean(m.feedback) || Boolean(conv.flags?.has?.(m.correlation_id));
+                    const request = [...conv.messages].reverse().find((m) => PREVIEW_KINDS.test(String(m.feedback || "")))
+                      || [...conv.messages].reverse().find(flagged)
+                      || [...conv.messages].reverse().find((m) => m.correlation_id);
+                    if (!request) return fail("This conversation has no message of the person to answer.");
                     if (!render) return fail("Pictures aren't available on this server (no browser installed).");
                     const png = await render.html(html, 390);
                     let result;
@@ -393,9 +419,10 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
         auto: z.object({ area: z.string().max(40) }).optional().describe("Only in an unattended auto cycle: area is \"conversation\" or \"getting_out\". Anything else (or missing) is left for a human ok."),
         asked_for: z.array(z.string().max(80)).max(20).optional().describe("Production watch: the correlation ids (shown in brackets) of the messages where people asked for this or complained. Records who asked, so they are told and their use is tracked."),
         owner_ok: z.string().max(200).optional().describe("Only when YOU think an owner must say ok before this is built (and docs/DECISIONS.md doesn't already allow it): the reason in a few words. The code then holds the plan and posts why; it is never built until '@bot ok <n>'. Never write \"needs your OK\" in a message instead: say it here, or the plan builds."),
+        understood: z.string().min(10).max(280).optional().describe("TM-69, required when asked_for is given: what Mesiri sends the person NOW, in THEIR language and letters (Manglish in Latin letters, Malayalam script, …), one or two sentences: THEIR problem said back specifically (what they did, what went wrong) and what it cost them, e.g. \"Primer-um drum size-um add aayi, pakshe Green Villa-il vanna 2 drum save aayilla: avide stock 40 L kuravaanu.\" For a fix of a fix: what you found this time. Never a question, never 'your feedback', no links, numbers of other people or @names. Mesiri adds 'the team is fixing it now' and the reference."),
         accept: z.array(z.string().min(8).max(300)).max(8).optional().describe("TM-63, required for product plans: what is TRUE when it is fixed, after the person's WHOLE journey (every message and tap, through Save and the step after it), as saved records / calls made, never reply wording. E.g. \"after Save: material Primer exists\", \"1 drum = 20 L is set on Primer\", \"40 L Primer received at Green Villa, Kakkanad\", \"no new project is created\". 1-8 lines; the build's test must assert each one, and a reviewer checks it."),
       },
-      async ({ title, plan, type, auto, asked_for, owner_ok, accept }) => {
+      async ({ title, plan, type, auto, asked_for, owner_ok, accept, understood }) => {
         let itemId = null;
         // TM-63 (3 Nov: [210] fixed the question "Paint or add Primer?" and was shipped; the very next steps, "add it" →
         // its drum size → the receipt → Save, failed as [217] and [218]). A product plan names the end state of the
@@ -408,6 +435,12 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
             + "complaint usually comes from. Then call propose_plan again.");
         }
         const asked = whoAsked(ctx, asked_for, plans);
+        // TM-69: the person hears at once that they were understood, in their words.
+        if (sendProgress && asked.asked_for?.length && !String(understood || "").trim()) {
+          return fail("Give understood: one or two sentences in THEIR language and letters that say THEIR problem back "
+            + "specifically (what they did, what went wrong, what it cost them). Mesiri sends it to them now, so they know "
+            + "they were understood. Never a question. Then call propose_plan again.");
+        }
         // TM-53 (3 Nov: the TMT unit went [203] → [206] → WA-151 → WA-152 in a day, each a guess on top of the last):
         // a second fix of the same complaint must name the mechanism and the test that fails because of it.
         const earlier = refixOf({ title, plan, asked: asked.asked_for || [] }, plans?.all?.() || [], ctx.verify_plan);
@@ -426,10 +459,11 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
         const saved = plans.save({ id: itemId, project: ctx.project, chat_project: chatProject, chat: ctx.chat, chat_name: ctx.chat_name, session: ctx.session, title, plan, by: ctx.sender, ...(owner_ok ? { owner_ok } : {}), ...(acceptance.length ? { accept: acceptance } : {}), ...asked, ...(ctx.auto_cycle ? { auto: auto || null, cycle: ctx.auto_cycle } : {}) });
         if (ctx.new_plans) ctx.new_plans.push(saved.id); // TM-18: autobuild starts it after this turn
         const held = holdReason(saved); // the same check autobuild runs, so what the group reads matches what happens
-        if (held && (ctx.autobuild || ctx.auto_cycle)) return { content: [{ type: "text", text: `Plan [${saved.id}] recorded and HELD: ${held}. It is not built until an owner replies "@bot ok ${saved.id}". Say exactly that; never say it is being built.` }] };
-        if (ctx.autobuild) return { content: [{ type: "text", text: `Plan [${saved.id}] recorded. Autobuild is on: right after this turn the code checks it and starts building it (anything it holds back is posted with the reason). Don't ask for an ok; say it is being built.` }] };
-        if (ctx.auto_cycle) return { content: [{ type: "text", text: `Plan [${saved.id}] recorded. The system decides about auto-approval (scope and guard words are checked in code); don't ask anyone for an ok. Now call cycle_report.` }] };
-        return { content: [{ type: "text", text: `Plan [${saved.id}] recorded. Ask the team to reply "@bot ok ${saved.id}" to go ahead.` }] };
+        const told = await tellAsker({ sendProgress, saved, asked, understood, earlier, held, ctx });
+        if (held && (ctx.autobuild || ctx.auto_cycle)) return { content: [{ type: "text", text: `Plan [${saved.id}] recorded and HELD: ${held}. It is not built until an owner replies "@bot ok ${saved.id}". Say exactly that; never say it is being built.${told}` }] };
+        if (ctx.autobuild) return { content: [{ type: "text", text: `Plan [${saved.id}] recorded. Autobuild is on: right after this turn the code checks it and starts building it (anything it holds back is posted with the reason). Don't ask for an ok; say it is being built.${told}` }] };
+        if (ctx.auto_cycle) return { content: [{ type: "text", text: `Plan [${saved.id}] recorded. The system decides about auto-approval (scope and guard words are checked in code); don't ask anyone for an ok. Now call cycle_report.${told}` }] };
+        return { content: [{ type: "text", text: `Plan [${saved.id}] recorded. Ask the team to reply "@bot ok ${saved.id}" to go ahead.${told}` }] };
       },
     ),
     tool(
