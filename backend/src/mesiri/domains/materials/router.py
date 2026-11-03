@@ -309,6 +309,35 @@ async def set_unit_conversion(
     }
 
 
+@router.get("/{material_id}/unit-check")
+async def check_material_unit(
+    material_id: uuid.UUID,
+    unit_id: uuid.UUID,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """3 Nov 2026 (WA-165, Paraclette: "1 load M-sand" was prepared, then refused at Save because M-sand is stocked
+    in bags): can a quantity in ``unit_id`` be recorded for this material? Yes when it is the Stock Unit or a
+    conversion into it is known (the same decision saving makes). Read-only, so the question comes before Save."""
+    material = await PostgresMaterialCatalogRepository(conn).get_by_id(auth_context.organization_id, material_id)
+    if material is None:
+        raise HTTPException(status_code=404, detail="Material not found")
+    units = UnitsOfMeasureRepository(conn)
+    unit = await units.get_by_id(unit_id)
+    if unit is None or not unit.get("is_active", True):
+        raise HTTPException(status_code=422, detail="unit_id is not a valid active unit")
+    stock = await units.get_by_id(material["default_unit_id"]) if material.get("default_unit_id") else None
+    answer = {
+        "material": material["name"], "unit": unit["code"], "unit_name": unit["display_name"],
+        "stock_unit": (stock or unit)["code"], "stock_unit_name": (stock or unit)["display_name"],
+    }
+    if stock is None or str(stock["id"]) == str(unit["id"]):
+        return {**answer, "fits": True, "one_unit_equals": "1"}
+    per = await _known_per_stock_unit(conn, auth_context.organization_id, material, unit, stock)
+    one = f"{(Decimal(1) / per).quantize(Decimal('0.001')).normalize():f}" if per else None  # stored to 7 places
+    return {**answer, "fits": per is not None, "one_unit_equals": one}
+
+
 @router.get("/units-of-measure")
 async def list_units_of_measure(
     auth_context: AuthorizationContext = Depends(get_auth_context),
@@ -806,16 +835,29 @@ def _resolve_costs(
     return unit_cost, total_cost
 
 
+async def _known_per_stock_unit(
+    conn: AsyncConnection, organization_id: uuid.UUID, material: dict, unit: dict, stock: dict
+) -> Decimal | None:
+    """How many ``unit`` make one Stock Unit of ``material``: the company's own conversion (WA-41), else a fixed one;
+    None when neither is known. The one place this is decided: saving converts with it, ``unit-check`` reports it."""
+    from mesiri.domains.materials.unit_conversion import built_in_per_stock_unit
+    from mesiri.infrastructure.postgres.repositories.material_unit_conversions import (
+        PostgresMaterialUnitConversionRepository,
+    )
+
+    per = await PostgresMaterialUnitConversionRepository(conn).get(
+        organization_id=organization_id, material_id=material["id"], from_unit_id=unit["id"]
+    ) or built_in_per_stock_unit(str(unit["code"]), str(stock["code"]), str(material["name"]))
+    return per if per is not None and per > 0 else None
+
+
 async def _convert_to_stock_unit(conn: AsyncConnection, organization_id: uuid.UUID, body: Any) -> str | None:
     """2 Nov 2026 (Ilan, Paraclette: "10 TMT steel bars used", TMT stocked in kg): a quantity reported in another
     unit is converted into the material's Stock Unit when the conversion is known -- the company's own
     (material_unit_conversions, WA-41) or a fixed one (kg/tonnes, cft/m3/brass, cement bags, steel bars by
     diameter). The body is rewritten in place (quantity, unit, a rate per unit) and the note keeps what was
     reported. Unknown: nothing changes, and the Stock Unit check below refuses with the unit it needs."""
-    from mesiri.domains.materials.unit_conversion import built_in_per_stock_unit, to_stock_quantity
-    from mesiri.infrastructure.postgres.repositories.material_unit_conversions import (
-        PostgresMaterialUnitConversionRepository,
-    )
+    from mesiri.domains.materials.unit_conversion import to_stock_quantity
 
     material = await PostgresMaterialCatalogRepository(conn).get_by_id(organization_id, body.material_id)
     if not material or material.get("default_unit_id") is None or str(material["default_unit_id"]) == str(body.unit_id):
@@ -824,10 +866,8 @@ async def _convert_to_stock_unit(conn: AsyncConnection, organization_id: uuid.UU
     unit, stock = await units.get_by_id(body.unit_id), await units.get_by_id(material["default_unit_id"])
     if not unit or not stock:
         return None
-    per = await PostgresMaterialUnitConversionRepository(conn).get(
-        organization_id=organization_id, material_id=material["id"], from_unit_id=unit["id"]
-    ) or built_in_per_stock_unit(str(unit["code"]), str(stock["code"]), str(material["name"]))
-    if per is None or per <= 0:
+    per = await _known_per_stock_unit(conn, organization_id, material, unit, stock)
+    if per is None:
         return None
     said = f"{Decimal(str(body.quantity)).normalize():f} {unit['display_name']}"
     reported = f"reported as {said}"
