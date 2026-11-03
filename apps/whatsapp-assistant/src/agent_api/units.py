@@ -95,6 +95,12 @@ def _one_of(unit_name: str, material: str) -> str:
     return {"bags": "bag", "loads": "load", "boxes": "box", "rolls": "roll"}.get(low, unit_name)
 
 
+def is_stock_unit_refusal(reason: str) -> bool:
+    """WA-165: the API refused a line because the material is counted in another unit and no conversion is known:
+    Save cannot work until the person says the size."""
+    return bool(_STOCK_UNIT_REASON.search(reason or "")) and "no conversion" in (reason or "").casefold()
+
+
 def plain_refusal(reason: str, language: str | None) -> str:
     """The API's refusal as something a site person can act on; never the raw validation text."""
     lang = language if language in _PLAIN else "english"

@@ -31,7 +31,7 @@ from runtime.ai_outage import is_budget_error
 from .client import ApiClient, new_idempotency_key
 from .materials import ADD_TOOL, NEW, pending_ref, settle_material
 from .tools import CONFIRM_ARG, MATERIAL_SAID, ApiTool
-from .units import resolve_unit, unit_choices, unit_rows
+from .units import is_uuid, resolve_unit, unit_choices, unit_rows
 
 SOP = (Path(__file__).with_name("SOP.md")).read_text(encoding="utf-8")
 
@@ -418,6 +418,11 @@ class ApiAgent:
                 if problem:
                     unit_ask[:] = await unit_buttons(client)
                     return {"error": problem}
+            if "unit_id" in body and {"unit_id", "unit", "material_id"} & set(changes):
+                # WA-165: a corrected unit or material is checked against the stock unit like a new line.
+                problem = await settle_stock_unit(client, body, [*waiting, *new])
+                if problem:
+                    return {"error": problem.replace("Nothing is prepared for it.", "The entry was NOT changed.")}
             summary = str(arguments.get("confirm_line") or "").strip() or entry.summary
             waiting[n - 1] = PendingWrite(tool=entry.tool, method=entry.method, path=entry.path, params=entry.params,
                                           body=body, summary=summary, idempotency_key=new_idempotency_key())
@@ -512,6 +517,15 @@ class ApiAgent:
                     unit_ask[:] = await unit_buttons(client)
                     return ToolOutcome(content={"error": problem})
                 unit_ask.clear()
+                if body.get("material_id") and not new_ref:  # WA-165: a unit the material cannot be saved in
+                    problem = await settle_stock_unit(client, body, [*waiting, *new])
+                    if problem:
+                        return ToolOutcome(content={"error": problem})
+            if tool.is_write and "from_unit_id" in tool.body_fields:
+                problem = await settle_unit(client, body, "from_unit_id")
+                if problem:
+                    unit_ask[:] = await unit_buttons(client)
+                    return ToolOutcome(content={"error": problem})
             if name == MEMBER_TOOL:
                 problem, buttons = await settle_member(client, path, body)
                 if problem:
@@ -666,8 +680,9 @@ def _detail(body: Any) -> str:
     return str(body)[:200]
 
 
-async def settle_unit(client: ApiClient, body: dict[str, Any]) -> str:
-    """Make ``body["unit_id"]`` the id of an active unit (it may be "bags", a code or a wrong id).
+async def settle_unit(client: ApiClient, body: dict[str, Any], field: str = "unit_id") -> str:
+    """Make ``body[field]`` the id of an active unit (it may be "bags", a code or a wrong id). ``field`` is
+    ``unit_id`` on a line, ``from_unit_id`` on a unit conversion (WA-165: "load" there was refused at Save).
     Returns "" when it is settled, else what to tell the model (it then asks one question)."""
     try:
         response = await client.call("GET", "/materials/units-of-measure")
@@ -676,12 +691,46 @@ async def settle_unit(client: ApiClient, body: dict[str, Any]) -> str:
     units = unit_rows(response.body) if response.ok else []
     if not units:
         return ""
-    unit = resolve_unit(units, body.get("unit_id"))
+    unit = resolve_unit(units, body.get(field))
     if unit is None:
-        return (f"unit_id {str(body.get('unit_id'))[:40]!r} is not one of the company's units. Use the id of one of: "
+        return (f"{field} {str(body.get(field))[:40]!r} is not one of the company's units. Use the id of one of: "
                 f"{unit_choices(units)}. If you cannot tell which unit they mean, ask them with `ask` and those units as options.")
-    body["unit_id"] = str(unit["id"])
+    body[field] = str(unit["id"])
     return ""
+
+
+CONVERSION_TOOL = "set_unit_conversion"
+
+
+def _converts(entry: PendingWrite | None, material_id: str, unit_id: str) -> bool:
+    """A waiting ``set_unit_conversion`` for this material from this unit (it saves first, so the line converts)."""
+    return (entry is not None and entry.tool == CONVERSION_TOOL and f"/materials/{material_id}/" in entry.path
+            and str(entry.body.get("from_unit_id") or "") == unit_id)
+
+
+async def settle_stock_unit(client: ApiClient, body: dict[str, Any], others: list[PendingWrite | None]) -> str:
+    """WA-165 (3 Nov, Paraclette: "1 load M-sand" was prepared, then refused at every Save: M-sand is stocked in
+    bags and no load size was known). Before a line is prepared, the API says whether its unit can be recorded for
+    the material (``GET /materials/{id}/unit-check``, the decision saving makes). "" when it can (or a conversion
+    for it is waiting in the list, or the API cannot tell: its own check still decides at Save); else what to tell
+    the model: nothing is prepared, ONE question about the size, then the conversion and the line together."""
+    material_id, unit_id = str(body.get("material_id") or ""), str(body.get("unit_id") or "")
+    if not (is_uuid(material_id) and is_uuid(unit_id)) or any(_converts(e, material_id, unit_id) for e in others):
+        return ""
+    try:
+        response = await client.call("GET", f"/materials/{material_id}/unit-check", params={"unit_id": unit_id})
+    except Exception:  # noqa: BLE001
+        return ""
+    found = response.body if response.ok and isinstance(response.body, dict) else {}
+    if found.get("fits", True):
+        return ""
+    material, stock, said = found.get("material"), found.get("stock_unit_name"), found.get("unit_name")
+    return (f"{material} is counted in {stock} in their stock, and how many {stock} one {said} is is not known, so "
+            f"this line cannot be saved yet. Nothing is prepared for it. Ask ONE question with `ask`, in their "
+            f"language: how many {stock} is one {said} of {material}? (for steel bars, the bar size is enough: use the "
+            f"sizes in your instructions as options). When they answer, prepare first `set_unit_conversion` (material_id "
+            f"{material_id}, from_unit_id {unit_id}, one_unit_equals their number), THEN this line again exactly as "
+            f"they said it, in {said}: they save together, converted. Prepare everything else in their message as usual.")
 
 
 MEMBER_TOOL = "add_project_member"

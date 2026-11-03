@@ -67,7 +67,7 @@ from .app import build_api_app
 from .client import Actor, ApiClient
 from .memory import DayMemory, tools_version
 from .tools import build_tools
-from .units import plain_refusal, unit_rows
+from .units import is_stock_unit_refusal, plain_refusal, unit_rows
 
 _log = logging.getLogger(__name__)
 
@@ -330,7 +330,7 @@ class ApiWhatsApp:
             run = dict(
                 text=text, history=history, ready=ready, sender_name=ctx.full_name or "",
                 timezone=getattr(ctx, "timezone", None) or "Asia/Kolkata", correlation_id=message.correlation_id,
-                facts=facts + _working_fact(places), photo_key=photo_key, language=_language(text),
+                facts=facts + _working_fact(places), photo_key=photo_key, language=_language(text, state.get("language")),
                 channel=_channel(message),
                 # WA-154: the person's creates of the last day, and the ones they were just asked about.
                 recent_saves=state.get("recent_saves") or [], repeat_ok=state.get("repeat_asked") or [],
@@ -377,7 +377,7 @@ class ApiWhatsApp:
             "pending": [e.summary for e in turn.pending], "asked": turn.question,
             **({"dropped_question": turn.dropped_question} if turn.dropped_question else {}),
         }, started)
-        state["language"] = _language(text)
+        state["language"] = _language(text, state.get("language"))  # WA-165: "Tower A" keeps their language
         state["repeat_asked"] = list(turn.repeat_asked)  # the yes comes in the next message only
         state["asked"] = question_left_open(turn.question, turn.options, turn.reply)  # [219]: answered next, or dropped
         state["recent_saves"] = remember_saves(state.get("recent_saves"), turn.saved, time.time())
@@ -451,10 +451,8 @@ class ApiWhatsApp:
 
     async def _language_of_sender(self, ctx: Any, text: str = "") -> str | None:
         """The language of their words, else the last one they used (kept with the waiting list)."""
-        found = _language(text) if text else None
-        if found:
-            return found
-        return (await self._state(ctx)).get("language")
+        usual = (await self._state(ctx)).get("language")
+        return _language(text, usual) if text else usual
 
     async def _outage(self, message: Any, ctx: Any, text: str, error: BaseException, *,
                       state: dict | None = None) -> None:
@@ -466,8 +464,8 @@ class ApiWhatsApp:
         _log.error("agent_api.outage correlation_id=%s attempt=%s error=%r", message.correlation_id, attempt,
                    error, exc_info=error)
         if english:
-            language = _language(text) if text else None
-            language = language or (state or {}).get("language") or (await self._state(ctx)).get("language")
+            usual = (state or {}).get("language") or (await self._state(ctx)).get("language")
+            language = _language(text, usual) if text else usual
             line = _in(language, _OUTAGE_LINES[english], english)
             await self._send(ReplySpec(text=line), message.sender.wa_id)
             await _safe(self._log_store.log_reply(correlation_id=message.correlation_id, reply=line))
@@ -621,6 +619,13 @@ class ApiWhatsApp:
         state["pending"] = [e.to_json() for e in left]
         state["batch"] = uuid.uuid4().hex[:8] if left else None
         text = _saved_text(results, state.get("language"))
+        sizes = [r for r in results if not r.ok and is_stock_unit_refusal(_detail(r.body))]
+        if left and len(sizes) == len(left):
+            # WA-165 (3 Nov, Paraclette: Save tapped twice, refused twice): Save cannot work until they say the size,
+            # so it is not offered. The line waits; their next short reply answers the question (it is the open one).
+            state["asked"] = {"question": plain_refusal(_detail(sizes[0].body), state.get("language")), "options": []}
+            await self._save_state(ctx, state)
+            return ReplySpec(text=text, buttons=(ListRow(id=f"{CANCEL_PREFIX}{state['batch']}", title="Cancel"),))
         await self._save_state(ctx, state)
         return _save_buttons(text, state["batch"]) if left else ReplySpec(text=text)
 
@@ -839,12 +844,14 @@ def without_numbered_lines(words: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
 
 
-def _language(text: str) -> str | None:
-    """The person's language and script, decided by the code (the shared detector)."""
+def _language(text: str, usual: str | None = None) -> str | None:
+    """The person's language and script, decided by the code (the shared detector). ``usual``: the one they last
+    used; a message that does not tell ("Tower A", "20", a site name tapped) keeps it. WA-165 (3 Nov, Paraclette):
+    without it the detector's fallback made a Malayalam speaker's next line English after he tapped "Tower A"."""
     try:
         from runtime.agent.wording import language_of
 
-        return language_of(text.split("What the photo shows:", 1)[0])
+        return language_of(text.split("What the photo shows:", 1)[0], usual)
     except Exception:  # noqa: BLE001 -- the model decides then
         return None
 
