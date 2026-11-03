@@ -29,6 +29,8 @@ class UserModel(Base):
     # Added by migration 0060_users_add_status_sites_access
     status = Column(String, nullable=False, server_default="active")
     access_policy = Column(JSON, nullable=True)
+    # Added by migration 0501 (WA-169): the language WhatsApp replies are always in; NULL = follow each message.
+    reply_language = Column(String(20), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False

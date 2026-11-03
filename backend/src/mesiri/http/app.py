@@ -91,6 +91,13 @@ def create_app(lifecycle: AppLifecycle | None = None) -> FastAPI:
         _log.exception("identity router not loaded: %s", exc)
 
     try:
+        from mesiri.domains.identity.preferences_router import router as me_router
+
+        app.include_router(me_router)
+    except Exception as exc:  # noqa: BLE001
+        _log.exception("me (preferences) router not loaded: %s", exc)
+
+    try:
         from mesiri.domains.admin.router import router as admin_router
 
         app.include_router(admin_router)

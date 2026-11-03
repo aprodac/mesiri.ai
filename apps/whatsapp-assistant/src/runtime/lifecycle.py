@@ -533,6 +533,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("DPR router not loaded: %s", exc)
 
+    # WA-169: the signed-in person's own preferences (GET /me/preferences, PUT /me/reply-language).
+    try:
+        from mesiri.domains.identity.preferences_router import router as me_router
+
+        app.include_router(me_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Me (preferences) router not loaded: %s", exc)
+
     # WEB-27: the site DPR as a live document (the PDF's own HTML).
     try:
         from dpr_preview.router import router as dpr_preview_router
