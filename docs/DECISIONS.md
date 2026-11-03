@@ -12,6 +12,8 @@
 
 | Date | Decision | Who | Details |
 |---|---|---|---|
+| 3 Nov 2026 | **The person who asked feels understood:** the team bot may send them, through Mesiri, ONE line of its own words (their problem said back in their language, or what a re-fix found), wrapped in Mesiri's fixed wording, plus one honest "taking longer" note; previews also for bug fixes; "Still wrong" is never answered with a question (the team finds out and tells them). Same locks as previews (switch, token, the request's own sender, v3, 24 h, once per stage); no links, phone numbers or @names in the line. | Owner, in session | TM-69 |
+| 3 Nov 2026 | Every build is reviewed by a second Opus session before it is pushed; builds and reviews always run on Opus 5.5; example lines in a plan don't hold it. | Owner, in session | TM-63 to TM-67 |
 | 2 Nov 2026 | Every request that is construction work gets built. A company's request is built **for that company** behind a feature switch and switched on for others from the control panel. | Ilan (relayed by the team) | [request-triage.md](architecture/request-triage.md) (TM-34) |
 | 2 Nov 2026 | **No owner's ok is needed to switch a feature on** for a company, attendance, payroll, workforce and money included. | Ilan | TM-34 |
 | 2 Nov 2026 | Requests that are not construction work are **declined politely**, with what Mesiri does instead. | Ilan | TM-34 |

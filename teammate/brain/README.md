@@ -180,6 +180,25 @@ plan (accept: end state) ──► build here: commit, push refused ──► br
 - **First time right (TM-67):** in the weekly digest and the 19:00 summary (7 days).
 - **Real model before the push (TM-68):** blocked: needs a Gemini key (with its own cap) in the build environment.
 
+### The person who asked feels understood (TM-69, 3 Nov)
+
+```
+they report ─► Mesiri: "passed to the team" #ref
+   plan ─► understood: THEIR problem said back, in their language ("…2 drum save aayilla: stock 40 L kuravaanu")
+        ─► preview: "Is this how you want it?" (bug fixes too)  ─► building … (2 h / stuck: "still working, haven't forgotten")
+   live ─► "it works now", in their terms + thanks, Works / Still wrong
+   Still wrong ─► "you're right, looking into it" (no question) ─► again: what was found this time
+```
+
+- `propose_plan` needs `understood` when someone asked (`asked_for`) and Mesiri can be reached; the tool sends it at
+  once (`tellAsker`): `understood`, `again` for a fix of a fix (once per round), `slow` when the plan is held.
+- `tellSlow` (watchdog tick): one note when not live after `TEAMMATE_SLOW_NOTE_MINUTES` (120), or stuck (held, review
+  failed, push refused) after 30 min. A green deploy stamps `deployed_at`, which stops it.
+- Mesiri's side (`apps/whatsapp-assistant/src/runtime/request_progress.py`, `POST /teammate-api/progress`) composes the
+  message from the bot's line + fixed wording in their language, with the preview route's locks; the line has no links,
+  phone numbers or @names. Each message is traced (`request_progress`), and a v3 turn reads the person's open requests
+  so it answers "is it fixed?" as someone who knows.
+
 ### "What's fixed" cards (TM-32, 2 Nov)
 
 After a passing live check the bot posts ONE picture in the team group (`post_fixed_card`, `src/cards.js`): the
