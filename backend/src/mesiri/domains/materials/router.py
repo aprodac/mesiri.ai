@@ -296,6 +296,13 @@ async def set_unit_conversion(
         raise HTTPException(status_code=422, detail="from_unit_id is not a valid active unit")
     if str(unit["id"]) == str(stock["id"]):
         raise HTTPException(status_code=422, detail=f"{material['name']} is already counted in {stock['display_name']}.")
+    from mesiri.domains.materials.unit_conversion import COUNT_UNITS
+
+    if str(stock["code"]).lower() in COUNT_UNITS and body.one_unit_equals < 1:
+        # WA-166 (Paraclette: "1 load holobricks = 0.33 nos" was saved, the size the wrong way round).
+        raise HTTPException(status_code=422, detail=(
+            f"1 {unit['display_name']} of {material['name']} cannot be less than 1 {stock['display_name']}: "
+            f"how many {stock['display_name']} are in 1 {unit['display_name']}?"))
     per_stock_unit = (Decimal(1) / body.one_unit_equals).quantize(Decimal("0.0000001"))
     await PostgresMaterialUnitConversionRepository(conn).upsert(
         organization_id=auth_context.organization_id, material_id=material["id"], from_unit_id=unit["id"],
@@ -303,7 +310,7 @@ async def set_unit_conversion(
     )
     return {
         "material": material["name"], "from_unit": unit["display_name"], "stock_unit": stock["display_name"],
-        "one_unit_equals": str(body.one_unit_equals.normalize()),
+        "one_unit_equals": f"{body.one_unit_equals.normalize():f}",  # WA-166: never "3E+2"
         "message": f"Saved for the company: 1 {unit['display_name']} of {material['name']} = "
                    f"{body.one_unit_equals.normalize():f} {stock['display_name']}.",
     }
@@ -330,6 +337,7 @@ async def check_material_unit(
     answer = {
         "material": material["name"], "unit": unit["code"], "unit_name": unit["display_name"],
         "stock_unit": (stock or unit)["code"], "stock_unit_name": (stock or unit)["display_name"],
+        "stock_unit_id": str((stock or unit)["id"]),
     }
     if stock is None or str(stock["id"]) == str(unit["id"]):
         return {**answer, "fits": True, "one_unit_equals": "1"}

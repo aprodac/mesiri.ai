@@ -33,10 +33,36 @@ CEMENT_BAG_KG = Decimal("50")
 #: diameter: D x D / 162 kg per metre (IS 1786 unit mass), and bars come in 12 m lengths. Only when the material's
 #: name gives the diameter ("TMT 12mm", "Fe500 16 mm rod"); otherwise the company says it once.
 BAR_LENGTH_M = Decimal("12")
-_COUNT_UNITS = frozenset({"nos", "pieces", "pcs", "no", "numbers"})
+#: Units that count pieces (WA-166: one container of a material counted this way is at least one piece).
+COUNT_UNITS = frozenset({"nos", "pieces", "pcs", "no", "numbers"})
+_COUNT_UNITS = COUNT_UNITS
 _WEIGHT_IN_KG = {"kg": Decimal(1), "mt": Decimal(1000), "tons": Decimal(1000)}
 _STEEL = re.compile(r"\b(tmt|steel|rebar|rod|rods|bar|bars|fe\s?\d{3}d?)\b", re.IGNORECASE)
 _DIAMETER = re.compile(r"(\d{1,2}(?:\.\d)?)\s*mm\b", re.IGNORECASE)
+
+
+#: WA-166 (Paraclette, 31 Oct: "1 load TMT" made TMT a material counted in loads, so every "10 bars used" was refused;
+#: sand, M-sand and P-sand were counted in bags, so every "1 load" was). The unit a construction material is naturally
+#: counted in, by what it is: a new material from WhatsApp gets this one, and what the site says converts into it.
+#: Only kinds whose unit does not vary between companies; anything else keeps the unit the person used.
+_NATURAL: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\b(tmt|steel|rebar|rods?|kambi|fe\s?\d{3}d?|binding\s*wire)\b|കമ്പി|സ്റ്റീൽ", re.IGNORECASE), "kg"),
+    (re.compile(r"\b(m[\s-]?sand|p[\s-]?sand|sand|manal|metal|jelly|aggregate|gravel|quarry\s*dust)\b|മണൽ|എംസാ|പിസാ|"
+                r"മെറ്റൽ", re.IGNORECASE), "cft"),
+    (re.compile(r"\bcement\b|സിമ", re.IGNORECASE), "bags"),
+    (re.compile(r"\b(bricks?|blocks?|hollow\s*bricks?|holo\s*bricks?|chenkallu|laterite|ishtika)\b|ഇഷ്ടിക|ചെങ്കല്ല",
+                re.IGNORECASE), "nos"),
+    (re.compile(r"\b(paint|primer|thinner|emulsion|enamel|varnish)\b|പെയിന്റ്|പ്രൈമർ", re.IGNORECASE), "litres"),
+)
+
+
+def natural_stock_unit(material_name: str) -> str | None:
+    """The unit code this material is naturally counted in (TMT -> kg, M-sand -> cft), or None when its name does
+    not tell (then the person's own unit is kept)."""
+    for pattern, code in _NATURAL:
+        if pattern.search(material_name or ""):
+            return code
+    return None
 
 
 def steel_bar_kg(material_name: str) -> Decimal | None:
