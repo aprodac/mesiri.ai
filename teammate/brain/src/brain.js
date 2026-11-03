@@ -20,6 +20,7 @@ import { Accounts } from "./accounts.js";
 import { AutoBuild } from "./autobuild.js";
 import { collectWorkStatus, formatWorkStatus } from "./work_status.js";
 import { Watchdog } from "./watchdog.js";
+import { boardText } from "./board.js";
 
 const MAX_CHUNK = 3800; // the listener refuses posts over 4,000 characters
 const TURN_TIMEOUT_MS = Number(process.env.TEAMMATE_BRAIN_TURN_TIMEOUT_MS || 60 * 60_000);
@@ -333,6 +334,14 @@ export class Brain {
       if (!plan || !mine(plan)) return `I have no plan [${m[1]}].`;
       if (plan.status === "proposed") return `[${plan.id}] ${plan.title} is a plan waiting for @bot ok ${plan.id}.`;
       return formatWorkStatus(await this.workStatus(plan), now);
+    }
+    // TM-49: every open request in one message, from the request log (where the group's quiet steps are filed).
+    if (this.listener.items) {
+      try {
+        return boardText((await this.listener.items(project))?.items || [], now);
+      } catch (e) {
+        this.log(`brain: status board: ${e.message}`);
+      }
     }
     const running = Object.values(this.planStore.plans).filter((p) => mine(p) && (p.status === "running_in_cloud" || p.status === "running_here"));
     if (!running.length) return "No job is running in the cloud. @bot status <n> shows any earlier one.";
@@ -1051,7 +1060,7 @@ export class Brain {
     if (why) {
       this.log(`brain: plan [${plan.id}] not autobuilt: ${why}`);
       if (typeof plan.id === "number") this.listener.updateItem(plan.id, { held: why, project }).catch(() => {});
-      return say(`✋ [${plan.id}] ${plan.title}\nWaiting for an owner because ${why}. Reply @bot ok ${plan.id} to build it.`);
+      return say(`🙋 *Needs you* ✋ [${plan.id}] ${plan.title}\nWaiting for an owner because ${why}. Reply @bot ok ${plan.id} to build it.`);
     }
     plan.status = "approved";
     plan.approved_by = "autobuild";

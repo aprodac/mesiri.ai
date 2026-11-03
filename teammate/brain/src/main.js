@@ -41,6 +41,8 @@ import { commitPatterns, formatWorkStatus } from "./work_status.js";
 import { ProdWatch, QUIET, Screener, opsSources, skipPatterns } from "./prod_watch.js";
 import { costRows } from "./cost.js";
 import { buildPath, prepareBuildTree } from "./build_tree.js";
+import { quietSend } from "./quiet.js";
+import { Evening } from "./board.js";
 import { Digest } from "./digest.js";
 
 const log = (m) => console.log(`[brain] ${m}`);
@@ -175,8 +177,11 @@ async function call(method, path, body) {
   }
   return data;
 }
+const rawSend = (b) => call("POST", "/send", b).catch(() => null);
 const listener = {
-  send: (b) => call("POST", "/send", b).catch(() => null),
+  // TM-49: the team group gets news and questions; work in progress goes to the request's history (quiet.js).
+  // TEAMMATE_QUIET_GROUP=0 posts everything as before.
+  send: quietSend(rawSend, (id, b) => call("POST", `/items/${id}`, b), { on: process.env.TEAMMATE_QUIET_GROUP !== "0", log }),
   /** Like send, but a refusal (limit, wrong chat) comes back as an error to report. */
   sendStrict: (b) => call("POST", "/send", b),
   chats: (project) => call("GET", `/chats?project=${encodeURIComponent(project)}`),
@@ -405,6 +410,17 @@ if (prodWatchMinutes > 0 && Object.keys(opsByProject).length) {
   if (process.env.TEAMMATE_DIGEST !== "0") {
     setInterval(() => digest.maybeSend().catch((e) => log(`digest: ${e.message}`)), 60 * 60_000).unref?.();
     log("digest: weekly, Monday from 9:00 IST, in each project's team group");
+  }
+  // TM-49: the day in four lines in each team group, from 19:00 IST (TEAMMATE_EVENING=0 turns it off).
+  if (process.env.TEAMMATE_EVENING !== "0") {
+    const evening = new Evening({
+      projects: Object.keys(projects),
+      items: async (project) => (await listener.items(project)).items || [],
+      notify: (project, text) => brain.notifyTeam(project, text),
+      file: join(dir, "evening.json"),
+      log,
+    });
+    setInterval(() => evening.maybeSend().catch((e) => log(`evening: ${e.message}`)), 10 * 60_000).unref?.();
   }
   // Every minute: a look when it is on and its interval (TEAMMATE_PROD_WATCH_MINUTES, or what an owner set) has passed.
   const beat = () => prodWatch.maybeTick().catch((e) => log(`prod-watch: ${e.message}`));
