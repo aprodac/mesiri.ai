@@ -899,7 +899,7 @@ export class Brain {
     const header = `[WhatsApp · ${where} · #${req.n ?? "-"} · from ${req.sender}]`;
     const quoted = req.quoted_text ? `\nReplying to: "${String(req.quoted_text).slice(0, 1500)}"` : "";
     const prompt = `${header}${quoted}\n${req.text}`;
-    const ctx = { project: req.project, chat_project: req.reply_project || req.project, chat: req.chat, chat_name: req.chat_name, reply_chat: req.reply_chat, sender: req.sender, session: req.session, ...(req.watch_conversations?.length ? { watch_conversations: req.watch_conversations } : {}), ...(req.auto ? { auto_cycle: req.auto_cycle, auto_report: req.auto_report, auto_attention: req.auto_attention } : {}), ...(this.autobuilds(req, mode) ? { autobuild: true, new_plans: [] } : {}), ...(req.verify_plan != null ? { verify_plan: req.verify_plan, verify_since: req.verify_since || null } : {}) };
+    const ctx = { project: req.project, chat_project: req.reply_project || req.project, chat: req.chat, chat_name: req.chat_name, reply_chat: req.reply_chat, sender: req.sender, session: req.session, ...(req.watch_conversations?.length ? { watch_conversations: req.watch_conversations } : {}), ...(req.previewed ? { previewed: req.previewed, preview_failed: req.preview_failed } : {}), ...(req.auto ? { auto_cycle: req.auto_cycle, auto_report: req.auto_report, auto_attention: req.auto_attention } : {}), ...(this.autobuilds(req, mode) ? { autobuild: true, new_plans: [] } : {}), ...(req.verify_plan != null ? { verify_plan: req.verify_plan, verify_since: req.verify_since || null } : {}) };
     // What the auto loop needs to know about how the turn ended.
     const outcome = { ok: false, limit: null, budget: false, denied: [], error: null };
     let limitSeen = null;

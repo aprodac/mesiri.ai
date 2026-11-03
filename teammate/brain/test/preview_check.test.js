@@ -82,3 +82,35 @@ test("a refused preview is reported with Mesiri's reason, without another turn",
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// 3 Nov: a preview went to Ilan for #cf124a and the group was still told "No preview went": the turn's tool context
+// never received the set send_preview records into (the tests above replaced the turn). Through a real turn now.
+test("a preview sent by the real turn's tool is seen by the check", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "preview-"));
+  const sent = [];
+  let ctxSeen = null;
+  const brain = new Brain({
+    queryFn: () =>
+      (async function* () {
+        ctxSeen.previewed.add(CID); // what send_preview does on success (tools.js)
+        yield { type: "result", subtype: "success", is_error: false, result: "QUIET", session_id: "S", duration_ms: 1, total_cost_usd: 0, permission_denials: [] };
+      })(),
+    projects: { mesiri: { cwd: "/r", flow: "f" } },
+    dir,
+    listener: {
+      send: async (b) => (sent.push(b), { ok: true }),
+      chats: async () => ({ chats: [{ jid: "T@g.us", role: "team", project: "mesiri", name: "Mesiri group" }] }),
+      addItem: async () => ({}),
+      updateItem: async () => ({}),
+    },
+    tools: (ctx) => ((ctxSeen = ctx), {}),
+  });
+  brain.previewsOn = true;
+  try {
+    await brain.askWatch("mesiri", "watch prompt", "QUIET", [conv("missing_feature: add a member")]);
+    assert.ok(ctxSeen.previewed instanceof Set);
+    assert.equal(sent.filter((m) => /No preview went/.test(m.text)).length, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

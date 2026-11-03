@@ -97,6 +97,14 @@ function ensureRepo({ repo, branch, cwd, ghToken }) {
   }
   execFileSync("gh", ["auth", "setup-git"], { stdio: "inherit", env: withToken(ghToken) });
   git(cwd, "config", "core.hooksPath", hooksDir);
+  // 3 Nov ([207]): the clone predates the move StarShape-in → aprodac (19 Oct); fetches followed GitHub's redirect but
+  // the push was refused (403), so a finished build never shipped. origin always names the configured repository (the
+  // build worktree shares this remote).
+  const want = `https://github.com/${repo}.git`;
+  if (git(cwd, "remote", "get-url", "origin") !== want) {
+    git(cwd, "remote", "set-url", "origin", want);
+    log(`${repo}: origin set to ${want}`);
+  }
 }
 
 /** TM-33: ask Mesiri to send a preview to the person who asked (Mesiri checks every guard; errors come back). */
