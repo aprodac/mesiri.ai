@@ -91,6 +91,16 @@ pg pg_dump --format=custom --no-owner -U "${DB_USER}" "${PROD_DB}" \
   | pg_in pg_restore --no-owner --exit-on-error -U "${DB_USER}" -d "${STG_DB}"
 echo "  copied ${PROD_DB} → ${STG_DB}"
 
+# TM-40 (Ilan, 2 Nov): names and numbers out of the copy, so it can be used to reproduce customer bugs. A failure
+# here never blocks a production deploy (the gate is about the code): the copy then has no staging_anonymised row,
+# and nothing that hands staging to anyone may do so without that row.
+echo "→ Names and numbers out of the copy"
+if pg_in psql -q -v ON_ERROR_STOP=1 -U "${DB_USER}" -d "${STG_DB}" < "${STG}/infra/deploy/anonymise_staging.sql" > /tmp/staging_anonymise.log 2>&1; then
+  grep -E "anonymised:" /tmp/staging_anonymise.log | sed 's/^ */  /' || true
+else
+  echo "  ⚠ not anonymised (the copy is raw: share it with nobody): $(tail -3 /tmp/staging_anonymise.log | tr '\n' ' ' | cut -c1-300)"
+fi
+
 echo "→ Migrations on the copy"
 cd "${STG}"
 # Never migrate anything but the copy: stop if the settings resolve elsewhere.
