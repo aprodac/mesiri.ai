@@ -277,7 +277,10 @@ async function githubCheck(p) {
     return { ok: true, expires };
   } catch (e) {
     const why = String(e.stderr || e.message).split("\n").find((l) => /denied|403|401|Authentication|not found/i.test(l)) || String(e.message).split("\n")[0];
-    return { ok: false, why: `the bot's GitHub login can't push to ${p.repo}: ${why.trim().slice(0, 160)}`, expires };
+    // 3 Nov: say WHICH token, so the fix is obvious: the secret it came from, and its kind (never the token itself).
+    const from = process.env[`TEAMMATE_GITHUB_TOKEN_${p.name.toUpperCase()}`] ? `TEAMMATE_GITHUB_TOKEN_${p.name.toUpperCase()}` : "GH_TOKEN (TEAMMATE_GITHUB_TOKEN; no project token is set)";
+    const kind = /^github_pat_/.test(p.ghToken) ? "a fine-grained token" : /^ghp_/.test(p.ghToken) ? "a classic token" : /^gh[osu]_/.test(p.ghToken) ? "an app/OAuth token" : "an unknown kind of token";
+    return { ok: false, why: `the bot's GitHub login can't push to ${p.repo}: ${why.trim().slice(0, 160)}. It uses ${kind} from ${from}${expires ? `, expiring ${expires.slice(0, 10)}` : ""}.`, expires };
   }
 }
 
