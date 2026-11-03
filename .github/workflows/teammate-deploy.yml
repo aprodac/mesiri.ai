@@ -36,6 +36,9 @@ jobs:
           node-version: "22"
       - name: Test the bot and the listener before deploying
         run: |
+          # A variable used before its line runs (what crashed main.js on 2 Nov and post_fixed_card on 3 Nov) only
+          # fails when that path runs; the lint finds every one up front.
+          (cd teammate && npx --yes eslint@10.1.0 brain/src listener/src)
           (cd teammate/brain && npm ci --no-audit --no-fund && npm test)
           (cd teammate/listener && npm ci --no-audit --no-fund && npm test)
 

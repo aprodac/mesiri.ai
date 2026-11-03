@@ -56,7 +56,19 @@ const brain = brainUrl
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return (await res.json()).rows;
       };
-      return { ask: (req) => call("/ask", req), approve: (req) => call("/approve", req), poke: (req) => call("/poke", req), cost };
+      // 3 Nov: the bot crash-looped all night and nothing outside noticed. The public /health says whether it answers
+      // and for how long it has been up (a crash loop never gets past a few seconds); the uptime check reads it.
+      const health = async () => {
+        try {
+          const res = await fetch(`${brainUrl}/health`, { signal: AbortSignal.timeout(3_000) });
+          if (!res.ok) return { state: "down" };
+          const up = Number((await res.json()).up_s);
+          return { state: "up", up_s: Number.isFinite(up) ? up : null };
+        } catch {
+          return { state: "down" };
+        }
+      };
+      return { ask: (req) => call("/ask", req), approve: (req) => call("/approve", req), poke: (req) => call("/poke", req), cost, health };
     })()
   : null;
 const bot = new Bot({ store, wa, log, brain, ai });

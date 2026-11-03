@@ -16,6 +16,7 @@ import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { chatHtml, requestRef } from "./prod_watch.js";
 import { fixedCardHtml, splitCases } from "./cards.js";
+import { holdReason } from "./autobuild.js";
 
 const MAX_TEXT = 3800;
 // test_assistant: how long to wait for the assistant, and how long a quiet gap means it has finished.
@@ -190,10 +191,10 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
                 messages = [];
               }
               const html = fixedCardHtml({ id: ctx.verify_plan, title: plan.title || "", sha: plan.live_sha || null, messages, nowWorks: now_works, alsoCovered: also_covered, stillNot: still_not });
-              const caption = `✅ [${ctx.verify_plan}] ${plan.title || ""}: works now${also_covered.length ? ` · ${tried} of ${also_covered.length} related cases shown working` : " · only the reported case (a patch)"}`;
-              plans.update?.(ctx.verify_plan, { fixed_card: { now_works, also_covered, still_not } });
               const { cases } = splitCases(messages, also_covered);
               const tried = cases.filter((c) => c.exchange && c.exchange.replies.length).length;
+              const caption = `✅ [${ctx.verify_plan}] ${plan.title || ""}: works now${also_covered.length ? ` · ${tried} of ${also_covered.length} related cases shown working` : " · only the reported case (a patch)"}`;
+              plans.update?.(ctx.verify_plan, { fixed_card: { now_works, also_covered, still_not } });
               return image(await render.html(html, 1100), caption);
             },
           ),
@@ -340,8 +341,9 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
         type: z.enum(["bug", "feature", "task"]).optional(),
         auto: z.object({ area: z.string().max(40) }).optional().describe("Only in an unattended auto cycle: area is \"conversation\" or \"getting_out\". Anything else (or missing) is left for a human ok."),
         asked_for: z.array(z.string().max(80)).max(20).optional().describe("Production watch: the correlation ids (shown in brackets) of the messages where people asked for this or complained. Records who asked, so they are told and their use is tracked."),
+        owner_ok: z.string().max(200).optional().describe("Only when YOU think an owner must say ok before this is built (and docs/DECISIONS.md doesn't already allow it): the reason in a few words. The code then holds the plan and posts why; it is never built until '@bot ok <n>'. Never write \"needs your OK\" in a message instead: say it here, or the plan builds."),
       },
-      async ({ title, plan, type, auto, asked_for }) => {
+      async ({ title, plan, type, auto, asked_for, owner_ok }) => {
         let itemId = null;
         const asked = whoAsked(ctx, asked_for, plans);
         try {
@@ -350,8 +352,10 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
         } catch {
           // the request log is a convenience; the plan still stands
         }
-        const saved = plans.save({ id: itemId, project: ctx.project, chat_project: chatProject, chat: ctx.chat, chat_name: ctx.chat_name, session: ctx.session, title, plan, by: ctx.sender, ...asked, ...(ctx.auto_cycle ? { auto: auto || null, cycle: ctx.auto_cycle } : {}) });
+        const saved = plans.save({ id: itemId, project: ctx.project, chat_project: chatProject, chat: ctx.chat, chat_name: ctx.chat_name, session: ctx.session, title, plan, by: ctx.sender, ...(owner_ok ? { owner_ok } : {}), ...asked, ...(ctx.auto_cycle ? { auto: auto || null, cycle: ctx.auto_cycle } : {}) });
         if (ctx.new_plans) ctx.new_plans.push(saved.id); // TM-18: autobuild starts it after this turn
+        const held = holdReason(saved); // the same check autobuild runs, so what the group reads matches what happens
+        if (held && (ctx.autobuild || ctx.auto_cycle)) return { content: [{ type: "text", text: `Plan [${saved.id}] recorded and HELD: ${held}. It is not built until an owner replies "@bot ok ${saved.id}". Say exactly that; never say it is being built.` }] };
         if (ctx.autobuild) return { content: [{ type: "text", text: `Plan [${saved.id}] recorded. Autobuild is on: right after this turn the code checks it and starts building it (anything it holds back is posted with the reason). Don't ask for an ok; say it is being built.` }] };
         if (ctx.auto_cycle) return { content: [{ type: "text", text: `Plan [${saved.id}] recorded. The system decides about auto-approval (scope and guard words are checked in code); don't ask anyone for an ok. Now call cycle_report.` }] };
         return { content: [{ type: "text", text: `Plan [${saved.id}] recorded. Ask the team to reply "@bot ok ${saved.id}" to go ahead.` }] };

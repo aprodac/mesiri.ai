@@ -1,0 +1,5 @@
+// A variable used before the line that defines it runs is a ReferenceError only when that path runs (main.js on
+// 2 Nov crash-looped the bot all night; post_fixed_card on 3 Nov). The deploy runs this lint first (teammate-deploy.yml).
+// Only same-scope uses are errors: a function that reads a later module constant when called is fine.
+export default [{ files: ["**/*.js"], languageOptions: { ecmaVersion: "latest", sourceType: "module", globals: { process: "readonly", console: "readonly", setTimeout: "readonly", clearTimeout: "readonly", setInterval: "readonly", clearInterval: "readonly", Buffer: "readonly", URL: "readonly", fetch: "readonly", AbortController: "readonly", AbortSignal: "readonly", structuredClone: "readonly", TextEncoder: "readonly", TextDecoder: "readonly", queueMicrotask: "readonly", performance: "readonly", setImmediate: "readonly", URLSearchParams: "readonly", Response: "readonly", Request: "readonly", Headers: "readonly", FormData: "readonly", Blob: "readonly", crypto: "readonly" } },
+  rules: { "no-use-before-define": ["error", { functions: false, classes: false, variables: false, allowNamedExports: true }], "no-undef": "error" } }];

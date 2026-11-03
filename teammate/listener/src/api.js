@@ -105,8 +105,10 @@ export function createApi({ store, wa, token, ai = null, brain = null }) {
       if (req.method === "GET" && path === "/health") {
         // Public callers learn only whether it is up; the linked number and
         // counts need the token.
-        if (!authorized(req, token)) return send(res, 200, { ok: true, state: wa.status().state });
-        return send(res, 200, { ok: true, whatsapp: wa.status(), inbox: store.stats(), ai: ai?.status() ?? { enabled: false } });
+        // The team bot behind it (the brain): "up" with seconds up, or "down"; absent when none is connected.
+        const bot = brain?.health ? await brain.health() : undefined;
+        if (!authorized(req, token)) return send(res, 200, { ok: true, state: wa.status().state, ...(bot ? { brain: bot } : {}) });
+        return send(res, 200, { ok: true, whatsapp: wa.status(), inbox: store.stats(), ai: ai?.status() ?? { enabled: false }, ...(bot ? { brain: bot } : {}) });
       }
       if (!authorized(req, token)) return send(res, 401, { error: "unauthorized" });
 

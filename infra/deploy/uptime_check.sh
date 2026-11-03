@@ -7,6 +7,8 @@
 #   3. the dashboard loads                    (app.whatsapp.mesiri.ai)
 #   4. the control panel loads                (api /mesiriadmin/, which redirects
 #                                               to control.mesiri.ai once INF-15 is live)
+#   5. the team bot answers and stays up       (api /teammate/health "brain"; 3 Nov: it crash-looped
+#                                               all night and requests never reached the team group)
 #
 # Each check is tried 3 times, 20 s apart, before it counts as down, so a
 # deploy restart or a network blip does not wake anyone. Prints one line per
@@ -57,5 +59,15 @@ else
 fi
 try "Dashboard (${DASHBOARD_URL})" http_ok "${DASHBOARD_URL}/"
 try "Control panel (${API_URL}/mesiriadmin/)" http_ok "${API_URL}/mesiriadmin/"
+
+# Up for 30 s or more: a crash loop restarts every few seconds and never gets there; a deploy restart passes by the
+# last of the three tries. A listener with no bot connected reports no "brain" and passes.
+team_bot_ok() {
+  curl -fsS -m 15 "${API_URL}/teammate/health" 2>/dev/null | python3 -c '
+import json, sys
+b = json.load(sys.stdin).get("brain")
+sys.exit(0 if b is None or (b.get("state") == "up" and (b.get("up_s") or 0) >= 30) else 1)' 2>/dev/null
+}
+try "Team bot (${API_URL}/teammate/health)" team_bot_ok
 
 exit "$FAILED"

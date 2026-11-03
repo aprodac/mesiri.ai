@@ -44,9 +44,19 @@ export function touchedText(...texts) {
     .join("\n");
 }
 
+/**
+ * 3 Nov ([207]): the planner wrote "⚠️ Needs your OK: this gives the AI the power to grant project access" and the code
+ * built it anyway, so the group read one thing and the bot did another. The planner's own flag now holds the plan: the
+ * owner_ok field (propose_plan), or the same words left in the plan's text. One rule for both, decided in code.
+ */
+const ASKS_OWNER = /\bneeds?\s+(?:your|an?\s+owner'?s?|the\s+owner'?s?|owner|alan'?s?|ilan'?s?)\s+(?:ok|okay|approval|go[- ]?ahead|decision)\b|\(owner:/i;
+
 /** Why this plan must wait for a human ok, or null when autobuild may start it. */
 export function holdReason(plan) {
   if (plan?.session === "upgrade") return "it changes the bot itself";
+  if (plan?.owner_ok) return `the plan says it needs an owner's ok (${String(plan.owner_ok).slice(0, 160)})`;
+  const sentences = `${plan?.title || ""}\n${plan?.plan || ""}`.split(/\n+|(?<=[.;!?])\s+/);
+  if (sentences.some((x) => ASKS_OWNER.test(x) && !/\b(?:no|not|never|without)\b|n't\b/i.test(x))) return "the plan says it needs an owner's ok";
   const text = touchedText(plan?.title, plan?.plan);
   for (const [re, why] of HOLD) if (re.test(text)) return `it touches ${why}`;
   return null;

@@ -222,3 +222,25 @@ test("TM-31: '@bot build here | cloud' is the owners' switch, in the team group"
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// 3 Nov ([207]): the planner wrote "⚠️ Needs your OK: this gives the AI the power to grant project access" and the
+// code built it anyway. The planner's flag now holds it, whether given as owner_ok or left in the words.
+test("a plan its planner says needs an owner's ok is held", () => {
+  assert.match(holdReason(plan("Allow POST /projects/{id}/members.", "Add a member", { owner_ok: "grants project access" })), /owner's ok \(grants project access\)/);
+  assert.match(holdReason(plan("Allow POST /projects/{id}/members. ⚠️ Needs your OK: this gives the AI the power to grant project access.")), /owner's ok/);
+  assert.match(holdReason(plan("Allow the route.", "v3: add a team member to a project (owner: grants access)")), /owner's ok/);
+  // guard: saying no ok is needed is not a hold
+  assert.equal(holdReason(plan("Product roles: no owner ok needed (Ilan, 1 Nov). Doesn't need your ok.")), null);
+});
+
+test("brain: a plan whose text asks for an owner's ok is posted held, not built", async () => {
+  const { brain, fired, sent, ask, done } = brainWith("Allow POST /projects/{id}/members for admins. Needs your OK: grants project access.");
+  try {
+    await ask();
+    assert.equal(fired.length, 0);
+    assert.match(sent.at(-1).text, /✋ \[81\][\s\S]*needs an owner's ok[\s\S]*@bot ok 81/);
+    assert.equal(brain.planStore.plans[81].status, "proposed");
+  } finally {
+    done();
+  }
+});

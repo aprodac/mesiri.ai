@@ -306,7 +306,7 @@ createServer(async (req, res) => {
     res.writeHead(status, { "content-type": "application/json" });
     res.end(JSON.stringify(body));
   };
-  if (req.method === "GET" && req.url === "/health") return reply(200, { ok: true, projects: Object.keys(projects), previews: Boolean(render) });
+  if (req.method === "GET" && req.url === "/health") return reply(200, { ok: true, projects: Object.keys(projects), previews: Boolean(render), up_s: Math.round(process.uptime()) });
   if (!authorized(req)) return reply(401, { error: "unauthorized" });
   if (req.method !== "POST" || !["/ask", "/approve", "/cost", "/poke"].includes(req.url)) return reply(404, { error: "not found" });
   let raw = "";

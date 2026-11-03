@@ -21,6 +21,10 @@
 | 2 Nov 2026 | The team bot's planning turns may run read-only viewing commands without asking (`cat`, `sed -n`, `find`, `diff` …); writing forms stay refused. | Ilan | TM-44 |
 | 2 Nov 2026 | The request reference stays in Mesiri's reply when something is passed to the team, shown as "Ref #xxxxxx" (the same reference the team group sees). Never remove it as "internal text". | Ilan (relayed) | TM-21, [205] |
 | 2 Nov 2026 | "mesiri bad ux" / "mesiri fix this / fix it" is an explicit command: the code always passes it to the team. | Ilan | WA-130, TM-35 |
+| 1 Nov 2026 | Plans build by themselves (autobuild), no "@bot ok". Held for an owner only: Attendance, Payroll, Workforce, migrations that change existing data, secrets/tokens, tenant isolation, login, CI/deploy files and the bot itself. | Ilan | TM-18, `teammate/brain/src/autobuild.js` |
+| 1 Nov 2026 | **Roles and permissions inside the product** (who may create a project, add a project member, admin vs site engineer) are not held: "those you can do; report it". | Ilan | TM-18 |
+| 1 Nov 2026 | Labour is a normal module: changed without asking. | Ilan | TM-18 |
+| 3 Nov 2026 | A plan whose planner says it needs an owner's ok is held by the code until "@bot ok <n>"; what the group reads and what the bot does always match. | the team (relayed in session) | TM-48 |
 
 ## Architecture
 

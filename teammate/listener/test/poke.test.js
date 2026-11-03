@@ -36,3 +36,18 @@ test("without a brain the poke says so", async () => {
     assert.equal((await post(base, "/watch/poke", { project: "mesiri" })).status, 503);
   });
 });
+
+// 3 Nov: the bot crash-looped all night unseen. The public /health carries its state so the uptime check can alert.
+test("the public health says whether the team bot is up, and for how long", async () => {
+  await withApi({ health: async () => ({ state: "up", up_s: 412 }) }, async (base) => {
+    const body = await (await fetch(`${base}/teammate/health`)).json();
+    assert.deepEqual(body.brain, { state: "up", up_s: 412 });
+    assert.equal(body.inbox, undefined); // still nothing private without the token
+  });
+  await withApi({ health: async () => ({ state: "down" }) }, async (base) => {
+    assert.equal((await (await fetch(`${base}/health`)).json()).brain.state, "down");
+  });
+  await withApi(null, async (base) => {
+    assert.equal((await (await fetch(`${base}/health`)).json()).brain, undefined);
+  });
+});
