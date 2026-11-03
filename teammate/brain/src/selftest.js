@@ -21,10 +21,13 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** The SELFTEST conversations taken out of the watch's list (their token is reported as seen); the rest go on. */
 export function takeSelfTests(convs, seen) {
+  // Every token in the conversation: it carries the person's earlier messages too, so an earlier check's token comes
+  // first (3 Nov 12:52: the first match was 12:41's token, and the check waiting for its own never saw it).
+  const all = new RegExp(TOKEN.source, "g");
   return convs.filter((c) => {
-    const m = JSON.stringify(c.messages || c).match(TOKEN);
-    if (m) seen(m[0]);
-    return !m;
+    const found = JSON.stringify(c.messages || c).match(all) || [];
+    for (const t of found) seen(t);
+    return !found.length;
   });
 }
 
