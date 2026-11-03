@@ -167,6 +167,11 @@ ALLOWED: tuple[Allowed, ...] = (
             "Prepare an admin's or project manager's answer to a size the company was asked for (\"M-sand load 60\": "
             "one_unit_equals = how many of the stock unit in ONE of that unit). On Save it is set for the whole "
             "company and every line that waited for it saves, converted." + _WRITE),
+    # WA-169: the language this person's replies are always in (users.reply_language); the dashboard sets it too.
+    Allowed("set_reply_language", "PUT", "/me/reply-language",
+            "Prepare the language this person's replies are ALWAYS in, whatever they write in next: english, "
+            "manglish (Malayalam in English letters), malayalam (Malayalam script), hindi, hinglish; auto = follow "
+            "each message again. Only when they ask for it (\"always reply in Manglish\", \"English mathi\")." + _WRITE),
     Allowed("add_expense_category", "POST", "/expenses/categories", "Prepare a new expense category." + _WRITE),
     Allowed("create_project", "POST", "/projects", "Prepare a new project (name, client, address, dates)." + _WRITE),
     Allowed("update_project", "PUT", "/projects/{project_id}",

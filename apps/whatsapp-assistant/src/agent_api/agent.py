@@ -367,7 +367,7 @@ class ApiAgent:
                   channel: str = TEXT_CHANNEL, recent_saves: list[dict[str, Any]] | None = None,
                   repeat_ok: list[str] | None = None, places: Places | None = None,
                   open_question: dict[str, Any] | None = None, sizes: dict[str, Any] | None = None,
-                  may_set_sizes: bool = True) -> ApiTurn:
+                  may_set_sizes: bool = True, language_chosen: bool = False) -> ApiTurn:
         """``facts``: what the agent starts from (projects, sites, materials, units), read
         before the model runs. ``photo_key``: the photo this message carried; a write that
         takes a photo (an expense) gets it attached by the code. ``actions``: tools the caller
@@ -626,7 +626,11 @@ class ApiAgent:
             list(_READY_TOOLS) if waiting else [])
         specs += [spec for spec, _ in (actions or {}).values()]
         system = self.system_prompt(sender_name=sender_name, today=today, ready=list(ready or []), facts=facts)
-        if language in LANGUAGE_LINES:
+        if language in LANGUAGE_LINES and language_chosen:
+            # WA-169: the language they chose (users.reply_language) wins over the language of this message.
+            system += (f"\n\nThis person chose to always get replies in {LANGUAGE_LINES[language]}. Reply in exactly "
+                       "that, whatever language this message is in.")
+        elif language in LANGUAGE_LINES:
             # Decided by the code from their words (the model mixed scripts on 1 Nov).
             system += f"\n\nThis message is in {LANGUAGE_LINES[language]}. Reply in exactly that."
         if dropped:

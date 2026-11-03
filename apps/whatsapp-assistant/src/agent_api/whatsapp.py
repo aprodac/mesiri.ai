@@ -51,6 +51,7 @@ from runtime.release_notes import request_ref
 from runtime.team_notify import poke_watch_soon
 
 from .agent import (
+    LANGUAGE_LINES,
     SOP,
     UNIT_UNSETTLED,
     ApiAgent,
@@ -141,6 +142,10 @@ COULD_NOT_READ = "I couldn't read that photo. Please send it again, or type what
 NOT_NOW = "I couldn't work on that just now. Please send it again in a minute."
 NOTHING_WAITING = "There is nothing waiting to save."
 CANCELLED = "Cancelled. Nothing was saved."
+#: WA-169: the chosen-language read never holds a reply up longer than this (it runs beside the facts).
+CHOSEN_LANGUAGE_TIMEOUT_S = 0.8
+#: The chosen language could not be read this turn: the last one known stands.
+_UNREAD = object()
 #: TM-69: the open-requests read never holds a reply up longer than this.
 OPEN_REQUESTS_TIMEOUT_S = 0.8
 #: WA-148: how much of the facts a turn's trace keeps (for replays on the real model).
@@ -325,9 +330,11 @@ class ApiWhatsApp:
         client = ApiClient(_actor(ctx), app=self._app)
         state: dict = {}
         try:
-            state, history, facts, sizes, open_requests = await asyncio.gather(
+            state, history, facts, sizes, open_requests, chosen = await asyncio.gather(
                 self._state(ctx), self._memory.load(ctx), self._facts(ctx, client), self._sizes(ctx),
-                self._open_requests(message))
+                self._open_requests(message), self._chosen_language(client))
+            if chosen is not _UNREAD:
+                state["chosen_language"] = chosen  # WA-169: the database decides; kept for the lines that don't read it
             facts = f"{facts}\n\n{open_requests}" if open_requests else facts
             _lap("v3_facts_memory")
             if state.get("pending") and state.get("pending_at") and time.time() - float(state["pending_at"]) > PENDING_MAX_AGE_S:
@@ -346,7 +353,8 @@ class ApiWhatsApp:
             run = dict(
                 text=text, history=history, ready=ready, sender_name=ctx.full_name or "",
                 timezone=getattr(ctx, "timezone", None) or "Asia/Kolkata", correlation_id=message.correlation_id,
-                facts=facts + _working_fact(places), photo_key=photo_key, language=_language(text, state.get("language")),
+                facts=facts + _working_fact(places), photo_key=photo_key, language=_turn_language(text, state),
+                language_chosen=bool(_chosen(state)),
                 channel=_channel(message),
                 # WA-154: the person's creates of the last day, and the ones they were just asked about.
                 recent_saves=state.get("recent_saves") or [], repeat_ok=state.get("repeat_asked") or [],
@@ -394,7 +402,7 @@ class ApiWhatsApp:
             "pending": [e.summary for e in turn.pending], "asked": turn.question,
             **({"dropped_question": turn.dropped_question} if turn.dropped_question else {}),
         }, started)
-        state["language"] = _language(text, state.get("language"))  # WA-165: "Tower A" keeps their language
+        state["language"] = _turn_language(text, state)  # WA-165: "Tower A" keeps it; WA-169: their choice wins
         if turn.sizes_said:
             await self._remember_sizes(ctx, turn.sizes_said)
         if turn.size_needed:
@@ -473,7 +481,7 @@ class ApiWhatsApp:
         await self._trace_turn(message, {"text": text, "calls": calls, "feedback_only": True, "saved": [],
                                          "pending": kept, "asked": None}, started)
         self._requested.add(message.correlation_id)
-        language = state.get("language") or _language(text)
+        language = _chosen(state) or state.get("language") or _language(text)
         ref = request_ref(message.correlation_id)
         if calls[0]["args"].get("why"):
             words = _in(language, "api.feedback_noted", FEEDBACK_NOTED)
@@ -511,8 +519,9 @@ class ApiWhatsApp:
 
     async def _language_of_sender(self, ctx: Any, text: str = "") -> str | None:
         """The language of their words, else the last one they used (kept with the waiting list)."""
-        usual = (await self._state(ctx)).get("language")
-        return _language(text, usual) if text else usual
+        state = await self._state(ctx)
+        usual = _chosen(state) or state.get("language")
+        return _turn_language(text, state) if text else usual
 
     async def _outage(self, message: Any, ctx: Any, text: str, error: BaseException, *,
                       state: dict | None = None) -> None:
@@ -524,8 +533,9 @@ class ApiWhatsApp:
         _log.error("agent_api.outage correlation_id=%s attempt=%s error=%r", message.correlation_id, attempt,
                    error, exc_info=error)
         if english:
-            usual = (state or {}).get("language") or (await self._state(ctx)).get("language")
-            language = _language(text, usual) if text else usual
+            known = state if state and (state.get("language") or _chosen(state)) else await self._state(ctx)
+            usual = _chosen(known) or known.get("language")
+            language = _turn_language(text, known) if text else usual
             line = _in(language, _OUTAGE_LINES[english], english)
             await self._send(ReplySpec(text=line), message.sender.wa_id)
             await _safe(self._log_store.log_reply(correlation_id=message.correlation_id, reply=line))
@@ -582,6 +592,20 @@ class ApiWhatsApp:
             _log.exception("agent_api.call_pdf_failed")
             sent = False
         return {"status": "sent to their WhatsApp"} if sent else {"status": "not sent; tell them to ask again"}
+
+    async def _chosen_language(self, client: ApiClient) -> Any:
+        """WA-169: the reply language this person chose (``users.reply_language`` via ``GET /me/preferences``), None
+        when they chose none, ``_UNREAD`` when it could not be read (the last known choice then stands). In parallel
+        with the facts, at most ``CHOSEN_LANGUAGE_TIMEOUT_S``."""
+        try:
+            response = await asyncio.wait_for(client.call("GET", "/me/preferences"), timeout=CHOSEN_LANGUAGE_TIMEOUT_S)
+        except Exception:  # noqa: BLE001 -- a reply in the detected language is still a reply
+            _log.warning("agent_api.chosen_language_unreadable", exc_info=True)
+            return _UNREAD
+        if not response.ok or not isinstance(response.body, dict):
+            return _UNREAD
+        value = response.body.get("reply_language")
+        return value if value in LANGUAGE_LINES else None
 
     async def _open_requests(self, message: Any) -> str:
         """TM-69: what this person told the team about and is being fixed, so "is the primer thing fixed?" or the same
@@ -782,7 +806,7 @@ class ApiWhatsApp:
 
     async def _save_state(self, ctx: Any, state: dict) -> None:
         try:
-            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed")
+            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed")
                                     if state.get(k) is not None},
                                        ttl_seconds=STATE_TTL_SECONDS)
         except Exception:  # noqa: BLE001
@@ -947,6 +971,18 @@ def _language(text: str, usual: str | None = None) -> str | None:
         return language_of(text.split("What the photo shows:", 1)[0], usual)
     except Exception:  # noqa: BLE001 -- the model decides then
         return None
+
+
+def _chosen(state: dict) -> str | None:
+    """WA-169: the reply language this person chose, as last read from the database (None: none chosen)."""
+    value = state.get("chosen_language")
+    return value if value in LANGUAGE_LINES else None
+
+
+def _turn_language(text: str, state: dict) -> str | None:
+    """WA-169: the one decision of a turn's reply language: the language they chose always wins ("always reply in
+    Manglish" stays Manglish after an English or Malayalam-script message); else their words decide (``_language``)."""
+    return _chosen(state) or _language(text, state.get("language"))
 
 
 def _today(ctx: Any) -> str:
