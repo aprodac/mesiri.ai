@@ -316,6 +316,199 @@ async def set_unit_conversion(
     }
 
 
+class SizeRequestOpen(BaseModel):
+    """WA-168: a size nobody knew (a line held for it), or a size someone without the right proposes."""
+
+    material_id: uuid.UUID
+    from_unit_id: uuid.UUID
+    one_unit_equals: Decimal | None = Field(default=None, gt=0)
+    #: The line that waits: the route it saves through, its body as reported, its words, its idempotency key.
+    line_path: str | None = None
+    line_body: dict | None = None
+    line_summary: str = ""
+    line_key: str | None = None
+
+
+class SizeAnswer(BaseModel):
+    one_unit_equals: Decimal = Field(gt=0)
+
+
+def _may_answer(auth_context: AuthorizationContext) -> None:
+    from mesiri.authorization.roles import may_set_unit_conversions
+
+    if not may_set_unit_conversions(auth_context.role):
+        raise HTTPException(status_code=403, detail="Only an admin or a project manager can set a size.")
+
+
+@router.get("/size-requests")
+async def list_size_requests(
+    status: str | None = Query(default="open"),
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """WA-168: the sizes the company is asked for (open by default): material, unit, any proposal, lines waiting."""
+    from mesiri.domains.materials import size_requests
+
+    return {"items": await size_requests.list_requests(conn, auth_context.organization_id, status or None)}
+
+
+@router.post("/size-requests", status_code=201)
+async def open_size_request(
+    body: SizeRequestOpen,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """WA-168: anyone in the company asks for a size (holding the line that needs it) or proposes one. The line is
+    checked when it is answered, as the person who reported it, like any other entry of theirs."""
+    from mesiri.domains.materials import size_requests
+
+    material = await PostgresMaterialCatalogRepository(conn).get_by_id(auth_context.organization_id, body.material_id)
+    if material is None:
+        raise HTTPException(status_code=404, detail="Material not found")
+    if await UnitsOfMeasureRepository(conn).get_by_id(body.from_unit_id) is None:
+        raise HTTPException(status_code=422, detail="from_unit_id is not a valid active unit")
+    line = None
+    if body.line_path or body.line_body:
+        try:
+            line = size_requests.held_line(body.line_path or "", body.line_body or {}, body.line_summary,
+                                           body.line_key, auth_context.user_id, auth_context.role)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return await size_requests.open_request(
+        conn, auth_context.organization_id, body.material_id, body.from_unit_id, auth_context.user_id,
+        proposed=body.one_unit_equals, line=line)
+
+
+async def _save_held(conn: AsyncConnection, organization_id: uuid.UUID, line: dict) -> dict:
+    """One held line saved now, as the person who reported it (their access decides), converted by the size just set."""
+    from mesiri.authorization.service import AuthorizationService
+
+    done = {"summary": line.get("summary"), "user_id": line.get("user_id")}
+    try:
+        async with conn.begin_nested():
+            reporter = await AuthorizationService(conn).resolve_from_jwt(
+                uuid.UUID(line["user_id"]), organization_id, str(line.get("role") or ""))
+            if line["path"] == "/materials/inflows":
+                result = await create_inflow(MaterialInflowCreate(**line["body"]), line.get("idempotency_key"),
+                                             auth_context=reporter, conn=conn)
+            else:
+                result = await create_outflow(MaterialOutflowCreate(**line["body"]), line.get("idempotency_key"),
+                                              auth_context=reporter, conn=conn)
+        return {**done, "saved": True, "converted": (result or {}).get("converted") if isinstance(result, dict) else None}
+    except HTTPException as exc:
+        return {**done, "saved": False, "reason": str(exc.detail)[:200]}
+    except Exception as exc:  # noqa: BLE001 -- one line never blocks the others or the size
+        return {**done, "saved": False, "reason": type(exc).__name__}
+
+
+@router.post("/size-requests/{request_id}/answer")
+async def answer_size_request(
+    request_id: uuid.UUID,
+    body: SizeAnswer,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """WA-168: an admin or project manager answers: the size is set for the company (the same checks as setting it
+    directly) and every line that waited for it saves now, converted, as the person who reported it."""
+    from mesiri.domains.materials import size_requests
+
+    _may_answer(auth_context)
+    request = await size_requests.get_request(conn, auth_context.organization_id, request_id, lock=True)
+    if request is None:
+        raise HTTPException(status_code=404, detail="Size request not found")
+    if request["status"] != "open":
+        raise HTTPException(status_code=409, detail="This size was already answered.")
+    await set_unit_conversion(
+        request["material_id"], UnitConversionSet(from_unit_id=request["from_unit_id"], one_unit_equals=body.one_unit_equals),
+        auth_context=auth_context, conn=conn)
+    outcome = [await _save_held(conn, auth_context.organization_id, line) for line in request["held_lines"]]
+    await size_requests.close_request(conn, request_id, "answered", auth_context.user_id, body.one_unit_equals, outcome)
+    size = f"{body.one_unit_equals.normalize():f}"
+    await _tell_reporters(conn, auth_context.organization_id, request_id, outcome,
+                          f"1 {request['unit_name']} {request['material']} = {size} {request['stock_unit_name']}")
+    return {"id": str(request_id), "material": request["material"], "unit_name": request["unit_name"],
+            "stock_unit_name": request["stock_unit_name"], "one_unit_equals": size, "lines": outcome,
+            "message": f"1 {request['unit_name']} of {request['material']} = {size} {request['stock_unit_name']}, "
+                       f"for the whole company. {sum(1 for o in outcome if o['saved'])} of {len(outcome)} waiting "
+                       "lines saved."}
+
+
+async def _tell_reporters(conn: AsyncConnection, organization_id: uuid.UUID, request_id: uuid.UUID,
+                          outcome: list[dict], size: str) -> None:
+    """WA-168: each person whose line waited is told, on WhatsApp, that it is saved now (the notification queue:
+    inside their 24-hour window; never more than once per request)."""
+    import datetime as _dt
+
+    from mesiri.infrastructure.postgres.repositories.notifications import (
+        PostgresNotificationRepository,
+    )
+
+    by_person: dict[str, list[str]] = {}
+    for line in outcome:
+        if line.get("saved") and line.get("user_id"):
+            by_person.setdefault(str(line["user_id"]), []).append(str(line.get("summary") or ""))
+    for user_id, lines in by_person.items():
+        try:
+            async with conn.begin_nested():
+                await PostgresNotificationRepository(conn).claim(
+                    organization_id=organization_id, rule_key="size_request_saved",
+                    subject_id=f"{request_id}:{user_id}", occurred_on=_dt.date.today(),
+                    recipient_user_id=uuid.UUID(user_id),
+                    payload={"message": f"✅ Saved now: {'; '.join(lines)} ({size}, set for the company)."})
+        except Exception:  # noqa: BLE001 -- the lines are saved; the note is a courtesy
+            continue
+
+
+@router.post("/size-requests/{request_id}/dismiss")
+async def dismiss_size_request(
+    request_id: uuid.UUID,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """WA-168: not a size to set (the unit was a mistake): closed, nothing saved; the lines that waited are listed."""
+    from mesiri.domains.materials import size_requests
+
+    _may_answer(auth_context)
+    request = await size_requests.get_request(conn, auth_context.organization_id, request_id, lock=True)
+    if request is None:
+        raise HTTPException(status_code=404, detail="Size request not found")
+    if request["status"] != "open":
+        raise HTTPException(status_code=409, detail="This size was already answered.")
+    outcome = [{"summary": line.get("summary"), "user_id": line.get("user_id"), "saved": False, "reason": "dismissed"}
+               for line in request["held_lines"]]
+    await size_requests.close_request(conn, request_id, "dismissed", auth_context.user_id, None, outcome)
+    return {"id": str(request_id), "lines": outcome}
+
+
+@router.get("/unit-conversions")
+async def list_unit_conversions(
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """WA-168: every size the company has set (the dashboard's Sizes page)."""
+    from mesiri.domains.materials import size_requests
+
+    return {"items": await size_requests.list_conversions(conn, auth_context.organization_id)}
+
+
+@router.delete("/{material_id}/unit-conversions/{from_unit_id}", status_code=204)
+async def delete_unit_conversion(
+    material_id: uuid.UUID,
+    from_unit_id: uuid.UUID,
+    auth_context: AuthorizationContext = Depends(get_auth_context),
+    conn: AsyncConnection = Depends(get_db_conn),
+):
+    """WA-168: remove a size that is wrong; it is asked again the next time someone uses that unit. Quantities saved
+    with it stay as they were saved."""
+    _may_answer(auth_context)
+    result = await conn.execute(
+        text("DELETE FROM material_unit_conversions WHERE organization_id = :org AND material_id = :m "
+             "AND from_unit_id = :u"),
+        {"org": auth_context.organization_id, "m": material_id, "u": from_unit_id})
+    if not result.rowcount:
+        raise HTTPException(status_code=404, detail="No such size")
+
+
 @router.get("/{material_id}/unit-check")
 async def check_material_unit(
     material_id: uuid.UUID,

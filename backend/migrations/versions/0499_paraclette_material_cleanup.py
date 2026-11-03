@@ -96,10 +96,14 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     for size_id, material, unit, per, by, at in BAD_SIZES:
+        # Only where the material and unit still exist (the migration is a no-op on any other database).
         op.execute(
             "INSERT INTO material_unit_conversions "
             "(id, organization_id, material_id, from_unit_id, per_stock_unit, created_by, created_at, updated_at) "
-            f"VALUES ('{size_id}', '{ORG}', '{material}', '{unit}', {per}, '{by}', '{at}', '{at}') "
+            f"SELECT '{size_id}', '{ORG}', '{material}', '{unit}', {per}, "
+            f"(SELECT id FROM users WHERE id = '{by}'), '{at}', '{at}' "
+            f"WHERE EXISTS (SELECT 1 FROM materials_catalog WHERE id = '{material}' AND organization_id = '{ORG}') "
+            f"AND EXISTS (SELECT 1 FROM units_of_measure WHERE id = '{unit}') "
             "ON CONFLICT DO NOTHING"
         )
     for dup, keep, name, key, receipts, uses, movements in MERGES:
