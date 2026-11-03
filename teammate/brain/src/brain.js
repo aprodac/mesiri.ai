@@ -639,6 +639,9 @@ export class Brain {
       `origin/${repo.branch}. Never check out ${repo.branch} here (another copy has it). Pull with \`git pull origin ${repo.branch}\`,`,
       `push with \`git push origin HEAD:${repo.branch}\`. The Python packages are in .venv (on PATH); install Node packages with`,
       "npm ci / pnpm install where a check needs them. Follow CLAUDE.md: run its checks for what you touched before pushing.",
+      "Commands: plain ones only, never starting with a setting (PYTHONPATH=…, GIT_EDITOR=…, R=$PWD;): those are refused.",
+      "PYTHONPATH (the four src folders), GIT_EDITOR and the .venv are already set, so `python -m pytest …` and",
+      "`git cherry-pick --continue` work as they are. Use paths relative to the repository instead of cd chains.",
       "",
       "The plan:",
       plan.plan,
@@ -938,7 +941,15 @@ export class Brain {
         this.log(`brain: prepare ${req.project}: ${e.message}`);
       }
     }
-    const venv = req.build_here ? { VIRTUAL_ENV: join(cwd, ".venv"), PATH: `${join(cwd, ".venv", "bin")}:${this.env.PATH || process.env.PATH || ""}` } : {};
+    // 3 Nov ([216] stuck before its commit): builds wrote "PYTHONPATH=… python …", "GIT_EDITOR=true git …", "R=$PWD; …",
+    // and a command that starts with a setting matches no allow rule (allowing "any command after a setting" would
+    // allow anything). The settings a build needs are set here, so every command can be a plain allowed one.
+    const venv = req.build_here ? {
+      VIRTUAL_ENV: join(cwd, ".venv"),
+      PATH: `${join(cwd, ".venv", "bin")}:${this.env.PATH || process.env.PATH || ""}`,
+      PYTHONPATH: ["backend/src", "shared/contracts/src", "platform/ai/src", "apps/whatsapp-assistant/src"].map((p) => join(cwd, p)).join(":"),
+      GIT_EDITOR: "true", GIT_SEQUENCE_EDITOR: "true", GIT_MERGE_AUTOEDIT: "no",
+    } : {};
 
     const where = req.dm ? `${req.chat_name} (direct message)` : req.chat_role === "customer" ? `${req.chat_name} (customer; answer goes to the team group)` : `${req.chat_name} (team)`;
     const header = `[WhatsApp · ${where} · #${req.n ?? "-"} · from ${req.sender}]`;
