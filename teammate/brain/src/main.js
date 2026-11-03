@@ -40,7 +40,7 @@ import { createRenderer } from "./render.js";
 import { commitPatterns, formatWorkStatus } from "./work_status.js";
 import { ProdWatch, QUIET, Screener, asObjects, opsSources, skipPatterns } from "./prod_watch.js";
 import { costRows } from "./cost.js";
-import { buildPath, prepareBuildTree, pushLeftovers, saveReplays } from "./build_tree.js";
+import { buildPath, pendingWork, prepareBuildTree, pushLeftovers, saveReplays } from "./build_tree.js";
 import { quietSend } from "./quiet.js";
 import { Evening, Reminders } from "./board.js";
 import { SelfTest } from "./selftest.js";
@@ -333,6 +333,7 @@ const brain = new Brain({
   listener,
   prepareBuild, // TM-31: "@bot build here"
   pushBuild: (project) => pushLeftovers(project, { git: gitAs(project.ghToken), log }), // TM-56
+  pendingWork: (project) => pendingWork(project, { git: gitAs(project.ghToken) }), // TM-64: the breaker review reads it
   // TM-54: the askers' real v3 turns (read-only ops API, which builds don't have) into the build copy for their test.
   saveReplays: async (project, plan) => {
     const source = opsByProject[plan.reply_project || plan.chat_project || plan.project];

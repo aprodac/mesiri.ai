@@ -99,6 +99,21 @@ export function pushLeftovers(project, { git, log = () => {} }) {
 }
 
 /**
+ * TM-64: what the build copy has committed that origin/<branch> doesn't (the breaker review reads it before anything is
+ * pushed), plus files changed but not committed (a failing break case is left that way for the builder).
+ * @returns {{ ahead: number, files: string[], stat: string, uncommitted: string[] }}
+ */
+export function pendingWork(project, { git }) {
+  const { buildCwd, branch } = project;
+  const base = `origin/${branch}`;
+  const ahead = Number(git(buildCwd, "rev-list", "--count", `${base}..HEAD`)) || 0;
+  const files = ahead ? git(buildCwd, "diff", "--name-only", `${base}...HEAD`).split("\n").filter(Boolean) : [];
+  const stat = ahead ? git(buildCwd, "diff", "--stat", `${base}...HEAD`).slice(0, 3000) : "";
+  const uncommitted = git(buildCwd, "status", "--porcelain").split("\n").filter(Boolean).map((l) => l.slice(3)).filter((f) => !f.startsWith(".teammate-replays"));
+  return { ahead, files, stat, uncommitted };
+}
+
+/**
  * TM-54 (3 Nov: not one complaint had become a replay test; builds here have no production access, so
  * `replay_to_test.py <cor>` always failed and they wrote invented cases instead). The bot, which can read production,
  * saves each asker's real v3 turn into the build copy as .teammate-replays/<cor>.json (never committed), and the build

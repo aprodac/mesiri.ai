@@ -34,10 +34,22 @@ const HOLD = [
 /** A sentence that says what the plan does NOT touch ("Labour untouched", "no migration") is not a reason to hold. */
 const NOT_TOUCHED = /\b(?:untouched|not touched|unchanged|not changed|no changes? to|nothing (?:in|to)|(?:does|do|will) not (?:touch|change)|doesn'?t (?:touch|change)|never touch\w*|without touching|stays? (?:the same|as it is)|no migration|out of scope|not in scope)\b/i;
 
+/**
+ * TM-66 (3 Nov: [218], a materials Save bug, was held "it touches Attendance" because its CLASS line listed "new worker +
+ * attendance" as another case of the same mistake). Lines that only give examples of the class, guards, who asked or the
+ * release note's wording say what the fix must not break or who hit it, not what it changes. They are dropped whole,
+ * before the text is split into sentences (a ";" inside a CLASS line would otherwise leave "new worker + attendance"
+ * standing on its own). The lines that say what changes (FIX, files, Root cause, the title) are still read.
+ */
+const EXAMPLE_LINE = /^\s*[*_-]*\s*(?:class|guards?|siblings?|release note|who|live|repro)\b[^:\n]{0,40}:/i;
+
 /** The plan's text without the sentences (and lines) that only say what stays untouched. */
 export function touchedText(...texts) {
   return texts
     .filter(Boolean)
+    .join("\n")
+    .split("\n")
+    .filter((line) => !EXAMPLE_LINE.test(line))
     .join("\n")
     .split(/\n+|(?<=[.;!?])\s+/)
     .filter((part) => !NOT_TOUCHED.test(part))

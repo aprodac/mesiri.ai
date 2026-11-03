@@ -103,6 +103,14 @@ export function refixOf({ title, plan, asked }, all, verifyPlan = null) {
   return all.filter((p) => p.status !== "proposed" && (named.has(String(p.id)) || (p.asked_for || []).some((c) => asked.includes(c))));
 }
 
+/**
+ * TM-63: plans that must name their end state (accept): the product plans that build by themselves (autobuild) and the
+ * fixes a live check or real-use check proposes. Not bot upgrades and not auto-loop cycles (they have their own checks).
+ */
+export function acceptanceRequired(ctx) {
+  return Boolean((ctx.autobuild || ctx.verify_plan != null) && !ctx.auto_cycle && ctx.session !== "upgrade");
+}
+
 /** TM-53: the plan names the mechanism and the test that fails because of it. */
 export function refixReady(plan) {
   return /^\s*[*_-]*\s*root cause\s*[*_]*\s*:/im.test(plan) && /^\s*[*_-]*\s*failing test\s*[*_]*\s*:/im.test(plan);
@@ -147,6 +155,33 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
   const fail = (text) => ({ content: [{ type: "text", text }], isError: true });
 
   const tools = [
+    // TM-64: only in a breaker review of a build that is committed but not pushed.
+    ...(ctx.review_of != null
+      ? [
+          tool(
+            "review_result",
+            "TM-64: record the breaker review of the build (committed here, not pushed). ok true ONLY when every acceptance line is asserted by a test that goes through Save, every break case you wrote passes, and nothing that decides saved data rests on a prompt line alone. Call once, last.",
+            {
+              ok: z.boolean(),
+              acceptance_covered: z.boolean().describe("Every accept line is asserted by a test that reaches Save and checks what was saved or called"),
+              failures: z.array(z.object({
+                case: z.string().min(3).max(200).describe("What was tried, in plain words (e.g. \"talk about Live Mart B, then '2 drum thinner vannu'\")"),
+                test: z.string().max(200).optional().describe("The uncommitted test file and test name that fails"),
+                why: z.string().min(3).max(400).describe("What happens instead, and where in the code it goes wrong"),
+              })).max(10).default([]),
+              passed: z.array(z.string().min(3).max(200)).max(12).default([]).describe("The break cases that pass (committed)"),
+              prompt_only: z.boolean().default(false).describe("True when what decides saved data is changed only by an SOP.md / prompt line, with no code enforcing it"),
+            },
+            async (r) => {
+              const failures = r.failures || [];
+              const ok = Boolean(r.ok && r.acceptance_covered && !failures.length && !r.prompt_only);
+              const review = { ok, acceptance_covered: r.acceptance_covered, failures, passed: r.passed || [], prompt_only: Boolean(r.prompt_only), round: ctx.review_round || 1, at: new Date().toISOString() };
+              ctx.review_sink?.(review);
+              return { content: [{ type: "text", text: ok ? "Recorded: passed. The build is pushed next. Finish with a two-line summary." : "Recorded: not passed. The builder gets these failures next. Finish with a two-line summary; don't fix them yourself." }] };
+            },
+          ),
+        ]
+      : []),
     // TM-19: only in a live check of a shipped plan.
     ...(ctx.verify_plan != null
       ? [
@@ -358,9 +393,20 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
         auto: z.object({ area: z.string().max(40) }).optional().describe("Only in an unattended auto cycle: area is \"conversation\" or \"getting_out\". Anything else (or missing) is left for a human ok."),
         asked_for: z.array(z.string().max(80)).max(20).optional().describe("Production watch: the correlation ids (shown in brackets) of the messages where people asked for this or complained. Records who asked, so they are told and their use is tracked."),
         owner_ok: z.string().max(200).optional().describe("Only when YOU think an owner must say ok before this is built (and docs/DECISIONS.md doesn't already allow it): the reason in a few words. The code then holds the plan and posts why; it is never built until '@bot ok <n>'. Never write \"needs your OK\" in a message instead: say it here, or the plan builds."),
+        accept: z.array(z.string().min(8).max(300)).max(8).optional().describe("TM-63, required for product plans: what is TRUE when it is fixed, after the person's WHOLE journey (every message and tap, through Save and the step after it), as saved records / calls made, never reply wording. E.g. \"after Save: material Primer exists\", \"1 drum = 20 L is set on Primer\", \"40 L Primer received at Green Villa, Kakkanad\", \"no new project is created\". 1-8 lines; the build's test must assert each one, and a reviewer checks it."),
       },
-      async ({ title, plan, type, auto, asked_for, owner_ok }) => {
+      async ({ title, plan, type, auto, asked_for, owner_ok, accept }) => {
         let itemId = null;
+        // TM-63 (3 Nov: [210] fixed the question "Paint or add Primer?" and was shipped; the very next steps, "add it" →
+        // its drum size → the receipt → Save, failed as [217] and [218]). A product plan names the end state of the
+        // person's whole journey, so the build tests that instead of the first reply.
+        const acceptance = (accept || []).map((a) => String(a).trim()).filter(Boolean);
+        if (acceptanceRequired(ctx) && !acceptance.length) {
+          return fail("Give accept: 1-8 lines saying what is TRUE after the person's whole journey (through Save and the step "
+            + "after it), as saved records or calls made, not reply wording; e.g. \"after Save: 40 L Primer received at Green "
+            + "Villa, Kakkanad\". Walk their journey to the end first: the step after the one that broke is where the next "
+            + "complaint usually comes from. Then call propose_plan again.");
+        }
         const asked = whoAsked(ctx, asked_for, plans);
         // TM-53 (3 Nov: the TMT unit went [203] → [206] → WA-151 → WA-152 in a day, each a guess on top of the last):
         // a second fix of the same complaint must name the mechanism and the test that fails because of it.
@@ -377,7 +423,7 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
         } catch {
           // the request log is a convenience; the plan still stands
         }
-        const saved = plans.save({ id: itemId, project: ctx.project, chat_project: chatProject, chat: ctx.chat, chat_name: ctx.chat_name, session: ctx.session, title, plan, by: ctx.sender, ...(owner_ok ? { owner_ok } : {}), ...asked, ...(ctx.auto_cycle ? { auto: auto || null, cycle: ctx.auto_cycle } : {}) });
+        const saved = plans.save({ id: itemId, project: ctx.project, chat_project: chatProject, chat: ctx.chat, chat_name: ctx.chat_name, session: ctx.session, title, plan, by: ctx.sender, ...(owner_ok ? { owner_ok } : {}), ...(acceptance.length ? { accept: acceptance } : {}), ...asked, ...(ctx.auto_cycle ? { auto: auto || null, cycle: ctx.auto_cycle } : {}) });
         if (ctx.new_plans) ctx.new_plans.push(saved.id); // TM-18: autobuild starts it after this turn
         const held = holdReason(saved); // the same check autobuild runs, so what the group reads matches what happens
         if (held && (ctx.autobuild || ctx.auto_cycle)) return { content: [{ type: "text", text: `Plan [${saved.id}] recorded and HELD: ${held}. It is not built until an owner replies "@bot ok ${saved.id}". Say exactly that; never say it is being built.` }] };
@@ -567,4 +613,4 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
   return createSdkMcpServer({ name: "whatsapp", version: "1.0.0", tools });
 }
 
-export const BRAIN_TOOL_NAMES = ["verification_result", "in_use_verdict", "post_fixed_card", "send_preview", "post_message", "post_image", "preview_html", "post_watch_chat", "screenshot_url", "view_media", "translate_message", "propose_plan", "test_assistant", "tell_ilan_usman", "needs_attention", "cycle_report", "status_of_work", "tell_job"].map((t) => `mcp__whatsapp__${t}`);
+export const BRAIN_TOOL_NAMES = ["review_result", "verification_result", "in_use_verdict", "post_fixed_card", "send_preview", "post_message", "post_image", "preview_html", "post_watch_chat", "screenshot_url", "view_media", "translate_message", "propose_plan", "test_assistant", "tell_ilan_usman", "needs_attention", "cycle_report", "status_of_work", "tell_job"].map((t) => `mcp__whatsapp__${t}`);

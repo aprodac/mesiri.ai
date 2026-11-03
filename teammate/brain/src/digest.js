@@ -8,6 +8,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { asObjects, TAKE_BACK_TOOLS } from "./prod_watch.js";
+import { firstTimeRightLine } from "./board.js";
 
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 const DAY = 86_400_000;
@@ -102,6 +103,9 @@ export function digestText({ rows, items = [], since, until = new Date() }) {
     `Shipped: ${shipped.length} (${fromUsers} asked by users) · live check ${checked.filter((i) => i.verified === "ok").length} ok, ${checked.filter((i) => i.verified === "broken").length} broken`,
   );
   lines.push(`Testers said: ${n("verdict", "works")} Works ✅ · ${n("verdict", "still_wrong")} Still wrong ❌`);
+  // TM-67: the number the loop is trusted on: fixed in one round, nobody had to come back.
+  const ftr = firstTimeRightLine(items, from);
+  if (ftr) lines.push(`🎯 ${ftr}`);
   // TM-27: where a request's time went this week (median minutes per stage, requests from users).
   const mid = (xs) => (xs.length ? xs.sort((a, b) => a - b)[Math.floor(xs.length / 2)] : null);
   const span = (a, b) => shipped.filter((i) => i.asked_by && at(i[a]) <= at(i[b])).map((i) => (at(i[b]) - at(i[a])) / 60_000);

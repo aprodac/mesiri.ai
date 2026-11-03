@@ -27,6 +27,42 @@ export function stageOf(item) {
   return { key: "asked", text: "📝 planned, not started" };
 }
 
+/**
+ * TM-67: the requests that re-open an earlier one ("[213] still broken", "[210] follow-up", "RE-OPENS [209]",
+ * "[212] never reached main", "[207]/[211] were never built"): the numbers of the earlier requests they re-open.
+ */
+const REOPEN = /(?:\[(\d+)\](?:\s*\/\s*\[\d+\])*\s*(?:is\s+|was\s+|were\s+)?(?:still\b|follow[- ]?up|never\b|closed without|marked done but|not (?:fixed|working|live))|(?:re-?opens?|follow[- ]?up to|still broken after|still wrong after)\s*\[(\d+)\])/gi;
+export function reopens(item) {
+  const text = `${item.title || ""}\n${String(item.summary || "").slice(0, 400)}`;
+  const ids = new Set();
+  for (const m of text.matchAll(REOPEN)) {
+    const lead = m[0].match(/^((?:\[\d+\]\s*\/?\s*)+)/);
+    for (const n of lead ? lead[1].match(/\d+/g) : [m[2]]) if (n && Number(n) !== item.id) ids.add(Number(n));
+  }
+  return [...ids];
+}
+
+/**
+ * TM-67: "fixed in one round". Of the requests first made since `from` (not bot upgrades, not themselves a re-open)
+ * that went live or were re-opened, those nobody had to re-open and no live or real-use check found broken.
+ * @returns {{ right: number, total: number, missed: number[] }}
+ */
+export function firstTimeRight(items, from) {
+  const reopened = new Set(items.flatMap(reopens));
+  const at = (v) => (v ? Date.parse(v) : NaN);
+  const base = items.filter((i) => at(i.created_at) >= from && !/^\[bot upgrade\]/i.test(i.title || "") && !reopens(i).length
+    && (i.live_at || reopened.has(i.id)) && !(i.status === "wont_do" && !reopened.has(i.id)));
+  const wrong = base.filter((i) => reopened.has(i.id) || i.verified === "broken" || i.verified === "in_use_broken");
+  return { right: base.length - wrong.length, total: base.length, missed: wrong.map((i) => i.id) };
+}
+
+/** "First time right: 3 of 5 (60%) · re-opened: [207] [210]" or null when nothing shipped. */
+export function firstTimeRightLine(items, from) {
+  const f = firstTimeRight(items, from);
+  if (!f.total) return null;
+  return `First time right: ${f.right} of ${f.total} (${Math.round((100 * f.right) / f.total)}%)${f.missed.length ? ` · needed another round: ${f.missed.slice(0, 8).map((n) => `[${n}]`).join(" ")}` : ""}`;
+}
+
 const day = (iso, now) => Boolean(iso) && new Date(new Date(iso).getTime() + IST).toISOString().slice(0, 10) === new Date(now + IST).toISOString().slice(0, 10);
 const who = (item) => (item.asked_by ? ` · asked by ${String(item.asked_by).split(/[,(]/)[0].trim()}` : "");
 const title = (item) => String(item.title || "").replace(/^\[bot upgrade\]\s*/i, "bot: ").slice(0, 90);
@@ -69,6 +105,11 @@ export function eveningText(items, now = Date.now()) {
     needs.length || broken.length
       ? `• 🙋 Needs you: ${[...needs.map((i) => `[${i.id}] ${title(i)} (reply @bot ok ${i.id})`), ...broken.map((i) => `[${i.id}] still broken`)].join("; ")}`
       : "• 🙋 Nothing needs you",
+    ...(() => {
+      // TM-67: the last 7 days, so one day's two requests don't swing it.
+      const line = firstTimeRightLine(items, now - 7 * 86_400_000);
+      return line ? [`• 🎯 ${line} (7 days)`] : [];
+    })(),
     "@bot status for the details.",
   ].join("\n");
 }

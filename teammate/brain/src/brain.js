@@ -32,6 +32,11 @@ const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 const UPGRADE_PROJECT = process.env.TEAMMATE_UPGRADE_PROJECT || "mesiri";
 /** TM-19: where a project keeps its "it works now" messages (Mesiri: sent by its scheduler right after the deploy). */
 const RELEASE_NOTES = { mesiri: "apps/whatsapp-assistant/release_notes.json" };
+/** TM-64: fix rounds after a failed breaker review before a human decides; the review turn's own spending cap. */
+/** TM-64 (asked 3 Nov: "go for Opus 5.5 always for a fix"): the model of every build, fix and breaker review here. */
+const BUILD_MODEL = process.env.TEAMMATE_BUILD_MODEL || "claude-opus-5-5";
+const REVIEW_ROUNDS = Number(process.env.TEAMMATE_REVIEW_ROUNDS || 2);
+const REVIEW_USD = Number(process.env.TEAMMATE_REVIEW_USD || 8);
 const BUDGET = { planning: Number(process.env.TEAMMATE_BRAIN_PLAN_USD || 3), working: Number(process.env.TEAMMATE_BRAIN_WORK_USD || 25) };
 
 // The pair (TM-12): this bot is "Ilan Pro"; "Ilan Usman" is a Claude Code session in the cloud. They share a task
@@ -87,6 +92,8 @@ const WORK = [
 ];
 /** Planning (read-only) turns only: the writing forms of READ's viewers (sed -i, sed … w file, find -delete / -exec). */
 const READ_DENY = ["Bash(sed -i*)", "Bash(sed * -i*)", "Bash(sed *w /*)", "Bash(find *-delete*)", "Bash(find *-exec*)", "Bash(find *-fprint*)"];
+/** TM-64: refused while a build waits for its breaker review (the bot asks it to push once the review is done). */
+const HOLD_PUSH_DENY = ["Bash(git push*)", "Bash(* git push*)", "Bash(*&& git push*)", "Bash(gh pr merge*)"];
 const DENY = [
   "Bash(git push --force*)", "Bash(git push -f*)", "Bash(git push * --force*)", "Bash(git push * -f *)",
   "Bash(* --no-verify*)", "Bash(git config *)", "Bash(git -c *)", "Bash(git remote *)",
@@ -247,7 +254,7 @@ function writeJson(path, data) {
  * TM-29: an autobuild plan's cloud session starts from the cause the planning turn already found, so it does not
  * spend its first ten minutes re-investigating. The person's own messages become the failing test first (TM-25).
  */
-export function fastPathSection(plan) {
+export function fastPathSection(plan, { gated = false } = {}) {
   const ids = (plan.asked_for || []).filter((c) => /^cor_[0-9a-f]{8,40}$/.test(String(c)));
   return [
     "",
@@ -260,7 +267,99 @@ export function fastPathSection(plan) {
         " conversations\"; set its EXPECT to what should happen), then the fix."
       : "- First a scripted test that fails without the fix (tests/agent_api/ for the assistant), then the fix.",
     "- When the plan names a dashboard route for v3, the change is scripts/allow_route.py with it (TM-30): one step.",
-    "- Post \"🛠 Building [n]\" now; run only the CLAUDE.md checks for the areas you touched; push; then the release note.",
+    gated
+      ? "- Post \"🛠 Building [n]\" now; run only the CLAUDE.md checks for the areas you touched; put the release note in your commits; COMMIT, DON'T PUSH (see \"Before it is pushed\")."
+      : "- Post \"🛠 Building [n]\" now; run only the CLAUDE.md checks for the areas you touched; push; then the release note.",
+  ].join("\n");
+}
+
+/**
+ * TM-63: the end state the plan's accept lines name. The build's test walks the person's whole journey and asserts it;
+ * a reply that reads right is not enough (3 Nov: [210] → [217] → [218]).
+ */
+export function acceptSection(plan) {
+  if (!plan.accept?.length) return "";
+  return [
+    "",
+    "Acceptance (TM-63): this is done only when a test walks the person's WHOLE journey (each of their messages and taps,",
+    "through Save and the step after it) and asserts this end state: what was saved or called, not the reply's wording.",
+    ...plan.accept.map((a) => `  - ${a}`),
+    "Where a decision changes what is saved (site, item, quantity, unit, person, amount), the code makes it; a prompt / SOP",
+    "line alone is not a fix for that (TM-65). End your report with a line: ACCEPTANCE: <test file(s)>.",
+  ].join("\n");
+}
+
+/** TM-64: a build here commits, but the bot pushes only after a second session has tried to break it. */
+export const GATE_SECTION = [
+  "",
+  "Before it is pushed (TM-64): when the checks pass, COMMIT, but DON'T PUSH (push is refused in this turn). A second",
+  "session that hasn't seen your work then tries to break it with other wordings, the person's next step and the same",
+  "mistake reached another way. Anything it finds comes back to you; once it passes, you are asked to push.",
+].join("\n");
+
+/** TM-64: what the build session is told when the breaker review found something. */
+export function fixText(review, failures, pending) {
+  const files = (pending?.uncommitted || []).filter((f) => /test_break_/.test(f));
+  return [
+    `The breaker review (round ${review.round}) found this still wrong. Nothing is pushed.`,
+    ...failures.map((f) => `• ${f.case}: ${f.why}${f.test ? ` (${f.test})` : ""}`),
+    ...(files.length ? [`Its failing tests are in the working tree, uncommitted: ${files.join(", ")}.`] : []),
+    "Fix the cause (where a decision changes what is saved, in code), make those tests pass, run the CLAUDE.md checks for",
+    "what you touched, and commit the fix WITH those tests. Don't push yet: it is reviewed again first.",
+  ].join("\n");
+}
+
+/** TM-64: the build session ships once the review is done (or couldn't run, which the report must say). */
+export function shipText(verdict) {
+  return [
+    verdict.ok
+      ? `The breaker review passed${verdict.review?.passed?.length ? ` (${verdict.review.passed.join("; ")})` : ""}.`
+      : `⚠️ The breaker review could not run (${verdict.why}). Ship it, and say "not reviewed: ${verdict.why}" in your report.`,
+    "Now push: git pull origin main; combine by hand if needed; if the pull brought changes, re-run the CLAUDE.md checks",
+    "for what you touched; then git push origin HEAD:main. Finish the plan's remaining steps (tracker row, report). Your",
+    "report says what the review tried.",
+  ].join("\n");
+}
+
+/** TM-64 in a cloud session (the bot can't run a second session there): a fresh subagent plays the breaker review. */
+export const CLOUD_REVIEW_SECTION = [
+  "",
+  "Before you push (TM-64): start ONE fresh subagent (Agent tool, general-purpose) that hasn't seen your reasoning. Give it",
+  "the plan, the acceptance lines and `git diff origin/main...HEAD`, and ask it to write 4-6 break tests (other wordings,",
+  "Manglish and Malayalam script, the person's next step through Save, the same mistake reached another way, one guard),",
+  "run them, and say which fail and whether anything that decides saved data rests on a prompt line alone. Fix what fails",
+  "(at most 2 rounds), commit its tests with the fix, then push. Still failing after 2 rounds: don't push; say what fails.",
+].join("\n");
+
+/** TM-64: the breaker review's prompt. It sees the complaint, the plan and the diff; never the build's reasoning. */
+export function reviewText(plan, pending, { round, rounds, replays = [] }) {
+  return [
+    `BREAKER REVIEW (TM-64) of plan [${plan.id}] "${plan.title}", round ${round} of ${rounds}.`,
+    "Another session built this. It is committed in this copy and NOT pushed; never push. Your job: find where it is still",
+    "wrong before a customer does. Be quick and concrete: aim to finish within 10 minutes.",
+    "",
+    ...(plan.asked_by ? [`Who asked: ${plan.asked_by}. What they sent: ${String(plan.asked_text || "").slice(0, 600)}`] : []),
+    ...(replays.length ? ["Their real conversations (production, saved for tests):", ...replays.map((r) => `  ${r}`)] : []),
+    "The plan:",
+    String(plan.plan || "").slice(0, 5000),
+    ...(plan.accept?.length ? ["", "Acceptance (the end state it must reach):", ...plan.accept.map((a) => `  - ${a}`)] : ["", "Acceptance: the plan gave none; take the end state of the person's journey from the plan."]),
+    "",
+    `What the build changed (${pending.ahead} commit(s); read it all with \`git diff origin/main...HEAD\`):`,
+    pending.stat || "(no diff)",
+    "",
+    "Do:",
+    "1. Read the diff and the tests it added.",
+    "2. Acceptance: is each line asserted by a test that goes through Save and checks what was saved or called (not only the",
+    "   reply text)? A line nobody asserts is a failure.",
+    "3. Write 4-6 break cases as scripted tests next to the build's (tests/agent_api/ for the assistant), in a file named",
+    `   test_break_${plan.id}_*.py: the same request in other words; Manglish and Malayalam script; the person's NEXT step`,
+    "   after the one fixed, through Save (e.g. \"add it\" → its size → the receipt → Save); the same mistake reached another",
+    "   way (e.g. a project named by a member action or a question, not only by a create); one guard that must not change.",
+    "   Run them (pytest on those files only).",
+    "4. Code decides (TM-65): if what decides saved data (site, item, quantity, unit, person, amount) is changed only by an",
+    "   SOP.md / prompt line, with no code enforcing it, that is a failure (prompt_only).",
+    `5. Commit the break tests that PASS ("[${plan.id}] breaker review: <cases>"). Leave the failing ones uncommitted.`,
+    "6. Call review_result ONCE, last. Don't fix the code yourself.",
   ].join("\n");
 }
 
@@ -291,13 +390,13 @@ export class Brain {
    *   owner?: string, model?: string, env?: Record<string, string>, log?: (m: string) => void, now?: () => Date,
    * }} opts
    */
-  constructor({ queryFn, projects, dir, listener, tools, prepare = () => {}, prepareBuild = null, pushBuild = null, saveReplays = null, owner = "Ilan", model, env = process.env, log = () => {}, now = () => new Date(), routines = {}, fireFn = null, partners = {}, landed, accounts = null, work = null }) {
+  constructor({ queryFn, projects, dir, listener, tools, prepare = () => {}, prepareBuild = null, pushBuild = null, pendingWork = null, saveReplays = null, owner = "Ilan", model, env = process.env, log = () => {}, now = () => new Date(), routines = {}, fireFn = null, partners = {}, landed, accounts = null, work = null }) {
     // routines: { project: { url, token } } -- approved work runs as a cloud routine session the owner can
     // watch in Claude Code (hybrid, TM-03b); projects without one run the working turn here.
     // partners: { project: { url, token } } -- the routine bound to Ilan Usman's cloud session (TM-12).
     // accounts: several Claude accounts, each with its own login, routines and partners (TM-14); without it,
     // one account made of `routines` / `partners` and whatever login `env` carries.
-    Object.assign(this, { queryFn, projects, listener, tools, prepare, prepareBuild, pushBuild, saveReplays, owner, model, env, log, now, fireFn });
+    Object.assign(this, { queryFn, projects, listener, tools, prepare, prepareBuild, pushBuild, pendingWork, saveReplays, owner, model, env, log, now, fireFn });
     this.accounts = accounts || new Accounts({ list: [{ id: "a", token: null, routines, partners }], now: () => this.now().getTime() });
     this.boardFile = `${dir}/board.json`;
     this.sessionsFile = `${dir}/sessions.json`;
@@ -387,7 +486,7 @@ export class Brain {
       // TM-43 (2 Nov: "@bot tell 205" answered "not started in the cloud"): a plan built on this server takes the
       // message as a new build turn here, after any turn still running (the same queue).
       const busy = plan.build_turn === "running";
-      this.buildHere(plan, { project, by: req.sender, reply_chat: req.reply_chat, say, announce: false,
+      this.buildHere(plan, { project, by: req.sender, reply_chat: req.reply_chat, say, announce: false, review: !/^(?:push|ship)\b/i.test(m[2].trim()),
         note: `${req.sender} (owner) adds: ${m[2].trim()}\nPull first: whatever was pushed for this plan is on main. Do what this message asks within the plan.` })
         .catch((e) => this.log(`brain: tell [${plan.id}] here: ${e.message}`));
       return busy ? `📝 [${plan.id}] is building here; your message goes in as soon as the current build turn ends.` : `▶️ [${plan.id}] continues here on the bot's server with your message.`;
@@ -622,7 +721,9 @@ export class Brain {
    * repo and the packages are already there) and at once. One build per project at a time (its own queue), each in a
    * fresh "build" conversation. When the worktree can't be made ready, the plan goes to the cloud as before.
    */
-  async buildHere(plan, { project, by, reply_chat, dm = false, say, note = null, announce = true }) {
+  async buildHere(plan, { project, by, reply_chat, dm = false, say, note = null, announce = true, review = true }) {
+    // TM-64: the build commits; the bot pushes only after the breaker review (off for "@bot tell <n> push").
+    const gated = Boolean(review && this.pendingWork);
     const repo = this.projects[plan.project];
     const at = this.now().toISOString();
     // TM-43: "running" until the build turn ends, whatever its outcome. A restart that finds a build still "running"
@@ -671,9 +772,15 @@ export class Brain {
           this.log(`brain: replays for [${plan.id}]: ${e.message}`);
         }
       }
-      const withReplays = replays.length ? `${text}\n\n${replaySection(plan, replays)}` : text;
+      const withReplays = `${replays.length ? `${text}\n\n${replaySection(plan, replays)}` : text}${acceptSection(plan)}${gated ? GATE_SECTION : ""}`;
+      const base = { project: plan.project, reply_project: project, chat: plan.chat, chat_name: plan.chat_name, chat_role: "team", reply_chat, dm, sender: by, n: null, session: "build", build_here: true };
       try {
-        return await this.turn({ project: plan.project, reply_project: project, chat: plan.chat, chat_name: plan.chat_name, chat_role: "team", reply_chat, dm, sender: by, n: null, text: withReplays, session: "build", build_here: true }, "working", plan);
+        if (!gated) return await this.turn({ ...base, text: withReplays }, "working", plan);
+        const built = await this.turn({ ...base, text: withReplays, hold_push: true }, "working", plan);
+        if (plan.status === "failed") return built;
+        const verdict = await this.breakerReview(plan, { base, replays, say });
+        if (verdict.stuck) return built;
+        return await this.turn({ ...base, text: shipText(verdict) }, "working", plan);
       } finally {
         plan.build_turn = "finished";
         // TM-46: the session that built it judges its real use later, with everything it knew (resumed).
@@ -681,6 +788,55 @@ export class Brain {
         writeJson(this.plansFile, this.planStore);
       }
     });
+  }
+
+  /**
+   * TM-64 (3 Nov: [207], [210], [213] and [215] each passed their own tests and came back "still broken" from the next
+   * live use). A fresh session that never saw the build reads the diff and tries to break it: other wordings, the
+   * person's next step, the same mistake reached another way; and it checks the acceptance lines are really asserted.
+   * Failures go back to the build session (resumed, so it knows what it did) and are reviewed again, `rounds` times at
+   * most; still failing, nothing is pushed and the group is told what is still wrong.
+   * @returns {{ ok: boolean|null, review?: object, why?: string, stuck?: boolean }} ok null: the review couldn't run
+   */
+  async breakerReview(plan, { base, replays = [], say, rounds = REVIEW_ROUNDS }) {
+    const repo = this.projects[plan.project];
+    const project = base.reply_project;
+    const note = (text) => (typeof plan.id === "number" ? this.listener.updateItem(plan.id, { note: text, project }).catch(() => {}) : null);
+    for (let round = 1; round <= rounds; round++) {
+      let pending;
+      try {
+        pending = this.pendingWork(repo);
+      } catch (e) {
+        return { ok: null, why: `the build copy couldn't be read (${String(e.message).slice(0, 120)})` };
+      }
+      if (!pending.ahead) return { ok: null, why: "the build committed nothing to review" };
+      let review = null;
+      this.sessions.ids[`${plan.chat}::review`] = null; // every round is a fresh pair of eyes
+      await this.turn({ ...base, session: "review", sender: "the breaker review", text: reviewText(plan, pending, { round, rounds, replays }),
+        hold_push: true, review_of: plan.id, review_round: round, review_sink: (r) => (review = r), budget: REVIEW_USD }, "working");
+      (plan.reviews ||= []).push(review || { ok: null, round, at: this.now().toISOString() });
+      writeJson(this.plansFile, this.planStore);
+      if (!review) return { ok: null, why: "the review didn't finish" };
+      const cases = (xs) => xs.map((f) => `• ${f.case}: ${f.why}`).join("\n");
+      if (review.ok) {
+        await note(`🔍 breaker review passed (round ${round}): ${review.passed.join("; ") || "acceptance covered"}`);
+        return { ok: true, review };
+      }
+      const failures = [...review.failures, ...(review.prompt_only ? [{ case: "code decides (TM-65)", why: "what decides saved data is only a prompt / SOP line; the code must enforce it" }] : []),
+        ...(review.acceptance_covered ? [] : [{ case: "acceptance", why: "an accept line isn't asserted by a test that goes through Save" }])];
+      await note(`🔍 breaker review round ${round}: ${failures.length} still wrong\n${cases(failures)}`.slice(0, 3000));
+      if (round === rounds) {
+        Object.assign(plan, { status: "review_failed", build_turn: "finished" });
+        writeJson(this.plansFile, this.planStore);
+        if (typeof plan.id === "number") this.listener.updateItem(plan.id, { held: `breaker review: still wrong after ${rounds} rounds`, project }).catch(() => {});
+        await say(`❌ [${plan.id}] ${plan.title}: not pushed. After ${rounds} fix rounds it is still wrong in ${failures.length} case(s):\n${cases(failures.slice(0, 4))}\n`
+          + `🙋 @bot tell ${plan.id} <how to go on> continues it; @bot tell ${plan.id} push ships it as it is.`).catch(() => {});
+        return { ok: false, review, stuck: true };
+      }
+      await this.turn({ ...base, text: fixText(review, failures, pending), hold_push: true }, "working", plan);
+      if (plan.status === "failed") return { ok: false, review, stuck: true };
+    }
+    return { ok: null, why: "no review round ran" };
   }
 
   /**
@@ -725,7 +881,8 @@ export class Brain {
       `Plan [${plan.id}]: ${plan.title}`,
       "",
       plan.plan,
-      ...(!followUp && by === "autobuild" ? [fastPathSection(plan)] : []),
+      ...(plan.accept?.length ? [acceptSection(plan)] : []),
+      ...(!followUp && by === "autobuild" ? [fastPathSection(plan), CLOUD_REVIEW_SECTION] : []),
       ...(followUp ? [followUpSection(followUp)] : []),
       reportingFooter(plan, reply_chat),
     ].join("\n");
@@ -955,7 +1112,7 @@ export class Brain {
     const header = `[WhatsApp · ${where} · #${req.n ?? "-"} · from ${req.sender}]`;
     const quoted = req.quoted_text ? `\nReplying to: "${String(req.quoted_text).slice(0, 1500)}"` : "";
     const prompt = `${header}${quoted}\n${req.text}`;
-    const ctx = { project: req.project, chat_project: req.reply_project || req.project, chat: req.chat, chat_name: req.chat_name, reply_chat: req.reply_chat, sender: req.sender, session: req.session, ...(req.watch_conversations?.length ? { watch_conversations: req.watch_conversations } : {}), ...(req.previewed ? { previewed: req.previewed, preview_failed: req.preview_failed } : {}), ...(req.auto ? { auto_cycle: req.auto_cycle, auto_report: req.auto_report, auto_attention: req.auto_attention } : {}), ...(this.autobuilds(req, mode) ? { autobuild: true, new_plans: [] } : {}), ...(req.verify_plan != null ? { verify_plan: req.verify_plan, verify_since: req.verify_since || null } : {}) };
+    const ctx = { project: req.project, chat_project: req.reply_project || req.project, chat: req.chat, chat_name: req.chat_name, reply_chat: req.reply_chat, sender: req.sender, session: req.session, ...(req.watch_conversations?.length ? { watch_conversations: req.watch_conversations } : {}), ...(req.previewed ? { previewed: req.previewed, preview_failed: req.preview_failed } : {}), ...(req.auto ? { auto_cycle: req.auto_cycle, auto_report: req.auto_report, auto_attention: req.auto_attention } : {}), ...(this.autobuilds(req, mode) ? { autobuild: true, new_plans: [] } : {}), ...(req.verify_plan != null ? { verify_plan: req.verify_plan, verify_since: req.verify_since || null } : {}), ...(req.review_of != null ? { review_of: req.review_of, review_round: req.review_round, review_sink: req.review_sink } : {}) };
     // What the auto loop needs to know about how the turn ended.
     const outcome = { ok: false, limit: null, budget: false, denied: [], error: null };
     let limitSeen = null;
@@ -970,11 +1127,13 @@ export class Brain {
         options: {
           cwd,
           resume: sessionId || undefined,
-          model: this.modelFor(req.project).model,
+          // TM-64: what is built and reviewed for production always runs on BUILD_MODEL, whatever the group's chat model.
+          model: req.build_here ? BUILD_MODEL : this.modelFor(req.project).model,
           ...(this.modelFor(req.project).effort ? { effort: this.modelFor(req.project).effort } : {}),
           permissionMode: "dontAsk",
           allowedTools: mode === "working" ? WORK : READ,
-          disallowedTools: mode === "working" ? DENY : [...DENY, ...READ_DENY],
+          // TM-64: a build waiting for its breaker review, and the review itself, can't push.
+          disallowedTools: mode === "working" ? [...DENY, ...(req.hold_push ? HOLD_PUSH_DENY : [])] : [...DENY, ...READ_DENY],
           mcpServers: { whatsapp: this.tools(ctx, this.plans) },
           maxBudgetUsd: req.budget || BUDGET[mode],
           settingSources: ["project"],
@@ -1024,7 +1183,8 @@ export class Brain {
       if (!req.auto) this.today.turns--;
       return this.turn(req, mode, plan);
     }
-    if (plan) {
+    // TM-64: a build that waits for its breaker review isn't finished: no push, no "done" yet (a failure still is one).
+    if (plan && !(req.hold_push && result?.subtype === "success")) {
       // TM-31: a build here stays "running_here" so the watchdog follows its commit, deploy and live check.
       plan.status = result?.subtype === "success" ? (req.build_here ? "running_here" : "done") : "failed";
       writeJson(this.plansFile, this.planStore);
@@ -1066,7 +1226,10 @@ export class Brain {
       this.log(`brain: ${req.chat_name} ${mode} done in ${Math.round(result.duration_ms / 1000)}s ($${result.total_cost_usd?.toFixed(3)})`);
       // A turn that may have nothing to say (the production watch, TM-15) answers its quiet word: nothing is posted.
       if (req.quiet && String(result.result || "").trim() === req.quiet) this.log(`brain: ${req.chat_name}: nothing to report`);
-      else if (req.build_here && typeof plan?.id === "number") {
+      else if (req.review_of != null) {
+        // TM-64: the review's summary is the request's history; the group hears only the outcome (stuck, or shipped).
+        if (typeof req.review_of === "number") await this.listener.updateItem(req.review_of, { note: `🗒 breaker review: ${String(result.result || "").slice(0, 2000)}`, project: req.reply_project || req.project }).catch(() => {});
+      } else if (req.build_here && typeof plan?.id === "number") {
         // TM-49: a build's own report (files, tests, phase report) is the request's history; the group hears ✅ when
         // it is checked live, or ❌ when it is stuck (above), in plain words.
         await this.listener.updateItem(plan.id, { note: `🗒 build report: ${String(result.result || "").slice(0, 3000)}`, project: req.reply_project || req.project }).catch(() => {});
