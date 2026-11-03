@@ -20,7 +20,8 @@ import { AiWorker, Transcriber } from "./transcribe.js";
 import { Bot } from "./bot.js";
 import { WhatsAppListener } from "./whatsapp.js";
 import { BrainWatch } from "./brainwatch.js";
-import { LinkWatch, sendAlarm } from "./alarm.js";
+import { DiskWatch, LinkWatch, sendAlarm } from "./alarm.js";
+import { statfs } from "node:fs/promises";
 
 const dataDir = resolve(process.env.TEAMMATE_DATA_DIR || "./data");
 const host = process.env.TEAMMATE_HOST || "127.0.0.1";
@@ -84,6 +85,18 @@ const alarm = (text) => sendAlarm(process.env.TEAMMATE_ALERT_URL, text, { log })
 if (process.env.TEAMMATE_ALERT_URL) {
   const link = new LinkWatch({ status: () => wa.status(), alarm });
   setTimeout(() => setInterval(() => link.tick().catch(() => {}), 60_000).unref?.(), 120_000).unref?.();
+}
+// TM-61: the disk, every 10 min (the app, the bot's home with its build copies, the listener's data).
+if (process.env.TEAMMATE_DISK_WATCH !== "0") {
+  const disk = new DiskWatch({
+    paths: ["/", "/var/lib/teammate-brain", dataDir],
+    statfs: (p) => statfs(p),
+    post: async (text) => {
+      await alarm(text.replace(/\*/g, ""));
+      for (const c of store.listChats().filter((x) => x.role === "team")) await wa.send(c.jid, { text }).catch((e) => log(`diskwatch: ${e.message}`));
+    },
+  });
+  setInterval(() => disk.tick().catch((e) => log(`diskwatch: ${e.message}`)), 10 * 60_000).unref?.();
 }
 // 3 Nov: the bot was down all night unseen; the listener watches it every minute and tells the team groups itself.
 if (brain?.health && process.env.TEAMMATE_BRAIN_WATCH !== "0") {

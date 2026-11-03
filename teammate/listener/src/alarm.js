@@ -49,3 +49,46 @@ export class LinkWatch {
     return "down";
   }
 }
+
+/**
+ * TM-61 (3 Nov): a full disk stops the app, the bot and its builds at once, and nothing watched it (`vps-check` only
+ * runs by hand). Every 10 min the listener reads free space on the paths it is given; under 10 % or 3 GB free it says
+ * so once in the team groups and by the second way, again a day later if still low, and once when it is fine again.
+ */
+export class DiskWatch {
+  constructor({ paths, statfs, post, now = () => Date.now(), minFree = 0.1, minBytes = 3 * 2 ** 30, againMs = 86_400_000 }) {
+    Object.assign(this, { paths, statfs, post, now, minFree, minBytes, againMs });
+    this.low = new Map(); // path -> last alert time
+  }
+
+  async tick() {
+    const out = [];
+    const seen = new Set(); // paths on the same disk are said once
+    for (const path of this.paths) {
+      let s;
+      try {
+        s = await this.statfs(path);
+      } catch {
+        continue; // a path not on this server
+      }
+      const disk = `${s.type}:${s.blocks}:${s.bsize}`;
+      if (seen.has(disk)) continue;
+      seen.add(disk);
+      const total = Number(s.blocks) * Number(s.bsize);
+      const free = Number(s.bavail) * Number(s.bsize);
+      const gb = (free / 2 ** 30).toFixed(1);
+      const pct = total ? Math.round((free / total) * 100) : 0;
+      const isLow = free < this.minBytes || (total && free / total < this.minFree);
+      const last = this.low.get(path);
+      if (isLow && (last == null || this.now() - last >= this.againMs)) {
+        this.low.set(path, this.now());
+        out.push(`🙋 *Needs you:* the server's disk is nearly full at ${path}: ${gb} GB free (${pct} %). When it fills, Mesiri, the team bot and its builds stop. Clear old build copies, logs or backups.`);
+      } else if (!isLow && last != null) {
+        this.low.delete(path);
+        out.push(`✅ Disk space is fine again at ${path}: ${gb} GB free (${pct} %).`);
+      }
+    }
+    for (const text of out) await this.post(text);
+    return out.length;
+  }
+}
