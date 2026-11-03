@@ -8,6 +8,8 @@ word the person used (``material_said``, or their own words when the model left 
 - the word is part of exactly one material's name ("cement" -> "Cement OPC 53") -> the same;
 - anything else is only a suggestion: nothing is prepared, and the person gets buttons (the nearest two and
   "➕ Add <word>"). Their choice is remembered as an alias (``add_material_alias``), so it never asks twice.
+- [217]: "Add" holds the new material AND its line (and a container's size) in one list; the line names the
+  material ``new:<name>`` until Save creates it.
 """
 
 from __future__ import annotations
@@ -21,7 +23,17 @@ from mesiri.domains.materials.names import alias_key
 from .client import ApiClient
 
 ADD = "➕ Add "
+ADD_TOOL = "add_material"
+#: [217]: a line for a material that is only in the ready list (``add_material``, not saved yet) names it
+#: ``new:<name>``; ``confirm`` puts the new material's id in once it is saved.
+NEW = "new:"
 _WORD = re.compile(r"[^\W_]+")
+
+
+def pending_ref(value: Any, names: list[str]) -> str | None:
+    """``new:<name>`` when ``value`` ("new:Primer", "Primer", "primer") names a material waiting to be added."""
+    said = alias_key(str(value or "").removeprefix(NEW))
+    return next((f"{NEW}{n}" for n in names if said and alias_key(n) == said), None)
 
 
 def _words(text: str) -> set[str]:
@@ -112,5 +124,8 @@ async def settle_material(client: ApiClient, body: dict[str, Any], said: str, wo
             f"prepared. Never record it as another material. Ask with `ask`, in their language: \"{word} isn't in "
             f"your list. Same as {' or '.join(names)}, or add {word}?\" with options {buttons}. When they pick a "
             f"material: prepare `add_material_alias` (that material_id, alias {said!r}) and the line on that "
-            f"material with material_said {said!r}. When they pick Add: prepare `add_material` named {word} (in "
-            "English) with the unit they count it in; the line follows once it is saved.", buttons)
+            f"material with material_said {said!r}. When they pick Add, in that same turn: prepare `add_material` "
+            f"named {word} (in English, its stock unit), AND the line itself with material_id \"{NEW}{word}\" and "
+            f"material_said {said!r}, in the unit they said. If that unit is a container (drum, tin, load, trip, "
+            f"bundle) of unknown size, ask its size; then prepare `set_unit_conversion` with material_id "
+            f"\"{NEW}{word}\". Everything saves in one Save, the new material first.", buttons)

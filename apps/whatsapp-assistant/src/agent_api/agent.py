@@ -24,11 +24,12 @@ from agent_api.feedback import TELL_THE_TEAM, feedback_instruction
 from agent_api.feedback import specs as feedback_specs
 from agent_api.links import WEB_LINK, build_link
 from agent_api.links import spec as web_link_spec
+from mesiri.domains.materials.names import alias_key
 from mesiri_ai.models import ChatMessage, ToolOutcome, ToolSpec
 from runtime.ai_outage import is_budget_error
 
 from .client import ApiClient, new_idempotency_key
-from .materials import settle_material
+from .materials import ADD_TOOL, NEW, pending_ref, settle_material
 from .tools import CONFIRM_ARG, MATERIAL_SAID, ApiTool
 from .units import resolve_unit, unit_choices, unit_rows
 
@@ -439,6 +440,13 @@ class ApiAgent:
                     arguments["project_id"] = place.project_id
                 if working is not None and place != working:
                     site_note = f" · 📍 *{place.name}* (not {working.name})"
+            new_ref = None
+            if tool.is_write and name != ADD_TOOL and "material_id" in (*tool.body_fields, *tool.path_params):
+                # [217]: a line for a material waiting in the list to be added names it new:<name>; Save fills the id.
+                adding = [str(e.body.get("name") or "") for e in [*waiting, *new] if e is not None and e.tool == ADD_TOOL]
+                new_ref = pending_ref(arguments.get("material_id"), adding) or pending_ref(arguments.get(MATERIAL_SAID), adding)
+                if new_ref:
+                    arguments = {**arguments, "material_id": new_ref}
             missing = [r for r in tool.required if arguments.get(r) in (None, "")]
             if missing:
                 return ToolOutcome(content={"error": f"missing: {', '.join(missing)}"})
@@ -450,7 +458,7 @@ class ApiAgent:
             body.update({k: (channel if v == TEXT_CHANNEL else v) for k, v in tool.fixed})
             if photo_key and tool.is_write and PHOTO_FIELD in tool.hidden and PHOTO_FIELD not in body:
                 body[PHOTO_FIELD] = photo_key
-            if tool.is_write and "material_id" in tool.body_fields and body.get("material_id"):
+            if tool.is_write and "material_id" in tool.body_fields and body.get("material_id") and not new_ref:
                 # [210]: the id must be the material they named (or a name the company taught it), never a near one.
                 taught = [(e.path.split("/")[2], str(e.body.get("alias") or "")) for e in [*waiting, *new]
                           if e is not None and e.tool == ALIAS_TOOL]
@@ -486,10 +494,11 @@ class ApiAgent:
                     idempotency_key=new_idempotency_key(),
                 )
                 new.append(entry)
-                return ToolOutcome(content={
-                    "status": "ready, NOT saved",
-                    "note": "It saves when the person confirms. Do not say it is saved.",
-                })
+                note = "It saves when the person confirms. Do not say it is saved."
+                if name == ADD_TOOL and body.get("name"):
+                    note += (f" Lines for it (what came, a unit size) name it material_id \"{NEW}{body['name']}\": "
+                             "prepare them now, in this turn; they save after it.")
+                return ToolOutcome(content={"status": "ready, NOT saved", "note": note})
             response = await client.call(tool.method, path, params=params)
             content = json.dumps(response.body, default=str, ensure_ascii=False)
             if len(content) > READ_LIMIT:
@@ -550,7 +559,8 @@ class ApiAgent:
         calls = [{"tool": c.name, "arguments": c.arguments, "result": c.outcome.content if c.outcome else None}
                  for c in result.calls] + code_told
         still = [e for e in waiting if e is not None]
-        options = asked.get("options", []) or (unit_ask or site_ask if not asked else [])
+        # [217]: a question asked with no options still gets the buttons the code built (the near-match ones).
+        options = asked.get("options", []) or unit_ask or site_ask
         reply = (result.text or "").strip()
         missing = [u for u in dict.fromkeys(links) if u not in reply]
         if missing:  # WA-141: a link the code built always reaches the person, even if the model left it out
@@ -655,8 +665,8 @@ async def settle_member(client: ApiClient, path: str, body: dict[str, Any]) -> t
 
 
 UNIT_UNSETTLED = "unit_id is not a valid active unit"
-#: Writes that change how other entries are read; saved first in one Save.
-SETTINGS_FIRST = frozenset({"set_unit_conversion"})
+#: Writes that change how other entries are read; saved first in one Save (after a new material, [217]).
+SETTINGS_FIRST = frozenset({"set_unit_conversion", ALIAS_TOOL})
 #: The name of the Save button, as every reply about a ready list says it (any language).
 SAVE_WORD = "save"
 #: WA-155: a reply that says the team (or "our team", in Malayalam / Hindi script too) was told / will look at it.
@@ -704,14 +714,46 @@ async def unit_buttons(client: ApiClient) -> list[str]:
 
 
 async def confirm(client: ApiClient, pending: list[PendingWrite]) -> list[WriteResult]:
-    """Send the held entries to the API, in order (a unit conversion first: it is often prepared after the
-    material lines it lets through). The API's own checks (access, validation, stock guard) decide; a refusal
-    comes back as-is. Results come back in the order given."""
-    order = sorted(range(len(pending)), key=lambda i: pending[i].tool not in SETTINGS_FIRST)
+    """Send the held entries to the API, in order: a new material first, then settings (a unit conversion, an
+    alias: often prepared after the lines they let through), then the rest ([217]). A line naming a new material
+    (``new:<name>``) gets its id once it is saved; if adding it failed, the line says so and stays waiting. The
+    API's own checks (access, validation, stock guard) decide; a refusal comes back as-is. Results come back in the
+    order given."""
+    def rank(i: int) -> int:
+        return 0 if pending[i].tool == ADD_TOOL else 1 if pending[i].tool in SETTINGS_FIRST else 2
+
+    created: dict[str, str] = {}  # the new material's name (alias_key) -> its id
     done: dict[int, WriteResult] = {}
-    for i in order:
-        done[i] = await _confirm_one(client, pending[i])
+    for i in sorted(range(len(pending)), key=rank):
+        entry = pending[i]
+        ref = _new_ref(entry)
+        if ref is not None:
+            material_id = created.get(alias_key(ref.removeprefix(NEW)))
+            if material_id is None:
+                done[i] = WriteResult(entry, 424, {"detail": f"{ref.removeprefix(NEW)} is not in the material list "
+                                                             "yet (adding it did not save)"})
+                continue
+            entry = _with_material(entry, ref, material_id)
+        done[i] = await _confirm_one(client, entry)
+        if entry.tool == ADD_TOOL and done[i].ok and isinstance(done[i].body, dict) and done[i].body.get("id"):
+            created[alias_key(str(entry.body.get("name") or ""))] = str(done[i].body["id"])
     return [done[i] for i in range(len(pending))]
+
+
+def _new_ref(entry: PendingWrite) -> str | None:
+    if entry.tool == ADD_TOOL:
+        return None
+    value = str(entry.body.get("material_id") or "")
+    if value.startswith(NEW):
+        return value
+    m = re.match(r"^/materials/(new:[^/]+)", entry.path or "")
+    return m.group(1) if m else None
+
+
+def _with_material(entry: PendingWrite, ref: str, material_id: str) -> PendingWrite:
+    body = {**entry.body, "material_id": material_id} if entry.body.get("material_id") == ref else entry.body
+    return PendingWrite(tool=entry.tool, method=entry.method, path=entry.path.replace(ref, material_id),
+                        params=entry.params, body=body, summary=entry.summary, idempotency_key=entry.idempotency_key)
 
 
 async def _confirm_one(client: ApiClient, entry: PendingWrite) -> WriteResult:

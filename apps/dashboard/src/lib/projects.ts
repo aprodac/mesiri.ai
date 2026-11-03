@@ -29,8 +29,8 @@ export interface Site {
 
 export interface ProjectMember {
   userId: string
-  email: string
-  fullName: string
+  email: string | null
+  fullName: string | null
   role: string
   status: string
 }
