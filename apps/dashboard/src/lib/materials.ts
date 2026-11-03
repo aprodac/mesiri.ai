@@ -701,3 +701,63 @@ export async function fetchLedgerRows(
   )
   return { rows, truncated: ins.items.length < ins.total || outs.items.length < outs.total }
 }
+
+// ---------------------------------------------------------------------
+// WA-168: Sizes -- how much ONE of a unit sites count in (a load, a drum) is
+// in a material's Stock Unit, and the sizes the company was asked for.
+// ---------------------------------------------------------------------
+
+export interface UnitSize {
+  material_id: string
+  material: string
+  from_unit_id: string
+  unit: string
+  unit_name: string
+  stock_unit: string | null
+  stock_unit_name: string | null
+  one_unit_equals: string | null
+  updated_at: string
+}
+
+export interface SizeRequest {
+  id: string
+  material_id: string
+  material: string
+  from_unit_id: string
+  unit_name: string
+  stock_unit_name: string | null
+  proposed_one_unit_equals: string | null
+  proposed_by_name: string | null
+  requested_by_name: string | null
+  waiting: number
+  held_lines: { summary: string }[]
+  status: 'open' | 'answered' | 'dismissed'
+  created_at: string
+}
+
+export async function fetchUnitSizes(): Promise<{ items: UnitSize[] }> {
+  const res = await api.get<{ items: UnitSize[] }>('/materials/unit-conversions')
+  return res.data
+}
+
+export async function setUnitSize(materialId: string, fromUnitId: string, oneUnitEquals: number): Promise<void> {
+  await api.put(`/materials/${materialId}/unit-conversions`, { from_unit_id: fromUnitId, one_unit_equals: oneUnitEquals })
+}
+
+export async function deleteUnitSize(materialId: string, fromUnitId: string): Promise<void> {
+  await api.delete(`/materials/${materialId}/unit-conversions/${fromUnitId}`)
+}
+
+export async function fetchSizeRequests(): Promise<{ items: SizeRequest[] }> {
+  const res = await api.get<{ items: SizeRequest[] }>('/materials/size-requests', { params: { status: 'open' } })
+  return res.data
+}
+
+export async function answerSizeRequest(id: string, oneUnitEquals: number): Promise<{ message: string }> {
+  const res = await api.post<{ message: string }>(`/materials/size-requests/${id}/answer`, { one_unit_equals: oneUnitEquals })
+  return res.data
+}
+
+export async function dismissSizeRequest(id: string): Promise<void> {
+  await api.post(`/materials/size-requests/${id}/dismiss`)
+}

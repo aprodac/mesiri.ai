@@ -9,6 +9,7 @@ import { PageHeader, Segmented } from '@/components/dpr-page'
 import { LedgerView } from '@/components/materials/ledger-view'
 import { InventoryView } from '@/components/materials/inventory-view'
 import { CatalogueView } from '@/components/materials/catalogue-view'
+import { SizesView } from '@/components/materials/sizes-view'
 import { RecordInflowDialog } from '@/components/materials/record-inflow-dialog'
 import { RecordOutflowDialog } from '@/components/materials/record-outflow-dialog'
 import { RecordTransferDialog } from '@/components/materials/record-transfer-dialog'
@@ -20,7 +21,7 @@ import { useReadOnly } from '@/lib/trial'
 // one table (In green, Out red), narrowed by material, site, dates -- and
 // the Catalogue. What each site holds now opens from "Stock now".
 
-type MaterialsView = 'ledger' | 'catalogue'
+type MaterialsView = 'ledger' | 'catalogue' | 'sizes'
 
 export default function MaterialsPage() {
   const { scope } = useScope()
@@ -28,9 +29,12 @@ export default function MaterialsPage() {
   const readOnly = useReadOnly()
   usePageTitle('Materials')
   const isAdmin = me?.role === 'ADMIN'
+  // WA-168: Sizes (how much one load / drum is) -- admins and project managers, as the API allows.
+  const canSize = isAdmin || me?.role === 'PROJECT_MANAGER' || me?.role === 'OWNER'
   const [requested, setView] = useUrlState<string>('view', 'ledger')
   // Catalogue is admin-only; every other (older) view is the ledger.
-  const view: MaterialsView = requested === 'catalogue' && isAdmin ? 'catalogue' : 'ledger'
+  const view: MaterialsView =
+    requested === 'catalogue' && isAdmin ? 'catalogue' : requested === 'sizes' && canSize ? 'sizes' : 'ledger'
   const [stockOpen, setStockOpen] = React.useState(false)
 
   // Older links (?view=inflows / outflows / inventory …) open the ledger,
@@ -60,14 +64,15 @@ export default function MaterialsPage() {
 
   const switcher = (
     <>
-      {isAdmin && (
+      {canSize && (
         <Segmented<MaterialsView>
           label="View"
           value={view}
           onChange={setView}
           options={[
             { value: 'ledger', label: 'Ledger' },
-            { value: 'catalogue', label: 'Catalogue' },
+            ...(isAdmin ? [{ value: 'catalogue' as const, label: 'Catalogue' }] : []),
+            { value: 'sizes', label: 'Sizes' },
           ]}
         />
       )}
@@ -108,6 +113,12 @@ export default function MaterialsPage() {
         <>
           <div className="flex flex-wrap items-center gap-2">{switcher}</div>
           <CatalogueView />
+        </>
+      )}
+      {view === 'sizes' && (
+        <>
+          <div className="flex flex-wrap items-center gap-2">{switcher}</div>
+          <SizesView />
         </>
       )}
 
