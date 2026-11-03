@@ -20,6 +20,7 @@ import { AiWorker, Transcriber } from "./transcribe.js";
 import { Bot } from "./bot.js";
 import { WhatsAppListener } from "./whatsapp.js";
 import { BrainWatch } from "./brainwatch.js";
+import { LinkWatch, sendAlarm } from "./alarm.js";
 
 const dataDir = resolve(process.env.TEAMMATE_DATA_DIR || "./data");
 const host = process.env.TEAMMATE_HOST || "127.0.0.1";
@@ -78,11 +79,18 @@ const api = createApi({ store, wa, token: process.env.TEAMMATE_API_TOKEN, ai, br
 
 api.listen(port, host, () => log(`inbox API on http://${host}:${port}`));
 await wa.start();
+// TM-59: alarms also leave by a second way that doesn't need WhatsApp (an ntfy topic or a chat webhook).
+const alarm = (text) => sendAlarm(process.env.TEAMMATE_ALERT_URL, text, { log });
+if (process.env.TEAMMATE_ALERT_URL) {
+  const link = new LinkWatch({ status: () => wa.status(), alarm });
+  setTimeout(() => setInterval(() => link.tick().catch(() => {}), 60_000).unref?.(), 120_000).unref?.();
+}
 // 3 Nov: the bot was down all night unseen; the listener watches it every minute and tells the team groups itself.
 if (brain?.health && process.env.TEAMMATE_BRAIN_WATCH !== "0") {
   const watch = new BrainWatch({
     health: brain.health,
     post: async (text) => {
+      await alarm(text.replace(/\*/g, ""));
       for (const c of store.listChats().filter((x) => x.role === "team")) await wa.send(c.jid, { text }).catch((e) => log(`brainwatch: ${e.message}`));
     },
     log,

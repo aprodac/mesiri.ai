@@ -101,8 +101,12 @@ jobs:
             python3 teammate/inbox.py post "$msg" || echo "::warning::Team WhatsApp group not reached (the VPS may be down)"
           fi
           if [ -n "$WEBHOOK_URL" ]; then
-            python3 -c 'import json,sys; print(json.dumps({"text": sys.argv[1]}))' "$msg" \
-              | curl -sf -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" -d @- || true
+            # TM-59: an ntfy.sh topic (phone push, no account) takes plain text; chat webhooks take JSON.
+            case "$WEBHOOK_URL" in
+              *ntfy.*) curl -sf -X POST "$WEBHOOK_URL" -H "Title: Mesiri uptime" -d "$msg" || true ;;
+              *) python3 -c 'import json,sys; print(json.dumps({"text": sys.argv[1], "content": sys.argv[1]}))' "$msg" \
+                   | curl -sf -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" -d @- || true ;;
+            esac
           fi
 
       - name: Fail the run while Mesiri is down
