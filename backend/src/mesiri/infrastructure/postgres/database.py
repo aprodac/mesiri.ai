@@ -22,13 +22,23 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 def _is_http_error(exc: BaseException) -> bool:
-    """FastAPI's HTTPException subclasses Starlette's; checked lazily so this
-    module stays importable without the web stack (workers, scripts)."""
+    """A client error the web stack answers itself: HTTPException (FastAPI's subclasses Starlette's), or FastAPI's
+    request validation (a bad id or a missing field: 422). Checked lazily so this module stays importable without
+    the web stack (workers, scripts).
+
+    WA-159 (3 Nov): validation was missing here, so a malformed id from the WhatsApp assistant became
+    "500 postgres unavailable" and crashed the whole Save (every other line with it), not a 422 for that line."""
     try:
         from starlette.exceptions import HTTPException
     except ImportError:  # pragma: no cover
         return False
-    return isinstance(exc, HTTPException)
+    if isinstance(exc, HTTPException):
+        return True
+    try:
+        from fastapi.exceptions import RequestValidationError
+    except ImportError:  # pragma: no cover
+        return False
+    return isinstance(exc, RequestValidationError)
 
 
 def _is_database_error(exc: BaseException) -> bool:
