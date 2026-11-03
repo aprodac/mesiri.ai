@@ -89,3 +89,13 @@ test("the build turn is marked finished whatever its outcome", async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// TM-51: the deploy waits while a build runs here; /health lists them.
+test("the builds running on this server are listed for the deploy to wait on", () => {
+  const { dir, brain } = make({ 205: plan({ build_turn: "running" }), 206: plan({ id: 206, build_turn: "finished" }), 207: plan({ id: 207, status: "running_in_cloud" }) });
+  try {
+    assert.deepEqual(brain.buildingHere(), [205]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

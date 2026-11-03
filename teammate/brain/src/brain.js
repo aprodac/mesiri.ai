@@ -322,6 +322,11 @@ export class Brain {
     return collectWorkStatus({ plan, item, commits: this.work.commits, runs: this.work.runs });
   }
 
+  /** TM-51: plans whose build turn is running on this server right now (a restart would cut them off). */
+  buildingHere() {
+    return Object.values(this.planStore.plans).filter((p) => p.status === "running_here" && p.build_turn === "running").map((p) => p.id);
+  }
+
   /** "@bot status" / "@bot status <n>", answered by code (no AI turn, so it works under a usage limit). undefined when not that command. */
   async statusCommand(req) {
     const m = String(req.text || "").trim().match(/^(?:status|jobs)(?:\s+(?:of\s+)?\[?#?(\d+)\]?)?\s*\??$/i);

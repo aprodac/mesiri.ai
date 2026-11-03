@@ -12,6 +12,11 @@ name: Deploy Teammate listener
 
 on:
   workflow_dispatch:
+    inputs:
+      now:
+        description: "Restart the bot now, even if a build is running (urgent fix)"
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -99,6 +104,7 @@ jobs:
           # TM-16: the production watch reads Mesiri production through the read-only ops API (the same
           # secret the Mesiri deploy writes to /opt/mesiri/.env); kept out of Claude's environment by main.js.
           MESIRI_CLAUDE_OPS_TOKEN: ${{ secrets.MESIRI_CLAUDE_OPS_TOKEN }}
+          RESTART_NOW: ${{ inputs.now && 'true' || 'false' }}
           # TM-14: more Claude accounts (B, C, …) the bot can switch to from WhatsApp. One secret, one
           # KEY=value per line: the variables above with the account's letter added, e.g.
           # CLAUDE_CODE_OAUTH_TOKEN_B=…, TEAMMATE_ROUTINE_MESIRI_URL_B=…, TEAMMATE_ROUTINE_MESIRI_TOKEN_B=…
@@ -113,7 +119,7 @@ jobs:
           # Several lines: sent encoded, so newlines and quotes survive the ssh command line.
           TEAMMATE_CLAUDE_ACCOUNTS_B64="$(printf %s "${TEAMMATE_CLAUDE_ACCOUNTS:-}" | base64 -w0)"
           ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
-            "TEAMMATE_CLAUDE_ACCOUNTS_B64='${TEAMMATE_CLAUDE_ACCOUNTS_B64}' TEAMMATE_API_TOKEN='${TEAMMATE_API_TOKEN}' TEAMMATE_GEMINI_API_KEY='${TEAMMATE_GEMINI_API_KEY}' TEAMMATE_CLAUDE_TOKEN='${TEAMMATE_CLAUDE_TOKEN}' TEAMMATE_GITHUB_TOKEN='${TEAMMATE_GITHUB_TOKEN}' TEAMMATE_ROUTINE_MERCON_URL='${TEAMMATE_ROUTINE_MERCON_URL}' TEAMMATE_ROUTINE_MERCON_TOKEN='${TEAMMATE_ROUTINE_MERCON_TOKEN}' TEAMMATE_GITHUB_TOKEN_MESIRI='${TEAMMATE_GITHUB_TOKEN_MESIRI}' TEAMMATE_ROUTINE_MESIRI_URL='${TEAMMATE_ROUTINE_MESIRI_URL}' TEAMMATE_ROUTINE_MESIRI_TOKEN='${TEAMMATE_ROUTINE_MESIRI_TOKEN}' TEAMMATE_PARTNER_MESIRI_URL='${TEAMMATE_PARTNER_MESIRI_URL}' TEAMMATE_PARTNER_MESIRI_TOKEN='${TEAMMATE_PARTNER_MESIRI_TOKEN}' MESIRI_CLAUDE_OPS_TOKEN='${MESIRI_CLAUDE_OPS_TOKEN}' TEAMMATE_DEV_LOGIN_USER='${TEAMMATE_DEV_LOGIN_USER}' TEAMMATE_DEV_LOGIN_PASSWORD='${TEAMMATE_DEV_LOGIN_PASSWORD}' TEAMMATE_DEV_LOGIN_MESIRI_USER='${TEAMMATE_DEV_LOGIN_MESIRI_USER}' TEAMMATE_DEV_LOGIN_MESIRI_PASSWORD='${TEAMMATE_DEV_LOGIN_MESIRI_PASSWORD}' bash -s" << 'ENDSSH'
+            "RESTART_NOW='${RESTART_NOW}' TEAMMATE_CLAUDE_ACCOUNTS_B64='${TEAMMATE_CLAUDE_ACCOUNTS_B64}' TEAMMATE_API_TOKEN='${TEAMMATE_API_TOKEN}' TEAMMATE_GEMINI_API_KEY='${TEAMMATE_GEMINI_API_KEY}' TEAMMATE_CLAUDE_TOKEN='${TEAMMATE_CLAUDE_TOKEN}' TEAMMATE_GITHUB_TOKEN='${TEAMMATE_GITHUB_TOKEN}' TEAMMATE_ROUTINE_MERCON_URL='${TEAMMATE_ROUTINE_MERCON_URL}' TEAMMATE_ROUTINE_MERCON_TOKEN='${TEAMMATE_ROUTINE_MERCON_TOKEN}' TEAMMATE_GITHUB_TOKEN_MESIRI='${TEAMMATE_GITHUB_TOKEN_MESIRI}' TEAMMATE_ROUTINE_MESIRI_URL='${TEAMMATE_ROUTINE_MESIRI_URL}' TEAMMATE_ROUTINE_MESIRI_TOKEN='${TEAMMATE_ROUTINE_MESIRI_TOKEN}' TEAMMATE_PARTNER_MESIRI_URL='${TEAMMATE_PARTNER_MESIRI_URL}' TEAMMATE_PARTNER_MESIRI_TOKEN='${TEAMMATE_PARTNER_MESIRI_TOKEN}' MESIRI_CLAUDE_OPS_TOKEN='${MESIRI_CLAUDE_OPS_TOKEN}' TEAMMATE_DEV_LOGIN_USER='${TEAMMATE_DEV_LOGIN_USER}' TEAMMATE_DEV_LOGIN_PASSWORD='${TEAMMATE_DEV_LOGIN_PASSWORD}' TEAMMATE_DEV_LOGIN_MESIRI_USER='${TEAMMATE_DEV_LOGIN_MESIRI_USER}' TEAMMATE_DEV_LOGIN_MESIRI_PASSWORD='${TEAMMATE_DEV_LOGIN_MESIRI_PASSWORD}' bash -s" << 'ENDSSH'
           set -euo pipefail
 
           # Node >= 22.13 (node:sqlite). Install Node 22 from NodeSource if missing/older.
@@ -219,6 +225,18 @@ jobs:
             sed "s#/usr/bin/node#$(command -v node)#" /opt/teammate/deploy/teammate-brain.service > /etc/systemd/system/teammate-brain.service
             systemctl daemon-reload
             systemctl enable teammate-brain
+            # TM-51 (3 Nov: two deploys in 5 minutes cut off [209] and [210] twice): a restart kills a build running on
+            # this server, so wait until none is running (up to 45 min; the brain's /health lists them). The new code is
+            # already on disk; the running process keeps its loaded copy until the restart. "now" skips the wait.
+            if [ "${RESTART_NOW:-false}" != "true" ] && systemctl is-active --quiet teammate-brain; then
+              for i in $(seq 1 90); do
+                building="$(curl -fsS -m 5 http://127.0.0.1:8791/health 2>/dev/null | python3 -c 'import json,sys; print(" ".join(f"[{b}]" for b in json.load(sys.stdin).get("building", [])))' 2>/dev/null || true)"
+                [ -z "$building" ] && break
+                [ "$i" = 1 ] && echo "brain: waiting for the build(s) running here to finish: $building"
+                sleep 30
+              done
+              [ -n "$building" ] && echo "brain: still building after 45 min ($building); restarting anyway (it resumes them)"
+            fi
             systemctl restart teammate-brain
             printf 'TEAMMATE_BRAIN_URL=http://127.0.0.1:8791\n' >> /opt/teammate/.env
             echo "brain: on"
