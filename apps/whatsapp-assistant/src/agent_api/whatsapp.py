@@ -660,7 +660,7 @@ class ApiWhatsApp:
         # The list is drawn here; a copy the model wrote itself (it echoed the history) is cut.
         text = without_ready_block(text) or "OK."
         if pending:
-            text = without_copied_lines(text, [e.summary for e in pending]) or "OK."
+            text = without_numbered_lines(without_copied_lines(text, [e.summary for e in pending])) or "OK."
             listed = "\n".join(f"{i}. {e.summary}" for i, e in enumerate(pending, 1))
             text = f"{text}\n\n*Ready to save:*\n{listed}"
         if options:
@@ -810,6 +810,29 @@ def without_copied_lines(words: str, lines: list[str]) -> str:
     while words.count(")") > words.count("("):  # a dangling ")" left of a copied note
         words = words[::-1].replace(")", "", 1)[::-1].strip()
     return words.strip()
+
+
+#: A numbered item ("1.", "3. 2 drum…", "1.2. 1 drum = 20 litres") at the start of a line, or right after a ":".
+_ITEM = re.compile(r"^\s*\d{1,2}\.(?:\d{1,2}\.)*(?:\s|$)")
+_LEAD_IN = re.compile(r":\s*\d{1,2}\.(?:\d{1,2}\.)*(?:\s|$)")
+
+
+def without_numbered_lines(words: str) -> str:
+    """[217] (3 Nov: "Njan ippo cheyyunnavayum…: 1." then "1.2. 1 drum = 20 litres… 3. 2 drum Primer…"): when the
+    ready list is drawn under the words, the model's own numbered list of lines goes, with the sentence that
+    leads into it. The list the code draws is the one that saves."""
+    kept = []
+    for line in words.split("\n"):
+        if _ITEM.match(line):
+            continue
+        lead = _LEAD_IN.search(line)
+        if lead:
+            starts = [m.end() for m in _SENTENCE_END.finditer(line, 0, lead.start())]
+            line = line[: starts[-1] if starts else 0].rstrip()
+            if not line:
+                continue
+        kept.append(line)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
 
 
 def _language(text: str) -> str | None:
