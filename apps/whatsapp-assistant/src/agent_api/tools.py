@@ -128,7 +128,8 @@ ALLOWED: tuple[Allowed, ...] = (
     Allowed("send_dpr", "POST", "/dpr/projects/{project_id}/send", "Prepare sending today's project DPR now." + _WRITE),
     # WA-142: corrections and set-up the dashboard already offers. Each one is prepared like any write
     # and runs only on Save, as the person (the API applies their role). Not here on purpose: anything
-    # that grants access (project members, users, roles), Workforce / Attendance deletes, modules.
+    # that grants access (users, roles; project members only as add_project_member below, approved by the owner
+    # in [207]), Workforce / Attendance deletes, modules.
     Allowed("work_item", "GET", "/progress/activities/{activity_id}", "One work entry with its quantities and ids."),
     Allowed("correct_work", "PATCH", "/progress/activities/{activity_id}",
             "Prepare a correction of a work entry already saved (its quantity, description or date): find it with "
@@ -163,6 +164,8 @@ ALLOWED: tuple[Allowed, ...] = (
     Allowed("add_site", "POST", "/projects/{project_id}/sites", "Prepare a new site in a project." + _WRITE),
     Allowed("update_site", "PUT", "/projects/{project_id}/sites/{site_id}",
             "Prepare changing a site's details (name, address, status)." + _WRITE),
+    # TM-30 ([207]): the dashboard"s own route, added by scripts/allow_route.py.
+    Allowed("add_project_member", "POST", "/projects/{project_id}/members", "Prepare adding a person who is already in the company to a project, with a role (site engineer, project manager, finance, admin). userId: their name as said is fine, the code finds them; role: as said." + _WRITE),
 )
 
 

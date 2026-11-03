@@ -205,8 +205,13 @@ Entries wait per person in Redis for a day (an older list's buttons do nothing).
 - **Corrections and set-up**, all held for Save and run as the person: correct a work entry, see /
   acknowledge / won't-fix an issue, take back a receipt, usage, transfer or expense, add or change a
   material (and its aliases), add an expense category, create or change a project, add or change a
-  site (project and site edits: admins, as on the dashboard).
-- **Not on the list on purpose:** project members, users and roles (they grant access), Workforce /
+  site (project and site edits: admins, as on the dashboard). A project name the company already
+  has is refused ("Rana Mart already exists", [207]).
+- **Add a person to a project** ([207], owner-approved): `add_project_member`. The code matches the
+  name said against the company's active people (`GET /projects/{id}/member-candidates`; buttons
+  when two could be meant; never a new person) and the role words (classic's `role_words`); the API
+  lets an admin or that project's manager add, with a role they may give.
+- **Not on the list on purpose:** users and roles (they grant access), removing members, Workforce /
   Attendance deletes, and company modules (platform admins only today: WA-144 is the decision).
 
 ## API changes made for v3 (the dashboard benefits too)

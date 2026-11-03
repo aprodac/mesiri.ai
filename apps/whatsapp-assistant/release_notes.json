@@ -249,6 +249,16 @@
         "cor_9a554bee216a4ecfab94d50138cd783f"
       ],
       "message": "Ini TMT bars aayi thanne paranjaal mathi 👍 Mesiri athu kg aakki save cheyyum. Aadyam oru vattam choodikkum: oru bar ethra kg (allenkil bar size: 12mm = 10.67 kg, 16mm = 18.96 kg). Material-inte perilu size undenkil (eg 'TMT 12mm') onnum choodikkilla. Try: '10 TMT bar Tower A-il use aaki'."
+    },
+    {
+      "id": "v3-add-project-member",
+      "date": "2026-11-03",
+      "for": [
+        "cor_9498573a129f4f55b4337a1aa27bc859",
+        "cor_e2f6448919dc4cd7b494a08494a79209",
+        "cor_cf124a9ac6d7436bbcc042c8ca713243"
+      ],
+      "message": "Ippo WhatsApp-il ninnu thanne project-il team member-ine add cheyyaam. Try: 'Sahal-ine Rana Mart-il site engineer aayi add cheyyu'"
     }
   ]
 }

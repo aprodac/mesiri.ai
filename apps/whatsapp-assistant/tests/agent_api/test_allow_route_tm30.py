@@ -29,6 +29,15 @@ def test_what_stays_with_a_person_is_refused(method, path) -> None:
     assert _script().refusal(method, path)
 
 
+def test_an_owner_approved_plan_lifts_only_the_access_refusal() -> None:
+    # [207]: an owner approved adding people to a project from WhatsApp; deletes, admin and held modules still stay.
+    script = _script()
+    assert script.refusal("POST", "/projects/{project_id}/members", owner_approved=True) is None
+    for method, path in [("DELETE", "/projects/{project_id}/members/{user_id}"), ("GET", "/admin/requests"),
+                         ("PUT", "/organizations/settings"), ("POST", "/labour/attendance")]:
+        assert script.refusal(method, path, owner_approved=True)
+
+
 @pytest.mark.parametrize(("method", "path"), [("GET", "/expenses/{expense_id}"), ("GET", "/labour/workers"),
                                               ("POST", "/expenses/categories")])
 def test_ordinary_routes_pass(method, path) -> None:

@@ -218,7 +218,7 @@ class ApiAgent:
         saved: list[WriteResult] = []
         asked: dict[str, Any] = {}
         acted: list[str] = []
-        unit_ask: list[str] = []  # buttons for a unit nobody could settle (cleared once a line settles)
+        unit_ask: list[str] = []  # buttons for a unit (or a person, [207]) nobody could settle; cleared once settled
         links: list[str] = []  # WA-141: dashboard links built this turn
         changed: list[int] = []  # [205]: waiting entries corrected in place this turn
         repeat_asked: list[str] = []  # WA-154: creates asked about this turn
@@ -308,6 +308,12 @@ class ApiAgent:
                 problem = await settle_unit(client, body)
                 if problem:
                     unit_ask[:] = await unit_buttons(client)
+                    return ToolOutcome(content={"error": problem})
+                unit_ask.clear()
+            if name == MEMBER_TOOL:
+                problem, buttons = await settle_member(client, path, body)
+                if problem:
+                    unit_ask[:] = buttons
                     return ToolOutcome(content={"error": problem})
                 unit_ask.clear()
             if tool.is_write:
@@ -453,6 +459,43 @@ async def settle_unit(client: ApiClient, body: dict[str, Any]) -> str:
                 f"{unit_choices(units)}. If you cannot tell which unit they mean, ask them with `ask` and those units as options.")
     body["unit_id"] = str(unit["id"])
     return ""
+
+
+MEMBER_TOOL = "add_project_member"
+
+
+async def settle_member(client: ApiClient, path: str, body: dict[str, Any]) -> tuple[str, list[str]]:
+    """[207]: make ``body["userId"]`` the id of a person already in the company (the model passes the name
+    they said) and ``body["role"]`` a role code ("site engineer" -> SITE_ENGINEER, classic's own role words).
+    Never creates a person. Returns ("", []) when settled, else what to tell the model and the buttons to show
+    (the closest names, when more than one person could be meant). The API decides who may add (admin or
+    this project's manager) and which role they may give."""
+    from runtime.entity_resolution.name_matching import NamedCandidate, resolve_name_hint
+    from workflows.entities import Ambiguous, Resolved
+    from workflows.role_words import normalize_role
+
+    body["role"] = normalize_role(body.get("role"))
+    response = await client.call("GET", path.removesuffix("/members") + "/member-candidates")
+    if not response.ok:
+        return f"refused: {_detail(response.body)}. Tell them plainly; do not prepare it.", []
+    people = [NamedCandidate(entity_id=str(p.get("userId")), display_name=str(p.get("fullName") or ""))
+              for p in response.body if isinstance(p, dict)] if isinstance(response.body, list) else []
+    said = str(body.get("userId") or "").strip()
+    if any(p.entity_id == said for p in people):
+        return "", []
+    outcome = resolve_name_hint(said, people)
+    if isinstance(outcome, Ambiguous) and len(outcome.candidates) == 1 and said.casefold() in (
+            outcome.candidates[0].display_name.casefold().split()):
+        outcome = Resolved(entity_id=outcome.candidates[0].entity_id, display_name=outcome.candidates[0].display_name)
+    if isinstance(outcome, Resolved):
+        body["userId"] = outcome.entity_id
+        return "", []
+    if isinstance(outcome, Ambiguous):
+        names = [c.display_name for c in outcome.candidates]
+        return (f"{said!r} could be: {', '.join(names)}. Ask which one with `ask`, those names as options; "
+                "nothing is prepared yet.", [n[:20] for n in names[:3]])
+    return (f"no one called {said!r} is in the company. People join the company on the web dashboard (Team) "
+            "first; say so plainly. Do not prepare it.", [])
 
 
 UNIT_UNSETTLED = "unit_id is not a valid active unit"

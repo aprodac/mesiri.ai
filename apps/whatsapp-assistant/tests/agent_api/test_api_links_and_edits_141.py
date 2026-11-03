@@ -72,7 +72,9 @@ def test_the_new_routes_are_on_the_list_and_writes_wait_for_save() -> None:
 
 
 def test_guard_nothing_that_grants_access_is_on_the_list() -> None:
-    paths = {a.path for a in ALLOWED}
+    # [207]: the one owner-approved exception, adding a person already in the company to a project (POST only).
+    approved = {("POST", "/projects/{project_id}/members")}
+    paths = {a.path for a in ALLOWED if (a.method, a.path) not in approved}
     assert not any(p.startswith("/users") or p.endswith("/members") or "/members/" in p for p in paths)
     assert not any(a.method == "DELETE" for a in ALLOWED)
     assert "/organizations/settings" not in paths  # modules: platform admins only (WA-144)

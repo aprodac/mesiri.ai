@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import hashlib
 import logging
+import re
 import time
 import uuid
 from typing import Any
@@ -38,14 +40,43 @@ def _days(timezone: str | None, now: dt.datetime | None = None) -> list[dt.date]
     return [today - dt.timedelta(days=n) for n in range(EARLIER_DAYS, -1, -1)]
 
 
+#: WA-157 (3 Nov: "add Rajesh to Zeta Plaza" was refused after the feature shipped, because the same request had been
+#: refused three times earlier that day and the model repeated its own remembered "Sorry, I cannot"). Each reply is
+#: stored with a short tag of the tools Mesiri had when it gave it; a reply from another (or an unknown, older) tool set
+#: is read back with a note, so an old "I can't" is never taken as true now.
+_TAG = re.compile(r"\n?\u2063\[tools:([0-9a-f]{8})\]$")
+OLDER_NOTE = "(said by an older version of Mesiri, with fewer tools: anything it said it couldn't do may work now) "
+
+
+def tools_version(names: Any) -> str:
+    """A short tag for a set of tool names (the same set, the same tag)."""
+    return hashlib.sha1(",".join(sorted(names)).encode()).hexdigest()[:8]
+
+
+def _tagged(text: str, version: str | None) -> str:
+    return f"{text}\n\u2063[tools:{version}]" if version else text
+
+
+def _read(role: str, text: str, version: str | None) -> ChatMessage:
+    """One remembered message as the model sees it: the tag gone; an older version's reply marked."""
+    m = _TAG.search(text or "")
+    if role != "model" or version is None:
+        return ChatMessage(role=role, text=_TAG.sub("", text or ""))
+    if m and m.group(1) == version:
+        return ChatMessage(role=role, text=_TAG.sub("", text))
+    return ChatMessage(role=role, text=OLDER_NOTE + _TAG.sub("", text or ""))
+
+
 def _marker(text: str) -> list[ChatMessage]:
     return [ChatMessage(role="user", text=text), ChatMessage(role="model", text="(noted)")]
 
 
 class DayMemory:
-    def __init__(self, sessions: Any | None, redis: Any) -> None:
+    def __init__(self, sessions: Any | None, redis: Any, version: str | None = None) -> None:
         self._sessions = sessions
         self._redis = redis
+        #: WA-157: the tag of the tools Mesiri has now (``tools_version``); None reads replies as they are.
+        self.version = version
 
     @staticmethod
     def _user(ctx: Any) -> str:
@@ -78,18 +109,19 @@ class DayMemory:
                 )
                 events = session.events if session else []
                 return [
-                    ChatMessage(role="user" if e.author == USER else "model",
-                                text="".join(p.text or "" for p in (e.content.parts or [])) if e.content else "")
+                    _read("user" if e.author == USER else "model",
+                          "".join(p.text or "" for p in (e.content.parts or [])) if e.content else "", self.version)
                     for e in events
                 ]
             stored = await self._redis.get_json(self._redis_key(ctx, day)) or []
-            return [ChatMessage(role=t["role"], text=t["text"]) for t in stored[-limit:]]
+            return [_read(t["role"], t["text"], self.version) for t in stored[-limit:]]
         except Exception:  # noqa: BLE001 -- a day it cannot read is a day it does not remember
             _log.warning("agent_api.memory_unreadable user=%s day=%s", ctx.user_id, day, exc_info=True)
             return []
 
     async def remember(self, ctx: Any, said: str, sent: str) -> None:
         day = _days(getattr(ctx, "timezone", None))[-1]
+        sent = _tagged(sent, self.version)
         try:
             if self._sessions is not None:
                 await self._remember_session(ctx, day, said, sent)
