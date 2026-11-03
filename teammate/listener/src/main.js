@@ -19,6 +19,7 @@ import { Store } from "./store.js";
 import { AiWorker, Transcriber } from "./transcribe.js";
 import { Bot } from "./bot.js";
 import { WhatsAppListener } from "./whatsapp.js";
+import { BrainWatch } from "./brainwatch.js";
 
 const dataDir = resolve(process.env.TEAMMATE_DATA_DIR || "./data");
 const host = process.env.TEAMMATE_HOST || "127.0.0.1";
@@ -77,6 +78,17 @@ const api = createApi({ store, wa, token: process.env.TEAMMATE_API_TOKEN, ai, br
 
 api.listen(port, host, () => log(`inbox API on http://${host}:${port}`));
 await wa.start();
+// 3 Nov: the bot was down all night unseen; the listener watches it every minute and tells the team groups itself.
+if (brain?.health && process.env.TEAMMATE_BRAIN_WATCH !== "0") {
+  const watch = new BrainWatch({
+    health: brain.health,
+    post: async (text) => {
+      for (const c of store.listChats().filter((x) => x.role === "team")) await wa.send(c.jid, { text }).catch((e) => log(`brainwatch: ${e.message}`));
+    },
+    log,
+  });
+  setTimeout(() => setInterval(() => watch.tick(), 60_000).unref?.(), 90_000).unref?.(); // after the brain's own start-up
+}
 log(wa.registered ? "linked session found, connecting" : "not linked yet -- run `inbox.py pair <phone>`");
 ai.start().catch((e) => log(`Gemini worker failed to start: ${e}`));
 

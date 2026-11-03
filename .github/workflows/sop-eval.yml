@@ -72,7 +72,15 @@ jobs:
           TEAMMATE_PROJECT: mesiri
         run: |
           failed=$(grep -E '^FAILED' /tmp/sop-eval.txt | sed -E 's#.*/test_replay_([a-z0-9_]+)\.py::.*#\1#' | sort -u | head -8 | tr '\n' ' ')
-          msg="🧪 SOP eval: the real model now gets saved conversation(s) wrong after ${GITHUB_SHA::7}: ${failed}. Details: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          # 3 Nov: the CI key couldn't use the model at all (404 "no longer available to new users") and the group was
+          # told the model "gets conversations wrong". A run that never reached the model says so instead.
+          if grep -qE "status_code = (401|403|404|429)|no longer available|API key not valid|RESOURCE_EXHAUSTED|PERMISSION_DENIED" /tmp/sop-eval.txt; then
+            why=$(grep -oE "no longer available to new users|API key not valid|RESOURCE_EXHAUSTED|PERMISSION_DENIED|status_code = [0-9]+" /tmp/sop-eval.txt | head -1)
+            msg="🙋 *Needs you:* the real-model check of saved conversations couldn't run after ${GITHUB_SHA::7}: the CI model key was refused (${why}). Nothing is known about the conversations until the key (CI_GEMINI_API_KEY) can use ${GEMINI_MODEL:-the model}. ${url}"
+          else
+            msg="🧪 SOP eval: the real model now gets saved conversation(s) wrong after ${GITHUB_SHA::7}: ${failed}. Details: ${url}"
+          fi
           python3 teammate/inbox.py post "$msg" || echo "::warning::Team WhatsApp group not reached"
       - name: Report this run's Gemini spend to the team bot
         if: ${{ always() && steps.corpus.outputs.count != '0' }}
