@@ -256,10 +256,26 @@ export function fastPathSection(plan) {
     "  them; don't re-investigate the area. If the plan turns out wrong, say so in the group and stop.",
     ids.length
       ? `- First the failing test from their own messages: python3 scripts/replay_to_test.py ${ids[0]} --name plan-${plan.id}` +
-        " (set its EXPECT to what should happen), then the fix."
+        " (on the bot's server, where production can't be read, use the --from-json files listed under \"The real" +
+        " conversations\"; set its EXPECT to what should happen), then the fix."
       : "- First a scripted test that fails without the fix (tests/agent_api/ for the assistant), then the fix.",
     "- When the plan names a dashboard route for v3, the change is scripts/allow_route.py with it (TM-30): one step.",
     "- Post \"🛠 Building [n]\" now; run only the CLAUDE.md checks for the areas you touched; push; then the release note.",
+  ].join("\n");
+}
+
+/**
+ * TM-54: the customer's own turns are in the build copy; each becomes a replay test, committed with the fix. The SOP
+ * eval (sop-eval.yml) then runs every saved conversation on the real model after each push, for good.
+ */
+export function replaySection(plan, paths) {
+  return [
+    "The real conversations (TM-54): the bot saved the person's own v3 turn(s), read from production, at:",
+    ...paths.map((p) => `  ${p}`),
+    "Make each one a test BEFORE the fix, and commit it with the fix (this is how every complaint joins the corpus the",
+    "real model is checked on after every push):",
+    ...paths.map((p, i) => `  python3 scripts/replay_to_test.py --from-json ${p} --name plan-${plan.id}${paths.length > 1 ? `-${i + 1}` : ""}`),
+    "Set its EXPECT to what should happen, so it fails now and passes after the fix. Never commit .teammate-replays/.",
   ].join("\n");
 }
 
@@ -275,13 +291,13 @@ export class Brain {
    *   owner?: string, model?: string, env?: Record<string, string>, log?: (m: string) => void, now?: () => Date,
    * }} opts
    */
-  constructor({ queryFn, projects, dir, listener, tools, prepare = () => {}, prepareBuild = null, pushBuild = null, owner = "Ilan", model, env = process.env, log = () => {}, now = () => new Date(), routines = {}, fireFn = null, partners = {}, landed, accounts = null, work = null }) {
+  constructor({ queryFn, projects, dir, listener, tools, prepare = () => {}, prepareBuild = null, pushBuild = null, saveReplays = null, owner = "Ilan", model, env = process.env, log = () => {}, now = () => new Date(), routines = {}, fireFn = null, partners = {}, landed, accounts = null, work = null }) {
     // routines: { project: { url, token } } -- approved work runs as a cloud routine session the owner can
     // watch in Claude Code (hybrid, TM-03b); projects without one run the working turn here.
     // partners: { project: { url, token } } -- the routine bound to Ilan Usman's cloud session (TM-12).
     // accounts: several Claude accounts, each with its own login, routines and partners (TM-14); without it,
     // one account made of `routines` / `partners` and whatever login `env` carries.
-    Object.assign(this, { queryFn, projects, listener, tools, prepare, prepareBuild, pushBuild, owner, model, env, log, now, fireFn });
+    Object.assign(this, { queryFn, projects, listener, tools, prepare, prepareBuild, pushBuild, saveReplays, owner, model, env, log, now, fireFn });
     this.accounts = accounts || new Accounts({ list: [{ id: "a", token: null, routines, partners }], now: () => this.now().getTime() });
     this.boardFile = `${dir}/board.json`;
     this.sessionsFile = `${dir}/sessions.json`;
@@ -443,6 +459,7 @@ export class Brain {
         return this.planStore.plans[id];
       },
       get: (id) => this.planStore.plans[id] || null,
+      all: () => Object.values(this.planStore.plans),
       update: (id, patch) => {
         const plan = this.planStore.plans[id];
         if (plan) Object.assign(plan, patch), writeJson(this.plansFile, this.planStore);
@@ -642,8 +659,18 @@ export class Brain {
         return say(`⚠️ Couldn't build [${plan.id}]: the build copy isn't ready (${String(e.message).slice(0, 120)}).`);
       }
       this.sessions.ids[`${plan.chat}::build`] = null; // each build starts a fresh conversation
+      // TM-54: the askers' real turns, read by the bot (the build has no production access), saved for their test.
+      let replays = [];
+      if (this.saveReplays && plan.asked_for?.length) {
+        try {
+          replays = await this.saveReplays(repo, plan);
+        } catch (e) {
+          this.log(`brain: replays for [${plan.id}]: ${e.message}`);
+        }
+      }
+      const withReplays = replays.length ? `${text}\n\n${replaySection(plan, replays)}` : text;
       try {
-        return await this.turn({ project: plan.project, reply_project: project, chat: plan.chat, chat_name: plan.chat_name, chat_role: "team", reply_chat, dm, sender: by, n: null, text, session: "build", build_here: true }, "working", plan);
+        return await this.turn({ project: plan.project, reply_project: project, chat: plan.chat, chat_name: plan.chat_name, chat_role: "team", reply_chat, dm, sender: by, n: null, text: withReplays, session: "build", build_here: true }, "working", plan);
       } finally {
         plan.build_turn = "finished";
         // TM-46: the session that built it judges its real use later, with everything it knew (resumed).

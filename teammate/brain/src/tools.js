@@ -92,6 +92,22 @@ const partnerSent = [];
  * ("Name (role, company)", never a phone number), their pseudonymous sender id and what they sent. A live check's fix
  * (ctx.verify_plan) inherits the original plan's asker and counts one more round.
  */
+/** TM-53: the earlier plans of the same complaint (the same asking messages, a re-opened [n], or a failed live check). */
+export function refixOf({ title, plan, asked }, all, verifyPlan = null) {
+  const text = `${title}\n${plan}`;
+  const named = new Set([
+    ...[...text.matchAll(/(?:re-?open\w*|still (?:broken|wrong|not (?:fixed|working))[^.\n]{0,40}?)\s*\[(\d+)\]/gi)].map((m) => m[1]),
+    ...[...text.matchAll(/\[(\d+)\]\s*(?:is\s+|was\s+)?still (?:broken|wrong|not (?:fixed|working))/gi)].map((m) => m[1]),
+  ]);
+  if (verifyPlan != null) named.add(String(verifyPlan));
+  return all.filter((p) => p.status !== "proposed" && (named.has(String(p.id)) || (p.asked_for || []).some((c) => asked.includes(c))));
+}
+
+/** TM-53: the plan names the mechanism and the test that fails because of it. */
+export function refixReady(plan) {
+  return /^\s*[*_-]*\s*root cause\s*[*_]*\s*:/im.test(plan) && /^\s*[*_-]*\s*failing test\s*[*_]*\s*:/im.test(plan);
+}
+
 export function whoAsked(ctx, askedFor = [], plans = null) {
   const out = {};
   const ids = (askedFor || []).map(String).filter(Boolean);
@@ -346,6 +362,15 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
       async ({ title, plan, type, auto, asked_for, owner_ok }) => {
         let itemId = null;
         const asked = whoAsked(ctx, asked_for, plans);
+        // TM-53 (3 Nov: the TMT unit went [203] → [206] → WA-151 → WA-152 in a day, each a guess on top of the last):
+        // a second fix of the same complaint must name the mechanism and the test that fails because of it.
+        const earlier = refixOf({ title, plan, asked: asked.asked_for || [] }, plans?.all?.() || [], ctx.verify_plan);
+        if (earlier.length && !refixReady(plan)) {
+          return fail(`This complaint already had ${earlier.map((p) => `[${p.id}]`).join(", ")}, and it is still not right. A second fix is `
+            + "recorded only with, in the plan: a line \"Root cause:\" naming the mechanism (which decision went wrong, where, "
+            + "and why the earlier fix missed it), and a line \"Failing test:\" naming the test that fails now because of it (from "
+            + "their own messages: replay_to_test.py). Find both, then call propose_plan again.");
+        }
         try {
           const r = await listener.addItem({ chat: ctx.chat, project: chatProject, type: type || "task", title: ctx.project !== chatProject ? `[bot upgrade] ${title}` : title, summary: plan, created_by: `${ctx.sender} via bot`, ...(asked.asked_by ? { asked_by: asked.asked_by, asked_ref: asked.asked_for.join(","), asked_who: asked.asked_who } : {}) });
           itemId = r?.item?.id ?? null;

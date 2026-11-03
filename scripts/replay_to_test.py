@@ -42,7 +42,7 @@ def fetch(correlation_id: str) -> dict:
            "JOIN inbound_messages m ON m.correlation_id = t.correlation_id "
            f"WHERE t.correlation_id = '{correlation_id}' AND t.stage = 'agent_api_turn' "
            "ORDER BY t.created_at DESC LIMIT 1")
-    out = subprocess.run([sys.executable, str(ROOT / "scripts" / "control_plane.py"), "sql", sql, "--json"],
+    out = subprocess.run([sys.executable, str(ROOT / "scripts" / "control_plane.py"), "--json", "sql", sql],
                          capture_output=True, text=True, check=False)
     if out.returncode != 0:
         sys.exit(f"control plane: {out.stderr.strip() or out.stdout.strip()}")

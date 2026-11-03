@@ -97,3 +97,31 @@ export function pushLeftovers(project, { git, log = () => {} }) {
     return { ahead, pushed: false, error: why };
   }
 }
+
+/**
+ * TM-54 (3 Nov: not one complaint had become a replay test; builds here have no production access, so
+ * `replay_to_test.py <cor>` always failed and they wrote invented cases instead). The bot, which can read production,
+ * saves each asker's real v3 turn into the build copy as .teammate-replays/<cor>.json (never committed), and the build
+ * makes it a test with `replay_to_test.py --from-json`. Returns the relative paths written.
+ * @param turns  [{ correlation_id, ...the turn as replay_to_test.py's fetch() returns it }]
+ */
+export function saveReplays(project, turns, { git }) {
+  const dir = join(project.buildCwd, ".teammate-replays");
+  mkdirSync(dir, { recursive: true });
+  const exclude = git(project.buildCwd, "rev-parse", "--git-path", "info/exclude");
+  const excludePath = exclude.startsWith("/") ? exclude : join(project.buildCwd, exclude);
+  let current = "";
+  try {
+    current = readFileSync(excludePath, "utf8");
+  } catch {
+    mkdirSync(join(excludePath, ".."), { recursive: true });
+  }
+  if (!current.split("\n").includes(".teammate-replays/")) writeFileSync(excludePath, `${current}${current && !current.endsWith("\n") ? "\n" : ""}.teammate-replays/\n`);
+  const paths = [];
+  for (const t of turns) {
+    if (!/^cor_[0-9a-f]{8,40}$/.test(String(t?.correlation_id))) continue;
+    writeFileSync(join(dir, `${t.correlation_id}.json`), JSON.stringify(t, null, 2));
+    paths.push(`.teammate-replays/${t.correlation_id}.json`);
+  }
+  return paths;
+}

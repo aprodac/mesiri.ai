@@ -38,9 +38,9 @@ import { Accounts, parseAccounts } from "./accounts.js";
 import { brainTools } from "./tools.js";
 import { createRenderer } from "./render.js";
 import { commitPatterns, formatWorkStatus } from "./work_status.js";
-import { ProdWatch, QUIET, Screener, opsSources, skipPatterns } from "./prod_watch.js";
+import { ProdWatch, QUIET, Screener, asObjects, opsSources, skipPatterns } from "./prod_watch.js";
 import { costRows } from "./cost.js";
-import { buildPath, prepareBuildTree, pushLeftovers } from "./build_tree.js";
+import { buildPath, prepareBuildTree, pushLeftovers, saveReplays } from "./build_tree.js";
 import { quietSend } from "./quiet.js";
 import { Evening } from "./board.js";
 import { SelfTest } from "./selftest.js";
@@ -258,6 +258,25 @@ async function planCommits(plan, sinceIso, item = null) {
     .filter((c) => own.some((re) => re.test(c.subject)));
 }
 
+/** TM-54: one message's v3 turn, as scripts/replay_to_test.py's fetch() returns it (the same SELECT). */
+async function readTurn(source, cor) {
+  const sql = "SELECT t.stage_payload::text AS payload, left(m.assistant_reply, 2000) AS reply, "
+    + "to_char(m.received_at, 'YYYY-MM-DD') AS day FROM journey_traces t "
+    + "JOIN inbound_messages m ON m.correlation_id = t.correlation_id "
+    + `WHERE t.correlation_id = '${cor}' AND t.stage = 'agent_api_turn' ORDER BY t.created_at DESC LIMIT 1`;
+  const res = await fetch(`${source.url}/claude-ops/sql`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${source.token}`, "content-type": "application/json" },
+    body: JSON.stringify({ sql }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) throw new Error(`ops API HTTP ${res.status}`);
+  const [row] = asObjects(await res.json());
+  if (!row) return null;
+  const payload = typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload;
+  return { ...payload, reply: row.reply || "", day: row.day, correlation_id: cor };
+}
+
 /** Workflow runs (CI, "Deploy to Production") of those commits: GitHub REST, read-only, with the project's own token. */
 async function planRuns(shas, plan) {
   const { repo, branch, ghToken } = projects[plan.project];
@@ -288,6 +307,17 @@ const brain = new Brain({
   listener,
   prepareBuild, // TM-31: "@bot build here"
   pushBuild: (project) => pushLeftovers(project, { git: gitAs(project.ghToken), log }), // TM-56
+  // TM-54: the askers' real v3 turns (read-only ops API, which builds don't have) into the build copy for their test.
+  saveReplays: async (project, plan) => {
+    const source = opsByProject[plan.reply_project || plan.chat_project || plan.project];
+    if (!source) return [];
+    const turns = [];
+    for (const cor of (plan.asked_for || []).filter((c) => /^cor_[0-9a-f]{8,40}$/.test(String(c))).slice(0, 5)) {
+      const turn = await readTurn(source, cor).catch((e) => (log(`replays: ${cor}: ${e.message}`), null));
+      if (turn) turns.push(turn);
+    }
+    return saveReplays(project, turns, { git: gitAs(project.ghToken) });
+  },
   tools: (ctx, plans) => {
     const p = brain.partnerFor(ctx.chat, ctx.chat_project || ctx.project); // on this group's account, at the time of the turn
     const ops = opsByProject[ctx.chat_project || ctx.project];

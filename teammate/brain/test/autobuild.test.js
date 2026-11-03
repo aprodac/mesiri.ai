@@ -260,3 +260,17 @@ test("brain: a plan whose request a Claude Code session claimed waits instead of
     done();
   }
 });
+
+// TM-53 (3 Nov: TMT went [203] → [206] → WA-151 → WA-152): a second fix of the same complaint needs its mechanism.
+test("a second fix of the same complaint needs a root cause and a failing test", async () => {
+  const { refixOf, refixReady } = await import("../src/tools.js");
+  const all = [{ id: 203, status: "done", asked_for: ["cor_aaaaaaaa11"] }, { id: 150, status: "done", asked_for: ["cor_bbbbbbbb22"] }, { id: 210, status: "proposed", asked_for: ["cor_cccccccc33"] }];
+  assert.deepEqual(refixOf({ title: "TMT unit", plan: "x", asked: ["cor_aaaaaaaa11"] }, all).map((p) => p.id), [203]);
+  assert.deepEqual(refixOf({ title: "TMT unit: [203] still broken here", plan: "x", asked: [] }, all).map((p) => p.id), [203]);
+  assert.deepEqual(refixOf({ title: "x", plan: "This re-opens [150].", asked: [] }, all).map((p) => p.id), [150]);
+  assert.deepEqual(refixOf({ title: "x", plan: "x", asked: [] }, all, 203).map((p) => p.id), [203]); // a failed live check
+  assert.deepEqual(refixOf({ title: "new thing", plan: "x", asked: ["cor_dddddddd44"] }, all), []); // guard: a new complaint
+  assert.equal(refixReady("Root cause: the stock unit is kg, the API refuses nos.\nFailing test: test_replay_plan_206."), true);
+  assert.equal(refixReady("*Root cause:* x\n- Failing test: y"), true);
+  assert.equal(refixReady("The root cause is probably the unit. We'll add a test."), false);
+});

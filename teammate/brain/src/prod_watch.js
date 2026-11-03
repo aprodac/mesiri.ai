@@ -334,6 +334,8 @@ export function watchPrompt(project, convs, { minutes, autobuild = false }) {
     "   harness if you can), then the CLASS: the sibling cases that share the mechanism. Group failures that share a root",
     "   cause into ONE plan. Check docs/plans/V1_TRACKER.md first and name the existing item when there is one.",
     "3. Record one plan per root cause (the plan tool), scoped as FIX_APPROACH says: the root, the siblings, the UX, the",
+    "   guard tests. A complaint that already had a plan (the same messages, or \"[n] still broken\") is recorded only",
+    "   with a \"Root cause:\" line (the mechanism, and why the earlier fix missed it) and a \"Failing test:\" line (TM-53).",
     "   guard tests. Never a one-message patch. Attendance / Payroll / Workforce, migrations that change data,",
     "   and security changes (keys and tokens, tenant isolation, login) need the owner: set owner_ok on propose_plan (never write",
     "   \"needs your OK\" in a message). Roles and permissions INSIDE the product (who may add a project member, create a",

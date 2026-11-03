@@ -111,3 +111,21 @@ test("commits a build left behind are pushed once; a refused push is reported, n
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// TM-54: the askers' real turns go into the build copy, never into a commit.
+test("the real turns are saved in the build copy and ignored by git", async () => {
+  const { saveReplays } = await import("../src/build_tree.js");
+  const { dir, project } = world();
+  try {
+    prepareBuildTree(project, { git, run: () => {} });
+    const paths = saveReplays(project, [{ correlation_id: "cor_ab12cd34ef", text: "Rana Mart", calls: [] }, { correlation_id: "../evil" }], { git });
+    assert.deepEqual(paths, [".teammate-replays/cor_ab12cd34ef.json"]);
+    assert.match(readFileSync(join(project.buildCwd, paths[0]), "utf8"), /Rana Mart/);
+    assert.equal(git(project.buildCwd, "status", "--porcelain"), ""); // excluded: nothing to commit
+    saveReplays(project, [], { git }); // twice: the exclude line isn't repeated
+    const exclude = readFileSync(join(project.cwd, ".git", "info", "exclude"), "utf8");
+    assert.equal(exclude.split("\n").filter((l) => l === ".teammate-replays/").length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
