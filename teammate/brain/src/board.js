@@ -16,7 +16,11 @@ export function stageOf(item) {
   if (item.status === "done" || item.verified === "ok") {
     return item.verified === "ok" ? { key: "confirmed", text: "✅ live and checked" } : { key: "live", text: "✅ live" };
   }
-  if (item.held) return { key: "waiting", text: `🙋 waiting for your ok (${String(item.held).slice(0, 80)})`, you: true };
+  // TM-60: a cap is not a question for anyone: it waits until tomorrow, or an ok builds it now.
+  if (item.held && /automatic builds are used|autobuild is off|usage limit|daily limit/i.test(item.held)) {
+    return { key: "waiting", text: `⏸ waiting: ${String(item.held).slice(0, 80)} (@bot ok ${item.id} builds it now)`, you: false, capped: true };
+  }
+  if (item.held) return { key: "waiting", text: `🙋 waiting for you (${String(item.held).slice(0, 100)})`, you: true };
   if (item.live_at) return { key: "live", text: "✅ live, being checked" };
   if (item.pushed_at) return { key: "deploying", text: "🚀 going live" };
   if (item.status === "in_progress" || item.started_at) return { key: "building", text: "🛠 being built" };
@@ -101,6 +105,59 @@ export class Evening {
         sent += text ? 1 : 0;
       } catch (e) {
         this.log(`evening ${project}: ${e.message}`);
+      }
+    }
+    return sent;
+  }
+}
+
+/**
+ * TM-60 (3 Nov: a 🙋 is posted once; unanswered, it sinks under everything else). Every 10 min, between 09:00 and
+ * 21:00 IST: at 09:00 the morning list of what waits on someone (if anything does), and once more for any request that
+ * has waited on someone for 3 hours since the last reminder. Never at night, never twice in 6 hours for one request.
+ */
+export class Reminders {
+  constructor({ projects, items, notify, file, now = () => Date.now(), log = () => {}, afterMs = 3 * 3600_000, againMs = 6 * 3600_000 }) {
+    Object.assign(this, { projects, items, notify, file, now, log, afterMs, againMs });
+  }
+
+  state() {
+    try {
+      return JSON.parse(readFileSync(this.file, "utf8"));
+    } catch {
+      return {};
+    }
+  }
+
+  async tick() {
+    const t = new Date(this.now() + IST);
+    const hour = t.getUTCHours();
+    if (hour < 9 || hour >= 21) return 0;
+    const today = t.toISOString().slice(0, 10);
+    const state = this.state();
+    let sent = 0;
+    for (const project of this.projects) {
+      try {
+        const waiting = (await this.items(project)).filter((i) => (i.status === "open" || i.status === "in_progress") && stageOf(i).you);
+        const s = (state[project] ||= { morning: null, reminded: {} });
+        if (s.morning !== today) {
+          s.morning = today;
+          if (waiting.length) {
+            await this.notify(project, `*Good morning. Waiting on you:*\n${waiting.map((i) => `• [${i.id}] ${title(i)}: ${String(i.held).slice(0, 120)}`).join("\n")}\n@bot status for everything open.`);
+            for (const i of waiting) s.reminded[i.id] = this.now();
+            sent += 1;
+          }
+        }
+        const due = waiting.filter((i) => this.now() - Date.parse(i.updated_at || i.created_at) >= this.afterMs
+          && this.now() - (s.reminded[i.id] || 0) >= this.againMs);
+        if (due.length) {
+          await this.notify(project, `🙋 *Still waiting on you:*\n${due.map((i) => `• [${i.id}] ${title(i)}: ${String(i.held).slice(0, 120)}`).join("\n")}`);
+          for (const i of due) s.reminded[i.id] = this.now();
+          sent += 1;
+        }
+        writeFileSync(this.file, JSON.stringify(state));
+      } catch (e) {
+        this.log(`reminders ${project}: ${e.message}`);
       }
     }
     return sent;

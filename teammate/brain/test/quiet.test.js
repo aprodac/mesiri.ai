@@ -63,7 +63,7 @@ test("@bot status: open requests, the one that needs you first, in plain words",
   const text = boardText(items, NOW);
   assert.match(text, /^\*Open requests: 2\* · 🙋 1 needs you/);
   assert.ok(text.indexOf("[208]") < text.indexOf("[207]"));
-  assert.match(text, /\[208\] bot: post_fixed_card fails\n {3}🙋 waiting for your ok/);
+  assert.match(text, /\[208\] bot: post_fixed_card fails\n {3}🙋 waiting for you/);
   assert.match(text, /\[207\] .* · asked by Ilan\n {3}🛠 being built/);
   assert.match(text, /Done today:_ \[205\]/);
   assert.doesNotMatch(text, /\[150\]/);
@@ -77,4 +77,31 @@ test("the evening summary: four lines; nothing on a quiet day", () => {
   assert.match(text, /🛠 1 being built \(\[207\]\)/);
   assert.match(text, /🙋 Needs you: \[208\] bot: post_fixed_card fails \(reply @bot ok 208\)/);
   assert.equal(eveningText([items[3]], NOW), null);
+});
+
+// TM-60: a cap says what it waits for; an unanswered 🙋 is brought back.
+test("a capped plan waits without asking anyone; a needs-you is listed in the morning and reminded once after 3 h", async () => {
+  assert.match(stageOf({ id: 9, status: "open", held: "today's 12 automatic builds are used" }).text, /^⏸ waiting: today's 12 automatic builds are used \(@bot ok 9 builds it now\)/);
+  assert.equal(stageOf({ id: 9, status: "open", held: "today's 12 automatic builds are used" }).you, false);
+  const { Reminders } = await import("../src/board.js");
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(join(tmpdir(), "rem-"));
+  let t = Date.parse("2026-11-04T03:40:00Z"); // 09:10 IST
+  const posts = [];
+  const waiting = [{ id: 207, title: "add a team member", status: "in_progress", held: "built, not on GitHub: 403", updated_at: "2026-11-04T03:30:00Z" }];
+  const r = new Reminders({ projects: ["mesiri"], items: async () => waiting, notify: async (p, x) => posts.push(x), file: join(dir, "r.json"), now: () => t });
+  try {
+    await r.tick();
+    assert.match(posts[0], /^\*Good morning\. Waiting on you:\*\n• \[207\] add a team member: built, not on GitHub: 403/);
+    t += 2 * 3600_000; await r.tick(); // 11:10: too soon
+    assert.equal(posts.length, 1);
+    t += 4.5 * 3600_000; await r.tick(); // 15:40: waited 3 h+, last reminder 6 h+ ago
+    assert.match(posts[1], /^🙋 \*Still waiting on you:\*\n• \[207\]/);
+    t += 6 * 3600_000; await r.tick(); // 21:40: night, nothing
+    assert.equal(posts.length, 2);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

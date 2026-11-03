@@ -42,7 +42,7 @@ import { ProdWatch, QUIET, Screener, asObjects, opsSources, skipPatterns } from 
 import { costRows } from "./cost.js";
 import { buildPath, prepareBuildTree, pushLeftovers, saveReplays } from "./build_tree.js";
 import { quietSend } from "./quiet.js";
-import { Evening } from "./board.js";
+import { Evening, Reminders } from "./board.js";
 import { SelfTest } from "./selftest.js";
 import { Digest } from "./digest.js";
 
@@ -487,6 +487,17 @@ if (prodWatchMinutes > 0 && Object.keys(opsByProject).length) {
   brain.selftest = selftest;
   if (process.env.TEAMMATE_SELFTEST !== "0") {
     setInterval(() => selftest.maybeRun().catch((e) => log(`selftest: ${e.message}`)), 10 * 60_000).unref?.();
+  }
+  // TM-60: what waits on someone: a morning list at 09:00 IST and one reminder after 3 h (TEAMMATE_REMINDERS=0: off).
+  if (process.env.TEAMMATE_REMINDERS !== "0") {
+    const reminders = new Reminders({
+      projects: Object.keys(projects),
+      items: async (project) => (await listener.items(project)).items || [],
+      notify: (project, text) => brain.notifyTeam(project, text),
+      file: join(dir, "reminders.json"),
+      log,
+    });
+    setInterval(() => reminders.tick().catch((e) => log(`reminders: ${e.message}`)), 10 * 60_000).unref?.();
   }
   // TM-49: the day in four lines in each team group, from 19:00 IST (TEAMMATE_EVENING=0 turns it off).
   if (process.env.TEAMMATE_EVENING !== "0") {
