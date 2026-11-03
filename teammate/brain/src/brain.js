@@ -275,13 +275,13 @@ export class Brain {
    *   owner?: string, model?: string, env?: Record<string, string>, log?: (m: string) => void, now?: () => Date,
    * }} opts
    */
-  constructor({ queryFn, projects, dir, listener, tools, prepare = () => {}, prepareBuild = null, owner = "Ilan", model, env = process.env, log = () => {}, now = () => new Date(), routines = {}, fireFn = null, partners = {}, landed, accounts = null, work = null }) {
+  constructor({ queryFn, projects, dir, listener, tools, prepare = () => {}, prepareBuild = null, pushBuild = null, owner = "Ilan", model, env = process.env, log = () => {}, now = () => new Date(), routines = {}, fireFn = null, partners = {}, landed, accounts = null, work = null }) {
     // routines: { project: { url, token } } -- approved work runs as a cloud routine session the owner can
     // watch in Claude Code (hybrid, TM-03b); projects without one run the working turn here.
     // partners: { project: { url, token } } -- the routine bound to Ilan Usman's cloud session (TM-12).
     // accounts: several Claude accounts, each with its own login, routines and partners (TM-14); without it,
     // one account made of `routines` / `partners` and whatever login `env` carries.
-    Object.assign(this, { queryFn, projects, listener, tools, prepare, prepareBuild, owner, model, env, log, now, fireFn });
+    Object.assign(this, { queryFn, projects, listener, tools, prepare, prepareBuild, pushBuild, owner, model, env, log, now, fireFn });
     this.accounts = accounts || new Accounts({ list: [{ id: "a", token: null, routines, partners }], now: () => this.now().getTime() });
     this.boardFile = `${dir}/board.json`;
     this.sessionsFile = `${dir}/sessions.json`;
@@ -990,7 +990,25 @@ export class Brain {
       writeJson(this.plansFile, this.planStore);
       if (req.build_here && typeof plan.id === "number") {
         const project = req.reply_project || req.project;
-        this.listener.updateItem(plan.id, plan.status === "failed" ? { note: "build here failed", project } : { status: "done", note: "built here (TM-31)", project }).catch(() => {});
+        // TM-56: built is not done until it is on GitHub. Anything the build copy still holds is pushed once here;
+        // what can't go stays open and the group is told why (3 Nov: [207] was "done" with its push refused).
+        let left = { ahead: 0, pushed: false, error: null };
+        if (plan.status !== "failed" && this.pushBuild) {
+          try {
+            left = this.pushBuild(this.projects[req.project]);
+          } catch (e) {
+            left = { ahead: 1, pushed: false, error: String(e.message || e).slice(0, 240) };
+          }
+        }
+        if (plan.status === "failed") this.listener.updateItem(plan.id, { note: "build here failed", project }).catch(() => {});
+        else if (left.error) {
+          plan.status = "unpushed";
+          writeJson(this.plansFile, this.planStore);
+          this.listener.updateItem(plan.id, { held: `built, not on GitHub: ${left.error}`, note: `built; ${left.ahead} commit(s) not pushed: ${left.error}`, project }).catch(() => {});
+          await say(`❌ [${plan.id}] ${plan.title}: built, but it could not reach GitHub, so nothing is live.\n${left.error}\n🙋 *Needs you:* fix that, then @bot tell ${plan.id} push`).catch(() => {});
+        } else {
+          this.listener.updateItem(plan.id, { status: "done", note: left.pushed ? `built here; the code pushed ${left.ahead} commit(s) the build left (TM-56)` : "built here (TM-31)", project }).catch(() => {});
+        }
       }
     }
     outcome.denied = result?.permission_denials || [];
@@ -1008,7 +1026,11 @@ export class Brain {
       this.log(`brain: ${req.chat_name} ${mode} done in ${Math.round(result.duration_ms / 1000)}s ($${result.total_cost_usd?.toFixed(3)})`);
       // A turn that may have nothing to say (the production watch, TM-15) answers its quiet word: nothing is posted.
       if (req.quiet && String(result.result || "").trim() === req.quiet) this.log(`brain: ${req.chat_name}: nothing to report`);
-      else for (const part of chunk(result.result)) await say(part);
+      else if (req.build_here && typeof plan?.id === "number") {
+        // TM-49: a build's own report (files, tests, phase report) is the request's history; the group hears ✅ when
+        // it is checked live, or ❌ when it is stuck (above), in plain words.
+        await this.listener.updateItem(plan.id, { note: `🗒 build report: ${String(result.result || "").slice(0, 3000)}`, project: req.reply_project || req.project }).catch(() => {});
+      } else for (const part of chunk(result.result)) await say(part);
     }
     // Anything the permission rules refused: tell the owner, so nothing fails silently.
     // Planning is read-only by design, so refusals there are expected and only logged.

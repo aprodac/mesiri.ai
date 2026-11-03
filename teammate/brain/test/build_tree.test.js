@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
-import { BUILD_BRANCH, PY_EXTRAS, buildPath, prepareBuildTree } from "../src/build_tree.js";
+import { BUILD_BRANCH, PY_EXTRAS, buildPath, prepareBuildTree, pushLeftovers } from "../src/build_tree.js";
 
 const env = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" };
 const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], { stdio: "pipe", env }).toString().trim();
@@ -76,6 +76,37 @@ test("a failed install throws, so the brain builds in the cloud instead", () => 
   const { dir, project } = world();
   try {
     assert.throws(() => prepareBuildTree(project, { git, run: () => { throw new Error("uv: not found"); } }), /uv: not found/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// TM-56 (3 Nov: [207] built, push refused, request still marked done).
+test("commits a build left behind are pushed once; a refused push is reported, not lost", () => {
+  const { dir, seed, project } = world();
+  try {
+    prepareBuildTree(project, { git, run: () => {} });
+    assert.deepEqual(pushLeftovers(project, { git }), { ahead: 0, pushed: false, error: null });
+    writeFileSync(join(project.buildCwd, "a.txt"), "a");
+    git(project.buildCwd, "add", "-A");
+    git(project.buildCwd, "commit", "-q", "-m", "WA-153 [207]: add a member");
+    // someone else pushed meanwhile: rebased first
+    writeFileSync(join(seed, "b.txt"), "b");
+    git(seed, "add", "-A");
+    git(seed, "commit", "-q", "-m", "other");
+    git(seed, "push", "-q", "origin", "HEAD:main");
+    assert.deepEqual(pushLeftovers(project, { git }), { ahead: 1, pushed: true, error: null });
+    git(seed, "pull", "-q", "origin", "main");
+    assert.match(git(seed, "log", "-1", "--format=%s"), /WA-153 \[207\]/);
+    // a remote that refuses: the error comes back, the commit stays
+    writeFileSync(join(project.buildCwd, "c.txt"), "c");
+    git(project.buildCwd, "add", "-A");
+    git(project.buildCwd, "commit", "-q", "-m", "more");
+    git(project.cwd, "remote", "set-url", "origin", join(dir, "gone.git"));
+    const r = pushLeftovers(project, { git: (cwd, ...a) => (a[0] === "fetch" ? "" : git(cwd, ...a)) });
+    assert.equal(r.pushed, false);
+    assert.ok(r.error && r.error.length > 0);
+    assert.equal(git(project.buildCwd, "log", "-1", "--format=%s"), "more");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -40,7 +40,7 @@ import { createRenderer } from "./render.js";
 import { commitPatterns, formatWorkStatus } from "./work_status.js";
 import { ProdWatch, QUIET, Screener, opsSources, skipPatterns } from "./prod_watch.js";
 import { costRows } from "./cost.js";
-import { buildPath, prepareBuildTree } from "./build_tree.js";
+import { buildPath, prepareBuildTree, pushLeftovers } from "./build_tree.js";
 import { quietSend } from "./quiet.js";
 import { Evening } from "./board.js";
 import { Digest } from "./digest.js";
@@ -250,7 +250,11 @@ async function planCommits(plan, sinceIso, item = null) {
   git(cwd, "fetch", "--quiet", "origin");
   const greps = commitPatterns(plan, item).map((p) => `--grep=${p}`);
   const out = git(cwd, "log", `origin/${branch}`, `--since=${sinceIso}`, "--reverse", "-E", ...greps, "--format=%H%x09%cI%x09%s");
-  return out ? out.split("\n").map((l) => { const [sha, at, ...subject] = l.split("\t"); return { sha, at, subject: subject.join("\t") }; }) : [];
+  // TM-56 (3 Nov: a commit whose body only mentioned "[207]" was taken as [207]'s, which was marked live without its
+  // code ever reaching main): a commit is the plan's when its subject line names it.
+  const own = commitPatterns(plan, item).map((p) => new RegExp(p));
+  return (out ? out.split("\n").map((l) => { const [sha, at, ...subject] = l.split("\t"); return { sha, at, subject: subject.join("\t") }; }) : [])
+    .filter((c) => own.some((re) => re.test(c.subject)));
 }
 
 /** Workflow runs (CI, "Deploy to Production") of those commits: GitHub REST, read-only, with the project's own token. */
@@ -282,6 +286,7 @@ const brain = new Brain({
   dir,
   listener,
   prepareBuild, // TM-31: "@bot build here"
+  pushBuild: (project) => pushLeftovers(project, { git: gitAs(project.ghToken), log }), // TM-56
   tools: (ctx, plans) => {
     const p = brain.partnerFor(ctx.chat, ctx.chat_project || ctx.project); // on this group's account, at the time of the turn
     const ops = opsByProject[ctx.chat_project || ctx.project];

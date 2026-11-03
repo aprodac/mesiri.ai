@@ -70,3 +70,30 @@ export function installPython(buildCwd, { run, log = () => {}, name = "" }) {
   writeFileSync(stamp, hash);
   return "installed";
 }
+
+/**
+ * TM-56 (3 Nov: [207] was built, its push refused (403), and the request was still marked done; it never reached
+ * main). After a build turn: what the build copy holds that origin/<branch> doesn't. Commits left behind are pushed
+ * once (a rebase on the latest first); what still can't go is reported with git's own words.
+ * @returns {{ ahead: number, pushed: boolean, error: string|null }}
+ */
+export function pushLeftovers(project, { git, log = () => {} }) {
+  const { buildCwd, branch } = project;
+  git(buildCwd, "fetch", "--quiet", "origin");
+  const ahead = Number(git(buildCwd, "rev-list", "--count", `origin/${branch}..HEAD`)) || 0;
+  if (!ahead) return { ahead: 0, pushed: false, error: null };
+  try {
+    git(buildCwd, "rebase", "--quiet", `origin/${branch}`);
+    git(buildCwd, "push", "--quiet", "origin", `HEAD:${branch}`);
+    log(`build copy for ${project.name}: pushed ${ahead} commit(s) the build left behind`);
+    return { ahead, pushed: true, error: null };
+  } catch (e) {
+    try {
+      git(buildCwd, "rebase", "--abort");
+    } catch {
+      // no rebase in progress
+    }
+    const why = String(e.stderr || e.message || e).split("\n").filter(Boolean).slice(-2).join(" ").slice(0, 240);
+    return { ahead, pushed: false, error: why };
+  }
+}

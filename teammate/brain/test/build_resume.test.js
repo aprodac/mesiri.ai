@@ -99,3 +99,47 @@ test("the builds running on this server are listed for the deploy to wait on", (
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// TM-56: built is not done until it is on GitHub.
+async function buildTurn(pushBuild) {
+  const dir = mkdtempSync(join(tmpdir(), "push-"));
+  const sent = [];
+  const items = [];
+  const brain = new Brain({
+    queryFn: () => (async function* () {
+      yield { type: "result", subtype: "success", is_error: false, result: "Built and tested.", session_id: "S", duration_ms: 1, total_cost_usd: 0, permission_denials: [] };
+    })(),
+    projects: { mesiri: { cwd: "/r", buildCwd: "/b", branch: "main", flow: "f" } },
+    dir,
+    listener: { send: async (b) => (sent.push(b), { ok: true }), addItem: async () => ({}), updateItem: async (id, b) => items.push({ id, ...b }) },
+    tools: () => ({}),
+    prepareBuild: () => {},
+    pushBuild,
+    now: () => new Date(NOW),
+  });
+  const p = plan({ id: 207, build_turn: "running" });
+  brain.planStore.plans = { 207: p };
+  await brain.buildHere(p, { project: "mesiri", by: "autobuild", reply_chat: "T@g.us", say: (t) => brain.listener.send({ chat: "T@g.us", text: t }), announce: false });
+  rmSync(dir, { recursive: true, force: true });
+  return { p, sent, items };
+}
+
+test("a build whose push is refused stays open and asks for help; a clean one is done", async () => {
+  const refused = await buildTurn(() => ({ ahead: 3, pushed: false, error: "remote: Permission to StarShape-in/mesiri.ai.git denied (403)" }));
+  assert.equal(refused.p.status, "unpushed");
+  assert.ok(!refused.items.some((i) => i.status === "done"));
+  assert.match(refused.sent.at(-1).text, /❌ \[207\] .*could not reach GitHub[\s\S]*403[\s\S]*🙋 \*Needs you:\*/);
+  const clean = await buildTurn(() => ({ ahead: 0, pushed: false, error: null }));
+  assert.ok(clean.items.some((i) => i.status === "done"));
+  const leftover = await buildTurn(() => ({ ahead: 2, pushed: true, error: null }));
+  assert.ok(leftover.items.some((i) => i.status === "done" && /pushed 2 commit/.test(i.note)));
+});
+
+test("a commit is a plan's when its subject names it, not when its body mentions it", async () => {
+  const { commitPatterns } = await import("../src/work_status.js");
+  const own = commitPatterns({ id: 207, title: "add a team member" }, null).map((p) => new RegExp(p));
+  const mine = (subject) => own.some((re) => re.test(subject));
+  assert.equal(mine("WA-153 [207]: add a team member from WhatsApp"), true);
+  assert.equal(mine("TM-48: built work reaches the repo; the preview check sees what was sent"), false); // its body said "[207]"
+  assert.equal(mine("fix for request 2071"), false);
+});
