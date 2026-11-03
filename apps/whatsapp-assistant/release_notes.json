@@ -259,6 +259,27 @@
         "cor_cf124a9ac6d7436bbcc042c8ca713243"
       ],
       "message": "Ippo WhatsApp-il ninnu thanne project-il team member-ine add cheyyaam. Try: 'Sahal-ine Rana Mart-il site engineer aayi add cheyyu'"
+    },
+    {
+      "id": "v3-material-not-in-list-asks",
+      "date": "2026-11-03",
+      "for": [
+        "cor_c5790dcf2ad34204922cfd7f54769406",
+        "cor_f90a33076477477b81f1c7190c7357a1",
+        "cor_01692818e9404b5786d6a40e7777d13c"
+      ],
+      "message": "Mesiri now asks when a material isn't in your list instead of saving it as something else. Try: '2 drum primer vannu'"
+    },
+    {
+      "id": "v3-working-site",
+      "date": "2026-11-03",
+      "for": [
+        "cor_60e61c2a6afd41498ba74d914f930baf",
+        "cor_5a890ff11a274523bce31ce8ed06a06d",
+        "cor_ec1908da0ba1400ebd09ba168f827f83",
+        "cor_3602ada156104299a6c1ede1f256d90c"
+      ],
+      "message": "Sheriyaakki 👍 Puthiya project undaakkiyaalum update ippo ningal report cheyyunna site-il thanne pokum. Vere site-il aanenkil message-il athinte peru parayoo (eg '20 bag cement vannu, Zeta Plaza'); Save-nu munpu list-il 📍 aayi kaanikkum. Try: oru project undaakki, pinne '20 bag cement vannu'."
     }
   ]
 }

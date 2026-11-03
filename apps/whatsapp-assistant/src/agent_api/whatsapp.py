@@ -55,9 +55,11 @@ from .agent import (
     UNIT_UNSETTLED,
     ApiAgent,
     PendingWrite,
+    Places,
     WriteResult,
     _detail,
     confirm,
+    last_reported,
     remember_saves,
 )
 from .app import build_api_app
@@ -323,13 +325,15 @@ class ApiWhatsApp:
                 # explicit command is the whole message, so the code answers it at once (no model turn) and asks
                 # how it should be instead; the waiting list is kept as it is, not drawn again.
                 return await self._feedback_only(message, ctx, state, calls, text, started)
+            places = _places(ctx, state.get("working_site"))
             run = dict(
                 text=text, history=history, ready=ready, sender_name=ctx.full_name or "",
                 timezone=getattr(ctx, "timezone", None) or "Asia/Kolkata", correlation_id=message.correlation_id,
-                facts=facts, photo_key=photo_key, language=_language(text),
+                facts=facts + _working_fact(places), photo_key=photo_key, language=_language(text),
                 channel=_channel(message),
                 # WA-154: the person's creates of the last day, and the ones they were just asked about.
                 recent_saves=state.get("recent_saves") or [], repeat_ok=state.get("repeat_asked") or [],
+                places=places,  # [213]: the code decides the site of a report
             )
             try:
                 turn = await self._agent.run(client, **run)
@@ -373,6 +377,7 @@ class ApiWhatsApp:
         state["language"] = _language(text)
         state["repeat_asked"] = list(turn.repeat_asked)  # the yes comes in the next message only
         state["recent_saves"] = remember_saves(state.get("recent_saves"), turn.saved, time.time())
+        state["working_site"] = last_reported(turn.saved, state.get("working_site"), _today(ctx))
         if turn.saved:
             self._just_saved[message.correlation_id] = list(turn.saved)
         words = turn.reply or turn.question or (_saved_text(turn.saved, state.get("language")) if turn.saved else "")
@@ -604,6 +609,7 @@ class ApiWhatsApp:
             await client.close()
         self._just_saved[correlation_id] = results
         state["recent_saves"] = remember_saves(state.get("recent_saves"), results, time.time())  # WA-154
+        state["working_site"] = last_reported(results, state.get("working_site"), _today(ctx))  # [213]
         # Refused entries stay waiting (they can be corrected and saved); saved ones go.
         # A line whose unit nobody could settle comes off the list (it would ride along on every new
         # card for hours, 2 Nov): the text below says so and asks for it again with the unit.
@@ -654,6 +660,7 @@ class ApiWhatsApp:
         # The list is drawn here; a copy the model wrote itself (it echoed the history) is cut.
         text = without_ready_block(text) or "OK."
         if pending:
+            text = without_copied_lines(text, [e.summary for e in pending]) or "OK."
             listed = "\n".join(f"{i}. {e.summary}" for i, e in enumerate(pending, 1))
             text = f"{text}\n\n*Ready to save:*\n{listed}"
         if options:
@@ -673,7 +680,7 @@ class ApiWhatsApp:
 
     async def _save_state(self, ctx: Any, state: dict) -> None:
         try:
-            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked")
+            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site")
                                     if state.get(k) is not None},
                                        ttl_seconds=STATE_TTL_SECONDS)
         except Exception:  # noqa: BLE001
@@ -786,6 +793,25 @@ def without_ready_block(text: str) -> str:
     return re.sub(r"\s*\(under this reply, waiting for the Save button[^)]*\)?", "", words).strip()
 
 
+_SENTENCE_END = re.compile(r"[.!?।\n]")
+
+
+def without_copied_lines(words: str, lines: list[str]) -> str:
+    """[210] (3 Nov: "…ലഭിച്ചു. നിങ്ങൾ സേവ് ചെയ്യുമ്പോൾ… Paint Green Villa, Kakkanad സൈറ്റിൽ ലഭിച്ചു)"): the model's
+    words without a sentence that copies a waiting line (its memory note, translated, with its stray ")"). The
+    line itself is drawn under the words by the code, from the entry."""
+    for line in (s.strip() for s in lines):
+        while len(line) >= 6 and (at := words.find(line)) >= 0:
+            starts = [m.end() for m in _SENTENCE_END.finditer(words, 0, at)]
+            start = starts[-1] if starts else 0
+            end_m = _SENTENCE_END.search(words, at + len(line))
+            end = end_m.end() if end_m else len(words)
+            words = (words[:start] + words[end:]).strip()
+    while words.count(")") > words.count("("):  # a dangling ")" left of a copied note
+        words = words[::-1].replace(")", "", 1)[::-1].strip()
+    return words.strip()
+
+
 def _language(text: str) -> str | None:
     """The person's language and script, decided by the code (the shared detector)."""
     try:
@@ -794,6 +820,29 @@ def _language(text: str) -> str | None:
         return language_of(text.split("What the photo shows:", 1)[0])
     except Exception:  # noqa: BLE001 -- the model decides then
         return None
+
+
+def _today(ctx: Any) -> str:
+    return dt.datetime.now(ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")).date().isoformat()
+
+
+def _places(ctx: Any, working: dict[str, Any] | None) -> Places:
+    """[213]: the sender's projects and sites, and the site they last reported to TODAY ([215]; kept in the
+    conversation state). Yesterday's site is not a default: with several sites, the next update asks."""
+    places = Places(
+        projects=tuple((str(p.id), str(p.name)) for p in getattr(ctx, "projects", None) or []),
+        sites=tuple((str(s.id), str(s.name), str(s.project_id)) for s in getattr(ctx, "sites", None) or []))
+    today = bool(working) and working.get("date") == _today(ctx)  # type: ignore[union-attr]
+    found = places.place(working.get("site_id"), working.get("project_id")) if working and today else None
+    return Places(places.projects, places.sites, found, tuple((working or {}).get("recent") or ()))
+
+
+def _working_fact(places: Places) -> str:
+    """[215]: the model is told where today's updates go, so it prepares instead of asking "which project?"."""
+    if places.working is None:
+        return ""
+    return (f"\nTheir site today: {places.working.name} (an update that names no site goes there; never ask which "
+            "site for it).")
 
 
 def _actor(ctx: Any) -> Actor:
