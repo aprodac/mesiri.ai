@@ -13,6 +13,9 @@ const IST = 330 * 60_000;
 export const SELFTEST_HOUR_IST = 8;
 export const TOKEN = /SELFTEST-[0-9]{8}-[a-z0-9]{4}/;
 const MS = { reply: 90_000, team: 5 * 60_000 };
+/** TM-58: Mesiri's own "AI is off" answers (code wording, outage.budget / outage.queued): an answer, but not the AI. */
+const NOT_THE_AI = /AI is paused|paused for a short while|AI kurachu neram|AI കുറച്ചു നേരം|AI थोड़ी देर|AI thodi der|process this in a few minutes|kurachu minutil cheyyaam/i;
+const DAY = 86_400_000;
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -30,8 +33,12 @@ export class SelfTest {
    * @param o.listener  { chats, messages, sendStrict }
    * @param o.notify    (project, text) => post in the team group
    */
-  constructor({ listener, projects, notify, file, now = () => Date.now(), log = () => {}, pollMs = 5_000, limits = MS }) {
-    Object.assign(this, { listener, projects, notify, file, now, log, pollMs, limits });
+  /**
+   * @param o.checks  (project) => [{ name, run: async () => ({ ok, why?, expires? }) }]  TM-58: credentials (the bot's
+   *                  GitHub push, …); `expires` (ISO) within a week is posted even when it still works.
+   */
+  constructor({ listener, projects, notify, file, now = () => Date.now(), log = () => {}, pollMs = 5_000, limits = MS, checks = () => [] }) {
+    Object.assign(this, { listener, projects, notify, file, now, log, pollMs, limits, checks });
     this.arrived = new Map(); // token -> when the team bot received it
   }
 
@@ -84,8 +91,34 @@ export class SelfTest {
         step("the team bot received the request", Boolean(teamAt), teamAt ? teamAt - sentAt : null,
           teamAt ? "" : `not received in ${Math.round(this.limits.team / 60_000)} min: the hand-over from Mesiri (poke) or the production watch is broken`);
       }
+      // TM-58: "mesiri fix it" is answered by code; an ordinary question needs Mesiri's AI (key, budget, model).
+      if (replyAt) {
+        const since2 = new Date(this.now() - 2000).toISOString();
+        const askedAt = this.now();
+        await this.listener.sendStrict({ chat: chat.jid, project, text: "How many projects do I have? (the team bot's daily check)" });
+        let answer = null;
+        while (!answer && this.now() - askedAt < this.limits.reply) {
+          await wait(this.pollMs);
+          const rows = (await this.listener.messages({ chat: chat.jid, project, since: since2, limit: 20 }).catch(() => ({})))?.messages || [];
+          answer = rows.find((m) => !m.from_me && m.kind !== "reaction" && Date.parse(m.at) >= askedAt - 2000) || null;
+        }
+        const real = answer && !NOT_THE_AI.test(String(answer.text || ""));
+        step("Mesiri's AI answered a question", Boolean(real), real ? this.now() - askedAt : null,
+          !answer ? `no answer in ${Math.round(this.limits.reply / 1000)} s` : real ? "" : `Mesiri answered without its AI: "${String(answer.text).slice(0, 80)}" (key, budget or model)`);
+      }
     } catch (e) {
       step("sending the test message", false, null, String(e.message).slice(0, 160));
+    }
+    for (const c of this.checks(project) || []) {
+      let r;
+      try {
+        r = await c.run();
+      } catch (e) {
+        r = { ok: false, why: String(e.message).slice(0, 160) };
+      }
+      step(c.name, Boolean(r.ok), 0, r.why || "");
+      const left = r.expires ? Date.parse(r.expires) - this.now() : null;
+      if (r.ok && left != null && left < 7 * DAY) (result.expiring ||= []).push(`${c.name}: expires ${String(r.expires).slice(0, 10)} (${Math.max(0, Math.floor(left / DAY))} days)`);
     }
     return this.finish(project, result);
   }
@@ -97,8 +130,11 @@ export class SelfTest {
     this.save(state);
     this.log(`selftest ${project}: ${result.ok ? "ok" : "BROKEN"} ${result.steps.map((s) => `${s.name}=${s.ok ? `${Math.round((s.ms || 0) / 1000)}s` : "no"}`).join(", ")}`);
     if (!result.ok) {
-      const bad = result.steps.find((s) => !s.ok);
-      await this.notify(project, `🙋 *Needs you:* the daily check of the feedback loop failed.\n❌ ${bad.name}: ${bad.why}\nUntil it's fixed, what customers report may not reach the team. @bot selftest runs it again.`).catch(() => {});
+      const bad = result.steps.filter((s) => !s.ok);
+      await this.notify(project, `🙋 *Needs you:* the daily check of the feedback loop failed.\n${bad.map((b) => `❌ ${b.name}: ${b.why}`).join("\n")}\nUntil it's fixed, what customers report may not reach the team, or fixes may not ship. @bot selftest runs it again.`).catch(() => {});
+    }
+    if (result.expiring?.length) {
+      await this.notify(project, `🙋 *Needs you:* a key the bot depends on expires soon. Renew it before then, or the bot stops quietly:\n${result.expiring.map((x) => `• ${x}`).join("\n")}`).catch(() => {});
     }
     return result;
   }
@@ -109,7 +145,7 @@ export class SelfTest {
     if (!r) return null;
     const when = new Date(Date.parse(r.at) + IST).toISOString().slice(11, 16);
     if (!r.ok) return `• ❌ Feedback loop check (${when}): ${r.steps.find((s) => !s.ok)?.name || "failed"}`;
-    return `• ✅ Feedback loop checked at ${when}: ${r.steps.map((s) => `${s.name.replace(/^the /, "")} ${Math.round(s.ms / 1000)} s`).join(", ")}`;
+    return `• ✅ Feedback loop checked at ${when}: ${r.steps.filter((s) => s.ms).map((s) => `${s.name.replace(/^the /, "")} ${Math.round(s.ms / 1000)} s`).join(", ")}${r.steps.some((s) => !s.ms) ? "; keys ok" : ""}`;
   }
 
   /** Every 10 min: from 08:00 IST, once a day per project. */
@@ -133,6 +169,6 @@ export class SelfTest {
   async command(req) {
     if (!/^self[\s-]?test$/i.test(String(req.text || "").trim())) return undefined;
     const r = await this.run(req.reply_project || req.project);
-    return r.ok ? `✅ Feedback loop works: ${r.steps.map((s) => `${s.name} in ${Math.round(s.ms / 1000)} s`).join("; ")}.` : ""; // a failure is posted by finish()
+    return r.ok ? `✅ Feedback loop works: ${r.steps.map((s) => (s.ms ? `${s.name} in ${Math.round(s.ms / 1000)} s` : `${s.name} ✓`)).join("; ")}.` : ""; // a failure is posted by finish()
   }
 }

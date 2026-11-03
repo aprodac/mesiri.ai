@@ -258,6 +258,29 @@ async function planCommits(plan, sinceIso, item = null) {
     .filter((c) => own.some((re) => re.test(c.subject)));
 }
 
+/**
+ * TM-58: can this project's GitHub login push (a dry run of an up-to-date ref, so nothing moves), and when does the
+ * token expire (GitHub's github-authentication-token-expiration header, fine-grained and classic tokens with a date).
+ */
+async function githubCheck(p) {
+  let expires = null;
+  try {
+    const res = await fetch("https://api.github.com/user", { headers: { authorization: `Bearer ${p.ghToken}`, "user-agent": "teammate-bot" }, signal: AbortSignal.timeout(15_000) });
+    const h = res.headers.get("github-authentication-token-expiration");
+    if (h) expires = new Date(h.replace(" UTC", "Z").replace(" ", "T")).toISOString();
+    if (res.status === 401) return { ok: false, why: "GitHub refuses the bot's token (401: expired or revoked)" };
+  } catch {
+    // the dry run below still decides
+  }
+  try {
+    gitAs(p.ghToken)(p.cwd, "push", "--dry-run", "--quiet", "origin", `refs/remotes/origin/${p.branch}:refs/heads/${p.branch}`);
+    return { ok: true, expires };
+  } catch (e) {
+    const why = String(e.stderr || e.message).split("\n").find((l) => /denied|403|401|Authentication|not found/i.test(l)) || String(e.message).split("\n")[0];
+    return { ok: false, why: `the bot's GitHub login can't push to ${p.repo}: ${why.trim().slice(0, 160)}`, expires };
+  }
+}
+
 /** TM-54: one message's v3 turn, as scripts/replay_to_test.py's fetch() returns it (the same SELECT). */
 async function readTurn(source, cor) {
   const sql = "SELECT t.stage_payload::text AS payload, left(m.assistant_reply, 2000) AS reply, "
@@ -457,6 +480,8 @@ if (prodWatchMinutes > 0 && Object.keys(opsByProject).length) {
     notify: (project, text) => brain.notifyTeam(project, text),
     file: join(dir, "selftest.json"),
     log,
+    // TM-58: the bot's GitHub login can still push (3 Nov: it couldn't, and every build stayed on the server).
+    checks: (name) => (projects[name] ? [{ name: "the bot can push to GitHub", run: () => githubCheck(projects[name]) }] : []),
   });
   prodWatch.selfTestSeen = (token) => selftest.seen(token);
   brain.selftest = selftest;
