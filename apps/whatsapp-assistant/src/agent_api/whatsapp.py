@@ -653,6 +653,7 @@ class ApiWhatsApp:
         # The list is drawn here; a copy the model wrote itself (it echoed the history) is cut.
         text = without_ready_block(text) or "OK."
         if pending:
+            text = without_copied_lines(text, [e.summary for e in pending]) or "OK."
             listed = "\n".join(f"{i}. {e.summary}" for i, e in enumerate(pending, 1))
             text = f"{text}\n\n*Ready to save:*\n{listed}"
         if options:
@@ -783,6 +784,25 @@ def without_ready_block(text: str) -> str:
     button: ...)", copied by the model from the conversation)."""
     words = re.split(r"[\s*_]*Ready to save[:*_ \t]*\n", text, maxsplit=1, flags=re.IGNORECASE)[0]
     return re.sub(r"\s*\(under this reply, waiting for the Save button[^)]*\)?", "", words).strip()
+
+
+_SENTENCE_END = re.compile(r"[.!?।\n]")
+
+
+def without_copied_lines(words: str, lines: list[str]) -> str:
+    """[210] (3 Nov: "…ലഭിച്ചു. നിങ്ങൾ സേവ് ചെയ്യുമ്പോൾ… Paint Green Villa, Kakkanad സൈറ്റിൽ ലഭിച്ചു)"): the model's
+    words without a sentence that copies a waiting line (its memory note, translated, with its stray ")"). The
+    line itself is drawn under the words by the code, from the entry."""
+    for line in (s.strip() for s in lines):
+        while len(line) >= 6 and (at := words.find(line)) >= 0:
+            starts = [m.end() for m in _SENTENCE_END.finditer(words, 0, at)]
+            start = starts[-1] if starts else 0
+            end_m = _SENTENCE_END.search(words, at + len(line))
+            end = end_m.end() if end_m else len(words)
+            words = (words[:start] + words[end:]).strip()
+    while words.count(")") > words.count("("):  # a dangling ")" left of a copied note
+        words = words[::-1].replace(")", "", 1)[::-1].strip()
+    return words.strip()
 
 
 def _language(text: str) -> str | None:

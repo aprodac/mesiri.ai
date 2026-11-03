@@ -28,7 +28,8 @@ from mesiri_ai.models import ChatMessage, ToolOutcome, ToolSpec
 from runtime.ai_outage import is_budget_error
 
 from .client import ApiClient, new_idempotency_key
-from .tools import CONFIRM_ARG, ApiTool
+from .materials import settle_material
+from .tools import CONFIRM_ARG, MATERIAL_SAID, ApiTool
 from .units import resolve_unit, unit_choices, unit_rows
 
 SOP = (Path(__file__).with_name("SOP.md")).read_text(encoding="utf-8")
@@ -224,6 +225,7 @@ class ApiAgent:
         repeat_asked: list[str] = []  # WA-154: creates asked about this turn
         code_told: list[dict[str, Any]] = []  # WA-155: passed to the team by the code
         tz = ZoneInfo(timezone or "Asia/Kolkata")
+        their_words = " ".join([*(m.text or "" for m in history or [] if m.role == "user"), text])
 
         def chosen(arguments: dict) -> list[int]:
             numbers = arguments.get("numbers") or range(1, len(waiting) + 1)
@@ -245,6 +247,11 @@ class ApiAgent:
             if unknown or not changes:
                 return {"error": f"cannot change {', '.join(unknown) or 'nothing'}; fields: {', '.join(tool.body_fields) if tool else '-'}"}
             body = {**entry.body, **changes}
+            if "material_id" in changes:  # [210]: a corrected material is checked like a new line
+                problem, buttons = await settle_material(client, body, "", text, [])
+                if problem:
+                    unit_ask[:] = buttons
+                    return {"error": problem}
             if "unit_id" in body and ("unit_id" in changes or "unit" in changes):
                 problem = await settle_unit(client, body)
                 if problem:
@@ -304,6 +311,15 @@ class ApiAgent:
             body.update({k: (channel if v == TEXT_CHANNEL else v) for k, v in tool.fixed})
             if photo_key and tool.is_write and PHOTO_FIELD in tool.hidden and PHOTO_FIELD not in body:
                 body[PHOTO_FIELD] = photo_key
+            if tool.is_write and "material_id" in tool.body_fields and body.get("material_id"):
+                # [210]: the id must be the material they named (or a name the company taught it), never a near one.
+                taught = [(e.path.split("/")[2], str(e.body.get("alias") or "")) for e in [*waiting, *new]
+                          if e is not None and e.tool == ALIAS_TOOL]
+                problem, buttons = await settle_material(
+                    client, body, str(arguments.get(MATERIAL_SAID) or ""), their_words, taught)
+                if problem:
+                    unit_ask[:] = buttons
+                    return ToolOutcome(content={"error": problem})
             if tool.is_write and "unit_id" in tool.body_fields:
                 problem = await settle_unit(client, body)
                 if problem:
@@ -462,6 +478,7 @@ async def settle_unit(client: ApiClient, body: dict[str, Any]) -> str:
 
 
 MEMBER_TOOL = "add_project_member"
+ALIAS_TOOL = "add_material_alias"
 
 
 async def settle_member(client: ApiClient, path: str, body: dict[str, Any]) -> tuple[str, list[str]]:
