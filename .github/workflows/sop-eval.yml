@@ -4,6 +4,8 @@
 # do what the test's EXPECT says. A change to SOP.md that fixes one conversation and breaks another shows here.
 # Not a deploy gate (Ilan, 2 Nov: the Gemini key's monthly cap failed every gated deploy): it runs next to the
 # deploy and a failure is posted in the team group. Costs one model turn per saved conversation.
+# Model: gemini-flash-latest (3 Nov: the CI key's Google project can't use gemini-2.5-flash, "no longer available
+# to new users"; production's older key still uses it). Close to production, not the same model.
 name: SOP eval
 
 on:
@@ -18,7 +20,7 @@ on:
       model:
         description: "Gemini model"
         required: true
-        default: "gemini-2.5-flash"
+        default: "gemini-flash-latest"
 
 # One live-model run at a time: the key has a per-minute token cap.
 concurrency:
@@ -58,7 +60,7 @@ jobs:
         env:
           PYTHONPATH: ${{ env.TEST_PYTHONPATH }}
           GEMINI_API_KEY: ${{ secrets.CI_GEMINI_API_KEY || secrets.TEAMMATE_GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ inputs.model || 'gemini-2.5-flash' }}
+          GEMINI_MODEL: ${{ inputs.model || 'gemini-flash-latest' }}
         run: |
           set -o pipefail
           cd /tmp
