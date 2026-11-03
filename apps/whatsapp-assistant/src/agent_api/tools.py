@@ -22,6 +22,9 @@ from mesiri_ai.models import ToolSpec
 #: words, naming the change they are asked to confirm. (Not "summary": the
 #: issue API has a body field of that name.)
 CONFIRM_ARG = "confirm_line"
+#: [210]: a write that names a material by id also takes the person's own word for it, so the code can check the
+#: id is that material (or a name the company taught it) and never another one that is merely near.
+MATERIAL_SAID = "material_said"
 
 
 @dataclass(frozen=True)
@@ -166,6 +169,11 @@ ALLOWED: tuple[Allowed, ...] = (
             "Prepare changing a site's details (name, address, status)." + _WRITE),
     # TM-30 ([207]): the dashboard"s own route, added by scripts/allow_route.py.
     Allowed("add_project_member", "POST", "/projects/{project_id}/members", "Prepare adding a person who is already in the company to a project, with a role (site engineer, project manager, finance, admin). userId: their name as said is fine, the code finds them; role: as said." + _WRITE),
+    # TM-30 ([210]): a new materials route (an alias), added by scripts/allow_route.py.
+    Allowed("add_material_alias", "POST", "/materials/{material_id}/aliases",
+            "Prepare remembering another name the company's people call a material (their word, any script: "
+            "'primer' for Paint), so that word finds it next time. Use when they chose a material for a word that "
+            "was not in the list." + _WRITE),
 )
 
 
@@ -216,6 +224,12 @@ def build_tools(openapi: dict[str, Any], allowed: tuple[Allowed, ...] = ALLOWED)
                 "description": "One line in the person's words naming this entry, shown when they confirm.",
             }
             required.append(CONFIRM_ARG)
+            if "material_id" in body_fields:
+                properties[MATERIAL_SAID] = {
+                    "type": "string",
+                    "description": "The material exactly as the person said it, in their word and script "
+                                   "('primer', 'kambi', 'സിമന്റ്'); the code checks material_id is that material.",
+                }
         parameters: dict[str, Any] = {"type": "object", "properties": properties}
         if required:
             parameters["required"] = required
