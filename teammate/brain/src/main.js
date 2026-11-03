@@ -188,6 +188,8 @@ const listener = {
   messages: (q) => call("GET", `/messages?${new URLSearchParams(q)}`),
   addItem: (b) => call("POST", "/items", b),
   updateItem: (id, b) => call("POST", `/items/${id}`, b),
+  /** TM-50: one worker per request; resolves { ok, by } (ok false: someone else is on it). */
+  claimItem: (id, b) => call("POST", `/items/${id}/claim`, b).then(() => ({ ok: true }), (e) => (/^claimed by /.test(e.message) ? { ok: false, by: e.message.replace(/^claimed by /, "").replace(/ at \S+$/, "") } : { ok: true })), // the log down never stops a build
   getItem: (id, project) => call("GET", `/items/${id}?project=${encodeURIComponent(project)}`),
   /** TM-26: the project's whole request log (the weekly digest). */
   items: (project) => call("GET", `/items?project=${encodeURIComponent(project)}`),

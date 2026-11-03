@@ -61,7 +61,8 @@ current as part of the work, without being asked:
 | When | Command |
 | --- | --- |
 | You start on something a group asked for | `item add "<group>" "<short English title>" --type bug\|feature\|question\|complaint\|task --from <msg numbers>` (check `items --chat "<group>"` first; don't log it twice) |
-| You begin the work | `item start <id>` |
+| You begin the work | `item start <id>` (claims it first, TM-50: if someone else, the team bot included, is on it, it stops and names them; add to theirs with `item note <id> "..."`, or `--take` only when they stopped) |
+| You only want to hold it while you look | `item claim <id>` |
 | It is pushed / merged | `item done <id> --ref <commit or PR, e.g. aprodac/MERCON#262> --note "<one line: what changed>"` |
 | The owner decides not to do it | `item wontdo <id> --note "<why>"` |
 | "What did <group> ask for / what's done?" | `summary "<group>"` or `items --status open` |

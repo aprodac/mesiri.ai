@@ -14,6 +14,7 @@
 //   GET  /items?chat=&project=&status=&type=     what groups asked for (TM-08)
 //   POST /items        {chat, type, title, summary?, source?, created_by?, project?}
 //   GET  /items/:id?project=          one request with its history
+//   POST /items/:id/claim {by, take?, project?}  TM-50: one worker per request; 409 names who holds it
 //   POST /items/:id    {status?, ref?, note?, title?, summary?, type?, project?, + TM-19 asked_by / asked_ref / asked_who / held / live_at / verified / tried_at}
 //   GET  /people?project=             who may tag the bot (TM-03)
 //   POST /people       {project, phone, name?, role?}   approve someone (role owner | member)
@@ -214,6 +215,16 @@ export function createApi({ store, wa, token, ai = null, brain = null }) {
         } catch (err) {
           return send(res, 400, { error: err.message });
         }
+      }
+      m = path.match(/^\/items\/(\d+)\/claim$/);
+      if (m && req.method === "POST") {
+        // TM-50: one worker per request. 409 names who holds it.
+        const body = await readJson(req);
+        const item = store.getItem(m[1]);
+        if (!item || (body.project && item.project !== body.project)) return send(res, 404, { error: "no such item" });
+        if (!body.by) return send(res, 400, { error: "by is required" });
+        const r = store.claimItem(item.id, String(body.by).slice(0, 120), { take: Boolean(body.take) });
+        return r.ok ? send(res, 200, { item: r.item }) : send(res, 409, { error: `claimed by ${r.by} at ${r.at}`, claimed_by: r.by, claimed_at: r.at });
       }
       m = path.match(/^\/items\/(\d+)$/);
       if (m && (req.method === "GET" || req.method === "POST")) {

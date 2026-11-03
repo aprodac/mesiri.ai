@@ -60,3 +60,19 @@ test("the request-list command, in its usual wordings; 'list' alone stays 'who i
   assert.deepEqual(parseCommand("@bot list"), { verb: "who", rest: "" });
   assert.equal(parseCommand("@bot requests for the dashboard should be faster").verb, "request"); // a sentence is for Claude
 });
+
+// TM-50: one worker per request.
+test("a request is held by one worker; finished, stale or taken frees it", () => {
+  const s = store();
+  const id = s.addItem({ chat_jid: "T@g.us", type: "bug", title: "TMT bars in kg" });
+  assert.equal(s.claimItem(id, "Claude Code session ab12cd34").ok, true);
+  assert.equal(s.claimItem(id, "Claude Code session ab12cd34").ok, true); // again: still theirs
+  const busy = s.claimItem(id, "team bot");
+  assert.deepEqual([busy.ok, busy.by], [false, "Claude Code session ab12cd34"]);
+  assert.equal(s.claimItem(id, "team bot", { take: true }).item.claimed_by, "team bot");
+  assert.match(s.getItem(id).log.at(-1).note, /claimed by team bot \(was Claude Code session ab12cd34\)/);
+  s.updateItem(id, { status: "done", ref: "abc1234" });
+  assert.equal(s.claimItem(id, "Claude Code session ab12cd34").ok, true); // finished: free
+  s.updateItem(id, { status: "in_progress", claimed_by: "someone", claimed_at: "2026-01-01T00:00:00Z" });
+  assert.equal(s.claimItem(id, "team bot").ok, true); // stale claim: free
+});

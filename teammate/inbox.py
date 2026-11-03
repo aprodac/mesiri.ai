@@ -277,7 +277,14 @@ def _item_line(i: dict) -> str:
     src = f"  (from #{i['source'].replace(',', ', #')})" if i.get("source") else ""
     ref = f"  → {i['done_ref']}" if i.get("done_ref") else ""
     status = _STATUS_MARK.get(i["status"], i["status"])
-    return f"[{i['id']:>3}] {status:<14} {i['type']:<9} {i['title']}{src}{ref}"
+    held = f"  · {i['claimed_by']} on it" if i.get("claimed_by") and i["status"] in ("open", "in_progress") else ""
+    return f"[{i['id']:>3}] {status:<14} {i['type']:<9} {i['title']}{src}{ref}{held}"
+
+
+#: Who claims a request from here (TM-50): a person can set TEAMMATE_WORKER; a Claude Code session names itself.
+_WORKER = os.environ.get("TEAMMATE_WORKER") or (
+    f"Claude Code session {os.environ['CLAUDE_CODE_SESSION_ID'][-8:]}" if os.environ.get("CLAUDE_CODE_SESSION_ID") else "Claude Code"
+)
 
 
 def _item(a: argparse.Namespace) -> None:
@@ -316,6 +323,16 @@ def _item(a: argparse.Namespace) -> None:
             bits = [entry.get("status") or "", entry.get("ref") or "", entry.get("note") or ""]
             print(f"  {_when(entry['at'])}  " + "  ".join(b for b in bits if b))
         return
+    if a.action in ("claim", "start"):
+        # TM-50: one worker per request. A Claude Code session claims before it works on something; the team bot does
+        # the same before it builds. Someone else holding it stops here and names them.
+        try:
+            held = _request("POST", f"/items/{n}/claim", body={"by": _WORKER, "take": a.take, "project": PROJECT})["item"]
+        except SystemExit as e:
+            sys.exit(f"[{n}] is already being worked on: {e}. Add to it with `item note {n} ...`, or --take if they stopped.")
+        if a.action == "claim":
+            print(f"{_item_line(held)}  · claimed by {held.get('claimed_by')}")
+            return
     change = {
         "start": {"status": "in_progress"},
         "done": {"status": "done"},
@@ -387,7 +404,8 @@ def main() -> None:
     its.add_argument("--status", choices=["open", "in_progress", "done", "wont_do"])
     its.add_argument("--type", choices=["bug", "feature", "question", "complaint", "task"])
     itm = sub.add_parser("item")
-    itm.add_argument("action", choices=["show", "add", "start", "note", "done", "wontdo"])
+    itm.add_argument("action", choices=["show", "add", "start", "claim", "note", "done", "wontdo"])
+    itm.add_argument("--take", action="store_true", help="claim it even though someone else holds it (say why in a note)")
     itm.add_argument("args", nargs="*")
     itm.add_argument("--type", choices=["bug", "feature", "question", "complaint", "task"])
     itm.add_argument("--from", dest="source", help="message numbers, e.g. 6,7")

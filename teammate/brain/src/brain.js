@@ -584,6 +584,8 @@ export class Brain {
     plan.approved_at = this.now().toISOString();
     writeJson(this.plansFile, this.planStore);
     if (typeof plan.id === "number") this.listener.updateItem(plan.id, { status: "in_progress", note: `OK from ${by} in WhatsApp`, project }).catch(() => {});
+    // TM-50: an owner's ok is the decision, so the bot takes the request even when someone else had claimed it.
+    if (typeof plan.id === "number") this.listener.claimItem?.(plan.id, { by: "team bot", take: true, project }).catch?.(() => {});
     if (this.buildsHere(plan.project, project)) return this.buildHere(plan, { project, by, reply_chat, dm, say: sayPlan });
     if (this.routineFor(plan.chat, plan.project) && this.fireFn) return this.runInCloud(plan, { project, by, reply_chat, say: sayPlan });
     const text =
@@ -1066,6 +1068,16 @@ export class Brain {
       this.log(`brain: plan [${plan.id}] not autobuilt: ${why}`);
       if (typeof plan.id === "number") this.listener.updateItem(plan.id, { held: why, project }).catch(() => {});
       return say(`🙋 *Needs you* ✋ [${plan.id}] ${plan.title}\nWaiting for an owner because ${why}. Reply @bot ok ${plan.id} to build it.`);
+    }
+    // TM-50: one worker per request. A Claude Code session (or a person) already on it keeps it; the plan waits and
+    // its text is filed under the request for them, instead of a second fix of the same thing.
+    if (typeof plan.id === "number" && this.listener.claimItem) {
+      const claim = await this.listener.claimItem(plan.id, { by: "team bot", project });
+      if (!claim.ok) {
+        this.log(`brain: plan [${plan.id}] not autobuilt: ${claim.by} is on it`);
+        this.listener.updateItem(plan.id, { held: `${claim.by} is on it`, note: "the team bot's plan waits: someone else is on this request", project }).catch(() => {});
+        return say(`[${plan.id}] ${plan.title}: not building, ${claim.by} is already on it. @bot ok ${plan.id} builds it anyway.`);
+      }
     }
     plan.status = "approved";
     plan.approved_by = "autobuild";

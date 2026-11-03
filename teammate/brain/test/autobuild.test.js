@@ -244,3 +244,19 @@ test("brain: a plan whose text asks for an owner's ok is posted held, not built"
     done();
   }
 });
+
+// TM-50 (3 Nov: [206] / WA-151 and [208] / TM-48 were fixed twice): a request someone else is on isn't autobuilt.
+test("brain: a plan whose request a Claude Code session claimed waits instead of building", async () => {
+  const { brain, fired, sent, ask, done } = brainWith("Add create_project to v2. Labour untouched.");
+  const claims = [];
+  brain.listener.claimItem = async (id, b) => (claims.push({ id, ...b }), { ok: false, by: "Claude Code session ab12cd34" });
+  try {
+    await ask();
+    assert.equal(fired.length, 0);
+    assert.deepEqual(claims, [{ id: 81, by: "team bot", project: "mesiri" }]);
+    assert.match(sent.at(-1).text, /\[81\] .*not building, Claude Code session ab12cd34 is already on it\. @bot ok 81 builds it anyway/);
+    assert.equal(brain.planStore.plans[81].status, "proposed");
+  } finally {
+    done();
+  }
+});

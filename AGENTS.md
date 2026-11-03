@@ -4,6 +4,10 @@
 > Follow these rules on every task unless a folder-specific `AGENTS.md` overrides them.
 
 > ## Decisions already taken: [docs/DECISIONS.md](docs/DECISIONS.md)
+>
+> **One worker per request (TM-50).** Before working on anything a customer or the team asked for on WhatsApp, find its
+> request (`python3 teammate/inbox.py items`) and `item start <id>` (or `item add` it first). If the team bot or another
+> session already holds it, it says so: add what you know with `item note`, don't fix it a second time.
 > Read it before any task; never re-ask or contradict a decision listed there.
 
 > ## ⚠️ Read [CLAUDE.md](CLAUDE.md) first — it governs *process* on every task

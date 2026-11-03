@@ -107,7 +107,9 @@ export const PEOPLE_ROLES = ["owner", "member"];
  *   live_at    when it was deployed;  verified "ok" | "broken" (+ verified_at): the bot's live re-test
  *   tried_at   when the person who asked used Mesiri again after it went live
  */
-export const ITEM_TRACKING = ["asked_by", "asked_ref", "asked_who", "held", "started_at", "pushed_at", "live_at", "verified", "verified_at", "tried_at"];
+export const ITEM_TRACKING = ["asked_by", "asked_ref", "asked_who", "held", "started_at", "pushed_at", "live_at", "verified", "verified_at", "tried_at", "claimed_by", "claimed_at"];
+/** TM-50: a claim older than this, on a request nobody finished, can be taken by someone else. */
+export const CLAIM_HOURS = 6;
 export const VERIFIED = ["ok", "broken"];
 
 /** One request's stage, for lists and counts (TM-19). */
@@ -448,6 +450,22 @@ export class Store {
   }
 
   /** Changes status / details; every change is kept in the item's log. */
+  /**
+   * TM-50 (3 Nov: the team bot and a Claude Code session fixed the same thing twice, [206] / WA-151 and [208] / TM-48):
+   * one worker per request. Returns { ok: true, item } when `by` now holds it (or already did), or { ok: false, by, at }
+   * naming who does. A finished request, a claim older than CLAIM_HOURS, or `take` frees it.
+   */
+  claimItem(id, by, { take = false } = {}) {
+    const item = this.getItem(id);
+    if (!item) return null;
+    const holder = item.claimed_by;
+    const fresh = item.claimed_at && Date.now() - Date.parse(item.claimed_at) < CLAIM_HOURS * 3600_000;
+    const open = item.status === "open" || item.status === "in_progress";
+    if (holder && holder !== by && fresh && open && !take) return { ok: false, by: holder, at: item.claimed_at };
+    if (holder === by && fresh) return { ok: true, item };
+    return { ok: true, item: this.updateItem(id, { claimed_by: by, claimed_at: nowIso(), note: holder && holder !== by ? `claimed by ${by} (was ${holder})` : `claimed by ${by}` }) };
+  }
+
   updateItem(id, { status, ref = null, note = null, title, summary, type, ...tracking } = {}) {
     const item = this.getItem(id);
     if (!item) return null;
