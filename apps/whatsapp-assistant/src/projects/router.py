@@ -285,11 +285,14 @@ class SiteUpdate(BaseModel):
 
 
 class ProjectMemberResponse(BaseModel):
+    # WA-160 (3 Nov): people who joined by WhatsApp have no email (and may have no name or status yet): a required
+    # email made adding Rajesh answer 500 AFTER saving him ("nothing was recorded", but it was), and broke the
+    # project's member list for every project with such a person.
     userId: uuid.UUID
-    email: str
-    fullName: str
+    email: str | None = None
+    fullName: str | None = None
     role: str
-    status: str
+    status: str | None = None
 
 
 class ProjectMemberAdd(BaseModel):
