@@ -116,3 +116,28 @@ async def test_guard_who_may_add(database) -> None:  # noqa: ANN001
             await client.close()
         assert add.status == 403 and look.status == 403, (role, add.body, look.body)
     assert await _members(database, co["project"]) == []
+
+
+# WA-159 (3 Nov 16:46): the Save held "add Rajesh" and a line whose id was a word ("Primer"); the bad id raised a
+# validation error inside the database transaction, it came back as "postgres unavailable" and the whole Save
+# failed, Rajesh included. Now the bad line is refused alone (422) and the rest saves.
+async def test_a_line_with_a_bad_id_is_refused_alone_and_the_rest_saves(database) -> None:  # noqa: ANN001
+    co = await _company(database, "Bad id test")
+    await _person(database, co, "Rajesh Kumar", "SITE_ENGINEER")
+    client = ApiClient(Actor(co["user"], co["org"], "ADMIN", "Ravi"), app=build_api_app(database))
+    try:
+        path = f"/projects/{co['project']}/members"
+        body = {"userId": "Rajesh", "role": "site engineer"}
+        from agent_api.agent import settle_member
+
+        assert await settle_member(client, path, body) == ("", [])
+        bad = PendingWrite("set_unit_conversion", "PUT", "/materials/Primer/unit-conversions", {},
+                           {"from_unit_id": "drum", "one_unit_equals": "20"}, "1 drum of Primer = 20 litres",
+                           new_idempotency_key())
+        good = PendingWrite("add_project_member", "POST", path, {}, body, "Add Rajesh to Green Villa", new_idempotency_key())
+        results = await confirm(client, [bad, good])
+    finally:
+        await client.close()
+    assert [r.status for r in results][0] == 422, results[0].body
+    assert results[1].ok, results[1].body
+    assert [n for n, _ in await _members(database, co["project"])] == ["Rajesh Kumar"]
