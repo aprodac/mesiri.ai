@@ -62,7 +62,7 @@ from .agent import (
 )
 from .app import build_api_app
 from .client import Actor, ApiClient
-from .memory import DayMemory
+from .memory import DayMemory, tools_version
 from .tools import build_tools
 from .units import plain_refusal, unit_rows
 
@@ -177,9 +177,10 @@ class ApiWhatsApp:
         self._describe = describe
         self._log_store = message_logger
         self._trace = trace_logger
-        self._memory = DayMemory(sessions, redis)
         self._app = app if app is not None else build_api_app(database)
         tools = build_tools(self._app.openapi())
+        # WA-157: replies are remembered with the tools Mesiri had; an older tool set's "I can't" is read as possibly stale.
+        self._memory = DayMemory(sessions, redis, version=tools_version(tools))
         self._agent = ApiAgent(provider, tools, max_steps=MAX_STEPS, capability="api_agent")
         self._call_agent = ApiAgent(provider, tools, sop=SOP + CALL_RULES, max_steps=CALL_MAX_STEPS,
                                     timeout_seconds=CALL_TIMEOUT_SECONDS, capability="api_agent")
