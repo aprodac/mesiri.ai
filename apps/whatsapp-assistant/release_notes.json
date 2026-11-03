@@ -259,6 +259,16 @@
         "cor_cf124a9ac6d7436bbcc042c8ca713243"
       ],
       "message": "Ippo WhatsApp-il ninnu thanne project-il team member-ine add cheyyaam. Try: 'Sahal-ine Rana Mart-il site engineer aayi add cheyyu'"
+    },
+    {
+      "id": "v3-material-not-in-list-asks",
+      "date": "2026-11-03",
+      "for": [
+        "cor_c5790dcf2ad34204922cfd7f54769406",
+        "cor_f90a33076477477b81f1c7190c7357a1",
+        "cor_01692818e9404b5786d6a40e7777d13c"
+      ],
+      "message": "Mesiri now asks when a material isn't in your list instead of saving it as something else. Try: '2 drum primer vannu'"
     }
   ]
 }
