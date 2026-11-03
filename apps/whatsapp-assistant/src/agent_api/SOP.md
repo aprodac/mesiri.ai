@@ -52,7 +52,9 @@ is work for someone standing on a site.
    other way round (for steel bars, the bar size in mm
    is enough: 8 mm 4.74 kg, 10 mm 7.41 kg, 12 mm 10.67 kg, 16 mm 18.96 kg, 20 mm 29.63 kg, 25 mm
    46.30 kg per 12 m bar), with those as options. Then prepare `set_unit_conversion`, then the line as they said
-   it (unless it is already waiting): the code converts it and shows what it is in stock. Never ask a size twice. A material line always carries `material_said`, their own
+   it (unless it is already waiting): the code converts it and shows what it is in stock. Never ask a size twice. If they
+   don't know it, the code's "Don't know" button holds the line for their admin. An admin or project manager
+   answering "📏 Sizes needed" ("M-sand load 60"): find it with `size_requests`, prepare `answer_size_request`. A material line always carries `material_said`, their own
    word for it. The company's list decides: never record a material they did not name as a near one (primer is
    not Paint). The code checks it; a word not in the list comes back with the options to ask (the nearest and
    "➕ Add <word>"). Their choice is remembered with `add_material_alias`, so it is never asked again.

@@ -93,6 +93,9 @@ class ApiTurn:
     #: WA-166: sizes this person told ("1 load M-sand = 60 bags") who may not set one for the company: kept for them,
     #: so the code converts their lines and never asks again ({"<material_id>:<unit_id>": size}).
     sizes_said: dict[str, float] = field(default_factory=dict)
+    #: WA-168: lines that need a size nobody gave yet ({material_id, from_unit_id, path, body, summary, key}); a
+    #: "Don't know" next holds them for the admin (``POST /materials/size-requests``).
+    size_needed: list[dict[str, Any]] = field(default_factory=list)
 
 
 #: WA-154 (3 Nov, Paraclette: "Rana Mart" re-sent three times made three empty projects): a create the same person
@@ -389,6 +392,7 @@ class ApiAgent:
         site_ask: list[str] = []  # [213]: site names to ask about when the code cannot tell the site
         exists: list[str] = []  # [219]: what the code says about a project that already exists
         sizes_said: dict[str, float] = {}  # WA-166: sizes told this turn by someone who may not set the company's
+        size_needed: list[dict[str, Any]] = []  # WA-168: lines waiting for a size nobody gave yet
         dropped = "" if answers_question(text, open_question) else str(
             (open_question or {}).get("question") or " / ".join((open_question or {}).get("options") or []))
         decides_site = places is not None and (len(places.sites) > 1 or len(places.projects) > 1)
@@ -537,6 +541,11 @@ class ApiAgent:
                     problem, unit_note = await settle_stock_unit(
                         client, body, [*waiting, *new], {**(sizes or {}), **sizes_said}, sender_name)
                     if problem:
+                        # WA-168: kept, so "Don't know" holds it for the admin instead of losing it.
+                        size_needed[:] = [n for n in size_needed if n["summary"] != str(arguments.get(CONFIRM_ARG) or "")]
+                        size_needed.append({"material_id": body["material_id"], "from_unit_id": body["unit_id"],
+                                            "path": path, "body": dict(body), "key": new_idempotency_key(),
+                                            "summary": str(arguments.get(CONFIRM_ARG) or "").strip()})
                         return ToolOutcome(content={"error": problem})
                 elif new_ref:  # WA-166: a line for a material waiting to be added, in a unit it will not be counted in
                     size_hint = await settle_new_line_unit(client, body, new_ref, [*waiting, *new])
@@ -555,6 +564,12 @@ class ApiAgent:
                     # WA-166: only an admin or a project manager sets a size for the company (a Save of it was refused
                     # for everyone else, so their line was refused again). Their size converts their own lines.
                     sizes_said[size_key(material_id, body.get("from_unit_id"))] = float(size)
+                    try:  # WA-168: and proposed to the company: the admin confirms it with one tap
+                        await client.call("POST", "/materials/size-requests", json={
+                            "material_id": material_id, "from_unit_id": body.get("from_unit_id"),
+                            "one_unit_equals": float(size)})
+                    except Exception:  # noqa: BLE001 -- their own lines are converted either way
+                        pass
                     return ToolOutcome(content={"status": (
                         "Noted for this person's own lines (only an admin or a project manager can set a size for the "
                         "whole company). Now prepare the line exactly as they said it: the code converts it with this "
@@ -669,6 +684,9 @@ class ApiAgent:
         still = [e for e in waiting if e is not None]
         # [217]: a question asked with no options still gets the buttons the code built (the near-match ones).
         options = asked.get("options", []) or unit_ask or site_ask
+        if size_needed:  # WA-168: one tap when nobody on site knows the size
+            dont_know = DONT_KNOW.get(language or "", DONT_KNOW["english"])
+            options = [o for o in options if o != dont_know][:2] + [dont_know]
         reply = (result.text or "").strip()
         missing = [u for u in dict.fromkeys(links) if u not in reply]
         if missing:  # WA-141: a link the code built always reaches the person, even if the model left it out
@@ -681,7 +699,8 @@ class ApiAgent:
                 options = []
         return ApiTurn(reply=reply, pending=still + new, saved=saved, calls=calls,
                        stop_reason=result.stop_reason, question=asked.get("question", ""), options=options,
-                       repeat_asked=repeat_asked, dropped_question=dropped, sizes_said=sizes_said)
+                       repeat_asked=repeat_asked, dropped_question=dropped, sizes_said=sizes_said,
+                       size_needed=size_needed)
 
 
 def _typed(old: Any, value: Any) -> Any:
@@ -742,6 +761,9 @@ async def settle_unit(client: ApiClient, body: dict[str, Any], field: str = "uni
 
 
 CONVERSION_TOOL = "set_unit_conversion"
+#: WA-168: the button under a size question when nobody on site knows it (WhatsApp titles: 20 characters).
+DONT_KNOW = {"english": "🤷 Don't know", "manglish": "🤷 Ariyilla", "malayalam": "🤷 അറിയില്ല",
+             "hinglish": "🤷 Pata nahi", "hindi": "🤷 पता नहीं"}
 
 
 def _size_waiting(entry: PendingWrite | None, material_id: str, unit_id: str) -> Decimal | None:
@@ -816,8 +838,9 @@ async def settle_stock_unit(client: ApiClient, body: dict[str, Any], others: lis
             f"language, in their direction: \"1 {said} {material} = how many {stock}?\" (for steel bars, the bar size "
             f"is enough: use the sizes in your instructions as options). When they answer, prepare first "
             f"`set_unit_conversion` (material_id {material_id}, from_unit_id {unit_id}, one_unit_equals their number), "
-            f"THEN this line again exactly as they said it, in {said}: the code converts it. Prepare everything else "
-            f"in their message as usual."), ""
+            f"THEN this line again exactly as they said it, in {said}: the code converts it. If they don't know, the "
+            f"code's \"Don't know\" button holds the line for their admin: never ask them to find out. Prepare "
+            f"everything else in their message as usual."), ""
 
 
 async def _units(client: ApiClient) -> list[dict[str, Any]]:

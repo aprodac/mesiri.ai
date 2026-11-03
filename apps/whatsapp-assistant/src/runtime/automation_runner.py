@@ -259,6 +259,15 @@ async def run_tick(
             except Exception:  # noqa: BLE001
                 logger.exception("automation_runner.release_notes_failed")
 
+            # WA-168: once a day, the sizes nobody on site knew, asked of the company's admins.
+            try:
+                from .size_requests_ask import queue_size_asks
+
+                async with conn.begin_nested():
+                    fired += await queue_size_asks(conn)
+            except Exception:  # noqa: BLE001
+                logger.exception("automation_runner.size_asks_failed")
+
             sent_skipped = {"sent": 0, "skipped": 0}
             try:
                 sent_skipped = await _drain_and_send(db=db, card_renderer=card_renderer)

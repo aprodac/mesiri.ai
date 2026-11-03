@@ -73,6 +73,7 @@ class Store:
         self.received: list[tuple[str, float]] = []
         self.notes: list[str | None] = []
         self.checks = 0
+        self.size_requests: list[dict] = []  # WA-168
 
     def row(self, material_id: str) -> dict:
         found = next((r for r in self.catalog if r["id"] == material_id), None)
@@ -107,6 +108,38 @@ class Store:
                     "stock_unit": stock[0], "stock_unit_name": stock[1], "stock_unit_id": row["default_unit_id"],
                     "fits": per is not None,
                     "one_unit_equals": None if per is None else str(per)}
+
+        @app.get("/materials/size-requests")
+        async def size_requests(status: str | None = "open", jwt: dict = Depends(get_current_user)):
+            return {"items": [r for r in self.size_requests if r["status"] == status]}
+
+        @app.post("/materials/size-requests", status_code=201)
+        async def open_size(body: dict, jwt: dict = Depends(get_current_user)):
+            request = next((r for r in self.size_requests if r["status"] == "open" and r["material_id"] ==
+                            body["material_id"] and r["from_unit_id"] == body["from_unit_id"]), None)
+            if request is None:
+                request = {"id": str(uuid.uuid4()), "material_id": body["material_id"], "status": "open",
+                           "from_unit_id": body["from_unit_id"], "held_lines": [], "proposed_one_unit_equals": None}
+                self.size_requests.append(request)
+            if body.get("one_unit_equals"):
+                request["proposed_one_unit_equals"] = str(body["one_unit_equals"])
+            if body.get("line_body"):
+                request["held_lines"].append({"path": body["line_path"], "body": body["line_body"],
+                                              "summary": body["line_summary"], "key": body.get("line_key")})
+            return request
+
+        @app.post("/materials/size-requests/{request_id}/answer")
+        async def answer_size(request_id: str, body: dict, jwt: dict = Depends(get_current_user)):
+            if jwt.get("role") not in ("ADMIN", "PROJECT_MANAGER"):
+                raise HTTPException(status_code=403, detail="Only an admin or a project manager can set a size.")
+            request = next(r for r in self.size_requests if r["id"] == request_id)
+            request["status"] = "answered"
+            self.one_unit[(request["material_id"], request["from_unit_id"])] = float(body["one_unit_equals"])
+            for line in request["held_lines"]:
+                per = self.factor(line["body"]["material_id"], line["body"]["unit_id"])
+                self.received.append((self.row(line["body"]["material_id"])["name"], line["body"]["quantity"] * per))
+            return {"message": f"1 load = {body['one_unit_equals']}, for the whole company. "
+                               f"{len(request['held_lines'])} of {len(request['held_lines'])} waiting lines saved."}
 
         @app.post("/materials", status_code=201)
         async def add(body: NewMaterial, jwt: dict = Depends(get_current_user)):

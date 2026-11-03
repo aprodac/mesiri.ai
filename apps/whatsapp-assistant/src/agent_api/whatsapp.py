@@ -92,6 +92,8 @@ SIZES_TTL_SECONDS = 180 * 24 * 3600
 SAVE_PREFIX = "apiag:save:"
 CANCEL_PREFIX = "apiag:cancel:"
 OPTION_PREFIX = "apiag:opt:"
+#: WA-168: an admin's one tap confirming a size proposed for the company ("apiag:size:<request id>").
+SIZE_PREFIX = "apiag:size:"
 #: WA-146: one tap on why a ready list was cancelled ("apiag:why:<reason>").
 WHY_PREFIX = "apiag:why:"
 CANCEL_REASONS = {"site": "wrong site", "amount": "wrong amount or quantity", "other": "something else"}
@@ -226,6 +228,9 @@ class ApiWhatsApp:
                 # WA-147: every Cancel is counted (the weekly digest, the production watch), reason or not.
                 cancelled = (await self._state(ctx)).get("cancelled") or []
                 await self._trace_turn(message, {"text": said, "calls": [], "cancelled": cancelled}, started)
+        elif tap.startswith(SIZE_PREFIX):
+            said = "(tapped to confirm a size)"
+            reply = await self._on_size_tap(tap[len(SIZE_PREFIX):], ctx)
         elif tap.startswith(OPTION_PREFIX) and said:
             reply = await self._on_words(said, message, ctx)
         elif message.modality is InputModality.TEXT and said:
@@ -322,6 +327,9 @@ class ApiWhatsApp:
             if state.get("pending") and state.get("pending_at") and time.time() - float(state["pending_at"]) > PENDING_MAX_AGE_S:
                 state["pending"], state["batch"] = [], None  # waiting for hours: never rides on a new card
             ready = dropping_stale_sends([PendingWrite.from_json(e) for e in state.get("pending") or []])
+            if state.get("size_needed") and is_dont_know(text):
+                return await self._hold_for_size(ctx, client, state, ready)  # WA-168: no model turn
+            state.pop("size_needed", None)  # anything else: the size question is let go
             last = next((m.text for m in reversed(history) if m.role == "model"), "")
             if calls := command_call(text, message, last):
                 # 2 Nov (Ilan, Paraclette: "mesiri fix it" came back with the same "Ready to save" list, twice): the
@@ -383,6 +391,8 @@ class ApiWhatsApp:
         state["language"] = _language(text, state.get("language"))  # WA-165: "Tower A" keeps their language
         if turn.sizes_said:
             await self._remember_sizes(ctx, turn.sizes_said)
+        if turn.size_needed:
+            state["size_needed"] = turn.size_needed  # WA-168: "Don't know" next holds them for the admin
         state["repeat_asked"] = list(turn.repeat_asked)  # the yes comes in the next message only
         state["asked"] = question_left_open(turn.question, turn.options, turn.reply)  # [219]: answered next, or dropped
         state["recent_saves"] = remember_saves(state.get("recent_saves"), turn.saved, time.time())
@@ -409,6 +419,45 @@ class ApiWhatsApp:
         reply = self._reply(words, turn.pending, state, turn.options)
         await self._save_state(ctx, state)
         return reply
+
+    async def _hold_for_size(self, ctx: Any, client: ApiClient, state: dict, ready: list[PendingWrite]) -> ReplySpec:
+        """WA-168: nobody on site knows the size: each line that needs one is held for the company's admin (asked once
+        a day; it saves by itself when they answer), and the rest of the list stays as it was."""
+        held = []
+        for need in state.pop("size_needed", None) or []:
+            try:
+                response = await client.call("POST", "/materials/size-requests", json={
+                    "material_id": need["material_id"], "from_unit_id": need["from_unit_id"],
+                    "line_path": need["path"], "line_body": need["body"], "line_summary": need["summary"],
+                    "line_key": need["key"]})
+            except Exception:  # noqa: BLE001
+                _log.warning("agent_api.size_hold_failed user=%s", ctx.user_id, exc_info=True)
+                continue
+            if response.ok:
+                held.append(need["summary"])
+        language = state.get("language") or "english"
+        words = (_HELD.get(language, _HELD["english"]).format(lines="; ".join(held)) if held
+                 else plain_refusal("", language))
+        reply = self._reply(words, ready, state, [])
+        await self._save_state(ctx, state)
+        return reply
+
+    async def _on_size_tap(self, request_id: str, ctx: Any) -> ReplySpec:
+        """WA-168: an admin's one tap on a proposed size: set for the company as they (the API checks they may), and
+        the lines that waited for it saved."""
+        client = ApiClient(_actor(ctx), app=self._app)
+        try:
+            listed = await client.call("GET", "/materials/size-requests", params={"status": "open"})
+            request = next((r for r in (listed.body or {}).get("items", []) if str(r.get("id")) == request_id), None)
+            if request is None or not request.get("proposed_one_unit_equals"):
+                return ReplySpec(text="This size was already answered 👍")
+            answer = await client.call("POST", f"/materials/size-requests/{request_id}/answer",
+                                       json={"one_unit_equals": request["proposed_one_unit_equals"]})
+        finally:
+            await client.close()
+        if not answer.ok:
+            return ReplySpec(text=plain_refusal(_detail(answer.body), (await self._state(ctx)).get("language")))
+        return ReplySpec(text=f"✅ {answer.body.get('message')}")
 
     async def _feedback_only(self, message: Any, ctx: Any, state: dict, calls: list[dict[str, Any]], text: str,
                              started: float) -> ReplySpec:
@@ -711,7 +760,7 @@ class ApiWhatsApp:
 
     async def _save_state(self, ctx: Any, state: dict) -> None:
         try:
-            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked")
+            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed")
                                     if state.get(k) is not None},
                                        ttl_seconds=STATE_TTL_SECONDS)
         except Exception:  # noqa: BLE001
@@ -899,6 +948,24 @@ def _working_fact(places: Places) -> str:
         return ""
     return (f"\nTheir site today: {places.working.name} (an update that names no site goes there; never ask which "
             "site for it).")
+
+
+#: WA-168: what someone who did not know the size is told (their line waits for the admin; nothing is lost).
+_HELD = {
+    "english": "👍 Held: {lines}. I've asked your admin for the size; it saves by itself when they answer.",
+    "manglish": "👍 Maatti vechu: {lines}. Size admin-nodu chodichittundu; avar paranjaal ithu thaane save aakum.",
+    "malayalam": "👍 മാറ്റിവെച്ചു: {lines}. സൈസ് അഡ്മിനോട് ചോദിച്ചിട്ടുണ്ട്; അവർ പറഞ്ഞാൽ ഇത് തനിയെ സേവ് ആകും.",
+    "hinglish": "👍 Rok ke rakha: {lines}. Size admin se poocha hai; unke batate hi yeh apne aap save ho jayega.",
+    "hindi": "👍 रोक के रखा: {lines}। साइज़ एडमिन से पूछा है; उनके बताते ही यह अपने आप सेव हो जाएगा।",
+}
+
+
+def is_dont_know(text: str) -> bool:
+    """WA-168: "Don't know" tapped or typed, in any of the button's languages."""
+    from .agent import DONT_KNOW
+
+    said = re.sub(r"[^\w\s]", "", (text or "").casefold()).strip()
+    return any(said == re.sub(r"[^\w\s]", "", t.casefold()).strip() for t in DONT_KNOW.values())
 
 
 def _may_set_sizes(ctx: Any) -> bool:

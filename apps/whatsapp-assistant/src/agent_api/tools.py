@@ -160,6 +160,13 @@ ALLOWED: tuple[Allowed, ...] = (
             "stock unit (1 bar of TMT 12mm = 10.67 kg; 1 load of sand = 3 m3). Use when a line was refused because "
             "the material is stocked in another unit and they told you the size; the refused line then saves "
             "converted. Admin or project manager only." + _WRITE),
+    # WA-168: sizes nobody on site knew, asked of the company's admins (the dashboard's Materials -> Sizes too).
+    Allowed("size_requests", "GET", "/materials/size-requests",
+            "The sizes the company was asked for (📏 Sizes needed): material, unit, lines waiting, any proposal, ids."),
+    Allowed("answer_size_request", "POST", "/materials/size-requests/{request_id}/answer",
+            "Prepare an admin's or project manager's answer to a size the company was asked for (\"M-sand load 60\": "
+            "one_unit_equals = how many of the stock unit in ONE of that unit). On Save it is set for the whole "
+            "company and every line that waited for it saves, converted." + _WRITE),
     Allowed("add_expense_category", "POST", "/expenses/categories", "Prepare a new expense category." + _WRITE),
     Allowed("create_project", "POST", "/projects", "Prepare a new project (name, client, address, dates)." + _WRITE),
     Allowed("update_project", "PUT", "/projects/{project_id}",
