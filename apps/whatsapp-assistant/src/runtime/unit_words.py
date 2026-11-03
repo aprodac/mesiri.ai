@@ -21,7 +21,14 @@ _WORDS: dict[str, tuple[str, ...]] = {
         "chakkinte", "chaak", "chaaku", "chakkum", "bori", "boree", "boras", "ചാക്ക്", "ചാക്", "ചാക്കു",
         "ചാക്കിന്റെ", "बोरी", "बोरा", "बैग", "थैला",
     ),
-    "load": ("load", "loads", "lod", "lode", "lood", "ലോഡ്", "ലോഡ", "लोड"),
+    # WA-167: a trip, a lorry, a tipper of sand or bricks is a load on a Kerala site (one unit, not two).
+    "load": ("load", "loads", "lod", "lode", "lood", "ലോഡ്", "ലോഡ", "लोड", "trip", "trips", "lorry", "lorries",
+             "tipper", "tippers", "ട്രിപ്പ്", "ലോറി", "ടിപ്പർ", "ट्रिप", "लॉरी"),
+    # WA-167 (0498): containers. How much one is, is set once per material by the company.
+    "drum": ("drum", "drums", "drm", "ഡ്രം", "ഡ്രമ്മ്", "ड्रम"),
+    "tin": ("tin", "tins", "tinn", "ടിൻ", "ടിന്ന്", "टिन"),
+    "bucket": ("bucket", "buckets", "bakket", "bucketu", "ബക്കറ്റ്", "बाल्टी"),
+    "bundle": ("bundle", "bundles", "kettu", "ketu", "കെട്ട്", "ബണ്ടിൽ", "बंडल"),
     "ft": ("ft", "feet", "foot", "adi", "aadi", "അടി", "फ़ुट", "फुट"),
     "kg": ("kg", "kgs", "kilo", "kilos", "kilogram", "kilograms", "കിലോ", "കിലോഗ്രാം", "किलो"),
     "nos": (

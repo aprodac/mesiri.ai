@@ -170,3 +170,28 @@ async def test_through_whatsapp_an_engineers_size_is_kept_and_their_next_load_is
     state = await h.state()
     assert [p["summary"] for p in state["pending"]] == ["1 ലോഡ് എംസാൻഡ് Tower A (= 60 Bags)", "3 load msand (= 180 Bags)"]
     assert [p["body"]["quantity"] for p in state["pending"]] == [60, 180]
+
+
+# -- WA-167: container units and the words for them -----------------------------------------------------------------
+
+
+def test_container_words_name_the_new_units_and_a_lorry_is_a_load() -> None:
+    from agent_api.units import resolve_unit
+    from runtime.unit_words import canonical_unit
+
+    units = [{"id": c, "code": c, "display_name": c.title(), "is_active": True}
+             for c in ("load", "drum", "tin", "bucket", "bundle", "bags", "nos")]
+    said = {"drum": "drum", "ഡ്രം": "drum", "tins": "tin", "ടിൻ": "tin", "bucket": "bucket", "ബക്കറ്റ്": "bucket",
+            "kettu": "bundle", "കെട്ട്": "bundle", "lorry": "load", "ലോറി": "load", "tipper": "load", "trip": "load"}
+    for word, code in said.items():
+        assert canonical_unit(word) == code, word
+        assert resolve_unit(units, word)["code"] == code, word
+    assert canonical_unit("chaakku") == "bags" and canonical_unit("ennam") == "nos"  # guards: unchanged
+
+
+def test_the_refusal_says_one_drum_not_one_drums() -> None:
+    from agent_api.units import plain_refusal
+
+    reason = ("unit_id does not match Thinner's Stock Unit (expected litres); no conversion from Drums is set "
+              "(PUT /materials/x/unit-conversions sets one)")
+    assert "How many litres is one drum?" in plain_refusal(reason, "english")

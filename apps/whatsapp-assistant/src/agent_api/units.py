@@ -92,7 +92,8 @@ def _one_of(unit_name: str, material: str) -> str:
     low = unit_name.casefold()
     if low in ("numbers", "pieces", "nos", "pcs", ""):
         return "bar" if re.search(r"\b(tmt|steel|rod|rebar|bar)", material, re.IGNORECASE) else "piece"
-    return {"bags": "bag", "loads": "load", "boxes": "box", "rolls": "roll"}.get(low, unit_name)
+    return {"bags": "bag", "loads": "load", "boxes": "box", "rolls": "roll", "drums": "drum", "tins": "tin",
+            "buckets": "bucket", "bundles": "bundle"}.get(low, unit_name)
 
 
 def is_stock_unit_refusal(reason: str) -> bool:
