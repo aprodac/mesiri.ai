@@ -21,6 +21,14 @@ ITEMS = [
 ]
 
 
+ACCOUNTS = [
+    {"id": "a", "label": "A", "logged_in": True, "default": True, "five_hour": {"pct": 35, "resets_at": "2026-11-04T12:00:00Z"},
+     "seven_day": None, "read_at": "2026-11-04T09:00:00Z", "token": "never-shown"},
+    {"id": "b", "label": "B (ilan-work)", "five_hour": "odd"},
+    "not an account",
+]
+
+
 @pytest.fixture(autouse=True)
 def _fresh_settings():
     from mesiri.bootstrap.settings import get_settings
@@ -46,6 +54,8 @@ class _Client:
         _Client.seen.append({"url": url, "params": params, "headers": headers})
         if url.endswith("/items"):
             return httpx.Response(200, json={"items": ITEMS})
+        if url.endswith("/claude/accounts"):
+            return httpx.Response(200, json={"accounts": ACCOUNTS})
         if url.endswith("/items/81"):
             return httpx.Response(200, json={"item": {**ITEMS[0], "log": [{"at": "t", "status": "open", "ref": None, "note": "logged; asked by Ilan", "x": 1}]}})
         return httpx.Response(404, json={"error": "no such item"})
@@ -144,3 +154,34 @@ def test_tm27_minutes_per_stage() -> None:
     ]
     stages = rr.loop_numbers(items)["minutes_by_stage"]
     assert stages == {"plan": 6.0, "build": 20.0, "deploy": 4.0}
+
+
+async def test_tm78_the_list_carries_each_claude_account_and_tm79_each_request_usage(monkeypatch) -> None:
+    monkeypatch.setenv("MESIRI_TEAMMATE_API_TOKEN", TOKEN)
+    monkeypatch.setattr(rr.httpx, "AsyncClient", _Client)
+    ITEMS[1].update({"usage_usd": 2.1, "usage_5h": 14, "usage_turns": 5, "usage_accounts": "B (ilan-work)", "claimed_by": "team bot"})
+    try:
+        out = await rr.list_requests(project="mesiri", _admin={})
+    finally:
+        for k in ("usage_usd", "usage_5h", "usage_turns", "usage_accounts", "claimed_by"):
+            ITEMS[1].pop(k)
+    a, b = out["accounts"]
+    assert a["label"] == "A" and a["five_hour"] == {"pct": 35, "resets_at": "2026-11-04T12:00:00Z"}
+    assert "token" not in a  # only the listed fields, whatever the bot sends
+    assert b["five_hour"] is None  # a malformed window is shown as unknown
+    item = out["items"][1]
+    assert (item["usage_usd"], item["usage_5h"], item["usage_turns"], item["claimed_by"]) == (2.1, 14, 5, "team bot")
+
+
+async def test_tm78_an_older_bot_without_accounts_still_shows_the_list(monkeypatch) -> None:
+    monkeypatch.setenv("MESIRI_TEAMMATE_API_TOKEN", TOKEN)
+
+    class _Old(_Client):
+        async def get(self, url: str, params: dict[str, str], headers: dict[str, str]) -> httpx.Response:
+            if url.endswith("/claude/accounts"):
+                return httpx.Response(404, json={"error": "not found"})
+            return await super().get(url, params, headers)
+
+    monkeypatch.setattr(rr.httpx, "AsyncClient", _Old)
+    out = await rr.list_requests(project="mesiri", _admin={})
+    assert out["accounts"] is None and len(out["items"]) == 3
