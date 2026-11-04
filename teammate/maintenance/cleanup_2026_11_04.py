@@ -45,8 +45,8 @@ DONE = {
 }
 #: D: ideas, kept as Later rows in docs/plans/V1_TRACKER.md.
 IDEAS = {
-    17: "WA-176", 18: "WA-177", 21: "WA-178", 23: "WA-179", 26: "WA-180", 27: "WA-181", 28: "WA-182",
-    105: "WA-183", 22: "TM-81", 31: "TM-82", 138: "TM-77 / TM-80", 87: "docs/plans/ux-cards-plan.md",
+    17: "WA-184", 18: "WA-185", 21: "WA-186", 23: "WA-187", 26: "WA-188", 27: "WA-189", 28: "WA-190",
+    105: "WA-191", 22: "TM-81", 31: "TM-82", 138: "TM-77 / TM-80", 87: "docs/plans/ux-cards-plan.md",
     91: "docs/plans/ux-cards-plan.md",
 }
 #: E: no activity for over a week; an owner says done, keep or drop (shown as "needs a decision").
