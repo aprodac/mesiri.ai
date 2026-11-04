@@ -164,6 +164,35 @@ python3 teammate/inbox.py item usage 231 --cost 1.80 --pct5 9 --pct7 2   # from 
 python3 teammate/inbox.py item done 231 --ref 4f20ec2 --cost 0.40
 ```
 
+**One problem, one request, one build (TM-83).** A repeat never starts a second build. The bot's planner: a
+follow-up or "still broken" of a request that is still open joins it (its live check then covers the new
+person too, and they are told the `[n]`); recent requests from the same company must be ruled on with
+`same_as` (merged) or `different_because`; and a build of the same problem as one already building is held.
+Sessions get the same check:
+
+```bash
+python3 teammate/inbox.py item add "Paraclette" "[230] still broken: list empty" --type bug   # lists possible repeats and stops
+python3 teammate/inbox.py item add "Paraclette" "..." --type bug --same-as 235                # adds it to [235], no new request
+python3 teammate/inbox.py item add "Paraclette" "..." --type bug --new "stock lookup, not the list"
+```
+
+**About to hit a Claude limit: hand over, don't stall (TM-84).** Between steps, a session checks its account; at
+90% of the 5-hour window (97% of the week) it hands over. Finished, checked work is pushed; the unfinished part
+goes up as a patch with a note, never as half-done code on `main` (main deploys):
+
+```bash
+python3 teammate/inbox.py limits --account "B (ilan-work)"   # exit 3 + "HAND OVER" when it's time
+python3 teammate/inbox.py item handover 240 --note "done: route + test / left: the page / next step: build the page"
+python3 teammate/inbox.py item pickup 240                    # whoever continues: applies the patch, prints the note
+```
+
+Cloud builds the bot started do this by themselves (it is in their instructions). The watchdog then continues the
+job on the next account with room, starting with `item pickup`; if none has room, it says when once and continues
+by itself at the reset. A build that went silent on an account at its limit is resumed the same way. The board
+shows **⏸ paused** with the reason meanwhile, and each request's story (click a card on
+`control.mesiri.ai/requests`) shows the problem, what was found, the commits, the review and live check, every
+session and handover, and its Claude usage (TM-85).
+
 **Session-start reminder (to add by hand).** Claude sessions may not change `.claude/` themselves, so a
 person adds this once. `.claude/hooks/session-start.sh` (make it executable):
 
@@ -175,6 +204,7 @@ cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 echo "Being worked on now (don't start these again; add to one with: inbox.py item note <n> ...):"
 TEAMMATE_PROJECT="${TEAMMATE_PROJECT:-mesiri}" timeout 10 python3 teammate/inbox.py items --status in_progress 2>/dev/null | head -25
 echo "Check in on yours: python3 teammate/inbox.py item start <n>  (then item usage / item done --cost)"
+echo "New problem? item add checks for repeats. Between steps: inbox.py limits; at HAND OVER: item handover <n> --note ..."
 exit 0
 ```
 

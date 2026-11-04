@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from './api';
 import { getErrorMessage } from './Toast';
+import RequestStory, { type LogEntry } from './RequestStory';
 
 // TM-19: everything people asked Mesiri for (and the team asked the bot for), and what happened
 // to each: asked, waiting for an ok, building, live, verified, broken, dropped. Who asked, the
@@ -40,6 +41,7 @@ interface RequestItem {
   usage_7d?: number | null;
   usage_turns?: number | null;
   usage_accounts?: string | null;
+  paused?: string | null;
 }
 
 interface Window {
@@ -79,13 +81,6 @@ interface Loop {
 }
 
 const hours = (h: number | null) => (h == null ? '—' : h < 1 ? `${Math.round(h * 60)} min` : h < 48 ? `${h.toFixed(1)} h` : `${(h / 24).toFixed(1)} days`);
-
-interface LogEntry {
-  at: string;
-  status: string | null;
-  ref: string | null;
-  note: string | null;
-}
 
 const STAGES: Record<Stage, [string, string]> = {
   asked: ['Asked', 'badge-info'],
@@ -292,24 +287,7 @@ export default function Requests() {
     ['Broken', counts?.broken, 'failed the live check', 'broken'],
   ];
 
-  const history = (id: number) => {
-    const entries = log[id];
-    return (
-      <>
-        {!entries && <span style={muted}>Loading history…</span>}
-        {typeof entries === 'string' && <span style={{ color: 'var(--error)' }}>{entries}</span>}
-        {Array.isArray(entries) && (
-          <ul style={{ ...muted, margin: 0, paddingLeft: '18px' }}>
-            {entries.map((e, n) => (
-              <li key={n} style={{ overflowWrap: 'anywhere' }}>
-                {when(e.at)} · {[e.status, e.ref && `commit ${e.ref}`, e.note].filter(Boolean).join(' · ')}
-              </li>
-            ))}
-          </ul>
-        )}
-      </>
-    );
-  };
+  const history = (i: RequestItem) => <RequestStory item={i} log={log[i.id]} />;
 
   return (
     <div className="animate-fade-in" style={{ maxWidth: '1400px' }}>
@@ -430,6 +408,19 @@ export default function Requests() {
       {error && <div className="card" style={{ color: 'var(--error)' }}>{error}</div>}
       {!error && !items && <div className="card" style={muted}>Loading…</div>}
 
+      {items && view === 'board' && open != null && (() => {
+        const sel = items.find((x) => x.id === open);
+        return sel ? (
+          <section id="request-story" className="card" style={{ marginBottom: 'var(--space-4)', scrollMarginTop: '16px' }} aria-label={`Request ${sel.id}`}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'baseline' }}>
+              <strong style={{ color: 'var(--neutral-900)', overflowWrap: 'anywhere' }}>[{sel.id}] {sel.title}</strong>
+              <button type="button" className="btn btn-secondary" style={{ padding: '2px 8px', fontSize: '12px' }} onClick={() => setOpen(null)}>Close</button>
+            </div>
+            {history(sel)}
+          </section>
+        ) : null;
+      })()}
+
       {items && view === 'board' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 'var(--space-3)', alignItems: 'start' }}>
           {COLUMNS.map(([key, label, hint]) => (
@@ -446,11 +437,11 @@ export default function Requests() {
                   const on = whoOf(i);
                   const stale = isStale(i, now);
                   return (
-                    <article key={i.id} className="card" style={{ padding: 'var(--space-3)', cursor: 'pointer', minWidth: 0 }} onClick={() => toggle(i.id)}>
+                    <article key={i.id} className="card" style={{ padding: 'var(--space-3)', cursor: 'pointer', minWidth: 0, outline: open === i.id ? '2px solid var(--neutral-900)' : undefined }} onClick={() => { toggle(i.id); setTimeout(() => document.getElementById('request-story')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); }}>
                       <div style={{ ...small, display: 'flex', justifyContent: 'space-between', gap: '6px' }}>
                         <span>[{i.id}] · {i.type}</span>
                         {i.stage === 'broken' && <span className="badge badge-error">broken</span>}
-                        {stale && <span className="badge badge-warning" title="No change for over 2 days">stale</span>}
+                        {i.paused ? <span className="badge badge-warning" title={i.paused}>⏸ paused</span> : stale && <span className="badge badge-warning" title="No change for over 2 days">stale</span>}
                       </div>
                       <div style={{ fontWeight: 500, color: 'var(--neutral-900)', margin: '4px 0', overflowWrap: 'anywhere' }}>{i.title}</div>
                       <div style={{ ...small, overflowWrap: 'anywhere' }}>
@@ -460,7 +451,6 @@ export default function Requests() {
                       {i.held && i.stage === 'waiting' && <div style={{ ...small, color: 'var(--warning)', overflowWrap: 'anywhere' }}>{i.held.slice(0, 160)}</div>}
                       {used && <div style={{ ...small, color: 'var(--neutral-700)' }}>Claude: {used}{i.usage_accounts ? ` · ${i.usage_accounts}` : ''}</div>}
                       {i.done_ref && <div style={{ ...small, overflowWrap: 'anywhere' }}>commit {i.done_ref}</div>}
-                      {open === i.id && <div style={{ marginTop: '8px' }} onClick={(e) => e.stopPropagation()}>{history(i.id)}</div>}
                     </article>
                   );
                 })}
@@ -503,7 +493,7 @@ export default function Requests() {
                       <td style={muted}>{i.asked_by ?? <span style={{ color: 'var(--neutral-400)' }}>{i.created_by ?? i.chat_name ?? '—'}</span>}</td>
                       <td>
                         <span className={`badge ${badge}`}>{label}</span>
-                        {isStale(i, now) && <span className="badge badge-warning" style={{ marginLeft: '4px' }}>stale</span>}
+                        {i.paused ? <span className="badge badge-warning" style={{ marginLeft: '4px' }} title={i.paused}>⏸ paused</span> : isStale(i, now) && <span className="badge badge-warning" style={{ marginLeft: '4px' }}>stale</span>}
                       </td>
                       <td style={muted}>{usageShort(i) ?? '—'}</td>
                       <td style={muted}>{i.verified === 'ok' ? `✅ ${when(i.verified_at)}` : i.verified === 'broken' ? `❌ ${when(i.verified_at)}` : i.live_at ? 'pending' : '—'}</td>
@@ -514,13 +504,7 @@ export default function Requests() {
                       <tr>
                         <td />
                         <td colSpan={7} style={{ background: 'var(--neutral-50)' }}>
-                          {i.summary && <p style={{ ...muted, whiteSpace: 'pre-wrap', marginBottom: '8px' }}>{i.summary.slice(0, 1200)}</p>}
-                          {i.usage_turns ? (
-                            <p style={{ ...muted, marginBottom: '8px' }}>
-                              Claude: {usageShort(i)} over {i.usage_turns} turn{i.usage_turns === 1 ? '' : 's'}{i.usage_accounts ? ` on ${i.usage_accounts}` : ''}. The % is an estimate from the account's readings.
-                            </p>
-                          ) : null}
-                          {history(i.id)}
+                          {history(i)}
                         </td>
                       </tr>
                     )}
