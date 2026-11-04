@@ -15,6 +15,11 @@
 //   POST /items        {chat, type, title, summary?, source?, created_by?, project?}
 //   GET  /items/:id?project=          one request with its history
 //   POST /items/:id/claim {by, take?, project?}  TM-50: one worker per request; 409 names who holds it
+//   POST /items/:id/usage {account?, by?, cost_usd?, tokens?, pct_5h?, pct_7d?, project?}  TM-79: Claude usage of one turn
+//   POST /items/:id/handover {note, patch?, base?, by?, account?, project?}  TM-84: unfinished work, handed over
+//   GET  /items/:id/handover?project=   the open handover (with its patch);  POST /items/:id/handover/pick {by}
+//   GET  /claude/accounts              TM-78: each Claude account's plan windows (5-hour, weekly), as the brain last saw them
+//   POST /claude/accounts {accounts: [...]}  the brain posts its reading after each turn
 //   POST /items/:id    {status?, ref?, note?, title?, summary?, type?, project?, + TM-19 asked_by / asked_ref / asked_who / held / live_at / verified / tried_at}
 //   GET  /people?project=             who may tag the bot (TM-03)
 //   POST /people       {project, phone, name?, role?}   approve someone (role owner | member)
@@ -38,7 +43,7 @@
 import { createReadStream, existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { timingSafeEqual } from "node:crypto";
-import { ITEM_TRACKING, istStarts } from "./store.js";
+import { ITEM_TRACKING, istStarts, MAX_PATCH_CHARS } from "./store.js";
 import { costOf, geminiPrices } from "./transcribe.js";
 
 function send(res, status, body) {
@@ -225,6 +230,47 @@ export function createApi({ store, wa, token, ai = null, brain = null }) {
         if (!body.by) return send(res, 400, { error: "by is required" });
         const r = store.claimItem(item.id, String(body.by).slice(0, 120), { take: Boolean(body.take) });
         return r.ok ? send(res, 200, { item: r.item }) : send(res, 409, { error: `claimed by ${r.by} at ${r.at}`, claimed_by: r.by, claimed_at: r.at });
+      }
+      m = path.match(/^\/items\/(\d+)\/usage$/);
+      if (m && req.method === "POST") {
+        const body = await readJson(req);
+        const item = store.getItem(m[1]);
+        if (!item || (body.project && item.project !== body.project)) return send(res, 404, { error: "no such item" });
+        try {
+          store.addItemUsage(item.id, body);
+          return send(res, 200, { item: store.getItem(item.id) });
+        } catch (err) {
+          return send(res, 400, { error: err.message });
+        }
+      }
+      m = path.match(/^\/items\/(\d+)\/handover(\/pick)?$/);
+      if (m) {
+        const body = req.method === "POST" ? await readJson(req, MAX_PATCH_CHARS + 20_000) : {};
+        const item = store.getItem(m[1]);
+        const scope = req.method === "GET" ? project : body.project;
+        if (!item || (scope && item.project !== scope)) return send(res, 404, { error: "no such item" });
+        if (req.method === "GET" && !m[2]) {
+          const h = store.openHandover(item.id);
+          return h ? send(res, 200, { handover: h }) : send(res, 404, { error: "no open handover" });
+        }
+        if (req.method === "POST" && m[2]) {
+          const h = store.pickHandover(item.id, String(body.by || "someone").slice(0, 120));
+          return h ? send(res, 200, { handover: h, item: store.getItem(item.id) }) : send(res, 404, { error: "no open handover" });
+        }
+        if (req.method === "POST") {
+          try {
+            return send(res, 200, { item: store.addHandover(item.id, body) });
+          } catch (err) {
+            return send(res, 400, { error: err.message });
+          }
+        }
+      }
+      if (path === "/claude/accounts" && req.method === "GET") return send(res, 200, { accounts: store.claudeAccounts() });
+      if (path === "/claude/accounts" && req.method === "POST") {
+        const body = await readJson(req);
+        if (!Array.isArray(body.accounts)) return send(res, 400, { error: "accounts must be a list" });
+        store.setClaudeAccounts(body.accounts.slice(0, 26));
+        return send(res, 200, { ok: true });
       }
       m = path.match(/^\/items\/(\d+)$/);
       if (m && (req.method === "GET" || req.method === "POST")) {

@@ -11,6 +11,8 @@ One call makes everything a company needs to start sending updates:
     users           the owner (ADMIN), by email, WhatsApp number or both
     projects/sites  optionally the first project and its site(s)
     materials       the starter catalogue (BE-24, domains/materials/defaults)
+    settings        `assistant_mode = api`: a new company starts on v3 (WA-176);
+                    companies made before keep what they have (unset = classic)
 
 Takes an externally-supplied connection and never commits, so the caller's
 transaction makes it all-or-nothing: a refused owner leaves no company behind.
@@ -34,7 +36,11 @@ from mesiri.application.identity.phone_numbers import NUMBER_TAKEN_MESSAGE, what
 from mesiri.application.materials.starter_catalog import seed_starter_materials
 from mesiri.domains.audit import actions as audit
 from mesiri.domains.organizations import lifecycle
+from mesiri.domains.organizations import settings as org_settings
 from mesiri.domains.organizations.platform_settings import TRIAL_POLICY
+from mesiri.infrastructure.postgres.repositories.organization_settings import (
+    PostgresOrganizationSettingsRepository,
+)
 from mesiri.infrastructure.postgres.repositories.platform_settings import (
     PostgresPlatformSettingsRepository,
 )
@@ -389,6 +395,12 @@ async def create_company(
     # resolves instead of "ask your admin". Units, issue types and trades are
     # platform-wide already; only the materials catalogue is per company.
     materials_seeded = await seed_starter_materials(conn, org_id, created_by=owner_id)
+
+    # WA-176: v3 is the assistant (locked by WA-134); classic only serves the companies
+    # made before it, until they move. Written here so every door gives the same answer.
+    await PostgresOrganizationSettingsRepository(conn).set(
+        org_id, org_settings.ASSISTANT_MODE, org_settings.ASSISTANT_MODE_API, updated_by=owner_id
+    )
 
     await record_admin_action(
         conn,

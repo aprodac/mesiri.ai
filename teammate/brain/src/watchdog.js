@@ -7,7 +7,7 @@
 import { readFileSync, writeFileSync, renameSync, existsSync } from "node:fs";
 
 const MIN = 60_000;
-export const WATCH_DEFAULTS = { stallMs: 30 * MIN, reportAfterMs: 20 * MIN, deployWaitMs: 30 * MIN, staleMs: 48 * 60 * MIN };
+export const WATCH_DEFAULTS = { stallMs: 30 * MIN, reportAfterMs: 20 * MIN, deployWaitMs: 30 * MIN, staleMs: 48 * 60 * MIN, pollMs: 10 * MIN, limitQuietMs: 10 * MIN };
 
 function readJson(path, fallback) {
   try {
@@ -41,6 +41,12 @@ export class Watchdog {
       await Promise.resolve(this.brain.tellSlow?.()).catch((e) => this.brain.log(`watchdog: slow notes: ${e.message}`));
       const running = Object.values(this.brain.planStore.plans).filter((p) => p.status === "running_in_cloud" || p.status === "running_here"); // TM-31: builds here too
       const now = this.brain.now().getTime();
+      // TM-84: a fresh reading of each account a cloud job runs on, so a session's `inbox.py limits` sees it coming.
+      const accounts = this.brain.accounts;
+      for (const id of new Set(running.filter((p) => p.status === "running_in_cloud" && p.account).map((p) => p.account))) {
+        const at = accounts?.state?.usage?.[id]?.at || 0;
+        if (now - at >= (this.cfg.pollMs ?? WATCH_DEFAULTS.pollMs)) await Promise.resolve(this.brain.pollAccount?.(id)).catch(() => {});
+      }
       for (const plan of running) {
         // A job started more than 2 days ago is over, whatever it reported: it is closed quietly, never re-alerted
         // (1 Nov: a matching change made 8 weeks-old jobs look newly silent and each got a "quiet for 20,000 min").
@@ -123,6 +129,31 @@ export class Watchdog {
         this.save();
         await say(`${tag} landed but didn't report: ${last.short} is deployed (green) and the session said nothing for ${Math.round(this.cfg.reportAfterMs / MIN)} min. Marked done with ${last.short}.`);
         if (b.needsVerify?.(plan)) await b.verifyLive(plan, last.short); // TM-19
+        return;
+      }
+    }
+
+    // TM-84: handed over, or silent on an account at its limit: it goes on elsewhere (or at the reset), never just sits.
+    if (plan.status === "running_in_cloud" && b.resumeHandover) {
+      const paused = String(ws.item?.paused || "");
+      const quietFor = ws.lastActivityAt ? now - ws.lastActivityAt : 0;
+      const atLimit = plan.account && (b.accounts?.limitedUntil(plan.account) || b.accounts?.near(plan.account, 99));
+      if (plan.resume_at) {
+        if (now >= plan.resume_at) await b.resumeHandover(plan, { reason: st.pauseReason || "paused at a usage limit" });
+        return;
+      }
+      if (paused.startsWith("handed over") && st.handover !== paused) {
+        st.handover = paused;
+        st.pauseReason = "handed over before its Claude account's limit";
+        this.save();
+        await b.resumeHandover(plan, { reason: st.pauseReason });
+        return;
+      }
+      if (atLimit && quietFor >= (this.cfg.limitQuietMs ?? WATCH_DEFAULTS.limitQuietMs) && st.limitFor !== ws.lastActivityAt) {
+        st.limitFor = ws.lastActivityAt;
+        st.pauseReason = `stopped: Claude account ${b.accounts.label(plan.account)} is at its limit`;
+        this.save();
+        await b.resumeHandover(plan, { reason: st.pauseReason });
         return;
       }
     }

@@ -52,6 +52,8 @@ PLATFORM_ADMIN_CREATED = "platform_admin.created"
 PLATFORM_ADMIN_UPDATED = "platform_admin.updated"
 PLATFORM_SETTING_CHANGED = "platform_setting.changed"
 AI_CONFIG_CHANGED = "ai_config.changed"
+# SA-26: a platform admin let one number start a new free trial (details.phone = its digits).
+SIGNUP_TRIAL_ALLOWED = "signup.trial_allowed"
 
 # Database page (SA-15): a SQL read, and a write that changed rows.
 DATABASE_QUERY_READ = "database.query_read"
@@ -79,6 +81,7 @@ ACTIONS = frozenset(
         PLATFORM_ADMIN_UPDATED,
         PLATFORM_SETTING_CHANGED,
         AI_CONFIG_CHANGED,
+        SIGNUP_TRIAL_ALLOWED,
         DATABASE_QUERY_READ,
         DATABASE_ROWS_CHANGED,
     }

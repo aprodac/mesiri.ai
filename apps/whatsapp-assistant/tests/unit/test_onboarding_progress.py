@@ -34,7 +34,7 @@ class _SetupQuestions:
         self.open = False
         self.asked: list[str] = []
 
-    async def is_open(self, user_id):
+    async def is_open(self, user_id, organization_id=None):
         return self.open
 
     async def ask(self, actor, question, send):

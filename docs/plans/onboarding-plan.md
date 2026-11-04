@@ -208,15 +208,29 @@ trials only), days data is kept after a trial expires, and the self-serve signup
   while off the old "not registered" reply is unchanged. Reading the setting fails
   closed. Live on 24 Oct: on.
 - **The conversation:**
-  1. Welcome with buttons: **Start free trial** / **I'm in a company**.
-  2. "I'm in a company": ask your admin for the join code and send *JOIN ACME-4821* (SS-05), or ask them to add this number.
-  3. "Start free trial": company name, then site name. The owner's name comes from
-     their WhatsApp profile and is asked only when the profile has none.
+  1. Welcome with buttons (SS-22): **Set up my company** / **Join my team** /
+     **What is Mesiri?** (the old "I'm in a company" fitted owners too). The welcome
+     card is in Malayalam when the first message is.
+  2. "Join my team": send the join code (*JOIN ACME-4821*, SS-05) or ask the admin to
+     add this number; "Set up my company" stays one tap away.
+  3. "Set up my company": company name, then site name. The owner's name comes from
+     their WhatsApp profile and is asked only when the profile has none, or after
+     Edit. The confirm card shows company, site and the owner's name, and says it
+     creates a *new* company.
   4. The company is created as a trial, source `whatsapp`, with the first site's
      automatic DPR on and the starter materials. It is then projected, so the
      owner's next message takes the normal path.
-- **Other replies:** "cancel" stops the signup. A voice note or photo gets "please type
-  it". If the number is already taken, the reply says it's already set up.
+- **Other replies:** "cancel" or "stop" ends the signup at any step, the welcome
+  included. At the welcome, a reply that answers nothing gets a short nudge with the
+  buttons (no image), and after two Mesiri stays quiet until a greeting. A first
+  message that was work (a site update, voice note or photo) is told it wasn't saved
+  yet. Mid-signup a voice note or photo gets "please type it". A number whose user is
+  deactivated or suspended is told its access is paused, never offered a trial. A
+  refused trial offers **Talk to our team** and "Join my team", and that number is
+  never offered "Set up my company" again (SS-23: it could only be refused again).
+  Talk to our team posts the number to the team's WhatsApp group, once a day; the team
+  replies in the person's chat. If the number is already taken, the reply says it's
+  already set up.
 - **Before switching it on in production:** guardrails (SS-09). The switch is in the control panel's
   Settings → Trials & signup (SS-10).
 

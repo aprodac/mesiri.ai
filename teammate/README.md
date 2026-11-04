@@ -133,6 +133,87 @@ python3 teammate/inbox.py items --status open                    # everything st
 python3 teammate/inbox.py item show 12                           # one request with its history
 ```
 
+## One view of all work, and what it used of Claude (TM-76 to TM-80)
+
+Every fix, feature or upgrade has one request number, wherever it started: a WhatsApp group, feedback in
+Mesiri chat, an `@bot` tag, or a Claude Code session on any Claude account. The request log is the list
+of what is being worked on; `docs/plans/V1_TRACKER.md` stays the roadmap and names the `[n]` it serves.
+
+| Where | What you see |
+| --- | --- |
+| `control.mesiri.ai/requests` | Board (New → Needs a decision → Being built → Live, being checked → Done this week), each card with its group, who is on it, Claude usage and commit; "stale" when building with no change for 2 days. `?view=list` is the table, sortable by usage. On top: each Claude account's 5-hour and weekly meter |
+| `@bot status` | every open request, with its usage (`~14% 5h · $2.10`) |
+| `@bot status <n>` | one request: its stage, who is on it, `Claude usage: ~14% of a 5-hour window, ~3% of the week · $2.10 · 5 turns on B (ilan-work)` |
+| `@bot account` | each account: `5-hour 82% (resets ~14:30 IST) ⚠️ · weekly 40%`; the team group is warned once per window at 80% |
+| Evening summary (19:00 IST) | one `🔑 Claude:` line with every account |
+
+**How the numbers are made.** Each bot turn reads its account's plan windows (the Agent SDK's `/usage`,
+plus its `rate_limit_event`s) and charges its cost (Claude's own dollar count) to the request it was for:
+the plan it builds, the request it reviews or re-checks, or the one it logged. The % of a window is an
+estimate: between two readings of an account, the rise over the dollars the bot spent in between is the %
+one dollar takes. Work on that account the bot can't see (a person's own session, a cloud routine) is in
+the rise too, so the estimate leans high, never low. Only accounts whose login is on the bot server
+(`TEAMMATE_CLAUDE_ACCOUNTS`) are read; add an account there to see its meter.
+
+**A Claude Code session checks in** on the request it takes, and reports what it used:
+
+```bash
+export TEAMMATE_CLAUDE_ACCOUNT="B (ilan-work)"     # optional: name the account this session runs on
+python3 teammate/inbox.py item start 231           # claims it; records the session link and account
+python3 teammate/inbox.py item usage 231 --cost 1.80 --pct5 9 --pct7 2   # from /cost and /usage
+python3 teammate/inbox.py item done 231 --ref 4f20ec2 --cost 0.40
+```
+
+**One problem, one request, one build (TM-83).** A repeat never starts a second build. The bot's planner: a
+follow-up or "still broken" of a request that is still open joins it (its live check then covers the new
+person too, and they are told the `[n]`); recent requests from the same company must be ruled on with
+`same_as` (merged) or `different_because`; and a build of the same problem as one already building is held.
+Sessions get the same check:
+
+```bash
+python3 teammate/inbox.py item add "Paraclette" "[230] still broken: list empty" --type bug   # lists possible repeats and stops
+python3 teammate/inbox.py item add "Paraclette" "..." --type bug --same-as 235                # adds it to [235], no new request
+python3 teammate/inbox.py item add "Paraclette" "..." --type bug --new "stock lookup, not the list"
+```
+
+**About to hit a Claude limit: hand over, don't stall (TM-84).** Between steps, a session checks its account; at
+90% of the 5-hour window (97% of the week) it hands over. Finished, checked work is pushed; the unfinished part
+goes up as a patch with a note, never as half-done code on `main` (main deploys):
+
+```bash
+python3 teammate/inbox.py limits --account "B (ilan-work)"   # exit 3 + "HAND OVER" when it's time
+python3 teammate/inbox.py item handover 240 --note "done: route + test / left: the page / next step: build the page"
+python3 teammate/inbox.py item pickup 240                    # whoever continues: applies the patch, prints the note
+```
+
+Cloud builds the bot started do this by themselves (it is in their instructions). The watchdog then continues the
+job on the next account with room, starting with `item pickup`; if none has room, it says when once and continues
+by itself at the reset. A build that went silent on an account at its limit is resumed the same way. The board
+shows **⏸ paused** with the reason meanwhile, and each request's story (click a card on
+`control.mesiri.ai/requests`) shows the problem, what was found, the commits, the review and live check, every
+session and handover, and its Claude usage (TM-85).
+
+**Session-start reminder.** In place since 4 Nov. To reuse it in another repo, `.claude/hooks/session-start.sh`
+(make it executable):
+
+```bash
+#!/bin/bash
+# TM-77: every session first sees what is already being worked on. Prints only; never fails the session.
+cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
+[ -n "${TEAMMATE_TOKEN:-}" ] || { echo "Request log not reachable (no TEAMMATE_TOKEN)."; exit 0; }
+echo "Being worked on now (don't start these again; add to one with: inbox.py item note <n> ...):"
+TEAMMATE_PROJECT="${TEAMMATE_PROJECT:-mesiri}" timeout 10 python3 teammate/inbox.py items --status in_progress 2>/dev/null | head -25
+echo "Check in on yours: python3 teammate/inbox.py item start <n>  (then item usage / item done --cost)"
+echo "New problem? item add checks for repeats. Between steps: inbox.py limits; at HAND OVER: item handover <n> --note ..."
+exit 0
+```
+
+and in `.claude/settings.json`, next to `env`:
+
+```json
+"hooks": { "SessionStart": [ { "hooks": [ { "type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh" } ] } ] }
+```
+
 ## Tagging the bot (TM-03)
 
 In a project's **team** group, approved people @-mention the linked number:

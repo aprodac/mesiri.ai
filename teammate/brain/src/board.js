@@ -67,6 +67,21 @@ const day = (iso, now) => Boolean(iso) && new Date(new Date(iso).getTime() + IST
 const who = (item) => (item.asked_by ? ` · asked by ${String(item.asked_by).split(/[,(]/)[0].trim()}` : "");
 const title = (item) => String(item.title || "").replace(/^\[bot upgrade\]\s*/i, "bot: ").slice(0, 90);
 
+/**
+ * TM-79: what a request has used of Claude so far: "Claude usage: ~14% of a 5-hour window, ~3% of the week · $2.10 ·
+ * 5 turns on B (ilan-work)". The % is an estimate (accounts.js); the dollars are Claude's own count. null when none.
+ */
+export function usageText(item) {
+  if (!item?.usage_turns) return null;
+  const pct = [item.usage_5h != null ? `~${item.usage_5h}% of a 5-hour window` : null, item.usage_7d != null ? `~${item.usage_7d}% of the week` : null].filter(Boolean);
+  const usd = item.usage_usd != null ? `$${Number(item.usage_usd).toFixed(2)}` : null;
+  const turns = `${item.usage_turns} turn${item.usage_turns === 1 ? "" : "s"}${item.usage_accounts ? ` on ${String(item.usage_accounts).split(",").join(", ")}` : ""}`;
+  return `Claude usage: ${[...(pct.length ? [pct.join(", ")] : []), usd, turns].filter(Boolean).join(" · ")}`;
+}
+
+/** The short form for a list row: " · ~14% 5h · $2.10", or "". */
+const usageShort = (i) => (i.usage_turns ? ` · ${[i.usage_5h != null ? `~${i.usage_5h}% 5h` : null, i.usage_usd != null ? `$${Number(i.usage_usd).toFixed(2)}` : null].filter(Boolean).join(" · ")}` : "");
+
 /** "@bot status": open requests first those that need someone, then the rest by number. */
 export function boardText(items, now = Date.now()) {
   const open = items.filter((i) => i.status === "open" || i.status === "in_progress" || i.verified === "broken");
@@ -77,7 +92,7 @@ export function boardText(items, now = Date.now()) {
     .map((i) => ({ i, s: stageOf(i) }))
     .sort((a, b) => (order[a.s.key] ?? 9) - (order[b.s.key] ?? 9) || a.i.id - b.i.id)
     .slice(0, 15)
-    .map(({ i, s }) => `• [${i.id}] ${title(i)}${who(i)}\n   ${s.text}`);
+    .map(({ i, s }) => `• [${i.id}] ${title(i)}${who(i)}\n   ${s.text}${usageShort(i)}`);
   const needs = open.filter((i) => stageOf(i).you).length;
   return [
     `*Open requests: ${open.length}*${needs ? ` · 🙋 ${needs} need${needs === 1 ? "s" : ""} you` : ""}`,
@@ -116,8 +131,8 @@ export function eveningText(items, now = Date.now()) {
 
 export class Evening {
   /** @param {{projects: string[], items: (p) => Promise<object[]>, notify: (p, text) => Promise<any>, file: string, now?: () => number, log?: Function}} o */
-  constructor({ projects, items, notify, file, now = () => Date.now(), log = () => {}, loopLine = () => null }) {
-    Object.assign(this, { projects, items, notify, file, now, log, loopLine });
+  constructor({ projects, items, notify, file, now = () => Date.now(), log = () => {}, loopLine = () => null, accountsLine = () => null }) {
+    Object.assign(this, { projects, items, notify, file, now, log, loopLine, accountsLine });
   }
 
   state() {
@@ -139,8 +154,9 @@ export class Evening {
       if (state[project] === today) continue;
       try {
         const text = eveningText(await this.items(project), this.now());
-        const loop = this.loopLine(project); // TM-37: this morning's check of the feedback loop
-        if (text) await this.notify(project, loop ? text.replace(/\n@bot status/, `\n${loop}\n@bot status`) : text);
+        // TM-37: this morning's check of the feedback loop; TM-78: each Claude account's 5-hour and weekly use.
+        const extra = [this.loopLine(project), this.accountsLine()].filter(Boolean).join("\n");
+        if (text) await this.notify(project, extra ? text.replace(/\n@bot status/, `\n${extra}\n@bot status`) : text);
         state[project] = today;
         writeFileSync(this.file, JSON.stringify(state));
         sent += text ? 1 : 0;

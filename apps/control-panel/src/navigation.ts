@@ -20,6 +20,7 @@ import {
   Stamp,
   Tags,
   Timer,
+  UserSearch,
   Users,
 } from 'lucide-react';
 
@@ -37,6 +38,7 @@ export const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
     label: 'Customers',
     items: [
       { to: '/organizations', label: 'Companies', icon: Building2, hint: 'Every company, status and setup' },
+      { to: '/people', label: 'Find a person', icon: UserSearch, hint: 'Search every company by name, email or number' },
       { to: '/trials', label: 'Trials', icon: Funnel, hint: 'Trial funnel and conversions' },
       { to: '/branding-requests', label: 'Branding requests', icon: Stamp, hint: 'Letterhead and logo requests' },
     ],

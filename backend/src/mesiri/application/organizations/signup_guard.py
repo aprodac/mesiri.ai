@@ -68,6 +68,17 @@ class SignupRefused(Exception):  # noqa: N818 - a refusal, not a fault
         self.reason = reason
 
 
+async def previous_trial_counted(audit: PostgresAdminAuditRepository, phone: str) -> dt.datetime | None:
+    """The trial start that limits this number, or None. SA-26: a platform admin's
+    "Allow a new trial" after that start lifts it, for one more trial only (the next
+    trial is a newer start, which counts again)."""
+    started = await audit.last_trial_started_for_phone(phone)
+    if started is None:
+        return None
+    allowed = await audit.last_trial_allowed_for_phone(phone)
+    return None if allowed is not None and allowed > started else started
+
+
 async def check_signup(
     conn: AsyncConnection, attempt: SignupAttempt, *, now: dt.datetime | None = None
 ) -> SignupDecision:
@@ -87,7 +98,7 @@ async def check_signup(
     attempts = PostgresSignupAttemptRepository(conn)
     phone = "".join(ch for ch in attempt.phone if ch.isdigit())
     counts = guardrails.SignupCounts(
-        last_trial_started_at=await audit.last_trial_started_for_phone(phone),
+        last_trial_started_at=await previous_trial_counted(audit, phone),
         signups_last_day=await audit.count_self_signups_since(now - _DAY),
         other_phones_from_ip=(
             await attempts.other_phones_from_ip(attempt.ip_address, phone, since=now - _DAY)

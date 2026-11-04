@@ -29,8 +29,10 @@ REFUSAL_MESSAGES: dict[str, str] = {
         "Mesiri is only available for Indian WhatsApp numbers for now. "
         "Contact Mesiri if you'd like to use it."
     ),
+    # SS-23: "Message us" told someone already talking to Mesiri to message it; say who helps.
     PREVIOUS_TRIAL: (
-        "This number has already had a free trial. Message us to continue with Mesiri."
+        "This number has already had a free trial. Contact the Mesiri team to continue "
+        "with Mesiri or to fix your company details."
     ),
     DAILY_LIMIT: "We're getting a lot of sign-ups right now. Please try again tomorrow.",
     IP_LIMIT: "We're getting a lot of sign-ups right now. Please try again tomorrow.",

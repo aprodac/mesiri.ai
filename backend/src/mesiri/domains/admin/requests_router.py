@@ -36,7 +36,15 @@ FIELDS = (
     "id", "chat_name", "project", "type", "title", "summary", "status", "stage", "done_ref", "created_by",
     "created_at", "updated_at", "asked_by", "asked_ref", "held", "started_at", "pushed_at", "live_at", "verified",
     "verified_at", "tried_at",
+    # TM-77: who is on it (a person, a Claude Code session, the team bot) and where it came from (message numbers).
+    "source", "claimed_by", "claimed_at",
+    # TM-84: why a request is paused (handed over before a usage limit, or waiting for an account to reset).
+    "paused",
+    # TM-79: what it has used of Claude so far (dollars, share of a 5-hour / weekly window, turns, accounts).
+    "usage_usd", "usage_5h", "usage_7d", "usage_turns", "usage_accounts",
 )
+#: TM-78: what the page shows of each Claude account (never a login token; the bot never sends one).
+ACCOUNT_FIELDS = ("id", "label", "logged_in", "default", "five_hour", "seven_day", "read_at", "limited_until", "seen_at")
 #: TM-27: the stages of a request, in order, and their names on the page.
 STAGE_STAMPS = (("created_at", "started_at", "plan"), ("started_at", "pushed_at", "build"), ("pushed_at", "live_at", "deploy"))
 
@@ -72,6 +80,30 @@ async def _get(path: str, params: dict[str, str]) -> dict[str, Any]:
 def _public(item: dict[str, Any]) -> dict[str, Any]:
     out = {k: item.get(k) for k in FIELDS}
     out["stage"] = out["stage"] if out["stage"] in STAGES else "asked"
+    return out
+
+
+def _window(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    pct = value.get("pct")
+    return {"pct": pct if isinstance(pct, int | float) else None, "resets_at": value.get("resets_at")}
+
+
+async def claude_accounts() -> list[dict[str, Any]] | None:
+    """TM-78: each Claude account's 5-hour and weekly use, as the bot last read it; None when it can't be read
+    (an older bot, or the bot down): the request list still shows."""
+    try:
+        data = await _get("/claude/accounts", {})
+    except HTTPException:
+        return None
+    out = []
+    for raw in data.get("accounts") or []:
+        if not isinstance(raw, dict):
+            continue
+        acc = {k: raw.get(k) for k in ACCOUNT_FIELDS}
+        acc["five_hour"], acc["seven_day"] = _window(raw.get("five_hour")), _window(raw.get("seven_day"))
+        out.append(acc)
     return out
 
 
@@ -168,7 +200,7 @@ async def list_requests(
     """Every request of the project, newest first, with counts per stage and the loop's numbers (TM-23)."""
     items = await _all_items(project)
     loop = {**loop_numbers(items), "verdicts": await verdicts(conn)}
-    return {"project": project, "counts": counts(items), "loop": loop, "items": items}
+    return {"project": project, "counts": counts(items), "loop": loop, "items": items, "accounts": await claude_accounts()}
 
 
 @router.get("/requests/{item_id}")

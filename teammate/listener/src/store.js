@@ -93,6 +93,40 @@ CREATE TABLE IF NOT EXISTS item_log (
   ref      TEXT,
   note     TEXT
 );
+-- TM-79: what each request cost in Claude usage: one row per Claude turn (the bot's) or per report (a session's).
+-- pct_5h / pct_7d: share of that account's 5-hour / weekly window, in percent; null when not known.
+CREATE TABLE IF NOT EXISTS item_usage (
+  item_id   INTEGER NOT NULL REFERENCES items(id),
+  at        TEXT NOT NULL,
+  account   TEXT,
+  by        TEXT,
+  cost_usd  REAL,
+  tokens    INTEGER,
+  pct_5h    REAL,
+  pct_7d    REAL
+);
+CREATE INDEX IF NOT EXISTS ix_item_usage_item ON item_usage (item_id);
+-- TM-84: work a session could not finish (its Claude account was about to hit a limit): the unfinished part as a git
+-- patch on top of \`base\` (never pushed to main half-done), and the note saying what is done, what is left, the next step.
+CREATE TABLE IF NOT EXISTS item_handover (
+  id        INTEGER PRIMARY KEY,
+  item_id   INTEGER NOT NULL REFERENCES items(id),
+  at        TEXT NOT NULL,
+  by        TEXT,
+  account   TEXT,
+  base      TEXT,
+  note      TEXT NOT NULL,
+  patch     TEXT,
+  picked_by TEXT,
+  picked_at TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_item_handover_item ON item_handover (item_id);
+-- TM-78: each Claude account's latest plan-limit reading, as the brain last saw it (one JSON per account).
+CREATE TABLE IF NOT EXISTS claude_accounts (
+  id          TEXT PRIMARY KEY,
+  json        TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
 `;
 const clip = (v, n) => (v === null || v === undefined ? null : String(v).slice(0, n));
 export const ITEM_TYPES = ["bug", "feature", "question", "complaint", "task"];
@@ -107,10 +141,24 @@ export const PEOPLE_ROLES = ["owner", "member"];
  *   live_at    when it was deployed;  verified "ok" | "broken" (+ verified_at): the bot's live re-test
  *   tried_at   when the person who asked used Mesiri again after it went live
  */
-export const ITEM_TRACKING = ["asked_by", "asked_ref", "asked_who", "held", "started_at", "pushed_at", "live_at", "verified", "verified_at", "tried_at", "claimed_by", "claimed_at"];
+export const ITEM_TRACKING = ["asked_by", "asked_ref", "asked_who", "held", "started_at", "pushed_at", "live_at", "verified", "verified_at", "tried_at", "claimed_by", "claimed_at", "paused"];
+/** TM-84: a handover patch is at most this big (a session's unfinished change, not a repository). */
+export const MAX_PATCH_CHARS = 2_000_000;
 /** TM-50: a claim older than this, on a request nobody finished, can be taken by someone else. */
 export const CLAIM_HOURS = 6;
 export const VERIFIED = ["ok", "broken"];
+
+/** TM-79: a request's Claude usage, summed over its turns; joined onto every list and single read. */
+const USAGE_JOIN = `LEFT JOIN (
+  SELECT item_id, round(sum(cost_usd), 3) AS usage_usd, round(sum(pct_5h), 1) AS usage_5h, round(sum(pct_7d), 1) AS usage_7d,
+         count(*) AS usage_turns, group_concat(DISTINCT account) AS usage_accounts
+  FROM item_usage GROUP BY item_id
+) u ON u.item_id = i.id`;
+const USAGE_COLUMNS = "u.usage_usd, u.usage_5h, u.usage_7d, u.usage_turns, u.usage_accounts";
+const num = (v, lo, hi) => {
+  const n = Number(v);
+  return v === null || v === undefined || v === "" || !Number.isFinite(n) || n < lo || n > hi ? null : n;
+};
 
 /** One request's stage, for lists and counts (TM-19). */
 export function itemStage(i) {
@@ -491,10 +539,78 @@ export class Store {
     return this.getItem(id);
   }
 
+  /**
+   * TM-79: add one turn's (or one session's) Claude usage to a request. Numbers outside sane bounds are dropped, not
+   * stored (a cost of $10,000 or 300% of a window is a bug in the sender). Returns false for an unknown request.
+   */
+  addItemUsage(id, { account = null, by = null, cost_usd = null, tokens = null, pct_5h = null, pct_7d = null } = {}) {
+    if (!this.db.prepare("SELECT 1 FROM items WHERE id = ?").get(Number(id))) return false;
+    const row = { cost: num(cost_usd, 0, 1000), tokens: num(tokens, 0, 1e9), p5: num(pct_5h, 0, 100), p7: num(pct_7d, 0, 100) };
+    if (row.cost === null && row.tokens === null && row.p5 === null && row.p7 === null) throw new Error("usage needs cost_usd, tokens, pct_5h or pct_7d");
+    this.db
+      .prepare("INSERT INTO item_usage (item_id, at, account, by, cost_usd, tokens, pct_5h, pct_7d) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(Number(id), nowIso(), clip(account, 60), clip(by, 120), row.cost, row.tokens === null ? null : Math.round(row.tokens), row.p5, row.p7);
+    return true;
+  }
+
+  /**
+   * TM-84: a session hands its unfinished work over: the request is marked paused (board and @bot status show it) and
+   * its claim is let go, so the next one (the bot on another account, or a person) can pick it up at once.
+   */
+  addHandover(id, { by = null, account = null, base = null, note, patch = null }) {
+    if (!this.db.prepare("SELECT 1 FROM items WHERE id = ?").get(Number(id))) return null;
+    if (!String(note || "").trim()) throw new Error("note is required: what is done, what is left, the next step");
+    if (patch && String(patch).length > MAX_PATCH_CHARS) throw new Error(`patch is larger than ${MAX_PATCH_CHARS} characters`);
+    if (base && !/^[0-9a-f]{7,40}$/.test(String(base))) throw new Error("base must be a commit sha");
+    const at = nowIso();
+    this.db
+      .prepare("INSERT INTO item_handover (item_id, at, by, account, base, note, patch) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(Number(id), at, clip(by, 120), clip(account, 60), base || null, String(note).slice(0, 4000), patch || null);
+    const short = String(note).replace(/\s+/g, " ").slice(0, 160);
+    return this.updateItem(id, {
+      paused: `handed over${account ? ` (account ${clip(account, 60)})` : ""}: ${short}`,
+      claimed_by: null, claimed_at: null,
+      note: `⏸ handover by ${by || "a session"}${patch ? ` with unfinished changes on ${String(base || "").slice(0, 7) || "main"}` : ""}: ${String(note).slice(0, 600)}`,
+    });
+  }
+
+  /** TM-84: the latest handover of a request not picked up yet (with its patch), else null. */
+  openHandover(id) {
+    return this.db.prepare("SELECT * FROM item_handover WHERE item_id = ? AND picked_at IS NULL ORDER BY id DESC LIMIT 1").get(Number(id)) || null;
+  }
+
+  /** TM-84: someone took it: the pause ends and they hold the request. */
+  pickHandover(id, by) {
+    const h = this.openHandover(id);
+    if (!h) return null;
+    const at = nowIso();
+    this.db.prepare("UPDATE item_handover SET picked_by = ?, picked_at = ? WHERE id = ?").run(clip(by, 120), at, h.id);
+    this.updateItem(id, { paused: null, claimed_by: clip(by, 120), claimed_at: at, note: `▶️ picked up by ${by}` });
+    return h;
+  }
+
+  /** TM-78: the brain's latest reading of every Claude account (label, plan windows, limited-until). */
+  setClaudeAccounts(list) {
+    const now = nowIso();
+    const put = this.db.prepare("INSERT INTO claude_accounts (id, json, updated_at) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at");
+    for (const a of list) {
+      const id = String(a?.id || "").toLowerCase();
+      if (!/^[a-z0-9]{1,8}$/.test(id)) continue;
+      put.run(id, JSON.stringify({ ...a, id }).slice(0, 4000), now);
+    }
+  }
+
+  claudeAccounts() {
+    return this.db
+      .prepare("SELECT json, updated_at FROM claude_accounts ORDER BY id")
+      .all()
+      .map((r) => ({ ...JSON.parse(r.json), seen_at: r.updated_at }));
+  }
+
   /** getItem with its stage (TM-19). */
   getItem(id) {
     const item = this.db
-      .prepare("SELECT i.*, c.name AS chat_name, c.project AS project FROM items i JOIN chats c ON c.jid = i.chat_jid WHERE i.id = ?")
+      .prepare(`SELECT i.*, c.name AS chat_name, c.project AS project, ${USAGE_COLUMNS} FROM items i JOIN chats c ON c.jid = i.chat_jid ${USAGE_JOIN} WHERE i.id = ?`)
       .get(Number(id));
     if (item) {
       item.log = this.db.prepare("SELECT at, status, ref, note FROM item_log WHERE item_id = ? ORDER BY at, rowid").all(item.id);
@@ -520,8 +636,8 @@ export class Store {
     return this.db
       .prepare(
         `SELECT i.id, i.chat_jid, c.name AS chat_name, c.project, i.type, i.title, i.summary, i.source,
-                i.status, i.done_ref, i.created_by, i.created_at, i.updated_at, ${ITEM_TRACKING.map((k) => `i.${k}`).join(", ")}
-         FROM items i JOIN chats c ON c.jid = i.chat_jid
+                i.status, i.done_ref, i.created_by, i.created_at, i.updated_at, ${ITEM_TRACKING.map((k) => `i.${k}`).join(", ")}, ${USAGE_COLUMNS}
+         FROM items i JOIN chats c ON c.jid = i.chat_jid ${USAGE_JOIN}
          ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
          ORDER BY i.updated_at DESC, i.id DESC`,
       )

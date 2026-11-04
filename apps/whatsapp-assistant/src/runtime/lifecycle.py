@@ -185,6 +185,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logging.getLogger(__name__).warning("Admin router not loaded: %s", exc)
 
+    # Find a person across every company (platform-admin only, SA-24)
+    try:
+        from admin.people_router import router as people_router
+
+        app.include_router(people_router)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("People search router not loaded: %s", exc)
+
     # WhatsApp assistant log viewer (platform-admin only)
     try:
         from admin.logs_router import router as logs_router

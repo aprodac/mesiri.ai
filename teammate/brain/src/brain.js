@@ -11,16 +11,17 @@
 //             pre-push hook only lets the project's own branch through.
 // Each repo's own CLAUDE.md and skills apply (settingSources: ["project"]).
 
+import { BUILDING, coveringPlan } from "./same.js";
 import { readFileSync, writeFileSync, renameSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { BRAIN_TOOL_NAMES, PREVIEW_KINDS } from "./tools.js";
 import { requestRef } from "./prod_watch.js";
 import { AutoLoop, usageLimit, clock } from "./auto.js";
-import { Accounts } from "./accounts.js";
+import { Accounts, windowsFromEvent, windowsFromUsage } from "./accounts.js";
 import { AutoBuild } from "./autobuild.js";
 import { collectWorkStatus, formatWorkStatus } from "./work_status.js";
 import { Watchdog } from "./watchdog.js";
-import { boardText } from "./board.js";
+import { boardText, usageText } from "./board.js";
 
 const MAX_CHUNK = 3800; // the listener refuses posts over 4,000 characters
 const TURN_TIMEOUT_MS = Number(process.env.TEAMMATE_BRAIN_TURN_TIMEOUT_MS || 60 * 60_000);
@@ -112,7 +113,7 @@ const DENY = [
 ];
 
 /** The fixed footer of every cloud payload (request 139): how the session reports, so the bot can see it from outside. */
-export function reportingFooter(plan, reply_chat) {
+export function reportingFooter(plan, reply_chat, account = null) {
   const id = plan.id;
   return [
     "",
@@ -133,10 +134,29 @@ export function reportingFooter(plan, reply_chat) {
           "  Mesiri sends it to them right after the deploy; without it they are never told.",
         ]
       : []),
+    ...(typeof plan.id === "number" ? handoverRules(id, account) : []),
   ].join("\n");
 }
 
 /** The payload of a follow-up session: the plan, the work so far, the earlier link and the message. */
+/**
+ * TM-84 (4 Nov: builds stopped at a 5-hour limit and sat there until someone noticed). A session checks its account
+ * between steps and, before the limit, hands over: finished work pushed, the rest saved as a patch with a note; never
+ * half-done code on main (main deploys). The bot then continues it on another account, or at the reset.
+ */
+export function handoverRules(id, account) {
+  return [
+    "",
+    `USAGE LIMIT (TM-84)${account ? `: this session runs on Claude account ${account}` : ""}.`,
+    `- After each step run: python3 teammate/inbox.py limits${account ? ` --account "${account}"` : ""}`,
+    "  It exits 3 and says HAND OVER when the account is about to hit its 5-hour or weekly limit. Then, and also if you",
+    "  see a usage-limit warning yourself: start nothing new; push to main only what is finished and passes the CLAUDE.md",
+    `  checks; save the rest with: python3 teammate/inbox.py item handover ${id} --note "done: … / left: … / next step: …"`,
+    "  (it uploads your unfinished changes as a patch; never push half-done code to main, main deploys). Post one line to",
+    "  the group and stop. The bot continues it on another account, or when this one resets.",
+  ];
+}
+
 export function followUpSection({ message, by, status, earlierUrl }) {
   const commits = (status?.commits || []).map((c) => `  - ${c.short} ${c.subject} (deploy ${c.deploy.state}, CI ${c.ci})`);
   return [
@@ -454,9 +474,17 @@ export class Brain {
     const now = this.now().getTime();
     if (m[1]) {
       const plan = this.planStore.plans[m[1]];
-      if (!plan || !mine(plan)) return `I have no plan [${m[1]}].`;
-      if (plan.status === "proposed") return `[${plan.id}] ${plan.title} is a plan waiting for @bot ok ${plan.id}.`;
-      return formatWorkStatus(await this.workStatus(plan), now);
+      // TM-79: what the request has used of Claude, from the request log (also for requests the bot didn't plan).
+      const item = this.listener.getItem ? await this.listener.getItem(Number(m[1]), project).then((r) => (r?.item?.id === Number(m[1]) ? r.item : null), () => null) : null;
+      const used = usageText(item);
+      const plus = (text) => (used ? `${text}\n${used}` : text);
+      if (!plan || !mine(plan)) {
+        if (!item) return `I have no plan [${m[1]}].`;
+        const on = item.claimed_by && (item.status === "open" || item.status === "in_progress") ? ` · ${item.claimed_by} is on it` : "";
+        return plus(`[${item.id}] ${item.title}\n${item.stage || item.status}${on}${item.done_ref ? ` · ${item.done_ref}` : ""}`);
+      }
+      if (plan.status === "proposed") return plus(`[${plan.id}] ${plan.title} is a plan waiting for @bot ok ${plan.id}.`);
+      return plus(formatWorkStatus(await this.workStatus(plan), now));
     }
     // TM-49: every open request in one message, from the request log (where the group's quiet steps are filed).
     if (this.listener.items) {
@@ -534,6 +562,111 @@ export class Brain {
   /** The partner routine (TM-12) on this group's account, else null. */
   partnerFor(chat, project) {
     return this.accounts.for(chat).partners[project] || null;
+  }
+
+  /**
+   * TM-84: a cloud job that handed over (or stopped at its account's limit) goes on: a follow-up on the next account
+   * with room, which starts with `inbox.py item pickup`; when none has room, by itself at the earliest reset (the
+   * watchdog calls this again then). Says so in the group once per pause.
+   */
+  async resumeHandover(plan, { reason }) {
+    const project = plan.reply_project || plan.chat_project || plan.project;
+    const reply_chat = plan.reply_chat || plan.chat;
+    const say = (text) => this.listener.send({ chat: reply_chat, project, text }).catch(() => null);
+    if (plan.account && !this.accounts.limitedUntil(plan.account) && this.accounts.near(plan.account, 99)) {
+      this.accounts.state.limited[plan.account] = this.accounts.roomAt(plan.account) || this.now().getTime() + 30 * 60_000;
+      this.accounts.save();
+    }
+    const fits = (a) => a.routines[plan.project];
+    const next = this.accounts.for(plan.chat, fits);
+    const room = next.token && fits(next) && !this.accounts.limitedUntil(next.id) && !this.accounts.near(next.id);
+    if (!room) {
+      const at = this.accounts.earliestReset() || this.accounts.roomAt(next.id) || this.now().getTime() + 60 * 60_000;
+      const first = !plan.resume_at;
+      plan.resume_at = at;
+      this.savePlans();
+      if (typeof plan.id === "number") this.listener.updateItem(plan.id, { paused: `${reason}; continues by itself at ~${clock(at)}`, project }).catch(() => {});
+      if (first) await say(`⏸ [${plan.id}] ${reason}. No Claude account has room now: it continues by itself at ~${clock(at)}.`);
+      return { ok: false, waiting: at };
+    }
+    plan.resume_at = null;
+    this.savePlans();
+    await say(`⏸→▶️ [${plan.id}] ${reason}. Continuing on Claude account *${this.accounts.label(next.id)}*.`);
+    const status = await this.workStatus(plan);
+    const message = `The previous session stopped before its Claude account's limit. First run: python3 teammate/inbox.py item pickup ${plan.id} `
+      + "(it applies their unfinished changes and prints their note; if it says there is no open handover, continue from main and "
+      + "the request's notes). Then finish the plan; don't redo what is already pushed.";
+    const r = await this.runInCloud(plan, { project, by: plan.approved_by || "an owner", reply_chat, say, followUp: { message, by: "the bot (handover, TM-84)", status, earlierUrl: plan.followups?.at(-1)?.url || plan.session_url } });
+    if (r?.ok && typeof plan.id === "number") this.listener.updateItem(plan.id, { paused: null, project }).catch(() => {});
+    return r;
+  }
+
+  /**
+   * TM-84: a fresh plan-limit reading of one account between turns (the watchdog, for accounts with a job running):
+   * a Claude process that is given no prompt, asked for /usage, and stopped. Experimental in the SDK: no-op on failure.
+   */
+  async pollAccount(id) {
+    const acc = this.accounts.get(id);
+    if (!acc?.token) return;
+    const abort = new AbortController();
+    let release = () => {};
+    const hold = new Promise((r) => (release = r));
+    try {
+      const q = this.queryFn({ prompt: (async function* () { await hold; })(), options: { cwd: process.cwd(), env: { ...this.env, CLAUDE_CODE_OAUTH_TOKEN: acc.token }, abortController: abort, settingSources: [] } });
+      const fn = q?.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET;
+      if (typeof fn === "function") {
+        const res = await Promise.race([fn.call(q, { skipBehaviors: true }), new Promise((r) => setTimeout(() => r(null), 8000).unref?.())]);
+        const w = windowsFromUsage(res);
+        if (w) this.accounts.reading(id, w);
+      }
+    } catch {
+      // a convenience: the watchdog goes on with the last reading
+    } finally {
+      release();
+      abort.abort();
+    }
+    if (this.listener.setAccounts) await this.listener.setAccounts(this.accounts.snapshot()).catch(() => {});
+  }
+
+  /**
+   * TM-78: one plan-limit reading for the account a turn runs on, from the SDK's /usage (experimental there, so any
+   * failure or a changed shape is ignored; rate_limit_events still update it). At most 3 s, once per turn.
+   */
+  async readUsage(stream, account) {
+    const fn = stream?.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET;
+    if (typeof fn !== "function") return;
+    try {
+      const res = await Promise.race([fn.call(stream, { skipBehaviors: true }), new Promise((r) => setTimeout(() => r(null), 3000).unref?.())]);
+      const w = windowsFromUsage(res);
+      if (w) this.accounts.reading(account, w);
+    } catch {
+      // the reading is a convenience; the turn goes on
+    }
+  }
+
+  /**
+   * TM-79: what a turn used goes on the request it was for: the plan it builds, the request it reviews or re-checks,
+   * or the one request it logged. TM-78: the listener gets every account's latest reading, and the group a warning
+   * once an account passes WARN_PCT of a window. Never throws: the log is a convenience.
+   */
+  async chargeUsage({ req, plan, ctx, result, account, say }) {
+    try {
+      const usd = Number(result?.total_cost_usd) || 0;
+      const share = this.accounts.spend(account, usd);
+      const u = result?.usage || {};
+      const tokens = (u.input_tokens || 0) + (u.output_tokens || 0) + (u.cache_creation_input_tokens || 0);
+      const logged = ctx?.logged || [];
+      const id = [plan?.id, req.review_of, req.verify_plan, logged.length === 1 ? logged[0] : null].find((x) => typeof x === "number");
+      const project = req.reply_project || req.project;
+      if (id != null && (usd || tokens) && this.listener.addUsage) {
+        await this.listener.addUsage(id, { account: this.accounts.label(account), by: "team bot", cost_usd: usd, tokens, ...share, project }).catch(() => {});
+      }
+      if (this.listener.setAccounts) await this.listener.setAccounts(this.accounts.snapshot()).catch(() => {});
+      const warn = this.accounts.warning(account);
+      if (warn && !req.dm) await say(warn).catch(() => {});
+    } catch (e) {
+      this.log(`brain: usage not recorded: ${e.message || e}`);
+    }
   }
 
   /**
@@ -928,9 +1061,10 @@ export class Brain {
       ...(plan.accept?.length ? [acceptSection(plan)] : []),
       ...(!followUp && by === "autobuild" ? [fastPathSection(plan), CLOUD_REVIEW_SECTION] : []),
       ...(followUp ? [followUpSection(followUp)] : []),
-      reportingFooter(plan, reply_chat),
+      reportingFooter(plan, reply_chat, this.accounts.label(this.accounts.for(plan.chat, (a) => a.routines[plan.project]).id)),
     ].join("\n");
     const before = plan.status;
+    plan.account = this.accounts.for(plan.chat, (a) => a.routines[plan.project]).id; // TM-84: where it runs
     try {
       const routine = this.routineFor(plan.chat, plan.project);
       if (!routine) throw new Error("no cloud routine on any Claude account for this project");
@@ -1165,6 +1299,9 @@ export class Brain {
     const timer = setTimeout(() => abort.abort(), TURN_TIMEOUT_MS);
     let result = null;
     let sessionId = this.sessions.ids[key] || null;
+    // TM-78: the account this turn runs on (the same pick as the login in env below), and one plan-limit reading.
+    const account = this.accounts.for(req.chat).id;
+    let read = false;
     try {
       const stream = this.queryFn({
         prompt,
@@ -1188,7 +1325,15 @@ export class Brain {
       });
       for await (const msg of stream) {
         if (msg.session_id) sessionId = msg.session_id;
+        if (!read) {
+          read = true;
+          await this.readUsage(stream, account);
+        }
         if (msg.type === "result") result = msg;
+        if (msg.type === "rate_limit_event") {
+          const w = windowsFromEvent(msg.rate_limit_info);
+          if (w) this.accounts.reading(account, w);
+        }
         // The plan's 5-hour window: the SDK reports it as a rate_limit_event / an assistant error.
         if (msg.type === "rate_limit_event" && msg.rate_limit_info?.status === "rejected") limitSeen = { resetsAt: msg.rate_limit_info.resetsAt ? msg.rate_limit_info.resetsAt * 1000 : null };
         if (msg.type === "assistant" && msg.error === "rate_limit") limitSeen ||= { resetsAt: null };
@@ -1215,6 +1360,7 @@ export class Brain {
       return say(abort.signal.aborted ? "⏱️ That took too long and was stopped. Ask again, or split it up." : "⚠️ I hit an error on that one; check the logs.");
     }
     clearTimeout(timer);
+    await this.chargeUsage({ req, plan, ctx, result, account, say });
     if (sessionId) {
       this.sessions.ids[key] = sessionId;
       (this.sessions.repo ||= {})[key] = req.project; // replies to this conversation continue in the same repo
@@ -1339,6 +1485,15 @@ export class Brain {
       writeJson(this.plansFile, this.planStore);
       if (typeof plan.id === "number") this.listener.updateItem(plan.id, { held: why, project }).catch(() => {});
       return say(`🙋 *Needs you* ✋ [${plan.id}] ${plan.title}\nWaiting for an owner because ${why}. Reply @bot ok ${plan.id} to build it.`);
+    }
+    // TM-83: a second build of the same problem waits for the one already being built (a repeat that reached here
+    // without being merged, e.g. two planning turns at once).
+    const twin = coveringPlan(plan, Object.values(this.planStore.plans).filter((p) => BUILDING.has(p.status)), { asked: plan.asked_for || [] });
+    if (twin) {
+      plan.held = `same problem as [${twin.id}], which is being built`;
+      writeJson(this.plansFile, this.planStore);
+      if (typeof plan.id === "number") this.listener.updateItem(plan.id, { held: plan.held, note: `not built: [${twin.id}] is building the same problem`, project }).catch(() => {});
+      return say(`[${plan.id}] ${plan.title}: not building, it is the same problem as [${twin.id}], which is being built now. @bot ok ${plan.id} builds it anyway.`);
     }
     // TM-50: one worker per request. A Claude Code session (or a person) already on it keeps it; the plan waits and
     // its text is filed under the request for them, instead of a second fix of the same thing.

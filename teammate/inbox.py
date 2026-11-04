@@ -56,6 +56,7 @@ import argparse
 import base64
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -287,10 +288,152 @@ _WORKER = os.environ.get("TEAMMATE_WORKER") or (
 )
 
 
+def _session_url() -> str | None:
+    """TM-77: this Claude Code session's claude.ai link, when it runs in the cloud (cse_X -> session_X)."""
+    sdk = os.environ.get("CLAUDE_CODE_REMOTE_SDK_URL") or ""
+    tail = sdk.rstrip("/").rsplit("/", 1)[-1]
+    return f"https://claude.ai/code/session_{tail[4:]}" if tail.startswith("cse_") and len(tail) > 8 else None
+
+
+#: TM-77: which Claude account this session runs on, as the team names it (e.g. "B (ilan-work)"); optional.
+_ACCOUNT = os.environ.get("TEAMMATE_CLAUDE_ACCOUNT") or None
+
+
+def _usage_body(a: argparse.Namespace) -> dict | None:
+    """TM-79: the usage flags of `item usage` / `item done`, or None when none was given."""
+    body = {"cost_usd": a.cost, "tokens": a.tokens, "pct_5h": a.pct5, "pct_7d": a.pct7}
+    if all(v is None for v in body.values()):
+        return None
+    return {**body, "account": a.account or _ACCOUNT, "by": _WORKER, "project": PROJECT}
+
+
+_WORD = re.compile(r"[a-z0-9]{4,}")
+_STOP = {"with", "that", "this", "from", "when", "what", "still", "after", "before", "never", "always", "their", "into", "only", "gets", "says"}
+
+
+def _words(text: str) -> set[str]:
+    return {w for w in _WORD.findall(text.lower()) if w not in _STOP}
+
+
+def _possible_repeats(title: str, items: list[dict]) -> list[dict]:
+    """TM-83: open requests (and ones from the last 24 h) that may be the same problem: a [n] it names that is still
+    open or has an open follow-up, or most of the same words. The bot's planner gets the same check (same.js)."""
+    import datetime as dt
+
+    day_ago = (dt.datetime.now(dt.UTC) - dt.timedelta(days=1)).isoformat()
+    live = [i for i in items if i["status"] in ("open", "in_progress") or (i["status"] == "done" and i["updated_at"] >= day_ago)]
+    refs = {int(n) for n in re.findall(r"\[(\d+)\]", title)}
+    words = _words(title)
+    out = []
+    for i in live:
+        named = i["id"] in refs or any(f"[{n}]" in i["title"] for n in refs)
+        theirs = _words(i["title"])
+        overlap = len(words & theirs) / max(1, len(words | theirs))
+        if (named and i["status"] in ("open", "in_progress")) or overlap >= 0.4:
+            out.append(i)
+    return out[:8]
+
+
+#: TM-84: hand over at this share of the 5-hour window (or of the week): enough left to push and write the note.
+HANDOVER_5H = 90
+HANDOVER_WEEK = 97
+
+
+def _git(*args: str) -> str:
+    import subprocess
+
+    return subprocess.run(["git", *args], check=True, capture_output=True, text=True).stdout
+
+
+def _limits(account: str | None) -> None:
+    """TM-84: each Claude account's 5-hour and weekly use (as the team bot last read it). With --account, exit 3 and
+    say HAND OVER when that account is about to hit a limit, so a session can check between steps."""
+    import datetime as dt
+
+    accounts = _request("GET", "/claude/accounts")["accounts"]
+    now = dt.datetime.now(dt.UTC).isoformat()
+    want = (account or _ACCOUNT or "").strip().lower()
+    mine = None
+    for acc in accounts:
+        five, week = acc.get("five_hour") or {}, acc.get("seven_day") or {}
+        limited = acc.get("limited_until") and acc["limited_until"] > now
+        line = f"{acc.get('label') or acc['id'].upper()}: " + (
+            f"at its limit until {_when(acc['limited_until'])}" if limited
+            else f"5-hour {five.get('pct', '?')}% (resets {_when(five.get('resets_at'))}) · weekly {week.get('pct', '?')}%"
+        ) + f"  [read {_when(acc.get('read_at'))}]"
+        print(line)
+        label = (acc.get("label") or "").lower()
+        if want and (want == acc["id"] or want == label or label.startswith(f"{want} ") or want.split(" ")[0] == acc["id"]):
+            mine = (acc, limited, five.get("pct") or 0, week.get("pct") or 0)
+    if not want:
+        return
+    if not mine:
+        print(f"(no reading for account {account or _ACCOUNT}; it is read on the bot's next turn on it)")
+        return
+    acc, limited, p5, p7 = mine
+    if limited or p5 >= HANDOVER_5H or p7 >= HANDOVER_WEEK:
+        print(f"HAND OVER: {acc.get('label')} is about to hit its limit. Push only what is finished and checked, then: "
+              "python3 teammate/inbox.py item handover <n> --note \"done: … / left: … / next step: …\"")
+        sys.exit(3)
+    print(f"OK: {acc.get('label')} has room left.")
+
+
+def _handover(n: str, note: str | None) -> None:
+    """TM-84: the unfinished part as a patch on the last commit both sides have, plus the note; never pushed to main."""
+    if not note or len(note.strip()) < 20:
+        sys.exit('item handover needs --note "done: … / left: … / next step: …" (what someone picking it up must know)')
+    _git("fetch", "-q", "origin", "main")
+    base = _git("merge-base", "HEAD", "origin/main").strip()
+    _git("add", "-A", "-N")  # untracked files show up in the diff (intent to add only; nothing is staged)
+    patch = _git("diff", "--binary", base)
+    ahead = _git("log", "--oneline", f"{base}..HEAD").strip()
+    body = {"note": note.strip(), "patch": patch or None, "base": base, "by": _WORKER, "account": _ACCOUNT, "project": PROJECT}
+    i = _request("POST", f"/items/{n}/handover", body=body)["item"]
+    extra = f"; {len(ahead.splitlines())} local commit(s) not on main are in it" if ahead else ""
+    print(f"{_item_line(i)}\n  handed over: {len(patch)} characters of unfinished changes on {base[:7]}{extra}. "
+          "Nothing half-done reached main. Post it to the group and stop.")
+
+
+def _pickup(n: str) -> None:
+    """TM-84: take over a handed-over request: its note, and its unfinished changes applied on this checkout."""
+    h = _request("GET", f"/items/{n}/handover", params={"project": PROJECT})["handover"]
+    if h.get("patch"):
+        if _git("status", "--porcelain").strip():
+            sys.exit("This checkout has its own changes; commit or stash them first, then pick it up.")
+        import subprocess
+
+        _git("fetch", "-q", "origin", "main")
+        subprocess.run(["git", "apply", "--3way", "--whitespace=nowarn", "-"], input=h["patch"], text=True, check=True)
+    _request("POST", f"/items/{n}/handover/pick", body={"by": _WORKER, "project": PROJECT})
+    print(f"Picked up [{n}] from {h.get('by') or 'a session'} ({h.get('account') or 'account ?'}, {_when(h['at'])}).")
+    print(f"Their note: {h['note']}")
+    print("Their unfinished changes are applied (not committed): read them, finish, run the checks, then push."
+          if h.get("patch") else "No unfinished changes were left: continue from main and the note.")
+
+
 def _item(a: argparse.Namespace) -> None:
+    if a.action == "handover":
+        return _handover(a.args[0] if a.args else "", a.note)
+    if a.action == "pickup":
+        return _pickup(a.args[0] if a.args else "")
     if a.action == "add":
         if len(a.args) < 2 or not a.type:
             sys.exit('usage: item add <chat> "<title>" --type bug|feature|question|complaint|task')
+        title = " ".join(a.args[1:])
+        if a.same_as:
+            # TM-83: the same problem goes on the request that has it, never a second request (or a second fix).
+            note = f"same problem reported again (via {_WORKER}): {title}"
+            i = _request("POST", f"/items/{a.same_as}", body={"note": note, "project": PROJECT})["item"]
+            print(f"added to {_item_line(i)}  (no new request)")
+            return
+        if not a.new:
+            repeats = _possible_repeats(title, _request("GET", "/items", params={"project": PROJECT})["items"])
+            if repeats:
+                print("These open / recent requests may be the same problem:")
+                for i in repeats:
+                    print(f"  {_item_line(i)}")
+                sys.exit('Same problem: item add ... --same-as <n> (adds it there; no second request). '
+                         'Different: item add ... --new "<what makes it different>".')
         body = {
             "chat": a.args[0],
             "title": " ".join(a.args[1:]),
@@ -323,6 +466,13 @@ def _item(a: argparse.Namespace) -> None:
             bits = [entry.get("status") or "", entry.get("ref") or "", entry.get("note") or ""]
             print(f"  {_when(entry['at'])}  " + "  ".join(b for b in bits if b))
         return
+    if a.action == "usage":
+        body = _usage_body(a)
+        if not body:
+            sys.exit("usage: item usage <id> [--cost USD] [--pct5 N] [--pct7 N] [--tokens N] [--account B]")
+        i = _request("POST", f"/items/{n}/usage", body=body)["item"]
+        print(f"{_item_line(i)}  · Claude usage so far: ${i.get('usage_usd') or 0} · 5-hour {i.get('usage_5h') or '?'}% · weekly {i.get('usage_7d') or '?'}%")
+        return
     if a.action in ("claim", "start"):
         # TM-50: one worker per request. A Claude Code session claims before it works on something; the team bot does
         # the same before it builds. Someone else holding it stops here and names them.
@@ -342,7 +492,14 @@ def _item(a: argparse.Namespace) -> None:
         sys.exit("item done needs --ref (the commit or PR that did it)")
     if a.action == "wontdo" and not a.note:
         sys.exit("item wontdo needs --note (why)")
-    body = {**change, "ref": a.ref, "note": a.note, "project": PROJECT}
+    if a.action == "done" and _usage_body(a):
+        _request("POST", f"/items/{n}/usage", body=_usage_body(a))
+    note = a.note
+    if a.action == "start":
+        # TM-77: who is on it, where to watch it, and on which Claude account: visible on the board and @bot status.
+        where = [f"started by {_WORKER}", _session_url(), f"account {a.account or _ACCOUNT}" if (a.account or _ACCOUNT) else None]
+        note = " · ".join([x for x in [note, *where] if x])
+    body = {**change, "ref": a.ref, "note": note, "project": PROJECT}
     i = _request("POST", f"/items/{n}", body=body)["item"]
     print(_item_line(i))
 
@@ -404,7 +561,7 @@ def main() -> None:
     its.add_argument("--status", choices=["open", "in_progress", "done", "wont_do"])
     its.add_argument("--type", choices=["bug", "feature", "question", "complaint", "task"])
     itm = sub.add_parser("item")
-    itm.add_argument("action", choices=["show", "add", "start", "claim", "note", "done", "wontdo"])
+    itm.add_argument("action", choices=["show", "add", "start", "claim", "note", "usage", "handover", "pickup", "done", "wontdo"])
     itm.add_argument("--take", action="store_true", help="claim it even though someone else holds it (say why in a note)")
     itm.add_argument("args", nargs="*")
     itm.add_argument("--type", choices=["bug", "feature", "question", "complaint", "task"])
@@ -412,6 +569,17 @@ def main() -> None:
     itm.add_argument("--summary")
     itm.add_argument("--ref", help="commit or PR, e.g. aprodac/MERCON#262")
     itm.add_argument("--note")
+    # TM-83: item add checks for a request that already has this problem.
+    itm.add_argument("--same-as", type=int, help="add it to this request instead of a new one")
+    itm.add_argument("--new", help="it is not a repeat of the requests listed: why (one line)")
+    # TM-79: what this session used of Claude for the request (from /usage or /cost), on `usage` or `done`.
+    itm.add_argument("--cost", type=float, help="dollars this session spent on it (Claude Code's /cost)")
+    itm.add_argument("--pct5", type=float, help="percent of the 5-hour window it took (from /usage before and after)")
+    itm.add_argument("--pct7", type=float, help="percent of the weekly window it took")
+    itm.add_argument("--tokens", type=int)
+    itm.add_argument("--account", help='the Claude account, e.g. "B (ilan-work)" (default: TEAMMATE_CLAUDE_ACCOUNT)')
+    lim = sub.add_parser("limits")
+    lim.add_argument("--account", help='e.g. "B" or "B (ilan-work)"; exit 3 = hand over now (default: TEAMMATE_CLAUDE_ACCOUNT)')
     sm = sub.add_parser("summary")
     sm.add_argument("chat")
     trn = sub.add_parser("translate")
@@ -530,6 +698,8 @@ def main() -> None:
             print(f"{_item_line(i)}  · {i['chat_name']}")
     elif a.cmd == "item":
         _item(a)
+    elif a.cmd == "limits":
+        _limits(a.account)
     elif a.cmd == "summary":
         _summary(a.chat)
     elif a.cmd == "translate":

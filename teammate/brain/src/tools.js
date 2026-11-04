@@ -12,6 +12,7 @@
 // Everything goes to the team group (or the 1-on-1 chat being answered) and the project's assistant-test
 // chat; customer groups are never reachable.
 
+import { BUILDING, OPEN, candidateLines, candidatesFor, coveringPlan, refsOf } from "./same.js";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { chatHtml, requestRef } from "./prod_watch.js";
@@ -420,9 +421,11 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
         asked_for: z.array(z.string().max(80)).max(20).optional().describe("Production watch: the correlation ids (shown in brackets) of the messages where people asked for this or complained. Records who asked, so they are told and their use is tracked."),
         owner_ok: z.string().max(200).optional().describe("Only when YOU think an owner must say ok before this is built (and docs/DECISIONS.md doesn't already allow it): the reason in a few words. The code then holds the plan and posts why; it is never built until '@bot ok <n>'. Never write \"needs your OK\" in a message instead: say it here, or the plan builds."),
         understood: z.string().min(10).max(280).optional().describe("TM-69, required when asked_for is given: what Mesiri sends the person NOW, in THEIR language and letters (Manglish in Latin letters, Malayalam script, …), one or two sentences: THEIR problem said back specifically (what they did, what went wrong) and what it cost them, e.g. \"Primer-um drum size-um add aayi, pakshe Green Villa-il vanna 2 drum save aayilla: avide stock 40 L kuravaanu.\" For a fix of a fix: what you found this time. Never a question, never 'your feedback', no links, numbers of other people or @names. Mesiri adds 'the team is fixing it now' and the reference."),
+        same_as: z.number().int().positive().optional().describe("TM-83: the request this is the same problem as (from the list propose_plan showed you, or one you found). The code adds these messages to it instead of recording a second request; no second build starts."),
+        different_because: z.string().min(8).max(200).optional().describe("TM-83: only when propose_plan listed recent requests from the same people and none is this problem: one line on what makes it different."),
         accept: z.array(z.string().min(8).max(300)).max(8).optional().describe("TM-63, required for product plans: what is TRUE when it is fixed, after the person's WHOLE journey (every message and tap, through Save and the step after it), as saved records / calls made, never reply wording. E.g. \"after Save: material Primer exists\", \"1 drum = 20 L is set on Primer\", \"40 L Primer received at Green Villa, Kakkanad\", \"no new project is created\". 1-8 lines; the build's test must assert each one, and a reviewer checks it."),
       },
-      async ({ title, plan, type, auto, asked_for, owner_ok, accept, understood }) => {
+      async ({ title, plan, type, auto, asked_for, owner_ok, accept, understood, same_as, different_because }) => {
         let itemId = null;
         // TM-63 (3 Nov: [210] fixed the question "Paint or add Primer?" and was shipped; the very next steps, "add it" →
         // its drum size → the receipt → Save, failed as [217] and [218]). A product plan names the end state of the
@@ -441,6 +444,41 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
             + "specifically (what they did, what went wrong, what it cost them). Mesiri sends it to them now, so they know "
             + "they were understood. Never a question. Then call propose_plan again.");
         }
+        // TM-83: one problem, one request, one build. The code joins a repeat to the open request it repeats.
+        const all = plans?.all?.() || [];
+        const ownRound = ctx.verify_plan != null || Boolean(ctx.auto_cycle); // a live check's fix is the chain's next round
+        let target = ownRound ? null : coveringPlan({ id: null, title, plan }, all, { asked: asked.asked_for || [] });
+        if (!target && same_as != null) {
+          const named = plans?.get?.(same_as);
+          if (!named) return fail(`There is no request [${same_as}] in my plans. Check the number, or use different_because.`);
+          target = OPEN.has(named.status) ? named : coveringPlan({ id: null, title: `[${same_as}] follow-up`, plan: "" }, all);
+          // Shipped, and nothing open on it: this is a re-open of it, recorded below as its next round (TM-53 applies).
+          if (!target && !refsOf({ title, plan }).has(Number(same_as))) title = `[${same_as}] still broken: ${title}`.slice(0, 120);
+        }
+        if (target) {
+          const who = asked.asked_by || ctx.sender || "someone";
+          const union = [...new Set([...(target.asked_for || []), ...(asked.asked_for || [])])];
+          plans.update?.(target.id, {
+            asked_for: union,
+            also: [...(target.also || []), { title, by: who, at: new Date().toISOString() }],
+            ...(target.status === "proposed" ? { plan: `${target.plan}\n\nAlso reported (same problem, ${who}): ${title}\n${String(plan).slice(0, 1500)}` } : {}),
+          });
+          if (typeof target.id === "number") {
+            await listener.updateItem?.(target.id, { note: `same problem reported again by ${who}: ${title}`, ...(union.length ? { asked_ref: union.join(",") } : {}), project: chatProject })?.catch?.(() => {});
+          }
+          const told = await tellAsker({ sendProgress, saved: target, asked, understood, ctx });
+          const building = BUILDING.has(target.status);
+          return { content: [{ type: "text", text: `Same problem as [${target.id}] "${target.title}" (${building ? "being built now" : target.status}). Nothing new was recorded and no second build starts: these messages were added to [${target.id}]${building ? ", and its live check covers them" : ""}. Say so in one line, e.g. "Already being fixed as [${target.id}]."${told}` }] };
+        }
+        if (!ownRound && same_as == null && !different_because) {
+          const recent = candidatesFor({ asked_by: asked.asked_by, chat: ctx.chat }, all);
+          if (recent.length) {
+            return fail(`Before a new request: these recent ones come from the same people. Read them:\n${candidateLines(recent)}\n`
+              + "If one is this problem (even in other words, or it is still broken after it shipped), call propose_plan again with "
+              + "same_as: <its number>: the code adds these messages to it and no second build starts. If none is, call again with "
+              + "different_because: \"<one line>\".");
+          }
+        }
         // TM-53 (3 Nov: the TMT unit went [203] → [206] → WA-151 → WA-152 in a day, each a guess on top of the last):
         // a second fix of the same complaint must name the mechanism and the test that fails because of it.
         const earlier = refixOf({ title, plan, asked: asked.asked_for || [] }, plans?.all?.() || [], ctx.verify_plan);
@@ -453,6 +491,7 @@ export function brainTools({ ctx, listener, render, plans, screenshotHosts, wait
         try {
           const r = await listener.addItem({ chat: ctx.chat, project: chatProject, type: type || "task", title: ctx.project !== chatProject ? `[bot upgrade] ${title}` : title, summary: plan, created_by: `${ctx.sender} via bot`, ...(asked.asked_by ? { asked_by: asked.asked_by, asked_ref: asked.asked_for.join(","), asked_who: asked.asked_who } : {}) });
           itemId = r?.item?.id ?? null;
+          if (itemId != null) (ctx.logged ||= []).push(itemId); // TM-79: this turn's usage goes on it
         } catch {
           // the request log is a convenience; the plan still stands
         }
