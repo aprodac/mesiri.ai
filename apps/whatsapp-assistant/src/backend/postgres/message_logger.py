@@ -11,6 +11,8 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+from mesiri.infrastructure.postgres.repositories.admin_audit import company_name_sql
+
 _log = logging.getLogger("mesiri.message_logger")
 
 _BODY_PREVIEW_LEN = 500
@@ -328,7 +330,7 @@ class PostgresMessageLogger:
             "COALESCE(wi.phase, wi_origin.phase) AS workflow_phase, "
             # BE-26: whose message, in which company, and how many records it
             # created (domain events carry the message's correlation_id).
-            "im.organization_id, o.name AS organization_name, "
+            f"im.organization_id, {company_name_sql('im.organization_id')} AS organization_name, "
             "su.id AS sender_user_id, su.full_name AS sender_name, "
             "(SELECT COUNT(*) FROM outbox_events oe "
             " WHERE oe.correlation_id = im.correlation_id) AS created_count "

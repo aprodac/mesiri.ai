@@ -30,7 +30,19 @@ interface TrialUse {
   company_exists: boolean;
   new_trial_from: string | null;
   allowed_at: string | null;
+  deleted_at: string | null;
+  trial_left_seconds: number | null;
 }
+
+/** SS-24: "5 days 3 hours", "7 hours": what is left of a deleted company's trial. */
+const leftLabel = (seconds: number) => {
+  const hours = Math.floor(seconds / 3600);
+  const days = Math.floor(hours / 24);
+  const rest = hours % 24;
+  const parts = days ? [`${days} day${days === 1 ? '' : 's'}`] : [];
+  if (rest || !days) parts.push(`${rest} hour${rest === 1 ? '' : 's'}`);
+  return parts.join(' ');
+};
 
 const MIN_QUERY = 3;
 const MIN_DIGITS = 4;
@@ -185,7 +197,7 @@ export default function People() {
         <section style={{ marginTop: 'var(--space-6)' }}>
           <h2 style={{ fontSize: '16px', marginBottom: 'var(--space-2)' }}>Free trials started by this number</h2>
           <p className="subtitle" style={{ marginBottom: 'var(--space-3)' }}>
-            One free trial per number. This record stays when the company is deleted, so it is why a number with no user can still be refused a trial.
+            One free trial per number. This record stays when the company is deleted: if the number signs up again, it gets the normal setup with only the rest of that trial (7 days, deleted after 2: 5 days left); a trial used up is refused.
             <strong> Allow a new trial</strong> lets that number start one more (recorded in the audit log); the new trial limits it again.
           </p>
           {allowError && <p style={{ color: 'var(--error)', fontSize: '13px', marginBottom: 'var(--space-3)' }}>{allowError}</p>}
@@ -227,12 +239,19 @@ export default function People() {
                           <span className={`badge ${t.company_exists ? 'badge-success' : 'badge-warning'}`}>
                             {t.company_exists ? 'exists' : 'deleted'}
                           </span>
+                          {t.deleted_at && (
+                            <div style={{ fontSize: '12px', color: 'var(--neutral-500)' }}>on {day(t.deleted_at)}</div>
+                          )}
                         </td>
                         <td>
                           {t.new_trial_from === null ? 'Any time (rule off)' : open ? 'Now' : day(t.new_trial_from)}
-                          {t.allowed_at && (
-                            <div style={{ fontSize: '12px', color: 'var(--neutral-500)' }}>Allowed {day(t.allowed_at)}</div>
-                          )}
+                          {t.allowed_at ? (
+                            <div style={{ fontSize: '12px', color: 'var(--neutral-500)' }}>Allowed {day(t.allowed_at)}: a full trial</div>
+                          ) : t.trial_left_seconds !== null && t.trial_left_seconds > 0 ? (
+                            <div style={{ fontSize: '12px', color: 'var(--neutral-500)' }}>with {leftLabel(t.trial_left_seconds)} of its trial left</div>
+                          ) : t.trial_left_seconds === 0 ? (
+                            <div style={{ fontSize: '12px', color: 'var(--neutral-500)' }}>its trial was used up</div>
+                          ) : null}
                         </td>
                         <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
                           {limits && confirming !== key && (

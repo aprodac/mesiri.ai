@@ -38,6 +38,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 from collections.abc import Callable
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
@@ -168,6 +169,11 @@ TRIAL_USED_MESSAGE = (
     "This number already used its free trial. Our team can help you continue with Mesiri or fix "
     "your company details. If your company already uses Mesiri, join its team instead."
 )
+#: SS-24: a number whose company was deleted mid-trial gets the rest of that trial.
+TRIAL_LEFT_MESSAGE = (
+    "👋 Welcome back! You have *{left}* of your free trial left. "
+    "Let's set up your company again."
+)
 TEAM_ASKED_MESSAGE = (
     "Done, I've told the Mesiri team. Someone will message you here soon. "
     "You can keep this chat open."
@@ -208,6 +214,16 @@ _TEAM_BUTTON = ListRow(id=TEAM_ID, title="Talk to our team")
 _WELCOME_BUTTONS = [_SETUP_BUTTON, _JOIN_BUTTON, _ABOUT_BUTTON]
 #: SS-23: after a refused trial "Set up my company" could only be refused again.
 _REFUSED_BUTTONS = [_TEAM_BUTTON, _JOIN_BUTTON, _ABOUT_BUTTON]
+
+
+def left_label(left: dt.timedelta) -> str:
+    """SS-24: "5 days 3 hours", "1 day", "7 hours": what is left of a trial, to the hour."""
+    hours = int(left.total_seconds() // 3600)
+    days, hours = divmod(hours, 24)
+    parts = [f"{days} day{'s' if days != 1 else ''}"] if days else []
+    if hours or not days:
+        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+    return " ".join(parts)
 
 
 def _refused(state: SignupState | None) -> bool:
@@ -320,7 +336,7 @@ class SignupJourney:
         if tap == START_TRIAL_ID:
             # SS-09: refuse up front (an earlier trial, a foreign number, the
             # daily limit) rather than after three questions.
-            refusal = await self._refusal(wa_id)
+            refusal, left = await self._refusal(wa_id)
             if refusal is not None:
                 # SS-22 / SS-23: no dead end and no loop: the person may be joining a team,
                 # or need the team (continue, fix details); setup is not offered again.
@@ -329,6 +345,9 @@ class SignupJourney:
                 body = TRIAL_USED_MESSAGE if reason == PREVIOUS_TRIAL else text
                 return await self._buttons(wa_id, body, [_TEAM_BUTTON, _JOIN_BUTTON])
             await self._store.set(wa_id, SignupState(stage="company"))
+            if left is not None:
+                # SS-24: back after a deleted company: the same setup, with the rest of the trial.
+                await self._say(wa_id, TRIAL_LEFT_MESSAGE.format(left=left_label(left)))
             return await self._say(wa_id, ASK_COMPANY)
         if tap == IN_COMPANY_ID:
             # Kept at the welcome, so an owner who tapped it by mistake is one tap from setup
@@ -438,21 +457,22 @@ class SignupJourney:
         )
         return body
 
-    async def _refusal(self, wa_id: str) -> tuple[str, str] | None:
-        """The guardrails' refusal for this number as (message, reason), or None
-        to go ahead (SS-09). Fails closed, like signup_enabled."""
+    async def _refusal(self, wa_id: str) -> tuple[tuple[str, str] | None, dt.timedelta | None]:
+        """The guardrails' refusal for this number as (message, reason), or None to go
+        ahead (SS-09), with what is left of its earlier trial (SS-24; None: a full trial).
+        Fails closed, like signup_enabled."""
         try:
             async with self._db.transaction() as conn:
                 try:
-                    await check_signup(
+                    decision = await check_signup(
                         conn, SignupAttempt(phone=wa_id, signup_source="whatsapp"), now=self._now()
                     )
                 except SignupRefused as exc:
-                    return str(exc), exc.reason
+                    return (str(exc), exc.reason), None
         except Exception:  # noqa: BLE001
             _log.exception("signup.guard_failed wa_id=%s", wa_id)
-            return FAILED_MESSAGE, "error"
-        return None
+            return (FAILED_MESSAGE, "error"), None
+        return None, decision.trial_left
 
     async def _ask_team(self, wa_id: str, state: SignupState | None, profile_name: str | None) -> str:
         """SS-23: tell the Mesiri team in their WhatsApp group; they reply in this chat (the
@@ -530,9 +550,11 @@ class SignupJourney:
             async with self._db.transaction() as conn:
                 try:
                     # SS-09 guardrails, in the same transaction as the create.
-                    await check_signup(
+                    decision = await check_signup(
                         conn, SignupAttempt(phone=wa_id, signup_source="whatsapp"), now=self._now()
                     )
+                    # SS-24: back after a deleted company: only the rest of that trial.
+                    new = replace(new, trial_left=decision.trial_left)
                     created = await create_company(conn, new, now=self._now())
                 except SignupRefused as exc:
                     # Caught inside, so the transaction commits the attempt row.

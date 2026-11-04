@@ -229,7 +229,10 @@ trials only), days data is kept after a trial expires, and the self-serve signup
   refused trial offers **Talk to our team** and "Join my team", and that number is
   never offered "Set up my company" again (SS-23: it could only be refused again).
   Talk to our team posts the number to the team's WhatsApp group, once a day; the team
-  replies in the person's chat. If the number is already taken, the reply says it's
+  replies in the person's chat. A number whose company was **deleted mid-trial** is not
+  refused (SS-24): it gets the normal welcome and setup, told "You have *5 days 3 hours*
+  of your free trial left", and the new company's trial is only what was left (exact
+  hours); only a trial used up is refused. If the number is already taken, the reply says it's
   already set up.
 - **Before switching it on in production:** guardrails (SS-09). The switch is in the control panel's
   Settings → Trials & signup (SS-10).

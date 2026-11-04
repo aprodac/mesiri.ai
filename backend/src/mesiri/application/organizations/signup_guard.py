@@ -57,6 +57,9 @@ class SignupDecision:
     """An allowed signup, and the flags it earned (recorded, not blocking)."""
 
     flags: tuple[str, ...] = ()
+    #: SS-24: the rest of this number's last trial, which the new company gets instead of a
+    #: full one; None means a full trial.
+    trial_left: dt.timedelta | None = None
 
 
 class SignupRefused(Exception):  # noqa: N818 - a refusal, not a fault
@@ -79,6 +82,23 @@ async def previous_trial_counted(audit: PostgresAdminAuditRepository, phone: str
     return None if allowed is not None and allowed > started else started
 
 
+async def trial_left_for(
+    audit: PostgresAdminAuditRepository, phone: str, now: dt.datetime
+) -> dt.timedelta | None:
+    """SS-24: what is left of this number's last trial: its end minus when its company was
+    deleted (exact time; a trial extended before the delete counts with its extension). None
+    when its company was not deleted (it is still theirs: no second signup) or the end isn't
+    known; the old rule then applies (no second trial in the window)."""
+    last = await audit.last_trial_for_phone(phone)
+    if last is None or not last.organization_id:
+        return None
+    deleted = await audit.company_deleted(last.organization_id)
+    if deleted is None:
+        return None
+    ends = deleted.trial_ends_at or last.trial_ends_at
+    return ends - deleted.deleted_at if ends is not None else None
+
+
 async def check_signup(
     conn: AsyncConnection, attempt: SignupAttempt, *, now: dt.datetime | None = None
 ) -> SignupDecision:
@@ -98,6 +118,7 @@ async def check_signup(
     attempts = PostgresSignupAttemptRepository(conn)
     phone = "".join(ch for ch in attempt.phone if ch.isdigit())
     counts = guardrails.SignupCounts(
+        trial_left=await trial_left_for(audit, phone, now),
         last_trial_started_at=await previous_trial_counted(audit, phone),
         signups_last_day=await audit.count_self_signups_since(now - _DAY),
         other_phones_from_ip=(
@@ -137,4 +158,4 @@ async def check_signup(
             "signup.refused phone=%s source=%s reason=%s", phone, attempt.signup_source, reason
         )
         raise SignupRefused(guardrails.REFUSAL_MESSAGES[reason], reason=reason)
-    return SignupDecision(flags=verdict.flags)
+    return SignupDecision(flags=verdict.flags, trial_left=verdict.trial_left)

@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 import sqlalchemy as sa
 
+from mesiri.infrastructure.postgres.repositories.admin_audit import company_name_sql
 from mesiri.infrastructure.postgres.repositories.usage_costs import WHATSAPP
 
 if TYPE_CHECKING:
@@ -258,7 +259,7 @@ class PostgresReplyUsageRepository:
         sql = (
             _WITH + "SELECT m.correlation_id, m.received_at, m.processed_at, m.reply_ms, "
             "m.message_type, m.processing_status, m.organization_id, "
-            "o.name AS organization_name, m.sender_wa_id, su.full_name AS sender_name, "
+            f"{company_name_sql('m.organization_id')} AS organization_name, m.sender_wa_id, su.full_name AS sender_name, "
             "left(im.body_text, 200) AS text, left(im.assistant_reply, 400) AS reply, "
             "COALESCE(u.ai_calls, 0) AS ai_calls, u.ai_ms, "
             "COALESCE(u.input_tokens, 0) AS input_tokens, "

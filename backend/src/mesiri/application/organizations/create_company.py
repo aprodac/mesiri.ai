@@ -147,6 +147,9 @@ class NewCompany:
     deployment_type: str = DEFAULT_DEPLOYMENT_TYPE
     db_route: str = DEFAULT_DB_ROUTE
     timezone: str = DEFAULT_TIMEZONE
+    # SS-24: a trial of only this long, the rest of the owner number's earlier trial (its
+    # company was deleted mid-trial); None is the platform's full trial length.
+    trial_left: dt.timedelta | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,6 +256,7 @@ def validate(new: NewCompany) -> NewCompany:
         deployment_type=(new.deployment_type or "").strip() or DEFAULT_DEPLOYMENT_TYPE,
         db_route=(new.db_route or "").strip() or DEFAULT_DB_ROUTE,
         timezone=(new.timezone or "").strip() or DEFAULT_TIMEZONE,
+        trial_left=new.trial_left if new.trial_left is None or new.trial_left > dt.timedelta(0) else None,
     )
 
 
@@ -322,7 +326,9 @@ async def create_company(
     await _assert_owner_free(conn, new.owner_email, new.owner_phone)
 
     trial_started_at = trial_ends_at = None
-    if new.start_as == START_TRIAL:
+    if new.start_as == START_TRIAL and new.trial_left is not None:
+        trial_started_at, trial_ends_at = now, now + new.trial_left
+    elif new.start_as == START_TRIAL:
         policy = await PostgresPlatformSettingsRepository(conn).get(TRIAL_POLICY)
         trial_started_at, trial_ends_at = lifecycle.trial_window(now, int(policy["trial_days"]))
 

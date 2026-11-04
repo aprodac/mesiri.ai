@@ -76,6 +76,7 @@ organizations_table = sa.Table(
     sa.Column("status", sa.String),
     sa.Column("created_at", sa.DateTime(timezone=True)),
     sa.Column("updated_at", sa.DateTime(timezone=True)),
+    sa.Column("trial_ends_at", sa.DateTime(timezone=True)),
 )
 
 users_table = sa.Table(
@@ -353,8 +354,12 @@ async def delete_organization(org_id: uuid.UUID, _admin: dict = Depends(require_
     engine = get_engine()
     async with engine.begin() as conn:
         result = await conn.execute(
-            sa.select(organizations_table.c.id, organizations_table.c.name, organizations_table.c.status)
-            .where(organizations_table.c.id == org_id)
+            sa.select(
+                organizations_table.c.id,
+                organizations_table.c.name,
+                organizations_table.c.status,
+                organizations_table.c.trial_ends_at,
+            ).where(organizations_table.c.id == org_id)
         )
         org_row = result.first()
         if org_row is None:
@@ -382,7 +387,14 @@ async def delete_organization(org_id: uuid.UUID, _admin: dict = Depends(require_
             target_type="organization",
             target_id=org_id,
             summary=f"Deleted {org_row.name}",
-            details={"name": org_row.name, "status": org_row.status, "users_deleted": len(user_ids)},
+            # SS-24: the trial's end at this moment (an extension included), so the owner's number
+            # can carry on with exactly what was left of it if they sign up again.
+            details={
+                "name": org_row.name,
+                "status": org_row.status,
+                "users_deleted": len(user_ids),
+                "trial_ends_at": org_row.trial_ends_at,
+            },
         )
 
 

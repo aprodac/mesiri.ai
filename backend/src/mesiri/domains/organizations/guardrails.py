@@ -66,12 +66,22 @@ class SignupCounts:
     signups_last_day: int
     # Other numbers seen from this IP in the last 24 hours (not this one).
     other_phones_from_ip: int
+    # SS-24: what was left of that trial when its company was deleted (or is left now, if it
+    # wasn't). None: unknown, and the old rule applies (no second trial in the window).
+    trial_left: dt.timedelta | None = None
+
+
+#: SS-24: less than this left of a trial is a trial used up (an hour's trial is no trial).
+MIN_TRIAL_LEFT = dt.timedelta(hours=1)
 
 
 @dataclass(frozen=True, slots=True)
 class SignupVerdict:
     refused_reason: str | None
     flags: tuple[str, ...]
+    #: SS-24: the new company's trial is only this long: the rest of the number's last trial.
+    #: None: a full trial.
+    trial_left: dt.timedelta | None = None
 
     @property
     def allowed(self) -> bool:
@@ -99,9 +109,15 @@ def evaluate_signup(
         return SignupVerdict(COUNTRY_NOT_ALLOWED, (FLAG_FOREIGN_NUMBER,))
 
     window_days = int(rules["trial_per_phone_days"])  # type: ignore[arg-type]
+    resume: dt.timedelta | None = None
     if counts.last_trial_started_at is not None:
         if now - counts.last_trial_started_at < dt.timedelta(days=window_days):
-            return SignupVerdict(PREVIOUS_TRIAL, (FLAG_PREVIOUS_TRIAL,))
+            # SS-24: a number whose company was deleted mid-trial carries on with the rest of
+            # that trial (7 days, deleted after 2: 5 days); one with nothing left is refused.
+            left = counts.trial_left
+            if left is None or left < MIN_TRIAL_LEFT:
+                return SignupVerdict(PREVIOUS_TRIAL, (FLAG_PREVIOUS_TRIAL,))
+            resume = left
         flags.append(FLAG_PREVIOUS_TRIAL)
 
     max_per_day = int(rules["max_signups_per_day"])  # type: ignore[arg-type]
@@ -117,7 +133,7 @@ def evaluate_signup(
         if counts.other_phones_from_ip >= 1:
             flags.append(FLAG_SHARED_IP)
 
-    return SignupVerdict(None, tuple(flags))
+    return SignupVerdict(None, tuple(flags), trial_left=resume)
 
 
 def cap_day_start(now: dt.datetime) -> dt.datetime:

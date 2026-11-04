@@ -153,8 +153,28 @@ def _trial_row(org_id):
         company="AD GROUPS",
         number="917907793657",
         signup_source="whatsapp",
+        trial_ends_at="2026-11-11T09:57:00+00:00",
+        target_id=str(org_id or "6f1c1c8e-0000-4000-8000-000000000001"),
         organization_id=org_id,
     )
+
+
+class _Audit:
+    """SS-24: the Delete Tenant entry the trials route reads; none unless set."""
+
+    deletion = None
+
+    def __init__(self, conn):
+        pass
+
+    async def company_deleted(self, organization_id):
+        return _Audit.deletion
+
+
+@pytest.fixture(autouse=True)
+def _no_deletion(monkeypatch):
+    _Audit.deletion = None
+    monkeypatch.setattr(people_router, "PostgresAdminAuditRepository", _Audit)
 
 
 @pytest.mark.parametrize("days", [365, 0])
@@ -246,3 +266,29 @@ async def test_allow_trial_needs_the_full_number(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         await people_router.allow_trial(people_router.AllowTrial(number="3657"), admin={})
     assert exc.value.status_code == 422
+
+
+async def test_ss24_a_deleted_trial_shows_what_is_left_and_is_possible_now(monkeypatch):
+    deleted_at = dt.datetime(2026, 11, 6, 9, 57, tzinfo=dt.UTC)  # 2 days into 7
+    _Audit.deletion = SimpleNamespace(deleted_at=deleted_at, trial_ends_at=None)
+    conn = _Results([_trial_row(None)], [])
+    monkeypatch.setattr(people_router, "get_engine", lambda: _Engine(conn))
+    monkeypatch.setattr(people_router, "PostgresPlatformSettingsRepository", lambda c: _Rules(c, 365))
+
+    [trial] = await people_router.search_trials(q="7907793657", _admin={})
+
+    assert trial.deleted_at == deleted_at
+    assert trial.trial_left_seconds == 5 * 86400
+    assert trial.new_trial_from == deleted_at
+
+
+async def test_ss24_a_deleted_trial_used_up_shows_zero_and_waits(monkeypatch):
+    _Audit.deletion = SimpleNamespace(deleted_at=dt.datetime(2026, 11, 20, tzinfo=dt.UTC), trial_ends_at=None)
+    conn = _Results([_trial_row(None)], [])
+    monkeypatch.setattr(people_router, "get_engine", lambda: _Engine(conn))
+    monkeypatch.setattr(people_router, "PostgresPlatformSettingsRepository", lambda c: _Rules(c, 365))
+
+    [trial] = await people_router.search_trials(q="7907793657", _admin={})
+
+    assert trial.trial_left_seconds == 0
+    assert trial.new_trial_from == dt.datetime(2027, 11, 4, 9, 57, tzinfo=dt.UTC)

@@ -13,6 +13,7 @@ from mesiri.application.organizations.create_company import (
     CompanyCreationError,
     CreatedCompany,
 )
+from mesiri.application.organizations.signup_guard import SignupDecision
 from mesiri.infrastructure.redis.client import FakeRedis
 from mesiri_contracts.assistant.enums import InputModality
 from runtime import signup_journey as sj
@@ -114,12 +115,13 @@ def journey(monkeypatch):
             raise outcome["error"]
         return _created(new)
 
-    guard: dict = {"refuse": None, "reason": "previous_trial", "calls": []}
+    guard: dict = {"refuse": None, "reason": "previous_trial", "calls": [], "left": None}
 
     async def fake_check_signup(conn, attempt, *, now=None):
         guard["calls"].append(attempt)
         if guard["refuse"]:
             raise sj.SignupRefused(guard["refuse"], reason=guard["reason"])
+        return SignupDecision(trial_left=guard["left"])
 
     paused = {"on": False}
 
@@ -580,3 +582,41 @@ async def test_ss23_without_a_refusal_join_still_offers_setup(journey) -> None:
 def test_ss23_button_titles_fit_whatsapp() -> None:
     titles = [b.title for b in sj._REFUSED_BUTTONS]
     assert len(titles) <= 3 and all(len(t) <= 20 for t in titles)
+
+
+# --- SS-24: back after a deleted company: the same setup, the rest of the trial ------
+
+
+async def test_ss24_a_returning_number_gets_the_normal_setup_with_the_days_left(journey) -> None:
+    journey.guard["left"] = dt.timedelta(days=5, hours=3, minutes=20)
+    await journey.j.handle(_text("Hi"))
+    assert journey.sender.buttons[0][1] == [sj.START_TRIAL_ID, sj.IN_COMPANY_ID, sj.ABOUT_ID]
+    assert await journey.j.handle(_tap(sj.START_TRIAL_ID)) == sj.ASK_COMPANY
+    assert journey.sender.texts[-2] == sj.TRIAL_LEFT_MESSAGE.format(left="5 days 3 hours")
+    await journey.j.handle(_text("Suresh Builders"))
+    await journey.j.handle(_text("Green Villa"))
+    await journey.j.handle(_tap(sj.CONFIRM_ID))
+    assert journey.created_with[0].trial_left == dt.timedelta(days=5, hours=3, minutes=20)
+
+
+async def test_ss24_a_new_number_gets_a_full_trial(journey) -> None:
+    await journey.j.handle(_tap(sj.START_TRIAL_ID))
+    assert sj.TRIAL_LEFT_MESSAGE.split("*")[0] not in " ".join(journey.sender.texts)
+    await journey.j.handle(_text("Suresh Builders"))
+    await journey.j.handle(_text("Green Villa"))
+    await journey.j.handle(_tap(sj.CONFIRM_ID))
+    assert journey.created_with[0].trial_left is None
+
+
+@pytest.mark.parametrize(
+    ("left", "label"),
+    [
+        (dt.timedelta(days=5, hours=3), "5 days 3 hours"),
+        (dt.timedelta(days=1), "1 day"),
+        (dt.timedelta(hours=7, minutes=59), "7 hours"),
+        (dt.timedelta(hours=1), "1 hour"),
+        (dt.timedelta(days=2, hours=1), "2 days 1 hour"),
+    ],
+)
+def test_ss24_days_left_read_naturally(left, label) -> None:
+    assert sj.left_label(left) == label

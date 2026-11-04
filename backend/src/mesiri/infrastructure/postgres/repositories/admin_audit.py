@@ -50,6 +50,44 @@ class AuditEntry:
     details: dict[str, Any]
 
 
+@dataclass(frozen=True, slots=True)
+class TrialStart:
+    """SS-24: a trial a company started, read back from its `company.created` entry."""
+
+    started_at: dt.datetime
+    organization_id: str | None
+    trial_ends_at: dt.datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class CompanyDeletion:
+    deleted_at: dt.datetime
+    #: The trial's end when the company was deleted (an extension included); None before SS-24.
+    trial_ends_at: dt.datetime | None
+
+
+def company_name_sql(org: str, name: str = "o.name") -> str:
+    """SS-24: SQL for a company's name: `name` (its organizations row), or "Deleted: <name>"
+    from its Delete Tenant entry once it is gone, so its messages and costs stay readable.
+    `org` is the SQL for the company's id in the caller's query."""
+    return (
+        f"COALESCE({name}, (SELECT 'Deleted: ' || (a.details->>'name') FROM admin_audit_log a "
+        f"WHERE a.action = 'company.deleted' AND a.target_id = CAST({org} AS text) "
+        "ORDER BY a.occurred_at DESC LIMIT 1))"
+    )
+
+
+def iso_moment(value: str | None) -> dt.datetime | None:
+    """An ISO time stored in an entry's details, or None."""
+    if not value:
+        return None
+    try:
+        moment = dt.datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=dt.UTC)
+
+
 class PostgresAdminAuditRepository:
     def __init__(self, conn: AsyncConnection) -> None:
         self._conn = conn
@@ -103,6 +141,54 @@ class PostgresAdminAuditRepository:
                 )
             )
         ).scalar_one_or_none()
+
+    async def last_trial_for_phone(self, phone: str) -> TrialStart | None:
+        """SS-24: the newest trial a company owned by this number started, with its company
+        and when that trial was to end (as created)."""
+        row = (
+            await self._conn.execute(
+                sa.select(
+                    admin_audit_log.c.occurred_at,
+                    admin_audit_log.c.target_id,
+                    admin_audit_log.c.details["trial_ends_at"].astext.label("trial_ends_at"),
+                )
+                .where(
+                    admin_audit_log.c.action == "company.created",
+                    admin_audit_log.c.details["status"].astext == "trial",
+                    admin_audit_log.c.details["owner_whatsapp_number"].astext == phone,
+                )
+                .order_by(admin_audit_log.c.occurred_at.desc())
+                .limit(1)
+            )
+        ).first()
+        if row is None:
+            return None
+        return TrialStart(
+            started_at=row.occurred_at,
+            organization_id=row.target_id,
+            trial_ends_at=iso_moment(row.trial_ends_at),
+        )
+
+    async def company_deleted(self, organization_id: str) -> CompanyDeletion | None:
+        """SS-24: when a company was deleted, and its trial's end at that moment (recorded
+        since SS-24; older deletions don't have it)."""
+        row = (
+            await self._conn.execute(
+                sa.select(
+                    admin_audit_log.c.occurred_at,
+                    admin_audit_log.c.details["trial_ends_at"].astext.label("trial_ends_at"),
+                )
+                .where(
+                    admin_audit_log.c.action == "company.deleted",
+                    admin_audit_log.c.target_id == str(organization_id),
+                )
+                .order_by(admin_audit_log.c.occurred_at.desc())
+                .limit(1)
+            )
+        ).first()
+        if row is None:
+            return None
+        return CompanyDeletion(deleted_at=row.occurred_at, trial_ends_at=iso_moment(row.trial_ends_at))
 
     async def last_trial_allowed_for_phone(self, phone: str) -> dt.datetime | None:
         """SA-26: when a platform admin last let this number (digits) start a new trial."""

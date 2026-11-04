@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
 
+from mesiri.infrastructure.postgres.repositories.admin_audit import company_name_sql
+
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -299,12 +301,12 @@ class PostgresUsageCostRepository:
     ) -> list[dict[str, object]]:
         """The same totals per company, most expensive first. Rows with no
         company (a signup before its company exists) are one row with
-        `organization_id` None; a deleted company keeps its costs with no
-        name (the column has no foreign key on purpose)."""
+        `organization_id` None; a deleted company keeps its costs (the column
+        has no foreign key on purpose), named "Deleted: <name>" (SS-24)."""
         rows = (
             await self._conn.execute(
                 sa.text(
-                    f"SELECT c.org AS organization_id, o.name AS organization_name, {self._TOTALS}"
+                    f"SELECT c.org AS organization_id, {company_name_sql('c.org')} AS organization_name, {self._TOTALS}"
                     f"FROM provider_executions pe CROSS JOIN LATERAL (SELECT {_ORG} AS org) c "
                     "LEFT JOIN organizations o ON o.id = c.org "
                     f"WHERE {self._RANGE}"
@@ -384,7 +386,7 @@ class PostgresUsageCostRepository:
                     f" FROM provider_executions pe WHERE {self._RANGE}"
                     ") "
                     "SELECT NULLIF(c.phone, '') AS phone, u.id AS user_id, u.full_name, u.role, "
-                    "c.org AS organization_id, o.name AS organization_name, "
+                    f"c.org AS organization_id, {company_name_sql('c.org')} AS organization_name, "
                     "count(DISTINCT c.correlation_id) FILTER (WHERE c.provider <> :wa) "
                     "AS messages_handled, "
                     "count(*) FILTER (WHERE c.provider <> :wa) AS ai_calls, "

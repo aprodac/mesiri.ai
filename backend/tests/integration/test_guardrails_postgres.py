@@ -135,6 +135,90 @@ async def test_sa26_an_allow_before_the_trial_does_not_count(conn) -> None:
         await check_signup(conn, SignupAttempt(phone=phone, signup_source="whatsapp"), now=_NOW)
 
 
+async def _deleted(conn, created, *, at: dt.datetime, trial_ends_at: dt.datetime | None) -> None:
+    """The control panel's Delete Tenant: the one delete step, then its audit entry."""
+    from mesiri.application.audit.record import record_admin_action
+    from mesiri.application.organizations.delete_company import delete_company
+    from mesiri.domains.audit import actions as audit
+
+    await delete_company(conn, created.organization_id)
+    details = {"name": created.name} | ({"trial_ends_at": trial_ends_at} if trial_ends_at else {})
+    await record_admin_action(
+        conn,
+        actor=audit.AuditActor(kind=audit.ACTOR_PLATFORM_ADMIN),
+        action=audit.COMPANY_DELETED,
+        organization_id=created.organization_id,
+        target_type="organization",
+        target_id=created.organization_id,
+        details=details,
+        now=at,
+    )
+
+
+async def test_ss24_deleted_after_2_days_of_7_leaves_5(conn) -> None:
+    from mesiri.application.organizations.create_company import NewCompany, create_company
+
+    phone = _phone()
+    start = _NOW - dt.timedelta(days=30)
+    first = await _trial(conn, phone, at=start)  # 7 days (the default)
+    await _deleted(conn, first, at=start + dt.timedelta(days=2), trial_ends_at=first.trial_ends_at)
+
+    decision = await check_signup(conn, SignupAttempt(phone=phone, signup_source="whatsapp"), now=_NOW)
+    assert decision.trial_left == dt.timedelta(days=5)
+    assert "previous_trial" in decision.flags
+
+    again = await create_company(
+        conn,
+        NewCompany(name="Again Co", owner_name="T", owner_phone=phone, start_as="trial",
+                   signup_source="whatsapp", trial_left=decision.trial_left),
+        now=_NOW,
+    )  # fmt: skip
+    assert again.trial_ends_at - again.trial_started_at == dt.timedelta(days=5)
+
+    # Deleted again after 1 more day: 4 days are left; the count never resets inside the window.
+    await _deleted(conn, again, at=_NOW + dt.timedelta(days=1), trial_ends_at=again.trial_ends_at)
+    later = await check_signup(
+        conn, SignupAttempt(phone=phone, signup_source="whatsapp"), now=_NOW + dt.timedelta(days=3)
+    )
+    assert later.trial_left == dt.timedelta(days=4)
+
+
+async def test_ss24_an_extension_before_the_delete_counts(conn) -> None:
+    phone = _phone()
+    first = await _trial(conn, phone, at=_NOW - dt.timedelta(days=9))
+    # Extended to 10 days by the team, deleted on day 9: one day left.
+    extended = first.trial_started_at + dt.timedelta(days=10)
+    await _deleted(conn, first, at=_NOW, trial_ends_at=extended)
+    decision = await check_signup(conn, SignupAttempt(phone=phone, signup_source="whatsapp"), now=_NOW)
+    assert decision.trial_left == dt.timedelta(days=1)
+
+
+async def test_ss24_an_old_delete_without_its_end_uses_the_trial_as_created(conn) -> None:
+    phone = _phone()
+    first = await _trial(conn, phone, at=_NOW - dt.timedelta(days=3))
+    await _deleted(conn, first, at=_NOW - dt.timedelta(days=1), trial_ends_at=None)
+    decision = await check_signup(conn, SignupAttempt(phone=phone, signup_source="whatsapp"), now=_NOW)
+    assert decision.trial_left == dt.timedelta(days=5)  # 7 - 2 used
+
+
+async def test_ss24_a_trial_used_up_is_refused(conn) -> None:
+    phone = _phone()
+    first = await _trial(conn, phone, at=_NOW - dt.timedelta(days=20))
+    await _deleted(conn, first, at=_NOW - dt.timedelta(days=10), trial_ends_at=first.trial_ends_at)
+    with pytest.raises(SignupRefused) as exc:
+        await check_signup(conn, SignupAttempt(phone=phone, signup_source="whatsapp"), now=_NOW)
+    assert exc.value.reason == "previous_trial"
+
+
+async def test_ss24_less_than_an_hour_left_is_used_up(conn) -> None:
+    phone = _phone()
+    first = await _trial(conn, phone, at=_NOW - dt.timedelta(days=8))
+    ends = first.trial_ends_at
+    await _deleted(conn, first, at=ends - dt.timedelta(minutes=30), trial_ends_at=ends)
+    with pytest.raises(SignupRefused):
+        await check_signup(conn, SignupAttempt(phone=phone, signup_source="whatsapp"), now=_NOW)
+
+
 async def test_platform_daily_limit_counts_self_signups_only(conn) -> None:
     await PostgresPlatformSettingsRepository(conn).set(
         "trial_guardrails", {"max_signups_per_day": 2}, updated_by=None

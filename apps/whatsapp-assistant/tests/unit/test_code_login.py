@@ -23,7 +23,7 @@ from mesiri.application.organizations.create_company import (
     CreatedCompany,
     validate,
 )
-from mesiri.application.organizations.signup_guard import SignupRefused
+from mesiri.application.organizations.signup_guard import SignupDecision, SignupRefused
 from mesiri.domains.identity.auth_service import ALGORITHM, SECRET_KEY
 
 _PHONE = "919876543210"
@@ -95,6 +95,7 @@ def env(monkeypatch):
     async def fake_check_signup(conn, attempt):
         if not state.signup_open:
             raise SignupRefused("Sign-up is closed for now.")
+        return SignupDecision()
 
     async def fake_create(conn, new):
         if state.create_error:

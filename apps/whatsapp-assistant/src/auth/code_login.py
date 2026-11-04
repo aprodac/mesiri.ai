@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+from dataclasses import replace
 from typing import Literal
 
 import sqlalchemy as sa
@@ -282,11 +283,12 @@ async def signup(body: SignupRequest, request: Request) -> dict:
     )
     try:
         async with _engine().begin() as conn:
-            await check_signup(
+            decision = await check_signup(
                 conn,
                 SignupAttempt(phone=phone, signup_source="web", ip_address=_client_ip(request)),
             )
-            created = await create_company(conn, new)
+            # SS-24: a number back after a deleted company gets the rest of its trial.
+            created = await create_company(conn, replace(new, trial_left=decision.trial_left))
     except SignupRefused as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except CompanyCreationError as exc:

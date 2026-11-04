@@ -30,9 +30,14 @@ from admin.router import get_engine, organizations_table, users_table
 from mesiri.application.audit.record import record_admin_action
 from mesiri.domains.audit import actions as audit
 from mesiri.domains.audit.actions import actor_from_admin
+from mesiri.domains.organizations.guardrails import MIN_TRIAL_LEFT
 from mesiri.domains.organizations.platform_settings import TRIAL_GUARDRAILS
 from mesiri.domains.shared.auth import require_platform_admin
-from mesiri.infrastructure.postgres.repositories.admin_audit import admin_audit_log
+from mesiri.infrastructure.postgres.repositories.admin_audit import (
+    PostgresAdminAuditRepository,
+    admin_audit_log,
+    iso_moment,
+)
 from mesiri.infrastructure.postgres.repositories.platform_settings import (
     PostgresPlatformSettingsRepository,
 )
@@ -76,6 +81,11 @@ class TrialUse(BaseModel):
     new_trial_from: dt.datetime | None = None
     #: SA-26: a platform admin allowed a new trial after this one started (it no longer limits).
     allowed_at: dt.datetime | None = None
+    #: SS-24: when the company was deleted (the Delete Tenant entry), if it was.
+    deleted_at: dt.datetime | None = None
+    #: SS-24: what was left of the trial at that delete, which a new signup carries on with;
+    #: 0 when used up, None when the company wasn't deleted (or the end isn't known).
+    trial_left_seconds: int | None = None
 
 
 class AllowTrial(BaseModel):
@@ -177,6 +187,8 @@ def trials_statement(digits: str) -> sa.Select:
             admin_audit_log.c.details["name"].astext.label("company"),
             _TRIAL_NUMBER.label("number"),
             admin_audit_log.c.details["signup_source"].astext.label("signup_source"),
+            admin_audit_log.c.details["trial_ends_at"].astext.label("trial_ends_at"),
+            admin_audit_log.c.target_id,
             organizations_table.c.id.label("organization_id"),
         )
         .select_from(
@@ -209,12 +221,26 @@ async def search_trials(
         rows = (await conn.execute(trials_statement(digits))).fetchall()
         allows = {r.phone: r.at for r in (await conn.execute(allows_statement(digits))).fetchall()}
         rules = await PostgresPlatformSettingsRepository(conn).get(TRIAL_GUARDRAILS)
+        audit_log = PostgresAdminAuditRepository(conn)
+        deletions = {
+            row.target_id: await audit_log.company_deleted(row.target_id)
+            for row in rows
+            if row.organization_id is None and row.target_id
+        }
     window = int(rules.get("trial_per_phone_days") or 0)
     found = []
     for row in rows:
         allowed = allows.get(re.sub(r"\D", "", row.number or ""))
         allowed = allowed if allowed is not None and allowed > row.occurred_at else None
         new_from = row.occurred_at + dt.timedelta(days=window) if window else None
+        # SS-24: a deleted company's trial carries on: what was left when it was deleted.
+        deleted = deletions.get(row.target_id)
+        ends = (deleted.trial_ends_at if deleted else None) or iso_moment(row.trial_ends_at)
+        left = ends - deleted.deleted_at if deleted and ends else None
+        if left is not None and left < MIN_TRIAL_LEFT:
+            left = dt.timedelta(0)
+        if deleted and left and new_from:
+            new_from = min(new_from, deleted.deleted_at)
         found.append(
             TrialUse(
                 number=row.number,
@@ -226,6 +252,8 @@ async def search_trials(
                 # Allowed early: possible from the moment it was allowed.
                 new_trial_from=min(new_from, allowed) if new_from and allowed else new_from,
                 allowed_at=allowed,
+                deleted_at=deleted.deleted_at if deleted else None,
+                trial_left_seconds=int(left.total_seconds()) if left is not None else None,
             )
         )
     return found
