@@ -109,16 +109,16 @@ async def test_save_sends_them_to_the_api_once() -> None:
     assert h.posts() == 2 and h.sent[-1].text == wa.NOTHING_WAITING
 
 
-async def test_a_refused_entry_stays_waiting_with_the_apis_reason() -> None:
+async def test_a_refused_entry_says_the_apis_reason_and_is_taken_off_the_list() -> None:  # [233]: never carried on
     h = Harness(two_receipts_model(), refuse_tmt=True)
     await h.service.handle(_message(), CTX)
     await h.service.handle(_message("Save", tap=h.buttons()[0]), CTX)
     reply = h.sent[-1]
     assert reply.text.startswith("Not everything could be saved:")
     assert "✅ 50 bags cement" in reply.text and "❌ 50 TMT bars, Green Villa: Not authorized for this site" in reply.text
-    assert [b.title for b in reply.buttons] == ["Save", "Cancel"]  # the refused one can be tried again
+    assert "list-il ninnu maatti" in reply.text and not reply.buttons  # [233]: said plainly; nothing to tap
     state = await h.redis.get_json(f"agent_api:{ORG}:{USER}")
-    assert [e["summary"] for e in state["pending"]] == ["50 TMT bars, Green Villa"]
+    assert state["pending"] == []
 
 
 async def test_cancel_and_an_older_lists_button_save_nothing() -> None:

@@ -15,7 +15,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -31,6 +31,7 @@ from runtime.agent.reply_text import asks_to_tap_save
 from runtime.ai_outage import is_budget_error
 
 from .client import ApiClient, new_idempotency_key
+from .fill import NARRATIVE_REFUSAL, fill_body, missing_in_body
 from .materials import ADD_TOOL, NEW, pending_ref, settle_material
 from .tools import CONFIRM_ARG, MATERIAL_SAID, ApiTool
 from .units import is_uuid, resolve_unit, unit_choices, unit_rows
@@ -462,7 +463,7 @@ class ApiAgent:
                 return ToolOutcome(content={"status": "the options are shown as buttons under your reply"})
             if name == SAVE_READY and waiting:
                 numbers = chosen(arguments)
-                results = await confirm(client, [waiting[n - 1] for n in numbers])  # type: ignore[misc]
+                results = await confirm(client, [waiting[n - 1] for n in numbers], _place_names(places))  # type: ignore[misc]
                 saved.extend(results)
                 for n in numbers:
                     waiting[n - 1] = None
@@ -617,6 +618,12 @@ class ApiAgent:
                     return ToolOutcome(content={"error": (
                         f"Already saved at {when}: {same.get('summary') or 'the same thing'}. Ask the person whether they "
                         "want another one; nothing was prepared. If they say yes, prepare it again (it then goes through).")})
+                # [233]: what the code can derive is filled before the line is held (a work update with no narrative
+                # takes the entry's own words), and a body the API would refuse for a missing field is not held.
+                body = fill_body(name, body, str(arguments.get(CONFIRM_ARG) or ""), _place_names(places))
+                if gaps := missing_in_body(tool.spec.parameters, body):
+                    return ToolOutcome(content={"error": f"missing: {', '.join(gaps)}. Nothing was prepared. Ask the "
+                                                         "person for it in this reply (one question)."})
                 entry = PendingWrite(
                     tool=name, method=tool.method, path=path, params=params, body=body,
                     summary=str(arguments.get(CONFIRM_ARG) or "").strip() + unit_note + site_note,
@@ -1069,7 +1076,7 @@ async def unit_buttons(client: ApiClient) -> list[str]:
     return (first + [c for c in codes if c not in first])[:3]
 
 
-async def confirm(client: ApiClient, pending: list[PendingWrite]) -> list[WriteResult]:
+async def confirm(client: ApiClient, pending: list[PendingWrite], names: tuple[str, ...] = ()) -> list[WriteResult]:
     """Send the held entries to the API, in order: a new material first, then settings (a unit conversion, an
     alias: often prepared after the lines they let through), then the rest ([217]). A line naming a new material
     (``new:<name>``) gets its id once it is saved; if adding it failed, the line says so and stays waiting. The
@@ -1090,7 +1097,7 @@ async def confirm(client: ApiClient, pending: list[PendingWrite]) -> list[WriteR
                                                              "yet (adding it did not save)"})
                 continue
             entry = _with_material(entry, ref, material_id)
-        done[i] = await _confirm_one(client, entry)
+        done[i] = await _confirm_one(client, entry, names)
         if entry.tool == ADD_TOOL and done[i].ok and isinstance(done[i].body, dict) and done[i].body.get("id"):
             created[alias_key(str(entry.body.get("name") or ""))] = str(done[i].body["id"])
     return [done[i] for i in range(len(pending))]
@@ -1112,7 +1119,17 @@ def _with_material(entry: PendingWrite, ref: str, material_id: str) -> PendingWr
                         params=entry.params, body=body, summary=entry.summary, idempotency_key=entry.idempotency_key)
 
 
-async def _confirm_one(client: ApiClient, entry: PendingWrite) -> WriteResult:
+def _place_names(places: Places | None) -> tuple[str, ...]:
+    if places is None:
+        return ()
+    return tuple(n for _, n in places.projects) + tuple(n for _, n, _ in places.sites)
+
+
+async def _confirm_one(client: ApiClient, entry: PendingWrite, names: tuple[str, ...] = ()) -> WriteResult:
+    # [233]: a line held before the fill existed gets it now (same rule as when it is held).
+    filled = fill_body(entry.tool, entry.body, entry.summary, names)
+    if filled is not entry.body:
+        entry = replace(entry, body=filled)
     if "unit_id" in entry.body:  # an entry held before this check, or an id gone stale
         problem = await settle_unit(client, entry.body)
         if problem:
@@ -1121,4 +1138,11 @@ async def _confirm_one(client: ApiClient, entry: PendingWrite) -> WriteResult:
             return WriteResult(entry, 422, {"detail": UNIT_UNSETTLED})
     response = await client.call(entry.method, entry.path, params=entry.params, json=entry.body,
                                  idempotency_key=entry.idempotency_key)
+    if response.status == 422 and NARRATIVE_REFUSAL.search(_detail(response.body)):
+        # [233]: the refusal names a field the code can fill: fill it and try once more in the same Save.
+        retry = fill_body(entry.tool, {k: v for k, v in entry.body.items() if k != "narrative"}, entry.summary, names)
+        if retry.get("narrative"):
+            entry = replace(entry, body=retry, idempotency_key=new_idempotency_key())
+            response = await client.call(entry.method, entry.path, params=entry.params, json=entry.body,
+                                         idempotency_key=entry.idempotency_key)
     return WriteResult(entry, response.status, response.body)

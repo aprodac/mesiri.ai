@@ -339,12 +339,14 @@ async def test_the_reported_save_saves_the_cement_and_asks_the_size_in_malayalam
     assert len(state["pending"]) == 1 and state["asked"]["question"]  # the line waits; the size is the open question
 
 
-async def test_sibling_a_save_with_another_refusal_left_still_offers_save() -> None:
+async def test_sibling_a_save_with_another_refusal_drops_that_line_and_says_so() -> None:  # [233]
     store = Store()
     h = Harness(store, FakeToolCallingProvider(["Ok."]))
     await h.hold(MSAND_LINE, _receipt(str(uuid.uuid4()), "x", BAG, 1, "1 bag of something gone"))
     await h.service.handle(_message("Save", tap="apiag:save:b1"), CTX)
-    assert [b.title for b in h.sent[-1].buttons] == ["Save", "Cancel"]
+    # the other line is taken off; the size line waits for its answer, so only Cancel is offered
+    assert [b.title for b in h.sent[-1].buttons] == ["Cancel"]
+    assert len((await h.state())["pending"]) == 1
 
 
 async def test_the_tapped_site_name_keeps_their_language() -> None:

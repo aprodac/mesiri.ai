@@ -326,6 +326,15 @@
         "cor_1cf50cb85c064b53b4c00ac4859d367f"
       ],
       "message": "Ippo ningal Mesiri-kku paranja complaints-um avayude status-um kaanam. Try: 'ente complaints kaanikku'. Thanks, ningal chodichathukondu ellavarkkum ithu kittum."
+    },
+    {
+      "id": "work-update-saves-233",
+      "date": "2026-11-04",
+      "for": [
+        "cor_8b1d1e93e5a649fc9b337a9ef62f0959",
+        "cor_93a1fc7595224506a7a16ce6d35c1eb4"
+      ],
+      "message": "Work updates like 'plastering done on 2nd floor' now save with your words, and a line that can't be saved no longer comes back on the next card. Try: 'Green Villa: plastering done on 2nd floor'. Thanks, this works for everyone now."
     }
   ]
 }

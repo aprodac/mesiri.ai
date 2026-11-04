@@ -61,6 +61,7 @@ from .agent import (
     Places,
     WriteResult,
     _detail,
+    _place_names,
     confirm,
     last_reported,
     question_left_open,
@@ -718,7 +719,7 @@ class ApiWhatsApp:
                 ListRow(id=f"{WHY_PREFIX}{code}", title=titles[code]) for code in CANCEL_REASONS))
         client = ApiClient(_actor(ctx), app=self._app)
         try:
-            results = await confirm(client, entries)
+            results = await confirm(client, entries, _place_names(_places(ctx, state.get("working_site"))))
         finally:
             await client.close()
         self._just_saved[correlation_id] = results
@@ -727,10 +728,12 @@ class ApiWhatsApp:
         # Refused entries stay waiting (they can be corrected and saved); saved ones go.
         # A line whose unit nobody could settle comes off the list (it would ride along on every new
         # card for hours, 2 Nov): the text below says so and asks for it again with the unit.
-        left = [r.pending for r in results if not r.ok and r.body != {"detail": UNIT_UNSETTLED}]
+        left, dropped = _refused_to_keep(results, state)  # [233]: a refused line is never carried on unchanged
         state["pending"] = [e.to_json() for e in left]
         state["batch"] = uuid.uuid4().hex[:8] if left else None
         text = _saved_text(results, state.get("language"), today=_today(ctx))
+        if dropped:
+            text += "\n\n" + _in(state.get("language"), "api.refused_dropped", REFUSED_DROPPED)
         sizes = [r for r in results if not r.ok and is_stock_unit_refusal(_detail(r.body))]
         if left and len(sizes) == len(left):
             # WA-165 (3 Nov, Paraclette: Save tapped twice, refused twice): Save cannot work until they say the size,
@@ -831,7 +834,7 @@ class ApiWhatsApp:
 
     async def _save_state(self, ctx: Any, state: dict) -> None:
         try:
-            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed")
+            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "retried")
                                     if state.get(k) is not None},
                                        ttl_seconds=STATE_TTL_SECONDS)
         except Exception:  # noqa: BLE001
@@ -1084,6 +1087,31 @@ def _may_set_sizes(ctx: Any) -> bool:
 def _actor(ctx: Any) -> Actor:
     return Actor(user_id=str(ctx.user_id), organization_id=str(ctx.organization_id),
                  role=str(ctx.role or ""), name=ctx.full_name or "")
+
+
+REFUSED_DROPPED = "I've taken the lines that could not be saved off the list. Send them again with what's missing."
+
+
+def _refused_to_keep(results: list[WriteResult], state: dict) -> tuple[list[PendingWrite], bool]:
+    """[233] (4 Nov, asus): a line the API refused came back unchanged on every following card. A refusal the person
+    must fix (4xx) takes the line off the list, and the reply says so; only a failure that may pass on a retry
+    (the API down, a new material that did not add) keeps it, once: refused twice, it goes too. A size question
+    (WA-165) keeps its line: the person's next words answer it. Returns (lines kept, whether any was dropped)."""
+    once = set(state.get("retried") or [])
+    keep: list[PendingWrite] = []
+    dropped = False
+    for r in results:
+        if r.ok or r.body == {"detail": UNIT_UNSETTLED}:
+            continue
+        key = r.pending.idempotency_key
+        transient = r.status >= 500 or r.status == 424
+        if is_stock_unit_refusal(_detail(r.body)) or (transient and key not in once):
+            keep.append(r.pending)
+            once.add(key)
+        else:
+            dropped = True
+    state["retried"] = sorted(once)[-20:] if keep else []
+    return keep, dropped
 
 
 def _save_buttons(text: str, batch: str) -> ReplySpec:

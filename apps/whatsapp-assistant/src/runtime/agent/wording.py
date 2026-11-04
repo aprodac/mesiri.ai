@@ -420,6 +420,13 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "इन्हें दर्ज करने के लिए *Save* दबाइए।",
         "hinglish": "Inhe record karne ke liye *Save* dabaiye.",
     },
+    "api.refused_dropped": {
+        "english": "I've taken the lines that could not be saved off the list. Send them again with what's missing.",
+        "manglish": "Save aavaatha lines list-il ninnu maatti. Illaathathu koode cherthu onnu koodi ayakkoo.",
+        "malayalam": "സേവ് ആകാത്ത വരികൾ ലിസ്റ്റിൽ നിന്ന് മാറ്റി. വിട്ടുപോയത് ചേർത്ത് ഒന്നുകൂടി അയക്കൂ.",
+        "hindi": "जो पंक्तियाँ सेव नहीं हुईं उन्हें सूची से हटा दिया। जो छूटा है उसके साथ फिर भेजिए।",
+        "hinglish": "Jo lines save nahi hui unhe list se hata diya. Jo chhoota hai uske saath phir bhejiye.",
+    },
     "api.nothing_held": {
         "english": "I haven't got anything ready to save yet. Please send it again, with what's missing.",
         "manglish": "Save cheyyaan ippo onnum ready aayittilla. Illaathathu koode cherthu onnu koodi ayakkoo.",
