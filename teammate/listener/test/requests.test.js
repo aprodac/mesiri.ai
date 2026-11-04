@@ -102,3 +102,24 @@ test("TM-78: the brain's Claude account readings are kept per account, newest wi
   assert.deepEqual(list.map((a) => [a.id, a.five_hour.pct]), [["a", 35], ["b", 82]]);
   assert.ok(list[0].seen_at);
 });
+
+test("TM-84: a handover pauses the request, lets the claim go, keeps the patch until someone picks it up", () => {
+  const s = store();
+  const id = s.addItem({ chat_jid: "T@g.us", type: "bug", title: "Save tap gets no reply" });
+  s.claimItem(id, "Claude Code session aaaa1111");
+  assert.throws(() => s.addHandover(id, { note: " " }), /note is required/);
+  assert.throws(() => s.addHandover(id, { note: "n", base: "main; rm -rf" }), /base must be a commit sha/);
+  const it = s.addHandover(id, { by: "Claude Code session aaaa1111", account: "B (ilan-work)", base: "4f20ec2", note: "done: test added. left: the fix in agent.py. next: run the test", patch: "diff --git a/x b/x\n" });
+  assert.match(it.paused, /^handed over \(account B \(ilan-work\)\): done: test added/);
+  assert.equal(it.claimed_by, null); // anyone can take it now
+  assert.match(it.log.at(-1).note, /⏸ handover by Claude Code session aaaa1111 with unfinished changes on 4f20ec2/);
+  assert.equal(s.openHandover(id).patch, "diff --git a/x b/x\n");
+  const h = s.pickHandover(id, "team bot");
+  assert.equal(h.base, "4f20ec2");
+  const after = s.getItem(id);
+  assert.equal(after.paused, null);
+  assert.equal(after.claimed_by, "team bot");
+  assert.equal(s.openHandover(id), null);
+  assert.equal(s.pickHandover(id, "x"), null);
+  assert.equal(s.addHandover(9999, { note: "n" }), null);
+});

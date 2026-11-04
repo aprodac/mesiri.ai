@@ -16,6 +16,8 @@
 //   GET  /items/:id?project=          one request with its history
 //   POST /items/:id/claim {by, take?, project?}  TM-50: one worker per request; 409 names who holds it
 //   POST /items/:id/usage {account?, by?, cost_usd?, tokens?, pct_5h?, pct_7d?, project?}  TM-79: Claude usage of one turn
+//   POST /items/:id/handover {note, patch?, base?, by?, account?, project?}  TM-84: unfinished work, handed over
+//   GET  /items/:id/handover?project=   the open handover (with its patch);  POST /items/:id/handover/pick {by}
 //   GET  /claude/accounts              TM-78: each Claude account's plan windows (5-hour, weekly), as the brain last saw them
 //   POST /claude/accounts {accounts: [...]}  the brain posts its reading after each turn
 //   POST /items/:id    {status?, ref?, note?, title?, summary?, type?, project?, + TM-19 asked_by / asked_ref / asked_who / held / live_at / verified / tried_at}
@@ -41,7 +43,7 @@
 import { createReadStream, existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { timingSafeEqual } from "node:crypto";
-import { ITEM_TRACKING, istStarts } from "./store.js";
+import { ITEM_TRACKING, istStarts, MAX_PATCH_CHARS } from "./store.js";
 import { costOf, geminiPrices } from "./transcribe.js";
 
 function send(res, status, body) {
@@ -239,6 +241,28 @@ export function createApi({ store, wa, token, ai = null, brain = null }) {
           return send(res, 200, { item: store.getItem(item.id) });
         } catch (err) {
           return send(res, 400, { error: err.message });
+        }
+      }
+      m = path.match(/^\/items\/(\d+)\/handover(\/pick)?$/);
+      if (m) {
+        const body = req.method === "POST" ? await readJson(req, MAX_PATCH_CHARS + 20_000) : {};
+        const item = store.getItem(m[1]);
+        const scope = req.method === "GET" ? project : body.project;
+        if (!item || (scope && item.project !== scope)) return send(res, 404, { error: "no such item" });
+        if (req.method === "GET" && !m[2]) {
+          const h = store.openHandover(item.id);
+          return h ? send(res, 200, { handover: h }) : send(res, 404, { error: "no open handover" });
+        }
+        if (req.method === "POST" && m[2]) {
+          const h = store.pickHandover(item.id, String(body.by || "someone").slice(0, 120));
+          return h ? send(res, 200, { handover: h, item: store.getItem(item.id) }) : send(res, 404, { error: "no open handover" });
+        }
+        if (req.method === "POST") {
+          try {
+            return send(res, 200, { item: store.addHandover(item.id, body) });
+          } catch (err) {
+            return send(res, 400, { error: err.message });
+          }
         }
       }
       if (path === "/claude/accounts" && req.method === "GET") return send(res, 200, { accounts: store.claudeAccounts() });

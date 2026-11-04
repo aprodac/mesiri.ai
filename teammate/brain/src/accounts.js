@@ -19,6 +19,10 @@ const RETRY_MS = 30 * 60_000; // a limit with no reset time given: try that acco
 export const WINDOWS = { five_hour: "5-hour", seven_day: "weekly" };
 /** TM-78: the team group is warned once per window when an account passes this share of it. */
 export const WARN_PCT = 80;
+/** TM-84: at this share of the 5-hour window (97% of the week) an account is "near": no new build starts on it while
+ * another has room, and a session on it hands its work over (inbox.py limits uses the same numbers). */
+export const NEAR_PCT = 90;
+const NEAR_WEEK_PCT = 97;
 const TOKEN = "CLAUDE_CODE_OAUTH_TOKEN";
 const NAME = "CLAUDE_ACCOUNT_NAME";
 
@@ -93,7 +97,25 @@ export class Accounts {
     if (!this.state.auto) return chosen;
     const i = this.list.indexOf(chosen);
     const order = [...this.list.slice(i), ...this.list.slice(0, i)];
-    return order.find((a) => a.token && !this.limitedUntil(a.id) && fits(a)) || order.find((a) => fits(a)) || chosen;
+    const free = (a) => a.token && !this.limitedUntil(a.id) && fits(a);
+    return order.find((a) => free(a) && !this.near(a.id)) || order.find(free) || order.find((a) => fits(a)) || chosen;
+  }
+
+  /** TM-84: the account's latest reading (under 2 h old) puts it at or past NEAR_PCT of its 5-hour window, or near the week. */
+  near(id, pct = NEAR_PCT) {
+    const u = this.state.usage?.[id];
+    if (!u?.at || this.now() - u.at > 2 * 3600_000) return false;
+    const on = (w, limit) => u[w] && u[w].pct >= limit && !(u[w].resets_at && u[w].resets_at <= this.now());
+    return on("five_hour", pct) || on("seven_day", Math.max(pct, NEAR_WEEK_PCT));
+  }
+
+  /** TM-84: when account `id` has room again: its limit, or the reset of the window it is near, else null. */
+  roomAt(id) {
+    const until = this.limitedUntil(id);
+    if (until) return until;
+    const u = this.state.usage?.[id];
+    const resets = ["five_hour", "seven_day"].filter((w) => u?.[w]?.pct >= NEAR_PCT && u[w].resets_at > this.now()).map((w) => u[w].resets_at);
+    return resets.length ? Math.min(...resets) : null;
   }
 
   /** The Claude login a turn runs with: only that account's token is ever in Claude's environment. */

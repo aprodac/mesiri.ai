@@ -38,6 +38,8 @@ FIELDS = (
     "verified_at", "tried_at",
     # TM-77: who is on it (a person, a Claude Code session, the team bot) and where it came from (message numbers).
     "source", "claimed_by", "claimed_at",
+    # TM-84: why a request is paused (handed over before a usage limit, or waiting for an account to reset).
+    "paused",
     # TM-79: what it has used of Claude so far (dollars, share of a 5-hour / weekly window, turns, accounts).
     "usage_usd", "usage_5h", "usage_7d", "usage_turns", "usage_accounts",
 )

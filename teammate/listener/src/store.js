@@ -106,6 +106,21 @@ CREATE TABLE IF NOT EXISTS item_usage (
   pct_7d    REAL
 );
 CREATE INDEX IF NOT EXISTS ix_item_usage_item ON item_usage (item_id);
+-- TM-84: work a session could not finish (its Claude account was about to hit a limit): the unfinished part as a git
+-- patch on top of \`base\` (never pushed to main half-done), and the note saying what is done, what is left, the next step.
+CREATE TABLE IF NOT EXISTS item_handover (
+  id        INTEGER PRIMARY KEY,
+  item_id   INTEGER NOT NULL REFERENCES items(id),
+  at        TEXT NOT NULL,
+  by        TEXT,
+  account   TEXT,
+  base      TEXT,
+  note      TEXT NOT NULL,
+  patch     TEXT,
+  picked_by TEXT,
+  picked_at TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_item_handover_item ON item_handover (item_id);
 -- TM-78: each Claude account's latest plan-limit reading, as the brain last saw it (one JSON per account).
 CREATE TABLE IF NOT EXISTS claude_accounts (
   id          TEXT PRIMARY KEY,
@@ -126,7 +141,9 @@ export const PEOPLE_ROLES = ["owner", "member"];
  *   live_at    when it was deployed;  verified "ok" | "broken" (+ verified_at): the bot's live re-test
  *   tried_at   when the person who asked used Mesiri again after it went live
  */
-export const ITEM_TRACKING = ["asked_by", "asked_ref", "asked_who", "held", "started_at", "pushed_at", "live_at", "verified", "verified_at", "tried_at", "claimed_by", "claimed_at"];
+export const ITEM_TRACKING = ["asked_by", "asked_ref", "asked_who", "held", "started_at", "pushed_at", "live_at", "verified", "verified_at", "tried_at", "claimed_by", "claimed_at", "paused"];
+/** TM-84: a handover patch is at most this big (a session's unfinished change, not a repository). */
+export const MAX_PATCH_CHARS = 2_000_000;
 /** TM-50: a claim older than this, on a request nobody finished, can be taken by someone else. */
 export const CLAIM_HOURS = 6;
 export const VERIFIED = ["ok", "broken"];
@@ -534,6 +551,42 @@ export class Store {
       .prepare("INSERT INTO item_usage (item_id, at, account, by, cost_usd, tokens, pct_5h, pct_7d) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
       .run(Number(id), nowIso(), clip(account, 60), clip(by, 120), row.cost, row.tokens === null ? null : Math.round(row.tokens), row.p5, row.p7);
     return true;
+  }
+
+  /**
+   * TM-84: a session hands its unfinished work over: the request is marked paused (board and @bot status show it) and
+   * its claim is let go, so the next one (the bot on another account, or a person) can pick it up at once.
+   */
+  addHandover(id, { by = null, account = null, base = null, note, patch = null }) {
+    if (!this.db.prepare("SELECT 1 FROM items WHERE id = ?").get(Number(id))) return null;
+    if (!String(note || "").trim()) throw new Error("note is required: what is done, what is left, the next step");
+    if (patch && String(patch).length > MAX_PATCH_CHARS) throw new Error(`patch is larger than ${MAX_PATCH_CHARS} characters`);
+    if (base && !/^[0-9a-f]{7,40}$/.test(String(base))) throw new Error("base must be a commit sha");
+    const at = nowIso();
+    this.db
+      .prepare("INSERT INTO item_handover (item_id, at, by, account, base, note, patch) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(Number(id), at, clip(by, 120), clip(account, 60), base || null, String(note).slice(0, 4000), patch || null);
+    const short = String(note).replace(/\s+/g, " ").slice(0, 160);
+    return this.updateItem(id, {
+      paused: `handed over${account ? ` (account ${clip(account, 60)})` : ""}: ${short}`,
+      claimed_by: null, claimed_at: null,
+      note: `⏸ handover by ${by || "a session"}${patch ? ` with unfinished changes on ${String(base || "").slice(0, 7) || "main"}` : ""}: ${String(note).slice(0, 600)}`,
+    });
+  }
+
+  /** TM-84: the latest handover of a request not picked up yet (with its patch), else null. */
+  openHandover(id) {
+    return this.db.prepare("SELECT * FROM item_handover WHERE item_id = ? AND picked_at IS NULL ORDER BY id DESC LIMIT 1").get(Number(id)) || null;
+  }
+
+  /** TM-84: someone took it: the pause ends and they hold the request. */
+  pickHandover(id, by) {
+    const h = this.openHandover(id);
+    if (!h) return null;
+    const at = nowIso();
+    this.db.prepare("UPDATE item_handover SET picked_by = ?, picked_at = ? WHERE id = ?").run(clip(by, 120), at, h.id);
+    this.updateItem(id, { paused: null, claimed_by: clip(by, 120), claimed_at: at, note: `▶️ picked up by ${by}` });
+    return h;
   }
 
   /** TM-78: the brain's latest reading of every Claude account (label, plan windows, limited-until). */

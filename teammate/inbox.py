@@ -334,7 +334,88 @@ def _possible_repeats(title: str, items: list[dict]) -> list[dict]:
     return out[:8]
 
 
+#: TM-84: hand over at this share of the 5-hour window (or of the week): enough left to push and write the note.
+HANDOVER_5H = 90
+HANDOVER_WEEK = 97
+
+
+def _git(*args: str) -> str:
+    import subprocess
+
+    return subprocess.run(["git", *args], check=True, capture_output=True, text=True).stdout
+
+
+def _limits(account: str | None) -> None:
+    """TM-84: each Claude account's 5-hour and weekly use (as the team bot last read it). With --account, exit 3 and
+    say HAND OVER when that account is about to hit a limit, so a session can check between steps."""
+    import datetime as dt
+
+    accounts = _request("GET", "/claude/accounts")["accounts"]
+    now = dt.datetime.now(dt.UTC).isoformat()
+    want = (account or _ACCOUNT or "").strip().lower()
+    mine = None
+    for acc in accounts:
+        five, week = acc.get("five_hour") or {}, acc.get("seven_day") or {}
+        limited = acc.get("limited_until") and acc["limited_until"] > now
+        line = f"{acc.get('label') or acc['id'].upper()}: " + (
+            f"at its limit until {_when(acc['limited_until'])}" if limited
+            else f"5-hour {five.get('pct', '?')}% (resets {_when(five.get('resets_at'))}) · weekly {week.get('pct', '?')}%"
+        ) + f"  [read {_when(acc.get('read_at'))}]"
+        print(line)
+        label = (acc.get("label") or "").lower()
+        if want and (want == acc["id"] or want == label or label.startswith(f"{want} ") or want.split(" ")[0] == acc["id"]):
+            mine = (acc, limited, five.get("pct") or 0, week.get("pct") or 0)
+    if not want:
+        return
+    if not mine:
+        print(f"(no reading for account {account or _ACCOUNT}; it is read on the bot's next turn on it)")
+        return
+    acc, limited, p5, p7 = mine
+    if limited or p5 >= HANDOVER_5H or p7 >= HANDOVER_WEEK:
+        print(f"HAND OVER: {acc.get('label')} is about to hit its limit. Push only what is finished and checked, then: "
+              "python3 teammate/inbox.py item handover <n> --note \"done: … / left: … / next step: …\"")
+        sys.exit(3)
+    print(f"OK: {acc.get('label')} has room left.")
+
+
+def _handover(n: str, note: str | None) -> None:
+    """TM-84: the unfinished part as a patch on the last commit both sides have, plus the note; never pushed to main."""
+    if not note or len(note.strip()) < 20:
+        sys.exit('item handover needs --note "done: … / left: … / next step: …" (what someone picking it up must know)')
+    _git("fetch", "-q", "origin", "main")
+    base = _git("merge-base", "HEAD", "origin/main").strip()
+    _git("add", "-A", "-N")  # untracked files show up in the diff (intent to add only; nothing is staged)
+    patch = _git("diff", "--binary", base)
+    ahead = _git("log", "--oneline", f"{base}..HEAD").strip()
+    body = {"note": note.strip(), "patch": patch or None, "base": base, "by": _WORKER, "account": _ACCOUNT, "project": PROJECT}
+    i = _request("POST", f"/items/{n}/handover", body=body)["item"]
+    extra = f"; {len(ahead.splitlines())} local commit(s) not on main are in it" if ahead else ""
+    print(f"{_item_line(i)}\n  handed over: {len(patch)} characters of unfinished changes on {base[:7]}{extra}. "
+          "Nothing half-done reached main. Post it to the group and stop.")
+
+
+def _pickup(n: str) -> None:
+    """TM-84: take over a handed-over request: its note, and its unfinished changes applied on this checkout."""
+    h = _request("GET", f"/items/{n}/handover", params={"project": PROJECT})["handover"]
+    if h.get("patch"):
+        if _git("status", "--porcelain").strip():
+            sys.exit("This checkout has its own changes; commit or stash them first, then pick it up.")
+        import subprocess
+
+        _git("fetch", "-q", "origin", "main")
+        subprocess.run(["git", "apply", "--3way", "--whitespace=nowarn", "-"], input=h["patch"], text=True, check=True)
+    _request("POST", f"/items/{n}/handover/pick", body={"by": _WORKER, "project": PROJECT})
+    print(f"Picked up [{n}] from {h.get('by') or 'a session'} ({h.get('account') or 'account ?'}, {_when(h['at'])}).")
+    print(f"Their note: {h['note']}")
+    print("Their unfinished changes are applied (not committed): read them, finish, run the checks, then push."
+          if h.get("patch") else "No unfinished changes were left: continue from main and the note.")
+
+
 def _item(a: argparse.Namespace) -> None:
+    if a.action == "handover":
+        return _handover(a.args[0] if a.args else "", a.note)
+    if a.action == "pickup":
+        return _pickup(a.args[0] if a.args else "")
     if a.action == "add":
         if len(a.args) < 2 or not a.type:
             sys.exit('usage: item add <chat> "<title>" --type bug|feature|question|complaint|task')
@@ -480,7 +561,7 @@ def main() -> None:
     its.add_argument("--status", choices=["open", "in_progress", "done", "wont_do"])
     its.add_argument("--type", choices=["bug", "feature", "question", "complaint", "task"])
     itm = sub.add_parser("item")
-    itm.add_argument("action", choices=["show", "add", "start", "claim", "note", "usage", "done", "wontdo"])
+    itm.add_argument("action", choices=["show", "add", "start", "claim", "note", "usage", "handover", "pickup", "done", "wontdo"])
     itm.add_argument("--take", action="store_true", help="claim it even though someone else holds it (say why in a note)")
     itm.add_argument("args", nargs="*")
     itm.add_argument("--type", choices=["bug", "feature", "question", "complaint", "task"])
@@ -497,6 +578,8 @@ def main() -> None:
     itm.add_argument("--pct7", type=float, help="percent of the weekly window it took")
     itm.add_argument("--tokens", type=int)
     itm.add_argument("--account", help='the Claude account, e.g. "B (ilan-work)" (default: TEAMMATE_CLAUDE_ACCOUNT)')
+    lim = sub.add_parser("limits")
+    lim.add_argument("--account", help='e.g. "B" or "B (ilan-work)"; exit 3 = hand over now (default: TEAMMATE_CLAUDE_ACCOUNT)')
     sm = sub.add_parser("summary")
     sm.add_argument("chat")
     trn = sub.add_parser("translate")
@@ -615,6 +698,8 @@ def main() -> None:
             print(f"{_item_line(i)}  · {i['chat_name']}")
     elif a.cmd == "item":
         _item(a)
+    elif a.cmd == "limits":
+        _limits(a.account)
     elif a.cmd == "summary":
         _summary(a.chat)
     elif a.cmd == "translate":

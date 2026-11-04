@@ -90,7 +90,7 @@ export async function collectWorkStatus({ plan, item = null, commits, runs }) {
     id: plan.id,
     title: plan.title,
     planStatus: plan.status,
-    item: item ? { status: item.status, ref: item.done_ref || null, notes: (item.log || []).filter((l) => l.note).slice(-3).map((l) => ({ at: l.at, note: String(l.note) })) } : null,
+    item: item ? { status: item.status, ref: item.done_ref || null, paused: item.paused || null, notes: (item.log || []).filter((l) => l.note).slice(-3).map((l) => ({ at: l.at, note: String(l.note) })) } : null,
     commits: list,
     heartbeat: hb,
     session_url: plan.session_url || null,
