@@ -48,6 +48,25 @@ _TAG = re.compile(r"\n?\u2063\[tools:([0-9a-f]{8})\]$")
 OLDER_NOTE = "(said by an older version of Mesiri, with fewer tools: anything it said it couldn't do may work now) "
 
 
+#: WA-170 (4 Nov 00:19, Ilan, Paraclette: two replies began "(said by an older version of Mesiri, with fewer tools: …)").
+#: Every note the memory adds for the model, so a reply that copies one back is cleaned before it is sent or kept:
+#: the older-version note (any cut of it), the tools tag, and the drawn list's note ([205]).
+_MEMORY_NOTES = re.compile(
+    r"\s*\(said by an older version of Mesiri[^)]*\)?\s*"
+    r"|\n?\u2063?\[tools:[0-9a-f]{8}\]"
+    r"|\s*\(under this reply, waiting for the Save button[^)]*\)?",
+    re.IGNORECASE,
+)
+
+
+_OLDER = re.compile(r"\s*\(said by an older version of Mesiri[^)]*\)?\s*", re.IGNORECASE)
+
+
+def without_memory_notes(text: str) -> str:
+    """The reply without any note the memory wrote for the model (the model copies them from the history)."""
+    return _MEMORY_NOTES.sub(" ", text or "").strip()
+
+
 def tools_version(names: Any) -> str:
     """A short tag for a set of tool names (the same set, the same tag)."""
     return hashlib.sha1(",".join(sorted(names)).encode()).hexdigest()[:8]
@@ -64,7 +83,8 @@ def _read(role: str, text: str, version: str | None) -> ChatMessage:
         return ChatMessage(role=role, text=_TAG.sub("", text or ""))
     if m and m.group(1) == version:
         return ChatMessage(role=role, text=_TAG.sub("", text))
-    return ChatMessage(role=role, text=OLDER_NOTE + _TAG.sub("", text or ""))
+    # WA-170: a reply that already carries the note (copied by the model, 4 Nov) gets it once, never twice.
+    return ChatMessage(role=role, text=OLDER_NOTE + _OLDER.sub(" ", _TAG.sub("", text or "")).strip())
 
 
 def _marker(text: str) -> list[ChatMessage]:

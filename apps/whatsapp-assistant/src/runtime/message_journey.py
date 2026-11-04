@@ -669,20 +669,35 @@ def build_message_handlers(
     async def _run_journey_steps(message, raw_payload, retry_of_id, timer) -> None:  # type: ignore[no-untyped-def]
         wa_id = message.sender.wa_id
 
+        async def _tap_language(ctx) -> str:  # type: ignore[no-untyped-def]
+            """[224]: the language of a reply the code words for a tap (Confirm / Change it, Works / Still wrong). A
+            company on v3: the language v3 keeps (their chosen one, else their latest words'); else the classic
+            profile; else English. One place for every such tap."""
+            try:
+                if material_db is not None and await _assistant_mode(ctx) == "api":
+                    api = await _api_agent_for()
+                    if api is not None and (language := await api.reply_language(ctx)):
+                        return language
+            except Exception:  # noqa: BLE001 -- the profile then
+                _log.warning("journey.tap_language_failed user=%s", ctx.user_id, exc_info=True)
+            if user_language_store is not None:
+                try:
+                    from runtime.agent.wording import usual_from
+
+                    return usual_from(*await user_language_store.get_profile(user_id=ctx.user_id)) or "english"
+                except Exception:  # noqa: BLE001 -- English wording
+                    pass
+            return "english"
+
         async def _preview_tap(message, ctx, wa_id) -> bool:  # type: ignore[no-untyped-def]
-            from runtime.agent.wording import say, usual_from
+            from runtime.agent.wording import say
             from runtime.previews import FEEDBACK_STAGE, parse_tap, tap_trace
 
             tapped = parse_tap(str((message.metadata or {}).get("interactive_reply_id") or ""))
             if tapped is None:
                 return False
             confirmed, request_id = tapped
-            language = "english"
-            if user_language_store is not None:
-                try:
-                    language = usual_from(*await user_language_store.get_profile(user_id=ctx.user_id)) or "english"
-                except Exception:  # noqa: BLE001 -- English wording
-                    language = "english"
+            language = await _tap_language(ctx)
             reply = say("preview.confirmed" if confirmed else "preview.what_change", language)
             await sender.send_text(wa_id, reply)
             try:
@@ -701,19 +716,14 @@ def build_message_handlers(
             return True
 
         async def _release_verdict(message, ctx, wa_id) -> bool:  # type: ignore[no-untyped-def]
-            from runtime.agent.wording import say, usual_from
+            from runtime.agent.wording import say
             from runtime.release_notes import FEEDBACK_STAGE, parse_verdict, verdict_trace
 
             verdict = parse_verdict(str((message.metadata or {}).get("interactive_reply_id") or ""))
             if verdict is None:
                 return False
             works, note_id = verdict
-            language = "english"
-            if user_language_store is not None:
-                try:
-                    language = usual_from(*await user_language_store.get_profile(user_id=ctx.user_id)) or "english"
-                except Exception:  # noqa: BLE001 -- English wording
-                    language = "english"
+            language = await _tap_language(ctx)
             reply = say("release.works" if works else "release.still_wrong", language)
             await sender.send_text(wa_id, reply)
             try:
