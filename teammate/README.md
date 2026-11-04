@@ -193,8 +193,8 @@ shows **⏸ paused** with the reason meanwhile, and each request's story (click 
 `control.mesiri.ai/requests`) shows the problem, what was found, the commits, the review and live check, every
 session and handover, and its Claude usage (TM-85).
 
-**Session-start reminder (to add by hand).** Claude sessions may not change `.claude/` themselves, so a
-person adds this once. `.claude/hooks/session-start.sh` (make it executable):
+**Session-start reminder.** In place since 4 Nov. To reuse it in another repo, `.claude/hooks/session-start.sh`
+(make it executable):
 
 ```bash
 #!/bin/bash
