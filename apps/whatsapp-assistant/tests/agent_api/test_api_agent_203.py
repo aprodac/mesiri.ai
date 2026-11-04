@@ -103,10 +103,14 @@ def test_a_refusal_is_plain_words_in_their_language() -> None:
     assert plain_refusal("Not authorized for this site", "english") == "Not authorized for this site"
 
 
+def _ten(call: tuple[str, dict]) -> tuple[str, dict]:
+    return (call[0], {**call[1], "quantity": 10})  # [229]: the number they said (50 cement, 10 TMT) stays with its item
+
+
 async def test_replay_of_the_conversation_the_units_reach_the_model_and_save_works() -> None:
     """Ilan, 2 Nov: "50 bags of cement vennitund and 10 tmt steel bar use aki" -> Save."""
     model = FakeToolCallingProvider([
-        [receipt_call(CEMENT, "bags", "50 bags cement received"), receipt_call(TMT, "nos", "10 TMT used")],
+        [receipt_call(CEMENT, "bags", "50 bags cement received"), _ten(receipt_call(TMT, "nos", "10 TMT used"))],
         "Ready.",
     ])
     h = Harness(model)

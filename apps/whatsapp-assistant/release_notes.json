@@ -302,6 +302,15 @@
       "message": "Ippo Manglish ennu paranjal, Mesiri muzhuvanum Manglish-il thanne marupadi tharum, Malayalam aksharangal illathe. Thanks, ningal paranjathukondu ellavarkkum ithu sheriyaayi."
     },
     {
+      "id": "v3-three-updates-one-card",
+      "date": "2026-11-04",
+      "for": [
+        "cor_0adf74901e34488c88d80966abd9c8af",
+        "cor_461a38dae91240c696c3861f0409f4f7"
+      ],
+      "message": "Ippo cement, mason, slab pani ellam onnichu paranjalum ellam oru card-il Save button-odu koode varum. Try: '20 bag cement vannu, 20 mason undu, slab kazhinju'. Thanks, ningal paranjathukondu ellavarkkum ithu sheriyaayi."
+    },
+    {
       "id": "saved-record-web-link",
       "date": "2026-11-04",
       "for": [
