@@ -4,19 +4,28 @@ Replaces the "this number isn't registered" dead end, when self-serve
 signup is switched on (platform setting `self_serve.signup_enabled`, off by
 default), with a one-minute conversation:
 
-    Hi                       -> welcome  [Start free trial] [I'm in a company]
-    Start free trial         -> "What's your company name?"
+    Hi                       -> welcome  [Set up my company] [Join my team] [What is Mesiri?]
+    Set up my company        -> "What's your company name?"
     Suresh Builders          -> "Which site are you working on now?"
-    Green Villa, Kakkanad    -> company created, trial started, "send today's work"
+    Green Villa, Kakkanad    -> confirm (company, site, your name) -> company created, trial started
 
 The owner's name comes from their WhatsApp profile; only when the profile
-has none is it asked. The company is created through the one create-company
-step (application/organizations/create_company.py) with `start_as="trial"`,
-`signup_source="whatsapp"` and the first site's automatic DPR on, then
-projected so the owner's next message goes down the normal path.
+has none (or they tapped Edit) is it asked. The company is created through the
+one create-company step (application/organizations/create_company.py) with
+`start_as="trial"`, `signup_source="whatsapp"` and the first site's automatic
+DPR on, then projected so the owner's next message goes down the normal path.
 
-"I'm in a company" points the person at their admin's join code (SS-05,
-runtime/join_journey.py), or at being added by number.
+"Join my team" points the person at their admin's join code (SS-05,
+runtime/join_journey.py), or at being added by number, and keeps "Set up my
+company" one tap away for an owner who tapped it by mistake.
+
+SS-22, so a stranger is never stuck: the buttons say who they are for (everyone
+is "in a company"); a reply that answers nothing gets a short nudge, not the
+welcome again, and after NUDGE_LIMIT of those Mesiri goes quiet until a
+greeting; "stop" works at every step; a number whose user is deactivated or
+suspended hears that its access is paused, not the trial offer; a refused trial
+offers "Join my team"; and a first message that was real work is told it was
+not saved, so it is sent again once they are in.
 """
 
 from __future__ import annotations
@@ -35,6 +44,7 @@ from channel.onboarding_cards import (
 )
 from channel.replies import ListRow
 from interactions.signup_state import SignupState, SignupStateStore
+from mesiri.application.identity.phone_numbers import whatsapp_number_taken
 from mesiri.application.organizations.companies_overview import DEFAULT_SEND_TIME
 from mesiri.application.organizations.create_company import (
     CompanyCreationError,
@@ -62,15 +72,29 @@ _log = logging.getLogger("mesiri.signup")
 
 START_TRIAL_ID = "signup:start_trial"
 IN_COMPANY_ID = "signup:in_company"
+ABOUT_ID = "signup:about"
 CONFIRM_ID = "signup:confirm"
 EDIT_ID = "signup:edit"
 
 #: Typed stand-ins for the welcome buttons (SET-03): people type instead of tapping.
+#: No bare "yes" / "ok": with three choices on the welcome, it answers none of them.
 _START_WORDS = frozenset(
-    {"yes", "y", "ok", "okay", "start", "start free trial", "free trial", "start trial", "try", "trial"}
+    {"start", "start free trial", "free trial", "start trial", "try", "trial", "set up", "setup",
+     "set up my company", "setup my company", "new company", "my own company"}
+)  # fmt: skip
+_START_FIRST_WORDS = frozenset(
+    {"start free trial", "free trial", "start trial", "set up my company", "setup my company"}
 )
-_START_FIRST_WORDS = frozenset({"start free trial", "free trial", "start trial"})
-_IN_COMPANY_WORDS = frozenset({"i'm in a company", "im in a company", "in a company", "join"})
+_IN_COMPANY_WORDS = frozenset(
+    {"i'm in a company", "im in a company", "in a company", "join", "join my team", "join team"}
+)
+_ABOUT_WORDS = frozenset({"what is mesiri", "what is mesiri?", "what is this", "what is this?", "info"})
+#: A greeting at the welcome starts it again, even after Mesiri went quiet.
+_GREETINGS = frozenset(
+    {"hi", "hii", "hiii", "hello", "helo", "hlo", "hey", "hai", "namaste", "namaskaram"}
+)
+#: Replies at the welcome that answered nothing before Mesiri stops answering.
+NUDGE_LIMIT = 2
 _CONFIRM_WORDS = frozenset({"yes", "y", "ok", "okay", "confirm", "correct", "looks good", "create"})
 _EDIT_WORDS = frozenset({"edit", "change", "no", "wrong", "redo"})
 #: Greetings, answers and commands that are never a company or site name.
@@ -90,7 +114,20 @@ _NAME_MAX = 120
 WELCOME_MESSAGE = (
     "👋 Hi{name}! Mesiri turns your site's WhatsApp updates into a daily progress "
     "report for you and your client.\n\n"
-    "Want to try it free for your company?"
+    "What brings you here?\n"
+    "• *Set up my company*: you run the company; try Mesiri free.\n"
+    "• *Join my team*: your company already uses Mesiri."
+)
+#: SS-22: a first message that was real work is not lost silently.
+NOT_SAVED_NOTE = (
+    "\n\n_Your message isn't saved yet. Once you're set up or added to your team, send it again._"
+)
+NUDGE_MESSAGE = "Please tap one of these, so I know how to help."
+ABOUT_MESSAGE = (
+    "Mesiri is for construction companies. Your site team sends updates here (text, voice "
+    "notes or photos) and Mesiri keeps the records: labour, materials, work done and issues. "
+    "Every evening you and your client get the daily report as a PDF.\n\n"
+    "It's free to try."
 )
 ASK_COMPANY = "*Step 1 of 2*\nGreat! What's your company name?"
 ASK_SITE = (
@@ -99,16 +136,22 @@ ASK_SITE = (
 )
 ASK_OWNER_NAME = "And your name?"
 IN_COMPANY_MESSAGE = (
-    "Ask your company's Mesiri admin for their *join code*, then send it here, e.g. "
-    "*JOIN ACME-4821*. Or ask them to add your number *+{wa_id}*."
+    "To join your company's team on Mesiri:\n"
+    "• Send the *join code* your admin shares, e.g. *JOIN ACME-4821*, or\n"
+    "• Ask your admin to add your number *+{wa_id}*.\n\n"
+    "Once you're added, just message here."
 )
 NOT_A_NAME_MESSAGE = (
     "That doesn't look like a {what} name. Please send just the name, e.g. *{example}*. {question}"
 )
 CONFIRM_MESSAGE = (
-    "Please check:\n*Company:* {company}\n*Site:* {site}\n\nShall I set this up?"
+    "Please check:\n*Company:* {company}\n*Site:* {site}\n*Your name:* {owner}\n\n"
+    "This creates a *new* company on Mesiri. Shall I set it up?"
 )
 CONFIRM_REMINDER = "Tap *Looks good* to set this up, or *Edit* to change the names."
+PAUSED_MESSAGE = (
+    "This number's Mesiri access is paused. Please ask your company's admin to turn it back on."
+)
 EDIT_MESSAGE = "No problem, let's redo it."
 TYPE_IT_MESSAGE = "Please type the answer as a message. {question}"
 TOO_LONG_MESSAGE = "That's a bit long. Please keep it under {limit} characters. {question}"
@@ -126,6 +169,14 @@ DONE_MESSAGE = (
 )
 
 TRIAL_CAPTION = "Your free trial runs until *{trial_end}*."
+#: Nothing is sent (logged as the reply): Mesiri waits for a greeting.
+QUIET = ""
+
+# WhatsApp buttons: at most 3, titles at most 20 characters.
+_SETUP_BUTTON = ListRow(id=START_TRIAL_ID, title="Set up my company")
+_JOIN_BUTTON = ListRow(id=IN_COMPANY_ID, title="Join my team")
+_ABOUT_BUTTON = ListRow(id=ABOUT_ID, title="What is Mesiri?")
+_WELCOME_BUTTONS = [_SETUP_BUTTON, _JOIN_BUTTON, _ABOUT_BUTTON]
 
 _QUESTION = {"company": ASK_COMPANY, "site": ASK_SITE, "owner_name": ASK_OWNER_NAME, "confirm": ""}
 _NAME_KIND = {
@@ -144,6 +195,14 @@ def _not_a_name(text: str) -> bool:
         or "?" in text
         or len(text.split()) > _NAME_MAX_WORDS
     )
+
+
+def _looks_like_work(message: Any, lowered: str) -> bool:
+    """SS-22: a first message that is more than a greeting (a site update, a voice
+    note, a photo) gets told it was not saved, so it is sent again once they are in."""
+    if message.modality is not InputModality.TEXT:
+        return True
+    return lowered not in _GREETINGS and len(lowered.split()) >= 2
 
 
 class SignupJourney:
@@ -187,16 +246,23 @@ class SignupJourney:
             if message.modality is InputModality.TEXT
             else ""
         )
+        lowered = text.lower().strip(" .!")
         state = await self._store.get(wa_id)
 
+        # SS-22: a deactivated or suspended person is not a stranger: no trial offer
+        # (their number is still theirs, so a trial would be refused at the end anyway).
+        if await self._number_paused(wa_id):
+            await self._store.clear(wa_id)
+            return await self._say(wa_id, PAUSED_MESSAGE)
+
         if not tap and (state is None or state.stage == "welcome"):
-            lowered = text.lower().strip(" .!")
             if lowered in (_START_WORDS if state is not None else _START_FIRST_WORDS):
                 tap = START_TRIAL_ID
             elif lowered in _IN_COMPANY_WORDS:
                 tap = IN_COMPANY_ID
+            elif lowered in _ABOUT_WORDS:
+                tap = ABOUT_ID
         if not tap and state is not None and state.stage == "confirm":
-            lowered = text.lower().strip(" .!")
             if lowered in _CONFIRM_WORDS:
                 tap = CONFIRM_ID
             elif lowered in _EDIT_WORDS:
@@ -207,29 +273,46 @@ class SignupJourney:
             # daily limit) rather than after three questions.
             refusal = await self._refusal(wa_id)
             if refusal is not None:
-                await self._store.clear(wa_id)
-                return await self._say(wa_id, refusal)
+                # SS-22: no dead end: the person may be joining a team, not starting one.
+                await self._store.set(wa_id, SignupState(stage="welcome"))
+                return await self._buttons(wa_id, refusal, [_JOIN_BUTTON])
             await self._store.set(wa_id, SignupState(stage="company"))
             return await self._say(wa_id, ASK_COMPANY)
         if tap == IN_COMPANY_ID:
-            await self._store.clear(wa_id)
-            return await self._say(wa_id, IN_COMPANY_MESSAGE.format(wa_id=wa_id))
+            # Kept at the welcome, so an owner who tapped it by mistake is one tap from setup.
+            await self._store.set(wa_id, SignupState(stage="welcome"))
+            return await self._buttons(wa_id, IN_COMPANY_MESSAGE.format(wa_id=wa_id), [_SETUP_BUTTON])
+        if tap == ABOUT_ID:
+            await self._store.set(wa_id, SignupState(stage="welcome"))
+            return await self._buttons(wa_id, ABOUT_MESSAGE, [_SETUP_BUTTON, _JOIN_BUTTON])
 
         if tap in (CONFIRM_ID, EDIT_ID):
             if state is None or state.stage != "confirm":
                 return await self._welcome(wa_id, message.sender.profile_name)
             if tap == EDIT_ID:
-                await self._store.set(wa_id, SignupState(stage="company"))
+                # The name is asked too: the WhatsApp profile's may be a nickname.
+                await self._store.set(wa_id, SignupState(stage="company", ask_name=True))
                 await self._say(wa_id, EDIT_MESSAGE)
                 return await self._say(wa_id, ASK_COMPANY)
             return await self._create(wa_id, state, state.owner_name or "")
 
-        if state is None or state.stage == "welcome":
-            return await self._welcome(wa_id, message.sender.profile_name)
-
-        if text.lower() in _CANCEL_WORDS:
+        # SS-22: "stop" works at every step, the welcome included.
+        if lowered in _CANCEL_WORDS:
             await self._store.clear(wa_id)
             return await self._say(wa_id, CANCELLED_MESSAGE)
+
+        if state is None:
+            note = NOT_SAVED_NOTE if _looks_like_work(message, lowered) else ""
+            return await self._welcome(wa_id, message.sender.profile_name, note=note, said=text)
+        if state.stage == "welcome":
+            # SS-22: a reply that answers nothing gets a nudge, never the whole welcome
+            # again; after NUDGE_LIMIT of them Mesiri waits for a greeting.
+            if lowered in _GREETINGS:
+                return await self._welcome(wa_id, message.sender.profile_name, said=text)
+            if state.nudges >= NUDGE_LIMIT:
+                return QUIET
+            await self._store.set(wa_id, SignupState(stage="welcome", nudges=state.nudges + 1))
+            return await self._buttons(wa_id, NUDGE_MESSAGE, _WELCOME_BUTTONS)
 
         if state.stage == "confirm":
             return await self._confirm_prompt(wa_id, state, reminder=True)
@@ -250,11 +333,13 @@ class SignupJourney:
             )
 
         if state.stage == "company":
-            await self._store.set(wa_id, SignupState(stage="site", company_name=text))
+            await self._store.set(
+                wa_id, SignupState(stage="site", company_name=text, ask_name=state.ask_name)
+            )
             return await self._say(wa_id, ASK_SITE)
 
         if state.stage == "site":
-            owner_name = _clean_profile_name(message.sender.profile_name)
+            owner_name = None if state.ask_name else _clean_profile_name(message.sender.profile_name)
             if owner_name is None:
                 await self._store.set(
                     wa_id,
@@ -280,7 +365,9 @@ class SignupJourney:
     ) -> str:
         """SET-03: show what will be created and let them fix it before it is."""
         await self._store.set(wa_id, state)
-        body = CONFIRM_MESSAGE.format(company=state.company_name, site=state.site_name)
+        body = CONFIRM_MESSAGE.format(
+            company=state.company_name, site=state.site_name, owner=state.owner_name
+        )
         if reminder:
             body = f"{CONFIRM_REMINDER}\n\n{body}"
         await self._sender.send_button(
@@ -309,17 +396,31 @@ class SignupJourney:
             return FAILED_MESSAGE
         return None
 
-    async def _welcome(self, wa_id: str, profile_name: str | None) -> str:
+    async def _number_paused(self, wa_id: str) -> bool:
+        """SS-22: this number belongs to a user Mesiri didn't resolve as a sender, i.e.
+        one who is deactivated or suspended (an active one never reaches signup).
+        Fails open: a read error shows the usual welcome, as before."""
+        try:
+            async with self._db.transaction() as conn:
+                return await whatsapp_number_taken(conn, wa_id)
+        except Exception:  # noqa: BLE001
+            _log.exception("signup.paused_check_failed wa_id=%s", wa_id)
+            return False
+
+    async def _buttons(self, wa_id: str, body: str, buttons: list[ListRow]) -> str:
+        await self._sender.send_button(wa_id, body=body, buttons=buttons)
+        return body
+
+    async def _welcome(
+        self, wa_id: str, profile_name: str | None, *, note: str = "", said: str = ""
+    ) -> str:
         await self._store.set(wa_id, SignupState(stage="welcome"))
         name = _clean_profile_name(profile_name)
-        body = WELCOME_MESSAGE.format(name=f" {name}" if name else "")
-        buttons = [
-            ListRow(id=START_TRIAL_ID, title="Start free trial"),
-            ListRow(id=IN_COMPANY_ID, title="I'm in a company"),
-        ]
+        body = WELCOME_MESSAGE.format(name=f" {name}" if name else "") + note
+        buttons = _WELCOME_BUTTONS
         # Card 1 rides as the buttons' header image; if it can't be made or
-        # sent, the same message goes out as text and buttons.
-        card = await render_card_png(self._renderer, build_welcome_card("en"))
+        # sent, the same message goes out as text and buttons. Malayalam when they wrote it.
+        card = await render_card_png(self._renderer, build_welcome_card(detect_lang(said)))
         if card is None or not await self._sender.send_button(
             wa_id, body=body, buttons=buttons, header_image=card, shows="Welcome card: set up Mesiri for your company"
         ):
