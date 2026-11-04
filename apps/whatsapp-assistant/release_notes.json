@@ -290,6 +290,16 @@
         "cor_80b70d142f8f4f1cb94ac242d6f7639c"
       ],
       "message": "Mesiri no longer mixes up a new request with an earlier question. Try: 'Add Rajesh to Live Mart B as site engineer'"
+    },
+    {
+      "id": "manglish-latin-letters-only",
+      "date": "2026-11-04",
+      "for": [
+        "cor_1cf50cb85c064b53b4c00ac4859d367f",
+        "cor_4cfb178df3fe4b279f9a21a3ba2f506a",
+        "cor_9814a1ec3050491888df67a08f239801"
+      ],
+      "message": "Ippo Manglish ennu paranjal, Mesiri muzhuvanum Manglish-il thanne marupadi tharum, Malayalam aksharangal illathe. Thanks, ningal paranjathukondu ellavarkkum ithu sheriyaayi."
     }
   ]
 }
