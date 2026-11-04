@@ -37,6 +37,7 @@ PAGES: dict[str, tuple[str, str]] = {
     "team": ("/team", "the company's people and roles"),
     "company": ("/company", "company details, logo, modules"),
     "expenses": ("/finance/expenses", "expenses"),
+    "expense_categories": ("/finance/categories", "expense categories"),
     "expense": ("/finance/expenses/{expense_id}", "one expense with its bill photo"),
     "accounts": ("/finance/accounts", "money accounts"),
     "vendors": ("/finance/vendors", "vendors"),

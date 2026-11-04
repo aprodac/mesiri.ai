@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 from mesiri.domains.materials.names import alias_key, is_latin_name
 
-__all__ = ["EnglishName", "english_name", "local_word", "transliterate"]
+__all__ = ["EnglishName", "english_name", "local_word", "to_latin", "transliterate"]
 
 #: Local word (Malayalam script or Manglish) -> the English catalogue name. A new
 #: word is one line here. ചെങ്കല്ല് (laterite) and കല്ല് (stone) are different materials.
@@ -92,6 +92,58 @@ def transliterate(text: str) -> str:
         else:
             out.append(char)
     return "".join(out).replace("nr", "nt")
+
+
+_DEVA_VOWELS = {"अ": "a", "आ": "a", "इ": "i", "ई": "i", "उ": "u", "ऊ": "u", "ऋ": "ri", "ए": "e", "ऐ": "ai",
+                "ओ": "o", "औ": "au", "ऑ": "o"}
+_DEVA_SIGNS = {"ा": "a", "ि": "i", "ी": "i", "ु": "u", "ू": "u", "ृ": "ri", "े": "e", "ै": "ai", "ो": "o",
+               "ौ": "au", "ॉ": "o", "ॅ": "e"}
+_DEVA_CONSONANTS = {
+    "क": "k", "ख": "kh", "ग": "g", "घ": "gh", "ङ": "ng", "च": "ch", "छ": "chh", "ज": "j", "झ": "jh", "ञ": "n",
+    "ट": "t", "ठ": "th", "ड": "d", "ढ": "dh", "ण": "n", "त": "t", "थ": "th", "द": "d", "ध": "dh", "न": "n",
+    "प": "p", "फ": "f", "ब": "b", "भ": "bh", "म": "m", "य": "y", "र": "r", "ल": "l", "व": "v", "श": "sh",
+    "ष": "sh", "स": "s", "ह": "h",
+}
+_DEVA_VIRAMA = "\u094d"
+_DEVA_NASAL = {"ं": "n", "ँ": "n", "ः": "h"}
+_DEVA_DIGITS = {c: str(i) for i, c in enumerate("०१२३४५६७८९")}
+_SCRIPT = re.compile(r"[\u0900-\u097f\u0d00-\u0d7f]")
+_DEVA = re.compile(r"[\u0900-\u097f]")
+
+
+def _devanagari(text: str) -> str:
+    """Devanagari -> Latin, Hindi style: the inherent "a" is dropped at the end of a word (बता = bata)."""
+    out: list[str] = []
+    chars = list(text)
+    for i, char in enumerate(chars):
+        nxt = chars[i + 1] if i + 1 < len(chars) else ""
+        if char in _DEVA_CONSONANTS:
+            out.append(_DEVA_CONSONANTS[char])
+            if nxt not in _DEVA_SIGNS and nxt != _DEVA_VIRAMA and nxt != "\u093c" and _DEVA.match(nxt or " "):
+                out.append("a")
+        elif char in _DEVA_VOWELS:
+            out.append(_DEVA_VOWELS[char])
+        elif char in _DEVA_SIGNS:
+            out.append(_DEVA_SIGNS[char])
+        elif char in _DEVA_NASAL:
+            out.append(_DEVA_NASAL[char])
+        elif char in _DEVA_DIGITS:
+            out.append(_DEVA_DIGITS[char])
+        elif char == "\u0964":
+            out.append(".")
+        elif char in (_DEVA_VIRAMA, "\u093c", "\u200c", "\u200d"):
+            continue
+        else:
+            out.append(char)
+    return "".join(out)
+
+
+def to_latin(text: str) -> str:
+    """Every Malayalam or Devanagari word in ``text`` in Latin letters; everything else (Latin words, names,
+    numbers, emoji, punctuation) is kept exactly as it is. Text with no such letter is returned unchanged."""
+    if not text or not _SCRIPT.search(text):
+        return text
+    return _devanagari(transliterate(text))
 
 
 def _tidy(name: str) -> str:

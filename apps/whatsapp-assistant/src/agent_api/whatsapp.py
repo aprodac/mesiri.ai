@@ -18,6 +18,7 @@ The waiting entries are kept per person in Redis for a day.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import datetime as dt
 import json
 import logging
@@ -34,6 +35,7 @@ from channel.replies import ListRow, ReplySpec
 from mesiri_ai.greeting_classifier import is_greeting_trigger
 from mesiri_ai.models import ToolSpec
 from mesiri_contracts.assistant.enums import InputModality
+from runtime.agent.reply_text import without_save_prompt
 from runtime.ai_outage import (
     BUDGET_REPLY,
     GAVE_UP_REPLY,
@@ -67,6 +69,7 @@ from .agent import (
 from .app import build_api_app
 from .client import Actor, ApiClient
 from .memory import DayMemory, tools_version
+from .record_links import record_link, with_links
 from .tools import build_tools
 from .units import is_stock_unit_refusal, plain_refusal, unit_rows
 
@@ -159,6 +162,10 @@ class _Answered(Exception):
 
 #: The outage wording by its English text (``reply_for_attempt`` picks the text).
 _OUTAGE_LINES = {QUEUED_REPLY: "outage.queued", BUDGET_REPLY: "outage.budget", GAVE_UP_REPLY: "outage.gave_up", RESEND_REPLY: "outage.resend"}
+
+
+NOTHING_HELD = "I haven't got anything ready to save yet. Please send it again, with what's missing."
+PRESS_SAVE = "Tap *Save* to record these."
 
 
 def _in(language: str | None, key: str, english: str) -> str:
@@ -264,6 +271,7 @@ class ApiWhatsApp:
                     self._requested.add(message.correlation_id)
         else:
             return False
+        reply = latin_reply(reply, await self._reply_language(ctx))
         await self._send(reply, message.sender.wa_id)
         _lap("v3_send")
         await self._send_saved_card(message, ctx)  # after the "Saved" line: the reply never waits for it
@@ -413,7 +421,8 @@ class ApiWhatsApp:
         state["working_site"] = last_reported(turn.saved, state.get("working_site"), _today(ctx))
         if turn.saved:
             self._just_saved[message.correlation_id] = list(turn.saved)
-        words = turn.reply or turn.question or (_saved_text(turn.saved, state.get("language")) if turn.saved else "")
+        saved_words = _saved_text(turn.saved, state.get("language"), today=_today(ctx)) if turn.saved else ""
+        words = turn.reply or turn.question or saved_words
         if got_why:
             words = _in(state.get("language"), "api.feedback_got_why", FEEDBACK_GOT_WHY)
         passed_on = any(c.get("tool") == TELL_THE_TEAM for c in calls)
@@ -421,7 +430,8 @@ class ApiWhatsApp:
             self._requested.add(message.correlation_id)  # TM-22 / TM-28: the team bot is poked once it is answered
             # TM-21: the request's reference, the same one the team group sees, so both can talk about it.
             ref = request_ref(message.correlation_id)
-            if ref and ref not in words:
+            words = without_refs(words)  # [231]: a Ref of an older turn the model copied from the history
+            if ref:
                 words = f"{words}\n\nRef {ref}".strip()  # [205]: a bare "#8fa51b" read as internal text
         if passed_on and unchanged and not turn.options:
             # Feedback only: the waiting list (and its buttons) stays as it was; drawing it again under "passed to
@@ -430,7 +440,9 @@ class ApiWhatsApp:
 
             await self._save_state(ctx, state)
             return ReplySpec(text=without_ready_block(whatsapp_bold(words)) or "OK.")
-        reply = self._reply(words, turn.pending, state, turn.options)
+        if turn.nothing_held:
+            words = _in(state.get("language"), "api.nothing_held", NOTHING_HELD)  # [229]: nothing is held: say so
+        reply = self._reply(words, turn.pending, state, turn.options, state.get("language"))
         await self._save_state(ctx, state)
         return reply
 
@@ -452,7 +464,7 @@ class ApiWhatsApp:
         language = state.get("language") or "english"
         words = (_HELD.get(language, _HELD["english"]).format(lines="; ".join(held)) if held
                  else plain_refusal("", language))
-        reply = self._reply(words, ready, state, [])
+        reply = self._reply(words, ready, state, [], state.get("language"))
         await self._save_state(ctx, state)
         return reply
 
@@ -489,7 +501,7 @@ class ApiWhatsApp:
             words = _in(language, "api.feedback_ask", FEEDBACK_ASK)
             state["awaiting_why"] = {"kind": calls[0]["args"].get("kind"), "at": time.time(), "ref": ref}
         await self._save_state(ctx, state)
-        return ReplySpec(text=f"{words}\n\nRef {ref}".strip() if ref else words)
+        return ReplySpec(text=f"{without_refs(words)}\n\nRef {ref}".strip() if ref else words)
 
     async def _failed(self, exc: Exception, text: str, message: Any, ctx: Any, state: dict,
                       started: float) -> ReplySpec:
@@ -570,7 +582,7 @@ class ApiWhatsApp:
         if turn.pending:
             state = await self._state(ctx)
             waiting = [PendingWrite.from_json(e) for e in state.get("pending") or []]
-            card = self._reply(words, [*waiting, *turn.pending], state, [])
+            card = self._reply(words, [*waiting, *turn.pending], state, [], state.get("language"))
             await self._save_state(ctx, state)
             await self._send(card, wa_id)
         if words:
@@ -718,7 +730,7 @@ class ApiWhatsApp:
         left = [r.pending for r in results if not r.ok and r.body != {"detail": UNIT_UNSETTLED}]
         state["pending"] = [e.to_json() for e in left]
         state["batch"] = uuid.uuid4().hex[:8] if left else None
-        text = _saved_text(results, state.get("language"))
+        text = _saved_text(results, state.get("language"), today=_today(ctx))
         sizes = [r for r in results if not r.ok and is_stock_unit_refusal(_detail(r.body))]
         if left and len(sizes) == len(left):
             # WA-165 (3 Nov, Paraclette: Save tapped twice, refused twice): Save cannot work until they say the size,
@@ -752,7 +764,8 @@ class ApiWhatsApp:
 
     # -- helpers -----------------------------------------------------------------------------
 
-    def _reply(self, words: str, pending: list[PendingWrite], state: dict, options: list[str]) -> ReplySpec:
+    def _reply(self, words: str, pending: list[PendingWrite], state: dict, options: list[str],
+               language: str | None = None) -> ReplySpec:
         """The model's words, the ready list under them, and the buttons: the question's options
         when it asked one (one tap answers it), else Save / Cancel for the list."""
         had = bool(state.get("pending"))
@@ -768,14 +781,26 @@ class ApiWhatsApp:
         text = whatsapp_bold(words) or "OK."
         # The list is drawn here; a copy the model wrote itself (it echoed the history) is cut.
         text = without_ready_block(text) or "OK."
+        # [229]: only the code tells them to tap Save, and only under a list it holds with the button sent with it.
+        text = without_save_prompt(text) or ("OK." if not pending else "")
         if pending:
             text = without_numbered_lines(without_copied_lines(text, [e.summary for e in pending])) or "OK."
             listed = "\n".join(f"{i}. {e.summary}" for i, e in enumerate(pending, 1))
-            text = f"{text}\n\n*Ready to save:*\n{listed}"
+            text = f"{text}\n\n*Ready to save:*\n{listed}".strip()
+            if not options:
+                text = f"{text}\n\n{_in(language, 'api.press_save', PRESS_SAVE)}"
         if options:
-            return ReplySpec(text=text, buttons=tuple(
-                ListRow(id=f"{OPTION_PREFIX}{i}", title=o) for i, o in enumerate(options[:3])))
+            rows = [ListRow(id=f"{OPTION_PREFIX}{i}", title=o) for i, o in enumerate(options[:3])]
+            if pending and len(rows) < 3 and not state.get("size_needed"):
+                # [229]: one line waits for an answer, the others are held: Save stays on the same reply
+                # (last, so the option taps keep their numbers; WhatsApp allows 3 buttons).
+                rows.append(ListRow(id=f"{SAVE_PREFIX}{state['batch']}", title="Save"))
+            return ReplySpec(text=text, buttons=tuple(rows))
         return _save_buttons(text, state["batch"]) if pending else ReplySpec(text=text)
+
+    async def _reply_language(self, ctx: Any) -> str | None:
+        state = await self._state(ctx)
+        return _chosen(state) or state.get("language")
 
     def _key(self, ctx: Any) -> str:
         return f"agent_api:{ctx.organization_id}:{ctx.user_id}"
@@ -875,6 +900,29 @@ def _distinct(pending: list[PendingWrite]) -> list[PendingWrite]:
             seen.add(key)
             out.append(e)
     return out
+
+
+def without_refs(text: str) -> str:
+    """[231]: the text without any "Ref #abc123" (the model copies the one of an earlier turn from the history)."""
+    cleaned = re.sub(r"[ \t]*\bRef\s*#[0-9a-f]{6}\b", "", text, flags=re.IGNORECASE)
+    return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+
+
+def latin_reply(reply: ReplySpec, language: str | None) -> ReplySpec:
+    """[231]: the last step before a reply goes out. For Manglish or Hinglish no Malayalam or Devanagari letter may
+    reach the person (model words, code-drawn lines, card summaries, button titles): each word in script is
+    transliterated. Malayalam, Hindi and English replies, names in Latin letters, emoji and numbers are untouched."""
+    if language not in ("manglish", "hinglish"):
+        return reply
+    from runtime.agent.material_names import to_latin
+
+    def rows(items: Any) -> Any:
+        return tuple(dataclasses.replace(r, title=to_latin(r.title), description=to_latin(r.description))
+                     for r in items) if items else items
+
+    return dataclasses.replace(reply, text=to_latin(reply.text), buttons=rows(reply.buttons),
+                               list_rows=rows(reply.list_rows),
+                               list_button_label=to_latin(reply.list_button_label) if reply.list_button_label else None)
 
 
 def command_call(text: str, message: Any, last_reply: str) -> list[dict[str, Any]]:
@@ -1043,7 +1091,7 @@ def _save_buttons(text: str, batch: str) -> ReplySpec:
                                           ListRow(id=f"{CANCEL_PREFIX}{batch}", title="Cancel")))
 
 
-def _saved_text(results: list[WriteResult], language: str | None = None) -> str:
+def _saved_text(results: list[WriteResult], language: str | None = None, *, today: str | None = None) -> str:
     def converted(r: WriteResult) -> str:
         # WA-151: a line saved in another unit says what went into stock ("10 Numbers = 0.5 load").
         note = r.body.get("converted") if isinstance(r.body, dict) else None
@@ -1051,6 +1099,10 @@ def _saved_text(results: list[WriteResult], language: str | None = None) -> str:
 
     lines = [f"✅ {r.pending.summary}{converted(r)}" if r.ok
              else f"❌ {r.pending.summary}: {plain_refusal(_detail(r.body), language)}" for r in results]
+    if today:  # [228]: a link to each saved record's dashboard page, built from ids already returned
+        urls = [record_link(r.pending.tool, r.pending.path, r.pending.body, r.body, today=today) if r.ok else None
+                for r in results]
+        lines = with_links(lines, urls, today=today)
     head = "Saved." if all(r.ok for r in results) else "Not everything could be saved:"
     return head + "\n" + "\n".join(lines)
 

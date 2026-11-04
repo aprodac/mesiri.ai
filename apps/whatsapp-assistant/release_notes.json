@@ -292,6 +292,33 @@
       "message": "Mesiri no longer mixes up a new request with an earlier question. Try: 'Add Rajesh to Live Mart B as site engineer'"
     },
     {
+      "id": "manglish-latin-letters-only",
+      "date": "2026-11-04",
+      "for": [
+        "cor_1cf50cb85c064b53b4c00ac4859d367f",
+        "cor_4cfb178df3fe4b279f9a21a3ba2f506a",
+        "cor_9814a1ec3050491888df67a08f239801"
+      ],
+      "message": "Ippo Manglish ennu paranjal, Mesiri muzhuvanum Manglish-il thanne marupadi tharum, Malayalam aksharangal illathe. Thanks, ningal paranjathukondu ellavarkkum ithu sheriyaayi."
+    },
+    {
+      "id": "v3-three-updates-one-card",
+      "date": "2026-11-04",
+      "for": [
+        "cor_0adf74901e34488c88d80966abd9c8af",
+        "cor_461a38dae91240c696c3861f0409f4f7"
+      ],
+      "message": "Ippo cement, mason, slab pani ellam onnichu paranjalum ellam oru card-il Save button-odu koode varum. Try: '20 bag cement vannu, 20 mason undu, slab kazhinju'. Thanks, ningal paranjathukondu ellavarkkum ithu sheriyaayi."
+    },
+    {
+      "id": "saved-record-web-link",
+      "date": "2026-11-04",
+      "for": [
+        "cor_4cfb178df3fe4b279f9a21a3ba2f506a"
+      ],
+      "message": "Ippo save cheyyumbol website link-um varum (https://app.whatsapp.mesiri.ai): 20 bag M sand pole oru entry save cheythu nokkoo. Thanks, ningal paranjathukondu ellavarkkum ithu kittum."
+    },
+    {
       "id": "my-requests",
       "date": "2026-11-04",
       "for": [

@@ -27,6 +27,7 @@ from agent_api.links import WEB_LINK, build_link
 from agent_api.links import spec as web_link_spec
 from mesiri.domains.materials.names import alias_key
 from mesiri_ai.models import ChatMessage, ToolOutcome, ToolSpec
+from runtime.agent.reply_text import asks_to_tap_save
 from runtime.ai_outage import is_budget_error
 
 from .client import ApiClient, new_idempotency_key
@@ -96,6 +97,8 @@ class ApiTurn:
     #: WA-168: lines that need a size nobody gave yet ({material_id, from_unit_id, path, body, summary, key}); a
     #: "Don't know" next holds them for the admin (``POST /materials/size-requests``).
     size_needed: list[dict[str, Any]] = field(default_factory=list)
+    #: [229]: the model said something was ready (or to tap Save) but nothing is held, even after one more try.
+    nothing_held: bool = False
 
 
 #: WA-154 (3 Nov, Paraclette: "Rana Mart" re-sent three times made three empty projects): a create the same person
@@ -511,6 +514,12 @@ class ApiAgent:
 
                 if natural := natural_stock_unit(str(arguments.get("name") or "")):  # WA-166: filled by the code below
                     arguments = {**arguments, "default_unit_id": natural}
+            if tool.is_write:
+                # [229]: a date nobody said is the message's date, filled by the code (company timezone); a date
+                # question for "today" cost Ilan's 3-update voice note its whole card.
+                arguments = {**arguments, **{
+                    r: today.isoformat() for r in tool.required if arguments.get(r) in (None, "")
+                    and (tool.spec.parameters["properties"].get(r) or {}).get("format") == "date"}}
             missing = [r for r in tool.required if arguments.get(r) in (None, "")]
             if missing:
                 return ToolOutcome(content={"error": f"missing: {', '.join(missing)}"})
@@ -520,6 +529,9 @@ class ApiAgent:
             params = {q: arguments[q] for q in tool.query_params if arguments.get(q) not in (None, "")}
             body = {f: arguments[f] for f in tool.body_fields if f in arguments}
             body.update({k: (channel if v == TEXT_CHANNEL else v) for k, v in tool.fixed})
+            if tool.is_write and (clash := number_clash(text, body, [e.body for e in new])):
+                # [229]: "20 bag cement, aaru mason" became 20 masons: a number said once cannot count two things.
+                return ToolOutcome(content={"error": clash})
             if photo_key and tool.is_write and PHOTO_FIELD in tool.hidden and PHOTO_FIELD not in body:
                 body[PHOTO_FIELD] = photo_key
             if tool.is_write and "material_id" in tool.body_fields and body.get("material_id") and not new_ref:
@@ -678,6 +690,7 @@ class ApiAgent:
                 code_told.append({"tool": TELL_THE_TEAM, "by": "code", "arguments": {
                     "kind": "missing_feature", "about": f"Mesiri told them the team was told; passed on by the code: {text[:300]}"},
                     "result": {"status": "passed on by the code (WA-155)"}})
+        claimed_ready = nothing_done() and asks_to_tap_save(result.text or "")  # [229]
         if not (result.text or "").strip() and not new and not asked and not saved and not acted and not exists:
             # It looked something up and said nothing ("OK."): ask once for the answer in words.
             again = await ask_model([*messages, ChatMessage(role="model", text="(looked it up)"),
@@ -701,10 +714,45 @@ class ApiAgent:
             if not busy:
                 asked.clear()
                 options = []
-        return ApiTurn(reply=reply, pending=still + new, saved=saved, calls=calls,
+        if claimed_ready and not still and not new and not asked and not exists and not options:
+            reply = ""  # [229]: "ready, tap Save" with nothing held: the code says what is true instead
+        return ApiTurn(reply=reply, pending=still + new, nothing_held=bool(claimed_ready and not reply), saved=saved, calls=calls,
                        stop_reason=result.stop_reason, question=asked.get("question", ""), options=options,
                        repeat_asked=repeat_asked, dropped_question=dropped, sizes_said=sizes_said,
                        size_needed=size_needed)
+
+
+_NUMBER = re.compile(r"(?<![\d.])\d+(?:\.\d+)?(?![\d.])")
+
+
+def entry_numbers(body: dict[str, Any]) -> list[float]:
+    """The counts and quantities an entry carries: a labour line's headcount, a receipt's quantity, a work entry's
+    measured quantities."""
+    found: list[Any] = [body.get("quantity")]
+    found += [line.get("headcount") for line in body.get("lines") or [] if isinstance(line, dict)]
+    found += [q.get("quantity") for q in body.get("quantities") or [] if isinstance(q, dict)]
+    out = []
+    for v in found:
+        try:
+            if v not in (None, ""):
+                out.append(float(v))
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
+def number_clash(text: str, body: dict[str, Any], others: list[dict[str, Any]]) -> str:
+    """[229] (4 Nov: "20 bag cement … aaru masonmar": the masons became 20, the cement's number): each number stays with
+    its own item. A number written in digits once in their words cannot count for two entries of one message.
+    Returns what to tell the model, or "" when all is well (word numbers like "aaru" are never in digits: no check)."""
+    said = [float(n) for n in _NUMBER.findall(text or "")]
+    for n in dict.fromkeys(entry_numbers(body)):
+        used = sum(1 for o in others if n in entry_numbers(o))
+        if used and said.count(n) < used + 1 and n in said:
+            return (f"{n:g} is written once in the person's words and another entry of this message already uses it. "
+                    "Nothing was prepared. Use the number they said for THIS item (a number word counts: "
+                    "aaru/ആറ് = 6, anchu/അഞ്ച് = 5, pathu = 10), or ask for it with `ask` if you cannot tell.")
+    return ""
 
 
 def _typed(old: Any, value: Any) -> Any:
