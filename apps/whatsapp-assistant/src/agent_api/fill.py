@@ -25,7 +25,7 @@ def _their_line(summary: str, names: tuple[str, ...]) -> str:
         for name in names:
             full = name.casefold().strip()
             first = full.split(",")[0].strip()
-            if tail_key in (full, first) or full.startswith(tail_key) or tail_key.startswith(first):
+            if tail_key in (full, first):
                 return head.strip()
     return line
 
