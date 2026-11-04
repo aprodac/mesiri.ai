@@ -21,6 +21,24 @@ interface PersonMatch {
   company: string | null;
 }
 
+interface SignupTry {
+  at: string;
+  phone: string;
+  signup_source: string;
+  outcome: string;
+  reason: string | null;
+  flags: string[];
+}
+
+/** SS-25: why a signup was refused, in plain words. */
+const REASONS: Record<string, string> = {
+  previous_trial: 'Trial already used',
+  daily_limit: 'Daily signup limit',
+  ip_limit: 'Too many numbers from one place',
+  country_not_allowed: 'Not an Indian number',
+  signup_closed: 'Signup switched off',
+};
+
 interface TrialUse {
   number: string | null;
   company: string;
@@ -59,18 +77,24 @@ export default function People() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [trials, setTrials] = useState<TrialUse[]>([]);
+  const [attempts, setAttempts] = useState<SignupTry[]>([]);
   // SA-26: "Allow a new trial" asks once more before it acts; `reload` refreshes the rows after.
   const [confirming, setConfirming] = useState<string | null>(null);
   const [allowing, setAllowing] = useState(false);
   const [allowError, setAllowError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
-  const tooShort = query.trim().length < MIN_QUERY;
+  // SS-25: nothing typed lists everyone recent (people, every trial, every signup attempt),
+  // so a number can be found without knowing it; 1-2 characters wait for more.
+  const browsing = query.trim().length === 0;
+  const tooShort = !browsing && query.trim().length < MIN_QUERY;
   const isNumber = query.replace(/\D/g, '').length >= MIN_DIGITS;
+  const showTrials = browsing || isNumber;
 
   useEffect(() => {
     if (tooShort) {
       setResults([]);
       setTrials([]);
+      setAttempts([]);
       setError(null);
       return;
     }
@@ -79,14 +103,18 @@ export default function People() {
       setLoading(true);
       const q = query.trim();
       const people = api.get<PersonMatch[]>('/admin/people/search', { params: { q } });
-      const used = isNumber
+      const used = showTrials
         ? api.get<TrialUse[]>('/admin/people/trials', { params: { q } }).then((res) => res.data)
         : Promise.resolve([] as TrialUse[]);
-      Promise.all([people, used])
-        .then(([res, trialRows]) => {
+      const tried = showTrials
+        ? api.get<SignupTry[]>('/admin/people/attempts', { params: { q } }).then((res) => res.data)
+        : Promise.resolve([] as SignupTry[]);
+      Promise.all([people, used, tried])
+        .then(([res, trialRows, attemptRows]) => {
           if (stale) return;
           setResults(res.data);
           setTrials(trialRows);
+          setAttempts(attemptRows);
           setError(null);
         })
         .catch((err) => !stale && setError(err.response?.data?.detail || 'Search failed'))
@@ -96,7 +124,7 @@ export default function People() {
       stale = true;
       clearTimeout(t);
     };
-  }, [query, tooShort, isNumber, reload]);
+  }, [query, tooShort, showTrials, reload]);
 
   const allowTrial = (number: string) => {
     setAllowing(true);
@@ -117,6 +145,9 @@ export default function People() {
     const key = (t.number || '').replace(/\D/g, '');
     if (key && !newestFor.has(key)) newestFor.set(key, t.started_at);
   }
+
+  /** Clicking a number searches it: its people, trials and attempts together. */
+  const searchNumber = (number: string) => setQuery(number.replace(/\D/g, ''));
 
   const open = (p: PersonMatch) => {
     if (p.organization_id) navigate(`/organizations/${p.organization_id}`);
@@ -149,6 +180,7 @@ export default function People() {
         />
       </div>
 
+      {browsing && <h2 style={{ fontSize: '16px', marginBottom: 'var(--space-3)' }}>People added most recently</h2>}
       <div className="table-container">
         <table>
           <thead>
@@ -170,14 +202,20 @@ export default function People() {
               <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>Searching…</td></tr>
             ) : results.length === 0 ? (
               <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>
-                {isNumber ? `No user has this number now.` : `No one matches “${query.trim()}”.`}
+                {browsing ? 'No people yet.' : isNumber ? 'No user has this number now.' : `No one matches “${query.trim()}”.`}
               </td></tr>
             ) : (
               results.map((p) => (
                 <tr key={p.id} onClick={() => open(p)} style={{ cursor: 'pointer' }} title="Open">
                   <td style={{ fontWeight: 500, color: 'var(--neutral-900)' }}>{p.full_name || '—'}</td>
                   <td>{p.company ?? <span style={{ color: 'var(--neutral-500)' }}>Platform admin</span>}</td>
-                  <td>{p.whatsapp_number || '—'}</td>
+                  <td>
+                    {p.whatsapp_number ? (
+                      <button className="link-button" style={_numberLink} onClick={(e) => { e.stopPropagation(); searchNumber(p.whatsapp_number || ''); }}>
+                        {p.whatsapp_number}
+                      </button>
+                    ) : '—'}
+                  </td>
                   <td>{p.email || '—'}</td>
                   <td>{p.role || '—'}</td>
                   <td><span className={`badge ${statusBadgeClass(p.status)}`}>{p.status}</span></td>
@@ -187,15 +225,17 @@ export default function People() {
           </tbody>
         </table>
       </div>
-      {results.length >= 25 && (
+      {!browsing && results.length >= 25 && (
         <p style={{ fontSize: '13px', color: 'var(--neutral-500)', marginTop: 'var(--space-3)' }}>
           Showing the first 25. Type more to narrow it down.
         </p>
       )}
 
-      {isNumber && !tooShort && !error && (
+      {showTrials && !tooShort && !error && (
         <section style={{ marginTop: 'var(--space-6)' }}>
-          <h2 style={{ fontSize: '16px', marginBottom: 'var(--space-2)' }}>Free trials started by this number</h2>
+          <h2 style={{ fontSize: '16px', marginBottom: 'var(--space-2)' }}>
+            {browsing ? 'Every free trial started' : 'Free trials started by this number'}
+          </h2>
           <p className="subtitle" style={{ marginBottom: 'var(--space-3)' }}>
             One free trial per number. This record stays when the company is deleted: if the number signs up again, it gets the normal setup with only the rest of that trial (7 days, deleted after 2: 5 days left); a trial used up is refused.
             <strong> Allow a new trial</strong> lets that number start one more (recorded in the audit log); the new trial limits it again.
@@ -218,7 +258,7 @@ export default function People() {
                 {loading && trials.length === 0 ? (
                   <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>Searching…</td></tr>
                 ) : trials.length === 0 ? (
-                  <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>This number never started a free trial.</td></tr>
+                  <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>{browsing ? 'No free trials yet.' : 'This number never started a free trial.'}</td></tr>
                 ) : (
                   trials.map((t) => {
                     const open = t.new_trial_from === null || new Date(t.new_trial_from) <= new Date();
@@ -232,7 +272,13 @@ export default function People() {
                         style={{ cursor: t.organization_id ? 'pointer' : 'default' }}
                       >
                         <td style={{ fontWeight: 500, color: 'var(--neutral-900)' }}>{t.company || '—'}</td>
-                        <td>{t.number || '—'}</td>
+                        <td>
+                          {t.number ? (
+                            <button className="link-button" style={_numberLink} onClick={(e) => { e.stopPropagation(); searchNumber(t.number || ''); }}>
+                              {t.number}
+                            </button>
+                          ) : '—'}
+                        </td>
                         <td>{day(t.started_at)}</td>
                         <td>{t.signup_source || '—'}</td>
                         <td>
@@ -279,6 +325,64 @@ export default function People() {
           </div>
         </section>
       )}
+
+      {showTrials && !tooShort && !error && (
+        <section style={{ marginTop: 'var(--space-6)' }}>
+          <h2 style={{ fontSize: '16px', marginBottom: 'var(--space-2)' }}>
+            {browsing ? 'Recent signup attempts' : 'Signup attempts from this number'}
+          </h2>
+          <p className="subtitle" style={{ marginBottom: 'var(--space-3)' }}>
+            Every time someone tried to start a free trial on WhatsApp or the web, and what happened: refused ones show why.
+          </p>
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Number</th>
+                  <th>Source</th>
+                  <th>Outcome</th>
+                  <th>Why</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading && attempts.length === 0 ? (
+                  <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>Searching…</td></tr>
+                ) : attempts.length === 0 ? (
+                  <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>No signup attempts.</td></tr>
+                ) : (
+                  attempts.map((a, i) => (
+                    <tr key={`${a.at}-${a.phone}-${i}`}>
+                      <td style={{ whiteSpace: 'nowrap' }}>{new Date(a.at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</td>
+                      <td>
+                        <button className="link-button" style={_numberLink} onClick={() => searchNumber(a.phone)}>
+                          {a.phone}
+                        </button>
+                      </td>
+                      <td>{a.signup_source}</td>
+                      <td>
+                        <span className={`badge ${a.outcome === 'refused' ? 'badge-warning' : 'badge-success'}`}>{a.outcome}</span>
+                      </td>
+                      <td>{a.reason ? REASONS[a.reason] || a.reason : '—'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
+
+/** A number that searches itself when clicked; looks like plain text with an underline. */
+const _numberLink: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  padding: 0,
+  color: 'inherit',
+  textDecoration: 'underline dotted',
+  cursor: 'pointer',
+  font: 'inherit',
+};

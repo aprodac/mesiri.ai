@@ -103,8 +103,10 @@ _TEAM_WORDS = frozenset(
 )
 #: A greeting at the welcome starts it again, even after Mesiri went quiet.
 _GREETINGS = frozenset(
-    {"hi", "hii", "hiii", "hello", "helo", "hlo", "hey", "hai", "namaste", "namaskaram"}
-)
+    {"hi", "hii", "hiii", "hello", "helo", "hlo", "hey", "hai", "namaste", "namaskaram",
+     # SS-25: how people type it ("hy" got a nudge on 4 Nov).
+     "hy", "hyy", "hloo", "hlw", "helloo", "hii there", "hi there", "good morning", "gm"}
+)  # fmt: skip
 #: Replies at the welcome that answered nothing before Mesiri stops answering.
 NUDGE_LIMIT = 2
 _CONFIRM_WORDS = frozenset({"yes", "y", "ok", "okay", "confirm", "correct", "looks good", "create"})
@@ -516,9 +518,14 @@ class SignupJourney:
         state: SignupState | None = None,
     ) -> str:
         if _refused(state):
-            # SS-23: a greeting after a refused trial is not offered setup again.
-            await self._store.set(wa_id, _at_welcome(state))
-            return await self._buttons(wa_id, TRIAL_USED_MESSAGE, _REFUSED_BUTTONS)
+            # SS-25: the refusal is remembered for a day, but the rules or the number's record
+            # can change meanwhile (the team tapped Allow a new trial, SS-24 gave the rest of a
+            # deleted trial): a greeting checks again, live, and starts afresh when it may.
+            refusal, _ = await self._refusal(wa_id)
+            if refusal is not None:
+                # SS-23: still refused: setup is not offered again.
+                await self._store.set(wa_id, _at_welcome(state))
+                return await self._buttons(wa_id, TRIAL_USED_MESSAGE, _REFUSED_BUTTONS)
         await self._store.set(wa_id, SignupState(stage="welcome"))
         name = _clean_profile_name(profile_name)
         body = WELCOME_MESSAGE.format(name=f" {name}" if name else "") + note

@@ -91,6 +91,8 @@ users_table = sa.Table(
     sa.Column("status", sa.String),
     sa.Column("whatsapp_number", sa.String),
     sa.Column("access_policy", sa.JSON),
+    # SS-25: Find a person lists the people added most recently (the column's default fills it).
+    sa.Column("created_at", sa.DateTime(timezone=True)),
 )
 
 projects_table = sa.Table(

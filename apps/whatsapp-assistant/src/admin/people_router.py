@@ -25,6 +25,7 @@ import uuid
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy.dialects.postgresql import ARRAY
 
 from admin.router import get_engine, organizations_table, users_table
 from mesiri.application.audit.record import record_admin_action
@@ -51,6 +52,8 @@ MIN_DIGITS = 4
 #: An Indian mobile number without its country code.
 NATIONAL_DIGITS = 10
 LIMIT = 25
+#: SS-25: how many rows each list shows when nothing is searched.
+BROWSE_LIMIT = 100
 
 _DIGITS = sa.func.regexp_replace(users_table.c.whatsapp_number, r"\D", "", "g")
 
@@ -133,10 +136,14 @@ async def search_people(
     q: str = Query("", max_length=120),
     _admin: dict = Depends(require_platform_admin),
 ):
-    """Every user whose name, email or WhatsApp number matches `q`, in any company."""
-    clause = search_clause(q)
+    """Every user whose name, email or WhatsApp number matches `q`, in any company.
+    SS-25: an empty `q` lists the people added most recently, so nobody has to know a
+    number to find it."""
+    browsing = not q.strip()
+    clause = sa.true() if browsing else search_clause(q)
     if clause is None:
         return []
+    order = users_table.c.created_at.desc().nulls_last() if browsing else users_table.c.full_name
     statement = (
         sa.select(
             users_table.c.id,
@@ -154,8 +161,8 @@ async def search_people(
             )
         )
         .where(clause)
-        .order_by(users_table.c.full_name)
-        .limit(LIMIT)
+        .order_by(order)
+        .limit(BROWSE_LIMIT if browsing else LIMIT)
     )
     async with get_engine().connect() as conn:
         rows = (await conn.execute(statement)).fetchall()
@@ -178,9 +185,11 @@ _TRIAL_NUMBER = admin_audit_log.c.details["owner_whatsapp_number"].astext
 _TRIAL_DIGITS = sa.func.regexp_replace(_TRIAL_NUMBER, r"\D", "", "g")
 
 
-def trials_statement(digits: str) -> sa.Select:
-    """Trial starts whose owner's number has these digits, newest first, with whether the
-    company still exists (joined on the audit row's target, which outlives the company)."""
+def trials_statement(digits: str | None) -> sa.Select:
+    """Trial starts whose owner's number has these digits (every trial when None, SS-25),
+    newest first, with whether the company still exists (joined on the audit row's target,
+    which outlives the company)."""
+    matches = [_TRIAL_DIGITS.like(f"%{digits}%")] if digits else []
     return (
         sa.select(
             admin_audit_log.c.occurred_at,
@@ -200,10 +209,10 @@ def trials_statement(digits: str) -> sa.Select:
         .where(
             admin_audit_log.c.action == "company.created",
             admin_audit_log.c.details["status"].astext == "trial",
-            _TRIAL_DIGITS.like(f"%{digits}%"),
+            *matches,
         )
         .order_by(admin_audit_log.c.occurred_at.desc())
-        .limit(LIMIT)
+        .limit(LIMIT if digits else BROWSE_LIMIT)
     )
 
 
@@ -213,9 +222,10 @@ async def search_trials(
     _admin: dict = Depends(require_platform_admin),
 ):
     """SA-25: the free trials a number started, deleted companies included, and when it may
-    start another. Empty unless `q` has at least MIN_DIGITS digits."""
+    start another. SS-25: an empty `q` lists every trial, newest first; otherwise `q` needs
+    at least MIN_DIGITS digits."""
     digits = number_digits(q)
-    if digits is None:
+    if digits is None and q.strip():
         return []
     async with get_engine().connect() as conn:
         rows = (await conn.execute(trials_statement(digits))).fetchall()
@@ -259,12 +269,13 @@ async def search_trials(
     return found
 
 
-def allows_statement(digits: str) -> sa.Select:
-    """SA-26: the latest "Allow a new trial" per number with these digits."""
+def allows_statement(digits: str | None) -> sa.Select:
+    """SA-26: the latest "Allow a new trial" per number with these digits (every number when None)."""
     phone = admin_audit_log.c.details["phone"].astext
+    matches = [phone.like(f"%{digits}%")] if digits else []
     return (
         sa.select(phone.label("phone"), sa.func.max(admin_audit_log.c.occurred_at).label("at"))
-        .where(admin_audit_log.c.action == audit.SIGNUP_TRIAL_ALLOWED, phone.like(f"%{digits}%"))
+        .where(admin_audit_log.c.action == audit.SIGNUP_TRIAL_ALLOWED, *matches)
         .group_by(phone)
     )
 
@@ -288,3 +299,54 @@ async def allow_trial(body: AllowTrial, admin: dict = Depends(require_platform_a
             details={"phone": phone},
         )
     return TrialAllowed(number=phone, allowed_at=entry.occurred_at)
+
+
+class SignupTry(BaseModel):
+    """SS-25: one signup attempt (WhatsApp or web), refused ones included, from `signup_attempts`."""
+
+    at: dt.datetime
+    phone: str
+    signup_source: str
+    outcome: str
+    reason: str | None = None
+    flags: list[str] = []
+
+
+_signup_attempts = sa.Table(
+    "signup_attempts",
+    sa.MetaData(),
+    sa.Column("created_at", sa.DateTime(timezone=True)),
+    sa.Column("phone", sa.String),
+    sa.Column("signup_source", sa.String),
+    sa.Column("outcome", sa.String),
+    sa.Column("reason", sa.String),
+    sa.Column("flags", ARRAY(sa.String)),
+)
+
+
+@router.get("/attempts", response_model=list[SignupTry])
+async def signup_attempts(
+    q: str = Query("", max_length=120),
+    _admin: dict = Depends(require_platform_admin),
+):
+    """SS-25: who tried to sign up and what happened (allowed, or refused and why), newest first;
+    an empty `q` lists every number, otherwise `q` needs at least MIN_DIGITS digits."""
+    digits = number_digits(q)
+    if digits is None and q.strip():
+        return []
+    statement = sa.select(_signup_attempts).order_by(_signup_attempts.c.created_at.desc()).limit(BROWSE_LIMIT)
+    if digits:
+        statement = statement.where(_signup_attempts.c.phone.like(f"%{digits}%"))
+    async with get_engine().connect() as conn:
+        rows = (await conn.execute(statement)).fetchall()
+    return [
+        SignupTry(
+            at=row.created_at,
+            phone=row.phone or "",
+            signup_source=row.signup_source or "",
+            outcome=row.outcome or "",
+            reason=row.reason,
+            flags=list(row.flags or []),
+        )
+        for row in rows
+    ]

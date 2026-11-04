@@ -55,3 +55,31 @@ async def test_a_company_that_did_not_start_on_trial_is_not_a_trial(conn) -> Non
         conn, NewCompany(name="Paid Builders", owner_name="P", owner_phone=number, start_as="active"), now=_NOW
     )
     assert (await conn.execute(people_router.trials_statement(number[-10:]))).fetchall() == []
+
+
+async def test_ss25_the_browse_lists_run_on_postgres(conn, monkeypatch) -> None:
+    """SS-25: nothing searched lists every trial and every signup attempt."""
+    number = f"9192{uuid.uuid4().int % 10**8:08d}"
+    await create_company(
+        conn, NewCompany(name="Browse Builders", owner_name="B", owner_phone=number, start_as="trial"), now=_NOW
+    )
+    await conn.execute(
+        text("INSERT INTO signup_attempts (id, created_at, phone, signup_source, outcome, reason, flags) "
+             "VALUES (gen_random_uuid(), now(), :p, 'whatsapp', 'refused', 'previous_trial', ARRAY['previous_trial'])"),
+        {"p": number},
+    )  # fmt: skip
+    rows = (await conn.execute(people_router.trials_statement(None))).fetchall()
+    assert number in {r.number for r in rows}
+
+    class _Ctx:
+        async def __aenter__(self):
+            return conn
+
+        async def __aexit__(self, *exc):
+            return None
+
+    monkeypatch.setattr(people_router, "get_engine", lambda: type("E", (), {"connect": lambda self: _Ctx()})())
+    tried = await people_router.signup_attempts(q=number, _admin={})
+    assert [(t.phone, t.outcome) for t in tried] == [(number, "refused")]
+    recent = await people_router.search_people(q="", _admin={})
+    assert len(recent) <= people_router.BROWSE_LIMIT

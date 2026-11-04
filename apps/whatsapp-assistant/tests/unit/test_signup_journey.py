@@ -620,3 +620,36 @@ async def test_ss24_a_new_number_gets_a_full_trial(journey) -> None:
 )
 def test_ss24_days_left_read_naturally(left, label) -> None:
     assert sj.left_label(left) == label
+
+
+# --- SS-25: a remembered refusal is checked again on a greeting -------------------
+
+
+async def test_ss25_a_greeting_rechecks_a_remembered_refusal(journey) -> None:
+    journey.guard["refuse"] = "This number has already had a free trial."
+    await journey.j.handle(_text("Hi"))
+    await journey.j.handle(_tap(sj.START_TRIAL_ID))  # refused and remembered
+    # The rule changed meanwhile (the rest of a deleted trial, or the team allowed one).
+    journey.guard["refuse"] = None
+    journey.guard["left"] = dt.timedelta(days=6, hours=22)
+    reply = await journey.j.handle(_text("hy"))
+    assert reply.startswith("👋 Hi Suresh Kumar")  # the normal welcome, Set up included
+    assert journey.sender.buttons[-1][1] == [sj.START_TRIAL_ID, sj.IN_COMPANY_ID, sj.ABOUT_ID]
+    assert await journey.j._store.get(WA_ID) == SignupState(stage="welcome")
+    assert await journey.j.handle(_tap(sj.START_TRIAL_ID)) == sj.ASK_COMPANY
+    assert journey.sender.texts[-2] == sj.TRIAL_LEFT_MESSAGE.format(left="6 days 22 hours")
+
+
+async def test_ss25_still_refused_keeps_the_team_buttons(journey) -> None:
+    journey.guard["refuse"] = "This number has already had a free trial."
+    await journey.j.handle(_text("Hi"))
+    await journey.j.handle(_tap(sj.START_TRIAL_ID))
+    assert await journey.j.handle(_text("hy")) == sj.TRIAL_USED_MESSAGE
+    assert journey.sender.buttons[-1][1] == [sj.TEAM_ID, sj.IN_COMPANY_ID, sj.ABOUT_ID]
+
+
+@pytest.mark.parametrize("greeting", ["hy", "Hyy", "hlo", "Good morning"])
+async def test_ss25_common_greetings_restart_the_welcome(journey, greeting) -> None:
+    await journey.j.handle(_text("Hi"))
+    await journey.j.handle(_text("hmm"))  # a nudge
+    assert (await journey.j.handle(_text(greeting))).startswith("👋 Hi")

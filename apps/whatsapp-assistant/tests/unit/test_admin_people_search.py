@@ -292,3 +292,44 @@ async def test_ss24_a_deleted_trial_used_up_shows_zero_and_waits(monkeypatch):
 
     assert trial.trial_left_seconds == 0
     assert trial.new_trial_from == dt.datetime(2027, 11, 4, 9, 57, tzinfo=dt.UTC)
+
+
+# --- SS-25: nothing searched lists everyone recent --------------------------------
+
+
+async def test_an_empty_search_lists_the_people_added_last(monkeypatch):
+    conn = _Conn([])
+    monkeypatch.setattr(people_router, "get_engine", lambda: _Engine(conn))
+    await people_router.search_people(q="", _admin={})
+    statement = conn.executed[0]
+    assert statement._limit == people_router.BROWSE_LIMIT
+    assert "ORDER BY users.created_at DESC NULLS LAST" in _sql(statement)
+
+
+async def test_two_characters_still_wait_for_more(monkeypatch):
+    monkeypatch.setattr(people_router, "get_engine", lambda: (_ for _ in ()).throw(AssertionError("no read")))
+    assert await people_router.search_people(q="ab", _admin={}) == []
+
+
+def test_every_trial_is_listed_when_nothing_is_searched():
+    statement = people_router.trials_statement(None)
+    assert "regexp_replace" not in _sql(statement)
+    assert statement._limit == people_router.BROWSE_LIMIT
+
+
+async def test_attempts_list_everyone_or_one_number(monkeypatch):
+    row = SimpleNamespace(
+        created_at=dt.datetime(2026, 11, 4, 12, 31, tzinfo=dt.UTC), phone="917907793657",
+        signup_source="whatsapp", outcome="refused", reason="previous_trial", flags=["previous_trial"],
+    )  # fmt: skip
+    conn = _Conn([row])
+    monkeypatch.setattr(people_router, "get_engine", lambda: _Engine(conn))
+
+    [tried] = await people_router.signup_attempts(q="", _admin={})
+    assert (tried.phone, tried.outcome, tried.reason) == ("917907793657", "refused", "previous_trial")
+    assert "LIKE" not in _sql(conn.executed[0])
+
+    await people_router.signup_attempts(q="+91 79077 93657", _admin={})
+    assert "%7907793657%" in _values(conn.executed[1])
+
+    assert await people_router.signup_attempts(q="Ravi", _admin={}) == []
