@@ -2,6 +2,8 @@
 // A company's Users tab lists only that company; this answers "where is this
 // number?" without opening every company or writing SQL. The number matches on
 // its digits, so "79077 93657" and "+91 7907793657" find the same person.
+// SA-25: a number also shows the free trials it started, deleted companies
+// included, since that record (not a user) is what refuses a second trial.
 
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -19,7 +21,20 @@ interface PersonMatch {
   company: string | null;
 }
 
+interface TrialUse {
+  number: string | null;
+  company: string;
+  started_at: string;
+  signup_source: string | null;
+  organization_id: string | null;
+  company_exists: boolean;
+  new_trial_from: string | null;
+}
+
 const MIN_QUERY = 3;
+const MIN_DIGITS = 4;
+
+const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 
 const statusBadgeClass = (status: string) =>
   (status || '').toLowerCase() === 'active' ? 'badge-success' : 'badge-warning';
@@ -30,22 +45,30 @@ export default function People() {
   const [results, setResults] = useState<PersonMatch[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [trials, setTrials] = useState<TrialUse[]>([]);
   const tooShort = query.trim().length < MIN_QUERY;
+  const isNumber = query.replace(/\D/g, '').length >= MIN_DIGITS;
 
   useEffect(() => {
     if (tooShort) {
       setResults([]);
+      setTrials([]);
       setError(null);
       return;
     }
     let stale = false;
     const t = setTimeout(() => {
       setLoading(true);
-      api
-        .get<PersonMatch[]>('/admin/people/search', { params: { q: query.trim() } })
-        .then((res) => {
+      const q = query.trim();
+      const people = api.get<PersonMatch[]>('/admin/people/search', { params: { q } });
+      const used = isNumber
+        ? api.get<TrialUse[]>('/admin/people/trials', { params: { q } }).then((res) => res.data)
+        : Promise.resolve([] as TrialUse[]);
+      Promise.all([people, used])
+        .then(([res, trialRows]) => {
           if (stale) return;
           setResults(res.data);
+          setTrials(trialRows);
           setError(null);
         })
         .catch((err) => !stale && setError(err.response?.data?.detail || 'Search failed'))
@@ -55,7 +78,7 @@ export default function People() {
       stale = true;
       clearTimeout(t);
     };
-  }, [query, tooShort]);
+  }, [query, tooShort, isNumber]);
 
   const open = (p: PersonMatch) => {
     if (p.organization_id) navigate(`/organizations/${p.organization_id}`);
@@ -108,7 +131,9 @@ export default function People() {
             ) : loading && results.length === 0 ? (
               <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>Searching…</td></tr>
             ) : results.length === 0 ? (
-              <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>No one matches “{query.trim()}”.</td></tr>
+              <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>
+                {isNumber ? `No user has this number now.` : `No one matches “${query.trim()}”.`}
+              </td></tr>
             ) : (
               results.map((p) => (
                 <tr key={p.id} onClick={() => open(p)} style={{ cursor: 'pointer' }} title="Open">
@@ -128,6 +153,58 @@ export default function People() {
         <p style={{ fontSize: '13px', color: 'var(--neutral-500)', marginTop: 'var(--space-3)' }}>
           Showing the first 25. Type more to narrow it down.
         </p>
+      )}
+
+      {isNumber && !tooShort && !error && (
+        <section style={{ marginTop: 'var(--space-6)' }}>
+          <h2 style={{ fontSize: '16px', marginBottom: 'var(--space-2)' }}>Free trials started by this number</h2>
+          <p className="subtitle" style={{ marginBottom: 'var(--space-3)' }}>
+            One free trial per number. This record stays when the company is deleted, so it is why a number with no user can still be refused a trial.
+          </p>
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Company</th>
+                  <th>Number</th>
+                  <th>Started</th>
+                  <th>Source</th>
+                  <th>Company now</th>
+                  <th>New trial possible from</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading && trials.length === 0 ? (
+                  <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>Searching…</td></tr>
+                ) : trials.length === 0 ? (
+                  <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>This number never started a free trial.</td></tr>
+                ) : (
+                  trials.map((t) => {
+                    const open = t.new_trial_from === null || new Date(t.new_trial_from) <= new Date();
+                    return (
+                      <tr
+                        key={`${t.started_at}-${t.company}`}
+                        onClick={t.organization_id ? () => navigate(`/organizations/${t.organization_id}`) : undefined}
+                        style={{ cursor: t.organization_id ? 'pointer' : 'default' }}
+                      >
+                        <td style={{ fontWeight: 500, color: 'var(--neutral-900)' }}>{t.company || '—'}</td>
+                        <td>{t.number || '—'}</td>
+                        <td>{day(t.started_at)}</td>
+                        <td>{t.signup_source || '—'}</td>
+                        <td>
+                          <span className={`badge ${t.company_exists ? 'badge-success' : 'badge-warning'}`}>
+                            {t.company_exists ? 'exists' : 'deleted'}
+                          </span>
+                        </td>
+                        <td>{t.new_trial_from === null ? 'Any time (rule off)' : open ? 'Now' : day(t.new_trial_from)}</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
     </div>
   );

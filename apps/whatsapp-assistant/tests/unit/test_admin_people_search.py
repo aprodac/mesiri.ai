@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from types import SimpleNamespace
 
@@ -130,3 +131,48 @@ async def test_a_short_query_never_touches_the_database(monkeypatch):
     monkeypatch.setattr(people_router, "get_engine", _no_engine)
 
     assert await people_router.search_people(q="ab", _admin={}) == []
+
+
+# --- SA-25: a number's free trials, deleted companies included ---------------------
+
+
+class _Rules:
+    def __init__(self, conn, days):
+        self._days = days
+
+    async def get(self, key):
+        return {"trial_per_phone_days": self._days}
+
+
+def _trial_row(org_id):
+    return SimpleNamespace(
+        occurred_at=dt.datetime(2026, 11, 4, 9, 57, tzinfo=dt.UTC),
+        company="AD GROUPS",
+        number="917907793657",
+        signup_source="whatsapp",
+        organization_id=org_id,
+    )
+
+
+@pytest.mark.parametrize("days", [365, 0])
+@pytest.mark.parametrize("org_id", [uuid.uuid4(), None])
+async def test_trials_say_when_a_new_trial_is_possible(monkeypatch, days, org_id):
+    conn = _Conn([_trial_row(org_id)])
+    monkeypatch.setattr(people_router, "get_engine", lambda: _Engine(conn))
+    monkeypatch.setattr(people_router, "PostgresPlatformSettingsRepository", lambda c: _Rules(c, days))
+
+    [trial] = await people_router.search_trials(q="+91 79077 93657", _admin={})
+
+    assert trial.company == "AD GROUPS" and trial.number == "917907793657"
+    assert trial.company_exists is (org_id is not None)
+    expected = dt.datetime(2027, 11, 4, 9, 57, tzinfo=dt.UTC) if days else None
+    assert trial.new_trial_from == expected
+    assert "%7907793657%" in _values(conn.executed[0])
+
+
+async def test_trials_need_a_number(monkeypatch):
+    def _no_engine():
+        raise AssertionError("the database must not be read")
+
+    monkeypatch.setattr(people_router, "get_engine", _no_engine)
+    assert await people_router.search_trials(q="Ravi", _admin={}) == []
