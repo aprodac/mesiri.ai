@@ -198,3 +198,19 @@ test("brain + accounts: approved work fires the active account's routine; on a l
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("accounts: an optional name (TM-75) shows next to the letter and can be used to pick the account", () => {
+  const env = { ...ENV, CLAUDE_ACCOUNT_NAME_A: "main", CLAUDE_ACCOUNT_NAME_B: "Ilan-Work", CLAUDE_ACCOUNT_NAME_C: "bad name;" };
+  const list = parseAccounts(env, ["mesiri"]);
+  assert.deepEqual(list.map((a) => a.name || null), ["main", "Ilan-Work", null]);
+  const acc = new Accounts({ list });
+  assert.equal(acc.label("a"), "A (main)");
+  assert.equal(acc.label("b"), "B (Ilan-Work)");
+  assert.equal(acc.label("c"), "C");
+  const shown = acc.command({ text: "account", chat: "g1" });
+  assert.match(shown, /\*A \(main\)\*/);
+  assert.match(shown, /\*B \(Ilan-Work\)\*/);
+  const picked = acc.command({ text: "account ilan-work", chat: "g1", sender_role: "owner", sender: "x" });
+  assert.match(picked, /Claude account \*B \(Ilan-Work\)\*/);
+  assert.equal(acc.chosen("g1").id, "b");
+});

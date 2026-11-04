@@ -544,7 +544,7 @@ export class Brain {
     const sw = this.accounts.failover(limit, chat, fits);
     if (!sw) return false;
     const until = this.accounts.limitedUntil(sw.from);
-    await say(`🔁 Claude account *${sw.from.toUpperCase()}* hit its usage limit; this group uses *${sw.to.toUpperCase()}*${until ? ` until it resets (~${clock(until)})` : ""}.`);
+    await say(`🔁 Claude account *${this.accounts.label(sw.from)}* hit its usage limit; this group uses *${this.accounts.label(sw.to)}*${until ? ` until it resets (~${clock(until)})` : ""}.`);
     return true;
   }
 

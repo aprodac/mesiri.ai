@@ -8,6 +8,7 @@
 //   A  CLAUDE_CODE_OAUTH_TOKEN      TEAMMATE_ROUTINE_<P>_URL / _TOKEN      TEAMMATE_PARTNER_<P>_URL / _TOKEN
 //   B  CLAUDE_CODE_OAUTH_TOKEN_B    TEAMMATE_ROUTINE_<P>_URL_B / _TOKEN_B  TEAMMATE_PARTNER_<P>_URL_B / _TOKEN_B
 //   C, D, … the same. An account exists once its Claude token does.
+// Optional name (TM-75), for every letter A included: CLAUDE_ACCOUNT_NAME_<X>=ilan-work, shown as "B (ilan-work)".
 // State (default account, each group's pick, automatic switching, limits): <dir>/accounts.json.
 
 import { readFileSync, writeFileSync, renameSync } from "node:fs";
@@ -15,6 +16,13 @@ import { clock } from "./auto.js";
 
 const RETRY_MS = 30 * 60_000; // a limit with no reset time given: try that account again after this
 const TOKEN = "CLAUDE_CODE_OAUTH_TOKEN";
+const NAME = "CLAUDE_ACCOUNT_NAME";
+
+/** A name as shown in WhatsApp: letters, digits, . _ - only, at most 40; anything else drops it. */
+function cleanName(v) {
+  const n = String(v || "").trim();
+  return /^[A-Za-z0-9._-]{1,40}$/.test(n) ? n : null;
+}
 
 /** Every account the environment configures: [{ id: "a", token, routines: {project: {url, token}}, partners }]. */
 export function parseAccounts(env, projectNames) {
@@ -32,7 +40,8 @@ export function parseAccounts(env, projectNames) {
       }
       return out;
     };
-    return { id, token: env[`${TOKEN}${sfx}`] || null, routines: pick("ROUTINE"), partners: pick("PARTNER") };
+    const name = cleanName(env[`${NAME}_${id.toUpperCase()}`]);
+    return { id, token: env[`${TOKEN}${sfx}`] || null, routines: pick("ROUTINE"), partners: pick("PARTNER"), ...(name ? { name } : {}) };
   });
 }
 
@@ -58,8 +67,10 @@ export class Accounts {
     renameSync(`${this.file}.tmp`, this.file);
   }
 
+  /** By letter, or (TM-75) by its name, ignoring case. */
   get(id) {
-    return this.list.find((a) => a.id === id) || null;
+    const key = String(id || "").toLowerCase();
+    return this.list.find((a) => a.id === key) || this.list.find((a) => a.name && a.name.toLowerCase() === key) || null;
   }
 
   /** The account a group picked (or the default), whether or not it's limited right now. */
@@ -113,8 +124,10 @@ export class Accounts {
     return times.length ? Math.min(...times) : null;
   }
 
+  /** "B", or "B (ilan-work)" when the account has a name. */
   label(id) {
-    return id.toUpperCase();
+    const name = this.list.find((a) => a.id === id)?.name;
+    return name ? `${id.toUpperCase()} (${name})` : id.toUpperCase();
   }
 
   /**
@@ -183,7 +196,7 @@ export class Accounts {
       (using.id !== chosen.id ? `, borrowing *${this.label(using.id)}* while ${this.label(chosen.id)} is at its limit` : "");
     return (
       `🔑 Claude accounts:\n${lines.join("\n")}\n${here}\nAutomatic switching on a usage limit: *${this.state.auto ? "on" : "off"}*\n` +
-      "Owners: @bot account <letter> (this group) · @bot account default <letter> · @bot account reset · @bot account auto on|off"
+      "Owners: @bot account <letter or name> (this group) · @bot account default <letter> · @bot account reset · @bot account auto on|off"
     );
   }
 }

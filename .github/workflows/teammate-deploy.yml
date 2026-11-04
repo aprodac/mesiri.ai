@@ -109,6 +109,7 @@ jobs:
           # TM-14: more Claude accounts (B, C, …) the bot can switch to from WhatsApp. One secret, one
           # KEY=value per line: the variables above with the account's letter added, e.g.
           # CLAUDE_CODE_OAUTH_TOKEN_B=…, TEAMMATE_ROUTINE_MESIRI_URL_B=…, TEAMMATE_ROUTINE_MESIRI_TOKEN_B=…
+          # and optionally a name shown in WhatsApp (TM-75): CLAUDE_ACCOUNT_NAME_B=ilan-work (A too).
           TEAMMATE_CLAUDE_ACCOUNTS: ${{ secrets.TEAMMATE_CLAUDE_ACCOUNTS }}
           # Optional: a dev-only test account so the bot's screenshots of dev.mercon.tech are signed in.
           TEAMMATE_DEV_LOGIN_USER: ${{ secrets.TEAMMATE_DEV_LOGIN_USER }}
@@ -190,7 +191,10 @@ jobs:
                   lineno=$((lineno + 1))
                   line="$(printf %s "$line" | tr -d '[:space:]')"
                   case "$line" in ''|'#'*) continue ;; esac
-                  if printf %s "$line" | grep -Eq '^(CLAUDE_CODE_OAUTH_TOKEN|TEAMMATE_(ROUTINE|PARTNER)_[A-Z0-9]+_(URL|TOKEN))_[A-Z0-9]+=[A-Za-z0-9._:/+=-]+$' \
+                  # TM-75: an account's display name (A included), e.g. CLAUDE_ACCOUNT_NAME_B=ilan-work.
+                  if printf %s "$line" | grep -Eq '^CLAUDE_ACCOUNT_NAME_[A-Z0-9]+=[A-Za-z0-9._-]{1,40}$'; then
+                    printf '%s\n' "$line"
+                  elif printf %s "$line" | grep -Eq '^(CLAUDE_CODE_OAUTH_TOKEN|TEAMMATE_(ROUTINE|PARTNER)_[A-Z0-9]+_(URL|TOKEN))_[A-Z0-9]+=[A-Za-z0-9._:/+=-]+$' \
                     && ! printf %s "$line" | grep -Eq '^[A-Z0-9_]+_A='; then
                     printf '%s\n' "$line"
                   else
