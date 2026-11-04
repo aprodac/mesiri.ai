@@ -86,6 +86,55 @@ async def test_a_deleted_trials_number_cannot_start_another(conn) -> None:
     assert tuple(row) == ("refused", "previous_trial", ["previous_trial"])
 
 
+async def test_sa26_an_allowed_number_gets_one_more_trial_only(conn) -> None:
+    """SA-26: "Allow a new trial" after a trial lifts it once; the next trial limits again."""
+    from mesiri.application.audit.record import record_admin_action
+    from mesiri.application.organizations.delete_company import delete_company
+    from mesiri.domains.audit import actions as audit
+
+    phone = _phone()
+    first = await _trial(conn, phone, at=_NOW - dt.timedelta(days=10))
+    await delete_company(conn, first.organization_id)  # the team deleted the test company
+    attempt = SignupAttempt(phone=phone, signup_source="whatsapp")
+    with pytest.raises(SignupRefused):
+        await check_signup(conn, attempt, now=_NOW)
+
+    await record_admin_action(
+        conn,
+        actor=audit.AuditActor(kind=audit.ACTOR_PLATFORM_ADMIN, label="Test admin"),
+        action=audit.SIGNUP_TRIAL_ALLOWED,
+        target_type="phone",
+        target_id=phone,
+        details={"phone": phone},
+        now=_NOW - dt.timedelta(days=1),
+    )
+    await check_signup(conn, attempt, now=_NOW)  # allowed now
+
+    # The new trial counts again: the old allow doesn't carry over.
+    await _trial(conn, phone, at=_NOW)
+    with pytest.raises(SignupRefused, match="already had a free trial"):
+        await check_signup(conn, attempt, now=_NOW + dt.timedelta(hours=1))
+
+
+async def test_sa26_an_allow_before_the_trial_does_not_count(conn) -> None:
+    from mesiri.application.audit.record import record_admin_action
+    from mesiri.domains.audit import actions as audit
+
+    phone = _phone()
+    await record_admin_action(
+        conn,
+        actor=audit.AuditActor(kind=audit.ACTOR_PLATFORM_ADMIN),
+        action=audit.SIGNUP_TRIAL_ALLOWED,
+        target_type="phone",
+        target_id=phone,
+        details={"phone": phone},
+        now=_NOW - dt.timedelta(days=20),
+    )
+    await _trial(conn, phone, at=_NOW - dt.timedelta(days=10))
+    with pytest.raises(SignupRefused):
+        await check_signup(conn, SignupAttempt(phone=phone, signup_source="whatsapp"), now=_NOW)
+
+
 async def test_platform_daily_limit_counts_self_signups_only(conn) -> None:
     await PostgresPlatformSettingsRepository(conn).set(
         "trial_guardrails", {"max_signups_per_day": 2}, updated_by=None

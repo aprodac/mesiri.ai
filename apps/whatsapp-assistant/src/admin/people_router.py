@@ -23,10 +23,13 @@ import re
 import uuid
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from admin.router import get_engine, organizations_table, users_table
+from mesiri.application.audit.record import record_admin_action
+from mesiri.domains.audit import actions as audit
+from mesiri.domains.audit.actions import actor_from_admin
 from mesiri.domains.organizations.platform_settings import TRIAL_GUARDRAILS
 from mesiri.domains.shared.auth import require_platform_admin
 from mesiri.infrastructure.postgres.repositories.admin_audit import admin_audit_log
@@ -71,6 +74,18 @@ class TrialUse(BaseModel):
     company_exists: bool
     #: When this number may start a new trial; None when the rule is off (0 days).
     new_trial_from: dt.datetime | None = None
+    #: SA-26: a platform admin allowed a new trial after this one started (it no longer limits).
+    allowed_at: dt.datetime | None = None
+
+
+class AllowTrial(BaseModel):
+    #: The number as the trial row shows it; its digits are what the trial check compares.
+    number: str
+
+
+class TrialAllowed(BaseModel):
+    number: str
+    allowed_at: dt.datetime
 
 
 def number_digits(q: str) -> str | None:
@@ -192,17 +207,56 @@ async def search_trials(
         return []
     async with get_engine().connect() as conn:
         rows = (await conn.execute(trials_statement(digits))).fetchall()
+        allows = {r.phone: r.at for r in (await conn.execute(allows_statement(digits))).fetchall()}
         rules = await PostgresPlatformSettingsRepository(conn).get(TRIAL_GUARDRAILS)
     window = int(rules.get("trial_per_phone_days") or 0)
-    return [
-        TrialUse(
-            number=row.number,
-            company=row.company or "",
-            started_at=row.occurred_at,
-            signup_source=row.signup_source,
-            organization_id=row.organization_id,
-            company_exists=row.organization_id is not None,
-            new_trial_from=row.occurred_at + dt.timedelta(days=window) if window else None,
+    found = []
+    for row in rows:
+        allowed = allows.get(re.sub(r"\D", "", row.number or ""))
+        allowed = allowed if allowed is not None and allowed > row.occurred_at else None
+        new_from = row.occurred_at + dt.timedelta(days=window) if window else None
+        found.append(
+            TrialUse(
+                number=row.number,
+                company=row.company or "",
+                started_at=row.occurred_at,
+                signup_source=row.signup_source,
+                organization_id=row.organization_id,
+                company_exists=row.organization_id is not None,
+                # Allowed early: possible from the moment it was allowed.
+                new_trial_from=min(new_from, allowed) if new_from and allowed else new_from,
+                allowed_at=allowed,
+            )
         )
-        for row in rows
-    ]
+    return found
+
+
+def allows_statement(digits: str) -> sa.Select:
+    """SA-26: the latest "Allow a new trial" per number with these digits."""
+    phone = admin_audit_log.c.details["phone"].astext
+    return (
+        sa.select(phone.label("phone"), sa.func.max(admin_audit_log.c.occurred_at).label("at"))
+        .where(admin_audit_log.c.action == audit.SIGNUP_TRIAL_ALLOWED, phone.like(f"%{digits}%"))
+        .group_by(phone)
+    )
+
+
+@router.post("/trials/allow", response_model=TrialAllowed)
+async def allow_trial(body: AllowTrial, admin: dict = Depends(require_platform_admin)):
+    """SA-26: let one number start one more free trial (a test company deleted by the team,
+    a mistake). Recorded in the audit log, which is what the trial check reads; the
+    trial it then starts limits the number again. The rule itself is unchanged."""
+    phone = re.sub(r"\D", "", body.number)
+    if len(phone) < NATIONAL_DIGITS:
+        raise HTTPException(status_code=422, detail="Send the full number, with its country code.")
+    async with get_engine().begin() as conn:
+        entry = await record_admin_action(
+            conn,
+            actor=actor_from_admin(admin),
+            action=audit.SIGNUP_TRIAL_ALLOWED,
+            target_type="phone",
+            target_id=phone,
+            summary=f"Allowed a new free trial for +{phone}",
+            details={"phone": phone},
+        )
+    return TrialAllowed(number=phone, allowed_at=entry.occurred_at)

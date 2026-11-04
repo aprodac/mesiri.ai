@@ -29,6 +29,7 @@ interface TrialUse {
   organization_id: string | null;
   company_exists: boolean;
   new_trial_from: string | null;
+  allowed_at: string | null;
 }
 
 const MIN_QUERY = 3;
@@ -46,6 +47,11 @@ export default function People() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [trials, setTrials] = useState<TrialUse[]>([]);
+  // SA-26: "Allow a new trial" asks once more before it acts; `reload` refreshes the rows after.
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [allowing, setAllowing] = useState(false);
+  const [allowError, setAllowError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
   const tooShort = query.trim().length < MIN_QUERY;
   const isNumber = query.replace(/\D/g, '').length >= MIN_DIGITS;
 
@@ -78,7 +84,27 @@ export default function People() {
       stale = true;
       clearTimeout(t);
     };
-  }, [query, tooShort, isNumber]);
+  }, [query, tooShort, isNumber, reload]);
+
+  const allowTrial = (number: string) => {
+    setAllowing(true);
+    setAllowError(null);
+    api
+      .post('/admin/people/trials/allow', { number })
+      .then(() => {
+        setConfirming(null);
+        setReload((n) => n + 1);
+      })
+      .catch((err) => setAllowError(err.response?.data?.detail || 'Could not allow a new trial'))
+      .finally(() => setAllowing(false));
+  };
+
+  // The newest trial of each number is the one that limits it, so only that row gets the button.
+  const newestFor = new Map<string, string>();
+  for (const t of trials) {
+    const key = (t.number || '').replace(/\D/g, '');
+    if (key && !newestFor.has(key)) newestFor.set(key, t.started_at);
+  }
 
   const open = (p: PersonMatch) => {
     if (p.organization_id) navigate(`/organizations/${p.organization_id}`);
@@ -160,7 +186,9 @@ export default function People() {
           <h2 style={{ fontSize: '16px', marginBottom: 'var(--space-2)' }}>Free trials started by this number</h2>
           <p className="subtitle" style={{ marginBottom: 'var(--space-3)' }}>
             One free trial per number. This record stays when the company is deleted, so it is why a number with no user can still be refused a trial.
+            <strong> Allow a new trial</strong> lets that number start one more (recorded in the audit log); the new trial limits it again.
           </p>
+          {allowError && <p style={{ color: 'var(--error)', fontSize: '13px', marginBottom: 'var(--space-3)' }}>{allowError}</p>}
           <div className="table-container">
             <table>
               <thead>
@@ -171,19 +199,23 @@ export default function People() {
                   <th>Source</th>
                   <th>Company now</th>
                   <th>New trial possible from</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loading && trials.length === 0 ? (
-                  <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>Searching…</td></tr>
+                  <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>Searching…</td></tr>
                 ) : trials.length === 0 ? (
-                  <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>This number never started a free trial.</td></tr>
+                  <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--neutral-500)' }}>This number never started a free trial.</td></tr>
                 ) : (
                   trials.map((t) => {
                     const open = t.new_trial_from === null || new Date(t.new_trial_from) <= new Date();
+                    const number = t.number || '';
+                    const limits = !open && newestFor.get(number.replace(/\D/g, '')) === t.started_at;
+                    const key = `${t.started_at}-${t.company}`;
                     return (
                       <tr
-                        key={`${t.started_at}-${t.company}`}
+                        key={key}
                         onClick={t.organization_id ? () => navigate(`/organizations/${t.organization_id}`) : undefined}
                         style={{ cursor: t.organization_id ? 'pointer' : 'default' }}
                       >
@@ -196,7 +228,29 @@ export default function People() {
                             {t.company_exists ? 'exists' : 'deleted'}
                           </span>
                         </td>
-                        <td>{t.new_trial_from === null ? 'Any time (rule off)' : open ? 'Now' : day(t.new_trial_from)}</td>
+                        <td>
+                          {t.new_trial_from === null ? 'Any time (rule off)' : open ? 'Now' : day(t.new_trial_from)}
+                          {t.allowed_at && (
+                            <div style={{ fontSize: '12px', color: 'var(--neutral-500)' }}>Allowed {day(t.allowed_at)}</div>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
+                          {limits && confirming !== key && (
+                            <button className="btn-secondary" style={{ padding: '4px 10px', fontSize: '13px' }} onClick={() => setConfirming(key)}>
+                              Allow a new trial
+                            </button>
+                          )}
+                          {limits && confirming === key && (
+                            <span style={{ display: 'inline-flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                              <button className="btn-secondary" style={{ padding: '4px 10px', fontSize: '13px' }} disabled={allowing} onClick={() => setConfirming(null)}>
+                                Cancel
+                              </button>
+                              <button className="btn-primary" style={{ padding: '4px 10px', fontSize: '13px' }} disabled={allowing} onClick={() => allowTrial(number)}>
+                                {allowing ? 'Allowing…' : `Yes, allow +${number.replace(/\D/g, '')}`}
+                              </button>
+                            </span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })

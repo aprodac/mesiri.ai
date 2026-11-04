@@ -56,6 +56,9 @@ class _Engine:
     def connect(self):
         return _ConnectContext(self._conn)
 
+    def begin(self):
+        return _ConnectContext(self._conn)
+
 
 @pytest.mark.parametrize("q", ["79077 93657", "+91 7907793657", "917907793657", "7907-793-657"])
 def test_a_number_in_any_format_matches_on_its_digits(q):
@@ -157,7 +160,7 @@ def _trial_row(org_id):
 @pytest.mark.parametrize("days", [365, 0])
 @pytest.mark.parametrize("org_id", [uuid.uuid4(), None])
 async def test_trials_say_when_a_new_trial_is_possible(monkeypatch, days, org_id):
-    conn = _Conn([_trial_row(org_id)])
+    conn = _Results([_trial_row(org_id)], [])
     monkeypatch.setattr(people_router, "get_engine", lambda: _Engine(conn))
     monkeypatch.setattr(people_router, "PostgresPlatformSettingsRepository", lambda c: _Rules(c, days))
 
@@ -176,3 +179,70 @@ async def test_trials_need_a_number(monkeypatch):
 
     monkeypatch.setattr(people_router, "get_engine", _no_engine)
     assert await people_router.search_trials(q="Ravi", _admin={}) == []
+
+
+# --- SA-26: Allow a new trial ---------------------------------------------------------
+
+
+class _Results:
+    """Each execute answers from the next list (trials, then allows)."""
+
+    def __init__(self, *lists):
+        self._lists = list(lists)
+        self.executed = []
+
+    async def execute(self, statement):
+        self.executed.append(statement)
+        return _Result(self._lists.pop(0))
+
+
+async def test_an_allow_after_the_trial_makes_a_new_trial_possible_now(monkeypatch):
+    allowed = dt.datetime(2026, 11, 4, 12, 0, tzinfo=dt.UTC)
+    conn = _Results([_trial_row(None)], [SimpleNamespace(phone="917907793657", at=allowed)])
+    monkeypatch.setattr(people_router, "get_engine", lambda: _Engine(conn))
+    monkeypatch.setattr(people_router, "PostgresPlatformSettingsRepository", lambda c: _Rules(c, 365))
+
+    [trial] = await people_router.search_trials(q="7907793657", _admin={})
+
+    assert trial.allowed_at == allowed and trial.new_trial_from == allowed
+
+
+async def test_an_allow_before_the_trial_changes_nothing(monkeypatch):
+    earlier = dt.datetime(2026, 11, 1, tzinfo=dt.UTC)
+    conn = _Results([_trial_row(None)], [SimpleNamespace(phone="917907793657", at=earlier)])
+    monkeypatch.setattr(people_router, "get_engine", lambda: _Engine(conn))
+    monkeypatch.setattr(people_router, "PostgresPlatformSettingsRepository", lambda c: _Rules(c, 365))
+
+    [trial] = await people_router.search_trials(q="7907793657", _admin={})
+
+    assert trial.allowed_at is None
+    assert trial.new_trial_from == dt.datetime(2027, 11, 4, 9, 57, tzinfo=dt.UTC)
+
+
+async def test_allow_trial_records_the_numbers_digits(monkeypatch):
+    recorded = []
+
+    async def fake_record(conn, **kwargs):
+        recorded.append(kwargs)
+        return SimpleNamespace(occurred_at=dt.datetime(2026, 11, 4, tzinfo=dt.UTC))
+
+    monkeypatch.setattr(people_router, "get_engine", lambda: _Engine(_Conn([])))
+    monkeypatch.setattr(people_router, "record_admin_action", fake_record)
+    admin = {"sub": str(uuid.uuid4()), "name": "Adarsh admin"}
+
+    done = await people_router.allow_trial(people_router.AllowTrial(number="+91 79077 93657"), admin=admin)
+
+    assert done.number == "917907793657"
+    [entry] = recorded
+    assert entry["action"] == "signup.trial_allowed"
+    assert entry["details"] == {"phone": "917907793657"} and entry["target_id"] == "917907793657"
+    assert entry["actor"].label == "Adarsh admin"
+
+
+async def test_allow_trial_needs_the_full_number(monkeypatch):
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(people_router, "get_engine", lambda: (_ for _ in ()).throw(AssertionError("no write")))
+    with pytest.raises(HTTPException) as exc:
+        await people_router.allow_trial(people_router.AllowTrial(number="3657"), admin={})
+    assert exc.value.status_code == 422

@@ -104,6 +104,17 @@ class PostgresAdminAuditRepository:
             )
         ).scalar_one_or_none()
 
+    async def last_trial_allowed_for_phone(self, phone: str) -> dt.datetime | None:
+        """SA-26: when a platform admin last let this number (digits) start a new trial."""
+        return (
+            await self._conn.execute(
+                sa.select(sa.func.max(admin_audit_log.c.occurred_at)).where(
+                    admin_audit_log.c.action == "signup.trial_allowed",
+                    admin_audit_log.c.details["phone"].astext == phone,
+                )
+            )
+        ).scalar_one_or_none()
+
     async def count_self_signups_since(self, since: dt.datetime) -> int:
         """Companies created by self-serve signup (not by Mesiri staff)."""
         return (
