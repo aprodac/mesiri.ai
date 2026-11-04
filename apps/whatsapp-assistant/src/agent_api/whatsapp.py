@@ -56,14 +56,11 @@ from .agent import (
     UNIT_UNSETTLED,
     ApiAgent,
     PendingWrite,
-    Place,
     Places,
     WriteResult,
     _detail,
-    answers_question,
     confirm,
     last_reported,
-    picked_site,
     question_left_open,
     remember_saves,
 )
@@ -352,7 +349,7 @@ class ApiWhatsApp:
                 # explicit command is the whole message, so the code answers it at once (no model turn) and asks
                 # how it should be instead; the waiting list is kept as it is, not drawn again.
                 return await self._feedback_only(message, ctx, state, calls, text, started)
-            places = _places(ctx, state.get("working_site"), _keep_pick(text, state, ready, places_of(ctx)))
+            places = _places(ctx, state.get("working_site"))
             run = dict(
                 text=text, history=history, ready=ready, sender_name=ctx.full_name or "",
                 timezone=getattr(ctx, "timezone", None) or "Asia/Kolkata", correlation_id=message.correlation_id,
@@ -414,8 +411,6 @@ class ApiWhatsApp:
         state["asked"] = question_left_open(turn.question, turn.options, turn.reply)  # [219]: answered next, or dropped
         state["recent_saves"] = remember_saves(state.get("recent_saves"), turn.saved, time.time())
         state["working_site"] = last_reported(turn.saved, state.get("working_site"), _today(ctx))
-        if turn.saved or not (turn.pending or state.get("asked")):
-            state.pop("site_pick", None)  # [225]: saved, or nothing waits on it any more
         if turn.saved:
             self._just_saved[message.correlation_id] = list(turn.saved)
         words = turn.reply or turn.question or (_saved_text(turn.saved, state.get("language")) if turn.saved else "")
@@ -522,22 +517,6 @@ class ApiWhatsApp:
             await self._outage(message, ctx, text, exc, state=state)
         raise FallBackToClassic(type(exc).__name__) from exc
 
-    async def reply_language(self, ctx: Any) -> str | None:
-        """[224] (3 Nov 23:54, Ilan: English all evening, a Confirm tap thanked in Manglish): the language of a reply the
-        code words for a tap, which has no words of its own. The one they chose (``users.reply_language``), else the
-        one of their latest words (kept in v3's state); None when v3 knows neither (the caller falls back)."""
-        state = await self._state(ctx)
-        client = ApiClient(_actor(ctx), app=self._app)
-        try:
-            chosen = await self._chosen_language(client)
-        except Exception:  # noqa: BLE001 -- the state's language then
-            chosen = _UNREAD
-        finally:
-            await client.close()
-        if chosen is not _UNREAD:
-            state["chosen_language"] = chosen
-        return _chosen(state) or state.get("language")
-
     async def _language_of_sender(self, ctx: Any, text: str = "") -> str | None:
         """The language of their words, else the last one they used (kept with the waiting list)."""
         state = await self._state(ctx)
@@ -587,9 +566,7 @@ class ApiWhatsApp:
             )
         finally:
             await client.close()
-        from .memory import without_memory_notes
-
-        words = without_memory_notes(turn.reply or turn.question or "")  # WA-170: never spoken either
+        words = turn.reply or turn.question
         if turn.pending:
             state = await self._state(ctx)
             waiting = [PendingWrite.from_json(e) for e in state.get("pending") or []]
@@ -721,7 +698,6 @@ class ApiWhatsApp:
         entries = _without_stale_sends(entries)
         if tap.startswith(CANCEL_PREFIX):
             state["pending"], state["batch"] = [], None
-            state.pop("site_pick", None)  # [225]: the update it was for is gone
             # WA-146: what was cancelled, so a reason tapped next tells the team which entries and tools.
             state["cancelled"] = [{"tool": e.tool, "summary": e.summary} for e in entries][:10]
             await self._save_state(ctx, state)
@@ -736,8 +712,6 @@ class ApiWhatsApp:
         self._just_saved[correlation_id] = results
         state["recent_saves"] = remember_saves(state.get("recent_saves"), results, time.time())  # WA-154
         state["working_site"] = last_reported(results, state.get("working_site"), _today(ctx))  # [213]
-        if any(r.ok for r in results):
-            state.pop("site_pick", None)  # [225]: the update it was picked for is saved
         # Refused entries stay waiting (they can be corrected and saved); saved ones go.
         # A line whose unit nobody could settle comes off the list (it would ride along on every new
         # card for hours, 2 Nov): the text below says so and asks for it again with the unit.
@@ -832,7 +806,7 @@ class ApiWhatsApp:
 
     async def _save_state(self, ctx: Any, state: dict) -> None:
         try:
-            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed", "site_pick")
+            await self._redis.set_json(self._key(ctx), {k: state[k] for k in ("pending", "batch", "language", "chosen_language", "cancelled", "pending_at", "awaiting_why", "recent_saves", "repeat_asked", "working_site", "asked", "size_needed")
                                     if state.get(k) is not None},
                                        ttl_seconds=STATE_TTL_SECONDS)
         except Exception:  # noqa: BLE001
@@ -939,12 +913,10 @@ _FEEDBACK_COMMAND = re.compile(r"^\s*mesiri\b[\s,:.-]*(bad\s*ux|bad\s*ui|fix\s+t
 
 def without_ready_block(text: str) -> str:
     """The model's words without a "Ready to save:" list it wrote itself (the code draws the list), and without
-    the memory's own notes ([205], 2 Nov: Ilan was shown "(under this reply, waiting for the Save button: ...)";
-    WA-170, 4 Nov: "(said by an older version of Mesiri, ...)"), copied by the model from the conversation."""
-    from .memory import without_memory_notes
-
+    the memory's own note about that list ([205], 2 Nov: Ilan was shown "(under this reply, waiting for the Save
+    button: ...)", copied by the model from the conversation)."""
     words = re.split(r"[\s*_]*Ready to save[:*_ \t]*\n", text, maxsplit=1, flags=re.IGNORECASE)[0]
-    return without_memory_notes(words)
+    return re.sub(r"\s*\(under this reply, waiting for the Save button[^)]*\)?", "", words).strip()
 
 
 _SENTENCE_END = re.compile(r"[.!?।\n]")
@@ -1017,42 +989,15 @@ def _today(ctx: Any) -> str:
     return dt.datetime.now(ZoneInfo(getattr(ctx, "timezone", None) or "Asia/Kolkata")).date().isoformat()
 
 
-def places_of(ctx: Any) -> Places:
-    """The sender's projects and sites, nothing else."""
-    return Places(
+def _places(ctx: Any, working: dict[str, Any] | None) -> Places:
+    """[213]: the sender's projects and sites, and the site they last reported to TODAY ([215]; kept in the
+    conversation state). Yesterday's site is not a default: with several sites, the next update asks."""
+    places = Places(
         projects=tuple((str(p.id), str(p.name)) for p in getattr(ctx, "projects", None) or []),
         sites=tuple((str(s.id), str(s.name), str(s.project_id)) for s in getattr(ctx, "sites", None) or []))
-
-
-#: [225]: a site picked for an update is kept this long at most.
-PICK_MAX_AGE_S = 4 * 3600
-
-
-def _keep_pick(text: str, state: dict, ready: list, places: Places) -> Place | None:
-    """[225] (4 Nov 00:20, Ilan, Paraclette: tapped Tower A, answered the size "50", was asked the site again): the site
-    picked for the update now waiting, decided by the code before the model runs, so a follow-up (the size, the unit,
-    a quantity, "it's new") keeps it whatever the model does in between. A new pick replaces it; it is dropped after
-    ``PICK_MAX_AGE_S``, or when the message is a new request ([219]) with nothing waiting. Kept in ``state``."""
-    asked = state.get("asked")
-    if (now := picked_site(text, asked, places)) is not None:
-        state["site_pick"] = {"site_id": now.site_id, "project_id": now.project_id, "at": time.time()}
-        return now
-    pick = state.get("site_pick")
-    if not pick or time.time() - float(pick.get("at") or 0) > PICK_MAX_AGE_S or (
-            not ready and not answers_question(text, asked)):
-        state.pop("site_pick", None)
-        return None
-    return places.place(pick.get("site_id"), pick.get("project_id"))
-
-
-def _places(ctx: Any, working: dict[str, Any] | None, picked: Place | None = None) -> Places:
-    """[213]: the sender's projects and sites, and the site they last reported to TODAY ([215]; kept in the
-    conversation state). Yesterday's site is not a default: with several sites, the next update asks. ``picked``:
-    [225]'s site picked for the update now waiting."""
-    places = places_of(ctx)
     today = bool(working) and working.get("date") == _today(ctx)  # type: ignore[union-attr]
     found = places.place(working.get("site_id"), working.get("project_id")) if working and today else None
-    return Places(places.projects, places.sites, found, tuple((working or {}).get("recent") or ()), picked)
+    return Places(places.projects, places.sites, found, tuple((working or {}).get("recent") or ()))
 
 
 def _working_fact(places: Places) -> str:

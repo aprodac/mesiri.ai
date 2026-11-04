@@ -153,9 +153,6 @@ class Places:
     working: Place | None = None
     #: [215]: site / project ids they reported to, newest first (the order the site buttons come in).
     recent: tuple[str, ...] = ()
-    #: [225]: the site they picked answering "which site?" for the update now waiting (a tap or its name), kept
-    #: until it is saved, cancelled or a new request comes; it is the site of the lines that follow (size, unit, …).
-    picked: Place | None = None
 
     def place(self, site_id: Any, project_id: Any) -> Place | None:
         for sid, name, pid in self.sites:
@@ -173,14 +170,9 @@ def site_scoped(tool: ApiTool) -> bool:
     return tool.is_write and ("site_id" in tool.body_fields or tool.path_params == ("site_id",))
 
 
-#: [225] (4 Nov): a name said with a Malayalam / Manglish ending ("Mithilashil", "Tower A-il", "Rana Martinu"); a
-#: name this long is never another name plus up to this many letters.
-_ENDING = r"(?:-?(?:il|ile|ilu|ilekku|ilninnu|inu|nu|nte|ude|ku|kku|ൽ|ിൽ|ിലേക്ക്|ിന്|ന്റെ|ിലെ))?"
-
-
 def _named(name: str, said: str) -> bool:
     whole = " ".join(name.casefold().split())
-    return any(len(n) >= 3 and re.search(rf"(?<!\w){re.escape(n)}{_ENDING if len(n) >= 4 else ''}(?!\w)", said)
+    return any(len(n) >= 3 and re.search(rf"(?<!\w){re.escape(n)}(?!\w)", said)
                for n in {whole, whole.split(",")[0].strip()})
 
 
@@ -244,22 +236,6 @@ def question_left_open(question: str, options: list[str], reply: str) -> dict[st
     return {"question": last[0], "options": []} if last[0].rstrip("* _").endswith("?") else None
 
 
-def picked_site(text: str, question: dict[str, Any] | None, places: Places) -> Place | None:
-    """[225]: the site this message picks when it answers the code's "which site?" (its options are site or project
-    names): a tap comes as the option's title; a typed answer names it ("Mithilashil aanu"). None otherwise."""
-    options = [str(o) for o in (question or {}).get("options") or []]
-    said = " ".join(text.casefold().split())
-    hits = []
-    for sid, name, pid in places.sites:
-        if name in options and (said == " ".join(name.casefold().split()) or _named(name, said)):
-            hits.append(Place(sid, pid, name))
-    with_site = {pid for _, _, pid in places.sites}
-    for pid, name in places.projects:
-        if pid not in with_site and name in options and (said == " ".join(name.casefold().split()) or _named(name, said)):
-            hits.append(Place(None, pid, name))
-    return hits[0] if len(hits) == 1 else None
-
-
 def same_name(name: Any, places: Places | None) -> list[str]:
     """[219]: the person's projects already called ``name`` (case and spacing aside)."""
     key = " ".join(str(name or "").casefold().split())
@@ -276,15 +252,14 @@ def site_options(names: list[str]) -> list[str]:
 
 
 def working_place(places: Places | None, entries: list[PendingWrite]) -> Place | None:
-    """The site they are reporting to now: the last one in the ready list, else the one they picked for this update
-    ([225]), else the last one they saved to today."""
+    """The site they are reporting to now: the last one in the ready list, else the last one they saved to."""
     if places is None:
         return None
     for e in reversed(entries):
         found = places.place(e.body.get("site_id") or _path_site(e.path), e.body.get("project_id"))
         if found is not None:
             return found
-    return places.picked or places.working
+    return places.working
 
 
 def last_reported(results: list[WriteResult], old: dict[str, Any] | None, day: str | None = None) -> dict[str, Any] | None:
