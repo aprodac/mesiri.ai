@@ -787,8 +787,12 @@ class ApiWhatsApp:
             if not options:
                 text = f"{text}\n\n{_in(language, 'api.press_save', PRESS_SAVE)}"
         if options:
-            return ReplySpec(text=text, buttons=tuple(
-                ListRow(id=f"{OPTION_PREFIX}{i}", title=o) for i, o in enumerate(options[:3])))
+            rows = [ListRow(id=f"{OPTION_PREFIX}{i}", title=o) for i, o in enumerate(options[:3])]
+            if pending and len(rows) < 3 and not state.get("size_needed"):
+                # [229]: one line waits for an answer, the others are held: Save stays on the same reply
+                # (last, so the option taps keep their numbers; WhatsApp allows 3 buttons).
+                rows.append(ListRow(id=f"{SAVE_PREFIX}{state['batch']}", title="Save"))
+            return ReplySpec(text=text, buttons=tuple(rows))
         return _save_buttons(text, state["batch"]) if pending else ReplySpec(text=text)
 
     def _key(self, ctx: Any) -> str:

@@ -102,7 +102,7 @@ def trim_at_sentence(text: str, limit: int) -> str:
 #: A sentence that asks the sender to tap Save, in the languages the sites write in.
 _SAVE_WORD = re.compile(r"\bsave\b|സേവ്|सेव", re.IGNORECASE)
 _TAP_WORD = re.compile(
-    r"\b(?:tap|press|click|cheyyu|cheyyuka|cheyyoo|cheyyane|amarthu|amarthuka)\b|അമർത്ത|ടാപ്|दबा|टैप|क्लिक",
+    r"\b(?:tap|press|click|cheyyu|cheyyuka|cheyyoo|cheyyane|amarthu|amarthuka|amarthi\w*|dab\w+)\b|അമർത്ത|ടാപ്|दबा|टैप|क्लिक",
     re.IGNORECASE,
 )
 
