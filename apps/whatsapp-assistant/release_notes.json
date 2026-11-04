@@ -292,7 +292,6 @@
       "message": "Mesiri no longer mixes up a new request with an earlier question. Try: 'Add Rajesh to Live Mart B as site engineer'"
     },
     {
-<<<<<<< HEAD
       "id": "manglish-latin-letters-only",
       "date": "2026-11-04",
       "for": [
@@ -301,14 +300,14 @@
         "cor_9814a1ec3050491888df67a08f239801"
       ],
       "message": "Ippo Manglish ennu paranjal, Mesiri muzhuvanum Manglish-il thanne marupadi tharum, Malayalam aksharangal illathe. Thanks, ningal paranjathukondu ellavarkkum ithu sheriyaayi."
-=======
+    },
+    {
       "id": "saved-record-web-link",
       "date": "2026-11-04",
       "for": [
         "cor_4cfb178df3fe4b279f9a21a3ba2f506a"
       ],
       "message": "Ippo save cheyyumbol website link-um varum (https://app.whatsapp.mesiri.ai): 20 bag M sand pole oru entry save cheythu nokkoo. Thanks, ningal paranjathukondu ellavarkkum ithu kittum."
->>>>>>> bdaba9faaa7508b1daf8b192dcc4b2354cbe58bc
     }
   ]
 }
