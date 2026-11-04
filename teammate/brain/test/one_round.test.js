@@ -282,3 +282,15 @@ test("TM-67: the evening summary carries the 7-day number", () => {
   const text = eveningText(DAY3, Date.parse("2026-11-03T13:30:00Z"));
   assert.match(text, /🎯 First time right: 2 of 5 \(40%\)/);
 });
+
+test("TM-72: a 'No Labour/Attendance/Payroll/Workforce.' line says what is untouched; it never holds a plan", () => {
+  for (const tail of ["No Labour/Attendance/Payroll.", "No migration; no Labour/Attendance/Payroll/Workforce.",
+    "no payroll, workforce or migrations."]) {
+    assert.equal(holdReason({ title: "Tap replies in the person's language", plan: `FIX: one helper for tap replies. ${tail}` }), null, tail);
+  }
+});
+
+test("guard TM-72: a sentence that changes Payroll or Workforce is still held", () => {
+  assert.match(holdReason({ title: "Wages", plan: "FIX: no rounding; payroll totals use the day rate." }), /Payroll/);
+  assert.match(holdReason({ title: "x", plan: "No payroll rows are deleted, but the workforce register is merged." }), /Workforce|Payroll/);
+});

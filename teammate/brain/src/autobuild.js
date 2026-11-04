@@ -43,6 +43,13 @@ const NOT_TOUCHED = /\b(?:untouched|not touched|unchanged|not changed|no changes
  */
 const EXAMPLE_LINE = /^\s*[*_-]*\s*(?:class|guards?|siblings?|release note|who|live|repro)\b[^:\n]{0,40}:/i;
 
+/**
+ * TM-72 (4 Nov: [221] and [224] stayed held as "it touches Payroll" after TM-71 because each plan ended "No
+ * Labour/Attendance/Payroll/Workforce."): a sentence that is only a "no <reserved area>" list says what is NOT touched.
+ */
+const AREA = String.raw`(?:labou?r|attendance|payroll|workforce|migrations?|shared components?)`;
+const NONE_OF = new RegExp(String.raw`^\W*no\s+${AREA}(?:\s*(?:/|,|&|\band\b|\bor\b)\s*${AREA})*\W*$`, "i");
+
 /** The plan's text without the sentences (and lines) that only say what stays untouched. */
 export function touchedText(...texts) {
   return texts
@@ -52,7 +59,7 @@ export function touchedText(...texts) {
     .filter((line) => !EXAMPLE_LINE.test(line))
     .join("\n")
     .split(/\n+|(?<=[.;!?])\s+/)
-    .filter((part) => !NOT_TOUCHED.test(part))
+    .filter((part) => !NOT_TOUCHED.test(part) && !NONE_OF.test(part))
     .join("\n");
 }
 
