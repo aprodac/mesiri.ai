@@ -1,6 +1,6 @@
 """Redis-backed progress of a WhatsApp signup (SS-04).
 
-An unknown number that taps "Start free trial" answers a few questions
+An unknown number that taps "Set up my company" answers a few questions
 before a company exists, so there is no user id yet: the state is keyed by
 the WhatsApp number. Same "Redis is a hint, never authoritative" stance as
 interactions/project_setup_offer.py: lost or expired state just means the
@@ -30,6 +30,10 @@ class SignupState:
     site_name: str | None = None
     #: Set at the confirm stage (SET-03): the name the company will be created with.
     owner_name: str | None = None
+    #: SS-22: replies at the welcome that answered nothing; at the limit Mesiri goes quiet.
+    nudges: int = 0
+    #: SS-22: after Edit, the owner's name is asked even when the WhatsApp profile has one.
+    ask_name: bool = False
 
 
 class _RedisLike(Protocol):
@@ -54,6 +58,8 @@ class SignupStateStore:
             company_name=raw.get("company_name"),
             site_name=raw.get("site_name"),
             owner_name=raw.get("owner_name"),
+            nudges=int(raw.get("nudges") or 0),
+            ask_name=bool(raw.get("ask_name")),
         )
 
     async def set(

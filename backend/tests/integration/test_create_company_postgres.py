@@ -162,6 +162,26 @@ async def test_taken_email_is_refused_whatever_its_case(conn) -> None:
 # --- BE-24: starter materials -------------------------------------------------
 
 
+async def test_new_company_starts_on_v3(conn) -> None:
+    """WA-176: every door gives a new company v3; the setting is stored, not the default."""
+    from mesiri.domains.organizations import settings as org_settings
+    from mesiri.infrastructure.postgres.repositories.organization_settings import (
+        PostgresOrganizationSettingsRepository,
+    )
+
+    created = await create_company(
+        conn, NewCompany(name="Asha Builders", owner_name="A", owner_phone="9876500011"), now=_NOW
+    )
+    row = await _one(
+        conn,
+        "SELECT value FROM organization_settings WHERE organization_id = :org AND key = 'assistant_mode'",
+        org=created.organization_id,
+    )
+    assert row["value"] == org_settings.ASSISTANT_MODE_API
+    repo = PostgresOrganizationSettingsRepository(conn)
+    assert await repo.get(created.organization_id, org_settings.ASSISTANT_MODE) == "api"
+
+
 async def test_new_company_gets_the_starter_materials(conn) -> None:
     from mesiri.domains.materials.defaults import STARTER_MATERIALS
     from mesiri.infrastructure.postgres.repositories.materials import (

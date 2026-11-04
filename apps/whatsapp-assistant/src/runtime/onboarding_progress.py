@@ -160,7 +160,9 @@ class OnboardingProgress:
         previous = await self._state(actor.user_id)
         if previous is not None and previous.get("on") == today.isoformat():
             return False
-        if self._setup_questions is not None and await self._setup_questions.is_open(actor.user_id):
+        if self._setup_questions is not None and await self._setup_questions.is_open(
+            actor.user_id, actor.organization_id
+        ):
             return False
         facts, created_at, source = await self._read(actor.organization_id)
         if source != "whatsapp" or created_at is None:
@@ -236,7 +238,7 @@ class OnboardingProgress:
         # The report time is answered with a tap, so its buttons follow the card.
         if card.next_step == "report_time" and self._setup_questions is not None:
             try:
-                if not await self._setup_questions.is_open(actor.user_id):
+                if not await self._setup_questions.is_open(actor.user_id, actor.organization_id):
                     await self._setup_questions.ask(actor, rules.REPORT_TIME, send_spec)
             except Exception:  # noqa: BLE001 -- the card already went out
                 _log.exception("onboarding_card.report_time_ask_failed user=%s", actor.user_id)
