@@ -114,12 +114,12 @@ def journey(monkeypatch):
             raise outcome["error"]
         return _created(new)
 
-    guard: dict = {"refuse": None, "calls": []}
+    guard: dict = {"refuse": None, "reason": "previous_trial", "calls": []}
 
     async def fake_check_signup(conn, attempt, *, now=None):
         guard["calls"].append(attempt)
         if guard["refuse"]:
-            raise sj.SignupRefused(guard["refuse"], reason="previous_trial")
+            raise sj.SignupRefused(guard["refuse"], reason=guard["reason"])
 
     paused = {"on": False}
 
@@ -129,10 +129,12 @@ def journey(monkeypatch):
     monkeypatch.setattr(sj, "create_company", fake_create)
     monkeypatch.setattr(sj, "check_signup", fake_check_signup)
     monkeypatch.setattr(sj, "whatsapp_number_taken", fake_number_taken)
+    notifier = _Notifier()
     j = sj.SignupJourney(
         sender=sender,
         store=SignupStateStore(FakeRedis()),
         db=_Db(),
+        notifier=notifier,
     )
     enabled = {"on": True}
 
@@ -142,8 +144,18 @@ def journey(monkeypatch):
     j.signup_enabled = fake_enabled  # type: ignore[method-assign]
     return SimpleNamespace(
         j=j, sender=sender, created_with=created_with,
-        outcome=outcome, enabled=enabled, guard=guard, paused=paused,
+        outcome=outcome, enabled=enabled, guard=guard, paused=paused, notifier=notifier,
     )  # fmt: skip
+
+
+class _Notifier:
+    def __init__(self) -> None:
+        self.posts: list[str] = []
+        self.ok = True
+
+    async def post(self, text, *, images=None):
+        self.posts.append(text)
+        return self.ok
 
 
 async def test_switched_off_leaves_the_old_reply_to_the_caller(journey) -> None:
@@ -253,11 +265,18 @@ async def test_guardrails_are_checked_on_tap_and_before_creating(journey) -> Non
 async def test_refused_on_tap_says_why_and_asks_nothing(journey) -> None:
     journey.guard["refuse"] = "This number has already had a free trial."
     reply = await journey.j.handle(_tap(sj.START_TRIAL_ID))
-    assert reply == "This number has already had a free trial."
-    # Back at the welcome, not a question; SS-22: joining a team is offered instead.
-    assert await journey.j._store.get(WA_ID) == SignupState(stage="welcome")
-    assert journey.sender.buttons[-1][1] == [sj.IN_COMPANY_ID]
+    # SS-23: the earlier-trial refusal says what can happen; the team or joining is offered.
+    assert reply == sj.TRIAL_USED_MESSAGE
+    assert await journey.j._store.get(WA_ID) == SignupState(stage="welcome", trial_refused=True)
+    assert journey.sender.buttons[-1][1] == [sj.TEAM_ID, sj.IN_COMPANY_ID]
     assert journey.created_with == []
+
+
+async def test_other_refusals_keep_their_own_words(journey) -> None:
+    journey.guard["refuse"] = "We're getting a lot of sign-ups right now."
+    journey.guard["reason"] = "daily_limit"
+    assert await journey.j.handle(_tap(sj.START_TRIAL_ID)) == "We're getting a lot of sign-ups right now."
+    assert journey.sender.buttons[-1][1] == [sj.TEAM_ID, sj.IN_COMPANY_ID]
 
 
 async def test_refused_at_create_creates_nothing(journey) -> None:
@@ -496,4 +515,68 @@ async def test_ss22_a_failed_paused_check_shows_the_welcome(journey, monkeypatch
 
 def test_ss22_button_titles_fit_whatsapp() -> None:
     titles = [b.title for b in sj._WELCOME_BUTTONS]
+    assert len(titles) <= 3 and all(len(t) <= 20 for t in titles)
+
+
+# --- SS-23: no loop after a refused trial; the team is one tap away -------------
+
+
+async def _refused(journey):
+    journey.guard["refuse"] = "This number has already had a free trial."
+    await journey.j.handle(_text("Hi"))
+    await journey.j.handle(_tap(sj.START_TRIAL_ID))
+
+
+async def test_ss23_join_after_a_refused_trial_offers_the_team_not_setup(journey) -> None:
+    await _refused(journey)
+    await journey.j.handle(_tap(sj.IN_COMPANY_ID))
+    assert journey.sender.buttons[-1][1] == [sj.TEAM_ID]  # the loop of 4 Nov is gone
+    await journey.j.handle(_tap(sj.ABOUT_ID))
+    assert journey.sender.buttons[-1][1] == [sj.TEAM_ID, sj.IN_COMPANY_ID]
+
+
+async def test_ss23_nudges_and_greetings_never_offer_setup_again(journey) -> None:
+    await _refused(journey)
+    assert await journey.j.handle(_text("hmm")) == sj.NUDGE_MESSAGE
+    assert journey.sender.buttons[-1][1] == [sj.TEAM_ID, sj.IN_COMPANY_ID, sj.ABOUT_ID]
+    assert await journey.j.handle(_text("hello")) == sj.TRIAL_USED_MESSAGE
+    assert sj.START_TRIAL_ID not in journey.sender.buttons[-1][1]
+    assert await journey.j._store.get(WA_ID) == SignupState(stage="welcome", trial_refused=True)
+
+
+async def test_ss23_talk_to_our_team_tells_the_team_once(journey) -> None:
+    await _refused(journey)
+    assert await journey.j.handle(_tap(sj.TEAM_ID)) == sj.TEAM_ASKED_MESSAGE
+    assert len(journey.notifier.posts) == 1
+    post = journey.notifier.posts[0]
+    assert f"+{WA_ID}" in post and "Suresh Kumar" in post and "already used its free trial" in post
+    # A second tap (or typed) does not post again.
+    assert await journey.j.handle(_tap(sj.TEAM_ID)) == sj.TEAM_ALREADY_MESSAGE
+    assert await journey.j.handle(_text("contact us")) == sj.TEAM_ALREADY_MESSAGE
+    assert len(journey.notifier.posts) == 1
+    assert journey.created_with == []
+
+
+async def test_ss23_a_failed_team_post_says_so_and_can_be_tried_again(journey) -> None:
+    await _refused(journey)
+    journey.notifier.ok = False
+    assert await journey.j.handle(_tap(sj.TEAM_ID)) == sj.TEAM_UNREACHABLE_MESSAGE
+    journey.notifier.ok = True
+    assert await journey.j.handle(_tap(sj.TEAM_ID)) == sj.TEAM_ASKED_MESSAGE
+
+
+async def test_ss23_without_a_notifier_the_reply_is_honest(journey) -> None:
+    journey.j._notifier = None
+    await _refused(journey)
+    assert await journey.j.handle(_tap(sj.TEAM_ID)) == sj.TEAM_UNREACHABLE_MESSAGE
+
+
+async def test_ss23_without_a_refusal_join_still_offers_setup(journey) -> None:
+    await journey.j.handle(_text("Hi"))
+    await journey.j.handle(_tap(sj.IN_COMPANY_ID))
+    assert journey.sender.buttons[-1][1] == [sj.START_TRIAL_ID]
+
+
+def test_ss23_button_titles_fit_whatsapp() -> None:
+    titles = [b.title for b in sj._REFUSED_BUTTONS]
     assert len(titles) <= 3 and all(len(t) <= 20 for t in titles)

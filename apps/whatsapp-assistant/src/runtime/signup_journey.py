@@ -26,6 +26,11 @@ greeting; "stop" works at every step; a number whose user is deactivated or
 suspended hears that its access is paused, not the trial offer; a refused trial
 offers "Join my team"; and a first message that was real work is told it was
 not saved, so it is sent again once they are in.
+
+SS-23, no loop after a refused trial: "Set up my company" is never offered
+again to that number (it could only be refused again); "Talk to our team"
+posts to the Mesiri team's WhatsApp group (once a day) so they can continue
+the plan or fix the details, and the reply says plainly when that post failed.
 """
 
 from __future__ import annotations
@@ -57,6 +62,7 @@ from mesiri.application.organizations.signup_guard import (
     SignupRefused,
     check_signup,
 )
+from mesiri.domains.organizations.guardrails import PREVIOUS_TRIAL
 from mesiri.domains.organizations.platform_settings import SELF_SERVE
 from mesiri.infrastructure.postgres.repositories.platform_settings import (
     PostgresPlatformSettingsRepository,
@@ -67,12 +73,14 @@ if TYPE_CHECKING:
     from channel.receipt import ReceiptRenderer
     from channel.whatsapp.outbound import WhatsAppSender
     from mesiri.infrastructure.postgres.database import PostgresDatabase
+    from runtime.team_notify import TeamNotifier
 
 _log = logging.getLogger("mesiri.signup")
 
 START_TRIAL_ID = "signup:start_trial"
 IN_COMPANY_ID = "signup:in_company"
 ABOUT_ID = "signup:about"
+TEAM_ID = "signup:team"
 CONFIRM_ID = "signup:confirm"
 EDIT_ID = "signup:edit"
 
@@ -89,6 +97,9 @@ _IN_COMPANY_WORDS = frozenset(
     {"i'm in a company", "im in a company", "in a company", "join", "join my team", "join team"}
 )
 _ABOUT_WORDS = frozenset({"what is mesiri", "what is mesiri?", "what is this", "what is this?", "info"})
+_TEAM_WORDS = frozenset(
+    {"talk to our team", "talk to team", "talk to the team", "contact", "contact us", "support"}
+)
 #: A greeting at the welcome starts it again, even after Mesiri went quiet.
 _GREETINGS = frozenset(
     {"hi", "hii", "hiii", "hello", "helo", "hlo", "hey", "hai", "namaste", "namaskaram"}
@@ -152,6 +163,23 @@ CONFIRM_REMINDER = "Tap *Looks good* to set this up, or *Edit* to change the nam
 PAUSED_MESSAGE = (
     "This number's Mesiri access is paused. Please ask your company's admin to turn it back on."
 )
+#: SS-23: the guardrails' "Message us" sent people round in a loop; this says what can happen.
+TRIAL_USED_MESSAGE = (
+    "This number already used its free trial. Our team can help you continue with Mesiri or fix "
+    "your company details. If your company already uses Mesiri, join its team instead."
+)
+TEAM_ASKED_MESSAGE = (
+    "Done, I've told the Mesiri team. Someone will message you here soon. "
+    "You can keep this chat open."
+)
+TEAM_ALREADY_MESSAGE = "Our team already has your request and will message you here soon."
+TEAM_UNREACHABLE_MESSAGE = (
+    "Sorry, I couldn't reach our team just now. Please tap *Talk to our team* again in a few minutes."
+)
+TEAM_POST = (
+    "🙋 *+{wa_id}* ({name}) wants help on WhatsApp: {why}. "
+    "Please message them back in their chat."
+)
 EDIT_MESSAGE = "No problem, let's redo it."
 TYPE_IT_MESSAGE = "Please type the answer as a message. {question}"
 TOO_LONG_MESSAGE = "That's a bit long. Please keep it under {limit} characters. {question}"
@@ -176,7 +204,23 @@ QUIET = ""
 _SETUP_BUTTON = ListRow(id=START_TRIAL_ID, title="Set up my company")
 _JOIN_BUTTON = ListRow(id=IN_COMPANY_ID, title="Join my team")
 _ABOUT_BUTTON = ListRow(id=ABOUT_ID, title="What is Mesiri?")
+_TEAM_BUTTON = ListRow(id=TEAM_ID, title="Talk to our team")
 _WELCOME_BUTTONS = [_SETUP_BUTTON, _JOIN_BUTTON, _ABOUT_BUTTON]
+#: SS-23: after a refused trial "Set up my company" could only be refused again.
+_REFUSED_BUTTONS = [_TEAM_BUTTON, _JOIN_BUTTON, _ABOUT_BUTTON]
+
+
+def _refused(state: SignupState | None) -> bool:
+    return bool(state and state.trial_refused)
+
+
+def _at_welcome(state: SignupState | None, **changes: Any) -> SignupState:
+    """Back at the welcome (nudges reset), keeping what SS-23 remembers about this number."""
+    kept = {
+        "trial_refused": _refused(state),
+        "asked_team": bool(state and state.asked_team),
+    }
+    return SignupState(stage="welcome", **{**kept, **changes})
 
 _QUESTION = {"company": ASK_COMPANY, "site": ASK_SITE, "owner_name": ASK_OWNER_NAME, "confirm": ""}
 _NAME_KIND = {
@@ -213,10 +257,13 @@ class SignupJourney:
         store: SignupStateStore,
         db: PostgresDatabase,
         renderer: ReceiptRenderer | None = None,
+        notifier: TeamNotifier | None = None,
         now: Callable[[], dt.datetime] | None = None,
     ) -> None:
         # The onboarding cards' renderer; without one signup is all text.
         self._renderer = renderer
+        # SS-23: "Talk to our team" posts to the Mesiri team's WhatsApp group.
+        self._notifier = notifier
         self._sender = sender
         self._store = store
         self._db = db
@@ -262,6 +309,8 @@ class SignupJourney:
                 tap = IN_COMPANY_ID
             elif lowered in _ABOUT_WORDS:
                 tap = ABOUT_ID
+            elif lowered in _TEAM_WORDS:
+                tap = TEAM_ID
         if not tap and state is not None and state.stage == "confirm":
             if lowered in _CONFIRM_WORDS:
                 tap = CONFIRM_ID
@@ -273,18 +322,26 @@ class SignupJourney:
             # daily limit) rather than after three questions.
             refusal = await self._refusal(wa_id)
             if refusal is not None:
-                # SS-22: no dead end: the person may be joining a team, not starting one.
-                await self._store.set(wa_id, SignupState(stage="welcome"))
-                return await self._buttons(wa_id, refusal, [_JOIN_BUTTON])
+                # SS-22 / SS-23: no dead end and no loop: the person may be joining a team,
+                # or need the team (continue, fix details); setup is not offered again.
+                text, reason = refusal
+                await self._store.set(wa_id, _at_welcome(state, trial_refused=True))
+                body = TRIAL_USED_MESSAGE if reason == PREVIOUS_TRIAL else text
+                return await self._buttons(wa_id, body, [_TEAM_BUTTON, _JOIN_BUTTON])
             await self._store.set(wa_id, SignupState(stage="company"))
             return await self._say(wa_id, ASK_COMPANY)
         if tap == IN_COMPANY_ID:
-            # Kept at the welcome, so an owner who tapped it by mistake is one tap from setup.
-            await self._store.set(wa_id, SignupState(stage="welcome"))
-            return await self._buttons(wa_id, IN_COMPANY_MESSAGE.format(wa_id=wa_id), [_SETUP_BUTTON])
+            # Kept at the welcome, so an owner who tapped it by mistake is one tap from setup
+            # (or from the team, once a trial was refused).
+            await self._store.set(wa_id, _at_welcome(state))
+            other = _TEAM_BUTTON if _refused(state) else _SETUP_BUTTON
+            return await self._buttons(wa_id, IN_COMPANY_MESSAGE.format(wa_id=wa_id), [other])
         if tap == ABOUT_ID:
-            await self._store.set(wa_id, SignupState(stage="welcome"))
-            return await self._buttons(wa_id, ABOUT_MESSAGE, [_SETUP_BUTTON, _JOIN_BUTTON])
+            await self._store.set(wa_id, _at_welcome(state))
+            first = _TEAM_BUTTON if _refused(state) else _SETUP_BUTTON
+            return await self._buttons(wa_id, ABOUT_MESSAGE, [first, _JOIN_BUTTON])
+        if tap == TEAM_ID:
+            return await self._ask_team(wa_id, state, message.sender.profile_name)
 
         if tap in (CONFIRM_ID, EDIT_ID):
             if state is None or state.stage != "confirm":
@@ -308,11 +365,12 @@ class SignupJourney:
             # SS-22: a reply that answers nothing gets a nudge, never the whole welcome
             # again; after NUDGE_LIMIT of them Mesiri waits for a greeting.
             if lowered in _GREETINGS:
-                return await self._welcome(wa_id, message.sender.profile_name, said=text)
+                return await self._welcome(wa_id, message.sender.profile_name, said=text, state=state)
             if state.nudges >= NUDGE_LIMIT:
                 return QUIET
-            await self._store.set(wa_id, SignupState(stage="welcome", nudges=state.nudges + 1))
-            return await self._buttons(wa_id, NUDGE_MESSAGE, _WELCOME_BUTTONS)
+            await self._store.set(wa_id, _at_welcome(state, nudges=state.nudges + 1))
+            buttons = _REFUSED_BUTTONS if _refused(state) else _WELCOME_BUTTONS
+            return await self._buttons(wa_id, NUDGE_MESSAGE, buttons)
 
         if state.stage == "confirm":
             return await self._confirm_prompt(wa_id, state, reminder=True)
@@ -380,9 +438,9 @@ class SignupJourney:
         )
         return body
 
-    async def _refusal(self, wa_id: str) -> str | None:
-        """The guardrails' refusal message for this number, or None to go
-        ahead (SS-09). Fails closed, like signup_enabled."""
+    async def _refusal(self, wa_id: str) -> tuple[str, str] | None:
+        """The guardrails' refusal for this number as (message, reason), or None
+        to go ahead (SS-09). Fails closed, like signup_enabled."""
         try:
             async with self._db.transaction() as conn:
                 try:
@@ -390,11 +448,28 @@ class SignupJourney:
                         conn, SignupAttempt(phone=wa_id, signup_source="whatsapp"), now=self._now()
                     )
                 except SignupRefused as exc:
-                    return str(exc)
+                    return str(exc), exc.reason
         except Exception:  # noqa: BLE001
             _log.exception("signup.guard_failed wa_id=%s", wa_id)
-            return FAILED_MESSAGE
+            return FAILED_MESSAGE, "error"
         return None
+
+    async def _ask_team(self, wa_id: str, state: SignupState | None, profile_name: str | None) -> str:
+        """SS-23: tell the Mesiri team in their WhatsApp group; they reply in this chat (the
+        person just messaged, so WhatsApp lets them). Once a day; an unsent post says so."""
+        if state is not None and state.asked_team:
+            return await self._say(wa_id, TEAM_ALREADY_MESSAGE)
+        why = "this number already used its free trial" if _refused(state) else "asked for help at signup"
+        name = _clean_profile_name(profile_name) or "no WhatsApp name"
+        sent = self._notifier is not None and await self._notifier.post(
+            TEAM_POST.format(wa_id=wa_id, name=name, why=why)
+        )
+        if not sent:
+            _log.warning("signup.team_unreachable wa_id=%s", wa_id)
+            return await self._say(wa_id, TEAM_UNREACHABLE_MESSAGE)
+        _log.info("signup.team_asked wa_id=%s refused=%s", wa_id, _refused(state))
+        await self._store.set(wa_id, _at_welcome(state, asked_team=True))
+        return await self._say(wa_id, TEAM_ASKED_MESSAGE)
 
     async def _number_paused(self, wa_id: str) -> bool:
         """SS-22: this number belongs to a user Mesiri didn't resolve as a sender, i.e.
@@ -412,8 +487,18 @@ class SignupJourney:
         return body
 
     async def _welcome(
-        self, wa_id: str, profile_name: str | None, *, note: str = "", said: str = ""
+        self,
+        wa_id: str,
+        profile_name: str | None,
+        *,
+        note: str = "",
+        said: str = "",
+        state: SignupState | None = None,
     ) -> str:
+        if _refused(state):
+            # SS-23: a greeting after a refused trial is not offered setup again.
+            await self._store.set(wa_id, _at_welcome(state))
+            return await self._buttons(wa_id, TRIAL_USED_MESSAGE, _REFUSED_BUTTONS)
         await self._store.set(wa_id, SignupState(stage="welcome"))
         name = _clean_profile_name(profile_name)
         body = WELCOME_MESSAGE.format(name=f" {name}" if name else "") + note

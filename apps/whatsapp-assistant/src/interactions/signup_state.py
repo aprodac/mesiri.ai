@@ -34,6 +34,11 @@ class SignupState:
     nudges: int = 0
     #: SS-22: after Edit, the owner's name is asked even when the WhatsApp profile has one.
     ask_name: bool = False
+    #: SS-23: this number was refused a trial, so "Set up my company" is never offered again
+    #: (it could only be refused again); "Talk to our team" is offered instead.
+    trial_refused: bool = False
+    #: SS-23: the team was already told today; a second tap does not post again.
+    asked_team: bool = False
 
 
 class _RedisLike(Protocol):
@@ -60,6 +65,8 @@ class SignupStateStore:
             owner_name=raw.get("owner_name"),
             nudges=int(raw.get("nudges") or 0),
             ask_name=bool(raw.get("ask_name")),
+            trial_refused=bool(raw.get("trial_refused")),
+            asked_team=bool(raw.get("asked_team")),
         )
 
     async def set(

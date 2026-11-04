@@ -859,18 +859,6 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     actor_reader = PostgresActorReader()
     message_logger: MessageLogger = PostgresMessageLogger()
 
-    # SS-04: unknown numbers can start a free trial when self-serve signup is
-    # switched on (platform setting, off by default).
-    from interactions.signup_state import SignupStateStore
-    from runtime.signup_journey import SignupJourney
-
-    signup_journey = SignupJourney(
-        sender=sender,
-        store=SignupStateStore(redis_client),
-        db=material_db,
-        renderer=receipt_renderer,
-    )
-
     # WA-09: an outside DPR contact's YES / STOP to the opt-in invite.
     from runtime.opt_in_journey import OptInJourney
 
@@ -916,6 +904,20 @@ def build_container(settings: Settings, http_client: httpx.AsyncClient) -> AppCo
     from runtime.team_notify import TeamNotifier
 
     team_notifier = TeamNotifier()
+
+    # SS-04: unknown numbers can start a free trial when self-serve signup is
+    # switched on (platform setting, off by default). SS-23: a number refused a
+    # trial can ask the Mesiri team for help, through the same team group.
+    from interactions.signup_state import SignupStateStore
+    from runtime.signup_journey import SignupJourney
+
+    signup_journey = SignupJourney(
+        sender=sender,
+        store=SignupStateStore(redis_client),
+        db=material_db,
+        renderer=receipt_renderer,
+        notifier=team_notifier,
+    )
 
     # SA-11: errors to the super admins on WhatsApp; same 24 h window rule
     # and last-message lookup as the join request above.

@@ -226,8 +226,11 @@ trials only), days data is kept after a trial expires, and the self-serve signup
   message that was work (a site update, voice note or photo) is told it wasn't saved
   yet. Mid-signup a voice note or photo gets "please type it". A number whose user is
   deactivated or suspended is told its access is paused, never offered a trial. A
-  refused trial offers "Join my team". If the number is already taken, the reply says
-  it's already set up.
+  refused trial offers **Talk to our team** and "Join my team", and that number is
+  never offered "Set up my company" again (SS-23: it could only be refused again).
+  Talk to our team posts the number to the team's WhatsApp group, once a day; the team
+  replies in the person's chat. If the number is already taken, the reply says it's
+  already set up.
 - **Before switching it on in production:** guardrails (SS-09). The switch is in the control panel's
   Settings → Trials & signup (SS-10).
 
