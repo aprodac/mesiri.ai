@@ -140,7 +140,7 @@ test("brain: after a restart a plan that is no longer held starts; one still hel
   }
 });
 
-function hereBrain({ prepareBuild }) {
+function hereBrain({ prepareBuild, asked = {}, routines = { mesiri: { url: "https://x/fire", token: "t" } } }) {
   const dir = mkdtempSync(join(tmpdir(), "abh-"));
   const sent = [];
   const fired = [];
@@ -153,7 +153,7 @@ function hereBrain({ prepareBuild }) {
       (async function* () {
         cwds.push({ cwd: options.cwd, venv: options.env.VIRTUAL_ENV || null });
         if (cwds.length === 1) {
-          const saved = plansApi.save({ id: 81, project: "mesiri", chat_project: "mesiri", chat: lastCtx.chat, chat_name: "Mesiri team", session: lastCtx.session, title: "Add a tool", plan: "Add the expense route to v3.", by: lastCtx.sender });
+          const saved = plansApi.save({ id: 81, project: "mesiri", chat_project: "mesiri", chat: lastCtx.chat, chat_name: "Mesiri team", session: lastCtx.session, title: "Add a tool", plan: "Add the expense route to v3.", by: lastCtx.sender, ...asked });
           lastCtx.new_plans?.push(saved.id);
         }
         yield ok(cwds.length === 1 ? "Building it now." : "Pushed abc1234.", `S${cwds.length}`);
@@ -162,7 +162,7 @@ function hereBrain({ prepareBuild }) {
     dir,
     listener: { send: async (b) => (sent.push(b), { ok: true }), addItem: async () => ({ item: { id: 81 } }), updateItem: async (id, b) => items.push({ id, ...b }) },
     tools: (ctx, plans) => ((lastCtx = ctx), (plansApi = plans), {}),
-    routines: { mesiri: { url: "https://x/fire", token: "t" } },
+    routines,
     fireFn: async (routine, text) => (fired.push(text), { claude_code_session_id: "cse_9" }),
     prepareBuild,
     now: () => new Date("2026-11-01T06:00:00Z"),
@@ -201,6 +201,37 @@ test("TM-31: when the build copy can't be made ready, the plan is built in the c
     assert.equal(cwds.length, 1); // no build turn here
     assert.ok(sent.some((m) => /build copy on the server isn't ready \(uv: not found\)/.test(m.text)));
     assert.equal(brain.planStore.plans[81].status, "running_in_cloud");
+  } finally {
+    done();
+  }
+});
+
+test("TM-73: a plan from feedback in a Mesiri chat starts in the cloud even with 'build here', and the group gets its link", async () => {
+  let prepared = 0;
+  const { brain, sent, fired, cwds, ask, done } = hereBrain({ prepareBuild: () => (prepared += 1, "warm"), asked: { asked_for: ["cor_0123456789abcdef"] } });
+  try {
+    await ask();
+    for (let i = 0; i < 20 && fired.length < 1; i++) await new Promise((r) => setTimeout(r, 5));
+    assert.equal(fired.length, 1);
+    assert.equal(prepared, 0); // the build copy isn't used
+    assert.equal(cwds.length, 1); // only the planning turn ran here
+    assert.equal(brain.planStore.plans[81].status, "running_in_cloud");
+    assert.equal(brain.planStore.plans[81].session_url, "https://claude.ai/code/session_9");
+    assert.ok(sent.some((m) => /▶️ Working on \[81\][\s\S]*Watch it live in Claude Code: https:\/\/claude\.ai\/code\/session_9/.test(m.text)));
+    assert.ok(!sent.some((m) => /Building \[81\][\s\S]*bot's server/.test(m.text)));
+  } finally {
+    done();
+  }
+});
+
+test("TM-73: with no cloud routine, a feedback plan still builds here", async () => {
+  const { brain, fired, cwds, ask, done } = hereBrain({ prepareBuild: () => "warm", asked: { asked_for: ["cor_0123456789abcdef"] }, routines: {} });
+  try {
+    await ask();
+    for (let i = 0; i < 20 && cwds.length < 2; i++) await new Promise((r) => setTimeout(r, 5));
+    assert.equal(fired.length, 0);
+    assert.deepEqual(cwds.map((c) => c.cwd), ["/r/mesiri", "/b/mesiri"]);
+    assert.equal(brain.planStore.plans[81].status, "running_here");
   } finally {
     done();
   }

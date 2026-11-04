@@ -705,7 +705,7 @@ export class Brain {
     if (typeof plan.id === "number") this.listener.updateItem(plan.id, { status: "in_progress", note: `OK from ${by} in WhatsApp`, project }).catch(() => {});
     // TM-50: an owner's ok is the decision, so the bot takes the request even when someone else had claimed it.
     if (typeof plan.id === "number") this.listener.claimItem?.(plan.id, { by: "team bot", take: true, project }).catch?.(() => {});
-    if (this.buildsHere(plan.project, project)) return this.buildHere(plan, { project, by, reply_chat, dm, say: sayPlan });
+    if (this.buildsHereFor(plan, project)) return this.buildHere(plan, { project, by, reply_chat, dm, say: sayPlan });
     if (this.routineFor(plan.chat, plan.project) && this.fireFn) return this.runInCloud(plan, { project, by, reply_chat, say: sayPlan });
     const text =
       `${by} approved plan [${plan.id}] "${plan.title}". Go ahead with exactly this plan now.\n\nThe plan:\n${plan.plan}`;
@@ -717,6 +717,17 @@ export class Brain {
   /** TM-31: does this project's approved work build on this server's build worktree? */
   buildsHere(repoProject, chatProject = repoProject) {
     return Boolean(this.prepareBuild && this.projects[repoProject]?.buildCwd && this.autobuild.buildHere(chatProject));
+  }
+
+  /**
+   * TM-73 (4 Nov: "when a session is started from feedback inside a Mesiri chat, the Claude link is also sent"). A
+   * build here is a local session with no claude.ai page, so a plan someone asked for in a Mesiri chat (asked_for)
+   * starts in the cloud whenever a routine can run it: the group gets "Watch it live in Claude Code: <link>". Other
+   * plans follow "@bot build here | cloud" as before; with no routine, feedback builds here too.
+   */
+  buildsHereFor(plan, chatProject) {
+    if (!this.buildsHere(plan.project, chatProject)) return false;
+    return !(plan.asked_for?.length && this.fireFn && this.routineFor(plan.chat, plan.project));
   }
 
   /**
@@ -1345,7 +1356,7 @@ export class Brain {
     writeJson(this.plansFile, this.planStore);
     this.autobuild.started(project);
     if (typeof plan.id === "number") this.listener.updateItem(plan.id, { status: "in_progress", note: "approved_by: autobuild (TM-18)", project }).catch(() => {});
-    if (this.buildsHere(plan.project, project)) return this.buildHere(plan, { project, by: "autobuild", reply_chat: req.reply_chat, dm: Boolean(req.dm), say });
+    if (this.buildsHereFor(plan, project)) return this.buildHere(plan, { project, by: "autobuild", reply_chat: req.reply_chat, dm: Boolean(req.dm), say });
     if (this.routineFor(plan.chat, plan.project) && this.fireFn) return this.runInCloud(plan, { project, by: "autobuild", reply_chat: req.reply_chat, say });
     const key = `${plan.chat}::${plan.session || "main"}`;
     plan.started_at ||= this.now().toISOString(); // TM-27
