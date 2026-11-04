@@ -27,6 +27,7 @@ API_ROUTERS: tuple[str, ...] = (
     "mesiri.domains.expenses.router",
     "mesiri.domains.finance.router",
     "mesiri.domains.dpr.router",
+    "mesiri.domains.admin.my_requests_router",  # request 230: the person's own requests
     "mesiri.domains.identity.preferences_router",  # WA-169: the reply language they chose
 )
 

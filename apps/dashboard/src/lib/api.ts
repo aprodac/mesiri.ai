@@ -657,6 +657,19 @@ export async function fetchConversations(params?: FetchConversationsParams): Pro
 }
 
 
+export interface MyRequest {
+  title: string
+  stage: 'asked' | 'building' | 'live' | 'dropped'
+  live_at: string | null
+  created_at: string | null
+}
+
+/** Request 230: the requests this person asked Mesiri for, with where each one is. */
+export async function fetchMyRequests(): Promise<MyRequest[]> {
+  const res = await api.get<{ items: MyRequest[] }>('/me/requests')
+  return res.data.items
+}
+
 export interface MessageOutcome {
   record_type: string
   record_id: string

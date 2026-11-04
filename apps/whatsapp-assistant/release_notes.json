@@ -290,6 +290,15 @@
         "cor_80b70d142f8f4f1cb94ac242d6f7639c"
       ],
       "message": "Mesiri no longer mixes up a new request with an earlier question. Try: 'Add Rajesh to Live Mart B as site engineer'"
+    },
+    {
+      "id": "my-requests",
+      "date": "2026-11-04",
+      "for": [
+        "cor_38907e67567640f28732e4b2da2ba3bc",
+        "cor_1cf50cb85c064b53b4c00ac4859d367f"
+      ],
+      "message": "Ippo ningal Mesiri-kku paranja complaints-um avayude status-um kaanam. Try: 'ente complaints kaanikku'. Thanks, ningal chodichathukondu ellavarkkum ithu kittum."
     }
   ]
 }

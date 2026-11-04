@@ -161,9 +161,11 @@ def create_app(lifecycle: AppLifecycle | None = None) -> FastAPI:
         _log.exception("branding admin router not loaded: %s", exc)
 
     try:
+        from mesiri.domains.admin.my_requests_router import router as me_requests_router
         from mesiri.domains.admin.requests_router import router as requests_admin_router
 
         app.include_router(requests_admin_router)
+        app.include_router(me_requests_router)
     except Exception as exc:  # noqa: BLE001
         _log.exception("requests admin router not loaded: %s", exc)
 

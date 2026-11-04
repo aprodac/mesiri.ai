@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useToast } from '@/components/ui/toast-notification'
 import { Callout, DprAside, DprHeader, DprSection, PageError } from '@/components/dpr-page'
 import { AccessManagerDialog, AddEditUserDialog, WhatsAppManagerDialog } from '@/components/user-dialogs'
+import { MyRequests } from '@/components/my-requests'
+import { useAuth } from '@/lib/AuthContext'
 import { UserWhatsAppMessagesTab } from '@/components/user-whatsapp-messages-tab'
 import { deleteUser, fetchUser, updateUser, updateUserStatus, type User } from '@/lib/api'
 import { isOrgWide, useMemberships } from '@/lib/team'
@@ -37,6 +39,7 @@ export default function UserDetails() {
 
   const query = useQuery<User>({ queryKey: ['user-details', id], queryFn: () => fetchUser(id), enabled: !!id })
   const memberships = useMemberships()
+  const { me } = useAuth()
   const user = query.data
   usePageTitle(`${user?.full_name ?? 'Person'} · Team`)
 
@@ -175,6 +178,12 @@ export default function UserDetails() {
               </ul>
             )}
           </DprSection>
+
+          {me && user && me.user_id === user.id && (
+            <DprSection icon={MessageSquare} title="My requests">
+              <MyRequests />
+            </DprSection>
+          )}
 
           <DprSection icon={MessageSquare} title="Messages on WhatsApp">
             <UserWhatsAppMessagesTab user={user} setActiveTab={() => undefined} setWhatsappOpen={(open) => setDialog(open ? 'whatsapp' : null)} />

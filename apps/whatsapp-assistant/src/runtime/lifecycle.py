@@ -279,9 +279,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # What people asked Mesiri for and what happened to it (TM-19): the team bot's
     # request log, read server-side; the backend's router, mounted here like branding.
     try:
+        from mesiri.domains.admin.my_requests_router import router as me_requests_router
         from mesiri.domains.admin.requests_router import router as requests_admin_router
 
         app.include_router(requests_admin_router)
+        app.include_router(me_requests_router)
     except Exception as exc:
         import logging
 

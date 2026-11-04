@@ -179,13 +179,15 @@ ALLOWED: tuple[Allowed, ...] = (
     Allowed("add_site", "POST", "/projects/{project_id}/sites", "Prepare a new site in a project." + _WRITE),
     Allowed("update_site", "PUT", "/projects/{project_id}/sites/{site_id}",
             "Prepare changing a site's details (name, address, status)." + _WRITE),
-    # TM-30 ([207]): the dashboard"s own route, added by scripts/allow_route.py.
+    # TM-30 ([207]): the dashboard's own route, added by scripts/allow_route.py.
     Allowed("add_project_member", "POST", "/projects/{project_id}/members", "Prepare adding a person who is already in the company to a project, with a role (site engineer, project manager, finance, admin). userId: their name as said is fine, the code finds them; role: as said." + _WRITE),
     # TM-30 ([210]): a new materials route (an alias), added by scripts/allow_route.py.
     Allowed("add_material_alias", "POST", "/materials/{material_id}/aliases",
             "Prepare remembering another name the company's people call a material (their word, any script: "
             "'primer' for Paint), so that word finds it next time. Use when they chose a material for a word that "
             "was not in the list." + _WRITE),
+    # TM-30 (#230): the dashboard's own route, added by scripts/allow_route.py.
+    Allowed("my_requests", "GET", "/me/requests", "The requests this person asked Mesiri for, and where each one is (asked, building, live, dropped)."),
 )
 
 

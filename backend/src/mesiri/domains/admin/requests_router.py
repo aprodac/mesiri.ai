@@ -153,6 +153,12 @@ async def verdicts(conn: AsyncConnection, days: int = 30) -> dict[str, int] | No
     return {"works": by.get("works", 0), "still_wrong": by.get("still_wrong", 0), "days": days}
 
 
+async def _all_items(project: str) -> list[dict[str, Any]]:
+    """The one fetch of a project's request log, shared by the admin list and the person's own list."""
+    data = await _get("/items", {"project": project})
+    return [_public(i) for i in data.get("items", [])]
+
+
 @router.get("/requests")
 async def list_requests(
     project: str = Query("mesiri", max_length=40, pattern=r"^[a-z0-9_-]+$"),
@@ -160,8 +166,7 @@ async def list_requests(
     _admin: dict = Depends(require_platform_admin),
 ) -> dict[str, Any]:
     """Every request of the project, newest first, with counts per stage and the loop's numbers (TM-23)."""
-    data = await _get("/items", {"project": project})
-    items = [_public(i) for i in data.get("items", [])]
+    items = await _all_items(project)
     loop = {**loop_numbers(items), "verdicts": await verdicts(conn)}
     return {"project": project, "counts": counts(items), "loop": loop, "items": items}
 
