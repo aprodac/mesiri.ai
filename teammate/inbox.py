@@ -56,6 +56,7 @@ import argparse
 import base64
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -306,10 +307,52 @@ def _usage_body(a: argparse.Namespace) -> dict | None:
     return {**body, "account": a.account or _ACCOUNT, "by": _WORKER, "project": PROJECT}
 
 
+_WORD = re.compile(r"[a-z0-9]{4,}")
+_STOP = {"with", "that", "this", "from", "when", "what", "still", "after", "before", "never", "always", "their", "into", "only", "gets", "says"}
+
+
+def _words(text: str) -> set[str]:
+    return {w for w in _WORD.findall(text.lower()) if w not in _STOP}
+
+
+def _possible_repeats(title: str, items: list[dict]) -> list[dict]:
+    """TM-83: open requests (and ones from the last 24 h) that may be the same problem: a [n] it names that is still
+    open or has an open follow-up, or most of the same words. The bot's planner gets the same check (same.js)."""
+    import datetime as dt
+
+    day_ago = (dt.datetime.now(dt.UTC) - dt.timedelta(days=1)).isoformat()
+    live = [i for i in items if i["status"] in ("open", "in_progress") or (i["status"] == "done" and i["updated_at"] >= day_ago)]
+    refs = {int(n) for n in re.findall(r"\[(\d+)\]", title)}
+    words = _words(title)
+    out = []
+    for i in live:
+        named = i["id"] in refs or any(f"[{n}]" in i["title"] for n in refs)
+        theirs = _words(i["title"])
+        overlap = len(words & theirs) / max(1, len(words | theirs))
+        if (named and i["status"] in ("open", "in_progress")) or overlap >= 0.4:
+            out.append(i)
+    return out[:8]
+
+
 def _item(a: argparse.Namespace) -> None:
     if a.action == "add":
         if len(a.args) < 2 or not a.type:
             sys.exit('usage: item add <chat> "<title>" --type bug|feature|question|complaint|task')
+        title = " ".join(a.args[1:])
+        if a.same_as:
+            # TM-83: the same problem goes on the request that has it, never a second request (or a second fix).
+            note = f"same problem reported again (via {_WORKER}): {title}"
+            i = _request("POST", f"/items/{a.same_as}", body={"note": note, "project": PROJECT})["item"]
+            print(f"added to {_item_line(i)}  (no new request)")
+            return
+        if not a.new:
+            repeats = _possible_repeats(title, _request("GET", "/items", params={"project": PROJECT})["items"])
+            if repeats:
+                print("These open / recent requests may be the same problem:")
+                for i in repeats:
+                    print(f"  {_item_line(i)}")
+                sys.exit('Same problem: item add ... --same-as <n> (adds it there; no second request). '
+                         'Different: item add ... --new "<what makes it different>".')
         body = {
             "chat": a.args[0],
             "title": " ".join(a.args[1:]),
@@ -445,6 +488,9 @@ def main() -> None:
     itm.add_argument("--summary")
     itm.add_argument("--ref", help="commit or PR, e.g. aprodac/MERCON#262")
     itm.add_argument("--note")
+    # TM-83: item add checks for a request that already has this problem.
+    itm.add_argument("--same-as", type=int, help="add it to this request instead of a new one")
+    itm.add_argument("--new", help="it is not a repeat of the requests listed: why (one line)")
     # TM-79: what this session used of Claude for the request (from /usage or /cost), on `usage` or `done`.
     itm.add_argument("--cost", type=float, help="dollars this session spent on it (Claude Code's /cost)")
     itm.add_argument("--pct5", type=float, help="percent of the 5-hour window it took (from /usage before and after)")

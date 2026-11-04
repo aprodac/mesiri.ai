@@ -11,6 +11,7 @@
 //             pre-push hook only lets the project's own branch through.
 // Each repo's own CLAUDE.md and skills apply (settingSources: ["project"]).
 
+import { BUILDING, coveringPlan } from "./same.js";
 import { readFileSync, writeFileSync, renameSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { BRAIN_TOOL_NAMES, PREVIEW_KINDS } from "./tools.js";
@@ -1400,6 +1401,15 @@ export class Brain {
       writeJson(this.plansFile, this.planStore);
       if (typeof plan.id === "number") this.listener.updateItem(plan.id, { held: why, project }).catch(() => {});
       return say(`🙋 *Needs you* ✋ [${plan.id}] ${plan.title}\nWaiting for an owner because ${why}. Reply @bot ok ${plan.id} to build it.`);
+    }
+    // TM-83: a second build of the same problem waits for the one already being built (a repeat that reached here
+    // without being merged, e.g. two planning turns at once).
+    const twin = coveringPlan(plan, Object.values(this.planStore.plans).filter((p) => BUILDING.has(p.status)), { asked: plan.asked_for || [] });
+    if (twin) {
+      plan.held = `same problem as [${twin.id}], which is being built`;
+      writeJson(this.plansFile, this.planStore);
+      if (typeof plan.id === "number") this.listener.updateItem(plan.id, { held: plan.held, note: `not built: [${twin.id}] is building the same problem`, project }).catch(() => {});
+      return say(`[${plan.id}] ${plan.title}: not building, it is the same problem as [${twin.id}], which is being built now. @bot ok ${plan.id} builds it anyway.`);
     }
     // TM-50: one worker per request. A Claude Code session (or a person) already on it keeps it; the plan waits and
     // its text is filed under the request for them, instead of a second fix of the same thing.

@@ -306,3 +306,22 @@ test("a second fix of the same complaint needs a root cause and a failing test",
   assert.equal(refixReady("*Root cause:* x\n- Failing test: y"), true);
   assert.equal(refixReady("The root cause is probably the unit. We'll add a test."), false);
 });
+
+test("TM-83: a second plan of the same problem is not built while the first is being built", async () => {
+  const { brain, sent, fired, items, ask, done } = brainWith("Add create_project to v2 for admins and site engineers. Labour untouched.");
+  try {
+    // [79] is a re-open of [70], being built in the cloud; [81] arrives as another "[70] follow-up" from a planning turn.
+    brain.planStore.plans[79] = { id: 79, project: "mesiri", chat: "M@g.us", title: "[70] still broken: project create", plan: "p", status: "running_in_cloud", at: "2026-11-01T05:50:00Z" };
+    Object.defineProperty(brain, "plans", { get() {
+      const api = Object.getPrototypeOf(brain).__lookupGetter__("plans").call(brain);
+      return { ...api, save: (p) => api.save({ ...p, title: "[70] follow-up: create a project from WhatsApp" }) };
+    } });
+    await ask();
+    assert.equal(fired.length, 0);
+    assert.match(sent.at(-1).text, /\[81\][\s\S]*same problem as \[79\], which is being built now[\s\S]*@bot ok 81/);
+    assert.equal(brain.planStore.plans[81].status, "proposed");
+    assert.ok(items.some((i) => i.id === 81 && /same problem as \[79\]/.test(i.held || "")));
+  } finally {
+    done();
+  }
+});
