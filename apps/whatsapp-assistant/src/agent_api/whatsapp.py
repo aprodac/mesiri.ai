@@ -34,6 +34,7 @@ from channel.replies import ListRow, ReplySpec
 from mesiri_ai.greeting_classifier import is_greeting_trigger
 from mesiri_ai.models import ToolSpec
 from mesiri_contracts.assistant.enums import InputModality
+from runtime.agent.reply_text import without_save_prompt
 from runtime.ai_outage import (
     BUDGET_REPLY,
     GAVE_UP_REPLY,
@@ -159,6 +160,10 @@ class _Answered(Exception):
 
 #: The outage wording by its English text (``reply_for_attempt`` picks the text).
 _OUTAGE_LINES = {QUEUED_REPLY: "outage.queued", BUDGET_REPLY: "outage.budget", GAVE_UP_REPLY: "outage.gave_up", RESEND_REPLY: "outage.resend"}
+
+
+NOTHING_HELD = "I haven't got anything ready to save yet. Please send it again, with what's missing."
+PRESS_SAVE = "Tap *Save* to record these."
 
 
 def _in(language: str | None, key: str, english: str) -> str:
@@ -430,7 +435,9 @@ class ApiWhatsApp:
 
             await self._save_state(ctx, state)
             return ReplySpec(text=without_ready_block(whatsapp_bold(words)) or "OK.")
-        reply = self._reply(words, turn.pending, state, turn.options)
+        if turn.nothing_held:
+            words = _in(state.get("language"), "api.nothing_held", NOTHING_HELD)  # [229]: nothing is held: say so
+        reply = self._reply(words, turn.pending, state, turn.options, state.get("language"))
         await self._save_state(ctx, state)
         return reply
 
@@ -452,7 +459,7 @@ class ApiWhatsApp:
         language = state.get("language") or "english"
         words = (_HELD.get(language, _HELD["english"]).format(lines="; ".join(held)) if held
                  else plain_refusal("", language))
-        reply = self._reply(words, ready, state, [])
+        reply = self._reply(words, ready, state, [], state.get("language"))
         await self._save_state(ctx, state)
         return reply
 
@@ -570,7 +577,7 @@ class ApiWhatsApp:
         if turn.pending:
             state = await self._state(ctx)
             waiting = [PendingWrite.from_json(e) for e in state.get("pending") or []]
-            card = self._reply(words, [*waiting, *turn.pending], state, [])
+            card = self._reply(words, [*waiting, *turn.pending], state, [], state.get("language"))
             await self._save_state(ctx, state)
             await self._send(card, wa_id)
         if words:
@@ -752,7 +759,8 @@ class ApiWhatsApp:
 
     # -- helpers -----------------------------------------------------------------------------
 
-    def _reply(self, words: str, pending: list[PendingWrite], state: dict, options: list[str]) -> ReplySpec:
+    def _reply(self, words: str, pending: list[PendingWrite], state: dict, options: list[str],
+               language: str | None = None) -> ReplySpec:
         """The model's words, the ready list under them, and the buttons: the question's options
         when it asked one (one tap answers it), else Save / Cancel for the list."""
         had = bool(state.get("pending"))
@@ -768,10 +776,14 @@ class ApiWhatsApp:
         text = whatsapp_bold(words) or "OK."
         # The list is drawn here; a copy the model wrote itself (it echoed the history) is cut.
         text = without_ready_block(text) or "OK."
+        # [229]: only the code tells them to tap Save, and only under a list it holds with the button sent with it.
+        text = without_save_prompt(text) or ("OK." if not pending else "")
         if pending:
             text = without_numbered_lines(without_copied_lines(text, [e.summary for e in pending])) or "OK."
             listed = "\n".join(f"{i}. {e.summary}" for i, e in enumerate(pending, 1))
-            text = f"{text}\n\n*Ready to save:*\n{listed}"
+            text = f"{text}\n\n*Ready to save:*\n{listed}".strip()
+            if not options:
+                text = f"{text}\n\n{_in(language, 'api.press_save', PRESS_SAVE)}"
         if options:
             return ReplySpec(text=text, buttons=tuple(
                 ListRow(id=f"{OPTION_PREFIX}{i}", title=o) for i, o in enumerate(options[:3])))

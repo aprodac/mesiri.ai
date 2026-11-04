@@ -413,6 +413,20 @@ LINES: dict[str, dict[str, str]] = {
         "hindi": "धन्यवाद 👍",
         "hinglish": "Thanks 👍",
     },
+    "api.press_save": {
+        "english": "Tap *Save* to record these.",
+        "manglish": "Ithokke record cheyyaan *Save* amarthuka.",
+        "malayalam": "ഇവ രേഖപ്പെടുത്താൻ *Save* അമർത്തുക.",
+        "hindi": "इन्हें दर्ज करने के लिए *Save* दबाइए।",
+        "hinglish": "Inhe record karne ke liye *Save* dabaiye.",
+    },
+    "api.nothing_held": {
+        "english": "I haven't got anything ready to save yet. Please send it again, with what's missing.",
+        "manglish": "Save cheyyaan ippo onnum ready aayittilla. Illaathathu koode cherthu onnu koodi ayakkoo.",
+        "malayalam": "സേവ് ചെയ്യാൻ ഇതുവരെ ഒന്നും തയ്യാറായിട്ടില്ല. വിട്ടുപോയ കാര്യം കൂടി ചേർത്ത് ഒന്നുകൂടി അയക്കൂ.",
+        "hindi": "सेव करने के लिए अभी कुछ तैयार नहीं है। जो छूटा है उसके साथ फिर भेजिए।",
+        "hinglish": "Save karne ke liye abhi kuch ready nahi hai. Jo chhoota hai uske saath phir bhejiye.",
+    },
     "preview.ask": {
         "english": "👀 *Preview* of the change you asked for. Is this how you want it? We're already building it.",
         "manglish": "👀 Ningal chodicha maattathinte *preview*. Ingane aano venda? Njangal ithu undaakki thudangi.",

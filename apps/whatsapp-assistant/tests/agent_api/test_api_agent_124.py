@@ -345,6 +345,6 @@ async def test_no_words_after_a_lookup_gets_one_more_ask_for_the_answer() -> Non
 
 
 async def test_double_star_bold_is_whatsapp_bold() -> None:
-    service, sent = _service(FakeToolCallingProvider(["Tap **Save** below."]))
+    service, sent = _service(FakeToolCallingProvider(["All **done** below."]))
     await service.handle(_message("hi"), CTX)
-    assert sent[-1].text == "Tap *Save* below."
+    assert sent[-1].text == "All *done* below."
